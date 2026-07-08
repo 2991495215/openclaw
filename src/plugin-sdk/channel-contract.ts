@@ -36,8 +36,6 @@ export type {
   ChannelDoctorLegacyConfigRule,
   ChannelDoctorSequenceResult,
   ChannelGatewayContext,
-  ChannelLoginMethod,
-  ChannelLoginMethodKind,
   ChannelGatewayContextV2,
   ChannelGatewayAdapterV2,
   ChannelOutboundAdapter,
@@ -45,4 +43,6 @@ export type {
   ChannelOutboundPayloadHint,
   ChannelStatusAdapter,
 } from "../channels/plugins/types.adapters.js";
+export type {
+} from "../channels/plugins/channel-login-method.types.js";
 export type { ChannelRuntimeSurface } from "../channels/plugins/channel-runtime-surface.types.js";
