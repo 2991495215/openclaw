@@ -2598,6 +2598,9 @@ importers:
       solid-js:
         specifier: 2.0.0-rc.16
         version: 2.0.0-rc.16
+      libphonenumber-js:
+        specifier: 1.13.12
+        version: 1.13.12
       typebox:
         specifier: 1.4.1
         version: 1.4.1

@@ -251,10 +251,13 @@ describe("login-qr", () => {
       message: refreshedQrMessage,
       qrDataUrl: encodedQr("qr-after-logout"),
     });
-    expect(logoutWebMock).toHaveBeenCalledOnce();
-    expect(logoutWebMock).toHaveBeenCalledWith(
-      expect.objectContaining({ beforeCredentialPersistence: expect.any(Function) }),
-    );
+    expect(prepareWebAuthForLoginMock).toHaveBeenLastCalledWith({
+      authDir: expect.stringContaining(accountId),
+      isLegacyAuthDir: false,
+      mode: "clear-existing",
+      runtime: expect.anything(),
+      beforeCredentialPersistence: expect.any(Function),
+    });
   });
 
   it("keeps the linked shortcut when existing auth has an active listener", async () => {
@@ -367,14 +370,14 @@ describe("login-qr", () => {
     const authState = Promise.withResolvers<{ outcome: "stable"; exists: true }>();
     const authority = revocableAuthority();
     const beforeCredentialPersistence = authority.check;
-    readWebAuthExistsForDecisionMock.mockReturnValueOnce(authState.promise);
-    logoutWebMock.mockImplementationOnce(async (options) => {
+    prepareWebAuthForLoginMock.mockImplementationOnce(async (options) => {
+      await authState.promise;
       await options.beforeCredentialPersistence?.();
-      return true;
+      return "cleared";
     });
 
     const resultPromise = startQr(accountId, { force: true, beforeCredentialPersistence });
-    await vi.waitFor(() => expect(readWebAuthExistsForDecisionMock).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(prepareWebAuthForLoginMock).toHaveBeenCalledOnce());
     authority.revoke();
     authState.resolve({ outcome: "stable", exists: true });
 
@@ -382,7 +385,15 @@ describe("login-qr", () => {
       message:
         "WhatsApp login failed: formatted:Error: plugin tool host authority is no longer active",
     });
+    expect(prepareWebAuthForLoginMock).toHaveBeenCalledWith({
+      authDir: expect.stringContaining(accountId),
+      isLegacyAuthDir: false,
+      mode: "clear-existing",
+      runtime: expect.anything(),
+      beforeCredentialPersistence,
+    });
     expect(beforeCredentialPersistence).toHaveBeenCalledOnce();
+    expect(readWebAuthExistsForDecisionMock).not.toHaveBeenCalled();
     expect(createWaSocketMock).not.toHaveBeenCalled();
   });
 
@@ -428,14 +439,13 @@ describe("login-qr", () => {
     const result = await startWebLoginWithQr({ timeoutMs: 5000, accountId });
 
     expectScanQrResult(result, "qr-after-restart-logout");
-    expect(logoutWebMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        authDir: expect.stringContaining(accountId),
-        isLegacyAuthDir: false,
-        runtime: expect.anything(),
-        beforeCredentialPersistence: expect.any(Function),
-      }),
-    );
+    expect(prepareWebAuthForLoginMock).toHaveBeenLastCalledWith({
+      authDir: expect.stringContaining(accountId),
+      isLegacyAuthDir: false,
+      mode: "clear-existing",
+      runtime: expect.anything(),
+      beforeCredentialPersistence: expect.any(Function),
+    });
     expect(createWaSocketMock).toHaveBeenCalledTimes(2);
   });
 

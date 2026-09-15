@@ -2,6 +2,7 @@ import "./active-listener.js";
 import "./auth-store.js";
 import "./auto-reply/monitor.js";
 import "./login.js";
+import { runWhatsAppLogin as runWhatsAppLoginImpl } from "./login-flow.js";
 import { whatsappSetupWizard as whatsappSetupWizardImpl } from "./setup-surface.js";
 export { startWebLoginWithQr, waitForWebLogin } from "../login-qr-runtime.js";
 export { getActiveWebListener } from "./active-listener.js";
@@ -18,7 +19,8 @@ export {
   webAuthExists,
 } from "./auth-store.js";
 export { monitorWebChannel } from "./auto-reply/monitor.js";
-export { loginWeb, runWhatsAppLogin } from "./login.js";
+export { runWhatsAppLogin } from "./login-flow.js";
+export { loginWeb } from "./login.js";
 
 type WhatsAppSetupWizard = typeof import("./setup-surface.js").whatsappSetupWizard;
 
