@@ -1,5 +1,7 @@
+import fs from "node:fs";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
+import { validateJsonSchemaValue } from "openclaw/plugin-sdk/json-schema-runtime";
 import type { OpenClawPluginService } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
@@ -87,6 +89,91 @@ async function catalogFixture() {
 }
 
 describe("session-share receiver catalog", () => {
+  it.each(["", "/", "/openclaw", "/admin/openclaw/"])(
+    "preserves the receiver-approved source base path %j across routing and reloads",
+    async (controlUiBasePath) => {
+      const fixture = await catalogFixture();
+      const sessions = [
+        ["agent:research:shared", "/chat/research/shared"],
+        ["agent:research:main", "/chat/research/~key/main"],
+        ["agent:research:global", "/chat/research/~key/global"],
+        ["session-share:research:global", "/chat/research"],
+        ["agent:ops:question/answer:what?#%.js", "/chat/ops/question%2Fanswer/what%3F%23%25%2Ejs"],
+      ];
+      fixture.invoke.mockResolvedValue({
+        sessions: sessions.map(([threadId]) => ({ ...nativeSession, threadId })),
+      });
+      const configure = (basePath?: string) =>
+        fixture.configure({
+          gateway: { controlUi: { basePath: "/receiver-only" } },
+          plugins: {
+            entries: {
+              "session-share": {
+                config: {
+                  nodes: {
+                    alpha: {
+                      controlUiOrigin: "https://team.example.com",
+                      controlUiBasePath: basePath,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+      const manifest = JSON.parse(
+        fs.readFileSync(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
+      ) as { configSchema: Record<string, unknown> };
+      expect(
+        validateJsonSchemaValue({
+          schema: manifest.configSchema,
+          cacheKey: "session-share.basepath",
+          value: {
+            nodes: { alpha: { controlUiOrigin: "https://team.example.com", controlUiBasePath } },
+          },
+        }).ok,
+      ).toBe(true);
+      configure(controlUiBasePath);
+      const prefix = controlUiBasePath.replace(/\/$/, "");
+      expect((await fixture.catalog.list({}))[0]?.sessions.map((row) => row.originalUrl)).toEqual(
+        sessions.map(([, path]) => `https://team.example.com${prefix}${path}`),
+      );
+      configure();
+      expect((await fixture.catalog.list({}))[0]?.sessions.map((row) => row.originalUrl)).toEqual(
+        sessions.map(([, path]) => `https://team.example.com${path}`),
+      );
+    },
+  );
+
+  it.each([
+    "openclaw",
+    "//other.example",
+    "/openclaw?query",
+    "/openclaw#fragment",
+    "/openclaw\\other",
+    "/openclaw\n",
+    "/openclaw/../other",
+    "/%2e%2e/other",
+    42,
+    null,
+  ])("withdraws original links for invalid receiver base path %j", async (controlUiBasePath) => {
+    const fixture = await catalogFixture();
+    fixture.configure({
+      plugins: {
+        entries: {
+          "session-share": {
+            config: {
+              nodes: { alpha: { controlUiOrigin: "https://team.example.com", controlUiBasePath } },
+            },
+          },
+        },
+      },
+    });
+    const row = (await fixture.catalog.list({}))[0]?.sessions[0];
+    expect(row?.threadId).toBe(nativeSession.threadId);
+    expect(row?.originalUrl).toBeUndefined();
+  });
+
   it.each([
     [
       "agent:research:dashboard:01234567-89ab-cdef-0123-456789abcdef",
@@ -157,6 +244,16 @@ describe("session-share receiver catalog", () => {
     const fixture = await catalogFixture();
     fixture.invoke.mockResolvedValue({
       sessions: [{ ...nativeSession, originalUrl: "https://evil.example" }],
+    });
+    const host = (await fixture.catalog.list({}))[0];
+    expect(host?.sessions).toEqual([]);
+    expect(host?.error?.code).toBe("NODE_INVOKE_FAILED");
+  });
+
+  it("rejects source-supplied base paths instead of trusting remote navigation", async () => {
+    const fixture = await catalogFixture();
+    fixture.invoke.mockResolvedValue({
+      sessions: [{ ...nativeSession, controlUiBasePath: "/untrusted" }],
     });
     const host = (await fixture.catalog.list({}))[0];
     expect(host?.sessions).toEqual([]);
@@ -310,7 +407,7 @@ describe("session-share receiver catalog", () => {
   );
 
   it.each(["unchanged", "config", "connection", "query"])(
-    "retains only a compatible page during %s refresh",
+    "waits for source authorization during %s refresh",
     async (revision) => {
       const fixture = await catalogFixture();
       await fixture.catalog.list({});
@@ -340,13 +437,47 @@ describe("session-share receiver catalog", () => {
         expect(hosts).toEqual([
           expect.objectContaining({
             pending: true,
-            sessions: revision === "unchanged" ? [nativeSession] : [],
+            sessions: [],
           }),
         ]);
         gate.resolve({ sessions: [refreshed] });
         await Promise.all(publications);
         expect(onHost).toHaveBeenLastCalledWith(expect.objectContaining({ sessions: [refreshed] }));
         expect(fixture.invoke).toHaveBeenCalledTimes(2);
+      } finally {
+        gate.resolve({ sessions: [] });
+        await fixture.stop();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(["revoked", "unavailable"])(
+    "does not redisplay a warm page while its source is %s",
+    async (outcome) => {
+      const fixture = await catalogFixture();
+      await fixture.catalog.list({});
+      const gate = createDeferred<unknown>();
+      fixture.invoke.mockImplementation(() => gate.promise);
+      const onHost = vi.fn();
+      const publications: Promise<void>[] = [];
+      vi.useFakeTimers();
+      try {
+        const pending = fixture.catalog.list({
+          allowPartialResults: true,
+          onHost,
+          waitUntil: (work) => publications.push(work),
+        });
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect((await pending)[0]).toMatchObject({ pending: true, sessions: [] });
+        expect(onHost).not.toHaveBeenCalled();
+        if (outcome === "revoked") {
+          gate.resolve({ sessions: [] });
+        } else {
+          gate.reject(new Error("Source unavailable"));
+        }
+        await Promise.all(publications);
+        expect(onHost).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ sessions: [] }));
       } finally {
         gate.resolve({ sessions: [] });
         await fixture.stop();

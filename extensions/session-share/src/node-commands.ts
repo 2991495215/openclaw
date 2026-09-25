@@ -41,7 +41,7 @@ function sharedEntries(api: OpenClawPluginApi) {
   if (!selection) {
     return [];
   }
-  const groups = selection.groups ? new Set(selection.groups) : undefined;
+  const groups = new Set(selection.groups);
   return listAgentIds(config)
     .toSorted()
     .flatMap((agentId) => {
@@ -59,7 +59,8 @@ function sharedEntries(api: OpenClawPluginApi) {
     })
     .filter(
       ({ sessionKey, entry }) =>
-        (!groups || (entry.category !== undefined && groups.has(entry.category))) &&
+        entry.category !== undefined &&
+        groups.has(entry.category) &&
         entry.incognito !== true &&
         entry.visibility !== "draft" &&
         !isSubagentSessionKey(sessionKey) &&

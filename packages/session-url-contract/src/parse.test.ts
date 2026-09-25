@@ -198,8 +198,29 @@ describe("parseControlUiSessionPath", () => {
     }
   });
 
+  it.each(["main", "workspace", "global", "deadbeef"])(
+    "keeps source keys exact when the receiver does not know mainKey=%s",
+    (mainKey) => {
+      for (const rest of ["main", mainKey]) {
+        const sessionKey = `agent:research:${rest}`;
+        const path = buildControlUiSessionPath({
+          namespace: "chat",
+          sessionKey,
+          exactKey: true,
+          basePath: "/control",
+        });
+        expect(parseControlUiSessionPath(path ?? "", "/control", mainKey)).toMatchObject({
+          namespace: "chat",
+          kind: "literal",
+          agentId: "research",
+          sessionKey,
+        });
+      }
+    },
+  );
+
   it.each([
-    ["agent:main:main", "/chat/main", "main"],
+    ["agent:main:main", "/chat/main/~key/main", "literal"],
     ["agent:research:global", "/chat/research/~key/global", "literal"],
     ["agent:main:standup", "/chat/main/standup", "literal"],
     ["agent:main:sessions", "/chat/main/~key/sessions", "literal"],

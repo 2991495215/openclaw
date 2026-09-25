@@ -232,7 +232,7 @@ export function projectSessionParticipants(
   return participants;
 }
 
-/** Filter stored rows using exact durable identity, never display-reference prefixes. */
+/** Match canonical owners or profile participants, never mentions or display-reference prefixes. */
 export function filterSessionEntriesByProfile<T extends { entry: SessionEntry }>(params: {
   entries: T[];
   profileId: string;
@@ -256,7 +256,6 @@ export function filterSessionEntriesByProfile<T extends { entry: SessionEntry }>
       ...(entry.participants ?? []).flatMap(({ identity }) =>
         identity.type === "profile" ? [identity.id] : [],
       ),
-      ...Object.keys(entry.profileInvolvement?.profiles ?? {}),
     ]) {
       if (id) {
         ids.add(id);
@@ -279,37 +278,15 @@ export function filterSessionEntriesByProfile<T extends { entry: SessionEntry }>
         : undefined,
     );
   }
-  return params.entries.filter(({ entry }) =>
-    matchesSessionProfileInvolvement({
-      entry,
-      profileId: profile.profileId,
-      identities,
-      cfg: params.cfg,
-      effectiveOwner: projectSessionOwner(entry, identities, params.cfg)?.actor,
-    }),
-  );
-}
-
-/** Shared person-involvement semantics for Activity and source catalog selection. */
-export function matchesSessionProfileInvolvement(params: {
-  entry: SessionEntry;
-  profileId: string;
-  identities: Map<string, SessionActorProfileIdentity | undefined>;
-  cfg: OpenClawConfig;
-  effectiveOwner?: SessionOwnerFacetIdentity;
-  personal?: boolean;
-  projectParticipants?: SessionIdentityProjection["participants"];
-}): boolean {
-  const { entry, profileId, identities, cfg, effectiveOwner, personal = false } = params;
-  const state = projectSessionProfileInvolvement(entry, profileId, identities);
-  return (
-    !(personal && state?.hidden) &&
-    (Boolean(state?.lastMention || (personal && state?.hidden === false)) ||
-      (effectiveOwner?.identity?.type === "profile" && effectiveOwner.identity.id === profileId) ||
-      (params.projectParticipants ?? projectSessionParticipants)(entry, identities, cfg).has(
-        JSON.stringify({ type: "profile", id: profileId }),
-      ))
-  );
+  return params.entries.filter(({ entry }) => {
+    const owner = projectSessionOwner(entry, identities, params.cfg)?.actor.identity;
+    return (
+      (owner?.type === "profile" && owner.id === profile.profileId) ||
+      projectSessionParticipants(entry, identities, params.cfg).has(
+        JSON.stringify({ type: "profile", id: profile.profileId }),
+      )
+    );
+  });
 }
 
 /** Participation, creation, and responsibility are associations, never access grants. */

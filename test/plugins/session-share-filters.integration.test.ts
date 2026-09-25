@@ -14,7 +14,7 @@ import { ensureProfileForEmail, linkEmail } from "../../src/state/user-profiles.
 import { commandFixture } from "./session-share.test-support.js";
 
 describe("session-share source publication filters", () => {
-  it("selects canonical person involvement, intersects groups, and preserves safety exclusions", async () => {
+  it("requires groups, narrows to canonical owners or participants, and preserves exclusions", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const fixture = commandFixture();
       const person = ensureProfileForEmail("person@example.test");
@@ -31,7 +31,10 @@ describe("session-share source publication filters", () => {
       };
       const rows: Record<string, Partial<SessionEntry>> = {
         creator: { createdActor },
-        owner: { owner: { actor: { type: "human", id: alias.id } } },
+        owner: {
+          owner: { actor: { type: "human", id: alias.id } },
+          profileInvolvement: { key: "agent:main:owner", profiles: { [alias.id]: mention } },
+        },
         participant: { participants: [participant] },
         mention: {
           profileInvolvement: { key: "agent:main:mention", profiles: { [alias.id]: mention } },
@@ -94,20 +97,15 @@ describe("session-share source publication filters", () => {
           .map(({ threadId }) => threadId.slice("agent:main:".length))
           .toSorted((left, right) => left.localeCompare(right));
       fixture.select({ involvingProfileId: person.id });
-      expect(await listed()).toEqual([
-        "creator",
-        "mention",
-        "othergroup",
-        "owner",
-        "participant",
-        "ungrouped",
-      ]);
+      expect(await listed()).toEqual([]);
+      await expect(fixture.read("agent:main:participant")).rejects.toThrow("not shared");
       // An exact merge alias names the same canonical person; it is not a display-prefix match.
       fixture.select({ groups: ["Team"], involvingProfileId: alias.id });
-      expect(await listed()).toEqual(["creator", "mention", "owner", "participant"]);
+      expect(await listed()).toEqual(["creator", "owner", "participant"]);
       fixture.select({ groups: ["Team", "Other"], involvingProfileId: person.id });
-      expect(await listed()).toEqual(["creator", "mention", "othergroup", "owner", "participant"]);
+      expect(await listed()).toEqual(["creator", "othergroup", "owner", "participant"]);
       for (const name of [
+        "mention",
         "reassigned",
         "personalonly",
         "legacy",
@@ -148,8 +146,17 @@ describe("session-share source publication filters", () => {
         updatedAt: Date.now(),
         category: "Team",
         createdActor: { type: "human", source: "profile", id: person.id },
+        profileInvolvement: {
+          key: scope.sessionKey,
+          profiles: {
+            [person.id]: {
+              updatedAt: Date.now(),
+              lastMention: { generation: "fixture", sequence: 1, timestamp: Date.now() },
+            },
+          },
+        },
       };
-      fixture.select({ involvingProfileId: person.id });
+      fixture.select({ groups: ["Team"], involvingProfileId: person.id });
       await replaceSessionEntry(scope, entry);
       await appendSessionTranscriptMessageByIdentity({
         ...scope,
@@ -159,9 +166,9 @@ describe("session-share source publication filters", () => {
         { type: "userMessage", text: "Shared question" },
       ]);
       const configRead = fixture.read(scope.sessionKey);
-      fixture.select({ groups: [], involvingProfileId: person.id });
-      await expect(configRead).rejects.toThrow("no longer shared");
       fixture.select({ involvingProfileId: person.id });
+      await expect(configRead).rejects.toThrow("no longer shared");
+      fixture.select({ groups: ["Team"], involvingProfileId: person.id });
       const membershipRead = fixture.read(scope.sessionKey);
       const other = ensureProfileForEmail("replacement@example.test");
       assignSessionOwner(scope, {
@@ -183,6 +190,22 @@ describe("session-share source publication filters", () => {
         updatedAt: Date.now(),
         createdActor: { type: "human", source: "profile", id: profile.id },
       });
+      await replaceSessionEntry(
+        { ...scope, sessionKey: "agent:main:mentiononly" },
+        {
+          sessionId: "mentiononly",
+          updatedAt: Date.now(),
+          profileInvolvement: {
+            key: "agent:main:mentiononly",
+            profiles: {
+              [profile.id]: {
+                updatedAt: Date.now(),
+                lastMention: { generation: "fixture", sequence: 1, timestamp: Date.now() },
+              },
+            },
+          },
+        },
+      );
       const runtime = createPluginRuntime();
       expect(
         runtime.agent.session
@@ -226,7 +249,6 @@ describe("session-share source publication filters", () => {
       ) as { configSchema: Record<string, unknown> };
       for (const share of [
         { groups: ["Team"] },
-        { involvingProfileId: person.id },
         { groups: ["Team"], involvingProfileId: person.id },
       ]) {
         expect(
@@ -243,6 +265,7 @@ describe("session-share source publication filters", () => {
         expect((await fixture.list()).sessions).toHaveLength(1);
       }
       for (const share of [
+        { involvingProfileId: person.id },
         {},
         { groups: [] },
         { groups: [], involvingProfileId: person.id },
@@ -260,6 +283,7 @@ describe("session-share source publication filters", () => {
         await expect(fixture.read("agent:main:selected")).rejects.toThrow("not shared");
       }
       for (const share of [
+        { involvingProfileId: person.id },
         {},
         { involvingProfileId: "" },
         { involvingProfileId: " " },

@@ -11,25 +11,23 @@ function sessionShareConfig(config: SessionShareConfigSnapshot): Record<string, 
 
 export function sessionShareSelection(
   config: SessionShareConfigSnapshot,
-): { groups?: string[]; involvingProfileId?: string } | undefined {
+): { groups: string[]; involvingProfileId?: string } | undefined {
   const share = sessionShareConfig(config).share;
   if (!isRecord(share)) {
     return undefined;
   }
   const { groups, involvingProfileId } = share;
   if (
-    (groups === undefined && involvingProfileId === undefined) ||
-    (groups !== undefined &&
-      (!Array.isArray(groups) ||
-        groups.length === 0 ||
-        !groups.every((group) => typeof group === "string" && group.length > 0))) ||
+    !Array.isArray(groups) ||
+    groups.length === 0 ||
+    !groups.every((group) => typeof group === "string" && group.length > 0) ||
     (involvingProfileId !== undefined &&
       (typeof involvingProfileId !== "string" || !/^\S+$/.test(involvingProfileId)))
   ) {
     return undefined;
   }
   return {
-    ...(groups !== undefined ? { groups } : {}),
+    groups,
     ...(involvingProfileId !== undefined ? { involvingProfileId } : {}),
   };
 }
@@ -40,6 +38,7 @@ export function sessionShareNodeBinding(
 ): {
   owner?: string;
   controlUiOrigin?: string;
+  controlUiBasePath?: unknown;
   linkGitHubIdentities: boolean;
 } {
   const nodes = sessionShareConfig(config).nodes;
@@ -49,6 +48,7 @@ export function sessionShareNodeBinding(
     controlUiOrigin: sessionShareControlUiOrigin(
       isRecord(binding) ? binding.controlUiOrigin : undefined,
     ),
+    controlUiBasePath: isRecord(binding) ? binding.controlUiBasePath : undefined,
     linkGitHubIdentities: isRecord(binding) && binding.linkGitHubIdentities === true,
   };
 }

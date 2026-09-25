@@ -35,6 +35,7 @@ type BuildControlUiSessionPathParams = {
   fallbackAgentId?: string;
   basePath?: string;
   displayName?: string;
+  /** Keep qualified keys literal, including the configured main session. */
   exactKey?: boolean;
   mainKey?: string;
   shortIdLength?: number;
@@ -89,7 +90,7 @@ export function buildControlUiSessionPath(params: BuildControlUiSessionPathParam
   const normalizedRest = rest.toLowerCase();
   const mainKey = normalizeNullableString(params.mainKey)?.toLowerCase() ?? DEFAULT_MAIN_KEY;
   if (
-    normalizedRest === mainKey ||
+    (normalizedRest === mainKey && (!params.exactKey || !parsed)) ||
     (!parsed && (normalizedRest === DEFAULT_MAIN_KEY || normalizedRest === "global"))
   ) {
     return `${namespace}/${encodedAgentId}`;

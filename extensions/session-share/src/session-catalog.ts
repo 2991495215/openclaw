@@ -33,7 +33,6 @@ type CatalogPage = ReturnType<typeof parseSessionSharePage>;
 type NodePage = {
   nodeId: string;
   connection: CatalogNode["connectedAtMs"];
-  page?: CatalogPage;
   pending?: Promise<CatalogPage>;
 };
 
@@ -214,7 +213,11 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
         ...page,
         sessions: page.sessions.map((session) => ({
           ...bindSession(session, hostId, owner, linkParticipant),
-          originalUrl: sessionShareOriginalUrl(binding.controlUiOrigin, session.threadId),
+          originalUrl: sessionShareOriginalUrl(
+            binding.controlUiOrigin,
+            session.threadId,
+            binding.controlUiBasePath,
+          ),
         })),
       };
     };
@@ -236,12 +239,6 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
       const key = JSON.stringify([node.nodeId, params]);
       let entry = pages.get(key);
       if (!entry) {
-        if (pages.size >= 32) {
-          const evict = [...pages].find(([, candidate]) => !candidate.pending);
-          if (evict) {
-            pages.delete(evict[0]);
-          }
-        }
         entry = { nodeId: node.nodeId, connection: node.connectedAtMs };
         pages.set(key, entry);
       }
@@ -263,20 +260,13 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
             timeoutMs: 30_000,
             signal,
           }),
-        ).then((raw) => {
-          const page = parseSessionSharePage(raw);
-          if (current()) {
-            publication.page = page;
-          }
-          return page;
-        });
+        ).then(parseSessionSharePage);
         publication.pending = pending;
         active.add(pending);
         const release = () => {
           publication.pending = undefined;
           active.delete(pending);
-          // Bound retained pages without rejecting or retiring admitted source work.
-          if (pages.size > 32 && pages.get(key) === publication) {
+          if (pages.get(key) === publication) {
             pages.delete(key);
           }
         };
@@ -304,12 +294,15 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
           completed,
         );
         return {
-          ...(publication.page ? project(publication.page) : { ...common, sessions: [] }),
+          ...common,
+          // Source policy can change without a receiver config or connection change.
+          // Share in-flight work, but never republish a previously authorized page.
+          sessions: [],
           pending: true,
         };
       };
       const remaining = deadline - performance.now();
-      if (follower || publication.page || remaining <= 0) {
+      if (follower || remaining <= 0) {
         return loading();
       }
       return await withTimeout(completed, remaining, {

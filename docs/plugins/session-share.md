@@ -7,7 +7,7 @@ read_when:
 title: "Session Share plugin"
 ---
 
-The bundled `session-share` plugin lets teammates read selected sessions from another OpenClaw Gateway in the Control UI. The source operator chooses session groups or a person-involvement filter to publish. A node host on the source machine reads those sessions and connects to the receiver Gateway as a paired device.
+The bundled `session-share` plugin lets teammates read selected sessions from another OpenClaw Gateway in the Control UI. The source operator chooses session groups to publish and can narrow them by person. A node host on the source machine reads those sessions and connects to the receiver Gateway as a paired device.
 
 Session Share is disabled by default. It publishes a read-only **OpenClaw sessions** catalog, not a second way to run agents on the source machine. For sanitized snapshots of external coding sessions without a paired node, see [Beam](/plugins/beam).
 
@@ -36,7 +36,7 @@ Enable the plugin on the source and choose the exact session group names to publ
 }
 ```
 
-In the source Control UI, move the sessions you want to share into the **Team** group. Group names match the session category exactly. To publish sessions involving a person without moving them into a group, use the person's **full source-local profile ID**:
+In the source Control UI, move the sessions you want to share into the **Team** group. Group names match the session category exactly. To narrow those groups to sessions owned by or including a person as a participant, add the person's **full source-local profile ID**:
 
 ```json5
 {
@@ -44,16 +44,16 @@ In the source Control UI, move the sessions you want to share into the **Team** 
     entries: {
       "session-share": {
         enabled: true,
-        config: { share: { involvingProfileId: "<source-profile-id>" } },
+        config: { share: { groups: ["Team"], involvingProfileId: "<source-profile-id>" } },
       },
     },
   },
 }
 ```
 
-`share.involvingProfileId` uses the same involvement semantics as a named person's Activity filter: canonical human owner (including a trusted creator when no owner is assigned), profile participant, or recorded mention. Merged profile IDs resolve to the same person. Personal hide/show choices do not change this named-person selection. Names, email addresses, GitHub logins, shortened Activity URL IDs, remote attribution IDs, and unqualified channel sender IDs do not select a person. Unknown profile IDs publish nothing. There is no `involvingMe`: a source node has no authenticated viewer to bind it to.
+`share.involvingProfileId` matches the canonical human owner (including a trusted creator only when no owner is assigned) or a profile participant. A recorded mention alone never qualifies. This publication filter is distinct from Activity filters. Merged profile IDs resolve to the same person; personal hide/show choices do not change this selection. Names, email addresses, GitHub logins, shortened Activity URL IDs, remote attribution IDs, and unqualified channel sender IDs do not select a person. Unknown profile IDs publish nothing. There is no `involvingMe`: a source node has no authenticated viewer to bind it to.
 
-When both selectors are set, they combine with **AND**: the session must be in one of the exact `groups` **and** involve the selected person. Group names within `groups` combine with **OR**. With neither selector, nothing is published. An explicitly empty `groups: []` still publishes nothing, even with a person filter. Removing `involvingProfileId` while retaining groups intentionally returns to group-only publication; an empty or malformed value publishes nothing.
+A valid, nonempty `share.groups` selection is always required. The optional person selector combines with groups using **AND**: the session must be in one of the exact `groups` **and** match the selected owner or participant. Group names within `groups` combine with **OR**. Missing, empty, or malformed groups publish nothing, including with a person selector. Removing `involvingProfileId` while retaining groups intentionally returns to group-only publication; an empty or malformed person value publishes nothing.
 
 Subagents, incognito sessions, drafts, and adopted rows from other session catalogs are never published, even when they belong to a selected group. This also excludes named or resumed sessions with recorded spawn lineage; a user-created fork remains eligible.
 
@@ -91,7 +91,7 @@ Check that the pairing request and connected node declare only `openclaw.session
 
 Open the receiver Control UI. Shared rows appear under the source node's heading in **OpenClaw sessions**. Selecting a row opens its transcript view-only. Only user and assistant conversation text is shared. Thinking, tool calls, and tool results are omitted. The receiver cannot continue, archive, or open a terminal for that session. To steer the original session, configure **Open original** below or open its source Gateway session URL with your existing authorized operator access, or use `openclaw tui <source-session-url>`. This is a separate authenticated connection to the source, not additional Session Share node permissions. See [Session synchronization and attachment](/concepts/session-attachment).
 
-Publication is shared with the receiver's permitted viewers, not just the named owner. Viewers need `operator.read`; on role-restricted Gateways, their profile's role must also permit viewing others' sessions (`sessions.others: "view"`, `"suggest"`, or `"write"`). Owner-only and unprofiled restricted viewers cannot see published rows. See [Operator scopes](/gateway/operator-scopes).
+Publication is shared with the receiver's permitted viewers, not just the named owner. Viewers need `operator.read`. Existing catalog visibility rules still apply: an explicit `sessions.others: "none"` cap and unprofiled restricted access hide published rows; profiled viewers without an explicit cap can see published catalogs. Selecting a source person does not restrict the receiver catalog to that person. See [Operator scopes](/gateway/operator-scopes).
 
 The catalog refreshes by polling, not a live transcript stream. The source node must remain connected for listings and reads. Long transcripts are paginated; individual text fields are redacted and clipped when necessary.
 
@@ -106,6 +106,15 @@ to the source Control UI origin, for example `https://team.example.com`. Use an
 HTTP(S) origin only: no credentials, path, query, or fragment. Origins are never
 inferred from node addresses or accepted from the source's session payload.
 Invalid origins leave **Open original** unavailable.
+
+If the source uses `gateway.controlUi.basePath`, also set the receiver's
+`nodes.<nodeId>.controlUiBasePath` to that source prefix, for example `/openclaw`.
+A source origin of `https://team.example.com` and base path `/openclaw` produce
+`https://team.example.com/openclaw/chat/<agent>/<session>`. Omitted, empty, or `/`
+base paths use the root route. The prefix must be a root-relative path without
+query, fragment, whitespace, backslashes, or dot segments. Invalid prefixes leave
+**Open original** unavailable. Neither setting is inferred from the receiver's
+own Control UI path or accepted from remote session rows.
 
 Shared-session menus and view-only transcripts then offer **Open original**.
 It opens the exact source session in a new tab without tokens in the URL. Sign in
@@ -164,7 +173,7 @@ To undo the sessions-only setup, use `openclaw node run --all-commands` in the f
 
 **The source node fails with no allowed commands**
 
-Enable `session-share` on the source, set a non-empty `share.groups` or an exact `share.involvingProfileId`, restart the node host, and check the exact command IDs. Unknown or unavailable commands are not advertised.
+Enable `session-share` on the source, set a non-empty `share.groups` and optionally an exact `share.involvingProfileId`, restart the node host, and check the exact command IDs. Unknown or unavailable commands are not advertised.
 
 **The node connects but no OpenClaw sessions host appears**
 

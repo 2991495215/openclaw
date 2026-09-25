@@ -207,9 +207,9 @@ describe("buildControlUiSessionPath", () => {
       "/chat/research/~key/GlObAl",
     ],
     [
-      "global as the configured main key",
+      "exact global as the configured main key",
       { sessionKey: "agent:research:global", mainKey: "global", exactKey: true },
-      "/chat/research",
+      "/chat/research/~key/global",
     ],
     [
       "global as a literal rest prefix",

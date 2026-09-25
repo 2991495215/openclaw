@@ -17,14 +17,17 @@ export function sessionShareControlUiOrigin(value: unknown): string | undefined 
 export function sessionShareOriginalUrl(
   origin: string | undefined,
   threadId: string,
+  basePath: unknown = "",
 ): string | undefined {
-  if (!origin) {
+  if (!origin || typeof basePath !== "string" || !/^(?:\/(?!\/)[^\s\\?#]*)?$/.test(basePath)) {
     return undefined;
   }
   const path = buildControlUiSessionPath({
     namespace: "chat",
+    basePath,
     ...sessionShareSourceSession(threadId),
     exactKey: true,
   });
-  return path ? `${origin}${path}` : undefined;
+  // URL parsing must not rewrite the approved prefix (for example, dot segments).
+  return path && new URL(`${origin}${path}`).pathname === path ? `${origin}${path}` : undefined;
 }
