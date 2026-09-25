@@ -150,6 +150,7 @@ describe("session-share source publication filters", () => {
           key: scope.sessionKey,
           profiles: {
             [person.id]: {
+              hidden: false,
               updatedAt: Date.now(),
               lastMention: { generation: "fixture", sequence: 1, timestamp: Date.now() },
             },
@@ -199,6 +200,7 @@ describe("session-share source publication filters", () => {
             key: "agent:main:mentiononly",
             profiles: {
               [profile.id]: {
+                hidden: false,
                 updatedAt: Date.now(),
                 lastMention: { generation: "fixture", sequence: 1, timestamp: Date.now() },
               },
