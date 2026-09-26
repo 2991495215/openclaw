@@ -63,12 +63,18 @@ openclaw --update
 `openclaw --update` rewrites to `openclaw update` (useful for shells and
 launcher scripts).
 
-Invalid or unreadable configuration reports `invalid-config` before database
-schema inspection. For supported package targets, the candidate makes that
+Invalid configuration reports `invalid-config` before database schema inspection.
+An unreadable configuration file or failed configuration loading step instead
+reports `config-read-failed`, with a recognized filesystem error code when available.
+For supported package targets, the candidate makes that
 decision after private staging; see [Candidate-owned admission](#candidate-owned-admission).
-The diagnostic identifies invalid fields and recommends
+The local diagnostic identifies invalid fields and recommends
 `openclaw doctor --fix`, followed by correcting any remaining errors. A dry run
 keeps this guidance in its JSON `notes` without changing the configuration.
+Public failure reports retain the rejected schema area, such as `gateway.*`,
+while hiding operator-defined keys and rejected values. Admission still runs
+when the selected package version matches the installed version; the no-op
+decision follows validation of the selected artifact and live installation.
 Guided recovery recognizes the saved config failure after a later successful
 update and still verifies the installed runtime and Gateway readiness.
 
@@ -168,7 +174,15 @@ package once, then lets that candidate decide whether the live installation can
 be updated. Registry targets and explicit artifacts such as `--tag ./openclaw.tgz`
 use the same flow. The stage is reused for verification, canary rehearsal, and
 activation; a refusal or pre-mutation failure removes it and leaves the installed
-package and serving Gateway in place.
+package and serving Gateway in place. After admission and package verification,
+a matching installed version and artifact build identity remain a no-op unless
+the update needs to replace the installation method or a separate serving root.
+The temporary candidate is removed without activating it.
+
+When replacement is needed, the updater retains its running worker files before
+changing the installed package. Linux OverlayFS installations use private copies
+so hard-link copy-up cannot invalidate the retained files’ identity checks.
+Other supported filesystems keep the hard-link fast path and copy fallback.
 
 The installed updater reads the candidate's `package.json` before running its
 pending lifecycle scripts. `openclaw.updateAdmissionProtocol: 1` advertises the

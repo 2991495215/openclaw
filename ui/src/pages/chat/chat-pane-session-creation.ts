@@ -361,6 +361,7 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
           ? { mentions: state.chatMentions.map((mention) => ({ ...mention })) }
           : {}),
         ...(state.chatGoalDraftMode ? { goalMode: state.chatGoalDraftMode } : {}),
+        ...(state.chatReplyTarget ? { replyTarget: state.chatReplyTarget } : {}),
       });
       return true;
     } finally {
