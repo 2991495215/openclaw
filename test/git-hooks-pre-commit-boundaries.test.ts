@@ -277,7 +277,19 @@ kill -TERM "$PPID"
     stage(dir, "payload.txt", "clean\n");
     const bin = path.join(dir, "bin");
     symlinkSync(process.execPath, path.join(bin, "node"));
-    symlinkSync(run(dir, "which", ["git"]), path.join(bin, "git"));
+    // A selected Git launcher may need PATH tools; only the formatter lacks bash.
+    writeExecutable(
+      bin,
+      "git",
+      `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const result = spawnSync(${JSON.stringify(run(dir, "which", ["git"]))}, process.argv.slice(2), {
+  env: { ...process.env, PATH: ${JSON.stringify(process.env.PATH)} },
+  stdio: "inherit",
+});
+process.exitCode = result.status ?? 1;
+`,
+    );
     const result = runFailure(dir, "/bin/bash", ["git-hooks/pre-commit"], { PATH: bin });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
