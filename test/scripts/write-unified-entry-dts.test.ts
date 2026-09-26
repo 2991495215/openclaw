@@ -140,7 +140,7 @@ describe("write-unified-entry-dts", () => {
   }) =>
     command.lifetime.run(async () => {
       const { root, write } = createFixture(command, TSDOWN_NON_SDK_DTS_CONFIG_GROUPS);
-      await materializeNativeCompiler(root);
+      materializeNativeCompiler(root);
       for (const [packageName, entryNames] of [
         ["ai", ["index", "providers"]],
         ["llm-core", ["index", "types"]],
@@ -206,7 +206,7 @@ for (const name of ["ai", "llm-core"]) {
       };
       // A cache hit must restore declarations, not just report a matching signature.
       for (const [name, files] of Object.entries(expected)) {
-        for (const file of Object.keys(files).filter((file) => /\.d\.[cm]?ts$/u.test(file))) {
+        for (const file of Object.keys(files).filter((entry) => /\.d\.[cm]?ts$/u.test(entry))) {
           fs.rmSync(path.join(root, "packages", name, "dist", file));
         }
       }

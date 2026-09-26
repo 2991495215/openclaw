@@ -209,7 +209,9 @@ assert.equal(round, 2, "watch exited before both completed builds");
         );
         const declaration = path.join(root, "packages/ai/dist/index.d.mts");
         expect(fs.existsSync(declaration)).toBe(declarations);
-        if (declarations) expect(fs.readFileSync(declaration, "utf8")).toContain('"canonical-dts"');
+        if (declarations) {
+          expect(fs.readFileSync(declaration, "utf8")).toContain('"canonical-dts"');
+        }
       }
       write(
         "custom.config.ts",

@@ -256,7 +256,9 @@ describe("resolveTsdownBuildInvocation", () => {
       expect(result.args).not.toContain("true");
       expect(result.args).not.toContain("false");
       expect(result.options.env.OPENCLAW_RUN_NODE_SKIP_DTS_BUILD).toBe(skip);
-      if (skip === "1") expect(result.args).not.toContain("--concurrency");
+      if (skip === "1") {
+        expect(result.args).not.toContain("--concurrency");
+      }
     }
   });
 
