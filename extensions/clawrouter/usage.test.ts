@@ -121,6 +121,7 @@ function mockFetchGuard(response: Response): MockedFunction<ClawRouterUsageFetch
 
 describe("ClawRouter usage", () => {
   it("maps the managed monthly budget and usage totals", async () => {
+    const signal = new AbortController().signal;
     const fetchGuard = mockFetchGuard(
       Response.json({
         budget: {
@@ -145,6 +146,7 @@ describe("ClawRouter usage", () => {
       token: "proxy-key",
       baseUrl: "https://clawrouter.example/v1",
       timeoutMs: 5000,
+      signal,
       fetchGuard,
     });
 
@@ -181,6 +183,7 @@ describe("ClawRouter usage", () => {
           },
         }),
         auditContext: "clawrouter.usage",
+        signal,
         mode: "trusted_env_proxy",
       }),
     );
@@ -302,12 +305,43 @@ describe("ClawRouter usage", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("releases a rejected response while a capture clone retains its body", async () => {
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({ cancel }), { status: 503 });
+    const capture = response.clone();
+    const release = vi.fn(async () => {
+      await capture.body?.cancel();
+    });
+    const fetchGuard = mockFetchGuard(response);
+    fetchGuard.mockResolvedValue({
+      response,
+      finalUrl: "https://clawrouter.example/v1/usage",
+      release,
+    });
+    const outcome = fetchClawRouterUsage({
+      token: "proxy-key",
+      timeoutMs: 5000,
+      fetchGuard,
+    }).catch((error: unknown) => error);
+
+    try {
+      await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
+      expect(await outcome).toEqual(new Error("ClawRouter usage request failed (HTTP 503)"));
+      expect(cancel).toHaveBeenCalledOnce();
+    } finally {
+      // Settle both native tee branches even when the release-order assertion fails.
+      await capture.body?.cancel();
+      await outcome;
+    }
+  });
+
   it("observes peer closure when a real loopback server returns non-OK", async () => {
-    let responseClosed = false;
+    let onResponseClosed: () => void;
+    const responseClosed = new Promise<void>((resolve) => {
+      onResponseClosed = resolve;
+    });
     const { baseUrl, requests } = await startUsageServer((_req, res) => {
-      res.on("close", () => {
-        responseClosed = true;
-      });
+      res.once("close", onResponseClosed);
       res.writeHead(503, { "content-type": "text/plain" });
       res.write("service unavailable");
     });
@@ -321,7 +355,7 @@ describe("ClawRouter usage", () => {
     ).rejects.toThrow("ClawRouter usage request failed (HTTP 503)");
 
     expect(requests).toEqual(["GET /v1/usage"]);
-    expect(responseClosed).toBe(true);
+    await responseClosed;
   });
 
   it("bounds successful usage response bodies", async () => {
