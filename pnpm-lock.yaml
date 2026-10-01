@@ -2599,8 +2599,8 @@ importers:
         specifier: 2.0.0-rc.16
         version: 2.0.0-rc.16
       libphonenumber-js:
-        specifier: 1.13.12
-        version: 1.13.12
+        specifier: 1.13.13
+        version: 1.13.13
       typebox:
         specifier: 1.4.1
         version: 1.4.1
