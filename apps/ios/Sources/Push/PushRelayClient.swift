@@ -35,20 +35,6 @@ private struct PushRelayChallengeResponse: Decodable {
     var expiresAtMs: Int64
 }
 
-private struct PushRelayRegisterSignedPayload: Encodable {
-    var challengeId: String
-    var installationId: String
-    var bundleId: String
-    var environment: String
-    var relayProfile: String
-    var apnsEnvironment: String
-    var proofPolicy: String
-    var distribution: String
-    var gateway: PushRelayGatewayIdentity
-    var appVersion: String
-    var apnsToken: String
-}
-
 private struct PushRelayAppAttestPayload: Encodable {
     var keyId: String
     var attestationObject: String?
@@ -97,6 +83,13 @@ private struct PushRelaySimulatorProofPayload: Encodable {
     var hmacSha256Base64Url: String
 }
 
+private func pushRelayBase64URL(_ data: Data) -> String {
+    data.base64EncodedString()
+        .replacingOccurrences(of: "+", with: "-")
+        .replacingOccurrences(of: "/", with: "_")
+        .replacingOccurrences(of: "=", with: "")
+}
+
 private final class PushRelayAppAttestService {
     func createProof(
         challenge: String,
@@ -125,7 +118,7 @@ private final class PushRelayAppAttestService {
             keyId: keyID,
             attestationObject: attestationObject,
             assertion: assertion.base64EncodedString(),
-            clientDataHash: Self.base64URL(signedPayloadHash),
+            clientDataHash: pushRelayBase64URL(signedPayloadHash),
             signedPayloadBase64: signedPayload.base64EncodedString())
     }
 
@@ -176,13 +169,6 @@ private final class PushRelayAppAttestService {
             throw error
         }
     }
-
-    private static func base64URL(_ data: Data) -> String {
-        data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-    }
 }
 
 private final class PushRelayReceiptProvider {
@@ -222,17 +208,10 @@ private final class PushRelaySimulatorProofProvider {
             using: SymmetricKey(data: Data(secret.utf8)))
         return PushRelaySimulatorProofPayload(
             signedPayloadBase64: signedPayloadBase64,
-            hmacSha256Base64Url: Self.base64URL(Data(signature)))
+            hmacSha256Base64Url: pushRelayBase64URL(Data(signature)))
         #else
         throw PushRelayError.relayMisconfigured("Simulator proof is only available in iOS Simulator")
         #endif
-    }
-
-    private static func base64URL(_ data: Data) -> String {
-        data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
     }
 }
 
@@ -282,7 +261,7 @@ final class PushRelayClient: @unchecked Sendable {
             GatewayDiagnostics.pushRelay.failed("challenge request", error: error)
             throw error
         }
-        let signedPayload = PushRelayRegisterSignedPayload(
+        var requestBody = PushRelayRegisterRequest(
             challengeId: challenge.challengeId,
             installationId: input.installationId,
             bundleId: input.bundleId,
@@ -294,7 +273,7 @@ final class PushRelayClient: @unchecked Sendable {
             gateway: input.gatewayIdentity,
             appVersion: input.appVersion,
             apnsToken: input.apnsTokenHex)
-        let signedPayloadData = try self.jsonEncoder.encode(signedPayload)
+        let signedPayloadData = try self.jsonEncoder.encode(requestBody)
         let appAttestScope = PushRelayRegistrationStore.AppAttestScope(
             relayOrigin: self.normalizedBaseURLString,
             apnsEnvironment: input.environment.rawValue,
@@ -332,21 +311,9 @@ final class PushRelayClient: @unchecked Sendable {
             GatewayDiagnostics.pushRelay.failed("simulator proof", error: error)
             throw error
         }
-        let requestBody = PushRelayRegisterRequest(
-            challengeId: signedPayload.challengeId,
-            installationId: signedPayload.installationId,
-            bundleId: signedPayload.bundleId,
-            environment: signedPayload.environment,
-            relayProfile: signedPayload.relayProfile,
-            apnsEnvironment: signedPayload.apnsEnvironment,
-            proofPolicy: signedPayload.proofPolicy,
-            distribution: signedPayload.distribution,
-            gateway: signedPayload.gateway,
-            appVersion: signedPayload.appVersion,
-            apnsToken: signedPayload.apnsToken,
-            appAttest: appAttest,
-            receipt: receipt,
-            simulatorProof: simulatorProof)
+        requestBody.appAttest = appAttest
+        requestBody.receipt = receipt
+        requestBody.simulatorProof = simulatorProof
 
         let endpoint = self.baseURL.appending(path: "v1/push/register")
         var request = URLRequest(url: endpoint)

@@ -5,18 +5,16 @@ import {
   formatInvalidConfigRecoveryHint,
   formatPluginPackagingRuntimeOutputRecoveryHint,
 } from "../cli/config-recovery-hints.js";
-import { createInvalidConfigError } from "../config/io.invalid-config.js";
+import {
+  createConfigReadError,
+  createInvalidConfigError,
+  isConfigReadFailure,
+} from "../config/io.invalid-config.js";
 import {
   type ReadConfigFileSnapshotWithPluginMetadataResult,
   readConfigFileSnapshotWithPluginMetadata,
 } from "../config/io.js";
 import { renderConfigValidationIssueLines } from "../config/issue-location.js";
-import {
-  inheritLegacyDefaultAgentId,
-  retainLegacyDefaultAgentId,
-  tryGetLegacyDefaultAgentId,
-} from "../config/legacy.default-agent-owner.js";
-import { materializeLegacyDefaultAgentRoles } from "../config/legacy.default-agent-roles.js";
 import { isNixMode, resolveIsConfigReadOnly } from "../config/paths.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { isPluginPackagingRuntimeOutputInvalidConfigSnapshot } from "../config/recovery-policy.js";
@@ -69,6 +67,12 @@ function assertValidGatewayStartupConfigSnapshot(
     snapshot.issues.length > 0
       ? renderConfigValidationIssueLines(snapshot, "").join("\n")
       : "Unknown validation issue.";
+  if (isConfigReadFailure(snapshot)) {
+    throw createConfigReadError(
+      snapshot.path,
+      `${issues}\nResolve the read error shown above, then retry.`,
+    );
+  }
   const recoveryHint =
     options.includeDoctorHint && isPluginPackagingRuntimeOutputInvalidConfigSnapshot(snapshot)
       ? `\n${formatPluginPackagingRuntimeOutputRecoveryHint()}`
@@ -144,15 +148,10 @@ export async function loadGatewayStartupConfigSnapshot(params: {
   params.log.info(
     `gateway: auto-enabled plugins for this runtime without writing config:\n${autoEnable.changes.map((entry) => `- ${entry}`).join("\n")}`,
   );
-  const autoEnabledRuntimeConfig = mergeActivationSectionsIntoRuntimeConfig({
+  const runtimeConfig = mergeActivationSectionsIntoRuntimeConfig({
     runtimeConfig: configSnapshot.runtimeConfig,
     activationConfig: autoEnable.config,
   });
-  const legacyDefaultAgentId = tryGetLegacyDefaultAgentId(configSnapshot.sourceConfig);
-  const runtimeConfig = legacyDefaultAgentId
-    ? materializeLegacyDefaultAgentRoles(autoEnabledRuntimeConfig, legacyDefaultAgentId).config
-    : autoEnabledRuntimeConfig;
-  retainLegacyDefaultAgentId(runtimeConfig, legacyDefaultAgentId);
   return {
     snapshot: withRuntimeConfig(configSnapshot, runtimeConfig),
     ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
@@ -342,7 +341,5 @@ export async function prepareGatewayStartupConfig(params: {
       { omitErrorMessage: true },
     )
   ).config;
-  const config = inheritLegacyDefaultAgentId(params.configSnapshot.config, activatedConfig);
-  copyConfigResolutionFacts(activatedConfig, config);
-  return { ...authBootstrap, cfg: config };
+  return { ...authBootstrap, cfg: activatedConfig };
 }

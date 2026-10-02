@@ -46,11 +46,6 @@ vi.mock("./doctor-auth-oauth-sidecar.js", () => ({
 }));
 
 vi.mock("./doctor-browser.js", () => ({
-  detectLegacyClawdBrowserProfileResidue: vi.fn().mockResolvedValue(null),
-  maybeArchiveLegacyClawdBrowserProfileResidue: vi.fn().mockResolvedValue({
-    changes: [],
-    warnings: [],
-  }),
   maybeRepairOwnedChromeExtensionNativeHosts: vi.fn().mockResolvedValue({
     changes: [],
     warnings: [],
@@ -133,6 +128,7 @@ vi.mock("./doctor-platform-notes.js", () => ({
 
 vi.mock("./doctor-sandbox.js", () => ({
   maybeRepairSandboxImages: vi.fn(async (cfg: unknown) => cfg),
+  noteCodexBwrapNamespaceWarnings: vi.fn(),
   maybeRepairSandboxRegistryFiles: vi.fn().mockResolvedValue(undefined),
   noteSandboxScopeWarnings: vi.fn(),
 }));
@@ -158,9 +154,12 @@ vi.mock("./doctor-skills.js", () => ({
 }));
 
 vi.mock("./doctor-state-integrity.js", () => ({
-  collectWorkspaceBackupTip: vi.fn(() => null),
   noteStateIntegrity: vi.fn().mockResolvedValue(undefined),
-  noteWorkspaceBackupTip: vi.fn(),
+}));
+
+vi.mock("./doctor-workspace.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./doctor-workspace.js")>()),
+  collectWorkspaceBackupTip: vi.fn(() => null),
 }));
 
 vi.mock("./doctor-ui.js", () => ({

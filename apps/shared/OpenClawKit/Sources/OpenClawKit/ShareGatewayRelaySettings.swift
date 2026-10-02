@@ -119,9 +119,7 @@ public enum ShareGatewayRelaySettings {
     }
 
     public static func loadLastEvent() -> String? {
-        let value = self.defaults.string(forKey: self.lastEventKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return value.isEmpty ? nil : value
+        self.defaults.string(forKey: self.lastEventKey)?.trimmedNonEmpty
     }
 
     private static func saveMetadata(_ config: ShareGatewayRelayConfig) {
@@ -167,8 +165,7 @@ public enum ShareGatewayRelaySettings {
             service: self.relayCredentialService,
             account: self.relayCredentialAccount,
             accessGroup: OpenClawAppGroup.identifier),
-            let data = json.data(using: .utf8),
-            let credentials = try? JSONDecoder().decode(ShareGatewayRelayConfig.self, from: data)
+            let credentials = try? JSONDecoder().decode(ShareGatewayRelayConfig.self, from: Data(json.utf8))
         else { return nil }
         return credentials
     }
