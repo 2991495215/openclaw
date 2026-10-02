@@ -390,7 +390,7 @@ describe("login-qr", () => {
       isLegacyAuthDir: false,
       mode: "clear-existing",
       runtime: expect.anything(),
-      beforeCredentialPersistence,
+      beforeCredentialPersistence: expect.any(Function),
     });
     expect(beforeCredentialPersistence).toHaveBeenCalledOnce();
     expect(readWebAuthExistsForDecisionMock).not.toHaveBeenCalled();

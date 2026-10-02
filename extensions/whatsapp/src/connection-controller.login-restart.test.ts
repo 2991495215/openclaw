@@ -26,17 +26,16 @@ describe("WhatsApp login socket restarts", () => {
       .mockResolvedValueOnce(undefined);
     const onQr = vi.fn();
     const onSocketReplaced = vi.fn();
-    const createSocket = vi.fn(
+    const createSocket = modules.createWaSocketMock.mockImplementationOnce(
       async (_printQr: boolean, _verbose: boolean, opts?: { onQr?: (qr: string) => void }) => {
         opts?.onQr?.("qr-after-timeout");
-        return harness.replacementSock;
+        return harness.replacementSock as never;
       },
     );
 
     const result = await harness.run({
       verbose: true,
       waitForConnection,
-      createSocket,
       socketTiming: {
         connectTimeoutMs: 10_000,
         defaultQueryTimeoutMs: 20_000,
@@ -78,12 +77,11 @@ describe("WhatsApp login socket restarts", () => {
       .mockRejectedValueOnce({ output: { statusCode: 408 } })
       .mockRejectedValueOnce({ output: { statusCode: 515 } })
       .mockResolvedValueOnce(undefined);
-    const createSocket = vi
-      .fn()
-      .mockResolvedValueOnce(afterTimeoutSock)
-      .mockResolvedValueOnce(afterPairingRestartSock);
+    const createSocket = modules.createWaSocketMock
+      .mockResolvedValueOnce(afterTimeoutSock as never)
+      .mockResolvedValueOnce(afterPairingRestartSock as never);
 
-    const result = await harness.run({ waitForConnection, createSocket });
+    const result = await harness.run({ waitForConnection });
 
     expect(result).toEqual({
       outcome: "connected",
@@ -110,9 +108,11 @@ describe("WhatsApp login socket restarts", () => {
       .fn()
       .mockRejectedValueOnce(timeoutError)
       .mockRejectedValueOnce(timeoutError);
-    const createSocket = vi.fn(async () => harness.replacementSock);
+    const createSocket = modules.createWaSocketMock.mockResolvedValueOnce(
+      harness.replacementSock as never,
+    );
 
-    const result = await harness.run({ waitForConnection, createSocket });
+    const result = await harness.run({ waitForConnection });
 
     expect(result).toMatchObject({
       outcome: "failed",
