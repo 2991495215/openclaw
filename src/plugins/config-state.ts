@@ -1,29 +1,24 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 /** Normalizes plugin config and resolves effective enablement, slots, and activation sources. */
-import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { freezeJsonSnapshot } from "../shared/immutable-data.js";
 import {
   resolveMemorySlotDecisionShared,
-  resolvePluginActivationDecisionShared,
-  toPluginActivationState,
+  resolvePluginActivationStateShared,
   type PluginActivationConfigSourceLike,
   type PluginActivationStateLike,
 } from "./config-activation-shared.js";
 import {
   normalizePluginsConfigWithResolverCore,
-  resolveChannelConfigEnablement,
   type NormalizedPluginsConfig as SharedNormalizedPluginsConfig,
 } from "./config-normalization-shared.js";
 import type { PluginOrigin } from "./plugin-origin.types.js";
+import { normalizePluginPolicyId } from "./plugin-policy-id.js";
 import { defaultSlotIdForKey } from "./slots.js";
 
 export type PluginActivationState = PluginActivationStateLike;
 
-export type PluginActivationConfigSource = {
-  plugins: NormalizedPluginsConfig;
-  rootConfig?: OpenClawConfig;
-} & PluginActivationConfigSourceLike<OpenClawConfig>;
+export type PluginActivationConfigSource = PluginActivationConfigSourceLike;
 
 export type NormalizedPluginsConfig = SharedNormalizedPluginsConfig;
 
@@ -41,7 +36,7 @@ const RETIRED_PLUGIN_IDS = new Set([
 
 /** Normalizes user/config plugin ids into the canonical lowercase key form. */
 export function normalizePluginId(id: string): string {
-  const normalized = normalizeOptionalLowercaseString(id) ?? "";
+  const normalized = normalizePluginPolicyId(id);
   return BUILT_IN_PLUGIN_ALIAS_LOOKUP.get(normalized) ?? normalized;
 }
 
@@ -66,6 +61,11 @@ export const normalizePluginsConfig = (
     return preparedRuntimePluginsConfig.value;
   }
   return createNormalizedPluginsConfig(config);
+};
+
+export type ContextEngineOwnerMetadata = {
+  id: string;
+  contextEngineIds?: readonly string[];
 };
 
 let preparedRuntimePluginsConfig:
@@ -93,25 +93,135 @@ export function prepareRuntimePluginsConfig(config: OpenClawConfig | null): void
 }
 
 /** Resolves the enabled plugin selected to own the context-engine slot. */
-export function resolveSelectedContextEnginePluginId(config?: OpenClawConfig): string | undefined {
+export function resolveSelectedContextEnginePluginId(
+  config: OpenClawConfig | undefined,
+  records: readonly ContextEngineOwnerMetadata[],
+): string | undefined {
   const plugins = normalizePluginsConfig(config?.plugins);
-  return resolveSelectedContextEnginePluginIdFromConfig(plugins, plugins.slots.contextEngine);
+  return resolveSelectedContextEnginePluginIdFromConfig(
+    plugins,
+    plugins.slots.contextEngine,
+    records,
+  );
+}
+
+function isContextEngineOwnerEligible(
+  plugins: NormalizedPluginsConfig,
+  pluginId: string,
+  normalizedEngineId: string,
+): boolean {
+  if (
+    !plugins.enabled ||
+    !pluginId ||
+    plugins.deny.includes(pluginId) ||
+    plugins.entries[pluginId]?.enabled === false
+  ) {
+    return false;
+  }
+  // Equal-ID slots retain their explicit-selection exception to the allowlist.
+  return (
+    pluginId === normalizedEngineId ||
+    ((plugins.entries[pluginId]?.enabled === true || plugins.allow.includes(pluginId)) &&
+      (plugins.allow.length === 0 || plugins.allow.includes(pluginId)))
+  );
+}
+
+/** Declared owners participate in selection and collision checks only when policy permits them. */
+export function resolveEligibleContextEngineDeclaredOwners(
+  plugins: NormalizedPluginsConfig,
+  engineId: string | null | undefined,
+  records: readonly ContextEngineOwnerMetadata[],
+  normalizeId: (id: string) => string = normalizePluginId,
+): { hasDeclarations: boolean; pluginIds: string[] } {
+  const declared = records.filter(
+    (record) => engineId && record.contextEngineIds?.includes(engineId),
+  );
+  const normalizedEngineId = engineId ? normalizePluginPolicyId(normalizeId(engineId)) : undefined;
+  return {
+    hasDeclarations: declared.length > 0,
+    pluginIds: normalizedEngineId
+      ? [...new Set(declared.map((record) => record.id))].filter((pluginId) =>
+          isContextEngineOwnerEligible(
+            plugins,
+            normalizePluginPolicyId(normalizeId(pluginId)),
+            normalizedEngineId,
+          ),
+        )
+      : [],
+  };
+}
+
+/** All independently eligible claimants must be known before any runtime module imports. */
+export function resolveEligibleContextEngineOwnerIds(
+  plugins: NormalizedPluginsConfig,
+  engineId: string | null | undefined,
+  records: readonly ContextEngineOwnerMetadata[],
+  normalizeId: (id: string) => string = normalizePluginId,
+): string[] {
+  if (!plugins.enabled || !engineId || engineId === defaultSlotIdForKey("contextEngine")) {
+    return [];
+  }
+  const declared = resolveEligibleContextEngineDeclaredOwners(
+    plugins,
+    engineId,
+    records,
+    normalizeId,
+  );
+  const legacyId = normalizePluginPolicyId(normalizeId(engineId));
+  const legacy = records
+    .filter(
+      (record) =>
+        normalizePluginPolicyId(normalizeId(record.id)) === legacyId &&
+        record.contextEngineIds === undefined,
+    )
+    .map((record) => record.id);
+  const legacyIndependentlyApproved =
+    !declared.hasDeclarations ||
+    plugins.entries[legacyId]?.enabled === true ||
+    plugins.allow.includes(legacyId);
+  return [
+    ...new Set([
+      ...declared.pluginIds,
+      ...(legacy.length > 0 &&
+      legacyIndependentlyApproved &&
+      isContextEngineOwnerEligible(plugins, legacyId, legacyId)
+        ? legacy
+        : []),
+    ]),
+  ];
 }
 
 export function resolveSelectedContextEnginePluginIdFromConfig(
   plugins: NormalizedPluginsConfig,
-  pluginId: string | null | undefined,
+  engineId: string | null | undefined,
+  records: readonly ContextEngineOwnerMetadata[],
+  normalizeId: (id: string) => string = normalizePluginId,
 ): string | undefined {
-  if (
-    !plugins.enabled ||
-    !pluginId ||
-    pluginId === defaultSlotIdForKey("contextEngine") ||
-    plugins.deny.includes(pluginId) ||
-    plugins.entries[pluginId]?.enabled === false
-  ) {
+  if (!plugins.enabled || !engineId || engineId === defaultSlotIdForKey("contextEngine")) {
     return undefined;
   }
-  return pluginId;
+  const owners = resolveEligibleContextEngineOwnerIds(plugins, engineId, records, normalizeId);
+  return owners.length === 1 ? owners[0] : undefined;
+}
+
+/** Carries prepared ownership without changing the registered engine selector. */
+export function withContextEngineOwner(
+  plugins: NormalizedPluginsConfig,
+  records: readonly ContextEngineOwnerMetadata[],
+  normalizeId: (id: string) => string = normalizePluginId,
+): NormalizedPluginsConfig {
+  const selectedOwner = resolveSelectedContextEnginePluginIdFromConfig(
+    plugins,
+    plugins.slots.contextEngine,
+    records,
+    normalizeId,
+  );
+  return {
+    ...plugins,
+    contextEngineOwnerId: selectedOwner
+      ? normalizePluginPolicyId(normalizeId(selectedOwner))
+      : null,
+  };
 }
 
 /** Canonicalizes one plugin entry and its policy-list ids before a targeted mutation. */
@@ -224,13 +334,10 @@ export function resolveEffectivePluginActivationState(params: {
   autoEnabledReason?: string;
   channelIds?: readonly string[];
 }): PluginActivationState {
-  return toPluginActivationState(
-    resolvePluginActivationDecisionShared({
-      ...params,
-      allowBundledChannelExplicitBypassesAllowlist: true,
-      resolveChannelConfigEnablement,
-    }),
-  );
+  return resolvePluginActivationStateShared({
+    ...params,
+    allowBundledChannelExplicitBypassesAllowlist: true,
+  });
 }
 
 function toEnableStateResult(state: PluginActivationState): { enabled: boolean; reason?: string } {

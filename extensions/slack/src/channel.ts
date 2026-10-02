@@ -8,7 +8,6 @@ import { adaptScopedAccountAccessor } from "openclaw/plugin-sdk/channel-config-h
 import {
   buildThreadAwareOutboundSessionRoute,
   createChatChannelPlugin,
-  type ChannelPlugin,
 } from "openclaw/plugin-sdk/channel-core";
 import {
   createChannelMessageAdapterFromOutbound,
@@ -50,13 +49,12 @@ import {
   resolveSlackReplyToMode,
   type ResolvedSlackAccount,
 } from "./accounts.js";
-import type { SlackActionContext } from "./action-runtime.js";
 import { resolveSlackAutoThreadId } from "./action-threading.js";
 import { slackApprovalCapability } from "./approval-native.js";
 import { createSlackActions } from "./channel-actions.js";
 import { resolveSlackChannelType, resolveSlackConversationInfo } from "./channel-type.js";
 import { getSlackWriteClient } from "./client.js";
-import { inspectSlackConversationRouteOwner } from "./conversation-route-owner.js";
+import { slackConversationRouteOwners } from "./conversation-route-owner.js";
 import { assertSlackDetachedTargetAllowed } from "./detached-target-admission.js";
 import { resolveSlackEnterpriseUserTeamId } from "./enterprise-user-route.js";
 import { formatSlackError } from "./errors.js";
@@ -67,7 +65,6 @@ import { SLACK_TEXT_LIMIT } from "./limits.js";
 import { SLACK_PRESENTATION_CAPABILITIES } from "./presentation.js";
 import type { SlackProbe } from "./probe.js";
 import { normalizeSlackReplyPayload, resolveSlackReplyBlocks } from "./reply-blocks.js";
-import { getOptionalSlackRuntime } from "./runtime.js";
 import type { SlackScopesResult } from "./scopes.js";
 import { slackSecurityAdapter } from "./security.js";
 import { setSlackSessionStatus } from "./session-status.js";
@@ -104,13 +101,6 @@ const loadSlackOutboundAdapterModule = createLazyRuntimeModule(
   () => import("./outbound-adapter.js"),
 );
 const bindSlackOutbound = createLazyRuntimeMethodBinder(loadSlackOutboundAdapterModule);
-async function resolveSlackHandleAction() {
-  return (
-    getOptionalSlackRuntime()?.channel?.slack?.handleSlackAction ??
-    (await loadSlackActionRuntime()).handleSlackAction
-  );
-}
-
 const loadSlackDirectoryConfigModule = createLazyRuntimeModule(
   () => import("./directory-config.js"),
 );
@@ -118,8 +108,6 @@ const loadSlackResolveChannelsModule = createLazyRuntimeModule(
   () => import("./resolve-channels.js"),
 );
 const loadSlackResolveUsersModule = createLazyRuntimeModule(() => import("./resolve-users.js"));
-
-const loadSlackActionRuntime = createLazyRuntimeModule(() => import("./action-runtime.runtime.js"));
 
 const loadSlackSendRuntime = createLazyRuntimeModule(() => import("./send.js"));
 
@@ -444,10 +432,7 @@ const slackMessageAdapter = {
   },
 } satisfies typeof slackMessageAdapterBase;
 
-export const slackPlugin: ChannelPlugin<ResolvedSlackAccount, SlackProbe> = createChatChannelPlugin<
-  ResolvedSlackAccount,
-  SlackProbe
->({
+export const slackPlugin = createChatChannelPlugin<ResolvedSlackAccount, SlackProbe, unknown, 2>({
   base: {
     ...slackPluginBase,
     allowlist: {
@@ -483,7 +468,7 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount, SlackProbe> = crea
         isSlackWorkspaceInstallation(accountId),
     },
     messaging: {
-      resolveConversationRouteOwner: inspectSlackConversationRouteOwner,
+      ...slackConversationRouteOwners,
       targetPrefixes: ["slack"],
       directTargetStyle: "user-prefixed",
       targetIdComparison: "lowercase",
@@ -551,42 +536,30 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount, SlackProbe> = crea
         });
         const account = resolveSlackAccount({ cfg, accountId });
         const { resolveTargetsWithOptionalToken } = await loadTargetResolverRuntimeSdk();
-        if (kind === "group") {
-          return resolveTargetsWithOptionalToken({
-            token:
-              normalizeOptionalString(account.userToken) ??
-              normalizeOptionalString(account.botToken),
-            inputs,
-            missingTokenNote: "missing Slack token",
-            resolveWithToken: async ({ token, inputs: inputsValue }) =>
-              (await loadSlackResolveChannelsModule()).resolveSlackChannelAllowlist({
-                token,
-                entries: inputsValue,
-              }),
-            mapResolved: (entry) =>
-              toResolvedTarget(entry, entry.archived ? "archived" : undefined),
-          });
-        }
         return resolveTargetsWithOptionalToken({
           token:
             normalizeOptionalString(account.userToken) ?? normalizeOptionalString(account.botToken),
           inputs,
           missingTokenNote: "missing Slack token",
-          resolveWithToken: async ({ token, inputs: inputsLocal }) =>
-            (await loadSlackResolveUsersModule()).resolveSlackUserAllowlist({
-              token,
-              entries: inputsLocal,
-            }),
-          mapResolved: (entry) => toResolvedTarget(entry, entry.note),
+          resolveWithToken: async ({ token, inputs: entries }) => {
+            if (kind === "group") {
+              const resolved = await (
+                await loadSlackResolveChannelsModule()
+              ).resolveSlackChannelAllowlist({ token, entries });
+              return resolved.map((entry) =>
+                toResolvedTarget(entry, entry.archived ? "archived" : undefined),
+              );
+            }
+            const resolved = await (
+              await loadSlackResolveUsersModule()
+            ).resolveSlackUserAllowlist({ token, entries });
+            return resolved.map((entry) => toResolvedTarget(entry, entry.note));
+          },
+          mapResolved: (entry) => entry,
         });
       },
     },
-    actions: createSlackActions(SLACK_CHANNEL, {
-      invoke: async (action, cfg, toolContext) =>
-        await (
-          await resolveSlackHandleAction()
-        )(action, cfg as OpenClawConfig, toolContext as SlackActionContext | undefined),
-    }),
+    actions: createSlackActions(SLACK_CHANNEL),
     message: slackMessageAdapter,
     heartbeat: {
       sendTyping: (params) => setSlackHeartbeatThreadStatus({ ...params, status: "processing" }),
@@ -628,8 +601,7 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount, SlackProbe> = crea
           ...(account.identity === "user" ? { identity: "user" } : {}),
         });
       },
-      formatCapabilitiesProbe: ({ probe }) => {
-        const slackProbe = probe as SlackProbe | undefined;
+      formatCapabilitiesProbe: ({ probe: slackProbe }) => {
         const lines = [];
         if (slackProbe?.warning) {
           lines.push({ text: `Warning: ${slackProbe.warning}`, tone: "warn" } as const);
@@ -691,12 +663,14 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount, SlackProbe> = crea
       },
     }),
     gateway: {
+      apiVersion: 2,
       startAccount: async (ctx) => {
         const account = ctx.account;
         const botToken = account.botToken?.trim();
         const appToken = account.appToken?.trim();
         ctx.log?.info(`[${account.accountId}] starting provider`);
         return (await loadSlackMonitorModule()).monitorSlackProvider({
+          scheduler: ctx.scheduler,
           botToken: botToken ?? "",
           appToken: appToken ?? "",
           accountId: account.accountId,
@@ -707,7 +681,6 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount, SlackProbe> = crea
           mediaMaxMb: account.config.mediaMaxMb,
           slashCommand: account.config.slashCommand,
           setStatus: ctx.setStatus as (next: Record<string, unknown>) => void,
-          getStatus: ctx.getStatus as () => Record<string, unknown>,
         });
       },
     },

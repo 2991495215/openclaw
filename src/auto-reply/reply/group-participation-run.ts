@@ -6,15 +6,15 @@ import {
   createRuntimeConfigReader,
   getRuntimeConfigSnapshot,
   getRuntimeConfigSnapshotMetadata,
+  selectLiveRuntimeConfig,
 } from "../../config/runtime-snapshot.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { SessionTranscriptRuntimeTarget } from "../../config/sessions/session-accessor.types.js";
 import type { DecisionRuntimeV1 } from "../../decisions/types.js";
+import type { ReplyOperation } from "../../sessions/session-controller.js";
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.types.js";
 import { resolveRunAfterAutoFallbackPrimaryProbeRecheck } from "./agent-runner-auto-fallback.js";
-import type { InternalFollowupRun } from "./agent-runner-execution.types.js";
 import { resolveReplyCandidateRuntime } from "./agent-runner-runtime.js";
-import { resolveQueuedReplyRuntimeConfig } from "./agent-runner-utils.js";
 import { readGroupParticipationEvidence } from "./group-participation-context.js";
 import {
   assessGroupAttention,
@@ -25,9 +25,9 @@ import {
   readGroupParticipationInputs,
   recordGroupParticipationInput,
 } from "./group-participation-inputs.js";
+import type { InternalFollowupRun } from "./queue/types.js";
 import { resolveReplyOperationAbortReason } from "./reply-operation-abort.js";
-import type { ReplyOperation } from "./reply-run-registry.js";
-import { runWithReplyOperationLifecycleAdmission } from "./reply-turn-admission.js";
+import { runWithReplyOperationLifecycleAdmission } from "./reply-turn-admission-lifecycle.js";
 
 type GroupParticipationMode = "ordinary" | "observe" | "engagement" | "opportunity";
 type GroupParticipationSnapshot = {
@@ -245,7 +245,7 @@ export async function prepareGroupParticipationRun(params: {
     entry: params.sessionEntry,
     sessionKey: params.sessionKey,
   });
-  const config = resolveQueuedReplyRuntimeConfig(executionRun.config);
+  const config = selectLiveRuntimeConfig(executionRun.config);
   if (!isDecisionAssistanceEligible(config, run.run.agentId)) {
     return undefined;
   }

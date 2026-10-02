@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import {
-  getSessionMcpRuntimeManagerForTesting,
+  disposeAllSessionMcpRuntimes,
   setSessionMcpRuntimeScheduler,
 } from "../../agents/agent-bundle-mcp-manager-api.js";
 import { waitForSessionMaintenance } from "../../agents/session-maintenance/coordinator.js";
@@ -70,7 +70,7 @@ export async function createGroupReplyFixture() {
   const storePath = path.join(state.sessionsDir(), "sessions.json");
   const config: OpenClawConfig = {
     agents: {
-      list: [{ id: "main", default: true, workspace: state.workspaceDir }],
+      entries: { main: { workspace: state.workspaceDir } },
       defaults: {
         workspace: state.workspaceDir,
         model: { primary: "test-provider/test-model" },
@@ -231,12 +231,7 @@ export async function createGroupReplyFixture() {
     },
     close: async () => {
       await waitForSessionMaintenance();
-      const mcpManager = getSessionMcpRuntimeManagerForTesting();
-      for (const sessionId of mcpManager.listSessionIds()) {
-        if (mcpManager.peekSession({ sessionId })?.workspaceDir === state.workspaceDir) {
-          await mcpManager.disposeSession(sessionId);
-        }
-      }
+      await disposeAllSessionMcpRuntimes();
       await scheduler.stop();
       clearRuntimeConfigSnapshot();
       resetPluginRuntimeStateForTest();

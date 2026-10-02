@@ -6,8 +6,7 @@ import {
   asOptionalRecord,
   isRecord,
   normalizeOptionalString,
-  normalizeStringEntries,
-  uniqueStrings,
+  normalizeUniqueStringEntries,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { QA_LIVE_PROVIDER_CONFIG_PATH_ENV, resolveQaLiveProviderConfigPath } from "./env.js";
 
@@ -30,13 +29,12 @@ function normalizeQaLiveProviderConfig(value: unknown): ModelProviderConfig | nu
 
 export async function readQaLiveProviderConfigOverrides(params: {
   providerIds: readonly string[];
-  env?: NodeJS.ProcessEnv;
 }) {
-  const providerIds = uniqueStrings(normalizeStringEntries(params.providerIds));
+  const providerIds = normalizeUniqueStringEntries(params.providerIds);
   if (providerIds.length === 0) {
     return {};
   }
-  const configPath = resolveQaLiveProviderConfigPath(params.env);
+  const configPath = resolveQaLiveProviderConfigPath();
   if (!existsSync(configPath.path)) {
     return {};
   }
