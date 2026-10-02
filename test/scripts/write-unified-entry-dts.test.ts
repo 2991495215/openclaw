@@ -134,9 +134,7 @@ describe("write-unified-entry-dts", () => {
     }
   });
 
-  it("reuses declarations after AI and workspace runtime graphs rebuild", ({
-    command,
-  }) =>
+  it("reuses declarations after AI and workspace runtime graphs rebuild", ({ command }) =>
     command.lifetime.run(async () => {
       const { root, write } = createFixture(command, TSDOWN_NON_SDK_DTS_CONFIG_GROUPS);
       for (const [packageName, entryNames] of [
