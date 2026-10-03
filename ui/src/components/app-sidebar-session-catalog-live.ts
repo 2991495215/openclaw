@@ -13,8 +13,10 @@ import { createSessionEventRefreshCoordinator } from "../lib/sessions/event-refr
 import { normalizeAgentId } from "../lib/sessions/session-key.ts";
 import { generateUUID } from "../lib/uuid.ts";
 import {
+  isRepeatedCatalogCursorError,
   preserveExpandedCatalogHost,
   refetchExpandedSessionCatalogPages,
+  sessionCatalogRequestError,
   withdrawSessionCatalogRows,
 } from "./app-sidebar-session-catalog-state.ts";
 import { sessionCatalogHostKey } from "./app-sidebar-session-types.ts";
@@ -64,7 +66,144 @@ function isSessionsCatalogHostEvent(value: unknown): value is SessionsCatalogHos
 export class SessionCatalogLiveState {
   refreshScope = {};
   timer: ReturnType<typeof globalThis.setTimeout> | null = null;
-  requestGeneration: number | null = null;
+  private request: {
+    owner: symbol;
+    generation: number;
+    phase: "head" | "replay" | "discovery";
+  } | null = null;
+  // Presentation intent, never cached rows or authority-bearing cursors.
+  readonly windows = new Map<
+    string,
+    { depth: number; request?: { depth: number; status: "available" | "retry" } }
+  >();
+  private readonly publishedWindows = new Map<string, { catalogId: string; hostId: string }>();
+
+  get requestGeneration() {
+    return this.request?.generation ?? null;
+  }
+  get refetching() {
+    return this.request?.phase === "replay";
+  }
+  get canReplayPublication() {
+    return !this.request || this.request.phase === "discovery";
+  }
+  get pageDepths(): ReadonlyMap<string, number> {
+    return new Map(
+      [...this.windows]
+        .filter(([, window]) => window.depth > 0)
+        .map(([key, window]) => [key, window.depth]),
+    );
+  }
+  requestedDepth(catalogId: string, hostId: string) {
+    return this.windows.get(sessionCatalogHostKey(catalogId, hostId))?.request?.depth;
+  }
+  canRetry(catalog: SessionCatalog) {
+    return (
+      catalog.requiresFreshList === true &&
+      (Boolean(catalog.error) ||
+        catalog.hosts.some(
+          (host) =>
+            this.windows.get(sessionCatalogHostKey(catalog.id, host.hostId))?.request?.status ===
+            "retry",
+        ))
+    );
+  }
+  finishWindow(catalog: SessionCatalog, hostId: string, depth: number) {
+    if (!catalog.requiresFreshList) {
+      return;
+    }
+    const key = sessionCatalogHostKey(catalog.id, hostId);
+    const host = catalog.hosts.find((entry) => entry.hostId === hostId);
+    const error = catalog.error ?? host?.error;
+    if (host?.pending && !error) {
+      // Pending is not a completed authorization or a settled retry attempt.
+      return;
+    }
+    const previousDepth = this.windows.get(key)?.depth ?? 0;
+    if (error && !isRepeatedCatalogCursorError(error)) {
+      this.windows.set(key, { depth: previousDepth, request: { depth, status: "retry" } });
+    } else if (previousDepth > 0) {
+      this.windows.set(key, { depth: previousDepth });
+    } else {
+      this.windows.delete(key);
+    }
+  }
+  withdraw(catalogs: SessionCatalog[]) {
+    for (const catalog of catalogs) {
+      if (!catalog.requiresFreshList) {
+        continue;
+      }
+      for (const host of catalog.hosts) {
+        if (!host.nextCursor) {
+          continue;
+        }
+        const key = sessionCatalogHostKey(catalog.id, host.hostId);
+        const depth = this.windows.get(key)?.depth ?? 0;
+        this.windows.set(key, { depth, request: { depth: depth + 1, status: "available" } });
+      }
+    }
+    return catalogs.map((catalog) => withdrawSessionCatalogRows(catalog));
+  }
+
+  settleRootWindows(catalogs: SessionCatalog[], error?: SessionCatalog["error"]) {
+    const keys = new Set(
+      catalogs.flatMap((catalog) =>
+        catalog.hosts.map((host) => sessionCatalogHostKey(catalog.id, host.hostId)),
+      ),
+    );
+    for (const [key, window] of this.windows) {
+      if (
+        catalogs.some(
+          (catalog) =>
+            catalog.requiresFreshList &&
+            (error || catalog.error) &&
+            key.startsWith(sessionCatalogHostKey(catalog.id, "")),
+        )
+      ) {
+        // A provider failure can omit all hosts. Preserve only window intent
+        // until fresh discovery can identify the currently authorized hosts.
+        continue;
+      }
+      if (!keys.has(key) || window.request?.status === "available") {
+        if (window.depth > 0) {
+          this.windows.set(key, { depth: window.depth });
+        } else {
+          this.windows.delete(key);
+        }
+      }
+    }
+    for (const catalog of catalogs) {
+      const result = error ? { ...catalog, error } : catalog;
+      for (const host of catalog.hosts) {
+        const window = this.windows.get(sessionCatalogHostKey(catalog.id, host.hostId));
+        const depth =
+          window?.request?.status === "retry" ? window.request.depth : (window?.depth ?? 0);
+        this.finishWindow(result, host.hostId, depth);
+      }
+    }
+  }
+
+  takePublishedWindows() {
+    if (!this.canReplayPublication) {
+      return [];
+    }
+    const windows = [...this.publishedWindows.values()];
+    this.publishedWindows.clear();
+    return windows;
+  }
+  setRequestPhase(owner: symbol, phase: "replay" | "discovery") {
+    if (this.request?.owner === owner) {
+      this.request.phase = phase;
+      if (phase === "replay") {
+        this.publishedWindows.clear();
+      }
+    }
+  }
+  endRequest(owner: symbol) {
+    if (this.request?.owner === owner) {
+      this.request = null;
+    }
+  }
   refreshPending = false;
   readonly discoveryPages = new Map<
     string,
@@ -80,14 +219,12 @@ export class SessionCatalogLiveState {
       await refresh?.();
     },
   });
-  private refetchOwner: symbol | null = null;
   private progressSequence = 0;
   private readonly progressSequences = new Map<string, number>();
   private readonly hostProgressSequences = new Map<string, number>();
   private knownHostKeys = new Set<string>();
   private readonly requestChangedHostKeys = new Set<string>();
   private readonly warnedRequestErrors = new Set<string>();
-  private requestOwner: symbol | null = null;
   private retryAttempts = 0;
   private retryAt = 0;
 
@@ -131,8 +268,15 @@ export class SessionCatalogLiveState {
     this.refreshScope = {};
     this.cancelScheduledRefreshes();
     this.resetRetry();
-    this.requestGeneration = null;
-    this.requestOwner = null;
+    this.request = null;
+    this.publishedWindows.clear();
+    for (const [key, window] of this.windows) {
+      if (window.depth > 0) {
+        this.windows.set(key, { depth: window.depth });
+      } else {
+        this.windows.delete(key);
+      }
+    }
     this.progressSequence = 0;
     this.progressSequences.clear();
     this.hostProgressSequences.clear();
@@ -140,7 +284,6 @@ export class SessionCatalogLiveState {
     this.requestChangedHostKeys.clear();
     this.refreshPending = false;
     this.discoveryPages.clear();
-    this.refetchOwner = null;
   }
 
   resumeDiscovery(catalogs: SessionCatalog[]): SessionCatalog[] {
@@ -204,27 +347,8 @@ export class SessionCatalogLiveState {
     }));
   }
 
-  get refetching() {
-    return this.refetchOwner !== null;
-  }
-
   get hasRequested() {
     return this.progressSequence > 0;
-  }
-
-  beginRefetch(active: boolean): symbol | null {
-    if (!active) {
-      return null;
-    }
-    const owner = Symbol("session-catalog-refetch");
-    this.refetchOwner = owner;
-    return owner;
-  }
-
-  endRefetch(owner: symbol | null) {
-    if (owner !== null && this.refetchOwner === owner) {
-      this.refetchOwner = null;
-    }
   }
 
   beginRequest(generation: number): {
@@ -234,9 +358,11 @@ export class SessionCatalogLiveState {
   } {
     this.eventRefresh.absorb();
     this.activationRefresh = null;
-    this.requestGeneration = generation;
     const requestOwner = Symbol("session-catalog-request");
-    this.requestOwner = requestOwner;
+    this.request = { owner: requestOwner, generation, phase: "head" };
+    this.publishedWindows.clear();
+    // A new root read does not itself replace an existing retry intent.
+    // Only an accepted current result or scope retirement may do that.
     this.requestChangedHostKeys.clear();
     const progressId = generateUUID();
     const progressSequence = ++this.progressSequence;
@@ -257,11 +383,12 @@ export class SessionCatalogLiveState {
       // may publish these hosts again; other hosts keep their current stream.
       this.hostProgressSequences.set(key, this.progressSequence + 1);
       this.requestChangedHostKeys.delete(key);
+      this.publishedWindows.delete(key);
     }
   }
 
   ownsRequest(owner: symbol) {
-    return this.requestOwner === owner;
+    return this.request?.owner === owner;
   }
 
   warnRequestError(error: unknown) {
@@ -380,6 +507,8 @@ export class SessionCatalogLiveState {
     if (sameCatalogMetadata && JSON.stringify(currentHost) === JSON.stringify(nextHost)) {
       return null;
     }
+    this.publishedWindows.set(hostKey, { catalogId: event.catalog.id, hostId: freshHost.hostId });
+    this.finishWindow(nextCatalog, freshHost.hostId, params.pageDepths.get(hostKey) ?? 0);
     return { catalogs, catalogId: event.catalog.id, hostId: freshHost.hostId };
   }
 
@@ -457,8 +586,7 @@ export async function refreshSessionCatalogsLive(params: {
     return;
   }
   const { progressId, progressSequence, requestOwner } = live.beginRequest(generation);
-  params.applyPending(params.catalogs().map((catalog) => withdrawSessionCatalogRows(catalog)));
-  let refetchOwner: symbol | null = null;
+  params.applyPending(live.withdraw(params.catalogs()));
   let retryDelayMs: number | null = null;
   const requestIsCurrent = () =>
     live.ownsRequest(requestOwner) &&
@@ -475,7 +603,7 @@ export async function refreshSessionCatalogsLive(params: {
     if (!requestIsCurrent() || !result?.catalogs) {
       return;
     }
-    refetchOwner = live.beginRefetch(params.pageDepths.size > 0);
+    live.setRequestPhase(requestOwner, "replay");
     const previousCatalogs = params.catalogs();
     const catalogs = await refetchExpandedSessionCatalogPages({
       catalogs: live.mergeFinal(result.catalogs, previousCatalogs),
@@ -490,17 +618,49 @@ export async function refreshSessionCatalogsLive(params: {
       return;
     }
     live.resetRetry();
+    // A host published during replay owns a newer snapshot than the captured
+    // aggregate. Keep it and replay its window after root application.
+    const currentCatalogs = params.catalogs();
+    const acceptedCatalogs = catalogs.map((catalog) => {
+      const previous = previousCatalogs.find((entry) => entry.id === catalog.id);
+      const current = currentCatalogs.find((entry) => entry.id === catalog.id);
+      const newerHosts =
+        current?.hosts.filter(
+          (host) => host !== previous?.hosts.find((entry) => entry.hostId === host.hostId),
+        ) ?? [];
+      return {
+        ...catalog,
+        ...(newerHosts.length > 0 ? current : undefined),
+        hosts: [
+          ...catalog.hosts.map(
+            (host) => newerHosts.find((entry) => entry.hostId === host.hostId) ?? host,
+          ),
+          ...newerHosts.filter(
+            (host) => !catalog.hosts.some((entry) => entry.hostId === host.hostId),
+          ),
+        ],
+      };
+    });
+    for (const catalog of currentCatalogs) {
+      if (
+        !catalogs.some((entry) => entry.id === catalog.id) &&
+        !previousCatalogs.some((entry) => entry.id === catalog.id)
+      ) {
+        acceptedCatalogs.push(catalog);
+      }
+    }
+    live.settleRootWindows(acceptedCatalogs);
     params.applyFinal(
-      catalogs,
+      acceptedCatalogs,
       new Set([...params.catalogs(), ...catalogs].map((catalog) => catalog.id)),
     );
-    live.markFinal({ catalogs, progressSequence });
-    live.endRefetch(refetchOwner);
-    refetchOwner = null;
+    live.markFinal({ catalogs: acceptedCatalogs, progressSequence });
+    live.setRequestPhase(requestOwner, "discovery");
     await params.continueRefresh();
   } catch (error) {
     // Only stale-permitted catalogs keep their previous window across request failure.
     if (revisionIsCurrent()) {
+      live.settleRootWindows(params.catalogs(), sessionCatalogRequestError(error));
       retryDelayMs = live.retryRequest(error);
       if (retryDelayMs === null) {
         live.warnRequestError(error);
@@ -508,12 +668,10 @@ export async function refreshSessionCatalogsLive(params: {
       }
     }
   } finally {
-    live.endRefetch(refetchOwner);
     const ownsRequest = live.ownsRequest(requestOwner);
-    if (ownsRequest) {
-      live.requestGeneration = null;
-    }
-    if (ownsRequest && requestIsCurrent() && params.connected()) {
+    const current = requestIsCurrent();
+    live.endRequest(requestOwner);
+    if (ownsRequest && current && params.connected()) {
       const pending = live.refreshPending;
       live.refreshPending = false;
       const interval =

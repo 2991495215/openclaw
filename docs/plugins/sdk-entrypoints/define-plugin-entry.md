@@ -76,7 +76,10 @@ export default definePluginEntry({
   never replays a cached page while the source refresh is pending or failed. Clients
   withdraw prior rows when a request starts and do not retain them on pending/error
   publications. Expanded windows, including Load More, are rebuilt from fresh pages;
-  progress from an older request cannot restore a withdrawn row. Return empty pending
+  progress from an older request cannot restore a withdrawn row. Late host completion
+  restores the requested expanded window even while other hosts are still loading.
+  A transient page failure keeps an explicit retry action, not old rows or cursor
+  authority; retry starts at the current authorized head. Return empty pending
   hosts and reauthorize each list/read at the source. Receiver visibility checks do
   not establish source authority. This optional declaration adds no user setting;
   catalogs without it keep the stale-row behavior described below.

@@ -35,8 +35,21 @@ export function excludeSessionCatalogRows(
   }));
 }
 
-function repeatedCatalogCursorError(): NonNullable<SessionCatalog["error"]> {
-  return { code: "PAGINATION_FAILED", message: t("chat.sidebar.catalogPaginationFailed") };
+// Local outcome identity; the Gateway error's serialized shape stays unchanged.
+const repeatedCursorFailure = Symbol("repeated-catalog-cursor");
+
+function repeatedCatalogCursorError(): NonNullable<SessionCatalog["error"]> & {
+  [repeatedCursorFailure]: true;
+} {
+  return {
+    code: "PAGINATION_FAILED",
+    message: t("chat.sidebar.catalogPaginationFailed"),
+    [repeatedCursorFailure]: true,
+  };
+}
+
+export function isRepeatedCatalogCursorError(error: SessionCatalog["error"]): boolean {
+  return error !== undefined && repeatedCursorFailure in error;
 }
 
 function missingCatalogPageError(): NonNullable<SessionCatalog["error"]> {
@@ -58,7 +71,7 @@ function mergeCatalogSessionRows(
   return [...first, ...second.filter((session) => !seen.has(session.threadId))];
 }
 
-/** Withdraw rows, retaining cursor positions only so failed requests can be retried. */
+/** Fresh-required rows and cursors cannot authorize a later request. */
 export function withdrawSessionCatalogRows(
   catalog: SessionCatalog,
   hostIds?: readonly string[],
@@ -69,7 +82,9 @@ export function withdrawSessionCatalogRows(
   return {
     ...catalog,
     hosts: catalog.hosts.map((host) =>
-      !hostIds || hostIds.includes(host.hostId) ? { ...host, sessions: [] } : host,
+      !hostIds || hostIds.includes(host.hostId)
+        ? { ...host, sessions: [], nextCursor: undefined }
+        : host,
     ),
   };
 }
@@ -103,6 +118,7 @@ export function mergeSessionCatalogPage(params: {
   page: SessionCatalog | undefined;
   cursors: Readonly<Record<string, string>>;
   previousCursors?: ReadonlyMap<string, ReadonlySet<string>>;
+  freshHostIds?: readonly string[];
 }): { catalog: SessionCatalog; advancedHostIds: string[]; repeatedHostIds: string[] } {
   const { page } = params;
   if (!page) {
@@ -118,19 +134,26 @@ export function mergeSessionCatalogPage(params: {
   const hosts = params.current.hosts.map((host) => {
     const requestedCursor = params.cursors[host.hostId];
     const pageHost = pageHosts.get(host.hostId);
-    if (page.error || requestedCursor === undefined || host.nextCursor !== requestedCursor) {
+    const freshRequest = params.freshHostIds?.includes(host.hostId) === true;
+    if (
+      page.error ||
+      (!freshRequest && (requestedCursor === undefined || host.nextCursor !== requestedCursor))
+    ) {
       return host;
     }
     if (!pageHost) {
       return { ...host, error: missingCatalogPageError() };
     }
-    if (pageHost.error) {
+    if (pageHost.error || (freshRequest && pageHost.pending)) {
       return preserveExpandedCatalogHost(pageHost, host, page);
     }
     const { nextCursor, sessions, error: _pageError, ...pageHostDetails } = pageHost;
+    // A fresh window was cycle-checked by its replay. Retired cursors do not
+    // identify the current authorized request, even when their strings match.
     const repeatedCursor =
-      nextCursor === requestedCursor ||
-      (nextCursor !== undefined && params.previousCursors?.get(host.hostId)?.has(nextCursor));
+      !freshRequest &&
+      ((nextCursor !== undefined && nextCursor === requestedCursor) ||
+        (nextCursor !== undefined && params.previousCursors?.get(host.hostId)?.has(nextCursor)));
     if (repeatedCursor) {
       repeatedHostIds.push(host.hostId);
     } else {
@@ -145,7 +168,7 @@ export function mergeSessionCatalogPage(params: {
     return {
       ...currentHost,
       ...pageHostDetails,
-      sessions: mergeCatalogSessionRows(host.sessions, sessions),
+      sessions: freshRequest ? sessions : mergeCatalogSessionRows(host.sessions, sessions),
       ...(nextCursor ? { nextCursor } : {}),
       ...(repeatedCursor ? { error: repeatedCatalogCursorError() } : {}),
     };

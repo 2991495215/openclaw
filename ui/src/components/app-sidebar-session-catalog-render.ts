@@ -183,7 +183,7 @@ export function renderSessionCatalogGroups(params: SessionCatalogGroupsParams) {
     const hasUnread = liveRows.some((row) => row.unread === true);
     const hasBrandIcon = hasProviderBrandIcon(catalog.id);
     const loadingMore = params.loadingMoreCatalogIds.has(catalog.id);
-    const hasMore = catalog.hosts.some((host) => Boolean(host.nextCursor));
+    const hasMore = catalog.retryable || catalog.hosts.some((host) => Boolean(host.nextCursor));
     const canCreateSession = catalog.capabilities.startTerminal === true;
     const errorMessages = catalogErrorMessages(catalog);
     const hasError = errorMessages.length > 0;

@@ -4,12 +4,14 @@ import { SessionCatalogLiveState } from "../../components/app-sidebar-session-ca
 describe("AppSidebar session catalog pagination", () => {
   it("keeps the current refetch guard when an older request finishes", () => {
     const live = new SessionCatalogLiveState();
-    const older = live.beginRefetch(true);
-    const current = live.beginRefetch(true);
+    const older = live.beginRequest(1).requestOwner;
+    live.setRequestPhase(older, "replay");
+    const current = live.beginRequest(1).requestOwner;
+    live.setRequestPhase(current, "replay");
 
-    live.endRefetch(older);
+    live.endRequest(older);
     expect(live.refetching).toBe(true);
-    live.endRefetch(current);
+    live.endRequest(current);
     expect(live.refetching).toBe(false);
   });
 

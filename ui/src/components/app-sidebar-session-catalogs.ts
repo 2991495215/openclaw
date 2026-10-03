@@ -126,7 +126,10 @@ export function catalogErrorMessages(catalog: SessionCatalog): string[] {
   return [...messages];
 }
 
-export type SidebarSessionCatalog = SessionCatalog & { visibleHosts: SessionCatalogHost[] };
+export type SidebarSessionCatalog = SessionCatalog & {
+  visibleHosts: SessionCatalogHost[];
+  retryable?: boolean;
+};
 
 type SessionVisibilityRow = Pick<GatewaySessionRow, "key" | "archived" | "snoozedUntil">;
 
@@ -136,6 +139,7 @@ export function projectSidebarSessionCatalogs(
   ownerId: string | null,
   liveRows: readonly GatewaySessionRow[],
   isSessionHidden?: (row: SessionVisibilityRow) => boolean,
+  canRetry?: (catalog: SessionCatalog) => boolean,
 ): SidebarSessionCatalog[] {
   // The current list wins over cached agent lists, including an unset live owner.
   const liveRowsByKey = new Map(liveRows.toReversed().map((row) => [row.key, row]));
@@ -146,7 +150,10 @@ export function projectSidebarSessionCatalogs(
       liveRowsByKey,
       isSessionHidden,
     );
-    return visibleHosts.length > 0 ? [{ ...catalog, visibleHosts }] : [];
+    const retryable = canRetry?.(catalog) === true;
+    return visibleHosts.length > 0 || retryable
+      ? [{ ...catalog, visibleHosts, ...(retryable ? { retryable } : {}) }]
+      : [];
   });
 }
 

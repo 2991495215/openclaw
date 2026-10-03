@@ -49,6 +49,7 @@ export function projectSidebarSnoozeCatalogs(
     ownerId,
     sidebarCatalogLiveRows(host.sessionData),
     visibility.isSessionHidden,
+    (catalog) => host.sessionData.sessionCatalogLive.canRetry(catalog),
   );
 }
 

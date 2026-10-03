@@ -94,7 +94,9 @@ export class SessionDataController implements ReactiveController, SessionCatalog
   sessionScopeGeneration = 0;
   sessionCatalogAgentId: string | null = null;
   sessionCatalogRevision = 0;
-  readonly sessionCatalogPageDepths = new Map<string, number>();
+  get sessionCatalogPageDepths(): ReadonlyMap<string, number> {
+    return this.sessionCatalogLive.pageDepths;
+  }
   readonly sessionCatalogRevisions = new Map<string, number>();
   private sessionScopeAgentId: string | null = null;
   private sessionsSource: SessionCapability | null = null;
@@ -254,7 +256,7 @@ export class SessionDataController implements ReactiveController, SessionCatalog
     this.sessionCatalogRevision += 1;
     this.sessionCatalogs = [];
     this.sessionCatalogRefreshStatus = createPanelRefreshStatus();
-    this.sessionCatalogPageDepths.clear();
+    this.sessionCatalogLive.windows.clear();
     this.sessionCatalogRevisions.clear();
     this.requestSessionDataUpdate();
   }
@@ -294,7 +296,7 @@ export class SessionDataController implements ReactiveController, SessionCatalog
     if (agentChanged || catalogAgentChanged) {
       // Catalog cursors and rows belong to the selected agent, not just its host.
       this.sessionCatalogs = [];
-      this.sessionCatalogPageDepths.clear();
+      this.sessionCatalogLive.windows.clear();
       this.sessionCatalogRevisions.clear();
     }
     if (agentChanged && !ownsCurrentCanonicalList) {
@@ -313,9 +315,7 @@ export class SessionDataController implements ReactiveController, SessionCatalog
     }
   }
 
-  handleSessionCatalogHostEvent(payload: unknown): void {
-    applySessionCatalogHostEventToData(this, payload);
-  }
+  handleSessionCatalogHostEvent = applySessionCatalogHostEventToData.bind(null, this);
 
   handleSessionCatalogChanged(payload: unknown): void {
     applySessionCatalogChangedToData(this, payload);
