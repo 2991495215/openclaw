@@ -67,9 +67,12 @@ export default definePluginEntry({
   use `buildControlUiSessionPath` with `exactKey: true` and `literalMainKey: true` from
   `openclaw/plugin-sdk/session-discussion`. `exactKey: true` alone retains the
   established home routing for a main-session key; Open original needs its literal
-  source session route. For the unqualified stored `global` transcript, also pass
+  source session route, which stays pinned through canonicalization and reload even
+  when the configured home key changes. For the unqualified stored `global` transcript, also pass
   `literalGlobalKey: true` and its source `fallbackAgentId`; this uses an explicit
-  global route instead of selecting that agent's configured home session.
+  global route instead of selecting that agent's configured home session. When
+  rebuilding a parsed explicit route, retain its `literalKey` intent in the shared
+  path builder so navigation cannot turn it back into a configurable home alias.
 
   Providers whose rows depend on current source-side authorization must declare
   `requiresFreshList: true`. The Gateway projects this declaration to clients and
@@ -79,7 +82,9 @@ export default definePluginEntry({
   progress from an older request cannot restore a withdrawn row. Late host completion
   restores the requested expanded window even while other hosts are still loading.
   A transient page failure keeps an explicit retry action, not old rows or cursor
-  authority; retry starts at the current authorized head. Return empty pending
+  authority; retry starts at the current authorized head. Reject discovery failures
+  with a safe provider error instead of returning successful empty results; only
+  successful discovery with no eligible sources represents absence. Return empty pending
   hosts and reauthorize each list/read at the source. Receiver visibility checks do
   not establish source authority. This optional declaration adds no user setting;
   catalogs without it keep the stale-row behavior described below.

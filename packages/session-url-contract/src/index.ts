@@ -39,6 +39,8 @@ type BuildControlUiSessionPathParams = {
   exactKey?: boolean;
   /** Keep a qualified main key literal when linking to a source with unknown session defaults. */
   literalMainKey?: boolean;
+  /** Preserve a parsed explicit key marker independently of configured home defaults. */
+  literalKey?: boolean;
   /** Address the raw global transcript instead of the agent home alias. */
   literalGlobalKey?: boolean;
   mainKey?: string;
@@ -90,13 +92,15 @@ export function buildControlUiSessionPath(params: BuildControlUiSessionPathParam
   }
   const namespace = `${normalizeControlUiBasePath(params.basePath)}/${params.namespace}`;
   const encodedAgentId = encodePathSegment(agentId);
-  if (!parsed && rawKey === "global" && params.literalGlobalKey) {
+  if (!parsed && rawKey === "global" && (params.literalGlobalKey || params.literalKey)) {
     return `${namespace}/${encodedAgentId}/~global`;
   }
   const rest = parsed?.rest ?? rawKey;
   const normalizedRest = rest.toLowerCase();
   const mainKey = normalizeNullableString(params.mainKey)?.toLowerCase() ?? DEFAULT_MAIN_KEY;
-  const literalMainKey = Boolean(params.literalMainKey && parsed && normalizedRest === mainKey);
+  const literalMainKey = Boolean(
+    (params.literalMainKey || params.literalKey) && parsed && normalizedRest === mainKey,
+  );
   if (
     (normalizedRest === mainKey && !literalMainKey) ||
     (!parsed && (normalizedRest === DEFAULT_MAIN_KEY || normalizedRest === "global"))
@@ -106,6 +110,9 @@ export function buildControlUiSessionPath(params: BuildControlUiSessionPathParam
   const segments = rest.split(":");
   if (segments.some((segment) => !segment)) {
     return null;
+  }
+  if (params.literalKey && parsed) {
+    return `${namespace}/${encodedAgentId}/~key/${segments.map(encodePathSegment).join("/")}`;
   }
   // Incognito is excluded from discovery, so its URLs must retain the exact key.
   // Qualified global keys are literal sessions, distinct from the unqualified home sentinel.

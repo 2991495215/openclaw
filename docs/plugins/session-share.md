@@ -97,6 +97,10 @@ The catalog refreshes by polling, not a live transcript stream. The source node 
 
 Progressive catalog listings used during chat startup wait at most five seconds in the foreground. Concurrent viewers share the node request. If it is still pending, the receiver returns a pending host with no session rows; it does not replay a previously authorized page. The refreshed page arrives through the catalog's normal host update. Targeted metadata lookups, pagination, and callers without progress updates still await a complete response. Pending requests belong to the receiver's Session Share service; configuration changes, node reconnections, and service retirement invalidate them.
 
+A failed source-discovery request withdraws the previous rows and keeps a retry action.
+Retry discovers the currently authorized sources again. A successful discovery with no
+eligible sources remains empty, without revealing filtered sources or node errors.
+
 Listings leave cold transcript archives untouched and use any stored title metadata. To read cold history, open the session on the source Gateway first so its normal history owner restores the archive. Each source page also bounds raw transcript reads to 8 MiB; a single larger entry returns an explicit error instead of being silently skipped. Inspect that entry on the source Gateway.
 
 ## Open the original session
@@ -117,7 +121,8 @@ query, fragment, whitespace, backslashes, or dot segments. Invalid prefixes leav
 own Control UI path or accepted from remote session rows.
 
 Shared-session menus and view-only transcripts then offer **Open original**.
-It opens the exact source session in a new tab without tokens in the URL. Sign in
+It opens the exact source session in a new tab without tokens in the URL. Links to
+literal `main` transcripts stay pinned when the source's configured home key changes. Sign in
 to that source normally; its existing permissions and message queue control what
 you can do. The receiver still cannot continue the shared session, and this setting
 does not add node commands or grant source access. Without this setting, sharing

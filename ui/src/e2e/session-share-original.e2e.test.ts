@@ -11,6 +11,58 @@ const originalUrl =
   "https://team.example.com/chat/research/dashboard/01234567-89ab-cdef-0123-456789abcdef";
 
 suite.define(() => {
+  it("keeps source-generated literal main pinned through browser reload after a home-key change", async () => {
+    await suite.withPage({ viewport: { width: 1440, height: 900 } }, async ({ page }) => {
+      const artifacts = createControlUiE2eArtifactDir("session-share-literal-main");
+      const gateway = await installMockGateway(page, {
+        basePath: "/openclaw",
+        defaultAgentId: "research",
+        sessionKey: "agent:research:main",
+        mainSessionKey: "agent:research:main",
+        historyMessages: [
+          { role: "assistant", content: [{ type: "text", text: "The pinned main transcript." }] },
+        ],
+      });
+      const url = sessionShareOriginalUrl(
+        new URL(suite.server.baseUrl).origin,
+        "agent:research:main",
+        "/openclaw",
+      )!;
+      await page.goto(url);
+      const first = await gateway.waitForRequest("chat.startup");
+      await page
+        .locator(".chat-thread")
+        .getByText("The pinned main transcript.", { exact: true })
+        .waitFor();
+      expect(page.url()).toBe(url);
+      expect(first.params).toMatchObject({
+        sessionKey: "agent:research:main",
+      });
+      await page.screenshot({ path: path.join(artifacts, "before-reload.png") });
+      await gateway.setMethodResponse("agents.list", {
+        defaultId: "research",
+        mainKey: "workspace",
+        scope: "per-sender",
+        agents: [{ id: "research", name: "Research" }],
+      });
+      await page.reload();
+      const reload = await gateway.waitForRequest("chat.startup");
+      await page
+        .locator(".chat-thread")
+        .getByText("The pinned main transcript.", { exact: true })
+        .waitFor();
+      expect(page.url()).toBe(url);
+      expect(reload.params).toMatchObject({
+        sessionKey: "agent:research:main",
+      });
+      await page.screenshot({ path: path.join(artifacts, "after-reload.png") });
+      await writeFile(
+        path.join(artifacts, "navigation.json"),
+        JSON.stringify({ url, first, reload }, null, 2),
+      );
+    });
+  });
+
   it("loads the raw global source transcript under ordinary per-sender defaults", async () => {
     await suite.withPage({ viewport: { width: 1440, height: 900 } }, async ({ page }) => {
       const artifacts = createControlUiE2eArtifactDir("session-share-raw-global");

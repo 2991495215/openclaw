@@ -102,6 +102,87 @@ async function catalogFixture() {
 }
 
 describe("session-share receiver catalog", () => {
+  it("surfaces discovery failure without exposing node-runtime details", async () => {
+    const fixture = await catalogFixture();
+    try {
+      await expect(fixture.catalog.list({})).resolves.toHaveLength(1);
+      fixture.list.mockRejectedValueOnce(new Error("private node address and runtime details"));
+      const onHost = vi.fn();
+      await expect(fixture.catalog.list({ onHost })).rejects.toThrow(
+        "Cannot discover OpenClaw session sources. Refresh the catalog to retry.",
+      );
+      expect(onHost).not.toHaveBeenCalled();
+      fixture.invoke.mockResolvedValue({ sessions: [] });
+      await expect(fixture.catalog.list({})).resolves.toMatchObject([{ sessions: [] }]);
+      expect(fixture.list).toHaveBeenCalledTimes(3);
+    } finally {
+      await fixture.stop();
+    }
+  });
+
+  it.each(["empty", "ineligible", "filtered"] as const)(
+    "keeps successful %s discovery private and non-error",
+    async (mode) => {
+      const fixture = await catalogFixture();
+      try {
+        const nodes =
+          mode === "empty"
+            ? []
+            : [
+                {
+                  nodeId: "alpha",
+                  connected: true,
+                  commands: mode === "ineligible" ? [commands[0]!] : commands,
+                },
+              ];
+        const hosts = await fixture.catalog.list({
+          listNodes: async () => ({ nodes }),
+          ...(mode === "filtered" ? { hostIds: ["node:other"] } : {}),
+        });
+        expect(hosts).toEqual([]);
+        expect(fixture.invoke).not.toHaveBeenCalled();
+      } finally {
+        await fixture.stop();
+      }
+    },
+  );
+
+  it.each(["abort", "config"] as const)(
+    "fences rejected discovery after %s retirement",
+    async (mode) => {
+      const fixture = await catalogFixture();
+      const discovery = createDeferred<Awaited<ReturnType<PluginRuntime["nodes"]["list"]>>>();
+      const entered = createDeferred<void>();
+      const controller = new AbortController();
+      const reason = new Error("request retired");
+      const outcome = fixture.catalog
+        .list({
+          signal: controller.signal,
+          listNodes: () => {
+            entered.resolve();
+            return discovery.promise;
+          },
+        })
+        .then(
+          (hosts) => ({ hosts }),
+          (error: unknown) => ({ error }),
+        );
+      try {
+        await entered.promise;
+        if (mode === "abort") {
+          controller.abort(reason);
+        } else {
+          fixture.configure({ gateway: { port: 12345 } });
+        }
+        discovery.reject(new Error("private discovery details"));
+        expect(await outcome).toEqual(mode === "abort" ? { error: reason } : { hosts: [] });
+        expect(fixture.invoke).not.toHaveBeenCalled();
+      } finally {
+        await fixture.stop();
+      }
+    },
+  );
+
   it.each(["", "/", "/openclaw", "/admin/openclaw/"])(
     "preserves the receiver-approved source base path %j across routing and reloads",
     async (controlUiBasePath) => {

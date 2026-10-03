@@ -144,7 +144,13 @@ it("bounds six Gateway connections and filters the shared refresh at each delive
   }
 });
 
-it.each(["pending", "failed"] as const)(
+it.each([
+  "pending",
+  "failed",
+  "discovery-failed",
+  "discovery-empty",
+  "discovery-ineligible",
+] as const)(
   "withdraws a warmed source-authorized page during a %s refresh on the same connection",
   async (outcome) => {
     resetSessionCatalogTestState();
@@ -174,15 +180,26 @@ it.each(["pending", "failed"] as const)(
     const runtime = createPluginRuntimeMock({
       config: { current: () => config },
       nodes: {
-        list: async () => ({
-          nodes: [
-            {
-              nodeId: "source",
-              connected: true,
-              commands: ["openclaw.sessions.list.v1", "openclaw.sessions.read.v1"],
-            },
-          ],
-        }),
+        list: async () => {
+          if (!sourceAuthorized && outcome === "discovery-failed") {
+            throw new Error("private node discovery details");
+          }
+          return {
+            nodes:
+              !sourceAuthorized && outcome === "discovery-empty"
+                ? []
+                : [
+                    {
+                      nodeId: "source",
+                      connected: true,
+                      commands:
+                        !sourceAuthorized && outcome === "discovery-ineligible"
+                          ? []
+                          : ["openclaw.sessions.list.v1", "openclaw.sessions.read.v1"],
+                    },
+                  ],
+          };
+        },
       },
     });
     let service: Parameters<OpenClawPluginApi["registerService"]>[0] | undefined;
@@ -213,7 +230,20 @@ it.each(["pending", "failed"] as const)(
       await refresh.completion;
       const result = refresh.respond.mock.calls[0]?.[1]?.catalogs[0];
       expect(result.hosts.flatMap((host: { sessions: unknown[] }) => host.sessions)).toEqual([]);
-      expect(invokeNode).toHaveBeenCalledTimes(2);
+      expect(invokeNode).toHaveBeenCalledTimes(outcome.startsWith("discovery-") ? 1 : 2);
+      if (outcome === "discovery-failed") {
+        expect(result).toMatchObject({
+          hosts: [],
+          requiresFreshList: true,
+          error: {
+            message: "Cannot discover OpenClaw session sources. Refresh the catalog to retry.",
+          },
+        });
+        expect(JSON.stringify(result)).not.toContain("private node discovery details");
+      } else if (outcome.startsWith("discovery-")) {
+        expect(result.hosts).toEqual([]);
+        expect(result.error).toBeUndefined();
+      }
       release?.();
       await vi.advanceTimersByTimeAsync(0);
       sourceAuthorized = true;

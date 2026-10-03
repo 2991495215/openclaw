@@ -327,7 +327,12 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
         ).nodes;
       } catch {
         query.signal?.throwIfAborted();
-        return [];
+        if (api.runtime.config.current() !== currentConfig) {
+          return [];
+        }
+        // Discovery failure is retryable, not proof that authorized sources vanished.
+        // Do not expose node-runtime details through the provider error boundary.
+        throw new Error("Cannot discover OpenClaw session sources. Refresh the catalog to retry.");
       }
       query.signal?.throwIfAborted();
       if (api.runtime.config.current() !== currentConfig) {
