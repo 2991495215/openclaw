@@ -24,6 +24,8 @@ import {
 import {
   excludeSessionCatalogRows,
   mergeSessionCatalogPage,
+  refetchExpandedSessionCatalogPages,
+  withdrawSessionCatalogRows,
   sessionCatalogRequestError,
 } from "./app-sidebar-session-catalog-state.ts";
 import { bindAdoptedCatalogSession } from "./app-sidebar-session-catalogs.ts";
@@ -305,6 +307,18 @@ export async function refreshSessionCatalogs(owner: SessionCatalogDataOwner): Pr
     pageDepths: owner.sessionCatalogPageDepths,
     connected: () => owner.isSessionDataHostConnected,
     catalogChangedEvents: sessionCatalogChangesAdvertised(owner),
+    applyPending: (catalogs) => {
+      owner.sessionCatalogs = catalogs;
+      for (const catalog of catalogs) {
+        if (catalog.requiresFreshList) {
+          owner.sessionCatalogRevisions.set(
+            catalog.id,
+            (owner.sessionCatalogRevisions.get(catalog.id) ?? 0) + 1,
+          );
+        }
+      }
+      owner.requestSessionDataUpdate();
+    },
     applyFinal: (catalogs, revisedCatalogIds) => {
       owner.sessionCatalogs = owner.sessionCatalogLive.resumeDiscovery(catalogs);
       owner.sessionCatalogRefreshStatus = completePanelRefresh();
@@ -415,6 +429,16 @@ export async function loadMoreSessionCatalog(
   }
   const generation = owner.sessionScopeGeneration;
   const revision = owner.sessionCatalogRevisions.get(catalogId) ?? 0;
+  if (catalog.requiresFreshList) {
+    owner.sessionCatalogLive.retireHostPublications(catalogId, Object.keys(cursors));
+    // An older aggregate response must not undo the targeted withdrawal either.
+    owner.sessionCatalogRevision += 1;
+  }
+  owner.sessionCatalogs = owner.sessionCatalogs.map((candidate) =>
+    candidate.id === catalogId
+      ? withdrawSessionCatalogRows(candidate, Object.keys(cursors))
+      : candidate,
+  );
   owner.loadingMoreSessionCatalogIds = new Set([...owner.loadingMoreSessionCatalogIds, catalogId]);
   owner.requestSessionDataUpdate();
   try {
@@ -422,17 +446,41 @@ export async function loadMoreSessionCatalog(
       agentId,
       catalogId,
       hostIds: Object.keys(cursors),
-      cursors,
+      ...(catalog.requiresFreshList ? {} : { cursors }),
     });
     if (!isCurrentSessionCatalogRequest(owner, catalogId, client, generation, revision)) {
       return;
     }
-    const page = result.catalogs.find((candidate) => candidate.id === catalogId);
+    let page = result.catalogs.find((candidate) => candidate.id === catalogId);
     const current = owner.sessionCatalogs.find((candidate) => candidate.id === catalogId);
     if (!current) {
       return;
     }
     const discoveryPages = owner.sessionCatalogLive.discoveryPages;
+    if (catalog.requiresFreshList && page) {
+      // A successful older page cannot authorize the previous head. Rebuild the
+      // requested window in this cycle, using the same replay/error policy as refresh.
+      const pageDepths = new Map(owner.sessionCatalogPageDepths);
+      for (const hostId of Object.keys(cursors)) {
+        const key = sessionCatalogHostKey(catalogId, hostId);
+        pageDepths.set(key, (discoveryPages.get(key)?.depth ?? pageDepths.get(key) ?? 0) + 1);
+      }
+      [page] = await refetchExpandedSessionCatalogPages({
+        catalogs: [page],
+        previousCatalogs: [],
+        client,
+        agentId,
+        pageDepths,
+        isCurrent: () =>
+          isCurrentSessionCatalogRequest(owner, catalogId, client, generation, revision),
+        canRequestPage: () =>
+          isCurrentSessionCatalogRequest(owner, catalogId, client, generation, revision) &&
+          document.visibilityState !== "hidden",
+      });
+      if (!isCurrentSessionCatalogRequest(owner, catalogId, client, generation, revision)) {
+        return;
+      }
+    }
     const merged = mergeSessionCatalogPage({
       current,
       page,
@@ -490,7 +538,7 @@ export async function loadMoreSessionCatalog(
     if (!isCurrentSessionCatalogRequest(owner, catalogId, client, generation, revision)) {
       return;
     }
-    // Preserve rows and cursors: retrying Load More requests this page again.
+    // Stale-permitted rows and retry cursors survive; fresh-required rows were withdrawn.
     owner.sessionCatalogs = owner.sessionCatalogs.map((candidate) =>
       candidate.id === catalogId
         ? { ...candidate, error: sessionCatalogRequestError(error) }

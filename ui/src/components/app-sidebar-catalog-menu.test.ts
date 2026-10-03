@@ -28,6 +28,7 @@ describe("SidebarCatalogMenuController", () => {
           beginSessionMutation: vi.fn(),
           isSessionMutationScopeCurrent: vi.fn(),
           archiveSessionCatalog: vi.fn(),
+          importSessionCatalog: vi.fn(),
           sessionScopeGeneration: 0,
         },
       },

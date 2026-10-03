@@ -188,6 +188,7 @@ function startProviderOperation(
       current &&
       !current.signal.aborted &&
       current.operations.providers.get(current.key)?.result === result &&
+      !catalog.requiresFreshList &&
       !catalog.error &&
       catalog.hosts.every((host) => !host.error && !host.pending)
     ) {
@@ -259,7 +260,10 @@ export async function listSessionCatalogWithinBudget(
     return result;
   }
   const cached =
-    retirement.aborted || operations.gatewaySignal?.aborted || operations.connectionSignal?.aborted
+    empty.requiresFreshList ||
+    retirement.aborted ||
+    operations.gatewaySignal?.aborted ||
+    operations.connectionSignal?.aborted
       ? undefined
       : operations.pages.get(key);
   if (result && !cached) {
@@ -279,7 +283,8 @@ export async function listSessionCatalogWithinBudget(
         },
       },
     ],
-    // Preserve the original adoption identity; delivery rechecks current authority.
+    // Preserve adoption identity only for catalogs whose source allows stale lists.
+    // Receiver visibility checks cannot reauthorize a source-owned publication.
     instancesByCatalog: cached?.instancesByCatalog ?? new Map([[empty.id, new Map()]]),
   };
 }

@@ -312,6 +312,7 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
     label: "OpenClaw sessions",
     supportsProcessHomeIsolation: true,
     audience: "session-viewers",
+    requiresFreshList: true,
     async list(query) {
       const deadline = performance.now() + 5_000;
       query.signal?.throwIfAborted();

@@ -15,6 +15,7 @@ import { generateUUID } from "../lib/uuid.ts";
 import {
   preserveExpandedCatalogHost,
   refetchExpandedSessionCatalogPages,
+  withdrawSessionCatalogRows,
 } from "./app-sidebar-session-catalog-state.ts";
 import { sessionCatalogHostKey } from "./app-sidebar-session-types.ts";
 
@@ -188,7 +189,10 @@ export class SessionCatalogLiveState {
             progressiveHost &&
             !progressiveHost.pending
             ? progressiveHost
-            : preserveExpandedCatalogHost(host, progressiveHost);
+            : preserveExpandedCatalogHost(host, progressiveHost, catalog);
+        }
+        if (catalog.requiresFreshList) {
+          return preserveExpandedCatalogHost(host, undefined, catalog);
         }
         return host.error &&
           this.requestChangedHostKeys.has(hostKey) &&
@@ -246,6 +250,16 @@ export class SessionCatalogLiveState {
     return { progressId, progressSequence, requestOwner };
   }
 
+  retireHostPublications(catalogId: string, hostIds: readonly string[]) {
+    for (const hostId of hostIds) {
+      const key = sessionCatalogHostKey(catalogId, hostId);
+      // Targeted refreshes have no progress stream. Only the next root request
+      // may publish these hosts again; other hosts keep their current stream.
+      this.hostProgressSequences.set(key, this.progressSequence + 1);
+      this.requestChangedHostKeys.delete(key);
+    }
+  }
+
   ownsRequest(owner: symbol) {
     return this.requestOwner === owner;
   }
@@ -297,9 +311,15 @@ export class SessionCatalogLiveState {
     if (normalizeAgentId(event.agentId) !== normalizeAgentId(params.agentId)) {
       return null;
     }
+    const currentCatalog = params.catalogs.find((catalog) => catalog.id === event.catalog.id);
     const sequence = this.progressSequences.get(event.progressId);
     const freshHost = event.catalog.hosts[0];
-    if (sequence === undefined || !freshHost) {
+    if (
+      sequence === undefined ||
+      !freshHost ||
+      ((event.catalog.requiresFreshList || currentCatalog?.requiresFreshList) &&
+        sequence < this.progressSequence)
+    ) {
       return null;
     }
     const hostKey = sessionCatalogHostKey(event.catalog.id, freshHost.hostId);
@@ -310,11 +330,13 @@ export class SessionCatalogLiveState {
     if (this.requestGeneration !== null) {
       this.requestChangedHostKeys.add(hostKey);
     }
-    const currentCatalog = params.catalogs.find((catalog) => catalog.id === event.catalog.id);
     let catalogs: SessionCatalog[];
     let nextCatalog: SessionCatalog;
     if (!currentCatalog) {
-      nextCatalog = { ...event.catalog, hosts: [freshHost] };
+      nextCatalog = {
+        ...event.catalog,
+        hosts: [preserveExpandedCatalogHost(freshHost, undefined, event.catalog)],
+      };
       catalogs = [...params.catalogs, nextCatalog].toSorted((left, right) =>
         left.id.localeCompare(right.id),
       );
@@ -330,10 +352,11 @@ export class SessionCatalogLiveState {
         this.discoveryPages.delete(hostKey);
       }
       const mergedHost =
+        event.catalog.requiresFreshList ||
         freshHost.pending ||
         (params.pageDepths.get(hostKey) ?? 0) > 0 ||
         this.discoveryPages.has(hostKey)
-          ? preserveExpandedCatalogHost(freshHost, currentHost)
+          ? preserveExpandedCatalogHost(freshHost, currentHost, event.catalog)
           : freshHost;
       const hosts = currentHost
         ? currentCatalog.hosts.map((host) => (host.hostId === freshHost.hostId ? mergedHost : host))
@@ -351,6 +374,7 @@ export class SessionCatalogLiveState {
     const sameCatalogMetadata =
       currentCatalog !== undefined &&
       currentCatalog.label === nextCatalog.label &&
+      currentCatalog.requiresFreshList === nextCatalog.requiresFreshList &&
       JSON.stringify(currentCatalog.capabilities) === JSON.stringify(nextCatalog.capabilities) &&
       JSON.stringify(currentCatalog.error) === JSON.stringify(nextCatalog.error);
     if (sameCatalogMetadata && JSON.stringify(currentHost) === JSON.stringify(nextHost)) {
@@ -416,6 +440,7 @@ export async function refreshSessionCatalogsLive(params: {
   pageDepths: ReadonlyMap<string, number>;
   connected: () => boolean;
   catalogChangedEvents: boolean;
+  applyPending: (catalogs: SessionCatalog[]) => void;
   applyFinal: (catalogs: SessionCatalog[], revisedCatalogIds: ReadonlySet<string>) => void;
   /** Finish the finite cursor sweep without repeating the root catalog request. */
   continueRefresh: () => Promise<void>;
@@ -432,6 +457,7 @@ export async function refreshSessionCatalogsLive(params: {
     return;
   }
   const { progressId, progressSequence, requestOwner } = live.beginRequest(generation);
+  params.applyPending(params.catalogs().map((catalog) => withdrawSessionCatalogRows(catalog)));
   let refetchOwner: symbol | null = null;
   let retryDelayMs: number | null = null;
   const requestIsCurrent = () =>
@@ -473,7 +499,7 @@ export async function refreshSessionCatalogsLive(params: {
     refetchOwner = null;
     await params.continueRefresh();
   } catch (error) {
-    // A transient refresh failure must not collapse already visible or expanded pages.
+    // Only stale-permitted catalogs keep their previous window across request failure.
     if (revisionIsCurrent()) {
       retryDelayMs = live.retryRequest(error);
       if (retryDelayMs === null) {

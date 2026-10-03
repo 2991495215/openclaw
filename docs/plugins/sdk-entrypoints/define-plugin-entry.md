@@ -64,8 +64,20 @@ export default definePluginEntry({
   URL without credentials, query, or fragment; never trust a remote row to choose
   the destination. This navigation opens a separate tab and grants no local
   continuation, archive, or terminal capability. For OpenClaw source sessions,
-  use `buildControlUiSessionPath` with `exactKey: true` from
-  `openclaw/plugin-sdk/session-discussion`.
+  use `buildControlUiSessionPath` with `exactKey: true` and `literalMainKey: true` from
+  `openclaw/plugin-sdk/session-discussion`. `exactKey: true` alone retains the
+  established home routing for a main-session key; Open original needs its literal
+  source session route.
+
+  Providers whose rows depend on current source-side authorization must declare
+  `requiresFreshList: true`. The Gateway projects this declaration to clients and
+  never replays a cached page while the source refresh is pending or failed. Clients
+  withdraw prior rows when a request starts and do not retain them on pending/error
+  publications. Expanded windows, including Load More, are rebuilt from fresh pages;
+  progress from an older request cannot restore a withdrawn row. Return empty pending
+  hosts and reauthorize each list/read at the source. Receiver visibility checks do
+  not establish source authority. This optional declaration adds no user setting;
+  catalogs without it keep the stale-row behavior described below.
 
   The optional `allowPartialResults` flag is true only when a connected caller
   explicitly opts in while receiving host progress on a list without host selection

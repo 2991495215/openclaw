@@ -14,7 +14,7 @@ const suite = createControlUiE2eSuite({
 suite.define(() => {
   it("keeps the paired-node row through pending refresh and applies its later publication", async () => {
     const artifactDir = createControlUiE2eArtifactDir("session-catalog-pending-host");
-    await suite.withPage({ viewport: { width: 1280, height: 900 } }, async ({ page }) => {
+    await suite.withPage({ viewport: { width: 1440, height: 900 } }, async ({ page }) => {
       const catalog: SessionCatalog = {
         id: "codex",
         label: "Codex",
@@ -85,4 +85,77 @@ suite.define(() => {
       await page.screenshot({ path: path.join(artifactDir, "refreshed-node.png") });
     });
   });
+  it.each(["pending", "failed"] as const)(
+    "withdraws source-authorized rows during a %s refresh",
+    async (outcome) => {
+      const artifactDir = createControlUiE2eArtifactDir(`source-authority-${outcome}`);
+      await suite.withPage({ viewport: { width: 1440, height: 900 } }, async ({ page }) => {
+        const catalog = {
+          id: "source-authorized",
+          label: "Shared sessions",
+          requiresFreshList: true,
+          capabilities: { continueSession: false, archive: false },
+          hosts: [
+            {
+              hostId: "node:source",
+              label: "Source",
+              kind: "node",
+              connected: true,
+              sessions: [
+                {
+                  threadId: "revoked",
+                  name: "Previously authorized session",
+                  status: "idle",
+                  archived: false,
+                  canContinue: false,
+                  canArchive: false,
+                },
+              ],
+            },
+          ],
+        };
+        const gateway = await installMockGateway(page, {
+          featureMethods: ["chat.metadata", "chat.startup", "sessions.catalog.list"],
+          methodResponses: { "sessions.catalog.list": { catalogs: [catalog] } },
+        });
+        await page.goto(`${suite.server.baseUrl}chat`);
+        const sidebar = page.locator("openclaw-app-sidebar");
+        const row = sidebar.getByText("Previously authorized session", { exact: true });
+        await row.waitFor();
+        await page.screenshot({ path: path.join(artifactDir, "authorized.png") });
+        await gateway.setMethodResponse("sessions.catalog.list", {
+          catalogs: [
+            {
+              ...catalog,
+              hosts: [
+                {
+                  ...catalog.hosts[0]!,
+                  sessions: [],
+                  ...(outcome === "pending"
+                    ? { pending: true }
+                    : {
+                        error: { code: "NODE_INVOKE_FAILED", message: "Source unavailable" },
+                      }),
+                },
+              ],
+            },
+          ],
+        });
+        await sidebar.evaluate(async (element) => {
+          const sidebarElement = element as AppSidebarSessionNavigationElement;
+          await sidebarElement.sessionData.refreshSessionCatalogs();
+          await sidebarElement.updateComplete;
+        });
+        await page.screenshot({ path: path.join(artifactDir, `${outcome}.png`) });
+        expect(await row.count()).toBe(0);
+        const request = (await gateway.getRequests("sessions.catalog.list")).at(-1)!;
+        await gateway.emitGatewayEvent("sessions.catalog.host", {
+          progressId: (request.params as { progressId: string }).progressId,
+          agentId: "main",
+          catalog: { ...catalog, hosts: [{ ...catalog.hosts[0]!, sessions: [] }] },
+        });
+        expect(await row.count()).toBe(0);
+      });
+    },
+  );
 });

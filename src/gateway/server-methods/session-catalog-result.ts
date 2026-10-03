@@ -17,6 +17,7 @@ export function catalogResult(
   return {
     id: provider.id,
     label: provider.label,
+    ...(provider.requiresFreshList ? { requiresFreshList: true as const } : {}),
     capabilities: {
       continueSession: Boolean(provider.continueSession || provider.copyToGatewaySession),
       archive: Boolean(provider.archive),
