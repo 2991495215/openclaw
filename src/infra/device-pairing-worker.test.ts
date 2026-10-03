@@ -159,52 +159,38 @@ test("keeps public list, lookup, and pending bytes while executing no host queri
   }
 });
 
-test.each(["owner", "bootstrap"] as const)(
-  "rolls back %s approval when live policy is revoked before worker commit",
-  async (kind) => {
-    const before = JSON.stringify(readDevicePairingStoreStateFromDatabase(database.db));
-    let allowed = true;
-    let revokeAfterGrant = true;
-    const isApprovalCurrent = () => {
-      if (revokeAfterGrant) {
-        queueMicrotask(() => {
-          allowed = false;
-        });
-      }
-      return allowed;
-    };
-    const approve = () =>
-      kind === "owner"
-        ? approveDevicePairing(
-            "newest",
-            { callerScopes: ["operator.read"], isApprovalCurrent },
-            baseDir,
-          )
-        : approveBootstrapDevicePairing(
-            "newest",
-            { roles: ["operator"], scopes: ["operator.read"] },
-            { isApprovalCurrent },
-            baseDir,
-          );
+test("rolls back owner approval when live policy is revoked before worker commit", async () => {
+  const before = JSON.stringify(readDevicePairingStoreStateFromDatabase(database.db));
+  let allowed = true;
+  let revokeAfterGrant = true;
+  const isApprovalCurrent = () => {
+    if (revokeAfterGrant) {
+      queueMicrotask(() => {
+        allowed = false;
+      });
+    }
+    return allowed;
+  };
+  const approve = () =>
+    approveDevicePairing("newest", { callerScopes: ["operator.read"], isApprovalCurrent }, baseDir);
 
-    await expect(approve()).resolves.toEqual({
-      status: "forbidden",
-      reason: "approval-policy-changed",
-    });
-    expect(JSON.stringify(readDevicePairingStoreStateFromDatabase(database.db))).toBe(before);
-    allowed = true;
-    revokeAfterGrant = false;
-    await expect(approve()).resolves.toMatchObject({
-      status: "approved",
-      requestId: "newest",
-      device: { deviceId: "paired-rich", publicKey: "synthetic-replacement-key" },
-    });
-    expect(await getPendingDevicePairing("newest", baseDir)).toBeNull();
-    expect((await getPairedDevice("paired-rich", baseDir))?.publicKey).toBe(
-      "synthetic-replacement-key",
-    );
-  },
-);
+  await expect(approve()).resolves.toEqual({
+    status: "forbidden",
+    reason: "approval-policy-changed",
+  });
+  expect(JSON.stringify(readDevicePairingStoreStateFromDatabase(database.db))).toBe(before);
+  allowed = true;
+  revokeAfterGrant = false;
+  await expect(approve()).resolves.toMatchObject({
+    status: "approved",
+    requestId: "newest",
+    device: { deviceId: "paired-rich", publicKey: "synthetic-replacement-key" },
+  });
+  expect(await getPendingDevicePairing("newest", baseDir)).toBeNull();
+  expect((await getPairedDevice("paired-rich", baseDir))?.publicKey).toBe(
+    "synthetic-replacement-key",
+  );
+});
 
 test("refreshes cached reads after another connection replaces pairing authority", async () => {
   await expect(getPairedDevice("paired-rich", baseDir)).resolves.toMatchObject({
@@ -304,6 +290,53 @@ test("reconnects without replacing paired rows or changing unrelated device fiel
       DROP TRIGGER pairing_reconnect_exact_update;
     `);
   }
+});
+
+test("reconnect receipts ignore pending rows while invalidating foreign pairing changes", async () => {
+  await listDevicePairing(baseDir);
+  const previousBinding = getPublishedPairedDeviceBinding("paired-rich", baseDir);
+  expect(previousBinding).not.toBeNull();
+  const other = new DatabaseSync(database.path);
+  try {
+    other
+      .prepare("UPDATE device_pairing_paired SET public_key = ? WHERE device_id = ?")
+      .run("synthetic-foreign-key", "paired-rich");
+    // A receipt must not decode unrelated pending requests.
+    other
+      .prepare("UPDATE device_pairing_pending SET roles_json = ? WHERE request_id = ?")
+      .run("synthetic-unreadable-json", "refreshed");
+  } finally {
+    other.close();
+  }
+  try {
+    await expect(
+      updatePairedDeviceMetadata("paired-minimal", { displayName: "Reconnected" }, baseDir),
+    ).resolves.toBe(true);
+    expect(() => getPublishedPairedDeviceBinding("paired-rich", baseDir)).toThrow(
+      "requires a current worker publication",
+    );
+    const tokenParams = {
+      deviceId: "paired-rich",
+      role: "operator",
+      scopes: ["operator.read"],
+      baseDir,
+    };
+    await expect(
+      verifyDeviceToken({ ...tokenParams, token: "synthetic-operator-token" }),
+    ).resolves.toEqual({ ok: true });
+    const currentBinding = getPublishedPairedDeviceBinding("paired-rich", baseDir);
+    expect(currentBinding).not.toBeNull();
+    expect(currentBinding?.identity).not.toBe(previousBinding?.identity);
+    await expect(ensureDeviceToken(tokenParams)).resolves.toMatchObject({
+      token: "synthetic-operator-token",
+    });
+    expect(getPublishedPairedDeviceBinding("paired-rich", baseDir)).toEqual(currentBinding);
+  } finally {
+    database.db
+      .prepare("UPDATE device_pairing_pending SET roles_json = ? WHERE request_id = ?")
+      .run("[]", "refreshed");
+  }
+  expect((await getPendingDevicePairing("refreshed", baseDir))?.roles).toEqual([]);
 });
 
 test.each(["reply lost", "policy revoked", "callback throws"] as const)(

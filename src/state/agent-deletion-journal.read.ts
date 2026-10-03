@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
@@ -11,12 +10,13 @@ import {
 } from "../infra/kysely-sync.js";
 import { isSqliteCorruptionError } from "../infra/sqlite-error-diagnostics.js";
 import { runSqliteDeferredTransactionSync } from "../infra/sqlite-transaction.js";
-import { assertExistingDatabaseIdentity } from "../infra/sqlite-worker-identity.js";
 import { normalizeAgentId } from "../routing/session-key.js";
-import { sessionChanges } from "../sessions/session-row-changes.js";
-import { readAgentDeletionRecoveryHolds } from "./agent-deletion-journal-recovery.js";
+import { isSessionStoreTopologyChange, sessionChanges } from "../sessions/session-row-changes.js";
+import { hasPreJournalStateSchema } from "./agent-deletion-journal-history.js";
+import { readAgentDeletionRecoveryHolds } from "./agent-deletion-journal-recovery.kernel.js";
 import type {
   AgentDatabaseDeletionSnapshot,
+  AgentDeletionJournalAuthority,
   AgentDeletionJournalDisposition,
   AgentDeletionJournalPurpose,
   AgentDeletionJournalStatus,
@@ -31,10 +31,30 @@ import {
 import { tableExists } from "./openclaw-state-db-schema-helpers.js";
 import type { DB } from "./openclaw-state-db.generated.js";
 import { resolveOpenClawStateSqlitePath } from "./openclaw-state-db.paths.js";
-import {
-  captureOpenClawStateReadContext,
-  captureOpenClawStateWorkerContext,
-} from "./openclaw-state-worker-context.js";
+import { prepareOpenClawStateReadSource } from "./openclaw-state-worker-context.js";
+import type { OpenClawStateWorkerContext } from "./openclaw-state-worker-context.types.js";
+
+export async function readAgentDeletionJournalAuthorityInWorker(
+  agentId: string,
+  context: OpenClawStateWorkerContext,
+  signal: AbortSignal,
+): Promise<AgentDeletionJournalAuthority | undefined> {
+  context.maintenanceScope?.assertAdmission();
+  context.admission.assertCurrent();
+  signal.throwIfAborted();
+  const reply = await executeExistingOpenClawStateRead(
+    { path: context.admission.databasePath, env: context.environment },
+    { type: "agentDeletionJournal.authority", agentId: normalizeAgentId(agentId) },
+    { context, current: true, signal },
+  );
+  context.maintenanceScope?.assertAdmission();
+  context.admission.assertCurrent();
+  signal.throwIfAborted();
+  if (reply && (!reply.ok || reply.type !== "agentDeletionJournal.authority")) {
+    throw new Error("Unexpected agent deletion journal authority result");
+  }
+  return reply?.authority;
+}
 
 /** Completed cleanup still retains a deletion tombstone. */
 export function readAgentDeletionJournalStatusInDatabase(
@@ -128,6 +148,9 @@ export function readRetainedAgentDeletionsFromDatabase(
     purpose === "maintenance" && tableExists(database, "migration_sources")
       ? readAgentDeletionRecoveryHolds({ db: database, path: statePath })
       : [];
+  if (missing && held.length === 0 && hasPreJournalStateSchema(database)) {
+    return { status: "empty" };
+  }
   if (missing || unreadableReason !== undefined) {
     return {
       status: "unavailable",
@@ -186,12 +209,8 @@ export function prepareAgentDatabaseDeletionSnapshotRead(
     env,
     path: path.resolve(inputOptions.path ?? resolveOpenClawStateSqlitePath(env)),
   };
-  const inSourceContext = AsyncLocalStorage.snapshot();
-  const context = captureOpenClawStateWorkerContext(options);
-  const assertCurrent = () => {
-    context.maintenanceScope?.assertAdmission();
-    context.admission.assertCurrent();
-  };
+  const source = prepareOpenClawStateReadSource(options);
+  const context = source.workerContext();
   const readSnapshot = async (readContext: typeof context) => {
     const assertReadCurrent = () => {
       readContext.maintenanceScope?.assertAdmission();
@@ -213,40 +232,19 @@ export function prepareAgentDatabaseDeletionSnapshotRead(
   return {
     read,
     async readWithCurrentAdmission() {
-      return inSourceContext(() => {
-        context.maintenanceScope?.assertAdmission();
-        const original = context.admission.identity;
-        if (original.key.startsWith("file:")) {
-          assertExistingDatabaseIdentity(options.path, original.key, original.birthtime);
-        } else {
-          // A still-current absent source can bind its first canonical creation.
-          context.admission.assertCurrent();
-        }
-        const current = captureOpenClawStateReadContext(options.path);
-        const source = context.admission.identity;
-        if (
-          current.admission.identity.key !== source.key ||
-          current.admission.identity.birthtime !== source.birthtime ||
-          current.maintenanceScope !== context.maintenanceScope ||
-          current.existingSchemaPath !== context.existingSchemaPath
-        ) {
-          throw new Error("Deletion snapshot source changed before read admission");
-        }
-        // A new read may follow handle retirement; an earlier reply retains its own revoked admission.
-        return readSnapshot({ ...context, ...current });
-      });
+      return source.withCurrent(readSnapshot);
     },
     async withCurrentSnapshot(consume) {
       let changed: boolean;
       const stop = sessionChanges.subscribeFacts((change) => {
-        if ("all" in change && change.scope === "stores") {
+        if (isSessionStoreTopologyChange(change)) {
           changed = true;
         }
       });
       try {
         for (;;) {
           changed = false;
-          const { snapshot } = await read();
+          const { snapshot, assertCurrent } = await read();
           assertCurrent();
           if (changed) {
             continue;

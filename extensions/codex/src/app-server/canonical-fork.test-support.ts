@@ -14,7 +14,7 @@ import { readVisibleSessionTranscriptMessageEntries } from "openclaw/plugin-sdk/
 import { createStageTimingTracker } from "openclaw/plugin-sdk/time-runtime";
 import { continueLocalCodexSession } from "../session-catalog-adoption.js";
 import { createCodexSessionCatalogControl } from "../session-catalog-control.js";
-import { codexSessionCatalogRuntime } from "../session-catalog.js";
+import { registerCodexSessionCatalog } from "../session-catalog.js";
 import {
   codexUpstreamContinueResult,
   type CodexUpstreamBaseline,
@@ -70,7 +70,7 @@ export async function createCanonicalForkFixture(params: {
     workerOwned?: boolean;
   }) => Promise<{
     capabilities: EmbeddedRunAttemptParamsV2["hostCapabilities"];
-    close: () => void;
+    close: () => void | Promise<void>;
     abortController: AbortController;
     invalidate: (reason: "closed" | "aborted" | "replaced" | "claim") => Promise<void>;
     runWithScope: <T>(run: () => Promise<T>) => Promise<T>;
@@ -125,7 +125,7 @@ export async function createCanonicalForkFixture(params: {
   );
   const captured = createCapturedPluginRegistration({ id: "codex", config });
   const api = { ...captured.api, runtime };
-  codexSessionCatalogRuntime.register({
+  registerCodexSessionCatalog({
     resolveRuntimeOptions: resolveCodexSupervisionAppServerRuntimeOptions,
     api,
     bindingStore,
@@ -347,7 +347,7 @@ export async function createCanonicalForkFixture(params: {
         }
       });
     } finally {
-      host.close();
+      await host.close();
     }
   };
   return {

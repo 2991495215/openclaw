@@ -7,7 +7,7 @@ import { icons } from "./icons.ts";
 import { promoteToPopoverTopLayer } from "./menu-surface.ts";
 import "./web-awesome.ts";
 
-export type CatalogSessionMenuAction = "viewer" | "original" | "terminal" | "delete";
+export type CatalogSessionMenuAction = "viewer" | "import" | "original" | "terminal" | "delete";
 
 class CatalogSessionMenu extends OpenClawLightDomElement {
   @property({ attribute: false }) x = 0;
@@ -16,6 +16,7 @@ class CatalogSessionMenu extends OpenClawLightDomElement {
   @property({ attribute: false }) lastActive = "";
   @property({ attribute: false }) terminalDisabled = false;
   @property({ attribute: false }) canDelete = false;
+  @property({ attribute: false }) canImport = false;
   @property({ attribute: false }) canOpenOriginal = false;
   @property({ attribute: false }) onAction: (action: CatalogSessionMenuAction) => void = () => {};
   @property({ attribute: false }) onClose: () => void = () => {};
@@ -53,7 +54,7 @@ class CatalogSessionMenu extends OpenClawLightDomElement {
 
   override render() {
     const menuWidth = 240;
-    const menuMaxHeight = 140 + (this.canDelete ? 40 : 0) + (this.canOpenOriginal ? 40 : 0);
+    const menuMaxHeight = 140 + (this.canDelete ? 40 : 0) + (this.canImport ? 40 : 0) + (this.canOpenOriginal ? 40 : 0);
     const x = Math.max(8, Math.min(this.x, window.innerWidth - menuWidth - 8));
     const y = Math.max(8, Math.min(this.y, window.innerHeight - menuMaxHeight - 8));
     const menuLabel = t("chat.catalog.sessionMenu");
@@ -88,6 +89,16 @@ class CatalogSessionMenu extends OpenClawLightDomElement {
           >
           <span class="session-menu__text">${t("chat.catalog.openInOpenClaw")}</span>
         </wa-dropdown-item>
+        ${
+          this.canImport
+            ? html`<wa-dropdown-item class="session-menu__item" value="import">
+                <span slot="icon" class="session-menu__icon" aria-hidden="true"
+                  >${icons.download}</span
+                >
+                <span class="session-menu__text">${t("chat.catalog.importToOpenClaw")}</span>
+              </wa-dropdown-item>`
+            : ""
+        }
         ${
           this.canOpenOriginal
             ? html`<wa-dropdown-item class="session-menu__item" value="original">

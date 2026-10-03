@@ -29,9 +29,10 @@ import { DEFAULT_VITEST_TEST_TIMEOUT_MS } from "./vitest.timeouts.ts";
 import { compiledSubprocessesPlugin } from "./vitest.worker-artifacts.ts";
 
 if (process.versions.bun) {
-  // Removal: delete this Vitest bootstrap after oven-sh/bun#42349 ships in supported Bun.
-  const { ensureSqliteLibrarySelected } = await import("../../src/infra/bun-sqlite-library.ts");
-  ensureSqliteLibrarySelected();
+  // Threads capture this decision when created; late admission leaves their SQLite pools conservative.
+  const { initializeSqliteRuntimeCapabilities } =
+    await import("../../src/infra/bun-sqlite-library.ts");
+  await initializeSqliteRuntimeCapabilities();
 }
 
 export type { LocalVitestScheduling };
@@ -281,6 +282,16 @@ export const sharedVitestConfig = {
           "gateway-protocol",
           "src",
           "gateway-error-details.ts",
+        ),
+      },
+      {
+        find: "@openclaw/gateway-protocol/restart-unavailable",
+        replacement: path.join(
+          repoRoot,
+          "packages",
+          "gateway-protocol",
+          "src",
+          "restart-unavailable.ts",
         ),
       },
       {

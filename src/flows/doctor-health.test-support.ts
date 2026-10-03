@@ -64,6 +64,7 @@ beforeEach(() => {
     return {
       runtime: await params.service.readRuntime(params.env ?? process.env),
       portUsage: { port: params.port, status: "busy", listeners: [], hints: [] },
+      outcome: mocks.restartedHealthy ? "ready" : "failed",
       healthy: mocks.restartedHealthy,
       staleGatewayPids: [],
       gatewayVersion: params.expectedVersion ?? null,
@@ -79,6 +80,18 @@ vi.mock("../gateway/call.js", async (original) => {
   return {
     ...(await original<typeof import("../gateway/call.js")>()),
     callGatewayCli: gatewayMaintenanceResponse(() => mocks.resident()),
+  };
+});
+
+vi.mock("../daemon/service-process-membership.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../daemon/service-process-membership.js")>();
+  return {
+    ...actual,
+    // The in-memory manager models Doctor as an external caller, not a host service member.
+    inspectServiceProcessMembershipSync: (
+      ...args: Parameters<typeof actual.inspectServiceProcessMembershipSync>
+    ) =>
+      mocks.emulateNativeInstall ? "outside" : actual.inspectServiceProcessMembershipSync(...args),
   };
 });
 

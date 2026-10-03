@@ -12,6 +12,7 @@ import {
   type BufferedCommandResult,
   type CommandOptions,
 } from "../process/exec.js";
+import { withGitProcessOperation, type GitProcessOperation } from "../process/spawn-diagnostics.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { retryableGitNetworkOperation, withGitNetworkRetry } from "./git-network-retry.js";
@@ -96,6 +97,17 @@ export function normalizeGitPathForFilesystem(
   return path.win32.normalize(`${drive.toUpperCase()}:/${match[2] ?? ""}`);
 }
 
+export function gitCommandArgv(cwd: string, args: string[], config: string[] = []): string[] {
+  return [
+    "git",
+    ...config.flatMap((value) => ["-c", value]),
+    ...(process.platform === "win32" ? ["-c", "core.longpaths=true"] : []),
+    "-C",
+    cwd,
+    ...args,
+  ];
+}
+
 function withForegroundGitMaintenance(argv: string[]): string[] {
   // Maintenance and legacy auto-GC must stay in their cancellable process tree.
   return argv[0] === "git"
@@ -115,6 +127,7 @@ export type GitCommandOptions = Pick<
   | "maxOutputBytes"
   | "terminateOnOutputLimit"
 > & {
+  operation?: GitProcessOperation;
   /** An admitted destructive operation must settle without the generic Git deadline. */
   waitForExit?: boolean;
   /** Recheck caller authority immediately before each attempt. */
@@ -127,7 +140,9 @@ export async function executeGitCommand(
   args: string[],
   options: GitCommandOptions = {},
 ): Promise<GitCommandResult> {
-  return executeGitCommandWithOutput(runCommandWithTimeout, cwd, args, options);
+  return withGitProcessOperation(options.operation, () =>
+    executeGitCommandWithOutput(runCommandWithTimeout, cwd, args, options),
+  );
 }
 
 /** The same command/timeout contract, with output bytes owned by a worker consumer. */
@@ -136,7 +151,9 @@ export async function executeGitCommandBytes(
   args: string[],
   options: GitCommandOptions = {},
 ): Promise<GitCommandBytesResult> {
-  return executeGitCommandWithOutput(runCommandBuffersWithTimeout, cwd, args, options);
+  return withGitProcessOperation(options.operation, () =>
+    executeGitCommandWithOutput(runCommandBuffersWithTimeout, cwd, args, options),
+  );
 }
 
 async function executeGitCommandWithOutput<Result extends SpawnResult | BufferSpawnResult>(
@@ -146,7 +163,7 @@ async function executeGitCommandWithOutput<Result extends SpawnResult | BufferSp
   options: GitCommandOptions,
 ): Promise<Result & { timeoutMs: number }> {
   const timeoutMs = options.timeoutMs ?? GIT_TIMEOUT_MS;
-  const argv = ["git", "-C", cwd, ...args];
+  const argv = gitCommandArgv(cwd, args);
   if (options.waitForExit === true) {
     options.beforeRun?.();
     const result = await run(options.killProcessTree ? withForegroundGitMaintenance(argv) : argv, {
@@ -167,20 +184,27 @@ async function executeGitCommandWithOutput<Result extends SpawnResult | BufferSp
   return { ...result, timeoutMs };
 }
 
+export type GitBufferedCommandOptions = BufferedCommandOptions & {
+  beforeRun?: () => void;
+  operation?: GitProcessOperation;
+};
+
 export async function executeGitCommandBuffered(
   cwd: string,
   args: string[],
-  options: BufferedCommandOptions & { beforeRun?: () => void } = {},
+  options: GitBufferedCommandOptions = {},
 ): Promise<BufferedCommandResult> {
-  const argv = ["git", "-C", cwd, ...args];
-  return await withGitNetworkRetry(
-    retryableGitNetworkOperation(args),
-    { ...options, timeoutMs: options.timeoutMs ?? GIT_TIMEOUT_MS },
-    (timeoutMs) =>
-      runCommandBuffered(
-        options.killProcessTree === false ? argv : withForegroundGitMaintenance(argv),
-        { ...options, timeoutMs },
-      ),
+  const argv = gitCommandArgv(cwd, args);
+  return await withGitProcessOperation(options.operation, () =>
+    withGitNetworkRetry(
+      retryableGitNetworkOperation(args),
+      { ...options, timeoutMs: options.timeoutMs ?? GIT_TIMEOUT_MS },
+      (timeoutMs) =>
+        runCommandBuffered(
+          options.killProcessTree === false ? argv : withForegroundGitMaintenance(argv),
+          { ...options, timeoutMs },
+        ),
+    ),
   );
 }
 
@@ -202,7 +226,7 @@ export function createGitCommandError(
 export async function requireGitCommand(
   cwd: string,
   args: string[],
-  options: { env?: NodeJS.ProcessEnv; input?: string | Uint8Array; timeoutMs?: number } = {},
+  options: Pick<GitCommandOptions, "env" | "input" | "timeoutMs" | "operation"> = {},
 ): Promise<string> {
   return requireGitCommandOutput(
     `git ${args.join(" ")}`,
@@ -225,15 +249,8 @@ export function requireGitCommandOutput(
   return result.stdout;
 }
 
-/**
- * Null device path that Git for Windows can open as a config file.
- *
- * `os.devNull` returns `\.\nul` on Windows, which Git rejects with
- * "unable to access '\.\nul': Invalid argument" (exit 128) when passed via
- * `GIT_CONFIG_GLOBAL` or `GIT_CONFIG_SYSTEM` — it must open and parse those
- * files. "NUL" is the path Git for Windows understands. Config *values* such
- * as `core.hooksPath` accept the device path and need no change.
- */
+// Git config filenames need "NUL" on Windows; os.devNull's device path is invalid.
+// Config values such as core.hooksPath still accept os.devNull.
 export function gitNullConfigPath(): string {
   return process.platform === "win32" ? "NUL" : "/dev/null";
 }

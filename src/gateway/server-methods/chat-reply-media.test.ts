@@ -16,8 +16,11 @@ import {
   vi,
   type MockInstance,
 } from "vitest";
+import { buildEmbeddedRunPayloads } from "../../agents/embedded-agent-runner/run/payloads.js";
 import { consumePendingToolMediaIntoReply } from "../../agents/embedded-agent-subscribe.handlers.messages.replies.js";
 import { setReplyPayloadMetadata } from "../../auto-reply/reply-payload.js";
+import { parseReplyDirectives } from "../../auto-reply/reply/reply-directives.js";
+import { createReplyMediaPathNormalizer } from "../../auto-reply/reply/reply-media-paths.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createStructuredOutboundPayloadPlan } from "../../infra/outbound/payloads.js";
 import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
@@ -196,6 +199,95 @@ describe("normalizeWebchatReplyMediaPathsForDisplay", () => {
   async function expectOutboundMediaMissing(stateDir: string): Promise<void> {
     await expectPathMissing(path.join(stateDir, "media", "outbound"));
   }
+
+  it.each([
+    "http://192.168.1.138:64384/movie.mp4?openclaw_portal=synthetic-test-token",
+    "https://127.0.0.1/movie.mp4",
+    "https://user:synthetic-password@example.com/movie.mp4",
+  ])("reports a rejected final MEDIA directive without exposing its URL: %s", async (source) => {
+    const payloads = buildEmbeddedRunPayloads({
+      assistantTexts: [`Here is the movie.\nMEDIA:${source}`],
+      lastAssistant: undefined,
+      sessionKey: TEST_SESSION_KEY,
+    });
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toContain("public HTTPS URL without credentials");
+    expect(payloads[0]?.text).not.toContain(source);
+    expect(payloads[0]?.text).not.toContain("MEDIA:");
+    expect(payloads[0]?.mediaUrls).toBeUndefined();
+
+    const { assistantContent, persistedAssistantContent } = await buildAssistantReplyContent({
+      sessionKey: TEST_SESSION_KEY,
+      payloads,
+    });
+    expect(assistantContent).toEqual([
+      { type: "text", text: "Here is the movie." },
+      {
+        type: "attachment_error",
+        attachment: {
+          code: "invalid-reference",
+          kind: "document",
+          label: "Media not attached",
+        },
+      },
+    ]);
+    expect(persistedAssistantContent).toEqual(assistantContent);
+  });
+
+  it.each(["directive", "structured"])(
+    "publishes a canonical inbound image from a %s reply",
+    async (kind) => {
+      const { cfg } = createMediaTestContext({ allowRead: true });
+      const saved = await saveMediaBuffer(
+        PNG_BYTES,
+        "image/png",
+        "inbound",
+        undefined,
+        "photo.png",
+      );
+      const source = `media://inbound/${saved.id}`;
+      const caption = "Here it is again.";
+      const payload = await normalizeReplyMedia({
+        cfg,
+        payloads: [
+          kind === "directive"
+            ? parseReplyDirectives(`[[reply_to_current]] ${caption}\nMEDIA:${source}`)
+            : { text: caption, replyToCurrent: true, mediaUrls: [source] },
+        ],
+      });
+
+      expect(payload?.text).toBe(caption);
+      expect(payload?.replyToCurrent).toBe(true);
+      const normalizedPath = requireString(payload?.mediaUrls?.[0], "normalized media path");
+      expect(await fs.readFile(normalizedPath)).toEqual(PNG_BYTES);
+      const blocks = await createManagedImageBlocks({ cfg, mediaUrls: payload?.mediaUrls });
+      expect(blocks).toEqual([
+        expect.objectContaining({
+          type: "image",
+          mimeType: "image/png",
+          sizeBytes: PNG_BYTES.length,
+        }),
+      ]);
+    },
+  );
+
+  it("does not give inbound URIs broader sandbox access than their stored paths", async () => {
+    const { cfg, stateDir, workspaceDir } = createMediaTestContext({ allowRead: true });
+    const saved = await saveMediaBuffer(PNG_BYTES, "image/png", "inbound", undefined, "photo.png");
+    const normalize = createReplyMediaPathNormalizer({
+      cfg,
+      sessionKey: TEST_SESSION_KEY,
+      workspaceDir,
+      sandboxRoot: path.join(stateDir, "sandbox"),
+    });
+
+    for (const source of [saved.path, `media://inbound/${saved.id}`]) {
+      const payload = await normalize({ mediaUrls: [source] });
+      expect(payload.mediaUrls).toBeUndefined();
+      expect(payload.text).toContain("Delivery failed");
+    }
+    await expectOutboundMediaMissing(stateDir);
+  });
 
   it("stages Codex-home image paths before Gateway managed-image display", async () => {
     const { stateDir, cfg, sourcePath, payload } = await normalizeCodexHomeImage({
@@ -915,39 +1007,18 @@ describe("normalizeWebchatReplyMediaPathsForDisplay", () => {
     await expectOutboundMediaMissing(stateDir);
   });
 
-  it.each([
-    {
-      label: "a missing attachment before the staged attachment",
-      mediaUrls: (missingPath: string, imagePath: string, dataUrl: string) => [
-        missingPath,
-        imagePath,
-        dataUrl,
-      ],
-    },
-    {
-      label: "a missing attachment after the staged attachment",
-      mediaUrls: (missingPath: string, imagePath: string, dataUrl: string) => [
-        imagePath,
-        missingPath,
-        dataUrl,
-      ],
-    },
-    {
-      label: "multiple missing attachments around surviving media",
-      mediaUrls: (missingPath: string, imagePath: string, dataUrl: string) => [
-        missingPath,
-        imagePath,
-        dataUrl,
-        path.join(path.dirname(imagePath), "private customer report.png"),
-      ],
-    },
-  ])("keeps one named failure receipt per missing file for $label", async ({ mediaUrls }) => {
+  it("keeps one named failure receipt per missing file around surviving media", async () => {
     const dataUrl = dataImageUrl();
     const { stateDir, sourcePath, payload } = await normalizeCodexHomeImage({
       allowRead: true,
       payload: (imagePath) => ({
         text: "Here is the surviving attachment",
-        mediaUrls: mediaUrls(path.join(path.dirname(imagePath), "missing.png"), imagePath, dataUrl),
+        mediaUrls: [
+          path.join(path.dirname(imagePath), "missing.png"),
+          imagePath,
+          dataUrl,
+          path.join(path.dirname(imagePath), "private customer report.png"),
+        ],
       }),
     });
     const normalizedLocalPath = requireString(payload?.mediaUrls?.[0], "normalized local media");
@@ -956,13 +1027,9 @@ describe("normalizeWebchatReplyMediaPathsForDisplay", () => {
       "Here is the surviving attachment\n⚠️ missing.png: File not found. Check the path and try again.",
     );
     expect(payload?.text).not.toContain(sourcePath);
-    if (
-      mediaUrls(path.join(path.dirname(sourcePath), "missing.png"), sourcePath, dataUrl).length > 3
-    ) {
-      expect(payload?.text).toContain(
-        "⚠️ private customer report.png: File not found. Check the path and try again.",
-      );
-    }
+    expect(payload?.text).toContain(
+      "⚠️ private customer report.png: File not found. Check the path and try again.",
+    );
     expect(Buffer.byteLength(payload?.text ?? "")).toBeLessThan(512);
     expect(payload?.mediaUrl).toBe(normalizedLocalPath);
     expect(payload?.mediaUrls).toEqual([normalizedLocalPath, dataUrl]);
