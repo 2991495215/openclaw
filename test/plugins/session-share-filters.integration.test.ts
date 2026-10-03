@@ -10,7 +10,8 @@ import {
 import { recordSessionParticipant } from "../../src/config/sessions/session-accessor.sqlite-participants.native.js";
 import type { InternalSessionEntry as SessionEntry } from "../../src/config/sessions/types.js";
 import { createPluginRuntime } from "../../src/plugins/runtime/index.js";
-import { ensureProfileForEmail, linkEmail } from "../../src/state/user-profiles.js";
+import { linkEmail } from "../../src/state/user-profile-writes.worker.js";
+import { ensureProfileForEmail } from "../../src/state/user-profiles.js";
 import { commandFixture } from "./session-share.test-support.js";
 
 describe("session-share source publication filters", () => {

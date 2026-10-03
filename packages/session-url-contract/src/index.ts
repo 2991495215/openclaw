@@ -35,8 +35,10 @@ type BuildControlUiSessionPathParams = {
   fallbackAgentId?: string;
   basePath?: string;
   displayName?: string;
-  /** Keep qualified keys literal, including the configured main session. */
+  /** Keep session keys unshortened; the configured main session still uses its home route. */
   exactKey?: boolean;
+  /** Keep a qualified main key literal when linking to a source with unknown session defaults. */
+  literalMainKey?: boolean;
   mainKey?: string;
   shortIdLength?: number;
 };
@@ -89,8 +91,9 @@ export function buildControlUiSessionPath(params: BuildControlUiSessionPathParam
   const rest = parsed?.rest ?? rawKey;
   const normalizedRest = rest.toLowerCase();
   const mainKey = normalizeNullableString(params.mainKey)?.toLowerCase() ?? DEFAULT_MAIN_KEY;
+  const literalMainKey = Boolean(params.literalMainKey && parsed && normalizedRest === mainKey);
   if (
-    (normalizedRest === mainKey && (!params.exactKey || !parsed)) ||
+    (normalizedRest === mainKey && !literalMainKey) ||
     (!parsed && (normalizedRest === DEFAULT_MAIN_KEY || normalizedRest === "global"))
   ) {
     return `${namespace}/${encodedAgentId}`;
@@ -101,7 +104,12 @@ export function buildControlUiSessionPath(params: BuildControlUiSessionPathParam
   }
   // Incognito is excluded from discovery, so its URLs must retain the exact key.
   // Qualified global keys are literal sessions, distinct from the unqualified home sentinel.
-  if (params.exactKey || isIncognitoSessionKey(rawKey) || normalizedRest === "global") {
+  if (
+    params.exactKey ||
+    literalMainKey ||
+    isIncognitoSessionKey(rawKey) ||
+    normalizedRest === "global"
+  ) {
     const segment = segments[0] ?? "";
     return segments.length === 1 &&
       (isReservedSessionRest(segment, params.mainKey) || parseShortSessionRef(segment))

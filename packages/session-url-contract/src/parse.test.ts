@@ -116,6 +116,7 @@ describe("parseControlUiSessionPath", () => {
           namespace: "chat",
           sessionKey,
           exactKey: true,
+          literalMainKey: true,
           basePath: "/control",
         });
         expect(parseControlUiSessionPath(path ?? "", "/control", mainKey)).toMatchObject({

@@ -54,7 +54,8 @@ class CatalogSessionMenu extends OpenClawLightDomElement {
 
   override render() {
     const menuWidth = 240;
-    const menuMaxHeight = 140 + (this.canDelete ? 40 : 0) + (this.canImport ? 40 : 0) + (this.canOpenOriginal ? 40 : 0);
+    const menuMaxHeight =
+      140 + (this.canDelete ? 40 : 0) + (this.canImport ? 40 : 0) + (this.canOpenOriginal ? 40 : 0);
     const x = Math.max(8, Math.min(this.x, window.innerWidth - menuWidth - 8));
     const y = Math.max(8, Math.min(this.y, window.innerHeight - menuMaxHeight - 8));
     const menuLabel = t("chat.catalog.sessionMenu");

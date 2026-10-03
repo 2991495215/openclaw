@@ -1,7 +1,7 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import type {
   OpenClawPluginNodeHostCommand,
-  OpenClawPluginService,
+  OpenClawPluginApi,
 } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
@@ -16,7 +16,7 @@ import { createPluginRuntime } from "../../src/plugins/runtime/index.js";
 export function registerSessionShare(runtime: PluginRuntime, config: OpenClawConfig = {}) {
   const nodeCommands: OpenClawPluginNodeHostCommand[] = [];
   const catalogs: SessionCatalogProvider[] = [];
-  const services: OpenClawPluginService[] = [];
+  const services: Parameters<OpenClawPluginApi["registerService"]>[0][] = [];
   const api = createTestPluginApi({
     runtime,
     config,
