@@ -145,13 +145,28 @@ export class SessionCatalogLiveState {
     return catalogs.map((catalog) => withdrawSessionCatalogRows(catalog));
   }
 
-  settleRootWindows(catalogs: SessionCatalog[], error?: SessionCatalog["error"]) {
+  settleRootWindows(
+    catalogs: SessionCatalog[],
+    error?: SessionCatalog["error"],
+    acceptsHost: (catalogId: string, hostId: string) => boolean = () => true,
+  ) {
     const keys = new Set(
       catalogs.flatMap((catalog) =>
         catalog.hosts.map((host) => sessionCatalogHostKey(catalog.id, host.hostId)),
       ),
     );
     for (const [key, window] of this.windows) {
+      if (
+        catalogs.some((catalog) =>
+          catalog.hosts.some(
+            (host) =>
+              sessionCatalogHostKey(catalog.id, host.hostId) === key &&
+              !acceptsHost(catalog.id, host.hostId),
+          ),
+        )
+      ) {
+        continue;
+      }
       if (
         catalogs.some(
           (catalog) =>
@@ -175,6 +190,9 @@ export class SessionCatalogLiveState {
     for (const catalog of catalogs) {
       const result = error ? { ...catalog, error } : catalog;
       for (const host of catalog.hosts) {
+        if (!acceptsHost(catalog.id, host.hostId)) {
+          continue;
+        }
         const window = this.windows.get(sessionCatalogHostKey(catalog.id, host.hostId));
         const depth =
           window?.request?.status === "retry" ? window.request.depth : (window?.depth ?? 0);
@@ -387,6 +405,12 @@ export class SessionCatalogLiveState {
     }
   }
 
+  acceptsRootHost(catalogId: string, hostId: string, sequence: number) {
+    return (
+      sequence >= (this.hostProgressSequences.get(sessionCatalogHostKey(catalogId, hostId)) ?? -1)
+    );
+  }
+
   ownsRequest(owner: symbol) {
     return this.request?.owner === owner;
   }
@@ -419,7 +443,10 @@ export class SessionCatalogLiveState {
     }
     for (const hostKey of this.knownHostKeys) {
       if (!finalHostKeys.has(hostKey)) {
-        this.hostProgressSequences.set(hostKey, params.progressSequence);
+        this.hostProgressSequences.set(
+          hostKey,
+          Math.max(this.hostProgressSequences.get(hostKey) ?? -1, params.progressSequence),
+        );
       }
     }
     this.knownHostKeys = finalHostKeys;
@@ -561,22 +588,21 @@ export async function refreshSessionCatalogsLive(params: {
   client: GatewayBrowserClient;
   agentId: string;
   generation: number;
-  revision: number;
   currentGeneration: () => number;
-  currentRevision: () => number;
+  catalogRevisions: ReadonlyMap<string, number>;
   currentClient: () => GatewayBrowserClient | null;
   catalogs: () => SessionCatalog[];
   pageDepths: ReadonlyMap<string, number>;
   connected: () => boolean;
   catalogChangedEvents: boolean;
   applyPending: (catalogs: SessionCatalog[]) => void;
-  applyFinal: (catalogs: SessionCatalog[], revisedCatalogIds: ReadonlySet<string>) => void;
+  applyFinal: (catalogs: SessionCatalog[]) => void;
   /** Finish the finite cursor sweep without repeating the root catalog request. */
   continueRefresh: () => Promise<void>;
   applyError: (error: unknown) => void;
   refresh: () => Promise<void>;
 }) {
-  const { live, client, generation, revision } = params;
+  const { live, client, generation } = params;
   if (live.requestGeneration === generation) {
     return;
   }
@@ -587,12 +613,16 @@ export async function refreshSessionCatalogsLive(params: {
   }
   const { progressId, progressSequence, requestOwner } = live.beginRequest(generation);
   params.applyPending(live.withdraw(params.catalogs()));
+  const revisions = new Map(params.catalogRevisions);
+  const acceptsCatalog = (catalogId: string) =>
+    (revisions.get(catalogId) ?? 0) === (params.catalogRevisions.get(catalogId) ?? 0);
+  const acceptsHost = (catalogId: string, hostId: string) =>
+    acceptsCatalog(catalogId) && live.acceptsRootHost(catalogId, hostId, progressSequence);
   let retryDelayMs: number | null = null;
   const requestIsCurrent = () =>
     live.ownsRequest(requestOwner) &&
     generation === params.currentGeneration() &&
     client === params.currentClient();
-  const revisionIsCurrent = () => requestIsCurrent() && revision === params.currentRevision();
   try {
     const result = await client.request<SessionsCatalogListResult>("sessions.catalog.list", {
       agentId: params.agentId,
@@ -606,15 +636,25 @@ export async function refreshSessionCatalogsLive(params: {
     live.setRequestPhase(requestOwner, "replay");
     const previousCatalogs = params.catalogs();
     const catalogs = await refetchExpandedSessionCatalogPages({
-      catalogs: live.mergeFinal(result.catalogs, previousCatalogs),
+      catalogs: live
+        .mergeFinal(result.catalogs, previousCatalogs)
+        .filter((catalog) => acceptsCatalog(catalog.id))
+        .map((catalog) => {
+          // mergeFinal allocated this root-owned catalog; never mutate the UI snapshot.
+          catalog.hosts = catalog.hosts.filter((host) => acceptsHost(catalog.id, host.hostId));
+          return catalog;
+        }),
       previousCatalogs,
       client,
       agentId: params.agentId,
       pageDepths: params.pageDepths,
-      isCurrent: revisionIsCurrent,
-      canRequestPage: () => revisionIsCurrent() && document.visibilityState !== "hidden",
+      isCurrent: (catalogId, hostId) => requestIsCurrent() && acceptsHost(catalogId, hostId),
+      canRequestPage: (catalogId, hostId) =>
+        requestIsCurrent() &&
+        acceptsHost(catalogId, hostId) &&
+        document.visibilityState !== "hidden",
     });
-    if (!revisionIsCurrent()) {
+    if (!requestIsCurrent()) {
       return;
     }
     live.resetRetry();
@@ -626,8 +666,13 @@ export async function refreshSessionCatalogsLive(params: {
       const current = currentCatalogs.find((entry) => entry.id === catalog.id);
       const newerHosts =
         current?.hosts.filter(
-          (host) => host !== previous?.hosts.find((entry) => entry.hostId === host.hostId),
+          (host) =>
+            !acceptsHost(catalog.id, host.hostId) ||
+            host !== previous?.hosts.find((entry) => entry.hostId === host.hostId),
         ) ?? [];
+      if (!acceptsCatalog(catalog.id) && current) {
+        return current;
+      }
       return {
         ...catalog,
         ...(newerHosts.length > 0 ? current : undefined),
@@ -644,23 +689,33 @@ export async function refreshSessionCatalogsLive(params: {
     for (const catalog of currentCatalogs) {
       if (
         !catalogs.some((entry) => entry.id === catalog.id) &&
-        !previousCatalogs.some((entry) => entry.id === catalog.id)
+        (!acceptsCatalog(catalog.id) ||
+          !previousCatalogs.some((entry) => entry.id === catalog.id) ||
+          catalog.hosts.some((host) => !acceptsHost(catalog.id, host.hostId)))
       ) {
-        acceptedCatalogs.push(catalog);
+        acceptedCatalogs.push(
+          acceptsCatalog(catalog.id)
+            ? {
+                ...catalog,
+                hosts: catalog.hosts.filter(
+                  (host) =>
+                    !acceptsHost(catalog.id, host.hostId) ||
+                    !previousCatalogs.some((entry) => entry.id === catalog.id),
+                ),
+              }
+            : catalog,
+        );
       }
     }
-    live.settleRootWindows(acceptedCatalogs);
-    params.applyFinal(
-      acceptedCatalogs,
-      new Set([...params.catalogs(), ...catalogs].map((catalog) => catalog.id)),
-    );
+    live.settleRootWindows(acceptedCatalogs, undefined, acceptsHost);
+    params.applyFinal(acceptedCatalogs);
     live.markFinal({ catalogs: acceptedCatalogs, progressSequence });
     live.setRequestPhase(requestOwner, "discovery");
     await params.continueRefresh();
   } catch (error) {
     // Only stale-permitted catalogs keep their previous window across request failure.
-    if (revisionIsCurrent()) {
-      live.settleRootWindows(params.catalogs(), sessionCatalogRequestError(error));
+    if (requestIsCurrent()) {
+      live.settleRootWindows(params.catalogs(), sessionCatalogRequestError(error), acceptsHost);
       retryDelayMs = live.retryRequest(error);
       if (retryDelayMs === null) {
         live.warnRequestError(error);

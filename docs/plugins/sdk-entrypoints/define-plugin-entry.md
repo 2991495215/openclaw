@@ -64,12 +64,12 @@ export default definePluginEntry({
   URL without credentials, query, or fragment; never trust a remote row to choose
   the destination. This navigation opens a separate tab and grants no local
   continuation, archive, or terminal capability. For OpenClaw source sessions,
-  use `buildControlUiSessionPath` with `exactKey: true` and `literalMainKey: true` from
+  use `buildControlUiSessionPath` with `exactKey: true` and `literalKey: true` from
   `openclaw/plugin-sdk/session-discussion`. `exactKey: true` alone retains the
   established home routing for a main-session key; Open original needs its literal
   source session route, which stays pinned through canonicalization and reload even
-  when the configured home key changes. For the unqualified stored `global` transcript, also pass
-  `literalGlobalKey: true` and its source `fallbackAgentId`; this uses an explicit
+  when any configured home key changes. For the unqualified stored `global` transcript,
+  supply its source `fallbackAgentId` with `literalKey: true`; this uses an explicit
   global route instead of selecting that agent's configured home session. When
   rebuilding a parsed explicit route, retain its `literalKey` intent in the shared
   path builder so navigation cannot turn it back into a configurable home alias.
@@ -82,7 +82,9 @@ export default definePluginEntry({
   progress from an older request cannot restore a withdrawn row. Late host completion
   restores the requested expanded window even while other hosts are still loading.
   A transient page failure keeps an explicit retry action, not old rows or cursor
-  authority; retry starts at the current authorized head. Reject discovery failures
+  authority; retry starts at the current authorized head. A targeted retry owns only
+  its requested hosts; the final root response still reconciles current siblings
+  when a best-effort progress frame is absent. Reject discovery failures
   with a safe provider error instead of returning successful empty results; only
   successful discovery with no eligible sources represents absence. Return empty pending
   hosts and reauthorize each list/read at the source. Receiver visibility checks do

@@ -13,7 +13,10 @@ import {
   createTestGatewayClient,
 } from "../test-helpers/gateway-client.ts";
 import "../test-helpers/app-sidebar-suite.ts";
-import { loadMoreSessionCatalog } from "./session-data-controller-catalog.ts";
+import {
+  applySessionCatalogContinuation,
+  loadMoreSessionCatalog,
+} from "./session-data-controller-catalog.ts";
 import "./app-sidebar.ts";
 
 function sourceCatalogPage(rows: Parameters<typeof catalogPage>[0], cursor?: string) {
@@ -698,4 +701,199 @@ describe("hidden discovery is not a requested expanded window", () => {
     expect(sidebar.sessionData.sessionCatalogLive.discoveryPages.size).toBe(0);
     expect(sidebar.textContent).not.toContain("Previously visible");
   });
+});
+
+describe("root reconciliation while a source retry owns one host", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+  it.each([
+    { order: "target-first", progress: "absent", outcome: "rows" },
+    { order: "root-first", progress: "absent", outcome: "rows" },
+    { order: "target-first", progress: "before", outcome: "rows" },
+    { order: "root-first", progress: "after", outcome: "rows" },
+    { order: "root-first", progress: "absent", outcome: "target-error" },
+    { order: "target-first", progress: "absent", outcome: "peer-revoked" },
+    { order: "target-first", progress: "absent", outcome: "root-error" },
+    { order: "root-first", progress: "absent", outcome: "reset" },
+    { order: "target-first", progress: "absent", outcome: "provider-error" },
+    { order: "root-first", progress: "absent", outcome: "provider-error" },
+  ])(
+    "reconciles $order/$progress/$outcome without stale authority",
+    async ({ order, progress, outcome }) => {
+      const initial = sourceCatalogPage([{ threadId: "old", name: "Old target" }], "old-cursor");
+      const peer = {
+        ...sourceCatalogPage([{ threadId: "old-peer", name: "Old peer" }]).catalogs[0]!.hosts[0]!,
+        hostId: "node:peer",
+        label: "Peer source",
+      };
+      initial.catalogs[0]!.hosts.push(peer);
+      const target = sourceCatalogPage([{ threadId: "target", name: "Target retry result" }]);
+      const aggregate = sourceCatalogPage([{ threadId: "retired", name: "Retired target result" }]);
+      const freshPeer = {
+        ...peer,
+        sessions: [{ ...peer.sessions[0]!, threadId: "fresh-peer", name: "Fresh peer" }],
+      };
+      if (outcome !== "peer-revoked") {
+        aggregate.catalogs[0]!.hosts.push(freshPeer);
+      }
+      const root = deferred<typeof aggregate>();
+      const retry = deferred<typeof target>();
+      const request = createGatewayRequestMock()
+        .mockResolvedValueOnce(initial)
+        .mockRejectedValueOnce(new Error("Target temporarily unavailable"))
+        .mockReturnValueOnce(root.promise)
+        .mockReturnValueOnce(retry.promise)
+        .mockResolvedValue(target);
+      const { sidebar, gateway } = await mountTab(request);
+      await loadMoreSessionCatalog(sidebar.sessionData, "codex", ["gateway:local"]);
+      const refreshing = sidebar.sessionData.refreshSessionCatalogs();
+      await sidebar.updateComplete;
+      const button = sidebar.querySelector<HTMLButtonElement>(
+        '[data-session-catalog-load-more="codex"]',
+      );
+      expect(button).not.toBeNull();
+      button!.click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(request.mock.calls[3]![1]).toMatchObject({ hostIds: ["gateway:local"] });
+      expect(request.mock.calls[3]![1]).not.toHaveProperty("cursors");
+      const publish = () =>
+        gateway.publishEvent("sessions.catalog.host", {
+          progressId: (request.mock.calls[2]![1] as { progressId: string }).progressId,
+          agentId: "main",
+          catalog: { ...aggregate.catalogs[0]!, hosts: [freshPeer] },
+        });
+      if (progress === "before") {
+        publish();
+      }
+      if (outcome === "reset") {
+        request.mockResolvedValue(sourceCatalogPage([]));
+        sidebar.sessionData.resetSessionCatalogConnection();
+      }
+      const finishRoot = async () => {
+        if (outcome === "root-error") {
+          root.reject(new Error("Root temporarily unavailable"));
+        } else {
+          root.resolve(
+            outcome === "provider-error"
+              ? {
+                  catalogs: [
+                    {
+                      ...aggregate.catalogs[0]!,
+                      hosts: [],
+                      error: { code: "UNAVAILABLE", message: "Discovery temporarily unavailable" },
+                    },
+                  ],
+                }
+              : aggregate,
+          );
+        }
+        await refreshing;
+      };
+      const finishTarget = async () => {
+        if (outcome === "target-error") {
+          retry.reject(new Error("Retry temporarily unavailable"));
+        } else {
+          retry.resolve(target);
+        }
+        await vi.advanceTimersByTimeAsync(0);
+      };
+      if (order === "root-first") {
+        await finishRoot();
+        await finishTarget();
+      } else {
+        await finishTarget();
+        await finishRoot();
+      }
+      if (progress === "after") {
+        publish();
+      }
+      await sidebar.updateComplete;
+      if (outcome === "target-error") {
+        const retryButton = sidebar.querySelector<HTMLButtonElement>(
+          '[data-session-catalog-load-more="codex"]',
+        );
+        expect(retryButton).not.toBeNull();
+        retryButton!.click();
+        await vi.advanceTimersByTimeAsync(0);
+        await sidebar.updateComplete;
+        expect(request.mock.calls.at(-1)![1]).not.toHaveProperty("cursors");
+      }
+      if (outcome === "provider-error") {
+        expect(sidebar.sessionData.sessionCatalogs[0]?.error?.message).toBe(
+          "Discovery temporarily unavailable",
+        );
+        expect(sidebar.textContent).toContain("Target retry result");
+        expect(sidebar.textContent).not.toContain("Fresh peer");
+        const retryRoot = sidebar.querySelector<HTMLButtonElement>(
+          '[data-session-catalog-load-more="codex"]',
+        );
+        expect(retryRoot).not.toBeNull();
+        const recovery = structuredClone(target);
+        recovery.catalogs[0]!.hosts.push(freshPeer);
+        request.mockResolvedValueOnce(recovery);
+        const before = request.mock.calls.length;
+        retryRoot!.click();
+        await vi.advanceTimersByTimeAsync(0);
+        await sidebar.updateComplete;
+        expect(request).toHaveBeenCalledTimes(before + 1);
+        expect(request.mock.calls[before]![1]).not.toHaveProperty("hostIds");
+        expect(request.mock.calls[before]![1]).not.toHaveProperty("cursors");
+      }
+      const text = sidebar.textContent ?? "";
+      expect(text.includes("Old peer")).toBe(false);
+      expect(text.includes("Old target")).toBe(false);
+      expect(text.includes("Retired target result")).toBe(false);
+      expect(text.includes("Target retry result")).toBe(outcome !== "reset");
+      expect(text.includes("Fresh peer")).toBe(
+        !["reset", "peer-revoked", "root-error"].includes(outcome),
+      );
+      if (outcome !== "reset") {
+        expect(request).toHaveBeenCalledTimes(
+          ["target-error", "provider-error"].includes(outcome) ? 5 : 4,
+        );
+      }
+    },
+  );
+});
+
+describe("catalog return without a progress frame", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+  it.each(["fresh", "ordinary", "adopted"] as const)(
+    "reconciles a returning %s catalog after authoritative absence",
+    async (mode) => {
+      const page = mode === "fresh" ? sourceCatalogPage : catalogPage;
+      const initial = page([{ threadId: "old", name: "Previous catalog row" }]);
+      const returning = page([{ threadId: "new", name: "Returning catalog row" }]);
+      const request = createGatewayRequestMock()
+        .mockResolvedValueOnce(initial)
+        .mockResolvedValueOnce({ catalogs: [] })
+        .mockResolvedValueOnce(returning);
+      const { sidebar } = await mountTab(request);
+      if (mode === "adopted") {
+        applySessionCatalogContinuation(sidebar.sessionData, {
+          catalogId: "codex",
+          hostId: "gateway:local",
+          threadId: "old",
+          agentId: "main",
+          sessionKey: "agent:main:adopted",
+        });
+      }
+      await sidebar.sessionData.refreshSessionCatalogs();
+      await sidebar.updateComplete;
+      expect(sidebar.sessionData.sessionCatalogs).toEqual([]);
+      expect(sidebar.textContent).not.toContain("Previous catalog row");
+      await sidebar.sessionData.refreshSessionCatalogs();
+      await sidebar.updateComplete;
+      expect(sidebar.textContent).toContain("Returning catalog row");
+      expect(sidebar.textContent).not.toContain("Previous catalog row");
+      expect(request).toHaveBeenCalledTimes(3);
+    },
+  );
 });

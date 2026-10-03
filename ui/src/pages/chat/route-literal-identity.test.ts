@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { buildControlUiSessionPath } from "@openclaw/session-url-contract";
 import { describe, expect, it, vi } from "vitest";
+import { sessionShareOriginalUrl } from "../../../../extensions/session-share/src/original-url.ts";
+import { normalizeInitialApplicationLocation } from "../../app/bootstrap-location.ts";
 import { SESSION_FACE_PREFERENCE_PARAM } from "../../lib/sessions/route-navigation.ts";
 import { navigateChatPage } from "./chat-page-navigation.ts";
 import { loadChatRoute } from "./route-loader.ts";
@@ -168,5 +170,68 @@ describe("literal session permalink identity", () => {
         search: "",
       },
     });
+  });
+});
+
+describe("source-generated exact transcript links", () => {
+  it.each([
+    ["agent:research:main", "main"],
+    ["agent:research:workspace", "workspace"],
+    ["agent:research:project", "project"],
+    ["agent:research:global", "global"],
+    ["agent:research:release.js:~key:a/b", "workspace"],
+    ["session-share:research:global", "workspace"],
+  ])(
+    "pins %s across home=%s, startup, canonicalization, face and reload",
+    async (threadId, mainKey) => {
+      const { context, request } = contextFor({ ok: false });
+      context.basePath = "/control";
+      context.agents.state.agentsList = {
+        defaultId: "main",
+        mainKey,
+        scope: "per-sender",
+        agents: [],
+      };
+      const sessionKey = threadId.startsWith("session-share:") ? "global" : threadId;
+      const url = sessionShareOriginalUrl(
+        "https://source.example.com",
+        threadId,
+        context.basePath,
+      )!;
+      const original = {
+        pathname: new URL(url).pathname,
+        search: "?draft=hello",
+        hash: "#message",
+      };
+      expect(
+        normalizeInitialApplicationLocation(
+          original,
+          context.basePath,
+          "agent:other:main",
+          "other",
+          mainKey,
+        ),
+      ).toEqual(original);
+      const first = await loadChatRoute(context, original, "chat", signal());
+      expect(first).toMatchObject({ kind: "session", sessionKey });
+      if (!("kind" in first) || first.kind !== "session") {
+        throw new Error("Expected session");
+      }
+      const shown = first.canonicalLocation ?? original;
+      context.agents.state.agentsList.mainKey = "changed-home";
+      const reload = await loadChatRoute(context, shown, "chat", signal());
+      expect(reload).toMatchObject({ kind: "session", sessionKey });
+      const navigate = vi.fn<typeof context.navigate>();
+      navigateChatPage({ ...context, navigate }, first, sessionKey, false, "dashboard", "research");
+      const pathname = navigate.mock.calls[0]![1]!.pathname!;
+      await expect(
+        loadChatRoute(context, { pathname, search: "", hash: "" }, "dashboard", signal()),
+      ).resolves.toMatchObject({ sessionKey });
+      expect(request).not.toHaveBeenCalled();
+    },
+  );
+  it("does not invent source ownership for raw main or global", () => {
+    expect(sessionShareOriginalUrl("https://source.example.com", "main")).toBeUndefined();
+    expect(sessionShareOriginalUrl("https://source.example.com", "global")).toBeUndefined();
   });
 });

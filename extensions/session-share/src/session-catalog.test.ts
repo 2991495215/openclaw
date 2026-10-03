@@ -188,11 +188,14 @@ describe("session-share receiver catalog", () => {
     async (controlUiBasePath) => {
       const fixture = await catalogFixture();
       const sessions = [
-        ["agent:research:shared", "/chat/research/shared"],
+        ["agent:research:shared", "/chat/research/~key/shared"],
         ["agent:research:main", "/chat/research/~key/main"],
         ["agent:research:global", "/chat/research/~key/global"],
         ["session-share:research:global", "/chat/research/~global"],
-        ["agent:ops:question/answer:what?#%.js", "/chat/ops/question%2Fanswer/what%3F%23%25%2Ejs"],
+        [
+          "agent:ops:question/answer:what?#%.js",
+          "/chat/ops/~key/question%2Fanswer/what%3F%23%25%2Ejs",
+        ],
       ];
       fixture.invoke.mockResolvedValue({
         sessions: sessions.map(([threadId]) => ({ ...nativeSession, threadId })),
@@ -271,9 +274,9 @@ describe("session-share receiver catalog", () => {
   it.each([
     [
       "agent:research:dashboard:01234567-89ab-cdef-0123-456789abcdef",
-      "/chat/research/dashboard/01234567-89ab-cdef-0123-456789abcdef",
+      "/chat/research/~key/dashboard/01234567-89ab-cdef-0123-456789abcdef",
     ],
-    ["agent:research:shared", "/chat/research/shared"],
+    ["agent:research:shared", "/chat/research/~key/shared"],
     ["agent:research:global", "/chat/research/~key/global"],
     ["session-share:research:global", "/chat/research/~global"],
     ["global", undefined],

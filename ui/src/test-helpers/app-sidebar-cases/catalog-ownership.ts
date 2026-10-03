@@ -122,7 +122,6 @@ describe("AppSidebar session catalog ownership", () => {
         expect(sidebar.textContent).toContain("Retired page");
         expect(sidebar.querySelector(".sidebar-session-catalog-new")).not.toBeNull();
         expect(sidebar.sessionData.sessionCatalogPageDepths.size).toBe(1);
-        expect(sidebar.sessionData.sessionCatalogRevisions.size).toBe(1);
 
         gateway.publish({ phase: "reconnecting", hello: null });
         await sidebar.updateComplete;

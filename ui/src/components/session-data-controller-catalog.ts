@@ -354,7 +354,6 @@ export async function refreshSessionCatalogs(owner: SessionCatalogDataOwner): Pr
     return;
   }
   const generation = owner.sessionScopeGeneration;
-  const revision = owner.sessionCatalogRevision;
   // Publish the existing request lifecycle to settled-empty presentation too.
   owner.requestSessionDataUpdate();
   await refreshSessionCatalogsLive({
@@ -362,9 +361,8 @@ export async function refreshSessionCatalogs(owner: SessionCatalogDataOwner): Pr
     client,
     agentId,
     generation,
-    revision,
     currentGeneration: () => owner.sessionScopeGeneration,
-    currentRevision: () => owner.sessionCatalogRevision,
+    catalogRevisions: owner.sessionCatalogRevisions,
     currentClient: () => owner.sessionCatalogGatewayClient(),
     catalogs: () => owner.sessionCatalogs,
     pageDepths: owner.sessionCatalogPageDepths,
@@ -382,16 +380,10 @@ export async function refreshSessionCatalogs(owner: SessionCatalogDataOwner): Pr
       }
       owner.requestSessionDataUpdate();
     },
-    applyFinal: (catalogs, revisedCatalogIds) => {
+    applyFinal: (catalogs) => {
       owner.sessionCatalogs = owner.sessionCatalogLive.resumeDiscovery(catalogs);
       owner.sessionCatalogRefreshStatus = completePanelRefresh();
       owner.requestSessionDataUpdate();
-      for (const catalogId of revisedCatalogIds) {
-        owner.sessionCatalogRevisions.set(
-          catalogId,
-          (owner.sessionCatalogRevisions.get(catalogId) ?? 0) + 1,
-        );
-      }
       owner.sessionCatalogRevision += 1;
     },
     continueRefresh: async () => {
@@ -476,9 +468,9 @@ export async function loadMoreSessionCatalog(
     return;
   }
   const catalog = owner.sessionCatalogs.find((candidate) => candidate.id === catalogId);
-  if (!discovering && catalog?.requiresFreshList && catalog.error && catalog.hosts.length === 0) {
-    // No current host target survived the provider error. Fresh discovery belongs
-    // to the existing root owner, including its in-flight coalescing and fences.
+  if (!discovering && catalog?.requiresFreshList && catalog.error) {
+    // Provider errors belong to root discovery, even when a newer targeted read
+    // retained one host. Only root discovery can reconcile the missing siblings.
     await requestSessionCatalogRefresh(owner);
     return;
   }
@@ -523,11 +515,8 @@ export async function loadMoreSessionCatalog(
       live.windows.set(key, { ...live.windows.get(key), depth });
     }
   }
-  if (catalog.requiresFreshList) {
-    owner.sessionCatalogLive.retireHostPublications(catalogId, requestedHostIds);
-    // An older aggregate response must not undo the targeted withdrawal either.
-    owner.sessionCatalogRevision += 1;
-  }
+  // The targeted read owns these hosts; the root still owns its other sources.
+  live.retireHostPublications(catalogId, requestedHostIds);
   owner.sessionCatalogs = owner.sessionCatalogs.map((candidate) =>
     candidate.id === catalogId
       ? withdrawSessionCatalogRows(candidate, requestedHostIds)
@@ -642,7 +631,16 @@ export async function loadMoreSessionCatalog(
     }
     owner.sessionCatalogs = owner.sessionCatalogs.map((candidate) =>
       candidate.id === catalogId
-        ? { ...candidate, error: sessionCatalogRequestError(error) }
+        ? catalog.requiresFreshList
+          ? {
+              ...candidate,
+              hosts: candidate.hosts.map((host) =>
+                requestedHostIds.includes(host.hostId)
+                  ? { ...host, error: sessionCatalogRequestError(error) }
+                  : host,
+              ),
+            }
+          : { ...candidate, error: sessionCatalogRequestError(error) }
         : candidate,
     );
     owner.requestSessionDataUpdate();

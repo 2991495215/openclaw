@@ -39,7 +39,7 @@ type BuildControlUiSessionPathParams = {
   exactKey?: boolean;
   /** Keep a qualified main key literal when linking to a source with unknown session defaults. */
   literalMainKey?: boolean;
-  /** Preserve a parsed explicit key marker independently of configured home defaults. */
+  /** Pin a qualified source key or preserve a parsed explicit marker independently of home defaults. */
   literalKey?: boolean;
   /** Address the raw global transcript instead of the agent home alias. */
   literalGlobalKey?: boolean;
