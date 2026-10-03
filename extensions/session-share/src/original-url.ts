@@ -28,6 +28,7 @@ export function sessionShareOriginalUrl(
     ...sessionShareSourceSession(threadId),
     exactKey: true,
     literalMainKey: true,
+    literalGlobalKey: true,
   });
   // URL parsing must not rewrite the approved prefix (for example, dot segments).
   return path && new URL(`${origin}${path}`).pathname === path ? `${origin}${path}` : undefined;

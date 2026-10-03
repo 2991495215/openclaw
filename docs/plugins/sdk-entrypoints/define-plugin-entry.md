@@ -67,7 +67,9 @@ export default definePluginEntry({
   use `buildControlUiSessionPath` with `exactKey: true` and `literalMainKey: true` from
   `openclaw/plugin-sdk/session-discussion`. `exactKey: true` alone retains the
   established home routing for a main-session key; Open original needs its literal
-  source session route.
+  source session route. For the unqualified stored `global` transcript, also pass
+  `literalGlobalKey: true` and its source `fallbackAgentId`; this uses an explicit
+  global route instead of selecting that agent's configured home session.
 
   Providers whose rows depend on current source-side authorization must declare
   `requiresFreshList: true`. The Gateway projects this declaration to clients and

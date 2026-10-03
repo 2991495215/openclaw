@@ -110,7 +110,7 @@ describe("session-share receiver catalog", () => {
         ["agent:research:shared", "/chat/research/shared"],
         ["agent:research:main", "/chat/research/~key/main"],
         ["agent:research:global", "/chat/research/~key/global"],
-        ["session-share:research:global", "/chat/research"],
+        ["session-share:research:global", "/chat/research/~global"],
         ["agent:ops:question/answer:what?#%.js", "/chat/ops/question%2Fanswer/what%3F%23%25%2Ejs"],
       ];
       fixture.invoke.mockResolvedValue({
@@ -194,7 +194,7 @@ describe("session-share receiver catalog", () => {
     ],
     ["agent:research:shared", "/chat/research/shared"],
     ["agent:research:global", "/chat/research/~key/global"],
-    ["session-share:research:global", "/chat/research"],
+    ["session-share:research:global", "/chat/research/~global"],
     ["global", undefined],
   ])("builds source-owned links for %s and withdraws them on reload", async (threadId, path) => {
     const fixture = await catalogFixture();

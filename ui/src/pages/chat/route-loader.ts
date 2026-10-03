@@ -487,6 +487,7 @@ export async function loadChatRoute(
     return {
       kind: "session",
       sessionKey: target.sessionKey,
+      ...(isUiGlobalSessionKey(target.sessionKey) ? { agentId: target.agentId } : {}),
       ...sessionRouteHints(routeLocation),
       face,
       ...(canonicalLocation

@@ -156,6 +156,43 @@ describe("parseControlUiSessionPath", () => {
     });
   });
 
+  it.each(["chat", "dashboard"] as const)(
+    "keeps raw global, agent global, and an escaped marker distinct in %s",
+    (namespace) => {
+      for (const [sessionKey, suffix] of [
+        ["global", "~global"],
+        ["agent:research:global", "~key/global"],
+        ["agent:research:~global", "~~global"],
+      ]) {
+        const pathname = buildControlUiSessionPath({
+          namespace,
+          sessionKey: sessionKey!,
+          fallbackAgentId: "research",
+          basePath: "/control",
+          exactKey: true,
+          literalMainKey: true,
+          literalGlobalKey: true,
+        });
+        expect(pathname).toBe(`/control/${namespace}/research/${suffix}`);
+        expect(parseControlUiSessionPath(pathname!, "/control")).toMatchObject({
+          namespace,
+          kind: "literal",
+          agentId: "research",
+          sessionKey,
+        });
+      }
+      expect(
+        buildControlUiSessionPath({
+          namespace,
+          sessionKey: "global",
+          fallbackAgentId: "research",
+          exactKey: true,
+          literalMainKey: true,
+        }),
+      ).toBe(`/${namespace}/research`);
+    },
+  );
+
   it("parses a tool-composed forced literal with multiple segments", () => {
     expect(
       parseControlUiSessionPath(

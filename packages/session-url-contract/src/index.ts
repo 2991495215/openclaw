@@ -39,6 +39,8 @@ type BuildControlUiSessionPathParams = {
   exactKey?: boolean;
   /** Keep a qualified main key literal when linking to a source with unknown session defaults. */
   literalMainKey?: boolean;
+  /** Address the raw global transcript instead of the agent home alias. */
+  literalGlobalKey?: boolean;
   mainKey?: string;
   shortIdLength?: number;
 };
@@ -88,6 +90,9 @@ export function buildControlUiSessionPath(params: BuildControlUiSessionPathParam
   }
   const namespace = `${normalizeControlUiBasePath(params.basePath)}/${params.namespace}`;
   const encodedAgentId = encodePathSegment(agentId);
+  if (!parsed && rawKey === "global" && params.literalGlobalKey) {
+    return `${namespace}/${encodedAgentId}/~global`;
+  }
   const rest = parsed?.rest ?? rawKey;
   const normalizedRest = rest.toLowerCase();
   const mainKey = normalizeNullableString(params.mainKey)?.toLowerCase() ?? DEFAULT_MAIN_KEY;

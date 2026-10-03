@@ -253,9 +253,65 @@ export function applySessionCatalogHostEvent(
   }
   owner.sessionCatalogs = update.catalogs;
   owner.requestSessionDataUpdate();
-  owner.sessionCatalogRevision += owner.sessionCatalogLive.refetching ? 1 : 0;
-  const catalogRevision = owner.sessionCatalogRevisions.get(update.catalogId) ?? 0;
-  owner.sessionCatalogRevisions.set(update.catalogId, catalogRevision + 1);
+  if (owner.sessionCatalogLive.refetching) {
+    // The aggregate replay captured older host heads. Reconcile the interrupted
+    // root cycle through its existing paced refresh owner.
+    owner.sessionCatalogRevision += 1;
+    owner.sessionCatalogLive.refreshPending = true;
+  } else if (owner.sessionCatalogLive.requestGeneration === null) {
+    void resumePublishedSessionCatalogHost(owner, update.catalogId, update.hostId);
+  }
+}
+
+async function resumePublishedSessionCatalogHost(
+  owner: SessionCatalogDataOwner,
+  catalogId: string,
+  hostId: string,
+): Promise<void> {
+  const client = visibleSessionCatalogClient(owner);
+  const agentId = owner.sessionCatalogAgentId;
+  const catalog = owner.sessionCatalogs.find((entry) => entry.id === catalogId);
+  const host = catalog?.hosts.find((entry) => entry.hostId === hostId);
+  if (!client || !agentId || !catalog || !host || !owner.isSessionDataHostConnected) {
+    return;
+  }
+  if (
+    catalog.requiresFreshList &&
+    !catalog.error &&
+    !host.pending &&
+    !host.error &&
+    host.nextCursor &&
+    (owner.sessionCatalogPageDepths.get(sessionCatalogHostKey(catalogId, hostId)) ?? 0) > 0
+  ) {
+    const isCurrent = captureSessionCatalogRequest(owner, catalogId, client, [hostId]);
+    const [page] = await refetchExpandedSessionCatalogPages({
+      catalogs: [{ ...catalog, hosts: [host] }],
+      previousCatalogs: [],
+      client,
+      agentId,
+      pageDepths: owner.sessionCatalogPageDepths,
+      isCurrent,
+      canRequestPage: () => isCurrent() && document.visibilityState !== "hidden",
+    });
+    if (!isCurrent()) {
+      return;
+    }
+    // Only this host was replayed. Sibling publications may have advanced while
+    // its pages were in flight and must survive the merge.
+    owner.sessionCatalogs = owner.sessionCatalogs.map((current) =>
+      current.id === catalogId
+        ? {
+            ...current,
+            hosts: current.hosts.map((entry) =>
+              entry.hostId === hostId ? page!.hosts[0]! : entry,
+            ),
+          }
+        : current,
+    );
+    owner.sessionCatalogRevision += 1;
+    owner.requestSessionDataUpdate();
+  }
+  await discoverHiddenSessionCatalogPages(owner);
 }
 
 export function applySessionCatalogContinuation(
@@ -428,7 +484,6 @@ export async function loadMoreSessionCatalog(
     return;
   }
   const generation = owner.sessionScopeGeneration;
-  const revision = owner.sessionCatalogRevisions.get(catalogId) ?? 0;
   if (catalog.requiresFreshList) {
     owner.sessionCatalogLive.retireHostPublications(catalogId, Object.keys(cursors));
     // An older aggregate response must not undo the targeted withdrawal either.
@@ -439,6 +494,7 @@ export async function loadMoreSessionCatalog(
       ? withdrawSessionCatalogRows(candidate, Object.keys(cursors))
       : candidate,
   );
+  const isCurrent = captureSessionCatalogRequest(owner, catalogId, client, Object.keys(cursors));
   owner.loadingMoreSessionCatalogIds = new Set([...owner.loadingMoreSessionCatalogIds, catalogId]);
   owner.requestSessionDataUpdate();
   try {
@@ -448,14 +504,10 @@ export async function loadMoreSessionCatalog(
       hostIds: Object.keys(cursors),
       ...(catalog.requiresFreshList ? {} : { cursors }),
     });
-    if (!isCurrentSessionCatalogRequest(owner, catalogId, client, generation, revision)) {
+    if (!isCurrent()) {
       return;
     }
     let page = result.catalogs.find((candidate) => candidate.id === catalogId);
-    const current = owner.sessionCatalogs.find((candidate) => candidate.id === catalogId);
-    if (!current) {
-      return;
-    }
     const discoveryPages = owner.sessionCatalogLive.discoveryPages;
     if (catalog.requiresFreshList && page) {
       // A successful older page cannot authorize the previous head. Rebuild the
@@ -471,15 +523,16 @@ export async function loadMoreSessionCatalog(
         client,
         agentId,
         pageDepths,
-        isCurrent: () =>
-          isCurrentSessionCatalogRequest(owner, catalogId, client, generation, revision),
-        canRequestPage: () =>
-          isCurrentSessionCatalogRequest(owner, catalogId, client, generation, revision) &&
-          document.visibilityState !== "hidden",
+        isCurrent: () => isCurrent(),
+        canRequestPage: () => isCurrent() && document.visibilityState !== "hidden",
       });
-      if (!isCurrentSessionCatalogRequest(owner, catalogId, client, generation, revision)) {
+      if (!isCurrent()) {
         return;
       }
+    }
+    const current = owner.sessionCatalogs.find((candidate) => candidate.id === catalogId);
+    if (!current) {
+      return;
     }
     const merged = mergeSessionCatalogPage({
       current,
@@ -532,10 +585,9 @@ export async function loadMoreSessionCatalog(
       candidate.id === catalogId ? merged.catalog : candidate,
     );
     owner.requestSessionDataUpdate();
-    owner.sessionCatalogRevisions.set(catalogId, revision + 1);
     owner.sessionCatalogRevision += 1;
   } catch (error) {
-    if (!isCurrentSessionCatalogRequest(owner, catalogId, client, generation, revision)) {
+    if (!isCurrent()) {
       return;
     }
     // Stale-permitted rows and retry cursors survive; fresh-required rows were withdrawn.
@@ -545,7 +597,6 @@ export async function loadMoreSessionCatalog(
         : candidate,
     );
     owner.requestSessionDataUpdate();
-    owner.sessionCatalogRevisions.set(catalogId, revision + 1);
     owner.sessionCatalogRevision += 1;
   } finally {
     if (generation === owner.sessionScopeGeneration) {
@@ -557,18 +608,30 @@ export async function loadMoreSessionCatalog(
   }
 }
 
-function isCurrentSessionCatalogRequest(
+function captureSessionCatalogRequest(
   owner: SessionCatalogDataOwner,
   catalogId: string,
   client: GatewayBrowserClient,
-  generation: number,
-  revision: number,
-): boolean {
-  return (
+  hostIds: readonly string[],
+): () => boolean {
+  const generation = owner.sessionScopeGeneration;
+  const revision = owner.sessionCatalogRevisions.get(catalogId) ?? 0;
+  const hosts =
+    owner.sessionCatalogs
+      .find((catalog) => catalog.id === catalogId)
+      ?.hosts.filter((host) => hostIds.includes(host.hostId)) ?? [];
+  // Host snapshots are immutable publications. A sibling update does not retire
+  // this read; a root refresh, adoption, or replacement of any requested host does.
+  return () =>
     generation === owner.sessionScopeGeneration &&
     revision === (owner.sessionCatalogRevisions.get(catalogId) ?? 0) &&
-    client === owner.sessionCatalogGatewayClient()
-  );
+    client === owner.sessionCatalogGatewayClient() &&
+    hosts.every(
+      (host) =>
+        owner.sessionCatalogs
+          .find((catalog) => catalog.id === catalogId)
+          ?.hosts.find((entry) => entry.hostId === host.hostId) === host,
+    );
 }
 
 export async function archiveSessionCatalog(

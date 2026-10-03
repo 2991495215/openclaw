@@ -138,8 +138,8 @@ describe("session-share node commands", () => {
         return { payloadJSON: await handler.handle(JSON.stringify(params)) };
       });
       const cases = [
-        { agentId: "research", sessionKey: "global", path: "/chat/research" },
-        { agentId: "ops", sessionKey: "global", path: "/chat/ops" },
+        { agentId: "research", sessionKey: "global", path: "/chat/research/~global" },
+        { agentId: "ops", sessionKey: "global", path: "/chat/ops/~global" },
         {
           agentId: "research",
           sessionKey: "agent:research:global",

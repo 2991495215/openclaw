@@ -303,7 +303,7 @@ export class SessionCatalogLiveState {
     agentId: string;
     catalogs: SessionCatalog[];
     pageDepths: ReadonlyMap<string, number>;
-  }): { catalogs: SessionCatalog[]; catalogId: string } | null {
+  }): { catalogs: SessionCatalog[]; catalogId: string; hostId: string } | null {
     if (!isSessionsCatalogHostEvent(params.payload)) {
       return null;
     }
@@ -380,7 +380,7 @@ export class SessionCatalogLiveState {
     if (sameCatalogMetadata && JSON.stringify(currentHost) === JSON.stringify(nextHost)) {
       return null;
     }
-    return { catalogs, catalogId: event.catalog.id };
+    return { catalogs, catalogId: event.catalog.id, hostId: freshHost.hostId };
   }
 
   schedule(delayMs: number, isConnected: boolean, refresh: () => void) {

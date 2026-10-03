@@ -214,6 +214,117 @@ describe("AppSidebar catalog event refresh", () => {
     expect(sidebar.textContent).not.toContain("Old root publication");
   });
 
+  it.each(["head", "deeper"] as const)(
+    "keeps both hosts when late sibling progress arrives during the fresh %s request",
+    async (phase) => {
+      const warm = sourceCatalogPage([{ threadId: "old-a", name: "Old A" }], "old-next");
+      const hostA = warm.catalogs[0]!.hosts[0]!;
+      const hostB = {
+        ...hostA,
+        hostId: "node:b",
+        label: "Host B",
+        pending: true,
+        nextCursor: undefined,
+        sessions: [],
+      };
+      warm.catalogs[0]!.hosts.push(hostB);
+      const head = sourceCatalogPage([{ threadId: "fresh-a", name: "Fresh A" }], "fresh-next");
+      const deep = sourceCatalogPage([{ threadId: "deep-a", name: "Deep A" }]);
+      const held = deferred<typeof warm>();
+      const request = createGatewayRequestMock()
+        .mockResolvedValueOnce(warm)
+        .mockReturnValueOnce(phase === "head" ? held.promise : Promise.resolve(head))
+        .mockReturnValueOnce(phase === "deeper" ? held.promise : Promise.resolve(deep));
+      const { sidebar, gateway } = await mountTab(request);
+      const progressId = (request.mock.calls[0]![1] as { progressId: string }).progressId;
+      const more = loadMoreSessionCatalog(sidebar.sessionData, "codex", ["gateway:local"]);
+      await vi.advanceTimersByTimeAsync(0);
+      await sidebar.updateComplete;
+      expect(sidebar.textContent).not.toContain("Old A");
+      gateway.publishEvent("sessions.catalog.host", {
+        progressId,
+        agentId: "main",
+        catalog: {
+          ...warm.catalogs[0],
+          hosts: [
+            {
+              ...hostB,
+              pending: false,
+              sessions: [{ ...hostA.sessions[0]!, threadId: "fresh-b", name: "Fresh B" }],
+            },
+          ],
+        },
+      });
+      held.resolve(phase === "head" ? head : deep);
+      await more;
+      await sidebar.updateComplete;
+      expect(sidebar.textContent).toContain("Fresh A");
+      expect(sidebar.textContent).toContain("Deep A");
+      expect(sidebar.textContent).toContain("Fresh B");
+      expect(sidebar.textContent).not.toContain("Old A");
+      expect(sidebar.sessionData.loadingMoreSessionCatalogIds.size).toBe(0);
+      expect(request).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it.each(["success", "revoked", "failed", "new-root"] as const)(
+    "replays only currently authorized expanded pages after late host progress: %s",
+    async (outcome) => {
+      const head = sourceCatalogPage([{ threadId: "head", name: "Authorized head" }], "next");
+      const oldDeep = sourceCatalogPage([{ threadId: "old-deep", name: "Old deeper row" }]);
+      const pending = sourceCatalogPage([]);
+      pending.catalogs[0]!.hosts[0]!.pending = true;
+      const held = deferred<typeof head>();
+      void held.promise.catch(() => undefined);
+      const request = createGatewayRequestMock()
+        .mockResolvedValueOnce(head)
+        .mockResolvedValueOnce(head)
+        .mockResolvedValueOnce(oldDeep)
+        .mockResolvedValueOnce(pending)
+        .mockReturnValueOnce(held.promise)
+        .mockResolvedValue(sourceCatalogPage([]));
+      const { sidebar, gateway } = await mountTab(request);
+      await loadMoreSessionCatalog(sidebar.sessionData, "codex", ["gateway:local"]);
+      await sidebar.updateComplete;
+      expect(sidebar.textContent).toContain("Old deeper row");
+      await sidebar.sessionData.refreshSessionCatalogs();
+      const progressId = (request.mock.calls[3]![1] as { progressId: string }).progressId;
+      gateway.publishEvent("sessions.catalog.host", {
+        progressId,
+        agentId: "main",
+        catalog: head.catalogs[0],
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await sidebar.updateComplete;
+      expect(sidebar.textContent).not.toContain("Old deeper row");
+      expect(request).toHaveBeenCalledTimes(5);
+      if (outcome === "new-root") {
+        await sidebar.sessionData.refreshSessionCatalogs();
+      }
+      if (outcome === "failed") {
+        held.reject(new Error("Source unavailable"));
+      } else {
+        held.resolve(
+          sourceCatalogPage(
+            outcome === "revoked" ? [] : [{ threadId: "fresh-deep", name: "Fresh deeper row" }],
+          ),
+        );
+      }
+      await vi.advanceTimersByTimeAsync(0);
+      await sidebar.updateComplete;
+      expect(sidebar.textContent).not.toContain("Old deeper row");
+      expect(sidebar.textContent?.includes("Fresh deeper row")).toBe(outcome === "success");
+      expect(sidebar.textContent?.includes("Authorized head")).toBe(
+        outcome === "success" || outcome === "revoked",
+      );
+      if (outcome === "failed") {
+        expect(sidebar.sessionData.sessionCatalogs[0]!.hosts[0]!.error?.message).toBe(
+          "Source unavailable",
+        );
+      }
+    },
+  );
+
   it("keeps four stable tabs idle for five minutes and refreshes each once per catalog event", async () => {
     const tabs = [];
     for (let index = 0; index < 4; index += 1) {

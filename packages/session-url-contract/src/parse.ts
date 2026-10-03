@@ -74,6 +74,11 @@ export function parseControlUiSessionPath(
     if (rawSegments.length === 1) {
       return { namespace, kind: "main", agentId };
     }
+    // Tilde-prefixed key segments are escaped by the builder. This marker
+    // retains the unqualified stored key and its explicit agent ownership.
+    if (rawSegments.length === 2 && rawSegments[1] === "~global") {
+      return { namespace, kind: "literal", agentId, sessionKey: "global" };
+    }
     const forceLiteral = rawSegments[1] === "~key";
     const restSegments = rawSegments.slice(forceLiteral ? 2 : 1).map(decodePathSegment);
     if (restSegments.length === 0 || !restSegments.every((segment) => segment !== null)) {

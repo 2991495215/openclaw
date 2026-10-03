@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, it } from "vitest";
+import { sessionShareOriginalUrl } from "../../../extensions/session-share/src/original-url.ts";
 import { createControlUiE2eArtifactDir } from "../test-helpers/control-ui-e2e-artifacts.ts";
 import { takeControlUiViewportScreenshot } from "../test-helpers/control-ui-e2e-screenshot.ts";
 import { createChatFlowE2eSuite, installMockGateway } from "./chat-flow.test-support.ts";
@@ -10,6 +11,41 @@ const originalUrl =
   "https://team.example.com/chat/research/dashboard/01234567-89ab-cdef-0123-456789abcdef";
 
 suite.define(() => {
+  it("loads the raw global source transcript under ordinary per-sender defaults", async () => {
+    await suite.withPage({ viewport: { width: 1440, height: 900 } }, async ({ page }) => {
+      const artifacts = createControlUiE2eArtifactDir("session-share-raw-global");
+      const gateway = await installMockGateway(page, {
+        defaultAgentId: "research",
+        sessionKey: "global",
+        sessionScope: "per-sender",
+        mainSessionKey: "agent:research:main",
+        historyMessages: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "The raw global source transcript." }],
+          },
+        ],
+      });
+      const url = sessionShareOriginalUrl(
+        new URL(suite.server.baseUrl).origin,
+        "session-share:research:global",
+      )!;
+      await page.goto(url);
+      const startup = await gateway.waitForRequest("chat.startup");
+      await page.screenshot({ path: path.join(artifacts, "source-transcript.png") });
+      await writeFile(
+        path.join(artifacts, "navigation.json"),
+        JSON.stringify({ url, startup }, null, 2),
+      );
+      expect(startup.params).toMatchObject({ sessionKey: "global", agentId: "research" });
+      await page
+        .locator(".chat-thread")
+        .getByText("The raw global source transcript.", { exact: true })
+        .waitFor();
+      await page.screenshot({ path: path.join(artifacts, "loaded-source-transcript.png") });
+    });
+  });
+
   it.each([false, true])(
     "keeps shared sessions read-only with original navigation configured=%s",
     async (configured) => {
