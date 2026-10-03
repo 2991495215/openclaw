@@ -108,7 +108,7 @@ suite.define(() => {
           .toBe(configured ? 1 : 0);
         await writeFile(
           path.join(artifacts, "menu.png"),
-          await takeControlUiViewportScreenshot(page, menu, [
+          await takeControlUiViewportScreenshot(page, menu.locator('[part="menu"]'), [
             menu.getByText("Open in OpenClaw", { exact: true }),
           ]),
         );
