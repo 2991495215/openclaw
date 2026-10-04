@@ -46,7 +46,7 @@ async function createConnectedGatewayClient(params: {
           clearTimeout(timer);
           resolve();
         },
-        onConnectError: (error) => {
+        onConnectError: (error: unknown) => {
           clearTimeout(timer);
           abortStart.abort();
           reject(error);
