@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { evaluateWorkflowRunner } from "./ci-workflow.test-support.js";
+import { evaluateWorkflowExpression, evaluateWorkflowRunner } from "./ci-workflow.test-support.js";
 
 const dedicated = [
   "full-release-validation",
@@ -25,7 +25,12 @@ const shared = [
   "npm-telegram-beta-e2e",
 ];
 const mixed = ["ci", "openclaw-performance"];
-type Job = { "runs-on"?: string; uses?: string; with?: Record<string, string> };
+type Job = {
+  if?: string;
+  "runs-on"?: string;
+  uses?: string;
+  with?: Record<string, string>;
+};
 type Workflow = {
   on: { workflow_call?: { inputs?: Record<string, { default?: unknown }> } };
   jobs: Record<string, Job>;
@@ -38,6 +43,9 @@ const workflows = new Map(
 );
 const group = 'Release "reserved"';
 const context = {
+  eventName: "workflow_dispatch" as const,
+  repository: "openclaw/openclaw",
+  runAttempt: 1,
   matrix: { runner: "ubuntu-24.04", group: "fixture", task: "test", check_name: "fixture" },
   runnerBackend: "github" as const,
   preflightOutputs: { node_runner_backend: "github" },
@@ -49,6 +57,40 @@ describe("release runner reservation", () => {
     (name, workflow) => {
       for (const [jobName, job] of Object.entries(workflow.jobs)) {
         if (!job["runs-on"]) {
+          continue;
+        }
+        const condition = job.if?.startsWith("${{") ? job.if : `\${{ ${job.if ?? "true"} }}`;
+        if (
+          mixed.includes(name) &&
+          !job["runs-on"].startsWith("${{") &&
+          evaluateWorkflowExpression(condition, {
+            ...context,
+            eventName: "pull_request",
+            action: "synchronize",
+          }) === true
+        ) {
+          // A fixed PR runner is valid only when non-PR events cannot allocate it.
+          for (const selection of [
+            { eventName: "push" },
+            { eventName: "schedule" },
+            { eventName: "workflow_dispatch", dispatchId: "" },
+            { eventName: "workflow_dispatch", dispatchId: "hourly-main-123-1" },
+            { eventName: "workflow_dispatch", dispatchId: "full-release-validation-123-1" },
+            {
+              eventName: "workflow_dispatch",
+              dispatchId: "full-release-validation-123-1",
+              releaseGate: true,
+            },
+          ] as const) {
+            expect(
+              evaluateWorkflowExpression(condition, {
+                ...context,
+                ...selection,
+                releaseRunnerGroup: group,
+              }),
+              `${name}/${jobName} must not allocate a fixed PR runner for ${selection.eventName}`,
+            ).toBe(false);
+          }
           continue;
         }
         const baseline = evaluateWorkflowRunner(job["runs-on"], context);

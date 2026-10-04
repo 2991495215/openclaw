@@ -535,7 +535,9 @@ describe("real CI workflow admission and required status", () => {
         env: {
           ...process.env,
           GITHUB_EVENT_NAME: "pull_request",
+          GITHUB_RUN_ATTEMPT: "1",
           READINESS_RESULT: "success",
+          READINESS_ATTEMPT: "1",
           BROAD_CI: "true",
           READINESS_ENFORCED: "true",
           READINESS_REQUEST_ID: "",
