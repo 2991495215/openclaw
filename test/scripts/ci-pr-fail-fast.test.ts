@@ -347,6 +347,41 @@ describe("PR failure monitor", () => {
     expect(await f.monitor()).toBe("superseded");
     expect(f.events).toEqual([]);
   });
+
+  it.each(["unexpanded", "running"] as const)(
+    "counts completed readiness while the last matrix row is %s",
+    async (state) => {
+      vi.useFakeTimers();
+      const last = job(11, null, "checks-node (2)");
+      const f = fixture({
+        jobs: [
+          job(1, "success", "readiness"),
+          job(2, "success", "preflight"),
+          job(3, "success", "security-fast"),
+          job(10, "success", "checks-node (1)"),
+          ...(state === "running" ? [last] : []),
+        ],
+      });
+      let completion: string | undefined;
+      void f.monitor(5).then((reason) => {
+        completion = reason;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      if (state === "running") {
+        expect(completion).toBe("last-job-remaining");
+        expect(f.events).toEqual([]);
+        return;
+      }
+      expect(completion).toBeUndefined();
+      f.rows.push(last);
+      last.status = "completed";
+      last.conclusion = "success";
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(completion).toBe("completed");
+      expect(f.events).toEqual([]);
+    },
+  );
+
   it("replaces the early check reservation with the completed planner's exact count", async () => {
     vi.useFakeTimers();
     const f = fixture({

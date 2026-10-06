@@ -406,6 +406,14 @@ describe("PR failure cancellation", () => {
           encoding: "utf8",
           env: {
             ...process.env,
+            // This fixture models fresh admission for attempt two, not inherited CI state.
+            GITHUB_EVENT_NAME: "pull_request",
+            GITHUB_RUN_ATTEMPT: "2",
+            READINESS_RESULT: "success",
+            READINESS_ATTEMPT: "2",
+            READINESS_ENFORCED: "true",
+            READINESS_REQUEST_ID: "1",
+            BROAD_CI: "true",
             JOB_RESULTS: `preflight=success|true\nsecurity-fast=success|true\nchecks-node-core-test-nondist-shard=${result}|true\n${monitorRow}`,
           },
         });

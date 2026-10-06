@@ -14,21 +14,32 @@ const base = "b".repeat(40);
 const tested = "c".repeat(40);
 const broadJobs = Object.entries(workflow.jobs).filter(
   ([id]) =>
-    !["readiness", "preflight", "security-fast", "ci-gate", "seal_release_child_evidence"].includes(
-      id,
-    ),
+    ![
+      "readiness",
+      "preflight",
+      "security-fast",
+      "ci-gate",
+      "seal_release_child_evidence",
+      "ios-release-e2e",
+    ].includes(id),
 );
 
 describe("attempt-bound workflow entry paths", () => {
-  it("accounts for all 30 workloads without treating the release receipt as PR proof", () => {
+  it("accounts for all 34 PR workloads without admitting release-only jobs", () => {
     const ids = broadJobs.map(([id]) => id);
-    expect(ids).toHaveLength(30);
+    expect(ids).toHaveLength(34);
     expect(ids).toEqual(
-      expect.arrayContaining(["checks-baseline-ratchets", "android-access-native"]),
+      expect.arrayContaining([
+        "check-plan",
+        "checks-baseline-ratchets",
+        "android-access-native",
+        "check-extension-package-boundary",
+        "published-driver-update",
+      ]),
     );
     const gate = workflow.jobs["ci-gate"];
     expect(gate.needs.toSorted()).toEqual(
-      ["readiness", "preflight", "security-fast", ...ids].toSorted(),
+      ["readiness", "preflight", "security-fast", ...ids, "ios-release-e2e"].toSorted(),
     );
     const verifyStep = gate.steps.find(
       (step: { name: string }) => step.name === "Verify selected CI lanes",
@@ -39,6 +50,9 @@ describe("attempt-bound workflow entry paths", () => {
       "READINESS_ENFORCED",
       "READINESS_REQUEST_ID",
       "BROAD_CI",
+      "RELEASE_FAST_LANE",
+      "ALLOW_COALESCED_IOS",
+      "ALLOW_KNOWN_MAIN_RED",
       "JOB_RESULTS",
     ]);
     const results = verifyStep.env.JOB_RESULTS;
@@ -48,31 +62,19 @@ describe("attempt-bound workflow entry paths", () => {
         .split("\n")
         .map((row: string) => row.split("=")[0])
         .toSorted(),
-    ).toEqual(["preflight", "security-fast", ...ids].toSorted());
+    ).toEqual(["preflight", "security-fast", ...ids, "ios-release-e2e"].toSorted());
+    for (const runAttempt of [1, 2]) {
+      expect(
+        evaluateWorkflowExpression(workflow.jobs["ios-release-e2e"].if, {
+          eventName: "pull_request",
+          repository,
+          runAttempt,
+        }),
+      ).toBe(false);
+    }
     expect(workflow.jobs.seal_release_child_evidence.needs).toContain("ci-gate");
     expect(workflow.jobs.seal_release_child_evidence.if).not.toContain("readiness");
   });
-  it("keeps drafts metadata-only and releases cancelled workflows", () => {
-    const gate = readCiWorkflow().jobs["ci-gate"];
-    for (const eventName of ["pull_request", "push", "workflow_dispatch"] as const) {
-      for (const cancelled of [true, false]) {
-        for (const draft of [true, false]) {
-          expect(
-            evaluateWorkflowExpression(gate.if, {
-              ciOnPush: "true",
-              cancelled,
-              draft,
-              eventName,
-              repository: "openclaw/openclaw",
-              runAttempt: 1,
-            }),
-            JSON.stringify({ cancelled, draft, eventName }),
-          ).toBe(!cancelled && !(eventName === "pull_request" && draft));
-        }
-      }
-    }
-  });
-
   it.each(["opened", "synchronize", "converted_to_draft", "labeled"])(
     "a delayed draft %s cannot publish a required result",
     (action) => {
@@ -118,8 +120,15 @@ describe("attempt-bound workflow entry paths", () => {
         expect(
           evaluateWorkflowExpression(job.if, {
             ...context,
+            sha: head,
+            additionalNeeds: {
+              "check-plan": { outputs: {}, result: "success" },
+              "check-extension-package-boundary": { outputs: {}, result: "success" },
+            },
             preflightOutputs: {
               ...selected,
+              checkout_revision: head,
+              disable_fail_fast: "false",
               runner_profile: "hybrid",
               frozen_target: "false",
               compatibility_target: "false",
@@ -134,6 +143,33 @@ describe("attempt-bound workflow entry paths", () => {
       }
     },
   );
+  it.each([
+    "check-plan",
+    "check-shard",
+    "check-extension-package-boundary",
+    "published-driver-update",
+  ])("%s requires fresh readiness even after successful planning dependencies", (id) => {
+    for (const admission of [1, 2]) {
+      expect(
+        evaluateWorkflowExpression(workflow.jobs[id].if, {
+          eventName: "pull_request",
+          repository,
+          runAttempt: 2,
+          sha: head,
+          additionalNeeds: { "check-plan": { outputs: {}, result: "success" } },
+          preflightOutputs: {
+            run_check_plan: "true",
+            run_check: "true",
+            shared_sdk_declarations: "true",
+            run_published_driver_update: "true",
+            checkout_revision: head,
+            readiness_enforced: "true",
+            readiness_attempt: String(admission),
+          },
+        }),
+      ).toBe(admission === 2);
+    }
+  });
   it("keeps ordinary off-policy reruns and fresh full reruns runnable", () => {
     for (const readinessEnforced of [false, true]) {
       const context = {

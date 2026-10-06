@@ -1603,6 +1603,7 @@ if (hybridHostedEligible) {
   // The guard independently expands the workflow to catch inventory drift.
   // Qualification authenticates on hosted preflight before paid admission.
   hybridHostedBaseRows = Object.values({
+    readiness: count(workflowEventName === "pull_request"),
     preflight: count(ciQualification),
     "check-plan": count(hostedControlJobs && runCheckPlan),
     "pr-fail-fast": count(
@@ -1767,10 +1768,11 @@ manifest.pr_check_job_count =
           (!manifest.narrow_check_paths_json || manifest.run_changed_core_type_stripes),
         manifest.core_type_matrix.include.length,
       );
+// Include readiness, preflight, and security-fast before selected workload rows.
 manifest.pr_job_count =
   workflowEventName !== "pull_request"
     ? 0
-    : 2 +
+    : 3 +
       countPrJobs(sharedSdkDeclarations) +
       countPrJobs(manifest.run_check_plan) +
       manifest.pr_check_job_count +

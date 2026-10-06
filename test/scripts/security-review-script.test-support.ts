@@ -67,7 +67,10 @@ export function createSecurityReviewFixture(
     writeFileSync(environmentPath, "");
     writeFileSync(logPath, "");
     // The resolver selects the PR for CI-completion events as well as PR/comments.
-    writeFileSync(eventPath, JSON.stringify({ workflow_run: { id: 10 } }));
+    writeFileSync(
+      eventPath,
+      JSON.stringify({ repository: { default_branch: "main" }, workflow_run: { id: 10 } }),
+    );
     writeFileSync(
       fixturePath,
       JSON.stringify({

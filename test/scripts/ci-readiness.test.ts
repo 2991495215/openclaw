@@ -441,6 +441,27 @@ function evaluate(
   );
 }
 
+function runGate(env: Record<string, string>) {
+  const step = workflow.jobs["ci-gate"].steps.find(
+    (item: { name: string }) => item.name === "Verify selected CI lanes",
+  );
+  return spawnSync("bash", ["-c", step.run], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_EVENT_NAME: "pull_request",
+      GITHUB_RUN_ATTEMPT: "1",
+      READINESS_RESULT: "success",
+      READINESS_ATTEMPT: "1",
+      READINESS_ENFORCED: "false",
+      READINESS_REQUEST_ID: "",
+      BROAD_CI: "true",
+      JOB_RESULTS: "build=success|true",
+      ...env,
+    },
+  });
+}
+
 describe("real CI workflow admission and required status", () => {
   it("keeps eligible PR events and leaves the planner, trust classifier, and dispatch separate", () => {
     expect(workflow.on.pull_request.types).toEqual(
@@ -456,6 +477,9 @@ describe("real CI workflow admission and required status", () => {
     expect(workflow.on.pull_request_target).toBeUndefined();
     const steps = workflow.jobs.preflight.steps;
     expect(steps.find((s: { name: string }) => s.name === "Build CI manifest").run).toContain(
+      ".ci-harness/scripts/ci-build-manifest.mjs",
+    );
+    expect(readFileSync("scripts/ci-build-manifest.mjs", "utf8")).toContain(
       'eventName === "pull_request"',
     );
     expect(
@@ -527,29 +551,28 @@ describe("real CI workflow admission and required status", () => {
   it.skipIf(process.platform === "win32")(
     "rejects an enforced gate without its admitted request identity",
     () => {
-      const step = workflow.jobs["ci-gate"].steps.find(
-        (item: { name: string }) => item.name === "Verify selected CI lanes",
-      );
-      const result = spawnSync("bash", ["-c", step.run], {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          GITHUB_EVENT_NAME: "pull_request",
-          GITHUB_RUN_ATTEMPT: "1",
-          READINESS_RESULT: "success",
-          READINESS_ATTEMPT: "1",
-          BROAD_CI: "true",
-          READINESS_ENFORCED: "true",
-          READINESS_REQUEST_ID: "",
-          PREFLIGHT_RESULT: "success",
-          RELEASE_PRIORITY_RUN: "",
-          JOB_RESULTS: "build=success|true",
-        },
-      });
+      const result = runGate({ READINESS_ENFORCED: "true", READINESS_REQUEST_ID: "" });
       expect(result.status).toBe(1);
       expect(result.stdout).toContain("CI readiness proof missing");
     },
   );
+  it.skipIf(process.platform === "win32").each([
+    ["1", "1", 0],
+    ["2", "2", 0],
+    ["2", "1", 1],
+    ["1", "", 1],
+  ] as const)("enforced gate binds run attempt %s to admission %s", (run, admission, status) => {
+    const result = runGate({
+      GITHUB_RUN_ATTEMPT: run,
+      READINESS_ATTEMPT: admission,
+      READINESS_ENFORCED: "true",
+      READINESS_REQUEST_ID: "101",
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(status);
+    if (status !== 0) {
+      expect(result.stdout).toContain("Fresh admission required");
+    }
+  });
   it.skipIf(process.platform === "win32").each([
     ["false", "success", "build=skipped|false", 1],
     [
@@ -566,20 +589,10 @@ describe("real CI workflow admission and required status", () => {
   ] as const)(
     "real aggregate: broad=%s readiness=%s results=%s",
     (broad, readiness, results, status) => {
-      const step = workflow.jobs["ci-gate"].steps.find(
-        (s: { name: string }) => s.name === "Verify selected CI lanes",
-      );
-      const result = spawnSync("bash", ["-c", step.run], {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          GITHUB_EVENT_NAME: "pull_request",
-          READINESS_RESULT: readiness,
-          BROAD_CI: broad,
-          PREFLIGHT_RESULT: "success",
-          RELEASE_PRIORITY_RUN: "",
-          JOB_RESULTS: results,
-        },
+      const result = runGate({
+        READINESS_RESULT: readiness,
+        BROAD_CI: broad,
+        JOB_RESULTS: results,
       });
       expect(result.status, result.stdout + result.stderr).toBe(status);
     },
