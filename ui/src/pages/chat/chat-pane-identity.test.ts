@@ -25,6 +25,7 @@ import {
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { cancelChatStreamRenderFrame } from "./chat-state-render.ts";
 import { renderChat } from "./chat-view.ts";
+import { questionPanelIn } from "./components/chat-question-card.test-support.ts";
 import {
   installTranscriptDomMocks,
   resetTranscriptTestDom,
@@ -380,8 +381,7 @@ function createGlobalFeaturePane(
   methods: string[],
 ) {
   const client = createGatewayBrowserClientFixture({
-    request: (method, params) =>
-      method === "tasks.list" ? Promise.resolve({ tasks: [] }) : request(method, params),
+    request: (method, params) => request(method, params),
   });
   const sessions = createSessionCapabilityFixture({
     state: { modelOverrides: {}, result: null, loading: false, error: null },
@@ -524,13 +524,9 @@ describe("global chat pane feature ownership", () => {
       const draw = async () => {
         await pane.updateComplete;
         render(renderChat(pane.chatProps!), container);
-        await (
-          container.querySelector("openclaw-chat-question-panel") as
-            | (HTMLElement & {
-                updateComplete?: Promise<unknown>;
-              })
-            | null
-        )?.updateComplete;
+        if (container.querySelector("openclaw-chat-question-card")) {
+          await questionPanelIn(container);
+        }
       };
       const expectStableQuestions = async () => {
         const previous = pane.chatProps?.gatewayQuestionPrompts;

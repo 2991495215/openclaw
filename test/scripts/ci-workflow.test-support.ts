@@ -52,8 +52,6 @@ export function evaluateWorkflowExpression(
     actor?: string;
     githubEvent?: Record<string, unknown>;
     maintainerCommands?: string;
-    // Runner routing keys off contributor trust, so pull-request cases default
-    // to CONTRIBUTOR: same-repo PRs always come from someone with write access.
     authorAssociation?: string;
     cancelled?: boolean;
     dispatchId?: string;
@@ -81,19 +79,30 @@ export function evaluateWorkflowExpression(
     hostedRunnerProfileContract?: boolean;
     matrix?: Record<string, unknown>;
     preflightOutputs?: Record<string, string>;
-    additionalNeeds?: Record<string, { outputs: Record<string, string> }>;
+    additionalNeeds?: Record<
+      string,
+      {
+        outputs: Record<string, string>;
+        result?: "success" | "failure" | "cancelled" | "skipped";
+      }
+    >;
     jobResults?: Record<string, string>;
+    preflightResult?: string;
+    failFastOutputs?: Record<string, string>;
+    failFastResult?: string;
     pullRequestNumber?: number;
     ref?: string;
     resolveTargetOutputs?: Record<string, string>;
     releaseGate?: boolean;
     releaseRunnerGroup?: string;
+    releasePublishRunId?: string;
     runnerGroup?: string;
     releasePriorityRun?: string;
     releaseScope?: string;
     validationTier?: "full" | "main";
     repository: string;
     runCheck?: boolean;
+    runWindowsCi?: boolean;
     runnerBackend?: "" | "blacksmith" | "github" | "hybrid" | "runson";
     requestedRunnerBackend?: "default" | "hybrid" | "runson";
     ciShape?: "default" | "main";
@@ -105,6 +114,7 @@ export function evaluateWorkflowExpression(
     runId?: number;
     runNumber?: number;
     sha?: string;
+    skipDefenderExclusions?: boolean;
     steps?: Record<
       string,
       { outputs: Record<string, string>; outcome?: "success" | "failure" | "cancelled" | "skipped" }
@@ -115,6 +125,7 @@ export function evaluateWorkflowExpression(
     workflow?: string;
     workflowSha?: string;
     workflowToken?: string;
+    windowsCiReplay?: string;
     workspace?: string;
   },
 ) {
@@ -151,6 +162,7 @@ export function evaluateWorkflowExpression(
     endsWith: (value: unknown, suffix: unknown) =>
       String(value).toLowerCase().endsWith(String(suffix).toLowerCase()),
     fromJSON: (value: string) => JSON.parse(value) as unknown,
+    fromJson: (value: string) => JSON.parse(value) as unknown,
     format: (value: string, ...args: unknown[]) =>
       value.replace(/\{\{|\}\}|\{(\d+)\}/gu, (token, index: string | undefined) =>
         index === undefined ? token[0]! : String(args[Number(index)]),
@@ -193,6 +205,7 @@ export function evaluateWorkflowExpression(
     inputs: {
       dispatch_id: context.dispatchId ?? "",
       runner_group: context.runnerGroup ?? "",
+      release_publish_run_id: context.releasePublishRunId ?? "",
       runner_backend: context.requestedRunnerBackend ?? "default",
       ci_shape: context.ciShape ?? "default",
       include_android: context.includeAndroid ?? false,
@@ -202,6 +215,9 @@ export function evaluateWorkflowExpression(
       target_context_ref: context.targetContextRef ?? "",
       target_ref: context.targetRef ?? "",
       use_github_hosted_runners: context.useGithubHostedRunners ?? false,
+      run_windows_ci: context.runWindowsCi ?? false,
+      skip_defender_exclusions: context.skipDefenderExclusions ?? false,
+      windows_ci_replay: context.windowsCiReplay ?? "",
     },
     env: context.env ?? {},
     matrix: context.matrix ?? {},
@@ -230,7 +246,7 @@ export function evaluateWorkflowExpression(
         result: context.jobResults?.["checks-baseline-ratchets"] ?? "success",
       },
       preflight: {
-        result: context.jobResults?.preflight ?? "success",
+        result: context.preflightResult ?? context.jobResults?.preflight ?? "success",
         outputs: {
           readiness_enforced: "false",
           readiness_attempt: String(context.runAttempt ?? 1),
@@ -238,8 +254,14 @@ export function evaluateWorkflowExpression(
           hosted_runner_profile_contract: String(context.hostedRunnerProfileContract ?? true),
           run_check: String(context.runCheck ?? true),
           runner_profile: context.runnerProfile ?? context.runnerBackend ?? "blacksmith",
+          // Preflight defaults the Node planner backend to the logical profile.
+          node_runner_backend: context.runnerProfile ?? context.runnerBackend ?? "blacksmith",
           ...context.preflightOutputs,
         },
+      },
+      "pr-fail-fast": {
+        result: context.failFastResult ?? "success",
+        outputs: { failure_job_id: "", failure_run_attempt: "", ...context.failFastOutputs },
       },
     },
     vars: {
@@ -296,6 +318,10 @@ export function runWorkflowShellScript(
               : (nodeOptions ?? "");
           return `${quoteShell(testNodeExecPath)} ${loader}--input-type=module < ${quoteShell(modulePath)}`;
         },
+      )
+      .replace(
+        'node "${manifest_node_args[@]}" .ci-harness/scripts/ci-build-manifest.mjs',
+        `${quoteShell(testNodeExecPath)} "\${manifest_node_args[@]}" .ci-harness/scripts/ci-build-manifest.mjs`,
       )
       .replaceAll(
         "manifest_node_args+=(--import tsx)",

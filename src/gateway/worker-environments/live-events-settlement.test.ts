@@ -45,6 +45,7 @@ describe("worker live event write settlement", () => {
           { liveEvents: receiver },
           target,
         );
+      await workerService.ready();
       const sourceOwnerClaims = new Set(
         expectDefined(getAgentRunContextOwnership(identity.runId!), "source run owner").claimIds,
       );
@@ -194,6 +195,7 @@ describe("worker live event write settlement", () => {
           expect(placementStore.updateAckCursors).toHaveBeenCalledExactlyOnceWith({
             claim: identity.turnClaim,
             liveSeq: 2,
+            assertCurrent: expect.any(Function),
           });
           expect(close).not.toHaveBeenCalled();
         }

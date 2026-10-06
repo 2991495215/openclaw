@@ -39,6 +39,7 @@ import type {
   PreparedSessionTranscriptReload,
   SessionManagerBoundedContext,
 } from "./session-manager-view-types.js";
+import { warnSessionPersistenceDeprecation } from "./session-persistence-deprecation.js";
 
 export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
   migrated = false;
@@ -87,6 +88,11 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
 
   /** @deprecated Runtime callers should await setSessionTargetAsync. */
   setSessionTarget(target: SessionTranscriptRuntimeTarget): void {
+    warnSessionPersistenceDeprecation("SessionManager.setSessionTarget", "setSessionTargetAsync");
+    this.setSessionTargetSync(target);
+  }
+
+  protected setSessionTargetSync(target: SessionTranscriptRuntimeTarget): void {
     this.assertTranscriptViewAvailable();
     this.hydrationRevision++;
     const capturedTarget = captureSessionTranscriptTargetBinding(target);
@@ -126,9 +132,14 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
     target: SessionTranscriptRuntimeTarget,
     preserveCwd: boolean,
     signal?: AbortSignal,
+    complete = false,
   ): Promise<void> {
     this.assertTranscriptViewAvailable();
-    const hydration = prepareSessionTranscriptHydration(target, this.boundedContextLimits, signal);
+    const hydration = prepareSessionTranscriptHydration(
+      target,
+      complete ? undefined : this.boundedContextLimits,
+      signal,
+    );
     const assertOwned = captureOwnedTranscriptWriteAssertion(hydration.target);
     const revision = ++this.hydrationRevision;
     const prior = this.captureTranscriptView();
@@ -182,8 +193,15 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
     }
     const limits = this.boundedContextLimits;
     this.boundedContextLimits = undefined;
-    this.setSessionTarget(this.persistenceTarget);
+    this.setSessionTargetSync(this.persistenceTarget);
     this.boundedContextLimits = limits;
+  }
+
+  protected async ensureCompletePersistedHistoryAsync(): Promise<void> {
+    this.assertTranscriptViewAvailable();
+    if (this.persistenceTarget && this.boundedContextIncomplete) {
+      await this.hydrateSessionTarget(this.persistenceTarget, true, undefined, true);
+    }
   }
 
   protected setLoadedSessionTarget(
@@ -260,22 +278,27 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
   }
 
   /** The loaded view only: bounded managers must never hydrate inactive history for a rewrite. */
-  protected captureTranscriptView() {
+  protected captureTranscriptView(copy = false) {
     this.assertTranscriptViewAvailable();
     return {
       sessionId: this.sessionId,
       transcriptVersion: this.transcriptVersion,
+      persistenceHeaderPending: this.persistenceHeaderPending,
       migrated: this.migrated,
-      fileEntries: this.fileEntries,
-      opaqueFileEntries: this.opaqueFileEntries,
-      byId: this.byId,
-      opaqueParentsById: this.opaqueParentsById,
-      logicalParentsById: this.logicalParentsById,
-      invalidLeafControlIds: this.invalidLeafControlIds,
-      labelsById: this.labelsById,
-      labelTimestampsById: this.labelTimestampsById,
-      boundedFirstKeptById: this.boundedFirstKeptById,
-      boundedParentIds: this.boundedParentIds,
+      fileEntries: copy ? [...this.fileEntries] : this.fileEntries,
+      opaqueFileEntries: copy
+        ? this.opaqueFileEntries.map((entry) => ({ ...entry }))
+        : this.opaqueFileEntries,
+      byId: copy ? new Map(this.byId) : this.byId,
+      opaqueParentsById: copy ? new Map(this.opaqueParentsById) : this.opaqueParentsById,
+      logicalParentsById: copy ? new Map(this.logicalParentsById) : this.logicalParentsById,
+      invalidLeafControlIds: copy
+        ? new Set(this.invalidLeafControlIds)
+        : this.invalidLeafControlIds,
+      labelsById: copy ? new Map(this.labelsById) : this.labelsById,
+      labelTimestampsById: copy ? new Map(this.labelTimestampsById) : this.labelTimestampsById,
+      boundedFirstKeptById: copy ? new Map(this.boundedFirstKeptById) : this.boundedFirstKeptById,
+      boundedParentIds: copy ? new Map(this.boundedParentIds) : this.boundedParentIds,
       boundedContextIncomplete: this.boundedContextIncomplete,
       boundedContextLimits: this.boundedContextLimits,
       persistedBoundaryCount: this.persistedBoundaryCount,
@@ -290,10 +313,18 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
 
   /** @deprecated Runtime callers should await reloadPersistedTranscriptAsync. */
   reloadPersistedTranscript(): void {
+    warnSessionPersistenceDeprecation(
+      "SessionManager.reloadPersistedTranscript",
+      "reloadPersistedTranscriptAsync",
+    );
+    this.reloadPersistedTranscriptSync();
+  }
+
+  protected reloadPersistedTranscriptSync(): void {
     this.assertTranscriptViewAvailable();
     if (this.persistenceTarget) {
       const runtimeCwd = this.cwd;
-      this.setSessionTarget(this.persistenceTarget);
+      this.setSessionTargetSync(this.persistenceTarget);
       this.cwd = runtimeCwd;
     }
   }
@@ -351,42 +382,24 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
     const previousView = append ? structuredClone(this.captureTranscriptView()) : undefined;
     let reloaded = false;
     try {
-      if (prepared.kind === "bounded") {
-        const bounded = prepared.snapshot;
-        // SAFETY: SQLite transcript readers return the same persisted entry union used by SessionManager.
-        const entries = bounded.events as FileEntry[];
-        if (
-          append &&
-          bounded.transcriptMutationAt !== append.expectedMutationAt &&
-          !entries.some(
-            (entry) => isIndexedSessionEntry(entry) && entry.id === append.expectedEntryId,
-          )
-        ) {
-          throw new Error("SQLite transcript changed before adopting the committed append");
-        }
+      const { events, version } = prepared.snapshot;
+      const bounded = prepared.kind === "bounded" ? prepared.snapshot : undefined;
+      const mutationAt = bounded ? bounded.transcriptMutationAt : version.updatedAt;
+      if (
+        append &&
+        mutationAt !== append.expectedMutationAt &&
+        !events.some((entry) => isIndexedSessionEntry(entry) && entry.id === append.expectedEntryId)
+      ) {
+        throw new Error("SQLite transcript changed before adopting the committed append");
+      }
+      if (bounded) {
         this.boundedContextIncomplete = true;
         this.persistedBoundaryCount = bounded.boundaryCount;
         this.persistedSuffixStartSeq = bounded.persistedSuffixStartSeq;
-        this.transcriptMutationAt = bounded.transcriptMutationAt;
-        this.setLoadedSessionTarget(target, entries, bounded);
-        reloaded = true;
-      } else {
-        const snapshot = prepared.snapshot;
-        // SAFETY: SQLite transcript readers return the same persisted entry union used by SessionManager.
-        const entries = snapshot.events as FileEntry[];
-        if (
-          append &&
-          snapshot.version.updatedAt !== append.expectedMutationAt &&
-          !entries.some(
-            (entry) => isIndexedSessionEntry(entry) && entry.id === append.expectedEntryId,
-          )
-        ) {
-          throw new Error("SQLite transcript changed before adopting the committed append");
-        }
-        this.transcriptMutationAt = snapshot.version.updatedAt;
-        this.setLoadedSessionTarget(target, entries, undefined, snapshot.version);
-        reloaded = true;
       }
+      this.transcriptMutationAt = mutationAt;
+      this.setLoadedSessionTarget(target, events, bounded, version);
+      reloaded = true;
       if (!append) {
         return;
       }
@@ -435,17 +448,9 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
     };
     this.fileEntries = [header];
     this.opaqueFileEntries = [];
-    this.byId.clear();
-    this.opaqueParentsById.clear();
+    this.clearNavigation();
     this.boundedFirstKeptById.clear();
     this.boundedParentIds.clear();
-    this.logicalParentsById.clear();
-    this.invalidLeafControlIds.clear();
-    this.labelsById.clear();
-    this.labelTimestampsById.clear();
-    this.leafId = null;
-    this.appendParentId = null;
-    this.appendMode = undefined;
     this.pendingDeliberateAppend = false;
     return this.persistenceTarget ? this.sessionId : undefined;
   }
@@ -603,15 +608,11 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
     for (const entry of entries) {
       const node = nodeMap.get(entry.id)!;
       const parentId = this.resolveCanonicalParentId(entry.parentId);
-      if (parentId === null || parentId === entry.id) {
-        roots.push(node);
+      const parent = parentId !== null && parentId !== entry.id ? nodeMap.get(parentId) : undefined;
+      if (parent) {
+        parent.children.push(node);
       } else {
-        const parent = nodeMap.get(parentId);
-        if (parent) {
-          parent.children.push(node);
-        } else {
-          roots.push(node);
-        }
+        roots.push(node);
       }
     }
     const stack = [...roots];
@@ -726,9 +727,6 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
     this.appendMode = undefined;
     this.pendingDeliberateAppend = false;
   }
-
-  /** No buffered writes remain here; asynchronous metadata methods own their settlement. */
-  protected flushPendingPersistence(): void {}
 
   protected invalidateTranscriptView(error: Error): void {
     this.transcriptViewFailure = error;

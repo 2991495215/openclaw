@@ -1,9 +1,9 @@
 // Filesystem session transcript helpers.
 // Resolves, archives, and cleans up transcript files owned by Gateway sessions.
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { readFileWindowFully } from "@openclaw/fs-safe/advanced";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import { materializeSessionArchiveForRead } from "../config/sessions/archive-compression.js";
 import {
@@ -20,11 +20,9 @@ import {
 import { resolveRealpathOrAbsolute as canonicalizePathForComparison } from "../infra/boundary-path.js";
 import { hasErrnoCode } from "../infra/errno.js";
 import { openLocalFileSafely } from "../infra/fs-safe.js";
-import { resolveRequiredHomeDir } from "../infra/home-dir.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
 import { emitSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 
-type ArchiveFileReason = SessionArchiveReason;
 type ResetArchiveCandidate = { archivePath: string; name: string; timestamp: number };
 export type ArchivedSessionTranscript = {
   sourcePath: string;
@@ -42,9 +40,6 @@ const resetArchiveDiscoveryCache = new Map<
     archives: ResetArchiveCandidate[];
   }
 >();
-function clearSessionTranscriptResetArchiveDiscoveryCache(): void {
-  resetArchiveDiscoveryCache.clear();
-}
 
 function classifySessionTranscriptCandidate(
   sessionId: string,
@@ -106,12 +101,6 @@ export function resolveSessionTranscriptCandidates(
     }
   }
 
-  // Keep the legacy global sessions directory as a final candidate so tagged
-  // upgrades can still find transcripts created before per-agent paths.
-  const home = resolveRequiredHomeDir(process.env, os.homedir);
-  const legacyDir = path.join(home, ".openclaw", "sessions");
-  pushCandidate(() => resolveSessionTranscriptPathInDir(sessionId, legacyDir));
-
   return uniqueStrings(candidates);
 }
 
@@ -135,13 +124,7 @@ async function resetArchiveHeaderMatchesSessionId(
         continue;
       }
       const record = JSON.parse(trimmed) as unknown;
-      return (
-        Boolean(record) &&
-        typeof record === "object" &&
-        !Array.isArray(record) &&
-        (record as { type?: unknown; id?: unknown }).type === "session" &&
-        (record as { type?: unknown; id?: unknown }).id === sessionId
-      );
+      return isRecord(record) && record.type === "session" && record.id === sessionId;
     }
     return false;
   } catch {
@@ -220,7 +203,7 @@ async function resolveLatestResetArchiveForTranscriptAsync(
 function transcriptArchiveIdentity(
   sessionId: string,
   transcriptPath: string,
-): { key: string; requireSessionHeader: boolean } | undefined {
+): { key: string; requireSessionHeader: boolean } {
   const generatedSessionId = extractGeneratedTranscriptSessionId(transcriptPath);
   return {
     key: path.basename(transcriptPath),
@@ -245,9 +228,6 @@ export async function resolveSessionTranscriptResetArchiveCandidatesAsync(
     agentId,
   )) {
     const identity = transcriptArchiveIdentity(sessionId, candidate);
-    if (!identity) {
-      continue;
-    }
     candidatesByIdentity.set(identity.key, [
       ...(candidatesByIdentity.get(identity.key) ?? []),
       { path: candidate, requireSessionHeader: identity.requireSessionHeader },
@@ -276,27 +256,19 @@ export async function resolveSessionTranscriptResetArchiveCandidatesAsync(
   return uniqueStrings(archives.map((archive) => archive.archivePath));
 }
 
-function archiveFileOnDisk(filePath: string, reason: ArchiveFileReason): string {
+function archiveFileOnDisk(filePath: string, reason: SessionArchiveReason): string {
   const ts = formatSessionArchiveTimestamp();
   const archived = `${filePath}.${reason}.${ts}`;
   fs.renameSync(filePath, archived);
-  clearSessionTranscriptResetArchiveDiscoveryCache();
-  // Notify the session transcript subscribers (memory index, sessions-history
-  // HTTP, etc.) that a mutation landed on a session-owned path. Without this
-  // emit the memory sync's incremental path never learns the new archive
-  // exists: chokidar does not watch the sessions directory, and the event bus
-  // is the only channel gateway code uses to signal session-file mutations.
-  // All other in-process mutations (append, compaction, tool-result rewrite,
-  // chat inject, command execution) already emit here; archive was the sole
-  // remaining gap, which is why `.jsonl.reset.<iso>` / `.jsonl.deleted.<iso>`
-  // files only surfaced in the index after a full reindex.
+  resetArchiveDiscoveryCache.clear();
+  // Memory observes session mutations through this bus, not filesystem watchers.
   emitSessionTranscriptUpdate({ sessionFile: archived });
   return archived;
 }
 
 export function archiveSessionTranscriptPaths(opts: {
   paths: Iterable<string>;
-  reason: ArchiveFileReason;
+  reason: SessionArchiveReason;
   onArchiveError?: (err: unknown, sourcePath: string) => void;
 }): ArchivedSessionTranscript[] {
   const archived: ArchivedSessionTranscript[] = [];
@@ -317,22 +289,6 @@ export function archiveSessionTranscriptPaths(opts: {
     }
   }
   return archived;
-}
-
-export function archiveSessionTranscripts(opts: {
-  sessionId: string;
-  storePath: string | undefined;
-  sessionFile?: string;
-  agentId?: string;
-  reason: "reset" | "deleted";
-  /**
-   * When true, only archive files resolved under the session store directory.
-   * This prevents maintenance operations from mutating paths outside the agent sessions dir.
-   */
-  restrictToStoreDir?: boolean;
-  onArchiveError?: (err: unknown, sourcePath: string) => void;
-}): string[] {
-  return archiveSessionTranscriptsDetailed(opts).map((entry) => entry.archivedPath);
 }
 
 export function archiveSessionTranscriptsDetailed(opts: {
@@ -419,7 +375,7 @@ export function resolveStableSessionEndTranscript(params: {
 }
 
 type SessionArchiveCleanupRule = {
-  reason: ArchiveFileReason;
+  reason: SessionArchiveReason;
   olderThanMs: number;
 };
 

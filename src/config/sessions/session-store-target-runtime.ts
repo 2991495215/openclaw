@@ -1,6 +1,12 @@
-import { prepareOpenClawAgentDatabaseRegistrySnapshotRead } from "../../state/openclaw-agent-db-registry-listing.js";
+import {
+  AgentDatabaseRegistryChangedError,
+  prepareOpenClawAgentDatabaseRegistrySnapshotRead,
+  type AgentDatabaseRegistryChange,
+} from "../../state/openclaw-agent-db-registry-listing.js";
 import { assertSessionStoreReadCandidate } from "./session-store-read-candidates.js";
 import type {
+  SessionStoreTargetInventoryRequest,
+  SessionStoreTargetInventoryResult,
   SessionStoreTargetReadRequest,
   SessionStoreTargetReadResult,
 } from "./session-store-target-inventory.js";
@@ -12,7 +18,69 @@ import {
 type PreparedStoreTarget = Extract<SessionStoreTargetReadResult, { kind: "session-store-target" }>;
 type StoreTargetReadOwner = {
   assertCurrent: () => void;
+  onRegistryChange: (change: AgentDatabaseRegistryChange) => void;
+  refreshBeforeDispatch: (assertRetainedTarget: () => void) => Promise<void>;
+  revalidateTarget: () => Promise<void>;
 };
+
+/** Capture registry admission now; retain its witness independently of discovery custody. */
+export function prepareSessionStoreTargetInventoryRead(
+  request: Omit<SessionStoreTargetInventoryRequest, "registeredDatabases">,
+  unchangedBy?: Parameters<typeof prepareOpenClawAgentDatabaseRegistrySnapshotRead>[1],
+) {
+  const { candidates, ...prepared } = request;
+  const registry = prepareOpenClawAgentDatabaseRegistrySnapshotRead(
+    { env: request.env },
+    unchangedBy,
+  );
+  let registryStarted = false;
+  const assertRegistryCurrent = () => {
+    // Scoped publications need their witness even when discovery needs no registry rows.
+    if (registryStarted || unchangedBy) {
+      registry.assertCurrent();
+    }
+  };
+  return {
+    assertRegistryCurrent,
+    withRead<T>(
+      operation: (
+        inventory: Extract<SessionStoreTargetInventoryResult, { kind: "session-target-inventory" }>,
+        assertCurrent: () => void,
+      ) => Promise<T>,
+      assertCallerCurrent?: () => void,
+    ) {
+      return withSessionHistoryWorkerReadCandidates(candidates, async (discovery) => {
+        const assertCurrent = () => {
+          assertCallerCurrent?.();
+          discovery.assertCurrent();
+          assertRegistryCurrent();
+        };
+        let inventory = await discovery.readTargetInventory({
+          ...prepared,
+          registeredDatabases: { status: "deferred" },
+        });
+        assertCurrent();
+        if (inventory.kind === "session-target-registry-required") {
+          registryStarted = true;
+          const current = await registry.read();
+          assertCurrent();
+          inventory = await discovery.readTargetInventory({
+            ...prepared,
+            registeredDatabases:
+              current.result.status === "available"
+                ? current.result.entries
+                : { status: "unavailable" },
+          });
+          assertCurrent();
+        }
+        if (inventory.kind !== "session-target-inventory") {
+          throw new Error("Session store inventory requested registry rows twice");
+        }
+        return operation(inventory, assertCurrent);
+      });
+    },
+  };
+}
 
 export async function withSessionStoreTarget<T>(
   request: Omit<SessionStoreTargetReadRequest, "registeredDatabases">,
@@ -75,14 +143,82 @@ export async function withSessionStoreTarget<T>(
       }
       registry?.assertCurrent();
       const target = resolved;
+      const assertSourceCurrent = () => {
+        assertCallerCurrent?.();
+        discovery.assertCurrent();
+        assertSessionStoreReadCandidate(target.sourcePath, candidates);
+      };
       const assertCurrent = () => {
+        assertSourceCurrent();
         assertDiscoveryCurrent();
         registry?.assertCurrent();
-        assertSessionStoreReadCandidate(target.sourcePath, candidates);
+      };
+      let registrationChanged = false;
+      const verifyCurrentTarget = async (assertRetainedCurrent: () => void) => {
+        assertRetainedCurrent();
+        const currentRegistry = await registryRead.read();
+        assertRetainedCurrent();
+        currentRegistry.assertCurrent();
+        const current = await discovery.readStoreTargetResult({
+          ...targetRequest,
+          registeredDatabases:
+            currentRegistry.result.status === "available"
+              ? currentRegistry.result.entries
+              : { status: "unavailable" },
+        });
+        if (!current.ok) {
+          throw current.error;
+        }
+        assertRetainedCurrent();
+        currentRegistry.assertCurrent();
+        if (
+          current.value.kind !== "session-store-target" ||
+          current.value.logicalAgentId !== target.logicalAgentId ||
+          current.value.sourcePath !== target.sourcePath ||
+          current.value.database.agentId !== target.database.agentId ||
+          current.value.database.path !== target.database.path
+        ) {
+          throw new Error("Session store registration changed its selected target");
+        }
+        registry = currentRegistry;
+        registrationChanged = false;
       };
       assertCurrent();
       // A synchronous consumer may already publish; its operation owns the final currentness check.
-      return await operation(target, { assertCurrent });
+      const result = await operation(target, {
+        assertCurrent,
+        onRegistryChange(change) {
+          if (registry) {
+            registry.followRegistration(change);
+            registrationChanged = true;
+          }
+        },
+        async refreshBeforeDispatch(assertRetainedTarget) {
+          try {
+            assertCurrent();
+          } catch (error) {
+            if (!(error instanceof AgentDatabaseRegistryChangedError)) {
+              throw error;
+            }
+            // A preceding writer may register this same store while admission waits.
+            await verifyCurrentTarget(() => {
+              assertSourceCurrent();
+              assertRetainedTarget();
+            });
+          }
+        },
+        async revalidateTarget() {
+          assertCurrent();
+          if (!registrationChanged) {
+            return;
+          }
+          await verifyCurrentTarget(assertCurrent);
+        },
+      });
+      if (registrationChanged) {
+        throw new Error("Session read released its owner before confirming registration");
+      }
+      return result;
     },
     lane,
   );

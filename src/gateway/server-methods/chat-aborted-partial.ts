@@ -26,6 +26,20 @@ export function withAbortedPartialPersistenceWarning(
   return warning ? { ...error, message: `${error.message} ${warning}` } : error;
 }
 
+export type QueuedCollectorAbortOutcome = Result<
+  { aborted: boolean; runIds: string[]; warning?: string },
+  ErrorShape
+>;
+
+export function withQueuedCollectorWarning(
+  outcome: QueuedCollectorAbortOutcome,
+  warning: string,
+): QueuedCollectorAbortOutcome {
+  return outcome.ok
+    ? { ok: true, value: { ...outcome.value, warning } }
+    : { ok: false, error: withAbortedPartialPersistenceWarning(outcome.error, warning) };
+}
+
 /** Retain a failed save when a later cancellation or terminal write also fails. */
 export function abortedPartialPersistenceError(
   error: unknown,
@@ -140,6 +154,7 @@ export function deferAbortedPartialPersistence(
               sessionKey: snapshot.value.sessionKey,
               agentId: snapshot.value.agentId,
               errorMessage: warning,
+              stopReason: "aborted-partial-persistence-failed",
             });
           } catch (error) {
             // Delivery failure cannot retain a finished producer's successor fence.
