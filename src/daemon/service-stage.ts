@@ -7,7 +7,8 @@ import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import { z } from "zod";
 import { hasErrnoCode } from "../infra/errno.js";
 import { assertGatewayServiceUpdateCurrent } from "./service-update-authority.js";
-import type { WindowsServiceRegistrationKind } from "./windows-service-registration.js";
+
+export type WindowsServiceRegistrationKind = "scheduled-task" | "startup";
 
 // Numbers retain legacy provenance; only newly observed IDs become exact strings.
 const identityField = z.union([
