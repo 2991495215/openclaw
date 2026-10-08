@@ -7,6 +7,7 @@ import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import { z } from "zod";
 import { hasErrnoCode } from "../infra/errno.js";
 import { assertGatewayServiceUpdateCurrent } from "./service-update-authority.js";
+import type { WindowsServiceRegistrationKind } from "./windows-service-registration.js";
 
 // Numbers retain legacy provenance; only newly observed IDs become exact strings.
 const identityField = z.union([
@@ -47,6 +48,8 @@ export type GatewayServiceDefinitionBackupReceipt = z.infer<
 >;
 export type GatewayServiceDefinitionTransactionHooks = {
   preservePolicy?: readonly string[];
+  /** Captured native registration kind; the owner revalidates it before each publication. */
+  windowsRegistration?: WindowsServiceRegistrationKind;
   /** The native owner settles processes around the caller's definition compensation. */
   registerNativeRecovery?: (
     recover: (restoreDefinition: () => Promise<boolean>) => Promise<boolean>,
