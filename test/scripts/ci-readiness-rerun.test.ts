@@ -25,14 +25,15 @@ const broadJobs = Object.entries(workflow.jobs).filter(
 );
 
 describe("attempt-bound workflow entry paths", () => {
-  it("accounts for all 34 PR workloads without admitting release-only jobs", () => {
+  it("accounts for all 35 PR workloads without admitting release-only jobs", () => {
     const ids = broadJobs.map(([id]) => id);
-    expect(ids).toHaveLength(34);
+    expect(ids).toHaveLength(35);
     expect(ids).toEqual(
       expect.arrayContaining([
         "check-plan",
         "checks-baseline-ratchets",
         "android-access-native",
+        "android-screenshots",
         "check-extension-package-boundary",
         "published-driver-update",
       ]),
@@ -148,6 +149,7 @@ describe("attempt-bound workflow entry paths", () => {
     "check-shard",
     "check-extension-package-boundary",
     "published-driver-update",
+    "android-screenshots",
   ])("%s requires fresh readiness even after successful planning dependencies", (id) => {
     for (const admission of [1, 2]) {
       expect(
@@ -162,6 +164,10 @@ describe("attempt-bound workflow entry paths", () => {
             run_check: "true",
             shared_sdk_declarations: "true",
             run_published_driver_update: "true",
+            run_android_screenshots: "true",
+            validation_tier: "full",
+            release_scope: "full",
+            compatibility_target: "false",
             checkout_revision: head,
             readiness_enforced: "true",
             readiness_attempt: String(admission),
