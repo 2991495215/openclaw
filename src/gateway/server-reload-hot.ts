@@ -153,6 +153,7 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
         ...(params.resolveGatewayContext
           ? { resolveGatewayContext: params.resolveGatewayContext }
           : {}),
+        resolvePluginRegistry: params.getPluginRegistry,
       });
       if (
         state.cronState.cronEnabled &&
