@@ -1,6 +1,6 @@
 import { mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WORKER_COMPUTER_PROTOCOL_FEATURE } from "../../../packages/gateway-protocol/src/schema/worker-computer.js";
 import { createSolidPngBuffer } from "../../../test/helpers/image-fixtures.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
@@ -19,6 +19,7 @@ import {
 import { saveMediaBuffer } from "../../media/store.js";
 import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
+import { closeStateDatabaseForTest } from "../../test-utils/database-cleanup.js";
 import type { WorkerGitHubLaunchBinding } from "../../worker/launch-descriptor.js";
 import type { PreparedWorkerComputer } from "./computer-transport.js";
 import * as skillTransfer from "./skill-resource-transfer.js";
@@ -41,12 +42,15 @@ import {
   computerDescriptor,
   createWorkerSessionTurnPlacementProvider,
   readLaunchToolNames,
+  measureLaunchTurn,
   placements,
   seedActivePlacement,
   setupWorkerTurnLauncherTest,
   turn,
   unusedEnvironments,
 } from "./worker-turn-launcher.test-support.js";
+
+afterAll(closeStateDatabaseForTest);
 
 const prepareGitHubBinding = vi.hoisted(() => vi.fn());
 // mock-isolation: Launch tests own grant preparation and revocation without real GitHub credentials.
@@ -57,16 +61,27 @@ vi.mock("./worker-github-binding.js", () => ({
   },
 }));
 
+const readGitHubFact = vi.hoisted(() => vi.fn());
+// mock-isolation: Worker launches consume facts without starting identity discovery.
+vi.mock("../github-publication-discovery.js", () => ({
+  readGitHubPublicationFact: readGitHubFact,
+}));
+
 describe("worker launch capabilities", () => {
   beforeEach(setupWorkerTurnLauncherTest);
   beforeEach(() => {
+    readGitHubFact.mockReset().mockReturnValue({ available: false });
     prepareGitHubBinding.mockReset().mockResolvedValue(undefined);
   });
-  afterEach(cleanupWorkerTurnLauncherTest);
+  afterEach(() => cleanupWorkerTurnLauncherTest({ reuseReadWorkers: true }));
 
-  it.each([true, false])(
-    "carries only an available GitHub identity in the launch envelope (%s)",
-    async (available) => {
+  it.each([
+    { label: "available", available: true, revoked: false },
+    { label: "unavailable", available: false, revoked: false },
+    { label: "revoked before launch", available: true, revoked: true },
+  ])(
+    "carries only a current GitHub identity in the launch envelope ($label)",
+    async ({ available, revoked }) => {
       await seedActivePlacement();
       const github: WorkerGitHubLaunchBinding = {
         token: "synthetic-turn-bound-github-token",
@@ -75,8 +90,22 @@ describe("worker launch capabilities", () => {
         remoteUrl: "https://github.com/owner/repo.git",
         gitAuthor: { name: "Shared Bot", email: "shared@example.test" },
       };
+      let current = true;
       const revoke = vi.fn(async () => {});
-      prepareGitHubBinding.mockResolvedValue(available ? { binding: github, revoke } : undefined);
+      prepareGitHubBinding.mockResolvedValue(
+        available
+          ? {
+              binding: github,
+              revoke,
+              assertCurrent: () => {
+                if (!current) {
+                  throw new Error("GitHub identity changed before worker launch; retry the turn.");
+                }
+              },
+            }
+          : undefined,
+      );
+      readGitHubFact.mockReturnValue({ available });
       const launchTurn = vi.fn<NonNullable<WorkerTunnelHandle["launchTurn"]>>(async ({ plan }) => {
         if (available) {
           expect(plan.assignment.github).toEqual(github);
@@ -87,6 +116,13 @@ describe("worker launch capabilities", () => {
       });
       const tunnel: WorkerTunnelHandle = createWorkerTurnTunnel({
         launchTurn,
+        measureLaunchTurn: (plan, claim) => {
+          if (revoked) {
+            expect(plan.assignment.github).toEqual(github);
+            current = false;
+          }
+          return measureLaunchTurn(plan, claim);
+        },
         stageAttachments: vi.fn(),
         quiesceWorkspace: vi.fn(),
         syncWorkspace: vi.fn(),
@@ -99,14 +135,20 @@ describe("worker launch capabilities", () => {
         startTunnel: vi.fn(async () => tunnel),
       };
       const provider = createWorkerSessionTurnPlacementProvider({ environments, placements });
-      await expect(
-        provider.executeTurn(
-          { sessionId: SESSION_ID, sessionKey: SESSION_KEY, agentId: "main", runId: "run-github" },
-          turn("run-github"),
-          vi.fn(),
-        ),
-      ).rejects.toBeInstanceOf(WorkerRunnerCapacityError);
-      expect(launchTurn).toHaveBeenCalledOnce();
+      const execution = provider.executeTurn(
+        { sessionId: SESSION_ID, sessionKey: SESSION_KEY, agentId: "main", runId: "run-github" },
+        turn("run-github"),
+        vi.fn(),
+      );
+      if (revoked) {
+        await expect(execution).rejects.toThrow(
+          "GitHub identity changed before worker launch; retry the turn.",
+        );
+        expect(launchTurn).not.toHaveBeenCalled();
+      } else {
+        await expect(execution).rejects.toBeInstanceOf(WorkerRunnerCapacityError);
+        expect(launchTurn).toHaveBeenCalledOnce();
+      }
       expect(revoke).toHaveBeenCalledTimes(available ? 1 : 0);
     },
   );
@@ -408,7 +450,7 @@ describe("worker launch capabilities", () => {
           );
           expect(placements.get(SESSION_ID)).toEqual(placementBefore);
           expect(loadSessionEntry(sessionTarget)).toEqual(entryBefore);
-          expect(placements.get("session-remote-successor")).toBeUndefined();
+          expect(await placements.getAsync("session-remote-successor")).toBeUndefined();
           if (nodeDeviceId) {
             const assertCurrent = getPluginRuntimeGatewayRequestScope()?.assertNodeExecutionCurrent;
             expect(assertCurrent).toBeTypeOf("function");

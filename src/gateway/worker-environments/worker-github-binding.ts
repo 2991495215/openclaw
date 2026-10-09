@@ -26,6 +26,7 @@ import {
   prepareCurrentGitHubPublicationIdentity,
   prepareGitHubPublicationWorkspaceOwner,
   sameGitHubPublicationWorkspace,
+  type PublicationSessionIdentity,
 } from "../github-publication-availability.js";
 import {
   GitHubPublicationSessionChangedError,
@@ -95,6 +96,14 @@ export async function prepareWorkerGitHubBindingGrant(params: {
     sessionTarget: params.sessionTarget,
     assertCurrent: assertRunCurrent,
   });
+  let transferredWorkspace = false;
+  using _workspaceLease = {
+    [Symbol.dispose]: () => {
+      if (!transferredWorkspace) {
+        preparedWorkspace.release();
+      }
+    },
+  };
   signal.throwIfAborted();
   operator?.assertCurrent();
   if (params.assertCurrent?.() === false) {
@@ -238,7 +247,7 @@ export async function prepareWorkerGitHubBindingGrant(params: {
     preparedProfileRevision = revision;
     return { token, expiresAtMs: currentIdentity.accessExpiresAtMs };
   };
-  return createWorkerGitHubBindingGrant({
+  const grant = createWorkerGitHubBindingGrant({
     binding,
     credential: { token: binding.token, expiresAtMs: identity.accessExpiresAtMs },
     controller,
@@ -247,6 +256,7 @@ export async function prepareWorkerGitHubBindingGrant(params: {
     refreshCredential,
     refreshRequired: () => profileRevision !== preparedProfileRevision,
     subscribe: (changed) => [
+      () => preparedWorkspace.release(),
       registerConfigWriteListener(changed),
       onManagedGitHubProfileChanged((profileDir) => {
         if (identity.env.GH_CONFIG_DIR === profileDir) {
@@ -258,59 +268,34 @@ export async function prepareWorkerGitHubBindingGrant(params: {
       onUserProfileEmailBindingChanged(changed),
     ],
   });
+  transferredWorkspace = true;
+  return grant;
 }
 
-export async function prepareWorkerGitHubBinding(params: {
-  sessionId: string;
-  sessionKey: string;
-  agentId: string;
-  assertCurrent?: () => boolean;
-}): Promise<WorkerGitHubLaunchBinding | undefined> {
+export async function prepareGitHubPublicationFact(
+  params: PublicationSessionIdentity & {
+    assertCurrent?: () => boolean;
+  },
+): Promise<{ available: boolean; github?: WorkerGitHubLaunchBinding } | undefined> {
   try {
     if (params.assertCurrent?.() === false) {
       return undefined;
     }
     const currentWorkspace = await prepareGitHubPublicationWorkspaceOwner(params);
+    using _ = { [Symbol.dispose]: () => currentWorkspace.release() };
+
     const workspace = currentWorkspace.initial;
-    if (params.assertCurrent?.() === false) {
-      return undefined;
-    }
-    const identity = await prepareCurrentGitHubPublicationIdentity(params.agentId).catch(() => {
-      const config = currentGitHubPublicationConfig();
-      const managed = (["agent", "system"] as const).some((scope) =>
-        resolveConfiguredGitHubToolIdentity({ config, agentId: params.agentId, scope }),
-      );
-      if (managed && params.assertCurrent?.() !== false) {
-        log.warn(
-          "Worker GitHub identity unavailable; reconnect the shared GitHub account in Settings.",
-        );
-      } else {
-        log.debug("Worker GitHub identity unavailable.");
-      }
-      return undefined;
-    });
-    if (!identity || params.assertCurrent?.() === false) {
-      return undefined;
-    }
+    const identity = await prepareCurrentGitHubPublicationIdentity(params.agentId);
     const originUrl =
       workspace.kind === "repository"
         ? workspace.workspace.url
         : (await managedWorktrees.resolveRepositoryIdentity(workspace.worktree.path)).originUrl;
-    if (params.assertCurrent?.() === false) {
-      return undefined;
-    }
     const current = await currentWorkspace.read();
-    if (params.assertCurrent?.() === false) {
-      return undefined;
-    }
     if (
+      params.assertCurrent?.() === false ||
       !sameGitHubPublicationWorkspace(workspace, current) ||
       !matchesCurrentGitHubPublicationIdentity({ agentId: params.agentId, identity })
     ) {
-      return undefined;
-    }
-    const token = identity.env.GH_TOKEN;
-    if (!token) {
       return undefined;
     }
     const githubHost = identity.host ?? GITHUB_PUBLIC_HOST;
@@ -333,7 +318,7 @@ export async function prepareWorkerGitHubBinding(params: {
         })?.gitAuthor
       : undefined;
     const binding = parseWorkerGitHubLaunchBinding({
-      token,
+      token: identity.env.GH_TOKEN,
       login: identity.account.login,
       ...(githubHost !== GITHUB_PUBLIC_HOST ? { host: githubHost } : {}),
       branch:
@@ -341,12 +326,8 @@ export async function prepareWorkerGitHubBinding(params: {
       ...(remoteUrl ? { remoteUrl } : {}),
       ...(gitAuthor ? { gitAuthor } : {}),
     });
-    if (!binding) {
-      log.debug("Worker GitHub binding does not meet the worker launch contract.");
-    }
-    return binding;
+    return { available: Boolean(identity.env.GH_TOKEN), ...(binding ? { github: binding } : {}) };
   } catch {
-    log.debug("Worker GitHub binding unavailable for the current session workspace.");
     return undefined;
   }
 }

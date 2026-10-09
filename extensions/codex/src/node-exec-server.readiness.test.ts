@@ -300,7 +300,7 @@ describe("Codex node native readiness", () => {
       expect(cleanupStarted).not.toHaveBeenCalled();
       expect(harness.release).not.toHaveBeenCalled();
       expect(harness.command.hasActiveWork?.()).toBe(true);
-      await expect(access(harness.privateHome)).resolves.toBeUndefined();
+      await access(harness.privateHome);
 
       receipt.resolve();
       await harness.outcome;
@@ -334,7 +334,7 @@ describe("Codex node native readiness", () => {
       expect(harness.child.signalCode).toBeNull();
       expect(harness.release).not.toHaveBeenCalled();
       expect(harness.command.hasActiveWork?.()).toBe(true);
-      await expect(access(harness.privateHome)).resolves.toBeUndefined();
+      await access(harness.privateHome);
       await expect(harness.command.onDisconnect?.()).rejects.toThrow("did not terminate");
 
       failedClose.mockRestore();
