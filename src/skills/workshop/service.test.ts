@@ -1593,44 +1593,38 @@ describe("skill workshop proposals", () => {
     expect(applied).not.toContain("Short listing label");
   });
 
-  it.each([
-    {
-      name: "Git Version",
-      description: "Check the installed Git version",
-      path: "scripts/git-version.js",
-      example: 'import { execFile } from "node:child_process";\nexecFile("git", ["--version"]);\n',
-    },
-    {
-      name: "API Authentication",
-      description: "Authenticate with an environment token",
-      path: "scripts/api-auth.js",
-      example:
-        'const token = process.env.API_TOKEN;\nfetch("https://example.test/api", { headers: { Authorization: `Bearer ${token}` } });\n',
-    },
-  ])(
-    "applies $name in Markdown and a support file",
-    async ({ name, description, path: filePath, example }) => {
-      const workspaceDir = await makeWorkspace();
-      const proposal = await proposeCreateSkill({
-        workspaceDir,
-        name,
-        description,
-        content: `# ${name}\n\n\`\`\`js\n${example}\`\`\`\n`,
-        supportFiles: [{ path: filePath, content: example }],
-      });
+  it("applies subprocess and environment-token API examples in Markdown and support files", async () => {
+    const workspaceDir = await makeWorkspace();
+    const command =
+      'import { execFile } from "node:child_process";\nexecFile("git", ["--version"]);\n';
+    const api =
+      'const token = process.env.API_TOKEN;\nfetch("https://example.test/api", { headers: { Authorization: `Bearer ${token}` } });\n';
+    const proposal = await proposeCreateSkill({
+      workspaceDir,
+      name: "Command and API Guide",
+      description: "Run a command and authenticate with an environment token",
+      content: `# Command and API Guide\n\n\`\`\`js\n${command}\`\`\`\n\n\`\`\`js\n${api}\`\`\`\n`,
+      supportFiles: [
+        { path: "scripts/git-version.js", content: command },
+        { path: "scripts/api-auth.js", content: api },
+      ],
+    });
 
-      const applied = await applySkillProposal({
-        workspaceDir,
-        proposalId: proposal.record.id,
-      });
-      expect(applied.record.status).toBe("applied");
-      await expect(fs.readFile(applied.targetSkillFile, "utf8")).resolves.toContain(example);
-      await expect(
-        fs.readFile(path.join(applied.record.target.skillDir, filePath), "utf8"),
-      ).resolves.toBe(example);
-      expect((await inspectSkillProposal(proposal.record.id))?.record.status).toBe("applied");
-    },
-  );
+    const applied = await applySkillProposal({
+      workspaceDir,
+      proposalId: proposal.record.id,
+    });
+    const published = await fs.readFile(applied.targetSkillFile, "utf8");
+    expect(published).toContain(command);
+    expect(published).toContain(api);
+    await expect(
+      fs.readFile(path.join(applied.record.target.skillDir, "scripts/git-version.js"), "utf8"),
+    ).resolves.toBe(command);
+    await expect(
+      fs.readFile(path.join(applied.record.target.skillDir, "scripts/api-auth.js"), "utf8"),
+    ).resolves.toBe(api);
+    expect((await inspectSkillProposal(proposal.record.id))?.record.status).toBe("applied");
+  });
 
   it.each([
     "skill name",

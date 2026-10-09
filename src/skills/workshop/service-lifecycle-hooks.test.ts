@@ -31,7 +31,6 @@ import {
   listSkillProposalEvents as listSkillProposalEventsImpl,
   proposeCreateSkill as proposeCreateSkillImpl,
   proposeUpdateSkill as proposeUpdateSkillImpl,
-  quarantineSkillProposal as quarantineSkillProposalImpl,
   rejectSkillProposal as rejectSkillProposalImpl,
 } from "./service.js";
 import { resolveWorkshopSkillsDir } from "./skills-root.js";
@@ -56,9 +55,6 @@ const proposeCreateSkill = (
 const proposeUpdateSkill = (
   input: OptionalWorkshopConfig<Parameters<typeof proposeUpdateSkillImpl>[0]>,
 ) => proposeUpdateSkillImpl({ config: workshopConfig, ...input });
-const quarantineSkillProposal = (
-  input: OptionalWorkshopConfig<Parameters<typeof quarantineSkillProposalImpl>[0]>,
-) => quarantineSkillProposalImpl({ config: workshopConfig, ...input });
 const rejectSkillProposal = (
   input: OptionalWorkshopConfig<Parameters<typeof rejectSkillProposalImpl>[0]>,
 ) => rejectSkillProposalImpl({ config: workshopConfig, ...input });
@@ -313,47 +309,5 @@ describe("Skill Workshop lifecycle hooks", () => {
       "Before.",
     );
     await expect(fs.readFile(untouchedAsset, "utf8")).resolves.toBe("changed after evaluation\n");
-  });
-
-  it("records and dispatches manual quarantine transitions without publishing a skill", async () => {
-    const workspaceDir = await tempDirs.make("openclaw-skill-lifecycle-quarantine-");
-    const proposal = await proposeCreateSkill({
-      workspaceDir,
-      agentId: "main",
-      name: "Reviewed Lifecycle",
-      description: "Await operator review",
-      content: "# Reviewed Lifecycle\n",
-    });
-    hookMocks.proposalChanged.mockClear();
-
-    await quarantineSkillProposal({
-      workspaceDir,
-      agentId: "main",
-      proposalId: proposal.record.id,
-      expectedRevisionHash: proposal.revisionHash,
-      reason: "Needs operator review",
-    });
-
-    await expect(
-      inspectSkillProposal(proposal.record.id, { config: {}, agentId: "main" }),
-    ).resolves.toMatchObject({
-      record: { status: "quarantined", statusReason: "Needs operator review" },
-    });
-    expect(
-      (await listSkillProposalEvents({ proposalId: proposal.record.id })).events.map(
-        (event) => event.type,
-      ),
-    ).toEqual(["created", "quarantined"]);
-    expect(hookMocks.proposalChanged).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        action: "quarantined",
-        proposal: expect.objectContaining({ status: "quarantined" }),
-      }),
-      { workspaceDir, agentId: "main" },
-    );
-    expect(hookMocks.skillChanged).not.toHaveBeenCalled();
-    await expect(fs.access(proposal.record.target.skillFile)).rejects.toMatchObject({
-      code: "ENOENT",
-    });
   });
 });
