@@ -363,7 +363,15 @@ export async function processCompletionsStream(
     }
     appendThinkingDelta({ text: "" });
   };
-  const flushReasoningTagTextPartitioner = () => {
+  const flushReasoningTagTextPartitioner = (allowRecovery = true) => {
+    const recoverUnclosed =
+      allowRecovery &&
+      output.stopReason !== "length" &&
+      output.stopReason !== "error" &&
+      output.stopReason !== "aborted";
+    if (!recoverUnclosed) {
+      reasoningTagTextPartitioner.markStrict();
+    }
     for (const delta of reasoningTagTextPartitioner.flush()) {
       appendPartitionedVisibleDelta(delta);
     }
@@ -511,7 +519,7 @@ export async function processCompletionsStream(
       const toolCallDeltas = normalizedDelta.toolCalls;
       if (toolCallDeltas.length > 0) {
         sawNativeToolCallDelta = true;
-        flushReasoningTagTextPartitioner();
+        flushReasoningTagTextPartitioner(false);
         rememberPendingCommentaryTags(
           provisionalCommentaryTags,
           tagPendingCommentaryText(output.content),
