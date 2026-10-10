@@ -257,6 +257,7 @@ export function createUpdateStatusRefresher(params: {
       if (response && isCurrent()) {
         if (refreshCheckout) {
           params.onError(null, "manual");
+          // Supervisor guidance is current deployment metadata, independent of run progress.
           params.onStatus(response);
           // The fast read may predate the fetch. Reconcile the target before
           // the caller opens confirmation.
