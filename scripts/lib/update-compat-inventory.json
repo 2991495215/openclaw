@@ -422,7 +422,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 19,
+        "state": 15
+      }
     },
     {
       "version": "2026.9.2",
@@ -782,7 +786,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 19,
+        "state": 15
+      }
     },
     {
       "version": "2026.9.3",
@@ -1272,7 +1280,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 19,
+        "state": 16
+      }
     },
     {
       "version": "2026.9.4",
@@ -1847,7 +1859,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 19,
+        "state": 17
+      }
     },
     {
       "version": "2026.9.5",
@@ -2671,7 +2687,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 21,
+        "state": 17
+      }
     },
     {
       "version": "2026.9.6",
@@ -3869,7 +3889,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 23,
+        "state": 18
+      }
     },
     {
       "version": "2026.9.7",
@@ -5153,7 +5177,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 24,
+        "state": 19
+      }
     },
     {
       "version": "2026.9.8",
@@ -6437,7 +6465,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 24,
+        "state": 19
+      }
     },
     {
       "version": "2026.9.9",
@@ -7799,7 +7831,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 24,
+        "state": 19
+      }
     },
     {
       "version": "2026.10.1-beta.1",
@@ -9346,7 +9382,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 24,
+        "state": 20
+      }
     },
     {
       "version": "2026.10.1-beta.2",
@@ -10893,7 +10933,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 24,
+        "state": 20
+      }
     },
     {
       "version": "2026.10.1",
@@ -12482,7 +12526,11 @@
             }
           ]
         }
-      ]
+      ],
+      "schemaVersions": {
+        "agent": 24,
+        "state": 20
+      }
     }
   ]
 }
