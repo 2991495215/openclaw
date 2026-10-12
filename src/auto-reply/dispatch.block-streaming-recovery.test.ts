@@ -47,6 +47,42 @@ it.for([
   "dispatchInboundMessageWithBufferedDispatcher settles %s streamed blocks before final suppression",
   { timeout: 60000 },
   async (scenario, { signal }) => {
+    // HOLD / neverLand: identify the unresolved fixture phase without changing its waits.
+    let phase:
+      | "state-create"
+      | "scheduler-bind"
+      | "plugin-files"
+      | "server-listen"
+      | "config-write"
+      | "dispatch"
+      | "concurrent-first-block"
+      | "concurrent-other-dispatch"
+      | "concurrent-settle"
+      | "assertions"
+      | "cleanup-mcp"
+      | "cleanup-scheduler"
+      | "cleanup-server"
+      | "cleanup-state"
+      | "cleanup-queue" = "state-create";
+    const startedAt = performance.now();
+    let terminalObserved = false;
+    const requests: Array<{ method?: string; url?: string; model?: string }> = [];
+    const toolRequestBodies: string[] = [];
+    const attempted: Array<{ kind: string; text: string | undefined; mediaUrls?: string[] }> = [];
+    const delivered: Array<{ kind: string; text: string | undefined; mediaUrls?: string[] }> = [];
+    const fallbackEvents: string[] = [];
+    const onAbort = () => {
+      console.error("[streamed-block-phase]", {
+        scenario,
+        phase,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        providerRequests: requests.length,
+        attempted: attempted.length,
+        delivered: delivered.length,
+        terminalObserved,
+      });
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
     const timesOut = scenario === "timeout-media";
     const fallback = scenario.startsWith("fallback-");
     const fallbackDirect = scenario.startsWith("fallback-direct-");
@@ -67,11 +103,6 @@ it.for([
       env: { OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1" },
     });
     const scheduler = createTestGatewayScheduler();
-    const requests: Array<{ method?: string; url?: string; model?: string }> = [];
-    const toolRequestBodies: string[] = [];
-    const attempted: Array<{ kind: string; text: string | undefined; mediaUrls?: string[] }> = [];
-    const delivered: Array<{ kind: string; text: string | undefined; mediaUrls?: string[] }> = [];
-    const fallbackEvents: string[] = [];
     const server = createServer((request, response) => {
       const requestRecord: { method?: string; url?: string; model?: string } = {
         method: request.method,
@@ -205,7 +236,9 @@ it.for([
       }
     });
     try {
+      phase = "scheduler-bind";
       await setSessionMcpRuntimeScheduler(scheduler);
+      phase = "plugin-files";
       const toolPluginPath = state.statePath("media-plugin", "index.cjs");
       if (directMedia) {
         await state.writeJson("media-plugin/openclaw.plugin.json", {
@@ -232,6 +265,7 @@ it.for([
         };`,
         );
       }
+      phase = "server-listen";
       await new Promise<void>((resolve) => {
         server.listen(0, "127.0.0.1", resolve);
       });
@@ -321,6 +355,7 @@ it.for([
           ...(directMedia ? { toolSearch: false, alsoAllow: ["fixture_media"] } : {}),
         },
       } satisfies OpenClawConfig;
+      phase = "config-write";
       await state.writeConfig(cfg);
       setRuntimeConfigSnapshot(cfg);
       applyGatewayLaneConcurrency(resolveGatewayLaneConcurrency(cfg));
@@ -344,11 +379,13 @@ it.for([
         },
         cfg,
       };
+      phase = "dispatch";
       const dispatch = dispatchInboundMessageWithBufferedDispatcher({
         ...dispatchParams,
         replyOptions: {
           blockReplyTimeoutMs: timesOut ? 50 : undefined,
           onAgentRunTerminalOutcome: () => {
+            terminalObserved = true;
             if (timesOut) {
               releaseBlock.resolve();
             }
@@ -424,10 +461,12 @@ it.for([
           | ReturnType<typeof dispatchInboundMessageWithBufferedDispatcher>
           | undefined;
         try {
+          phase = "concurrent-first-block";
           await withinTest(
             awaitGateBeforeSettlement(blockStarted.promise, dispatch, "first transport start"),
             signal,
           );
+          phase = "concurrent-other-dispatch";
           otherDispatch = dispatchInboundMessageWithBufferedDispatcher({
             ...dispatchParams,
             ctx: {
@@ -444,6 +483,7 @@ it.for([
           expect(other.settledReceipt?.counts.final.delivered).toBe(0);
           expect(delivered).toEqual([]);
         } finally {
+          phase = "concurrent-settle";
           releaseBlock.resolve();
           await dispatch;
           await otherDispatch;
@@ -451,6 +491,7 @@ it.for([
       }
       if (scenario === "direct-no-delivery") {
         await expect(dispatch).rejects.toBe(noSend);
+        phase = "assertions";
         expect(toolRequestBodies[1]).toContain("Fixture generated image.");
         expect(attempted).toEqual([
           { kind: "block", text: mediaCaption, mediaUrls: [finalMediaUrl] },
@@ -465,6 +506,7 @@ it.for([
           providerFailure = error;
           return undefined;
         });
+        phase = "assertions";
         expect(fallbackEvents).toContain("primary-block");
         if (fallbackRejected) {
           expect(requests.map((entry) => entry.model)).toEqual(["answer", "backup"]);
@@ -482,6 +524,7 @@ it.for([
         return;
       }
       const result = await dispatch;
+      phase = "assertions";
       expect(requests).toEqual(
         scenario === "concurrent" || directMedia
           ? [
@@ -541,19 +584,25 @@ it.for([
         expect(result.settledReceipt?.counts.block.failedAfterSend).toBe(1);
       }
     } finally {
+      phase = "cleanup-mcp";
       const mcpManager = getSessionMcpRuntimeManagerForTesting();
       for (const sessionId of mcpManager.listSessionIds()) {
         if (mcpManager.peekSession({ sessionId })?.workspaceDir === state.workspaceDir) {
           await mcpManager.disposeSession(sessionId);
         }
       }
+      phase = "cleanup-scheduler";
       await scheduler.stop();
+      phase = "cleanup-server";
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });
+      phase = "cleanup-state";
       await state.cleanup();
+      phase = "cleanup-queue";
       resetCommandQueueStateForTest();
+      signal.removeEventListener("abort", onAbort);
     }
   },
 );
