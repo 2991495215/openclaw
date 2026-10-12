@@ -1,6 +1,6 @@
 --- a/src/gateway/server.agents.config-readiness.test.ts
 +++ b/src/gateway/server.agents.config-readiness.test.ts
-@@ -13,6 +13,8 @@
+@@ -13,11 +13,18 @@
    registerConfigWriteListener,
  } from "../config/config.js";
  import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
@@ -9,7 +9,17 @@
  import { acquireGatewayLock } from "../infra/gateway-lock.js";
  import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
  import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
-@@ -26,9 +28,12 @@
++import * as usageCache from "../infra/session-cost-usage-cache.sqlite.js";
++import * as admissionTurn from "../infra/sqlite-database-admission-turn.js";
+ import * as logging from "../logging.js";
+ import * as pluginLifecycleLease from "../plugins/plugin-lifecycle-lease.js";
++import { readGlobalSingleton } from "../shared/global-singleton.js";
++import { SQLITE_SESSION_WRITER_QUEUES } from "../state/openclaw-agent-write-admission-state.js";
++import * as agentWriteAdmission from "../state/openclaw-agent-write-admission.js";
+ import { OpenClawStateLeaseAcquisitionError } from "../state/openclaw-state-lease-error.js";
+ import {
+   createGatewaySchedulerClock,
+@@ -26,9 +33,12 @@
  import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
  import { acquireTestPortBlock } from "../test-utils/port-claims.js";
  import * as configReload from "./config-reload.js";
@@ -22,15 +32,113 @@
  import { connectGatewayClient, disconnectGatewayClient } from "./test-helpers.e2e.js";
 
  const cliEntrypoint = resolveRuntimeWorkerArgv(
-@@ -51,6 +56,84 @@
+@@ -51,6 +61,182 @@
    let reloadScheduler: GatewayScheduler | undefined;
    const reloadFailures: string[] = [];
    const cronWarnings: unknown[][] = [];
 +  const createStages: string[] = [];
-+  const markCreateStage = (stage: string) => {
-+    createStages.push(stage);
-+    console.error("readiness create stage", stage);
++  const diagnosticStartedAt = performance.now();
++  let diagnosticLines = 0;
++  const diagnosticState = () => {
++    const turns = readGlobalSingleton(Symbol.for("openclaw.sqliteDatabaseAdmissionTurns"));
++    return {
++      turns:
++        turns instanceof Map
++          ? [...turns.keys()].filter((key) => typeof key === "string" && key.includes(agentId))
++          : [],
++      writers: [...SQLITE_SESSION_WRITER_QUEUES]
++        .filter(([pathname]) => pathname.includes(agentId))
++        .map(([pathname, queue]) => ({
++          path: pathname,
++          pending: queue.pending.length,
++          draining: Boolean(queue.drainPromise),
++        })),
++    };
 +  };
++  const markCreateStage = (stage: string) => {
++    const entry = `${Math.round(performance.now() - diagnosticStartedAt)}ms ${stage}`;
++    createStages.push(entry);
++    if (createStages.length > 160) {
++      createStages.shift();
++    }
++    if (diagnosticLines++ < 160) {
++      console.error("readiness create stage", entry);
++    }
++  };
++  let turnSequence = 0;
++  const runTurn = admissionTurn.runWithSqliteDatabaseAdmissionTurn;
++  const turnSpy = vi
++    .spyOn(admissionTurn, "runWithSqliteDatabaseAdmissionTurn")
++    .mockImplementation((locations, operation, families) => {
++      if (![...locations, ...(families ?? [])].some((location) => location.includes(agentId))) {
++        return runTurn(locations, operation, families);
++      }
++      const stack = new Error().stack ?? "";
++      const owner = stack.includes("session-cost-usage-worker-scope")
++        ? "usage"
++        : stack.includes("sqlite-worker-broker")
++          ? "broker"
++          : "history";
++      const label = `turn ${++turnSequence} ${owner}`;
++      markCreateStage(`${label} requested ${JSON.stringify(diagnosticState())}`);
++      return runTurn(
++        locations,
++        async () => {
++          markCreateStage(`${label} entered`);
++          try {
++            return await operation();
++          } finally {
++            markCreateStage(`${label} ended`);
++          }
++        },
++        families,
++      );
++    });
++  let writerSequence = 0;
++  const write = agentWriteAdmission.runOpenClawAgentWorkerWrite;
++  const writerSpy = vi
++    .spyOn(agentWriteAdmission, "runOpenClawAgentWorkerWrite")
++    .mockImplementation((options, operation, timing, writeSignal, priority) => {
++      if ("target" in options || options.agentId !== agentId) {
++        return write(options, operation, timing, writeSignal, priority);
++      }
++      const label = `writer ${++writerSequence} ${priority ?? "foreground"}`;
++      markCreateStage(`${label} requested ${JSON.stringify(diagnosticState())}`);
++      return write(
++        options,
++        async () => {
++          markCreateStage(`${label} entered`);
++          try {
++            return await operation();
++          } finally {
++            markCreateStage(`${label} ended`);
++          }
++        },
++        timing,
++        writeSignal,
++        priority,
++      );
++    });
++  const prepareUsageLock = usageCache.prepareSessionCostUsageRefreshLock;
++  const pruneSpy = vi
++    .spyOn(usageCache, "prepareSessionCostUsageRefreshLock")
++    .mockImplementation((...args) => {
++      const lock = prepareUsageLock(...args);
++      if (args[0] !== agentId) {
++        return lock;
++      }
++      return {
++        ...lock,
++        async pruneRows(...pruneArgs: Parameters<typeof lock.pruneRows>) {
++          markCreateStage(`usage prune start rows=${pruneArgs[0].length}`);
++          try {
++            return await lock.pruneRows(...pruneArgs);
++          } finally {
++            markCreateStage("usage prune end");
++          }
++        },
++      };
++    });
 +  const diagnosticsSpy = vi
 +    .spyOn(sessionCreateDiagnostics, "startSessionCreateDiagnostics")
 +    .mockImplementation(() => {
@@ -107,18 +215,22 @@
    const toPinoLikeLogger = logging.toPinoLikeLogger;
    const cronLoggerSpy = vi.spyOn(logging, "toPinoLikeLogger").mockImplementation((...args) => {
      const logger = toPinoLikeLogger(...args);
-@@ -83,6 +166,7 @@
+@@ -83,6 +269,8 @@
          overlapPhases,
          reloadFailures,
          cronWarnings,
 +        createStages,
++        admissionState: diagnosticState(),
        }),
      );
    });
-@@ -162,6 +246,11 @@
+@@ -162,6 +350,14 @@
      reloadInfo.mockRestore();
      reloadError.mockRestore();
      cronLoggerSpy.mockRestore();
++    turnSpy.mockRestore();
++    writerSpy.mockRestore();
++    pruneSpy.mockRestore();
 +    diagnosticsSpy.mockRestore();
 +    operatorSpy.mockRestore();
 +    scopeSpy.mockRestore();

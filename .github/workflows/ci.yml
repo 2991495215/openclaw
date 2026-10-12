@@ -691,6 +691,10 @@ jobs:
             runtime: node
           - group: patch-recovery-node
             runtime: node
+          - group: goal-history-node
+            runtime: node
+          - group: typed-fixtures-node
+            runtime: node
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -759,6 +763,20 @@ jobs:
               files=(
                 src/gateway/server-methods.session-patch-orchestration.test.ts
                 src/gateway/server-methods/sessions-patch-native-recovery.test.ts
+              )
+              ;;
+            typed-fixtures-node)
+              files=(
+                src/gateway/server-methods/github-personal-authorization.test.ts
+                src/gateway/server-worker-placement-startup.test.ts
+                src/agents/main-session-recovery/main-session-restart-recovery.test.ts
+              )
+              ;;
+            goal-history-node)
+              files=(
+                src/gateway/server-methods/sessions-goal.test.ts
+                src/gateway/server-methods/sessions-goal.event-custody.test.ts
+                src/gateway/sessions-history-http.revocation.test.ts
               )
               ;;
             native-and-merge-node)
