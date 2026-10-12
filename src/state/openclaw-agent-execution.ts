@@ -138,7 +138,7 @@ export function captureOpenClawAgentDatabaseExecution(
         pathname,
         expectedCreationIdentity,
         expectedCreationIdentity.key.startsWith("path:") && existing
-          ? existing.creationIdentity
+          ? (existing.creationIdentity ?? identity)
           : identity,
         constraints.expectedIdentity,
       );

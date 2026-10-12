@@ -1,4 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { persistSessionTranscriptTurn } from "../config/sessions/session-accessor.transcript-turn.js";
 import type { SessionActor } from "../config/sessions/session-actor-contract.js";
@@ -61,11 +65,13 @@ const actors: SessionActor[] = [];
 afterEach(async () => {
   await Promise.all(actors.splice(0).map((actor) => actor.release()));
   memorySessionActorOwners.reset();
+  clearRuntimeConfigSnapshot();
   vi.unstubAllEnvs();
 });
 
 async function fixture(key = sessionKey) {
   vi.stubEnv("OPENCLAW_STATE_DIR", env.OPENCLAW_STATE_DIR);
+  setRuntimeConfigSnapshot(cfg);
   const agentId = key.split(":")[1]!;
   const owner = memorySessionActorOwners.get({
     agentId,

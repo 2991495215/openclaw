@@ -28,39 +28,45 @@ vi.mock("./session-history-eviction.js", () => ({ kickSessionHistoryDiskBudgetMa
 
 afterEach(() => vi.restoreAllMocks());
 
-it("creates an entry under a creation reference and patches its admitted read target", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
-    const options = { agentId: "main" };
-    const storePath = resolveOpenClawAgentSqlitePath(options);
-    const creator = captureOpenClawAgentDatabaseExecution(options, {
-      expectedCreationIdentity: readDatabasePathIdentitySync(storePath),
-    });
-    const scope = { ...options, storePath, sessionKey: "agent:main:creating-patch" };
-    const entry = { sessionId: "creating-patch", updatedAt: 1, label: "created in worker" };
-    try {
-      await expect(replaceSessionEntry(scope, entry)).resolves.toMatchObject(entry);
-      expect(creator.fileIdentity).toMatchObject({ kind: "file" });
-      let target: SessionEntryTargetPatchScope | undefined;
-      await expect(
-        readSessionEntryInWorker(scope, undefined, undefined, (captured) => {
-          target = captured;
-        }),
-      ).resolves.toMatchObject(entry);
-      if (!target) {
-        throw new Error("Session read did not return its admitted target");
+it.each([false, true])(
+  "creates an entry and patches its admitted read target (creation witness: %s)",
+  async (useCreationIdentity) => {
+    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      const options = { agentId: "main" };
+      const storePath = resolveOpenClawAgentSqlitePath(options);
+      const creator = captureOpenClawAgentDatabaseExecution(
+        options,
+        useCreationIdentity
+          ? { expectedCreationIdentity: readDatabasePathIdentitySync(storePath) }
+          : undefined,
+      );
+      const scope = { ...options, storePath, sessionKey: "agent:main:creating-patch" };
+      const entry = { sessionId: "creating-patch", updatedAt: 1, label: "created in worker" };
+      try {
+        await expect(replaceSessionEntry(scope, entry)).resolves.toMatchObject(entry);
+        expect(creator.fileIdentity).toMatchObject({ kind: "file" });
+        let target: SessionEntryTargetPatchScope | undefined;
+        await expect(
+          readSessionEntryInWorker(scope, undefined, undefined, (captured) => {
+            target = captured;
+          }),
+        ).resolves.toMatchObject(entry);
+        if (!target) {
+          throw new Error("Session read did not return its admitted target");
+        }
+        const updated = { sessionId: entry.sessionId, label: "updated through read target" };
+        await expect(
+          patchSessionEntryTarget(target, () => ({ label: updated.label }), {
+            skipMaintenance: true,
+          }),
+        ).resolves.toMatchObject(updated);
+        await expect(readSessionEntryInWorker(scope)).resolves.toMatchObject(updated);
+      } finally {
+        await creator.release();
       }
-      const updated = { ...entry, label: "updated through read target" };
-      await expect(
-        patchSessionEntryTarget(target, () => ({ label: updated.label }), {
-          skipMaintenance: true,
-        }),
-      ).resolves.toMatchObject(updated);
-      await expect(readSessionEntryInWorker(scope)).resolves.toMatchObject(updated);
-    } finally {
-      await creator.release();
-    }
-  });
-});
+    });
+  },
+);
 
 it("transfers an ordinary patch candidate with its final authority grant", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {

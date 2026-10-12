@@ -625,20 +625,6 @@ it("reserves schema-missing first birth against a sibling captured before its wi
   }
 });
 
-it("refuses an absent witness when another logical owner was captured first", async () => {
-  const options = fixture();
-  const observed = readDatabasePathIdentitySync(options.path);
-  const sibling = captureOpenClawAgentDatabaseExecution(options);
-  try {
-    expect(() =>
-      captureOpenClawAgentDatabaseExecution(options, { expectedCreationIdentity: observed }),
-    ).toThrow(/originally observed target/);
-    expect(fs.existsSync(options.path)).toBe(false);
-  } finally {
-    await sibling.release();
-  }
-});
-
 it("releases an unused creation reservation while a sibling remains", async () => {
   const options = fixture();
   const observed = readDatabasePathIdentitySync(options.path);
