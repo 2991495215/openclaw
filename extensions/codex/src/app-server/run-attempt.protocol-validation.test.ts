@@ -32,6 +32,12 @@ setupRunAttemptTestHooks();
 
 describe("Codex submitted prompt provenance", () => {
   it("forks a sender-attributed turn using the exact submitted text without changing its display", async () => {
+    const startedAt = Date.now();
+    const traceStage = (stage: string) => {
+      const at = Date.now();
+      console.error("[codex-provenance-stage]", { stage, at, elapsedMs: at - startedAt });
+    };
+    traceStage("body-start");
     const harness = createStartedThreadHarness();
     const params = createTestParams();
     params.agentId = "main";
@@ -48,6 +54,7 @@ describe("Codex submitted prompt provenance", () => {
       ...target,
       entry: { sessionId: params.sessionId, updatedAt: Date.now() },
     });
+    traceStage("session-upserted");
     const createRecorder = await loadUserTurnTranscriptRecorderFactoryForTest();
     const recorder = createRecorder({
       input: {
@@ -58,14 +65,26 @@ describe("Codex submitted prompt provenance", () => {
       target: { ...target, sessionEntry: undefined },
     });
     await recorder.persistApproved();
+    traceStage("recorder-persisted");
     params.userTurnTranscriptRecorder = recorder;
     // The admission owner canonicalizes its locator; the harness may retain an alias.
     const alias = path.join(tempDir, "database-alias");
     await symlink(tempDir, alias, process.platform === "win32" ? "junction" : "dir");
     params.sessionTarget = { ...target, storePath: path.join(alias, "agent.sqlite") };
     const closeHost = await bindProductionHarnessHostCapabilitiesForTest(params);
+    traceStage("host-bound");
     const run = runCodexAppServerAttempt(params);
+    void run.catch((error: unknown) => {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      const redact = (value: string | undefined) => value?.replaceAll(process.cwd(), "<checkout>");
+      console.error("[codex-provenance-attempt-rejected]", {
+        name: failure.name,
+        message: redact(failure.message),
+        stack: redact(failure.stack),
+      });
+    });
     try {
+      traceStage("wait-turn-start");
       await harness.waitForMethod("turn/start");
       const request = harness.requests.find(({ method }) => method === "turn/start")!
         .params as CodexTurnStartParams;
