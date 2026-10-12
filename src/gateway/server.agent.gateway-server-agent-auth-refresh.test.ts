@@ -155,6 +155,12 @@ describe("gateway agent auth refresh dispatch", () => {
     >();
     const originalCommand = agentCommandMock.getMockImplementation();
     expect(originalCommand).toBeDefined();
+    const traceStarted = performance.now();
+    const trace = (phase: string) => {
+      process.stderr.write(
+        `[auth-refresh-trace] ${Math.round(performance.now() - traceStarted)}ms ${phase}\n`,
+      );
+    };
     const dispatchEntered = createDeferred();
     const releaseDispatch = createDeferred();
     const handlerHelpers = await import("./agent-turn/agent-handler-helpers.js");
@@ -162,11 +168,13 @@ describe("gateway agent auth refresh dispatch", () => {
     const yieldSpy = vi
       .spyOn(handlerHelpers, "yieldAfterAgentAcceptedAck")
       .mockImplementationOnce(() => {
+        trace("dispatch held");
         dispatchEntered.resolve();
         return releaseDispatch.promise;
       });
     const published = createDeferred();
     const unregister = registerPreparedModelRuntimePublicationListener((event) => {
+      trace(`publication ${event.phase}`);
       if (event.phase === "published") {
         published.resolve();
       }
@@ -192,6 +200,14 @@ describe("gateway agent auth refresh dispatch", () => {
         agentId: affectedAgentId,
         runId: admittedRunId,
       });
+      void admitted.response.then(
+        () => trace("response resolved"),
+        () => trace("response rejected"),
+      );
+      void admitted.final.then(
+        () => trace("final resolved"),
+        () => trace("final rejected"),
+      );
       await expect(admitted.response).resolves.toMatchObject({
         ok: true,
         payload: { status: "accepted" },
@@ -217,12 +233,15 @@ describe("gateway agent auth refresh dispatch", () => {
         },
         before.agentDir,
       );
+      trace("auth snapshot set");
       await expect(Promise.race([published.promise, admitted.final])).resolves.toBeUndefined();
+      trace("publication observed");
       const after = await loadPublishedGatewayReplyDispatchRuntime({
         agentId: affectedAgentId,
       });
       expect(after).not.toBe(before.runtime);
       expect(agentCommandCallsFor(admittedRunId)).toHaveLength(0);
+      trace("dispatch released");
       releaseDispatch.resolve();
 
       await expect(admitted.final).resolves.toMatchObject({
@@ -256,6 +275,7 @@ describe("gateway agent auth refresh dispatch", () => {
       expect(admittedSnapshots[1] === admittedSnapshot).toBe(false);
       expect(dispatchedSnapshots.get(subsequentRunId) === admittedSnapshots[1]).toBe(true);
     } finally {
+      trace("finally releases dispatch");
       releaseDispatch.resolve();
       unregister();
       yieldSpy.mockRestore();
