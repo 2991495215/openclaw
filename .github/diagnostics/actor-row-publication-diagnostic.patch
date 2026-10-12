@@ -1,0 +1,52 @@
+--- a/src/gateway/session-row-projection.actor.test.ts
++++ b/src/gateway/session-row-projection.actor.test.ts
+@@ -5,6 +5,7 @@
+ import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+ import { replaceSessionEntrySync } from "../config/sessions/session-accessor.js";
+ import { bindSessionTranscriptStoreScope } from "../config/sessions/session-accessor.transcript-target.js";
++import { readSessionActorRowFacts } from "../config/sessions/session-actor-replica.js";
+ import { withSessionActor } from "../config/sessions/session-actor-scope.js";
+ import { buildRestartRecoveryExpectedState } from "../config/sessions/session-transcript-turn-state.js";
+ import * as history from "../config/sessions/session-transcript-worker-runtime.js";
+@@ -63,6 +64,21 @@
+       { assertCurrent() {}, assertReadable() {} },
+       async (actor) => {
+         await actor.read(authority);
++        if (actor.target.database.kind !== "file") {
++          throw new Error("Actor row-facts diagnostic requires a file target");
++        }
++        const actorPath = actor.target.database.nativeLocation;
++        const observeActorFacts = (phase: string) => {
++          const facts = readSessionActorRowFacts({ path: actorPath, sessionKey: scope.sessionKey });
++          console.info("actor-row-facts diagnostic", {
++            phase,
++            retained: facts !== undefined,
++            sessionId: facts?.entry.sessionId,
++            label: facts?.entry.label,
++            hasBoard: facts?.hasBoard,
++          });
++        };
++        observeActorFacts("after actor.read");
+         const updateLabel = (label: string, updatedAt: number) =>
+           patchSdkSessionEntry({
+             ...scope,
+@@ -70,6 +86,7 @@
+             update: () => ({ updatedAt, label }),
+           });
+         await updateLabel("Committed metadata", 2);
++        observeActorFacts("after SDK metadata patch");
+         const reads: string[][] = [];
+         observeRowFacts((owner) => (input) => {
+           reads.push([...input.sessionKeys]);
+@@ -77,9 +94,11 @@
+         });
+         const release = retainSessionListForegroundWork();
+         const projection = await createSessionRowProjection({ cfg, modelCatalog: [] });
++        observeActorFacts("after projection creation");
+         const query = { agentId: scope.agentId, key: scope.sessionKey };
+         try {
+           await projection.ensureMaterialized();
++          observeActorFacts("after projection materialization");
+           expect(projection.snapshot(query).row).toMatchObject({
+             sessionId: entry.sessionId,
+             label: "Committed metadata",

@@ -37,6 +37,11 @@ on:
         required: false
         default: false
         type: boolean
+      diagnose_actor:
+        description: Diagnose frozen actor row publication with test-only phase instrumentation
+        required: false
+        default: false
+        type: boolean
       diagnose_copilot:
         description: Diagnose the frozen actor row baseline
         required: false
@@ -68,7 +73,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}-${{ inputs.diagnose_node_wire }}-${{ inputs.diagnose_copilot }}-${{ inputs.diagnose_final }}-${{ inputs.diagnose_protocol }}-${{ inputs.diagnose_fixtures }}-${{ inputs.diagnose_readiness }}
+  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}-${{ inputs.diagnose_node_wire }}-${{ inputs.diagnose_copilot }}-${{ inputs.diagnose_final }}-${{ inputs.diagnose_protocol }}-${{ inputs.diagnose_fixtures }}-${{ inputs.diagnose_readiness }}-${{ inputs.diagnose_actor }}
   cancel-in-progress: false
 jobs:
   render:
@@ -171,7 +176,7 @@ jobs:
   main-dependencies:
     name: Main dependency attribution
     needs: [render]
-    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot }}
+    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -540,8 +545,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
   worktree-selection:
-    if: ${{ inputs.diagnose_copilot }}
-    name: Frozen actor row baseline (${{ matrix.role }})
+    if: ${{ inputs.diagnose_copilot || inputs.diagnose_actor }}
+    name: Frozen actor row publication (${{ matrix.role }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -571,6 +576,16 @@ jobs:
           install-bun: "false"
           dependency-cache: "false"
           frozen-lockfile: "true"
+      - name: Apply test-only actor publication phases
+        if: ${{ inputs.diagnose_actor }}
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts
+          patch=.ci-harness/.github/diagnostics/actor-row-publication-diagnostic.patch
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff -- src/gateway/session-row-projection.actor.test.ts > .artifacts/actor-row-baseline.patch
+          sha256sum "$patch"
       - name: Diagnose frozen actor row publication
         env:
           OPENCLAW_LOCAL_CHECK: "0"
