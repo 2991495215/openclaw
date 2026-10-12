@@ -21,6 +21,7 @@ import {
   shouldIncludePrimarySessionToolForOpenClawTools,
   shouldIncludeProgressCardToolForOpenClawTools,
 } from "./openclaw-tools.registration.js";
+import { withPreparedSessionCapabilityRead } from "./subagents/spawn/subagent-session-store.js";
 import { getGatewayToolCallerIdentity } from "./tools/gateway-caller-context.js";
 import * as inProcessGateway from "./tools/in-process-gateway.js";
 
@@ -173,9 +174,11 @@ describe("openclaw-tools progress_card gating", () => {
     setEmbeddedMode(true);
 
     expect(
-      await createFastToolNames({
-        agentSessionKey: "agent:main:subagent:worker",
-      }),
+      await withPreparedSessionCapabilityRead(() =>
+        createFastToolNames({
+          agentSessionKey: "agent:main:subagent:worker",
+        }),
+      ),
     ).not.toContain("ask_user");
     expect(
       await createFastToolNames({

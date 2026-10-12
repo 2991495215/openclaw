@@ -3,13 +3,15 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { expect, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
-} from "../../../../src/config/config.js";
+} from "../../../../src/config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../../../src/config/types.openclaw.js";
 import { captureEnv, setTestEnvValue } from "../../../../src/test-utils/env.js";
+
+afterEach(clearRuntimeConfigSnapshot);
 
 type WorkspaceAccess = "none" | "ro" | "rw";
 type SandboxContext = NonNullable<
@@ -97,10 +99,10 @@ test("Docker enforces none, read-only, and read-write workspace isolation", asyn
       }
       await fs.writeFile(hostSentinel, `original-${access}`);
 
+      const config = createConfig({ access, image, prefix, workspaceRoot });
+      setRuntimeConfigSnapshot(config);
       let sandbox: SandboxContext | null = null;
       try {
-        const config = createConfig({ access, image, prefix, workspaceRoot });
-        setRuntimeConfigSnapshot(config);
         sandbox = await resolveSandboxContext({
           config,
           agentId: `workspace-${access}`,

@@ -47,7 +47,8 @@ export {
   prepareSshSandboxExec,
   registerSandboxBackend,
   requireSandboxBackendFactory,
-  resolveSandboxRuntimeStatus,
+  resolveSandboxRuntimeStatusAsync,
+  resolvePreparedSandboxRuntimeStatus,
   runSshSandboxCommand,
   sanitizeEnvVars,
   sanitizeEnvVarsAsync,
@@ -83,3 +84,5 @@ export {
   type RemoteShellSandboxSession,
   type RemoteShellSessionOptions,
 } from "../agents/sandbox/remote-shell-transport.js";
+
+export { resolveSandboxRuntimeStatusLegacy as resolveSandboxRuntimeStatus } from "../agents/sandbox/runtime-status.legacy.js";

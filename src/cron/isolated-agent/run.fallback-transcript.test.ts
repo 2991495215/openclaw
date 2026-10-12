@@ -178,6 +178,7 @@ it("continues one cron user turn when the primary times out after provider dispa
       kind: "model-fallback",
       fromModel: "mock-openai/primary",
       toModel: "mock-openai/backup",
+      reason: "timeout",
     });
     const replies = messages.filter(
       (message) =>

@@ -36,6 +36,7 @@ import {
   isSubagentRegistryWriteCommand,
 } from "../../subagent-test-fixtures.test-helpers.js";
 import { resolveStoredSubagentCapabilities } from "../spawn/subagent-capabilities.js";
+import { withPreparedSessionCapabilityRead } from "../spawn/subagent-session-store.js";
 import { holdQueuedSwarmRun, releaseSwarmRun, reserveSwarmRun } from "../swarm/swarm-scheduler.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import {
@@ -337,7 +338,9 @@ it.each([
         );
       }
       expect(
-        resolveStoredSubagentCapabilities(requester, { cfg: config, agentId: "main" }),
+        await withPreparedSessionCapabilityRead(() =>
+          resolveStoredSubagentCapabilities(requester, { cfg: config, agentId: "main" }),
+        ),
       ).toMatchObject({ controlScope: "children" });
     }
     const terminalEntered = createDeferred();

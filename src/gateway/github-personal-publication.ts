@@ -53,7 +53,11 @@ export type PersonalGitHubSessionAction = PersonalGitHubAction & {
 export type PersonalGitHubSessionActionV2 = PersonalGitHubSessionAction &
   Pick<GitHubPublicationRequesterV2, "version" | "signal" | "prepareSource">;
 type Selection = { generation: string; account: { accountId: number; login: string } };
-type PersonalPublicationWorkspace = { assertCurrent: () => void; assertCustody: () => void };
+type PersonalPublicationWorkspace = {
+  assertCurrent: () => void;
+  assertCustody: () => void;
+  worktree: Awaited<ReturnType<typeof readGitHubPublicationWorktreeOwner>>["worktree"];
+};
 
 export {
   preparePersonalRepositoryPublicationStatus,
@@ -198,6 +202,8 @@ export function createPersonalGitHubPublicationCoordinator(
     action.assertCurrent();
     return await placements.withLocalWorkspaceReservation(action, async (assertReservation) => {
       const worktreeOwner = await readGitHubPublicationWorktreeOwner(action);
+      using _ = { [Symbol.dispose]: () => worktreeOwner.release() };
+
       const { worktree } = worktreeOwner;
       action.assertCurrent();
       assertReservation();
@@ -220,7 +226,7 @@ export function createPersonalGitHubPublicationCoordinator(
       };
       try {
         assertCurrent();
-        return await run({ assertCurrent, assertCustody });
+        return await run({ assertCurrent, assertCustody, worktree });
       } finally {
         await lease.release();
       }
@@ -350,7 +356,7 @@ export function createPersonalGitHubPublicationCoordinator(
           workspace.assertCurrent();
           bound.assertCurrent();
         };
-        const { worktree } = await readGitHubPublicationWorktreeOwner(action);
+        const { worktree } = workspace;
         assertCurrent();
         const identity = await preparePersonalGitHubPublicationSelection(
           bound,

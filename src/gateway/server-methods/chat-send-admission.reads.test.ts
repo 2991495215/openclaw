@@ -519,7 +519,6 @@ it.each(["known-source", "new-terminal", "new-receipt"] as const)(
 it.each([
   "caller revocation",
   "lifecycle rotation",
-  "placement publication",
   "service replacement",
   "unavailable reader",
 ] as const)("refuses %s while preparing placement admission", async (change) => {
@@ -558,9 +557,9 @@ it.each([
     const initialEntry = structuredClone(sessionAccessor.loadSessionEntry(scope));
     const observed = createDeferred();
     const resume = createDeferred();
-    const preparePlacement = placements.prepareRuntimeRefresh.bind(placements);
+    const preparePlacement = placements.prepareSessionPlacement.bind(placements);
     const delayed = vi
-      .spyOn(placements, "prepareRuntimeRefresh")
+      .spyOn(placements, "prepareSessionPlacement")
       .mockImplementationOnce(async (sessionId) => {
         const facts = await preparePlacement(sessionId);
         observed.resolve();
@@ -589,8 +588,6 @@ it.each([
           callerCurrent = false;
         } else if (change === "lifecycle rotation") {
           rotateAgentEventLifecycleGeneration();
-        } else if (change === "placement publication") {
-          await placements.startDispatch({ ...scope, sessionId: entry.sessionId });
         } else {
           context.workerSessionPlacementService = createWorkerSessionPlacementStore();
         }

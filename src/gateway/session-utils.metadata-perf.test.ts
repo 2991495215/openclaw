@@ -94,7 +94,6 @@ function createRowThinkingFixture() {
       modelCatalog: models,
       rowContext,
       activeModel: null,
-      skipTranscriptUsageFallback: true,
     }).inputs.thinkingProjection;
   return {
     cfg,

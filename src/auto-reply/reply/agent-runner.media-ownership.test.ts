@@ -79,7 +79,7 @@ describe("runReplyAgent media delivery ownership", () => {
                   },
                 });
                 const result = await runReplyAgent(
-                  makeRunReplyAgentParams({
+                  await makeRunReplyAgentParams({
                     sessionKey,
                     provider,
                     followupRun: createMediaFollowupRun({

@@ -9,16 +9,12 @@ import {
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { normalizeAgentId, parseAgentSessionKey } from "openclaw/plugin-sdk/routing";
 import { captureRuntimeConfigAsyncReader } from "openclaw/plugin-sdk/runtime-config-snapshot";
-import { resolveSandboxRuntimeStatus } from "openclaw/plugin-sdk/sandbox";
+import { resolvePreparedSandboxRuntimeStatus } from "openclaw/plugin-sdk/sandbox";
 import {
   captureSessionEntryCurrentCheckAsync,
   type PreparedSessionSourceAssertion,
 } from "openclaw/plugin-sdk/session-binding-runtime";
-import {
-  getSessionEntry,
-  resolveStorePath,
-  type SessionEntry,
-} from "openclaw/plugin-sdk/session-store-runtime";
+import { resolveStorePath, type SessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 
 type ExecHost = "sandbox" | "gateway" | "node";
 type ExecTarget = "auto" | ExecHost;
@@ -42,6 +38,8 @@ export type PreparedCodexNativeExecutionPolicy = {
   policy: CodexNativeExecutionPolicy;
   assertCurrent: () => Promise<void>;
   source?: PreparedSessionSourceAssertion;
+  retain: () => () => void;
+  release: () => void;
 };
 
 type RunPolicyOptions = {
@@ -68,13 +66,6 @@ function resolveRunPolicyParams(params: EmbeddedRunAttemptParams, options: RunPo
   };
 }
 
-export function resolveCodexNativeExecutionPolicyForRun(
-  params: EmbeddedRunAttemptParams,
-  options: RunPolicyOptions = {},
-): CodexNativeExecutionPolicy {
-  return resolveCodexNativeExecutionPolicy(resolveRunPolicyParams(params, options));
-}
-
 export function prepareCodexNativeExecutionPolicyForRun(
   params: EmbeddedRunAttemptParams,
   options: RunPolicyOptions = {},
@@ -84,7 +75,9 @@ export function prepareCodexNativeExecutionPolicyForRun(
 
 /** Prepare the selected row once; retained checks use its exact execution policy. */
 export async function prepareCodexNativeExecutionPolicy(
-  params: Parameters<typeof resolveCodexNativeExecutionPolicy>[0],
+  params: Omit<Parameters<typeof resolveCodexNativeExecutionPolicy>[0], "sessionEntry"> & {
+    sessionEntry?: SessionEntry | null;
+  },
 ): Promise<PreparedCodexNativeExecutionPolicy> {
   const captured = {
     ...params,
@@ -94,7 +87,15 @@ export async function prepareCodexNativeExecutionPolicy(
   const { sourceAgentId, sourceSessionKey, canReadSessionEntry } =
     resolveSessionSelection(captured);
   if (!canReadSessionEntry || !sourceAgentId || !sourceSessionKey) {
-    return { policy: resolveCodexNativeExecutionPolicy(captured), async assertCurrent() {} };
+    return {
+      policy: resolveCodexNativeExecutionPolicy({
+        ...captured,
+        sessionEntry: captured.sessionEntry ?? null,
+      }),
+      async assertCurrent() {},
+      retain: () => () => {},
+      release() {},
+    };
   }
   const selected = await captureSessionEntryCurrentCheckAsync({
     agentId: sourceAgentId,
@@ -109,15 +110,37 @@ export async function prepareCodexNativeExecutionPolicy(
     fields: ["sessionId", "lifecycleRevision", "execHost", "execNode", "sandbox", "sandboxMode"],
     errorMessage: "Codex session execution policy changed; prepare the operation again.",
   });
-  return {
-    policy: resolveCodexNativeExecutionPolicy({
-      ...captured,
-      sessionEntry: selected.entry ?? null,
-      readRuntimeSessionEntry: false,
-    }),
-    assertCurrent: selected.assertCurrent,
-    source: selected.source,
-  };
+  try {
+    let owners = 0;
+    // Late relay callbacks and the attempt share the same prepared policy.
+    const retain = () => {
+      owners++;
+      let released = false;
+      return () => {
+        if (released) {
+          return;
+        }
+        released = true;
+        if (--owners === 0) {
+          selected.release();
+        }
+      };
+    };
+    return {
+      policy: resolveCodexNativeExecutionPolicy({
+        ...captured,
+        sessionEntry: selected.entry ?? null,
+        readRuntimeSessionEntry: false,
+      }),
+      assertCurrent: selected.assertCurrent,
+      source: selected.source,
+      retain,
+      release: retain(),
+    };
+  } catch (error) {
+    selected.release();
+    throw error;
+  }
 }
 
 /** Projects node execution ownership into the runtime tool factory options. */
@@ -135,7 +158,7 @@ export function resolveCodexNodeExecToolOverrides(
 export function resolveCodexNativeExecutionPolicy(params: {
   config?: OpenClawConfig;
   /** Null carries acknowledged absence from an already selected physical source. */
-  sessionEntry?: SessionEntry | null;
+  sessionEntry: SessionEntry | null;
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
@@ -146,33 +169,19 @@ export function resolveCodexNativeExecutionPolicy(params: {
   readRuntimeSessionEntry?: boolean;
 }): CodexNativeExecutionPolicy {
   const config = params.config ?? {};
-  const { agentId, sessionKey, sourceAgentId, sourceSessionKey, canReadSessionEntry } =
-    resolveSessionSelection(params);
-  let sessionEntry = params.sessionEntry;
-  if (sessionEntry === undefined && canReadSessionEntry && sourceSessionKey && sourceAgentId) {
-    sessionEntry =
-      getSessionEntry({
-        sessionKey: sourceSessionKey,
-        agentId: sourceAgentId,
-        ...((params.sessionTarget?.storePath ?? params.storePath)
-          ? { storePath: params.sessionTarget?.storePath ?? params.storePath }
-          : {}),
-        hydrateSkillPromptRefs: false,
-      }) ?? null;
-  }
+  const { agentId, sessionKey } = resolveSessionSelection(params);
+  const sessionEntry = params.sessionEntry;
   const sandboxAgentId = parseAgentSessionKey(sessionKey)?.agentId ?? agentId;
   // Stored overrides follow the captured source; main/non-main classification keeps its run key.
   const sandboxed =
     params.sandboxAvailable === true ||
-    ((sessionEntry !== undefined || params.sandboxAvailable === undefined) &&
-    sessionKey &&
-    sandboxAgentId
-      ? resolveSandboxRuntimeStatus({
+    (sessionKey && sandboxAgentId
+      ? resolvePreparedSandboxRuntimeStatus({
           cfg: config,
           sessionKey,
           agentId: sandboxAgentId,
           classificationAgentId: sandboxAgentId,
-          ...(sessionEntry !== undefined ? { preparedSessionEntry: sessionEntry } : {}),
+          preparedSessionEntry: sessionEntry,
         }).sandboxed
       : false);
   const sandboxAvailable = params.sandboxAvailable ?? sandboxed;
@@ -203,7 +212,11 @@ export function resolveCodexNativeExecutionPolicy(params: {
   };
 }
 
-function resolveSessionSelection(params: Parameters<typeof resolveCodexNativeExecutionPolicy>[0]) {
+function resolveSessionSelection(
+  params: Omit<Parameters<typeof resolveCodexNativeExecutionPolicy>[0], "sessionEntry"> & {
+    sessionEntry?: SessionEntry | null;
+  },
+) {
   const config = params.config ?? {};
   const sessionKey = params.sessionKey?.trim() || params.sessionId?.trim() || undefined;
   const agentId =

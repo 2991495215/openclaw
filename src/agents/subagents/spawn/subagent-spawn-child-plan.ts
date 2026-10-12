@@ -29,6 +29,7 @@ import {
   normalizeDeliveryContext,
   resolveAgentConfig,
   resolveSandboxRuntimeStatus,
+  resolveSandboxRuntimeStatusAsync,
 } from "./subagent-spawn.runtime.js";
 
 export async function resolveSubagentChildPlan(params: {
@@ -95,7 +96,7 @@ export async function resolveSubagentChildPlan(params: {
   const childSessionKey = incognito
     ? mintedChildSessionKey.replace(":subagent:", ":subagent:incognito-")
     : mintedChildSessionKey;
-  const requesterRuntime = resolveSandboxRuntimeStatus({
+  const requesterRuntime = await resolveSandboxRuntimeStatusAsync({
     cfg: params.cfg,
     sessionKey: params.requesterInternalKey,
     agentId: params.requesterAgentId,

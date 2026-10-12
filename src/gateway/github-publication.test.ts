@@ -809,8 +809,7 @@ describe("Gateway GitHub publication", () => {
       return {
         resolveCanonicalSessionEntryFromStoreKeys:
           runtime.resolveCanonicalSessionEntryFromStoreKeys,
-        resolveGatewaySessionStoreTargetWithStore:
-          runtime.resolveGatewaySessionStoreTargetWithStore,
+        resolveGatewaySessionStoreTargetInWorker: runtime.resolveGatewaySessionStoreTargetInWorker,
       };
     };
     const warnings: string[] = [];

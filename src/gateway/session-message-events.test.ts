@@ -2177,7 +2177,7 @@ describe("session.message websocket events", () => {
       storePath,
     });
     const { committer, identity, receiver, push, sessionTarget, source } =
-      createWorkerFanoutFixture({
+      await createWorkerFanoutFixture({
         storePath,
         sessionId,
         sessionKey,
@@ -2313,6 +2313,7 @@ describe("session.message websocket events", () => {
       clearAgentRunContext("local");
       ws.off("message", collectWorkerChats);
       ws.close();
+      await source.release();
     }
   });
 

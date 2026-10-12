@@ -109,7 +109,6 @@ async function withTitleRows(
                 now: NOW,
                 includeDerivedTitles: true,
                 includeLastMessage,
-                skipTranscriptUsageFallback: true,
                 lightweightListRow: true,
               }),
             ),

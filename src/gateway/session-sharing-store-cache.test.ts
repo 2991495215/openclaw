@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import * as sessionsConfig from "../config/sessions.js";
 import * as sessionAccessor from "../config/sessions/session-accessor.js";
@@ -7,7 +8,10 @@ import {
   removeSessionMember,
 } from "../config/sessions/session-sharing-store.native.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
+import {
+  closeOpenClawAgentDatabasesAsync,
+  closeOpenClawAgentDatabasesForTest,
+} from "../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
   initializeSessionReadContext,
@@ -19,7 +23,7 @@ import {
   canReceiveSessionEvent,
   invalidateSessionSharingSnapshot,
   resolveSessionMutationAuthorization,
-  resolveSessionSharingTarget,
+  resolveSessionSharingTargetAsync,
 } from "./session-sharing.js";
 import { resolveGatewaySessionStoreTargetWithStore } from "./session-utils-store-lookup.js";
 
@@ -55,44 +59,58 @@ function identifiedClient(userId: string): GatewayClient {
 
 describe("session event authorization store work", () => {
   it("does not capture a replacement for an already prepared mutation target", async () => {
-    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
-      const cfg: OpenClawConfig = {};
-      setRuntimeConfigSnapshot(cfg);
-      const scope = { agentId: "main", sessionKey: "agent:main:prepared-target" };
-      const entry = {
-        sessionId: "prepared-session",
-        updatedAt: 1,
-        createdActor: { type: "human", source: "profile", id: "owner" } as const,
-      };
-      await sessionAccessor.upsertSessionEntryCore(scope, entry);
-      const target = resolveSessionSharingTarget({ cfg, ...scope, exactRead: true });
-      if (!target) {
-        throw new Error("prepared target was not created");
-      }
-      const params = {
-        client: identifiedClient("owner"),
-        context: { chatAbortControllers: new Map(), getRuntimeConfig: () => cfg } as never,
-        method: "chat.send",
-        requestParams: scope,
-      };
-      const expectedTarget = {
-        ...scope,
-        sessionKey: target.canonicalKey,
-        storePath: target.storePath,
-        sessionId: entry.sessionId,
-      };
-      const original = resolveSessionMutationAuthorization({ ...params, expectedTarget });
-      expect(original.error).toBeNull();
-      expect(original.authorization).toBeDefined();
-      await sessionAccessor.upsertSessionEntryCore(scope, { ...entry, sessionId: "replacement" });
-      expect(resolveSessionMutationAuthorization(params).error).toBeNull();
-      const replacement = resolveSessionMutationAuthorization({ ...params, expectedTarget });
-      expect(replacement.error).toMatchObject({
-        details: { code: "SESSION_MUTATION_AUTHORIZATION_CHANGED" },
-      });
-      expect(replacement.authorization).toBeUndefined();
-      expect(() => original.authorization?.assertCurrent()).toThrow("session changed");
-    });
+    await withOpenClawTestState(
+      { scenario: "minimal", prepareProfileCatalog: true },
+      async (state) => {
+        const cfg: OpenClawConfig = {};
+        setRuntimeConfigSnapshot(cfg);
+        const scope = { agentId: "main", sessionKey: "agent:main:prepared-target" };
+        const entry = {
+          sessionId: "prepared-session",
+          updatedAt: 1,
+          createdActor: { type: "human", source: "profile", id: "owner" } as const,
+        };
+        await sessionAccessor.upsertSessionEntryCore(scope, entry);
+        // Drain setup's deferred maintenance before observing the worker-backed target read.
+        await closeOpenClawAgentDatabasesAsync(state.env.OPENCLAW_STATE_DIR);
+        const reads = observeHostDataSql();
+        let target;
+        try {
+          target = await resolveSessionSharingTargetAsync({ cfg, ...scope });
+          expect(reads.queries).toEqual([]);
+        } finally {
+          reads.restore();
+        }
+        if (!target) {
+          throw new Error("prepared target was not created");
+        }
+        const params = {
+          client: identifiedClient("owner"),
+          context: { chatAbortControllers: new Map(), getRuntimeConfig: () => cfg } as never,
+          method: "chat.send",
+          requestParams: scope,
+        };
+        const expectedTarget = {
+          ...scope,
+          sessionKey: target.canonicalKey,
+          storePath: target.storePath,
+          sessionId: entry.sessionId,
+        };
+        const original = resolveSessionMutationAuthorization({ ...params, expectedTarget });
+        expect(original.error).toBeNull();
+        expect(original.authorization).toBeDefined();
+        await sessionAccessor.upsertSessionEntryCore(scope, { ...entry, sessionId: "replacement" });
+        const refreshed = await resolveSessionSharingTargetAsync({ cfg, ...scope });
+        expect(refreshed?.entry.sessionId).toBe("replacement");
+        expect(resolveSessionMutationAuthorization(params).error).toBeNull();
+        const replacement = resolveSessionMutationAuthorization({ ...params, expectedTarget });
+        expect(replacement.error).toMatchObject({
+          details: { code: "SESSION_MUTATION_AUTHORIZATION_CHANGED" },
+        });
+        expect(replacement.authorization).toBeUndefined();
+        expect(() => original.authorization?.assertCurrent()).toThrow("session changed");
+      },
+    );
   });
 
   it.each([1, 32])(

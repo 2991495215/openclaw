@@ -74,6 +74,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   resetSystemEventsForTest();
   resetHeartbeatEventsForTest();
+  clearRuntimeConfigSnapshot();
 });
 
 type ProjectionScenario = {

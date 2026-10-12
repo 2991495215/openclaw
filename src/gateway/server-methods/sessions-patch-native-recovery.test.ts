@@ -1,11 +1,14 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionsPatchParams } from "../../../packages/gateway-protocol/src/index.js";
 import type { prepareModelSelectionRuntime } from "../../auto-reply/reply/model-runtime-normalization.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { withPluginMetadataSnapshotScope } from "../../plugins/current-plugin-metadata-snapshot.js";
 import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
-import { prepareSessionPatchRuntimeSelection } from "./sessions-patch-model-selection.js";
+import { prepareSessionPatchRuntimeSelection as prepareRuntimeSelectionOwner } from "./sessions-patch-model-selection.js";
+
+const releaseSelections: Array<() => void> = [];
+afterEach(() => releaseSelections.splice(0).forEach((release) => release()));
 
 const preparation = vi.hoisted(() => {
   const validate = vi.fn((): string | undefined => undefined);
@@ -48,13 +51,17 @@ const original: SessionEntry = {
   modelOverride: "model",
 };
 const cfg: OpenClawConfig = { agents: { defaults: { sandbox: { mode: "all" } } } };
-async function prepareRuntimeSelection(
-  params: Parameters<typeof prepareSessionPatchRuntimeSelection>[0],
-) {
+async function prepareRuntimeSelection(params: Parameters<typeof prepareRuntimeSelectionOwner>[0]) {
   const metadata = await resolvePluginMetadataSnapshotAsync({ config: params.cfg });
   return withPluginMetadataSnapshotScope(
     metadata,
-    () => prepareSessionPatchRuntimeSelection(params),
+    async () => {
+      const result = await prepareRuntimeSelectionOwner(params);
+      if (result.ok && result.release) {
+        releaseSelections.push(result.release);
+      }
+      return result;
+    },
     { config: params.cfg },
   );
 }

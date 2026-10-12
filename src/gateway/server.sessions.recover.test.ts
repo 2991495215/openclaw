@@ -36,7 +36,7 @@ import {
 } from "./session-sharing.js";
 import {
   resolveCanonicalSessionEntryFromStoreKeys,
-  resolveGatewaySessionStoreTargetWithStore,
+  resolveGatewaySessionStoreTargetInWorker,
 } from "./session-utils.js";
 import { testState, writeSessionStore } from "./test-helpers.js";
 import {
@@ -226,7 +226,7 @@ test("sessions.recover settles its active placement before archiving a real sess
     loadSessionRuntime: async () => ({
       managedWorktrees,
       resolveCanonicalSessionEntryFromStoreKeys,
-      resolveGatewaySessionStoreTargetWithStore,
+      resolveGatewaySessionStoreTargetInWorker,
     }),
     revokeSessionAuthority: vi.fn(),
   });
@@ -384,7 +384,7 @@ test.each(["before-interrupt", "before-drain"] as const)(
         return {
           managedWorktrees,
           resolveCanonicalSessionEntryFromStoreKeys,
-          resolveGatewaySessionStoreTargetWithStore,
+          resolveGatewaySessionStoreTargetInWorker,
         };
       },
       revokeSessionAuthority: vi.fn(),
