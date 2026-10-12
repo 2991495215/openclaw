@@ -116,6 +116,14 @@ test.each([false, true])(
 );
 
 test("required placement survives disconnect but stops setup when committed caller authority ends", async () => {
+  const startedAt = performance.now();
+  let scenario = "setup";
+  const trace = (stage: string) => {
+    console.error(
+      `[required-placement] ${Math.round(performance.now() - startedAt)}ms ${scenario}: ${stage}`,
+    );
+  };
+  trace("test entered");
   const origin = "https://control.example.invalid";
   const admin = "admin@example.invalid";
   const writers = {
@@ -149,6 +157,7 @@ test("required placement survives disconnect but stops setup when committed call
       },
     },
   });
+  trace("config written");
   vi.stubEnv("OPENCLAW_TEST_MINIMAL_GATEWAY", "0");
 
   // Observe the production service's provider-side setup entry points without replacing them.
@@ -161,12 +170,16 @@ test("required placement survives disconnect but stops setup when committed call
       const service = createDispatch({
         ...options,
         runLocalBarrier: async (params) => {
+          trace("local barrier started");
           const placement = await options.runLocalBarrier(params);
+          trace(`local barrier returned ${placement.state}`);
           const current = hold;
           if (current?.afterAcknowledgment && placement.state === "requested") {
             hold = undefined;
+            trace("post-acknowledgment hold committed");
             current.committed.resolve();
             await current.resume;
+            trace("post-acknowledgment hold resumed");
           }
           return placement;
         },
@@ -209,12 +222,16 @@ test("required placement survives disconnect but stops setup when committed call
       const lifecycle = createLifecycle(options);
       const startDispatch = lifecycle.startDispatch.bind(lifecycle);
       lifecycle.startDispatch = async (...args) => {
+        trace("lifecycle dispatch started");
         const placement = await startDispatch(...args);
+        trace(`lifecycle dispatch returned ${placement.state}`);
         const current = hold;
         if (current && !current.afterAcknowledgment && placement.state === "requested") {
           hold = undefined;
+          trace("pre-acknowledgment hold committed");
           current.committed.resolve();
           await current.resume;
+          trace("pre-acknowledgment hold resumed");
         }
         return placement;
       };
@@ -225,20 +242,27 @@ test("required placement survives disconnect but stops setup when committed call
   let settled: { remaining: number; done: Deferred } | undefined;
   const emitSessionsChanged = sessionChangeEvent.emitSessionsChanged;
   vi.spyOn(sessionChangeEvent, "emitSessionsChanged").mockImplementation((...args) => {
+    if (args[1].reason === "dispatch") {
+      trace(`dispatch event, remaining=${settled?.remaining}`);
+    }
     if (args[1].reason === "dispatch" && settled && --settled.remaining === 0) {
       settled.done.resolve();
     }
     emitSessionsChanged(...args);
   });
 
+  trace("gateway starting");
   await withGatewayServer(async ({ port }) => {
+    trace("gateway ready");
     const connect = async (email: string, scopes: string[]) => {
+      trace("websocket opening");
       const ws = await openWs(port, {
         origin,
         "x-forwarded-user": email,
         "x-forwarded-for": "203.0.113.50",
         "x-forwarded-proto": "https",
       });
+      trace("websocket open; connect requested");
       const connected = await connectReq(ws, {
         prePairDevice: true,
         client: CONTROL_UI_CLIENT,
@@ -247,17 +271,22 @@ test("required placement survives disconnect but stops setup when committed call
         scopes,
         deviceIdentityPath: path.join(temps.make("required-placement-"), "device.sqlite"),
       });
+      trace(`connect replied ok=${connected.ok}`);
       expect(connected.ok, JSON.stringify(connected.error)).toBe(true);
       return ws;
     };
     const adminWs = await connect(admin, ["operator.admin"]);
     const commitConfigPatch = async (patch: Record<string, unknown>) => {
+      trace("config.get requested");
       const current = await rpcReq<{ hash: string }>(adminWs, "config.get", {});
+      trace(`config.get replied ok=${current.ok}`);
       expect(current.ok, JSON.stringify(current.error)).toBe(true);
+      trace("config.patch requested");
       const patched = await rpcReq(adminWs, "config.patch", {
         baseHash: current.payload?.hash,
         ...patch,
       });
+      trace(`config.patch replied ok=${patched.ok}`);
       expect(patched.ok, JSON.stringify(patched.error)).toBe(true);
     };
     const createThenEndAuthority = async (
@@ -272,8 +301,12 @@ test("required placement survives disconnect but stops setup when committed call
       const resume = createDeferredCore();
       hold = { committed, resume: resume.promise, afterAcknowledgment };
       settled = { remaining: 2, done: createDeferredCore() };
+      trace("sessions.create requested");
       const created = rpcReq(ws, "sessions.create", {});
-      void created.catch(() => {});
+      void created.then(
+        (reply) => trace(`sessions.create replied ok=${reply.ok}`),
+        () => trace("sessions.create rejected"),
+      );
       try {
         if (afterAcknowledgment) {
           const acknowledged = await created;
@@ -287,18 +320,24 @@ test("required placement survives disconnect but stops setup when committed call
             }),
           ]);
         }
+        trace("ending authority");
         await endAuthority(ws);
+        trace("authority ended");
       } finally {
         resume.resolve();
       }
+      trace("waiting for dispatch transitions");
       await settled.done.promise;
+      trace("dispatch transitions settled");
       await dispatchSettled;
+      trace("dispatch operation settled");
       expect(setupCalls, dispatchErrors.join("; ")).toEqual(expectedSetupCalls);
       return { ws, created };
     };
     try {
       // Let the RPC acknowledge and release its own custody before disconnecting.
       // Detached setup still owns the accepted source until its operation settles.
+      scenario = "disconnect";
       const disconnected = await createThenEndAuthority(
         writers.disconnect,
         async (ws) => {
@@ -313,6 +352,7 @@ test("required placement survives disconnect but stops setup when committed call
       expect((await disconnected.created).ok).toBe(true);
 
       // A committed config patch removes the caller's operator scope.
+      scenario = "scope";
       const revoked = await createThenEndAuthority(writers.scope, async () => {
         await commitConfigPatch({
           raw: JSON.stringify({ gateway: { auth: { identityScopes: { [writers.scope]: null } } } }),
@@ -322,6 +362,7 @@ test("required placement survives disconnect but stops setup when committed call
       await expect(revoked.created).rejects.toThrow(/gateway policy changed/);
 
       // A committed config patch removes the required profile while the caller stays connected.
+      scenario = "profile";
       const unprofiled = await createThenEndAuthority(writers.profile, async () => {
         await commitConfigPatch({
           raw: JSON.stringify({ cloudWorkers: { requiredProfile: null } }),
