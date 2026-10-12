@@ -190,6 +190,8 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   "setup-runtime": 2,
   "reply-history": 6,
   "provider-auth": 15,
+  // +1: createSessionHeaderLink from shipped 2026.10.1 until plugin-sdk-session-header-link expires.
+  "control-ui": 1,
 } satisfies Record<string, number>);
 
 export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env) {
@@ -213,7 +215,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: approved async upstream-link writes with released sync compatibility.
       // -8: retired Skill Workshop proposal hook types.
       // +3: approved async session entry reads and typed incognito refusal on the existing subpath.
-      3644,
+      // +1: deprecated createSessionHeaderLink retained from shipped 2026.10.1.
+      3645,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -227,7 +230,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: resolve the controller from the current invocation registry.
       // +2: approved async upstream-link writes with released sync compatibility.
       // +3: approved async session entry reads and typed incognito refusal on the existing subpath.
-      2114,
+      // +1: the same deprecated createSessionHeaderLink.
+      2115,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -235,7 +239,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // Remove deprecated sync channel envelope helpers and their compat records at the next Plugin SDK major.
       // +2: approved synchronous upstream-link write compatibility until the next Plugin SDK major.
       // +1: synchronous session entry getter remains until the next Plugin SDK major.
-      148,
+      // +1: createSessionHeaderLink from shipped 2026.10.1 until plugin-sdk-session-header-link expires.
+      149,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(
