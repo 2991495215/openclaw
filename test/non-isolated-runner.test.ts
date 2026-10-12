@@ -584,10 +584,49 @@ async function assertCompletion(
 }
 
 async function verifyRunnerCleanup(signal: AbortSignal) {
+  const startedAt = performance.now();
   // Outside the enclosing Vitest TMPDIR: outer cleanup must not erase unjoined writers.
   const fixtureRoots = path.join(repoRoot, ".artifacts", "non-isolated-runner");
   await fs.mkdir(fixtureRoots, { recursive: true });
   const root = await fs.mkdtemp(path.join(fixtureRoots, "run-"));
+  const phaseMs = {
+    fixture: 0,
+    child: 0,
+    disposal: 0,
+    "native-report": 0,
+    replay: 0,
+    "fixture-removal": 0,
+  };
+  let currentPhase: keyof typeof phaseMs = "fixture";
+  let phaseStartedAt = startedAt;
+  let child!: ChildProcess;
+  let commandCode: number | undefined;
+  let completedReplays = 0;
+  const enterPhase = (next: keyof typeof phaseMs) => {
+    const now = performance.now();
+    phaseMs[currentPhase] = Math.round(now - phaseStartedAt);
+    currentPhase = next;
+    phaseStartedAt = now;
+  };
+  const reportCancellation = () => {
+    const now = performance.now();
+    console.error(
+      `[non-isolated-runner] canceled ${JSON.stringify({
+        phase: currentPhase,
+        elapsedMs: Math.round(now - startedAt),
+        phaseMs: { ...phaseMs, [currentPhase]: Math.round(now - phaseStartedAt) },
+        completedReplays,
+        child: {
+          started: Boolean(child),
+          exitCode: child?.exitCode ?? null,
+          signalCode: child?.signalCode ?? null,
+          killed: child?.killed ?? false,
+          commandCode: commandCode ?? null,
+        },
+      })}`,
+    );
+  };
+  signal.addEventListener("abort", reportCancellation, { once: true });
   try {
     const vitestPackageDir = path.dirname(require.resolve("vitest/package.json"));
     await fs.symlink(path.dirname(vitestPackageDir), path.join(root, "node_modules"), "junction");
@@ -631,9 +670,9 @@ export default defineConfig({
     );
 
     const reportPath = path.join(root, "report.json");
-    let child!: ChildProcess;
     const env = childEnv();
     const workers = createVitestWorkerRun(env);
+    enterPhase("child");
     const command = runVitestShutdownCommand({
       bin: resolveTestNodeExecPath(),
       args: [
@@ -662,9 +701,12 @@ export default defineConfig({
     let result: Awaited<typeof command>;
     try {
       result = await command;
+      commandCode = result.code;
     } finally {
+      enterPhase("disposal");
       await workers.dispose();
     }
+    enterPhase("native-report");
     const completion: ChildCompletion = {
       exitCode: child.exitCode,
       signalCode: child.signalCode,
@@ -691,6 +733,7 @@ export default defineConfig({
 
     // Replay faults against this one completed child, not new fixture executions.
     // The same assertion path must reject incomplete proof even with a good summary.
+    enterPhase("replay");
     const capturePath = `${reportPath}.capture.json`;
     const originals = [
       await fs.readFile(reportPath, "utf8"),
@@ -707,6 +750,7 @@ export default defineConfig({
           assertCompletion(completion, expected),
           `rejects missing/corrupt ${path.basename(artifact)}: ${contents}`,
         ).rejects.toThrow();
+        completedReplays++;
         await fs.writeFile(artifact, originals[index]!);
       }
     }
@@ -871,14 +915,18 @@ export default defineConfig({
       await fs.writeFile(reportPath, JSON.stringify(replay.report));
       await fs.writeFile(capturePath, JSON.stringify(replay.capture));
       await expect(assertCompletion(replay.child, expected), label).rejects.toThrow();
+      completedReplays++;
     }
     // Release only after the managed child/group/output join and native proof.
+    enterPhase("fixture-removal");
     await fs.rm(root, { recursive: true, force: true });
   } catch (error) {
     if (error instanceof Error) {
       error.message += `; retained fixture ${root}`;
     }
     throw error;
+  } finally {
+    signal.removeEventListener("abort", reportCancellation);
   }
 }
 
