@@ -12,7 +12,10 @@ import { resolveEmbeddedRunAttemptTerminalState } from "../../src/agents/embedde
 import { prepareModelProviderRequestRouteFacts } from "../../src/agents/provider-request-config.js";
 import { makeEmbeddedRunnerAttempt } from "../../src/agents/test-helpers/embedded-agent-runner-e2e-fixtures.js";
 import { createPluginMetadataSnapshot } from "../../src/config/plugin-auto-enable.test-helpers.js";
-import { resolveProviderRuntimePluginHandle } from "../../src/plugins/provider-hook-runtime.js";
+import {
+  attachModelProviderRuntimePluginHandle,
+  resolveProviderRuntimePluginHandle,
+} from "../../src/plugins/provider-hook-runtime.js";
 import { createEmptyPluginRegistry } from "../../src/plugins/registry-empty.js";
 import { withPluginRuntimeGenerationScope } from "../../src/plugins/runtime/generation-scope.js";
 import type { ProviderPlugin } from "../../src/plugins/types.js";
@@ -42,7 +45,7 @@ const model = {
 const registeredProviders = new Map<string, ProviderPlugin[]>();
 
 beforeAll(async () => {
-  for (const pluginId of ["qwen", "openrouter"]) {
+  for (const pluginId of ["qwen", "openrouter", "openai"]) {
     const { default: plugin } = await loadBundledPluginFacade<{
       default: Parameters<typeof registerProviderPlugin>[0]["plugin"];
     }>({ pluginId, artifactBasename: "index.js" });
@@ -67,7 +70,7 @@ type ProfileUsageReadback = {
   disabledReason?: string;
 };
 
-function prepareProviderOwner(providerId: string, pluginId = "qwen"): ProviderPlugin {
+function prepareProviderRuntime(providerId: string, pluginId = "qwen") {
   const provider = requireRegisteredProvider(registeredProviders.get(pluginId) ?? [], providerId);
   const registry = createEmptyPluginRegistry();
   registry.providers.push({ pluginId, provider, source: "test" });
@@ -89,7 +92,7 @@ function prepareProviderOwner(providerId: string, pluginId = "qwen"): ProviderPl
   if (!handle.plugin) {
     throw new Error(`prepared provider owner missing for ${providerId}`);
   }
-  return handle.plugin;
+  return handle;
 }
 
 async function runTransportError(params: {
@@ -120,15 +123,23 @@ async function runTransportError(params: {
       messages: [{ role: "user", content: "hello", timestamp: 1 }],
     };
     const assistant = await streamOpenAICompletions(
-      await prepareModelProviderRequestRouteFacts({
-        ...model,
-        provider: params.provider,
-        baseUrl: `http://127.0.0.1:${address.port}/compatible-mode/v1`,
-      }),
+      attachModelProviderRuntimePluginHandle(
+        await prepareModelProviderRequestRouteFacts({
+          ...model,
+          provider: params.provider,
+          baseUrl: `http://127.0.0.1:${address.port}/compatible-mode/v1`,
+        }),
+        prepareProviderRuntime(
+          params.provider,
+          params.provider === "openai" || params.provider === "openrouter"
+            ? params.provider
+            : "qwen",
+        ),
+      ),
       context,
       { apiKey: "synthetic-test-key" },
     ).result();
-    expect(assistant).toMatchObject({
+    expect(assistant, assistant.errorMessage).toMatchObject({
       stopReason: "error",
       provider: params.provider,
       model: MODEL_ID,
@@ -368,10 +379,10 @@ describe("Qwen DashScope 429 profile classification", () => {
   ])("classifies %s %s (%s) as %s", async (provider, code, message, reason, metadata) => {
     const result = await runThroughFailureRecovery({
       provider,
-      providerOwner:
-        provider === "openai"
-          ? undefined
-          : prepareProviderOwner(provider, provider === "openrouter" ? "openrouter" : "qwen"),
+      providerOwner: prepareProviderRuntime(
+        provider,
+        provider === "openai" || provider === "openrouter" ? provider : "qwen",
+      ).plugin,
       fixture: { status: 429, code, message, ...(metadata ? { metadata } : {}) },
     });
     if (provider === "openrouter") {

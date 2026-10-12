@@ -11,6 +11,7 @@ import {
   replaceSessionEntry,
 } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
+import { prepareBundledDiscoveryMode } from "../../plugins/bundled-discovery-state.js";
 import { withPluginMetadataSnapshotScope } from "../../plugins/current-plugin-metadata-snapshot.js";
 import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
 import {
@@ -93,10 +94,11 @@ type NativeSlashFastReplyDefaultKey =
   | "model"
   | "workspaceDir";
 
-function runTestNativeSlashFastReply(
+async function runTestNativeSlashFastReply(
   overrides: Omit<NativeSlashFastReplyParams, NativeSlashFastReplyDefaultKey> &
     Partial<Pick<NativeSlashFastReplyParams, NativeSlashFastReplyDefaultKey>>,
 ) {
+  await prepareBundledDiscoveryMode();
   return withPluginMetadataSnapshotScope(
     createPluginMetadataSnapshotFixture(),
     () =>
@@ -111,7 +113,11 @@ function runTestNativeSlashFastReply(
         workspaceDir: "/tmp/workspace",
         ...overrides,
       }),
-    { config: overrides.cfg, workspaceDir: overrides.workspaceDir ?? "/tmp/workspace" },
+    {
+      config: overrides.cfg,
+      workspaceDir: overrides.workspaceDir ?? "/tmp/workspace",
+      trustConfigIdentity: true,
+    },
   );
 }
 
