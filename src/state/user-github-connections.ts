@@ -39,7 +39,13 @@ export type {
   UserGitHubDevice,
 } from "./user-github-connections.types.js";
 
-/** Native compatibility and fixture reader; Gateway effects prepare their worker snapshot. */
+export class UserGitHubConnectionAuthorityChangedError extends Error {
+  constructor() {
+    super("My GitHub connection changed; reload its status.");
+  }
+}
+
+/** Native final-effect guard; preparation uses the shared-state worker. */
 export function resolvePersonalGitHubOwner(
   profile: string,
   db = openOpenClawStateDatabase().db,
@@ -65,7 +71,6 @@ export function cancelUserGitHubAuthorizationSync(
 
 /** Native adapter for the released synchronous personal OAuth service contract. */
 export function disconnectUserGitHubConnectionSync(owner: string, assertCurrent: () => void): void {
-  assertCurrent();
   runOpenClawStateWriteTransaction(
     ({ db }) => {
       assertCurrent();
@@ -100,7 +105,6 @@ type ConnectionRead = {
   owner: string;
   valid: boolean;
   prepared: Promise<PreparedUserGitHubConnection>;
-  current?: PreparedUserGitHubConnection;
 };
 const connectionReads = new Map<string, ConnectionRead>();
 registerOpenClawStateDatabaseLifecycleListener((event) => {
@@ -122,16 +126,6 @@ observeUserGitHubConnectionAuthority(({ databasePath, changedOwners }) => {
     }
   }
 });
-
-/** A synchronous effect check is valid only after its async owner preparation. */
-export function readPreparedUserGitHubConnection(owner: string): UserGitHubConnection | undefined {
-  const context = captureOpenClawStateReadWorkerContext();
-  const entry = connectionReads.get(JSON.stringify([context.admission.identity.key, owner]));
-  if (!entry?.current) {
-    throw new Error("Personal GitHub connection is not prepared.");
-  }
-  return entry.current.read();
-}
 
 /** Retained effect guards consume the same worker snapshot until its owner publishes a write. */
 export async function prepareUserGitHubConnection(
@@ -169,13 +163,12 @@ export async function prepareUserGitHubConnection(
     const read = () => {
       context.admission.assertCurrent();
       if (!entry.valid || !profileIsCurrent?.()) {
-        throw new Error("Personal GitHub connection changed; prepare it again.");
+        throw new UserGitHubConnectionAuthorityChangedError();
       }
       return parsed ? structuredClone(parsed) : undefined;
     };
     read();
-    entry.current = { read };
-    return entry.current;
+    return { read };
   })();
   try {
     return await entry.prepared;

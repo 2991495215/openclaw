@@ -22,6 +22,22 @@ const excluded =
   /(?:^|\/)(?:__tests__|__fixtures__|test|tests|test-utils|test-helpers|test-support|test-fixtures|test-harness|fixtures|e2e)(?:\/|$)|(?:^|[/.-])(?:test|spec|e2e|test-support|test-helpers|test-fixtures|test-harness|test-runtime)(?:[.-])/;
 const reviewed = new Map([
   [
+    "src/agents/github-oauth-records.native.ts",
+    {
+      priority: 99,
+      evidence:
+        "Deprecated Gateway SDK cancelAuthorization/retireProfile methods only; bundled callers await the Async replacements. Native completion is preserved until the next Plugin SDK major.",
+    },
+  ],
+  [
+    "src/secrets/store/secret-store-hidden-github.kernel.ts",
+    {
+      priority: 99,
+      evidence:
+        "Shared SQL kernel for worker-owned GitHub records and deprecated synchronous managed/personal Gateway SDK methods. Native compatibility calls remain explicit T1 debt.",
+    },
+  ],
+  [
     "src/gateway/mention-inbox-store.ts",
     {
       priority: 3,
@@ -297,6 +313,17 @@ const reviewedOperations = new Map([
         operations: ["runUserProfileWriteTransaction"],
         evidence:
           "Profile mutations run in user-profile-writes.worker.ts and user-profiles.worker.ts; native user-profiles-schema.ts uses this only for once-per-load schema initialization.",
+      },
+    ],
+  ],
+  [
+    "src/secrets/store/secret-store-hidden-github.kernel.ts",
+    [
+      {
+        tier: "W",
+        operations: ["listHiddenGitHubSecretsInDatabase"],
+        evidence:
+          "Only githubSecrets.list in secret-store-github-handoff.worker.ts selects hidden record listings; native SDK compatibility uses exact read/delete operations only.",
       },
     ],
   ],
@@ -2079,17 +2106,6 @@ const reviewedOperations = new Map([
         operations: ["stageHookInstall", "stageHookInstall.rollback"],
         evidence:
           "CLI install/update only: cli/hook-install-persistence.ts calls stageHookInstall; hooks/update.ts reaches it only through cli/plugins-update-command.ts. Rollback belongs to that same offline install transaction.",
-      },
-    ],
-  ],
-  [
-    "src/secrets/store/secret-store-hidden-github.ts",
-    [
-      {
-        tier: "W",
-        operations: ["writePersonalGitHubSecret"],
-        evidence:
-          "Counted expression is null DELETE only: src/state/user-github-connections.kernel.ts:202 → user-profiles-merge.ts:58 → user-profile-writes.worker.ts:375,425,482. Other value callers pass JSON strings.",
       },
     ],
   ],
