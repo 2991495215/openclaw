@@ -20,12 +20,7 @@ type SanitizeConfiguredModelProviderRequestParams = Parameters<
   typeof sanitizeConfiguredModelProviderRequest
 >[0];
 
-type ResolveProviderHttpRequestConfigResult = {
-  baseUrl: string;
-  allowPrivateNetwork: boolean;
-  headers: Headers;
-  dispatcherPolicy: ReturnType<typeof resolveProviderHttpRequestConfig>["dispatcherPolicy"];
-};
+type ResolveProviderHttpRequestConfigResult = ReturnType<typeof resolveProviderHttpRequestConfig>;
 
 type AnyMock = Mock<(...args: unknown[]) => unknown>;
 

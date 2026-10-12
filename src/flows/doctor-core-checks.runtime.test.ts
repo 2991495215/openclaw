@@ -84,6 +84,7 @@ vi.mock("../plugins/provider-runtime.js", () => ({
   normalizeProviderToolSchemasWithPlugin: mocks.normalizeProviderToolSchemasWithPlugin,
 }));
 
+// mock-isolation: Doctor catalog checks use fixture providers without loading the host registry.
 vi.mock("../plugins/providers.runtime.js", () => ({
   resolvePluginProvidersCoreAsync: mocks.resolvePluginProvidersCoreAsync,
 }));

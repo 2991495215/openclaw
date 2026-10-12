@@ -292,6 +292,7 @@ vi.mock("../plugins/provider-thinking.js", () => ({
 vi.mock("../plugins/providers.runtime.js", () => ({
   resolvePluginProvidersCore: () => [],
 }));
+// mock-isolation: Session status uses fixture auth profiles without reading host credentials.
 vi.mock("../agents/auth-profiles.js", createAuthProfilesModuleMock);
 // mock-isolation: Session status uses fixture auth labels without discovering host keys or accounts.
 vi.mock("../agents/model-auth.js", createModelAuthModuleMock);

@@ -58,16 +58,16 @@ describe("DeepInfra provider config", () => {
   describe("env var resolution", () => {
     afterEach(() => vi.unstubAllEnvs());
 
-    it("resolves DEEPINFRA_API_KEY from env", async () => {
+    it("resolves DEEPINFRA_API_KEY from env", () => {
       vi.stubEnv("DEEPINFRA_API_KEY", "test-deepinfra-key");
-      const result = await resolveDeepInfraEnvApiKey();
+      const result = resolveDeepInfraEnvApiKey();
       expect(result?.apiKey).toBe("test-deepinfra-key");
       expect(result?.source.endsWith("DEEPINFRA_API_KEY")).toBe(true);
     });
 
-    it("returns null when DEEPINFRA_API_KEY is not set", async () => {
+    it("returns null when DEEPINFRA_API_KEY is not set", () => {
       vi.stubEnv("DEEPINFRA_API_KEY", undefined);
-      expect(await resolveDeepInfraEnvApiKey()).toBeNull();
+      expect(resolveDeepInfraEnvApiKey()).toBeNull();
     });
   });
 });

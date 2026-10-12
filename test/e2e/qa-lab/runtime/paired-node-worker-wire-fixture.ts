@@ -321,12 +321,12 @@ export async function createPairedNodeWorkerHost(
     { handleInvoke },
     { NodeWorkerBundleInstaller },
     { createNodeWorkerSupervisor },
-    { snapshotNodeWorkerNativeInference },
+    { snapshotNodeWorkerNativeInferenceAsync },
     { NodeWorkerWorkspaceRuntime },
     { withPluginMetadataSnapshotScope },
     { createPluginCache, withPluginCache },
     { resolvePluginMetadataSnapshotAsync },
-    { withEnv },
+    { withEnvAsync },
   ] = await Promise.all([
     import("../../../../src/infra/device-identity.js"),
     import("../../../../src/node-host/invoke.js"),
@@ -352,17 +352,17 @@ export async function createPairedNodeWorkerHost(
   await fs.mkdir(nodeEnv.HOME, { recursive: true });
   const workspace = new NodeWorkerWorkspaceRuntime({ root: nodeHostRoot, env: nodeEnv });
   const bundleInstaller = new NodeWorkerBundleInstaller({ root: nodeHostRoot, env: nodeEnv });
-  let nativeInferenceSnapshot: ReturnType<typeof snapshotNodeWorkerNativeInference>;
+  let nativeInferenceSnapshot: Awaited<ReturnType<typeof snapshotNodeWorkerNativeInferenceAsync>>;
   if (options.nodeConfig) {
     const config = options.nodeConfig;
     await using cache = createPluginCache();
     const metadata = await withPluginCache(cache, () =>
       resolvePluginMetadataSnapshotAsync({ config, env: nodeEnv }),
     );
-    nativeInferenceSnapshot = withEnv(nodeEnv, () =>
+    nativeInferenceSnapshot = await withEnvAsync(nodeEnv, () =>
       withPluginMetadataSnapshotScope(
         metadata,
-        () => snapshotNodeWorkerNativeInference(config, nodeEnv),
+        () => snapshotNodeWorkerNativeInferenceAsync(config, nodeEnv),
         { config, env: nodeEnv },
       ),
     );
