@@ -4,6 +4,7 @@ import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import * as sessionEntryReads from "../../config/sessions/session-entry-read-runtime.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { preparePluginMetadataMachineStateAsync } from "../../plugins/installed-plugin-index-record-state.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
@@ -40,6 +41,7 @@ it.each([
       session: { scope: "global" },
     };
     await state.writeConfig(cfg);
+    await preparePluginMetadataMachineStateAsync({});
     if (replaceDuringRead) {
       const scope = { agentId, sessionKey: "global", env: state.env };
       await replaceSessionEntry(scope, {

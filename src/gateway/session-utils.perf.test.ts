@@ -11,6 +11,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions.js";
 import * as entryCache from "../config/sessions/session-accessor.sqlite-entry-cache.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
@@ -43,6 +44,7 @@ describe("session list resolver cache", () => {
     await withStateDirEnv("openclaw-roster-chunks-", async () => {
       resetPluginRuntimeStateForTest();
       setActivePluginRegistry(createEmptyPluginRegistry());
+      await preparePluginMetadataMachineStateAsync({});
       const rowCount = 80;
       const ownerId = `agent-${rosterSize - 1}`;
       const entries = Object.fromEntries(
@@ -172,6 +174,7 @@ describe("session list resolver cache", () => {
       await withStateDirEnv("openclaw-row-work-budget-", async () => {
         resetPluginRuntimeStateForTest();
         setActivePluginRegistry(createEmptyPluginRegistry());
+        await preparePluginMetadataMachineStateAsync({});
         const cfg: OpenClawConfig = {
           agents: { entries: { main: {} }, defaults: { thinkingDefault: "off" } },
         };
@@ -257,6 +260,7 @@ describe("session list resolver cache", () => {
       resetPluginRuntimeStateForTest();
       const pluginRegistry = createEmptyPluginRegistry();
       setActivePluginRegistry(pluginRegistry);
+      await preparePluginMetadataMachineStateAsync({});
       const cfg: OpenClawConfig = {
         agents: {
           entries: { main: {}, research: {} },
@@ -418,6 +422,7 @@ describe("session list resolver cache", () => {
       await withStateDirEnv("openclaw-list-work-budget-", async ({ stateDir }) => {
         resetPluginRuntimeStateForTest();
         setActivePluginRegistry(createEmptyPluginRegistry());
+        await preparePluginMetadataMachineStateAsync({});
         const cfg: OpenClawConfig = {};
         resetConfigRuntimeState();
         setRuntimeConfigSnapshot(cfg);
@@ -491,6 +496,7 @@ describe("session list resolver cache", () => {
     await withStateDirEnv("openclaw-perf-title-batch-", async ({ stateDir }) => {
       resetPluginRuntimeStateForTest();
       setActivePluginRegistry(createEmptyPluginRegistry());
+      await preparePluginMetadataMachineStateAsync({});
       const cfg = {
         agents: { defaults: { model: { primary: "openai/gpt-5" }, thinkingDefault: "off" } },
       } as OpenClawConfig;

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearRuntimeAuthProfileStoreSnapshots } from "../../agents/auth-profiles/runtime-snapshots.js";
 import { registerAgentHarness } from "../../agents/harness/registry.js";
 import type { AgentHarness } from "../../agents/harness/types.js";
+import { preparePluginMetadataMachineStateAsync } from "../../plugins/installed-plugin-index-record-state.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import {
   getActivePluginRegistry,
@@ -21,9 +22,10 @@ import {
 const originalPluginRegistry = getActivePluginRegistry();
 
 describe("worker placement runtime capabilities", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     clearRuntimeAuthProfileStoreSnapshots();
     setActivePluginRegistry(createEmptyPluginRegistry(), "placement-runtime-test", "default");
+    await preparePluginMetadataMachineStateAsync({});
   });
 
   afterEach(() => {
@@ -248,9 +250,10 @@ describe("worker placement runtime capabilities", () => {
 });
 
 describe("resolveWorkerPlacementSessionRuntimeCapabilities", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     clearRuntimeAuthProfileStoreSnapshots();
     setActivePluginRegistry(createEmptyPluginRegistry(), "placement-runtime-test", "default");
+    await preparePluginMetadataMachineStateAsync({});
   });
 
   afterEach(() => {
