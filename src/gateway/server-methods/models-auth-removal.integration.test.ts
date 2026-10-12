@@ -120,7 +120,6 @@ describe("models.authLogout with a concurrent registered config set", () => {
           const authRefresh = await import("../model-auth-refresh.js");
           const configMutations = await import("../../commands/models/shared.js");
           const writeApplications = await import("../../config/runtime-write-application.js");
-          const scheduler = await import("../../infra/gateway-scheduler.js");
           const pluginLifecycle = await import("../../plugins/plugin-lifecycle-lease.js");
           traceStartedAt = performance.now();
           const observePhase = <T>(phase: string, operation: () => T): T => {
@@ -141,22 +140,6 @@ describe("models.authLogout with a concurrent registered config set", () => {
               throw error;
             }
           };
-          let reloadSequence = 0;
-          const schedule = scheduler.GatewayScheduler.prototype.schedule;
-          vi.spyOn(scheduler.GatewayScheduler.prototype, "schedule").mockImplementation(function (
-            this: InstanceType<typeof scheduler.GatewayScheduler>,
-            params,
-          ) {
-            if (params.id !== "config:reload") {
-              return schedule.call(this, params);
-            }
-            const phase = `config-reload-${++reloadSequence}`;
-            mark(`${phase}-scheduled`);
-            return schedule.call(this, {
-              ...params,
-              run: () => observePhase(phase, params.run),
-            });
-          });
           let leaseSequence = 0;
           const withPluginLifecycleLease = pluginLifecycle.withPluginLifecycleLease;
           vi.spyOn(pluginLifecycle, "withPluginLifecycleLease").mockImplementation(
