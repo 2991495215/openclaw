@@ -966,7 +966,7 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
   });
 
   it("does not resurrect a disconnected selection from a late remote refresh", async () => {
-    const connection = await connect();
+    await connect();
     expireUserGitHubAccessToken(owner());
     const refresh = createDeferredCore<{ status: "refreshed"; tokens: typeof tokens }>();
     network.refresh.mockReturnValueOnce(refresh.promise);
