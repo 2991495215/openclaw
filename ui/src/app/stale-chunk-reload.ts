@@ -160,7 +160,7 @@ export async function scheduleStaleChunkReload(deps: StaleChunkReloadDeps = {}):
         { timeoutMs: deps.buildId === undefined ? 0 : undefined },
         () =>
           recoveryByStorage.get(storageIdentity) === target &&
-          target.buildId !== null &&
+          target.buildId === buildId &&
           canReloadControlUiDocument(),
       );
     const delayMs =

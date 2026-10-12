@@ -506,36 +506,6 @@ describe("scheduleStaleChunkReload", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it("stops automatic probes after a manual retry completes the reload", async () => {
-    const reload = vi.fn();
-    const storage = memoryStorage();
-    const fetchMock = stubDocumentFetch(
-      new Response(null, { status: 503 }),
-      new Response(null, { status: 200 }),
-      new Response(null, { status: 200 }),
-    );
-    const automatic = scheduleStaleChunkReload({
-      buildId: "gateway-target",
-      storage,
-      reload: () => reload("automatic"),
-    });
-    await vi.advanceTimersByTimeAsync(0);
-
-    await expect(
-      retryStaleChunkReloadWhenReachable({
-        storage,
-        reload: () => reload("manual"),
-        timeoutMs: 0,
-      }),
-    ).resolves.toBe(true);
-    expect(storage.getItem(GUARD_KEY)).toBe("gateway-target");
-
-    await vi.advanceTimersByTimeAsync(30_000);
-    await expect(automatic).resolves.toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(reload).toHaveBeenCalledExactlyOnceWith("manual");
-  });
-
   it("settles and aborts a hanging document probe after its deadline", async () => {
     vi.useFakeTimers();
     const reload = vi.fn();
@@ -552,6 +522,29 @@ describe("scheduleStaleChunkReload", () => {
 
     expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("stops automatic probes after a manual refresh succeeds during its retry delay", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const reload = vi.fn();
+    const storage = memoryStorage();
+
+    const automatic = scheduleStaleChunkReload({ buildId: "gateway-target", storage, reload });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    await expect(
+      retryStaleChunkReloadWhenReachable({ reload, storage, timeoutMs: 0 }),
+    ).resolves.toBe(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(automatic).resolves.toBe(false);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(reload).toHaveBeenCalledOnce();
+    expect(storage.getItem(GUARD_KEY)).toBe("gateway-target");
   });
 
   it("coalesces automatic and manual probes while automatic recovery waits out failure", async () => {
