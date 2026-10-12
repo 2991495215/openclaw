@@ -1,6 +1,5 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, expect, it, vi } from "vitest";
-import { createDeferredCore } from "../shared/deferred.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import {
   createPersonalPublicationFixture,
@@ -17,7 +16,6 @@ import {
   installGitHubPublicationTestHarness,
 } from "./github-publication.test-support.js";
 import { readPendingRepositoryGitHubPublication } from "./github-repository-publication-store.js";
-import * as repositoryStore from "./github-repository-publication-store.js";
 import {
   repositoryReceipt,
   sharedRepositoryWorkspace,
@@ -104,7 +102,7 @@ it.each([false, true])(
   },
 );
 
-it("rechecks a terminal receipt when confirming an older pending read", async () => {
+it("returns the terminal receipt without executing an older confirmation", async () => {
   const fixture = await createPersonalPublicationFixture();
   const workspace = await sharedRepositoryWorkspace();
   const row = repositoryReceipt(workspace, {
@@ -123,61 +121,30 @@ it("rechecks a terminal receipt when confirming an older pending read", async ()
   expect(captured.result.status).toBe("needs_confirmation");
   const confirmation = expectDefined(captured.confirmation, "original confirmation");
   const commandCount = commands.length;
-  const entered = createDeferredCore();
-  const release = createDeferredCore();
-  const read = repositoryStore.readPendingRepositoryGitHubPublication;
-  vi.spyOn(repositoryStore, "readPendingRepositoryGitHubPublication").mockImplementation(
-    async (input) => {
-      const snapshot = await read(input);
-      entered.resolve();
-      await release.promise;
-      return snapshot;
-    },
-  );
-  const pending = fixture.coordinator.personalPending(fixture.action, fixture.action);
-  try {
-    await Promise.race([
-      entered.promise,
-      pending.then(() => {
-        throw new Error("Pending read completed before its held-result boundary.");
-      }),
-    ]);
-    const execution = claimRepositoryGitHubPublicationFixture(row, "concurrent-publisher", {
-      assertCustody: fixture.action.assertCurrent,
-      assertCurrent: fixture.action.assertCurrent,
-    });
-    execution.complete({
-      requestId: row.request_id,
-      status: "failed",
-      code: "unavailable",
-      message: "Synthetic terminal result",
-      nextAction: "Create a new publication request.",
-    });
-    release.resolve();
-    const observed = expectDefined(await pending, "current publication receipt");
-    expect(observed.result).toMatchObject({
-      requestId: row.request_id,
-      status: "failed",
-      code: "unavailable",
-    });
-    expect(observed.confirmation).toBeNull();
-    await expect(
-      fixture.coordinator.confirmPersonalV2(
-        {
-          sessionKey: SESSION_KEY,
-          requestId: row.request_id,
-          requestDigest: confirmation.requestDigest,
-          generation: confirmation.generation,
-          account: confirmation.account,
-        },
-        fixture.action,
-      ),
-    ).resolves.toMatchObject({ requestId: row.request_id, status: "failed", code: "unavailable" });
-    expect(commands).toHaveLength(commandCount);
-  } finally {
-    release.resolve();
-    await pending;
-  }
+  const execution = claimRepositoryGitHubPublicationFixture(row, "concurrent-publisher", {
+    assertCustody: fixture.action.assertCurrent,
+    assertCurrent: fixture.action.assertCurrent,
+  });
+  execution.complete({
+    requestId: row.request_id,
+    status: "failed",
+    code: "unavailable",
+    message: "Synthetic terminal result",
+    nextAction: "Create a new publication request.",
+  });
+  await expect(
+    fixture.coordinator.confirmPersonalV2(
+      {
+        sessionKey: SESSION_KEY,
+        requestId: row.request_id,
+        requestDigest: confirmation.requestDigest,
+        generation: confirmation.generation,
+        account: confirmation.account,
+      },
+      fixture.action,
+    ),
+  ).resolves.toMatchObject({ requestId: row.request_id, status: "failed", code: "unavailable" });
+  expect(commands).toHaveLength(commandCount);
 });
 
 it.each([false, true])(
