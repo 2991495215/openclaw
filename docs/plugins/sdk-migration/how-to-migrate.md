@@ -1544,6 +1544,7 @@ Keep the same arguments and await the replacement's result:
 | `provider-auth-runtime`                  | `resolveProviderAuthProfileMetadata`          | `resolveProviderAuthProfileMetadataAsync`          |
 | `agent-runtime`                          | `loadAuthProfileStoreWithoutExternalProfiles` | `loadAuthProfileStoreWithoutExternalProfilesAsync` |
 | `agent-runtime`                          | `saveAuthProfileStore`                        | `saveAuthProfileStoreAsync`                        |
+| `agent-runtime`                          | `replaceRuntimeAuthProfileStoreSnapshots`     | `replaceRuntimeAuthProfileStoreSnapshotsAsync`     |
 | `agent-runtime`                          | `findPersistedAuthProfileCredential`          | `findPersistedAuthProfileCredentialAsync`          |
 | `agent-runtime`                          | `resolvePersistedAuthProfileOwnerAgentDir`    | `resolvePersistedAuthProfileOwnerAgentDirAsync`    |
 | `agent-harness-runtime`                  | `resolveModelAuthMode`                        | `resolveModelAuthModeAsync`                        |
