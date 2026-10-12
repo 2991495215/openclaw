@@ -181,9 +181,9 @@ describe("session-share node commands", () => {
   it("keeps global source agents distinct through catalog links and transcript reads", async () => {
     await withCatalogFixture(async (receiver) => {
       const source = commandFixture();
-      source.config.agents = { entries: { research: { default: true }, ops: {} } };
+      source.config.agents = { entries: { research: {}, ops: {} } };
       receiver.setConfig({
-        agents: { entries: { receiver: { default: true } } },
+        agents: { entries: { receiver: {} } },
         plugins: {
           entries: {
             "session-share": {
