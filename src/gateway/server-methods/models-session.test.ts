@@ -168,6 +168,7 @@ function fixture() {
 
 const isolated = {
   layout: "state-only",
+  prepareProfileCatalog: true,
   prefix: "direct-session-catalog-",
   env: WITHOUT_OPENAI_ENV_AUTH,
 } as const;

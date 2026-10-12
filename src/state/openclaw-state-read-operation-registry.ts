@@ -11,6 +11,7 @@ import type { DiagnosticReadOperations } from "../infra/sqlite-audit-record.read
 import type { SqliteWorkerCommand } from "../infra/sqlite-worker-contract.js";
 import type { GeneratedHtmlProvenanceReadOperations } from "../media/generated-html-provenance.worker-contract.js";
 import type { PairingReadOperations } from "../pairing/pairing-store.types.js";
+import type { PluginMetadataReadOperations } from "../plugins/plugin-metadata-state.read.worker.js";
 import type { SecretStoreReadOperations } from "../secrets/store/secret-store.types.js";
 import type { SessionStateReadOperations } from "../sessions/session-state-events.read.worker-contract.js";
 import type { sessionUpstreamReadOperations } from "../sessions/session-upstream-links.kernel.js";
@@ -40,6 +41,7 @@ type Operations = WorkerOperations<typeof localWorkspaceReadOperations> &
   SecretStoreReadOperations &
   WorkerOperations<typeof configHealthReadOperations> &
   DeferredPluginMigrationReadOperations &
+  PluginMetadataReadOperations &
   MachineStateReadOperations;
 export type RegisteredStateReadCommand = SqliteWorkerCommand<Operations>;
 export type RegisteredStateReadResult = Operations[keyof Operations]["output"];
@@ -67,10 +69,16 @@ export const stateReadRegistry = createWorkerOperationRegistry<Operations, Datab
     ),
   config: () =>
     import("../config/io.health-state.kernel.js").then((m) => m.configHealthReadOperations),
-  plugins: () =>
-    import("../infra/deferred-plugin-migrations.js").then(
-      (m) => m.deferredPluginMigrationReadOperations,
-    ),
+  plugins: async () => {
+    const [migrations, metadata] = await Promise.all([
+      import("../infra/deferred-plugin-migrations.js"),
+      import("../plugins/plugin-metadata-state.read.worker.js"),
+    ]);
+    return {
+      ...migrations.deferredPluginMigrationReadOperations,
+      ...metadata.pluginMetadataReadOperations,
+    };
+  },
   generatedHtmlProvenance: () =>
     import("../media/generated-html-provenance.worker.js").then(
       (m) => m.generatedHtmlProvenanceReadOperations,

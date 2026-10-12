@@ -8,7 +8,7 @@ export async function readRequestBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-export function writeJson(res: ServerResponse, status: number, body: unknown) {
+export function writeTuiModelHttpJson(res: ServerResponse, status: number, body: unknown) {
   const text = JSON.stringify(body);
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",

@@ -1,8 +1,9 @@
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authProfileClone from "./clone.js";
 import { createApiKeyCredential } from "./credential-fixtures.test-support.js";
+import { prepareSharedAuthStoreOwnershipForNative } from "./path-resolve.native.js";
 import {
   getPreparedRuntimeAuthMaterializations,
   recordRuntimeAuthMaterialization,
@@ -46,6 +47,10 @@ function expectOpenAICodexSnapshotCredential(
 }
 
 describe("runtime auth profile snapshots", () => {
+  beforeEach(() => {
+    prepareSharedAuthStoreOwnershipForNative();
+  });
+
   it("marks default-owner materializations as inherited mutations", () => {
     const listener = vi.fn();
     const unregister = registerRuntimeAuthMaterializationMutationListener(listener);

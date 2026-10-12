@@ -5,12 +5,12 @@
 import path from "node:path";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { resolveStateDir } from "../../config/paths.js";
+import { readConfigMachineStateAsync } from "../../state/config-machine-state-async.js";
 import { readConfigMachineState } from "../../state/config-machine-state.js";
 import { isArtifactPreservingStateRead } from "../../state/openclaw-state-db-readonly.js";
 import { resolveOpenClawStateSqlitePath } from "../../state/openclaw-state-db.paths.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
-import { runOpenClawStateWorkerOperation } from "../../state/openclaw-state-worker-store.js";
 import { resolveSharedMainAuthAgentDir } from "./shared-main-dir.js";
 import { SHARED_AUTH_STORE_STATE_KEY } from "./sqlite-json.js";
 import type { SharedAuthStoreOwnership } from "./types.js";
@@ -102,14 +102,10 @@ export async function resolveSharedAuthStoreOwnershipAsync(
   if (cached) {
     return cached;
   }
-  const value = await runOpenClawStateWorkerOperation(
-    context,
-    (scope) =>
-      scope.execute({
-        type: "authProfiles.sharedOwnership",
-        input: { artifactPreserving: isArtifactPreservingStateRead() },
-      }),
-    { existingOnly: true },
+  const value = await readConfigMachineStateAsync(
+    SHARED_AUTH_STORE_STATE_KEY,
+    { path: databasePath, env: context.environment },
+    { artifactPreservingReadOnly: isArtifactPreservingStateRead() },
   );
   context.admission.assertCurrent();
   // An explicit commit/reload while this read waited remains the authoritative owner.
@@ -157,14 +153,10 @@ export async function reloadSharedAuthStoreOwnership(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<SharedAuthStoreOwnership> {
   const context = captureOpenClawStateWorkerContext({ env });
-  const value = await runOpenClawStateWorkerOperation(
-    context,
-    (scope) =>
-      scope.execute({
-        type: "authProfiles.sharedOwnership",
-        input: { artifactPreserving: isArtifactPreservingStateRead() },
-      }),
-    { existingOnly: true },
+  const value = await readConfigMachineStateAsync(
+    SHARED_AUTH_STORE_STATE_KEY,
+    { path: context.admission.databasePath, env: context.environment },
+    { artifactPreservingReadOnly: isArtifactPreservingStateRead() },
   );
   context.admission.assertCurrent();
   const ownership = parseSharedAuthStoreOwnership(value);

@@ -322,7 +322,7 @@ export function createTrashAssertions(
   movePathToTrash: Mock<(pathname?: string) => Promise<string>>,
 ) {
   return {
-    expectTrashedWithinParent(pathname: string, declaredPath = pathname): void {
+    expectTrashedWithinParent: (pathname: string, declaredPath = pathname): void => {
       expect(movePathToTrash).toHaveBeenCalledWith(
         pathname,
         expect.objectContaining({
@@ -330,7 +330,7 @@ export function createTrashAssertions(
         }),
       );
     },
-    expectNotTrashed(pathname: string): void {
+    expectNotTrashed: (pathname: string): void => {
       expect(movePathToTrash.mock.calls.map(([target]) => target)).not.toContain(pathname);
     },
   };

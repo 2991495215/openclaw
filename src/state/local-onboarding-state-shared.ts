@@ -48,10 +48,15 @@ export function normalizeLocalOnboardingState(
   if (value.teamCoordinatorId !== undefined && !coordinator?.ok) {
     return undefined;
   }
-  // SAFETY: Required receipt fields and completed timestamps were validated above;
-  // the optional coordinator is normalized here while extension fields remain intact.
   return {
     ...value,
+    version: value.version,
+    status: value.status,
+    runId: value.runId,
+    configPath: value.configPath,
+    workspace: value.workspace,
+    securityAcknowledgedAt: value.securityAcknowledgedAt,
+    startedAtMs: value.startedAtMs,
     ...(coordinator?.ok ? { teamCoordinatorId: coordinator.value } : {}),
-  } as LocalOnboardingState;
+  };
 }

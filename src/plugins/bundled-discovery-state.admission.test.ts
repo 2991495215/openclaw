@@ -17,28 +17,18 @@ const reads = vi.hoisted(() => ({
   snapshot: vi.fn<() => object | undefined>(),
   mode: vi.fn<() => unknown>(),
   asyncMode: vi.fn<() => Promise<unknown>>(),
-  row: vi.fn<() => { value_json: string } | undefined>(),
-  worker: vi.fn(() => {
-    throw new Error("This controlled admission test must not dispatch storage work");
-  }),
+  metadata: vi.fn(),
 }));
 
 vi.mock("../state/openclaw-state-db-readonly.js", () => ({
   getActiveOpenClawStateDatabaseReadSnapshot: reads.snapshot,
   isArtifactPreservingStateRead: () => true,
+  executeExistingOpenClawStateRead: reads.metadata,
+  withArtifactPreservingStateReads: <T>(read: () => T): T => read(),
 }));
 vi.mock("../state/config-machine-state.js", () => ({ readConfigMachineState: reads.mode }));
 vi.mock("../state/config-machine-state-async.js", () => ({
   readConfigMachineStateAsync: reads.asyncMode,
-}));
-vi.mock("./installed-plugin-index-row.js", () => ({
-  readPluginMetadataStateRowSync: reads.row,
-}));
-vi.mock("../state/openclaw-state-worker-context.js", () => ({
-  captureOpenClawStateWorkerContext: () => ({ admission: { assertCurrent() {} } }),
-}));
-vi.mock("../state/openclaw-state-worker-store.js", () => ({
-  runOpenClawStateWorkerOperation: reads.worker,
 }));
 
 const env = { OPENCLAW_STATE_DIR: "/synthetic/plugin-admission" };
@@ -48,12 +38,15 @@ beforeEach(() => {
   reads.snapshot.mockReturnValue({});
   reads.mode.mockReturnValue("allowlist");
   reads.asyncMode.mockResolvedValue("allowlist");
-  reads.row.mockReturnValue({ value_json: '"allowlist"' });
+  reads.metadata.mockResolvedValue({
+    ok: true,
+    type: "plugins.metadata.read",
+    rows: [{ state_key: "plugins.bundledDiscovery", value_json: '"allowlist"' }],
+  });
   clearBundledDiscoveryModeMemo();
 });
 
 afterEach(() => {
-  expect(reads.worker).not.toHaveBeenCalled();
   clearBundledDiscoveryModeMemo();
 });
 
@@ -92,13 +85,8 @@ const readers = [
     },
   },
   {
-    name: "metadata adapter snapshot",
-    reject: reads.snapshot,
-    read: () => readPluginMetadataStateRow("bundled-discovery", { env }),
-  },
-  {
-    name: "metadata adapter synchronous row",
-    reject: reads.row,
+    name: "metadata adapter read operation",
+    reject: reads.metadata,
     read: () => readPluginMetadataStateRow("bundled-discovery", { env }),
   },
 ];

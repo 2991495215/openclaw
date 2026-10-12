@@ -61,7 +61,7 @@ function target(createdActor?: { type: "human"; id: string; label?: string }): S
 
 describe("session sharing policy", () => {
   it("reserves communication changes for the direct human creator or administrator", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const cfg = rolePolicyConfig();
       const creator = roleClient("write", "communication-creator");
       const peer = roleClient("write", "communication-peer");
@@ -106,7 +106,7 @@ describe("session sharing policy", () => {
   });
 
   it("keeps shared VIEW while limiting narrow writes to the caller's own rows", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const cfg = rolePolicyConfig();
       const owner = roleClient("view", "narrow-owner");
       const member = roleClient("view", "narrow-member");
@@ -172,7 +172,7 @@ describe("session sharing policy", () => {
   });
 
   it("retains the original person when narrow session creation has no row yet", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const owner = roleClient("view", "narrow-create-owner");
       owner.connect.scopes = ["operator.sessions.write"];
       const cfg = rolePolicyConfig();
@@ -194,7 +194,7 @@ describe("session sharing policy", () => {
   });
 
   it("denies starting a run on an existing foreign-agent session despite foreign-session write access", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const cfg = rolePolicyConfig(["guest-agent"]);
       const writer = roleClient("write", "foreign-agent-writer");
       const owner = ensureProfileForEmail("foreign-agent-owner@example.test");
@@ -254,7 +254,7 @@ describe("session sharing policy", () => {
   });
 
   it("enforces closed role ceilings above shared visibility while preserving explicit membership and admin access", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const cfg = rolePolicyConfig();
       const owner = roleClient("none", "owner");
       const ownerId = owner.authenticatedUserProfile?.profileId;
@@ -399,7 +399,7 @@ describe("session sharing policy", () => {
   });
 
   it("keeps draft and incognito carve-outs even for roles permitting foreign-session writes", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const cfg = rolePolicyConfig();
       const writer = roleClient("write", "draft-writer");
       const owner = ensureProfileForEmail("draft-owner@example.test");
@@ -438,7 +438,7 @@ describe("session sharing policy", () => {
   });
 
   it("hides foreign cron sessions with none access across listings, reads, mutations, and broadcasts", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const cfg = rolePolicyConfig();
       const creator = roleClient("none", "cron-creator");
       const creatorId = creator.authenticatedUserProfile!.profileId;
@@ -600,7 +600,7 @@ describe("session sharing policy", () => {
   });
 
   it("requires participation for categorized adoption and message-cut lifecycle targets", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const sessionKey = "agent:main:dashboard:categorized-adoption";
       await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
@@ -645,39 +645,42 @@ describe("session sharing policy", () => {
   it.each(["read-only", "suggest"] as const)(
     "preserves visibility-authorized owner assignment for %s sessions at commit",
     async (visibility) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async () => {
-        const sessionKey = `agent:main:assignment-${visibility}`;
-        await upsertSessionEntryCore(
-          { agentId: "main", sessionKey },
-          {
-            sessionId: `session-assignment-${visibility}`,
-            updatedAt: 1,
-            visibility,
-            createdActor: { type: "human", source: "profile", id: "owner@example.com" },
-          },
-        );
-        const authorization = resolveSessionMutationAuthorization({
-          client: client({ user: "viewer@example.com" }),
-          method: "sessions.assignOwner",
-          requestParams: { key: sessionKey, owner: { type: "agent", id: "main" } },
-          context: { getRuntimeConfig: () => ({}) } as GatewayRequestContext,
-        });
+      await withOpenClawTestState(
+        { scenario: "minimal", prepareProfileCatalog: true },
+        async () => {
+          const sessionKey = `agent:main:assignment-${visibility}`;
+          await upsertSessionEntryCore(
+            { agentId: "main", sessionKey },
+            {
+              sessionId: `session-assignment-${visibility}`,
+              updatedAt: 1,
+              visibility,
+              createdActor: { type: "human", source: "profile", id: "owner@example.com" },
+            },
+          );
+          const authorization = resolveSessionMutationAuthorization({
+            client: client({ user: "viewer@example.com" }),
+            method: "sessions.assignOwner",
+            requestParams: { key: sessionKey, owner: { type: "agent", id: "main" } },
+            context: { getRuntimeConfig: () => ({}) } as GatewayRequestContext,
+          });
 
-        expect(authorization.error).toBeNull();
-        expect(() => authorization.authorization?.assertCurrent()).not.toThrow();
+          expect(authorization.error).toBeNull();
+          expect(() => authorization.authorization?.assertCurrent()).not.toThrow();
 
-        const capped = resolveSessionMutationAuthorization({
-          client: roleClient("view", `assignment-${visibility}`),
-          method: "sessions.assignOwner",
-          requestParams: { key: sessionKey, owner: { type: "agent", id: "main" } },
-          context: {
-            getRuntimeConfig: () => rolePolicyConfig(),
-          } as GatewayRequestContext,
-        });
-        expect(capped.error).toMatchObject({
-          details: { code: "SESSION_PARTICIPATION_REQUIRED" },
-        });
-      });
+          const capped = resolveSessionMutationAuthorization({
+            client: roleClient("view", `assignment-${visibility}`),
+            method: "sessions.assignOwner",
+            requestParams: { key: sessionKey, owner: { type: "agent", id: "main" } },
+            context: {
+              getRuntimeConfig: () => rolePolicyConfig(),
+            } as GatewayRequestContext,
+          });
+          expect(capped.error).toMatchObject({
+            details: { code: "SESSION_PARTICIPATION_REQUIRED" },
+          });
+        },
+      );
     },
   );
 
@@ -721,7 +724,7 @@ describe("session sharing policy", () => {
   });
 
   it("keeps incognito admin-only while treating identityless connections as owner-equivalent", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const sessionKey = "agent:main:dashboard:incognito-private";
       const sessionAlias = "dashboard:incognito-private";
       const entry = {
@@ -794,7 +797,7 @@ describe("session sharing policy", () => {
   });
 
   it("keeps agent scope for progress cards and indirect run and approval authorization", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       await upsertSessionEntryCore(
         { agentId: "main", sessionKey: "global" },
         { sessionId: "session-main-global", updatedAt: 1, visibility: "shared" },
@@ -888,7 +891,7 @@ describe("session sharing policy", () => {
   });
 
   it("filters event recipients by draft ownership, suggestion participation, and row existence", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       for (const [visibility, recipients] of [
         [
           "suggest",

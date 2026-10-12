@@ -96,6 +96,7 @@ it.each(["failed delivery", "self downgrade"] as const)(
     const state = await createOpenClawTestState({
       layout: "state-only",
       prefix: "users-role-delivery-",
+      prepareProfileCatalog: true,
     });
     let release = () => {};
     try {

@@ -23,8 +23,8 @@ afterEach(() => closeOpenClawStateDatabaseForTest());
 
 const SECURITY_ACKNOWLEDGED_AT = "2026-08-02T00:00:00.000Z";
 
-describe("local onboarding state", () => {
-  it("does not create persistent state when checking an unconfigured install", async () => {
+void describe("local onboarding state", () => {
+  void it("does not create persistent state when checking an unconfigured install", async () => {
     await withOpenClawTestState({ label: "local-onboarding-empty" }, async (state) => {
       assert.equal(readLocalOnboardingState(state.configPath, { env: state.env }), undefined);
       assert.equal(
@@ -39,7 +39,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("isolates receipts by configuration path", async () => {
+  void it("isolates receipts by configuration path", async () => {
     await withOpenClawTestState({ label: "local-onboarding-paths" }, async (state) => {
       const database = { env: state.env };
       const first = beginLocalOnboarding({
@@ -61,7 +61,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("preserves the pending owner across repeated activation commits", async () => {
+  void it("preserves the pending owner across repeated activation commits", async () => {
     await withOpenClawTestState({ label: "local-onboarding-owner" }, async (state) => {
       const database = { env: state.env };
       const first = beginLocalOnboarding({
@@ -115,7 +115,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("rejects an unrepresentable team coordinator before creating a receipt", async () => {
+  void it("rejects an unrepresentable team coordinator before creating a receipt", async () => {
     await withOpenClawTestState({ label: "local-onboarding-invalid-team" }, async (state) => {
       const database = { env: state.env };
       assert.throws(
@@ -134,7 +134,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("prevents an interrupted pre-reset run from completing its replacement", async () => {
+  void it("prevents an interrupted pre-reset run from completing its replacement", async () => {
     await withOpenClawTestState({ label: "local-onboarding-reset" }, async (state) => {
       const database = { env: state.env };
       beginLocalOnboarding({
@@ -170,7 +170,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("completes the same run idempotently without changing its original timestamp", async () => {
+  void it("completes the same run idempotently without changing its original timestamp", async () => {
     await withOpenClawTestState({ label: "local-onboarding-idempotent" }, async (state) => {
       const database = { env: state.env };
       beginLocalOnboarding({
@@ -216,7 +216,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("completes its validated owner idempotently without rewriting the locked config", async () => {
+  void it("completes its validated owner idempotently without rewriting the locked config", async () => {
     await withOpenClawTestState({ label: "local-onboarding-locked-completion" }, async (state) => {
       const database = { env: state.env };
       await state.writeConfig({
@@ -253,7 +253,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("rejects a canonical config mutation that wins the completion lock", async () => {
+  void it("rejects a canonical config mutation that wins the completion lock", async () => {
     await withOpenClawTestState({ label: "local-onboarding-config-lock-race" }, async (state) => {
       const database = { env: state.env };
       await state.writeConfig({
@@ -314,7 +314,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("rejects another receipt owner and an applied config at a different path", async () => {
+  void it("rejects another receipt owner and an applied config at a different path", async () => {
     await withOpenClawTestState({ label: "local-onboarding-locked-ownership" }, async (state) => {
       const database = { env: state.env };
       await state.writeConfig({
@@ -351,7 +351,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("does not let a concurrent missing-config run replace the active owner", async () => {
+  void it("does not let a concurrent missing-config run replace the active owner", async () => {
     await withOpenClawTestState({ label: "local-onboarding-concurrent" }, async (state) => {
       const database = { env: state.env };
       const active = beginLocalOnboarding({
@@ -376,7 +376,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("does not let a delayed concurrent run reopen a completed owner", async () => {
+  void it("does not let a delayed concurrent run reopen a completed owner", async () => {
     await withOpenClawTestState({ label: "local-onboarding-completed-owner" }, async (state) => {
       const database = { env: state.env };
       const first = beginLocalOnboarding({
@@ -415,7 +415,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("replaces a completed owner only when reset observed its exact run", async () => {
+  void it("replaces a completed owner only when reset observed its exact run", async () => {
     await withOpenClawTestState({ label: "local-onboarding-completed-reset" }, async (state) => {
       const database = { env: state.env };
       const first = beginLocalOnboarding({
@@ -449,7 +449,7 @@ describe("local onboarding state", () => {
     });
   });
 
-  it("binds receipts to the acknowledged configuration identity", async () => {
+  void it("binds receipts to the acknowledged configuration identity", async () => {
     await withOpenClawTestState({ label: "local-onboarding-config-identity" }, async (state) => {
       const database = { env: state.env };
       const pending = beginLocalOnboarding({

@@ -4,8 +4,10 @@ import { listWebSearchProvidersAsync } from "./runtime.js";
 
 const discovery = vi.hoisted(() => ({ prepare: vi.fn(), providers: vi.fn(() => []) }));
 
+// mock-isolation: Control discovery preparation ordering without opening machine state.
 vi.mock("../plugins/bundled-discovery-state.js", () => ({
   prepareBundledDiscoveryMode: discovery.prepare,
+  readBundledDiscoveryModeMemoized: () => undefined,
 }));
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProviders: discovery.providers,

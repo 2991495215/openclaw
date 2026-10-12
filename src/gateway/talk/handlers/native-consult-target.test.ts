@@ -136,7 +136,10 @@ async function dispatch(
 }
 
 beforeEach(async () => {
-  state = await createOpenClawTestState({ label: "talk-native-consult" });
+  state = await createOpenClawTestState({
+    label: "talk-native-consult",
+    prepareProfileCatalog: true,
+  });
   config = {
     agents: {
       ownership: "explicit",

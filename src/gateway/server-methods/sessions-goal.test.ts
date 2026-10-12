@@ -125,7 +125,7 @@ afterEach(async () => {
 
 describe("typed Goal management RPCs", () => {
   it("edits literal objectives without chat rows and rejects a changed retry", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       await seedSession();
       const objective = "clear the backlog\n/goal pause is part of the objective";
       const request = operation("edit", { objective });
@@ -160,7 +160,7 @@ describe("typed Goal management RPCs", () => {
   });
 
   it("replays a clear without deleting a replacement Goal", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       await seedSession();
       const request = operation("clear");
       const first = await invoke(request, { method: "sessions.goal.clear" });
@@ -184,40 +184,43 @@ describe("typed Goal management RPCs", () => {
   it.each(["sessions.goal.update", "sessions.goal.clear"] as const)(
     "%s requires write scope and session participation before mutation or continuation",
     async (method) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async () => {
-        const owner = ensureProfileForEmail("goal-owner@example.test");
-        const viewer = ensureProfileForEmail("goal-viewer@example.test");
-        await seedSession({
-          visibility: "read-only",
-          createdActor: { type: "human", source: "profile", id: owner.id },
-        });
-        const request = operation(method === "sessions.goal.clear" ? "clear" : "resume");
-        const readOnly = await invoke(request, {
-          method,
-          client: client(["operator.read"], owner.id),
-        });
-        expect(readOnly).toHaveBeenCalledWith(
-          false,
-          undefined,
-          expect.objectContaining({
-            code: "FORBIDDEN",
-            message: "missing scope: operator.write",
-          }),
-        );
-        const notParticipant = await invoke(request, {
-          method,
-          client: client(["operator.write"], viewer.id),
-        });
-        expect(notParticipant).toHaveBeenCalledWith(
-          false,
-          undefined,
-          expect.objectContaining({
-            details: expect.objectContaining({ code: "SESSION_PARTICIPATION_REQUIRED" }),
-          }),
-        );
-        expect(loadSessionEntry({ agentId: "main", sessionKey })?.goal).toEqual(initialGoal());
-        expect(resumeChat).not.toHaveBeenCalled();
-      });
+      await withOpenClawTestState(
+        { scenario: "minimal", prepareProfileCatalog: true },
+        async () => {
+          const owner = ensureProfileForEmail("goal-owner@example.test");
+          const viewer = ensureProfileForEmail("goal-viewer@example.test");
+          await seedSession({
+            visibility: "read-only",
+            createdActor: { type: "human", source: "profile", id: owner.id },
+          });
+          const request = operation(method === "sessions.goal.clear" ? "clear" : "resume");
+          const readOnly = await invoke(request, {
+            method,
+            client: client(["operator.read"], owner.id),
+          });
+          expect(readOnly).toHaveBeenCalledWith(
+            false,
+            undefined,
+            expect.objectContaining({
+              code: "FORBIDDEN",
+              message: "missing scope: operator.write",
+            }),
+          );
+          const notParticipant = await invoke(request, {
+            method,
+            client: client(["operator.write"], viewer.id),
+          });
+          expect(notParticipant).toHaveBeenCalledWith(
+            false,
+            undefined,
+            expect.objectContaining({
+              details: expect.objectContaining({ code: "SESSION_PARTICIPATION_REQUIRED" }),
+            }),
+          );
+          expect(loadSessionEntry({ agentId: "main", sessionKey })?.goal).toEqual(initialGoal());
+          expect(resumeChat).not.toHaveBeenCalled();
+        },
+      );
     },
   );
 
@@ -226,7 +229,7 @@ describe("typed Goal management RPCs", () => {
     { name: "Goal identity", patch: { goalId: "replaced-goal" } },
     { name: "agent owner", patch: { agentId: "other" } },
   ])("rejects stale $name without changing state", async ({ patch }) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       await seedSession();
       const result = await invoke(operation("pause", patch));
       expect(result).toHaveBeenCalledWith(
@@ -240,7 +243,7 @@ describe("typed Goal management RPCs", () => {
   });
 
   it("checks caller lifetime again inside the mutation transaction", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       await seedSession();
       let checks = 0;
       const request = operation("complete");
@@ -272,7 +275,7 @@ describe("typed Goal management RPCs", () => {
   });
 
   it("rejects a plugin caller that does not own the session", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       await seedSession({ pluginOwnerId: "owning-plugin" });
       const pluginClient: GatewayClient = {
         ...client(),
@@ -292,7 +295,7 @@ describe("typed Goal management RPCs", () => {
   });
 
   it("does not activate a Goal before continuation admission succeeds", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       await seedSession();
       resumeChat.mockImplementation(async (options: GatewayRequestHandlerOptions) => {
         options.respond(false, undefined, { code: "UNAVAILABLE", message: "session busy" });

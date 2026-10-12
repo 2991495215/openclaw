@@ -101,9 +101,11 @@ outside the single-owner contract. These changes preserve public contracts,
 schemas, retention, and update behavior.
 
 Machine-state consumers prepare config, cron partitions, auth-store ownership,
-and onboarding outcomes through the shared-state worker. Gateway profile policy
-and display readers consume the admitted profile catalog; committed profile
-writes update that catalog before their callers resume. Agent lifecycle readers
+and onboarding outcomes through the shared-state worker.
+Auth-store ownership and batched plugin metadata reads use the read-only worker,
+including retained artifact-preserving snapshots, without admitting a writer.
+Gateway profile policy and display readers consume the admitted profile catalog;
+committed profile writes update that catalog before their callers resume. Agent lifecycle readers
 likewise seed facts in the worker and apply provenance and deletion-journal
 receipts. Canonical validation predicates consume admitted receipts; only schema
 admission and worker opens load a missing persisted receipt.

@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   readAgentDeletionJournal: vi.fn(() => undefined as Record<string, unknown> | undefined),
   claimCompletedAgentDeletion: vi.fn(() => true),
   migrateLegacyMainSessionKeys: vi.fn(),
-  resolveSharedAuthStoreOwnership: vi.fn(),
+  prepareSharedAuthStoreOwnership: vi.fn(),
 }));
 
 vi.mock("node:fs/promises", () => ({ default: { mkdir: mocks.mkdir } }));
@@ -67,7 +67,7 @@ vi.mock("../config/sessions/legacy-main-session-migration.js", () => ({
 }));
 
 vi.mock("./auth-profiles/path-resolve.js", () => ({
-  resolveSharedAuthStoreOwnership: mocks.resolveSharedAuthStoreOwnership,
+  prepareSharedAuthStoreOwnership: mocks.prepareSharedAuthStoreOwnership,
 }));
 
 vi.mock("./workspace.js", async (importOriginal) => {
@@ -110,7 +110,7 @@ describe("createAgent", () => {
       ownerAgentId: "researcher",
       warnings: [],
     });
-    mocks.resolveSharedAuthStoreOwnership.mockReturnValue({ location: "state-db" });
+    mocks.prepareSharedAuthStoreOwnership.mockResolvedValue({ location: "state-db" });
     mocks.resolveAgentWorkspaceDir.mockReturnValue("/tmp/default-researcher");
     mocks.resolveAgentDir.mockReturnValue("/tmp/agent-researcher");
     mocks.ensureAgentWorkspace.mockImplementation(async ({ dir }: { dir: string }) => ({
@@ -202,7 +202,7 @@ describe("createAgent", () => {
 
   it("rejects main while its agent database still owns shared auth", async () => {
     mocks.config = { agents: { entries: { robby: { id: "robby" } } } };
-    mocks.resolveSharedAuthStoreOwnership.mockReturnValueOnce({ location: "legacy-main" });
+    mocks.prepareSharedAuthStoreOwnership.mockResolvedValueOnce({ location: "legacy-main" });
 
     await expect(createAgent({ name: "main" })).resolves.toMatchObject({
       status: "error",
@@ -229,7 +229,7 @@ describe("createAgent", () => {
       status: "created",
       agentId: "main",
     });
-    expect(mocks.resolveSharedAuthStoreOwnership).toHaveBeenCalledOnce();
+    expect(mocks.prepareSharedAuthStoreOwnership).toHaveBeenCalledOnce();
     expect(mocks.transformConfigFileWithRetry).toHaveBeenCalledOnce();
   });
 

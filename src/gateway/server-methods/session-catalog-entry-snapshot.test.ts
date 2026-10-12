@@ -84,13 +84,13 @@ describe("session catalog entry snapshots", () => {
   });
 
   beforeEach(() => {
+    vi.spyOn(userProfileList, "hasMultipleResidentSessionSharingIdentities").mockReturnValue(false);
     hoisted.activeRegistry = createEmptyPluginRegistry() as TestPluginRegistry;
     markPluginRegistryActive(hoisted.activeRegistry as PluginRegistry);
     projection = createSessionRowProjectionFixture({ cfg: {}, store: {} });
   });
 
   it("resolves catalog senders against current profiles without attributing unknown turns", async () => {
-    vi.spyOn(userProfileList, "hasMultipleResidentSessionSharingIdentities").mockReturnValue(false);
     vi.spyOn(userProfileList, "getResidentUserProfileDisplay").mockImplementation((id) => {
       if (id !== "merged-profile") {
         throw new Error("unknown profile");

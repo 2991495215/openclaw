@@ -99,10 +99,6 @@ export type AuthProfileWorkerOperations = AuthStoreUpdateOperations & {
     input: { artifactPreserving: boolean };
     output: void;
   };
-  "authProfiles.sharedOwnership": {
-    input: { artifactPreserving: boolean };
-    output: unknown;
-  };
   "authProfiles.personal": {
     input: { profileId: string; artifactPreserving: boolean };
     output: UserModelAuthProfile | undefined;

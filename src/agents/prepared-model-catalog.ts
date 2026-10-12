@@ -298,7 +298,9 @@ async function resolvePreparedModelCatalogOwnerSnapshotWithPolicy(
   configPolicy: PreparedModelCatalogConfigPolicy,
   preparePublishedOwner = preparePublishedCatalogOwner,
 ): Promise<PreparedModelCatalogOwner> {
-  await prepareSharedAuthStoreOwnership(params.env);
+  if (!getPreparedSharedAuthStoreOwnership(params.env ?? process.env)) {
+    await prepareSharedAuthStoreOwnership(params.env);
+  }
   const { activationExact, activationFull, exact } = resolveInputs(params);
   if (params.readOnly) {
     const prepared = await resolveReadOnlyPublishedModelCatalogOwner(
@@ -367,7 +369,9 @@ async function withPreparedModelCatalogOwnerPolicy<T>(
   read: (snapshot: PreparedModelRuntimeSnapshot) => T | Promise<T>,
   preparePublishedOwner = preparePublishedCatalogOwner,
 ): Promise<T> {
-  await prepareSharedAuthStoreOwnership(params.env);
+  if (!getPreparedSharedAuthStoreOwnership(params.env ?? process.env)) {
+    await prepareSharedAuthStoreOwnership(params.env);
+  }
   // Ordinary reads return published rows; explicit refresh keeps its writable default.
   const request = {
     ...params,
@@ -402,7 +406,9 @@ async function withPreparedModelCatalogOwnerPolicy<T>(
 async function loadScopedReadOnlyModelCatalog(
   params: LoadPreparedModelCatalogParams,
 ): Promise<ModelCatalogSnapshot> {
-  await prepareSharedAuthStoreOwnership(params.env);
+  if (!getPreparedSharedAuthStoreOwnership(params.env ?? process.env)) {
+    await prepareSharedAuthStoreOwnership(params.env);
+  }
   const { activationExact } = resolveInputs(params);
   const prepared = await resolveReadOnlyPublishedModelCatalogOwner(
     params,

@@ -700,7 +700,7 @@ describe("agent lifecycle registry", () => {
       assertMatches(recreated, false);
       expect(await matchesAgentLifecycleBindingAsync(() => config, recreated, options)).toBe(false);
       runOpenClawStateWriteTransaction(
-        (current) => deleteAgentDeletionJournalInDatabase(current, "main", "owner-deletion"),
+        (current) => deleteAgentDeletionJournalInDatabase(current, "main", "owner-deletion", false),
         options,
       );
       assertMatches(recreated, true);

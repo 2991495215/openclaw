@@ -38,8 +38,7 @@ async function prepareActor(env: NodeJS.ProcessEnv) {
   openOpenClawStateDatabase({ env });
   await workerStore.runOpenClawStateWorkerOperation(
     captureOpenClawStateWorkerContext({ env }),
-    (scope) =>
-      scope.execute({ type: "authProfiles.sharedOwnership", input: { artifactPreserving: false } }),
+    async () => undefined,
   );
 }
 
