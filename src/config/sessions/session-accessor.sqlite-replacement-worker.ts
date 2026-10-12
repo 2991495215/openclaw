@@ -25,7 +25,10 @@ import type {
   AgentDatabaseOperations,
   OpenClawAgentDatabaseExecution,
 } from "../../state/openclaw-agent-execution-contract.js";
-import { captureOpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution.js";
+import {
+  captureOpenClawAgentDatabaseExecution,
+  captureOpenClawAgentDatabasePreparationExecution,
+} from "../../state/openclaw-agent-execution.js";
 import { runOpenClawAgentWorkerWrite } from "../../state/openclaw-agent-write-admission.js";
 import type { captureNativeSessionWorkerDeletion } from "./session-accessor.sqlite-deletion.js";
 import {
@@ -97,20 +100,18 @@ export async function withSessionEntryWorker<T>(
       assertAgentSessionWriteAdmission(options);
     }
     env = Object.freeze({ ...(options.env ?? process.env) });
+    const expectedIdentity = databaseIdentity
+      ? {
+          kind: "file" as const,
+          physicalIdentity: databaseIdentity,
+          nativeLocation: options.path,
+        }
+      : undefined;
     execution =
       retainedExecution ??
-      captureOpenClawAgentDatabaseExecution(
-        options,
-        databaseIdentity
-          ? {
-              expectedIdentity: {
-                kind: "file",
-                physicalIdentity: databaseIdentity,
-                nativeLocation: options.path,
-              },
-            }
-          : {},
-      );
+      (operationMode === "write"
+        ? captureOpenClawAgentDatabasePreparationExecution(options, expectedIdentity)
+        : captureOpenClawAgentDatabaseExecution(options, { expectedIdentity }));
   } catch (error) {
     try {
       await releaseSource?.();
