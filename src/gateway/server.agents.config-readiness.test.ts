@@ -16,6 +16,7 @@ import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
 import { acquireGatewayLock } from "../infra/gateway-lock.js";
 import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
+import { redactSensitiveText } from "../logging/redact.js";
 import * as pluginLifecycleLease from "../plugins/plugin-lifecycle-lease.js";
 import { OpenClawStateLeaseAcquisitionError } from "../state/openclaw-state-lease-error.js";
 import {
@@ -28,6 +29,7 @@ import type { GatewayClientRequestError } from "./client.js";
 import * as configReload from "./config-reload.js";
 import * as agentDatabases from "./server-reload-agent-databases.js";
 import { startGatewayServer } from "./server.js";
+import * as sessionCreateDiagnostics from "./session-create-diagnostics.js";
 import { connectGatewayClient, disconnectGatewayClient } from "./test-helpers.e2e.js";
 
 const cliEntrypoint = resolveRuntimeWorkerArgv(
@@ -41,6 +43,26 @@ it("publishes agent mutations before acknowledging immediate session and roster 
   let phase = "fixture setup";
   let teardownPhase: string | undefined;
   const overlappingPhases: Record<number, string> = {};
+  const sessionCreatePhases: Record<number, string> = {};
+  let nextSessionCreate = 0;
+  const startSessionCreate = sessionCreateDiagnostics.startSessionCreateDiagnostics;
+  const sessionCreateSpy = vi
+    .spyOn(sessionCreateDiagnostics, "startSessionCreateDiagnostics")
+    .mockImplementation(() => {
+      const id = nextSessionCreate++;
+      const diagnostics = startSessionCreate();
+      sessionCreatePhases[id] = "preflight";
+      return {
+        mark(next: sessionCreateDiagnostics.SessionCreatePhase) {
+          sessionCreatePhases[id] = next;
+          diagnostics?.mark(next);
+        },
+        [Symbol.dispose]() {
+          delete sessionCreatePhases[id];
+          diagnostics?.[Symbol.dispose]();
+        },
+      };
+    });
   const publicationEntered = createDeferred();
   const releasePublication = createDeferred();
   const creationBookkeepingCompleted = createDeferred();
@@ -81,9 +103,10 @@ it("publishes agent mutations before acknowledging immediate session and roster 
     });
   onTestFinished(() => {
     process.stderr.write(
-      `[config-readiness] ${JSON.stringify({ phase, overlappingPhases, teardownPhase })}\n`,
+      `[config-readiness] ${JSON.stringify({ phase, overlappingPhases, sessionCreatePhases, teardownPhase })}\n`,
     );
     releasePublication.resolve();
+    sessionCreateSpy.mockRestore();
     reloaderSpy.mockRestore();
     revivalSpy.mockRestore();
   });
@@ -448,6 +471,10 @@ it("publishes agent mutations before acknowledging immediate session and roster 
             `[config-readiness-failure] ${JSON.stringify({
               phase,
               name: error instanceof Error ? error.name : typeof error,
+              message:
+                error instanceof Error
+                  ? redactSensitiveText(error.message, { mode: "tools" })
+                  : undefined,
               frames:
                 error instanceof Error
                   ? (error.stack ?? "")
