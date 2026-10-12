@@ -20,6 +20,7 @@ import { publishSystemEventStoreConfig } from "../config/sessions/session-store-
 import type { GatewayAuthConfig } from "../config/types.gateway.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isSecretRef } from "../config/types.secrets.js";
+import { resolveCronJobsStorePathFromConfigAsync } from "../cron/store/paths.js";
 import {
   isDiagnosticsEnabled,
   setDiagnosticsEnabledForProcess,
@@ -478,12 +479,19 @@ export async function prepareGatewayServerBootstrap(input: {
       });
     })(),
     startupTrace.measure("plugins.bootstrap-imports", () => import("./server-startup-plugins.js")),
+    startupTrace.measure("cron.store-path", () =>
+      resolveCronJobsStorePathFromConfigAsync(cfgAtStart),
+    ),
   ] as const;
   // These owners share admitted state, but no preparation consumes another's result.
   // Join every owner before startup failure can close their database resources.
   await Promise.allSettled(preparations);
-  const [workerEnvironmentStartup, startupSessionDatabases, { prepareGatewayPluginBootstrap }] =
-    await Promise.all(preparations);
+  const [
+    workerEnvironmentStartup,
+    startupSessionDatabases,
+    { prepareGatewayPluginBootstrap },
+    cronStorePath,
+  ] = await Promise.all(preparations);
   const pluginGatewayContext: {
     current: import("./server-methods/types.js").GatewayRequestContext | undefined;
   } = { current: undefined };
@@ -564,6 +572,7 @@ export async function prepareGatewayServerBootstrap(input: {
     startupActivationSourceConfig,
     startupRuntimeConfig,
     startupSessionDatabases,
+    cronStorePath,
     cfgAtStart,
     generatedStartupAuthToken: authBootstrap.generatedToken !== undefined,
     resolvedStartupAuthOverride,
