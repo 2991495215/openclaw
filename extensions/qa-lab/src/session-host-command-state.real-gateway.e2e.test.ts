@@ -23,7 +23,11 @@ const TEST_TIMEOUT_MS = 180_000;
 const captureUiProof = process.env.OPENCLAW_CAPTURE_UI_PROOF === "1";
 const helloCounts = new WeakMap<GatewayClient, number>();
 
-const gatewayOwners: ReturnType<typeof createQaGatewayChild>[] = [];
+const gatewayOwners: Array<{
+  owner: ReturnType<typeof createQaGatewayChild>;
+  preserveToDir: string;
+  markStage: (stage: string) => void;
+}> = [];
 type DeviceIdentity = {
   deviceId: string;
   privateKeyPem: string;
@@ -31,8 +35,10 @@ type DeviceIdentity = {
 };
 
 afterEach(async () => {
-  for (const owner of gatewayOwners.splice(0)) {
-    const stopped = await owner.stop();
+  for (const { owner, preserveToDir, markStage } of gatewayOwners.splice(0)) {
+    markStage("fallback-cleanup:begin");
+    const stopped = await owner.stop({ preserveToDir });
+    markStage("fallback-cleanup:end");
     if (stopped.errors.length > 0) {
       throw new AggregateError(stopped.errors, "QA Gateway cleanup failed");
     }
@@ -51,8 +57,18 @@ suite.define(() => {
     "shows the next action for every required node command state",
     { timeout: TEST_TIMEOUT_MS },
     async () => {
+      const startedAt = performance.now();
+      const markStage = (stage: string) => {
+        console.log(
+          "[host-command-diagnostic]",
+          JSON.stringify({ stage, elapsedMs: Math.round(performance.now() - startedAt) }),
+        );
+      };
+      const preserveToDir = path.join(suite.artifactDir, "gateway");
       const gatewayOwner = createQaGatewayChild();
-      gatewayOwners.push(gatewayOwner);
+      const ownedGateway = { owner: gatewayOwner, preserveToDir, markStage };
+      gatewayOwners.push(ownedGateway);
+      markStage("gateway.start:begin");
       const gateway = await gatewayOwner.start({
         repoRoot: process.cwd(),
         useRepoCli: true,
@@ -64,6 +80,7 @@ suite.define(() => {
         forcedRuntime: "codex",
         enabledPluginIds: ["codex"],
         controlUiEnabled: false,
+        onListening: () => markStage("gateway.start:listening"),
         mutateConfig: (config) => ({
           ...config,
           gateway: {
@@ -97,7 +114,10 @@ suite.define(() => {
           },
         }),
       });
+      markStage("gateway.start:end");
+      markStage("operator.connect:begin");
       const operator = await connectOperator(gateway);
+      markStage("operator.connect:end");
       const clients: GatewayClient[] = [operator];
       try {
         const undeclaredIdentity = createDeviceIdentity();
@@ -108,6 +128,7 @@ suite.define(() => {
         const pendingMessage = `paired-device command ${COMMAND} is awaiting pairing approval for node ${pendingIdentity.deviceId}; find its updated command surface request with openclaw nodes pending, then run openclaw nodes approve <requestId>`;
         const unauthorizedMessage = `paired-device command ${COMMAND} is blocked by Gateway policy for node ${unauthorizedIdentity.deviceId}; allow it in gateway.nodes.commands.allow and remove any matching gateway.nodes.commands.deny entry`;
 
+        markStage("undeclared.pair:begin");
         const undeclaredNode = await connectPairedNode({
           displayName: "Undeclared command",
           gateway,
@@ -115,8 +136,11 @@ suite.define(() => {
           operator,
           commands: [],
         });
+        markStage("undeclared.pair:end");
         clients.push(undeclaredNode);
         await publishSessionHost(undeclaredNode);
+        markStage("undeclared.publish:end");
+        markStage("pending.pair:begin");
         const pendingApproved = await connectPairedNode({
           displayName: "Pending approval",
           gateway,
@@ -124,16 +148,22 @@ suite.define(() => {
           operator,
           commands: [],
         });
+        markStage("pending.pair:end");
         await pendingApproved.stopAndWait({ timeoutMs: 1_000 });
+        markStage("pending.reconnect:begin");
         const pendingNode = await connectNode({
           displayName: "Pending approval",
           gateway,
           identity: pendingIdentity,
           commands: [COMMAND],
         });
+        markStage("pending.reconnect:end");
         clients.push(pendingNode);
         await publishSessionHost(pendingNode);
+        markStage("pending.publish:end");
         await waitForPendingCommand(operator, pendingIdentity.deviceId);
+        markStage("pending.request:end");
+        markStage("unauthorized.pair:begin");
         const unauthorizedNode = await connectPairedNode({
           displayName: "Unauthorized command",
           gateway,
@@ -141,8 +171,10 @@ suite.define(() => {
           operator,
           commands: [COMMAND],
         });
+        markStage("unauthorized.pair:end");
         clients.push(unauthorizedNode);
         await publishSessionHost(unauthorizedNode);
+        markStage("unauthorized.publish:end");
 
         const readCommandState = async (deviceId: string) => {
           const inventory = await operator.request<{
@@ -154,6 +186,7 @@ suite.define(() => {
           return inventory.environments.find((environment) => environment.id === `node:${deviceId}`)
             ?.requiredNodeCommand;
         };
+        markStage("initial-state:begin");
         expect(await readCommandState(undeclaredIdentity.deviceId)).toEqual({
           command: COMMAND,
           state: "undeclared",
@@ -168,7 +201,9 @@ suite.define(() => {
           command: COMMAND,
           state: "invocable",
         });
+        markStage("initial-state:end");
 
+        markStage("browser.context:begin");
         await suite.withPage(
           {
             locale: "en-US",
@@ -179,6 +214,7 @@ suite.define(() => {
             viewport: { height: 900, width: 1440 },
           },
           async ({ page }) => {
+            markStage("browser.context:end");
             const url = new URL("new", suite.server.baseUrl);
             url.searchParams.set("gatewayUrl", gateway.wsUrl);
             await page.goto(url.toString());
@@ -196,6 +232,7 @@ suite.define(() => {
             await expect
               .poll(() => disabledReason(pendingIdentity.deviceId))
               .toContain(pendingMessage);
+            markStage("browser.initial-state:end");
             if (captureUiProof) {
               // Keep captures at the recorded viewport size: clips and larger full-page
               // screenshots temporarily resize Chromium's shared screencast surface.
@@ -210,6 +247,7 @@ suite.define(() => {
             }
             await page.keyboard.press("Escape");
 
+            markStage("deny.config:begin");
             const beforeConfig = await operator.request<{ hash: string }>("config.get", {});
             const unauthorizedHelloCount = helloCounts.get(unauthorizedNode) ?? 0;
             await operator.request("config.patch", {
@@ -219,6 +257,7 @@ suite.define(() => {
               baseHash: beforeConfig.hash,
               replacePaths: ["gateway.nodes.commands.allow", "gateway.nodes.commands.deny"],
             });
+            markStage("deny.config:end");
             await vi.waitFor(
               async () => {
                 expect(await readCommandState(unauthorizedIdentity.deviceId)).toEqual({
@@ -230,6 +269,7 @@ suite.define(() => {
               { interval: 250, timeout: 60_000 },
             );
             expect(helloCounts.get(unauthorizedNode)).toBe(unauthorizedHelloCount);
+            markStage("deny.state:end");
 
             await page.reload();
             await page.locator("#new-session-where-trigger").click();
@@ -245,7 +285,9 @@ suite.define(() => {
             }
             expect(helloCounts.get(unauthorizedNode)).toBe(unauthorizedHelloCount);
             await page.keyboard.press("Escape");
+            markStage("deny.browser:end");
 
+            markStage("reallow.config:begin");
             const deniedConfig = await operator.request<{ hash: string }>("config.get", {});
             await operator.request("config.patch", {
               raw: JSON.stringify({
@@ -254,6 +296,7 @@ suite.define(() => {
               baseHash: deniedConfig.hash,
               replacePaths: ["gateway.nodes.commands.allow", "gateway.nodes.commands.deny"],
             });
+            markStage("reallow.config:end");
             await vi.waitFor(
               async () => {
                 expect(await readCommandState(unauthorizedIdentity.deviceId)).toEqual({
@@ -269,10 +312,12 @@ suite.define(() => {
               { interval: 250, timeout: 60_000 },
             );
             expect(helloCounts.get(unauthorizedNode)).toBe(unauthorizedHelloCount);
+            markStage("reallow.state:end");
             await page.reload();
             await page.locator("#new-session-where-trigger").click();
             await row(unauthorizedIdentity.deviceId).waitFor();
             expect(await row(unauthorizedIdentity.deviceId).isEnabled()).toBe(true);
+            markStage("reallow.browser:end");
             if (captureUiProof) {
               await page.screenshot({
                 animations: "disabled",
@@ -281,13 +326,18 @@ suite.define(() => {
             }
           },
         );
+        markStage("browser.context:closed");
       } finally {
+        markStage("clients.stop:begin");
         await Promise.allSettled(
           clients.toReversed().map((client) => client.stopAndWait({ timeoutMs: 1_000 })),
         );
+        markStage("clients.stop:end");
         const tempRoot = gateway.tempRoot;
-        const stopped = await gatewayOwner.stop();
-        gatewayOwners.splice(gatewayOwners.indexOf(gatewayOwner), 1);
+        markStage("gateway.stop:begin");
+        const stopped = await gatewayOwner.stop({ preserveToDir });
+        markStage("gateway.stop:end");
+        gatewayOwners.splice(gatewayOwners.indexOf(ownedGateway), 1);
         expect(stopped.errors).toEqual([]);
         expect(existsSync(tempRoot)).toBe(false);
       }

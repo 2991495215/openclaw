@@ -2547,6 +2547,7 @@ jobs:
           name: control-ui-real-gateway-timeout-${{ github.run_attempt }}-${{ matrix.shard }}
           path: |
             .artifacts/control-ui-e2e-timeouts/real-gateway-attempt-${{ github.run_attempt }}/failure-*/failure.public.json
+            .artifacts/control-ui-e2e/real-gateway/session-host-command-state-with-a-real-gateway-*/gateway/*
           if-no-files-found: ignore
           retention-days: 7
 
