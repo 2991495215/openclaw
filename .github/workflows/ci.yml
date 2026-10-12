@@ -695,6 +695,10 @@ jobs:
             runtime: node
           - group: typed-fixtures-node
             runtime: node
+          - group: sharing-routes-node
+            runtime: node
+          - group: session-utils-node
+            runtime: node
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -763,6 +767,19 @@ jobs:
               files=(
                 src/gateway/server-methods.session-patch-orchestration.test.ts
                 src/gateway/server-methods/sessions-patch-native-recovery.test.ts
+              )
+              ;;
+            sharing-routes-node)
+              files=(
+                src/gateway/server-methods/sessions-sharing.test.ts
+                src/gateway/server-methods/sessions-sharing.identities.test.ts
+              )
+              ;;
+            session-utils-node)
+              files=(
+                src/gateway/session-utils-store-lookup.test.ts
+                src/gateway/session-utils.single-row-cache.test.ts
+                src/gateway/session-utils.test.ts
               )
               ;;
             typed-fixtures-node)
