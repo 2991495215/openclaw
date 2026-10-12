@@ -26,6 +26,7 @@ vi.mock("../cli-credentials.js", () => ({
   readMiniMaxCliCredentialsCached: () => null,
 }));
 
+// mock-isolation: OAuth store tests isolate provider selection and credentials from the plugin runtime.
 vi.mock("../../plugins/provider-runtime.runtime.js", () => ({
   formatProviderAuthProfileApiKeyWithPlugin: (params: { context?: { access?: string } }) =>
     oauthProviderRuntimeMocks.formatProviderAuthProfileApiKeyWithPluginMock() ??
