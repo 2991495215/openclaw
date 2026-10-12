@@ -943,7 +943,7 @@ it.each([false, true])(
         }
       });
       const capture = vi
-        .spyOn(agentExecution, "captureOpenClawAgentDatabaseExecution")
+        .spyOn(agentExecution, "captureOpenClawAgentDatabasePreparationExecution")
         .mockImplementation(() => {
           throw acquisitionFailure;
         });

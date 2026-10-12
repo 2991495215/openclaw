@@ -85,7 +85,7 @@ it("prepares and commits a session while its original creating reference is held
       ).resolves.toBe("committed");
       expect(
         reader.read((database) => readExactSessionEntryRow(database, sessionKey)?.entry, options),
-      ).toMatchObject({ sessionId: "first-session", label: "created" });
+      ).toMatchObject({ found: true, value: { sessionId: "first-session", label: "created" } });
     } finally {
       reader.close();
       await creator.release();
