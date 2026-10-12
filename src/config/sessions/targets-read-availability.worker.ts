@@ -70,6 +70,21 @@ function dedupeTargetsByStorePath(targets: SessionStoreTarget[]): SessionStoreTa
   return [...new Map(targets.map((target) => [target.storePath, target])).values()];
 }
 
+function traceReadFailure(stage: "snapshot" | "fixed-target", error: unknown): void {
+  const message = error instanceof Error ? error.message : "";
+  const categories = [
+    ["physical-receipt", "Session reader validation"],
+    ["schema-admission", "Agent schema admission"],
+    ["invalid-schema-receipt", "Invalid agent schema admission"],
+    ["creation-identity", "Agent database target changed before creating open"],
+    ["discovery-custody", "Session database target changed outside captured discovery custody"],
+    ["sqlite-locked", "database is locked"],
+    ["sqlite-missing-table", "no such table"],
+  ] as const;
+  const category = categories.find(([, fragment]) => message.includes(fragment))?.[0] ?? "other";
+  console.warn("[session-inventory-diag]", JSON.stringify({ stage, category }));
+}
+
 function readSessionStoreTargetSnapshot<T>(
   params: {
     cache?: Map<string, SessionStoreReadSnapshot<T>>;
@@ -106,10 +121,17 @@ function readSessionStoreTargetSnapshot<T>(
             value: result.value,
           }
         : { available: false, reason: result.reason };
-    } catch {
+    } catch (error) {
+      traceReadFailure("snapshot", error);
       // An unreadable candidate cannot prove absence for cleanup or placement.
       snapshot = { available: false, reason: "read-failed" };
     }
+  }
+  if (!snapshot.available) {
+    console.warn(
+      "[session-inventory-diag]",
+      JSON.stringify({ stage: "snapshot-result", reason: snapshot.reason }),
+    );
   }
   params.cache?.set(cacheKey, snapshot);
   return snapshot;
@@ -180,6 +202,10 @@ function resolveFixedSessionStoreTargetsReadOnly(
         readCandidates: params.readCandidates,
       }).some((target) => normalizeAgentId(target.agentId) === requested);
     if (!ownerValidated) {
+      console.warn(
+        "[session-inventory-diag]",
+        JSON.stringify({ stage: "fixed-target", category: "owner-unvalidated" }),
+      );
       return { available: false, reason: "read-failed" };
     }
     const ownsUnscopedRows =
@@ -195,6 +221,7 @@ function resolveFixedSessionStoreTargetsReadOnly(
     if (error instanceof SessionStoreRegistryReadRequired) {
       throw error;
     }
+    traceReadFailure("fixed-target", error);
     return { available: false, reason: "read-failed" };
   }
 }

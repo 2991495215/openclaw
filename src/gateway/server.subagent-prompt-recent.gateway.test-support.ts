@@ -71,22 +71,26 @@ function excerptRecentlyCompleted(raw: string | undefined): string | null {
 
 async function runParentAgentTurn(
   client: Awaited<ReturnType<typeof startGatewayWithClient>>["client"],
+  stage: "first" | "retained" | "unrelated" | "later",
   message: string,
   sessionKey = PARENT_SESSION_KEY,
 ): Promise<void> {
   const runId = randomUUID();
+  console.warn("[completed-child-diag]", JSON.stringify({ stage, phase: "agent-request" }));
   const accepted = await client.request<{ runId?: string; status?: string }>("agent", {
     sessionKey,
     message,
     deliver: false,
     idempotencyKey: runId,
   });
+  console.warn("[completed-child-diag]", JSON.stringify({ stage, phase: "agent-response" }));
   expect(accepted.status).toBe("accepted");
   const completed = await client.request<{ status?: string }>(
     "agent.wait",
     { runId: accepted.runId ?? runId, timeoutMs: 30_000 },
     { timeoutMs: 35_000 },
   );
+  console.warn("[completed-child-diag]", JSON.stringify({ stage, phase: "wait-response" }));
   expect(completed.status).toBe("ok");
 }
 
@@ -206,7 +210,7 @@ describe("Completed child results on a real parent-agent turn", () => {
         });
 
         const firstCursor = requests.length;
-        await runParentAgentTurn(gateway.client, "first parent turn");
+        await runParentAgentTurn(gateway.client, "first", "first parent turn");
         const firstParentTurn = requests.slice(firstCursor).join("\n");
         expect(firstParentTurn).not.toContain("## Recently Completed Subagents");
 
@@ -235,7 +239,11 @@ describe("Completed child results on a real parent-agent turn", () => {
           persistRegistryFixture(new Map([[retained.runId, retained]]), [retained.runId]);
           const before = loadSubagentRegistryFromSqlite().get(retained.runId);
           const cursor = requests.length;
-          await runParentAgentTurn(gateway.client, "Continue using any outstanding child result.");
+          await runParentAgentTurn(
+            gateway.client,
+            "retained",
+            "Continue using any outstanding child result.",
+          );
           const parentRequest = requests.slice(cursor).join("\n");
           expect(parentRequest).toContain("## Child results awaiting delivery");
           expect(parentRequest).toContain(result);
@@ -244,6 +252,7 @@ describe("Completed child results on a real parent-agent turn", () => {
           const unrelatedCursor = requests.length;
           await runParentAgentTurn(
             gateway.client,
+            "unrelated",
             "Summarize this session.",
             "agent:main:unrelated",
           );
@@ -294,7 +303,7 @@ describe("Completed child results on a real parent-agent turn", () => {
           .toBe("terminal");
 
         const laterCursor = requests.length;
-        await runParentAgentTurn(gateway.client, "later parent turn");
+        await runParentAgentTurn(gateway.client, "later", "later parent turn");
         const laterParentTurn = requests.slice(laterCursor).join("\n");
         // The real completion owner may finish requester settlement before this
         // later turn starts. Both projections must preserve child discovery;
