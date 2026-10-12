@@ -1,5 +1,4 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { awaitGateBeforeSettlement, withinTest } from "../../../test/helpers/promise.js";
 import type { ModelCatalogEntry } from "../../agents/model-catalog.js";
 import { clearFollowupQueue, getFollowupQueue } from "../../auto-reply/reply/queue/state.js";
 import { setRuntimeConfigSnapshot } from "../../config/io.js";
@@ -462,9 +461,9 @@ describe("sessions.patch personal model-account ownership", () => {
     },
   );
 
-  it.for(["invalidated", "disconnected", "role revoked"] as const)(
+  it.each(["invalidated", "disconnected", "role revoked"] as const)(
     "rejects a personal selection %s while the model catalog is loading",
-    async (loss, { signal }) => {
+    async (loss) => {
       const sessionKey = `agent:main:dm:personal-selection-lost-${loss.replaceAll(" ", "-")}`;
       await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
@@ -498,14 +497,12 @@ describe("sessions.patch personal model-account ownership", () => {
         caller,
       );
       try {
-        await withinTest(
-          awaitGateBeforeSettlement(
-            catalogEntered.promise,
-            pending,
-            "sessions.patch settled before loading the model catalog",
-          ),
-          signal,
-        );
+        await Promise.race([
+          catalogEntered.promise,
+          pending.then(() => {
+            throw new Error("Session patch completed before loading the model catalog");
+          }),
+        ]);
         expect(requestContext.loadGatewayModelCatalogSnapshot).toHaveBeenCalledOnce();
         if (loss === "invalidated") {
           caller.invalidated = true;
