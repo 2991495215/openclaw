@@ -164,7 +164,8 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   // +7: released auth-store and TTS methods retain synchronous compatibility.
   // +1: auth-profile-sync-operations retains saveAuthProfileStore during async migration.
   // +2: model-ref-sync-discovery retains parseModelRef and resolveModelRefFromString.
-  "agent-runtime": 14,
+  // +1: released snapshot publication remains during its approved async replacement.
+  "agent-runtime": 15,
   // model-session-sync-auth-profile retains the synchronous model override helper.
   "model-session-runtime": 1,
   "memory-host-core": 2,
