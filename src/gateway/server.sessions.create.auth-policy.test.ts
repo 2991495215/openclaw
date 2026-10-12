@@ -1,3 +1,4 @@
+import { channel } from "node:diagnostics_channel";
 import { once } from "node:events";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { assert, expect, it, vi } from "vitest";
@@ -47,7 +48,7 @@ it("retains committed initial turns through fencing and denies their final write
     expect(application.claimed).toBe(true);
     expect(await application.result).toBe("applied");
   };
-  const cases = ["retained", "revoked"].map((name) => {
+  const cases = (["retained", "revoked"] as const).map((name) => {
     const key = `agent:main:dashboard:initial-source-${name}`;
     const { storePath } = resolveGatewaySessionStoreTarget({
       cfg: configIO.getRuntimeConfig(),
@@ -55,6 +56,7 @@ it("retains committed initial turns through fencing and denies their final write
       key,
     });
     return {
+      name,
       key,
       scope: { agentId: "main", sessionKey: key, storePath },
       beforeTurn: createDeferredCore<GatewayRequestHandlerOptions>(),
@@ -120,9 +122,56 @@ it("retains committed initial turns through fencing and denies their final write
   const requests: Promise<unknown>[] = [];
   const waitForRelease = (scenario: (typeof cases)[number]) =>
     getSessionWorkAdmissionRelease({ scope: scenario.scope.storePath, identities: [scenario.key] });
+  let activeScenario: "setup" | (typeof cases)[number]["name"] = "setup";
+  let stage = "startup";
+  const createEvents: {
+    activeScenario: "setup" | (typeof cases)[number]["name"];
+    stage: string;
+    elapsedMs: number;
+    phaseDurationsMs: Record<string, number>;
+  }[] = [];
+  const createChannel = channel("openclaw.session.create");
+  const onCreate = (message: unknown) => {
+    if (
+      createEvents.length >= 8 ||
+      !isRecord(message) ||
+      typeof message.elapsedMs !== "number" ||
+      !Number.isFinite(message.elapsedMs) ||
+      !isRecord(message.phaseDurationsMs)
+    ) {
+      return;
+    }
+    const phaseDurationsMs: Record<string, number> = {};
+    for (const phase of [
+      "preflight",
+      "admission",
+      "lifecycleAdmission",
+      "targetPreparation",
+      "worktree",
+      "snapshot",
+      "entry",
+      "transcript",
+      "writerAdmission",
+      "commit",
+      "publication",
+      "effects",
+      "initialTurn",
+      "response",
+      "handlerExit",
+    ]) {
+      const duration = message.phaseDurationsMs[phase];
+      if (typeof duration === "number" && Number.isFinite(duration)) {
+        phaseDurationsMs[phase] = duration;
+      }
+    }
+    createEvents.push({ activeScenario, stage, elapsedMs: message.elapsedMs, phaseDurationsMs });
+  };
+  createChannel.subscribe(onCreate);
   try {
     await gateway.server.startupSettled;
     for (const scenario of cases) {
+      activeScenario = scenario.name;
+      stage = "create";
       const ws = await gateway.openWs({ origin: `http://127.0.0.1:${gateway.port}` });
       sockets.push(ws);
       await connectOk(ws, {
@@ -145,6 +194,7 @@ it("retains committed initial turns through fencing and denies their final write
       expect(initial.client?.authenticatedUserProfile?.profileId).toBe(GATEWAY_OWNER_PROFILE_ID);
       expect(loadSessionEntry(scenario.scope)?.sessionId).toBeTruthy();
     }
+    stage = "fencing";
     const closed = sockets.map((ws) => once(ws, "close"));
     const current = configIO.getRuntimeConfig();
     await applyConfig({
@@ -158,6 +208,8 @@ it("retains committed initial turns through fencing and denies their final write
     }
     resumeTurns.resolve();
     for (const scenario of cases) {
+      activeScenario = scenario.name;
+      stage = "dispatch";
       await scenario.finishTurn.promise;
       await Promise.race([
         scenario.dispatchEntered.promise,
@@ -167,6 +219,8 @@ it("retains committed initial turns through fencing and denies their final write
       ]);
     }
     for (const scenario of cases) {
+      activeScenario = scenario.name;
+      stage = "write";
       const revoke = scenario === cases[1];
       if (revoke) {
         const config = configIO.getRuntimeConfig();
@@ -201,7 +255,14 @@ it("retains committed initial turns through fencing and denies their final write
       );
     }
     expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
+  } catch (error) {
+    console.error(
+      "[initial-turn-grant-diagnostics]",
+      JSON.stringify({ activeScenario, stage, createEvents }),
+    );
+    throw error;
   } finally {
+    createChannel.unsubscribe(onCreate);
     resumeTurns.resolve();
     for (const scenario of cases) {
       scenario.allowWrite.resolve();
