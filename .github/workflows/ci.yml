@@ -551,12 +551,11 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        case: [protocol-baseline, protocol-candidate, registry-candidate]
-        exclude: ${{ inputs.diagnose_protocol && fromJSON('[{"case":"protocol-baseline"},{"case":"registry-candidate"}]') || fromJSON('[]') }}
+        case: ${{ inputs.diagnose_protocol && fromJSON('["protocol-candidate"]') || fromJSON('["registry-candidate","startup-candidate","agent-wait-candidate"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ matrix.case == 'protocol-baseline' && inputs.base_sha || inputs.head_sha }}
+          ref: ${{ inputs.head_sha }}
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -577,10 +576,10 @@ jobs:
         env:
           OPENCLAW_LOCAL_CHECK: "0"
           OPENCLAW_VITEST_RUNTIME: node
-          PROOF_SHA: ${{ matrix.case == 'protocol-baseline' && inputs.base_sha || inputs.head_sha }}
+          PROOF_SHA: ${{ inputs.head_sha }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
           PROOF_CASE: ${{ matrix.case }}
-          TEST_FILE: ${{ matrix.case == 'registry-candidate' && 'src/config/sessions/startup-migration.registry-recovery.test.ts' || 'extensions/codex/src/app-server/run-attempt.protocol-validation.test.ts' }}
+          TEST_FILE: ${{ matrix.case == 'registry-candidate' && 'src/config/sessions/startup-migration.registry-recovery.test.ts' || matrix.case == 'startup-candidate' && 'src/config/sessions/startup-migration.concurrency.test.ts' || matrix.case == 'agent-wait-candidate' && 'src/gateway/agent-turn/agent-wait-dedupe.test.ts' || 'extensions/codex/src/app-server/run-attempt.protocol-validation.test.ts' }}
         run: |
           set -euo pipefail
           [[ "$PROOF_SHA" =~ ^[a-f0-9]{40}$ ]]
@@ -590,6 +589,8 @@ jobs:
           test_files=("$TEST_FILE")
           if [ "$PROOF_CASE" = protocol-candidate ]; then
             test_files+=(src/config/sessions/session-transcript-context-read.worker.test.ts)
+          elif [ "$PROOF_CASE" = startup-candidate ]; then
+            test_files+=(src/gateway/server-agent-database-startup.test.ts)
           fi
           pnpm test "${test_files[@]}" --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/final-regression.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
