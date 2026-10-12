@@ -323,7 +323,7 @@ export async function applySessionModelSelectionInternal(
   const placementAuthority = nextEntry.sessionId
     ? await placementService?.prepareRuntimeRefresh?.(nextEntry.sessionId)
     : undefined;
-  using _placementRelease = { [Symbol.dispose]: () => placementAuthority?.release() };
+  using _ = { [Symbol.dispose]: () => placementAuthority?.release() };
   const placement = placementAuthority?.placement;
   const placementRuntime =
     placement && placement.state !== "local"

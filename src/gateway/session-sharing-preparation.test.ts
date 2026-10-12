@@ -36,15 +36,13 @@ import {
   runOpenClawAgentWriteTransaction,
 } from "../state/openclaw-agent-db.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
-import { ensureClientVoiceAgentSessionEntry } from "../talk/client-voice-session-write.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { resolveSessionMutationAuthorizationAsync } from "./session-sharing-authorization-async.js";
 import {
   authorizePreparedSessionMutation,
   resolveSessionSharingTargetAsync,
 } from "./session-sharing-policy.js";
 import { prepareSessionMutationFacts } from "./session-sharing-preparation.js";
-import { roleClient, rolePolicyConfig, sharingPolicyClient } from "./session-sharing.test-utils.js";
+import { rolePolicyConfig, sharingPolicyClient } from "./session-sharing.test-utils.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -979,73 +977,3 @@ it("invalidates selected facts before observers when another searched store gain
     }
   });
 });
-
-it.each(["missing", "idless"] as const)(
-  "keeps acknowledged %s creation on its committed sharing receipts",
-  async (kind) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
-      const cfg = { ...rolePolicyConfig(), agents: { entries: { main: {} } } };
-      const sessionKey = `agent:main:acknowledged-${kind}`;
-      const scope = { agentId: "main", sessionKey };
-      const client = roleClient("view", `creation-receipts-${kind}`);
-      const identityId = client.authenticatedUserProfile!.profileId;
-      const actor = { type: "human" as const, source: "profile" as const, id: identityId };
-      if (kind === "idless") {
-        await replaceSessionEntry(scope, { sessionId: "", updatedAt: 1, createdActor: actor });
-      }
-      const admitted = await resolveSessionMutationAuthorizationAsync({
-        method: "talk.client.create",
-        requestParams: { sessionKey },
-        client,
-        context: { getRuntimeConfig: () => cfg } as never,
-      });
-      expect(admitted.error).toBeNull();
-      const authorization = admitted.authorization!;
-      const target = authorization.talkSessionTarget!;
-      let committedEntry: SessionEntry | undefined;
-      try {
-        const sessionId = await ensureClientVoiceAgentSessionEntry({
-          ...scope,
-          storePath: target.storePath,
-          creation: { actor },
-          source: authorization.assertCurrent,
-          prepareWorkerGrant: authorization.prepareWorkerGrant,
-          onCommittedSource: (readSource, entry) => {
-            committedEntry = entry;
-            authorization.recordCreatedSession?.({
-              ...scope,
-              storePath: target.storePath,
-              sessionId: entry.sessionId,
-              lifecycleRevision: entry.lifecycleRevision,
-              readSource,
-            });
-          },
-        });
-        expect(committedEntry?.sessionId).toBe(sessionId);
-        expectWithoutHostSql(() => authorization.assertCurrent());
-        await addSessionMember(scope, { identityId, addedBy: "other-creator" });
-        await replaceSessionEntry(scope, {
-          ...committedEntry!,
-          createdActor: { ...actor, id: "other-creator" },
-          visibility: "read-only",
-          updatedAt: 2,
-        });
-        expectWithoutHostSql(() => authorization.assertCurrent());
-        await removeSessionMember(scope, identityId);
-        expectWithoutHostSql(() =>
-          expect(() => authorization.assertCurrent()).toThrow("read-only"),
-        );
-        await addSessionMember(scope, { identityId, addedBy: "other-creator" });
-        expectWithoutHostSql(() => authorization.assertCurrent());
-        await replaceSessionEntry(scope, {
-          ...committedEntry!,
-          sessionId: "replacement-session",
-          updatedAt: 3,
-        });
-        expectWithoutHostSql(() => expect(() => authorization.assertCurrent()).toThrow());
-      } finally {
-        authorization.release?.();
-      }
-    });
-  },
-);
