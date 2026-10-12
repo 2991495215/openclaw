@@ -68,7 +68,8 @@ it("measures 100 composed catalog lists against real session and plugin stores",
       try {
         counters.begin();
         fixture = await createComposedCatalogFixture(state, counters);
-        await fixture.setupList();
+        // Start lazy hydration; a cold host may report loading before the completion marker.
+        await fixture.requestList();
         const catalogNamespace = await counters.catalogPersisted;
         const first = await fixture.setupList();
         expect(first.sessions.length).toBeGreaterThan(0);
