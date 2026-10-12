@@ -42,6 +42,7 @@ import {
   dedupeSessionStoreTargetsBySqliteTarget,
   type SessionStoreTarget,
 } from "./targets-collision.js";
+import { listKnownSessionStoreAgentIds } from "./targets-discovery.native.js";
 import {
   shouldSkipDiscoveryError,
   toDiscoveredSessionStoreTarget,
@@ -54,7 +55,6 @@ import {
 import {
   isPerAgentSessionStoreConfig,
   listConfiguredSessionStoreAgentIds,
-  listKnownSessionStoreAgentIds,
   resolveAllAgentSessionStoreTargetsSync,
   resolveConfiguredSessionStoreTargets,
 } from "./targets.js";

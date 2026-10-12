@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
     vi.fn<
       typeof import("./session-utils-store-worker.js").resolveGatewaySessionStoreTargetInWorker
     >(),
-  loadSessionEntry: vi.fn<(typeof import("./session-utils.js"))["loadSessionEntry"]>(),
+  loadSessionEntryAsync: vi.fn<(typeof import("./session-utils.js"))["loadSessionEntryAsync"]>(),
   captureSessionEventTarget:
     vi.fn<
       typeof import("../auto-reply/reply/session-event-handoff.js").captureSessionEventTargetForHost
@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./session-utils.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./session-utils.js")>()),
-  loadSessionEntry: mocks.loadSessionEntry,
+  loadSessionEntryAsync: mocks.loadSessionEntryAsync,
 }));
 // mock-isolation: Queued-owner cases use supplied session rows instead of real store discovery.
 vi.mock("./session-utils-store-worker.js", () => ({
@@ -96,7 +96,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 function mockEventSession(agentId = "main", sessionKey = "agent:main:main") {
-  mocks.loadSessionEntry.mockReturnValue({
+  mocks.loadSessionEntryAsync.mockResolvedValue({
     cfg: {},
     agentId,
     entry: { sessionId: "current-session", updatedAt: 1 },
@@ -347,7 +347,7 @@ it("joins managed media promotion before publishing an internal restart delivery
       const storePath = state.statePath("agents", "main", "sessions", "sessions.json");
       const entry = { sessionId, updatedAt: 1 };
       await replaceSessionEntry({ agentId: "main", sessionKey, storePath }, entry);
-      mocks.loadSessionEntry.mockReturnValue({
+      mocks.loadSessionEntryAsync.mockResolvedValue({
         cfg: {},
         agentId: "main",
         entry,

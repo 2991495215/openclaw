@@ -504,6 +504,8 @@ export type GatewayRequestOptions = {
 
 /** Commit-time guard captured by the pre-dispatch session participation check. */
 export type SessionMutationAuthorization = {
+  /** Release the request-owned prepared session facts after its final consumer. */
+  release?: () => void;
   /** Consume fresh durable facts while their physical reader remains retained. */
   withCurrent?: <T>(consume: () => T) => Promise<T>;
   withPreparedCurrent?: <T>(

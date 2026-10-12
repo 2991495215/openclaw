@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("./environments.session.js", () => ({
   resolveSessionEnvironmentCaller: () => ({
+    [Symbol.dispose]: () => {},
     identity: { sessionId: "conversation", sessionKey: "agent:main:test", agentId: "main" },
     assertCurrent: () => {
       if (!mocks.current) {
@@ -23,8 +24,11 @@ vi.mock("./environments.session.js", () => ({
     },
   }),
 }));
-vi.mock("./sessions-shared.js", () => ({
-  loadAccessorSessionEntryForGatewayTarget: () => ({ entry: { sessionId: "conversation" } }),
+vi.mock("../session-sharing-preparation.js", () => ({
+  prepareSessionMutationFacts: async () => ({
+    readCurrent: () => ({ target: { entry: { sessionId: "conversation" } } }),
+    release: () => {},
+  }),
 }));
 vi.mock("../../agents/exec-defaults.js", () => ({ resolveExecDefaults: () => mocks.policy }));
 vi.mock("./environments.session-exec-approval.js", () => ({

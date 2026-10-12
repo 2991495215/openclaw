@@ -45,7 +45,7 @@ import { createSessionLifecyclePersistenceOwner } from "./session-lifecycle-pers
 const routing = vi.hoisted(() => ({ loadSessionEntry: vi.fn() }));
 vi.mock("./session-utils.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./session-utils.js")>()),
-  loadSessionEntry: routing.loadSessionEntry,
+  loadSessionEntryAsync: routing.loadSessionEntry,
 }));
 
 let state: OpenClawTestState;

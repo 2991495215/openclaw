@@ -10,6 +10,7 @@ import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import type { MentionCommittedInput } from "./mention-inbox-input.js";
 import type { GatewayBroadcastToConnIdsFn } from "./server-broadcast-types.js";
 import type { GatewayClient } from "./server-methods/client-types.js";
+import type { SessionSharingTarget } from "./session-sharing-policy.js";
 
 export type { MentionCommittedInput } from "./mention-inbox-input.js";
 
@@ -44,6 +45,7 @@ export type MentionInbox = {
     client: GatewayClient | null,
     input: UsersMentionableParams,
     profileIds: readonly string[],
+    preparedTarget?: SessionSharingTarget,
   ) => Result<readonly string[], ErrorShape>;
   /** @deprecated Await listAsync and publish its current result. Removed in the next Plugin SDK major. */
   list: (client: GatewayClient | null) => Result<MentionsListResult, ErrorShape>;

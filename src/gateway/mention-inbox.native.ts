@@ -1,5 +1,9 @@
+import { updateSessionProfileInvolvement } from "../config/sessions/session-involvement-store.js";
+import { resolveExistingAgentSessionStoreTargetsSync } from "../config/sessions/targets-discovery.native.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { stageSqliteTransactionState } from "../infra/sqlite-post-commit.js";
 import { runWithSqliteWorkerStateContext } from "../infra/sqlite-worker-state-context.js";
+import { isIncognitoSessionKey } from "../routing/session-key.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { readUserProfileVersion } from "../state/user-profile-events.js";
@@ -11,6 +15,61 @@ import {
   type InboxState,
 } from "./mention-inbox-projection.js";
 import { readMentionStoreSnapshot, writeMentionStoreChanges } from "./mention-inbox-store.js";
+import type { MentionCommittedInput } from "./mention-inbox.types.js";
+import type { SessionSharingTarget } from "./session-sharing-policy.js";
+import { resolveNativeGatewaySessionStoreTargetWithStore } from "./session-utils-store-lookup.js";
+import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
+
+/** Released SDK methods retain synchronous reads and transaction completion. */
+export function readNativeMentionTarget(
+  cfg: OpenClawConfig,
+  sessionKey: string,
+  agentId?: string,
+): SessionSharingTarget | null {
+  if (isIncognitoSessionKey(sessionKey)) {
+    return null;
+  }
+  const target = resolveNativeGatewaySessionStoreTargetWithStore({
+    cfg,
+    key: sessionKey,
+    agentId,
+    clone: false,
+    projection: "list",
+    readConsistency: "latest",
+    exactRead: true,
+    resolveExistingTargets: (id, excludeStorePath) =>
+      resolveExistingAgentSessionStoreTargetsSync(cfg, id, { excludeStorePath }),
+  });
+  const match = findCanonicalStoreMatch(target.store, target.storeKeys);
+  return match
+    ? {
+        agentId: target.agentId,
+        canonicalKey: target.canonicalKey,
+        entry: match.entry,
+        storeKey: match.key,
+        storeKeys: target.storeKeys,
+        storePath: target.storePath,
+        readSource: target.capturedReadSource,
+      }
+    : null;
+}
+
+export function recordNativeMentionInvolvement(
+  input: MentionCommittedInput,
+  target: SessionSharingTarget | null,
+  profileIds: string[],
+): void {
+  if (target && profileIds.length) {
+    updateSessionProfileInvolvement(
+      { agentId: target.agentId, sessionKey: target.storeKey, storePath: target.storePath },
+      {
+        expectedSessionId: input.sessionId,
+        profileIds,
+        change: { kind: "mention", source: input.committedSource },
+      },
+    );
+  }
+}
 
 // Released 2026.9.8 SDK calls stay synchronous until the next Plugin SDK major.
 export function mutateNativeMentionSnapshot(

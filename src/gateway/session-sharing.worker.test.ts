@@ -25,7 +25,7 @@ import type {
 import { resolveSessionMutationAuthorizationAsync } from "./session-sharing-authorization-async.js";
 import { prepareSessionSharingSource } from "./session-sharing-source.js";
 import { roleClient, rolePolicyConfig, sharingPolicyClient } from "./session-sharing.test-utils.js";
-import { resolveGatewaySessionStoreTarget } from "./session-utils-store-lookup.js";
+import { resolveGatewaySessionStoreTargetAsync } from "./session-utils-store-lookup.js";
 import { withQualifiedGatewaySessionEntry } from "./session-utils-store.js";
 
 it.each([
@@ -134,7 +134,7 @@ it.each([
         agentId,
         sessionKey: kind === "qualified" ? "agent:main:new-worker-session" : "global",
       };
-      const route = resolveGatewaySessionStoreTarget({
+      const route = await resolveGatewaySessionStoreTargetAsync({
         cfg,
         key: kind === "alias" ? "agent:main:main" : scope.sessionKey,
         agentId: scope.agentId,

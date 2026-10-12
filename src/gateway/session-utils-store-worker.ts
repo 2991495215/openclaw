@@ -1,9 +1,13 @@
 import { isDeepStrictEqual } from "node:util";
 import { ok } from "@openclaw/normalization-core/result";
+import { listSubagentSessionListRunsForControllers } from "../agents/subagents/registry/subagent-registry-read.js";
+import { readResolvedSessionEntriesInWorker } from "../config/sessions/session-accessor.entry.js";
 import { readExactSessionEntryRow } from "../config/sessions/session-accessor.sqlite-entry-read.js";
 import { loadExactSessionEntryCandidates } from "../config/sessions/session-accessor.sqlite-exact-read.js";
-import type { SessionEntryReadScope } from "../config/sessions/session-accessor.types.js";
-import { withSessionEntriesFromStoresInWorker } from "../config/sessions/session-entry-read-runtime.js";
+import {
+  readSessionEntrySummariesInWorker,
+  withSessionEntriesFromStoresInWorker,
+} from "../config/sessions/session-entry-read-runtime.js";
 import type {
   PreparedSessionEntryWorkerRead,
   SessionEntryWorkerRead,
@@ -13,25 +17,28 @@ import type {
   CapturedSessionEntryReadSource,
   SessionEntryReadSource,
 } from "../config/sessions/session-entry-read-source.types.js";
+import { preparePhysicalSessionStorePath } from "../config/sessions/session-store-path.js";
 import {
   assertSessionStoreReadCandidate,
   captureSessionStoreCandidateIdentities,
 } from "../config/sessions/session-store-read-candidates.js";
 import { prepareSessionStoreTargetInventory } from "../config/sessions/session-store-target-inventory.js";
 import { prepareSessionStoreTargetInventoryRead } from "../config/sessions/session-store-target-runtime.js";
+import { isConfiguredSessionStoreAgentId } from "../config/sessions/targets-configured-agents.js";
 import type { SessionEntry } from "../config/sessions/types.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { throwSqliteLifecycleErrors } from "../infra/sqlite-lifecycle-errors.js";
 import { readDatabasePathIdentitySync } from "../infra/sqlite-worker-identity.js";
 import { isIncognitoSessionKey, parseAgentSessionKey } from "../routing/session-key.js";
 import { readOpenClawAgentDatabaseIdentity } from "../state/openclaw-agent-db-identity.js";
 import { retainOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly.js";
+import { prepareOpenClawAgentDatabaseExecution } from "../state/openclaw-agent-execution.js";
 import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import type { GatewaySessionStoreDiscoveryCache } from "./session-utils-store-candidates.js";
 import {
   prepareGatewaySessionStoreTargetReadOnly,
   prepareGatewaySessionStoreTargetReadPlan,
-  resolveGatewaySessionStoreTargetWithStore,
+  resolveNativeGatewaySessionStoreTargetWithStore,
+  type GatewaySessionStoreLookupParams,
 } from "./session-utils-store-lookup.js";
 import type { GatewaySessionStoreRead } from "./session-utils-store-read.js";
 import {
@@ -62,17 +69,93 @@ export type GatewaySessionEntryReadPlan = {
 };
 
 /** Acquire the ordered lookup's data while its discovery and physical readers remain current. */
-export async function resolveGatewaySessionStoreTargetInWorker(params: {
-  cfg: OpenClawConfig;
-  key: string;
-  agentId?: string;
-  env?: NodeJS.ProcessEnv;
-  assertActive?: () => void;
-  projection?: SessionEntryReadScope["projection"];
-}): Promise<GatewaySessionStoreTargetWithStore> {
-  const prepared = await prepareGatewaySessionStoreReadInWorker(params);
+export async function resolveGatewaySessionStoreTargetInWorker(
+  params: GatewaySessionStoreLookupParams & {
+    assertActive?: () => void;
+  },
+): Promise<GatewaySessionStoreTargetWithStore> {
+  let prepared = await prepareGatewaySessionStoreReadInWorker(params);
+  if (
+    params.readOnly === false &&
+    params.clone !== false &&
+    !prepared.target.capturedReadSource &&
+    !isIncognitoSessionKey(prepared.target.canonicalKey) &&
+    isConfiguredSessionStoreAgentId(params.cfg, prepared.target.agentId)
+  ) {
+    const path =
+      prepared.target.readSource?.path ??
+      (await preparePhysicalSessionStorePath(
+        {
+          agentId: prepared.target.agentId,
+          sessionKey: prepared.target.canonicalKey,
+          env: params.env,
+        },
+        params.cfg,
+      ));
+    await prepareOpenClawAgentDatabaseExecution(
+      {
+        agentId: prepared.target.readSource?.agentId ?? prepared.target.agentId,
+        path,
+        env: params.env,
+      },
+      () => params.assertActive?.(),
+    );
+    prepared = await prepareGatewaySessionStoreReadInWorker({ ...params, readOnly: true });
+  }
+  const target = await includeDirectChildEntriesInWorker(prepared.target, params);
   params.assertActive?.();
-  return prepared.target;
+  return target;
+}
+
+async function includeDirectChildEntriesInWorker(
+  target: GatewaySessionStoreTargetWithStore,
+  params: GatewaySessionStoreLookupParams,
+): Promise<GatewaySessionStoreTargetWithStore> {
+  if (!params.includeStoreChildEntries || isIncognitoSessionKey(target.canonicalKey)) {
+    return target;
+  }
+  try {
+    const parentKeys = new Set([target.canonicalKey, ...target.storeKeys]);
+    const children = await readSessionEntrySummariesInWorker({
+      agentId: target.readSource?.agentId ?? target.agentId,
+      storePath: target.readSource?.path ?? target.storePath,
+      env: params.env,
+    });
+    for (const { sessionKey, entry } of children) {
+      if (
+        !parentKeys.has(sessionKey) &&
+        ((entry.parentSessionKey && parentKeys.has(entry.parentSessionKey)) ||
+          (entry.spawnedBy && parentKeys.has(entry.spawnedBy)))
+      ) {
+        target.store[sessionKey] = entry;
+      }
+    }
+    const hintedKeys = [
+      ...new Set(
+        listSubagentSessionListRunsForControllers([...parentKeys]).map(
+          ({ childSessionKey }) => childSessionKey,
+        ),
+      ),
+    ].filter((key) => !target.store[key]);
+    if (hintedKeys.length) {
+      const retainedChildren = await readResolvedSessionEntriesInWorker(
+        {
+          cfg: params.cfg,
+          env: params.env,
+          sessionKeys: hintedKeys,
+        },
+        "list",
+      );
+      for (const { canonicalKey, entry } of retainedChildren.values()) {
+        if (entry && !parentKeys.has(canonicalKey)) {
+          target.store[canonicalKey] = entry;
+        }
+      }
+    }
+  } catch {
+    // Optional child context keeps the selected parent usable when a child store is unavailable.
+  }
+  return target;
 }
 
 async function prepareGatewaySessionStoreReadInWorker(
@@ -85,11 +168,12 @@ async function prepareGatewaySessionStoreReadInWorker(
     cfg: params.cfg,
     sessionKey: params.key,
     agentId: params.agentId,
+    preserveQualifiedAddress: params.preserveQualifiedAddress,
   });
   // Ephemeral databases belong to the process and cannot be opened by a worker.
   if (isIncognitoSessionKey(canonicalKey)) {
     return {
-      target: resolveGatewaySessionStoreTargetWithStore({
+      target: resolveNativeGatewaySessionStoreTargetWithStore({
         ...params,
         agentId,
         readOnly: true,
@@ -135,6 +219,7 @@ async function prepareGatewaySessionStoreReadInWorker(
       env: inventory.env,
       targetDiscoveryCache,
       projection: params.projection,
+      preserveQualifiedAddress: params.preserveQualifiedAddress,
     };
     const prepareReads = async <T>(reads: readonly GatewaySessionStoreRead[], select: () => T) => {
       assertCurrent();
@@ -452,6 +537,8 @@ export async function prepareGatewaySessionEntryReadOnlyInWorker(
     }
     return findCanonicalStoreMatch(current.store, current.storeKeys);
   };
+  await includeDirectChildEntriesInWorker(target, params);
+  params.assertActive?.();
   const match = select(target);
   return {
     loaded: {

@@ -1,4 +1,3 @@
-import type { Result } from "@openclaw/normalization-core/result";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import {
   ErrorCodes,
@@ -28,7 +27,7 @@ import {
   resolveRequestedSessionAgentId,
   tryResolveSessionCompatibilityOwnerAgentId,
 } from "../session-request-agent.js";
-import { loadSessionEntry, resolveSessionStoreKey } from "../session-utils.js";
+import { resolveSessionStoreKey } from "../session-utils.js";
 import { getWorkerInferenceSessionControl } from "../worker-environments/inference-control-internal.js";
 import {
   canRequesterAbortChatRun,
@@ -45,6 +44,7 @@ import {
   abortedPartialPersistenceError,
   captureAbortedPartial,
   deferAbortedPartialPersistence,
+  prepareChatAbortSession,
   withAbortedPartialPersistenceWarning,
 } from "./chat-aborted-partial.js";
 import { persistAbortedPartials } from "./chat-transcript-persistence.js";
@@ -183,16 +183,8 @@ export async function handleChatAbortRequestWithLifecycle(
   const requiredSessionId = narrow ? admittedTarget?.sessionId : undefined;
   const ops = createChatAbortOps(context);
 
-  const abortSession: Result<ReturnType<typeof loadSessionEntry>, unknown> = (() => {
-    try {
-      return {
-        ok: true,
-        value: loadSessionEntry(canonicalAbortSessionKey, { agentId: abortAgentId }),
-      };
-    } catch (error) {
-      return { ok: false, error };
-    }
-  })();
+  const abortSession = await prepareChatAbortSession(canonicalAbortSessionKey, abortAgentId);
+  assertCurrent();
   const abortSessionEntry = abortSession.ok ? abortSession.value.entry : undefined;
   if (!runId) {
     const res = await abortChatRunsForSessionKeyWithPartials({
@@ -600,6 +592,11 @@ export async function handleChatAbortRequestWithLifecycle(
       await respondWithWorkerRuns([]);
       return;
     }
+    const partialSession =
+      sessionKey === rawSessionKey || sessionKey === canonicalAbortSessionKey
+        ? abortSession
+        : await prepareChatAbortSession(sessionKey, agentId ?? abortAgentId);
+    assertCurrent();
     const partialText = context.chatRunState.resolveBuffer(runId, { final: true }).text;
     const snapshot =
       controlUiVisible !== false && partialText?.trim()
@@ -611,9 +608,7 @@ export async function handleChatAbortRequestWithLifecycle(
             text: partialText,
             abortOrigin: "rpc",
             resolveTerminalProducer: active.resolveTerminalProducer,
-            ...(sessionKey === rawSessionKey || sessionKey === canonicalAbortSessionKey
-              ? { session: abortSession }
-              : {}),
+            session: partialSession,
           })
         : undefined;
     let descendants: Awaited<ReturnType<typeof abortControlledSubagents>>;

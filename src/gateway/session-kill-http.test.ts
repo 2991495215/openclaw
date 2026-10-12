@@ -43,7 +43,7 @@ vi.mock("./auth.js", () => ({
 }));
 
 vi.mock("./session-utils.js", () => ({
-  loadSessionEntry: loadSessionEntryMock,
+  loadSessionEntryAsync: loadSessionEntryMock,
 }));
 
 vi.mock("../agents/subagents/registry/subagent-control.js", () => ({

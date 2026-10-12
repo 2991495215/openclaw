@@ -194,7 +194,7 @@ vi.mock("../session-utils.js", async () => {
   const actual = await vi.importActual<typeof import("../session-utils.js")>("../session-utils.js");
   return {
     ...actual,
-    loadSessionEntry: mocks.loadSessionEntry,
+    loadSessionEntryAsync: mocks.loadSessionEntry,
   };
 });
 

@@ -513,6 +513,20 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
       ...params,
       runId: clientRunId,
       entry: activeRunAbort.entry,
+      ...((admittedSessionEntry ?? initialSessionEntry)
+        ? {
+            abortSession: {
+              ok: true as const,
+              value: {
+                cfg: session.cfg,
+                storePath,
+                entry: admittedSessionEntry ?? initialSessionEntry,
+                canonicalKey: sessionKey,
+                agentId,
+              },
+            },
+          }
+        : {}),
     });
     releaseCallerAuthority = () =>
       releaseChatSendCallerAuthority({ operator: capturedOperator, request, session });

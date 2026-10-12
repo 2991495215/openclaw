@@ -183,7 +183,7 @@ async function handleChatHistory(params: Record<string, unknown>) {
   }
 
   const sessionLoadOptions = requestedAgentId ? { agentId: requestedAgentId } : undefined;
-  const { cfg, storePath, entry, canonicalKey } = rt.loadSessionEntry(
+  const { cfg, storePath, entry, canonicalKey } = await rt.loadSessionEntryAsync(
     sessionKey,
     sessionLoadOptions,
   );
@@ -193,7 +193,7 @@ async function handleChatHistory(params: Record<string, unknown>) {
     agentId: requestedAgentId,
   });
   if (requestedSessionId) {
-    const transcriptSessionKey = rt.resolveTranscriptSessionKeyBySessionId({
+    const transcriptSessionKey = await rt.resolveSessionKeyBySessionIdAsync({
       agentId: sessionAgentId,
       sessionId: requestedSessionId,
       storePath,

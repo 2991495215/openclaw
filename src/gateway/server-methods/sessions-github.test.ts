@@ -17,7 +17,7 @@ import { createSyntheticPluginRuntimeClient } from "../server-plugin-runtime-cli
 import { createOperatorWsClient } from "../server/ws-connection/authenticated-request-dispatch.test-support.js";
 import { prepareGatewayConnectOperatorAccess } from "../server/ws-connection/connect-operator-access.js";
 import { SessionMutationAuthorizationChangedError } from "../session-sharing.js";
-import { loadGatewaySessionEntryReadOnly } from "../session-utils-store.js";
+import { loadGatewaySessionEntryReadOnlyAsync } from "../session-utils-store.js";
 import { sessionsGitHubHandlers } from "./sessions-github.js";
 import type {
   GatewayClient,
@@ -37,7 +37,7 @@ vi.mock("../../agents/tools/gateway-caller-context.js", async (importOriginal) =
 }));
 vi.mock("../session-utils.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../session-utils.js")>()),
-  loadGatewaySessionEntryReadOnly: mocks.loadSession,
+  loadGatewaySessionEntryReadOnlyAsync: mocks.loadSession,
 }));
 
 const expectedSystemRequester = {
@@ -244,7 +244,7 @@ describe("sessions.github.publish", () => {
           prepareGatewayConnectOperatorAccess(client);
         }
         mocks.caller.mockReturnValue(undefined);
-        mocks.loadSession.mockImplementation(loadGatewaySessionEntryReadOnly);
+        mocks.loadSession.mockImplementation(loadGatewaySessionEntryReadOnlyAsync);
 
         const respond = await invoke(
           { sessionKey: "main", idempotencyKey: "operator-publication-1" },
@@ -313,7 +313,7 @@ describe("sessions.github.publish", () => {
           );
         }
         mocks.caller.mockReturnValue(undefined);
-        mocks.loadSession.mockImplementation(loadGatewaySessionEntryReadOnly);
+        mocks.loadSession.mockImplementation(loadGatewaySessionEntryReadOnlyAsync);
         const respond = await invoke({
           sessionKey,
           idempotencyKey: "global-publication",

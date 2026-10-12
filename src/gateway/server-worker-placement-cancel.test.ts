@@ -123,16 +123,18 @@ it.each(["success", "failed-write", "setup-failed-write"] as const)(
         });
       }
     });
-    const admit = (id: string) =>
-      admitWorkerStopChat({
-        context,
-        storePath: target.storePath,
-        sessionKey: target.sessionKey,
-        sessionId,
-        agentId: "main",
-        entry,
-        runId: id,
-      }).promise;
+    const admit = async (id: string) =>
+      (
+        await admitWorkerStopChat({
+          context,
+          storePath: target.storePath,
+          sessionKey: target.sessionKey,
+          sessionId,
+          agentId: "main",
+          entry,
+          runId: id,
+        })
+      ).promise;
     try {
       await replaceSessionEntry(target, entry);
       subscriptions = startGatewayEventSubscriptions({
@@ -204,7 +206,7 @@ it.each(["success", "failed-write", "setup-failed-write"] as const)(
                 path: root,
               }),
             },
-            resolveGatewaySessionStoreTargetWithStore: () => sessionTarget,
+            resolveGatewaySessionStoreTargetWithStoreAsync: async () => sessionTarget,
             resolveCanonicalSessionEntryFromStoreKeys: () => entry,
           }) as never,
         cancelSessionWork: (request) => cancelGatewayWorkerSessionWork(context, request),

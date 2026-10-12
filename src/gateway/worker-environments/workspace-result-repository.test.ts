@@ -20,7 +20,7 @@ import { workerService } from "../server-methods/environments.test-support.js";
 import { resolveRepositoryWorkspaceAccess } from "../server-methods/session-repository-workspace-access.js";
 import { createGatewayRequestContext } from "../server-request-context.js";
 import { makeContextParams } from "../server-request-context.test-support.js";
-import { loadGatewaySessionEntryReadOnly } from "../session-utils-store.js";
+import { loadGatewaySessionEntryReadOnlyAsync } from "../session-utils-store.js";
 import {
   createPlacementFailureActions,
   type WorkerDispatchEnvironmentService,
@@ -337,7 +337,7 @@ describe("repository workspace result ownership", () => {
         }
         await fs.writeFile(path.join(f.remote, "edit-0.txt"), "before\n");
         const access = await resolveRepositoryWorkspaceAccess(
-          loadGatewaySessionEntryReadOnly(sessionTarget.sessionKey),
+          await loadGatewaySessionEntryReadOnlyAsync(sessionTarget.sessionKey),
           context,
         );
         if (access?.kind !== "active") {

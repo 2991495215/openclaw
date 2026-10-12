@@ -29,7 +29,7 @@ import { makeContextParams } from "./server-request-context.test-support.js";
 import { createGatewayWsTestSocket } from "./server/ws-connection.test-helpers.js";
 import { createOperatorWsClient } from "./server/ws-connection/authenticated-request-dispatch.test-support.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
-import { loadGatewaySessionEntryReadOnly } from "./session-utils-store.js";
+import { loadGatewaySessionEntryReadOnlyAsync } from "./session-utils-store.js";
 
 const METHOD = "controlUi.sessionPullRequests.subscribe";
 export const sessionKey = "agent:main:guest-publication";
@@ -227,7 +227,8 @@ export async function createFixture(
         if (original) {
           await deleteSessionEntryLifecycle({
             agentId: "main",
-            storePath: loadGatewaySessionEntryReadOnly(key, { agentId: "main" }).storePath,
+            storePath: (await loadGatewaySessionEntryReadOnlyAsync(key, { agentId: "main" }))
+              .storePath,
             target: { canonicalKey: key, storeKeys: [key] },
             expectedSessionId: original.sessionId,
             archiveTranscript: false,

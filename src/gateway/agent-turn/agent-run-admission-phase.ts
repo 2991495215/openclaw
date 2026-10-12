@@ -132,7 +132,8 @@ export async function prepareAgentRunDispatch(
     effectiveAllowModelOverride,
     resolvedRuntime,
     lifecycleStorePath,
-  } = resolveAgentRunAdmissionModel(params);
+    abortSession,
+  } = await resolveAgentRunAdmissionModel(params);
   let timeoutSeconds: number | undefined;
   let operationalRunInstance: OperationalRunInstanceRef | undefined;
   try {
@@ -564,7 +565,11 @@ export async function prepareAgentRunDispatch(
   }
   try {
     // The transport request ends at acceptance; execution retains this exact caller.
-    capturedOperator = await retainGatewayOperatorRun({ ...params, entry: activeRunAbort.entry });
+    capturedOperator = await retainGatewayOperatorRun({
+      ...params,
+      entry: activeRunAbort.entry,
+      abortSession,
+    });
     const operatorAdmission = revalidateAdmission(userTurn);
     if (operatorAdmission !== true) {
       return await operatorAdmission;

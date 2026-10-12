@@ -55,7 +55,7 @@ import type {
   SessionMutationTarget,
   resolveTalkSessionTargetInput,
 } from "./session-sharing-target-input.js";
-import { prepareTalkSessionTarget, assertTalkSessionStorageTarget } from "./talk/session-target.js";
+import { assertTalkSessionStorageTarget } from "./talk/session-target.js";
 import type { PreparedTalkSessionTarget } from "./talk/session-target.types.js";
 
 /** Hold the existing reader only until the prepared writer operation settles. */
@@ -606,7 +606,8 @@ export function captureSessionSharingTalkAuthority({
         assertTalkSessionStorageTarget(cfg, target);
         current = target;
       } else {
-        current = prepareTalkSessionTarget(cfg, input.sessionKey);
+        assertTalkSessionStorageTarget(cfg, target);
+        current = target;
       }
     } catch {
       throw sessionMutationTargetChanged(request.method, target.sessionKey);

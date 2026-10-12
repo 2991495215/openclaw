@@ -19,6 +19,7 @@ import {
   getSessionActorStorageBinding,
   type SessionActorStorageBinding,
 } from "../../config/sessions/session-actor-storage-binding.js";
+import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import {
   captureIncognitoSessionOperation,
   captureIncognitoSessionSource,
@@ -46,7 +47,7 @@ import {
 } from "../session-reset-service.js";
 import { resolveSessionStoreIdentity } from "../session-store-key.js";
 import { resolveGatewaySessionStoreTargetInWorker } from "../session-utils-store-worker.js";
-import { loadGatewaySessionEntryReadOnly, loadSessionEntry } from "../session-utils.js";
+import { loadSessionEntryAsync } from "../session-utils.js";
 import { prepareSessionWorkerPlacementRetirement } from "../worker-environments/session-placement-lifecycle.js";
 import { emitSessionsChanged } from "./session-change-event.js";
 import {
@@ -188,9 +189,11 @@ async function deleteGatewaySessionInScope(
       ? actorEntry.entry
       : absent
         ? undefined
-        : loadSessionEntry(key, {
-            agentId: requestedAgentId,
-          }).entry;
+        : (
+            await loadSessionEntryAsync(key, {
+              agentId: requestedAgentId,
+            })
+          ).entry;
   const expectedSessionId = p.expectedSessionId?.trim();
   const expectedLifecycleRevision = p.expectedLifecycleRevision?.trim();
   const sessionChangedError = () =>
@@ -277,7 +280,14 @@ async function deleteGatewaySessionInScope(
     actorEntry?.snapshot.assertCurrent();
     const current = actorEntry
       ? { ...target, entry: actorEntry.entry, legacyKey: undefined }
-      : loadGatewaySessionEntryReadOnly(key, { agentId: requestedAgentId });
+      : {
+          ...target,
+          entry: readRetainedSessionEntryFacts(
+            { agentId: target.agentId, path: target.storePath },
+            { sessionKeys: [target.canonicalKey] },
+          )?.entries.find((row) => row.sessionKey === target.canonicalKey)?.entry,
+          legacyKey: undefined,
+        };
     if (
       current.storePath !== storePath ||
       current.canonicalKey !== target.canonicalKey ||
@@ -398,7 +408,7 @@ async function deleteGatewaySessionInScope(
             ? { entry: readMemoryEntry(), target }
             : actorEntry
               ? { entry: actorEntry.entry, target }
-              : loadAccessorSessionEntryForGatewayTarget({
+              : await loadAccessorSessionEntryForGatewayTarget({
                   key,
                   cfg,
                   agentId: requestedAgentId,

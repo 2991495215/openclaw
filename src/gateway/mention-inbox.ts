@@ -22,56 +22,63 @@ import {
   mentionInboxUnavailable,
 } from "./mention-inbox-presentation.js";
 import {
-  MAX_GLOBAL_ITEMS,
   createMentionProjection,
   createMentionMutationProjection,
   reconcileMentionProfiles,
   removeMentionItem,
   expireMentionItems,
   serializeMentionSource,
+  MAX_GLOBAL_ITEMS,
   type InboxState,
   type StoredMention,
 } from "./mention-inbox-projection.js";
 import { createMentionInputRecorder } from "./mention-inbox-recording.js";
 import { MAX_MENTION_SOURCES } from "./mention-inbox-store.js";
+import { createMentionTargetCache } from "./mention-inbox-targets.js";
 import { readMentionSnapshot, commitMentionChanges } from "./mention-inbox-worker.js";
-import { mutateNativeMentionSnapshot } from "./mention-inbox.native.js";
+import {
+  mutateNativeMentionSnapshot,
+  readNativeMentionTarget,
+  recordNativeMentionInvolvement,
+} from "./mention-inbox.native.js";
 import type {
   MentionCommittedInput,
   MentionInbox,
   MentionInboxOptions,
 } from "./mention-inbox.types.js";
 import type { GatewayClient } from "./server-methods/types.js";
-import { resolveSessionSharingTarget } from "./session-sharing.js";
+import type { SessionSharingTarget } from "./session-sharing-policy.js";
 
 const log = createSubsystemLogger("gateway/mentions");
 
-type SharingTargets = Map<
-  string,
-  { sessionKey: string; target: ReturnType<typeof resolveSessionSharingTarget> }
->;
+type TargetReader = (sessionKey: string, agentId?: string) => SessionSharingTarget | null;
 
 /** Durable sources own retention and replay; each Gateway keeps disposable projection indexes. */
 export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
   const scheduler = params.scheduler.scope();
-  const policy = createHumanMentionPolicy(params);
   const context = captureOpenClawStateWorkerContext();
   const acceptedWork = new AsyncWorkScope();
   let state = createMentionProjection({ head: { revision: -1, nextSequence: 0 }, sources: [] });
+  const { readTarget, prepareTarget, prepareTargets, invalidateTargets } = createMentionTargetCache(
+    {
+      getRuntimeConfig: () => params.getRuntimeConfig(),
+      readItems: () => state.items.values(),
+    },
+  );
+  const policy = createHumanMentionPolicy({ ...params, readSessionTarget: readTarget });
   let tail: Promise<void> = Promise.resolve();
   let closing = false;
   let needsSynchronization = true;
   let nativeRevision = 0;
   let sessionRevision = 0;
   const views = new WeakMap<GatewayClient, { signature: string; revision: number }>();
-  const connectedTargets: SharingTargets = new Map();
-  let targetConfig: OpenClawConfig | undefined;
   let capacityReported = false;
   let profileInvalidationPending = false;
   const applyCommittedInput = createMentionInputRecorder({
     getRuntimeConfig: () => params.getRuntimeConfig(),
     now: scheduler.now,
     policy,
+    resolveTarget: readTarget,
     onCapacityReached() {
       if (!capacityReported) {
         log.warn(
@@ -223,30 +230,22 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     return changed || maintenance;
   }
 
+  function readNativeTarget(sessionKey: string, agentId?: string): SessionSharingTarget | null {
+    return readNativeMentionTarget(params.getRuntimeConfig(), sessionKey, agentId);
+  }
+
   function currentTarget(
     item: StoredMention,
     cfg: OpenClawConfig,
-    targets?: SharingTargets,
     projection = state,
+    resolveTarget: TargetReader = readTarget,
   ) {
     const { source, message } = item;
     const { agentId, sessionKey, senderProfileId } = message.content;
     if (projection.items.get(item.id) !== item || source.expiresAt <= scheduler.now()) {
       return undefined;
     }
-    const key = JSON.stringify([agentId, sessionKey]);
-    let resolved = targets?.get(key)?.target;
-    if (resolved === undefined) {
-      resolved = resolveSessionSharingTarget({
-        cfg,
-        sessionKey,
-        agentId,
-      });
-      if (targets?.size === MAX_MENTION_SOURCES) {
-        targets.clear();
-      }
-      targets?.set(key, { sessionKey, target: resolved });
-    }
+    const resolved = resolveTarget(sessionKey, agentId);
     if (!resolved || resolved.entry.sessionId !== message.sessionId) {
       return undefined;
     }
@@ -282,8 +281,8 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     client: GatewayClient | null,
     cfg = params.getRuntimeConfig(),
     remember = true,
-    targets: SharingTargets = new Map(),
     projection = state,
+    resolveTarget: TargetReader = readTarget,
   ): Result<MentionsListResult, ErrorShape> {
     const identified = policy.identify(client, cfg);
     if (!identified.ok) {
@@ -293,7 +292,7 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     const visible: MentionInboxItem[] = [];
     const profileItems = projection.itemsByProfile.get(requester.profile.profileId);
     for (const item of [...(profileItems ?? [])].toReversed()) {
-      const current = currentTarget(item, cfg, targets, projection);
+      const current = currentTarget(item, cfg, projection, resolveTarget);
       if (current && requester.canRead(current.target)) {
         visible.push(projectItem(item, current));
       }
@@ -309,21 +308,17 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     return ok({ gatewayInstanceId: params.gatewayInstanceId, revision, items: visible });
   }
 
-  function refreshConnectedViews(): void {
+  function refreshConnectedViews(resolveTarget: TargetReader = readTarget): void {
     if (scheduler.signal.aborted) {
       return;
     }
     const cfg = params.getRuntimeConfig();
-    if (targetConfig !== cfg) {
-      connectedTargets.clear();
-      targetConfig = cfg;
-    }
     for (const client of params.getClients()) {
       if (!client.connId) {
         continue;
       }
       const previous = views.get(client);
-      const result = readView(client, cfg, true, connectedTargets);
+      const result = readView(client, cfg, true, state, resolveTarget);
       if (
         !result.ok ||
         (previous ? previous.revision === result.value.revision : result.value.items.length === 0)
@@ -361,6 +356,7 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     try {
       await enqueue(async () => {
         await maintain();
+        await prepareTargets();
         context.admission.assertCurrent();
         refreshConnectedViews();
         scheduleExpiry();
@@ -368,18 +364,6 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     } catch {
       log.warn("Unable to refresh the mention Inbox; current reads will retry.");
       scheduleExpiry(60_000);
-    }
-  }
-
-  function invalidateTargets(sessionKey?: string): void {
-    if (!sessionKey) {
-      connectedTargets.clear();
-      return;
-    }
-    for (const [key, cached] of connectedTargets) {
-      if (cached.sessionKey === sessionKey || cached.target?.storeKeys.includes(sessionKey)) {
-        connectedTargets.delete(key);
-      }
     }
   }
 
@@ -448,7 +432,7 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
       },
       notify: () => {
         if (!scheduler.signal.aborted) {
-          refreshConnectedViews();
+          refreshConnectedViews(readNativeTarget);
           scheduleExpiry();
           notify?.();
         }
@@ -464,10 +448,10 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     return readOperation(() => {
       const draft = mutateNative((current) => {
         if (ids) {
-          dismissItems(current, client, ids);
+          dismissItems(current, client, ids, readNativeTarget);
         }
       });
-      return readView(client, params.getRuntimeConfig(), true, new Map(), draft);
+      return readView(client, params.getRuntimeConfig(), true, draft, readNativeTarget);
     });
   }
 
@@ -486,8 +470,13 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     }
   }
 
-  function dismissItems(draft: InboxState, client: GatewayClient | null, ids: readonly string[]) {
-    const current = readView(client, params.getRuntimeConfig(), false, new Map(), draft);
+  function dismissItems(
+    draft: InboxState,
+    client: GatewayClient | null,
+    ids: readonly string[],
+    resolveTarget: TargetReader = readTarget,
+  ) {
+    const current = readView(client, params.getRuntimeConfig(), false, draft, resolveTarget);
     if (current.ok) {
       const owned = new Set(current.value.items.map((item) => item.id));
       for (const id of ids) {
@@ -511,13 +500,17 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     return true;
   }
 
-  function publishCommittedMentions(committed: readonly StoredMention[]): void {
+  function publishCommittedMentions(
+    committed: readonly StoredMention[],
+    resolveTarget: TargetReader = readTarget,
+  ): void {
     if (scheduler.signal.aborted || !params.onMentionCreated) {
       return;
     }
     for (const item of committed) {
       const retained = state.items.get(item.id);
-      const current = retained && currentTarget(retained, params.getRuntimeConfig());
+      const current =
+        retained && currentTarget(retained, params.getRuntimeConfig(), state, resolveTarget);
       if (!retained || !current) {
         continue;
       }
@@ -532,6 +525,7 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
         prepare: () =>
           enqueue(async () => {
             await maintain();
+            await prepareTargets();
           }),
         isCurrent: () => {
           try {
@@ -542,7 +536,9 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
               return false;
             }
             const latest = state.items.get(item.id);
-            return Boolean(latest && currentTarget(latest, params.getRuntimeConfig()));
+            return Boolean(
+              latest && currentTarget(latest, params.getRuntimeConfig(), state, resolveTarget),
+            );
           } catch {
             return false;
           }
@@ -559,7 +555,7 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     stopProfiles();
     stopSessions();
     stopRows();
-    connectedTargets.clear();
+    invalidateTargets();
     policy.dispose();
     state.items.clear();
     state.itemsByProfile.clear();
@@ -582,10 +578,38 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
 
   void refresh();
 
+  function recordCommittedInputAsync(committedInput: MentionCommittedInput): Promise<void> {
+    const input = {
+      ...committedInput,
+      recipientProfileIds: [...committedInput.recipientProfileIds],
+      committedSource: { ...committedInput.committedSource },
+    };
+    return enqueue(async () => {
+      if (!prepareCommittedInput(input)) {
+        return;
+      }
+      await policy.recordCommittedInvolvementAsync(input);
+      await prepareTarget(input.sessionKey, input.agentId);
+      const committed = await mutate<StoredMention[]>(
+        (draft, guards, bounds) => applyCommittedInput(input, draft, guards, bounds),
+        () => input.recipientProfileIds.map((id) => policy.readProfile(id)?.profileId ?? id),
+      );
+      context.admission.assertCurrent();
+      refreshConnectedViews();
+      scheduleExpiry();
+      publishCommittedMentions(committed);
+    }).catch(() => {
+      log.warn("Mention delivery could not be completed; the posted message is unchanged.");
+    });
+  }
+
   return {
     async mentionable(client, input, publish) {
       let preparationFailure: Result<never, ErrorShape> | undefined;
       try {
+        if ("sessionKey" in input) {
+          await prepareTarget(input.sessionKey, input.agentId);
+        }
         // A committed profile change can invalidate preparation before this continuation runs.
         while (policy.needsDirectoryPreparation()) {
           await policy.prepareDirectory();
@@ -604,7 +628,9 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
       let failure: Result<never, ErrorShape> | undefined;
       try {
         await enqueue(async () => {
-          if (await maintain()) {
+          const changed = await maintain();
+          await prepareTargets();
+          if (changed) {
             refreshConnectedViews();
           }
           scheduleExpiry();
@@ -619,6 +645,8 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
       try {
         const selectedIds = [...ids];
         await enqueue(async () => {
+          await maintain();
+          await prepareTargets();
           const result = await mutate(
             (draft, guards) => {
               const current = dismissItems(draft, client, selectedIds);
@@ -665,18 +693,29 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
         if (!prepareCommittedInput(input)) {
           return;
         }
-        policy.recordCommittedInvolvement(input);
+        const target = readNativeTarget(input.sessionKey, input.agentId);
+        recordNativeMentionInvolvement(
+          input,
+          target,
+          policy.involvedProfiles(input, target, params.getRuntimeConfig()),
+        );
         let committed: StoredMention[] = [];
         mutateNative(
           (draft) => {
-            committed = applyCommittedInput(input, draft, [], {
-              sourceIndex: draft.processed,
-              itemLimit: MAX_GLOBAL_ITEMS,
-            });
+            committed = applyCommittedInput(
+              input,
+              draft,
+              [],
+              {
+                sourceIndex: draft.processed,
+                itemLimit: MAX_GLOBAL_ITEMS,
+              },
+              readNativeTarget,
+            );
           },
           () => {
             try {
-              publishCommittedMentions(committed);
+              publishCommittedMentions(committed, readNativeTarget);
             } catch {
               log.warn("Mention delivery could not be completed; the posted message is unchanged.");
             }
@@ -686,29 +725,8 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
         log.warn("Mention delivery could not be completed; the posted message is unchanged.");
       }
     },
-    recordCommittedInputAsync(committedInput: MentionCommittedInput): Promise<void> {
-      const input = {
-        ...committedInput,
-        recipientProfileIds: [...committedInput.recipientProfileIds],
-        committedSource: { ...committedInput.committedSource },
-      };
-      return enqueue(async () => {
-        if (!prepareCommittedInput(input)) {
-          return;
-        }
-        await policy.recordCommittedInvolvementAsync(input);
-        const committed = await mutate<StoredMention[]>(
-          (draft, guards, bounds) => applyCommittedInput(input, draft, guards, bounds),
-          () => input.recipientProfileIds.map((id) => policy.readProfile(id)?.profileId ?? id),
-        );
-        context.admission.assertCurrent();
-        refreshConnectedViews();
-        scheduleExpiry();
-        publishCommittedMentions(committed);
-      }).catch(() => {
-        log.warn("Mention delivery could not be completed; the posted message is unchanged.");
-      });
-    },
+    recordCommittedInputAsync,
+
     invalidate,
     invalidateAsync,
     dispose,

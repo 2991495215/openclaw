@@ -27,7 +27,7 @@ import { prepareSteeringDelivery } from "../../auto-reply/reply/steering-deliver
 import type { RuntimeMsgContext } from "../../auto-reply/templating.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { resolveRestartRecoverySteeringBlockReason } from "../../config/sessions/restart-recovery-receipt.js";
-import { loadSessionEntry, updateSessionEntry } from "../../config/sessions/session-accessor.js";
+import { updateSessionEntry } from "../../config/sessions/session-accessor.js";
 import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { logMessageProcessed, logMessageReceived } from "../../logging/diagnostic.js";
 import type { InboundDocumentContext } from "../../media-understanding/file-context.js";
@@ -93,28 +93,7 @@ export function createChatSendMessageInjectionStarter(params: {
     let admissionRefused = false;
     const canAdmit = () => {
       assertCurrent();
-      // Preparation can outlive terminal delivery. Recheck before the backend
-      // takes this input; an unreadable receipt cannot authorize steering.
-      let fenceEntry = entry;
-      if (sessionKey) {
-        try {
-          fenceEntry =
-            loadSessionEntry({
-              sessionKey,
-              storePath,
-              readConsistency: "latest",
-            }) ?? entry;
-        } catch (error: unknown) {
-          params.logGateway.warn("chat steering rejected; falling back to follow-up dispatch", {
-            reason: "session-entry-unavailable",
-            runId: clientRunId,
-            activeRunId: target.runId,
-            sessionKey,
-            error: String(error),
-          });
-          return false;
-        }
-      }
+      const fenceEntry = entry;
       // Terminal run ids are accumulated session history; compare the fence
       // against the active source-turn identity (carried on the injection target
       // by the owning registry, falling back to the entry's own claim source) so

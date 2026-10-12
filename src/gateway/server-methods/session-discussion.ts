@@ -37,7 +37,7 @@ async function maybeGenerateTitleBeforeDiscussionOpen(params: {
     );
   try {
     const cfg = params.context.getRuntimeConfig();
-    const resolved = loadAccessorSessionEntryForGatewayTarget({
+    const resolved = await loadAccessorSessionEntryForGatewayTarget({
       cfg,
       key: params.sessionKey,
       agentId: params.agentId,

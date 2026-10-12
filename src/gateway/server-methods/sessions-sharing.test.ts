@@ -34,10 +34,10 @@ import { SessionMutationFactsUnavailableError } from "../session-sharing-prepara
 import {
   authorizeResolvedSessionMutation,
   resolveSessionMutationAuthorization,
+  resolveSessionSharingTargetAsync,
   SessionMutationAuthorizationChangedError,
   canReceiveSessionEvent,
   createSessionListEntryFilter,
-  invalidateSessionSharingSnapshot,
 } from "../session-sharing.js";
 import { createControlUiHandlers } from "./control-ui.js";
 import { flushPendingSessionsChangedEvents } from "./session-change-event.js";
@@ -470,29 +470,42 @@ describe("session sharing handlers", () => {
       // The agent-run handler authorizes this resolved (default/effective) key
       // even when the request omitted sessionKey; a non-participant is blocked.
       expect(
-        authorizeResolvedSessionMutation({
-          cfg: {},
-          client: outsider,
-          sessionKey,
-          agentId: "main",
-        }),
+        authorizeResolvedSessionMutation(
+          {
+            cfg: {},
+            client: outsider,
+            sessionKey,
+            agentId: "main",
+          },
+          await resolveSessionSharingTargetAsync({ cfg: {}, sessionKey, agentId: "main" }),
+        ),
       ).toMatchObject({ details: { code: "SESSION_PARTICIPATION_REQUIRED" } });
       // The owner, and a not-yet-created session, both pass.
       expect(
-        authorizeResolvedSessionMutation({
-          cfg: {},
-          client: identifiedClient(owner.id, owner.label),
-          sessionKey,
-          agentId: "main",
-        }),
+        authorizeResolvedSessionMutation(
+          {
+            cfg: {},
+            client: identifiedClient(owner.id, owner.label),
+            sessionKey,
+            agentId: "main",
+          },
+          await resolveSessionSharingTargetAsync({ cfg: {}, sessionKey, agentId: "main" }),
+        ),
       ).toBeNull();
       expect(
-        authorizeResolvedSessionMutation({
-          cfg: {},
-          client: outsider,
-          sessionKey: "agent:main:fresh",
-          agentId: "main",
-        }),
+        authorizeResolvedSessionMutation(
+          {
+            cfg: {},
+            client: outsider,
+            sessionKey: "agent:main:fresh",
+            agentId: "main",
+          },
+          await resolveSessionSharingTargetAsync({
+            cfg: {},
+            sessionKey: "agent:main:fresh",
+            agentId: "main",
+          }),
+        ),
       ).toBeNull();
     });
   });
@@ -525,7 +538,6 @@ describe("session sharing handlers", () => {
           await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({
             visibility: "shared",
           }));
-          invalidateSessionSharingSnapshot(sessionKey);
           const responses: Parameters<RespondFn>[] = [];
           await sessionReadHandlers["sessions.list"]?.({
             req: { type: "req", id: "session-list-test", method: "sessions.list" },
@@ -537,7 +549,6 @@ describe("session sharing handlers", () => {
                 await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({
                   visibility: "draft",
                 }));
-                invalidateSessionSharingSnapshot(sessionKey);
                 return { entries: [] };
               },
             } as unknown as GatewayRequestContext,
@@ -615,7 +626,6 @@ describe("session sharing handlers", () => {
             await patchSessionEntryCore({ agentId: "main", sessionKey: hiddenKey }, () => ({
               visibility: "draft",
             }));
-            invalidateSessionSharingSnapshot(hiddenKey);
             return { entries: [] };
           },
         } as unknown as GatewayRequestContext,
@@ -720,7 +730,6 @@ describe("session sharing handlers", () => {
       });
       expect(captured.error).toBeNull();
       await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({ visibility: "draft" }));
-      invalidateSessionSharingSnapshot(sessionKey);
       expectAccess(false);
       expect(() => captured.authorization?.assertCurrent()).toThrow(
         SessionMutationAuthorizationChangedError,
@@ -728,7 +737,6 @@ describe("session sharing handlers", () => {
       await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({
         visibility: "shared",
       }));
-      invalidateSessionSharingSnapshot(sessionKey);
       expectAccess(true);
     });
   });
@@ -846,7 +854,6 @@ describe("session sharing handlers", () => {
       await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({
         visibility: "shared",
       }));
-      invalidateSessionSharingSnapshot();
       const viewerClient = identifiedClient("viewer") as never;
       expect(
         canReceiveSessionEvent({
@@ -857,7 +864,6 @@ describe("session sharing handlers", () => {
         }),
       ).toBe(true);
       await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({ visibility: "draft" }));
-      invalidateSessionSharingSnapshot(sessionKey);
       expect(
         canReceiveSessionEvent({
           cfg: {},

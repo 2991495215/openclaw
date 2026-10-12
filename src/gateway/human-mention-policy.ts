@@ -12,10 +12,7 @@ import {
   type UsersMentionableResult,
 } from "../../packages/gateway-protocol/src/index.js";
 import type { SessionEntry } from "../config/sessions.js";
-import {
-  updateSessionProfileInvolvement,
-  updateSessionProfileInvolvementAsync,
-} from "../config/sessions/session-accessor.js";
+import { updateSessionProfileInvolvementAsync } from "../config/sessions/session-accessor.js";
 import { captureIncognitoSessionSource } from "../config/sessions/session-incognito-binding.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
@@ -37,12 +34,12 @@ import { authenticatedProfileUnavailableError } from "./server-methods/gateway-c
 import type { GatewayClient } from "./server-methods/types.js";
 import { resolveOperatorSessionCreation } from "./session-creation-provenance.js";
 import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
+import type { SessionSharingTarget } from "./session-sharing-policy.js";
 import { prepareSessionMutationFacts } from "./session-sharing-preparation.js";
 import {
   createProfileSessionEntryFilter,
   isSessionVisibilityAllowed,
   prepareSessionSharing,
-  resolveSessionSharingTarget,
   resolveSessionVisibility,
 } from "./session-sharing.js";
 
@@ -76,6 +73,7 @@ export function humanMentionDisplayLabel(label: string | undefined, profileId: s
 export function createHumanMentionPolicy(params: {
   getRuntimeConfig: () => OpenClawConfig;
   getClients: () => Iterable<GatewayClient>;
+  readSessionTarget: (sessionKey: string, agentId?: string) => SessionSharingTarget | null;
 }) {
   let active = true;
   let profileVersion = -1;
@@ -200,6 +198,7 @@ export function createHumanMentionPolicy(params: {
     client: GatewayClient | null,
     input: UsersMentionableParams,
     cfg: OpenClawConfig,
+    preparedTarget?: SessionSharingTarget,
   ): Result<{ target: MentionTarget; profile: MentionProfile }, ErrorShape> {
     const identified = identify(client, cfg);
     if (!identified.ok) {
@@ -218,11 +217,7 @@ export function createHumanMentionPolicy(params: {
       const resolved =
         binding && "kind" in binding
           ? null
-          : resolveSessionSharingTarget({
-              cfg,
-              sessionKey: input.sessionKey,
-              agentId: agent.agentId,
-            });
+          : (preparedTarget ?? params.readSessionTarget(input.sessionKey, agent.agentId));
       const target = resolved && {
         agentId: resolved.agentId,
         sessionKey: resolved.canonicalKey,
@@ -301,28 +296,7 @@ export function createHumanMentionPolicy(params: {
   }
 
   return {
-    recordCommittedInvolvement(input: MentionCommittedInput): void {
-      if (isIncognitoSessionKey(input.sessionKey)) {
-        return;
-      }
-      const cfg = params.getRuntimeConfig();
-      const target = resolveSessionSharingTarget({
-        cfg,
-        sessionKey: input.sessionKey,
-        agentId: input.agentId,
-      });
-      const profileIds = involvedProfiles(input, target, cfg);
-      if (target && profileIds.length) {
-        updateSessionProfileInvolvement(
-          { agentId: target.agentId, sessionKey: target.storeKey, storePath: target.storePath },
-          {
-            expectedSessionId: input.sessionId,
-            profileIds,
-            change: { kind: "mention", source: input.committedSource },
-          },
-        );
-      }
-    },
+    involvedProfiles,
     async recordCommittedInvolvementAsync(input: MentionCommittedInput): Promise<void> {
       const cfg = params.getRuntimeConfig();
       const agent = resolveRequestedSessionAgentId(cfg, input.sessionKey, input.agentId);
@@ -459,12 +433,13 @@ export function createHumanMentionPolicy(params: {
       client: GatewayClient | null,
       input: UsersMentionableParams,
       profileIds: readonly string[],
+      preparedTarget?: SessionSharingTarget,
     ): Result<readonly string[], ErrorShape> {
       if (profileIds.length === 0) {
         return ok([]);
       }
       const cfg = params.getRuntimeConfig();
-      const context = resolveContext(client, input, cfg);
+      const context = resolveContext(client, input, cfg, preparedTarget);
       if (!context.ok) {
         return context;
       }

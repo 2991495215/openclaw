@@ -13,6 +13,7 @@ import {
 import { isConfiguredSessionStoreAgentId } from "../config/sessions/targets-configured-agents.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { assertExistingDatabaseIdentity } from "../infra/sqlite-worker-identity.js";
+import { isIncognitoSessionKey } from "../routing/session-key.js";
 import type { SessionOperatorScope } from "../shared/session-method-scopes-base.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
 import {
@@ -28,7 +29,7 @@ import {
 } from "./session-sharing-incognito.js";
 import {
   hiddenSessionNotFound,
-  resolveSessionSharingTarget,
+  resolveIncognitoSessionSharingTarget,
   type SessionSharingTarget,
 } from "./session-sharing-policy.js";
 import {
@@ -291,8 +292,16 @@ export function readSessionMutationTarget(params: {
           : null,
       };
     }
+    if (!isIncognitoSessionKey(params.targetRef.sessionKey)) {
+      return {
+        error: errorShape(
+          ErrorCodes.UNAVAILABLE,
+          "Session facts are unavailable; retry the request",
+        ),
+      };
+    }
     let preparedReadSource: SessionSharingTarget["readSource"];
-    const target = resolveSessionSharingTarget({
+    const target = resolveIncognitoSessionSharingTarget({
       cfg: params.cfg,
       sessionKey: params.targetRef.sessionKey,
       agentId: input.value,

@@ -9,7 +9,7 @@ import {
 } from "../../gateway/session-row-projection.js";
 import { resolveSessionStoreKey } from "../../gateway/session-store-key.js";
 import { listProjectedSessions } from "../../gateway/session-utils-list.js";
-import { createGatewaySessionEntryReader } from "../../gateway/session-utils-store-lineage.js";
+import { createGatewaySessionEntryReader } from "../../gateway/session-utils-store-lineage.native.js";
 import { clearAgentRunContext, registerAgentRunContext } from "../../infra/agent-run-registry.js";
 import { requireNodeSqlite } from "../../infra/node-sqlite.js";
 import {

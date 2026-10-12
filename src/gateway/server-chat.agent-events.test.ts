@@ -74,16 +74,16 @@ vi.mock("../infra/heartbeat-visibility.js", () => ({
 
 // mock-isolation: Session projection fixtures own their entries without native database admission.
 vi.mock("./session-utils.js", () => {
-  const loadSessionEntry = vi.fn(emptySessionLookup);
+  const loadSessionEntryAsync = vi.fn(async () => emptySessionLookup());
   return {
-    loadSessionEntry,
-    loadGatewaySessionEntryReadOnly: loadSessionEntry,
+    loadSessionEntryAsync,
+    loadGatewaySessionEntryReadOnlyAsync: loadSessionEntryAsync,
   };
 });
 
 // mock-isolation: Reuse controlled session state without admitting a worker database.
 vi.mock("./session-utils-store-worker.js", () => ({
-  loadGatewaySessionEntryReadOnlyInWorker: async () => loadSessionEntry("session-1"),
+  loadGatewaySessionEntryReadOnlyInWorker: async () => await loadSessionEntryAsync("session-1"),
 }));
 
 import { getRuntimeConfig } from "../config/io.js";
@@ -108,7 +108,7 @@ import { broadcastChatFinal } from "./server-methods/chat-broadcast.js";
 import { createGatewayNodeSessionRuntime } from "./server-node-session-runtime.js";
 import * as sessionEventRows from "./session-event-prepared-row.js";
 import { createSessionRowProjectionFixture } from "./session-row-projection.test-support.js";
-import { loadSessionEntry } from "./session-utils.js";
+import { loadSessionEntryAsync } from "./session-utils.js";
 
 function waitForFast<T>(
   callback: () => T | Promise<T>,
@@ -128,7 +128,7 @@ describe("agent event handler", () => {
       showAlerts: true,
       useIndicator: true,
     });
-    vi.mocked(loadSessionEntry).mockReset().mockReturnValue(emptySessionLookup());
+    vi.mocked(loadSessionEntryAsync).mockReset().mockResolvedValue(emptySessionLookup());
     vi.mocked(loadGatewaySessionRow).mockReset().mockReturnValue(null);
     loadGatewaySessionLifecycleSnapshotMock
       .mockReset()
@@ -162,7 +162,7 @@ describe("agent event handler", () => {
     entry: ReturnType<typeof loadSessionEntry>["entry"],
     canonicalKey = "session-1",
   ) {
-    vi.mocked(loadSessionEntry).mockReturnValue({
+    vi.mocked(loadSessionEntryAsync).mockResolvedValue({
       cfg: {},
       agentId: "main",
       storePath: "/tmp/sessions.json",
@@ -1291,7 +1291,7 @@ describe("agent event handler", () => {
         });
       }
       await stop.drain();
-      expect(loadSessionEntry).not.toHaveBeenCalled();
+      expect(loadSessionEntryAsync).not.toHaveBeenCalled();
       expect(h.broadcast).not.toHaveBeenCalled();
       expect(h.nodeSendToSession).not.toHaveBeenCalled();
       const delivered = h.targetedAgent();

@@ -21,6 +21,7 @@ export function createConsultRunner(
       sessionKey: "main",
       canonicalKey: "agent:researcher:talk",
       storePath: "/tmp/sessions",
+      assertCurrent: () => {},
     },
     getVoiceSessionId: () => "voice-session",
     initialItems: [],

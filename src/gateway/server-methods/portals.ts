@@ -28,51 +28,57 @@ function requirePortalService(
   return service;
 }
 
-function portalOperations(
+async function portalOperations(
   options: GatewayRequestHandlerOptions,
   service: GatewayPortalService,
   environmentId?: string,
 ) {
   if (!environmentId) {
-    return createPortalOperations(service);
+    return Object.assign(createPortalOperations(service), { [Symbol.dispose]: () => {} });
   }
   const { context } = options;
   const environments = context.workerEnvironmentService;
   if (!environments) {
     throw new Error("Conversation environments are unavailable");
   }
-  const caller = resolveSessionEnvironmentCaller(options);
-  const binding = environments.findSessionAttachment(caller.identity);
-  if (!binding || binding.environmentId !== environmentId) {
-    throw new Error("Portal environment is not attached to this conversation");
+  const caller = await resolveSessionEnvironmentCaller(options);
+  try {
+    const binding = environments.findSessionAttachment(caller.identity);
+    if (!binding || binding.environmentId !== environmentId) {
+      throw new Error("Portal environment is not attached to this conversation");
+    }
+    const assertCurrent = () => {
+      caller.assertCurrent();
+      environments.assertSessionAttachment(binding);
+    };
+    assertCurrent();
+    const operations = createPortalOperations(service, {
+      ...binding,
+      assertCurrent,
+      ownershipError: "Portal does not belong to the attached environment",
+      async prepareTarget(remotePort) {
+        await environments.touchSessionAttachment(binding);
+        assertCurrent();
+        const connection = await environments.openNodePortal({
+          environmentId: binding.environmentId,
+          ownerEpoch: binding.ownerEpoch,
+          remotePort,
+        });
+        return {
+          ...connection,
+          connect: () =>
+            connection.connect(
+              () => environments.assertSessionAttachment(binding),
+              () => environments.touchSessionAttachment(binding),
+            ),
+        };
+      },
+    });
+    return Object.assign(operations, { [Symbol.dispose]: () => caller[Symbol.dispose]() });
+  } catch (error) {
+    caller[Symbol.dispose]();
+    throw error;
   }
-  const assertCurrent = () => {
-    caller.assertCurrent();
-    environments.assertSessionAttachment(binding);
-  };
-  assertCurrent();
-  return createPortalOperations(service, {
-    ...binding,
-    assertCurrent,
-    ownershipError: "Portal does not belong to the attached environment",
-    async prepareTarget(remotePort) {
-      await environments.touchSessionAttachment(binding);
-      assertCurrent();
-      const connection = await environments.openNodePortal({
-        environmentId: binding.environmentId,
-        ownerEpoch: binding.ownerEpoch,
-        remotePort,
-      });
-      return {
-        ...connection,
-        connect: () =>
-          connection.connect(
-            () => environments.assertSessionAttachment(binding),
-            () => environments.touchSessionAttachment(binding),
-          ),
-      };
-    },
-  });
 }
 
 async function mutatePortal(
@@ -85,7 +91,8 @@ async function mutatePortal(
     return;
   }
   try {
-    const result = await mutate(portalOperations(options, service, environmentId));
+    await using operations = await portalOperations(options, service, environmentId);
+    const result = await mutate(operations);
     broadcastPortalChange(options.context, service);
     options.respond(true, result, undefined);
   } catch (error) {
@@ -102,7 +109,7 @@ export const portalHandlers: GatewayRequestHandlers = {
   "portal.list": defineValidatedGatewayMethod(
     "portal.list",
     validatePortalListParams,
-    (options) => {
+    async (options) => {
       const { params, respond, context, client } = options;
       const service = requirePortalService(context, respond);
       if (!service) {
@@ -111,7 +118,8 @@ export const portalHandlers: GatewayRequestHandlers = {
       const scopes = client?.connect.scopes ?? [];
       let portals: PortalSummary[];
       try {
-        portals = portalOperations(options, service, params.environmentId).list().portals;
+        await using operations = await portalOperations(options, service, params.environmentId);
+        portals = operations.list().portals;
       } catch (error) {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(error)));
         return;

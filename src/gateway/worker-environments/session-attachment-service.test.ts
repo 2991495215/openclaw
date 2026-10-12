@@ -73,7 +73,7 @@ describe("conversation-owned temporary environments", () => {
   it("admits the actual plugin RPC through ambient run authority and fences a retained caller after revocation", async () => {
     const service = support.createService(support.createProvider());
     const { options, respond } = createSessionRpc(service);
-    expect(() => resolveSessionEnvironmentCaller(options)).toThrow(
+    await expect(resolveSessionEnvironmentCaller(options)).rejects.toThrow(
       "authenticated operator or admitted agent run",
     );
     let live = true;
@@ -84,10 +84,10 @@ describe("conversation-owned temporary environments", () => {
         receiptAuthority: () => live,
       },
       async () => {
-        const caller = resolveSessionEnvironmentCaller(options);
-        expect(() =>
+        await using caller = await resolveSessionEnvironmentCaller(options);
+        await expect(
           resolveSessionEnvironmentCaller(options, { sessionKey: "agent:main:other" }),
-        ).toThrow("only manage its own");
+        ).rejects.toThrow("only manage its own");
         await environmentsSessionHandlers["environments.session.create"]!(options);
         expect(respond).toHaveBeenCalledWith(
           true,

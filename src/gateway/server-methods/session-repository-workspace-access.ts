@@ -1,4 +1,5 @@
 import type { SessionEntryCurrentFacts } from "../../config/sessions/session-entry-current.types.js";
+import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import { captureSessionEntryMetadataRead } from "../../config/sessions/session-entry-source-authority.js";
 import { runExclusiveSessionLifecycleMutation } from "../../sessions/session-lifecycle-admission.js";
 import { getSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
@@ -9,11 +10,11 @@ import {
   type WorkspaceInspectionResult,
 } from "../../worker/workspace-inspection-protocol.js";
 import { captureSessionMutationRouting } from "../session-sharing-preparation.js";
-import { loadGatewaySessionEntryReadOnly } from "../session-utils.js";
+import type { GatewaySessionEntryRead } from "../session-utils.js";
 import { readSessionWorkerPlacementAsync } from "../worker-environments/session-placement-lifecycle.js";
 import type { GatewayRequestContext } from "./types.js";
 
-type LoadedSession = ReturnType<typeof loadGatewaySessionEntryReadOnly>;
+type LoadedSession = GatewaySessionEntryRead;
 type Operation = WorkspaceInspectionInput["operation"];
 
 /** Repository identity never resolves through the Gateway's local workspace defaults. */
@@ -65,14 +66,23 @@ export async function resolveRepositoryWorkspaceAccess(
       throw new Error("The cloud repository workspace owner changed; refresh this session.");
     }
   };
-  const assertSession = (expectedRevision?: number) =>
+  const assertSession = (expectedRevision?: number) => {
+    assertRoutingCurrent(
+      (context?.getCommittedRuntimeConfig ?? context?.getRuntimeConfig)?.() ?? loaded.cfg,
+    );
     assertSessionFacts(
       metadata
         ? metadata.readCurrent()
-        : loadGatewaySessionEntryReadOnly(loaded.canonicalKey, { agentId: repository.agentId })
-            .entry,
+        : readRetainedSessionEntryFacts(
+            {
+              agentId: loaded.readSource?.agentId ?? loaded.agentId,
+              path: loaded.readSource?.path ?? loaded.storePath,
+            },
+            { sessionKeys: [loaded.canonicalKey], projection: "exact", snapshotFields: [] },
+          )?.entries.find((row) => row.sessionKey === loaded.canonicalKey)?.entry,
       expectedRevision,
     );
+  };
   const placements = context?.workerSessionPlacementService;
   const environments = context?.workerEnvironmentService;
   const placement = await readSessionWorkerPlacementAsync({ context: context ?? {}, sessionId });

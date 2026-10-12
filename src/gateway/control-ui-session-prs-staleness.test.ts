@@ -20,7 +20,7 @@ import {
   routedFetch,
   testGitContext,
 } from "./control-ui-session-prs.test-support.js";
-import { loadGatewaySessionEntryReadOnly } from "./session-utils.js";
+import { loadGatewaySessionEntryReadOnlyAsync } from "./session-utils.js";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -142,7 +142,9 @@ it.each(["replacement", "metadata"] as const)(
           }),
         ]);
         if (replacementOwner) {
-          const original = loadGatewaySessionEntryReadOnly(sessionKey, { agentId: "main" });
+          const original = await loadGatewaySessionEntryReadOnlyAsync(sessionKey, {
+            agentId: "main",
+          });
           await expect(
             deleteSessionEntryLifecycle({
               agentId: "main",

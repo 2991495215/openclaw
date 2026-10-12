@@ -12,6 +12,7 @@ import {
   prepareSubagentSessionListReadCache,
 } from "../../agents/subagents/registry/subagent-registry-state.js";
 import { getRuntimeConfigSnapshotMetadata } from "../../config/runtime-snapshot.js";
+import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import { captureIncognitoSessionSource } from "../../config/sessions/session-incognito-binding.js";
 import { redactToolPayloadText } from "../../logging/redact.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
@@ -312,6 +313,14 @@ async function prepareCheckDetailsSession(
     ));
   preparedEntry?.snapshot.assertCurrent();
   const preparedMedia = binding?.actor.sessions.readMedia(sessionKey);
+  const durable = binding
+    ? undefined
+    : await loadAccessorSessionEntryForGatewayTarget({
+        key: sessionKey,
+        cfg: sourceCfg,
+        clone: false,
+        agentId: sourceRequest.agentId,
+      });
   const readSelected = () => {
     const cfg = context.getRuntimeConfig();
     const requested = resolveRequestedGlobalAgentId(cfg, sessionKey);
@@ -360,12 +369,15 @@ async function prepareCheckDetailsSession(
         entry,
       };
     }
-    const { target, entry, storePath } = loadAccessorSessionEntryForGatewayTarget({
-      key: sessionKey,
-      cfg,
-      clone: false,
-      agentId: requested.agentId,
-    });
+    const target = durable!.target;
+    const storePath = durable!.storePath;
+    const entry = readRetainedSessionEntryFacts(
+      {
+        agentId: target.readSource?.agentId ?? target.agentId,
+        path: target.readSource?.path ?? storePath,
+      },
+      { sessionKeys: [target.canonicalKey] },
+    )?.entries.find((row) => row.sessionKey === target.canonicalKey)?.entry;
     const entryFilter = createSessionListEntryFilter({ client, cfg });
     if (!entry?.sessionId || (entryFilter && !entryFilter(target.canonicalKey, entry))) {
       return undefined;

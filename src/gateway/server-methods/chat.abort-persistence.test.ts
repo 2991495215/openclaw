@@ -16,6 +16,7 @@ import { handleChatAbortRequest } from "./chat-abort-handler.js";
 import {
   captureAbortedPartial,
   persistAbortedPartials,
+  prepareChatAbortSession,
 } from "./chat-transcript-persistence.runtime.js";
 import {
   collectMessagesWithIdempotencyKey,
@@ -51,7 +52,7 @@ vi.mock("../session-utils.js", async () => {
     await vi.importActual<typeof import("../session-utils.js")>("../session-utils.js");
   return {
     ...original,
-    loadSessionEntry: (sessionKey: string, opts?: { agentId?: string }) => {
+    loadSessionEntryAsync: async (sessionKey: string, opts?: { agentId?: string }) => {
       sessionEntryState.loadCalls.push({ sessionKey, opts });
       return {
         cfg: sessionEntryState.cfg,
@@ -330,6 +331,7 @@ describe("chat abort transcript persistence", () => {
       context: { logGateway: { warn } },
       snapshots: [
         captureAbortedPartial({
+          session: await prepareChatAbortSession("main", "main"),
           sessionKey: "main",
           sessionId,
           agentId: "main",
@@ -356,6 +358,7 @@ describe("chat abort transcript persistence", () => {
         context: { logGateway: { warn: vi.fn() } },
         snapshots: [
           captureAbortedPartial({
+            session: await prepareChatAbortSession("main", "main"),
             sessionKey: "main",
             sessionId: `${sessionId}-stale`,
             agentId: "main",
@@ -382,6 +385,7 @@ describe("chat abort transcript persistence", () => {
       );
       sessionEntryState.lifecycleRevision = lifecycleRevision;
       const snapshot = captureAbortedPartial({
+        session: await prepareChatAbortSession("main", "main"),
         sessionKey: "main",
         sessionId,
         agentId: "main",
@@ -457,6 +461,7 @@ describe("chat abort transcript persistence", () => {
       context: { logGateway: { warn: vi.fn() } },
       snapshots: [
         captureAbortedPartial({
+          session: await prepareChatAbortSession("main", "main"),
           sessionKey: "main",
           runId: "aborted-later-run",
           sessionId,
@@ -487,6 +492,7 @@ describe("chat abort transcript persistence", () => {
       context: { logGateway: { warn: vi.fn() } },
       snapshots: [
         captureAbortedPartial({
+          session: await prepareChatAbortSession("main", "main"),
           sessionKey: "main",
           runId: "stalled-placement-run",
           sessionId,

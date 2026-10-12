@@ -256,14 +256,16 @@ it("retains selection and sentinel options while the worker read is queued", asy
   });
 });
 
-it("keeps stored addresses and foreign lineage stable after main-alias changes", async () => {
+it("prepares foreign lineage without host SQL after main-alias changes", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     const parents = ["agent:main:main", "agent:main:home", "agent:main:global"];
     for (const [index, parent] of [...parents, "global"].entries()) {
-      replaceSessionEntrySync(
-        { agentId: "main", sessionKey: parent },
-        { sessionId: `parent-${index}`, updatedAt: 1 },
-      );
+      if (index !== 1) {
+        replaceSessionEntrySync(
+          { agentId: "main", sessionKey: parent },
+          { sessionId: `parent-${index}`, updatedAt: 1 },
+        );
+      }
       if (index < parents.length) {
         replaceSessionEntrySync(
           { agentId: "work", sessionKey: `agent:work:child-${index}` },
@@ -283,22 +285,49 @@ it("keeps stored addresses and foreign lineage stable after main-alias changes",
       };
       for (const options of [{}, { agentId: "work" }]) {
         const expected = loadCombinedSessionStoreForGatewayCore(cfg, options);
-        const result = await loadCombinedSessionStoreForGatewayCoreAsync(cfg, options);
-        expect(result.store).toEqual(expected.store);
-        for (const [index, parent] of parents.entries()) {
-          const key = `agent:work:child-${index}`;
-          expect(result.store[key]).toMatchObject({
-            parentSessionKey: parent,
-            spawnedBy: parent,
-          });
-          expect(result.targetsBySessionKey.get(key)?.readSourceEntry(parent)).toMatchObject({
-            sessionId: `parent-${index}`,
-          });
-          if (!options.agentId) {
-            expect(result.store[parent]?.sessionId).toBe(`parent-${index}`);
+        const observed = observeHostDataSql();
+        try {
+          const result = await loadCombinedSessionStoreForGatewayCoreAsync(cfg, options);
+          expect(result.store).toEqual(expected.store);
+          for (const [index, parent] of parents.entries()) {
+            const key = `agent:work:child-${index}`;
+            const selectedParent = index === 1 && scope === "global" ? "global" : parent;
+            expect(result.store[key]).toMatchObject({
+              parentSessionKey: selectedParent,
+              spawnedBy: selectedParent,
+            });
+            expect(result.targetsBySessionKey.get(key)?.readSourceEntry(parent)?.sessionId).toBe(
+              index === 1 ? (scope === "global" ? "parent-3" : undefined) : `parent-${index}`,
+            );
+            if (!options.agentId) {
+              expect(result.store[parent]?.sessionId).toBe(
+                index === 1 ? undefined : `parent-${index}`,
+              );
+            }
           }
+          expect(observed.queries).toEqual([]);
+        } finally {
+          observed.restore();
         }
       }
+    }
+    replaceSessionEntrySync(
+      { agentId: "main", sessionKey: parents[0]! },
+      { sessionId: "parent-after-write", updatedAt: 3 },
+    );
+    const observed = observeHostDataSql();
+    try {
+      const result = await loadCombinedSessionStoreForGatewayCoreAsync(
+        { agents: { entries: { main: {}, work: {} } } },
+        { agentId: "work" },
+      );
+      expect(
+        result.targetsBySessionKey.get("agent:work:child-0")?.readSourceEntry(parents[0]!)
+          ?.sessionId,
+      ).toBe("parent-after-write");
+      expect(observed.queries).toEqual([]);
+    } finally {
+      observed.restore();
     }
   });
 });

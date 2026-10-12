@@ -14,7 +14,7 @@ import {
   type StoredMention,
 } from "./mention-inbox-projection.js";
 import { MAX_MENTION_SOURCES, MENTION_RETENTION_MS } from "./mention-inbox-store.js";
-import { resolveSessionSharingTarget } from "./session-sharing.js";
+import type { SessionSharingTarget } from "./session-sharing-policy.js";
 
 const log = createSubsystemLogger("gateway/mentions");
 
@@ -23,6 +23,7 @@ export function createMentionInputRecorder(params: {
   now: () => number;
   policy: ReturnType<typeof createHumanMentionPolicy>;
   onCapacityReached: () => void;
+  resolveTarget: (sessionKey: string, agentId?: string) => SessionSharingTarget | null;
 }) {
   const { policy } = params;
   return function applyCommittedInput(
@@ -30,17 +31,14 @@ export function createMentionInputRecorder(params: {
     draft: InboxState,
     guards: Array<() => void>,
     bounds: Pick<ReturnType<typeof createMentionMutationProjection>, "sourceIndex" | "itemLimit">,
+    resolveTarget = params.resolveTarget,
   ): StoredMention[] {
     if (isIncognitoSessionKey(input.sessionKey)) {
       return [];
     }
     const { processed, head, dirtySources, items } = draft;
     const cfg = params.getRuntimeConfig();
-    const resolved = resolveSessionSharingTarget({
-      cfg,
-      sessionKey: input.sessionKey,
-      agentId: input.agentId,
-    });
+    const resolved = resolveTarget(input.sessionKey, input.agentId);
     if (
       !resolved ||
       resolved.entry.sessionId !== input.sessionId ||
@@ -51,11 +49,7 @@ export function createMentionInputRecorder(params: {
       return [];
     }
     guards.push(() => {
-      const current = resolveSessionSharingTarget({
-        cfg: params.getRuntimeConfig(),
-        sessionKey: input.sessionKey,
-        agentId: input.agentId,
-      });
+      const current = resolveTarget(input.sessionKey, input.agentId);
       if (
         !current ||
         current.entry.sessionId !== input.sessionId ||

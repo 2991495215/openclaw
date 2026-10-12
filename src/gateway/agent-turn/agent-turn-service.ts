@@ -300,12 +300,24 @@ export function createAgentTurnService(
             client: principal,
             agentId: sessionAgentId,
           }) ??
-          authorizeResolvedSessionMutation({
-            cfg: cfgLocal,
-            client: principal,
-            sessionKey: canonicalSessionKey,
-            agentId: sessionAgentId,
-          });
+          authorizeResolvedSessionMutation(
+            {
+              cfg: cfgLocal,
+              client: principal,
+              sessionKey: canonicalSessionKey,
+              agentId: sessionAgentId,
+            },
+            entry
+              ? {
+                  agentId: sessionAgentId,
+                  canonicalKey: canonicalSessionKey,
+                  entry,
+                  storeKey: canonicalSessionKey,
+                  storeKeys,
+                  storePath,
+                }
+              : null,
+          );
         if (sessionAuthorizationError) {
           io.emitAcceptance([false, undefined, sessionAuthorizationError]);
           return;

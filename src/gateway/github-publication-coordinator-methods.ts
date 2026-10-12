@@ -20,7 +20,7 @@ import {
   prepareCurrentGitHubPublicationIdentity,
   readGitHubPublicationWorktreeOwner,
   type PublicationSessionIdentity,
-  readGitHubPublicationSession,
+  prepareGitHubPublicationSession,
 } from "./github-publication-availability.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
 import { captureGitHubPublicationWorkspaceSnapshot } from "./github-publication-git-transport.js";
@@ -53,7 +53,6 @@ import {
   markGitHubPublicationReported,
   readGitHubPublicationRequest,
 } from "./github-publication-store.js";
-import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
 import { projectWorkerSessionTurnClaim } from "./worker-environments/placement-record.js";
 import type {
   WorkerSessionPlacementStore,
@@ -221,14 +220,11 @@ export function createGitHubPublicationCoordinatorMethods(params: {
       throw new Error("GitHub publication requires an authoritative session.");
     }
     assertRequester();
-    const initialLoaded = workerRequester
-      ? await loadGatewaySessionEntryReadOnlyInWorker({
-          cfg: params.getCommittedRuntimeConfig(),
-          key: input.sessionKey,
-          agentId: input.agentId,
-          assertActive: params.assertCurrent,
-        })
-      : readGitHubPublicationSession(input.sessionKey, { agentId: input.agentId });
+    const { initial: initialLoaded } = await prepareGitHubPublicationSession(input.sessionKey, {
+      cfg: params.getCommittedRuntimeConfig(),
+      agentId: input.agentId,
+      assertCurrent: workerRequester ? params.assertCurrent : assertRequester,
+    });
     const sessionId = initialLoaded.entry?.sessionId;
     if (!sessionId) {
       throw new Error("GitHub publication session changed.");

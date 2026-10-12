@@ -17,7 +17,7 @@ import { prepareControlUiSessionPrRead } from "../control-ui-session-pr-read.js"
 import {
   prepareCurrentGitHubPublicationOptionsIdentity,
   hasSupportedGitHubPublicationTarget,
-  readGitHubPublicationSession,
+  prepareGitHubPublicationSession,
   type PublicationSessionIdentity,
 } from "../github-publication-availability.js";
 import { GitHubPublicationKnownFailure } from "../github-publication-failure.js";
@@ -203,7 +203,10 @@ export const sessionsGitHubHandlers: GatewayRequestHandlers = {
         }
         return;
       }
-      const loaded = readGitHubPublicationSession(sessionKey, agentId ? { agentId } : undefined);
+      const { initial: loaded } = await prepareGitHubPublicationSession(sessionKey, {
+        agentId,
+        assertCurrent: () => sessionMutationAuthorization?.assertCurrent(),
+      });
       if (!loaded.entry?.sessionId) {
         respond(
           false,

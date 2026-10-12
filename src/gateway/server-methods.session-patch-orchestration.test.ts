@@ -6,7 +6,7 @@ import { createDeferredCore } from "../shared/deferred.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { sessionMutationHandlers } from "./server-methods/sessions-mutations.js";
 import { SessionMutationAuthorizationChangedError } from "./session-sharing.js";
-import { resolveGatewaySessionStoreTargetWithStore } from "./session-utils.js";
+import { resolveGatewaySessionStoreTargetWithStoreAsync } from "./session-utils.js";
 
 describe("sessions.patchMany orchestration", () => {
   const context = (overrides: Record<string, unknown> = {}) =>
@@ -207,10 +207,12 @@ describe("sessions.patchMany orchestration", () => {
         );
       }
 
-      const storePath = resolveGatewaySessionStoreTargetWithStore({
-        cfg,
-        key: conflictingAlias,
-      }).storePath;
+      const storePath = (
+        await resolveGatewaySessionStoreTargetWithStoreAsync({
+          cfg,
+          key: conflictingAlias,
+        })
+      ).storePath;
       const writerStarted = createDeferredCore();
       const insertConflictingAlias = createDeferredCore();
       const writer = applySessionEntryCanonicalReplacements({
@@ -304,10 +306,12 @@ describe("sessions.patchMany orchestration", () => {
         { sessionId: "session-single-alias-race-canonical", updatedAt: 1 },
       );
 
-      const storePath = resolveGatewaySessionStoreTargetWithStore({
-        cfg,
-        key: conflictingAlias,
-      }).storePath;
+      const storePath = (
+        await resolveGatewaySessionStoreTargetWithStoreAsync({
+          cfg,
+          key: conflictingAlias,
+        })
+      ).storePath;
       const writerStarted = createDeferredCore();
       const insertConflictingAlias = createDeferredCore();
       const writer = applySessionEntryCanonicalReplacements({

@@ -36,7 +36,8 @@ import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import type { GatewaySessionStoreDiscoveryCache } from "./session-utils-store-candidates.js";
 import {
   withGatewaySessionStoreTarget,
-  resolveGatewaySessionStoreTargetWithStore,
+  resolveNativeGatewaySessionStoreTargetWithStore,
+  resolveGatewaySessionStoreTargetWithStoreAsync,
   type GatewaySessionStoreCache,
 } from "./session-utils-store-lookup.js";
 import {
@@ -44,6 +45,7 @@ import {
   type GatewaySessionStoreSelection,
 } from "./session-utils-store-retained.js";
 import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
+import type { GatewaySessionStoreTargetWithStore } from "./session-utils-store.types.js";
 
 export type SessionSharingTarget = {
   agentId: string;
@@ -127,7 +129,7 @@ function captureSessionSharingIncognitoTarget(params: {
   return binding && { kind: "native" as const, binding, canonicalKey };
 }
 
-export function resolveSessionSharingTarget(params: {
+export function resolveIncognitoSessionSharingTarget(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
   agentId?: string;
@@ -153,7 +155,51 @@ export function resolveSessionSharingTarget(params: {
     }
     return target;
   }
-  const target = resolveGatewaySessionStoreTargetWithStore({
+  if (!isIncognitoSessionKey(params.sessionKey)) {
+    return null;
+  }
+  const target = resolveNativeGatewaySessionStoreTargetWithStore({
+    cfg: params.cfg,
+    key: params.sessionKey,
+    agentId: params.agentId,
+    clone: false,
+    projection: "list",
+    readConsistency: "latest",
+    exactRead: true,
+  });
+  if (target.capturedReadSource) {
+    params.onReadSource?.(target.capturedReadSource);
+  }
+  return toSessionSharingTarget(target);
+}
+
+export async function resolveSessionSharingTargetAsync(params: {
+  cfg: OpenClawConfig;
+  sessionKey: string;
+  agentId?: string;
+  exactRead?: boolean;
+  storeCache?: GatewaySessionStoreCache;
+  targetDiscoveryCache?: GatewaySessionStoreDiscoveryCache;
+  onReadSource?: (source: CapturedSessionEntryReadSource) => void;
+}): Promise<SessionSharingTarget | null> {
+  const captured = captureSessionSharingIncognitoTarget(params);
+  if (captured) {
+    const facts =
+      captured.kind === "memory"
+        ? captureSessionActorMutationFacts(
+            captured.binding,
+            captured.canonicalKey,
+            true,
+            captured.storePath,
+          )
+        : captureIncognitoSessionMutationFacts(captured.binding, captured.canonicalKey, true);
+    const target = facts.readCurrent().target;
+    if (captured.kind === "memory" && target?.readSource) {
+      params.onReadSource?.(target.readSource);
+    }
+    return target;
+  }
+  const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
     cfg: params.cfg,
     key: params.sessionKey,
     agentId: params.agentId,
@@ -247,7 +293,7 @@ export async function withSessionSharingTarget<T>(
 }
 
 function toSessionSharingTarget(
-  target: ReturnType<typeof resolveGatewaySessionStoreTargetWithStore>,
+  target: GatewaySessionStoreTargetWithStore,
 ): SessionSharingTarget | null {
   const match = findCanonicalStoreMatch(target.store, target.storeKeys);
   return match
@@ -347,14 +393,17 @@ function isIncognitoSessionTarget(params: {
     : isIncognitoSessionKey(params.sessionKey);
 }
 
-export function isResolvedIncognitoSession(params: {
-  cfg: OpenClawConfig;
-  sessionKey: string;
-  agentId?: string;
-}): boolean {
+export function isResolvedIncognitoSession(
+  params: {
+    cfg: OpenClawConfig;
+    sessionKey: string;
+    agentId?: string;
+  },
+  target: SessionSharingTarget | null,
+): boolean {
   return isIncognitoSessionTarget({
     sessionKey: params.sessionKey,
-    target: resolveSessionSharingTarget(params),
+    target,
   });
 }
 
@@ -379,12 +428,15 @@ export function authorizeIncognitoSessionTarget(params: {
   return hiddenSessionNotFound(params.sessionKey, true);
 }
 
-export function canAccessIncognitoSession(params: {
-  cfg: OpenClawConfig;
-  client: GatewayClient | null;
-  sessionKey: string;
-  agentId?: string;
-}): boolean {
+export function canAccessIncognitoSession(
+  params: {
+    cfg: OpenClawConfig;
+    client: GatewayClient | null;
+    sessionKey: string;
+    agentId?: string;
+  },
+  target: SessionSharingTarget | null,
+): boolean {
   if (isGatewayAdmin(params.client)) {
     return true;
   }
@@ -392,18 +444,21 @@ export function canAccessIncognitoSession(params: {
     authorizeIncognitoSessionTarget({
       client: params.client,
       sessionKey: params.sessionKey,
-      target: resolveSessionSharingTarget(params),
+      target,
     }) === null
   );
 }
 
-export function authorizeResolvedSessionMutation(params: {
-  cfg: OpenClawConfig;
-  client: GatewayClient | null;
-  sessionKey: string;
-  agentId?: string;
-}): ErrorShape | null {
-  return authorizeSessionMutationTarget(params, () => resolveSessionSharingTarget(params));
+export function authorizeResolvedSessionMutation(
+  params: {
+    cfg: OpenClawConfig;
+    client: GatewayClient | null;
+    sessionKey: string;
+    agentId?: string;
+  },
+  target: SessionSharingTarget | null,
+): ErrorShape | null {
+  return authorizeSessionMutationTarget(params, () => target);
 }
 
 export type PreparedSessionMutationFacts = {

@@ -44,9 +44,9 @@ vi.mock("../session-utils.js", async () => {
   const actual = await vi.importActual<typeof import("../session-utils.js")>("../session-utils.js");
   return {
     ...actual,
-    loadSessionEntry: (...args: unknown[]) =>
+    loadSessionEntryAsync: (...args: unknown[]) =>
       loadSessionEntryMock(...(args as [string, { agentId?: string }?])),
-    loadGatewaySessionEntryReadOnly: (...args: unknown[]) =>
+    loadGatewaySessionEntryReadOnlyAsync: (...args: unknown[]) =>
       loadSessionEntryMock(...(args as [string, { agentId?: string }?])),
   };
 });

@@ -28,11 +28,13 @@ import { createWorkerSessionPlacementStore } from "./worker-environments/placeme
 import { workerWorkspaceResultStaging } from "./worker-environments/workspace-result-staging.js";
 
 const lookup = vi.hoisted(() => ({
-  value: undefined as ReturnType<typeof import("./session-utils.js").loadSessionEntry> | undefined,
+  value: undefined as
+    | Awaited<ReturnType<typeof import("./session-utils.js").loadSessionEntryAsync>>
+    | undefined,
 }));
 vi.mock("./session-utils.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./session-utils.js")>()),
-  loadSessionEntry: () => lookup.value,
+  loadSessionEntryAsync: async () => lookup.value,
 }));
 vi.mock("../config/config.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../config/config.js")>()),
@@ -114,7 +116,7 @@ async function scenario(
                   path: worktreePath,
                 },
         },
-        resolveGatewaySessionStoreTargetWithStore: () => target,
+        resolveGatewaySessionStoreTargetWithStoreAsync: async () => target,
         resolveCanonicalSessionEntryFromStoreKeys: () => entry,
       }) as never,
     cancelSessionWork: async (request) => {
@@ -204,7 +206,7 @@ async function scenario(
                   path: worktreePath,
                 }),
               },
-              resolveGatewaySessionStoreTargetWithStore: () => target,
+              resolveGatewaySessionStoreTargetWithStoreAsync: async () => target,
               resolveCanonicalSessionEntryFromStoreKeys: () => entry,
             }) as never,
         )
@@ -250,7 +252,7 @@ async function scenario(
       runId,
     });
   const oldRunId = name + "-before-stop-complete";
-  const running = blockedInspection ? await admit(name + "-running").promise : undefined;
+  const running = blockedInspection ? await (await admit(name + "-running")).promise : undefined;
   const activeController = context.chatAbortControllers.get(name + "-running");
   if (pendingMove) {
     context.chatRunState.getOrCreate(name + "-running").buffer = "partial before queued Move Stop";
@@ -323,10 +325,10 @@ async function scenario(
   let approvalsCancelledDuringInspection = false;
   let abortedDuringInspection = false;
   let destroyedDuringInspection = false;
-  let old!: ReturnType<typeof admit>;
+  let old!: Awaited<ReturnType<typeof admit>>;
   let reclaimResult: { ok: boolean; state?: string; message?: string } | undefined;
-  const reserveOld = () => {
-    old = admit(oldRunId);
+  const reserveOld = async () => {
+    old = await admit(oldRunId);
     if (blockedInspection || pendingDispatch) {
       void old.promise.then((result) => {
         if (result.ok) {
@@ -375,7 +377,7 @@ async function scenario(
         approvalsCancelledDuringInspection = cancelApprovals.mock.calls.some(
           ([runId]) => runId === name + "-running",
         );
-        reserveOld();
+        await reserveOld();
         if (moving) {
           await awaitGateBeforeSettlement(
             moving,
@@ -391,13 +393,13 @@ async function scenario(
     }
     if (pendingDispatch) {
       await setImmediate();
-      reserveOld();
+      await reserveOld();
       releaseProvision.resolve();
       active = await dispatching!;
     }
     await Promise.race([barrierEntered.promise, reclaim]);
     if (!beforeStop && !blockedInspection && !pendingDispatch) {
-      reserveOld();
+      await reserveOld();
     }
     releaseBarrier.resolve();
     reclaimResult = await reclaim;
@@ -412,7 +414,7 @@ async function scenario(
       scope: storePath,
       identities: [REQUEST.sessionKey, REQUEST.sessionId],
       run: async () => {
-        reserveOld();
+        await reserveOld();
         await stop();
       },
     });
@@ -438,7 +440,7 @@ async function scenario(
     clearAgentRunContext(oldRunId, oldResult.value.lifecycleGeneration);
   }
   const freshRunId = name + "-explicit-after-stop";
-  const fresh = admit(freshRunId);
+  const fresh = await admit(freshRunId);
   const freshResult = await fresh.promise;
   if (freshResult.ok) {
     freshResult.value.cleanupAdmittedRun();
@@ -572,7 +574,7 @@ it("an idempotent failed-cleanup result does not cancel work already on the loca
     loadSessionRuntime: async () =>
       ({
         managedWorktrees: { findLiveByOwner: async () => undefined },
-        resolveGatewaySessionStoreTargetWithStore: () => target,
+        resolveGatewaySessionStoreTargetWithStoreAsync: async () => target,
         resolveCanonicalSessionEntryFromStoreKeys: () => entry,
       }) as never,
     cancelSessionWork: cancel,
@@ -645,7 +647,7 @@ it.each(["missing", "local"] as const)(
     }
     const sessionRuntime = {
       managedWorktrees: { findLiveByOwner: async () => undefined },
-      resolveGatewaySessionStoreTargetWithStore: () => target,
+      resolveGatewaySessionStoreTargetWithStoreAsync: async () => target,
       resolveCanonicalSessionEntryFromStoreKeys: () => entry,
     };
     const context = createWorkerStopChatContext();
@@ -676,8 +678,9 @@ it.each(["missing", "local"] as const)(
       createGatewayWorkerDispatchAdmission(async () => sessionRuntime),
     );
     const runId = `queued-local-${state}`;
-    const admitted = await admitWorkerStopChat({ context, storePath, entry, ...REQUEST, runId })
-      .promise;
+    const admitted = await (
+      await admitWorkerStopChat({ context, storePath, entry, ...REQUEST, runId })
+    ).promise;
     if (!admitted.ok) {
       throw new Error("Active local chat fixture was not admitted");
     }

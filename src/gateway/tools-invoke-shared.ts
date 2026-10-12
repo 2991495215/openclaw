@@ -46,12 +46,10 @@ import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-clie
 import { SessionMutationAuthorizationChangedError } from "./session-mutation-authorization-error.js";
 import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
 import { authorizeSessionAgentRun } from "./session-sharing-policy.js";
-import {
-  authorizeResolvedSessionMutation,
-  resolveSessionSharingTarget,
-} from "./session-sharing.js";
+import { prepareSessionMutationFacts } from "./session-sharing-preparation.js";
+import { authorizeResolvedSessionMutation } from "./session-sharing.js";
 import { resolveStoredSessionKeyForAgentStore } from "./session-store-key.js";
-import { loadGatewaySessionEntryReadOnly } from "./session-utils.js";
+import { loadGatewaySessionEntryReadOnlyAsync } from "./session-utils.js";
 import { resolveGatewayScopedTools } from "./tool-resolution.js";
 import { isToolUploadRequest } from "./tool-upload-policy.js";
 import {
@@ -219,6 +217,14 @@ async function invokeGatewayToolWithSignal(
     preparedSession?: { entry: SessionEntry | undefined };
   },
 ): Promise<ToolsInvokeOutcome> {
+  using retainedScope = {
+    reads: [] as Array<{ release: () => void }>,
+    [Symbol.dispose]() {
+      for (const read of this.reads) {
+        read.release();
+      }
+    },
+  };
   let hasClientUploads = false;
   const assertCapturedInputCommitAllowed = () => {
     params.signal.throwIfAborted();
@@ -310,14 +316,24 @@ async function invokeGatewayToolWithSignal(
   });
   const sessionEntry = params.preparedSession
     ? params.preparedSession.entry
-    : loadGatewaySessionEntryReadOnly(sessionKey, { agentId: selectedAgentId }).entry;
+    : (await loadGatewaySessionEntryReadOnlyAsync(sessionKey, { agentId: selectedAgentId })).entry;
+  const primary = await prepareSessionMutationFacts({
+    cfg: params.cfg,
+    sessionKey,
+    agentId: selectedAgentId,
+    allowMissing: true,
+  });
+  retainedScope.reads.push(primary);
   const authorizePrimary = (cfg = params.cfg) =>
-    authorizeResolvedSessionMutation({
-      cfg,
-      client,
-      sessionKey,
-      agentId: selectedAgentId,
-    }) ??
+    authorizeResolvedSessionMutation(
+      {
+        cfg,
+        client,
+        sessionKey,
+        agentId: selectedAgentId,
+      },
+      primary.readCurrent(cfg).target,
+    ) ??
     // Standalone calls cannot create the sandbox provenance a normal session run records.
     (!sessionEntry
       ? authorizeSessionAgentRun({
@@ -327,7 +343,7 @@ async function invokeGatewayToolWithSignal(
         })
       : null);
   const primarySessionAuthorizationError = authorizePrimary();
-  if (params.preparedSession) {
+  {
     sessionChecks.push(() => {
       const error = authorizePrimary(getRuntimeConfig());
       if (error) {
@@ -351,22 +367,30 @@ async function invokeGatewayToolWithSignal(
       return failure(400, "invalid_request", targetAgent.error.message);
     }
     const targetAgentId = targetAgent?.agentId ?? nestedAgentId ?? selectedAgentId;
-    const existingTarget =
+    const nested =
       toolName === "sessions_send" && nestedSessionKey
-        ? resolveSessionSharingTarget({
+        ? await prepareSessionMutationFacts({
             cfg: params.cfg,
             sessionKey: nestedSessionKey,
             agentId: targetAgentId,
+            allowMissing: true,
           })
-        : null;
+        : undefined;
+    if (nested) {
+      retainedScope.reads.push(nested);
+    }
+    const existingTarget = nested?.readCurrent(params.cfg).target;
     const authorizeNested = (cfg = params.cfg) =>
       (toolName === "sessions_send" && nestedSessionKey
-        ? authorizeResolvedSessionMutation({
-            cfg,
-            client,
-            sessionKey: nestedSessionKey,
-            agentId: targetAgentId,
-          })
+        ? authorizeResolvedSessionMutation(
+            {
+              cfg,
+              client,
+              sessionKey: nestedSessionKey,
+              agentId: targetAgentId,
+            },
+            nested?.readCurrent(cfg).target ?? null,
+          )
         : null) ??
       (!existingTarget
         ? authorizeGatewaySessionCreation({
@@ -376,6 +400,14 @@ async function invokeGatewayToolWithSignal(
           })
         : null);
     const authorizationError = authorizeNested();
+    if (nested) {
+      sessionChecks.push(() => {
+        const error = authorizeNested(getRuntimeConfig());
+        if (error) {
+          throw new SessionMutationAuthorizationChangedError(error);
+        }
+      });
+    }
     const nestedSource =
       nestedSessionKey &&
       captureIncognitoSessionSource({ sessionKey: nestedSessionKey, agentId: targetAgentId });

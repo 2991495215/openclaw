@@ -16,7 +16,7 @@ import {
   canReceiveSessionEvent,
   createSessionListEntryFilter,
   resolveSessionSharingRole,
-  resolveSessionSharingTarget,
+  resolveSessionSharingTargetAsync,
   resolveSessionVisibility,
   SessionMutationAuthorizationChangedError,
 } from "./session-sharing.js";
@@ -122,7 +122,7 @@ describe("session sharing policy", () => {
         visibility: "shared",
         createdActor: { type: "human", source: "profile", id: ownerId },
       });
-      const row = resolveSessionSharingTarget({ cfg, ...scope });
+      const row = await resolveSessionSharingTargetAsync({ cfg, ...scope });
       if (!row) {
         throw new Error("expected persisted fixture session");
       }
@@ -152,7 +152,12 @@ describe("session sharing policy", () => {
       ).toBe(true);
       expect(mutation(member).error).toMatchObject({ code: "FORBIDDEN" });
       // The generic owner must not subtract an independently admitted capability.
-      expect(authorizeResolvedSessionMutation({ cfg, client: member, ...scope })).toBeNull();
+      expect(
+        authorizeResolvedSessionMutation(
+          { cfg, client: member, ...scope },
+          await resolveSessionSharingTargetAsync({ cfg, ...scope }),
+        ),
+      ).toBeNull();
       owner.connect.scopes = ["operator.sessions.write"];
       const owned = mutation(owner);
       expect(owned.error).toBeNull();
@@ -210,12 +215,15 @@ describe("session sharing policy", () => {
       );
 
       expect(
-        authorizeResolvedSessionMutation({
-          cfg,
-          client: writer,
-          sessionKey,
-          agentId: "main",
-        }),
+        authorizeResolvedSessionMutation(
+          {
+            cfg,
+            client: writer,
+            sessionKey,
+            agentId: "main",
+          },
+          await resolveSessionSharingTargetAsync({ cfg, sessionKey, agentId: "main" }),
+        ),
       ).toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("main") });
       const context = { getRuntimeConfig: () => cfg } as GatewayRequestContext;
       for (const [method, requestParams] of [
@@ -268,7 +276,7 @@ describe("session sharing policy", () => {
           createdActor: { type: "human", source: "profile", id: ownerId! },
         },
       );
-      const sharedTarget = resolveSessionSharingTarget({ cfg, sessionKey });
+      const sharedTarget = await resolveSessionSharingTargetAsync({ cfg, sessionKey });
       expect(sharedTarget).not.toBeNull();
       if (!sharedTarget) {
         throw new Error("expected persisted team session");
@@ -416,7 +424,7 @@ describe("session sharing policy", () => {
             createdActor: { type: "human", source: "profile", id: owner.id },
           },
         );
-        const restricted = resolveSessionSharingTarget({ cfg, sessionKey });
+        const restricted = await resolveSessionSharingTargetAsync({ cfg, sessionKey });
         expect(restricted).not.toBeNull();
         if (!restricted) {
           throw new Error("expected persisted restricted session");

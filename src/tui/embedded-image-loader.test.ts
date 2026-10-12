@@ -14,7 +14,7 @@ it("keeps a cancelled local image load pending until the thumbnail owner settles
     ok: true,
     agentId: "main",
   });
-  vi.spyOn(sessions, "loadGatewaySessionEntryReadOnly").mockReturnValue({
+  vi.spyOn(sessions, "loadGatewaySessionEntryReadOnlyAsync").mockResolvedValue({
     cfg: {},
     agentId: "main",
     canonicalKey: sessionKey,

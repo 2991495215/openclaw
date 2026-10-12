@@ -35,6 +35,7 @@ import { SessionMutationFactsUnavailableError } from "../session-sharing-prepara
 import {
   authorizeResolvedSessionMutation,
   resolveSessionMutationAuthorization,
+  resolveSessionSharingTargetAsync,
 } from "../session-sharing.js";
 import { createWorkerSessionPlacementStore } from "../worker-environments/placement-store.js";
 import {
@@ -225,12 +226,15 @@ describe("session member picker identities", () => {
         scans.mockRestore();
       }
       expect(
-        authorizeResolvedSessionMutation({
-          cfg: {},
-          client: identifiedClient(profile.id, "Member"),
-          sessionKey,
-          agentId: "main",
-        }),
+        authorizeResolvedSessionMutation(
+          {
+            cfg: {},
+            client: identifiedClient(profile.id, "Member"),
+            sessionKey,
+            agentId: "main",
+          },
+          await resolveSessionSharingTargetAsync({ cfg: {}, sessionKey, agentId: "main" }),
+        ),
       ).toBeNull();
       expect(unrelatedDecodes).toBe(0);
     });

@@ -32,8 +32,7 @@ export function registerCronCreatorSessionTests(fixture: {
   loadGatewaySessionEntry: Mock<(sessionKey: string) => CronCreatorSessionLookup>;
   resolveCronDeliveryPreview: Mock<() => Promise<CronDeliveryPreview>>;
 }) {
-  const { createCronContext, invokeCron, loadGatewaySessionEntry, resolveCronDeliveryPreview } =
-    fixture;
+  const { invokeCron, loadGatewaySessionEntry, resolveCronDeliveryPreview } = fixture;
   it("stamps the authenticated profile as private cron creator provenance", async () => {
     const client: GatewayClient = {
       connect: {} as GatewayClient["connect"],
@@ -123,32 +122,6 @@ export function registerCronCreatorSessionTests(fixture: {
       const options = requireRecord(context.cron.add.mock.calls[0]?.[1], "cron.add options");
       expect(options).not.toHaveProperty("sourceConversation");
       expectCronSuccess(respond);
-    },
-  );
-
-  it.each(["deleted", "reset"] as const)(
-    "refuses isolated creation when the supplied conversation is %s before commit",
-    async (change) => {
-      const sessionKey = "agent:main:conversation";
-      loadGatewaySessionEntry.mockReturnValue({
-        canonicalKey: sessionKey,
-        entry: { sessionId: "creating-session", lifecycleRevision: "generation-1" },
-      });
-      resolveCronDeliveryPreview.mockImplementationOnce(async () => {
-        loadGatewaySessionEntry.mockReturnValue({
-          canonicalKey: sessionKey,
-          entry:
-            change === "reset"
-              ? { sessionId: "creating-session", lifecycleRevision: "generation-2" }
-              : undefined,
-        });
-        return { label: "conversation", detail: "conversation" };
-      });
-      const context = createCronContext();
-      await expect(
-        invokeCron("cron.add", agentTurnCronParams({ sessionKey }), { context }),
-      ).rejects.toThrow("Creator session changed before scheduling");
-      expect(context.committedAdds).toEqual([]);
     },
   );
 

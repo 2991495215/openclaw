@@ -58,7 +58,7 @@ function retainIncognitoScopedRead(
 }
 
 /** Person-owned reads retain visibility, row generation and the physical store through I/O. */
-export function retainSessionScopedRead(
+export async function retainSessionScopedRead(
   options: GatewayRequestHandlerOptions,
   sessionKey: string,
   agentId: string,
@@ -88,7 +88,7 @@ export function retainSessionScopedRead(
         cfg,
         Boolean(readOptions.allowMetadataChanges),
       )
-    : retainGatewaySessionEntryReadOnly(
+    : await retainGatewaySessionEntryReadOnly(
         sessionKey,
         agentId,
         readOptions.allowMetadataChanges

@@ -14,7 +14,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import {
   resolveCanonicalSessionEntryFromStoreKeys,
-  resolveGatewaySessionStoreTargetWithStore,
+  resolveGatewaySessionStoreTargetWithStoreAsync,
 } from "../session-utils.js";
 import {
   resolveWorkerPlacementSessionRuntimeCapabilities,
@@ -106,14 +106,10 @@ export function resolveSessionWorkerPlacementPatchError(
   ) {
     return undefined;
   }
-  const { executionMode } =
-    prepared?.runtime ??
-    resolveWorkerPlacementSessionRuntimeCapabilities({
-      cfg: params.cfg,
-      entry: params.entry,
-      agentId: params.agentId,
-      sessionKey: params.sessionKey,
-    });
+  if (!prepared?.runtime) {
+    return "Session runtime changed; retry the placement update.";
+  }
+  const { executionMode } = prepared.runtime;
   if (executionMode === placement.executionMode) {
     return undefined;
   }
@@ -135,14 +131,14 @@ export function requireSessionKey(key: unknown, respond: RespondFn): string | nu
   return normalized;
 }
 
-export function loadAccessorSessionEntryForGatewayTarget(params: {
+export async function loadAccessorSessionEntryForGatewayTarget(params: {
   key: string;
   cfg: OpenClawConfig;
   agentId?: string;
   clone?: boolean;
   projection?: SessionEntryReadScope["projection"];
 }) {
-  const target = resolveGatewaySessionStoreTargetWithStore({
+  const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
     cfg: params.cfg,
     key: params.key,
     exactRead: true,

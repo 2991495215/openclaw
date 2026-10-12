@@ -14,10 +14,6 @@ import {
   readGitHubPublicationSessionLifecycleInWorker,
 } from "../state/github-publication-session-lifecycles.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
-import {
-  getSessionRepositoryWorkspaceStore,
-  type PreparedRepositoryWorkspace,
-} from "../state/session-repository-workspaces.js";
 import { readUserGitHubConnection } from "../state/user-github-connections.js";
 import { requestCurrentPersonalGitHubRefresh } from "./github-oauth-lifecycle.js";
 import { personalGitHubStatus, type PersonalGitHubAction } from "./github-personal-oauth.js";
@@ -51,7 +47,10 @@ import {
 } from "./github-publication-store-async.js";
 import { prepareGitHubPublicationTarget } from "./github-publication-target.js";
 import { terminalRepositoryGitHubPublication } from "./github-repository-publication-store.js";
-import { resolveReceiptOwner } from "./github-repository-publication-workspace.js";
+import {
+  prepareReceiptOwner,
+  resolveReceiptOwner,
+} from "./github-repository-publication-workspace.js";
 import type { RepositoryGitHubPublicationStatusRow } from "./github-repository-publication.kernel.js";
 import type { WorkerSessionPlacementStore } from "./worker-environments/placement-store.js";
 
@@ -70,7 +69,7 @@ type PersonalPublicationWorkspace = { assertCurrent: () => void; assertCustody: 
 export type PreparedRepositoryPublicationStatus = {
   requestId: string;
   workspaceId: string;
-  repository: PreparedRepositoryWorkspace;
+  repository: Awaited<ReturnType<typeof prepareReceiptOwner>>;
 };
 
 export async function preparePersonalRepositoryPublicationStatus(requestId: string) {
@@ -79,7 +78,7 @@ export async function preparePersonalRepositoryPublicationStatus(requestId: stri
     ? {
         requestId: row.request_id,
         workspaceId: row.workspace_id,
-        repository: await getSessionRepositoryWorkspaceStore().prepare(row.workspace_id),
+        repository: await prepareReceiptOwner(row),
       }
     : undefined;
 }

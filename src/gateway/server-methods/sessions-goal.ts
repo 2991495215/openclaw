@@ -30,11 +30,15 @@ import {
   captureIncognitoSessionMutationFacts,
   captureSessionActorMutationFacts,
 } from "../session-sharing-incognito.js";
-import { captureSessionMutationRouting } from "../session-sharing-preparation.js";
+import type { SessionSharingTarget } from "../session-sharing-policy.js";
+import {
+  captureSessionMutationRouting,
+  prepareSessionMutationFacts,
+} from "../session-sharing-preparation.js";
 import { prepareSessionSharingSource } from "../session-sharing-source.js";
 import {
   resolveSessionMutationAuthorization,
-  resolveSessionSharingTarget,
+  resolveSessionSharingTargetAsync,
   SessionMutationAuthorizationChangedError,
 } from "../session-sharing.js";
 import { gatewayClientSessionCreator } from "./gateway-client-identity.js";
@@ -49,6 +53,7 @@ async function handleSessionGoalMutation(
 ): Promise<void> {
   const { client, context, respond } = options;
   const method = request.action === "clear" ? "sessions.goal.clear" : "sessions.goal.update";
+  let durableFacts: Awaited<ReturnType<typeof prepareSessionMutationFacts>> | undefined;
   try {
     const authorization = options.sessionMutationAuthorization
       ? { authorization: options.sessionMutationAuthorization, error: null }
@@ -68,7 +73,7 @@ async function handleSessionGoalMutation(
       respond(false, undefined, requestedAgent.error);
       return;
     }
-    const target = resolveSessionSharingTarget({
+    const target = await resolveSessionSharingTargetAsync({
       cfg,
       sessionKey: request.sessionKey,
       agentId: requestedAgent.agentId,
@@ -95,8 +100,15 @@ async function handleSessionGoalMutation(
     const actorFacts = memory
       ? captureSessionActorMutationFacts(memory, target.storeKey, false)
       : binding && captureIncognitoSessionMutationFacts(binding, target.storeKey, false);
+    if (!actorFacts) {
+      durableFacts = await prepareSessionMutationFacts({
+        cfg,
+        sessionKey: request.sessionKey,
+        agentId: requestedAgent.agentId,
+      });
+    }
     const assertRouting = captureSessionMutationRouting(cfg, sessionChanged, [request]);
-    const assertTarget = (current: ReturnType<typeof resolveSessionSharingTarget>) => {
+    const assertTarget = (current: SessionSharingTarget | null) => {
       // Reset can keep the same session ID. Fence the lifecycle and resolved store as well.
       if (
         !current ||
@@ -132,11 +144,7 @@ async function handleSessionGoalMutation(
       assertTarget(
         actorFacts
           ? actorFacts.readCurrent().target
-          : resolveSessionSharingTarget({
-              cfg: context.getRuntimeConfig(),
-              sessionKey: request.sessionKey,
-              agentId: requestedAgent.agentId,
-            }),
+          : durableFacts!.readCurrent(context.getRuntimeConfig()).target,
       );
     };
     if (!memory) {
@@ -288,6 +296,8 @@ async function handleSessionGoalMutation(
         errorShape(ErrorCodes.UNAVAILABLE, "Unable to update the Goal; retry the request."),
       );
     }
+  } finally {
+    durableFacts?.release();
   }
 }
 

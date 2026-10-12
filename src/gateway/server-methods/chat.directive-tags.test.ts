@@ -268,8 +268,8 @@ vi.mock("../session-utils.js", async () => {
     await vi.importActual<typeof import("../session-utils.js")>("../session-utils.js");
   return {
     ...original,
-    loadSessionEntry: loadFixtureSessionEntry,
-    loadGatewaySessionEntryReadOnly: loadFixtureSessionEntry,
+    loadSessionEntryAsync: loadFixtureSessionEntry,
+    loadGatewaySessionEntryReadOnlyAsync: loadFixtureSessionEntry,
   };
 });
 

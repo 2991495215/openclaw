@@ -31,7 +31,7 @@ const runtime = vi.hoisted(() => ({
   resolveSessionStorePathCore: vi.fn(() => "/tmp/openclaw-sessions.json"),
   resolveSessionKeyFromResolveParams: vi.fn(),
   resolveSessionAgentId: vi.fn(() => "main"),
-  loadSessionEntry: vi.fn(() => ({
+  loadSessionEntryAsync: vi.fn(async () => ({
     cfg: {},
     storePath: "/tmp/openclaw-sessions.json",
     entry: { sessionId: "sess-main" },
@@ -42,7 +42,7 @@ const runtime = vi.hoisted(() => ({
     messages: [] as unknown[],
     pagination: { offset: 0, totalMessages: 0, rawPageMessages: 0 },
   })),
-  resolveTranscriptSessionKeyBySessionId: vi.fn(() => "agent:main:main"),
+  resolveSessionKeyBySessionIdAsync: vi.fn(async () => "agent:main:main"),
   resolveEffectiveChatHistoryMaxChars: vi.fn(() => 100_000),
   getMaxChatHistoryMessagesBytes: vi.fn(() => 6 * 1024 * 1024),
   listProjectedSessions: vi.fn(
@@ -84,8 +84,8 @@ describe("embedded gateway stub", () => {
     runtime.getRuntimeConfig.mockClear();
     runtime.resolveSessionKeyFromResolveParams.mockReset();
     runtime.readChatHistoryPage.mockClear();
-    runtime.resolveTranscriptSessionKeyBySessionId.mockClear();
-    runtime.loadSessionEntry.mockClear();
+    runtime.resolveSessionKeyBySessionIdAsync.mockClear();
+    runtime.loadSessionEntryAsync.mockClear();
     runtime.resolveSessionAgentId.mockClear();
     runtime.resolveSessionStoreKey.mockClear();
     runtime.resolveStoredSessionKeyForAgentStore.mockClear();
@@ -346,7 +346,7 @@ describe("embedded gateway stub", () => {
       params: { sessionKey, ...(agentId ? { agentId } : {}) },
     });
 
-    expect(runtime.loadSessionEntry).toHaveBeenCalledWith(sessionKey, { agentId: "work" });
+    expect(runtime.loadSessionEntryAsync).toHaveBeenCalledWith(sessionKey, { agentId: "work" });
     expect(runtime.resolveSessionAgentId).toHaveBeenCalledWith({
       sessionKey,
       config: {},

@@ -40,7 +40,7 @@ import { configureRestartSessionEventMocks } from "./server-restart-sentinel.tes
 import { scheduleRestartSentinelWakeAfterReady } from "./server-startup-restart-sentinel.js";
 
 const mocks = vi.hoisted(() => ({
-  loadSessionEntry: vi.fn<typeof import("./session-utils.js").loadSessionEntry>(),
+  loadSessionEntryAsync: vi.fn<typeof import("./session-utils.js").loadSessionEntryAsync>(),
   resolveSessionTarget:
     vi.fn<
       typeof import("./session-utils-store-worker.js").resolveGatewaySessionStoreTargetInWorker
@@ -75,7 +75,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./session-utils.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./session-utils.js")>()),
-  loadSessionEntry: mocks.loadSessionEntry,
+  loadSessionEntryAsync: mocks.loadSessionEntryAsync,
 }));
 // mock-isolation: Inspect the supplied state context without loading worker store discovery.
 vi.mock("./session-utils-store-worker.js", () => ({
@@ -111,7 +111,7 @@ vi.mock("../auto-reply/reply/dispatch-from-config.runtime-loaders.js", () => ({
   loadGetReplyFromConfigRuntime: async () => ({ prewarmConfigDrivenReplyRuntime: async () => {} }),
 }));
 const { startGatewaySidecars } = await import("./server-startup-post-attach.js");
-const { loadSessionEntry: realLoadSessionEntry } =
+const { loadSessionEntryAsync: realLoadSessionEntry } =
   await vi.importActual<typeof import("./session-utils.js")>("./session-utils.js");
 const sidecars: Array<{ stop: () => void | Promise<void> }> = [];
 const gatewayLocks: Array<{ release: () => Promise<void> }> = [];
@@ -152,7 +152,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   setRuntimeConfigSnapshot({ commands: { ownerAllowFrom: ["matrix:!operator:example"] } });
   configureRestartSessionEventMocks(mocks, "synthetic-session");
-  mocks.loadSessionEntry.mockReturnValue({
+  mocks.loadSessionEntryAsync.mockResolvedValue({
     cfg: { commands: { ownerAllowFrom: ["matrix:!operator:example"] } },
     agentId: "main",
     entry: { sessionId: "synthetic-session", updatedAt: 1 },
@@ -540,7 +540,7 @@ it.each(["verifying", "terminal-before-marker", "replaced-handoff", "replaced-ki
     const context = captureDeliveryQueueStateContext();
     const cfg = { commands: { ownerAllowFrom: ["matrix:!operator:example"] } };
     setRuntimeConfigSnapshot(cfg);
-    mocks.loadSessionEntry.mockImplementation(realLoadSessionEntry);
+    mocks.loadSessionEntryAsync.mockImplementation(realLoadSessionEntry);
     const sessionKey = "agent:main:main";
     for (const [env, sessionId, to] of [
       [originalEnv, "original-session", "!operator:example"],
@@ -639,7 +639,7 @@ it.each(["verifying", "terminal-before-marker", "replaced-handoff", "replaced-ki
       undefined,
       expect.objectContaining({ stateDir: originalRoot }),
     );
-    expect(mocks.loadSessionEntry.mock.results.at(-1)?.value.entry.sessionId).toBe(
+    expect((await mocks.loadSessionEntryAsync.mock.results.at(-1)?.value)?.entry?.sessionId).toBe(
       "original-session",
     );
     expect(await readRestartSentinel(originalEnv)).toBeNull();

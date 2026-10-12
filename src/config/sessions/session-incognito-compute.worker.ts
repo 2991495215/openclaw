@@ -239,7 +239,6 @@ export function createIncognitoComputeWorker(
                 held?.claimId !== undefined &&
                 deletePreparedSessionTranscriptProjectionChunkInTransaction(database.db, {
                   sessionId: input.sessionId,
-                  claimId: held.claimId,
                   maxRowsPerTable: 512,
                 }).hasMore;
               admit("commit", keys);

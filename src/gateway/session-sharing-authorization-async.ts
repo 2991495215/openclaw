@@ -1,12 +1,28 @@
-import { resolveRequestedSessionAgentInput } from "./session-request-agent.js";
-import { withSessionSharingTarget } from "./session-sharing-policy.js";
-import { captureSessionMutationRouting } from "./session-sharing-preparation.js";
+import { isAgentRunStartMethod } from "./session-method-policy.js";
+import {
+  resolveRequestedSessionAgentId,
+  resolveRequestedSessionAgentInput,
+} from "./session-request-agent.js";
+import { prepareSessionMutationAuthorizationRequest } from "./session-sharing-authorization.js";
+import {
+  withSessionSharingTarget,
+  type PreparedSessionMutationFacts,
+} from "./session-sharing-policy.js";
+import {
+  captureSessionMutationRouting,
+  prepareSessionMutationFacts,
+  type SessionFactsRead,
+} from "./session-sharing-preparation.js";
 import { prepareSessionSharingProfiles } from "./session-sharing-read.js";
 import {
   resolveChatSendAuthorizationParams,
   resolveDirectSessionTargets,
+  resolveSessionMutationTargets,
+  resolveTalkSessionTargetInput,
 } from "./session-sharing-target-input.js";
-import { resolveSessionMutationAuthorization } from "./session-sharing.js";
+import { isGatewayAdmin, resolveSessionMutationAuthorization } from "./session-sharing.js";
+import { resolveSessionStoreIdentity } from "./session-store-key.js";
+import { prepareTalkSessionTarget } from "./talk/session-target.js";
 
 /** Read participation in the worker while retaining its owner through authorization. */
 export async function resolveSessionMutationAuthorizationAsync(
@@ -26,16 +42,118 @@ export async function resolveSessionMutationAuthorizationAsync(
     }
     params = { ...params, requestParams: normalized.value };
   }
+  const preparation = prepareSessionMutationAuthorizationRequest(params);
+  if (!preparation.ok) {
+    return { error: preparation.error };
+  }
+  if (
+    isGatewayAdmin(params.client) &&
+    !isAgentRunStartMethod(params.method, params.requestParams) &&
+    !preparation.requiresCommunicationAuthority &&
+    params.method !== "progressCard.put" &&
+    params.method !== "progressCard.refresh" &&
+    !params.expectedTarget
+  ) {
+    return resolveSessionMutationAuthorization(params);
+  }
+  const cfg = params.context.getRuntimeConfig();
+  const talkInput = resolveTalkSessionTargetInput(
+    params.method,
+    params.requestParams,
+    params.client?.connId,
+  );
+  const preparedTalkSessionTarget =
+    talkInput?.kind === "request"
+      ? await prepareTalkSessionTarget(cfg, talkInput.sessionKey)
+      : talkInput?.target;
+  params.assertInvocationCurrent?.();
   const targets = resolveDirectSessionTargets(params.method, params.requestParams);
   if (params.method !== "chat.send" || targets.length !== 1) {
-    return resolveSessionMutationAuthorization(params);
+    const mutationTargets = preparedTalkSessionTarget
+      ? [
+          {
+            sessionKey: preparedTalkSessionTarget.canonicalKey,
+            agentId: preparedTalkSessionTarget.agentId,
+          },
+        ]
+      : (resolveSessionMutationTargets({
+          method: params.method,
+          requestParams: params.requestParams,
+          context: params.context,
+        }) ?? targets);
+    const reads = new Map<string, SessionFactsRead<PreparedSessionMutationFacts>>();
+    const identity = (target: { sessionKey: string; agentId?: string }, current = cfg) => {
+      const selected = resolveSessionStoreIdentity({ cfg: current, ...target });
+      return JSON.stringify([selected.agentId, selected.canonicalKey]);
+    };
+    let active = true;
+    const release = () => {
+      active = false;
+      for (const read of reads.values()) {
+        read.release();
+      }
+      reads.clear();
+    };
+    try {
+      for (const target of mutationTargets) {
+        const agent = resolveRequestedSessionAgentId(cfg, target.sessionKey, target.agentId);
+        if (!agent.ok) {
+          release();
+          return { error: agent.error };
+        }
+        const key = identity(target);
+        if (!reads.has(key)) {
+          reads.set(
+            key,
+            await prepareSessionMutationFacts({
+              cfg,
+              ...target,
+              agentId: agent.agentId,
+              allowMissing: true,
+            }),
+          );
+          params.assertInvocationCurrent?.();
+        }
+      }
+      const result = resolveSessionMutationAuthorization({
+        ...params,
+        preparedTalkSessionTarget,
+        preparedTargetRead: (target, current) => {
+          if (!active) {
+            throw new Error("Session authorization has been released");
+          }
+          const read = reads.get(identity(target, current));
+          if (!read) {
+            return undefined;
+          }
+          const facts = read.readCurrent(current);
+          return {
+            target: facts.target,
+            storageTarget: read.storageTarget,
+            members: [...facts.membership],
+          };
+        },
+      });
+      if (!result.authorization || result.error) {
+        release();
+        return result;
+      }
+      const previousRelease = result.authorization.release;
+      result.authorization.release = () => {
+        previousRelease?.();
+        release();
+      };
+      return result;
+    } catch (error) {
+      release();
+      throw error;
+    }
   }
   const target = targets[0]!;
   const input = resolveRequestedSessionAgentInput(target.sessionKey, target.agentId);
   if (!input.ok) {
     return { error: input.error };
   }
-  const cfg = params.context.getRuntimeConfig();
   const assertRoutingCurrent = captureSessionMutationRouting(cfg, undefined, [target]);
   const preparedProfiles = await prepareSessionSharingProfiles(params.client);
   params.assertInvocationCurrent?.();

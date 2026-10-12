@@ -66,6 +66,7 @@ it.each([false, true])(
         sessionKey,
         canonicalKey: sessionKey,
         storePath: path.join(state.sessionsDir(), "sessions.json"),
+        assertCurrent: () => {},
       },
       getVoiceSessionId: () => "voice-session",
       initialItems: [],

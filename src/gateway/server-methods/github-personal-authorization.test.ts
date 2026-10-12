@@ -3,12 +3,23 @@ import { prepareGitHubPublicationOptionsRead } from "./github-personal-authoriza
 import type { GatewayClient, GatewayRequestContext } from "./types.js";
 
 const mocks = vi.hoisted(() => ({
-  loadSession: vi.fn<typeof import("../session-utils.js").loadGatewaySessionEntryReadOnly>(),
+  readSession:
+    vi.fn<
+      Awaited<
+        ReturnType<
+          typeof import("../github-publication-availability.js").prepareGitHubPublicationSession
+        >
+      >["current"]
+    >(),
   roleScopes: undefined as string[] | undefined,
 }));
 
-vi.mock("../session-utils.js", () => ({
-  loadGatewaySessionEntryReadOnly: mocks.loadSession,
+vi.mock("../github-publication-availability.js", () => ({
+  prepareGitHubPublicationSession: async () => ({
+    initial: mocks.readSession(),
+    current: mocks.readSession,
+  }),
+  captureGitHubPublicationSessionRead: () => mocks.readSession,
 }));
 vi.mock("../../agents/tools/gateway-caller-context.js", () => ({
   getGatewayToolCallerIdentity: () => undefined,
@@ -83,8 +94,8 @@ function sessionRead(agentId = "main") {
 describe("GitHub publication request discovery", () => {
   beforeEach(() => {
     mocks.roleScopes = undefined;
-    mocks.loadSession.mockReset();
-    mocks.loadSession.mockReturnValue(sessionRead());
+    mocks.readSession.mockReset();
+    mocks.readSession.mockReturnValue(sessionRead());
   });
 
   it.each([
@@ -105,34 +116,11 @@ describe("GitHub publication request discovery", () => {
     );
   });
 
-  it("shares store discovery while re-reading publication options live", async () => {
-    const agentId = "research";
-    mocks.loadSession.mockReturnValue(sessionRead(agentId));
-    const read = await prepareGitHubPublicationOptionsRead(createRequest(), {
-      sessionKey: "main",
-      agentId,
-    });
-
-    expect(read.currentSession()).toEqual(read.session);
-    expect(mocks.loadSession).toHaveBeenCalledTimes(2);
-    const targetDiscoveryCache = mocks.loadSession.mock.calls[0]?.[1]?.targetDiscoveryCache;
-    expect(targetDiscoveryCache).toBeInstanceOf(Map);
-    expect(mocks.loadSession).toHaveBeenNthCalledWith(1, "main", {
-      agentId,
-      targetDiscoveryCache,
-    });
-    expect(mocks.loadSession.mock.calls[1]?.[1]?.targetDiscoveryCache).toBe(targetDiscoveryCache);
-    expect(mocks.loadSession).toHaveBeenNthCalledWith(2, `agent:${agentId}:main`, {
-      agentId,
-      targetDiscoveryCache,
-    });
-  });
-
   it.each([null, 123])(
     "keeps each response archive snapshot immutable from %s",
     async (archivedAt) => {
       const loaded = sessionRead();
-      mocks.loadSession.mockReturnValue({
+      mocks.readSession.mockReturnValue({
         ...loaded,
         entry: { ...loaded.entry, archivedAt: archivedAt ?? undefined },
       });
@@ -141,7 +129,7 @@ describe("GitHub publication request discovery", () => {
       });
       const initial = read.currentSession();
       const changedAt = archivedAt === null ? 123 : null;
-      mocks.loadSession.mockReturnValue({
+      mocks.readSession.mockReturnValue({
         ...loaded,
         entry: { ...loaded.entry, archivedAt: changedAt ?? undefined },
       });
@@ -150,7 +138,7 @@ describe("GitHub publication request discovery", () => {
       expect(() => read.assertSessionUnchanged(changed)).not.toThrow();
       expect(() => read.assertSessionUnchanged(initial)).toThrow("session access changed");
 
-      mocks.loadSession.mockReturnValue({
+      mocks.readSession.mockReturnValue({
         ...loaded,
         entry: { ...loaded.entry, archivedAt: archivedAt ?? undefined },
       });

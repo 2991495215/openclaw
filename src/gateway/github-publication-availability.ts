@@ -15,6 +15,7 @@ import { managedWorktrees } from "../agents/worktrees/service.js";
 import type { ManagedWorktreeRecord } from "../agents/worktrees/types.js";
 import { getRuntimeConfig } from "../config/config.js";
 import { getSessionActorStorageBinding } from "../config/sessions/session-actor-storage-binding.js";
+import { readRetainedSessionEntryFacts } from "../config/sessions/session-entry-read-facts.js";
 import { isNativeSessionEntryRead } from "../config/sessions/session-entry-read-request.js";
 import {
   readSessionEntriesFromStoreInWorker,
@@ -22,7 +23,9 @@ import {
 } from "../config/sessions/session-entry-read-runtime.js";
 import { captureSessionEntryMetadataRead } from "../config/sessions/session-entry-source-authority.js";
 import { captureIncognitoSessionBinding } from "../config/sessions/session-incognito-binding.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { LruCache } from "../infra/lru-cache.js";
+import { isIncognitoSessionKey } from "../routing/session-key.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { readGitHubPublicationSessionLifecycle } from "../state/github-publication-session-lifecycles.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
@@ -41,7 +44,7 @@ import {
 import { parseGitHubRemoteUrl } from "./github-remote.js";
 import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
-import { loadGatewaySessionEntryReadOnly } from "./session-utils.js";
+import { loadIncognitoGatewaySessionEntryReadOnly } from "./session-utils.js";
 
 // Discovery only: publication resolves Git afresh. Registry/lifecycle guards retire facts early.
 const worktreeTargets = new LruCache<{ expiresAt: number; assertCurrent: () => void }>(256);
@@ -124,14 +127,14 @@ export type PublicationSessionIdentity = {
 };
 type ExpectedWorktree = { worktreeId: string; repositoryFingerprint: string; branch: string };
 type PublicationSessionRead = Pick<
-  ReturnType<typeof loadGatewaySessionEntryReadOnly>,
+  Awaited<ReturnType<typeof loadGatewaySessionEntryReadOnlyInWorker>>,
   "agentId" | "canonicalKey" | "storePath" | "entry"
 >;
 
-/** Publication uses only current identity, archive, and workspace metadata. */
+/** Process-owned sessions retain their existing synchronous metadata owner. */
 export function readGitHubPublicationSession(
   sessionKey: string,
-  options: Parameters<typeof loadGatewaySessionEntryReadOnly>[1] = {},
+  options: { agentId?: string } = {},
 ): PublicationSessionRead {
   const memory = getSessionActorStorageBinding({ sessionKey, agentId: options?.agentId });
   if (memory) {
@@ -144,7 +147,10 @@ export function readGitHubPublicationSession(
   }
   const binding = captureIncognitoSessionBinding({ sessionKey, agentId: options?.agentId });
   if (!binding) {
-    return loadGatewaySessionEntryReadOnly(sessionKey, options);
+    if (isIncognitoSessionKey(sessionKey)) {
+      return loadIncognitoGatewaySessionEntryReadOnly(sessionKey, options);
+    }
+    throw new GitHubPublicationSessionChangedError();
   }
   const { actor } = binding;
   const source = captureSessionEntryMetadataRead({
@@ -161,9 +167,60 @@ export function readGitHubPublicationSession(
   };
 }
 
-function readPublicationSessionOwner(params: PublicationSessionIdentity, allowArchived = false) {
-  const loaded = readGitHubPublicationSession(params.sessionKey, { agentId: params.agentId });
-  return requirePublicationSessionOwner(params, loaded, allowArchived);
+/** Effect guards consume the existing actor replica; eviction requires fresh preparation. */
+export function captureGitHubPublicationSessionRead(
+  loaded: PublicationSessionRead & {
+    readSource?: { agentId: string; path: string };
+    legacyKey?: string;
+  },
+): () => PublicationSessionRead {
+  const scope = { sessionKey: loaded.canonicalKey, agentId: loaded.agentId };
+  if (
+    getSessionActorStorageBinding(scope) ||
+    captureIncognitoSessionBinding(scope) ||
+    isIncognitoSessionKey(scope.sessionKey)
+  ) {
+    return () => readGitHubPublicationSession(scope.sessionKey, scope);
+  }
+  const database = loaded.readSource ?? { agentId: loaded.agentId, path: loaded.storePath };
+  const sessionKey = loaded.legacyKey ?? loaded.canonicalKey;
+  return () => {
+    const facts = readRetainedSessionEntryFacts(database, {
+      sessionKeys: [sessionKey],
+      projection: "exact",
+      snapshotFields: [],
+    });
+    if (!facts) {
+      throw new GitHubPublicationSessionChangedError();
+    }
+    return {
+      agentId: loaded.agentId,
+      canonicalKey: loaded.canonicalKey,
+      storePath: loaded.storePath,
+      entry: facts.entries.find((row) => row.sessionKey === sessionKey)?.entry,
+    };
+  };
+}
+
+export async function prepareGitHubPublicationSession(
+  sessionKey: string,
+  options: { agentId?: string; cfg?: OpenClawConfig; assertCurrent?: () => void } = {},
+) {
+  const scope = { sessionKey, agentId: options.agentId };
+  const initial =
+    getSessionActorStorageBinding(scope) ||
+    captureIncognitoSessionBinding(scope) ||
+    isIncognitoSessionKey(sessionKey)
+      ? readGitHubPublicationSession(sessionKey, options)
+      : await loadGatewaySessionEntryReadOnlyInWorker({
+          cfg: options.cfg ?? getRuntimeConfig(),
+          key: sessionKey,
+          agentId: options.agentId,
+          projection: [],
+          assertActive: options.assertCurrent,
+        });
+  options.assertCurrent?.();
+  return { initial, current: captureGitHubPublicationSessionRead(initial) };
 }
 
 function requirePublicationSessionOwner(
@@ -186,7 +243,7 @@ function requirePublicationSessionOwner(
 }
 
 function requirePublicationWorktreeOwner(
-  loaded: ReturnType<typeof readPublicationSessionOwner>,
+  loaded: ReturnType<typeof requirePublicationSessionOwner>,
   worktree: ManagedWorktreeRecord | undefined,
   expected?: ExpectedWorktree,
 ) {
@@ -224,8 +281,9 @@ function rejectChangedPublicationWorktree(error: unknown): never {
 }
 
 function preparePublicationWorktreeRead(
-  loaded: ReturnType<typeof readPublicationSessionOwner>,
+  loaded: ReturnType<typeof requirePublicationSessionOwner>,
   context: OpenClawStateWorkerContext,
+  readCurrent: () => PublicationSessionRead,
   expected?: ExpectedWorktree,
 ) {
   const identity = {
@@ -249,13 +307,13 @@ function preparePublicationWorktreeRead(
     if (!worktree) {
       throw new GitHubPublicationSessionChangedError();
     }
-    const current = readPublicationSessionOwner(identity);
+    const current = requirePublicationSessionOwner(identity, readCurrent());
     if (current.entry.repositoryWorkspaceId !== workspaceId) {
       throw new GitHubPublicationSessionChangedError();
     }
     const assertCurrent = () => {
       context.admission.assertCurrent();
-      const latest = readPublicationSessionOwner(identity);
+      const latest = requirePublicationSessionOwner(identity, readCurrent());
       if (latest.entry.repositoryWorkspaceId !== workspaceId) {
         throw new GitHubPublicationSessionChangedError();
       }
@@ -270,13 +328,18 @@ function preparePublicationWorktreeRead(
   };
 }
 
-export function readGitHubPublicationWorktreeOwner(
+export async function readGitHubPublicationWorktreeOwner(
   params: PublicationSessionIdentity & { expected?: ExpectedWorktree },
 ) {
   const context = captureOpenClawStateWorkerContext();
+  const session = await prepareGitHubPublicationSession(params.sessionKey, {
+    agentId: params.agentId,
+    assertCurrent: () => context.admission.assertCurrent(),
+  });
   return preparePublicationWorktreeRead(
-    readPublicationSessionOwner(params),
+    requirePublicationSessionOwner(params, session.initial),
     context,
+    session.current,
     params.expected,
   )();
 }
@@ -284,8 +347,9 @@ export function readGitHubPublicationWorktreeOwner(
 function resolveGitHubPublicationWorkspaceOwner(
   params: PublicationSessionIdentity,
   prepared: PreparedRepositoryWorkspace | undefined,
+  readCurrent: () => PublicationSessionRead,
 ) {
-  const loaded = readPublicationSessionOwner(params);
+  const loaded = requirePublicationSessionOwner(params, readCurrent());
   const workspaceId = loaded.entry.repositoryWorkspaceId;
   if (!workspaceId) {
     throw new GitHubPublicationSessionChangedError();
@@ -313,7 +377,7 @@ export async function prepareGitHubPublicationWorkspaceOwner(
   };
   assertCurrent();
   const target = options.sessionTarget ? { ...options.sessionTarget } : undefined;
-  let snapshot: PublicationSessionRead;
+  let snapshot: Parameters<typeof captureGitHubPublicationSessionRead>[0];
   const actorScope = { ...params, storePath: target?.storePath };
   const memory = getSessionActorStorageBinding(actorScope);
   const binding = memory ? undefined : captureIncognitoSessionBinding(actorScope);
@@ -362,23 +426,27 @@ export async function prepareGitHubPublicationWorkspaceOwner(
       storePath: target.storePath,
       projection: [],
     };
-    const entry = isNativeSessionEntryRead(scope, target.agentId)
-      ? await readSessionEntryReadOnlyInWorker(
-          { ...scope, readConsistency: "latest" },
-          assertCurrent,
-        )
-      : (
-          await readSessionEntriesFromStoreInWorker(
-            {
-              agentId: target.agentId,
-              storePath: target.storePath,
-              sessionKeys: [target.sessionKey],
-              projection: "exact",
-              snapshotFields: [],
-            },
-            assertCurrent,
-          )
-        ).entries.find(({ sessionKey }) => sessionKey === target.sessionKey)?.entry;
+    let entry: PublicationSessionRead["entry"];
+    let readSource: { agentId: string; path: string } | undefined;
+    if (isNativeSessionEntryRead(scope, target.agentId)) {
+      entry = await readSessionEntryReadOnlyInWorker(
+        { ...scope, readConsistency: "latest" },
+        assertCurrent,
+      );
+    } else {
+      const result = await readSessionEntriesFromStoreInWorker(
+        {
+          agentId: target.agentId,
+          storePath: target.storePath,
+          sessionKeys: [target.sessionKey],
+          projection: "exact",
+          snapshotFields: [],
+        },
+        assertCurrent,
+      );
+      entry = result.entries.find(({ sessionKey }) => sessionKey === target.sessionKey)?.entry;
+      readSource = result.source;
+    }
     assertCurrent();
     if (
       (target.expectedLifecycleRevision !== undefined &&
@@ -393,6 +461,7 @@ export async function prepareGitHubPublicationWorkspaceOwner(
       canonicalKey: logicalTarget.canonicalKey,
       storePath: target.storePath,
       entry,
+      readSource,
     };
   } else {
     snapshot = await loadGatewaySessionEntryReadOnlyInWorker({
@@ -410,11 +479,12 @@ export async function prepareGitHubPublicationWorkspaceOwner(
     throw new GitHubPublicationSessionChangedError();
   }
   const identity = { ...params, lifecycleRevision: loaded.entry.lifecycleRevision ?? null };
-  const readWorktree = preparePublicationWorktreeRead(loaded, context);
+  const readCurrent = captureGitHubPublicationSessionRead(snapshot);
+  const readWorktree = preparePublicationWorktreeRead(loaded, context, readCurrent);
   const prepared = workspaceId
     ? await getSessionRepositoryWorkspaceStore().prepare(workspaceId)
     : undefined;
-  const validate = <T extends { loaded: ReturnType<typeof readPublicationSessionOwner> }>(
+  const validate = <T extends { loaded: ReturnType<typeof requirePublicationSessionOwner> }>(
     owner: T,
   ) => {
     assertCurrent();
@@ -426,14 +496,15 @@ export async function prepareGitHubPublicationWorkspaceOwner(
   const read = async () =>
     validate(
       workspaceId
-        ? resolveGitHubPublicationWorkspaceOwner(identity, prepared)
+        ? resolveGitHubPublicationWorkspaceOwner(identity, prepared, readCurrent)
         : { kind: "worktree" as const, ...(await readWorktree()) },
     );
   return {
     initial: await read(),
     read,
     // Only repository owners expose synchronous current facts; worktrees use the worker reader.
-    currentRepository: () => validate(resolveGitHubPublicationWorkspaceOwner(identity, prepared)),
+    currentRepository: () =>
+      validate(resolveGitHubPublicationWorkspaceOwner(identity, prepared, readCurrent)),
   };
 }
 
@@ -571,19 +642,11 @@ export async function hasSupportedGitHubPublicationTarget(
 ): Promise<boolean> {
   assertCurrent();
   const context = captureOpenClawStateWorkerContext();
-  const initial = requirePublicationSessionOwner(
-    session,
-    getSessionActorStorageBinding(session) || captureIncognitoSessionBinding(session)
-      ? readGitHubPublicationSession(session.sessionKey, { agentId: session.agentId })
-      : await loadGatewaySessionEntryReadOnlyInWorker({
-          cfg: getRuntimeConfig(),
-          key: session.sessionKey,
-          agentId: session.agentId,
-          assertActive: assertCurrent,
-          projection: [],
-        }),
-    true,
-  );
+  const preparedSession = await prepareGitHubPublicationSession(session.sessionKey, {
+    agentId: session.agentId,
+    assertCurrent,
+  });
+  const initial = requirePublicationSessionOwner(session, preparedSession.initial, true);
   context.admission.assertCurrent();
   if (initial.entry.archivedAt !== undefined) {
     return false;
@@ -592,13 +655,17 @@ export async function hasSupportedGitHubPublicationTarget(
   if (workspaceId) {
     const prepared = await getSessionRepositoryWorkspaceStore().prepare(workspaceId);
     assertCurrent();
-    const owner = resolveGitHubPublicationWorkspaceOwner(session, prepared);
+    const owner = resolveGitHubPublicationWorkspaceOwner(
+      session,
+      prepared,
+      preparedSession.current,
+    );
     return isSupportedGitHubOrigin(owner.workspace.url);
   }
   if (!initial.entry.worktree?.id) {
     return false;
   }
-  const owner = await preparePublicationWorktreeRead(initial, context)();
+  const owner = await preparePublicationWorktreeRead(initial, context, preparedSession.current)();
   const assertWorktreeCurrent = () => {
     assertCurrent();
     owner.assertCurrent();

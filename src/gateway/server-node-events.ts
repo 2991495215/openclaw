@@ -67,7 +67,7 @@ import type {
 } from "./server-node-events-types.js";
 import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import {
-  loadSessionEntry,
+  loadSessionEntryAsync,
   resolveGatewayModelSupportsImages,
   resolveSessionModelRef,
 } from "./session-utils.js";
@@ -352,7 +352,7 @@ function compactNodeEventText(raw: string, maxChars: number) {
   return truncateUtf16WithEllipsis(raw.replace(/\s+/g, " ").trim(), maxChars);
 }
 
-type LoadedSessionEntry = ReturnType<typeof loadSessionEntry>;
+type LoadedSessionEntry = Awaited<ReturnType<typeof loadSessionEntryAsync>>;
 
 async function touchSessionStore(params: {
   storePath: LoadedSessionEntry["storePath"];
@@ -504,7 +504,8 @@ async function handlePreparedNodeEvent(
       const cfg = getRuntimeConfig();
       const rawMainKey = normalizeMainKey(cfg.session?.mainKey);
       const sessionKey = sessionKeyRaw.length > 0 ? sessionKeyRaw : rawMainKey;
-      const { storePath, entry, canonicalKey } = source?.loaded ?? loadSessionEntry(sessionKey);
+      const { storePath, entry, canonicalKey } =
+        source?.loaded ?? (await loadSessionEntryAsync(sessionKey));
       if (resolveAgentHarnessSessionContextError(canonicalKey, entry)) {
         return undefined;
       }
@@ -596,7 +597,8 @@ async function handlePreparedNodeEvent(
       const sessionKeyRaw = (link?.sessionKey ?? "").trim();
       const sessionKey = sessionKeyRaw.length > 0 ? sessionKeyRaw : `node-${nodeId}`;
       const cfg = getRuntimeConfig();
-      const { storePath, entry, canonicalKey } = source?.loaded ?? loadSessionEntry(sessionKey);
+      const { storePath, entry, canonicalKey } =
+        source?.loaded ?? (await loadSessionEntryAsync(sessionKey));
       if (resolveAgentHarnessSessionContextError(canonicalKey, entry)) {
         return undefined;
       }
@@ -821,9 +823,9 @@ async function handlePreparedNodeEvent(
         entry,
         agentId,
       } = source?.loaded ??
-      loadSessionEntry(target.sessionKey, {
+      (await loadSessionEntryAsync(target.sessionKey, {
         agentId: target.agentId,
-      });
+      }));
       if (resolveAgentHarnessSessionContextError(sessionKey, entry)) {
         return undefined;
       }

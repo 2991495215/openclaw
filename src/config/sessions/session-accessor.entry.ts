@@ -180,10 +180,9 @@ export async function readResolvedSessionEntryInWorker(
 /** One selected metadata read per store, shared by every requested logical owner. */
 export async function readResolvedSessionEntriesInWorker(
   input: Omit<LogicalSessionAccessScope, "sessionKey"> & { sessionKeys: readonly string[] },
-  projection: "exact" | "worktree" = "exact",
+  projection: "exact" | "worktree" | "list" = "exact",
 ): Promise<Map<string, ResolvedSessionEntryAccessTarget>> {
   const scope = { ...input, env: cloneEnvWithPlatformSemantics(input.env ?? process.env) };
-  const actorEnv = input.env === undefined ? undefined : scope.env;
   const result = new Map<string, ResolvedSessionEntryAccessTarget>();
   const prepared = [...new Set(scope.sessionKeys)].map((requestedKey) => {
     const { agentId, canonicalKey } = resolveSessionStoreIdentity({
@@ -209,7 +208,7 @@ export async function readResolvedSessionEntriesInWorker(
     const actorScope = {
       ...scope,
       // Omitted environments belong to the captured actor's root, not process.env.
-      env: actorEnv,
+      env: input.env === undefined ? undefined : scope.env,
       sessionKey: canonicalKey,
     };
     const binding = captureIncognitoSessionBinding(actorScope);
@@ -222,6 +221,7 @@ export async function readResolvedSessionEntriesInWorker(
         entry: await readSessionEntryReadOnlyInWorker({
           ...actorScope,
           agentId,
+          projection: projection === "list" ? "list" : undefined,
           // Unbound incognito still belongs to its process-local native owner.
           ...(!binding && {
             storePath: resolveIncognitoOpenClawAgentSqlitePath({ agentId, env: scope.env }),

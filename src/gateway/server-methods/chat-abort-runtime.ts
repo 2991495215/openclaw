@@ -54,11 +54,13 @@ import {
 import type { ChatSessionAbortParams, ChatSessionAbortResult } from "./chat-abort-runtime.types.js";
 import {
   abortedPartialPersistenceError,
-  captureAbortedPartial,
+  captureAbortedPartials,
   deferAbortedPartialPersistence,
+  prepareChatAbortSession,
   withQueuedCollectorWarning,
   type QueuedCollectorAbortOutcome,
   type AbortedPartialSnapshot,
+  type ChatAbortSessionSnapshot,
 } from "./chat-aborted-partial.js";
 import { persistAbortedPartials } from "./chat-transcript-persistence.js";
 import { createSessionAbortPersistence } from "./session-abort-persistence.js";
@@ -130,6 +132,8 @@ export function abortQueuedCollectorSession(
     }
   };
   return (async () => {
+    const session =
+      params.session ?? (await prepareChatAbortSession(params.sessionKey, params.agentId));
     let sessionAbort: Result<ReturnType<typeof prepareChatSessionAbort>, ErrorShape> | undefined;
     let outcome: QueuedCollectorAbortOutcome = {
       ok: false,
@@ -221,6 +225,7 @@ export function abortQueuedCollectorSession(
             const plan = prepareChatSessionAbort(
               {
                 ...params,
+                session,
                 ops: createChatAbortOps(params.context),
                 cascadeDescendants: true,
                 includeProtectedRuns: params.runId ? true : params.includeProtectedRuns,
@@ -279,7 +284,7 @@ export function abortQueuedCollectorSession(
 
 /** Resolve once at the cancellation boundary; persist captured partials only after Stop. */
 function prepareChatSessionAbort(
-  params: ChatSessionAbortParams,
+  params: ChatSessionAbortParams & { session: ChatAbortSessionSnapshot },
   workerCancellation: WorkerInferenceCancellation | undefined,
   selectedRunId?: string,
 ) {
@@ -510,23 +515,7 @@ function prepareChatSessionAbort(
       cancelWorker();
       return;
     }
-    snapshots = authorizedRuns.flatMap(({ runId, entry }) => {
-      const text = params.context.chatRunState.resolveBuffer(runId, { final: true }).text;
-      return text?.trim()
-        ? [
-            captureAbortedPartial({
-              runId,
-              sessionKey: params.sessionKey,
-              sessionId: entry.sessionId,
-              agentId: entry.agentId ?? params.agentId,
-              text,
-              abortOrigin: params.abortOrigin,
-              resolveTerminalProducer: entry.resolveTerminalProducer,
-              session: params.session,
-            }),
-          ]
-        : [];
-    });
+    snapshots = captureAbortedPartials({ ...params, authorizedRuns });
     // Abort queued owners before any active-work signal can promote a successor.
     // Keep them first in the response to preserve the established runIds ordering.
     for (const { runId, sessionKey, sessionId, agentId, entry } of queuedPlan.authorized) {
@@ -669,8 +658,10 @@ function prepareChatSessionAbort(
 export async function abortChatRunsForSessionKeyWithPartials(
   params: ChatSessionAbortParams,
 ): Promise<ChatSessionAbortResult> {
+  const session =
+    params.session ?? (await prepareChatAbortSession(params.sessionKey, params.agentId));
   if (params.cascadeDescendants) {
-    const queuedAbort = abortQueuedCollectorSession(params);
+    const queuedAbort = abortQueuedCollectorSession({ ...params, session });
     if (queuedAbort) {
       const result = await queuedAbort;
       return result.ok
@@ -678,7 +669,10 @@ export async function abortChatRunsForSessionKeyWithPartials(
         : { aborted: false, runIds: [], unauthorized: false, error: result.error };
     }
   }
-  const plan = prepareChatSessionAbort(params, captureWorkerInferenceForSession(params));
+  const plan = prepareChatSessionAbort(
+    { ...params, session },
+    captureWorkerInferenceForSession(params),
+  );
   const result = plan.result;
   let descendants: Awaited<ReturnType<typeof abortControlledSubagents>>;
   let failure: { error: unknown } | undefined;

@@ -16,7 +16,7 @@ import {
   type OpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
-import { loadSessionEntry } from "./session-utils.js";
+import { loadSessionEntryAsync } from "./session-utils.js";
 import { writeSessionStore } from "./test-helpers.js";
 import {
   bundleMcpRuntimeMocks,
@@ -454,7 +454,7 @@ test("preserves ordered fallback through inventory rehydration, workspace sync, 
   await writeSessionStore({ entries: { [SESSION_KEY]: sessionStoreEntry(SESSION_ID) } });
   bundleMcpRuntimeMocks.retireSessionMcpRuntime.mockImplementationOnce(async ({ sessionId }) => {
     expect(sessionId).toBe(SESSION_ID);
-    expect(loadSessionEntry(SESSION_KEY).entry?.sessionId).toBe(SESSION_ID);
+    expect((await loadSessionEntryAsync(SESSION_KEY)).entry?.sessionId).toBe(SESSION_ID);
     expect(placements.get(SESSION_ID)?.state).toBe("reclaimed");
     events.push("session:cleanup");
     return true;
@@ -466,10 +466,10 @@ test("preserves ordered fallback through inventory rehydration, workspace sync, 
       context: {
         workerSessionPlacementService: {
           getMany: (sessionIds: readonly string[]) => placements.getMany(sessionIds),
-          retireSessionPlacement: (
+          retireSessionPlacementAsync: async (
             retirement: Parameters<typeof placements.retireSessionPlacement>[0],
           ) => {
-            expect(loadSessionEntry(SESSION_KEY).entry).toBeUndefined();
+            expect((await loadSessionEntryAsync(SESSION_KEY)).entry).toBeUndefined();
             expect(placements.get(SESSION_ID)?.state).toBe("reclaimed");
             events.push("placement:retire");
             placements.retireSessionPlacement(retirement);
@@ -482,7 +482,7 @@ test("preserves ordered fallback through inventory rehydration, workspace sync, 
 
   expect(deleted.ok).toBe(true);
   expect(placements.get(SESSION_ID)).toBeUndefined();
-  expect(loadSessionEntry(SESSION_KEY).entry).toBeUndefined();
+  expect((await loadSessionEntryAsync(SESSION_KEY)).entry).toBeUndefined();
   expectOrdered(events, [
     "provider:provision",
     "inventory:rehydrate",

@@ -239,6 +239,7 @@ export function withInProcessGatewayRead<T>(
         assertCurrent();
         return await run(resolved, assertCurrent);
       } finally {
+        authorization.sessionMutationAuthorization?.release?.();
         authorization.sessionAccessAuthority?.release();
       }
     },
@@ -302,6 +303,7 @@ export async function runWithInProcessGatewaySessionMutation<T>(
         assertCurrent();
         return await run(assertCurrent);
       } finally {
+        authorization.sessionMutationAuthorization?.release?.();
         authorization.sessionAccessAuthority?.release();
       }
     },

@@ -138,7 +138,7 @@ describe("dispatch Stop before provider allocation", () => {
       );
       const sessionUtils =
         await vi.importActual<typeof import("./session-utils.js")>("./session-utils.js");
-      const sessionTarget = sessionUtils.resolveGatewaySessionStoreTargetWithStore({
+      const sessionTarget = await sessionUtils.resolveGatewaySessionStoreTargetWithStoreAsync({
         cfg: { ...support.testState.config, session: { store: storePath } },
         key: REQUEST.sessionKey,
         agentId: REQUEST.agentId,

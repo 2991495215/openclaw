@@ -33,13 +33,15 @@ import { hasGatewayAdminScope } from "../operator-scopes.js";
 import { resolveExpectedExistingSessionConstraint } from "../server-methods/agent-expected-session.js";
 import type { AgentRunRequest } from "../server-methods/agent-request-types.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
-import { resolveGatewaySessionStoreTargetWithStore } from "../session-utils-store-lookup.js";
+import { resolveGatewaySessionStoreTargetWithStoreAsync } from "../session-utils-store-lookup.js";
 import { readGatewayDedupeEntry, resolveAgentDedupeKeys } from "./agent-dedupe.js";
 import type { AgentTurnContext, AgentTurnIo, AgentTurnPrincipal } from "./types.js";
 
-export type AgentRequestPreflight = NonNullable<ReturnType<typeof prepareAgentRequestPreflight>>;
+export type AgentRequestPreflight = NonNullable<
+  Awaited<ReturnType<typeof prepareAgentRequestPreflight>>
+>;
 
-export function prepareAgentRequestPreflight(params: {
+export async function prepareAgentRequestPreflight(params: {
   request: AgentRunRequest;
   context: AgentTurnContext;
   client: AgentTurnPrincipal | null;
@@ -197,7 +199,7 @@ export function prepareAgentRequestPreflight(params: {
     const sourceAgentId = parseAgentSessionKey(sourceSessionKey)?.agentId;
     const sourceTarget =
       sourceSessionKey && sourceAgentId
-        ? resolveGatewaySessionStoreTargetWithStore({
+        ? await resolveGatewaySessionStoreTargetWithStoreAsync({
             cfg,
             key: sourceSessionKey,
             agentId: sourceAgentId,

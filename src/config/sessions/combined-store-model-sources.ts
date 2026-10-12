@@ -1,6 +1,5 @@
 import { selectStoredSessionLineage } from "../../gateway/session-store-key.js";
 import type { GatewaySessionModelSource } from "../../gateway/session-utils-contracts.js";
-import { createGatewaySessionLineageReader } from "../../gateway/session-utils-store-lineage.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
 import { readAgentDatabaseAdmissionRefusal } from "../../state/agent-database-admission.js";
 import type { OpenClawConfig } from "../types.openclaw.js";
@@ -19,10 +18,16 @@ export type GatewayStoredSessionTarget = GatewaySessionModelSource & {
 
 export type GatewayStoredSessionTargets = ReadonlyMap<string, GatewayStoredSessionTarget>;
 
+export type GatewaySessionLineageReader = {
+  readStored: (agentId: string, key: string) => SessionEntry | undefined;
+  readAlias: (key: string, agentId: string) => SessionEntry | undefined;
+};
+
 export function createSessionModelSources(
   cfg: OpenClawConfig,
   diagnostics: string[],
-  preparedAgentIds?: ReadonlySet<string>,
+  preparedAgentIds: ReadonlySet<string> | undefined,
+  readQualifiedParent: GatewaySessionLineageReader,
 ) {
   const physicalStores = new Map<
     string,
@@ -54,7 +59,6 @@ export function createSessionModelSources(
         }
         let read = readers.get(logicalAgentId);
         if (!read) {
-          const readQualifiedParent = createGatewaySessionLineageReader(cfg);
           // Capture the chosen fallback separately: it is not proof that the literal row exists.
           const selectedParents = new Map<
             string,

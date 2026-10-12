@@ -1,5 +1,6 @@
 import path from "node:path";
 import { getRuntimeConfig } from "../config/io.js";
+import { retainPreparedSessionEntryPredicate } from "../config/sessions/session-accessor.sqlite-entry-cache-publication-state.js";
 import { captureSessionEntryRead } from "../config/sessions/session-accessor.sqlite-entry-read-lifetime.js";
 import type { SessionEntryReadScope } from "../config/sessions/session-accessor.types.js";
 import type { SessionActorHotState } from "../config/sessions/session-actor-contract.js";
@@ -7,18 +8,22 @@ import {
   captureSessionActorStorageOwner,
   getSessionActorStorageBinding,
 } from "../config/sessions/session-actor-storage-binding.js";
+import { assertCapturedSessionEntryReadSource } from "../config/sessions/session-entry-read-source.js";
 import { attachSessionEntrySnapshots } from "../config/sessions/session-entry-snapshot-values.js";
 import { captureIncognitoSessionSource } from "../config/sessions/session-incognito-binding.js";
+import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isIncognitoSessionKey } from "../routing/session-key.js";
+import { sessionChanges } from "../sessions/session-row-changes.js";
 import { isOpenClawAgentDatabasePathCurrent } from "../state/openclaw-agent-db-identity.js";
 import { retainOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly.js";
 import { registerOpenClawAgentDatabaseAsyncResource } from "../state/openclaw-agent-db-resources.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
+import { captureSessionMutationRouting } from "./session-sharing-preparation.js";
 import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import { omitInternalSessionEffectsEntries } from "./session-utils-store-selection.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
-import { loadGatewaySessionEntryReadOnly } from "./session-utils-store.js";
+import { loadIncognitoGatewaySessionEntryReadOnly } from "./session-utils-store.js";
 
 function captureMemoryRead(params: {
   cfg?: OpenClawConfig;
@@ -95,7 +100,7 @@ export async function withGatewaySessionEntryReadOnly<T>(
     projection?: SessionEntryReadScope["projection"];
   },
   consume: (
-    loaded: ReturnType<typeof loadGatewaySessionEntryReadOnly>,
+    loaded: Awaited<ReturnType<typeof loadGatewaySessionEntryReadOnlyInWorker>>,
     assertCurrent: () => void,
   ) => Promise<T>,
 ): Promise<T> {
@@ -188,11 +193,11 @@ export async function withGatewaySessionEntryReadOnly<T>(
 }
 
 /** Retain the selected row and physical owner through asynchronous metadata preparation. */
-export function retainGatewaySessionEntryReadOnly(
+export async function retainGatewaySessionEntryReadOnly(
   sessionKey: string,
   agentId: string,
-  allowMetadataChanges?: Parameters<typeof captureSessionEntryRead>[2],
-  cfg?: Parameters<typeof loadGatewaySessionEntryReadOnly>[2],
+  allowMetadataChanges?: (previous: SessionEntry, current: SessionEntry) => boolean,
+  cfg: OpenClawConfig = getRuntimeConfig(),
 ) {
   const memory = captureMemoryRead({ cfg, key: sessionKey, agentId, projection: "list" });
   if (memory) {
@@ -240,11 +245,104 @@ export function retainGatewaySessionEntryReadOnly(
       },
     };
   }
+  if (
+    isIncognitoSessionKey(resolveSessionStoreIdentity({ cfg, sessionKey, agentId }).canonicalKey)
+  ) {
+    return retainNativeIncognitoSessionEntryReadOnly(
+      sessionKey,
+      agentId,
+      allowMetadataChanges,
+      cfg,
+    );
+  }
+  const assertRoutingCurrent = captureSessionMutationRouting(cfg, undefined, [
+    { sessionKey, agentId },
+  ]);
+  let released = false;
+  let invalidated = false;
+  const stopChanges = sessionChanges.subscribeFacts((change) => {
+    if ("all" in change || change.sessionKey === sessionKey) {
+      invalidated = true;
+    }
+  });
+  let predicate: ReturnType<typeof retainPreparedSessionEntryPredicate> | undefined;
+  let unregister = () => {};
+  const release = () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    stopChanges();
+    predicate?.release();
+    unregister();
+  };
+  try {
+    const selected = await loadGatewaySessionEntryReadOnlyInWorker({
+      cfg,
+      key: sessionKey,
+      agentId,
+      projection: "list",
+    });
+    const source = selected.capturedReadSource;
+    if (source && typeof source.databaseIdentity === "string") {
+      predicate = retainPreparedSessionEntryPredicate({
+        databaseIdentity: `file:${source.databaseIdentity}`,
+        sessionKey: selected.legacyKey ?? selected.canonicalKey,
+        entry: selected.entry,
+        matches: (previous, current) =>
+          previous && current
+            ? previous.sessionId === current.sessionId &&
+              previous.lifecycleRevision === current.lifecycleRevision &&
+              (JSON.stringify({ ...previous, lastReadAt: undefined }) ===
+                JSON.stringify({ ...current, lastReadAt: undefined }) ||
+                allowMetadataChanges?.(previous, current) === true)
+            : previous === current,
+      });
+      unregister = registerOpenClawAgentDatabaseAsyncResource({
+        agentId: source.agentId,
+        path: source.path,
+        revoke: release,
+        close: () => Promise.resolve(),
+      });
+      stopChanges();
+    }
+    return {
+      ...selected,
+      isCurrent: () => !released,
+      isCurrentAtResponse: () => {
+        if (released || (predicate ? !predicate.isCurrent() : invalidated)) {
+          return false;
+        }
+        try {
+          assertRoutingCurrent(getRuntimeConfig());
+          if (source) {
+            assertCapturedSessionEntryReadSource(source);
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      release,
+    };
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+// Native incognito storage stays process-local until its owner is retired.
+function retainNativeIncognitoSessionEntryReadOnly(
+  sessionKey: string,
+  agentId: string,
+  allowMetadataChanges: ((previous: SessionEntry, current: SessionEntry) => boolean) | undefined,
+  cfg: OpenClawConfig,
+) {
   const options = { agentId, projection: "list" as const };
-  const selected = loadGatewaySessionEntryReadOnly(sessionKey, options, cfg);
+  const selected = loadIncognitoGatewaySessionEntryReadOnly(sessionKey, options, cfg);
   let released = false;
   const sameRoute = () => {
-    const current = loadGatewaySessionEntryReadOnly(sessionKey, options, cfg);
+    const current = loadIncognitoGatewaySessionEntryReadOnly(sessionKey, options, cfg);
     return (
       current.agentId === selected.agentId &&
       current.canonicalKey === selected.canonicalKey &&
@@ -262,7 +360,7 @@ export function retainGatewaySessionEntryReadOnly(
       isCurrentAtResponse: () =>
         !released &&
         sameRoute() &&
-        loadGatewaySessionEntryReadOnly(sessionKey, options, cfg).entry === undefined,
+        loadIncognitoGatewaySessionEntryReadOnly(sessionKey, options, cfg).entry === undefined,
       release: () => {
         released = true;
       },

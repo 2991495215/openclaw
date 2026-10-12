@@ -18,7 +18,7 @@ import { attachSessionTranscriptRunId } from "../../sessions/transcript-events.j
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { runOpenClawAgentWriteTransaction } from "../../state/openclaw-agent-db.js";
 import * as sessionStoreReaders from "../session-utils-store-worker.js";
-import { loadSessionEntry } from "../session-utils.js";
+import { loadSessionEntryAsync } from "../session-utils.js";
 import { createChatSendReplyDispatch } from "./chat-send-reply-dispatch.js";
 
 export async function createReplyTranscriptFixture(
@@ -30,7 +30,7 @@ export async function createReplyTranscriptFixture(
     agentId: "main",
     sessionId: "receipt-session",
     sessionKey,
-    storePath: loadSessionEntry(sessionKey, { agentId: "main" }).storePath,
+    storePath: (await loadSessionEntryAsync(sessionKey, { agentId: "main" })).storePath,
   };
   const sessionEntry = {
     sessionId: scope.sessionId,

@@ -30,7 +30,7 @@ import { GatewayClientRegistry } from "../server/client-registry.js";
 import type { GatewayWsClient } from "../server/ws-types.js";
 import { isSessionCreatorProfile, prepareSessionCreatorProfile } from "../session-creator.js";
 import { getSessionRowProjection } from "../session-row-projection-access.js";
-import { canReceiveSessionEvent, invalidateSessionSharingSnapshot } from "../session-sharing.js";
+import { canReceiveSessionEvent } from "../session-sharing.js";
 import { sessionCatalogHandlers } from "./session-catalog.js";
 import {
   identifiedClient,
@@ -127,18 +127,7 @@ async function withCreatorRows(
           },
         );
       }
-      // Direct fixture writes do not run the Gateway's session-change publisher.
-      // Each fixture owns these keys and must release their cached event snapshots.
-      for (const key of keys) {
-        invalidateSessionSharingSnapshot(key);
-      }
-      try {
-        await run({ stateDir: state.stateDir, callerId: caller.id, creatorId: creator.id, keys });
-      } finally {
-        for (const key of keys) {
-          invalidateSessionSharingSnapshot(key);
-        }
-      }
+      await run({ stateDir: state.stateDir, callerId: caller.id, creatorId: creator.id, keys });
     },
   );
 }
@@ -344,7 +333,6 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
       phase = "warm-draft";
       emit();
       await upsertSessionEntryCore({ agentId: "main", sessionKey }, { visibility: "shared" });
-      invalidateSessionSharingSnapshot(sessionKey);
       canReceiveSessionEvent({ cfg: {}, client: recipients[0]!.client, sessionKeys: keys });
       visible = true;
       phase = "warm-shared";
@@ -512,25 +500,19 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
             createdActor: { type: "human", source: "profile", id: owner },
           },
         );
-        invalidateSessionSharingSnapshot(sessionKey);
       };
-      try {
-        await write("work", workKey, callerId);
-        const workScope = { agentId: "work", sessionKey: workKey };
-        addSessionMember(workScope, { identityId: creatorId, addedBy: callerId });
-        expect(receive([...keys, workKey])).toBe(true);
-        removeSessionMember(workScope, creatorId);
-        expect(receive([...keys, workKey])).toBe(false);
-        expect(receive(keys)).toBe(true);
-        await write("main", "global", creatorId);
-        await write("work", "global", callerId);
-        for (let pass = 0; pass < 2; pass++) {
-          expect(receive(["global"], "main")).toBe(true);
-          expect(receive(["global"], "work")).toBe(false);
-        }
-      } finally {
-        invalidateSessionSharingSnapshot(workKey);
-        invalidateSessionSharingSnapshot("global");
+      await write("work", workKey, callerId);
+      const workScope = { agentId: "work", sessionKey: workKey };
+      addSessionMember(workScope, { identityId: creatorId, addedBy: callerId });
+      expect(receive([...keys, workKey])).toBe(true);
+      removeSessionMember(workScope, creatorId);
+      expect(receive([...keys, workKey])).toBe(false);
+      expect(receive(keys)).toBe(true);
+      await write("main", "global", creatorId);
+      await write("work", "global", callerId);
+      for (let pass = 0; pass < 2; pass++) {
+        expect(receive(["global"], "main")).toBe(true);
+        expect(receive(["global"], "work")).toBe(false);
       }
     }, 1);
   });

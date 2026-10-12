@@ -23,8 +23,8 @@ const chatSendMock = vi.fn();
 
 // mock-isolation: Follow-up routing uses synthetic entries instead of real session stores.
 vi.mock("../session-utils.js", () => ({
-  loadSessionEntry: (...args: unknown[]) => loadSessionEntryMock(...args),
-  loadGatewaySessionEntryReadOnly: (...args: unknown[]) =>
+  loadSessionEntryAsync: (...args: unknown[]) => loadSessionEntryMock(...args),
+  loadGatewaySessionEntryReadOnlyAsync: (...args: unknown[]) =>
     loadGatewaySessionEntryReadOnlyMock(...args),
   prepareDeletedAgentSessionCheck: (...args: unknown[]) =>
     prepareDeletedAgentSessionCheckMock(...args),

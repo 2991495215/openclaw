@@ -16,7 +16,7 @@ import {
   chatSendOwner,
   dashboardTitleScheduleMocks,
 } from "./server.sessions.create.test-support.js";
-import { resolveGatewaySessionStoreTarget } from "./session-utils-store-lookup.js";
+import { resolveGatewaySessionStoreTargetAsync } from "./session-utils-store-lookup.js";
 import {
   connectOk,
   createGatewaySuiteHarness,
@@ -45,27 +45,29 @@ it("retains committed initial turns through fencing and denies their final write
     expect(application.claimed).toBe(true);
     expect(await application.result).toBe("applied");
   };
-  const cases = ["retained", "revoked"].map((name) => {
-    const key = `agent:main:dashboard:initial-source-${name}`;
-    const { storePath } = resolveGatewaySessionStoreTarget({
-      cfg: configIO.getRuntimeConfig(),
-      agentId: "main",
-      key,
-    });
-    return {
-      key,
-      scope: { agentId: "main", sessionKey: key, storePath },
-      beforeTurn: createDeferredCore<GatewayRequestHandlerOptions>(),
-      finishTurn: createDeferredCore(),
-      allowWrite: createDeferredCore(),
-      dispatchEntered: createDeferredCore(),
-      dispatchFinished: createDeferredCore(),
-      provider: vi.fn(),
-      writeAttempt: vi.fn(),
-      turnEntered: false,
-      dispatchStarted: false,
-    };
-  });
+  const cases = await Promise.all(
+    ["retained", "revoked"].map(async (name) => {
+      const key = `agent:main:dashboard:initial-source-${name}`;
+      const { storePath } = await resolveGatewaySessionStoreTargetAsync({
+        cfg: configIO.getRuntimeConfig(),
+        agentId: "main",
+        key,
+      });
+      return {
+        key,
+        scope: { agentId: "main", sessionKey: key, storePath },
+        beforeTurn: createDeferredCore<GatewayRequestHandlerOptions>(),
+        finishTurn: createDeferredCore(),
+        allowWrite: createDeferredCore(),
+        dispatchEntered: createDeferredCore(),
+        dispatchFinished: createDeferredCore(),
+        provider: vi.fn(),
+        writeAttempt: vi.fn(),
+        turnEntered: false,
+        dispatchStarted: false,
+      };
+    }),
+  );
   const resumeTurns = createDeferredCore();
   const originalSend = chatSendOwner.handleDirectExternalChatSend;
   const send = vi

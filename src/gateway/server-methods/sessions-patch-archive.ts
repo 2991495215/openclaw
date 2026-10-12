@@ -10,6 +10,7 @@ import type { ModelCatalogSnapshot } from "../../agents/model-catalog.js";
 import { SessionWorktreeLifecycleError } from "../../agents/worktrees/errors.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { SessionAccessScope } from "../../config/sessions/session-accessor.js";
+import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import { captureSessionEntryMetadataRead } from "../../config/sessions/session-entry-source-authority.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -24,7 +25,7 @@ import { withGatewaySessionEntryReadOnly } from "../session-utils-read-lifetime.
 import type { GatewaySessionStoreTargetWithStore } from "../session-utils-store.types.js";
 import {
   resolveCanonicalGatewaySessionStoreKey,
-  resolveGatewaySessionStoreTargetWithStore,
+  resolveGatewaySessionStoreTargetWithStoreAsync,
 } from "../session-utils.js";
 import { projectSessionsPatchEntry } from "../sessions-patch.js";
 import { WorkerInferenceSessionDrainBusyError } from "../worker-environments/inference-control-internal.js";
@@ -126,22 +127,42 @@ async function prepareSessionPatchArchiveFromSource(
   },
 ): Promise<Result<SessionPatchArchivePreparation, ErrorShape>> {
   const { cfg, target } = params;
+  const selected =
+    actor?.selected ??
+    (await resolveGatewaySessionStoreTargetWithStoreAsync({
+      cfg,
+      key: target.key,
+      agentId: target.requestedAgentId,
+      exactRead: true,
+    }));
   const resolveCurrent = (): Result<
     {
-      freshResolved: ReturnType<typeof resolveGatewaySessionStoreTargetWithStore>;
+      freshResolved: Awaited<ReturnType<typeof resolveGatewaySessionStoreTargetWithStoreAsync>>;
       fresh: ReturnType<typeof resolveCanonicalGatewaySessionStoreKey>;
       freshCanonicalKey: string;
     },
     ErrorShape
   > => {
-    const freshResolved =
-      actor?.selected ??
-      resolveGatewaySessionStoreTargetWithStore({
-        cfg,
-        key: target.key,
-        ...(target.requestedAgentId ? { agentId: target.requestedAgentId } : {}),
-        exactRead: true,
-      });
+    const row = actor
+      ? undefined
+      : readRetainedSessionEntryFacts(
+          {
+            agentId: selected.readSource?.agentId ?? selected.agentId,
+            path: selected.readSource?.path ?? selected.storePath,
+          },
+          { sessionKeys: [selected.canonicalKey] },
+        );
+    if (!actor && !row) {
+      return err(archiveChangedError(target.key));
+    }
+    const freshResolved = actor
+      ? selected
+      : {
+          ...selected,
+          store: Object.fromEntries(
+            row!.entries.flatMap(({ sessionKey, entry }) => (entry ? [[sessionKey, entry]] : [])),
+          ),
+        };
     if (freshResolved.storePath !== target.storePath) {
       return err(archiveChangedError(target.key));
     }
@@ -154,6 +175,7 @@ async function prepareSessionPatchArchiveFromSource(
       : resolveCanonicalGatewaySessionStoreKey({
           cfg,
           key: target.key,
+          target: freshResolved,
           store: freshResolved.store,
           agentId: target.requestedAgentId,
         });

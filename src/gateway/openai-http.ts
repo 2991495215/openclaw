@@ -606,7 +606,7 @@ export async function handleOpenAiHttpRequest(
     });
     return true;
   }
-  const sessionAuth = authorizeOpenAiCompatibleHttpSession({
+  const sessionAuth = await authorizeOpenAiCompatibleHttpSession({
     agentId,
     sessionKey,
     requestAuth: handled.requestAuth,

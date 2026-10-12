@@ -39,6 +39,10 @@ export function projectSessionSharingEntry(entry: InternalSessionEntry) {
       ? structuredClone(entry.mainRestartRecovery)
       : undefined,
     modelSelectionLocked: entry.modelSelectionLocked,
+    pluginOwnerId: entry.pluginOwnerId,
+    skillLibrarySelections: entry.skillLibrarySelections
+      ? structuredClone(entry.skillLibrarySelections)
+      : undefined,
     pendingProjectGitUrl: entry.pendingProjectGitUrl,
     pendingWorktree: entry.pendingWorktree ? structuredClone(entry.pendingWorktree) : undefined,
     lifecycleRevision: entry.lifecycleRevision,

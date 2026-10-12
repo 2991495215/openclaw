@@ -57,7 +57,7 @@ import {
 } from "./server.private-completion.sessions-send.test-support.js";
 import * as lifecycleState from "./session-lifecycle-state.js";
 import { createPreparedLifecycleWriteTracker } from "./session-lifecycle-state.test-support.js";
-import { loadSessionEntry } from "./session-utils.js";
+import { loadSessionEntryAsync } from "./session-utils.js";
 import {
   agentCommandMock,
   installGatewayTestHooks,
@@ -348,7 +348,7 @@ describe("private subagent completion processing receipts", () => {
         JSON.stringify(event).includes("run-failed-before-reply"),
       );
       expect.soft(failedNotice).toBe(!cancelled);
-      const session = loadSessionEntry(sessionKey).entry;
+      const session = (await loadSessionEntryAsync(sessionKey)).entry;
       expect.soft(session?.status === "failed").toBe(!cancelled);
       expect(kernel.gatewayRequestContext.dedupe.get(`agent:${runId}`)).toMatchObject({
         ok: cancelled,
@@ -814,7 +814,7 @@ describe("private subagent completion processing receipts", () => {
           expect(observedTerminal).toBe(true);
         }
         await metadataOverlap.assertCompleted();
-        expect(loadSessionEntry(childSessionKey).entry).toMatchObject({
+        expect((await loadSessionEntryAsync(childSessionKey)).entry).toMatchObject({
           sessionId: childSessionId,
           label: metadataOverlap.label,
           abortedLastRun: true,

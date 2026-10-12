@@ -31,23 +31,22 @@ import {
   canManageSessionSharing,
   isGatewayAdmin,
   resolveSessionSharingRole,
-  resolveSessionSharingTarget,
   resolveSessionVisibility,
   sharingIdentity,
   type SessionSharingRoleParams,
   type SessionSharingTarget,
   type withSessionSharingTarget,
 } from "./session-sharing-policy.js";
-import {
-  loadCachedSessionSharingSnapshot,
-  type SessionSharingSnapshot,
-} from "./session-sharing-snapshot-cache.js";
 import type { GatewaySessionStoreSelection } from "./session-utils-store-retained.js";
 
 function sharingSnapshot(
   target: SessionSharingTarget | null,
   sessionKey: string,
-): SessionSharingSnapshot {
+): {
+  createdActor?: SessionEntry["createdActor"];
+  incognito: boolean;
+  visibility: ReturnType<typeof resolveSessionVisibility>;
+} {
   // Deleted rows fail closed; their unscoped catalog invalidation still refreshes readers.
   return {
     visibility: target ? resolveSessionVisibility(target.entry) : "draft",
@@ -58,22 +57,6 @@ function sharingSnapshot(
   };
 }
 
-function loadSharingSnapshot(params: Parameters<typeof resolveSessionSharingTarget>[0]) {
-  const { sessionKey, agentId } = params;
-  return loadCachedSessionSharingSnapshot({
-    agentId,
-    sessionKey,
-    resolve: () => {
-      const target = resolveSessionSharingTarget(params);
-      return {
-        canonicalKey: target?.canonicalKey ?? sessionKey,
-        canonicalAgentId: target?.agentId ?? agentId,
-        snapshot: sharingSnapshot(target, sessionKey),
-      };
-    },
-  });
-}
-
 export function canReceiveSessionEvent(params: {
   cfg: OpenClawConfig;
   policyConfig?: OpenClawConfig;
@@ -82,7 +65,7 @@ export function canReceiveSessionEvent(params: {
   agentId?: string;
   event?: string;
   payload?: unknown;
-  prepared?: {
+  prepared: {
     sharing: ReturnType<typeof prepareSessionSharing>;
     target: (sessionKey: string, agentId?: string) => SessionSharingTarget | null;
   };
@@ -109,26 +92,11 @@ export function canReceiveSessionEvent(params: {
       event !== "session.typing"
     );
   }
-  const sharing = params.prepared?.sharing ?? prepareSessionSharing({ cfg: policyConfig, client });
-  const hidesForeignSessions =
-    (params.prepared ? sharing.sessionCap : operatorSessionCap(client, policyConfig)) === "none";
-  // Discovery remains lazy; these facts belong only to this recipient check, never a socket send.
-  const lookup = params.prepared
-    ? undefined
-    : {
-        agentId: params.agentId,
-        exactRead: sessionKeys.length === 1,
-        storeCache: new Map(),
-        targetDiscoveryCache: new Map(),
-      };
-  const resolveTarget = (sessionKey: string) =>
-    params.prepared
-      ? params.prepared.target(sessionKey, params.agentId)
-      : resolveSessionSharingTarget({ cfg, ...lookup, sessionKey });
+  const sharing = params.prepared.sharing;
+  const hidesForeignSessions = sharing.sessionCap === "none";
+  const resolveTarget = (sessionKey: string) => params.prepared.target(sessionKey, params.agentId);
   const visible = sessionKeys.every((sessionKey) => {
-    const snapshot = params.prepared
-      ? sharingSnapshot(resolveTarget(sessionKey), sessionKey)
-      : loadSharingSnapshot({ cfg, ...lookup, sessionKey });
+    const snapshot = sharingSnapshot(resolveTarget(sessionKey), sessionKey);
     const isCreator = sharing.isCreator(snapshot.createdActor);
     if (snapshot.incognito || (hidesForeignSessions && !isCreator)) {
       return false;

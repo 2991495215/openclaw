@@ -12,7 +12,7 @@ import {
   resolveEffectiveChatHistoryMaxChars,
 } from "../chat-display-projection.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
-import { loadSessionEntry } from "../session-utils.js";
+import { loadSessionEntryAsync } from "../session-utils.js";
 import { formatForLog } from "../ws-log.js";
 import {
   resolveGlobalAwareNodeChatDeliveryKeys,
@@ -53,7 +53,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       storePath,
       entry,
       canonicalKey: sessionKey,
-    } = loadSessionEntry(rawSessionKey, sessionLoadOptions, cfg);
+    } = await loadSessionEntryAsync(rawSessionKey, sessionLoadOptions, cfg);
     const sessionId = entry?.sessionId;
     if (!sessionId || !storePath) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "session not found"));
@@ -67,14 +67,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         scope: storePath,
         identities: [sessionKey, sessionId],
         assertAllowed: () => {
-          const latestEntry = loadSessionEntry(rawSessionKey, sessionLoadOptions).entry;
-          if (!latestEntry) {
-            throw new Error(`Session "${sessionKey}" was deleted while starting work. Retry.`);
-          }
-          if (latestEntry.sessionId !== sessionId) {
-            throw new Error(`Session "${sessionKey}" changed while starting work. Retry.`);
-          }
-          const archivedError = resolveSessionWorkStartError(sessionKey, latestEntry);
+          const archivedError = resolveSessionWorkStartError(sessionKey, entry);
           if (archivedError) {
             throw new Error(archivedError);
           }

@@ -352,7 +352,7 @@ export async function handleOpenResponsesHttpRequest(
   }
   const sessionKey = previousSessionKey ?? resolved.sessionKey;
   const messageChannel = resolved.messageChannel;
-  const sessionAuth = authorizeOpenAiCompatibleHttpSession({
+  const sessionAuth = await authorizeOpenAiCompatibleHttpSession({
     agentId: resolved.agentId,
     sessionKey,
     requestAuth: handled.requestAuth,

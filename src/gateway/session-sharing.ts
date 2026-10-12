@@ -31,6 +31,7 @@ import {
   mayCreateSessionTarget,
 } from "./session-method-policy.js";
 import { SessionMutationAuthorizationChangedError } from "./session-mutation-authorization-error.js";
+import { getSessionRowProjection } from "./session-row-projection-access.js";
 import type { SessionRowProjection } from "./session-row-projection.js";
 import {
   expectedSessionMutationTargetError,
@@ -39,6 +40,7 @@ import {
   createSessionSharingLookupCaches,
   prepareAuthorizedSessionMutationFacts,
   prepareSessionMutationAuthorizationRequest,
+  resolveSessionMutationWriteRoute,
   resolveOwnSessionProfileAuthorization,
   sessionMutationTargetChanged,
   VISIBILITY_AUTHORIZED_METHODS,
@@ -55,7 +57,7 @@ import {
   authorizeSessionSharingTarget,
   hiddenSessionNotFound,
   isGatewayAdmin,
-  resolveSessionSharingTarget,
+  resolveIncognitoSessionSharingTarget,
   sharingIdentity,
   type SessionSharingTarget,
 } from "./session-sharing-policy.js";
@@ -85,12 +87,10 @@ import {
   readSessionMutationTarget,
 } from "./session-sharing-target-read.js";
 import { prepareSessionSharingWorkerGrant } from "./session-sharing-worker-grant.js";
-import { resolveGatewaySessionStoreTarget } from "./session-utils-store-lookup.js";
-import { prepareTalkSessionTarget, assertTalkSessionStorageTarget } from "./talk/session-target.js";
+import { assertTalkSessionStorageTarget } from "./talk/session-target.js";
 import type { PreparedTalkSessionTarget } from "./talk/session-target.types.js";
 
 export { SessionMutationAuthorizationChangedError } from "./session-mutation-authorization-error.js";
-export { invalidateSessionSharingSnapshot } from "./session-sharing-snapshot-cache.js";
 
 export {
   canReceiveSessionEvent,
@@ -111,7 +111,8 @@ export {
   isResolvedIncognitoSession,
   isSessionVisibilityAllowed,
   resolveSessionSharingRole,
-  resolveSessionSharingTarget,
+  resolveIncognitoSessionSharingTarget,
+  resolveSessionSharingTargetAsync,
   resolveSessionVisibility,
 } from "./session-sharing-policy.js";
 
@@ -130,8 +131,7 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
   const authorizesAgentRun = isAgentRunStartMethod(params.method, params.requestParams);
   const authorizesRead =
     resolveSessionMethodScope(params.method, params.requestParams) === "operator.sessions.read";
-  // Progress belongs to the current conversation, not merely its stable session ID.
-  // Capture this boundary for admins too so delayed writes cannot revive a reset card.
+  // Bind progress to the current conversation so delayed writes cannot revive a reset card.
   const bindsProgressLifecycle =
     params.method === "progressCard.put" || params.method === "progressCard.refresh";
   const adminBypass = isGatewayAdmin(params.client) && !authorizesAgentRun;
@@ -226,11 +226,13 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
             isMember: resolveSessionSharingMembership(target, identity?.id, members, projection),
           });
   };
-  // Each cache pair defines one synchronous freshness epoch: initial authorization shares one,
-  // while commit-time guards start fresh after handler work.
   let lookupCaches: SessionSharingLookupCaches | undefined;
-  const resolveAuthorizedTarget = (targetRef: SessionMutationTarget, targetCount: number) =>
-    consuming.sharing
+  const resolveAuthorizedTarget = (targetRef: SessionMutationTarget, targetCount: number) => {
+    const prepared = params.preparedTargetRead?.(targetRef, getCfg());
+    if (prepared) {
+      return { target: prepared.target, members: prepared.members };
+    }
+    return consuming.sharing
       ? { target: (consuming.sharing.assertCurrent(), consuming.sharing.target) }
       : readSessionMutationTarget({
           ...params,
@@ -239,6 +241,7 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
           targetCount,
           lookupCaches: () => (lookupCaches ??= createSessionSharingLookupCaches()),
         });
+  };
   let talkInput: ReturnType<typeof resolveTalkSessionTargetInput>;
   let talkSessionTarget: PreparedTalkSessionTarget | undefined;
   try {
@@ -251,7 +254,10 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
       assertTalkSessionStorageTarget(getCfg(), talkInput.target);
       talkSessionTarget = talkInput.target;
     } else {
-      talkSessionTarget = talkInput && prepareTalkSessionTarget(getCfg(), talkInput.sessionKey);
+      talkSessionTarget = params.preparedTalkSessionTarget;
+      if (talkInput && !talkSessionTarget) {
+        throw new Error("Talk session target was not prepared");
+      }
     }
   } catch (error) {
     return {
@@ -367,20 +373,28 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
         target,
         expectedProfileId: ownSessionProfileId,
       }) ??
-      authorizeTargetPolicy(targetRef, target, getPolicyConfig, resolved.projection);
+      authorizeTargetPolicy(
+        targetRef,
+        target,
+        getPolicyConfig,
+        "projection" in resolved ? resolved.projection : undefined,
+        "members" in resolved ? resolved.members : undefined,
+      );
     if (error) {
       return { error };
     }
     authorizedTargets.push({
       ...targetRef,
-      projection: resolved.projection,
+      projection: "projection" in resolved ? resolved.projection : undefined,
       resolved: target
         ? {
             agentId: target.agentId,
             canonicalKey: target.canonicalKey,
             storeKey: target.storeKey,
             storePath: target.storePath,
-            readSource: resolved.preparedReadSource ?? target.readSource,
+            readSource:
+              ("preparedReadSource" in resolved ? resolved.preparedReadSource : undefined) ??
+              target.readSource,
           }
         : null,
       sessionId: target?.entry.sessionId?.trim() || null,
@@ -390,13 +404,11 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
             absentTarget: {
               ...(consuming.sharing
                 ? consuming.sharing.storageTarget
-                : (talkSessionTarget ??
-                  resolveGatewaySessionStoreTarget({
-                    cfg: getCfg(),
-                    key: targetRef.sessionKey,
-                    agentId: targetRef.agentId,
-                  }))),
-              readSource: resolved.preparedReadSource,
+                : (params.preparedTargetRead?.(targetRef, getCfg())?.storageTarget ??
+                  talkSessionTarget ??
+                  resolveSessionMutationWriteRoute(getCfg(), targetRef))),
+              readSource:
+                "preparedReadSource" in resolved ? resolved.preparedReadSource : undefined,
             },
           }
         : {}),
@@ -421,25 +433,23 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
         targetRef: SessionMutationTarget,
         expected: AuthorizedSessionMutationTarget | undefined,
         currentCfg: OpenClawConfig,
-        currentLookupCaches?: SessionSharingLookupCaches,
+        _currentLookupCaches?: SessionSharingLookupCaches,
         ensuredSessionId?: string,
         prepared?: { target: SessionSharingTarget | null; members: readonly string[] },
         currentTalkTarget?: PreparedTalkSessionTarget,
       ) => {
-        if (!prepared && expected?.absentTarget && !expected.created) {
+        const currentPrepared =
+          prepared ??
+          (!expected?.created ? params.preparedTargetRead?.(targetRef, currentCfg) : undefined);
+        if (!currentPrepared && expected?.absentTarget && !expected.created) {
           const currentRoute = consuming.sharing
             ? consuming.sharing.storageTarget
             : currentTalkTarget &&
                 currentTalkTarget.agentId === targetRef.agentId &&
                 currentTalkTarget.canonicalKey === targetRef.sessionKey
               ? currentTalkTarget
-              : resolveGatewaySessionStoreTarget({
-                  cfg: currentCfg,
-                  key: targetRef.sessionKey,
-                  agentId: targetRef.agentId,
-                });
-          // Absence is bound to its original store too. Checking the creation
-          // notification would discover a redirected write only after COMMIT.
+              : resolveSessionMutationWriteRoute(currentCfg, targetRef);
+          // Bind absent rows to their original store before creation can commit.
           if (
             currentRoute.agentId !== expected.absentTarget.agentId ||
             currentRoute.canonicalKey !== expected.absentTarget.canonicalKey ||
@@ -451,30 +461,30 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
         assertSessionMutationProjectionCurrent(expected, params.context, () =>
           targetChanged(targetRef.sessionKey),
         );
+        const currentProjection = expected?.projection ?? getSessionRowProjection(params.context);
         const projected =
-          !prepared && !consuming.sharing && expected?.projection
-            ? readProjectedSessionMutationTarget(targetRef, currentCfg, expected.projection)
+          !currentPrepared && !consuming.sharing && currentProjection
+            ? readProjectedSessionMutationTarget(targetRef, currentCfg, currentProjection)
             : undefined;
         if (expected?.projection && projected?.status === "unavailable") {
           throw targetChanged(targetRef.sessionKey);
         }
         // Pending refreshes retain the captured native identity, never stale membership.
-        const current = prepared
-          ? prepared.target
+        const current = currentPrepared
+          ? currentPrepared.target
           : consuming.sharing
             ? (consuming.sharing.assertCurrent(), consuming.sharing.target)
             : projected?.status === "ready"
               ? projected.target
-              : resolveSessionSharingTarget({
-                  cfg: currentCfg,
-                  sessionKey: targetRef.sessionKey,
-                  agentId: targetRef.agentId,
-                  ...currentLookupCaches,
-                  exactRead:
-                    Boolean(expected?.resolved?.readSource) ||
-                    !currentLookupCaches ||
-                    authorizedTargets.length === 1,
-                });
+              : isIncognitoSessionKey(targetRef.sessionKey)
+                ? resolveIncognitoSessionSharingTarget({
+                    cfg: currentCfg,
+                    sessionKey: targetRef.sessionKey,
+                    agentId: targetRef.agentId,
+                  })
+                : (() => {
+                    throw targetChanged(targetRef.sessionKey);
+                  })();
         // The guarded ensure may mint this row/id. Its result permits only that
         // materialization, never a replacement of an already admitted session.
         const ensuredTarget =
@@ -530,7 +540,7 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
           current,
           () => policyConfig,
           projected?.status === "ready" ? expected?.projection : undefined,
-          prepared?.members,
+          currentPrepared?.members,
           visibilityAuthorized,
         );
         if (error) {

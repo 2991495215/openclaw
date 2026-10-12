@@ -299,15 +299,15 @@ vi.mock("../gateway/server-methods/chat-history-pages.js", () => ({
 vi.mock("../gateway/session-utils.js", () => ({
   getSessionDefaults: () => getSessionDefaultsMock(),
   listAgentsForGateway: () => [],
-  loadSessionEntry: (sessionKey: string, opts?: { agentId?: string }) =>
+  loadSessionEntryAsync: async (sessionKey: string, opts?: { agentId?: string }) =>
     loadSessionEntryMock(sessionKey, opts),
-  loadGatewaySessionEntryReadOnly: (sessionKey: string, opts?: { agentId?: string }) =>
+  loadGatewaySessionEntryReadOnlyAsync: async (sessionKey: string, opts?: { agentId?: string }) =>
     loadSessionEntryMock(sessionKey, opts),
   resolveCanonicalGatewaySessionStoreKey: ({ key }: { key: string }) => ({
     primaryKey: key,
     target: { storeKeys: [key] },
   }),
-  resolveGatewaySessionStoreTargetWithStore: ({
+  resolveGatewaySessionStoreTargetWithStoreAsync: async ({
     key,
     agentId,
   }: {
@@ -2656,8 +2656,8 @@ describe("EmbeddedTuiBackend", () => {
         store: { global: entry },
       };
       const resolveTarget = vi
-        .spyOn(sessionUtils, "resolveGatewaySessionStoreTargetWithStore")
-        .mockReturnValue(target);
+        .spyOn(sessionUtils, "resolveGatewaySessionStoreTargetWithStoreAsync")
+        .mockResolvedValue(target);
       const resolveCanonical = vi
         .spyOn(sessionUtils, "resolveCanonicalGatewaySessionStoreKey")
         .mockReturnValue({ target, primaryKey: "global", entry });

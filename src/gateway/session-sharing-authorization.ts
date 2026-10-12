@@ -4,7 +4,9 @@ import {
   errorShape,
   type ErrorShape,
 } from "../../packages/gateway-protocol/src/index.js";
+import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
 import type { SessionEntry } from "../config/sessions/types.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { toAgentStoreSessionKey } from "../routing/session-key.js";
 import type { SessionOperatorScope } from "../shared/session-method-scopes-base.js";
 import { resolveGatewayOperatorRoleActor } from "./operator-role-policy.js";
@@ -31,6 +33,7 @@ import {
   resolveChatSendAuthorizationParams,
   type SessionMutationTarget,
 } from "./session-sharing-target-input.js";
+import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import type { GatewaySessionStoreDiscoveryCache } from "./session-utils-store-candidates.js";
 import type { GatewaySessionStoreCache } from "./session-utils-store-lookup.js";
 import type { GatewaySessionStoreTarget } from "./session-utils-store.types.js";
@@ -47,6 +50,17 @@ export type SessionMutationAuthorizationParams = {
   sessionRowRead?: SessionRowReadView;
   preparedSharing?: PreparedMutationSharing;
   preparedProfiles?: PreparedSessionSharingProfiles;
+  preparedTalkSessionTarget?: import("./talk/session-target.types.js").PreparedTalkSessionTarget;
+  preparedTargetRead?: (
+    target: SessionMutationTarget,
+    cfg: OpenClawConfig,
+  ) =>
+    | {
+        target: SessionSharingTarget | null;
+        storageTarget: Pick<GatewaySessionStoreTarget, "agentId" | "canonicalKey" | "storePath">;
+        members: readonly string[];
+      }
+    | undefined;
 };
 
 export function prepareSessionMutationAuthorizationRequest(
@@ -300,4 +314,13 @@ export function createSessionCreationAuthorizationRecorder(params: {
     expected.lifecycleRevision = created.lifecycleRevision;
     expected.created = true;
   };
+}
+
+/** Missing rows bind to the configured write target without physical discovery. */
+export function resolveSessionMutationWriteRoute(
+  cfg: OpenClawConfig,
+  target: SessionMutationTarget,
+) {
+  const identity = resolveSessionStoreIdentity({ cfg, ...target });
+  return { ...identity, storePath: resolveSessionStorePathCore(cfg.session?.store, identity) };
 }

@@ -39,10 +39,7 @@ import type { InternalSessionEntry as SessionEntry } from "../config/sessions/ty
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { triggerSessionPatchHook } from "../gateway/session-patch-hooks.js";
 import { resolveSessionWorkerPlacementContext } from "../gateway/session-worker-placement-context.js";
-import {
-  resolveWorkerPlacementSessionRuntimeCapabilities,
-  resolveWorkerPlacementSessionRuntimeCapabilitiesAsync,
-} from "../gateway/worker-environments/placement-session-runtime.js";
+import { resolveWorkerPlacementSessionRuntimeCapabilitiesAsync } from "../gateway/worker-environments/placement-session-runtime.js";
 import { readSessionWorkerPlacementAsync } from "../gateway/worker-environments/session-placement-lifecycle.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
@@ -144,30 +141,23 @@ function resolveActivePlacementModelSelectionError(
     sessionKey: string;
     entry: SessionEntry;
   },
-  prepared?: {
+  prepared: {
     placement: Awaited<ReturnType<typeof readSessionWorkerPlacementAsync>>;
-    runtime?: ReturnType<typeof resolveWorkerPlacementSessionRuntimeCapabilities>;
+    runtime?: Awaited<ReturnType<typeof resolveWorkerPlacementSessionRuntimeCapabilitiesAsync>>;
   },
 ): string | undefined {
   const sessionId = params.entry.sessionId;
   if (!sessionId) {
     return undefined;
   }
-  const placementService = resolveSessionWorkerPlacementContext().workerSessionPlacementService;
-  const placement = prepared
-    ? prepared.placement
-    : placementService?.getMany([sessionId]).get(sessionId);
+  const placement = prepared.placement;
   if (!placement || placement.state === "local") {
     return undefined;
   }
-  const { executionMode } =
-    prepared?.runtime ??
-    resolveWorkerPlacementSessionRuntimeCapabilities({
-      cfg: params.cfg,
-      entry: params.entry,
-      agentId: params.agentId,
-      sessionKey: params.sessionKey,
-    });
+  if (!prepared.runtime) {
+    return "Session runtime is unavailable; retry model selection.";
+  }
+  const { executionMode } = prepared.runtime;
   if (executionMode === placement.executionMode) {
     return undefined;
   }

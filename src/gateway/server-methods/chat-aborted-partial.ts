@@ -4,7 +4,7 @@ import { isCliPartialOutputRejected } from "../../agents/failover/error.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import type { ChatAbortControllerEntry } from "../chat-abort.types.js";
 import { SessionMutationAuthorizationChangedError } from "../session-mutation-authorization-error.js";
-import { loadSessionEntry } from "../session-utils.js";
+import { loadSessionEntryAsync } from "../session-utils.js";
 import { broadcastChatError } from "./chat-broadcast.js";
 import type { GatewayRequestContext } from "./types.js";
 
@@ -12,11 +12,25 @@ export type ChatAbortOrigin = "rpc" | "stop-command" | "placement-abandon";
 
 export type ChatAbortSessionSnapshot = Result<
   Pick<
-    ReturnType<typeof loadSessionEntry>,
+    Awaited<ReturnType<typeof loadSessionEntryAsync>>,
     "cfg" | "storePath" | "entry" | "canonicalKey" | "agentId"
   >,
   unknown
 >;
+
+export async function prepareChatAbortSession(
+  sessionKey: string,
+  agentId?: string,
+): Promise<ChatAbortSessionSnapshot> {
+  try {
+    return {
+      ok: true,
+      value: await loadSessionEntryAsync(sessionKey, agentId ? { agentId } : undefined),
+    };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
 
 export type AbortedPartialSnapshot = ReturnType<typeof captureAbortedPartial>;
 
@@ -63,18 +77,12 @@ export function captureAbortedPartial(params: {
   agentId?: string;
   text: string;
   abortOrigin: ChatAbortOrigin;
-  session?: ChatAbortSessionSnapshot;
+  session: ChatAbortSessionSnapshot;
   resolveTerminalProducer?: ChatAbortControllerEntry["resolveTerminalProducer"];
 }) {
   const { runId, abortOrigin } = params;
   try {
-    const session = params.session ?? {
-      ok: true,
-      value: loadSessionEntry(
-        params.sessionKey,
-        params.agentId ? { agentId: params.agentId } : undefined,
-      ),
-    };
+    const session = params.session;
     if (!session.ok) {
       throw session.error;
     }
@@ -114,6 +122,33 @@ export function captureAbortedPartial(params: {
     // Preparation is fallible metadata I/O, never a prerequisite for cancellation.
     return { runId, abortOrigin, ok: false, error } as const;
   }
+}
+
+export function captureAbortedPartials(params: {
+  context: Pick<GatewayRequestContext, "chatRunState">;
+  sessionKey: string;
+  agentId?: string;
+  abortOrigin: ChatAbortOrigin;
+  session: ChatAbortSessionSnapshot;
+  authorizedRuns: readonly { runId: string; entry: ChatAbortControllerEntry }[];
+}): AbortedPartialSnapshot[] {
+  return params.authorizedRuns.flatMap(({ runId, entry }) => {
+    const text = params.context.chatRunState.resolveBuffer(runId, { final: true }).text;
+    return text?.trim()
+      ? [
+          captureAbortedPartial({
+            runId,
+            sessionKey: params.sessionKey,
+            sessionId: entry.sessionId,
+            agentId: entry.agentId ?? params.agentId,
+            text,
+            abortOrigin: params.abortOrigin,
+            resolveTerminalProducer: entry.resolveTerminalProducer,
+            session: params.session,
+          }),
+        ]
+      : [];
+  });
 }
 
 /** Transfer the fallback before cancellation can clear the producer's session slot. */

@@ -14,7 +14,7 @@ import {
   consumeExpectedSessionWorkAdmission,
   type ExpectedExistingSessionConstraint,
 } from "../server-methods/agent-expected-session.js";
-import { loadSessionEntry } from "../session-utils.js";
+import { prepareSessionMutationFacts } from "../session-sharing-preparation.js";
 import type { AgentDedupeLifecycle } from "./agent-dedupe-lifecycle.js";
 import {
   buildAbortedAgentPayload,
@@ -47,6 +47,7 @@ export function createAgentAdmissionController(params: {
   setAdmittedSessionId: (sessionId: string) => void;
 }) {
   let admission: SessionWorkAdmissionLease | undefined;
+  let sessionFacts: Awaited<ReturnType<typeof prepareSessionMutationFacts>> | undefined;
   let admittedRunAbort: ReturnType<typeof registerChatAbortController> | undefined;
   let postAdmissionAbort: ReturnType<typeof readGatewayDedupeEntry>;
   let postAdmissionTimeout: ReturnType<typeof buildAbortedAgentPayload> | undefined;
@@ -123,22 +124,10 @@ export function createAgentAdmissionController(params: {
       }
       return undefined;
     }
-    if (!resolvedSessionKey) {
+    if (!resolvedSessionKey || !sessionFacts) {
       return undefined;
     }
-    const admissionAgent = admissionAgentId();
-    let latestEntry = loadSessionEntry(resolvedSessionKey, {
-      agentId: admissionAgent,
-      clone: false,
-      projection: "list",
-    }).entry;
-    if (!latestEntry && requestedSessionKey && requestedSessionKey !== resolvedSessionKey) {
-      latestEntry = loadSessionEntry(requestedSessionKey, {
-        agentId: admissionAgent,
-        clone: false,
-        projection: "list",
-      }).entry;
-    }
+    const latestEntry = sessionFacts?.readCurrent(params.context.getRuntimeConfig()).target?.entry;
     assertExpectedExistingSession({
       constraint: params.expectedSession,
       entry: latestEntry,
@@ -198,6 +187,15 @@ export function createAgentAdmissionController(params: {
   const acquire = async (scope: string) => {
     if (admission) {
       return;
+    }
+    const sessionKey = params.getResolvedSessionKey();
+    if (sessionKey && !sessionFacts) {
+      sessionFacts = await prepareSessionMutationFacts({
+        cfg: params.context.getRuntimeConfig(),
+        sessionKey,
+        agentId: admissionAgentId() ?? params.getAgentId()!,
+        allowMissing: true,
+      });
     }
     const isSettling = () => admittedRunAbort?.entry?.terminalOutcomeObserved === true;
     const getAbortReason = () => admittedRunAbort?.controller.signal.reason;
@@ -264,6 +262,10 @@ export function createAgentAdmissionController(params: {
     setAdmittedRunAbort: (value: ReturnType<typeof registerChatAbortController>) => {
       admittedRunAbort = value;
     },
-    release: () => admission?.release(),
+    release: () => {
+      admission?.release();
+      sessionFacts?.release();
+      sessionFacts = undefined;
+    },
   };
 }

@@ -2,7 +2,7 @@ import { setImmediate as nextTurn } from "node:timers/promises";
 import { expect, test } from "vitest";
 import { createDeferredCore } from "../shared/deferred.js";
 import { createGatewayWorkerPlacementMoveBarrier } from "./server-worker-placement-move-barrier.js";
-import { loadSessionEntry } from "./session-utils.js";
+import { loadSessionEntryAsync } from "./session-utils.js";
 import { writeSessionStore } from "./test-helpers.js";
 import {
   directSessionReq,
@@ -77,6 +77,7 @@ test.each(["delete", "archive", "recover"] as const)(
       loadSessionRuntime: async () => {
         moveLoading.resolve();
         await releaseMove.promise;
+        const entry = (await loadSessionEntryAsync(sessionKey)).entry;
         return {
           managedWorktrees: {
             findLiveByOwner: async () => ({
@@ -85,14 +86,14 @@ test.each(["delete", "archive", "recover"] as const)(
               path: "/fixture/worktree",
             }),
           },
-          resolveGatewaySessionStoreTargetWithStore: () => ({
+          resolveGatewaySessionStoreTargetWithStoreAsync: async () => ({
             storePath,
             canonicalKey: sessionKey,
             storeKeys: [sessionKey],
             agentId: "main",
-            store: { [sessionKey]: loadSessionEntry(sessionKey).entry! },
+            store: { [sessionKey]: entry! },
           }),
-          resolveCanonicalSessionEntryFromStoreKeys: () => loadSessionEntry(sessionKey).entry,
+          resolveCanonicalSessionEntryFromStoreKeys: () => entry,
         } as never;
       },
       revokeSessionAuthority: () => {},
@@ -189,7 +190,7 @@ test.each(["delete", "archive", "recover"] as const)(
     expect(await moving).toMatchObject({ message: "move preflight rejected" });
     const result = await lifecycle;
     expect(result.ok, JSON.stringify(result.error)).toBe(true);
-    const entry = loadSessionEntry(sessionKey).entry;
+    const entry = (await loadSessionEntryAsync(sessionKey)).entry;
     if (action === "delete") {
       expect(entry).toBeUndefined();
     } else {

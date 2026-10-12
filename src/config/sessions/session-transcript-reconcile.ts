@@ -396,7 +396,7 @@ async function reconcilePreparedTranscriptIndexesPass(
               );
               return;
             }
-            const owned = await appendPreparedProjectionChunk(
+            await appendPreparedProjectionChunk(
               databaseOptions,
               active,
               message.type === "active-chunk"
@@ -405,10 +405,7 @@ async function reconcilePreparedTranscriptIndexesPass(
               memorySource,
               publication,
             );
-            if (!owned) {
-              active = undefined;
-            }
-            worker.postMessage({ accepted: owned, type: "continue" }, []);
+            worker.postMessage({ accepted: true, type: "continue" }, []);
           } catch (error) {
             settle(() => reject(toStringifiedError(error)));
           }

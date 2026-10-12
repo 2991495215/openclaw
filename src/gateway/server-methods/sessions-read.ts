@@ -115,7 +115,7 @@ export const sessionReadHandlers: GatewayRequestHandlers = {
       const canSearchSessionKey = (sessionKey: string, entry?: SessionEntry) => {
         if (
           isIncognitoSessionKey(sessionKey) &&
-          !canAccessIncognitoSession({ cfg, client: client ?? null, sessionKey, agentId })
+          !canAccessIncognitoSession({ cfg, client: client ?? null, sessionKey, agentId }, null)
         ) {
           return false;
         }

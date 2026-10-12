@@ -48,13 +48,13 @@ import { buildSessionListRowMetadataContext } from "./session-utils-projection.j
 import { buildGatewaySessionRow as buildGatewaySessionRowOwner } from "./session-utils-row.js";
 import type { GatewaySessionStoreDiscoveryCache } from "./session-utils-store-candidates.js";
 import {
-  resolveGatewaySessionStoreTarget,
-  resolveGatewaySessionStoreTargetWithStore,
+  resolveGatewaySessionStoreTargetAsync,
+  resolveGatewaySessionStoreTargetWithStoreAsync,
 } from "./session-utils-store-lookup.js";
 import {
   listAgentsForGateway,
-  loadGatewaySessionEntryReadOnly,
-  loadGatewaySessionEntry as loadSessionEntry,
+  loadGatewaySessionEntryReadOnlyAsync,
+  loadGatewaySessionEntryAsync as loadSessionEntryAsync,
   resolveCanonicalGatewaySessionStoreKey,
 } from "./session-utils-store.js";
 import { withAgentPermissionState } from "./session-utils.permissions.test-support.js";
@@ -1434,13 +1434,13 @@ describe("gateway session utils", () => {
     );
   });
 
-  test("resolveSessionStoreKey honors global scope", () => {
+  test("resolveSessionStoreKey honors global scope", async () => {
     const cfg = {
       session: { scope: "global", mainKey: "work" },
       agents: { entries: { ops: {} } },
     } as OpenClawConfig;
     expect(resolveSessionStoreKey({ cfg, sessionKey: "main" })).toBe("global");
-    const target = resolveGatewaySessionStoreTarget({ cfg, key: "main" });
+    const target = await resolveGatewaySessionStoreTargetAsync({ cfg, key: "main" });
     expect(target.canonicalKey).toBe("global");
     expect(target.agentId).toBe("ops");
   });
@@ -1460,7 +1460,7 @@ describe("gateway session utils", () => {
         agents: { entries: { ops: {} } },
       } as OpenClawConfig;
 
-      const target = resolveGatewaySessionStoreTargetWithStore({
+      const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
         cfg,
         key: "agent:ops:main",
       });
@@ -1489,7 +1489,7 @@ describe("gateway session utils", () => {
         "agent:retired-agent:main": { sessionId: "sess-fallback", updatedAt: 99 },
       };
 
-      const target = resolveGatewaySessionStoreTargetWithStore({
+      const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
         cfg,
         key: "agent:retired-agent:main",
         store: fallbackStore,
@@ -1518,15 +1518,18 @@ describe("gateway session utils", () => {
         );
       }
       expect(
-        ["research", "ops"].map((agentId) =>
-          resolveGatewaySessionStoreTargetWithStore({
-            cfg,
-            key: "global",
-            agentId,
-            projection: "list",
-            readOnly: true,
-            exactRead: true,
-          }),
+        await Promise.all(
+          ["research", "ops"].map(
+            async (agentId) =>
+              await resolveGatewaySessionStoreTargetWithStoreAsync({
+                cfg,
+                key: "global",
+                agentId,
+                projection: "list",
+                readOnly: true,
+                exactRead: true,
+              }),
+          ),
         ),
       ).toMatchObject([
         { agentId: "research", store: { global: { sessionId: "global-research" } } },
@@ -1538,9 +1541,14 @@ describe("gateway session utils", () => {
         });
       }
       const key = "agent:retired-agent:main";
-      expect(() =>
-        resolveGatewaySessionStoreTargetWithStore({ cfg, key, readOnly: true, exactRead: true }),
-      ).toThrow("openclaw doctor --fix");
+      await expect(
+        resolveGatewaySessionStoreTargetWithStoreAsync({
+          cfg,
+          key,
+          readOnly: true,
+          exactRead: true,
+        }),
+      ).rejects.toThrow("openclaw doctor --fix");
     });
   });
 
@@ -1573,7 +1581,7 @@ describe("gateway session utils", () => {
         agents: { entries: { ops: {}, work: {} } },
       } as OpenClawConfig;
 
-      const target = resolveGatewaySessionStoreTargetWithStore({
+      const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
         cfg,
         key: "agent:old:main",
       });
@@ -1603,7 +1611,7 @@ describe("gateway session utils", () => {
         agents: { entries: { main: {} } },
       } as OpenClawConfig;
 
-      const target = resolveGatewaySessionStoreTargetWithStore({
+      const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
         cfg,
         key: "agent:retired:main",
       });
@@ -1630,7 +1638,7 @@ describe("gateway session utils", () => {
       } as OpenClawConfig;
       setRuntimeConfigSnapshot(cfg, cfg);
 
-      const loaded = loadGatewaySessionEntryReadOnly("agent:missing:main");
+      const loaded = await loadGatewaySessionEntryReadOnlyAsync("agent:missing:main");
 
       expect(loaded.entry).toBeUndefined();
       expect(fs.existsSync(path.join(stateDir, "agents", "missing"))).toBe(false);
@@ -1652,12 +1660,16 @@ describe("gateway session utils", () => {
       const targetDiscoveryCache: GatewaySessionStoreDiscoveryCache = new Map();
       const discoveryWrites = vi.spyOn(targetDiscoveryCache, "set");
       try {
-        const first = loadGatewaySessionEntryReadOnly(sessionKey, { targetDiscoveryCache });
+        const first = await loadGatewaySessionEntryReadOnlyAsync(sessionKey, {
+          targetDiscoveryCache,
+        });
         await replaceSessionEntry(
           { sessionKey, storePath },
           { sessionId: "session-after", updatedAt: 2 },
         );
-        const second = loadGatewaySessionEntryReadOnly(sessionKey, { targetDiscoveryCache });
+        const second = await loadGatewaySessionEntryReadOnlyAsync(sessionKey, {
+          targetDiscoveryCache,
+        });
 
         expect(first.entry?.sessionId).toBe("session-before");
         expect(second.entry?.sessionId).toBe("session-after");
@@ -1695,7 +1707,9 @@ describe("gateway session utils", () => {
       ).toContain(childKey);
       const cloneSpy = vi.spyOn(globalThis, "structuredClone");
       try {
-        expect(loadGatewaySessionEntryReadOnly(childKey, { clone: false }).entry).toMatchObject({
+        expect(
+          (await loadGatewaySessionEntryReadOnlyAsync(childKey, { clone: false })).entry,
+        ).toMatchObject({
           sessionId: "child",
           spawnedBy: parentKey,
         });
@@ -1707,7 +1721,7 @@ describe("gateway session utils", () => {
             storePath,
           }).map((item) => item.sessionKey),
         ).toEqual([childKey]);
-        const loaded = loadGatewaySessionEntryReadOnly("main", {
+        const loaded = await loadGatewaySessionEntryReadOnlyAsync("main", {
           includeStoreChildEntries: true,
         });
 
@@ -1752,8 +1766,12 @@ describe("gateway session utils", () => {
           } as OpenClawConfig;
           setRuntimeConfigSnapshot(cfg, cfg);
 
-          const target = resolveGatewaySessionStoreTarget({ cfg, key: "agent:main:main", agentId });
-          const loaded = loadSessionEntry("agent:main:main", { agentId });
+          const target = await resolveGatewaySessionStoreTargetAsync({
+            cfg,
+            key: "agent:main:main",
+            agentId,
+          });
+          const loaded = await loadSessionEntryAsync("agent:main:main", { agentId });
 
           expect(target.canonicalKey).toBe("agent:main:main");
           expect(target.agentId).toBe("main");
@@ -1772,7 +1790,7 @@ describe("gateway session utils", () => {
           });
           try {
             expect(
-              resolveGatewaySessionStoreTargetWithStore({
+              await resolveGatewaySessionStoreTargetWithStoreAsync({
                 cfg,
                 key: "agent:main:main",
                 agentId,
@@ -1814,7 +1832,7 @@ describe("gateway session utils", () => {
           agents: { entries: { ops: {} } },
         } as OpenClawConfig;
         for (const requestedKey of [key, "agent:main:dashboard:incognito-missing"]) {
-          const target = resolveGatewaySessionStoreTargetWithStore({
+          const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
             cfg,
             key: requestedKey,
             readOnly: true,
@@ -1853,7 +1871,9 @@ describe("gateway session utils", () => {
       } as OpenClawConfig;
       setRuntimeConfigSnapshot(cfg, cfg);
 
-      expect(() => loadSessionEntry("agent:main:work")).toThrow("openclaw doctor --fix");
+      await expect(loadSessionEntryAsync("agent:main:work")).rejects.toThrow(
+        "openclaw doctor --fix",
+      );
     });
   });
 

@@ -71,7 +71,8 @@ vi.mock("./worker-environments/placement-session-runtime.js", async (importOrigi
   return {
     ...actual,
     resolveWorkerPlacementExecutionMode: moveDestinationMocks.resolveExecutionMode,
-    resolveWorkerPlacementSessionRuntime: moveDestinationMocks.resolveSessionRuntime,
+    resolveWorkerPlacementSessionRuntimeAsync: async () =>
+      moveDestinationMocks.resolveSessionRuntime(),
   };
 });
 
@@ -80,7 +81,8 @@ vi.mock("./session-utils.js", async (importOriginal) => {
   return {
     ...actual,
     resolveCanonicalSessionEntryFromStoreKeys: moveDestinationMocks.resolveCanonicalSession,
-    resolveGatewaySessionStoreTargetWithStore: moveDestinationMocks.resolveGatewaySessionTarget,
+    resolveGatewaySessionStoreTargetWithStoreAsync: async () =>
+      moveDestinationMocks.resolveGatewaySessionTarget(),
   };
 });
 

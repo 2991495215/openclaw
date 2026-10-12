@@ -12,21 +12,20 @@ import {
 } from "../../agents/tools/gateway-caller-context.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
+import { prepareSessionMutationFacts } from "../session-sharing-preparation.js";
 import { authorizeSessionSharingTarget } from "../session-sharing.js";
 import { resolveSessionStoreIdentity } from "../session-store-key.js";
 import { summarizeWorkerEnvironment } from "../worker-environments/environment-summary.js";
-import type { WorkerEnvironmentSessionIdentity } from "../worker-environments/session-attachment.js";
 import { captureSessionEnvironmentToolPolicy } from "./environments.session-tool-policy.js";
-import { loadAccessorSessionEntryForGatewayTarget } from "./sessions-shared.js";
 import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 import { dispatchUiCommandToRequester } from "./ui-command.js";
 import { defineValidatedGatewayMethod } from "./validation.js";
 
 /** Binds machine effects to the authenticated conversation and its current incarnation. */
-export function resolveSessionEnvironmentCaller(
+export async function resolveSessionEnvironmentCaller(
   options: GatewayRequestHandlerOptions,
   requested: { sessionKey?: string; agentId?: string } = {},
-): { identity: WorkerEnvironmentSessionIdentity; assertCurrent: () => void; signal?: AbortSignal } {
+) {
   const { context, client } = options;
   const tool = client?.internal?.agentToolCaller;
   const runtime = client?.internal?.agentRuntimeIdentity;
@@ -71,78 +70,94 @@ export function resolveSessionEnvironmentCaller(
   ) {
     throw new Error("A persistent conversation is required for an attached environment");
   }
-  const readTarget = () =>
-    loadAccessorSessionEntryForGatewayTarget({
-      cfg: context.getRuntimeConfig(),
-      key: sessionKey,
-      agentId: selected.agentId,
-    });
-  const target = readTarget();
-  if (!target.entry || target.entry.incognito === true) {
-    throw new Error("A persistent conversation is required for an attached environment");
-  }
-  const identity = {
-    sessionId: target.entry.sessionId,
-    sessionKey: target.canonicalKey,
+  const facts = await prepareSessionMutationFacts({
+    cfg: context.getRuntimeConfig(),
+    sessionKey,
     agentId: selected.agentId,
-    ...(target.entry.lifecycleRevision
-      ? { sessionLifecycleRevision: target.entry.lifecycleRevision }
-      : {}),
-  };
-  const signals = [
-    options.signal,
-    client.connectionSignal,
-    ...(ambient?.approvalSignals ?? []),
-  ].filter((signal): signal is AbortSignal => signal !== undefined);
-  const signal = signals.length ? AbortSignal.any(signals) : undefined;
-  const assertCurrent = () => {
-    signal?.throwIfAborted();
-    options.sessionMutationCommitGuard?.();
-    options.sessionMutationAuthorization?.assertCurrent();
-    if (client.invalidated || options.hasCurrentClientAuthority?.() === false) {
-      throw new Error("Conversation environment requester is no longer active");
+  });
+  try {
+    const readTarget = () => {
+      const target = facts.readCurrent(context.getRuntimeConfig()).target;
+      return {
+        target,
+        entry: target.entry,
+        canonicalKey: target.canonicalKey,
+        sessionStoreKey: target.storeKey,
+        storePath: target.storePath,
+      };
+    };
+    const target = readTarget();
+    if (!target.entry || target.entry.incognito === true) {
+      throw new Error("A persistent conversation is required for an attached environment");
     }
-    tool?.assertCurrent?.();
-    if (ambient) {
+    const identity = {
+      sessionId: target.entry.sessionId,
+      sessionKey: target.canonicalKey,
+      agentId: selected.agentId,
+      ...(target.entry.lifecycleRevision
+        ? { sessionLifecycleRevision: target.entry.lifecycleRevision }
+        : {}),
+    };
+    const signals = [
+      options.signal,
+      client.connectionSignal,
+      ...(ambient?.approvalSignals ?? []),
+    ].filter((signal): signal is AbortSignal => signal !== undefined);
+    const signal = signals.length ? AbortSignal.any(signals) : undefined;
+    const assertCurrent = () => {
+      signal?.throwIfAborted();
+      options.sessionMutationCommitGuard?.();
+      options.sessionMutationAuthorization?.assertCurrent();
+      if (client.invalidated || options.hasCurrentClientAuthority?.() === false) {
+        throw new Error("Conversation environment requester is no longer active");
+      }
+      tool?.assertCurrent?.();
+      if (ambient) {
+        if (
+          !assertAmbient ||
+          (ambient.gatewayContextResolver && ambient.gatewayContextResolver() !== context)
+        ) {
+          throw new Error(
+            "Conversation environment tool belongs to a different or retired Gateway",
+          );
+        }
+        assertAmbient();
+      }
+      if (runtime && context.validateAgentRuntimeApprovalAuthority?.(runtime) !== true) {
+        throw new Error("Conversation environment agent run is no longer active");
+      }
+      const current = readTarget();
       if (
-        !assertAmbient ||
-        (ambient.gatewayContextResolver && ambient.gatewayContextResolver() !== context)
+        current.entry?.sessionId !== identity.sessionId ||
+        current.canonicalKey !== identity.sessionKey ||
+        current.entry.lifecycleRevision !== identity.sessionLifecycleRevision
       ) {
-        throw new Error("Conversation environment tool belongs to a different or retired Gateway");
+        throw new Error("Conversation identity changed before the environment operation");
       }
-      assertAmbient();
-    }
-    if (runtime && context.validateAgentRuntimeApprovalAuthority?.(runtime) !== true) {
-      throw new Error("Conversation environment agent run is no longer active");
-    }
-    const current = readTarget();
-    if (
-      current.entry?.sessionId !== identity.sessionId ||
-      current.canonicalKey !== identity.sessionKey ||
-      current.entry.lifecycleRevision !== identity.sessionLifecycleRevision
-    ) {
-      throw new Error("Conversation identity changed before the environment operation");
-    }
-    if (!owner) {
-      const denied = authorizeSessionSharingTarget({
-        cfg: context.getRuntimeConfig(),
-        client,
-        target: {
-          agentId: identity.agentId,
-          canonicalKey: current.canonicalKey,
-          entry: current.entry,
-          storeKey: current.sessionStoreKey,
-          storeKeys: current.target.storeKeys,
-          storePath: current.storePath,
-        },
-      });
-      if (denied) {
-        throw new Error(denied.message);
+      if (!owner) {
+        const denied = authorizeSessionSharingTarget({
+          cfg: context.getRuntimeConfig(),
+          client,
+          target: {
+            agentId: identity.agentId,
+            canonicalKey: current.canonicalKey,
+            entry: current.entry,
+            storeKey: current.sessionStoreKey,
+            storeKeys: current.target.storeKeys,
+            storePath: current.storePath,
+          },
+        });
+        if (denied) {
+          throw new Error(denied.message);
+        }
       }
-    }
-  };
-  assertCurrent();
-  return { identity, assertCurrent, signal };
+    };
+    assertCurrent();
+    return { identity, assertCurrent, signal, [Symbol.dispose]: () => facts.release() };
+  } catch (error) {
+    facts.release();
+    throw error;
+  }
 }
 
 function failure(error: unknown) {
@@ -158,7 +173,7 @@ export const environmentsSessionHandlers: GatewayRequestHandlers = {
     validateEnvironmentsSessionCreateParams,
     async (options) => {
       const { params, respond, context } = options;
-      const caller = resolveSessionEnvironmentCaller(options, params);
+      await using caller = await resolveSessionEnvironmentCaller(options, params);
       const { presentation, ...request } = params;
       if (presentation) {
         try {
@@ -215,9 +230,9 @@ export const environmentsSessionHandlers: GatewayRequestHandlers = {
   "environments.session.status": defineValidatedGatewayMethod(
     "environments.session.status",
     validateEnvironmentsSessionStatusParams,
-    (options) => {
+    async (options) => {
       const { params, respond, context } = options;
-      const caller = resolveSessionEnvironmentCaller(options, params);
+      await using caller = await resolveSessionEnvironmentCaller(options, params);
       const result = context.workerEnvironmentService?.getSessionAttachmentStatus(
         caller.identity.sessionId,
       );
@@ -243,7 +258,7 @@ export const environmentsSessionHandlers: GatewayRequestHandlers = {
     validateEnvironmentsSessionDestroyParams,
     async (options) => {
       const { params, respond, context } = options;
-      const caller = resolveSessionEnvironmentCaller(options, params);
+      await using caller = await resolveSessionEnvironmentCaller(options, params);
       const service = context.workerEnvironmentService;
       if (!service) {
         throw new Error("Cloud worker environments are not configured");

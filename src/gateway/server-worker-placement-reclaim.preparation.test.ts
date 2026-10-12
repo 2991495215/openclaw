@@ -24,11 +24,13 @@ import { createWorkerSessionPlacementStore } from "./worker-environments/placeme
 import { prepareSessionWorkerPlacementStop } from "./worker-environments/session-placement-lifecycle.js";
 
 const lookup = vi.hoisted(() => ({
-  value: undefined as ReturnType<typeof import("./session-utils.js").loadSessionEntry> | undefined,
+  value: undefined as
+    | Awaited<ReturnType<typeof import("./session-utils.js").loadSessionEntryAsync>>
+    | undefined,
 }));
 vi.mock("./session-utils.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./session-utils.js")>()),
-  loadSessionEntry: () => lookup.value,
+  loadSessionEntryAsync: async () => lookup.value,
 }));
 vi.mock("../config/config.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../config/config.js")>()),
@@ -80,7 +82,7 @@ async function cancellationLoadFixture(
         lastActiveAt: 1,
       }),
     },
-    resolveGatewaySessionStoreTargetWithStore: () => target,
+    resolveGatewaySessionStoreTargetWithStoreAsync: async () => target,
     resolveCanonicalSessionEntryFromStoreKeys: () => entry,
   };
   lookup.value = { ...target, cfg: {}, entry, legacyKey: undefined };
@@ -280,7 +282,7 @@ it.each(["missing", "local", "reclaimed"] as const)(
     const cancellations = vi.fn();
     f.context.cancelRunBoundApprovals = cancellations;
     const runId = `ordinary-${state}`;
-    const admitted = await admitWorkerStopChat({ ...REQUEST, ...f, runId }).promise;
+    const admitted = await (await admitWorkerStopChat({ ...REQUEST, ...f, runId })).promise;
     if (!admitted.ok) {
       throw new Error("Ordinary local chat fixture was not admitted");
     }

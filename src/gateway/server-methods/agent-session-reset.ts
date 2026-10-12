@@ -10,7 +10,7 @@ import { resolveAgentDeliveryPlanWithSessionRoute } from "../../infra/outbound/a
 import { defaultRuntime } from "../../runtime.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { sessionDeliveryChannel } from "../../utils/delivery-context.read.js";
-import { loadSessionEntry } from "../session-utils.js";
+import { loadSessionEntryAsync } from "../session-utils.js";
 import type { AgentRunRequest } from "./agent-request-types.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
 
@@ -172,15 +172,15 @@ export async function resolveBareSessionResetResult(params: {
   });
 }
 
-export function loadBareSessionResetDeliverySession(params: {
+export async function loadBareSessionResetDeliverySession(params: {
   sessionKey: string;
   agentId?: string;
-}): {
+}): Promise<{
   cfg: OpenClawConfig;
   entry?: SessionEntry;
   agentId: string;
-} {
-  const loaded = loadSessionEntry(params.sessionKey, {
+}> {
+  const loaded = await loadSessionEntryAsync(params.sessionKey, {
     clone: false,
     ...(params.agentId ? { agentId: params.agentId } : {}),
   });

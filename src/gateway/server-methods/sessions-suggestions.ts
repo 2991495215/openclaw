@@ -35,12 +35,12 @@ import {
   requireSessionRowProjection,
 } from "../session-row-projection-access.js";
 import { captureIncognitoSessionMutationFacts } from "../session-sharing-incognito.js";
+import type { SessionSharingTarget } from "../session-sharing-policy.js";
 import { SessionMutationFactsUnavailableError } from "../session-sharing-preparation.js";
 import {
   authorizeIncognitoSessionTarget,
   canManageSessionSharing,
   prepareProjectedSessionSharing,
-  resolveSessionSharingTarget,
   resolveSessionVisibility,
 } from "../session-sharing.js";
 import { resolveSessionSubscriptionKeys as subscriptionKeys } from "../session-subscription-keys.js";
@@ -67,7 +67,7 @@ import type { GatewayRequestContext, GatewayRequestHandlers, RespondFn } from ".
 import { assertValidParams, defineValidatedGatewayHandler } from "./validation.js";
 
 function protocolSuggestion(
-  target: NonNullable<ReturnType<typeof resolveSessionSharingTarget>>,
+  target: SessionSharingTarget,
   suggestion: StoredSessionSuggestion,
 ): SessionSuggestion {
   return {
@@ -87,7 +87,7 @@ function protocolSuggestion(
 
 function publishSuggestion(
   context: GatewayRequestContext,
-  target: NonNullable<ReturnType<typeof resolveSessionSharingTarget>>,
+  target: SessionSharingTarget,
   requestedSessionKey: string,
   action: SessionSuggestionEvent["action"],
   stored: StoredSessionSuggestion,
@@ -127,7 +127,7 @@ export const sessionSuggestionHandlers: GatewayRequestHandlers = {
     validateSessionSuggestionsAddParams,
     async ({ params, respond, client, context, signal, sessionMutationAuthorization }) => {
       const cfg = context.getCommittedRuntimeConfig?.() ?? context.getRuntimeConfig();
-      const target = requireSuggestionTarget({ context, ...params, respond });
+      const target = await requireSuggestionTarget({ context, ...params, respond });
       const author = gatewayClientSessionCreator(client);
       if (
         !target ||
@@ -325,7 +325,7 @@ export const sessionSuggestionHandlers: GatewayRequestHandlers = {
       sessionMutationAuthorization,
     }) => {
       const cfg = context.getCommittedRuntimeConfig?.() ?? context.getRuntimeConfig();
-      const target = requireSuggestionTarget({ context, ...params, respond });
+      const target = await requireSuggestionTarget({ context, ...params, respond });
       if (!target) {
         return;
       }

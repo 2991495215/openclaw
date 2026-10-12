@@ -7,6 +7,7 @@ import {
   resolveSessionStoreAgentId,
   resolveStoredSessionKeyForAgentStore,
 } from "../../gateway/session-store-key.js";
+import { createGatewaySessionLineageReader } from "../../gateway/session-utils-store-lineage.native.js";
 import {
   isIncognitoSessionKey,
   normalizeAgentId,
@@ -27,6 +28,7 @@ import { resolveSessionStoreCompatibilityAgentId } from "../legacy.default-agent
 import type { OpenClawConfig } from "../types.openclaw.js";
 import {
   createSessionModelSources,
+  type GatewaySessionLineageReader,
   type GatewayStoredSessionTarget,
   type GatewayStoredSessionTargets,
 } from "./combined-store-model-sources.js";
@@ -51,11 +53,11 @@ import { resolveSessionStorePathCore } from "./paths.js";
 import { listSessionEntriesCore, listSessionEntriesReadOnly } from "./session-accessor.js";
 import type { SessionEntrySummary } from "./session-accessor.types.js";
 import { canonicalSessionKeyMigrationRequiredError } from "./session-canonical-key.js";
+import { listKnownSessionStoreAgentIds } from "./targets-discovery.native.js";
 import {
   dedupeSessionStoreTargetsBySqliteTarget,
   isConfiguredAgentDatabaseTarget,
   listConfiguredSessionStoreAgentIds,
-  listKnownSessionStoreAgentIds,
   resolveAgentSessionStoreTargetsSync,
   resolveAllAgentSessionStoreTargetsSync,
   type SessionStoreTarget,
@@ -565,6 +567,7 @@ export function mergeCombinedSessionStore(
   opts: GatewaySessionStoreOptions,
   prepared: PreparedCombinedSessionStore,
   readEntries: (target: SessionStoreTarget) => SessionEntrySummary[],
+  readQualifiedParent: GatewaySessionLineageReader,
   incognitoEntries?: (target: SessionStoreTarget) => SessionEntrySummary[],
 ): GatewayCombinedSessionStore {
   const env = opts.discovery?.env;
@@ -589,7 +592,12 @@ export function mergeCombinedSessionStore(
   // must not re-admit a sentinel through public aliases or select a different store.
   const targetsBySessionKey = new Map<string, GatewayStoredSessionTarget>();
   const projectionDiagnostics = [...diagnostics];
-  const modelSources = createSessionModelSources(cfg, projectionDiagnostics, preparedAgentIds);
+  const modelSources = createSessionModelSources(
+    cfg,
+    projectionDiagnostics,
+    preparedAgentIds,
+    readQualifiedParent,
+  );
   for (const { target, storeTarget } of prepared.reads) {
     const agentId = target.agentId;
     const storePath = target.storePath;
@@ -708,9 +716,14 @@ export function loadCombinedSessionStoreForGatewayCore(
   opts: GatewaySessionStoreOptions = {},
 ): GatewayCombinedSessionStore {
   const prepared = prepareCombinedSessionStore(cfg, opts);
-  return mergeCombinedSessionStore(cfg, opts, prepared, (target) =>
-    opts.loadEntries
-      ? opts.loadEntries(target, prepared.projection)
-      : loadGatewayStoreEntries({ ...target, projection: prepared.projection }),
+  return mergeCombinedSessionStore(
+    cfg,
+    opts,
+    prepared,
+    (target) =>
+      opts.loadEntries
+        ? opts.loadEntries(target, prepared.projection)
+        : loadGatewayStoreEntries({ ...target, projection: prepared.projection }),
+    createGatewaySessionLineageReader(cfg),
   );
 }

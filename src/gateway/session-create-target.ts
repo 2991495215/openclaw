@@ -29,7 +29,7 @@ import { invalidSessionRequest, unavailableSessionRequest } from "./session-requ
 import { captureSessionMutationRouting } from "./session-sharing-preparation.js";
 import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
-import { loadGatewaySessionEntryReadOnly } from "./session-utils-store.js";
+import { loadIncognitoGatewaySessionEntryReadOnly } from "./session-utils-store.js";
 import type { GatewaySessionStoreTarget } from "./session-utils-store.types.js";
 
 /** Select and retain the agent's admission through creation, finalization, and rollback. */
@@ -215,7 +215,8 @@ export async function readSessionCreateTarget(
   // Process-held incognito stores retain their native owner until its complete cutover.
   if (isIncognitoSessionKey(target.canonicalKey)) {
     return validate(
-      loadGatewaySessionEntryReadOnly(target.canonicalKey, { agentId: target.agentId }).entry,
+      loadIncognitoGatewaySessionEntryReadOnly(target.canonicalKey, { agentId: target.agentId })
+        .entry,
     );
   }
   const result = await withSessionEntriesFromStoresInWorker(

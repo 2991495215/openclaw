@@ -16,7 +16,7 @@ import { ADMIN_SCOPE, authorizeOperatorScopesForRequiredScope } from "../method-
 import { operatorSessionCap } from "../operator-role-policy.js";
 import { prepareSessionCreatorProfile } from "../session-creator.js";
 import { requireSessionRowProjection } from "../session-row-projection-access.js";
-import { resolveSessionSharingRole, resolveSessionSharingTarget } from "../session-sharing.js";
+import { resolveSessionSharingRole, resolveSessionSharingTargetAsync } from "../session-sharing.js";
 import { createSessionCatalogRequestEntrySnapshot } from "./session-catalog-entry-snapshot.js";
 import type { GatewayClient, GatewayRequestContext } from "./types.js";
 
@@ -226,7 +226,10 @@ export async function resolveSessionCatalogThreadVisibility(params: {
       ) {
         return { visibility, source: { sessionKey: session.sessionKey, entry: visibleEntry } };
       }
-      const target = resolveSessionSharingTarget({ cfg: config, sessionKey: session.sessionKey });
+      const target = await resolveSessionSharingTargetAsync({
+        cfg: config,
+        sessionKey: session.sessionKey,
+      });
       return target !== null &&
         resolveSessionSharingRole({ cfg: config, client: params.client, target }) === "member"
         ? { visibility, source: { sessionKey: target.canonicalKey, entry: visibleEntry } }

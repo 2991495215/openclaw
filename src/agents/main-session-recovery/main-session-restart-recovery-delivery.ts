@@ -1,6 +1,6 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { SessionEntry } from "../../config/sessions.js";
-import { loadSessionEntryReadOnly } from "../../config/sessions/session-accessor.js";
+import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import { captureIncognitoSessionSource } from "../../config/sessions/session-incognito-binding.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { GatewayRecoveryRuntime } from "../../gateway/server-instance-runtime.types.js";
@@ -94,7 +94,10 @@ export function captureRestartRecoveryDeliveryCurrent(
           restartRecoveryDeliveryContext:
             facts.pendingFinalDeliveryContext ?? facts.restartRecoveryDeliveryContext,
         }
-      : loadSessionEntryReadOnly(params);
+      : readRetainedSessionEntryFacts(
+          { agentId: params.agentId, path: params.storePath },
+          { sessionKeys: [params.sessionKey], snapshotFields: [] },
+        )?.entries.find((row) => row.sessionKey === params.sessionKey)?.entry;
     return (
       current?.sessionId === params.sessionId &&
       current.abortedLastRun !== true &&

@@ -25,9 +25,9 @@ import {
 } from "../utils/delivery-context.shared.js";
 import { isInternalMessageChannel } from "../utils/message-channel.js";
 import { resolveGatewayLifecycleNoticeRoute } from "./server-restart-sentinel-notice.js";
-import { loadSessionEntry } from "./session-utils.js";
+import { loadSessionEntryAsync } from "./session-utils.js";
 
-type NoticeSession = ReturnType<typeof loadSessionEntry>;
+type NoticeSession = Awaited<ReturnType<typeof loadSessionEntryAsync>>;
 const log = createSubsystemLogger("gateway/update-run");
 type NoticeDestination =
   | { kind: "route"; route: SessionDeliveryRoute }
@@ -167,13 +167,15 @@ export async function resolveUpdateRunNoticeTarget(params: {
 }): Promise<NoticeTarget> {
   const session =
     params.session ??
-    (params.sessionKey ? loadSessionEntry(params.sessionKey, { env: params.env }) : undefined);
+    (params.sessionKey
+      ? await loadSessionEntryAsync(params.sessionKey, { env: params.env })
+      : undefined);
   const routingKey = params.sessionKey ?? session?.canonicalKey;
   const { baseSessionKey, threadId } = resolveSessionThreadInfo(routingKey);
   let context = deliveryContextFromSession(session?.entry);
   let chatType = sessionDeliveryOrigin(session?.entry)?.chatType ?? "direct";
   if (!hasDeliveryTargetFields(context) && baseSessionKey && baseSessionKey !== routingKey) {
-    const { entry } = loadSessionEntry(baseSessionKey, { env: params.env });
+    const { entry } = await loadSessionEntryAsync(baseSessionKey, { env: params.env });
     chatType =
       sessionDeliveryOrigin(session?.entry)?.chatType ??
       sessionDeliveryOrigin(entry)?.chatType ??

@@ -1,13 +1,10 @@
 import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import type { RepositoryGitHubPublicationRow } from "../state/github-publication-read.types.js";
-import {
-  getSessionRepositoryWorkspaceStore,
-  type PreparedRepositoryWorkspace,
-} from "../state/session-repository-workspaces.js";
+import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import {
   prepareGitHubPublicationWorkspaceOwner,
   type PublicationSessionIdentity,
-  readGitHubPublicationSession,
+  prepareGitHubPublicationSession,
 } from "./github-publication-availability.js";
 import { GitHubPublicationSessionChangedError } from "./github-publication-failure.js";
 import { projectGitHubPublicationResult } from "./github-publication-receipt.js";
@@ -27,20 +24,28 @@ export async function prepareRepositoryOwner(session: PublicationSessionIdentity
   return current.currentRepository;
 }
 
+type ReceiptSession = Pick<
+  RepositoryGitHubPublicationRow,
+  | "session_key"
+  | "agent_id"
+  | "session_id"
+  | "session_lifecycle_revision"
+  | "workspace_id"
+  | "branch"
+>;
+
+export async function prepareReceiptOwner(row: ReceiptSession) {
+  const session = await prepareGitHubPublicationSession(row.session_key, { agentId: row.agent_id });
+  const repository = await getSessionRepositoryWorkspaceStore().prepare(row.workspace_id);
+  return { session: session.current, repository };
+}
+
 export function resolveReceiptOwner(
-  row: Pick<
-    RepositoryGitHubPublicationRow,
-    | "session_key"
-    | "agent_id"
-    | "session_id"
-    | "session_lifecycle_revision"
-    | "workspace_id"
-    | "branch"
-  >,
-  prepared: PreparedRepositoryWorkspace,
+  row: ReceiptSession,
+  prepared: Awaited<ReturnType<typeof prepareReceiptOwner>>,
 ) {
-  const loaded = readGitHubPublicationSession(row.session_key, { agentId: row.agent_id });
-  const workspace = prepared.current();
+  const loaded = prepared.session();
+  const workspace = prepared.repository.current();
   if (
     loaded.entry?.sessionId !== row.session_id ||
     (loaded.entry.lifecycleRevision ?? null) !== row.session_lifecycle_revision ||
@@ -61,7 +66,7 @@ export function resolveReceiptOwner(
 
 export function assertReceiptOwner(
   row: RepositoryGitHubPublicationRow,
-  prepared: PreparedRepositoryWorkspace,
+  prepared: Awaited<ReturnType<typeof prepareReceiptOwner>>,
 ) {
   const owner = resolveReceiptOwner(row, prepared);
   if (!owner) {
@@ -93,7 +98,7 @@ export async function captureCheckpoint<T>(
   let checkpointRef = row.checkpoint_ref;
   let assertSelected = assertCurrent;
   if (!checkpointRef) {
-    const preparedOwner = await getSessionRepositoryWorkspaceStore().prepare(row.workspace_id);
+    const preparedOwner = await prepareReceiptOwner(row);
     assertCurrent();
     const { workspace } = assertReceiptOwner(row, preparedOwner);
     checkpointRef = workspace.checkpointRef ?? null;

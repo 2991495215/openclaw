@@ -23,7 +23,7 @@ vi.mock("../infra/heartbeat-visibility.js", () => ({
 vi.mock("./session-utils.js", async () => {
   const { resolveSessionStoreIdentity } = await import("./session-store-key.js");
   return {
-    loadGatewaySessionEntryReadOnly: (sessionKey: string, options?: { agentId?: string }) => {
+    loadGatewaySessionEntryReadOnlyAsync: (sessionKey: string, options?: { agentId?: string }) => {
       const cfg = { agents: { entries: { main: {}, delivery: {} } } };
       const identity = resolveSessionStoreIdentity({ cfg, sessionKey, agentId: options?.agentId });
       return {

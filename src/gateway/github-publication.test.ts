@@ -793,8 +793,8 @@ describe("Gateway GitHub publication", () => {
       return {
         resolveCanonicalSessionEntryFromStoreKeys:
           runtime.resolveCanonicalSessionEntryFromStoreKeys,
-        resolveGatewaySessionStoreTargetWithStore:
-          runtime.resolveGatewaySessionStoreTargetWithStore,
+        resolveGatewaySessionStoreTargetWithStoreAsync:
+          runtime.resolveGatewaySessionStoreTargetWithStoreAsync,
       };
     };
     const warnings: string[] = [];

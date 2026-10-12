@@ -51,6 +51,7 @@ describe("authenticated Talk permission parity", () => {
     sessionKey: string;
     canonicalKey: string;
     storePath: string;
+    assertCurrent: (cfg: OpenClawConfig) => void;
   };
   let voiceSessionId: string;
   const client = sharingPolicyClient({ deviceId: "parity-caller", scopes: ["operator.admin"] });
@@ -64,7 +65,13 @@ describe("authenticated Talk permission parity", () => {
     };
     await state.writeConfig(config);
     const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
-    sessionTarget = { agentId: "main", sessionKey, canonicalKey: sessionKey, storePath };
+    sessionTarget = {
+      agentId: "main",
+      sessionKey,
+      canonicalKey: sessionKey,
+      storePath,
+      assertCurrent: () => {},
+    };
     await replaceSessionEntry(
       { agentId: "main", sessionKey, storePath },
       {

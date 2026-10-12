@@ -39,7 +39,21 @@ vi.mock("./server-methods/sessions-files.js", () => ({
   resolveLocalSessionWorkspaceRoot: () => state.root,
 }));
 vi.mock("./session-utils.js", () => ({
-  loadGatewaySessionEntryReadOnly: () => ({ entry: { sessionId: state.sessionId } }),
+  loadGatewaySessionEntryReadOnlyAsync: async (sessionKey: string) => ({
+    cfg: {},
+    agentId: "main",
+    canonicalKey: sessionKey,
+    storePath: state.root,
+    entry: { sessionId: state.sessionId },
+  }),
+}));
+vi.mock("../config/sessions/session-entry-read-facts.js", () => ({
+  readRetainedSessionEntryFacts: (_database: unknown, request: { sessionKeys: string[] }) => ({
+    entries: request.sessionKeys.map((sessionKey) => ({
+      sessionKey,
+      entry: { sessionId: state.sessionId },
+    })),
+  }),
 }));
 vi.mock("../agents/agent-bundle-mcp-manager-cleanup.js", () => ({
   completeDeferredSessionMcpRuntimeRetirement: async () => false,

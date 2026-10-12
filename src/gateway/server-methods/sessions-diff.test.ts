@@ -22,8 +22,8 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock("../session-utils.js", () => ({
-  loadSessionEntry: hoisted.loadSessionEntry,
-  loadGatewaySessionEntryReadOnly: hoisted.loadSessionEntry,
+  loadSessionEntryAsync: hoisted.loadSessionEntry,
+  loadIncognitoGatewaySessionEntryReadOnly: hoisted.loadSessionEntry,
 }));
 
 // mock-isolation: Diff RPC cases supply session discovery while exercising real Git reads.

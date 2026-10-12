@@ -151,7 +151,7 @@ import {
 import { READ_SCOPE, WRITE_SCOPE } from "./operator-scopes.js";
 import type { GatewayServer } from "./server-public.js";
 import { readSessionMessagesAsync } from "./session-transcript-readers.js";
-import { loadSessionEntry } from "./session-utils.js";
+import { loadSessionEntryAsync } from "./session-utils.js";
 
 const ZAI_FALLBACK = isTruthyEnvValue(process.env.OPENCLAW_LIVE_GATEWAY_ZAI_FALLBACK);
 const REQUIRE_PROFILE_KEYS = isLiveProfileKeyModeEnabled();
@@ -3630,7 +3630,7 @@ describe("retryLiveTranscriptProjectionRead", () => {
 });
 
 async function readSessionMessagesForLiveProbe(sessionKey: string): Promise<unknown[]> {
-  const { storePath, entry } = loadSessionEntry(sessionKey);
+  const { storePath, entry } = await loadSessionEntryAsync(sessionKey);
   if (!entry?.sessionId) {
     return [];
   }

@@ -15,7 +15,7 @@ import {
   ensurePairedTestGatewayClientIdentity,
 } from "../gateway/gateway-cli-backend.live-helpers.js";
 import { readSessionMessagesAsync } from "../gateway/session-transcript-readers.js";
-import { loadGatewaySessionEntryReadOnly } from "../gateway/session-utils.js";
+import { loadGatewaySessionEntryReadOnlyAsync } from "../gateway/session-utils.js";
 import { listKnownProviderAuthEnvVarNamesCore } from "../secrets/provider-env-vars.js";
 
 const enabled = isLiveTestEnabled() && process.env.OPENCLAW_LIVE_SESSION_EVENT_WAKE === "1";
@@ -24,7 +24,7 @@ const TURN_TIMEOUT_MS = 180_000;
 const MODEL = "openai/gpt-5.6-luna";
 
 async function readMessages(sessionKey: string): Promise<unknown[]> {
-  const { storePath, entry } = loadGatewaySessionEntryReadOnly(sessionKey);
+  const { storePath, entry } = await loadGatewaySessionEntryReadOnlyAsync(sessionKey);
   if (!entry?.sessionId) {
     return [];
   }
@@ -203,7 +203,7 @@ describeLive("session event wake through a live Gateway", () => {
           ].join("\n"),
         );
         expect(response.status).toBe("ok");
-        expect(loadGatewaySessionEntryReadOnly(sessionKey).entry).toMatchObject({
+        expect((await loadGatewaySessionEntryReadOnlyAsync(sessionKey)).entry).toMatchObject({
           createdVia: "operator",
           delivery: { kind: "internal" },
         });

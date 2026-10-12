@@ -12,10 +12,12 @@ import {
 import type { WorkerPlacementSessionWorkCancellation } from "./server-worker-placement-cancel.js";
 import {
   resolveWorkerPlacementSessionStoreTarget,
+  readPreparedWorkerPlacementSessionStoreTarget,
   resolveWorkerPlacementSessionTarget,
   WorkerDispatchTargetChangedError,
   type WorkerPlacementSessionRuntime,
 } from "./server-worker-placement-session-target.js";
+import { captureSessionMutationRouting } from "./session-sharing-preparation.js";
 import type { WorkerPlacementReclaimBarriers } from "./worker-environments/placement-reclaim-contract.js";
 import type { WorkerSessionPlacementStore } from "./worker-environments/placement-store.js";
 import { matchesWorkerPlacementTarget } from "./worker-environments/placement-target.js";
@@ -37,12 +39,18 @@ export function createGatewayWorkerPlacementReclaimBarriers(
     agentId,
   }: WorkerPlacementReclaimRequest) => {
     const sessionRuntime = await params.loadSessionRuntime();
-    const resolveTarget = () =>
-      resolveWorkerPlacementSessionStoreTarget(sessionRuntime, getRuntimeConfig(), {
-        sessionKey,
-        agentId,
-      });
-    const target = resolveTarget();
+    const config = getRuntimeConfig();
+    const assertRoutingCurrent = captureSessionMutationRouting(config, undefined, [
+      { sessionKey, agentId },
+    ]);
+    const target = await resolveWorkerPlacementSessionStoreTarget(sessionRuntime, config, {
+      sessionKey,
+      agentId,
+    });
+    const resolveTarget = () => {
+      assertRoutingCurrent(getRuntimeConfig());
+      return readPreparedWorkerPlacementSessionStoreTarget(target, { sessionKey, agentId });
+    };
     const lifecycleIdentities = [sessionKey, target.canonicalKey, ...target.storeKeys, sessionId];
     const cancelAndDrain = async (
       closeWorkAdmissions: (reason: Error) => void,

@@ -116,7 +116,7 @@ vi.mock("./session-sharing.js", () => ({
 }));
 
 vi.mock("./session-utils.js", () => ({
-  resolveGatewaySessionStoreTargetWithStore: () => ({
+  resolveGatewaySessionStoreTargetWithStoreAsync: async () => ({
     storePath: "/tmp",
     storeKeys: ["agent:main"],
     canonicalKey: "agent:main",

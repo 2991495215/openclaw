@@ -11,7 +11,6 @@ import { isSessionCreatorProfile } from "./session-creator.js";
 import {
   canReceiveSessionEvent,
   createSessionListEntryFilter,
-  invalidateSessionSharingSnapshot,
   resolveSessionMutationAuthorization,
   resolveSessionSharingRole,
   resolveSessionSharingTarget,
@@ -123,7 +122,6 @@ describe("creator namespace authorization", () => {
           expect.soft(result.error === null, `${sessionKey}: ${method}`).toBe(isCreator);
         }
       }
-      invalidateSessionSharingSnapshot();
     });
   });
 
@@ -158,7 +156,6 @@ describe("creator namespace authorization", () => {
       expect(target.entry.createdActor?.id).toBe(old.id);
       expect(resolveSessionSharingRole({ client, target, isMember: false })).toBe("owner");
       expect(createSessionListEntryFilter({ client })?.(sessionKey, target.entry)).toBe(true);
-      invalidateSessionSharingSnapshot();
     });
   });
 });

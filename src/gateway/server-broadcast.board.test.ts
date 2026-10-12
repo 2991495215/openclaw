@@ -36,7 +36,6 @@ import { bindSessionRowProjection } from "./session-row-projection-access.js";
 import { createSessionRowProjection } from "./session-row-projection.js";
 import {
   canReceiveSessionEvent as canReceiveSessionEventForClient,
-  invalidateSessionSharingSnapshot,
   resolveSessionSharingTarget,
 } from "./session-sharing.js";
 import { roleClient, rolePolicyConfig } from "./session-sharing.test-utils.js";
@@ -110,7 +109,6 @@ describe("board and progress event session ownership", () => {
             },
           });
         }
-        invalidateSessionSharingSnapshot();
         const projection = await createSessionRowProjection({ cfg });
         const connection = createGatewayConnectionState({
           scheduler: createTestGatewayScheduler(),
@@ -364,7 +362,6 @@ describe("collaboration event scope guards", () => {
           createdActor: successorActor,
         },
       );
-      invalidateSessionSharingSnapshot(sessionKey);
       owner.socket.send.mockClear();
       successor.socket.send.mockClear();
       owner.socket.events.length = 0;
@@ -399,7 +396,6 @@ describe("collaboration event scope guards", () => {
         createdActor: { type: "human" as const, source: "profile" as const, id: "other-owner" },
       };
       await upsertSessionEntryCore(target, entry);
-      invalidateSessionSharingSnapshot(sessionKey);
       const subscribed = makeClient("subscribed", "operator", ["operator.read"]);
       const unrelated = Array.from({ length: 32 }, (_, i) =>
         makeClient(`unrelated-${i}`, "operator", ["operator.read"]),
@@ -447,7 +443,6 @@ describe("collaboration event scope guards", () => {
       expect(filter).toHaveBeenCalledTimes(2);
 
       await upsertSessionEntryCore(target, { ...entry, ...hidden, updatedAt: 2 });
-      invalidateSessionSharingSnapshot(sessionKey);
       getSubscribers.mockClear();
       filter.mockClear();
       broadcast("chat", payload);
@@ -676,7 +671,6 @@ it("delivers committed collector updates to a parent-only cross-agent viewer", a
         },
       });
     }
-    invalidateSessionSharingSnapshot();
     expect(
       canReceiveSessionEventForClient({
         cfg,
@@ -785,7 +779,6 @@ it("delivers committed collector updates to a parent-only cross-agent viewer", a
       rowProjection.dispose();
       await connection.mentionInbox.dispose();
       clearSubagentRunsReadCacheForTest();
-      invalidateSessionSharingSnapshot();
     }
   });
 });

@@ -21,11 +21,12 @@ import { DEFAULT_IDENTITY_FILENAME } from "../../agents/workspace-bootstrap-poli
 import { getRuntimeConfig } from "../../config/io.js";
 import type { SessionEntryReadScope } from "../../config/sessions/session-accessor.types.js";
 import { getSessionActorStorageBinding } from "../../config/sessions/session-actor-storage-binding.js";
+import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import { captureSessionEntryMetadataRead } from "../../config/sessions/session-entry-source-authority.js";
 import { captureIncognitoSessionBinding } from "../../config/sessions/session-incognito-binding.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
+import { isIncognitoSessionKey, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { SessionMutationAuthorizationChangedError } from "../session-mutation-authorization-error.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
 import {
@@ -34,7 +35,8 @@ import {
 } from "../session-transcript-read-target.js";
 import type { SessionTranscriptReadScope } from "../session-transcript-readers.js";
 import { withGatewaySessionEntryReadOnly } from "../session-utils-read-lifetime.js";
-import { loadGatewaySessionEntryReadOnly } from "../session-utils.js";
+import type { GatewaySessionEntryRead } from "../session-utils-store.js";
+import { loadIncognitoGatewaySessionEntryReadOnly } from "../session-utils.js";
 import { resolveSessionWorkspaceRoots } from "../session-workspace-roots.js";
 import { WORKSPACE_PREVIEW_MAX_BYTES } from "../workspace-file-limits.js";
 import {
@@ -78,7 +80,7 @@ function sessionFilesError(type: string, message: string, details?: Record<strin
   });
 }
 
-function loadSessionFileRoot(loaded: ReturnType<typeof loadGatewaySessionEntryReadOnly>) {
+function loadSessionFileRoot(loaded: GatewaySessionEntryRead) {
   if (!loaded.entry?.sessionId) {
     return {
       ...loaded,
@@ -128,9 +130,16 @@ export function resolveLocalSessionWorkspaceRoot(params: {
                 ).root
               : undefined,
         }
-      : loadSessionFileRoot(
-          loadGatewaySessionEntryReadOnly(params.sessionKey, { agentId: params.agentId }),
-        );
+      : isIncognitoSessionKey(params.sessionKey)
+        ? loadSessionFileRoot(
+            loadIncognitoGatewaySessionEntryReadOnly(params.sessionKey, {
+              agentId: params.agentId,
+            }),
+          )
+        : undefined;
+  if (!loaded) {
+    throw new Error("Session workspace metadata must be prepared before file access");
+  }
   return loaded.entry?.execNode || (loaded.root && getAgentWorkspaceAccess(loaded.root))
     ? undefined
     : loaded.root;
@@ -218,7 +227,13 @@ async function loadSessionFiles(
           assertSourceCurrent();
           const current = metadata
             ? metadata.readCurrent()
-            : loadGatewaySessionEntryReadOnly(canonicalKey, { agentId }).entry;
+            : readRetainedSessionEntryFacts(
+                { agentId, path: storePath },
+                {
+                  sessionKeys: [canonicalKey],
+                  snapshotFields: ["sessionId", "lifecycleRevision", "worktree"],
+                },
+              )?.entries.find((row) => row.sessionKey === canonicalKey)?.entry;
           if (
             current?.sessionId !== entry.sessionId ||
             current.lifecycleRevision !== entry.lifecycleRevision ||
@@ -324,7 +339,7 @@ async function handleSessionFilesRead(
   if (!agentId) {
     return;
   }
-  const read = retainSessionScopedRead(options, params.sessionKey, agentId, {
+  const read = await retainSessionScopedRead(options, params.sessionKey, agentId, {
     requireMaterialized: true,
   });
   return withSessionFileRoot(

@@ -1,5 +1,8 @@
 import { listAgentIds } from "../agents/agent-scope-config.js";
-import { prepareCombinedSessionStoreForGatewayAsync } from "../config/sessions/combined-store-gateway-read.js";
+import {
+  prepareCombinedSessionStoreForGatewayAsync,
+  prepareCombinedSessionStoreLineage,
+} from "../config/sessions/combined-store-gateway-read.js";
 import { mergeCombinedSessionStore } from "../config/sessions/combined-store-gateway.js";
 import type {
   CombinedSessionStoreScopeTargets,
@@ -9,6 +12,7 @@ import type { SessionEntrySummary } from "../config/sessions/session-accessor.ty
 import { projectionLane } from "../config/sessions/session-transcript-worker-resources.js";
 import { withSessionHistoryWorkerDatabases } from "../config/sessions/session-transcript-worker-runtime.js";
 import { MAX_SESSION_ROW_FACTS_KEYS } from "../config/sessions/session-transcript-worker.types.js";
+import type { SessionStoreTarget } from "../config/sessions/targets.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   assertExistingDatabaseIdentity,
@@ -371,6 +375,24 @@ export function createSessionRowEntryReadAccess(
                 owners[index]!.assertCurrent();
                 assertExistingDatabaseIdentity(target.storePath, file.key, file.birthtime);
               }
+              const readEntries = (target: SessionStoreTarget) => {
+                const previous = captures.find(
+                  (capture) => capture.target.storePath === target.storePath,
+                )?.previous;
+                if (previous) {
+                  return [...(byStore.get(previous.target.storePath) ?? [])].flatMap((id) => {
+                    const row = rows.get(id);
+                    const entry = row && (row.storedEntry ?? readSessionRowEntry(row));
+                    return row && entry ? [{ sessionKey: row.key, entry }] : [];
+                  });
+                }
+                return entries.get(target.storePath) ?? [];
+              };
+              const lineage = await prepareCombinedSessionStoreLineage(
+                cfg,
+                preparedStore,
+                readEntries,
+              );
               return consume(
                 () =>
                   mergeCombinedSessionStore(
@@ -387,19 +409,8 @@ export function createSessionRowEntryReadAccess(
                       },
                     },
                     preparedStore,
-                    (target) => {
-                      const previous = captures.find(
-                        (capture) => capture.target.storePath === target.storePath,
-                      )?.previous;
-                      if (previous) {
-                        return [...(byStore.get(previous.target.storePath) ?? [])].flatMap((id) => {
-                          const row = rows.get(id);
-                          const entry = row && (row.storedEntry ?? readSessionRowEntry(row));
-                          return row && entry ? [{ sessionKey: row.key, entry }] : [];
-                        });
-                      }
-                      return entries.get(target.storePath) ?? [];
-                    },
+                    readEntries,
+                    lineage,
                   ),
                 scopes!,
               );

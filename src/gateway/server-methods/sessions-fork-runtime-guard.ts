@@ -1,12 +1,13 @@
 import { listRegisteredAgentHarnesses } from "../../agents/harness/registry.js";
 import type { AgentHarness } from "../../agents/harness/types.js";
 import { resolveSessionModelRef } from "../../agents/session-model-ref.js";
+import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import { captureSessionEntryMetadataRead } from "../../config/sessions/session-entry-source-authority.js";
 import type { SessionUpstreamLink } from "../../sessions/session-upstream-links.js";
 import { authorizeGatewaySessionCreation, resolveCreatorSandbox } from "../operator-role-policy.js";
 import { resolveOperatorSessionCreation } from "../session-creation-provenance.js";
 import { SessionMutationAuthorizationChangedError } from "../session-sharing.js";
-import { loadGatewaySessionEntry } from "../session-utils-store.js";
+import type { GatewaySessionEntryRead } from "../session-utils-store.js";
 import { resolveSessionNativeRuntimeRestriction } from "./sessions-patch-model-selection.js";
 import type { GatewayClient, GatewayRequestContext } from "./types.js";
 
@@ -46,7 +47,7 @@ export function createUpstreamForkCurrentGuard(params: {
   forkHarness: UpstreamForkHarness;
   requestedAgentId: string;
   sessionKey: string;
-  source: ReturnType<typeof loadGatewaySessionEntry>;
+  source: GatewaySessionEntryRead;
   targetKey: string;
 }) {
   const expectedEntry = params.source.entry;
@@ -61,14 +62,16 @@ export function createUpstreamForkCurrentGuard(params: {
   const assertCurrent = () => {
     params.commitGuard();
     const currentConfig = params.context.getRuntimeConfig();
-    const source = sourceMetadata
-      ? params.source
-      : loadGatewaySessionEntry(
-          params.sessionKey,
-          { agentId: params.requestedAgentId },
-          currentConfig,
-        );
-    const sourceEntry = sourceMetadata ? sourceMetadata.readCurrent() : source.entry;
+    const source = params.source;
+    const sourceEntry = sourceMetadata
+      ? sourceMetadata.readCurrent()
+      : readRetainedSessionEntryFacts(
+          {
+            agentId: source.readSource?.agentId ?? source.agentId,
+            path: source.readSource?.path ?? source.storePath,
+          },
+          { sessionKeys: [source.canonicalKey] },
+        )?.entries.find((row) => row.sessionKey === source.canonicalKey)?.entry;
     if (
       !sourceEntry ||
       sourceEntry.sessionId !== expectedEntry.sessionId ||

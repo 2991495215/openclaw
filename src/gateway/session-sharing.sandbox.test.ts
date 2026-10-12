@@ -11,7 +11,7 @@ import {
   authorizeResolvedSessionMutation,
   resolveSessionMutationAuthorization,
   resolveSessionSharingRole,
-  resolveSessionSharingTarget,
+  resolveSessionSharingTargetAsync,
   SessionMutationAuthorizationChangedError,
 } from "./session-sharing.js";
 
@@ -96,19 +96,25 @@ describe("session sharing sandbox requirements", () => {
         },
       );
 
-      const hostTarget = resolveSessionSharingTarget({ cfg, sessionKey: hostSessionKey });
+      const hostTarget = await resolveSessionSharingTargetAsync({
+        cfg,
+        sessionKey: hostSessionKey,
+      });
       expect(hostTarget).not.toBeNull();
       if (!hostTarget) {
         throw new Error("expected persisted maintainer session");
       }
       expect(resolveSessionSharingRole({ cfg, client: guest, target: hostTarget })).toBe("member");
       expect(
-        authorizeResolvedSessionMutation({
-          cfg,
-          client: guest,
-          sessionKey: hostSessionKey,
-          agentId: "main",
-        }),
+        authorizeResolvedSessionMutation(
+          {
+            cfg,
+            client: guest,
+            sessionKey: hostSessionKey,
+            agentId: "main",
+          },
+          hostTarget,
+        ),
       ).toMatchObject({ code: "FORBIDDEN", message: expect.stringMatching(/sandbox/i) });
 
       const context = { getRuntimeConfig: () => cfg } as GatewayRequestContext;

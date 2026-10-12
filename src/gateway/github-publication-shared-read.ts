@@ -130,7 +130,7 @@ export async function readSharedGitHubPublication(
       return row;
     });
   }
-  const selected = retainGatewaySessionEntryReadOnly(
+  const selected = await retainGatewaySessionEntryReadOnly(
     session.sessionKey,
     session.agentId,
     (previous, current) =>

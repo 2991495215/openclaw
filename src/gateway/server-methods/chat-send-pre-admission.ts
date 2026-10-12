@@ -4,6 +4,7 @@ import { resolveSessionWorkStartError } from "../../config/sessions.js";
 import { SESSION_ROUTING_CHANGED_ERROR_REASON } from "../../config/sessions/main-session.js";
 import { hasRestartRecoveryTerminalRun } from "../../config/sessions/restart-recovery-state.js";
 import { loadExactSessionEntryCandidates } from "../../config/sessions/session-accessor.js";
+import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import { isSessionTranscriptProjectionUnavailableError } from "../../config/sessions/session-transcript-projection-error.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { sessionDeliveryChannel } from "../../utils/delivery-context.read.js";
@@ -15,7 +16,7 @@ import { PENDING_CHAT_SEND_DEDUPE_PREFIX } from "../server-shared.js";
 import { SessionMutationAuthorizationChangedError } from "../session-mutation-authorization-error.js";
 import { tryResolveSessionCompatibilityOwnerAgentId } from "../session-request-agent.js";
 import { withGatewaySessionEntry } from "../session-utils-store.js";
-import { loadSessionEntry, resolveGatewaySessionStoreTarget } from "../session-utils.js";
+import { loadSessionEntryAsync, resolveGatewaySessionStoreTargetAsync } from "../session-utils.js";
 import { resolveSessionWorkerPlacementContext } from "../session-worker-placement-context.js";
 import { formatForLog } from "../ws-log.js";
 import {
@@ -337,7 +338,8 @@ export async function runChatSendPreAdmission(
       clientRunId,
       entry: currentEntry,
       persistedSessionKey: legacyKey ?? sessionKey,
-      reloadEntry: () => loadSessionEntry(sessionLoadKey, sessionLoadOptions).entry,
+      reloadEntry: async () =>
+        (await loadSessionEntryAsync(sessionLoadKey, sessionLoadOptions)).entry,
       storePath,
       recoveryRuntime: context.recoveryRuntime,
       warn,
@@ -569,7 +571,7 @@ export async function runChatSendPreAdmission(
     const { reconcileOrphanedGatewaySessionRecovery } =
       await import("../session-recovery-service.js");
     try {
-      const recoveryEntry = loadSessionEntry(sessionLoadKey, sessionLoadOptions).entry;
+      const recoveryEntry = (await loadSessionEntryAsync(sessionLoadKey, sessionLoadOptions)).entry;
       if (recoveryEntry) {
         const comparison = await prepareChatSendRetryComparison({
           ...params,
@@ -577,7 +579,7 @@ export async function runChatSendPreAdmission(
         });
         await reconcileOrphanedGatewaySessionRecovery({
           cfg,
-          target: resolveGatewaySessionStoreTarget({
+          target: await resolveGatewaySessionStoreTargetAsync({
             cfg,
             key: sessionKey,
             agentId: session.agentId,
@@ -589,7 +591,18 @@ export async function runChatSendPreAdmission(
             if (sessionRoutingChanged(context.getRuntimeConfig())) {
               throw new Error(SESSION_ROUTING_CHANGED_ERROR_REASON);
             }
-            const current = loadSessionEntry(sessionLoadKey, sessionLoadOptions);
+            const currentFacts = readRetainedSessionEntryFacts(
+              { agentId: session.agentId, path: session.storePath },
+              { sessionKeys: [sessionKey] },
+            );
+            if (!currentFacts) {
+              throw new Error("Session recovery facts are unavailable. Retry.");
+            }
+            const current = {
+              canonicalKey: sessionKey,
+              storePath: session.storePath,
+              entry: currentFacts.entries.find((row) => row.sessionKey === sessionKey)?.entry,
+            };
             const conflict = resolveChatSendRequestConflict(
               { ...params, session: { ...session, entry: current.entry } },
               comparison,
@@ -624,7 +637,7 @@ export async function runChatSendPreAdmission(
           workerPlacementContext: resolveSessionWorkerPlacementContext(context),
         });
       }
-      durableEntry = loadSessionEntry(sessionLoadKey, sessionLoadOptions).entry;
+      durableEntry = (await loadSessionEntryAsync(sessionLoadKey, sessionLoadOptions)).entry;
     } catch (error) {
       if (error instanceof SessionMutationAuthorizationChangedError) {
         throw error;

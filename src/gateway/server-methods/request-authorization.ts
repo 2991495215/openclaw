@@ -438,7 +438,7 @@ export async function authorizeGatewayRequestPreDispatch(params: {
       subscriptionAccessOnly ? "accessFacts" : "projectionReadiness",
     );
     const preparedSessionMutation =
-      projection && !subscriptionAccessOnly
+      projection && !subscriptionAccessOnly && !params.method.startsWith("talk.")
         ? await projection.withPreparedExactRows((cfg) => {
             signal?.throwIfAborted();
             assertChatRoutingCurrent?.();
@@ -447,7 +447,7 @@ export async function authorizeGatewayRequestPreDispatch(params: {
               return agent.ok ? [{ key: target.sessionKey, agentId: agent.agentId }] : [];
             });
           }, authorizeSessionAndConsume)
-        : params.method === "chat.send" && !sessionPolicy && !params.consumeSessionTurn
+        : !sessionPolicy && !params.consumeSessionTurn
           ? {
               kind: "complete" as const,
               value: await resolveSessionMutationAuthorizationAsync({
@@ -457,7 +457,14 @@ export async function authorizeGatewayRequestPreDispatch(params: {
             }
           : withCanonicalSessionValidationDeferral(() => authorizeSessionAndConsume());
     params.markSessionSubscribePhase?.("accessFacts");
-    signal?.throwIfAborted();
+    try {
+      signal?.throwIfAborted();
+    } catch (error) {
+      if (preparedSessionMutation.kind === "complete") {
+        preparedSessionMutation.value.authorization?.release?.();
+      }
+      throw error;
+    }
     if (preparedSessionMutation.kind === "pending") {
       const { certifySessionCanonicalValidationPending } =
         await import("../../config/sessions/session-canonical-validation-readiness.js");
@@ -492,6 +499,7 @@ export async function authorizeGatewayRequestPreDispatch(params: {
         preparedAccess.assertPreparationCurrent();
       } catch (error) {
         sessionAccessAuthority?.release();
+        sessionMutation.authorization?.release?.();
         if (error instanceof SessionMutationAuthorizationChangedError) {
           return { error: error.error };
         }
@@ -503,6 +511,7 @@ export async function authorizeGatewayRequestPreDispatch(params: {
       (!params.client.connId ||
         !(await params.context.nodeRegistry.isConnectionCurrentPairingState(params.client.connId)))
     ) {
+      sessionMutation.authorization?.release?.();
       return {
         error: errorShape(ErrorCodes.UNAVAILABLE, "node pairing changed before request dispatch", {
           retryable: true,
@@ -510,9 +519,10 @@ export async function authorizeGatewayRequestPreDispatch(params: {
         }),
       };
     }
-    const error = authorizeCurrent(assertSessionInvocationCurrent, () =>
-      sessionAccessAuthority?.release(),
-    );
+    const error = authorizeCurrent(assertSessionInvocationCurrent, () => {
+      sessionAccessAuthority?.release();
+      sessionMutation.authorization?.release?.();
+    });
     if (error) {
       return { error };
     }

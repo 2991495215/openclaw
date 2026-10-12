@@ -28,7 +28,7 @@ import { parseGitHubRemoteUrl } from "./github-remote.js";
 import { prepareRepositoryPublicationRestore } from "./github-repository-publication-restore.js";
 import { readRepositoryGitHubPublicationBranch } from "./github-repository-publication-store.js";
 import { withGatewaySessionEntryReadOnly } from "./session-utils-read-lifetime.js";
-import { loadGatewaySessionEntryReadOnly } from "./session-utils-store.js";
+import type { GatewaySessionEntryRead } from "./session-utils-store.js";
 import { prepareSessionWorktree } from "./session-worktree-preparation.js";
 import { withSessionRepositoryCheckpoint } from "./worker-environments/session-repository-checkpoints.js";
 import { prepareWorkerGitHubBinding } from "./worker-environments/worker-github-binding.js";
@@ -56,7 +56,7 @@ export async function materializeSessionRepositoryWorkspaceOnGateway(params: {
 
 async function materializeCapturedRepositoryWorkspace(
   params: Parameters<typeof materializeSessionRepositoryWorkspaceOnGateway>[0],
-  initial: ReturnType<typeof loadGatewaySessionEntryReadOnly>,
+  initial: GatewaySessionEntryRead,
 ): Promise<void> {
   const metadata = captureSessionEntryMetadataRead({
     agentId: params.agentId,
@@ -128,23 +128,12 @@ async function materializeCapturedRepositoryWorkspace(
       storePath: initial.storePath,
     },
     readSource: initial.capturedReadSource,
-    fields: ["sessionId", "lifecycleRevision"],
+    fields: ["sessionId", "lifecycleRevision", "repositoryWorkspaceId"],
     expected: initial.entry,
     assertCurrent: () => {
       if (metadata) {
         assertEntry(metadata.readCurrent());
-        return;
       }
-      const current = loadGatewaySessionEntryReadOnly(params.sessionKey, {
-        agentId: params.agentId,
-      });
-      if (
-        current.storePath !== initial.storePath ||
-        current.canonicalKey !== initial.canonicalKey
-      ) {
-        throw new Error("Repository workspace changed during Gateway materialization; retry move");
-      }
-      assertEntry(current.entry);
     },
     refuse: () => {
       throw new Error("Repository workspace changed during Gateway materialization; retry move");

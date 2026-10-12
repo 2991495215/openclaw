@@ -4,10 +4,10 @@ import {
   validateEnvironmentsSessionExecParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { resolveExecDefaults } from "../../agents/exec-defaults.js";
+import { prepareSessionMutationFacts } from "../session-sharing-preparation.js";
 import { approveSessionEnvironmentCommand } from "./environments.session-exec-approval.js";
 import { captureSessionEnvironmentToolPolicy } from "./environments.session-tool-policy.js";
 import { resolveSessionEnvironmentCaller } from "./environments.session.js";
-import { loadAccessorSessionEntryForGatewayTarget } from "./sessions-shared.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { defineValidatedGatewayMethod } from "./validation.js";
 
@@ -17,7 +17,7 @@ export const environmentsSessionExecHandlers: GatewayRequestHandlers = {
     validateEnvironmentsSessionExecParams,
     async (options) => {
       const { params, respond, context } = options;
-      const caller = resolveSessionEnvironmentCaller(options, params);
+      await using caller = await resolveSessionEnvironmentCaller(options, params);
       const service = context.workerEnvironmentService;
       const binding = service?.getSessionAttachment(caller.identity.sessionId);
       if (
@@ -39,14 +39,16 @@ export const environmentsSessionExecHandlers: GatewayRequestHandlers = {
         caller,
         action === "run" || action === "start" ? "exec" : "process",
       );
+      const preparedFacts = await prepareSessionMutationFacts({
+        cfg: context.getRuntimeConfig(),
+        sessionKey: caller.identity.sessionKey,
+        agentId: caller.identity.agentId,
+      });
+      using facts = { ...preparedFacts, [Symbol.dispose]: () => preparedFacts.release() };
       let approved = false;
       const resolvePolicy = () => {
         const cfg = context.getRuntimeConfig();
-        const target = loadAccessorSessionEntryForGatewayTarget({
-          cfg,
-          key: caller.identity.sessionKey,
-          agentId: caller.identity.agentId,
-        });
+        const target = facts.readCurrent(cfg).target;
         return resolveExecDefaults({
           cfg,
           ...caller.identity,

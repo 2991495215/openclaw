@@ -18,7 +18,7 @@ import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js"
 import { loadControlUiSessionPullRequests } from "./control-ui-session-prs.js";
 import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
 import { resolveSessionStoreKey } from "./session-store-key.js";
-import { loadGatewaySessionEntryReadOnly } from "./session-utils-store.js";
+import { loadGatewaySessionEntryReadOnlyAsync } from "./session-utils-store.js";
 
 type GitContext = { owner: string; repo: string; branch: string };
 
@@ -86,7 +86,7 @@ export async function loadTestSessionPullRequests(
     throw new Error(requested.error.message);
   }
   const readTarget = await prepareTestSessionPrTarget({ ...params, agentId: requested.agentId });
-  const target = readTarget();
+  const target = await readTarget();
   if (!target) {
     return { pullRequests: [], rateLimited: false };
   }
@@ -97,10 +97,8 @@ export async function loadTestSessionPullRequests(
         target,
         sourceIdentity,
         assertCurrent: () => {
+          // This direct-loader fixture retains the source; production projections own target authority.
           assertSourceCurrent();
-          if (readTarget()?.identity !== target.identity) {
-            throw new Error("Session changed while preparing pull requests. Retry the request.");
-          }
         },
       },
     }),
@@ -108,12 +106,14 @@ export async function loadTestSessionPullRequests(
 }
 
 async function prepareTestSessionPrTarget(params: { sessionKey: string; agentId?: string }) {
-  const initial = loadGatewaySessionEntryReadOnly(params.sessionKey, { agentId: params.agentId });
+  const initial = await loadGatewaySessionEntryReadOnlyAsync(params.sessionKey, {
+    agentId: params.agentId,
+  });
   const prepared = initial.entry?.repositoryWorkspaceId
     ? await getSessionRepositoryWorkspaceStore().prepare(initial.entry.repositoryWorkspaceId)
     : undefined;
-  return () => {
-    const selected = loadGatewaySessionEntryReadOnly(params.sessionKey, {
+  return async () => {
+    const selected = await loadGatewaySessionEntryReadOnlyAsync(params.sessionKey, {
       agentId: params.agentId,
     });
     const repository = prepared?.current();

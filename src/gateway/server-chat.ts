@@ -84,7 +84,6 @@ import { persistGatewaySessionLifecycleEvent } from "./session-lifecycle-state.j
 import { tryResolveSessionCompatibilityOwnerAgentId } from "./session-request-agent.js";
 import type { SessionRowProjection } from "./session-row-projection.js";
 import { resolveSessionSubscriptionKeys } from "./session-subscription-keys.js";
-import { loadGatewaySessionEntryReadOnly } from "./session-utils.js";
 import { formatForLog } from "./ws-log.js";
 
 export {
@@ -1077,7 +1076,8 @@ export function createAgentEventHandler({
     const runVerbose = normalizeVerboseLevel(runContext?.verboseLevel ?? event.verboseLevel);
     const registeredAt = runContext?.registeredAt ?? event.registeredAt;
     try {
-      const { cfg, entry } = loadGatewaySessionEntryReadOnly(sessionKey, { agentId, clone: false });
+      const cfg = getRuntimeConfig();
+      const entry = getSessionRowProjection?.()?.sharingTarget({ key: sessionKey, agentId })?.entry;
       const sessionVerbose = normalizeVerboseLevel(entry?.verboseLevel);
       const sessionUpdatedAt = typeof entry?.updatedAt === "number" ? entry.updatedAt : undefined;
       const sessionChangedAfterRunStarted =

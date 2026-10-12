@@ -47,7 +47,7 @@ import {
 } from "./server-worker-placement-move-barrier.js";
 import {
   resolveCanonicalSessionEntryFromStoreKeys,
-  resolveGatewaySessionStoreTargetWithStore,
+  resolveGatewaySessionStoreTargetWithStoreAsync,
 } from "./session-utils.js";
 import {
   createWorkerPlacementMoveService,
@@ -186,7 +186,7 @@ describe("worker placement move destination", () => {
               {
                 managedWorktrees: { findLiveByOwner: async () => undefined },
                 resolveCanonicalSessionEntryFromStoreKeys,
-                resolveGatewaySessionStoreTargetWithStore,
+                resolveGatewaySessionStoreTargetWithStoreAsync,
               },
               async () => commit().placement,
             );
@@ -207,7 +207,7 @@ describe("worker placement move destination", () => {
               loadSessionRuntime: async () => ({
                 managedWorktrees: { findLiveByOwner: async () => undefined },
                 resolveCanonicalSessionEntryFromStoreKeys,
-                resolveGatewaySessionStoreTargetWithStore,
+                resolveGatewaySessionStoreTargetWithStoreAsync,
               }),
             })({
               sessionId,
@@ -256,7 +256,10 @@ describe("worker placement move destination", () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const sessionId = "session-move-source";
       const sessionKey = "agent:main:move-source";
-      const target = resolveGatewaySessionStoreTargetWithStore({ cfg: {}, key: sessionKey });
+      const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
+        cfg: {},
+        key: sessionKey,
+      });
       const releaseWriter = createDeferred();
       const claimsReleased = createDeferred();
       const order: string[] = [];
@@ -278,7 +281,7 @@ describe("worker placement move destination", () => {
         loadSessionRuntime: async () => ({
           managedWorktrees: { findLiveByOwner: async () => undefined },
           resolveCanonicalSessionEntryFromStoreKeys,
-          resolveGatewaySessionStoreTargetWithStore,
+          resolveGatewaySessionStoreTargetWithStoreAsync,
         }),
         revokeSessionAuthority: () => {},
       });
@@ -333,7 +336,7 @@ describe("worker placement move destination", () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const sessionId = "session-move-source";
       const sessionKey = "agent:main:move-source";
-      const target = resolveGatewaySessionStoreTargetWithStore({
+      const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
         cfg: {},
         key: sessionKey,
         agentId: "main",
@@ -364,7 +367,7 @@ describe("worker placement move destination", () => {
         loadSessionRuntime: async () => ({
           managedWorktrees: { findLiveByOwner: async () => undefined },
           resolveCanonicalSessionEntryFromStoreKeys,
-          resolveGatewaySessionStoreTargetWithStore,
+          resolveGatewaySessionStoreTargetWithStoreAsync,
         }),
         revokeSessionAuthority,
         persistAbandonedPartial,
@@ -485,7 +488,7 @@ describe("worker placement move destination", () => {
         vi.useFakeTimers();
         const sessionId = "session-move-source";
         const sessionKey = "agent:main:move-source";
-        const target = resolveGatewaySessionStoreTargetWithStore({
+        const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
           cfg: {},
           key: sessionKey,
           agentId: "main",

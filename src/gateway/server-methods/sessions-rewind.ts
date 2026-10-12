@@ -20,6 +20,7 @@ import {
   getSessionActorStorageBinding,
   runWithSessionActorStorage,
 } from "../../config/sessions/session-actor-storage-binding.js";
+import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import { captureSessionEntryMetadataRead } from "../../config/sessions/session-entry-source-authority.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
@@ -49,7 +50,7 @@ import {
 import { getSessionRowProjection } from "../session-row-projection-access.js";
 import { SessionMutationAuthorizationChangedError } from "../session-sharing.js";
 import { withGatewaySessionEntryReadOnly } from "../session-utils-read-lifetime.js";
-import type { loadGatewaySessionEntryReadOnly } from "../session-utils-store.js";
+import type { GatewaySessionEntryRead } from "../session-utils-store.js";
 import { getWorkerInferenceSessionControl } from "../worker-environments/inference-control-internal.js";
 import { resolveSessionWorkerPlacementMutationError } from "../worker-environments/session-placement-lifecycle.js";
 import { forkSessionRepositoryWorkspace } from "../worker-environments/session-repository-checkpoints.js";
@@ -63,7 +64,7 @@ import {
   createUpstreamForkCurrentGuard,
   resolveUpstreamForkHarness,
 } from "./sessions-fork-runtime-guard.js";
-import { loadAccessorSessionEntryForGatewayTarget, sessionLog } from "./sessions-shared.js";
+import { sessionLog } from "./sessions-shared.js";
 import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 import { defineValidatedGatewayHandler } from "./validation.js";
 
@@ -139,7 +140,7 @@ async function mutatePreparedSessionAtMessage({
   action: MessageCutAction;
   cfg: OpenClawConfig;
   requestedAgentId: string;
-  initial: ReturnType<typeof loadGatewaySessionEntryReadOnly>;
+  initial: GatewaySessionEntryRead;
   assertSourceCurrent: () => void;
 }): Promise<void> {
   const { params, respond, context, client } = options;
@@ -442,11 +443,17 @@ async function mutatePreparedSessionAtMessage({
             storePath: current.storePath,
           })?.readCurrent();
         }
-        return loadAccessorSessionEntryForGatewayTarget({
-          key,
-          cfg,
-          agentId: current.agentId,
-        }).entry;
+        const facts = readRetainedSessionEntryFacts(
+          {
+            agentId: current.readSource?.agentId ?? current.agentId,
+            path: current.readSource?.path ?? current.storePath,
+          },
+          { sessionKeys: [key] },
+        );
+        if (!facts) {
+          throw new Error("Repository session facts are unavailable. Retry.");
+        }
+        return facts.entries.find((row) => row.sessionKey === key)?.entry;
       };
       const mutationParams = {
         agentId: current.agentId,

@@ -19,7 +19,7 @@ import {
   prepareCurrentGitHubPublicationIdentity,
   readGitHubPublicationWorktreeOwner,
   prepareGitHubPublicationWorkspaceOwner,
-  readGitHubPublicationSession,
+  prepareGitHubPublicationSession,
 } from "./github-publication-availability.js";
 import {
   createGitHubPublicationCoordinatorMethods,
@@ -567,14 +567,14 @@ export function createGitHubPublicationCoordinator(params: {
       await runGitHubPublicationMaintenanceAsync({ operation: "deferClaim", claim }, assertCurrent);
     },
     /** @deprecated Use requestForSessionV2; removed in the next Plugin SDK major. */
-    requestForSession(input: Parameters<typeof methods.requestForSession>[0]) {
+    async requestForSession(input: Parameters<typeof methods.requestForSession>[0]) {
       warnPluginSdkDeprecation({
         family: "github-publication",
         method: "requestForSession",
         replacement: "requestForSessionV2",
       });
-      const loaded = readGitHubPublicationSession(input.sessionKey!, { agentId: input.agentId });
-      return loaded.entry?.repositoryWorkspaceId
+      const session = await prepareGitHubPublicationSession(input.sessionKey!, input);
+      return session.initial.entry?.repositoryWorkspaceId
         ? repository.requestForSession(input)
         : methods.requestForSession(input);
     },

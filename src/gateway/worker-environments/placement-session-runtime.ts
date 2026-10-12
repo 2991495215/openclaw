@@ -16,8 +16,7 @@ import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snaps
 import { resolveSessionPinnedHarnessId } from "../../sessions/agent-harness-session-key.js";
 import type { GatewayAgentRuntime } from "../../shared/session-types.js";
 import { resolveSessionSelectedModelRef } from "../session-utils-model-selection.js";
-import { createGatewaySessionEntryReader } from "../session-utils-store-lineage.js";
-import { resolveGatewaySessionStoreTargetWithStore } from "../session-utils-store-lookup.js";
+import { prepareGatewaySessionEntryReader } from "../session-utils-store-lineage.js";
 import { resolveWorkerPlacementCapabilities } from "./placement-capabilities.js";
 import type { WorkerPlacementExecutionMode } from "./placement-record.js";
 
@@ -29,9 +28,11 @@ export function resolveWorkerPlacementSessionRuntime(params: {
   agentId: string;
   sessionKey: string;
   preparedRuntimeOwnership?: AgentHarnessSessionRuntimeOwnership | null;
+  readSourceEntry?: (key: string) => SessionEntry | undefined;
 }): string {
   const { provider, model } = resolveSessionSelectedModelRef({
     ...params,
+    preparedRuntimeOwnership: params.preparedRuntimeOwnership,
     source: {
       entry: params.entry,
       readSourceEntry: (key) => {
@@ -42,15 +43,7 @@ export function resolveWorkerPlacementSessionRuntime(params: {
         if (metadata) {
           return metadata.readCurrent();
         }
-        const target = resolveGatewaySessionStoreTargetWithStore({
-          ...params,
-          key: params.sessionKey,
-          preserveQualifiedAddress: true,
-          clone: false,
-          readOnly: true,
-          exactRead: true,
-        });
-        return createGatewaySessionEntryReader({ ...target, cfg: params.cfg })(key);
+        return params.readSourceEntry?.(key);
       },
     },
   });
@@ -72,10 +65,20 @@ export async function resolveWorkerPlacementSessionRuntimeAsync(
     sessionEntry: params.entry,
     assertCurrent: params.assertCurrent,
   });
+  const readSourceEntry = ownership?.modelRef
+    ? (key: string) => (key === params.sessionKey ? params.entry : undefined)
+    : await prepareGatewaySessionEntryReader({
+        cfg: params.cfg,
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+        entry: params.entry,
+        store: { [params.sessionKey]: params.entry },
+      });
   params.assertCurrent?.();
   return resolveWorkerPlacementSessionRuntime({
     ...params,
     preparedRuntimeOwnership: ownership ?? null,
+    readSourceEntry,
   });
 }
 

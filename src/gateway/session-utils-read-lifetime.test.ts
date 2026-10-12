@@ -110,7 +110,7 @@ it.each(["alias replacement", "cold-store close", "same-file reopen"] as const)(
       } else if (change === "same-file reopen") {
         openOpenClawAgentDatabase({ agentId: "main", path: alias });
       }
-      const read = retainGatewaySessionEntryReadOnly(sessionKey, "main");
+      const read = await retainGatewaySessionEntryReadOnly(sessionKey, "main");
       try {
         expect(read.entry?.sessionId).toBe("identical-session");
         expect(read.isCurrentAtResponse()).toBe(true);
@@ -120,7 +120,7 @@ it.each(["alias replacement", "cold-store close", "same-file reopen"] as const)(
         } else {
           await closeOpenClawAgentDatabaseByPathAsync(read.readSource!.path);
           if (change === "same-file reopen") {
-            const successor = retainGatewaySessionEntryReadOnly(sessionKey, "main");
+            const successor = await retainGatewaySessionEntryReadOnly(sessionKey, "main");
             expect(successor.isCurrentAtResponse()).toBe(true);
             successor.release();
           }

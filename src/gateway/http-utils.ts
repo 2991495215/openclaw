@@ -32,6 +32,7 @@ import { getHeader, type AuthorizedGatewayHttpRequest } from "./http-auth-utils.
 import { ADMIN_SCOPE } from "./method-scopes.js";
 import { loadGatewayModelCatalog } from "./server-model-catalog.js";
 import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
+import { withSessionSharingTarget } from "./session-sharing-policy.js";
 import { authorizeResolvedSessionMutation, isResolvedIncognitoSession } from "./session-sharing.js";
 import { canonicalizeSessionKeyForAgent } from "./session-store-key.js";
 
@@ -280,34 +281,50 @@ export function resolveGatewayRequestContext(params: {
   return { agentId, sessionKey, messageChannel };
 }
 
-export function authorizeOpenAiCompatibleHttpSession(params: {
+export async function authorizeOpenAiCompatibleHttpSession(params: {
   agentId: string;
   sessionKey: string;
   requestAuth: AuthorizedGatewayHttpRequest;
   senderIsOwner: boolean;
-}): { allowed: true } | { allowed: false; message: string } {
-  const cfg = getRuntimeConfig();
+}): Promise<{ allowed: true } | { allowed: false; message: string }> {
   const authenticatedUserProfile = params.requestAuth.authenticatedUserProfile;
-  const authorizationError = authorizeResolvedSessionMutation({
-    cfg,
-    client: createSyntheticPluginRuntimeClient({
-      ...(authenticatedUserProfile ? { authenticatedUserProfile } : {}),
-      operatorRoleActor: params.requestAuth.operatorRoleActor,
-      operatorAccessAuthority: params.requestAuth.operatorAccessAuthority,
-      scopes: params.senderIsOwner ? [ADMIN_SCOPE] : [],
-    }),
-    sessionKey: params.sessionKey,
-    agentId: params.agentId,
-  });
-  if (authorizationError) {
-    return { allowed: false, message: authorizationError.message };
-  }
-  if (
-    !params.senderIsOwner &&
-    !authenticatedUserProfile &&
-    isResolvedIncognitoSession({ cfg, sessionKey: params.sessionKey, agentId: params.agentId })
-  ) {
-    return { allowed: false, message: `missing scope: ${ADMIN_SCOPE}` };
-  }
-  return { allowed: true };
+  return withSessionSharingTarget<{ allowed: true } | { allowed: false; message: string }>(
+    {
+      cfg: getRuntimeConfig(),
+      sessionKey: params.sessionKey,
+      agentId: params.agentId,
+    },
+    (read) => {
+      read.assertCurrent();
+      const cfg = getRuntimeConfig();
+      const authorizationError = authorizeResolvedSessionMutation(
+        {
+          cfg,
+          client: createSyntheticPluginRuntimeClient({
+            ...(authenticatedUserProfile ? { authenticatedUserProfile } : {}),
+            operatorRoleActor: params.requestAuth.operatorRoleActor,
+            operatorAccessAuthority: params.requestAuth.operatorAccessAuthority,
+            scopes: params.senderIsOwner ? [ADMIN_SCOPE] : [],
+          }),
+          sessionKey: params.sessionKey,
+          agentId: params.agentId,
+        },
+        read.target,
+      );
+      if (authorizationError) {
+        return { allowed: false, message: authorizationError.message };
+      }
+      if (
+        !params.senderIsOwner &&
+        !authenticatedUserProfile &&
+        isResolvedIncognitoSession(
+          { cfg, sessionKey: params.sessionKey, agentId: params.agentId },
+          read.target,
+        )
+      ) {
+        return { allowed: false, message: `missing scope: ${ADMIN_SCOPE}` };
+      }
+      return { allowed: true };
+    },
+  );
 }

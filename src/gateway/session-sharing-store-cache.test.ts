@@ -16,15 +16,13 @@ import type { GatewayClient } from "./server-methods/types.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
 import {
   canReceiveSessionEvent,
-  invalidateSessionSharingSnapshot,
   resolveSessionMutationAuthorization,
   resolveSessionSharingTarget,
 } from "./session-sharing.js";
-import { resolveGatewaySessionStoreTargetWithStore } from "./session-utils-store-lookup.js";
+import { resolveGatewaySessionStoreTargetWithStoreAsync } from "./session-utils-store-lookup.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
-  invalidateSessionSharingSnapshot();
   closeOpenClawAgentDatabasesForTest();
 });
 
@@ -248,7 +246,7 @@ describe("session mutation authorization store caches", () => {
         { agentId: "research", sessionKey: "agent:research:ordinary" },
         { sessionId: "ordinary-research", updatedAt: 1 },
       );
-      const resolved = resolveGatewaySessionStoreTargetWithStore({
+      const resolved = await resolveGatewaySessionStoreTargetWithStoreAsync({
         cfg,
         key: target.key,
         agentId: target.agentId,

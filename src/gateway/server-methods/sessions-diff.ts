@@ -143,7 +143,7 @@ export const sessionsDiffHandlers: GatewayRequestHandlers = {
         sessionKey: params.sessionKey,
         agentId: requestedAgent.agentId,
       })
-        ? retainSessionScopedRead(options, params.sessionKey, requestedAgent.agentId, {
+        ? await retainSessionScopedRead(options, params.sessionKey, requestedAgent.agentId, {
             requireMaterialized: true,
           })
         : undefined;

@@ -622,9 +622,7 @@ it("reports typed contention without replaying or denying an already applied Sto
     code: "ERR_SQLITE_ERROR",
     errcode: 5,
   });
-  vi.spyOn(sessionUtils, "loadSessionEntry").mockImplementation(() => {
-    throw failure;
-  });
+  vi.spyOn(sessionUtils, "loadSessionEntryAsync").mockRejectedValue(failure);
   const sessionKey = "agent:main:main";
   const active = createActiveRun(sessionKey, { agentId: "main" });
   const context = createChatAbortContext({ chatAbortControllers: new Map([["run-1", active]]) });

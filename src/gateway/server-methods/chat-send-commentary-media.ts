@@ -29,7 +29,6 @@ import {
   prepareOutgoingMediaFromReplyPayload,
   removeManagedOutgoingMediaBlocks,
 } from "../managed-image-attachments.js";
-import { loadSessionEntry } from "../session-utils.js";
 import { formatForLog } from "../ws-log.js";
 import type { AssistantDisplayContentBlock } from "./chat-assistant-content.js";
 import {
@@ -44,7 +43,10 @@ import type { GatewayRequestContext } from "./types.js";
 
 type AssistantCommentaryMediaCustodyParams = {
   requesterContext?: WebchatReplyMediaRequesterContext;
-  session: Pick<PreparedChatSendSession, "agentId" | "cfg" | "sessionKey" | "sessionLoadOptions">;
+  session: Pick<
+    PreparedChatSendSession,
+    "agentId" | "cfg" | "sessionKey" | "sessionLoadOptions" | "storePath"
+  >;
   accountId: string | undefined;
   getRunId: () => string;
   isCurrent: () => boolean;
@@ -156,12 +158,7 @@ function observeChatSendCommentaryMedia(params: AssistantCommentaryMediaCustodyP
     }
     seen.add(key);
     const runId = params.getRunId();
-    const current = loadSessionEntry(session.sessionKey, session.sessionLoadOptions);
-    if (current.entry?.sessionId !== target.sessionId) {
-      return;
-    }
-    const lifecycleRevision = current.entry.lifecycleRevision;
-    const scope = { ...target, storePath: current.storePath };
+    const scope = { ...target, storePath: session.storePath };
     const assertOwned = captureOwnedTranscriptWriteAssertion(scope);
     const assertLive = () => {
       assertOwned();
@@ -174,16 +171,6 @@ function observeChatSendCommentaryMedia(params: AssistantCommentaryMediaCustodyP
         throw new SessionTranscriptWriterClaimReboundError();
       }
     };
-    const assertCurrent = () => {
-      assertLive();
-      const latest = loadSessionEntry(session.sessionKey, session.sessionLoadOptions);
-      if (
-        latest.entry?.sessionId !== scope.sessionId ||
-        latest.entry.lifecycleRevision !== lifecycleRevision
-      ) {
-        throw new SessionTranscriptWriterClaimReboundError();
-      }
-    };
     const originalContent = structuredClone(message.content);
     const previous = pending;
     // Register before the committed-event callback returns so attempt cleanup joins
@@ -191,6 +178,21 @@ function observeChatSendCommentaryMedia(params: AssistantCommentaryMediaCustodyP
     pending = runWithOwnedSessionTranscriptWrite({ sessionTarget: scope }, () =>
       previous
         .then(async () => {
+          assertLive();
+          await using mediaScope = await captureWebchatReplyMediaScope({
+            requesterContext: params.requesterContext,
+            cfg: session.cfg,
+            sessionKey: scope.sessionKey,
+            agentId: scope.agentId,
+            sessionLoadOptions: session.sessionLoadOptions,
+            accountId: params.accountId,
+            assertCurrent: assertLive,
+          });
+          if (mediaScope.sessionEntry?.sessionId !== scope.sessionId) {
+            return;
+          }
+          const lifecycleRevision = mediaScope.sessionEntry.lifecycleRevision;
+          const assertCurrent = mediaScope.assertCurrent;
           assertCurrent();
           let anchor = await readActiveTranscriptEntryAnchorAsync({ ...scope, entryId: messageId });
           assertCurrent();
@@ -208,15 +210,6 @@ function observeChatSendCommentaryMedia(params: AssistantCommentaryMediaCustodyP
           const managedMedia = new Map<string, AssistantDisplayContentBlock[]>();
           let committed = false;
           try {
-            const mediaScope = captureWebchatReplyMediaScope({
-              requesterContext: params.requesterContext,
-              cfg: session.cfg,
-              sessionKey: scope.sessionKey,
-              agentId: scope.agentId,
-              sessionLoadOptions: session.sessionLoadOptions,
-              accountId: params.accountId,
-              assertCurrent,
-            });
             await withChannelReadAuthority(mediaScope.assertCurrent, async () => {
               const payloads = await normalizeWebchatReplyMediaPathsForDisplay({
                 ...mediaScope,

@@ -44,7 +44,7 @@ import type { GatewayRequestContext } from "./server-methods/types.js";
 import { createOperatorClient } from "./server-plugin-in-process-dispatch.test-support.js";
 import { startGatewayServerHarness, type GatewayServerHarness } from "./server.e2e-ws-harness.js";
 import { createRegisteredCompletionPair } from "./server.subagent-completion-authority.test-support.js";
-import { loadSessionEntry } from "./session-utils.js";
+import { loadSessionEntryAsync } from "./session-utils.js";
 import {
   agentCommandMock,
   installGatewayTestHooks,
@@ -64,7 +64,7 @@ async function createCompletion(context: GatewayRequestContext) {
     { agentId: "main", sessionKey: requesterSessionKey },
     { sessionId, updatedAt: Date.now() },
   );
-  const loaded = loadSessionEntry(requesterSessionKey, { agentId: "main" });
+  const loaded = await loadSessionEntryAsync(requesterSessionKey, { agentId: "main" });
   const sessionScope = {
     agentId: "main",
     sessionKey: requesterSessionKey,

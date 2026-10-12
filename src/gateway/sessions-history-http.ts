@@ -46,7 +46,10 @@ import {
   SessionHistorySseState,
 } from "./session-history-state.js";
 import { resolveCursorSeq } from "./session-history-tail.js";
-import { createSessionListEntryFilter, resolveSessionSharingTarget } from "./session-sharing.js";
+import {
+  createSessionListEntryFilter,
+  resolveSessionSharingTargetAsync,
+} from "./session-sharing.js";
 import { resolveSessionStoreKey } from "./session-store-key.js";
 import {
   resolveTranscriptPathForComparison,
@@ -54,7 +57,7 @@ import {
 } from "./session-transcript-path.js";
 import {
   resolveCanonicalSessionEntryFromStoreKeys,
-  resolveGatewaySessionStoreTargetWithStore,
+  resolveGatewaySessionStoreTargetWithStoreAsync,
   resolveSessionTranscriptCandidates,
 } from "./session-utils.js";
 
@@ -219,7 +222,7 @@ async function serveAuthorizedSessionHistory(
   assertSourceCurrent: () => void,
 ): Promise<boolean> {
   const { cfg, requestAuth, operatorScopes } = authResult;
-  let target: ReturnType<typeof resolveGatewaySessionStoreTargetWithStore>;
+  let target: Awaited<ReturnType<typeof resolveGatewaySessionStoreTargetWithStoreAsync>>;
   let entry: ReturnType<typeof resolveCanonicalSessionEntryFromStoreKeys>;
   try {
     if (source) {
@@ -248,7 +251,7 @@ async function serveAuthorizedSessionHistory(
         readSource: { agentId: actor.agentId, path: actor.path },
       };
     } else {
-      target = resolveGatewaySessionStoreTargetWithStore({
+      target = await resolveGatewaySessionStoreTargetWithStoreAsync({
         cfg,
         key: sessionKey,
         exactRead: true,
@@ -338,17 +341,25 @@ async function serveAuthorizedSessionHistory(
       currentRequestAuth.requestAuth,
       requestedScopes,
     );
-    const currentConfig = getRuntimeConfig();
     try {
       assertSourceCurrent();
     } catch {
       return false;
     }
-    const currentTarget = resolveSessionSharingTarget({
-      cfg: currentConfig,
+    const currentTarget = await resolveSessionSharingTargetAsync({
+      cfg: getRuntimeConfig(),
       sessionKey: target.canonicalKey,
       agentId: target.agentId,
     });
+    const currentConfig = getRuntimeConfig();
+    if (!requestAuth.hasCurrentClientAuthority()) {
+      return false;
+    }
+    try {
+      assertSourceCurrent();
+    } catch {
+      return false;
+    }
     if (
       currentTarget === null ||
       currentTarget.agentId !== historyTarget.agentId ||

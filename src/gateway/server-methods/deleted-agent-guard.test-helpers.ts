@@ -11,8 +11,8 @@ const deletedAgentSessionMocks = vi.hoisted(() => ({
 
 // mock-isolation: Guard tests supply session facts without opening real session stores.
 vi.mock("../session-utils.js", () => ({
-  loadSessionEntry: deletedAgentSessionMocks.loadSessionEntry,
-  loadGatewaySessionEntryReadOnly: deletedAgentSessionMocks.loadGatewaySessionEntryReadOnly,
+  loadSessionEntryAsync: deletedAgentSessionMocks.loadSessionEntry,
+  loadGatewaySessionEntryReadOnlyAsync: deletedAgentSessionMocks.loadGatewaySessionEntryReadOnly,
   prepareDeletedAgentSessionCheck: deletedAgentSessionMocks.prepareDeletedAgentSessionCheck,
 }));
 

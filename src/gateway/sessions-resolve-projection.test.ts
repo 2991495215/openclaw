@@ -30,7 +30,7 @@ import { bindSessionRowProjection } from "./session-row-projection-access.js";
 import { createSessionRowProjection, type SessionRowProjection } from "./session-row-projection.js";
 import { roleClient, rolePolicyConfig } from "./session-sharing.test-utils.js";
 import * as rowInputs from "./session-utils-row.js";
-import { resolveGatewaySessionStoreTargetWithStore } from "./session-utils-store-lookup.js";
+import { resolveGatewaySessionStoreTargetWithStoreAsync } from "./session-utils-store-lookup.js";
 import {
   resolveSessionKeyFromResolveParams,
   withPreparedSessionResolve,
@@ -418,8 +418,8 @@ describe("session resolution metadata", () => {
           { ...scope, sessionKey: siblingKey },
           { sessionId: "sibling", updatedAt: 1 },
         );
-        const read = (key: string) => {
-          const target = resolveGatewaySessionStoreTargetWithStore({
+        const read = async (key: string) => {
+          const target = await resolveGatewaySessionStoreTargetWithStoreAsync({
             cfg,
             key,
             agentId: "main",
@@ -428,7 +428,7 @@ describe("session resolution metadata", () => {
           });
           return target.store[target.canonicalKey];
         };
-        expect(read(scope.sessionKey)?.sessionId).toBe(entry.sessionId);
+        expect((await read(scope.sessionKey))?.sessionId).toBe(entry.sessionId);
         const owner = openOpenClawAgentDatabase(scope);
         const database = owner.db;
         runSqliteImmediateTransactionSync(database, () => seedCanonicalSessionValidation(owner));
@@ -454,13 +454,13 @@ describe("session resolution metadata", () => {
             )
             .run("different", scope.sessionKey);
         }
-        expect(read(scope.sessionKey)?.sessionId).toBe(
+        expect((await read(scope.sessionKey))?.sessionId).toBe(
           kind === "mismatched-window" ? entry.sessionId : undefined,
         );
-        expect(read(siblingKey)?.sessionId).toBe("sibling");
+        expect((await read(siblingKey))?.sessionId).toBe("sibling");
         closeOpenClawAgentDatabasesForTest();
         for (const key of [scope.sessionKey, siblingKey]) {
-          expect(() => read(key)).toThrow(
+          await expect(read(key)).rejects.toThrow(
             expect.objectContaining({ code: "SESSION_CANONICAL_KEY_MIGRATION_REQUIRED" }),
           );
         }

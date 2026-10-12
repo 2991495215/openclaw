@@ -28,12 +28,12 @@ export function getDispatchTestMocks() {
 }
 
 beforeEach(() => {
-  const readFixtureEntry: typeof sessionStore.loadGatewaySessionEntryReadOnly = (
+  const readFixtureEntry: typeof sessionStore.loadGatewaySessionEntryReadOnlyAsync = async (
     key,
     opts,
     cfg = getRuntimeConfig(),
   ) => {
-    const target = dispatchTestMocks.resolveTarget({
+    const target = await dispatchTestMocks.resolveTarget({
       cfg,
       key,
       ...opts,
@@ -48,7 +48,9 @@ beforeEach(() => {
       legacyKey: match?.key !== target.canonicalKey ? match?.key : undefined,
     };
   };
-  vi.spyOn(sessionStore, "loadGatewaySessionEntryReadOnly").mockImplementation(readFixtureEntry);
+  vi.spyOn(sessionStore, "loadGatewaySessionEntryReadOnlyAsync").mockImplementation(
+    readFixtureEntry,
+  );
   vi.spyOn(sessionStoreWorker, "loadGatewaySessionEntryReadOnlyInWorker").mockImplementation(
     async (params) => {
       params.assertActive?.();
@@ -73,7 +75,7 @@ vi.mock("../session-utils.js", async () => {
   const actual = await vi.importActual<typeof import("../session-utils.js")>("../session-utils.js");
   return {
     ...actual,
-    resolveGatewaySessionStoreTargetWithStore: dispatchTestMocks.resolveTarget,
+    resolveGatewaySessionStoreTargetWithStoreAsync: dispatchTestMocks.resolveTarget,
   };
 });
 

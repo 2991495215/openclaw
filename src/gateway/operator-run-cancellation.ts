@@ -12,6 +12,8 @@ import { captureGatewayOperatorRunAuthority } from "./operator-run-authority.js"
 import {
   captureAbortedPartial,
   deferAbortedPartialPersistence,
+  prepareChatAbortSession,
+  type ChatAbortSessionSnapshot,
 } from "./server-methods/chat-aborted-partial.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
 import { formatForLog } from "./ws-log.js";
@@ -30,19 +32,26 @@ export async function retainGatewayOperatorRun(
     context: OperatorRunCancellationContext;
     runId: string;
     entry?: ChatAbortControllerEntry;
+    abortSession?: ChatAbortSessionSnapshot;
   },
 ) {
   const captured = await captureGatewayOperatorRunAuthority(params);
   const releaseSource =
     captured?.release ?? retainGatewayDeviceRevocation(params.hasCurrentClientAuthority);
   const signal = captured?.authority.signal;
-  const cancellation =
+  const session =
     signal && params.entry
+      ? (params.abortSession ??
+        (await prepareChatAbortSession(params.entry.sessionKey, params.entry.agentId)))
+      : undefined;
+  const cancellation =
+    signal && params.entry && session
       ? createGatewayOperatorRunCancellation({
           signal,
           runId: params.runId,
           entry: params.entry,
           context: params.context,
+          session,
         })
       : undefined;
   return {
@@ -62,6 +71,7 @@ function createGatewayOperatorRunCancellation(params: {
   runId: string;
   entry: ChatAbortControllerEntry;
   context: OperatorRunCancellationContext;
+  session: ChatAbortSessionSnapshot;
 }) {
   const { signal, runId, entry, context } = params;
   const controller = entry.controller;
@@ -122,6 +132,7 @@ function createGatewayOperatorRunCancellation(params: {
             text,
             abortOrigin: "rpc",
             resolveTerminalProducer: entry.resolveTerminalProducer,
+            session: params.session,
           })
         : undefined;
     const { aborted } = abortChatRunById(createChatAbortOps(context), {

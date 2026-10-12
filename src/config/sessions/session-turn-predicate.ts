@@ -16,6 +16,7 @@ import { readActiveTranscriptEntryAnchorInTransaction } from "./session-accessor
 import type { SessionTranscriptTurnMessageAppend } from "./session-accessor.types.js";
 import { resolveSqliteTargetFromSessionStorePath } from "./session-sqlite-target.js";
 import type { SqliteSessionTurnOptions } from "./session-turn.types.js";
+import { createExistingAgentSessionStoreTargetResolver } from "./targets-discovery.native.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
 let resolveSessionWorkStartError:
@@ -53,6 +54,9 @@ export function prepareSessionTurnRouting(
     exactRead: true,
     readOnly: true,
     projection: "list",
+    resolveExistingTargets: createExistingAgentSessionStoreTargetResolver(predicate.config, {
+      env,
+    }),
     readStore(read) {
       if (!current) {
         throw new Error("Session routing requires its transaction database");

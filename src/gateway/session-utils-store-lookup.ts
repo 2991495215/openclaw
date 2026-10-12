@@ -11,6 +11,7 @@ import { withSessionEntriesFromStoresInWorker } from "../config/sessions/session
 import type { SessionMember } from "../config/sessions/session-membership-facts.types.js";
 import { prepareSessionStoreTargetInventory } from "../config/sessions/session-store-target-inventory.js";
 import { prepareSessionStoreTargetInventoryRead } from "../config/sessions/session-store-target-runtime.js";
+import type { ExistingAgentSessionStoreTargetResolver } from "../config/sessions/targets.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   DEFAULT_AGENT_ID,
@@ -59,7 +60,7 @@ import type {
 } from "./session-utils-store.types.js";
 export type { GatewaySessionStoreCache } from "./session-utils-store-read.js";
 
-type GatewaySessionStoreLookupParams = {
+export type GatewaySessionStoreLookupParams = {
   env?: NodeJS.ProcessEnv;
   cfg: OpenClawConfig;
   key: string;
@@ -74,6 +75,7 @@ type GatewaySessionStoreLookupParams = {
   store?: Record<string, SessionEntry>;
   storeCache?: GatewaySessionStoreCache;
   targetDiscoveryCache?: GatewaySessionStoreDiscoveryCache;
+  resolveExistingTargets?: ExistingAgentSessionStoreTargetResolver;
   readStore?: typeof readGatewaySessionStore;
 };
 
@@ -145,6 +147,7 @@ function prepareExplicitDeletedLegacyMainStoreTarget(
     params.targetDiscoveryCache,
     false,
     params.env,
+    params.resolveExistingTargets,
   );
   const reads = existing
     .filter((target) => target.agentId === legacyAgentId)
@@ -259,7 +262,8 @@ export function prepareGatewaySessionStoreTargetLookup(
   };
 }
 
-export function resolveGatewaySessionStoreTargetWithStore(
+/** Native-only selection for worker readers, deprecated SDK compatibility, and incognito. */
+export function resolveNativeGatewaySessionStoreTargetWithStore(
   params: GatewaySessionStoreLookupParams,
 ): GatewaySessionStoreTargetWithStore {
   const normalized = { ...params, key: normalizeOptionalString(params.key) ?? "" };
@@ -270,6 +274,37 @@ export function resolveGatewaySessionStoreTargetWithStore(
     params.cfg,
     params.env,
   );
+}
+
+/** Durable discovery and rows are acquired by the existing session read worker. */
+export async function resolveGatewaySessionStoreTargetWithStoreAsync(
+  params: GatewaySessionStoreLookupParams,
+): Promise<GatewaySessionStoreTargetWithStore> {
+  const { resolveGatewaySessionStoreTargetInWorker } =
+    await import("./session-utils-store-worker.js");
+  return resolveGatewaySessionStoreTargetInWorker({
+    ...params,
+    projection: params.projection ?? "full",
+    readOnly: params.readOnly ?? false,
+  });
+}
+
+export async function resolveGatewaySessionStoreTargetAsync(
+  params: GatewaySessionStoreLookupParams,
+): Promise<GatewaySessionStoreTarget> {
+  const {
+    store: _store,
+    readSource: _readSource,
+    capturedReadSource: _capturedReadSource,
+    capturedReadSources: _capturedReadSources,
+    ...target
+  } = await resolveGatewaySessionStoreTargetWithStoreAsync({
+    ...params,
+    projection: "list",
+    exactRead: true,
+    readOnly: false,
+  });
+  return target;
 }
 
 /** Retain discovery and exact worker rows through one synchronous authority consumer. */
@@ -312,7 +347,7 @@ export async function withGatewaySessionStoreTarget<T>(
       env: params.env,
       includeMembership: params.includeMembership,
       identity,
-      resolve: () => resolveGatewaySessionStoreTargetWithStore(normalized),
+      resolve: () => resolveNativeGatewaySessionStoreTargetWithStore(normalized),
       consume: (target, membership, assertCurrent) =>
         consume(target, membership, assertCurrent, []),
     });
@@ -548,23 +583,6 @@ export async function prepareGatewaySessionStoreTargetReadPlan(
   });
 }
 
-/** Read an already-stored lineage address without applying request aliases. */
-export function readGatewayStoredSessionEntry(params: {
-  cfg: OpenClawConfig;
-  agentId: string;
-  key: string;
-  targetDiscoveryCache: GatewaySessionStoreDiscoveryCache;
-}): SessionEntry | undefined {
-  return prepareGatewaySessionStoreTarget({
-    ...params,
-    preserveQualifiedAddress: true,
-    readOnly: true,
-    exactRead: true,
-    clone: false,
-    projection: "list",
-  }).resolve().store[params.key];
-}
-
 /** Resolve one synchronous set of logical metadata targets using exact grouped reads. */
 function resolveGatewaySessionStoreTargetsReadOnly(params: {
   env?: NodeJS.ProcessEnv;
@@ -643,28 +661,5 @@ function includeDirectChildEntries(
   } catch {
     // Match the existing read-only lookup contract: unavailable stores degrade to no rows.
   }
-  return target;
-}
-
-export function resolveGatewaySessionStoreTarget(params: {
-  cfg: OpenClawConfig;
-  key: string;
-  agentId?: string;
-  clone?: boolean;
-  store?: Record<string, SessionEntry>;
-}): GatewaySessionStoreTarget {
-  // Routing needs canonical candidates, not a listing's unrelated rows and participants.
-  const {
-    store: _store,
-    readSource: _readSource,
-    capturedReadSource: _capturedReadSource,
-    capturedReadSources: _capturedReadSources,
-    ...target
-  } = resolveGatewaySessionStoreTargetWithStore({
-    ...params,
-    projection: "list",
-    exactRead: true,
-    readOnly: false,
-  });
   return target;
 }

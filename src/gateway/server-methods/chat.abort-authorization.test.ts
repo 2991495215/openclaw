@@ -20,7 +20,7 @@ import {
 
 vi.mock("../session-utils.js", async () => ({
   ...(await vi.importActual<typeof import("../session-utils.js")>("../session-utils.js")),
-  loadSessionEntry: () => ({ entry: { sessionId: "main-session" } }),
+  loadSessionEntryAsync: async () => ({ entry: { sessionId: "main-session" } }),
 }));
 
 function abortAsOwner(params: Omit<Parameters<typeof invokeAbort>[0], "connId" | "deviceId">) {

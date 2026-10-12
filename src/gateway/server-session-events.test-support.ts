@@ -41,8 +41,8 @@ vi.mock("./chat-display-projection.js", async (importOriginal) => {
 });
 vi.mock("./session-utils.js", () => ({
   attachOpenClawTranscriptMeta: (message: unknown) => message,
-  loadSessionEntry: () => ({ entry: undefined, storePath: "" }),
-  loadGatewaySessionEntryReadOnly: loadGatewaySessionEntryReadOnlyMock,
+  loadSessionEntryAsync: () => ({ entry: undefined, storePath: "" }),
+  loadGatewaySessionEntryReadOnlyAsync: loadGatewaySessionEntryReadOnlyMock,
 }));
 vi.mock("./session-transcript-readers.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./session-transcript-readers.js")>();

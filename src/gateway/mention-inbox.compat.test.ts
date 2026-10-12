@@ -79,6 +79,7 @@ describe("released Mention Inbox compatibility", () => {
           expect(transaction).toThrow(rollback);
           expect(f.broadcast).not.toHaveBeenCalled();
           expect(f.push).not.toHaveBeenCalled();
+          expect(f.inbox.list(f.bobClient)).toMatchObject({ ok: true, value: { items: [] } });
         }
         expect((await read(f.inbox, f.bobSecond)).items).toHaveLength(commit ? 1 : 0);
       }

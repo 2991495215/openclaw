@@ -29,7 +29,7 @@ import {
   prepareCurrentGitHubPublicationIdentity,
   sameGitHubPublicationWorkspace,
   type PublicationSessionIdentity as SessionIdentity,
-  readGitHubPublicationSession,
+  prepareGitHubPublicationSession,
 } from "./github-publication-availability.js";
 import {
   exactClaimForPlacement,
@@ -71,7 +71,6 @@ import {
 } from "./github-repository-publication-store.js";
 import { prepareRepositoryOwner } from "./github-repository-publication-workspace.js";
 import type { RepositoryGitHubPublicationStatusRow } from "./github-repository-publication.kernel.js";
-import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
 import { resolvePlacementTurnEnvironment } from "./worker-environments/placement-record.js";
 import type {
   WorkerSessionPlacementStore,
@@ -198,14 +197,11 @@ export function createRepositoryGitHubPublicationCoordinator(params: {
     if (!input.sessionKey) {
       throw new Error("GitHub publication requires an authoritative session.");
     }
-    const loaded = workerRequester
-      ? await loadGatewaySessionEntryReadOnlyInWorker({
-          cfg: getCommittedRuntimeConfig(),
-          key: input.sessionKey,
-          agentId: input.agentId,
-          assertActive: params.assertCurrent,
-        })
-      : readGitHubPublicationSession(input.sessionKey, { agentId: input.agentId });
+    const { initial: loaded } = await prepareGitHubPublicationSession(input.sessionKey, {
+      cfg: getCommittedRuntimeConfig(),
+      agentId: input.agentId,
+      assertCurrent: workerRequester ? params.assertCurrent : requester.assertCurrent,
+    });
     requester.assertCurrent();
     if (!loaded.entry?.sessionId) {
       throw new Error("GitHub publication session changed.");
@@ -350,14 +346,11 @@ export function createRepositoryGitHubPublicationCoordinator(params: {
       const workerRequester = isGitHubPublicationRequesterV2(input.requester)
         ? input.requester
         : undefined;
-      const loaded = workerRequester
-        ? await loadGatewaySessionEntryReadOnlyInWorker({
-            cfg: getCommittedRuntimeConfig(),
-            key: input.sessionKey!,
-            agentId: input.agentId,
-            assertActive: params.assertCurrent,
-          })
-        : readGitHubPublicationSession(input.sessionKey!, { agentId: input.agentId });
+      const { initial: loaded } = await prepareGitHubPublicationSession(input.sessionKey!, {
+        cfg: getCommittedRuntimeConfig(),
+        agentId: input.agentId,
+        assertCurrent: workerRequester ? params.assertCurrent : input.requester.assertCurrent,
+      });
       const placement = loaded.entry?.sessionId
         ? await placements.getAsync(loaded.entry.sessionId)
         : undefined;

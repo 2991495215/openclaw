@@ -62,7 +62,7 @@ const tempDirs = useSessionStoreTempDirs(afterAll, "openclaw-restart-terminal-")
 const routing = vi.hoisted(() => ({ loadSessionEntry: vi.fn() }));
 vi.mock("./session-utils.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./session-utils.js")>()),
-  loadSessionEntry: routing.loadSessionEntry,
+  loadSessionEntryAsync: routing.loadSessionEntry,
 }));
 vi.mock("./session-utils-store-worker.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./session-utils-store-worker.js")>()),

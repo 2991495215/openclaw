@@ -25,7 +25,7 @@ export function createWorkerPlacementIdleSweep(options: {
     identity: WorkerSessionPlacementIdentity,
   ) => Promise<() => boolean>;
   loadSessionRuntime?: () => Promise<
-    Pick<typeof import("../session-utils.js"), "resolveGatewaySessionStoreTargetWithStore">
+    Pick<typeof import("../session-utils.js"), "resolveGatewaySessionStoreTargetWithStoreAsync">
   >;
   now?: () => number;
 }) {
@@ -58,7 +58,7 @@ export function createWorkerPlacementIdleSweep(options: {
           };
         }
         const sessionRuntime = await loadSessionRuntime();
-        const target = sessionRuntime.resolveGatewaySessionStoreTargetWithStore({
+        const target = await sessionRuntime.resolveGatewaySessionStoreTargetWithStoreAsync({
           cfg: options.getConfig(),
           key: sessionKey,
           agentId,

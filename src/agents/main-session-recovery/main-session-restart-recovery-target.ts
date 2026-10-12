@@ -1,11 +1,12 @@
 import path from "node:path";
 import { asFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
+import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { resolveUnsuffixedSqliteTargetFromSessionStorePath } from "../../config/sessions/session-sqlite-target-paths.js";
 import { resolveSqliteTargetFromSessionStorePath } from "../../config/sessions/session-sqlite-target.js";
 import { isPerAgentSessionStoreConfig } from "../../config/sessions/session-store-config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { resolveGatewaySessionStoreTarget } from "../../gateway/session-utils-store-lookup.js";
+import { resolveSessionStoreIdentity } from "../../gateway/session-store-key.js";
 import {
   LEGACY_IMPLICIT_AGENT_ID,
   classifySessionKeyShape,
@@ -43,13 +44,15 @@ export function resolveRestartRecoveryDispatchTarget(params: {
     };
   }
   try {
-    const target = resolveGatewaySessionStoreTarget({
+    const target = resolveSessionStoreIdentity({
       cfg: params.cfg,
-      key: params.sessionKey,
+      sessionKey: params.sessionKey,
       ...(storeAgentId ? { agentId: storeAgentId } : {}),
     });
     return !params.cfg.session?.store ||
-      path.resolve(target.storePath) === path.resolve(params.storePath)
+      path.resolve(
+        resolveSessionStorePathCore(params.cfg.session.store, { agentId: target.agentId }),
+      ) === path.resolve(params.storePath)
       ? { agentId: target.agentId, sessionKey: target.canonicalKey }
       : undefined;
   } catch (err) {

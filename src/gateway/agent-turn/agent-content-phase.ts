@@ -35,7 +35,7 @@ import { SessionMutationAuthorizationChangedError } from "../session-mutation-au
 import { tryResolveSessionCompatibilityOwnerAgentId } from "../session-request-agent.js";
 import { resolveSessionStoreIdentity } from "../session-store-key.js";
 import {
-  loadSessionEntry,
+  loadSessionEntryAsync,
   resolveGatewayModelSupportsImages,
   resolveSessionModelRef,
 } from "../session-utils.js";
@@ -162,12 +162,15 @@ export async function prepareAgentContentPhase(params: {
     !to;
   const explicitVoiceWakeSessionTarget =
     canAutoRouteVoiceWake && params.requestedSessionKeyRaw
-      ? (() => {
-          const { cfg, canonicalKey } = loadSessionEntry(params.requestedSessionKeyRaw!, {
-            ...(agentId ? { agentId } : {}),
-            clone: false,
-            projection: "list",
-          });
+      ? await (async () => {
+          const { cfg, canonicalKey } = await loadSessionEntryAsync(
+            params.requestedSessionKeyRaw!,
+            {
+              ...(agentId ? { agentId } : {}),
+              clone: false,
+              projection: "list",
+            },
+          );
           const routedAgentId = resolveAgentIdFromSessionKey(canonicalKey, agentId);
           const compatibilityOwner = tryResolveSessionCompatibilityOwnerAgentId(cfg, canonicalKey);
           if (!compatibilityOwner || routedAgentId !== compatibilityOwner) {
@@ -193,10 +196,12 @@ export async function prepareAgentContentPhase(params: {
         }
       } else if ("sessionKey" in route) {
         if (classifySessionKeyShape(route.sessionKey) !== "malformed_agent") {
-          const canonicalKey = loadSessionEntry(route.sessionKey, {
-            clone: false,
-            projection: "list",
-          }).canonicalKey;
+          const canonicalKey = (
+            await loadSessionEntryAsync(route.sessionKey, {
+              clone: false,
+              projection: "list",
+            })
+          ).canonicalKey;
           const routedAgentId = resolveAgentIdFromSessionKey(canonicalKey);
           if (params.knownAgents.includes(routedAgentId)) {
             requestedSessionKey = canonicalKey;
