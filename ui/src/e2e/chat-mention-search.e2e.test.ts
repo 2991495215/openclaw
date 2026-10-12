@@ -176,12 +176,15 @@ suite.define(() => {
         const skeleton = menu.locator(".mention-menu__loading");
         expect(await skeleton.count()).toBe(3);
         expect(await menu.getByRole("option").count()).toBe(0);
-        expect(
-          await skeleton
-            .locator(".skeleton")
-            .first()
-            .evaluate((element) => getComputedStyle(element, "::after").animationName),
-        ).toBe("none");
+        // Query and read in one browser task so a replaced skeleton cannot report empty styles.
+        await expect
+          .poll(() =>
+            page.evaluate(() => {
+              const element = document.querySelector(".mention-menu__loading .skeleton");
+              return element ? getComputedStyle(element, "::after").animationName : null;
+            }),
+          )
+          .toBe("none");
         const loading = await menu.boundingBox();
         await gateway.resolveDeferred("users.mentionable", {
           users: [...people, { profileId: "hazel", displayName: "Hazel", online: false }],
