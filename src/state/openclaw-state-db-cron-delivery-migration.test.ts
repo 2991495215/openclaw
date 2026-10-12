@@ -125,12 +125,27 @@ it.each(["runtime open", "doctor repair"] as const)(
     });
     expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
     db.exec("UPDATE cron_run_receipts SET delivery_attempt_state = 'started'");
+    // Reuse remains valid while a sibling is live; final close requires readmission.
+    const survivingReader = openOpenClawStateReadOnlyLocation(database.path, database.path);
     closeOpenClawStateDatabaseForTest();
-    expect(
-      openOpenClawStateDatabase(options)
-        .db.prepare("SELECT delivery_attempt_state FROM cron_run_receipts")
-        .get(),
-    ).toEqual({ delivery_attempt_state: "started" });
+    const observation = observeSqliteReadSql(StatementSync.prototype);
+    try {
+      expect(
+        openOpenClawStateDatabase(options)
+          .db.prepare("SELECT delivery_attempt_state FROM cron_run_receipts")
+          .get(),
+      ).toEqual({ delivery_attempt_state: "started" });
+      expect(
+        observation.queries.filter((sql) =>
+          /(?:sqlite_(?:schema|master)|pragma_(?:table|index|foreign_key)|\bPRAGMA\s+(?:user_version|schema_version|integrity_check|quick_check|foreign_key_check|table_info|table_xinfo|index_list|index_info|index_xinfo)\b|\bFROM\s+"?schema_meta\b|state\.schema\.contentVersion)/iu.test(
+            sql,
+          ),
+        ),
+      ).toEqual([]);
+    } finally {
+      observation.restore();
+      survivingReader.close();
+    }
     closeOpenClawStateDatabaseForTest();
     const preflight = await preflightOpenClawDatabaseSchemas({
       env: options.env,
