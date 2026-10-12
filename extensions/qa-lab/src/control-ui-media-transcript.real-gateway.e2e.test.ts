@@ -361,6 +361,31 @@ suite.define(() => {
       const gatewayOwner = createQaLiveLaneGateway();
       const proofDir = suite.artifactDir;
       const errors: unknown[] = [];
+      type Phase =
+        | "startup"
+        | "pptx"
+        | "healthy"
+        | "missing-file"
+        | "recovered"
+        | "verdict"
+        | "shutdown";
+      let phase: Phase = "startup";
+      const progress = (
+        nextPhase: Phase,
+        step:
+          | "start"
+          | "ready"
+          | "filled"
+          | "clicked"
+          | "card"
+          | "history-ok"
+          | "history-failed"
+          | "done",
+      ) => {
+        phase = nextPhase;
+        console.info("[media-replay]", JSON.stringify({ phase, step }));
+      };
+      progress("startup", "start");
       try {
         const gateway = await gatewayOwner.start({
           repoRoot: process.cwd(),
@@ -399,6 +424,63 @@ suite.define(() => {
             viewport: { width: 1280, height: 900 },
           },
           async ({ page }) => {
+            // Fixed phases and bounded request outcomes survive public CI artifact filtering.
+            let requestCount = 0;
+            page.on("websocket", (socket) => {
+              const pending = new Map<string, { phase: Phase; request: number }>();
+              socket.on("framesent", ({ payload }) => {
+                if (requestCount >= 16) {
+                  return;
+                }
+                try {
+                  const frame = asOptionalRecord(JSON.parse(String(payload)));
+                  if (
+                    frame?.type === "req" &&
+                    frame.method === "chat.send" &&
+                    typeof frame.id === "string"
+                  ) {
+                    const request = { phase, request: ++requestCount };
+                    pending.set(frame.id, request);
+                    console.info(
+                      "[media-replay]",
+                      JSON.stringify({ ...request, step: "request", outcome: "sent" }),
+                    );
+                  }
+                } catch {
+                  // Non-JSON frames carry no diagnostic facts.
+                }
+              });
+              socket.on("framereceived", ({ payload }) => {
+                if (pending.size === 0) {
+                  return;
+                }
+                try {
+                  const frame = asOptionalRecord(JSON.parse(String(payload)));
+                  const id =
+                    frame?.type === "res" && typeof frame.id === "string" ? frame.id : undefined;
+                  const request = id ? pending.get(id) : undefined;
+                  if (request && id) {
+                    pending.delete(id);
+                    const ack = asOptionalRecord(frame?.payload)?.status;
+                    console.info(
+                      "[media-replay]",
+                      JSON.stringify({
+                        ...request,
+                        step: "response",
+                        outcome: frame?.ok === true ? "ok" : "error",
+                        ack:
+                          ["started", "in_flight", "ok", "timeout", "error"].find(
+                            (value) => value === ack,
+                          ) ?? "unknown",
+                      }),
+                    );
+                  }
+                } catch {
+                  // Non-JSON frames carry no diagnostic facts.
+                }
+              });
+              socket.on("close", () => pending.clear());
+            });
             await page.addInitScript(
               ({ gatewayUrl, token }) => {
                 (
@@ -425,13 +507,18 @@ suite.define(() => {
                 !pane.state.chatLoading
               );
             });
+            progress("startup", "ready");
             const composer = page.locator(".agent-chat__composer-combobox textarea");
+            progress("pptx", "start");
             await composer.fill("Reply exactly `Slides ready\nMEDIA:./slides.pptx`");
+            progress("pptx", "filled");
             await page.getByRole("button", { name: "Send message" }).click();
+            progress("pptx", "clicked");
             const card = page.locator(".chat-assistant-attachment-card", {
               hasText: "slides.pptx",
             });
             await card.waitFor();
+            progress("pptx", "card");
             const firstCardText = (await card.textContent()) ?? "";
             if (captureUiProof) {
               await page.screenshot({ path: path.join(proofDir, "01-pptx-result.png") });
@@ -441,8 +528,11 @@ suite.define(() => {
               limit: 20,
             });
 
+            progress("healthy", "start");
             await composer.fill("Reply exactly `Session healthy`");
+            progress("healthy", "filled");
             await page.getByRole("button", { name: "Send message" }).click();
+            progress("healthy", "clicked");
             let successPathHealthy = false;
             try {
               await expect
@@ -458,19 +548,29 @@ suite.define(() => {
                 )
                 .toBe(true);
               successPathHealthy = true;
-            } catch {}
+              progress("healthy", "history-ok");
+            } catch {
+              progress("healthy", "history-failed");
+            }
             let failureCardVisible = firstCardText.includes("Not sent");
             let failurePathHealthy = false;
             if (successPathHealthy) {
+              progress("missing-file", "start");
               await composer.fill("Reply exactly `Missing file\nMEDIA:./missing-proof.txt`");
+              progress("missing-file", "filled");
               await page.getByRole("button", { name: "Send message" }).click();
+              progress("missing-file", "clicked");
               const failureCard = page.locator(".chat-assistant-attachment-card", {
                 hasText: "missing-proof.txt",
               });
               await failureCard.waitFor();
+              progress("missing-file", "card");
               failureCardVisible = ((await failureCard.textContent()) ?? "").includes("Not sent");
+              progress("recovered", "start");
               await composer.fill("Reply exactly `Session recovered`");
+              progress("recovered", "filled");
               await page.getByRole("button", { name: "Send message" }).click();
+              progress("recovered", "clicked");
               try {
                 await expect
                   .poll(
@@ -485,8 +585,12 @@ suite.define(() => {
                   )
                   .toBe(true);
                 failurePathHealthy = true;
-              } catch {}
+                progress("recovered", "history-ok");
+              } catch {
+                progress("recovered", "history-failed");
+              }
             }
+            progress("verdict", "start");
             const secondHistory = await gateway.gateway.call("chat.history", {
               sessionKey: "agent:qa:main",
               limit: 30,
@@ -532,12 +636,15 @@ suite.define(() => {
               pptxDelivered: true,
               successPathHealthy: true,
             });
+            progress("verdict", "done");
           },
         );
       } catch (error) {
         errors.push(error);
       }
+      progress("shutdown", "start");
       const stopped = await gatewayOwner.stop({ preserveToDir: path.join(proofDir, "gateway") });
+      progress("shutdown", "done");
       errors.push(...stopped.errors);
       if (errors.length > 0) {
         throw new AggregateError(errors, "Control UI media transcript proof failed");
