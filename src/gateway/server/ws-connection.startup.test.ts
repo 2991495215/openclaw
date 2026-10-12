@@ -138,7 +138,7 @@ async function withStartupTestState<T>(
   options: Parameters<typeof createOpenClawTestState>[0],
   run: (state: OpenClawTestState) => Promise<T>,
 ): Promise<T> {
-  const state = await createOpenClawTestState(options);
+  const state = await createOpenClawTestState({ ...options, prepareProfileCatalog: true });
   const work = new AsyncWorkScope();
   return await runQaGatewayFixture(
     () => work.track(() => run(state)),
