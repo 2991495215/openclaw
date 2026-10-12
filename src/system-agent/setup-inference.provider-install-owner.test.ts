@@ -15,7 +15,7 @@ import { readPersistedInstalledPluginIndexInstallRecords } from "../plugins/inst
 import * as loader from "../plugins/loader.js";
 import { resetPluginLoaderTestStateForTest } from "../plugins/loader.test-fixtures.js";
 import { withPluginLifecycleLease } from "../plugins/plugin-lifecycle-lease.js";
-import { resolvePluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { getActivePluginRegistry, setActivePluginRegistry } from "../plugins/runtime.js";
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
@@ -60,7 +60,7 @@ it.each([false, true])(
         await state.writeConfig(source);
         const originalBytes = await fs.readFile(state.configPath, "utf8");
         const original = await readConfigFileSnapshot();
-        const runningMetadata = resolvePluginMetadataSnapshot({
+        const runningMetadata = await resolvePluginMetadataSnapshotAsync({
           config: original.runtimeConfig,
           workspaceDir: state.workspaceDir,
           env: process.env,

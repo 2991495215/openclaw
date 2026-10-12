@@ -56,7 +56,7 @@ function loadLegacyVoiceEntries(load: VoiceLoad): PluginRegistry["realtimeVoiceP
 }
 
 /** @deprecated Await listRealtimeVoiceProvidersAsync; removed in the next Plugin SDK major. */
-export function listRealtimeVoiceProviders(
+export function listRealtimeVoiceProvidersLegacy(
   cfg?: OpenClawConfig,
   additionalProviderIds?: readonly string[],
 ): RealtimeVoiceProviderPlugin[] {
@@ -79,7 +79,7 @@ export function listRealtimeVoiceProviders(
 }
 
 /** @deprecated Await getRealtimeVoiceProviderAsync; removed in the next Plugin SDK major. */
-export function getRealtimeVoiceProvider(
+export function getRealtimeVoiceProviderLegacy(
   providerId: string | undefined,
   cfg?: OpenClawConfig,
 ): RealtimeVoiceProviderPlugin | undefined {
@@ -106,17 +106,19 @@ export function getRealtimeVoiceProvider(
 }
 
 /** @deprecated Await canonicalizeRealtimeVoiceProviderIdAsync; removed in the next Plugin SDK major. */
-export function canonicalizeRealtimeVoiceProviderId(
+export function canonicalizeRealtimeVoiceProviderIdLegacy(
   providerId: string | undefined,
   cfg?: OpenClawConfig,
 ): RealtimeVoiceProviderId | undefined {
   warnLegacy("canonicalizeRealtimeVoiceProviderId", "canonicalizeRealtimeVoiceProviderIdAsync");
   const normalized = normalizeCapabilityProviderId(providerId);
-  return normalized ? (getRealtimeVoiceProvider(normalized, cfg)?.id ?? normalized) : undefined;
+  return normalized
+    ? (getRealtimeVoiceProviderLegacy(normalized, cfg)?.id ?? normalized)
+    : undefined;
 }
 
 /** @deprecated Await resolveConfiguredRealtimeVoiceProviderAsync; removed in the next Plugin SDK major. */
-export function resolveConfiguredRealtimeVoiceProvider(
+export function resolveConfiguredRealtimeVoiceProviderLegacy(
   params: ResolveConfiguredRealtimeVoiceProviderParams,
 ): ResolvedRealtimeVoiceProvider {
   warnLegacy(
@@ -126,7 +128,7 @@ export function resolveConfiguredRealtimeVoiceProvider(
   const configuredId = params.configuredProviderId?.trim();
   const provider =
     !params.providers && configuredId
-      ? getRealtimeVoiceProvider(configuredId, params.cfg)
+      ? getRealtimeVoiceProviderLegacy(configuredId, params.cfg)
       : undefined;
   const providers =
     params.providers ??
@@ -134,6 +136,6 @@ export function resolveConfiguredRealtimeVoiceProvider(
       ? provider
         ? [provider]
         : []
-      : listRealtimeVoiceProviders(params.cfg, Object.keys(params.providerConfigs ?? {})));
+      : listRealtimeVoiceProvidersLegacy(params.cfg, Object.keys(params.providerConfigs ?? {})));
   return resolvePreparedRealtimeVoiceProvider({ ...params, providers });
 }

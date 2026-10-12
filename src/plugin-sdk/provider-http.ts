@@ -96,7 +96,7 @@ export {
   resolveProviderRequestHeaders,
 } from "../agents/provider-request-config.js";
 export {
-  resolveProviderEndpoint,
-  resolveProviderRequestCapabilities,
-  resolveProviderRequestPolicy,
+  resolveProviderEndpointLegacy as resolveProviderEndpoint,
+  resolveProviderRequestCapabilitiesLegacy as resolveProviderRequestCapabilities,
+  resolveProviderRequestPolicyLegacy as resolveProviderRequestPolicy,
 } from "../agents/provider-attribution-sdk.js";

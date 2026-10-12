@@ -185,7 +185,7 @@ export {
   resolveGpt5SystemPromptContribution,
   type Gpt5PromptOverlayMode,
 } from "../agents/gpt5-prompt-overlay.js";
-export { resolveProviderEndpoint } from "../agents/provider-attribution-sdk.js";
+export { resolveProviderEndpointLegacy as resolveProviderEndpoint } from "../agents/provider-attribution-sdk.js";
 export {
   applyModelCompatPatch,
   hasToolSchemaProfile,

@@ -48,10 +48,10 @@ const reviewed = new Map<string, readonly string[]>([
   [
     "src/talk/provider-registry-sdk.ts",
     [
-      "listRealtimeVoiceProviders",
-      "getRealtimeVoiceProvider",
-      "canonicalizeRealtimeVoiceProviderId",
-      "resolveConfiguredRealtimeVoiceProvider",
+      "listRealtimeVoiceProvidersLegacy",
+      "getRealtimeVoiceProviderLegacy",
+      "canonicalizeRealtimeVoiceProviderIdLegacy",
+      "resolveConfiguredRealtimeVoiceProviderLegacy",
     ],
   ],
   ["src/auto-reply/commands-registry.ts", ["resolveCommandArgMenu"]],
