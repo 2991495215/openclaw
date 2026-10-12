@@ -205,16 +205,7 @@ export class OpenClawAgentDatabaseReadOnlyScope {
     const database = this.database;
     const validation = this.target?.validation;
     if (validation && !adoptOpenClawAgentDatabaseValidation(database, validation)) {
-      const physical = findOpenClawAgentDatabaseIdentity(database);
-      throw new Error(
-        "Session reader validation does not match its current physical owner " +
-          JSON.stringify({
-            agentIdMatches: validation.agentId === database.agentId,
-            identityMatches: validation.identity === physical?.identity,
-            birthtimeMatches: validation.birthtime === physical?.birthtime,
-            revoked: Atomics.load(new Int32Array(validation.valid), 0) !== 1,
-          }),
-      );
+      throw new Error("Session reader validation does not match its current physical owner");
     }
     // The open owner validates the schema once; runtime reads retain that admission.
     return finish(database);

@@ -251,10 +251,11 @@ export async function certifySessionCanonicalValidationPending(
             assertReadinessCurrent();
             claim?.assertCurrent();
             const currentValidation = readValidation();
-            if (!currentValidation || (validation && validation !== currentValidation)) {
+            if (!currentValidation) {
               throw new Error("SQLite session reclamation database owner is no longer current");
             }
-            validation ??= currentValidation;
+            // A successful worker admission can renew proof for the same physical owner.
+            validation = currentValidation;
             oversizedRows += result.oversizedRows;
             if (!result.hasMore) {
               if (

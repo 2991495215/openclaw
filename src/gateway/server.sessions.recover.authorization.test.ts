@@ -150,12 +150,12 @@ test("sessions.recover denies a narrow continuation into a linked foreign succes
   const { storePath } = await createSessionStoreDir();
   const sourceKey = "agent:main:dashboard:linked-foreign-recovery";
   const sourceSessionId = "linked-foreign-recovery-source";
+  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
   const sourceOwner = roleClient("view", "linked-recovery-owner");
   sourceOwner.connect.scopes = ["operator.sessions.write"];
   const broadWriter = roleClient("write", "linked-recovery-writer");
   broadWriter.connect.scopes = ["operator.write"];
   const cfg = recoveryConfig(storePath);
-  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
   const revokedRole = rolePolicyConfig().gateway!.roles!;
   const writeRole = revokedRole.definitions.write;
   if (!writeRole) {
@@ -256,9 +256,9 @@ test("sessions.recover retains source revocation for its accepted own successor"
   const { storePath } = await createSessionStoreDir();
   const sourceKey = "agent:main:dashboard:narrow-own-recovery";
   const sourceSessionId = "narrow-own-recovery-source";
+  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
   const owner = roleClient("view", "narrow-recovery-owner");
   owner.connect.scopes = ["operator.sessions.write"];
-  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
   await seedRecoverableSession({
     sourceKey,
     sourceSessionId,

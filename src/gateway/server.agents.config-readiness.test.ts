@@ -16,7 +16,6 @@ import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
 import { acquireGatewayLock } from "../infra/gateway-lock.js";
 import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
-import { redactSensitiveText } from "../logging/redact.js";
 import * as pluginLifecycleLease from "../plugins/plugin-lifecycle-lease.js";
 import { OpenClawStateLeaseAcquisitionError } from "../state/openclaw-state-lease-error.js";
 import {
@@ -26,7 +25,6 @@ import {
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { acquireTestPortBlock } from "../test-utils/port-claims.js";
 import * as configReload from "./config-reload.js";
-import { gatewayKernelLogs } from "./server-kernel.js";
 import * as agentDatabases from "./server-reload-agent-databases.js";
 import { startGatewayServer } from "./server.js";
 import { connectGatewayClient, disconnectGatewayClient } from "./test-helpers.e2e.js";
@@ -42,17 +40,6 @@ it("publishes agent mutations before acknowledging immediate session and roster 
   const publicationEntered = createDeferred();
   const releasePublication = createDeferred();
   const creationBookkeepingCompleted = createDeferred();
-  const reloadLog = gatewayKernelLogs.logReload;
-  const warn = reloadLog.warn.bind(reloadLog);
-  const forwardError = reloadLog.error.bind(reloadLog);
-  const warnSpy = vi.spyOn(reloadLog, "warn").mockImplementation((message, meta) => {
-    console.error(`[agent-config-readiness reload warn] ${redactSensitiveText(message)}`);
-    warn(message, meta);
-  });
-  const errorSpy = vi.spyOn(reloadLog, "error").mockImplementation((message, meta) => {
-    console.error(`[agent-config-readiness reload error] ${redactSensitiveText(message)}`);
-    forwardError(message, meta);
-  });
   let publicationHeld = false;
   let reloadScheduler: GatewayScheduler | undefined;
   const startReloader = configReload.startGatewayConfigReloader;
@@ -85,8 +72,6 @@ it("publishes agent mutations before acknowledging immediate session and roster 
     releasePublication.resolve();
     reloaderSpy.mockRestore();
     revivalSpy.mockRestore();
-    warnSpy.mockRestore();
-    errorSpy.mockRestore();
   });
   await withOpenClawTestState(
     {
