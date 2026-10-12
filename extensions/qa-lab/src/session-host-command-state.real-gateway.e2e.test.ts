@@ -51,8 +51,17 @@ suite.define(() => {
     "shows the next action for every required node command state",
     { timeout: TEST_TIMEOUT_MS },
     async () => {
+      // HOLD/neverLand: fixed stages distinguish Gateway setup from browser waits.
+      const startedAt = performance.now();
+      const mark = (stage: string) =>
+        console.error(
+          "[redmain-ui-host-command]",
+          stage,
+          Math.round(performance.now() - startedAt),
+        );
       const gatewayOwner = createQaGatewayChild();
       gatewayOwners.push(gatewayOwner);
+      mark("gateway-start");
       const gateway = await gatewayOwner.start({
         repoRoot: process.cwd(),
         useRepoCli: true,
@@ -97,7 +106,9 @@ suite.define(() => {
           },
         }),
       });
+      mark("gateway-ready");
       const operator = await connectOperator(gateway);
+      mark("operator-connected");
       const clients: GatewayClient[] = [operator];
       try {
         const undeclaredIdentity = createDeviceIdentity();
@@ -117,6 +128,7 @@ suite.define(() => {
         });
         clients.push(undeclaredNode);
         await publishSessionHost(undeclaredNode);
+        mark("undeclared-node-published");
         const pendingApproved = await connectPairedNode({
           displayName: "Pending approval",
           gateway,
@@ -134,6 +146,7 @@ suite.define(() => {
         clients.push(pendingNode);
         await publishSessionHost(pendingNode);
         await waitForPendingCommand(operator, pendingIdentity.deviceId);
+        mark("pending-node-published");
         const unauthorizedNode = await connectPairedNode({
           displayName: "Unauthorized command",
           gateway,
@@ -143,6 +156,7 @@ suite.define(() => {
         });
         clients.push(unauthorizedNode);
         await publishSessionHost(unauthorizedNode);
+        mark("authorized-node-published");
 
         const readCommandState = async (deviceId: string) => {
           const inventory = await operator.request<{
@@ -168,6 +182,7 @@ suite.define(() => {
           command: COMMAND,
           state: "invocable",
         });
+        mark("initial-command-states-verified");
 
         await suite.withPage(
           {
@@ -179,12 +194,15 @@ suite.define(() => {
             viewport: { height: 900, width: 1440 },
           },
           async ({ page }) => {
+            mark("browser-page-open");
             const url = new URL("new", suite.server.baseUrl);
             url.searchParams.set("gatewayUrl", gateway.wsUrl);
             await page.goto(url.toString());
+            mark("browser-navigated");
             const confirmation = page.locator("openclaw-gateway-url-confirmation");
             await confirmation.waitFor();
             await confirmation.getByRole("button", { name: /^Switch to /u }).click();
+            mark("gateway-switch-confirmed");
 
             await page.locator("#new-session-where-trigger").click();
             const place = page.locator("wa-popover.new-session-page__where-popover");
@@ -196,6 +214,7 @@ suite.define(() => {
             await expect
               .poll(() => disabledReason(pendingIdentity.deviceId))
               .toContain(pendingMessage);
+            mark("initial-node-rows-verified");
             if (captureUiProof) {
               // Keep captures at the recorded viewport size: clips and larger full-page
               // screenshots temporarily resize Chromium's shared screencast surface.
@@ -219,6 +238,7 @@ suite.define(() => {
               baseHash: beforeConfig.hash,
               replacePaths: ["gateway.nodes.commands.allow", "gateway.nodes.commands.deny"],
             });
+            mark("deny-config-patched");
             await vi.waitFor(
               async () => {
                 expect(await readCommandState(unauthorizedIdentity.deviceId)).toEqual({
@@ -229,6 +249,7 @@ suite.define(() => {
               },
               { interval: 250, timeout: 60_000 },
             );
+            mark("denied-command-state-verified");
             expect(helloCounts.get(unauthorizedNode)).toBe(unauthorizedHelloCount);
 
             await page.reload();
@@ -237,6 +258,7 @@ suite.define(() => {
             await expect
               .poll(() => disabledReason(unauthorizedIdentity.deviceId))
               .toContain(unauthorizedMessage);
+            mark("denied-node-row-verified");
             if (captureUiProof) {
               await page.screenshot({
                 animations: "disabled",
@@ -254,6 +276,7 @@ suite.define(() => {
               baseHash: deniedConfig.hash,
               replacePaths: ["gateway.nodes.commands.allow", "gateway.nodes.commands.deny"],
             });
+            mark("reallow-config-patched");
             await vi.waitFor(
               async () => {
                 expect(await readCommandState(unauthorizedIdentity.deviceId)).toEqual({
@@ -268,11 +291,13 @@ suite.define(() => {
               },
               { interval: 250, timeout: 60_000 },
             );
+            mark("reallowed-command-state-verified");
             expect(helloCounts.get(unauthorizedNode)).toBe(unauthorizedHelloCount);
             await page.reload();
             await page.locator("#new-session-where-trigger").click();
             await row(unauthorizedIdentity.deviceId).waitFor();
             expect(await row(unauthorizedIdentity.deviceId).isEnabled()).toBe(true);
+            mark("reallowed-node-row-verified");
             if (captureUiProof) {
               await page.screenshot({
                 animations: "disabled",
@@ -282,6 +307,7 @@ suite.define(() => {
           },
         );
       } finally {
+        mark("cleanup-start");
         await Promise.allSettled(
           clients.toReversed().map((client) => client.stopAndWait({ timeoutMs: 1_000 })),
         );
@@ -290,6 +316,7 @@ suite.define(() => {
         gatewayOwners.splice(gatewayOwners.indexOf(gatewayOwner), 1);
         expect(stopped.errors).toEqual([]);
         expect(existsSync(tempRoot)).toBe(false);
+        mark("cleanup-finished");
       }
     },
   );

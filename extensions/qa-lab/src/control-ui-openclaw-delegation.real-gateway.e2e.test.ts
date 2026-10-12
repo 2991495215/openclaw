@@ -54,11 +54,16 @@ function readDelegationResult(history: unknown): Record<string, unknown> | undef
 
 suite.define(() => {
   it("renders one native approval card without exposing fallback approval text", async () => {
+    // HOLD/neverLand: fixed stages distinguish Gateway setup from browser waits.
+    const startedAt = performance.now();
+    const mark = (stage: string) =>
+      console.error("[redmain-ui-approval]", stage, Math.round(performance.now() - startedAt));
     const owner = createQaLiveLaneGateway();
     const proofDir = suite.artifactDir;
     const errors: unknown[] = [];
     try {
       const repoRoot = process.cwd();
+      mark("gateway-start");
       const runtime = await owner.start({
         repoRoot,
         command: {
@@ -94,12 +99,14 @@ suite.define(() => {
           },
         }),
       });
+      mark("gateway-ready");
       const gateway = runtime.gateway;
       const sessionKey = "agent:qa:dashboard:delegation-approval";
       await gateway.call("sessions.create", {
         key: sessionKey,
         label: "OpenClaw native approval",
       });
+      mark("session-created");
 
       await suite.withPage(
         {
@@ -111,6 +118,7 @@ suite.define(() => {
           viewport: { width: 1280, height: 900 },
         },
         async ({ page }) => {
+          mark("browser-page-open");
           const eventSequence: string[] = [];
           let finalEvents = 0;
           let activeUiSocket: WebSocket | undefined;
@@ -212,14 +220,18 @@ suite.define(() => {
             { gatewayUrl: gateway.wsUrl, token: gateway.token },
           );
           await page.goto(controlUiSessionUrl(suite.server.baseUrl, sessionKey));
+          mark("browser-navigated");
           const composer = page.locator(".agent-chat__composer-combobox textarea");
           await composer.fill(prompt);
+          mark("composer-filled");
           await page.getByRole("button", { name: "Send message" }).click();
+          mark("turn-sent");
 
           const approvalCard = page.locator(
             '.chat-inline-approval [data-approval-id^="system-agent:"]',
           );
           await approvalCard.waitFor();
+          mark("approval-visible");
           await expect.poll(() => approvalCard.count()).toBe(1);
           expect(eventSequence).toEqual(["openclaw.approval.requested"]);
           expect(finalEvents).toBe(0);
@@ -252,9 +264,11 @@ suite.define(() => {
                 )["__OPENCLAW_APPROVAL_FALLBACK_OBSERVED__"] === true,
             );
           expect(await approvalFallbackWasObserved()).toBe(false);
+          mark("pending-reload-start");
           await page.reload();
           await composer.waitFor();
           await approvalCard.waitFor();
+          mark("pending-reload-ready");
           await expect.poll(() => approvalCard.count()).toBe(1);
           expect(eventSequence).toEqual(["openclaw.approval.requested"]);
           expect(finalEvents).toBe(0);
@@ -282,8 +296,10 @@ suite.define(() => {
           });
 
           await approvalCard.getByRole("button", { name: "Allow once" }).click();
+          mark("approval-accepted");
           await expect.poll(() => approvalCard.count()).toBe(0);
           await expect.poll(() => finalEvents, { timeout: 60_000 }).toBe(1);
+          mark("final-event-received");
           expect(eventSequence).toEqual([
             "openclaw.approval.requested",
             "openclaw.approval.resolved",
@@ -315,6 +331,7 @@ suite.define(() => {
           expect(JSON.stringify(history)).not.toContain("/approve");
           expect(loggingLevel(JSON.parse(await readFile(gateway.configPath, "utf8")))).toBe("info");
           expect(await approvalFallbackWasObserved()).toBe(false);
+          mark("final-reload-start");
           await page.reload();
           await composer.waitFor();
           await page.getByText(prompt, { exact: true }).waitFor();
@@ -334,6 +351,7 @@ suite.define(() => {
           await page
             .locator(".chat-tool-msg-body", { hasText: /Updated logging\.level/u })
             .waitFor();
+          mark("replayed-tool-visible");
           const reloadedPageText = await page.locator("body").textContent();
           expect(reloadedPageText).not.toContain("OpenClaw change pending approval");
           expect(reloadedPageText).not.toContain("/approve");
@@ -343,9 +361,12 @@ suite.define(() => {
         },
       );
     } catch (error) {
+      mark("scenario-error");
       errors.push(error);
     }
+    mark("gateway-stop-start");
     const stopped = await owner.stop({ preserveToDir: path.join(proofDir, "gateway") });
+    mark("gateway-stopped");
     errors.push(...stopped.errors);
     if (errors.length > 0) {
       throw new AggregateError(errors, "native OpenClaw approval proof failed");

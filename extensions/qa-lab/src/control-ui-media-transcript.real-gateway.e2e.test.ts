@@ -358,10 +358,15 @@ suite.define(() => {
     "delivers PowerPoint and keeps persisted attachment failures replay-safe",
     { timeout: 180_000 },
     async () => {
+      // HOLD/neverLand: fixed stages distinguish Gateway setup from browser waits.
+      const startedAt = performance.now();
+      const mark = (stage: string) =>
+        console.error("[redmain-ui-media]", stage, Math.round(performance.now() - startedAt));
       const gatewayOwner = createQaLiveLaneGateway();
       const proofDir = suite.artifactDir;
       const errors: unknown[] = [];
       try {
+        mark("gateway-start");
         const gateway = await gatewayOwner.start({
           repoRoot: process.cwd(),
           command: {
@@ -378,6 +383,7 @@ suite.define(() => {
           controlUiAllowedOrigins: [new URL(suite.server.baseUrl).origin],
           controlUiEnabled: false,
         });
+        mark("gateway-ready");
         await writeFile(path.join(gateway.gateway.workspaceDir, "slides.pptx"), await createPptx());
         expect(await gateway.gateway.call("config.get", {})).toMatchObject({
           config: {
@@ -388,6 +394,7 @@ suite.define(() => {
             },
           },
         });
+        mark("fixture-config-ready");
 
         await suite.withPage(
           {
@@ -399,6 +406,7 @@ suite.define(() => {
             viewport: { width: 1280, height: 900 },
           },
           async ({ page }) => {
+            mark("browser-page-open");
             await page.addInitScript(
               ({ gatewayUrl, token }) => {
                 (
@@ -410,7 +418,9 @@ suite.define(() => {
               { gatewayUrl: gateway.gateway.wsUrl, token: gateway.gateway.token },
             );
             await page.goto(controlUiSessionUrl(suite.server.baseUrl, "agent:qa:main"));
+            mark("browser-navigated");
             await waitForControlUiGatewayReady(page);
+            mark("browser-gateway-ready");
             // Exercise media delivery only after the target session owns its composer;
             // cold startup can still replace the initial empty draft before this point.
             await page.waitForFunction(() => {
@@ -425,13 +435,17 @@ suite.define(() => {
                 !pane.state.chatLoading
               );
             });
+            mark("composer-session-ready");
             const composer = page.locator(".agent-chat__composer-combobox textarea");
             await composer.fill("Reply exactly `Slides ready\nMEDIA:./slides.pptx`");
+            mark("composer-filled");
             await page.getByRole("button", { name: "Send message" }).click();
+            mark("slides-turn-sent");
             const card = page.locator(".chat-assistant-attachment-card", {
               hasText: "slides.pptx",
             });
             await card.waitFor();
+            mark("slides-card-visible");
             const firstCardText = (await card.textContent()) ?? "";
             if (captureUiProof) {
               await page.screenshot({ path: path.join(proofDir, "01-pptx-result.png") });
@@ -443,6 +457,7 @@ suite.define(() => {
 
             await composer.fill("Reply exactly `Session healthy`");
             await page.getByRole("button", { name: "Send message" }).click();
+            mark("health-turn-sent");
             let successPathHealthy = false;
             try {
               await expect
@@ -459,15 +474,18 @@ suite.define(() => {
                 .toBe(true);
               successPathHealthy = true;
             } catch {}
+            mark("health-turn-settled");
             let failureCardVisible = firstCardText.includes("Not sent");
             let failurePathHealthy = false;
             if (successPathHealthy) {
               await composer.fill("Reply exactly `Missing file\nMEDIA:./missing-proof.txt`");
               await page.getByRole("button", { name: "Send message" }).click();
+              mark("missing-file-turn-sent");
               const failureCard = page.locator(".chat-assistant-attachment-card", {
                 hasText: "missing-proof.txt",
               });
               await failureCard.waitFor();
+              mark("missing-file-card-visible");
               failureCardVisible = ((await failureCard.textContent()) ?? "").includes("Not sent");
               await composer.fill("Reply exactly `Session recovered`");
               await page.getByRole("button", { name: "Send message" }).click();
@@ -486,6 +504,7 @@ suite.define(() => {
                   .toBe(true);
                 failurePathHealthy = true;
               } catch {}
+              mark("recovery-turn-settled");
             }
             const secondHistory = await gateway.gateway.call("chat.history", {
               sessionKey: "agent:qa:main",
@@ -532,12 +551,16 @@ suite.define(() => {
               pptxDelivered: true,
               successPathHealthy: true,
             });
+            mark("verdict-verified");
           },
         );
       } catch (error) {
+        mark("scenario-error");
         errors.push(error);
       }
+      mark("gateway-stop-start");
       const stopped = await gatewayOwner.stop({ preserveToDir: path.join(proofDir, "gateway") });
+      mark("gateway-stopped");
       errors.push(...stopped.errors);
       if (errors.length > 0) {
         throw new AggregateError(errors, "Control UI media transcript proof failed");
