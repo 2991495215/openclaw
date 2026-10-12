@@ -176,7 +176,7 @@ jobs:
   main-dependencies:
     name: Main dependency attribution
     needs: [render]
-    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor }}
+    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor && !inputs.diagnose_readiness }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

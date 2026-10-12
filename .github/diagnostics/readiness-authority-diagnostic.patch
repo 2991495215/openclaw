@@ -1,20 +1,28 @@
-diff --git a/src/gateway/server.agents.config-readiness.test.ts b/src/gateway/server.agents.config-readiness.test.ts
-index 0672f4cc48607..b9bbb4bec2de1 100644
 --- a/src/gateway/server.agents.config-readiness.test.ts
 +++ b/src/gateway/server.agents.config-readiness.test.ts
-@@ -27,8 +27,11 @@ import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+@@ -13,6 +13,8 @@
+   registerConfigWriteListener,
+ } from "../config/config.js";
+ import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
++import * as replacementWorker from "../config/sessions/session-accessor.sqlite-replacement-worker.js";
++import * as sqliteScope from "../config/sessions/session-accessor.sqlite-scope.js";
+ import { acquireGatewayLock } from "../infra/gateway-lock.js";
+ import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
+ import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
+@@ -26,9 +28,12 @@
+ import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
  import { acquireTestPortBlock } from "../test-utils/port-claims.js";
  import * as configReload from "./config-reload.js";
++import * as operatorRunAuthority from "./operator-run-authority.js";
  import { gatewayKernelLogs } from "./server-kernel.js";
-+import * as requestAuthorization from "./server-methods/request-authorization.js";
  import * as agentDatabases from "./server-reload-agent-databases.js";
  import { startGatewayServer } from "./server.js";
 +import * as sessionCreateDiagnostics from "./session-create-diagnostics.js";
-+import * as sessionStoreWorker from "./session-utils-store-worker.js";
++import * as lifecyclePreparation from "./session-lifecycle-preparation.js";
  import { connectGatewayClient, disconnectGatewayClient } from "./test-helpers.e2e.js";
 
  const cliEntrypoint = resolveRuntimeWorkerArgv(
-@@ -51,6 +54,48 @@ it("publishes agent mutations before acknowledging immediate session and roster
+@@ -51,6 +56,84 @@
    let reloadScheduler: GatewayScheduler | undefined;
    const reloadFailures: string[] = [];
    const cronWarnings: unknown[][] = [];
@@ -34,36 +42,72 @@ index 0672f4cc48607..b9bbb4bec2de1 100644
 +        },
 +      };
 +    });
-+  const loadEntry = sessionStoreWorker.loadGatewaySessionEntryReadOnlyInWorker;
-+  const authorize = requestAuthorization.authorizeGatewayRequestPreDispatch;
-+  const authorizationSpy = vi
-+    .spyOn(requestAuthorization, "authorizeGatewayRequestPreDispatch")
++  const captureOperator = operatorRunAuthority.captureGatewayOperatorRunAuthority;
++  const operatorSpy = vi
++    .spyOn(operatorRunAuthority, "captureGatewayOperatorRunAuthority")
 +    .mockImplementation(async (...args) => {
-+      if (args[0].method === "sessions.create") {
-+        markCreateStage("pre-dispatch authorization start");
++      markCreateStage("operator authority start");
++      try {
++        return await captureOperator(...args);
++      } finally {
++        markCreateStage("operator authority end");
++      }
++    });
++  const prepareScope = sqliteScope.prepareSqliteScope;
++  const scopeSpy = vi
++    .spyOn(sqliteScope, "prepareSqliteScope")
++    .mockImplementation(async (...args) => {
++      const selected = args[0].agentId === agentId;
++      if (selected) {
++        markCreateStage("scope discovery start");
 +      }
 +      try {
-+        return await authorize(...args);
++        return await prepareScope(...args);
 +      } finally {
-+        if (args[0].method === "sessions.create") {
-+          markCreateStage("pre-dispatch authorization end");
++        if (selected) {
++          markCreateStage("scope discovery end");
 +        }
 +      }
 +    });
-+  const loadEntrySpy = vi
-+    .spyOn(sessionStoreWorker, "loadGatewaySessionEntryReadOnlyInWorker")
++  const prepareDatabase = replacementWorker.prepareSessionEntryReplacementDatabase;
++  const databaseSpy = vi
++    .spyOn(replacementWorker, "prepareSessionEntryReplacementDatabase")
 +    .mockImplementation(async (...args) => {
-+      markCreateStage(`entry read start: ${args[0].key}`);
-+      try {
-+        return await loadEntry(...args);
-+      } finally {
-+        markCreateStage(`entry read end: ${args[0].key}`);
++      const selected = args[0].agentId === agentId;
++      if (selected) {
++        markCreateStage("worker database preparation start");
 +      }
++      try {
++        return await prepareDatabase(...args);
++      } finally {
++        if (selected) {
++          markCreateStage("worker database preparation end");
++        }
++      }
++    });
++  const prepareLifecycle = lifecyclePreparation.prepareGatewaySessionLifecycleTargets;
++  const lifecycleSpy = vi
++    .spyOn(lifecyclePreparation, "prepareGatewaySessionLifecycleTargets")
++    .mockImplementation((...args) => {
++      const custody = prepareLifecycle(...args);
++      return {
++        ...custody,
++        async prepareCreationTargets(
++          ...creationArgs: Parameters<typeof custody.prepareCreationTargets>
++        ) {
++          markCreateStage("creation targets preparation start");
++          try {
++            return await custody.prepareCreationTargets(...creationArgs);
++          } finally {
++            markCreateStage("creation targets preparation end");
++          }
++        },
++      };
 +    });
    const toPinoLikeLogger = logging.toPinoLikeLogger;
    const cronLoggerSpy = vi.spyOn(logging, "toPinoLikeLogger").mockImplementation((...args) => {
      const logger = toPinoLikeLogger(...args);
-@@ -83,6 +128,7 @@ it("publishes agent mutations before acknowledging immediate session and roster
+@@ -83,6 +166,7 @@
          overlapPhases,
          reloadFailures,
          cronWarnings,
@@ -71,13 +115,15 @@ index 0672f4cc48607..b9bbb4bec2de1 100644
        }),
      );
    });
-@@ -162,6 +208,9 @@ it("publishes agent mutations before acknowledging immediate session and roster
+@@ -162,6 +246,11 @@
      reloadInfo.mockRestore();
      reloadError.mockRestore();
      cronLoggerSpy.mockRestore();
 +    diagnosticsSpy.mockRestore();
-+    loadEntrySpy.mockRestore();
-+    authorizationSpy.mockRestore();
++    operatorSpy.mockRestore();
++    scopeSpy.mockRestore();
++    databaseSpy.mockRestore();
++    lifecycleSpy.mockRestore();
    });
    await withOpenClawTestState(
      {
