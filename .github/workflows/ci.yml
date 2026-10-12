@@ -37,6 +37,11 @@ on:
         required: false
         default: false
         type: boolean
+      diagnose_final:
+        description: Run frozen protocol baseline/candidate and registry candidate regressions
+        required: false
+        default: false
+        type: boolean
       base_sha:
         description: Full predecessor commit SHA
         required: true
@@ -48,7 +53,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}-${{ inputs.diagnose_node_wire }}-${{ inputs.diagnose_copilot }}
+  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}-${{ inputs.diagnose_node_wire }}-${{ inputs.diagnose_copilot }}-${{ inputs.diagnose_final }}
   cancel-in-progress: false
 jobs:
   render:
@@ -505,5 +510,66 @@ jobs:
         with:
           name: copilot-baseline-${{ github.run_id }}-${{ github.run_attempt }}
           path: .artifacts/copilot-baseline*
+          if-no-files-found: warn
+          retention-days: 14
+  final-regressions:
+    if: ${{ inputs.diagnose_final }}
+    name: Frozen final regression (${{ matrix.case }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - case: protocol-baseline
+            role: base
+            file: extensions/codex/src/app-server/run-attempt.protocol-validation.test.ts
+          - case: protocol-candidate
+            role: head
+            file: extensions/codex/src/app-server/run-attempt.protocol-validation.test.ts
+          - case: registry-candidate
+            role: head
+            file: src/config/sessions/startup-migration.registry-recovery.test.ts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.role == 'base' && inputs.base_sha || inputs.head_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .ci-harness
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.ci-harness/.github/actions/setup-node-env
+        with:
+          node-version: "24.21.0"
+          semantic-checks: "true"
+          cache-mode: off
+          install-bun: "false"
+          dependency-cache: "false"
+          frozen-lockfile: "true"
+      - name: Run the frozen regression
+        env:
+          OPENCLAW_LOCAL_CHECK: "0"
+          OPENCLAW_VITEST_RUNTIME: node
+          PROOF_SHA: ${{ matrix.role == 'base' && inputs.base_sha || inputs.head_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PROOF_CASE: ${{ matrix.case }}
+          TEST_FILE: ${{ matrix.file }}
+        run: |
+          set -euo pipefail
+          [[ "$PROOF_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$PROOF_SHA"
+          mkdir -p .artifacts
+          node --input-type=module -e 'console.log(JSON.stringify({ commit: process.env.PROOF_SHA, workflow: process.env.WORKFLOW_SHA, case: process.env.PROOF_CASE, test: process.env.TEST_FILE }, null, 2))' > .artifacts/final-regression-provenance.json
+          pnpm test "$TEST_FILE" --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/final-regression.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: ${{ always() }}
+        with:
+          name: final-regression-${{ matrix.case }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/final-regression*
           if-no-files-found: warn
           retention-days: 14
