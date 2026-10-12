@@ -21,17 +21,14 @@ import {
 } from "./runtime-external-profile-references.js";
 import { pruneAuthProfileStoreReferences } from "./runtime-snapshot-owner.js";
 import { getRuntimeAuthProfileStoreSnapshotAtDatabasePath } from "./runtime-snapshots.js";
-import type { createAuthProfileStoreUpdater } from "./store-update.js";
-import type { AuthProfileStore, AuthProfileStoreOwner } from "./types.js";
+import type {
+  AuthProfileStore,
+  AuthProfileStoreOwner,
+  AuthProfileStoreUpdater,
+  SaveAuthProfileStoreOptions,
+} from "./types.js";
 
-export type SaveAuthProfileStoreOptions = {
-  filterExternalAuthProfiles?: boolean;
-  preserveOrderProfileIds?: Iterable<string>;
-  preserveStateProfileIds?: Iterable<string>;
-  pruneOrderProfileIds?: Iterable<string>;
-  sharedStoreWrite?: boolean;
-  syncExternalCli?: boolean;
-};
+export type { SaveAuthProfileStoreOptions } from "./types.js";
 
 function validateAuthProfileStoreSecrets(store: AuthProfileStore): void {
   for (const credential of Object.values(store.profiles)) {
@@ -49,9 +46,7 @@ export function prepareLegacyAuthProfileSave(store: AuthProfileStore): void {
 }
 
 /** Replace the selected owner's store through its existing update and publication owner. */
-export function createAuthProfileStoreSaver(
-  update: ReturnType<typeof createAuthProfileStoreUpdater>,
-) {
+export function createAuthProfileStoreSaver(update: AuthProfileStoreUpdater) {
   return async function saveAuthProfileStoreAsync(
     store: AuthProfileStore,
     agentDir?: string,

@@ -210,7 +210,10 @@ describe("createGatewayRequestContext presence", () => {
       });
       const context = createGatewayRequestContext(params);
 
-      const linked = await linkCanonicalUserProfileEmail("merge-source@example.test", target.id);
+      const { profile: linked } = await linkCanonicalUserProfileEmail(
+        "merge-source@example.test",
+        target.id,
+      );
       expect(resolveUserProfileId(source.id)).toBe(target.id);
       const display = getUserProfileDisplay(linked.id);
       context.refreshConnectedUserProfile?.({

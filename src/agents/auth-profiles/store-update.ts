@@ -61,7 +61,6 @@ import {
   runAuthProfileWriteTransaction,
   type AuthProfileDatabase,
 } from "./sqlite.js";
-import type { SaveAuthProfileStoreOptions } from "./store-save.js";
 import { watchAuthProfileNativeCommits } from "./store-update-commit.js";
 import type {
   AuthStoreUpdatePrepared,
@@ -74,7 +73,12 @@ import {
   receiveAuthProfileUpdateValue,
 } from "./store-update-transfer.js";
 import type { AuthStoreUpdateInput } from "./store.worker-contract.js";
-import type { AuthProfileStore, PreparedAuthProfileStoreOwner } from "./types.js";
+import type {
+  AuthProfileStore,
+  AuthProfileStoreUpdater,
+  PreparedAuthProfileStoreOwner,
+  SaveAuthProfileStoreOptions,
+} from "./types.js";
 import { reserveAuthProfileUsagePreparation, runAuthProfileUsage } from "./usage-lifecycle.js";
 import { captureAuthProfileWriteExecution } from "./write-execution.js";
 
@@ -482,7 +486,7 @@ export function createAuthProfileStoreUpdater(
       owner: PreparedAuthProfileStoreOwner,
     ) => void;
   },
-) {
+): AuthProfileStoreUpdater {
   const {
     applyScopedAuthReadThrough,
     getScopedAuthProfileEnv,
@@ -490,19 +494,9 @@ export function createAuthProfileStoreUpdater(
     resolveRuntimeAuthProfileAgentDir,
   } = host;
   /** Update under the write lock; null on contention or changed inherited read facts. */
-  return async function updateAuthProfileStoreWithLock(params: {
-    agentDir?: string;
-    profileId?: string;
-    sharedStoreWrite?: boolean;
-    stateDir?: string;
-    saveOptions?: SaveAuthProfileStoreOptions;
-    assertCurrent?: () => void;
-    updater: (
-      store: AuthProfileStore,
-      owner?: PreparedAuthProfileStoreOwner,
-      sharedStore?: AuthProfileStore | null,
-    ) => boolean;
-  }): Promise<AuthProfileStore | null> {
+  return async function updateAuthProfileStoreWithLock(
+    params: Parameters<AuthProfileStoreUpdater>[0],
+  ): Promise<AuthProfileStore | null> {
     const agentDir = resolveRuntimeAuthProfileAgentDir(params.agentDir);
     const envOnly = host.isEnvOnlyAuthProfileRuntime();
     try {

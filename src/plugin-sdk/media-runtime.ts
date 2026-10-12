@@ -3,8 +3,8 @@
  * outbound-media, and capability runtime subpaths.
  */
 import {
-  resolveAutoMediaKeyProviders as resolvePreparedAutoMediaKeyProviders,
-  resolveDefaultMediaModel as resolvePreparedDefaultMediaModel,
+  resolveAutoMediaKeyProvidersCore as resolvePreparedAutoMediaKeyProviders,
+  resolveDefaultMediaModelCore as resolvePreparedDefaultMediaModel,
 } from "../media-understanding/defaults.js";
 import { prepareBundledDiscoveryMode } from "../plugins/bundled-discovery-state.js";
 import { prepareBundledDiscoveryModeNative } from "../plugins/bundled-discovery-state.native.js";

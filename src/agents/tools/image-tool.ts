@@ -7,8 +7,8 @@ import { resolveAgentModelPrimaryValue } from "../../config/model-input.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { captureAmbientGatewayOperatorAuthority } from "../../gateway/operator-invocation-authority.js";
 import {
-  resolveAutoMediaKeyProviders,
-  resolveDefaultMediaModel,
+  resolveAutoMediaKeyProvidersCore as resolveAutoMediaKeyProviders,
+  resolveDefaultMediaModelCore as resolveDefaultMediaModel,
 } from "../../media-understanding/defaults.js";
 import {
   classifyMediaReferenceSource,

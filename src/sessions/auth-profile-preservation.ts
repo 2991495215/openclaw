@@ -81,7 +81,7 @@ export function shouldPreserveUnavailableSessionAuthProfileOverride(
 }
 
 /** Applies a user model selection without dropping a compatible pinned auth profile. */
-export function applyModelOverrideWithAuthProfileCompatibility(
+export function applyModelOverrideWithAuthProfileCompatibilityCore(
   params: Omit<SessionAuthProfilePreservationParams, "provider"> &
     Omit<Parameters<typeof applyModelOverrideToSessionEntry>[0], "preserveAuthProfileOverride">,
 ): { updated: boolean } {
@@ -115,7 +115,7 @@ export function applyModelOverrideWithAuthProfileCompatibility(
 /** Prepare the pinned account through its owner before changing the session selection. */
 export async function applyModelOverrideWithAuthProfileCompatibilityAsync(
   params: Omit<
-    Parameters<typeof applyModelOverrideWithAuthProfileCompatibility>[0],
+    Parameters<typeof applyModelOverrideWithAuthProfileCompatibilityCore>[0],
     "recordedProvider"
   > & { recordedProvider?: SessionAuthProfilePreservationParams["recordedProvider"] },
 ): Promise<{ updated: boolean }> {
@@ -125,5 +125,5 @@ export async function applyModelOverrideWithAuthProfileCompatibilityAsync(
     (profileId && !params.profileOverride
       ? await prepareAuthProfileProvider({ agentDir: params.agentDir, profileId })
       : { provider: undefined });
-  return applyModelOverrideWithAuthProfileCompatibility({ ...params, recordedProvider });
+  return applyModelOverrideWithAuthProfileCompatibilityCore({ ...params, recordedProvider });
 }

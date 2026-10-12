@@ -855,7 +855,7 @@ describe("capability cli", () => {
               { id: "gemini", envVars: ["GEMINI_API_KEY"] } as never,
             ],
       );
-      vi.mocked(fetch.listWebFetchProviders).mockReturnValueOnce(
+      vi.mocked(fetch.listWebFetchProviders).mockResolvedValueOnce(
         scoped ? [] : [{ id: "firecrawl", envVars: ["FIRECRAWL_API_KEY"] } as never],
       );
       if (!scoped) {

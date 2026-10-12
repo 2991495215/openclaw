@@ -10,7 +10,7 @@ import {
 } from "../model-picker/apply-session-model-selection.js";
 import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import {
-  applyModelOverrideWithAuthProfileCompatibility as applyPreparedModelOverride,
+  applyModelOverrideWithAuthProfileCompatibilityCore as applyPreparedModelOverride,
   applyModelOverrideWithAuthProfileCompatibilityAsync,
 } from "../sessions/auth-profile-preservation.js";
 

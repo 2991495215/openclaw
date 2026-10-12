@@ -6,7 +6,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import {
-  applyModelOverrideWithAuthProfileCompatibility,
+  applyModelOverrideWithAuthProfileCompatibilityCore as applyModelOverrideWithAuthProfileCompatibility,
   shouldPreserveSessionAuthProfileOverride,
 } from "./auth-profile-preservation.js";
 

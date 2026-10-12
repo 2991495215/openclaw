@@ -10,7 +10,7 @@ import {
   resolvePluginMetadataSnapshot,
 } from "../../plugins/plugin-metadata-snapshot.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
-import { applyModelOverrideWithAuthProfileCompatibility } from "../../sessions/auth-profile-preservation.js";
+import { applyModelOverrideWithAuthProfileCompatibilityCore as applyModelOverrideWithAuthProfileCompatibility } from "../../sessions/auth-profile-preservation.js";
 import { prepareAuthProfileProvider } from "../auth-profiles.runtime.js";
 import {
   buildModelAliasIndex,

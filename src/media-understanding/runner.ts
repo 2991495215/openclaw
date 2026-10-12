@@ -254,8 +254,8 @@ async function resolveAutoImageModelId(
   if (defaultModel) {
     return defaultModel;
   }
-  const { resolveDefaultMediaModel } = await import("./defaults.js");
-  const bundledDefaultModel = resolveDefaultMediaModel({
+  const { resolveDefaultMediaModelCore } = await import("./defaults.js");
+  const bundledDefaultModel = resolveDefaultMediaModelCore({
     cfg: params.cfg,
     providerId: params.providerId,
     capability: "image",
