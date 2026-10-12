@@ -118,11 +118,11 @@ async function createPrivatePublicationSession(sessionKey: string) {
 
 describe("shared worktree receipt observation", () => {
   it.each([false, true])(
-    "publishes a memory-only private worktree without host session reads unless closed at commit: %s",
-    async (closeAtCommit) => {
+    "publishes a memory-only private worktree without host session reads unless closed before admission: %s",
+    async (closeBeforeAdmission) => {
       const privateKey = "agent:main:dashboard:incognito-publication-execute";
       const { owner, location } = await createPrivatePublicationSession(privateKey);
-      if (closeAtCommit) {
+      if (closeBeforeAdmission) {
         const bind = publicationSource.bindGitHubPublicationSource;
         vi.spyOn(publicationSource, "bindGitHubPublicationSource").mockImplementation(
           (capability) => {
@@ -132,7 +132,7 @@ describe("shared worktree receipt observation", () => {
               createAdmission(operation) {
                 const admission = binding.createAdmission(operation);
                 admission.admission.observeRequests((request) => {
-                  if (request.stage === "commit") {
+                  if (request.stage === "prepare") {
                     owner.closeSession(privateKey);
                   }
                 });
@@ -164,7 +164,7 @@ describe("shared worktree receipt observation", () => {
             agentId: "main",
             idempotencyKey: "memory-publication",
           });
-          if (closeAtCommit) {
+          if (closeBeforeAdmission) {
             await expect(publication).rejects.toThrow(/session|source|requester/i);
             expect(
               await readGitHubPublicationRequestAsync({

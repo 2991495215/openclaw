@@ -93,8 +93,8 @@ export function bindGitHubPublicationSource(capability: GitHubPublicationSourceC
         binding.retain(operation);
         return {
           admission: createSqliteWorkerOperationAdmission((request, grant) => {
-            if (request.stage !== "commit") {
-              throw new Error("Memory publication authority requires a commit grant.");
+            if (request.stage !== "prepare") {
+              throw new Error("Memory publication authority requires a preparation grant.");
             }
             binding.signal.throwIfAborted();
             binding.assertCurrent();
@@ -169,6 +169,7 @@ async function prepareMemoryPublicationSource(
     admitted: false,
     assertCurrent() {
       context.admission.assertCurrent();
+      params.assertCurrent();
       if (
         released ||
         !isDeepStrictEqual(readMemorySourceFacts(captured, params.selector.sessionKey), memory)
@@ -199,7 +200,7 @@ export async function prepareGitHubPublicationSource(params: {
   const context = captureOpenClawStateWorkerContext();
   const memory = captureSessionActorStorageOwner(
     { ...params.selector, storePath: params.sourcePath },
-    { assertCurrent: params.assertCurrent, authorize() {} },
+    { assertCurrent() {}, authorize() {} },
   );
   if (memory) {
     return prepareMemoryPublicationSource(params, context, memory);

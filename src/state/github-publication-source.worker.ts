@@ -104,7 +104,7 @@ export function createGitHubPublicationSourceWorker() {
   };
 }
 
-/** Memory authority is checked by the host at the existing commit grant. */
+/** Policy callbacks run before the destination transaction because they may write SQLite. */
 export function withGitHubPublicationSourceTransaction<T>(
   database: OpenClawStateDatabase,
   source: GitHubPublicationSourcePredicate,
@@ -114,6 +114,7 @@ export function withGitHubPublicationSourceTransaction<T>(
   if (!memory) {
     return run();
   }
+  requestSqliteWorkerOperationAdmission({ stage: "prepare", facts: undefined });
   return runOpenClawStateWriteTransaction(
     ({ db }) => {
       assertGitHubPublicationSourceFacts(memory, db, source.selector, source.expected);
@@ -123,9 +124,7 @@ export function withGitHubPublicationSourceTransaction<T>(
         }
       });
       try {
-        const value = run();
-        requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
-        return value;
+        return run();
       } finally {
         reservations.delete(db);
       }

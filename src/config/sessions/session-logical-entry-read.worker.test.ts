@@ -441,11 +441,11 @@ it.each(
     const sessionKey = keyKind === "qualified" ? canonicalKey : "dashboard:incognito-topic";
     const ownedScope = { ...owner, storePath, sessionKey: canonicalKey };
     const entry = { sessionId: "private-ops-session", updatedAt: 1, incognito: true as const };
+    await replaceSessionEntry(ownedScope, entry);
+    const memory = memorySessionActorOwners.read({ ...owner, path: storePath });
+    expect(memory).toBeDefined();
     const observer = observeParentSqlite();
     try {
-      await replaceSessionEntry(ownedScope, entry);
-      const memory = memorySessionActorOwners.read({ ...owner, path: storePath });
-      expect(memory).toBeDefined();
       const scope = { env: state.env, storePath, sessionKey, agentId };
       if (agentId === undefined) {
         expect(loadSessionEntry(scope)).toMatchObject(entry);

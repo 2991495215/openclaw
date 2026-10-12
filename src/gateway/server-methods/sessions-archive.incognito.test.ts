@@ -1,6 +1,6 @@
 import "../../test-utils/prepare-compiled-subprocesses.js";
 import assert from "node:assert/strict";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
@@ -31,8 +31,10 @@ let env: NodeJS.ProcessEnv;
 
 beforeAll(() => {
   env = { OPENCLAW_STATE_DIR: dirs.make("archive-incognito-") };
-  vi.stubEnv("OPENCLAW_STATE_DIR", env.OPENCLAW_STATE_DIR);
   storePath = resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main", env });
+});
+beforeEach(() => {
+  vi.stubEnv("OPENCLAW_STATE_DIR", env.OPENCLAW_STATE_DIR);
 });
 afterAll(() => {
   memorySessionActorOwners.closeDatabase({ agentId: "main", path: storePath });
@@ -157,7 +159,7 @@ it.each(["archive", "restore"] as const)(
     }
     expect(await settled).toMatchObject(
       operation === "restore"
-        ? { error: expect.objectContaining({ message: expect.stringMatching(/Session changed/) }) }
+        ? { error: expect.objectContaining({ message: expect.stringMatching(/is archived/) }) }
         : { value: { ok: false } },
     );
     expect(loadSessionEntry({ sessionKey: key, storePath })).toMatchObject({

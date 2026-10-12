@@ -695,10 +695,13 @@ capabilities are the reusable boundary for subsequent publication guard migratio
 
 Incognito publication captures only the memory actor's session and membership
 authority fields. The shared-state worker reads the remaining publication facts
-and validates them in its ordinary destination transaction. Its commit grant
-checks the captured memory owner and requester; it never opens or reserves a
-session database. Closing the memory session before that grant rolls back the
-publication request. The durable source-fence path remains unchanged.
+and validates them in its ordinary destination transaction. One preparation grant
+checks the requester and then the captured memory owner before that transaction,
+so policy callbacks can write SQLite without blocking the worker. It never opens
+or reserves a session database. Closing the memory session before admission
+refuses the publication request. Closing it after admission may leave an internal
+request or receipt; live authority is still checked before external publication
+effects. The durable source-fence path remains unchanged.
 
 New external effects require live action authority. Execution claims, head updates, dispatch markers,
 observed effects, completion, and interruption require custody of that exact
