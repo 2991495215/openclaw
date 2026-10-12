@@ -3,7 +3,7 @@ import { projectPublicSessionEntry } from "../../config/sessions/session-entry-p
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
 import { isAbortError } from "../../infra/abort-signal.js";
 import { formatErrorMessage } from "../../infra/errors.js";
-import { loadPluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import {
   runOutsidePluginRuntimeGenerationScope,
   withPluginRuntimeGenerationScope,
@@ -273,8 +273,11 @@ export async function compactEmbeddedAgentSessionDirect(
       { reason: "model_selection_locked" },
     );
   }
-  const { prepareBundledDiscoveryMode } = await import("../../plugins/bundled-discovery-state.js");
-  await prepareBundledDiscoveryMode();
+  const pluginMetadataSnapshot = await resolvePluginMetadataSnapshotAsync({
+    config: requestedParams.config ?? {},
+    workspaceDir: requestedWorkspaceDir,
+    env: process.env,
+  });
   const sharedRuntimeWorkspace = resolveSharedPluginRuntimeWorkspace(
     {
       ...requestedParams,
@@ -282,12 +285,7 @@ export async function compactEmbeddedAgentSessionDirect(
       agentId: requestedAgentIds.sessionAgentId,
       isCanonicalWorkspace: requestedWorkspaceDir === canonicalWorkspaceDir,
     },
-    () =>
-      loadPluginMetadataSnapshot({
-        config: requestedParams.config ?? {},
-        workspaceDir: requestedWorkspaceDir,
-        env: process.env,
-      }),
+    () => pluginMetadataSnapshot,
   );
   return await runForegroundCompactionWork(async (owner) => {
     // Compaction admits new work even when an engine restores a predecessor context.

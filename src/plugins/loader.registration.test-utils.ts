@@ -27,8 +27,8 @@ import {
   claimPluginInteractiveCallbackDedupe,
   commitPluginInteractiveCallbackDedupe,
 } from "./interactive-state.js";
-import { loadOpenClawPlugins } from "./loader.js";
 import {
+  loadOpenClawPlugins,
   makePluginLoaderTempDir,
   mkdirSafe,
   useNoBundledPlugins,

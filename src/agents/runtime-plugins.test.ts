@@ -31,6 +31,7 @@ vi.mock("../plugins/widget-presenters.js", () => ({
 // mock-isolation: Prepared-runtime fixtures own discovery readiness without publishing process facts.
 vi.mock("../plugins/bundled-discovery-state.js", () => ({
   prepareBundledDiscoveryMode: async () => () => {},
+  readBundledDiscoveryModeMemoized: () => undefined,
 }));
 
 // mock-isolation: Prepared-runtime fixtures supply metadata without opening discovery state.

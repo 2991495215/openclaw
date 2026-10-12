@@ -36,6 +36,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { ApplyMediaUnderstandingResult } from "../../media-understanding/apply.js";
 import type { ExtractedFileImage } from "../../media-understanding/extracted-file-images.js";
 import { hasStagedMediaFacts, normalizeMediaFacts } from "../../media/media-facts.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
   isModelSelectionLocked,
@@ -164,6 +165,7 @@ export async function getReplyFromConfig(
   const initialAgentScope = await resolverTiming.measure("reply.resolve_agent_scope", () =>
     resolveReplyAgentScope({ cfg, ctx: finalized }),
   );
+  await resolvePluginMetadataSnapshotAsync({ config: cfg, allowWorkspaceScopedCurrent: true });
   assertReplyPreprocessingActive(opts?.abortSignal);
   opts?.operatorAuthority?.assertCurrent();
   opts?.internalEventExecution?.assertCurrent?.();

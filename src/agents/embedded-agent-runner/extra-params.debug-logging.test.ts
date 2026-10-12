@@ -7,6 +7,7 @@ import { setConsoleSubsystemFilter } from "../../logging/console.js";
 import { createSuiteLogPathTracker } from "../../logging/log-test-helpers.js";
 import { applyLoggingConfig, flushLogger, resetLogger } from "../../logging/logger.js";
 import { loggingState } from "../../logging/state.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import { attachModelProviderRuntimePluginHandle } from "../../plugins/provider-hook-runtime.js";
 import type { StreamFn } from "../runtime/index.js";
 import { makeProviderModelFixture } from "../test-helpers/provider-model-fixture.js";
@@ -84,6 +85,7 @@ function createFixture(responseFormat: Record<string, unknown>) {
 
 beforeAll(async () => {
   await logPaths.setup();
+  await resolvePluginMetadataSnapshotAsync({ config: {} });
 });
 
 beforeEach(() => {

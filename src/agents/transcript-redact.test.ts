@@ -9,6 +9,7 @@ import * as loggingConfigModule from "../logging/config.js";
 import { prepareModelVisibleToolTextBlock } from "../logging/redact.js";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
 import { resetSecretRedactionRegistryForTest } from "../logging/secret-redaction-registry.test-support.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { castAgentMessage } from "./test-helpers/agent-message-fixtures.js";
 import { redactTranscriptMessage } from "./transcript-redact.js";
 
@@ -1197,7 +1198,8 @@ describe("redactTranscriptMessage", () => {
     expect(redactedBlock.metadata.accessToken).toBe("nested…t123");
   });
 
-  it("preserves credential-shaped bytes in recognized provider replay fields", () => {
+  it("preserves credential-shaped bytes in recognized provider replay fields", async () => {
+    await preparePluginMetadataMachineStateAsync({ env: process.env });
     const githubToken = `ghp_${"b".repeat(36)}`;
     const encryptedDetail = JSON.stringify({
       type: "reasoning.encrypted",

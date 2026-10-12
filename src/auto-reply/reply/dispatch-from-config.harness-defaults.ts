@@ -14,6 +14,7 @@ import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import { resolveSessionPinnedHarnessId } from "../../sessions/agent-harness-session-key.js";
 import { resolveStoredModelOverrideAsync } from "../../sessions/stored-model-overrides.js";
 import {
@@ -125,6 +126,12 @@ async function resolveHarnessSourceVisibleRepliesDefault(params: {
   }
   try {
     const allowPluginNormalization = params.cfg.plugins?.enabled !== false;
+    if (allowPluginNormalization) {
+      await resolvePluginMetadataSnapshotAsync({
+        config: params.cfg,
+        allowWorkspaceScopedCurrent: true,
+      });
+    }
     const modelContext = {
       cfg: params.cfg,
       agentId: params.sessionAgentId,

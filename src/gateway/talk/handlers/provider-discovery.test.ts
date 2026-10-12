@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { preparePluginMetadataMachineStateAsync } from "../../../plugins/installed-plugin-index-record-state.js";
 import {
   cleanupPluginLoaderFixturesForTest,
   loadOpenClawPlugins,
@@ -18,6 +19,7 @@ describe("Talk catalog provider discovery", () => {
     const { cfg, env } = createVoiceProviderFixture();
     cfg.talk = { realtime: { providers: { "configured-voice": { ready: true } } } };
     await withEnvAsync(env, async () => {
+      await preparePluginMetadataMachineStateAsync({ env });
       const registry = loadOpenClawPlugins({ config: cfg, onlyPluginIds: ["active-voice"] });
       const result = await callGatewayHandler(
         talkHandlers,

@@ -6,8 +6,8 @@ import { withEnv } from "../test-utils/env.js";
 import { getCompactionProvider } from "./compaction-provider.js";
 // Imported by loader.test.ts to keep its mocked suite in one Vitest module graph.
 import { refreshPersistedInstalledPluginIndex } from "./installed-plugin-index-store-write.js";
-import { loadOpenClawPlugins } from "./loader.js";
 import {
+  loadOpenClawPlugins,
   EMPTY_PLUGIN_SCHEMA,
   makePluginLoaderTempDir,
   mkdirSafe,

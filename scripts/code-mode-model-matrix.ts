@@ -1569,6 +1569,9 @@ export async function runCodeModeModelMatrix(
       path.join(outputDir, QA_EVIDENCE_FILENAME),
       invocation.snapshot({ generatedAt, evidenceMode: "full" }),
     );
+  const { preparePluginMetadataMachineStateAsync } =
+    await import("../src/plugins/installed-plugin-index-record-state.js");
+  await preparePluginMetadataMachineStateAsync({});
   const manifest = {
     schemaVersion: MATRIX_SCHEMA_VERSION,
     generatedAt: now.toISOString(),

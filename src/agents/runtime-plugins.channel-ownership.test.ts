@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { prepareBundledDiscoveryMode } from "../plugins/bundled-discovery-state.js";
 
 const loaders = vi.hoisted(() => ({
   loadPluginRegistryHandle: vi.fn(),
@@ -55,7 +56,8 @@ let previous: ReturnType<typeof captureActivePluginRegistrySnapshot>;
 const instances: PluginInstanceHandle[] = [];
 const releases: Array<() => void | Promise<void>> = [];
 
-beforeEach(() => {
+beforeEach(async () => {
+  await prepareBundledDiscoveryMode();
   previous = captureActivePluginRegistrySnapshot();
   loaders.loadPluginRegistryHandle.mockReset();
   loaders.acquirePluginRegistryForInspection.mockReset();
@@ -309,6 +311,12 @@ describe("prepared channel runtime ownership", () => {
       if (mismatch === "source") {
         selectedManifests.plugins[0]!.source = "/another-workspace/channel/index.js";
         selectedManifests.plugins[0]!.rootDir = "/another-workspace/channel";
+      }
+      if (mismatch === "environment") {
+        await prepareBundledDiscoveryMode({
+          ...process.env,
+          OPENCLAW_STATE_DIR: "/fixture/unrelated-profile",
+        });
       }
       const selected = createChannelOwner(
         "discovery transport",

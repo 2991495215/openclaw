@@ -5,8 +5,10 @@ import { createAuthProfileStoreRuntime } from "../agents/auth-profiles/store.js"
 import { resolveModelRuntimePolicy } from "../agents/model-runtime-policy.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection-config.js";
 import { resolveAllowedModelRefCore } from "../agents/model-selection-resolve.js";
+import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import { resolveCompatibleRuntimePluginRegistry } from "./active-runtime-registry.js";
 import { createPluginCapabilityCatalogContext } from "./capability-catalog-context.js";
+import { preparePluginMetadataMachineStateAsync } from "./installed-plugin-index-record-state.js";
 import { isPluginRegistryLoadInFlight } from "./loader-cache.js";
 import {
   loadOpenClawPluginsCore,
@@ -111,7 +113,12 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
 export async function loadOpenClawPluginsAsync(
   options: PluginLoadOptions = {},
 ): Promise<PluginRegistry> {
-  const steps = loadOpenClawPluginsSteps(options, loaderBindings);
+  const preparedOptions = {
+    ...options,
+    env: cloneEnvWithPlatformSemantics(options.env ?? process.env),
+  };
+  await preparePluginMetadataMachineStateAsync({ env: preparedOptions.env });
+  const steps = loadOpenClawPluginsSteps(preparedOptions, loaderBindings);
   let step = steps.next();
   while (!step.done) {
     await nextTurn();
@@ -124,10 +131,15 @@ export async function loadOpenClawPluginsAsync(
 export async function loadAndActivateRootPluginRegistry(
   options: PluginLoadOptions = {},
 ): Promise<PluginRegistry> {
+  const preparedOptions = {
+    ...options,
+    env: cloneEnvWithPlatformSemantics(options.env ?? process.env),
+  };
+  await preparePluginMetadataMachineStateAsync({ env: preparedOptions.env });
   const cleanup: Promise<void>[] = [];
   try {
     return loadOpenClawPluginsCore(
-      { ...options, activate: true },
+      { ...preparedOptions, activate: true },
       loaderBindings,
       undefined,
       undefined,
@@ -142,18 +154,23 @@ export async function loadAndActivateRootPluginRegistry(
 export async function acquirePluginRegistryForInspection(
   options: Omit<PluginLoadOptions, "activate" | "cache"> = {},
 ): Promise<{ registry: PluginRegistry; release: () => Promise<void> }> {
-  return acquireRegistryResources((resources) =>
-    loadOpenClawPluginsCore(
-      { ...options, activate: false, cache: false },
+  const preparedOptions = {
+    ...options,
+    env: cloneEnvWithPlatformSemantics(options.env ?? process.env),
+  };
+  return acquireRegistryResources(async (resources) => {
+    await preparePluginMetadataMachineStateAsync({ env: preparedOptions.env });
+    return loadOpenClawPluginsCore(
+      { ...preparedOptions, activate: false, cache: false },
       loaderBindings,
       undefined,
       resources,
-    ),
-  );
+    );
+  });
 }
 
 async function acquireRegistryResources(
-  load: (resources: PluginRegistryInspectionResources) => PluginRegistry,
+  load: (resources: PluginRegistryInspectionResources) => PluginRegistry | Promise<PluginRegistry>,
 ): Promise<{ registry: PluginRegistry; release: () => Promise<void> }> {
   const cache = createPluginCache();
   const resources = new PluginRegistryInspectionResources(async (registry, rollbackInstances) => {
@@ -196,7 +213,7 @@ async function acquireRegistryResources(
   });
   try {
     inheritPluginNativeAdmissions(getPluginCache(), cache);
-    const registry = withPluginCache(cache, () => load(resources));
+    const registry = await withPluginCache(cache, () => load(resources));
     return { registry, release: () => resources.release() };
   } catch (error) {
     try {
@@ -229,9 +246,14 @@ export function acquirePluginRegistryWithInternalOverrides(
   options: PluginLoadOptions & { cache: false; activate: false },
   overrides: ScopedRuntimeOverrides,
 ): Promise<{ registry: PluginRegistry; release: () => Promise<void> }> {
-  return acquireRegistryResources((resources) =>
-    loadRegistryWithInternalOverrides(options, overrides, resources),
-  );
+  const preparedOptions = {
+    ...options,
+    env: cloneEnvWithPlatformSemantics(options.env ?? process.env),
+  };
+  return acquireRegistryResources(async (resources) => {
+    await preparePluginMetadataMachineStateAsync({ env: preparedOptions.env });
+    return loadRegistryWithInternalOverrides(preparedOptions, overrides, resources);
+  });
 }
 
 function loadRegistryWithInternalOverrides(

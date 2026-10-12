@@ -1,5 +1,7 @@
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { Model } from "../../llm/types.js";
+import { withPluginMetadataSnapshotScope } from "../../plugins/current-plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.types.js";
 import { providerOwnsDynamicModelPreparation } from "../../plugins/provider-runtime.js";
 import { withPluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
@@ -124,6 +126,13 @@ export async function resolveModelAsync(
       ...(derivedWorkspaceDir ? { workspaceDir: derivedWorkspaceDir } : {}),
     });
   }
+  const preparedMetadataSnapshot =
+    preparedModelRuntime?.metadataSnapshot ??
+    (await resolvePluginMetadataSnapshotAsync({
+      config: cfg,
+      workspaceDir: options?.workspaceDir ?? derivedWorkspaceDir,
+      allowWorkspaceScopedCurrent: true,
+    }));
   // Route-projected cfg owns transport/auth; the snapshot contributes generation facts only.
   const resolve = async () => {
     options?.assertCurrent?.();
@@ -210,7 +219,6 @@ export async function resolveModelAsync(
       };
     }
     const providerConfig = resolveConfiguredProviderConfig(cfg, normalizedRef.provider);
-    const preparedMetadataSnapshot = preparedModelRuntime?.metadataSnapshot;
     let providerStaticCatalogLookup: Promise<ProviderRuntimeModel | undefined> | undefined;
     const resolveStaticCatalogModel = async () => {
       if (!options?.allowBundledStaticCatalogFallback) {
@@ -316,7 +324,7 @@ export async function resolveModelAsync(
   };
   return preparedModelRuntime
     ? await withPluginRuntimeGenerationScope(preparedModelRuntime, resolve)
-    : await resolve();
+    : await withPluginMetadataSnapshotScope(preparedMetadataSnapshot, resolve, { config: cfg });
 }
 
 // Providers registered by setup/auth can explain an otherwise opaque model miss.

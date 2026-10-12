@@ -1,8 +1,9 @@
 // Coverage for sampling, token, and response-format extra parameter precedence.
 import type { StreamFn } from "openclaw/plugin-sdk/agent-core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLlmStreamSimpleMock } from "../../../test/helpers/agents/llm-stream-simple-mock.js";
 import type { Model } from "../../llm/types.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import { applyExtraParamsToAgent, resolveExtraParams } from "./extra-params.js";
 import { runExtraParamsCase, testing as extraParamsTesting } from "./extra-params.test-support.js";
 import { resolveCacheRetention } from "./prompt-cache-retention.js";
@@ -18,6 +19,10 @@ vi.mock("./logger.js", () => ({
 }));
 
 vi.mock("../../llm/stream.js", () => createLlmStreamSimpleMock());
+
+beforeAll(async () => {
+  await resolvePluginMetadataSnapshotAsync({ config: {} });
+});
 
 beforeEach(() => {
   extraParamsTesting.setProviderRuntimeDepsForTest({

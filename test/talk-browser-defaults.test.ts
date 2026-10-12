@@ -6,6 +6,7 @@ import { buildOpenAIRealtimeVoiceProvider } from "../extensions/openai/api.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
 import { withLocalGatewayRequestScope } from "../src/gateway/local-request-context.js";
 import { talkHandlers } from "../src/gateway/talk/handlers/index.js";
+import { prepareBundledDiscoveryMode } from "../src/plugins/bundled-discovery-state.js";
 import { getPluginRuntimeGatewayRequestScope } from "../src/plugins/runtime/gateway-request-scope.js";
 import type { RealtimeVoiceProviderPlugin } from "../src/plugins/types.js";
 import { withOpenClawTestState } from "../src/test-utils/openclaw-test-state.js";
@@ -158,6 +159,7 @@ describe("OpenAI browser Talk catalog defaults", () => {
     "preserves $label from discovery through session creation",
     async ({ model, launchModel, launchProvider, camera, expected, audioOnly }) => {
       await withOpenClawTestState({ prefix: "talk-browser-defaults-" }, async (state) => {
+        await prepareBundledDiscoveryMode(state.env);
         const cfg: OpenClawConfig = {
           agents: {
             entries: { main: { agentDir: state.agentDir(), workspace: state.workspaceDir } },

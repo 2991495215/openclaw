@@ -1,4 +1,5 @@
 export { createPluginMetadataSnapshot } from "../../src/config/plugin-auto-enable.test-helpers.js";
+export { preparePluginMetadataMachineStateAsync } from "../../src/plugins/installed-plugin-index-record-state.js";
 export { loadOpenClawPlugins } from "../../src/plugins/loader.js";
 export { createEmptyPluginRegistry } from "../../src/plugins/registry-empty.js";
 export { getPluginRegistryState } from "../../src/plugins/runtime-state.js";

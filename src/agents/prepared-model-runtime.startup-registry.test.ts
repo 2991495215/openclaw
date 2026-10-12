@@ -12,7 +12,7 @@ import {
   writePlugin,
 } from "../plugins/loader.test-fixtures.js";
 import { createPluginCache, withPluginCache } from "../plugins/plugin-cache.js";
-import { loadPluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import {
   bindPluginRegistryGatewayOwner,
@@ -95,7 +95,7 @@ it.each([
     };
     await using cache = createPluginCache();
     await withPluginCache(cache, async () => {
-      const metadata = loadPluginMetadataSnapshot({ config, workspaceDir });
+      const metadata = await resolvePluginMetadataSnapshotAsync({ config, workspaceDir });
       const root = await loadAndActivateRootPluginRegistry({
         config,
         workspaceDir,
@@ -232,7 +232,7 @@ it.each(["inbound", "selected", "inspection"] as const)(
     };
     await using cache = createPluginCache();
     await withPluginCache(cache, async () => {
-      const metadata = loadPluginMetadataSnapshot({ config, workspaceDir });
+      const metadata = await resolvePluginMetadataSnapshotAsync({ config, workspaceDir });
       const gatewayRegistry = await loadAndActivateRootPluginRegistry({
         config,
         workspaceDir,

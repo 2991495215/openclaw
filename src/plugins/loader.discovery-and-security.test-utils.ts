@@ -7,8 +7,9 @@ import { withEnv, withEnvAsync } from "../test-utils/env.js";
 // Imported by loader.test.ts to keep its mocked suite in one Vitest module graph.
 import { refreshPersistedInstalledPluginIndex } from "./installed-plugin-index-store-write.js";
 import { warnWhenAllowlistIsOpen } from "./loader-provenance.js";
-import { loadOpenClawPluginCliRegistry, loadOpenClawPlugins } from "./loader.js";
+import { loadOpenClawPluginCliRegistry } from "./loader.js";
 import {
+  loadOpenClawPlugins,
   clearPluginLoaderCache,
   EMPTY_PLUGIN_SCHEMA,
   makePluginLoaderTempDir,

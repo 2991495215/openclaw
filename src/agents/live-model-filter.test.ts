@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { resetPluginLoaderTestStateForTest } from "../plugins/loader.test-fixtures.js";
 import {
   createColdPluginConfig,
@@ -7,7 +8,7 @@ import {
   createColdPluginHermeticEnv,
 } from "../plugins/test-helpers/cold-plugin-fixtures.js";
 import { cleanupTrackedTempDirs, makeTrackedTempDir } from "../plugins/test-helpers/fs-fixtures.js";
-import { withEnv } from "../test-utils/env.js";
+import { withEnvAsync } from "../test-utils/env.js";
 import { isHighSignalLiveModelRef } from "./test-helpers/live-model-dynamic-candidates.js";
 
 describe("live model policy configuration", () => {
@@ -18,7 +19,7 @@ describe("live model policy configuration", () => {
     cleanupTrackedTempDirs(tempDirs);
   });
 
-  it("selects a scoped plugin's modern models under Vitest", () => {
+  it("selects a scoped plugin's modern models under Vitest", async () => {
     const rootDir = makeTrackedTempDir("openclaw-live-model-policy", tempDirs);
     const fixture = createColdPluginFixture({ rootDir });
     fs.writeFileSync(
@@ -41,7 +42,8 @@ describe("live model policy configuration", () => {
     const config = createColdPluginConfig(rootDir, fixture.pluginId);
     const ref = { provider: fixture.providerId, id: "current-model", env };
 
-    withEnv(env, () => {
+    await withEnvAsync(env, async () => {
+      await preparePluginMetadataMachineStateAsync({ env });
       expect(isHighSignalLiveModelRef(ref)).toBe(false);
       expect(isHighSignalLiveModelRef({ ...ref, config })).toBe(true);
       expect(isHighSignalLiveModelRef({ ...ref, config, id: "retired-model" })).toBe(false);

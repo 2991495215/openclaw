@@ -675,6 +675,7 @@ describe.concurrent("fresh compiled subprocess invocation", () => {
               createEmptyPluginRegistry,getPluginRegistryState,withPluginRuntimeRegistryScope,
               clearActivePluginRegistry,setActivePluginRegistry,withPluginRuntimeGenerationScope,
               createPluginMetadataSnapshot,loadOpenClawPlugins,getPluginRuntimeLoadContext,
+              preparePluginMetadataMachineStateAsync,
             } from ${JSON.stringify(
               pathToFileURL(
                 owner
@@ -708,6 +709,7 @@ describe.concurrent("fresh compiled subprocess invocation", () => {
             const unprepared = buildEmbeddedRunPayloads(input('403 fixture refusal'));
             assert.deepEqual(unprepared,[{text:"⚠️ Couldn't sign in to the AI service. Sign in again under Models in the Control UI or run \`openclaw configure\`.",isError:true}], 'an unprepared error must show sign-in guidance without provider hook policy');
             assert.deepEqual(observed(),[], 'error formatting must not materialize the provider');
+            await preparePluginMetadataMachineStateAsync({});
             let scopedPreparationRecordCount = 0;
             if (${scope === "scoped"}) {
               const scopedHook = registry.providers[0].provider.classifyFailoverReason;

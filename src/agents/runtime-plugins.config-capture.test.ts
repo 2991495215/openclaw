@@ -4,6 +4,7 @@ import {
   makeRegistry,
 } from "../config/plugin-auto-enable.test-helpers.js";
 import { captureRuntimeConfig } from "../config/runtime-source-projection.js";
+import { prepareBundledDiscoveryMode } from "../plugins/bundled-discovery-state.js";
 import { loadPluginRegistryHandle } from "../plugins/loader.js";
 import { clearPluginMetadataLifecycleCaches } from "../plugins/plugin-metadata-lifecycle.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
@@ -16,7 +17,8 @@ afterEach(() => {
   vi.mocked(loadPluginRegistryHandle).mockReset();
 });
 
-it("carries one captured fleet to every already-enabled runtime load and projects real policy changes", () => {
+it("carries one captured fleet to every already-enabled runtime load and projects real policy changes", async () => {
+  await prepareBundledDiscoveryMode();
   const config = captureRuntimeConfig({
     agents: {
       entries: Object.fromEntries(

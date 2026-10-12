@@ -5,9 +5,10 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createAgentToolResultMiddlewareRunner } from "../agents/harness/tool-result-middleware.js";
 import { withEnv } from "../test-utils/env.js";
 import { createHookRunner } from "./hooks.js";
+import { preparePluginMetadataMachineState } from "./installed-plugin-index-record-state.js";
 import { loadInstalledPluginIndex } from "./installed-plugin-index.js";
-import { loadOpenClawPlugins } from "./loader.js";
 import {
+  loadOpenClawPlugins,
   EMPTY_PLUGIN_SCHEMA,
   makePluginLoaderTempDir,
   mkdirSafe,
@@ -251,6 +252,7 @@ async function loadSourceExternalArtifactScenario(params: {
           OPENCLAW_DISABLE_BUNDLED_SOURCE_OVERLAYS: undefined,
         },
         () => {
+          preparePluginMetadataMachineState({});
           let index = params.fromInstalledIndex ? loadInstalledPluginIndex({ config }) : undefined;
           if (index && mountPoint) {
             // Installed roots can retain lexical aliases while mount facts are canonical.

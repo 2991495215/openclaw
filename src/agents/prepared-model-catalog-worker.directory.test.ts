@@ -143,6 +143,7 @@ describe("catalog request existing directory ownership", () => {
           request: {
             kind: "catalog",
             syntheticAuth: [],
+            bundledDiscoveryMode: undefined,
             clawInstallSchemaVersions: captureClawInstallSchemaVersionFacts({ env: fixture.env }),
           },
           inspection: { existingAgentIds: existing },

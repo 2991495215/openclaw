@@ -7,6 +7,7 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import { createApiKeyCredential } from "./credential-fixtures.test-support.js";
 import {
   authStoreMocks,
@@ -49,8 +50,10 @@ async function select(params: {
   cfg?: OpenClawConfig;
   agentId?: string;
 }) {
+  const cfg = params.cfg ?? {};
+  await resolvePluginMetadataSnapshotAsync({ config: cfg });
   return await resolveSessionAuthSelection({
-    cfg: params.cfg ?? {},
+    cfg,
     agentId: params.agentId ?? "main",
     provider: "openai",
     modelId: params.modelId ?? "gpt-5.6-sol",

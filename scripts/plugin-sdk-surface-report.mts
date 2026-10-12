@@ -154,14 +154,18 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   "interactive-runtime": 11,
   "ssrf-policy": 1,
   "ssrf-runtime": 1,
-  // +1: deprecated agent media projection re-export during the media migration window.
-  "media-runtime": 3,
+  // Deprecated media projection plus media-sync-discovery compatibility for
+  // resolveAutoMediaKeyProviders and resolveDefaultMediaModel.
+  "media-runtime": 4,
   // +3: deprecated media projection type, builder, and local-roots compatibility re-export.
   "agent-media-payload": 3,
   // +2: deprecated media projection type and builder.
   "reply-payload": 2,
   // +7: released auth-store and TTS methods retain synchronous compatibility.
-  "agent-runtime": 11,
+  // +1: auth-profile-sync-operations retains saveAuthProfileStore during async migration.
+  "agent-runtime": 12,
+  // model-session-sync-auth-profile retains the synchronous model override helper.
+  "model-session-runtime": 1,
   "memory-host-core": 2,
   // +4: session-write lease no-op compatibility stubs through the 2026.10 train.
   // +4: legacy AgentHarness, attempt, embedded-run, and side-question contracts remain
@@ -239,7 +243,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +7: approved async session, command-menu, model-override, TTS-path, and list replacements.
       // +1: preview adapters strip only normalization-owned response decoration.
       // +1: shared stale-read cache replaces board, preview, search, and credential cache policies.
-      3696,
+      // +4: saveAuthProfileStoreAsync, resolveAutoMediaKeyProvidersAsync,
+      // resolveDefaultMediaModelAsync, and applyModelOverrideWithAuthProfileCompatibilityAsync.
+      // Auth, media-discovery, and model-session compat records retain their synchronous pairs.
+      3700,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -264,7 +271,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +7: the same session, command-menu, model-override, TTS-path, and list replacements.
       // +1: stripReplyPayloadResponsePrefix preserves durable text while assembling previews.
       // +1: the same bounded stale-read cache factory on collection-runtime.
-      2157,
+      // +4: the same auth-save, media-discovery, and model-session replacement functions.
+      2161,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -277,7 +285,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +3: released synchronous skill-command list helpers during async migration.
       // +15: retained synchronous auth, model, and TTS compatibility exports.
       // +7: retained synchronous session, command-menu, model-override, TTS-path, and list exports.
-      183,
+      // +4: saveAuthProfileStore, resolveAutoMediaKeyProviders, resolveDefaultMediaModel,
+      // and applyModelOverrideWithAuthProfileCompatibility retain their shipped contracts.
+      187,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

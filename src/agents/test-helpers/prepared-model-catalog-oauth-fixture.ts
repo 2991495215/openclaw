@@ -226,6 +226,7 @@ api.registerProvider({
             request: {
               kind: "catalog",
               syntheticAuth: [],
+              bundledDiscoveryMode: undefined,
               clawInstallSchemaVersions: captureClawInstallSchemaVersionFacts({
                 env: fixture.env,
               }),

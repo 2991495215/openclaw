@@ -11,7 +11,7 @@ import {
   makePluginLoaderTempDir,
   resetPluginLoaderTestStateForTest,
 } from "../plugins/loader.test-fixtures.js";
-import { loadPluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
 import { loadBundledPluginFacade } from "../test-utils/bundled-plugin-public-surface.js";
 import { ensureSelectedAgentHarnessPlugin } from "./harness/runtime-plugin.js";
@@ -87,7 +87,7 @@ it("prepares an agent-local Copilot BYOK harness without replacing the active ro
     onlyPluginIds: [],
     cache: false,
   });
-  const metadata = loadPluginMetadataSnapshot({
+  const metadata = await resolvePluginMetadataSnapshotAsync({
     config,
     env,
     workspaceDir,

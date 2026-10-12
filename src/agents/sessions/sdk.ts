@@ -10,8 +10,11 @@ import {
 } from "../../config/sessions/transcript-write-context.js";
 import { bindStreamLlmRuntime } from "../../llm/model-runtime-binding.js";
 import type { Message, Model } from "../../llm/types.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
+import type { PluginMetadataSnapshotOwnerMaps } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { sanitizeCompactionReplayMessages } from "../compaction-replay.js";
 import { resolveProviderRequestPolicy } from "../provider-attribution.js";
+import { getModelProviderRequestRouteFacts } from "../provider-request-config.js";
 import {
   Agent,
   type AgentMessage,
@@ -116,6 +119,7 @@ function createSessionPrepareNextTurnWithContext(
 function getAttributionHeaders(
   model: Model,
   settingsManager: SettingsManager,
+  providerMetadataOwners: PluginMetadataSnapshotOwnerMaps,
 ): Record<string, string> | undefined {
   // SDK-backed session streams do not all consult the attribution policy, so forward its
   // documented header set as caller headers. Hidden (spec-only) attribution stays with the
@@ -124,6 +128,7 @@ function getAttributionHeaders(
     provider: model.provider,
     api: model.api,
     baseUrl: model.baseUrl,
+    providerMetadataOwners,
   });
   if (attributionHeaders && !allowsHiddenAttribution) {
     return attributionHeaders;
@@ -226,6 +231,9 @@ export async function createAgentSession(
     },
     convertToLlm: convertToLlmWithBlockImages,
     streamFn: async (modelResult, context, optionsLocal) => {
+      const providerMetadataOwners =
+        getModelProviderRequestRouteFacts(modelResult)?.providerMetadataOwners ??
+        (await resolvePluginMetadataSnapshotAsync({ allowWorkspaceScopedCurrent: true })).owners;
       const auth = await modelRegistry.getApiKeyAndHeaders(modelResult);
       if (!auth.ok) {
         throw new Error(auth.error);
@@ -234,7 +242,11 @@ export async function createAgentSession(
       await import("../ai-transport-runtime-host.js");
       optionsLocal?.signal?.throwIfAborted();
       const providerRetrySettings = settingsManager.getProviderRetrySettings();
-      const attributionHeaders = getAttributionHeaders(modelResult, settingsManager);
+      const attributionHeaders = getAttributionHeaders(
+        modelResult,
+        settingsManager,
+        providerMetadataOwners,
+      );
       return modelRegistryRuntime.llmRuntime.streamSimple(modelResult, context, {
         ...optionsLocal,
         apiKey: auth.apiKey,

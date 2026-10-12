@@ -18,6 +18,7 @@ import { clearPluginCommands } from "./command-registry-state.js";
 import { getPluginCommandSpecs } from "./command-specs.js";
 import { setCurrentPluginMetadataSnapshot } from "./current-plugin-metadata.test-support.js";
 import { getGlobalHookRunner, resetGlobalHookRunner } from "./hook-runner-global.js";
+import { preparePluginMetadataMachineState } from "./installed-plugin-index-record-state.js";
 // Imported by loader.test.ts to keep its mocked suite in one Vitest module graph.
 import { refreshPersistedInstalledPluginIndex } from "./installed-plugin-index-store-write.js";
 import {
@@ -25,8 +26,9 @@ import {
   resolvePluginInteractiveRegistrationsMatch,
 } from "./interactive-registry.js";
 import { resolvePluginRegistryLoadCacheKey } from "./loader-cache.js";
-import { loadOpenClawPlugins, resolveRuntimePluginRegistry } from "./loader.js";
+import { resolveRuntimePluginRegistry } from "./loader.js";
 import {
+  loadOpenClawPlugins,
   EMPTY_PLUGIN_SCHEMA,
   makePluginLoaderTempDir,
   type PluginLoadConfig,
@@ -408,6 +410,7 @@ describe("loadOpenClawPlugins", () => {
         allow: [plugin.id],
       },
     };
+    preparePluginMetadataMachineState({ env: process.env });
     const metadataSnapshot = loadPluginMetadataSnapshot({ config, env: process.env });
     setCurrentPluginMetadataSnapshot(metadataSnapshot, { config, env: process.env });
     fs.rmSync(path.join(plugin.dir, "openclaw.plugin.json"));
@@ -437,6 +440,7 @@ describe("loadOpenClawPlugins", () => {
         allow: [snapshotPlugin.id, sourcePlugin.id],
       },
     };
+    preparePluginMetadataMachineState({ env: process.env });
     const metadataSnapshot = loadPluginMetadataSnapshot({ config, env: process.env });
     setCurrentPluginMetadataSnapshot(metadataSnapshot, { config, env: process.env });
 
@@ -817,6 +821,7 @@ describe("loadOpenClawPlugins", () => {
         enabled: true,
       },
     } satisfies PluginLoadConfig;
+    preparePluginMetadataMachineState({ env: {} });
     const autoEnabled = applyPluginAutoEnable({
       config: rawConfig,
       env: {},
@@ -849,6 +854,7 @@ describe("loadOpenClawPlugins", () => {
         allow: ["browser"],
       },
     } satisfies PluginLoadConfig;
+    preparePluginMetadataMachineState({ env: {} });
     const autoEnabled = applyPluginAutoEnable({
       config: rawConfig,
       env: {},

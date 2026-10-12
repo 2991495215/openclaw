@@ -4,11 +4,18 @@ import os from "node:os";
 import path from "node:path";
 import { resetDiagnosticEventsForTest } from "../infra/diagnostic-events.js";
 import { withEnv } from "../test-utils/env.js";
-import { loadOpenClawPlugins } from "./loader.js";
+import { preparePluginMetadataMachineState } from "./installed-plugin-index-record-state.js";
+import { loadOpenClawPlugins as loadOpenClawPluginsCore } from "./loader.js";
 import { getPluginLoaderCacheState } from "./registry-lifecycle.js";
 import { resetPluginRuntimeStateForTest } from "./runtime.js";
 
-export { loadOpenClawPlugins };
+/** These synchronous leaf tests model boot/CLI admission before the runtime loader. */
+export function loadOpenClawPlugins(
+  options: NonNullable<Parameters<typeof loadOpenClawPluginsCore>[0]> = {},
+): ReturnType<typeof loadOpenClawPluginsCore> {
+  preparePluginMetadataMachineState({ env: options.env });
+  return loadOpenClawPluginsCore(options);
+}
 
 export type TempPlugin = { dir: string; file: string; id: string };
 export type PluginLoadConfig = NonNullable<Parameters<typeof loadOpenClawPlugins>[0]>["config"];
