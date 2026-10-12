@@ -11,9 +11,6 @@ import { bindSessionRowProjection } from "../session-row-projection-access.js";
 import { createSessionRowProjectionFixture } from "../session-row-projection.test-support.js";
 
 // HOME policy uses the real home path, but this fixture must not open its profile database.
-vi.mock("../../state/user-profiles.js", () => ({
-  hasMultipleSessionSharingIdentities: vi.fn(() => false),
-}));
 vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../state/user-profile-list.js")>()),
   hasMultipleResidentSessionSharingIdentities: vi.fn(() => false),
