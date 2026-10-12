@@ -791,7 +791,7 @@ describe("OAuth refresh authority chain", () => {
         runId: "authority-logout-followup",
       });
       const followupTerminal = await followup.terminal;
-      expectAuthError(followupTerminal, `No API key found for provider "${PROVIDER_ID}".`);
+      expectAuthError(followupTerminal, `No credentials found for profile "${PROFILE_ID}".`);
       expect(scenario.provider.modelRequests).toHaveLength(0);
       expect(scenario.provider.tokenRequests).toEqual(["A"]);
       expect(readLocalCredential(scenario.instance, "owner")).toBeUndefined();
