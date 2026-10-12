@@ -169,6 +169,8 @@ it("publishes committed memory changes after projection without exposing private
           ...scope,
           facts: {
             kind: "replacement",
+            communicationBinding:
+              '["private-row-change",null,null,null,null,null,null,null,null,null,null,null]',
             membership: [
               scope.sessionKey,
               null,
