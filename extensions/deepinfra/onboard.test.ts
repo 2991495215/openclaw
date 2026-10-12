@@ -1,30 +1,22 @@
+import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/plugin-test-runtime";
 import * as providerAuth from "openclaw/plugin-sdk/provider-auth-runtime";
 import {
   type OpenClawConfig,
   resolveAgentModelPrimaryValue,
 } from "openclaw/plugin-sdk/provider-onboard";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolvePluginMetadataSnapshotAsync } from "../../src/plugins/plugin-metadata-snapshot.js";
-import { resolveProviderAuthLookupMaps } from "../../src/secrets/provider-env-vars.js";
 import { DEEPINFRA_BASE_URL } from "./media-models.js";
 import { applyDeepInfraConfig } from "./onboard.js";
 import { DEEPINFRA_DEFAULT_MODEL_REF, DEEPINFRA_MODEL_CATALOG } from "./provider-static-catalog.js";
 
 const { resolveEnvApiKey } = providerAuth;
 
+useProviderCatalogMetadata(new URL(".", import.meta.url));
+
 const emptyCfg: OpenClawConfig = {};
 
-async function resolveDeepInfraEnvApiKey() {
-  const env = process.env;
-  const config = {};
-  const metadataSnapshot = await resolvePluginMetadataSnapshotAsync({ config, env });
-  const maps = resolveProviderAuthLookupMaps({ config, env, metadataSnapshot });
-  return resolveEnvApiKey("deepinfra", env, {
-    config,
-    aliasMap: maps.aliasMap,
-    candidateMap: maps.envCandidateMap,
-    authEvidenceMap: maps.authEvidenceMap,
-  });
+function resolveDeepInfraEnvApiKey() {
+  return resolveEnvApiKey("deepinfra");
 }
 
 describe("DeepInfra provider config", () => {

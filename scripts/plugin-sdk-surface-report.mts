@@ -170,7 +170,8 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   // provider-auth.updateAuthProfileStoreWithLock. resolveAuthStorePathForDisplay
   // stays compatible; its resolveAuthStorePathForDisplayAsync replacement is core-internal.
   // +1: released snapshot publication remains during its approved async replacement.
-  "agent-runtime": 17,
+  // +1: shipped resolveProviderIdForAuth remains while callers adopt resolveProviderIdForAuthAsync.
+  "agent-runtime": 18,
   // +2: deprecated model-reference parsers; model-session retains its sync override.
   "model-session-runtime": 1,
   "memory-host-core": 2,
@@ -324,7 +325,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: their retained, prepared-only synchronous counterparts.
       // +1: released snapshot publication remains during its approved async replacement.
       // +3: runtime config, secret-read and display compatibility; +1: sandbox sanitizer.
-      198,
+      // +1: shipped resolveProviderIdForAuth remains while callers adopt resolveProviderIdForAuthAsync.
+      199,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

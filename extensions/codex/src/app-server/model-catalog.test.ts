@@ -1,4 +1,5 @@
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
+import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/plugin-test-runtime";
 import type { AuthProfileStore } from "openclaw/plugin-sdk/provider-auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCodexAppServerModelCatalog } from "./model-catalog.js";
@@ -6,6 +7,11 @@ import { listAllCodexAppServerModels } from "./models.js";
 import { probeCodexNativeAuth } from "./native-auth.js";
 import { withCodexAppServerJsonClient } from "./request.js";
 import { CodexAppServerLocalRequestCancellationError } from "./rpc-error.js";
+
+useProviderCatalogMetadata(
+  new URL("../../", import.meta.url),
+  new URL("../../../openai/", import.meta.url),
+);
 
 vi.mock("./models.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./models.js")>()),
@@ -20,17 +26,9 @@ const profiles = vi.hoisted((): { store: AuthProfileStore } => ({
 vi.mock("./auth-profile.js", async () => {
   const { resolveAuthProfileOrder } = await import("openclaw/plugin-sdk/provider-auth");
   const { createCodexAuthProfileSelection } = await import("./auth-profile-selection.js");
-  const { resolvePluginMetadataSnapshotAsync } =
-    await import("../../../../src/plugins/plugin-metadata-snapshot.js");
   return createCodexAuthProfileSelection({
     ensureAuthProfileStore: () => profiles.store,
-    ensureAuthProfileStoreAsync: async (_agentDir, options) => {
-      await resolvePluginMetadataSnapshotAsync({
-        config: options?.config ?? {},
-        allowWorkspaceScopedCurrent: true,
-      });
-      return profiles.store;
-    },
+    ensureAuthProfileStoreAsync: async () => profiles.store,
     resolveAuthProfileOrder,
   });
 });

@@ -1,10 +1,17 @@
 import {
+  useBundledProviderPolicyArtifactsForTest,
+  useProviderCatalogMetadata,
+} from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
   getProviderHttpMocks,
   installProviderHttpMockCleanup,
   requireFirstPostJsonRecordRequest,
 } from "openclaw/plugin-sdk/provider-http-test-mocks";
 import type { SpeechSynthesisRequest } from "openclaw/plugin-sdk/speech-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+useProviderCatalogMetadata(new URL(".", import.meta.url));
+useBundledProviderPolicyArtifactsForTest(["google"]);
 
 const transcode = vi.hoisted(() =>
   vi.fn<typeof import("openclaw/plugin-sdk/media-runtime").transcodeAudioBufferToOpus>(),
@@ -23,9 +30,7 @@ beforeAll(async () => {
   const http = await vi.importActual<typeof import("openclaw/plugin-sdk/provider-http")>(
     "openclaw/plugin-sdk/provider-http",
   );
-  resolveProviderHttpRequestConfigMock.mockImplementation(
-    http.resolveProviderHttpRequestConfigAsync,
-  );
+  resolveProviderHttpRequestConfigMock.mockImplementation(http.resolveProviderHttpRequestConfig);
   ({ buildGoogleSpeechProvider } = await import("./speech-provider.js"));
 });
 installProviderHttpMockCleanup();
