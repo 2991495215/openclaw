@@ -26,6 +26,7 @@ import type {
 } from "./session-cost-usage.types.js";
 
 const USAGE_COST_REFRESH_RETRY_MIN_MS = 50;
+const USAGE_COST_PUBLICATION_DEBOUNCE_MS = 100;
 const USAGE_COST_REFRESH_BATCH_SIZE = 50;
 const USAGE_COST_REFRESH_RETRY_MAX_MS = 5_000;
 const logger = createSubsystemLogger("usage-cost-cache");
@@ -41,6 +42,9 @@ type UsageCostRefreshState = {
   pendingSessionFiles: Set<string>;
   pendingRebuildRows: Map<string, SessionCostUsageRollupRow>;
   storePath: string;
+  joinOnRead: boolean;
+  resume?: () => void;
+  completion?: Promise<void>;
 };
 
 type UsageCostRefreshRequest = Pick<UsageCostRefreshState, "agentId" | "config" | "storePath"> & {
@@ -49,6 +53,8 @@ type UsageCostRefreshRequest = Pick<UsageCostRefreshState, "agentId" | "config" 
   sessionActor?: SessionActorStorageBinding;
   sessionFiles?: string[];
   rebuildRows?: SessionCostUsageRollupRow[];
+  /** Merge nearby transcript publications; an overview read flushes this batch. */
+  coalesce?: boolean;
 };
 
 // Only active queues retain their scope; one owner cannot adopt another owner's work.
@@ -56,6 +62,20 @@ const usageCostRefreshes = new Map<AbortSignal | undefined, Map<string, UsageCos
 
 function isUsageCostRefreshQueued(databasePath: string): boolean {
   return usageCostRefreshes.get(getAsyncWorkSignal())?.has(databasePath) === true;
+}
+
+async function flushPendingUsageCostRefresh(prepared: PreparedUsageCostWorker): Promise<void> {
+  const key = prepared.location.databasePath;
+  const pending: Promise<void>[] = [];
+  for (const refreshes of usageCostRefreshes.values()) {
+    const state = refreshes.get(key);
+    // Startup and repair backfills keep serving their last completed projection.
+    if (state?.joinOnRead && state.completion) {
+      state.resume?.();
+      pending.push(state.completion);
+    }
+  }
+  await Promise.all(pending);
 }
 
 export async function loadCostUsageSummary(params: {
@@ -95,6 +115,7 @@ async function loadAggregateCostUsageSummary(
 ): Promise<CostUsageSummary> {
   const prepared = prepareUsageCostWorker(params);
   const { databasePath, storePath } = prepared.location;
+  await flushPendingUsageCostRefresh(prepared);
   const refresh = refreshFirst
     ? await refreshCostUsageCacheForAgent({
         config: params.config,
@@ -219,6 +240,7 @@ async function loadCapturedSessionCostSummariesFromCache(
   prepared: PreparedUsageCostWorker,
 ): Promise<Extract<UsageCostWorkerResult, { kind: "sessions" | "overview" }>> {
   const { databasePath, storePath } = prepared.location;
+  await flushPendingUsageCostRefresh(prepared);
   const pricingFingerprint = await resolveUsageCostPricingFingerprint(
     prepared.config,
     prepared.agentDir,
@@ -301,12 +323,13 @@ export function requestCostUsageCacheRefresh(params: UsageCostRefreshRequest): v
     pendingSessionFiles: new Set(),
     pendingRebuildRows: new Map(),
     storePath: params.storePath,
+    joinOnRead: params.coalesce === true && params.sessionFiles !== undefined,
   };
   mergeUsageCostRefreshRequest(state, params);
   usageCostRefreshes.set(scopeSignal, refreshes);
   // Register the initial timer and every retry now, not after a timer fires.
   refreshes.set(queueKey, state);
-  void trackAsyncWork(() => runQueuedUsageCostRefresh(state, refreshes, scopeSignal));
+  state.completion = trackAsyncWork(() => runQueuedUsageCostRefresh(state, refreshes, scopeSignal));
 }
 
 function mergeUsageCostRefreshRequest(
@@ -322,6 +345,7 @@ function mergeUsageCostRefreshRequest(
   }
   if (!params.sessionFiles) {
     state.fullRefreshRequested = true;
+    state.joinOnRead = false;
     return;
   }
   for (const sessionFile of params.sessionFiles) {
@@ -329,7 +353,11 @@ function mergeUsageCostRefreshRequest(
   }
 }
 
-function waitForUsageCostRefresh(signal: AbortSignal | undefined, delayMs: number): Promise<void> {
+function waitForUsageCostRefresh(
+  signal: AbortSignal | undefined,
+  delayMs: number,
+  state?: UsageCostRefreshState,
+): Promise<void> {
   return new Promise((resolve) => {
     // Zero must remain a real timer so cache reads return before refresh starts.
     const timer = setTimeout(finish, delayMs);
@@ -337,7 +365,13 @@ function waitForUsageCostRefresh(signal: AbortSignal | undefined, delayMs: numbe
     function finish() {
       clearTimeout(timer);
       signal?.removeEventListener("abort", finish);
+      if (state) {
+        state.resume = undefined;
+      }
       resolve();
+    }
+    if (state) {
+      state.resume = finish;
     }
     signal?.addEventListener("abort", finish, { once: true });
     if (signal?.aborted) {
@@ -352,11 +386,17 @@ async function runQueuedUsageCostRefresh(
   signal: AbortSignal | undefined,
 ): Promise<void> {
   let busyRetryDelayMs = USAGE_COST_REFRESH_RETRY_MIN_MS;
-  let retryDelayMs = 0;
+  let retryDelayMs = state.joinOnRead ? USAGE_COST_PUBLICATION_DEBOUNCE_MS : 0;
+  let coalescing = state.joinOnRead;
   let recoveredPartialFailure = false;
   try {
     do {
-      await waitForUsageCostRefresh(signal, retryDelayMs);
+      await waitForUsageCostRefresh(
+        signal,
+        retryDelayMs,
+        coalescing || retryDelayMs === 0 ? state : undefined,
+      );
+      coalescing = false;
       if (signal?.aborted) {
         return;
       }

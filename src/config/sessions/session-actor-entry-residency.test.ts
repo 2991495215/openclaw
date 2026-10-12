@@ -31,7 +31,6 @@ it("retains resident session facts across usage cache writes and reloads actual 
       expect(
         await usage.writeRollup({
           rollupId: "synthetic-rollup",
-          previousValueJson: null,
           valueJson: new TextEncoder().encode("{}"),
           blob: null,
           updatedAt: 2,

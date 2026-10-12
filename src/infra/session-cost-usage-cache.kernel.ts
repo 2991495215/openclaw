@@ -12,7 +12,6 @@ import { USAGE_COST_ROLLUP_SCOPE as ROLLUP_SCOPE } from "./session-cost-usage-ro
 
 const LEGACY_CACHE_SCOPE = "session-cost-usage";
 const LEGACY_CACHE_KEY = "cache";
-const REFRESH_LOCK_KEY = "refresh-lock";
 const RETIRED_ROLLUP_SCOPES = ["session-cost-usage-rollup-v1", "session-cost-usage-rollup-v2"];
 const ROLLUP_PRUNE_BATCH_SIZE = 32;
 
@@ -35,20 +34,6 @@ function cacheJsonText(value: SessionCostUsageJson) {
   return typeof value === "string"
     ? value
     : cacheExpressions.cast<string>(cacheExpressions.val(value), "text");
-}
-
-export function readSessionCostUsageRefreshLockInDatabase(db: DatabaseSync): string | null {
-  const kysely = getNodeSqliteKysely<AgentCacheDatabase>(db);
-  const row = executeSqliteQuerySync(
-    db,
-    kysely
-      .selectFrom("cache_entries")
-      .select("value_json")
-      .where("scope", "=", LEGACY_CACHE_SCOPE)
-      .where("key", "=", REFRESH_LOCK_KEY)
-      .limit(1),
-  ).rows[0];
-  return row?.value_json ?? null;
 }
 
 export function readSessionCostUsageRollupRowsInDatabase(
@@ -77,7 +62,6 @@ export function writeSessionCostUsageRollupInDatabase(
   db: DatabaseSync,
   params: {
     rollupId: string;
-    previousValueJson: Uint8Array | null;
     valueJson: Uint8Array;
     blob: Uint8Array | null;
     updatedAt: number;
@@ -93,38 +77,13 @@ export function writeSessionCostUsageRollupInDatabase(
     expires_at: null,
     updated_at: params.updatedAt,
   };
-  const writeCheckpoint = () => {
-    if (params.previousValueJson === null) {
-      return (
-        executeSqliteQuerySync(
-          db,
-          kysely
-            .insertInto("cache_entries")
-            .values({ scope: ROLLUP_SCOPE, key: params.rollupId, ...values })
-            .onConflict((conflict) =>
-              conflict
-                .columns(["scope", "key"])
-                .doUpdateSet(values)
-                .where("value_json", "is", null),
-            ),
-        ).numAffectedRows === 1n
-      );
-    }
-    return (
-      executeSqliteQuerySync(
-        db,
-        kysely
-          .updateTable("cache_entries")
-          .set(values)
-          .where("scope", "=", ROLLUP_SCOPE)
-          .where("key", "=", params.rollupId)
-          .where("value_json", "=", cacheJsonText(params.previousValueJson)),
-      ).numAffectedRows === 1n
-    );
-  };
-  if (!writeCheckpoint()) {
-    return false;
-  }
+  executeSqliteQuerySync(
+    db,
+    kysely
+      .insertInto("cache_entries")
+      .values({ scope: ROLLUP_SCOPE, key: params.rollupId, ...values })
+      .onConflict((conflict) => conflict.columns(["scope", "key"]).doUpdateSet(values)),
+  );
   if (params.partitions || params.removedDates || params.replacePartitions) {
     writeSessionCostUsagePartitionsInDatabase(db, params);
   }
@@ -194,53 +153,4 @@ export function pruneSessionCostUsageRollupsInDatabase(
     db,
     kysely.deleteFrom("cache_entries").where("scope", "in", RETIRED_ROLLUP_SCOPES),
   );
-}
-
-export function deleteSessionCostUsageRefreshLockInDatabase(
-  db: DatabaseSync,
-  valueJson: string,
-): void {
-  const kysely = getNodeSqliteKysely<AgentCacheDatabase>(db);
-  executeSqliteQuerySync(
-    db,
-    kysely
-      .deleteFrom("cache_entries")
-      .where("scope", "=", LEGACY_CACHE_SCOPE)
-      .where("key", "=", REFRESH_LOCK_KEY)
-      .where("value_json", "=", valueJson),
-  );
-}
-
-export function acquireSessionCostUsageRefreshLockInDatabase(
-  db: DatabaseSync,
-  params: {
-    previousRaw: string | null;
-    previousOwnerIsRunning: boolean;
-    lockJson: string;
-    startedAt: number;
-  },
-): boolean {
-  const kysely = getNodeSqliteKysely<AgentCacheDatabase>(db);
-  const currentRaw = readSessionCostUsageRefreshLockInDatabase(db);
-  if (currentRaw !== params.previousRaw || params.previousOwnerIsRunning) {
-    return false;
-  }
-  const values = {
-    value_json: params.lockJson,
-    blob: null,
-    expires_at: null,
-    updated_at: params.startedAt,
-  };
-  executeSqliteQuerySync(
-    db,
-    kysely
-      .insertInto("cache_entries")
-      .values({
-        scope: LEGACY_CACHE_SCOPE,
-        key: REFRESH_LOCK_KEY,
-        ...values,
-      })
-      .onConflict((conflict) => conflict.columns(["scope", "key"]).doUpdateSet(values)),
-  );
-  return true;
 }

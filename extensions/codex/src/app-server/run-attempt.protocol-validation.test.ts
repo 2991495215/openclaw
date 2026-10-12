@@ -7,6 +7,7 @@ import {
 } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import { readVisibleSessionTranscriptMessageEntries } from "openclaw/plugin-sdk/session-transcript-runtime";
+import { awaitGateBeforeSettlement } from "openclaw/plugin-sdk/test-fixtures";
 import { describe, expect, it, vi } from "vitest";
 import type { CodexSessionCatalogControl } from "../session-catalog-types.js";
 import { CODEX_TURN_START_TEXT_INPUT_MAX_CHARS } from "./context-engine-projection.js";
@@ -65,8 +66,14 @@ describe("Codex submitted prompt provenance", () => {
     params.sessionTarget = { ...target, storePath: path.join(alias, "agent.sqlite") };
     const closeHost = await bindProductionHarnessHostCapabilitiesForTest(params);
     const run = runCodexAppServerAttempt(params);
+    let started = false;
     try {
-      await harness.waitForMethod("turn/start");
+      await awaitGateBeforeSettlement(
+        harness.waitForMethod("turn/start"),
+        run,
+        "Codex attempt settled before submitting the sender-attributed turn",
+      );
+      started = true;
       const request = harness.requests.find(({ method }) => method === "turn/start")!
         .params as CodexTurnStartParams;
       const sentInput = structuredClone(request.input);
@@ -131,9 +138,14 @@ describe("Codex submitted prompt provenance", () => {
         editorText: params.prompt,
       });
     } finally {
-      await harness.completeTurn({ threadId: "thread-1", turnId: "turn-1" });
-      await run;
-      closeHost();
+      try {
+        if (started) {
+          await harness.completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+        }
+        await run;
+      } finally {
+        closeHost();
+      }
     }
   });
 });

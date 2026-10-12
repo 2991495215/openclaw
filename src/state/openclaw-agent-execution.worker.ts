@@ -479,8 +479,6 @@ function openAgentDatabaseBackend(
     "session.maintenance.release": loadMaintenanceOperations,
     "usageCache.writeRollup": loadUsageCacheOperations,
     "usageCache.prune": loadUsageCacheOperations,
-    "usageCache.acquireLock": loadUsageCacheOperations,
-    "usageCache.releaseLock": loadUsageCacheOperations,
   });
   const context: AgentWorkerOperationContext = {
     open: openWriter,
