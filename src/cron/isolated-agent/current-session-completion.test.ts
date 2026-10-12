@@ -231,9 +231,9 @@ describe("current-session completion media", () => {
             delivery: { mode: "announce", channel: "telegram", to: "12345" },
           });
           await cron.run(job.id, "force");
+          // Cancellation can finish cron.run before the callback finishes media cleanup.
           expect(runIsolatedAgentJob).toHaveBeenCalledOnce();
-          // Cancellation returns before the task finishes its media cleanup.
-          await runIsolatedAgentJob.mock.results[0]?.value;
+          await runIsolatedAgentJob.mock.results[0]!.value;
           expect(revoked).toBe(true);
           expect(sendMedia).toHaveBeenCalledTimes(stage === "commit" ? 1 : 0);
           expect(await fixture.messages()).toHaveLength(0);

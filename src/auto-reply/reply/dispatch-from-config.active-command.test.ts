@@ -1,6 +1,10 @@
 // Exercises control-command reachability without relaxing ordinary reply admission.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { createDeferred, raceWithTimeoutResult } from "../../../test/helpers/promise.js";
+import {
+  awaitGateBeforeSettlement,
+  createDeferred,
+  raceWithTimeoutResult,
+} from "../../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { markCommandReplyForDelivery } from "../reply-payload.js";
 import type { MsgContext } from "../templating.js";
@@ -187,7 +191,6 @@ describe("dispatch active command admission", () => {
     async (controlName, controlBody) => {
       const sessionKey = "agent:main:login-ticket";
       const releaseLogin = createDeferred();
-      onTestFinished(() => releaseLogin.resolve());
       const loginStarted = createDeferred();
       const controlStarted = createDeferred();
       const loginEntered = vi.fn();
@@ -217,7 +220,11 @@ describe("dispatch active command admission", () => {
       });
       const pending = [login];
       try {
-        await Promise.race([loginStarted.promise, login]);
+        await awaitGateBeforeSettlement(
+          loginStarted.promise,
+          login,
+          "login dispatch settled before entering its reply resolver",
+        );
         expect(loginEntered).toHaveBeenCalledOnce();
         const shell = dispatchCommand("/bash echo ready", "bash", async () => {
           shellEntered();
@@ -231,7 +238,11 @@ describe("dispatch active command admission", () => {
         });
         pending.push(control);
 
-        await Promise.race([controlStarted.promise, control]);
+        await awaitGateBeforeSettlement(
+          controlStarted.promise,
+          control,
+          "control dispatch settled before entering its reply resolver",
+        );
         expect(controlEntered).toHaveBeenCalledOnce();
         expect(shellEntered).not.toHaveBeenCalled();
         expect(replyRunRegistry.isActive(sessionKey)).toBe(true);

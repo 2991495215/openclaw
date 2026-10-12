@@ -76,7 +76,7 @@ it("measures 100 composed catalog lists against real session and plugin stores",
         counters.begin();
         fixture = await createComposedCatalogFixture(state, counters);
         tracePhase("fixture-ready");
-        // Start lazy hydration; a cold host may report loading before the completion marker.
+        // A cold request may report loading before the resident catalog is complete.
         await fixture.requestList();
         tracePhase("hydration-requested");
         const catalogNamespace = await counters.catalogPersisted;
