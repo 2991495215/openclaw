@@ -2913,7 +2913,6 @@
 ["src/agents/runtime-plan/auth.test.ts","../../plugins/plugin-registry.js","4127f8b960c4f2d6f202bfd30214f54ce6c3065fc1292fd00a32852c42fce8b4",1]
 ["src/agents/runtime-plan/build.test.ts","../../plugins/provider-hook-runtime.js","74233f37abbcf27cfd092412662f193407bfdd8a137859b7c8a874c4c4bcc7dd",1]
 ["src/agents/runtime-plan/prepare-auth.ambient-credential.test.ts","../../plugins/provider-runtime.js","4df1a3a9e25853b4c93bc1150917fd820f13d54fc42a163ebd16f26931d159f7",1]
-["src/agents/runtime-plan/prepare-auth.test.ts","../../plugins/provider-runtime.js","0e13ea5bea9893ea948c43c1d3e5a4b7274512fb9f583c434aad33f6c25ced52",1]
 ["src/agents/runtime-plan/tools.diagnostics.test.ts","../embedded-agent-runner/tool-schema-runtime.js","b507b4dc6e500b0dd9af10318026fa8c1a1fcf8fb5def71b4962dc4fd2a2cf39",1]
 ["src/agents/runtime-plan/tools.test.ts","../embedded-agent-runner/tool-schema-runtime.js","b507b4dc6e500b0dd9af10318026fa8c1a1fcf8fb5def71b4962dc4fd2a2cf39",1]
 ["src/agents/runtime-plugins.test.ts","../context-engine/registry.js","7b13fcb9f06d11d1baeb67294d5d68ea47d50dc616b45759670540d63bdc9fd9",1]
