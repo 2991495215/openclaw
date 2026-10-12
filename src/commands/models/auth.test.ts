@@ -164,7 +164,8 @@ vi.mock("../../agents/model-selection-cli.js", () => ({
   isCliProvider: mocks.isCliProvider,
 }));
 
-vi.mock("../../plugins/providers.runtime.js", () => ({
+vi.mock("../../plugins/providers.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../plugins/providers.runtime.js")>()),
   resolvePluginProvidersCoreAsync: mocks.resolvePluginProvidersCoreAsync,
 }));
 
