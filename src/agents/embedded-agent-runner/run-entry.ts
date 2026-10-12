@@ -41,6 +41,7 @@ import {
   resolveEmbeddedCyberFailoverConfig,
   resolveEmbeddedCyberFailoverTarget,
 } from "./embedded-cyber-failover.js";
+import { persistModelFallbackTranscriptNotice } from "./model-fallback-transcript.js";
 import {
   classifyEmbeddedAgentRunResultForModelFallback,
   mergeEmbeddedAgentRunResultForModelFallbackExhaustion,
@@ -299,7 +300,13 @@ async function runEmbeddedAgentEntryInternal<T extends EmbeddedAgentRunResult>(
           }
         },
         prepareAgentHarnessRuntime: prepareHarnessRuntime,
-        onFallbackStep: params.onFallbackStep,
+        onFallbackStep: async (step) => {
+          try {
+            await params.onFallbackStep?.(step);
+          } finally {
+            await persistModelFallbackTranscriptNotice(params, step, assertCurrent);
+          }
+        },
         ...(params.behavior.kind === "maintenance"
           ? {}
           : {

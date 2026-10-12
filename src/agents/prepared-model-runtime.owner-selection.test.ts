@@ -66,11 +66,11 @@ function holdNextCatalogWrite() {
 describe("prepared model runtime owner selection", () => {
   it("awaits cold metadata preparation before deriving runtime selections", async () => {
     const prepared = createDeferred<pluginMetadata.PluginMetadataSnapshot>();
-    const resolvingMetadata = createDeferred();
+    const metadataStarted = createDeferred();
     using resolveMetadata = vi
       .spyOn(pluginMetadata, "resolvePluginMetadataSnapshotAsync")
       .mockImplementationOnce(() => {
-        resolvingMetadata.resolve();
+        metadataStarted.resolve();
         return prepared.promise;
       });
     const deriveRuntimePluginSelections = vi.fn(() => []);
@@ -82,7 +82,7 @@ describe("prepared model runtime owner selection", () => {
     const pending = acquireAgentRunPreparedModelRuntime(input, {
       deriveRuntimePluginSelections,
     });
-    await resolvingMetadata.promise;
+    await metadataStarted.promise;
     expect(resolveMetadata).toHaveBeenCalledOnce();
     expect(deriveRuntimePluginSelections).not.toHaveBeenCalled();
     prepared.resolve(metadataSnapshot);

@@ -50,6 +50,13 @@ it("publishes agent mutations before acknowledging immediate session and roster 
       reloadScheduler = options.scheduler;
       return startReloader({
         ...options,
+        log: {
+          ...options.log,
+          error: (message) => {
+            process.stderr.write(`[config-readiness] ${message}\n`);
+            options.log.error(message);
+          },
+        },
         onHotReload: async (...args) => {
           if (!publicationHeld && args[1].agents?.entries?.[agentId]) {
             publicationHeld = true;

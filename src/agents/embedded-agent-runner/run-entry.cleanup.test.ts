@@ -97,7 +97,12 @@ it.each(cleanupCases)(
         return result;
       });
     try {
-      await disposalStarted.promise;
+      await Promise.race([
+        disposalStarted.promise,
+        entry.then(() => {
+          throw new Error("Agent entry settled before context engine disposal started");
+        }),
+      ]);
       if (settlement === "success") {
         disposal.resolve();
       } else if (settlement === "failure") {
