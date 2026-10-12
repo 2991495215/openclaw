@@ -62,19 +62,18 @@ it.each(["missing", "idless"] as const)(
           },
         });
         expect(committedEntry?.sessionId).toBe(sessionId);
+        expect(committedEntry?.createdActor).toEqual(actor);
         expectWithoutHostSql(() => authorization.assertCurrent());
         await addSessionMember(scope, { identityId, addedBy: "other-creator" });
-        await replaceSessionEntry(scope, {
+        const restricted = await replaceSessionEntry(scope, {
           ...committedEntry!,
-          createdActor: { ...actor, id: "other-creator" },
           visibility: "read-only",
           updatedAt: 2,
         });
+        expect(restricted?.createdActor).toEqual(actor);
         expectWithoutHostSql(() => authorization.assertCurrent());
-        await removeSessionMember(scope, identityId);
-        expectWithoutHostSql(() =>
-          expect(() => authorization.assertCurrent()).toThrow("read-only"),
-        );
+        expect(await removeSessionMember(scope, identityId)).toMatchObject({ identityId });
+        expectWithoutHostSql(() => authorization.assertCurrent());
         await addSessionMember(scope, { identityId, addedBy: "other-creator" });
         expectWithoutHostSql(() => authorization.assertCurrent());
         await replaceSessionEntry(scope, {

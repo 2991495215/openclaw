@@ -61,6 +61,7 @@ import {
   publishIncognitoSessionEntry,
   withIncognitoSessionActor,
 } from "./session-incognito-binding.js";
+import { composeSessionSourceAssertion } from "./session-source-authority.js";
 import { maintenanceLane, projectionLane } from "./session-transcript-worker-resources.js";
 import { withSessionHistoryWorkerDatabase } from "./session-transcript-worker-runtime.js";
 import { MAX_SESSION_ROW_FACTS_KEYS } from "./session-transcript-worker.types.js";
@@ -421,16 +422,18 @@ async function applySqliteSessionEntryReplacementProjection<T, TReplacement>(
                   storePath: params.storePath,
                 }
               : undefined;
-            const assertCurrent = () => {
-              assertSourceCurrent?.();
-              params.assertCommitAllowed?.();
-              if (
-                maintenance &&
-                !isDeepStrictEqual(maintenance.preservation, preparedPreservation?.capture())
-              ) {
-                throw new Error("Session maintenance protection changed before replacement");
-              }
-            };
+            const assertCurrent = composeSessionSourceAssertion(
+              [assertSourceCurrent, params.assertCommitAllowed],
+              (assertSources) => {
+                assertSources();
+                if (
+                  maintenance &&
+                  !isDeepStrictEqual(maintenance.preservation, preparedPreservation?.capture())
+                ) {
+                  throw new Error("Session maintenance protection changed before replacement");
+                }
+              },
+            );
             const input: SessionEntryReplacementCommit = {
               expectedRows,
               labelOwnerKeys,
