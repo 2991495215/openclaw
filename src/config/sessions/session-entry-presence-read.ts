@@ -7,6 +7,7 @@ import {
   toDatabaseOptions,
 } from "./session-accessor.sqlite-scope.js";
 import type { SessionAccessScope } from "./session-accessor.types.js";
+import { getSessionActorStorageBinding } from "./session-actor-storage-binding.js";
 import { resolveSessionStorePathForScope } from "./session-store-path.js";
 import { withSessionHistoryWorkerDatabase } from "./session-transcript-worker-runtime.js";
 import type { SessionRowPresenceWorkerInput } from "./session-transcript-worker.types.js";
@@ -20,10 +21,17 @@ export function prepareSessionEntryPresenceRead(input: SessionAccessScope): Read
   const memory = captureMemoryExactSessionReader(input);
   if (memory) {
     const sessionKey = resolveSqliteSessionKey(input.sessionKey, memory.agentId);
+    const scope = {
+      agentId: memory.agentId,
+      storePath: memory.path,
+      sessionKey,
+      sessionActor: getSessionActorStorageBinding({}),
+    };
     return {
       sessionKey,
       storePath: memory.path,
-      read: async () => Boolean(memory.read(sessionKey)),
+      // Presence is reusable; observe the current owner at the captured location each time.
+      read: async () => Boolean(captureMemoryExactSessionReader(scope)?.read(sessionKey)),
     };
   }
   const env = { ...(input.env ?? process.env) };

@@ -9,6 +9,7 @@ import {
   captureOpenClawAgentDatabaseExecution,
   supportsOpenClawAgentDatabaseExecution,
 } from "../../state/openclaw-agent-execution.js";
+import { applyMemorySessionEntryCleanup } from "./session-accessor.memory-cleanup.js";
 import {
   prunePublishedSessionArchivesByRetention,
   publishSessionStateArchives,
@@ -70,7 +71,7 @@ export { purgeDeletedAgentSessionEntries } from "./session-agent-purge.js";
 
 export { applySessionEntryExactReplacements as applySessionEntryReplacements } from "./session-accessor.sqlite-replacement-projection.js";
 
-/** Applies exact lifecycle removals/upserts using SQLite session rows. */
+/** Applies exact lifecycle removals/upserts through the selected session owner. */
 export async function applySessionEntryLifecycleMutation(
   params: SessionEntryLifecycleMutationParams,
   resolved = captureLifecycleDatabaseScope(
@@ -84,6 +85,10 @@ export async function applySessionEntryLifecycleMutation(
 ): Promise<SessionEntryLifecycleMutationResult> {
   const removals = [...(params.removals ?? [])];
   const upserts = [...(params.upserts ?? [])];
+  const memory = applyMemorySessionEntryCleanup({ ...params, removals, upserts }, resolved);
+  if (memory) {
+    return memory;
+  }
   const databaseOptions = toDatabaseOptions(resolved);
   const useWorker =
     isMainThread &&

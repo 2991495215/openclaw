@@ -13,7 +13,6 @@ import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { sessionCreateHandlers } from "./server-methods/sessions-create.js";
 import { deleteGatewaySession } from "./server-methods/sessions-delete.js";
-import { messageCutContext } from "./server-methods/sessions-rewind.storage.test-support.js";
 import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
 import { createGatewaySession } from "./session-create-service.js";
 import { performGatewaySessionReset } from "./session-reset-service.js";
@@ -63,6 +62,7 @@ it.each(["reset", "delete"] as const)(
               reason: "reset",
               commandSource: "test",
               operatorRoleActor: { kind: "system" },
+              workerPlacementContext: {},
             }),
           ).toMatchObject({ ok: true, incognitoDeleted: true });
         } else {
@@ -70,7 +70,10 @@ it.each(["reset", "delete"] as const)(
             await deleteGatewaySession({
               params: { key: created.key, agentId: "main" },
               client: null,
-              context: messageCutContext(),
+              context: createDirectChatContext({
+                getRuntimeConfig: () => cfg,
+                getCommittedRuntimeConfig: () => cfg,
+              }),
             }),
           ).toMatchObject({ ok: true, result: { deleted: true } });
         }
@@ -94,7 +97,7 @@ it("creates a fresh explicit incognito key under authorization captured before i
       agentId: "main",
       path: resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main", env: state.env }),
     };
-    const client = sharingPolicyClient({});
+    const client = sharingPolicyClient({ scopes: ["operator.admin"] });
     const context = createDirectChatContext({
       getRuntimeConfig: () => cfg,
       getCommittedRuntimeConfig: () => cfg,
@@ -104,6 +107,7 @@ it("creates a fresh explicit incognito key under authorization captured before i
       agentId: "main",
       incognito: true,
       displayName: "Explicit private conversation",
+      communication: { receive: "never" },
     };
     expect(memorySessionActorOwners.read(location)).toBeUndefined();
     expect(getSessionActorStorageBinding({})).toBeUndefined();
@@ -141,7 +145,11 @@ it("creates a fresh explicit incognito key under authorization captured before i
       );
       retained.assertCurrent();
       const created = loadGatewaySessionEntryReadOnly(key, { agentId: "main" }, cfg).entry;
-      expect(created).toMatchObject({ incognito: true, displayName: params.displayName });
+      expect(created).toMatchObject({
+        incognito: true,
+        displayName: params.displayName,
+        communication: { receive: "never" },
+      });
       expect(respond.mock.calls[0]?.[1]).toMatchObject({ sessionId: created?.sessionId });
       expect(getSessionActorStorageBinding({})).toBeUndefined();
     } finally {

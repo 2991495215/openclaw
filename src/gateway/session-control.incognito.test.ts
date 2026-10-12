@@ -5,10 +5,7 @@ import { awaitGateBeforeSettlement } from "../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
-import {
-  patchSessionEntryCore,
-  replaceSessionEntry,
-} from "../config/sessions/session-accessor.sqlite-entry.js";
+import { patchSessionEntryCore } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import { withSessionActorStorage } from "../config/sessions/session-actor-storage-binding.js";
 import * as sessionMetadataWrites from "../config/sessions/session-metadata-write.async.js";
@@ -99,14 +96,6 @@ async function seed(params: {
   expect(created?.kind).toBe("committed");
 }
 
-async function replaceMemoryEntry(sessionKey: string, entry: SessionEntry) {
-  const scope = { agentId: "main", sessionKey, storePath: location.path, env };
-  const replaced = await withSessionActorStorage(scope, { authority, lifetime }, () =>
-    replaceSessionEntry(scope, entry),
-  );
-  expect(replaced).toBeTruthy();
-}
-
 async function invoke(
   handlers: GatewayRequestHandlers,
   method: string,
@@ -137,6 +126,7 @@ it("returns the unbound memory Goal receipt on retry and serves suggestion mutat
       incognito: true,
       lifecycleRevision: "first",
       visibility: "suggest",
+      label: "Keep this label",
       goal: {
         schemaVersion: 1,
         id: "goal",
@@ -175,6 +165,12 @@ it("returns the unbound memory Goal receipt on retry and serves suggestion mutat
       { ...(first.mock.calls[0]![1] as object), replayed: true },
       undefined,
     );
+    expect(
+      memorySessionActorOwners.read(location)?.readSession(sessionKey, authority)?.entry,
+    ).toMatchObject({
+      label: "Keep this label",
+      goal: { objective: "After", status: "paused" },
+    });
     const otherRoot = dirs.make("incognito-controls-other-root-");
     const addSuggestion = sessionMetadataWrites.addSessionSuggestionInWorker;
     const addSpy = vi
@@ -234,7 +230,7 @@ it("returns the unbound memory Goal receipt on retry and serves suggestion mutat
   }
 });
 
-it("retains an unbound memory Side chat source while writing its separate durable destination and refuses replacement", async () => {
+it("retains an unbound memory Side chat source for durable writes and refuses a closed transport", async () => {
   const sessionKey = "agent:main:dashboard:incognito-side-chat";
   const sessionId = "side-chat-source";
   const entry = { sessionId, updatedAt: 1, lifecycleRevision: "first", incognito: true as const };
@@ -270,9 +266,13 @@ it("retains an unbound memory Side chat source while writing its separate durabl
         await resume.promise;
       }
       request.assertSourceCurrent?.();
-      await patchSessionEntryCore(destination, () => ({ label: "After" }), {
-        workerGuard: { source: request.assertSourceCurrent },
-      });
+      await patchSessionEntryCore(
+        destination,
+        () => ({ label: pause ? "Unexpected write" : "After" }),
+        {
+          workerGuard: { source: request.assertSourceCurrent },
+        },
+      );
       return "Answer";
     },
   );
@@ -303,7 +303,8 @@ it("retains an unbound memory Side chat source while writing its separate durabl
         pending,
         "Side chat returned before model execution",
       );
-      await replaceMemoryEntry(sessionKey, { ...entry, lifecycleRevision: "replacement" });
+      memorySessionActorOwners.closeSession(location, sessionKey);
+      client.invalidated = true;
     } finally {
       resume.resolve();
     }
@@ -318,6 +319,7 @@ it("retains an unbound memory Side chat source while writing its separate durabl
     resume.resolve();
     companion.dispose();
     context.sessionCompanion = undefined;
+    client.invalidated = false;
   }
 });
 
@@ -472,7 +474,7 @@ it("restores a refused unbound memory task suggestion and retains accepted chat 
     } finally {
       await forwarded.release?.();
     }
-    await replaceMemoryEntry(sessionKey, { ...entry, lifecycleRevision: "replacement" });
+    memorySessionActorOwners.closeSession(location, sessionKey);
     expect(() => acceptedAuthority!.assertCurrent()).toThrow();
     expect(host.queries).toEqual([]);
   } finally {

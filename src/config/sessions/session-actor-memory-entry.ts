@@ -1,5 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { clearSessionActorProgressCardForReset } from "../../session-cards/session-actor-progress-card-memory.js";
+import { shouldPreserveSessionCleanupEntry } from "./cleanup-service-read.policy.js";
 import type { ConversationRouteContext } from "./conversation-route-context.js";
 import { syncSessionActorMemoryConversations } from "./session-actor-memory-conversation.js";
 import type {
@@ -348,7 +350,11 @@ export function executeSessionActorMemoryEntryCommand(
       };
     }
     case "session.lifecycle.reclaim": {
+      const countEntries = () =>
+        [...context.entries()].filter(([, value]) => value.hot.entry).length;
+      const beforeCount = countEntries();
       const removedSessionKeys: string[] = [];
+      const archivedSessionKeys: string[] = [];
       const eligible =
         command.input.artifacts &&
         planMemoryLifecycleArtifacts(
@@ -359,10 +365,19 @@ export function executeSessionActorMemoryEntryCommand(
           ),
         );
       for (const candidate of command.input.entries) {
+        const current = context.get(candidate.sessionKey);
+        if (
+          candidate.requiresMissingTranscript &&
+          current?.hot.entry &&
+          (shouldPreserveSessionCleanupEntry(candidate.sessionKey, current.hot.entry) ||
+            current.events.some(({ event }) => isRecord(event) && event.type === "message"))
+        ) {
+          continue;
+        }
         if (
           eligible
             ? eligible.entries.some((entry) => entry.sessionKey === candidate.sessionKey)
-            : isDeepStrictEqual(context.get(candidate.sessionKey)?.hot.entry, candidate.expected)
+            : isDeepStrictEqual(current?.hot.entry, candidate.expected)
         ) {
           context.remove(candidate.sessionKey);
           removedSessionKeys.push(candidate.sessionKey);
@@ -379,7 +394,13 @@ export function executeSessionActorMemoryEntryCommand(
           context.edit(window.sessionKey).historicalWindows.delete(window.sessionId);
         }
       }
-      return { removedSessionKeys };
+      for (const archive of command.input.archives ?? []) {
+        if (isDeepStrictEqual(context.get(archive.sessionKey)?.hot.entry, archive.expected)) {
+          install(archive.sessionKey, archive.entry);
+          archivedSessionKeys.push(archive.sessionKey);
+        }
+      }
+      return { removedSessionKeys, archivedSessionKeys, beforeCount, afterCount: countEntries() };
     }
   }
   throw new Error("Unknown memory entry command");

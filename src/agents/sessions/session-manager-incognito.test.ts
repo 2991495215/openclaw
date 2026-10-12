@@ -261,27 +261,47 @@ it.each(["append", "persist"] as const)(
     const { target } = await create(`committed-${method}`);
     const manager = await SessionManager.openAsync(target);
     await manager.appendCustomEntryAsync("before-revocation");
-    const failure = await captureCommitRevocation(target, (assertCurrent) =>
-      withSessionManagerWriteAssertion(manager, assertCurrent, () =>
-        method === "append"
-          ? manager.appendCustomEntryAsync("committed-once")
-          : manager.persistAsync({
+    let current = true;
+    const unsubscribe = sessionChanges.subscribeFacts((change) => {
+      if ("sessionKey" in change && change.sessionKey === target.sessionKey) {
+        current = false;
+      }
+    });
+    try {
+      await withSessionManagerWriteAssertion(
+        manager,
+        () => {
+          if (!current) {
+            throw new Error("Caller revoked after commit");
+          }
+        },
+        async () => {
+          if (method === "append") {
+            await manager.appendCustomEntryAsync("committed-once");
+          } else {
+            await manager.persistAsync({
               type: "custom",
               id: "committed-once",
               parentId: null,
               timestamp: new Date(1).toISOString(),
               customType: "committed-once",
               data: {},
-            }),
-      ),
-    );
-    expect(failure).toBeInstanceOf(Error);
-    expect(isRecordedModelFallbackStop(failure)).toBe(true);
-    expect(() => manager.getEntries()).toThrow();
-    expect((await SessionManager.openAsync(target)).getEntries()).toMatchObject([
+            });
+          }
+          expect(current).toBe(false);
+          await expect(manager.appendCustomEntryAsync("refused")).rejects.toThrow(
+            "Caller revoked after commit",
+          );
+        },
+      );
+    } finally {
+      unsubscribe();
+    }
+    expect(manager.getEntries()).toMatchObject([
       { type: "custom", customType: "before-revocation" },
       { type: "custom", customType: "committed-once" },
     ]);
+    expect((await SessionManager.openAsync(target)).getEntries()).toEqual(manager.getEntries());
   },
 );
 

@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { closeOpenClawAgentDatabaseByPathAsync } from "../../state/openclaw-agent-db.js";
+import { resolveIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
@@ -18,6 +19,7 @@ import {
   resolveSessionEntryAccessTarget,
   updateResolvedSessionEntry,
 } from "./session-accessor.entry.js";
+import { memorySessionActorOwners } from "./session-actor-memory-owner.js";
 import type { SessionEntry } from "./types.js";
 
 describe("qualified session accessor projection", () => {
@@ -30,6 +32,7 @@ describe("qualified session accessor projection", () => {
     storePath = state.path("sessions.json");
   });
   afterEach(async () => {
+    memorySessionActorOwners.reset();
     await state.cleanup();
   });
 
@@ -39,7 +42,13 @@ describe("qualified session accessor projection", () => {
       agents: { entries: { main: {} } },
     };
     const sessionKey = incognito ? "agent:main:dashboard:incognito-capture" : "global";
-    const physical = { agentId: "main", storePath, sessionKey };
+    const physical = {
+      agentId: "main",
+      storePath: incognito
+        ? resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main" })
+        : storePath,
+      sessionKey,
+    };
     await replaceSessionEntry(physical, entry);
     const scope = { cfg, sessionKey, agentId: "main" };
     const target = resolveSessionEntryAccessTarget(scope, { keyFormat: "agent-qualified" });
@@ -223,8 +232,11 @@ describe("qualified session accessor projection", () => {
         fs.renameSync(target.storePath, previousPath);
         fs.copyFileSync(previousPath, target.storePath);
       } else {
-        expect(typeof target.readSource?.databaseIdentity).toBe("symbol");
-        await closeOpenClawAgentDatabaseByPathAsync(target.storePath);
+        const memory = { agentId: "main", path: target.storePath };
+        const owner = memorySessionActorOwners.read(memory);
+        expect(owner).toBeDefined();
+        expect(target.readSource?.databaseIdentity).toBe(owner!.identity.incarnation);
+        memorySessionActorOwners.closeDatabase(memory);
         if (variant.recreated) {
           await replaceSessionEntry(physical, capturedEntry);
         }

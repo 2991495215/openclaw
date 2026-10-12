@@ -5,7 +5,10 @@ import {
   normalizeAgentId,
   parseAgentSessionKey,
 } from "../../routing/session-key.js";
-import { isIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
+import {
+  isIncognitoOpenClawAgentSqlitePath,
+  resolveExplicitIncognitoAgentSqliteTarget,
+} from "../../state/openclaw-agent-db.paths.js";
 import { cloneEnvWithPlatformSemantics } from "../config-env-vars.js";
 import { resolveStateDir } from "../state-dir.js";
 import type { SessionEntryReadScope } from "./session-accessor.types.js";
@@ -39,10 +42,12 @@ export function captureSessionEntryWorkerRequest(input: SessionEntryWorkerRead) 
 
 export function captureSessionEntryReadScope(input: SessionEntryReadScope) {
   const binding = getSessionActorStorageBinding({});
+  const explicit = resolveExplicitIncognitoAgentSqliteTarget(input.storePath, input);
+  const memoryPath = explicit?.path ?? binding?.path;
   const env = cloneEnvWithPlatformSemantics(
     input.env ??
-      (binding
-        ? { ...process.env, OPENCLAW_STATE_DIR: path.resolve(binding.path, "../../../..") }
+      (memoryPath
+        ? { ...process.env, OPENCLAW_STATE_DIR: path.resolve(memoryPath, "../../../..") }
         : process.env),
   );
   env.OPENCLAW_STATE_DIR = resolveStateDir(env);

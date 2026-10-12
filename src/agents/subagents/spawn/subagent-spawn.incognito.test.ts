@@ -133,7 +133,6 @@ it.each([false, true])(
       });
       await withMemorySource(sibling, childKey, () =>
         patchSessionEntryCore({ storePath: sibling.path, sessionKey: childKey }, () => ({
-          spawnDepth: undefined,
           inheritedToolDeny: ["exec", "write"],
         })),
       );
@@ -142,6 +141,14 @@ it.each([false, true])(
       ).toMatchObject({
         inheritedToolDeny: ["exec", "write"],
       });
+      await withMemorySource(sibling, childKey, () =>
+        patchSessionEntryCore({ storePath: sibling.path, sessionKey: childKey }, () => ({
+          spawnDepth: undefined,
+        })),
+      );
+      expect(
+        resolvePersistedSubagentToolPolicyEnvelope(childKey, { cfg: {}, store }),
+      ).toBeUndefined();
       expect(getSubagentDepthFromSessionStore(childKey, { cfg: {} })).toBe(3);
       const explicitStore = createSubagentSessionStore(sibling.path, "research");
       expect(explicitStore.getById("capability-child")).toMatchObject({

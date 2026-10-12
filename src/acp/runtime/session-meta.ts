@@ -93,7 +93,7 @@ export function writeAcpSessionMetaForMigration(params: {
       const identity = parseAcpDatabaseSessionKey(sessionKey);
       if (identity) {
         sessionChanges.emit(
-          { sessionKey: identity.storeSessionKey, agentId: identity.agentId },
+          { sessionKey: identity.storeSessionKey, agentId: identity.agentId, scope: "acp" },
           database.db,
         );
       }

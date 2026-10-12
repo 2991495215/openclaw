@@ -355,7 +355,7 @@ describe("readCodexMirroredSessionHistoryMessages", () => {
     },
   );
 
-  it("reads incognito model context from the process-held SQLite store", async () => {
+  it("reads incognito model context from the memory actor", async () => {
     const { marker, sessionTarget } = await writeSqliteSession({ incognito: true });
     const result = await readCodexMirroredSessionHistoryMessages({
       ...sessionTarget,
@@ -830,15 +830,15 @@ it.each([false, true])(
   "bounds prepared Codex history without truncating native evidence (incognito=%s)",
   async (incognito) => {
     const fixture = await writeSqliteSession({ incognito });
-    const source = SessionManager.open(fixture.sessionTarget);
+    const source = await SessionManager.openAsync(fixture.sessionTarget);
     for (let index = 0; index < 30; index += 1) {
-      source.appendMessage({
+      await source.appendMessageAsync({
         role: "user",
         content: `old-${index}:` + "x".repeat(2048),
         timestamp: index + 3,
       });
     }
-    source.appendMessage({ role: "user", content: "latest question", timestamp: 40 });
+    await source.appendMessageAsync({ role: "user", content: "latest question", timestamp: 40 });
     const target = {
       sessionFile: fixture.marker,
       sessionId: fixture.sessionTarget.sessionId,
@@ -852,12 +852,12 @@ it.each([false, true])(
       128,
     );
     expect(prepared).toMatchObject([{ role: "user", content: "latest question" }]);
-    const native = readCodexSessionContext(fixture.sessionTarget, (messages) =>
+    const native = await SessionManager.readSessionContextAsync(fixture.sessionTarget, (messages) =>
       Array.from(messages),
     );
     expect(native).toHaveLength(33);
     expect(native?.[2]).toMatchObject({ content: "old-0:" + "x".repeat(2048) });
-    source.appendMessage({
+    await source.appendMessageAsync({
       role: "user",
       content: "oversized latest:" + "x".repeat(2048),
       timestamp: 41,
@@ -866,7 +866,9 @@ it.each([false, true])(
       readCodexMirroredSessionHistoryMessages(target, undefined, undefined, 128),
     ).rejects.toThrow(/session's context limit/);
     expect(
-      readCodexSessionContext(fixture.sessionTarget, (messages) => Array.from(messages)),
+      await SessionManager.readSessionContextAsync(fixture.sessionTarget, (messages) =>
+        Array.from(messages),
+      ),
     ).toHaveLength(34);
   },
 );

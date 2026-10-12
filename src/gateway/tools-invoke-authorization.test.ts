@@ -4,6 +4,7 @@ import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { setUserProfileRole } from "../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
@@ -58,7 +59,7 @@ beforeEach(() => {
   server.resetContext();
 });
 
-const gatewayAuthHeaders = () => ({ "x-openclaw-scopes": "operator.write" });
+const gatewayAuthHeaders = (scopes = "operator.write") => ({ "x-openclaw-scopes": scopes });
 const postToolsInvoke = async (params: {
   port: number;
   headers: Record<string, string>;
@@ -108,6 +109,7 @@ describe.each(["HTTP", "WebSocket"] as const)(
       sandbox?: "required";
       stored?: boolean;
       incognito?: boolean;
+      admin?: boolean;
       system?: boolean;
       expectedError?: string;
     }> = [
@@ -142,11 +144,20 @@ describe.each(["HTTP", "WebSocket"] as const)(
         stored: true,
       },
       {
-        label: "allows an owned memory session",
+        label: "denies a profiled owner without admin access to a memory session",
         sessionKey: "agent:main:dashboard:incognito-tools",
         sandbox: "required",
         stored: true,
         incognito: true,
+        expectedError: 'Incognito session "agent:main:dashboard:incognito-tools" was not found.',
+      },
+      {
+        label: "allows an admin to invoke tools in a memory session",
+        sessionKey: "agent:main:dashboard:incognito-tools",
+        sandbox: "required",
+        stored: true,
+        incognito: true,
+        admin: true,
       },
       {
         label: "preserves trusted system calls without a session",
@@ -179,10 +190,19 @@ describe.each(["HTTP", "WebSocket"] as const)(
                   scopes: ["operator.write"],
                   sandbox: testCase.sandbox,
                 },
+                admin: {
+                  sessions: { others: "write" },
+                  agents: "*",
+                  scopes: ["operator.admin"],
+                  sandbox: testCase.sandbox,
+                },
               },
             },
           },
         };
+        if (testCase.admin) {
+          setUserProfileRole(profile.id, "admin");
+        }
         if (testCase.stored) {
           const sessionKey = expectDefined(testCase.sessionKey, "stored fixture session key");
           const entry: InternalSessionEntry = {
@@ -202,6 +222,7 @@ describe.each(["HTTP", "WebSocket"] as const)(
         const expectedOutcome = testCase.expectedError
           ? { ok: false, error: { message: expect.stringContaining(testCase.expectedError) } }
           : { ok: true };
+        const scopes = testCase.admin ? ["operator.admin"] : ["operator.write"];
         if (transport === "HTTP") {
           runtime.authorize.mockResolvedValue(
             testCase.system
@@ -210,13 +231,13 @@ describe.each(["HTTP", "WebSocket"] as const)(
           );
           const response = await postToolsInvoke({
             port: sharedPort,
-            headers: gatewayAuthHeaders(),
+            headers: gatewayAuthHeaders(scopes.join(",")),
             body: input,
           });
           expect(response.status).toBe(testCase.expectedError ? 403 : 200);
           expect(await response.json()).toMatchObject(expectedOutcome);
         } else {
-          const client = createOperatorWsClient({ scopes: ["operator.write"] });
+          const client = createOperatorWsClient({ scopes });
           if (testCase.system) {
             client.internal = { operatorRoleActor: { kind: "system" } };
           } else {
@@ -235,10 +256,16 @@ describe.each(["HTTP", "WebSocket"] as const)(
             { type: "req", id: "standalone-tool", method: "tools.invoke", params: input },
             client,
           );
-          expect(await awaitResponseFrame("standalone-tool")).toMatchObject({
-            ok: true,
-            payload: expectedOutcome,
-          });
+          const response = await awaitResponseFrame("standalone-tool");
+          if (testCase.incognito && testCase.expectedError) {
+            expect(response).toMatchObject({
+              ok: false,
+              payload: undefined,
+              error: { code: "INVALID_REQUEST", message: testCase.expectedError },
+            });
+          } else {
+            expect(response).toMatchObject({ ok: true, payload: expectedOutcome });
+          }
         }
         if (testCase.expectedError) {
           expect(runtime.beforeHook).not.toHaveBeenCalled();

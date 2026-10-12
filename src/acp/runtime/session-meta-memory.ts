@@ -134,7 +134,7 @@ async function upsertBoundMemoryAcpSessionMeta(
     ...binding.authority,
     authorize(stage, facts, publication) {
       binding.authority.authorize(stage, facts, publication);
-      if (stage === "transaction") {
+      if (stage === "commit") {
         params.assertCommitAllowed?.();
         assertControlTarget(facts.entry);
       }

@@ -210,17 +210,15 @@ it.each([
       await work.drain();
       observers.forEach((observer) => observer.mockRestore());
       if (change !== "none") {
-        await runWithSessionActorStorage(actor, () =>
-          replaceSessionEntry(
-            { agentId: "main", sessionKey: actorKey },
-            {
-              sessionId: "actor-requester",
-              lifecycleRevision: "actor-generation",
-              updatedAt: 1,
-              spawnDepth: 1,
-              incognito: true,
-            },
-          ),
+        await replaceSessionEntry(
+          { agentId: "main", sessionKey: actorKey },
+          {
+            sessionId: "actor-requester",
+            lifecycleRevision: "actor-generation",
+            updatedAt: 1,
+            spawnDepth: 1,
+            incognito: true,
+          },
         );
       }
     }

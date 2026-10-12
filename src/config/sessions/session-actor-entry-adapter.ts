@@ -32,37 +32,38 @@ import { prepareSessionMaintenancePreservation } from "./store-maintenance-prese
 import { resolveMaintenanceConfig } from "./store-maintenance-runtime.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
-/** Entry writes may create a memory owner only when their patch provides a creation fallback. */
-export async function patchSessionActorEntryInScope(
+/** Return undefined synchronously so durable callers capture their store before yielding. */
+export function patchSessionActorEntryInScope(
   scope: SessionActorStorageScope,
   params: Pick<SqliteSessionEntrySnapshotPatchParams, "update" | "options" | "sessionKey">,
-): Promise<{ entry: SessionEntry | null } | undefined> {
+): Promise<{ entry: SessionEntry | null }> | undefined {
   const selected = getSessionActorStorageBinding(scope);
   if (selected) {
-    return { entry: await patchSessionActorEntry(selected, params) };
+    return patchSessionActorEntry(selected, params).then((entry) => ({ entry }));
   }
   const authority = { assertCurrent() {}, authorize() {} };
   if (!captureSessionActorStorageOwner(scope, authority)) {
     return undefined;
   }
-  const binding = await acquireSessionActorStorage(scope, {
+  return acquireSessionActorStorage(scope, {
     authority,
     lifetime: { assertCurrent() {}, assertReadable() {} },
     create: Boolean(params.options.fallbackEntry),
+  }).then(async (binding) => {
+    if (!binding) {
+      return { entry: null };
+    }
+    try {
+      return {
+        entry: await patchSessionActorEntry(binding, {
+          ...params,
+          sessionKey: binding.actor.target.sessionKey,
+        }),
+      };
+    } finally {
+      await binding.actor.release();
+    }
   });
-  if (!binding) {
-    return { entry: null };
-  }
-  try {
-    return {
-      entry: await patchSessionActorEntry(binding, {
-        ...params,
-        sessionKey: binding.actor.target.sessionKey,
-      }),
-    };
-  } finally {
-    await binding.actor.release();
-  }
 }
 
 /** Async callbacks keep one compare-and-swap; closed reducers apply directly to current state. */

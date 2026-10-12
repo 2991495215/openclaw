@@ -314,15 +314,11 @@ describe("SQLite session snapshots and reset content revision", () => {
         updatedAt: 1,
         ...(incognito ? { incognito: true } : {}),
       });
-      expect(
-        replaceTranscriptEventsSync(scope, [
-          {
-            type: "message",
-            id: "visible",
-            message: { role: "user", content: "Visible transcript" },
-          },
-        ]),
-      ).toBe(true);
+      await appendTranscriptEvent(scope, {
+        type: "message",
+        id: "visible",
+        message: { role: "user", content: "Visible transcript" },
+      });
       expect((await buildSessionEntry(scope.sessionKey, scope))?.content).toBe(
         "User: Visible transcript",
       );

@@ -4,7 +4,6 @@ import { awaitGateBeforeSettlement } from "../../../../test/helpers/promise.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../config/io.js";
 import {
   appendTranscriptMessage,
-  patchSessionEntryCore,
   replaceSessionEntry,
 } from "../../../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../../../config/sessions/session-actor-memory-owner.js";
@@ -127,7 +126,7 @@ afterEach(() => {
 });
 
 describe("selected incognito announcement requester", () => {
-  it("refuses a requester reset while active-wake injection is prepared", async () => {
+  it("refuses a closed requester while active-wake injection is prepared", async () => {
     const sessionKey = "agent:main:dashboard:incognito-wake-reset";
     const sessionId = "wake-reset";
     setRuntimeConfigSnapshot({ session: { store: actor.path } });
@@ -163,9 +162,7 @@ describe("selected incognito announcement requester", () => {
         pending,
         "Wake settled before injection preparation",
       );
-      await patchSessionEntryCore({ agentId: "main", storePath: actor.path, sessionKey }, () => ({
-        lifecycleRevision: "replacement",
-      }));
+      actor.closeSession(sessionKey);
       resume.resolve();
       await expect(pending).resolves.toEqual({ status: "source_owner_changed" });
       expect(injected).toEqual([]);

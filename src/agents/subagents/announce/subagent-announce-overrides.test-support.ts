@@ -1,6 +1,7 @@
 import { vi, type MockInstance } from "vitest";
 import * as configRuntime from "../../../config/config.js";
 import * as sessionAccessor from "../../../config/sessions/session-accessor.js";
+import * as sessionEntryWorker from "../../../config/sessions/session-entry-read-runtime.js";
 import * as sessionHistory from "../../../config/sessions/session-history.js";
 import * as embeddedRuns from "../../embedded-agent-runner/runs.js";
 import * as deliveryRuntime from "./subagent-announce-delivery.runtime.js";
@@ -180,6 +181,14 @@ function replaceOverrides(scope: Scope, overrides?: Overrides) {
       sessionAccessor.loadSessionEntryReadOnly,
       () => vi.spyOn(sessionAccessor, "loadSessionEntryReadOnly"),
       current.loadSessionEntry,
+    );
+    install(
+      sessionEntryWorker.readSessionEntryReadOnlyInWorker,
+      () => vi.spyOn(sessionEntryWorker, "readSessionEntryReadOnlyInWorker"),
+      async (readScope, assertCurrent) => {
+        assertCurrent?.();
+        return current.loadSessionEntry!(readScope);
+      },
     );
   }
   if (current.loadRequesterSessionEntry) {

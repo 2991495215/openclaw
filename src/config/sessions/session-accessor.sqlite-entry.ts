@@ -255,13 +255,13 @@ async function patchSessionEntryInScope(
   options: SqliteSessionEntryPatchOptions,
   databaseAgentId?: string,
 ): Promise<SessionEntry | null> {
-  const memory = await patchSessionActorEntryInScope(scope, {
+  const memory = patchSessionActorEntryInScope(scope, {
     update,
     options,
     sessionKey: scope.sessionKey,
   });
   if (memory) {
-    return memory.entry;
+    return (await memory).entry;
   }
   const resolved = resolveSqliteScope(scope);
   if (databaseAgentId) {
@@ -316,12 +316,12 @@ async function patchSessionEntryTargetInScope(
   update: SqliteSessionEntrySnapshotPatchParams["update"],
   options: SqliteSessionEntryPatchOptions,
 ): Promise<SessionEntry | null> {
-  const memory = await patchSessionActorEntryInScope(
+  const memory = patchSessionActorEntryInScope(
     { ...scope, sessionKey: scope.target.canonicalKey },
     { update, options, sessionKey: scope.target.canonicalKey },
   );
   if (memory) {
-    return memory.entry;
+    return (await memory).entry;
   }
   const source = scope.readSource;
   const resolved: ResolvedSqliteScope = source

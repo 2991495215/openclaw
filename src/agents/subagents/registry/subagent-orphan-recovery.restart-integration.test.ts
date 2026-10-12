@@ -93,6 +93,11 @@ it.each(["durable", "incognito"] as const)(
           ? resolveIncognitoOpenClawAgentSqlitePath
           : resolveOpenClawAgentSqlitePath
       )({ agentId: "main", env: state.env });
+      if (storage === "incognito") {
+        onTestFinished(() =>
+          memorySessionActorOwners.closeDatabase({ agentId: "main", path: databasePath }),
+        );
+      }
       const childSessionKey = `agent:main:subagent:${storage === "incognito" ? "incognito-" : ""}missing-store`;
       const entry = makeRunRecord({
         runId: "missing-store-run",
@@ -147,9 +152,14 @@ it.each(["durable", "incognito"] as const)(
           updatedAt: Date.now(),
         },
       );
-      expect(result.recoveryCurrent?.isHostCurrent()).toBe(false);
-      expect(await result.recoveryCurrent?.prepare()).toBe(false);
-      expect(await result.sessionEffects?.isCurrent()).toBe(false);
+      if (storage === "durable") {
+        expect(result.recoveryCurrent?.isHostCurrent()).toBe(false);
+        expect(await result.recoveryCurrent?.prepare()).toBe(false);
+        expect(await result.sessionEffects?.isCurrent()).toBe(false);
+      } else {
+        // Old recovery bookkeeping may finish after creation; it cannot apply session effects.
+        expect(result.suppressSessionEffects).toBe(true);
+      }
       const missingRow = await recover({ ...entry, childSessionKey: `${childSessionKey}-other` });
       expect(missingRow.status).toBe("terminal");
       if (missingRow.status === "terminal") {

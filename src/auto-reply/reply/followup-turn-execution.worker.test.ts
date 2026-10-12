@@ -1,6 +1,10 @@
-import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { writeSessionEntry } from "../../config/sessions/session-accessor.sqlite-entry-store.js";
-import { loadSessionEntryReadOnly } from "../../config/sessions/session-accessor.sqlite-entry.js";
+import {
+  loadSessionEntryReadOnly,
+  replaceSessionEntry,
+} from "../../config/sessions/session-accessor.sqlite-entry.js";
+import { memorySessionActorOwners } from "../../config/sessions/session-actor-memory-owner.js";
 import * as historyReaders from "../../config/sessions/session-transcript-worker-readers.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import {
@@ -41,14 +45,21 @@ beforeEach(() => {
   state.loadEntryReadOnly.mockImplementation(loadSessionEntryReadOnly);
 });
 afterAll(async () => testState.cleanup());
+afterEach(() => memorySessionActorOwners.reset());
 
-function createStoredTurn(params: {
+async function createStoredTurn(params: {
   key: string;
   storedKey?: string;
   database?: typeof database;
   incognito?: true;
 }) {
   const selectedDatabase = params.database ?? database;
+  const storePath = params.incognito
+    ? resolveIncognitoOpenClawAgentSqlitePath({
+        agentId: selectedDatabase.agentId,
+        env: testState.env,
+      })
+    : selectedDatabase.path;
   const entry: SessionEntry = {
     sessionId: "session",
     lifecycleRevision: "owned",
@@ -56,11 +67,19 @@ function createStoredTurn(params: {
     verboseLevel: "off",
     ...(params.incognito ? { incognito: true } : {}),
   };
-  writeSessionEntry(selectedDatabase, params.storedKey ?? params.key, {
+  const storedEntry: SessionEntry = {
     ...entry,
     updatedAt: 2,
     verboseLevel: "full",
-  });
+  };
+  if (params.incognito) {
+    await replaceSessionEntry(
+      { agentId: selectedDatabase.agentId, storePath, sessionKey: params.key },
+      storedEntry,
+    );
+  } else {
+    writeSessionEntry(selectedDatabase, params.storedKey ?? params.key, storedEntry);
+  }
   const handle = createReplySessionEntryHandle({
     sessionKey: params.key,
     sessionEntry: entry,
@@ -70,7 +89,7 @@ function createStoredTurn(params: {
     session: {
       kind: "session",
       key: params.key,
-      storePath: selectedDatabase.path,
+      storePath,
       current: () => handle.getCurrent(),
       publish: (next) => next && handle.replaceCurrent(next),
       adopt: (next) => handle.adoptCurrent(next),
@@ -78,11 +97,11 @@ function createStoredTurn(params: {
   });
   turn.queued.run.agentId = selectedDatabase.agentId;
   turn.queued.run.sessionKey = params.key;
-  return { turn, entry, handle };
+  return { turn, entry, handle, storePath };
 }
 
 function inspectVisibility(
-  turn: ReturnType<typeof createStoredTurn>["turn"],
+  turn: Awaited<ReturnType<typeof createStoredTurn>>["turn"],
   inspect: (isActive: () => Promise<boolean>) => Promise<void>,
 ) {
   return executeFollowupTurnForTest({
@@ -105,7 +124,7 @@ it("qualifies unqualified visibility keys using the selected shared-store owner"
     env: testState.env,
   });
   const key = "followup-visibility";
-  const { turn } = createStoredTurn({
+  const { turn } = await createStoredTurn({
     key,
     storedKey: "agent:store-owner:followup-visibility",
     database: shared,
@@ -117,23 +136,21 @@ it("qualifies unqualified visibility keys using the selected shared-store owner"
 });
 
 it("refreshes incognito visibility from its process-held session", async () => {
-  const native = openOpenClawAgentDatabase({
-    agentId: "main",
-    path: resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main", env: testState.env }),
-    env: testState.env,
-  });
   const key = "agent:main:incognito:visibility";
-  const { turn, entry } = createStoredTurn({ key, database: native, incognito: true });
+  const { turn, entry, storePath } = await createStoredTurn({ key, incognito: true });
   await inspectVisibility(turn, async (isActive) => {
     expect(await isActive()).toBe(true);
-    writeSessionEntry(native, key, { ...entry, updatedAt: 3 });
+    await replaceSessionEntry(
+      { agentId: "main", storePath, sessionKey: key },
+      { ...entry, updatedAt: 3 },
+    );
     expect(await isActive()).toBe(false);
   });
 });
 
 it("refuses scanned verbosity rewritten before awaited visibility consumes it", async () => {
   const key = "agent:main:followup-visibility";
-  const { turn, entry, handle } = createStoredTurn({ key });
+  const { turn, entry, handle } = await createStoredTurn({ key });
   let rewritten = false;
   const rewriteAfterScan = () => {
     if (!rewritten) {

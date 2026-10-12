@@ -12,6 +12,7 @@ import {
   openOpenClawAgentDatabase,
   runOpenClawAgentWriteTransaction,
 } from "../../state/openclaw-agent-db.js";
+import { resolveIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import {
   appendTranscriptEvent,
   appendTranscriptMessage,
@@ -40,7 +41,6 @@ import {
 import * as transcriptWatermark from "./session-accessor.sqlite-transcript-watermark-read.js";
 import { replaceTranscriptEvents } from "./session-accessor.sqlite-transcript-write.test-support.js";
 import { memorySessionActorOwners } from "./session-actor-memory-owner.js";
-import { captureSessionActorStorageOwner } from "./session-actor-storage-binding.js";
 import * as coldStorage from "./session-cold-storage.js";
 import {
   createSessionColdStorageFixture,
@@ -699,12 +699,49 @@ describe("SQLite session branches", () => {
   });
 
   it("lists current memory branches after writes and leaves missing sessions absent", async () => {
-    const { scope } = await createSession({ incognito: true });
-    const branchReads = trackBranchSummaryReads();
-    const memory = captureSessionActorStorageOwner(scope, { assertCurrent() {}, authorize() {} });
-    if (!memory?.owner) {
-      throw new Error("Expected fixture memory owner");
+    const env = { OPENCLAW_STATE_DIR: tempDirs.make("openclaw-memory-branches-") };
+    const scope = {
+      agentId,
+      env,
+      sessionId: "memory-branch-source",
+      sessionKey: "agent:main:dashboard:incognito-branches",
+      storePath: resolveIncognitoOpenClawAgentSqlitePath({ agentId, env }),
+    };
+    const owner = memorySessionActorOwners.get({ agentId, path: scope.storePath });
+    const actor = await owner.acquire(
+      { database: owner.identity, sessionKey: scope.sessionKey },
+      { assertCurrent() {}, assertReadable() {} },
+    );
+    try {
+      expect(
+        await actor.storage!.mutate(
+          {
+            type: "session.entry.create",
+            input: {
+              entry: { sessionId: scope.sessionId, updatedAt: 1, incognito: true },
+              transcriptEvents: [
+                {
+                  type: "message",
+                  id: "user-2",
+                  parentId: null,
+                  message: { role: "user", content: "second prompt" },
+                },
+                {
+                  type: "message",
+                  id: "assistant-2",
+                  parentId: "user-2",
+                  message: { role: "assistant", content: "second answer" },
+                },
+              ],
+            },
+          },
+          { assertCurrent() {}, authorize() {} },
+        ),
+      ).toMatchObject({ kind: "committed" });
+    } finally {
+      await actor.release();
     }
+    const branchReads = trackBranchSummaryReads();
     const sqlite = vi.spyOn(sqliteRuntime, "requireNodeSqlite").mockImplementation(() => {
       throw new Error("Memory branch listing opened SQLite");
     });
@@ -741,12 +778,13 @@ describe("SQLite session branches", () => {
           sessionKey: "agent:main:dashboard:incognito-missing",
         }),
       ).resolves.toEqual({ status: "missing-session" });
-      memorySessionActorOwners.closeDatabase(memory);
+      memorySessionActorOwners.closeDatabase(owner);
       await expect(listSessionBranches(scope)).resolves.toEqual({ status: "missing-session" });
       expect(sqlite).not.toHaveBeenCalled();
       expect(branchReads()).toBe(0);
     } finally {
       sqlite.mockRestore();
+      memorySessionActorOwners.closeDatabase(owner);
     }
   });
 

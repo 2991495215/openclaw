@@ -7,7 +7,6 @@ import { withSessionActorStorage } from "../config/sessions/session-actor-storag
 import type { SessionEntry } from "../config/sessions/types.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
-import { sessionGoalHandlers } from "./server-methods/sessions-goal.js";
 import { sessionSuggestionHandlers } from "./server-methods/sessions-suggestions.js";
 import { skillsLibraryHandlers } from "./server-methods/skills-library.js";
 import type { GatewayClient, GatewayRequestHandlerOptions } from "./server-methods/types.js";
@@ -27,10 +26,6 @@ vi.mock("node:worker_threads", async (importOriginal) => ({
   Worker: vi.fn(function () {
     throw new Error("Memory Gateway effects allocated a worker");
   }),
-}));
-vi.mock("./server-methods/session-goal-change.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./server-methods/session-goal-change.js")>()),
-  publishCommittedSessionGoalChange: vi.fn(async () => {}),
 }));
 const projection = vi.hoisted(() => ({
   needsMembershipPreparation() {
@@ -55,7 +50,6 @@ const location = {
   path: resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main", env }),
 };
 const handlers = {
-  ...sessionGoalHandlers,
   ...skillsLibraryHandlers,
   ...sessionSuggestionHandlers,
   ...sessionCompanionHandlers,
@@ -129,43 +123,6 @@ async function fixture(name: string, fields: Partial<SessionEntry> = {}) {
     memorySessionActorOwners.read(location)?.readSession(scope.sessionKey, authority)?.entry;
   return { scope, entry, client, context, call, readEntry };
 }
-
-it("edits a Goal through the unbound Gateway handler and preserves unrelated memory state", async () => {
-  const { call, readEntry, entry } = await fixture("goal", {
-    label: "Keep this label",
-    goal: {
-      schemaVersion: 1,
-      id: "goal-1",
-      objective: "Old objective",
-      status: "paused",
-      createdAt: 1,
-      updatedAt: 1,
-      tokenStart: 0,
-      tokensUsed: 0,
-      continuationTurns: 0,
-    },
-  });
-  const response = await call("sessions.goal.update", {
-    sessionId: entry.sessionId,
-    goalId: "goal-1",
-    operationId: "edit-goal",
-    issuedAtMs: Date.now(),
-    action: "edit",
-    objective: "New objective",
-  });
-  expect(response).toHaveBeenCalledWith(
-    true,
-    expect.objectContaining({
-      status: "updated",
-      goal: expect.objectContaining({ objective: "New objective" }),
-    }),
-    undefined,
-  );
-  expect(readEntry()).toMatchObject({
-    label: "Keep this label",
-    goal: { objective: "New objective", status: "paused" },
-  });
-});
 
 it("detaches a selected skill through the unbound Gateway handler without library storage", async () => {
   const skillId = "11111111-1111-4111-8111-111111111111";

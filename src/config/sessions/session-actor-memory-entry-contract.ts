@@ -134,13 +134,23 @@ export type SessionActorMemoryEntryWrites = {
   };
   "session.lifecycle.reclaim": {
     input: {
-      entries: readonly { sessionKey: string; expected: SessionEntry }[];
+      entries: readonly {
+        sessionKey: string;
+        expected: SessionEntry;
+        requiresMissingTranscript?: true;
+      }[];
+      archives?: readonly { sessionKey: string; expected: SessionEntry; entry: SessionEntry }[];
       artifacts?: {
         input: MemoryLifecycleArtifactInput;
         windows: MemoryLifecycleArtifactPlan["windows"];
       };
     };
-    output: { removedSessionKeys: string[] };
+    output: {
+      removedSessionKeys: string[];
+      archivedSessionKeys: string[];
+      beforeCount: number;
+      afterCount: number;
+    };
   };
 };
 

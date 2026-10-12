@@ -522,29 +522,30 @@ export function createAgentTurnService(
         preparedOffloadedRefs = [];
         gatewayAdmissionTransferred = true;
         // Retain the original command and cleanup after the caller receives acceptance.
-        void context
-          .trackExecution(() =>
-            startAgentRunExecution({
-              ...runParams,
-              ...session,
-              assertContextCurrent,
-              prepared: preparedDispatch,
-              mainRestartRecoveryOwnerLease,
-              agentId,
-              imageOrder,
-              media,
-              inputProvenance: preparedDispatch.userTurn.inputProvenance,
-              effectiveBootstrapContextRunKind,
-              releaseCronContinuationClaimWithRecovery: cronContinuation.releaseWithRecovery,
-            }),
-          )
-          .finally(async () => {
+        void (async () => {
+          try {
+            await context.trackExecution(() =>
+              startAgentRunExecution({
+                ...runParams,
+                ...session,
+                assertContextCurrent,
+                prepared: preparedDispatch,
+                mainRestartRecoveryOwnerLease,
+                agentId,
+                imageOrder,
+                media,
+                inputProvenance: preparedDispatch.userTurn.inputProvenance,
+                effectiveBootstrapContextRunKind,
+                releaseCronContinuationClaimWithRecovery: cronContinuation.releaseWithRecovery,
+              }),
+            );
+          } finally {
             await releaseSessionStorage();
-          })
-          .catch((error: unknown) => {
-            preparedDispatch.releaseCallerAuthority?.();
-            context.logGateway.warn(`agent execution cleanup failed: ${String(error)}`);
-          });
+          }
+        })().catch((error: unknown) => {
+          preparedDispatch.releaseCallerAuthority?.();
+          context.logGateway.warn(`agent execution cleanup failed: ${String(error)}`);
+        });
         mainRestartRecoveryOwnerLease = undefined;
       } catch (error) {
         if (!(error instanceof AgentRequestReservationEndedError)) {

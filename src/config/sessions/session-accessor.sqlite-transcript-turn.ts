@@ -148,7 +148,7 @@ export async function appendExpectedSessionTranscriptTurn(
   if (
     !nativeReservation &&
     independentPreparation &&
-    isMainThread &&
+    (isMainThread || (inputActor && inputActor.actor.target.database.kind === "memory")) &&
     (inputActor || supportsOpenClawAgentDatabaseExecution(toDatabaseOptions(resolved))) &&
     options.messages.every((message) => {
       const guard: SessionSourceAssertion | undefined =
