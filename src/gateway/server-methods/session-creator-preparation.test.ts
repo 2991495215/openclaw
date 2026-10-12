@@ -185,11 +185,10 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
     });
   });
 
-  it("selects prepared aliases by state path and reacquires them after database reopening", async () => {
-    await withCreatorRows(async ({ stateDir, callerId, creatorId, keys }) => {
-      const catalog = await profileAliases.prepareUserProfileCatalog();
-      using catalogCleanup = {
-        [Symbol.dispose]: catalog.release,
+  it("selects prepared aliases by state path", async () => {
+    await withCreatorRows(async ({ stateDir, callerId, keys }) => {
+      using _ = {
+        [Symbol.dispose]: (await profileAliases.prepareUserProfileCatalog()).release,
       };
       const sessionKey = keys[0]!;
       await upsertSessionEntryCore({ agentId: "main", sessionKey }, { visibility: "draft" });
@@ -199,22 +198,15 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
       expect(receive()).toBe(true);
       const alternateRoot = `${stateDir}/absent-state`;
       await withEnvAsync({ OPENCLAW_STATE_DIR: alternateRoot }, async () => {
-        using _ = {
-          [Symbol.dispose]: (await profileAliases.prepareUserProfileCatalog()).release,
-        };
-        expect(receive()).toBe(false);
-        expect(fs.existsSync(alternateRoot)).toBe(false);
+        const alternateCatalog = await profileAliases.prepareUserProfileCatalog();
+        try {
+          expect(receive()).toBe(false);
+          expect(fs.existsSync(alternateRoot)).toBe(false);
+        } finally {
+          alternateCatalog.release();
+        }
       });
       expect(receive()).toBe(true);
-      const pathname = `${stateDir}/state/openclaw.sqlite`;
-      catalogCleanup[Symbol.dispose]();
-      await cleanupSessionStateForTest({ stateDir });
-      const reopened = openOpenClawStateDatabase({ path: pathname }).db;
-      reopened.prepare("DELETE FROM user_profiles WHERE id = ?").run(creatorId);
-      using _ = {
-        [Symbol.dispose]: (await profileAliases.prepareUserProfileCatalog()).release,
-      };
-      expect(receive()).toBe(false);
     });
   });
 

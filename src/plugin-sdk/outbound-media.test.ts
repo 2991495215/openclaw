@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { seedPluginStateEntriesForTests } from "../plugin-state/plugin-state-store.test-helpers.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import type {
   HostedOutboundMediaChunkRecord,
@@ -293,13 +294,15 @@ describe("createHostedOutboundMediaStore", () => {
     expect(await chunkStore.entries()).toHaveLength(3);
 
     vi.setSystemTime(1101);
-    executeSqliteQuerySync(
-      db,
-      sql
-        .updateTable("plugin_state_entries")
-        .set({ expires_at: 1 })
-        .where("plugin_id", "=", "fixture-plugin")
-        .where("namespace", "=", "ttl-media-chunks"),
+    seedPluginStateEntriesForTests(
+      (await chunkStore.entries()).map(({ key, value, createdAt }) => ({
+        pluginId: "fixture-plugin",
+        namespace: "ttl-media-chunks",
+        key,
+        value,
+        createdAt,
+        expiresAt: 1,
+      })),
     );
     expect(await metadataStore.entries()).toHaveLength(1);
     expect(await chunkStore.entries()).toEqual([]);

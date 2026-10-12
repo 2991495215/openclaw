@@ -20,6 +20,7 @@ import {
   prepareUserProfileCatalog,
   prepareUserProfileIdentity,
   readUserProfileAliases,
+  readUserProfileIdentity,
   readResidentUserProfileAliases,
   readResidentUserProfileId,
   readResidentUserProfileIdentity,

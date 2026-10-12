@@ -6,7 +6,6 @@ import {
   setRuntimeConfigSnapshot,
 } from "../src/config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
-import { resolveCronJobsStorePathFromConfigAsync } from "../src/cron/store/paths.js";
 import { diffGatewayReloadPaths } from "../src/gateway/config-diff.js";
 import {
   buildGatewayReloadPlan,
@@ -198,7 +197,6 @@ describe("Discord admission through Gateway policy publication", () => {
       hookClientIpConfig: { allowRealIpFallback: false },
       heartbeatRunner: { stop: vi.fn(), updateConfig: vi.fn() },
       cronState: createLazyGatewayCronState({
-        storePath: await resolveCronJobsStorePathFromConfigAsync(cfg),
         scheduler,
         storePath: path.join(stateDir, "cron", "jobs.json"),
         cfg,
