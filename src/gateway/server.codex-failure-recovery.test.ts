@@ -544,9 +544,7 @@ it.each(cases)(
       if (shutdown === "cancelled") {
         await expect(
           gateway.client.request("chat.abort", { sessionKey, runId: continued.runId }),
-        ).rejects.toThrow(
-          "Parent run stopped, but descendant cancellation was incomplete: Codex app-server client is closing",
-        );
+        ).resolves.toEqual({ ok: true, aborted: true, runIds: [continued.runId] });
         expect(abortedRuns.has(continued.runId)).toBe(true);
         expect(exitGate.child.exitCode).toBeNull();
         expect(exitGate.child.signalCode).toBeNull();
