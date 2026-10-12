@@ -172,14 +172,12 @@ async function prepareGatewaySessionStoreReadInWorker(
   params.assertActive?.();
   const parsedAgent = parseAgentSessionKey(params.key)?.agentId;
   // Discovery includes the stored owner before the lookup decides whether its legacy row wins.
-  const agentId =
-    parsedAgent ??
-    resolveSessionStoreIdentity({
-      cfg: params.cfg,
-      sessionKey: params.key,
-      agentId: params.agentId,
-      preserveQualifiedAddress: params.preserveQualifiedAddress,
-    }).agentId;
+  const agentId = resolveSessionStoreIdentity({
+    cfg: params.cfg,
+    sessionKey: params.key,
+    agentId: params.agentId,
+    preserveQualifiedAddress: params.preserveQualifiedAddress,
+  }).agentId;
   // Ephemeral databases belong to the process and cannot be opened by a worker.
   if (isIncognitoSessionKey(params.key)) {
     return {
@@ -193,7 +191,7 @@ async function prepareGatewaySessionStoreReadInWorker(
   }
   const { candidates, ...inventory } = prepareSessionStoreTargetInventory(
     params.cfg,
-    [agentId, ...(parsedAgent ? [parsedAgent] : [])],
+    [agentId, ...(parsedAgent && parsedAgent !== agentId ? [parsedAgent] : [])],
     params.env,
   );
   const identities = retainPlan ? captureSessionStoreCandidateIdentities(candidates) : undefined;
