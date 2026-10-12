@@ -41,7 +41,11 @@ import {
 import { readWithCanonicalSessionAdmission } from "./session-canonical-key.js";
 import { getSessionInputActor } from "./session-input-actor.js";
 import { SqliteTranscriptMutationConflictError } from "./session-mutation-conflict-error.js";
-import type { SessionSourceAssertion } from "./session-source-authority.js";
+import {
+  prepareSessionSourceAuthority,
+  releaseSessionSourceAuthorities,
+  type SessionSourceAssertion,
+} from "./session-source-authority.js";
 import { completeSessionTranscriptCommit } from "./session-transcript-commit-completion.js";
 import {
   assertLegacyTranscriptPreparation,
@@ -67,14 +71,18 @@ import { captureOwnedTranscriptWriteAssertion } from "./transcript-write-context
 export async function appendExpectedSessionTranscriptTurn(
   scope: SessionTranscriptWriteScope,
   requestedOptions: SqliteSessionTurnOptions,
-  nativeReservation?: true,
+  ownerScope: SessionTranscriptWriteScope = scope,
 ): Promise<SqliteExpectedSessionTranscriptTurnResult> {
+  // Keep the admitted logical locator while the worker pins its physical database.
+  const assertOwnedWrite = captureOwnedTranscriptWriteAssertion({
+    ...ownerScope,
+    sessionId: requestedOptions.expectedSessionId,
+  });
   const target = { ...scope, sessionId: requestedOptions.expectedSessionId };
   const memory = getSessionActorStorageBinding(target);
   if (!memory) {
-    const assertOwned = captureOwnedTranscriptWriteAssertion(target);
     const assertCurrent = () => {
-      assertOwned();
+      assertOwnedWrite();
       requestedOptions.assertCurrent?.();
     };
     const authority = { assertCurrent, authorize: assertCurrent };
@@ -86,7 +94,7 @@ export async function appendExpectedSessionTranscriptTurn(
           lifetime: { assertCurrent, assertReadable: assertCurrent },
           create: Boolean(requestedOptions.initialSessionEntry),
         },
-        () => appendExpectedSessionTranscriptTurn(scope, requestedOptions, nativeReservation),
+        () => appendExpectedSessionTranscriptTurn(scope, requestedOptions, ownerScope),
       );
       if (!result) {
         throw new IncognitoSessionMissingError();
@@ -94,7 +102,36 @@ export async function appendExpectedSessionTranscriptTurn(
       return result;
     }
   }
-  const options = nativeReservation
+  if (requestedOptions.ownerSource) {
+    return appendPreparedSessionTranscriptTurn(scope, requestedOptions, assertOwnedWrite);
+  }
+  const ownerSource = await prepareSessionSourceAuthority(assertOwnedWrite);
+  const errors: unknown[] = [];
+  try {
+    return await appendPreparedSessionTranscriptTurn(
+      scope,
+      { ...requestedOptions, ownerSource },
+      assertOwnedWrite,
+    );
+  } catch (error) {
+    errors.push(error);
+    throw error;
+  } finally {
+    await releaseSessionSourceAuthorities([ownerSource], errors);
+  }
+}
+
+async function appendPreparedSessionTranscriptTurn(
+  scope: SessionTranscriptWriteScope,
+  requestedOptions: SqliteSessionTurnOptions,
+  assertOwnedWrite: SessionSourceAssertion,
+  nativeReservation?: true,
+): Promise<SqliteExpectedSessionTranscriptTurnResult> {
+  const memory = getSessionActorStorageBinding({
+    ...scope,
+    sessionId: requestedOptions.expectedSessionId,
+  });
+  let options = nativeReservation
     ? requestedOptions
     : {
         ...requestedOptions,
@@ -148,6 +185,8 @@ export async function appendExpectedSessionTranscriptTurn(
   if (
     !nativeReservation &&
     independentPreparation &&
+    !options.ownerSource?.nativeSource &&
+    !options.ownerSource?.hasOpaqueCheck &&
     (isMainThread || (inputActor && inputActor.actor.target.database.kind === "memory")) &&
     (inputActor || supportsOpenClawAgentDatabaseExecution(toDatabaseOptions(resolved))) &&
     options.messages.every((message) => {
@@ -162,9 +201,10 @@ export async function appendExpectedSessionTranscriptTurn(
     })
   ) {
     return appendSessionTurnInWorker(resolved, options, context, (messages) =>
-      appendExpectedSessionTranscriptTurn(
+      appendPreparedSessionTranscriptTurn(
         { ...scope, storePath: resolved.path, env: resolved.env },
         { ...options, messages },
+        assertOwnedWrite,
         true,
       ),
     );
@@ -172,6 +212,20 @@ export async function appendExpectedSessionTranscriptTurn(
   if (memory || inputActor) {
     throw new Error("Actor transcript turns require preparation outside the transaction");
   }
+  if (options.ownerSource?.checks.length) {
+    throw new Error(
+      "Prepared transcript owner authority requires worker-compatible message preparation",
+    );
+  }
+  const assertRequestedCurrent = options.assertCurrent;
+  options = {
+    ...options,
+    assertCurrent: () => {
+      assertOwnedWrite();
+      assertRequestedCurrent?.();
+    },
+  };
+  options.assertCurrent?.();
   if (options.acceptedResultGuard || options.sessionTurnMutation?.routingPredicate) {
     await prepareSessionTurnPredicates();
   }
@@ -181,10 +235,12 @@ export async function appendExpectedSessionTranscriptTurn(
   const rebound = new Error("Session changed before cold transcript restoration");
   let restoreEntry: ResolvedSessionEntryRow | undefined;
   try {
+    options.assertCurrent?.();
     await restoreSessionColdTranscript(
       { ...scope, sessionId: options.expectedSessionId },
       options.keyFormat === "agent-qualified"
         ? () => {
+            options.assertCurrent?.();
             options.sessionTurnMutation?.assertCurrent?.();
             const current = withOpenClawAgentDatabaseReadOnly(
               (database) =>
@@ -208,7 +264,7 @@ export async function appendExpectedSessionTranscriptTurn(
             }
             throw rebound;
           }
-        : undefined,
+        : options.assertCurrent,
     );
   } catch (error) {
     if (error !== rebound) {
@@ -224,6 +280,7 @@ export async function appendExpectedSessionTranscriptTurn(
     resolved,
     async () => {
       const mutation = options.sessionTurnMutation;
+      options.assertCurrent?.();
       mutation?.assertCurrent?.();
       const preparedDatabase = openOpenClawAgentDatabase(toDatabaseOptions(resolved));
       prepareSessionTurnRouting(mutation?.routingPredicate, resolved.env)?.(preparedDatabase);

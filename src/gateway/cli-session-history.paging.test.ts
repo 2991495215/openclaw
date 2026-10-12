@@ -614,7 +614,6 @@ it("pages merged incognito CLI history without allocating SQLite", async () => {
           sessionAgentId: scope.agentId,
           canonicalKey: scope.sessionKey,
           cliHistoryHomeDir: homeDir,
-          cliHistoryRedaction: captureTranscriptRedactionSnapshot(),
           max: 3,
           maxHistoryBytes: 64 * 1024,
           effectiveMaxChars: 4096,

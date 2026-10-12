@@ -136,10 +136,14 @@ function openAgentDatabaseBackend(
   if (opening.databasePath !== input.databasePath) {
     throw new Error("Agent database open does not match its captured execution owner");
   }
+  let nativeOpenStarted = false;
   const admitOpen = () => {
     try {
       requestSqliteWorkerOperationAdmission({ stage: "open", facts: input });
     } catch (error) {
+      if (nativeOpenStarted) {
+        throw error;
+      }
       throw new SqliteWorkerOpenRefusedError(error);
     }
   };
@@ -285,6 +289,8 @@ function openAgentDatabaseBackend(
       let registration: OpenClawAgentDatabaseRegistrationCommit | undefined;
       let openingResult: Result<OpenClawAgentDatabase, unknown>;
       try {
+        // Admission callbacks inside the opener may run after its native handle exists.
+        nativeOpenStarted = true;
         const opened = openOpenClawAgentDatabase(options, lease, {
           starting: () =>
             requestSqliteWorkerOperationAdmission({

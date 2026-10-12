@@ -15,10 +15,8 @@ import {
   readPreparedSessionEntryChange,
   readPreparedSessionSharingChange,
 } from "./session-accessor.sqlite-entry-cache-publication.js";
-import {
-  readCommittedSessionEntryCache,
-  readSessionEntryCache,
-} from "./session-accessor.sqlite-entry-cache.js";
+import { readSessionEntryCache } from "./session-accessor.sqlite-entry-cache.js";
+import { readCommittedSessionEntryCache } from "./session-accessor.sqlite-entry-cache.test-support.js";
 import {
   readExactSessionEntryRow,
   writeSessionEntry,

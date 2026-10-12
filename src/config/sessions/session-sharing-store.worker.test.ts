@@ -42,10 +42,8 @@ import {
   upsertSessionEntryCore,
 } from "./session-accessor.js";
 import { retainPreparedSessionSharingFacts } from "./session-accessor.sqlite-entry-cache-publication-state.js";
-import {
-  readCommittedSessionEntryCache,
-  readSessionEntryCache,
-} from "./session-accessor.sqlite-entry-cache.js";
+import { readSessionEntryCache } from "./session-accessor.sqlite-entry-cache.js";
+import { readCommittedSessionEntryCache } from "./session-accessor.sqlite-entry-cache.test-support.js";
 import { assignSessionOwner } from "./session-accessor.sqlite-owner.js";
 import { updateSessionGroupCategoriesInWorker } from "./session-group-categories.js";
 import { assignSessionOwnerInWorker } from "./session-metadata-write.async.js";
