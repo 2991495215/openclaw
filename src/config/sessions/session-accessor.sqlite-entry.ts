@@ -512,7 +512,7 @@ async function patchSqliteSessionEntrySnapshot(
     });
   const sourceAssertion = options.workerGuard?.source;
   // Reserve the existing FIFO before async source planning or selecting either writer path.
-  const committed = await runExclusiveSqliteSessionWrite(
+  const pendingCommit = runExclusiveSqliteSessionWrite(
     resolved,
     async () => {
       if (useWorker) {
@@ -643,7 +643,13 @@ async function patchSqliteSessionEntrySnapshot(
     options.retainedExecution || (useWorker && !sourceAssertion)
       ? "foreground-reentrant"
       : "foreground",
-  ).finally(() => creatingExecution?.release());
+  );
+  let committed: SessionEntry | null;
+  try {
+    committed = await pendingCommit;
+  } finally {
+    await creatingExecution?.release();
+  }
   if (wrote) {
     kickSessionEntryMaintenanceAfterWrite({
       activeSessionKey: sessionKey,
