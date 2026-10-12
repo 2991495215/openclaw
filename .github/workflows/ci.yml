@@ -602,14 +602,22 @@ jobs:
           retention-days: 14
   fixture-regressions:
     if: ${{ inputs.diagnose_fixtures }}
-    name: Frozen fixture regressions (${{ matrix.runtime }})
+    name: Frozen fixture regressions (${{ matrix.group }})
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
-        runtime: [node]
+        include:
+          - group: abort-bun
+            runtime: bun
+          - group: catalog-node
+            runtime: node
+          - group: gateway-node
+            runtime: node
+          - group: integration-node
+            runtime: node
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -635,6 +643,7 @@ jobs:
       - name: Verify the frozen fixture corrections
         env:
           OPENCLAW_LOCAL_CHECK: "0"
+          PROOF_GROUP: ${{ matrix.group }}
           OPENCLAW_VITEST_RUNTIME: ${{ matrix.runtime }}
           CANDIDATE_SHA: ${{ inputs.head_sha }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
@@ -644,16 +653,69 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           mkdir -p .artifacts
           node --input-type=module -e 'console.log(JSON.stringify({ candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, runtime: process.env.OPENCLAW_VITEST_RUNTIME }, null, 2))' > .artifacts/fixture-provenance.json
+          case "$PROOF_GROUP" in
+            abort-bun)
+              files=(
+                src/gateway/server-methods/sessions.abort-dedupe-currentness.test.ts
+                src/gateway/server-methods/sessions.abort-embedded.test.ts
+                src/gateway/server-methods/sessions.abort-yielded.test.ts
+                src/gateway/server-methods/chat.stop-cascade.test.ts
+                src/gateway/server-methods/chat.abort-save-warning.test.ts
+                src/gateway/server-methods/sessions.abort-native-descendants.test.ts
+                src/gateway/server-methods/sessions.abort-queue-authority.test.ts
+                src/gateway/server-methods/sessions-lifecycle-timeout.test.ts
+                src/gateway/server-methods/sessions-lifecycle-agent-scope.test.ts
+                src/gateway/server-methods/sessions.abort-admitted.test.ts
+                src/gateway/server-methods/chat.abort-incarnation.test.ts
+                src/gateway/server-methods/chat.abort-cascade.test.ts
+                src/gateway/server-methods/chat.abort-errors.test.ts
+              )
+              ;;
+            catalog-node)
+              files=(
+                src/gateway/server-methods/board-progress.write-admission.test.ts
+                src/gateway/server-methods/session-processes.test.ts
+                src/gateway/server-methods/cron.runs.test.ts
+                src/gateway/server-methods/progress-card.authorization.test.ts
+                src/gateway/server-methods/board.mcp-admission.test.ts
+                src/gateway/server-methods/chat-read-scope.rpc.test.ts
+                src/gateway/control-ui-session-pr-access.test.ts
+              )
+              ;;
+            gateway-node)
+              files=(
+                src/gateway/server-methods.session-pending-stop.test.ts
+                src/gateway/session-sharing-committed-read.test.ts
+                src/gateway/session-list-serialization.test.ts
+                src/gateway/agent-turn/agent-wait-dedupe.test.ts
+                src/gateway/sessions-resolve-projection.test.ts
+                src/gateway/server-broadcast.board.test.ts
+                src/gateway/server-methods/sessions.abort-admitted.test.ts
+                src/gateway/server-methods/sessions.abort-queue-authority.test.ts
+                src/gateway/server-methods/sessions.abort-embedded.test.ts
+              )
+              ;;
+            integration-node)
+              files=(
+                src/config/sessions/targets.test.ts
+                src/config/sessions/targets-existing-store.test.ts
+                src/config/sessions/targets.selection.test.ts
+                src/config/sessions/targets-known-owners.test.ts
+                src/config/sessions/targets-dedupe.test.ts
+                src/config/sessions/targets-runtime.test.ts
+                src/config/sessions/targets-read-availability.test.ts
+                src/config/sessions/targets-discovery.test.ts
+                src/config/sessions/combined-store-gateway.test.ts
+                src/config/sessions/combined-store-gateway.worker.test.ts
+                src/config/sessions/session-sqlite-target.test.ts
+                src/gateway/server-agent-database-startup.test.ts
+                src/gateway/server-reload-handlers.test.ts
+              )
+              ;;
+          esac
           if [ "$OPENCLAW_VITEST_RUNTIME" = bun ]; then
-            files=(src/gateway/server-methods/agents-delete-drain.test.ts)
             bun --version
             bun --revision
-          else
-            files=(
-              src/gateway/server-methods/session-creator-preparation.test.ts
-              src/gateway/session-sharing.test.ts
-              src/gateway/talk/handlers/client-create-authority.test.ts
-            )
           fi
           failed=0
           for file in "${files[@]}"; do
@@ -663,7 +725,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: ${{ always() }}
         with:
-          name: fixture-regressions-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: fixture-regressions-${{ matrix.group }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .artifacts/fixture-*
           if-no-files-found: warn
           retention-days: 14
