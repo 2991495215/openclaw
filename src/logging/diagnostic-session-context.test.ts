@@ -4,6 +4,10 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
+import {
   appendTranscriptMessage,
   replaceSessionEntry,
 } from "../config/sessions/session-accessor.js";
@@ -65,6 +69,7 @@ describe("diagnostic session context", () => {
   });
 
   beforeEach(() => {
+    setRuntimeConfigSnapshot({});
     setDiagnosticsEnabledForProcess(true);
     vi.spyOn(diagnosticLogger, "isEnabled").mockReturnValue(true);
   });
@@ -82,6 +87,7 @@ describe("diagnostic session context", () => {
       });
     }
     await testState?.cleanup();
+    clearRuntimeConfigSnapshot();
     setDiagnosticsEnabledForProcess(diagnosticsEnabled);
     testState = undefined;
     tempDir = undefined;

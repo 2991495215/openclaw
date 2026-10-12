@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, expect, vi } from "vitest";
+import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { createSessionEntryWithTranscript } from "../../config/sessions/session-accessor.entry-mutation.js";
 import {
   listSessionEntriesReadOnly,
@@ -16,6 +17,7 @@ import {
 } from "../../config/sessions/session-accessor.transcript.js";
 import { captureSessionActorStorageOwner } from "../../config/sessions/session-actor-storage-binding.js";
 import { appendPreparedTranscriptEvent } from "../../config/sessions/session-transcript-event.js";
+import { waitForSessionTranscriptIndexReconcile } from "../../config/sessions/session-transcript-reconcile.js";
 import { executeSqliteQuerySync } from "../../infra/kysely-sync.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../../plugins/runtime.js";
@@ -44,6 +46,7 @@ export async function seedMessageCutSource(
   incognito = false,
   identity?: { sessionKey: string; sessionId: string },
 ) {
+  setRuntimeConfigSnapshot(cfg);
   const sessionKey = `agent:main:dashboard:${incognito ? "incognito-" : ""}source`;
   const scope = { agentId: "main", sessionKey, sessionId: "message-fork-source", ...identity };
   const created = await createSessionEntryWithTranscript(scope, () => ({
@@ -80,6 +83,7 @@ export async function seedMessageCutSource(
     },
     () => {},
   );
+  await waitForSessionTranscriptIndexReconcile(toDatabaseOptions(resolveSqliteScope(scope)));
   return scope;
 }
 

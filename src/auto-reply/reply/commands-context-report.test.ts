@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { persistSessionTranscriptTurn } from "../../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../../config/sessions/session-actor-memory-owner.js";
@@ -128,6 +132,7 @@ async function withTranscript(
   options: { agentId?: string; sessionKey?: string } = {},
 ): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "openclaw-context-report-"));
+  setRuntimeConfigSnapshot({});
   const agentId = options.agentId ?? "default";
   const target = {
     agentId,
@@ -159,6 +164,7 @@ async function withTranscript(
     }
     closeOpenClawAgentDatabasesForTest();
     await rm(dir, { recursive: true, force: true });
+    clearRuntimeConfigSnapshot();
   }
 }
 

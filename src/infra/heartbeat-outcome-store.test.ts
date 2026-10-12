@@ -1,11 +1,12 @@
 import { existsSync } from "node:fs";
 import { setImmediate } from "node:timers/promises";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
   prepareSystemAgentRunAdmission,
   resolveAdmittedRunActiveAssertion,
 } from "../agents/admitted-run-context.js";
+import { captureRuntimeConfigAsyncReader } from "../config/config.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import { createDeferredCore } from "../shared/deferred.js";
@@ -37,6 +38,10 @@ import * as workerAdmission from "./sqlite-worker-operation-admission.js";
 import { sqliteWorkerOwnerProbe } from "./sqlite-worker-owner-probe.test-support.js";
 
 const tempDirs = createTempDirTracker();
+
+beforeEach(async () => {
+  await captureRuntimeConfigAsyncReader()();
+});
 
 async function createEnv(): Promise<NodeJS.ProcessEnv> {
   const env = { OPENCLAW_STATE_DIR: tempDirs.make("openclaw-heartbeat-outcome-") };

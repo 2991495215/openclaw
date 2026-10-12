@@ -60,6 +60,7 @@ async function withHistory(
   }) => Promise<void>,
 ) {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    setRuntimeConfigSnapshot({});
     const database = openOpenClawAgentDatabase({ agentId: "main", env: state.env });
     const scope = {
       agentId: "main",

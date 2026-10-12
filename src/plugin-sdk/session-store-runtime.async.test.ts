@@ -1,8 +1,12 @@
 import "../test-utils/prepare-compiled-subprocesses.js";
 import { existsSync } from "node:fs";
-import { afterEach, expect, expectTypeOf, it } from "vitest";
+import { afterEach, beforeEach, expect, expectTypeOf, it } from "vitest";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { createTempDirTracker } from "../../test/helpers/temp-dir.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { replaceSessionEntrySync } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import {
@@ -33,6 +37,9 @@ const tempDirs = createTempDirTracker();
 const authority = { assertCurrent() {}, authorize() {} };
 const lifetime = { assertCurrent() {}, assertReadable() {} };
 const databases: { agentId: string; path: string }[] = [];
+beforeEach(() => {
+  setRuntimeConfigSnapshot({});
+});
 afterEach(async () => {
   for (const database of databases.splice(0)) {
     memorySessionActorOwners.closeDatabase(database);
@@ -41,6 +48,7 @@ afterEach(async () => {
     await cleanupSessionStateForTest({ stateDir });
   }
   tempDirs.cleanup();
+  clearRuntimeConfigSnapshot();
 });
 
 async function createMemoryEntry(

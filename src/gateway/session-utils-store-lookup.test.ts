@@ -67,6 +67,8 @@ vi.mock("./github-publication-availability.js", async () => {
   };
 });
 
+afterEach(() => resetConfigRuntimeState());
+
 async function withGlobalSessions(mainKey: string, run: (cfg: OpenClawConfig) => Promise<void>) {
   await withStateDirEnv("gateway-global-lookup-", async ({ stateDir }) => {
     const cfg = {
@@ -136,6 +138,7 @@ describe("global session lookup ownership", () => {
             ),
           },
         };
+        setRuntimeConfigSnapshot(cfg, cfg);
         const key = `agent:${scenario.agentId}:dashboard:new-session`;
         if (scenario.unreadableRegistry) {
           mkdirSync(path.join(stateDir, "state", "openclaw.sqlite"), { recursive: true });
@@ -200,6 +203,7 @@ describe("global session lookup ownership", () => {
             store: path.join(stateDir, "agents", "{agentId}", "sessions", "sessions.json"),
           },
         };
+        setRuntimeConfigSnapshot(cfg, cfg);
         const key = "agent:main:retained";
         for (const sessionKey of duplicate ? [key, "agent:main:main"] : [key]) {
           await replaceSessionEntry(
@@ -320,6 +324,7 @@ describe("retained exact row publications", () => {
           agents: { entries: { main: {}, research: {} } },
           session: { scope: "global" },
         };
+        setRuntimeConfigSnapshot(cfg, cfg);
         const key = "global";
         await replaceSessionEntry(
           { agentId: "main", sessionKey: key },
@@ -434,6 +439,7 @@ describe("retained exact row publications", () => {
   it("reads current incognito snapshots without SQL and rejects released consumers and closed owners", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+      setRuntimeConfigSnapshot(cfg, cfg);
       const key = "agent:main:dashboard:incognito-retained";
       const storePath = resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main" });
       await withGatewaySessionStoreTarget(

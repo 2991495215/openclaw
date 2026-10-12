@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { clearRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../../config/sessions/session-actor-memory-owner.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -43,6 +46,10 @@ test.each(["existing", "after-check"])(
         name: "Memory project",
         originUrl,
       });
+      const cfg = {
+        agents: { entries: { main: { workspace: state.workspaceDir } } },
+      } as OpenClawConfig;
+      setRuntimeConfigSnapshot(cfg);
       const sessionKey = "agent:main:dashboard:incognito-project";
       const otherKey = "agent:other:dashboard:incognito-reference";
       await upsertSessionEntryCore(
@@ -81,7 +88,7 @@ test.each(["existing", "after-check"])(
         const result = await invokeProjectMethod(
           "projects.remove",
           { id: project.id, deleteCheckout: true },
-          { agents: { entries: { main: { workspace: state.workspaceDir } } } },
+          cfg,
         );
         expect(result).toMatchObject({
           ok: false,
@@ -111,6 +118,10 @@ test.each(["durable", "memory", "memory-changed-after-check"])(
         name: "Session project",
         originUrl,
       });
+      const cfg = {
+        agents: { entries: { main: { workspace: state.workspaceDir } } },
+      } as OpenClawConfig;
+      setRuntimeConfigSnapshot(cfg);
       const sessionKey =
         mode === "durable"
           ? "agent:main:project-session"
@@ -124,10 +135,6 @@ test.each(["durable", "memory", "memory-changed-after-check"])(
           ...(mode !== "durable" && { incognito: true as const }),
         },
       );
-      const cfg = {
-        agents: { entries: { main: { workspace: state.workspaceDir } } },
-      } as OpenClawConfig;
-
       const remove = projectClone.removeClonedProjectCheckout;
       let checks = 0;
       const observer = vi
@@ -171,6 +178,7 @@ test("projects.list includes recents from an unbound memory session", async () =
   await withProjectState(async (state) => {
     const profile = ensureProfileForEmail("incognito-projects@example.test");
     const cfg = { agents: { entries: { main: { workspace: state.workspaceDir } } } };
+    setRuntimeConfigSnapshot(cfg);
     const folder = path.join(state.workspaceDir, "private-project");
     await fs.mkdir(folder, { recursive: true });
     const sessionKey = "agent:main:dashboard:incognito-project-recent";

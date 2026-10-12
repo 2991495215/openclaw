@@ -2,6 +2,7 @@ import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GatewayErrorDetailCodes } from "../../packages/gateway-protocol/src/index.js";
 import type { AdmittedRunOperatorAuthority } from "../agents/admitted-run-context.js";
+import { captureRuntimeConfigAsyncReader } from "../config/io.runtime.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
@@ -51,6 +52,7 @@ async function invoke(
 describe("session companion RPC", () => {
   it("keeps a memory incognito source current through operator authority for durable side chat writes", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       const profile = ensureProfileForEmail("incognito-companion@example.test");
       const client = {
         ...sharingPolicyClient({ user: profile.id, scopes: ["operator.admin"] }),
@@ -112,6 +114,7 @@ describe("session companion RPC", () => {
 
   it("carries the authenticated model policy and releases it after answering", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       const client = { ...roleClient("view", "companion-policy"), connId: "policy-connection" };
       const cfg = rolePolicyConfig();
       cfg.agents = {
@@ -165,6 +168,7 @@ describe("session companion RPC", () => {
     "retains the original side chat request while profile preparation waits for %s",
     async (change) => {
       await withOpenClawTestState({ scenario: "minimal" }, async () => {
+        await captureRuntimeConfigAsyncReader()();
         const client = {
           ...roleClient("view", `companion-await-${change}`),
           connId: "original-connection",
@@ -325,6 +329,7 @@ describe("session companion RPC", () => {
     "hides a foreign draft before dispatching %s",
     async (method) => {
       await withOpenClawTestState({ scenario: "minimal" }, async () => {
+        await captureRuntimeConfigAsyncReader()();
         const owner = ensureProfileForEmail("owner@example.test");
         const sessionKey = "agent:main:owner-private";
         await upsertSessionEntryCore(

@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred, withinTest } from "../../test/helpers/promise.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import * as sessionEvents from "../config/sessions/session-accessor.sqlite-events.js";
 import { composeSessionSourceAssertion } from "../config/sessions/session-source-authority.js";
@@ -54,6 +58,11 @@ const { useClientVoiceDigestHarness } = await vi.hoisted(
 describe("client voice digest physical sources", () => {
   const harness = useClientVoiceDigestHarness();
   const { sendDurableMessageBatch, settleDigestAttempts } = harness;
+
+  beforeEach(({ onTestFinished }) => {
+    setRuntimeConfigSnapshot({});
+    onTestFinished(clearRuntimeConfigSnapshot);
+  });
 
   it("records a missing conversation instead of silently completing its digest", async () => {
     const sessionKey = "agent:main:main";

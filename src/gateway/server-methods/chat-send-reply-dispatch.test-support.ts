@@ -1,6 +1,6 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { vi } from "vitest";
-import { getRuntimeConfig } from "../../config/io.js";
+import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../config/io.js";
 import { prepareQualifiedSessionEntryTarget } from "../../config/sessions/session-accessor.entry.js";
 import {
   appendTranscriptMessage,
@@ -26,6 +26,7 @@ export async function createReplyTranscriptFixture(
   sessionKey = "agent:main:receipt",
   retainSource = false,
 ) {
+  await captureRuntimeConfigAsyncReader()();
   const runId = "receipt-run";
   const scope = {
     agentId: "main",

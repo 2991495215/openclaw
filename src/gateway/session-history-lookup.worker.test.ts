@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import zlib from "node:zlib";
 import { afterEach, expect, it, vi } from "vitest";
+import { captureRuntimeConfigAsyncReader } from "../config/io.runtime.js";
 import {
   appendTranscriptMessage,
   replaceSessionEntry,
@@ -27,6 +28,7 @@ afterEach(() => vi.restoreAllMocks());
 
 it("keeps empty and reset-archive lookup results without creating a missing database", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await captureRuntimeConfigAsyncReader()();
     const scope = {
       agentId: "main",
       sessionId: "missing-lookup",
@@ -104,6 +106,7 @@ it("keeps empty and reset-archive lookup results without creating a missing data
 
 it("reads process-held incognito history by its key or explicit sentinel path", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await captureRuntimeConfigAsyncReader()();
     const scope = {
       agentId: "main",
       sessionId: "incognito-lookup",
@@ -133,6 +136,7 @@ it("reads process-held incognito history by its key or explicit sentinel path", 
 
 it("restores cold lookup bytes and validates selected payloads off the caller thread", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await captureRuntimeConfigAsyncReader()();
     const fixture = await createSessionColdStorageFixture(
       resolveOpenClawAgentSqlitePath({ agentId: "main", env: state.env }),
     );

@@ -6,6 +6,10 @@ import {
   mintReplyMessageActionTurnCapability,
 } from "../../auto-reply/reply/agent-runner-utils.js";
 import { resolveReactionMessageId } from "../../channels/plugins/actions/reaction-message-id.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.sqlite-entry.js";
 import { setSessionReactionAsync } from "../../config/sessions/session-reaction-store.js";
 import { listSessionReactions } from "../../config/sessions/session-reaction-store.test-support.js";
@@ -66,6 +70,7 @@ describe("admitted WebChat prompt reactions", () => {
       sessionId: runId + "-session",
     };
     config = { agents: { entries: { main: { identity: { name: "Test Agent" } } } } };
+    setRuntimeConfigSnapshot(config);
     sourceCurrent = true;
     broadcast.mockClear();
     external.mockReset().mockResolvedValue({
@@ -93,6 +98,7 @@ describe("admitted WebChat prompt reactions", () => {
   afterEach(() => {
     revokeMessageActionTurnCapability(token);
     run.close();
+    clearRuntimeConfigSnapshot();
     vi.restoreAllMocks();
   });
 

@@ -1,4 +1,5 @@
 import { afterEach, expect, it } from "vitest";
+import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { loadCombinedSessionStoreForGatewayCore } from "../config/sessions/combined-store-gateway.js";
 import { resolveInternalSessionEffectsIdentity } from "../config/sessions/internal-session-key.js";
 import {
@@ -24,6 +25,7 @@ it("reads a private parent once despite multiple durable store candidates", asyn
     const cfg = {
       agents: { entries: { main: {}, work: {} }, defaults: { sessionStore: { agentId: "main" } } },
     };
+    setRuntimeConfigSnapshot(cfg);
     for (const storePath of [undefined, state.statePath("extra.sqlite")]) {
       replaceSessionEntrySync(
         {
@@ -90,6 +92,8 @@ it("reads a private parent once despite multiple durable store candidates", asyn
 
 it("keeps archived incognito rows private and retires captures when their session or owner closes", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    const cfg = { agents: { entries: { main: {} } } };
+    setRuntimeConfigSnapshot(cfg);
     const key = "agent:main:dashboard:incognito-generation";
     const storePath = resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main" });
     const query = { agentId: "main", key, storePath };
@@ -112,7 +116,6 @@ it("keeps archived incognito rows private and retires captures when their sessio
         touchSessionEntry: false,
       },
     );
-    const cfg = { agents: { entries: { main: {} } } };
     const projection = await createSessionRowProjection({ cfg, getModelCatalog: async () => [] });
     try {
       const original = projection.capture(query)!;

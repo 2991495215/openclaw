@@ -1,6 +1,9 @@
 import { afterEach, expect, expectTypeOf, it, vi } from "vitest";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
-import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/io.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { readExactSessionEntryRow } from "../config/sessions/session-accessor.sqlite-entry-store.js";
 import {
   replaceSessionEntry,
@@ -203,6 +206,7 @@ it("refuses legacy incognito callbacks while prepared unbound writes use the mem
 });
 
 async function seed(env: NodeJS.ProcessEnv) {
+  setRuntimeConfigSnapshot({});
   const target = {
     agentId: "main",
     sessionId: "append-session",

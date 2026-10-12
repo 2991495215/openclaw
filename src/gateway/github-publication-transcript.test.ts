@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/index.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useSqliteWorkerFault } from "../../test/helpers/sqlite-worker-fault.js";
+import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import {
   loadTranscriptEvents,
   upsertSessionEntryCore,
@@ -197,6 +198,7 @@ describe("GitHub publication transcript reporting", () => {
     "preserves canonical report visibility after $label ($encoding)",
     async ({ tail, count, encoding, beforeTail = [] }) => {
       await withOpenClawTestState({ scenario: "minimal" }, async () => {
+        setRuntimeConfigSnapshot({});
         const identity = {
           agentId: "main",
           sessionKey: "agent:main:main",
@@ -265,6 +267,7 @@ describe("GitHub publication transcript reporting", () => {
     "keeps the %s header migration boundary before reporting",
     async (header) => {
       await withOpenClawTestState({ scenario: "minimal" }, async () => {
+        setRuntimeConfigSnapshot({});
         const identity = {
           agentId: "main",
           sessionKey: "agent:main:main",
@@ -300,6 +303,7 @@ describe("GitHub publication transcript reporting", () => {
   );
   it("marks a publication reported only after the transcript commits and allows retry after failure", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      setRuntimeConfigSnapshot({});
       const identity = {
         agentId: "main",
         sessionKey: "agent:main:main",
@@ -350,6 +354,7 @@ describe("GitHub publication transcript reporting", () => {
   });
   it("reports on the active branch while preserving large unrelated evidence", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      setRuntimeConfigSnapshot({});
       const identity = {
         agentId: "main",
         sessionKey: "agent:main:main",
@@ -453,6 +458,7 @@ describe("GitHub publication transcript reporting", () => {
     "appends one projected assistant message for a $label result",
     async ({ result, visibleText }) => {
       await withOpenClawTestState({ scenario: "minimal" }, async () => {
+        setRuntimeConfigSnapshot({});
         const sessionKey = "agent:main:main";
         const sessionId = "publication-transcript";
         await upsertSessionEntryCore({ agentId: "main", sessionKey }, { sessionId, updatedAt: 1 });
