@@ -4,6 +4,7 @@ import {
   createTestQueueSettings,
   createTestQueuedFollowupRun,
   createTestTemplateContext,
+  runTestReplyAgent,
 } from "./agent-runner.test-fixtures.js";
 import { createMockTypingController } from "./test-helpers.js";
 
@@ -90,9 +91,6 @@ export function createBaseRun(options: BaseRunOptions = {}) {
     sessionCtx,
     resolvedQueue,
     followupRun,
-    run: async () => {
-      const { runReplyAgent } = await import("./agent-runner-run.js");
-      return runReplyAgent(replyParams);
-    },
+    run: () => runTestReplyAgent(replyParams),
   };
 }

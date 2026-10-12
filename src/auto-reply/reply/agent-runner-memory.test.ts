@@ -70,6 +70,7 @@ import {
 } from "./agent-runner-memory.test-support.js";
 import {
   createTestFollowupRun,
+  withAgentRunnerTestMetadata,
   withTestModelContextTokens,
   writeTestSessionStore,
 } from "./agent-runner.test-fixtures.js";
@@ -134,10 +135,11 @@ type MemoryFlushTestParams = Parameters<typeof runMemoryFlushIfNeededRaw>[0] & {
 
 async function runMemoryFlushIfNeeded(params: MemoryFlushTestParams) {
   const { modelContextTokens, ...runParams } = params;
-  return await runMemoryFlushIfNeededRaw({
-    ...runParams,
-    cfg: withTestModelContextTokens({ ...runParams, contextTokens: modelContextTokens }),
-  });
+  const cfg = withTestModelContextTokens({ ...runParams, contextTokens: modelContextTokens });
+  return withAgentRunnerTestMetadata(
+    { config: cfg, workspaceDir: runParams.followupRun.run.workspaceDir },
+    () => runMemoryFlushIfNeededRaw({ ...runParams, cfg }),
+  );
 }
 
 type PreflightCompactionTestParams = Parameters<typeof runSessionCompactionIfNeededRaw>[0] & {
@@ -146,10 +148,11 @@ type PreflightCompactionTestParams = Parameters<typeof runSessionCompactionIfNee
 
 async function runSessionCompactionIfNeeded(params: PreflightCompactionTestParams) {
   const { modelContextTokens, ...runParams } = params;
-  return await runSessionCompactionIfNeededRaw({
-    ...runParams,
-    cfg: withTestModelContextTokens({ ...runParams, contextTokens: modelContextTokens }),
-  });
+  const cfg = withTestModelContextTokens({ ...runParams, contextTokens: modelContextTokens });
+  return withAgentRunnerTestMetadata(
+    { config: cfg, workspaceDir: runParams.followupRun.run.workspaceDir },
+    () => runSessionCompactionIfNeededRaw({ ...runParams, cfg }),
+  );
 }
 
 function createSessionEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {

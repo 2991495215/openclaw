@@ -315,6 +315,7 @@ export async function prepareAgentCommandExecution(
   });
   const sessionStableReplyMode = await resolveSessionStableReplyMode({
     cfg,
+    metadataSnapshot: manifestMetadataSnapshot,
     ctx: { CommandAuthorized: false },
     sessionEntry: sessionEntryRaw,
     sessionAgentId,

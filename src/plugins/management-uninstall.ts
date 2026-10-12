@@ -17,6 +17,7 @@ import { parseClawHubPluginSpec } from "../infra/clawhub-spec.js";
 import { pathMayExistSync } from "../infra/path-existence.js";
 import { withClawPackageLifecycleLease } from "../state/claw-package-lifecycle-lease.js";
 import { shortenHomePath } from "../utils.js";
+import { prepareBundledDiscoveryMode } from "./bundled-discovery-state.js";
 import {
   selectInstallMutationWriteOptions,
   type ConfigSnapshotForInstallPersist,
@@ -125,6 +126,9 @@ export async function preparePluginUninstall(
   const config = withPluginInstallRecords(snapshot.config, installRecords);
   // CLI selection uses its status projection; management retains its broader metadata aliases.
   const metadata = cli ? undefined : await loadFreshManagedPluginMetadata(config, env);
+  if (cli) {
+    await prepareBundledDiscoveryMode(env);
+  }
   const index = metadata?.index ?? loadInstalledPluginIndex({ config, installRecords });
   const plugins = metadata
     ? metadata.index.plugins.map((record) => {
