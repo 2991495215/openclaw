@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
-import { ok, type Result } from "@openclaw/normalization-core/result";
-import type {
-  ErrorShape,
-  MentionInboxItem,
-  MentionsListResult,
+import { err, ok, type Result } from "@openclaw/normalization-core/result";
+import {
+  ErrorCodes,
+  errorShape,
+  type ErrorShape,
+  type MentionInboxItem,
+  type MentionsListResult,
 } from "../../packages/gateway-protocol/src/index.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { deferSqlitePostCommitPublication } from "../infra/sqlite-post-commit.js";
@@ -39,18 +41,14 @@ import { createMentionInputRecorder } from "./mention-inbox-recording.js";
 import { MAX_MENTION_SOURCES } from "./mention-inbox-store.js";
 import { createMentionTargetCache } from "./mention-inbox-targets.js";
 import { readMentionSnapshot, commitMentionChanges } from "./mention-inbox-worker.js";
-import { mutateNativeMentionSnapshot, readNativeMentionTarget } from "./mention-inbox.native.js";
 import type {
   MentionCommittedInput,
   MentionInbox,
   MentionInboxOptions,
 } from "./mention-inbox.types.js";
 import type { GatewayClient } from "./server-methods/types.js";
-import type { SessionSharingTarget } from "./session-sharing-policy.js";
 
 const log = createSubsystemLogger("gateway/mentions");
-
-type TargetReader = (sessionKey: string, agentId?: string) => SessionSharingTarget | null;
 
 /** Durable sources own retention and replay; each Gateway keeps disposable projection indexes. */
 export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
@@ -68,7 +66,6 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
   let tail: Promise<void> = Promise.resolve();
   let closing = false;
   let needsSynchronization = true;
-  let nativeRevision = 0;
   let sessionRevision = 0;
   const views = new WeakMap<GatewayClient, { signature: string; revision: number }>();
   let capacityReported = false;
@@ -113,23 +110,15 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
   }
 
   async function synchronize(): Promise<boolean> {
-    for (;;) {
-      context.admission.assertCurrent();
-      const revision = nativeRevision;
-      const snapshot = await readMentionSnapshot(
-        context,
-        needsSynchronization ? -1 : state.head.revision,
-      );
-      context.admission.assertCurrent();
-      if (revision !== nativeRevision) {
-        continue;
-      }
-      if (snapshot) {
-        state = createMentionProjection(snapshot);
-      }
-      needsSynchronization = false;
-      return Boolean(snapshot);
+    const snapshot = await readMentionSnapshot(
+      context,
+      needsSynchronization ? -1 : state.head.revision,
+    );
+    if (snapshot) {
+      state = createMentionProjection(snapshot);
     }
+    needsSynchronization = false;
+    return Boolean(snapshot);
   }
 
   async function mutate<T>(
@@ -143,7 +132,6 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     try {
       await synchronize();
       for (;;) {
-        const revision = nativeRevision;
         const expectedHead = { ...state.head };
         const now = scheduler.now();
         const maintenance =
@@ -201,20 +189,12 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
         );
         if (receipt.kind === "conflict") {
           context.admission.assertCurrent();
-          if (revision === nativeRevision) {
-            state = createMentionProjection(receipt.snapshot);
-          } else {
-            await synchronize();
-          }
+          state = createMentionProjection(receipt.snapshot);
           continue;
         }
         context.admission.assertCurrent();
-        if (revision === nativeRevision) {
-          state = prepared.publish(receipt.head);
-          needsSynchronization = false;
-        } else {
-          await synchronize();
-        }
+        state = prepared.publish(receipt.head);
+        needsSynchronization = false;
         return result;
       }
     } catch (error) {
@@ -234,22 +214,13 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     return changed || maintenance;
   }
 
-  function readNativeTarget(sessionKey: string, agentId?: string): SessionSharingTarget | null {
-    return readNativeMentionTarget(params.getRuntimeConfig(), sessionKey, agentId);
-  }
-
-  function currentTarget(
-    item: StoredMention,
-    cfg: OpenClawConfig,
-    projection = state,
-    resolveTarget: TargetReader = readTarget,
-  ) {
+  function currentTarget(item: StoredMention, cfg: OpenClawConfig, projection = state) {
     const { source, message } = item;
     const { agentId, sessionKey, senderProfileId } = message.content;
     if (projection.items.get(item.id) !== item || source.expiresAt <= scheduler.now()) {
       return undefined;
     }
-    const resolved = resolveTarget(sessionKey, agentId);
+    const resolved = readTarget(sessionKey, agentId);
     if (!resolved || resolved.entry.sessionId !== message.sessionId) {
       return undefined;
     }
@@ -286,7 +257,6 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     cfg = params.getRuntimeConfig(),
     remember = true,
     projection = state,
-    resolveTarget: TargetReader = readTarget,
   ): Result<MentionsListResult, ErrorShape> {
     const identified = policy.identify(client, cfg);
     if (!identified.ok) {
@@ -296,7 +266,7 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     const visible: MentionInboxItem[] = [];
     const profileItems = projection.itemsByProfile.get(requester.profile.profileId);
     for (const item of [...(profileItems ?? [])].toReversed()) {
-      const current = currentTarget(item, cfg, projection, resolveTarget);
+      const current = currentTarget(item, cfg, projection);
       if (current && requester.canRead(current.target)) {
         visible.push(projectItem(item, current));
       }
@@ -312,7 +282,7 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     return ok({ gatewayInstanceId: params.gatewayInstanceId, revision, items: visible });
   }
 
-  function refreshConnectedViews(resolveTarget: TargetReader = readTarget): void {
+  function refreshConnectedViews(): void {
     if (scheduler.signal.aborted) {
       return;
     }
@@ -322,7 +292,7 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
         continue;
       }
       const previous = views.get(client);
-      const result = readView(client, cfg, true, state, resolveTarget);
+      const result = readView(client, cfg, true);
       if (
         !result.ok ||
         (previous ? previous.revision === result.value.revision : result.value.items.length === 0)
@@ -418,69 +388,18 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     return mentionInboxUnavailable();
   }
 
-  function mutateNative(apply: (draft: InboxState) => void, notify?: () => void): InboxState {
-    nativeRevision++;
-    needsSynchronization = true;
-    return mutateNativeMentionSnapshot(context, {
-      now: scheduler.now,
-      canonicalProfileId: (id) => policy.readProfile(id)?.profileId ?? id,
-      apply: (current) => {
-        assertActive();
-        apply(current);
-      },
-      publish: (current) => {
-        if (!scheduler.signal.aborted && current.head.revision >= state.head.revision) {
-          state = current;
-          needsSynchronization = false;
-        }
-      },
-      notify: () => {
-        if (!scheduler.signal.aborted) {
-          refreshConnectedViews(readNativeTarget);
-          scheduleExpiry();
-          notify?.();
-        }
-      },
-    });
+  function legacyError(
+    method: "list" | "dismiss" | "recordCommittedInput" | "invalidate",
+  ): ErrorShape {
+    warnMentionInboxDeprecation(method);
+    return errorShape(
+      ErrorCodes.UNAVAILABLE,
+      `mentionInbox.${method} is unavailable; await mentionInbox.${method}Async instead.`,
+    );
   }
 
-  function legacy(
-    client: GatewayClient | null,
-    ids?: readonly string[],
-  ): Result<MentionsListResult, ErrorShape> {
-    warnMentionInboxDeprecation(ids ? "dismiss" : "list");
-    return readOperation(() => {
-      const draft = mutateNative((current) => {
-        if (ids) {
-          dismissItems(current, client, ids, readNativeTarget);
-        }
-      });
-      return readView(client, params.getRuntimeConfig(), true, draft, readNativeTarget);
-    });
-  }
-
-  function invalidate(sessionKey?: string): void {
-    warnMentionInboxDeprecation("invalidate");
-    invalidateTargets(sessionKey);
-    policy.invalidateDirectory();
-    if (closing || scheduler.signal.aborted) {
-      return;
-    }
-    try {
-      mutateNative(() => {});
-    } catch {
-      log.warn("Unable to refresh the mention Inbox; current reads will retry.");
-      scheduleExpiry(60_000);
-    }
-  }
-
-  function dismissItems(
-    draft: InboxState,
-    client: GatewayClient | null,
-    ids: readonly string[],
-    resolveTarget: TargetReader = readTarget,
-  ) {
-    const current = readView(client, params.getRuntimeConfig(), false, draft, resolveTarget);
+  function dismissItems(draft: InboxState, client: GatewayClient | null, ids: readonly string[]) {
+    const current = readView(client, params.getRuntimeConfig(), false, draft);
     if (current.ok) {
       const owned = new Set(current.value.items.map((item) => item.id));
       for (const id of ids) {
@@ -504,17 +423,13 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     return true;
   }
 
-  function publishCommittedMentions(
-    committed: readonly StoredMention[],
-    resolveTarget: TargetReader = readTarget,
-  ): void {
+  function publishCommittedMentions(committed: readonly StoredMention[]): void {
     if (scheduler.signal.aborted || !params.onMentionCreated) {
       return;
     }
     for (const item of committed) {
       const retained = state.items.get(item.id);
-      const current =
-        retained && currentTarget(retained, params.getRuntimeConfig(), state, resolveTarget);
+      const current = retained && currentTarget(retained, params.getRuntimeConfig());
       if (!retained || !current) {
         continue;
       }
@@ -540,9 +455,7 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
               return false;
             }
             const latest = state.items.get(item.id);
-            return Boolean(
-              latest && currentTarget(latest, params.getRuntimeConfig(), state, resolveTarget),
-            );
+            return Boolean(latest && currentTarget(latest, params.getRuntimeConfig()));
           } catch {
             return false;
           }
@@ -626,8 +539,8 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     },
     validateRecipients: (...args: Parameters<typeof policy.validateRecipients>) =>
       readOperation(() => policy.validateRecipients(...args)),
-    list: (client) => legacy(client),
-    dismiss: (client, ids) => legacy(client, ids),
+    list: () => err(legacyError("list")),
+    dismiss: () => err(legacyError("dismiss")),
     async listAsync(client, publish) {
       let failure: Result<never, ErrorShape> | undefined;
       try {
@@ -704,7 +617,9 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
       }
     },
     recordCommittedInputAsync,
-    invalidate,
+    invalidate(): never {
+      throw new Error(legacyError("invalidate").message);
+    },
     invalidateAsync,
     dispose,
   };

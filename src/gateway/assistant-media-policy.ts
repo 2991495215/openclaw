@@ -29,6 +29,7 @@ import {
 } from "./session-utils.js";
 import { resolveSessionWorkerPlacementContext } from "./session-worker-placement-context.js";
 import { resolveSessionWorkspaceRoots } from "./session-workspace-roots.js";
+import { readSessionWorkerPlacementAsync } from "./worker-environments/session-placement-lifecycle.js";
 
 type AssistantMediaSession = {
   sessionKey: string;
@@ -50,6 +51,14 @@ export function assertAssistantMediaPolicyCurrent(
     policy.readSession,
     policy.assertCurrent,
   );
+  if (current?.session) {
+    const placement = policy.placementRead
+      ? policy.placementRead.current()
+      : resolveSessionWorkerPlacementContext()
+          .workerSessionPlacementService?.getMany([current.session.sessionId])
+          .get(current.session.sessionId);
+    current.remote ||= isCloudWorkerPlacementState(placement?.state);
+  }
   if (
     requestAuth?.hasCurrentClientAuthority?.() === false ||
     !current ||
@@ -68,7 +77,7 @@ export function assertAssistantMediaPolicyCurrent(
   return current;
 }
 
-type AssistantMediaReader = Pick<
+export type AssistantMediaReader = Pick<
   AuthorizedControlUiReadRequest,
   "authMethod" | "operatorScopes"
 > & {
@@ -108,7 +117,7 @@ type AssistantMediaSessionRead = Pick<
   "cfg" | "agentId" | "canonicalKey" | "entry"
 >;
 
-export async function resolveAssistantMediaPolicy(params: AssistantMediaPolicyParams) {
+async function resolveAssistantMediaSessionPolicy(params: AssistantMediaPolicyParams) {
   let loaded: AssistantMediaSessionRead | undefined;
   let readSession = (): AssistantMediaSessionRead | undefined => loaded;
   let assertCurrent: (() => void) | undefined;
@@ -258,23 +267,44 @@ function resolvePreparedAssistantMediaPolicy(
   if (sessionRoot && !localRoots.includes(sessionRoot)) {
     localRoots.push(sessionRoot);
   }
-  // Cloud placement owns its filesystem independently of the session exec-node setting.
-  const placement = session
-    ? resolveSessionWorkerPlacementContext()
-        .workerSessionPlacementService?.getMany([session.sessionId])
-        .get(session.sessionId)
-    : undefined;
   return {
     assertCurrent,
     readSession,
     session,
     executionCwd,
-    remote: remote || isCloudWorkerPlacementState(placement?.state),
+    remote,
     localRoots,
     workspaceOnly,
     reader,
     canAllow: auth.operatorScopes.includes("operator.admin"),
   };
+}
+
+export async function resolveAssistantMediaPolicy(params: AssistantMediaPolicyParams) {
+  const policy = await resolveAssistantMediaSessionPolicy(params);
+  if (!policy) {
+    return undefined;
+  }
+  const context = policy.session ? resolveSessionWorkerPlacementContext() : undefined;
+  const placementRead =
+    policy.session && context?.workerSessionPlacementService?.prepareSessionPlacement
+      ? await context.workerSessionPlacementService.prepareSessionPlacement(
+          policy.session.sessionId,
+        )
+      : undefined;
+  try {
+    if (policy.session && context) {
+      const placement = placementRead
+        ? placementRead.current()
+        : await readSessionWorkerPlacementAsync({ context, sessionId: policy.session.sessionId });
+      // Cloud placement owns its filesystem independently of the session exec-node setting.
+      policy.remote ||= isCloudWorkerPlacementState(placement?.state);
+    }
+    return { ...policy, placementRead };
+  } catch (error) {
+    placementRead?.release();
+    throw error;
+  }
 }
 
 const CONTROL_UI_ASSISTANT_MEDIA_TICKET_SCOPE = "assistant-media";

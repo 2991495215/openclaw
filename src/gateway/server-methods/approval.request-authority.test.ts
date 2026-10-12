@@ -148,8 +148,6 @@ it.each([
     client.connectionSignal = connection.signal;
     let nativeRevoked = false;
     const nativeGuard = vi.fn(() => {
-      // This enters the existing native write transaction even for a pending-row read.
-      getOperatorApproval({ id: record.id, databaseOptions });
       if (nativeRevoked) {
         throw new Error("synthetic native guard revoked");
       }
@@ -312,7 +310,7 @@ it.each([
       }
       const response = await pending;
       expect(stages).toEqual(
-        native
+        native && revoke
           ? []
           : [
               "transport-retired",
@@ -323,12 +321,11 @@ it.each([
       );
       if (native) {
         expect(nativeGuard).toHaveBeenCalled();
-      } else {
-        expect(client.connectionSignal.aborted).toBe(true);
       }
       if (native && revoke) {
         expect(lookup).not.toHaveBeenCalled();
       } else {
+        expect(client.connectionSignal.aborted).toBe(true);
         expect(lookup).toHaveBeenCalledOnce();
       }
       if (revoke) {

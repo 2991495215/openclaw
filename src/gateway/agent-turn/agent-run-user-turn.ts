@@ -42,7 +42,7 @@ import type { AgentRunRequest } from "../server-methods/agent-request-types.js";
 import { resolveSessionRuntimeCwd } from "../server-methods/agent-session-reset.js";
 import { gatewayClientSenderFields } from "../server-methods/gateway-client-identity.js";
 import { resolveGatewayInputParticipant } from "../session-input-participant.js";
-import { loadSessionEntryAsync } from "../session-utils.js";
+import { loadGatewaySessionEntryReadOnlyInWorker } from "../session-utils-store-worker.js";
 import { formatForLog } from "../ws-log.js";
 import {
   shouldSuppressAgentPromptPersistence,
@@ -282,9 +282,12 @@ export async function prepareAgentRunUserTurn(params: {
         input,
         target: async () => {
           params.assertCurrent();
-          const loaded = await loadSessionEntryAsync(params.resolvedSessionKey!, {
+          const loaded = await loadGatewaySessionEntryReadOnlyInWorker({
+            cfg: params.cfg,
+            key: params.resolvedSessionKey!,
             agentId: params.activeSessionAgentId,
-            clone: false,
+            assertActive: params.assertCurrent,
+            excludeInternalEffects: true,
           });
           params.assertCurrent();
           const latestEntry = loaded.entry;

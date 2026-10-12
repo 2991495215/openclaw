@@ -34,6 +34,7 @@ import type { loadSessionEntryAsync } from "../session-utils.js";
 import { resolveSessionWorkerPlacementContext } from "../session-worker-placement-context.js";
 import { resolveSessionWorkspaceRoots } from "../session-workspace-roots.js";
 import type { WorkerSessionPlacementRecord } from "../worker-environments/placement-record.js";
+import { readSessionWorkerPlacementAsync } from "../worker-environments/session-placement-lifecycle.js";
 import { formatForLog } from "../ws-log.js";
 import {
   buildAssistantReplyContentFromInputs,
@@ -142,8 +143,15 @@ export async function captureWebchatReplyMediaScope(
             .get(entry.sessionId)
         : undefined;
     const sessionEntry = readEntry();
+    const placement =
+      sessionEntry?.sessionId && !sessionEntry.execNode && !sessionEntry.repositoryWorkspaceId
+        ? await readSessionWorkerPlacementAsync({
+            context: resolveSessionWorkerPlacementContext(),
+            sessionId: sessionEntry.sessionId,
+          })
+        : undefined;
     const scope = { ...params, sessionEntry: sessionEntry ? { ...sessionEntry } : undefined };
-    const authority = captureWebchatReplyMediaAuthority(scope, readPlacement(sessionEntry));
+    const authority = captureWebchatReplyMediaAuthority(scope, placement);
     return {
       ...scope,
       [Symbol.dispose]: () => facts.release(),

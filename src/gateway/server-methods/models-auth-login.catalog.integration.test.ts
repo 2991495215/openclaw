@@ -187,7 +187,10 @@ it.for([false, true])(
           signal,
           start: () => list(true),
           read: list,
-          ready: () => catalogWork.read().completedTasks > 0,
+          ready: () => {
+            const work = catalogWork.read();
+            return work.completedTasks > 0 && work.pendingTasks === 0;
+          },
         });
         const beforeLoginWork = catalogWork.read();
         await client.request("models.authLogin", {

@@ -172,7 +172,7 @@ export async function prepareSessionLifecycleDrain(
           await params.beforeCancel();
           params.authorize?.();
         }
-        const workerStop = prepareSessionWorkerPlacementStop(params);
+        const workerStop = await prepareSessionWorkerPlacementStop(params);
         params.authorize?.();
         releaseAdmissions = closeSessionWorkAdmissions({
           scope: params.storePath,
