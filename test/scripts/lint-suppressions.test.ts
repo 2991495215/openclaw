@@ -285,11 +285,8 @@ describe("production lint suppressions", () => {
         // Native host bridges are not EventTargets or Window.postMessage endpoints.
         "ui/src/app/native-gateway-auth.ts|unicorn/prefer-add-event-listener|1",
         "ui/src/app/native-gateway-auth.ts|unicorn/require-post-message-target-origin|2",
-        // The keyed field accessor stays live inside the renderer's JSX binding.
-        "ui/src/components/config-form.node.collection.tsx|solid/reactivity|1",
         "ui/src/components/mascot-canvas.ts|unicorn/no-array-fill-with-reference-type|1",
         // These Solid sinks consume HTML sanitized or escaped by their content owners.
-        "ui/src/components/solid/highlighted-json.tsx|solid/no-innerhtml|1",
         "ui/src/components/solid/markdown-html.tsx|solid/no-innerhtml|1",
         "ui/src/components/solid/sanitized-html.tsx|solid/no-innerhtml|1",
         // PanelRefreshStatus keeps its shared className prop across rendering callers.

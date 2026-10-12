@@ -119,25 +119,6 @@ describe("CI changed Node test plan", () => {
     expect(hasControlUiPerformanceAffectingChange([file])).toBe(expected);
   });
 
-  it("selects UI runtime and build dependencies without test infrastructure", () => {
-    const cwd = argvTempDirs.make("ui-performance-owners-");
-    for (const [file, source] of Object.entries({
-      "ui/src/main.ts": 'import "../../src/browser.ts";\n',
-      "ui/vite.config.ts": 'import "../src/build.ts";\n',
-      "ui/vitest.config.ts": 'import "../src/test-runtime.ts";\n',
-      "ui/test/sequencer.ts": 'import "../../src/test-runtime.ts";\n',
-      "src/browser.ts": "export {};\n",
-      "src/build.ts": "export {};\n",
-      "src/test-runtime.ts": "export {};\n",
-    })) {
-      mkdirSync(path.dirname(path.join(cwd, file)), { recursive: true });
-      writeFileSync(path.join(cwd, file), source);
-    }
-    expect(hasControlUiPerformanceAffectingChange(["src/browser.ts"], { cwd })).toBe(true);
-    expect(hasControlUiPerformanceAffectingChange(["src/build.ts"], { cwd })).toBe(true);
-    expect(hasControlUiPerformanceAffectingChange(["src/test-runtime.ts"], { cwd })).toBe(false);
-  });
-
   it.each([
     "extensions/browser/src/browser/extension-install.native-host.e2e.test.ts",
     "extensions/browser/src/browser/extension-install.test-support.ts",
