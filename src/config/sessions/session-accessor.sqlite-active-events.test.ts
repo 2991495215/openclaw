@@ -101,7 +101,7 @@ describe("SQLite active transcript event projection", () => {
     closeOpenClawStateDatabaseForTest();
   });
 
-  it("defers branch rewind rebuilds off history and writer stacks", async () => {
+  it("rebuilds the active projection after a branch rewind", async () => {
     await persistSessionTranscriptTurn(scope, {
       messages: [
         transcriptMessage("root", null, { role: "user", content: "root" }),
@@ -112,20 +112,7 @@ describe("SQLite active transcript event projection", () => {
     });
     const database = openOpenClawAgentDatabase({ agentId: scope.agentId, env: scope.env });
 
-    expect(
-      database.db
-        .prepare(
-          "SELECT needs_rebuild, active_message_count FROM session_transcript_index_state WHERE session_id = ?",
-        )
-        .get(scope.sessionId),
-    ).toEqual({ active_message_count: 2, needs_rebuild: 1 });
-
-    expect(() => readSessionTranscriptMessageEventCount(scope)).toThrow(
-      SessionTranscriptProjectionUnavailableError,
-    );
-    expect(() => readLatestSessionTranscriptMessageEvent(scope)).toThrow(
-      SessionTranscriptProjectionUnavailableError,
-    );
+    // Cursor lookup can yield long enough for the scheduled rebuild to finish.
     await waitForSessionTranscriptIndexReconcile({ agentId: scope.agentId, env: scope.env });
 
     const page = readSessionTranscriptMessageEventPage(scope, { maxMessages: 10, offset: 0 });
@@ -821,6 +808,9 @@ describe("SQLite active transcript event projection", () => {
         .prepare("SELECT needs_rebuild FROM session_transcript_index_state WHERE session_id = ?")
         .get(scope.sessionId),
     ).toEqual({ needs_rebuild: 1 });
+    expect(() => readLatestSessionTranscriptMessageEvent(scope)).toThrow(
+      SessionTranscriptProjectionUnavailableError,
+    );
     await waitForSessionTranscriptIndexReconcile(databaseOptions);
     expect(readSessionTranscriptMessageEventCount(scope)).toBe(2);
   });
