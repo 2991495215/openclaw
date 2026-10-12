@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { expect, it } from "vitest";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
@@ -76,13 +77,23 @@ it.each([
     await closeOpenClawAgentDatabasesAsync();
     await closeStateDatabaseForTest();
 
-    const observation = observeHostDataSql();
+    const invocation = new AsyncLocalStorage<boolean>();
+    const queries: string[] = [];
+    // Ambient WAL maintenance has its own context and is not work caused by this SDK read.
+    const sql = observeHostDataSql((query) => {
+      if (invocation.getStore()) {
+        queries.push(query);
+      }
+    });
     let store: Awaited<ReturnType<typeof loadCombinedSessionStoreForGatewayAsync>>["store"];
     try {
-      ({ store } = await loadCombinedSessionStoreForGatewayAsync(cfg, options));
-      expect(observation.queries).toEqual([]);
+      ({ store } = await invocation.run(true, () =>
+        loadCombinedSessionStoreForGatewayAsync(cfg, options),
+      ));
+      expect(queries).toEqual([]);
     } finally {
-      observation.restore();
+      sql.restore();
+      invocation.disable();
     }
 
     expect(Object.keys(store).toSorted()).toEqual(expectedKeys);

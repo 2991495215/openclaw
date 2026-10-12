@@ -45,16 +45,13 @@ import {
 } from "../test-utils/gateway-scheduler-clock.js";
 import { registerGatewayCronCompletionTests } from "./server-cron-completion.test-support.js";
 import { registerGatewayCronContextTests } from "./server-cron.context.test-support.js";
+import { registerGatewayCronHandoffTests } from "./server-cron.handoff.test-support.js";
 import {
   registerGatewayCronMutationAuthorityTests,
   registerGatewayCronStreamMutationTests,
 } from "./server-cron.mutation-lifecycle.test-support.js";
 import { createWatchedRun, runExit } from "./server-cron.process.test-support.js";
 import { registerGatewayCronQueueTests } from "./server-cron.queue.test-support.js";
-import {
-  registerGatewayCronHandoffTests,
-  registerGatewayCronReceiptTests,
-} from "./server-cron.receipts.test-support.js";
 
 type RunCronIsolatedAgentTurnMock = (params: {
   abortSignal?: AbortSignal;
@@ -1104,17 +1101,6 @@ describe("buildGatewayCronService", () => {
       }
     },
   );
-
-  registerGatewayCronReceiptTests({
-    createWatchedRun,
-    mockCronSupervisor,
-    createCronConfig,
-    loadCronService,
-    getCronDeps,
-    getConcreteCron,
-    addCronJob,
-    runExit,
-  });
 
   it("persists an existing watcher exit during drain but fences its new scheduled run", async () => {
     resetGatewayWorkAdmission();
