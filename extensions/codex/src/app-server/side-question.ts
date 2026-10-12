@@ -120,6 +120,7 @@ import {
 import {
   getLeasedSharedCodexAppServerClient,
   releaseCodexAppServerClientLease,
+  retainSharedCodexAppServerClientByInstanceId,
   withCodexAppServerClientRequestScope,
   type CodexAppServerClientLease,
   type CodexAppServerClientOptions,
@@ -361,7 +362,19 @@ export async function runCodexAppServerSideQuestion(
     config: params.cfg,
     ...(params.opts?.abortSignal ? { abandonSignal: params.opts.abortSignal } : {}),
   } satisfies CodexAppServerClientOptions;
-  const client = await getLeasedSharedCodexAppServerClient(clientOptions);
+  // A fresh acquisition can select another physical client (auth/profile/runtime key differs).
+  // Cache-parity state and private inference context belong to the parent's recorded owner.
+  const parentLease = denyToolCalls
+    ? await retainSharedCodexAppServerClientByInstanceId(binding.clientId, {
+        signal: params.opts?.abortSignal,
+      })
+    : undefined;
+  if (denyToolCalls && !parentLease) {
+    throw new Error(
+      "Cache-parity session fork requires the parent's live Codex client. Send a normal message first.",
+    );
+  }
+  const client = parentLease?.client ?? (await getLeasedSharedCodexAppServerClient(clientOptions));
   const clientLease: CodexAppServerClientLease = { client };
   let collector: CodexEphemeralTurn | undefined;
   const runAbortController = new AbortController();
@@ -1074,7 +1087,7 @@ export async function runCodexAppServerSideQuestion(
           nativePreToolUseFailures.activateFallback(nativeToolRunWasAbortedBeforeCleanup === true),
         nativePreToolUseFailures.flush,
         releaseSandboxEnvironment,
-        () => releaseCodexAppServerClientLease(clientLease),
+        () => (parentLease ? parentLease.release() : releaseCodexAppServerClientLease(clientLease)),
         () => nativeHookRelay?.unregister(),
         () =>
           runCodexCleanupStep(sideRunParams, "codex-side-native-hook-relay-release", async () => {
