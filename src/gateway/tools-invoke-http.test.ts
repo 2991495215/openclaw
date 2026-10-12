@@ -84,6 +84,14 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
   };
 });
 
+// mock-isolation: Tool context reads share the suite's in-memory session fixture.
+vi.mock("./session-utils.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./session-utils.js")>()),
+  loadGatewaySessionEntryReadOnlyAsync: async (sessionKey: string) => ({
+    entry: sessionEntries.get(sessionKey),
+  }),
+}));
+
 vi.mock("./auth.js", () => ({
   authorizeHttpGatewayConnect: vi.fn(async () => ({ ok: true })),
 }));

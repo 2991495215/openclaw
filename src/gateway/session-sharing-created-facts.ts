@@ -8,8 +8,10 @@ import {
 import type { readSessionEntriesFromStoreInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type { CapturedSessionEntryReadSource } from "../config/sessions/session-entry-read-source.types.js";
 import type { SessionEntry } from "../config/sessions/types.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { SessionIdentityMutation } from "../sessions/session-lifecycle-events.js";
-import type { SessionRowChange } from "../sessions/session-row-changes.js";
+import { sessionChanges, type SessionRowChange } from "../sessions/session-row-changes.js";
+import { registerOpenClawAgentDatabaseAsyncResource } from "../state/openclaw-agent-db-resources.js";
 import { SessionMutationFactsUnavailableError } from "./session-sharing-incognito.js";
 import type { PreparedSessionMutationFacts } from "./session-sharing-policy.js";
 import type { GatewaySessionStoreTarget } from "./session-utils-store.types.js";
@@ -54,7 +56,7 @@ export function createSessionSharingReceiptRead({
   sharing: Awaited<ReturnType<typeof readSessionEntriesFromStoreInWorker>>["sharing"];
   sourceIdentities: ReadonlyMap<string, CapturedSessionEntryReadSource>;
   retainedReads: Map<string, RetainedSharingRead>;
-  selectedPaths: ReadonlySet<string>;
+  selectedPaths: Set<string>;
   preparedSources: Array<{ agentId: string; path: string; identity: string; birthtime: string }>;
   releases: Array<() => void>;
   getExpectedPlaceholder: () => SessionEntryPlaceholder | undefined;
@@ -178,6 +180,10 @@ export function createSessionSharingReceiptRead({
       ) {
         throw new SessionMutationFactsUnavailableError();
       }
+      // The writer may allocate a suffixed store after absence was captured.
+      if (created.readSource) {
+        selectedPaths.add(path.resolve(created.readSource.path));
+      }
       const pending = pendingCreated;
       if (!pending) {
         // The writer acknowledges COMMIT before publishing its postimage to observers.
@@ -247,5 +253,106 @@ export function createSessionSharingReceiptRead({
         change.current.sessionId === acknowledgedCreation.sessionId &&
         change.databaseIdentity === acknowledgedCreation.databaseIdentity,
       ),
+  };
+}
+
+/** A generated target is first known inside its creator's pre-publication COMMIT callback. */
+export function retainCreatedSessionMutationFacts(params: {
+  created: CommittedSessionMutationTarget;
+  assertRoutingCurrent: (cfg: OpenClawConfig) => void;
+  onCaptured: (created: CommittedSessionMutationTarget) => void;
+}) {
+  const created = { ...params.created };
+  const selected = {
+    agentId: created.agentId,
+    canonicalKey: created.sessionKey,
+    storePath: created.storePath,
+    storeKeys: [created.sessionKey],
+  };
+  const releases: Array<() => void> = [];
+  const selectedPaths = new Set([path.resolve(created.storePath)]);
+  let active = true;
+  let expectedPlaceholder: SessionEntryPlaceholder | undefined;
+  const release = () => {
+    if (!active) {
+      return;
+    }
+    active = false;
+    for (const dispose of releases.splice(0)) {
+      dispose();
+    }
+  };
+  const receipt = createSessionSharingReceiptRead({
+    selected,
+    canonicalKey: created.sessionKey,
+    allowMissing: true,
+    match: undefined,
+    sharing: undefined,
+    sourceIdentities: new Map(),
+    retainedReads: new Map(),
+    selectedPaths,
+    preparedSources: [],
+    releases,
+    getExpectedPlaceholder: () => expectedPlaceholder,
+    setExpectedPlaceholder: (value) => {
+      expectedPlaceholder = value;
+    },
+    onCreatedFacts: (facts) => {
+      const readSource = facts.target?.readSource;
+      if (!readSource) {
+        throw new SessionMutationFactsUnavailableError();
+      }
+      releases.push(
+        registerOpenClawAgentDatabaseAsyncResource({
+          agentId: created.agentId,
+          path: readSource.path,
+          revoke: release,
+          close: async () => release(),
+        }),
+      );
+      params.onCaptured({ ...created, readSource });
+    },
+  });
+  receipt.recordCreated(created);
+  const stop = sessionChanges.subscribeFacts((change) => {
+    if (
+      !("sessionKey" in change) ||
+      change.sessionKey !== created.sessionKey ||
+      (change.agentId && change.agentId !== created.agentId)
+    ) {
+      return;
+    }
+    const published = readPreparedSessionEntryChange(change, created.sessionKey);
+    if (
+      !change.storePath ||
+      published?.sharing?.sessionId !== created.sessionId ||
+      published.sharing.lifecycleRevision !== created.lifecycleRevision
+    ) {
+      return;
+    }
+    // The creator's exact receipt supplies the allocated physical path, including gaps.
+    selectedPaths.add(path.resolve(change.storePath));
+    if (receipt.captureCreatedPublication(change)) {
+      stop();
+    }
+  });
+  releases.push(stop);
+  return {
+    storageTarget: selected,
+    bindCreation() {
+      throw new SessionMutationFactsUnavailableError();
+    },
+    readCurrent(cfg: OpenClawConfig) {
+      if (!active) {
+        throw new SessionMutationFactsUnavailableError();
+      }
+      params.assertRoutingCurrent(cfg);
+      const facts = receipt.read();
+      if (!facts.target) {
+        throw new SessionMutationFactsUnavailableError();
+      }
+      return facts;
+    },
+    release,
   };
 }

@@ -17,7 +17,10 @@ import {
   closeOpenClawAgentDatabaseByPathAsync,
   openOpenClawAgentDatabase,
 } from "../../state/openclaw-agent-db.js";
-import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
+import {
+  openOpenClawStateDatabase,
+  runOpenClawStateWriteTransaction,
+} from "../../state/openclaw-state-db.js";
 import * as profileAliases from "../../state/user-profile-list.js";
 import { linkEmail } from "../../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
@@ -235,9 +238,13 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
       expect(await receive()).toBe(true);
       const pathname = `${stateDir}/state/openclaw.sqlite`;
       await cleanupSessionStateForTest({ stateDir });
-      const reopened = openOpenClawStateDatabase({ path: pathname }).db;
-      reopened.prepare("DELETE FROM user_profiles WHERE id = ?").run(creatorId);
-      profileAliases.publishUserProfilesChange(reopened, creatorId);
+      runOpenClawStateWriteTransaction(
+        ({ db }) => {
+          db.prepare("DELETE FROM user_profiles WHERE id = ?").run(creatorId);
+          profileAliases.publishUserProfilesChange(db, creatorId);
+        },
+        { path: pathname },
+      );
       expect(await receive()).toBe(false);
     });
   });
@@ -340,7 +347,7 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
     }, 1);
   });
 
-  it("reselects stores on send-hook reentry and reevaluates membership after an allowed event", async () => {
+  it("invalidates sharing on reentrant config changes and refreshes membership after an allowed event", async () => {
     await withCreatorRows(async ({ stateDir, callerId, keys }) => {
       const sessionKey = keys[0]!;
       const scope = { agentId: "main", sessionKey };
@@ -351,15 +358,6 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
         "main",
         "sessions",
         "sessions.json",
-      );
-      await upsertSessionEntryCore(
-        { ...scope, storePath: alternateStore },
-        {
-          sessionId: "alternate",
-          updatedAt: 1,
-          visibility: "shared",
-          createdActor: { type: "human", source: "profile", id: "other-creator" },
-        },
       );
       addSessionMember(scope, { identityId: callerId, addedBy: "fixture" });
       const recipients = eventClients(callerId);

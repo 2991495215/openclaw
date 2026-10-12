@@ -95,7 +95,7 @@ async function withGlobalSessions(mainKey: string, run: (cfg: OpenClawConfig) =>
 }
 
 describe("global session lookup ownership", () => {
-  it("rejects a malformed canonical candidate before falling back to its alias", async () => {
+  it("rejects an unreadable canonical candidate instead of returning its alias", async () => {
     await withGlobalSessions("main", async (cfg) => {
       const alias = "agent:main:main";
       await replaceSessionEntry(
@@ -108,7 +108,7 @@ describe("global session lookup ownership", () => {
         .run("{", "global");
 
       await expect(resolveGatewaySessionStoreTargetAsync({ cfg, key: alias })).rejects.toThrow(
-        "invalid persisted session row requires repair for global",
+        /persisted row.*global/u,
       );
     });
   });
@@ -164,6 +164,9 @@ describe("global session lookup ownership", () => {
   it("preserves exact lookup failures without retrying an alias", async () => {
     await withGlobalSessions("main", async (cfg) => {
       const failure = new Error("metadata unavailable", { cause: new Error("SQLITE_IOERR") });
+      const failingPreparedRead = vi.fn(() => {
+        throw failure;
+      });
       const failingSingleRead = vi
         .spyOn(sessionAccessor, "loadExactSessionEntryCandidates")
         .mockImplementation(() => {
@@ -175,8 +178,10 @@ describe("global session lookup ownership", () => {
             cfg,
             key: "agent:main:main",
             exactRead: true,
+            readStore: failingPreparedRead,
           }),
         ).rejects.toThrow(failure);
+        expect(failingPreparedRead).toHaveBeenCalledOnce();
         failingSingleRead.mockClear();
         const readParent = createGatewaySessionEntryReader({ cfg, agentId: "main", store: {} });
         expect(() => readParent("agent:research:main")).toThrow(failure);

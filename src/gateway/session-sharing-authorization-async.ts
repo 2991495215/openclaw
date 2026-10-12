@@ -1,13 +1,16 @@
 import { ErrorCodes, errorShape } from "../../packages/gateway-protocol/src/index.js";
 import { extractErrorCode, readErrorCause } from "../infra/errors.js";
+import { isIncognitoSessionKey } from "../routing/session-key.js";
 import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
 import {
   prepareSessionMutationAuthorizationRequest,
   sessionMutationTargetChanged,
 } from "./session-sharing-authorization.js";
+import { retainCreatedSessionMutationFacts } from "./session-sharing-created-facts.js";
 import type { PreparedSessionMutationFacts } from "./session-sharing-policy.js";
 import {
   prepareSessionMutationFacts,
+  captureSessionMutationRouting,
   SessionMutationFactsUnavailableError,
   type SessionFactsRead,
 } from "./session-sharing-preparation.js";
@@ -143,8 +146,21 @@ export async function resolveSessionMutationAuthorizationAsync(
     }
     const previousRecordCreated = result.authorization.recordCreatedSession;
     result.authorization.recordCreatedSession = (created) => {
-      previousRecordCreated?.(created);
-      reads.get(identity(created))?.recordCreated?.(created);
+      const key = identity(created);
+      const read = reads.get(key);
+      if (read || isIncognitoSessionKey(created.sessionKey)) {
+        previousRecordCreated?.(created);
+        read?.recordCreated?.(created);
+      } else {
+        reads.set(
+          key,
+          retainCreatedSessionMutationFacts({
+            created,
+            assertRoutingCurrent: captureSessionMutationRouting(cfg, undefined, [created]),
+            onCaptured: (committed) => previousRecordCreated?.(committed),
+          }),
+        );
+      }
     };
     const previousRelease = result.authorization.release;
     result.authorization.release = () => {

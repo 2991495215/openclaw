@@ -1,6 +1,7 @@
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { ok } from "@openclaw/normalization-core/result";
+import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
 import { readPreparedSessionSharingChange } from "../config/sessions/session-accessor.sqlite-entry-cache-publication.js";
 import {
   assertSessionEntryCreationPublication,
@@ -131,7 +132,12 @@ export async function prepareSessionMutationFacts(
   }
   const initialStoreKeys = [params.sessionKey.trim(), canonicalKey];
   const incognito = isIncognitoSessionKey(canonicalKey);
-  const binding = captureIncognitoSessionBinding({ agentId, sessionKey: canonicalKey });
+  const configuredStore = params.cfg.session?.store;
+  const binding = captureIncognitoSessionBinding({
+    agentId,
+    sessionKey: canonicalKey,
+    storePath: configuredStore && resolveSessionStorePathCore(configuredStore, { agentId }),
+  });
   const actorRead =
     binding &&
     captureIncognitoSessionMutationFacts(binding, canonicalKey, Boolean(params.allowMissing));

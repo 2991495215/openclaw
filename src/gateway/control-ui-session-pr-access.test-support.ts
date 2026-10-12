@@ -17,6 +17,7 @@ import {
 import type { ControlUiSessionPullRequests } from "./control-ui-contract.js";
 import { prepareControlUiSessionPrRead } from "./control-ui-session-pr-read.js";
 import { createControlUiSessionPullRequestSubscriptions } from "./control-ui-session-pr-subscriptions.js";
+import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import type { OperatorScope } from "./operator-scopes.js";
 import { createGatewayConnectionState } from "./server-connection-state.js";
 import { handleGatewayRequest } from "./server-methods.js";
@@ -124,6 +125,7 @@ export async function createFixture(
       hasAvatar: false,
       updatedAt: 1,
     };
+    prepareGatewayRecipientProfile(client);
     connections.clients.add(client);
     return { client, socket, access };
   };

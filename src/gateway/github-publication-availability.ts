@@ -209,6 +209,7 @@ export async function prepareGitHubPublicationSession(
           cfg: options.cfg ?? getRuntimeConfig(),
           key: sessionKey,
           agentId: options.agentId,
+          exactRead: true,
           projection: [],
           assertActive: options.assertCurrent,
         });

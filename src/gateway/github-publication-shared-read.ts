@@ -9,9 +9,11 @@ import {
   withArtifactPreservingStateReads,
 } from "../state/openclaw-state-db-readonly.js";
 import { captureOpenClawStateReadWorkerContext } from "../state/openclaw-state-worker-context.js";
-import type { PublicationSessionIdentity } from "./github-publication-availability.js";
+import {
+  prepareGitHubPublicationSession,
+  type PublicationSessionIdentity,
+} from "./github-publication-availability.js";
 import { GitHubPublicationSessionChangedError } from "./github-publication-failure.js";
-import { retainGatewaySessionEntryReadOnly } from "./session-utils-read-lifetime.js";
 
 type SharedGitHubPublicationSelector = SharedGitHubPublicationReadInput["selector"];
 
@@ -130,31 +132,30 @@ export async function readSharedGitHubPublication(
       return row;
     });
   }
-  const selected = await retainGatewaySessionEntryReadOnly(
-    session.sessionKey,
-    session.agentId,
-    (previous, current) =>
-      workspaceIndependent ||
-      isDeepStrictEqual(workspaceSelection(previous), workspaceSelection(current)),
-  );
-  try {
-    const entry = selected.entry;
-    if (
-      !entry ||
-      selected.agentId !== session.agentId ||
-      selected.canonicalKey !== session.sessionKey ||
-      entry.sessionId !== session.sessionId ||
-      (session.lifecycleRevision !== undefined &&
-        (entry.lifecycleRevision ?? null) !== session.lifecycleRevision)
-    ) {
-      throw new GitHubPublicationSessionChangedError();
-    }
-    const row = await observe(entry);
-    if (!selected.isCurrentAtResponse()) {
-      throw new GitHubPublicationSessionChangedError();
-    }
-    return row;
-  } finally {
-    selected.release();
+  const selected = await prepareGitHubPublicationSession(session.sessionKey, {
+    agentId: session.agentId,
+  });
+  const entry = selected.initial.entry;
+  if (
+    !entry ||
+    selected.initial.agentId !== session.agentId ||
+    selected.initial.canonicalKey !== session.sessionKey ||
+    entry.sessionId !== session.sessionId ||
+    (session.lifecycleRevision !== undefined &&
+      (entry.lifecycleRevision ?? null) !== session.lifecycleRevision)
+  ) {
+    throw new GitHubPublicationSessionChangedError();
   }
+  const row = await observe(entry);
+  const current = selected.current().entry;
+  if (
+    !current ||
+    current.sessionId !== entry.sessionId ||
+    current.lifecycleRevision !== entry.lifecycleRevision ||
+    (!workspaceIndependent &&
+      !isDeepStrictEqual(workspaceSelection(entry), workspaceSelection(current)))
+  ) {
+    throw new GitHubPublicationSessionChangedError();
+  }
+  return row;
 }

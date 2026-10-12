@@ -170,25 +170,27 @@ async function prepareGatewaySessionStoreReadInWorker(
   onSelected?: (target: GatewaySessionStoreTargetWithStore) => void,
 ): Promise<{ target: GatewaySessionStoreTargetWithStore; readPlan?: GatewaySessionStoreReadPlan }> {
   params.assertActive?.();
-  const { agentId, canonicalKey } = resolveSessionStoreIdentity({
-    cfg: params.cfg,
-    sessionKey: params.key,
-    agentId: params.agentId,
-    preserveQualifiedAddress: params.preserveQualifiedAddress,
-  });
+  const parsedAgent = parseAgentSessionKey(params.key)?.agentId;
+  // Discovery includes the stored owner before the lookup decides whether its legacy row wins.
+  const agentId =
+    parsedAgent ??
+    resolveSessionStoreIdentity({
+      cfg: params.cfg,
+      sessionKey: params.key,
+      agentId: params.agentId,
+      preserveQualifiedAddress: params.preserveQualifiedAddress,
+    }).agentId;
   // Ephemeral databases belong to the process and cannot be opened by a worker.
-  if (isIncognitoSessionKey(canonicalKey)) {
+  if (isIncognitoSessionKey(params.key)) {
     return {
       target: resolveNativeGatewaySessionStoreTargetWithStore({
         ...params,
-        agentId,
         readOnly: true,
         projection: params.projection ?? "list",
         exactRead: true,
       }),
     };
   }
-  const parsedAgent = parseAgentSessionKey(params.key)?.agentId;
   const { candidates, ...inventory } = prepareSessionStoreTargetInventory(
     params.cfg,
     [agentId, ...(parsedAgent ? [parsedAgent] : [])],
@@ -222,7 +224,6 @@ async function prepareGatewaySessionStoreReadInWorker(
       ...params,
       cfg: inventory.config,
       key: params.key,
-      agentId,
       env: inventory.env,
       targetDiscoveryCache,
       exactRead: retainPlan ? true : params.exactRead,

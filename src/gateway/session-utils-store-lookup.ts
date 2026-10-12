@@ -552,7 +552,6 @@ export async function withGatewaySessionStoreTarget<T>(
 /** Worker readers fill the same ordered lookup plan before its synchronous selection. */
 export async function prepareGatewaySessionStoreTargetReadOnly(
   params: GatewaySessionStoreLookupParams & {
-    agentId: string;
     targetDiscoveryCache: GatewaySessionStoreDiscoveryCache;
   },
   prepareReads: <T>(reads: readonly GatewaySessionStoreRead[], select: () => T) => Promise<T>,
@@ -563,7 +562,6 @@ export async function prepareGatewaySessionStoreTargetReadOnly(
 /** Keep every scanned stage so final admission can repeat selection without discovery. */
 export async function prepareGatewaySessionStoreTargetReadPlan(
   params: GatewaySessionStoreLookupParams & {
-    agentId: string;
     targetDiscoveryCache: GatewaySessionStoreDiscoveryCache;
   },
   prepareReads: <T>(reads: readonly GatewaySessionStoreRead[], select: () => T) => Promise<T>,

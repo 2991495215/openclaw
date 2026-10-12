@@ -207,7 +207,7 @@ describe("committed session mutation authorization", () => {
           queries.restore();
           messages.mockRestore();
         }
-        const prepared = resolveSessionMutationAuthorization({
+        const prepared = await resolveSessionMutationAuthorizationAsync({
           client,
           method: "chat.send",
           requestParams: { sessionKey },
@@ -218,6 +218,9 @@ describe("committed session mutation authorization", () => {
             sessionId: shared.sessionId,
           },
         });
+        using _preparedRelease = {
+          [Symbol.dispose]: () => prepared.authorization?.release?.(),
+        };
         expect(prepared.error).toBeNull();
         expect(prepared.authorization).toBeDefined();
         prepared.authorization!.assertCurrent();

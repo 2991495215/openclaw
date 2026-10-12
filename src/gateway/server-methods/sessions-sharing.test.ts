@@ -30,6 +30,7 @@ import {
   prepareGatewayLocalUserIngress,
 } from "../local-user-ingress.js";
 import { getSessionRowProjection } from "../session-row-projection-access.js";
+import { resolveSessionMutationAuthorizationAsync } from "../session-sharing-authorization-async.js";
 import { SessionMutationFactsUnavailableError } from "../session-sharing-preparation.js";
 import {
   authorizeResolvedSessionMutation,
@@ -691,12 +692,14 @@ describe("session sharing handlers", () => {
       ];
       const expectAccess = async (allowed: boolean) => {
         for (const [method, requestParams] of mutations) {
-          const error = resolveSessionMutationAuthorization({
+          const result = await resolveSessionMutationAuthorizationAsync({
             client: memberClient,
             method,
             requestParams,
             context: requestContext,
-          }).error;
+          });
+          using _release = { [Symbol.dispose]: () => result.authorization?.release?.() };
+          const error = result.error;
           if (allowed) {
             expect(error, method).toBeNull();
           } else {
@@ -722,12 +725,13 @@ describe("session sharing handlers", () => {
       };
 
       await expectAccess(true);
-      const captured = resolveSessionMutationAuthorization({
+      const captured = await resolveSessionMutationAuthorizationAsync({
         client: memberClient,
         method: "sessions.dispatch",
         requestParams: { key: sessionKey, profileId: "shared" },
         context: requestContext,
       });
+      using _release = { [Symbol.dispose]: () => captured.authorization?.release?.() };
       expect(captured.error).toBeNull();
       await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({ visibility: "draft" }));
       await expectAccess(false);

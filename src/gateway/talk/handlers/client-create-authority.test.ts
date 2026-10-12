@@ -70,6 +70,7 @@ import { registerClientCreateSourceAuthorityTests } from "./client-create-source
 import { createTalkClient } from "./client-create.js";
 import {
   browserSession,
+  observeTalkVoiceChangeRequest,
   createDelegatedBrowserProviderFixture,
   type BrowserRequest,
 } from "./client-fixtures.test-support.js";
@@ -572,6 +573,7 @@ describe("voice creation authority", () => {
         original.sessionTarget.storePath,
       ).path;
       const changed = vi.fn();
+      const waitForVoiceChange = observeTalkVoiceChangeRequest(fixture.context.broadcastToConnIds);
       const change = Promise.resolve(
         talkVoiceHandlers["talk.voice.set"]!({
           req: { type: "req", id: "change", method: "talk.voice.set", params: {} },
@@ -582,6 +584,7 @@ describe("voice creation authority", () => {
           isWebchatConnect: () => false,
         } as never),
       );
+      await waitForVoiceChange(change);
       const changeId = fixture.context.broadcastToConnIds.mock.calls.find(
         ([event]) => event === "talk.voice.change",
       )?.[1]?.changeId;
