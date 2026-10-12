@@ -1,15 +1,9 @@
-import type { DatabaseSync } from "node:sqlite";
 import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import {
   SqliteCoordinatorError,
   throwSqliteLifecycleErrors,
 } from "../infra/sqlite-lifecycle-errors.js";
-import {
-  admitSqliteSchema,
-  getAdmittedSqliteSchemaFacts,
-  runSqliteReadOperationSync,
-  type SqliteSchemaFacts,
-} from "../infra/sqlite-schema-facts.js";
+import { runSqliteReadOperationSync } from "../infra/sqlite-schema-facts.js";
 import { assertTransactionUsable, runSqliteReadSnapshotSync } from "../infra/sqlite-transaction.js";
 import { assertExistingDatabaseIdentity } from "../infra/sqlite-worker-identity.js";
 import {
@@ -35,7 +29,6 @@ import {
 import { admitStateReadSchemaFacts } from "./openclaw-state-db-read-schema.js";
 import { canReadWarmNativeSourceIndependently } from "./openclaw-state-db-readonly-reuse.js";
 import { withCurrentOpenClawStateReadScope } from "./openclaw-state-db-readonly.js";
-import { isExistingOpenClawStateSchema } from "./openclaw-state-db-schema-policy.js";
 import type { OpenClawStateReadOnlyDatabase } from "./openclaw-state-read.types.js";
 
 /** Mutating maintenance can retain an independent current reader under its exact source lifetime. */
@@ -151,15 +144,6 @@ export function createOpenClawStateCurrentWarmReader<T>(
   };
 }
 
-const currentReaderSchemaAdmissions = new WeakMap<
-  DatabaseSync,
-  {
-    facts: SqliteSchemaFacts;
-    existingSchema: boolean;
-    admission?: OpenClawStateSchemaReadAdmission;
-  }
->();
-
 /** An independent current reader keeps composite policy rows in one bounded snapshot. */
 function runOpenClawStateCurrentReadConnection<T>(
   connection: OpenClawStateReadConnection,
@@ -173,33 +157,11 @@ function runOpenClawStateCurrentReadConnection<T>(
   try {
     // Explicit Doctor inspection retains its checks; ordinary runtime reads have no callback.
     closeAdmission = openStateSchemaReadAdmission?.(db);
-    const existingSchema = isExistingOpenClawStateSchema(pathname, db);
-    if (openStateSchemaReadAdmission) {
+    runSqliteReadOperationSync(db, () => {
+      // The schema owner already retains validation for this physical database.
       admitStateReadSchemaFacts(db, pathname);
-    }
-    const admit = () => {
-      const current = getAdmittedSqliteSchemaFacts(db);
-      const accepted = currentReaderSchemaAdmissions.get(db);
-      if (
-        !current ||
-        accepted?.facts !== current ||
-        accepted.existingSchema !== existingSchema ||
-        accepted.admission !== openStateSchemaReadAdmission
-      ) {
-        assertStateReadSchema(db, pathname);
-        admitSqliteSchema(db);
-        const admitted = getAdmittedSqliteSchemaFacts(db);
-        if (!admitted) {
-          throw new Error("Current shared-state reader could not retain schema admission");
-        }
-        currentReaderSchemaAdmissions.set(db, {
-          facts: admitted,
-          existingSchema,
-          admission: openStateSchemaReadAdmission,
-        });
-      }
-    };
-    runSqliteReadOperationSync(db, admit);
+      assertStateReadSchema(db, pathname);
+    });
     result = runSqliteReadSnapshotSync(db, () => {
       const value = operation(connection.database);
       if (isPromiseLike(value)) {

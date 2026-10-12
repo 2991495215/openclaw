@@ -193,7 +193,6 @@ describe("runSessionBackfill", () => {
     const execution = executeSessionBackfillBatch({
       agentId: "main",
       workspaceDir,
-      apply: false,
       timezone: "UTC",
       pluginConfig: { memoryPolicy: { excludeSessions: { channels: ["discord"] } } },
     });

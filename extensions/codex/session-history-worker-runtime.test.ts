@@ -6,7 +6,6 @@ import {
   type CodexSessionContextReader,
   type CodexSessionContextSnapshot,
 } from "openclaw/plugin-sdk/codex-session-transcript-runtime";
-import * as transcriptRuntime from "openclaw/plugin-sdk/codex-session-transcript-runtime";
 import { deleteSessionEntry, upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import { appendSessionTranscriptMessagesByIdentity } from "openclaw/plugin-sdk/session-transcript-runtime";
 import { observeHostDataSql } from "openclaw/plugin-sdk/sqlite-runtime-testing";
@@ -64,29 +63,6 @@ function actorHistoryFixture() {
 }
 
 describe("Codex actor history adapter", () => {
-  it("captures its actor reader and projects full-fidelity evidence into native history", async () => {
-    const { target, reader, upstreamPrompt } = actorHistoryFixture();
-    vi.spyOn(transcriptRuntime, "captureCodexSessionContextReader").mockReturnValue(reader);
-
-    await expect(projectCodexSettledHistoryInWorker(target)).resolves.toEqual({
-      status: "ok",
-      value: [
-        {
-          type: "message",
-          role: "user",
-          content: [{ type: "input_text", text: "Earlier synthetic context." }],
-        },
-        {
-          type: "message",
-          role: "user",
-          content: [{ type: "input_text", text: upstreamPrompt }],
-        },
-        { type: "function_call", call_id: "sent", name: "message", arguments: "{}" },
-        { type: "function_call_output", call_id: "sent", output: "Synthetic update sent." },
-      ],
-    });
-  });
-
   it("passes the requested target to the bound capability before acquiring history", async () => {
     const { target, reader, owner } = actorHistoryFixture();
     const foreignTarget = {

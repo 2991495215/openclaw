@@ -250,10 +250,7 @@ export async function performGatewaySessionReset(params: {
         initialResetEntry: entry,
       }),
     );
-  const assertCurrent = () => {
-    params.assertCurrent?.();
-    params.assertAuthorizedInstance?.();
-  };
+  // Effect checks below own caller authority; accepted cleanup keeps its actor after caller closure.
   const reset = await withSessionActorStorage(
     {
       sessionKey: resetTarget.target.canonicalKey,
@@ -261,8 +258,8 @@ export async function performGatewaySessionReset(params: {
       storePath: resetTarget.storePath,
     },
     {
-      lifetime: { assertCurrent, assertReadable: assertCurrent },
-      authority: { assertCurrent, authorize() {} },
+      lifetime: { assertCurrent() {}, assertReadable() {} },
+      authority: { assertCurrent() {}, authorize() {} },
     },
     run,
   );

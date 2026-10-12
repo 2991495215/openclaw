@@ -1,5 +1,4 @@
 import path from "node:path";
-import type { DatabaseSync } from "node:sqlite";
 import { isMainThread } from "node:worker_threads";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import { resolveStateDir } from "../config/state-dir.js";
@@ -44,11 +43,6 @@ import {
   type PendingAgentDatabaseOpen,
 } from "./openclaw-agent-db-lifecycle.js";
 import { assertAgentDatabaseResourceAdmission } from "./openclaw-agent-db-resources.js";
-import {
-  assertExistingAgentSchemaOwner,
-  assertSupportedAgentSchemaVersion,
-  readExistingAgentSchemaMeta,
-} from "./openclaw-agent-db-schema-helpers.js";
 import { revalidateAgentDatabaseTerminalOpenAsync } from "./openclaw-agent-db-terminal.js";
 import {
   getOpenClawAgentDatabaseValidationForTransfer,
@@ -416,7 +410,7 @@ export function createOpenClawAgentDatabaseAdmissionOwner(
           suspended = false;
           assertAgentDatabaseOpenAuthority(steps, () => {
             assertCurrent();
-            assertOpenClawAgentDatabaseAdmissionCurrent(options, pending, check?.database);
+            assertOpenClawAgentDatabaseAdmissionCurrent(options, pending);
           });
           pending.validation = validation;
           const step = failure ? steps.throw(failure.error) : steps.next();
@@ -526,7 +520,6 @@ export function createOpenClawAgentDatabaseAdmissionOwner(
   function assertOpenClawAgentDatabaseAdmissionCurrent(
     options: OpenClawAgentDatabaseOptions,
     pending: PendingAgentDatabaseOpen,
-    database?: DatabaseSync,
   ): void {
     const pathname = pending.path;
     pending.controller.signal.throwIfAborted();
@@ -538,14 +531,6 @@ export function createOpenClawAgentDatabaseAdmissionOwner(
     assertAgentCreationClaimCurrent(options);
     getAgentDeletionDatabaseCleanup(options)?.assertCurrent();
     pending.assertHeld?.();
-    if (database) {
-      assertSupportedAgentSchemaVersion(database, pathname);
-      assertExistingAgentSchemaOwner(
-        readExistingAgentSchemaMeta(database),
-        pending.agentId,
-        pathname,
-      );
-    }
   }
 
   function startOpenClawAgentDatabaseAdmission(
@@ -563,7 +548,6 @@ export function createOpenClawAgentDatabaseAdmissionOwner(
       assertAgentDatabaseOpenAuthority(operation, assertCurrent);
       let step = operation.next();
       while (!step.done) {
-        const database = step.value.database;
         let failure: unknown;
         let failed = false;
         try {
@@ -580,7 +564,7 @@ export function createOpenClawAgentDatabaseAdmissionOwner(
         }
         // Throwing an integrity verdict into the generator can repair indexes too.
         assertAgentDatabaseOpenAuthority(operation, () => {
-          assertOpenClawAgentDatabaseAdmissionCurrent(options, pending, database);
+          assertOpenClawAgentDatabaseAdmissionCurrent(options, pending);
           assertCurrent?.();
         });
         // Resuming, or throwing into, the same owner preserves repair and unwind policy.

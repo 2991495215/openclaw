@@ -247,6 +247,7 @@ test.each([
       });
       try {
         const runtime = createGatewayWorkerPlacementRuntime({
+          initialPlacements: placements.list(),
           scheduler,
           placements,
           environments,

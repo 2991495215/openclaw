@@ -146,6 +146,13 @@ function prepareSessionEntryReplacementChanges(
           .filter(([key]) => current(key) && !replacement.unavailableParticipantKeys?.includes(key))
           .map(([key, entry]) => [key, freezeJsonSnapshot(entry)]),
       ),
+    actorPostimages:
+      replacement.actorPostimages &&
+      new Map(
+        [...replacement.actorPostimages]
+          .filter(([key]) => current(key))
+          .map(([key, state]) => [key, freezeJsonSnapshot(state)]),
+      ),
     sharing: new Map(
       [...replacement.current]
         .filter(([key]) => current(key))
@@ -210,6 +217,7 @@ export function prepareSessionEntryPublicationFacts(params: {
     return {
       entry,
       fullEntry: prepared?.fullEntries?.get(key),
+      actorPostimage: prepared?.actorPostimages?.get(key),
       projection:
         projection?.activitySummaryWatermark === undefined ||
         transcriptVersion === readSessionTranscriptUpdateVersion()
@@ -502,6 +510,9 @@ export function readPreparedSessionEntryChange(change: object, sessionKey: strin
     source: prepared.source,
     entry,
     fullEntry: record.readCurrent ? current?.fullEntry : prepared.fullEntries?.get(sessionKey),
+    actorPostimage: record.readCurrent
+      ? current?.actorPostimage
+      : prepared.actorPostimages?.get(sessionKey),
     sharing: record.readCurrent
       ? (current?.sharing ?? (current?.entry && projectSessionSharingEntry(current.entry)))
       : (prepared.sharing?.get(sessionKey) ??
