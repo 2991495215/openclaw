@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { seedCanonicalAcpSessionMeta } from "../../acp/runtime/session-meta-fixture.test-support.js";
+import { captureRuntimeConfigAsyncReader } from "../../config/config.js";
+import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import {
   appendTranscriptMessage,
   patchSessionEntryCore,
@@ -62,6 +64,7 @@ function createPersonalMetadataFixture() {
       },
     },
   } satisfies OpenClawConfig;
+  setRuntimeConfigSnapshot(config);
   const clients = new Set([client]);
   const metadata = { models: [], swarmEnabled: false };
   const readChatMetadata = vi.fn<GatewayRequestContext["readChatMetadata"]>(async () => metadata);
@@ -115,6 +118,7 @@ describe("chat history model selection defaults", () => {
             },
           } satisfies OpenClawConfig;
           await state.writeConfig(cfg);
+          setRuntimeConfigSnapshot(cfg);
           const scope = {
             agentId: "work",
             sessionKey: "agent:work:main",
@@ -154,6 +158,7 @@ describe("chat history sharing projection", () => {
       await withOpenClawTestState(
         { scenario: "minimal", prepareProfileCatalog: true },
         async () => {
+          await captureRuntimeConfigAsyncReader()();
           const sessionKey = "agent:main:acp:unbound-history";
           seedCanonicalAcpSessionMeta({
             sessionKey,
@@ -212,6 +217,7 @@ describe("chat history sharing projection", () => {
       await withOpenClawTestState(
         { scenario: "minimal", prepareProfileCatalog: true },
         async () => {
+          await captureRuntimeConfigAsyncReader()();
           const scope = { agentId: "main", sessionKey: "agent:main:sharing-history" };
           await upsertSessionEntryCore(scope, {
             sessionId: "sharing-history",
@@ -258,6 +264,7 @@ describe("chat history sharing projection", () => {
       await withOpenClawTestState(
         { scenario: "minimal", prepareProfileCatalog: true },
         async () => {
+          await captureRuntimeConfigAsyncReader()();
           const scope = { agentId: "main", sessionKey: "agent:main:sharing-history-race" };
           await upsertSessionEntryCore(scope, {
             sessionId: "sharing-history-race",
@@ -338,6 +345,7 @@ describe("chat history delta publication", () => {
       await withOpenClawTestState(
         { scenario: "minimal", prepareProfileCatalog: true },
         async () => {
+          await captureRuntimeConfigAsyncReader()();
           const scope = {
             agentId: "main",
             sessionKey: "agent:main:delta-publication",
@@ -475,6 +483,7 @@ describe("chat history exact-entry snapshots", () => {
       await withOpenClawTestState(
         { scenario: "minimal", prepareProfileCatalog: true },
         async () => {
+          await captureRuntimeConfigAsyncReader()();
           const now = Date.now();
           const scope = {
             agentId: "main",
@@ -579,6 +588,7 @@ describe("chat history recovery byte budget", () => {
       await withOpenClawTestState(
         { scenario: "minimal", prepareProfileCatalog: true },
         async () => {
+          await captureRuntimeConfigAsyncReader()();
           const scope = {
             agentId: "main",
             sessionKey: "agent:main:history-bytes",
@@ -769,6 +779,7 @@ describe("chat metadata ownership", () => {
 
   it("reads the persisted session profile without contaminating neutral agent metadata", async () => {
     await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       const sessionKey = "agent:main:locked";
       await upsertSessionEntryCore(
         { agentId: "main", sessionKey },

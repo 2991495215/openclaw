@@ -1,5 +1,4 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { OpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { createApiKeyCredential } from "../auth-profiles/credential-fixtures.test-support.js";
 import { prepareSharedAuthStoreOwnershipForNative } from "../auth-profiles/path-resolve.native.js";
@@ -20,8 +19,12 @@ import {
 import { guardRunWorkspaceOwnership } from "./run.workspace-ownership.test-support.js";
 
 let runHarness: Awaited<ReturnType<typeof loadRunOverflowCompactionHarness>>;
+let runtimeConfig: typeof import("../../config/runtime-snapshot.js");
+let replaceSessionEntry: typeof import("../../config/sessions/session-accessor.js").replaceSessionEntry;
 beforeAll(async () => {
   runHarness = await loadRunOverflowCompactionHarness();
+  runtimeConfig = await import("../../config/runtime-snapshot.js");
+  ({ replaceSessionEntry } = await import("../../config/sessions/session-accessor.js"));
 });
 
 const failedProfile = "openai:failed";
@@ -88,7 +91,10 @@ function prepareAuthFailoverRun(
     source: "test",
     mode: "api-key",
   }));
-  return runEmbeddedAgent;
+  return (params: Parameters<typeof runEmbeddedAgent>[0]) => {
+    runtimeConfig.setRuntimeConfigSnapshot(params.config ?? {});
+    return runEmbeddedAgent(params);
+  };
 }
 
 describe("native harness auth failover", () => {
@@ -121,6 +127,7 @@ describe("native harness auth failover", () => {
       authProfileId: failedProfile,
       authProfileIdSource: "auto" as const,
     };
+    runtimeConfig.setRuntimeConfigSnapshot({});
     await replaceSessionEntry(
       { agentId: "main", sessionKey: params.sessionKey },
       {

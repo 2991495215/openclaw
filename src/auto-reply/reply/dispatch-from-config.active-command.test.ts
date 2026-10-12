@@ -191,10 +191,10 @@ describe("dispatch active command admission", () => {
     async (controlName, controlBody) => {
       const sessionKey = "agent:main:login-ticket";
       const releaseLogin = createDeferred();
-      const loginReady = createDeferred();
-      const controlReady = createDeferred();
-      const loginEntered = vi.fn(() => loginReady.resolve());
-      const controlEntered = vi.fn(() => controlReady.resolve());
+      const loginStarted = createDeferred();
+      const controlStarted = createDeferred();
+      const loginEntered = vi.fn();
+      const controlEntered = vi.fn();
       const shellEntered = vi.fn();
       const dispatchCommand = (
         body: string,
@@ -214,15 +214,16 @@ describe("dispatch active command admission", () => {
         });
       const login = dispatchCommand("/login openrouter", "login", async () => {
         loginEntered();
+        loginStarted.resolve();
         await releaseLogin.promise;
         return markCommandReplyForDelivery({ text: "Login ended." });
       });
       const pending = [login];
       try {
         await awaitGateBeforeSettlement(
-          loginReady.promise,
+          loginStarted.promise,
           login,
-          "Login dispatch settled before entering its pending command",
+          "login dispatch settled before entering its reply resolver",
         );
         expect(loginEntered).toHaveBeenCalledOnce();
         const shell = dispatchCommand("/bash echo ready", "bash", async () => {
@@ -232,14 +233,15 @@ describe("dispatch active command admission", () => {
         pending.push(shell);
         const control = dispatchCommand(controlBody, controlName, async () => {
           controlEntered();
+          controlStarted.resolve();
           return markCommandReplyForDelivery({ text: "Control command completed." });
         });
         pending.push(control);
 
         await awaitGateBeforeSettlement(
-          controlReady.promise,
+          controlStarted.promise,
           control,
-          "Control dispatch settled before entering its command",
+          "control dispatch settled before entering its reply resolver",
         );
         expect(controlEntered).toHaveBeenCalledOnce();
         expect(shellEntered).not.toHaveBeenCalled();

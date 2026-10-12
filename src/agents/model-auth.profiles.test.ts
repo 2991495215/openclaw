@@ -3,6 +3,10 @@ import path from "node:path";
 import type { Model } from "openclaw/plugin-sdk/llm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import type { ModelProviderConfig, OpenClawConfig } from "../config/types.js";
 import type { SecretRef } from "../config/types.secrets.js";
 import { writeConfigMachineState } from "../state/config-machine-state-write.js";
@@ -157,7 +161,10 @@ beforeEach(() => {
   cliCredentialMocks.readMiniMaxCliCredentialsCached.mockReset().mockReturnValue(null);
 });
 
-afterEach(clearRuntimeAuthProfileStoreSnapshots);
+afterEach(() => {
+  clearRuntimeAuthProfileStoreSnapshots();
+  clearRuntimeConfigSnapshot();
+});
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
@@ -344,6 +351,7 @@ describe("getApiKeyForModelCore", () => {
     await withOpenClawTestState(
       { layout: "state-only", prefix: "openclaw-oauth-", agentEnv: "main" },
       async (state) => {
+        setRuntimeConfigSnapshot({});
         await state.writeAuthProfiles(
           authStore({
             "openai:chatgpt": {
@@ -391,6 +399,7 @@ describe("getApiKeyForModelCore", () => {
   });
 
   it("resolves ChatGPT token-sharing as renewable OAuth for public Responses", async () => {
+    setRuntimeConfigSnapshot({});
     await expect(
       resolveModelAuth({
         model: {

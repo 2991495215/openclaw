@@ -11,6 +11,10 @@ import {
 } from "../../../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../../config/runtime-snapshot.js";
+import {
   loadSessionEntry,
   replaceSessionEntrySync,
 } from "../../../config/sessions/session-accessor.js";
@@ -37,6 +41,7 @@ import {
   openOpenClawAgentDatabase,
 } from "../../../state/openclaw-agent-db.js";
 import { resolveOpenClawAgentSqlitePath } from "../../../state/openclaw-agent-db.paths.js";
+import { prepareUserProfileCatalog } from "../../../state/user-profile-list.js";
 import { prepareClientVoiceSessionClose } from "../../../talk/client-voice-session-lifecycle.js";
 import { readVoiceSessionRecordInTransaction } from "../../../talk/client-voice-session-store.js";
 import * as voiceWriters from "../../../talk/client-voice-session-write.js";
@@ -97,6 +102,7 @@ function configureDelegatedBrowserProvider(
   createBrowserSession: (request: BrowserRequest) => Promise<typeof browserSession>,
 ) {
   const fixture = createDelegatedBrowserProviderFixture(createBrowserSession, tempDir);
+  setRuntimeConfigSnapshot(fixture.context.getRuntimeConfig());
   voiceMocks.resolveConfiguredRealtimeVoiceProviderAsync.mockReturnValue({
     provider: fixture.provider,
     providerConfig: {},
@@ -105,6 +111,8 @@ function configureDelegatedBrowserProvider(
   return fixture;
 }
 async function invokeCreate(options: GatewayRequestHandlerOptions) {
+  setRuntimeConfigSnapshot(options.context.getRuntimeConfig());
+  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
   const admission = resolveSessionMutationAuthorization({
     method: "talk.client.create",
     requestParams: options.params,
@@ -143,6 +151,7 @@ describe("voice creation authority", () => {
       clientVoiceSessionTesting.reset();
       try {
         await cleanupSessionStateForTest({ stateDir: tempDir });
+        clearRuntimeConfigSnapshot();
       } finally {
         envSnapshot.restore();
         remove();
@@ -192,6 +201,7 @@ describe("voice creation authority", () => {
     tempDir = tempDirs.make("openclaw-voice-authority-");
     setTestEnvValue("OPENCLAW_STATE_DIR", tempDir);
     await prepareProfiles();
+    setRuntimeConfigSnapshot({});
     const seedEntry = { sessionId, updatedAt: Date.now() };
     await applySessionEntryOperation(
       { agentId: "main", sessionKey },
@@ -262,6 +272,7 @@ describe("voice creation authority", () => {
         ...rolePolicyConfig(),
         agents: { entries: { main: {}, source: {} } },
       };
+      setRuntimeConfigSnapshot(config);
       const client = roleClient("write", "cross-store-voice");
       const prepare = (scope: typeof local, method = "sessions.patch") => {
         const result = resolveSessionMutationAuthorization({
@@ -535,6 +546,7 @@ describe("voice creation authority", () => {
           : {}),
       };
       fixture.context.getRuntimeConfig = () => config;
+      setRuntimeConfigSnapshot(config);
       const key = kind === "incognito" ? "agent:main:dashboard:incognito-voice-source" : sessionKey;
       ownedVoiceSessionKey = key;
       const scope = { agentId: "main", sessionKey: key, storePath: config.session?.store };

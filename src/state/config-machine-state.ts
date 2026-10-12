@@ -7,10 +7,7 @@ import {
   withExistingOpenClawStateDatabaseArtifactPreservingReadOnly,
   withExistingOpenClawStateDatabaseReadOnly,
 } from "./openclaw-state-db-readonly.js";
-import type {
-  OpenClawStateReadCommand,
-  OpenClawStateReadResult,
-} from "./openclaw-state-read.types.js";
+import type { OpenClawStateReadCommand } from "./openclaw-state-read.types.js";
 
 export {
   getTtsMachinePathAdmission,
@@ -45,7 +42,7 @@ export function isConfigMachineStateReadCommand(
 export function readConfigMachineStateCommandInDatabase(
   database: DatabaseSync,
   command: ConfigMachineStateReadCommand,
-): Extract<OpenClawStateReadResult, { type: ConfigMachineStateReadCommand["type"] }> {
+) {
   return {
     type: command.type,
     // Activation may precede deferred publication; never issue authority before v19.

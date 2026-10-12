@@ -68,6 +68,7 @@ async function seedSessions(): Promise<OpenClawConfig> {
   const config: OpenClawConfig = {
     agents: { entries: { main: {}, work: {} } },
   };
+  setRuntimeConfigSnapshot(config);
   await upsertSessionEntryCore(
     { agentId: "main", sessionKey: "agent:main:active" },
     {

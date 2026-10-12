@@ -1,7 +1,11 @@
 import { expectDefined } from "@openclaw/normalization-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
-import { getRuntimeConfig } from "../../config/io.js";
+import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../config/io.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { buildSessionCreationStamp } from "../../config/sessions/session-entry-provenance.js";
 import { ensureCanonicalUserProfileForEmail } from "../../state/user-profile-writes.js";
@@ -96,6 +100,7 @@ async function invoke(
 describe("sessions.github.publish", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setRuntimeConfigSnapshot({});
     mocks.caller.mockReturnValue({
       agentId: "main",
       sessionKey: "agent:main:dashboard:task",
@@ -114,6 +119,10 @@ describe("sessions.github.publish", () => {
         message: "Publication was accepted.",
       };
     });
+  });
+
+  afterEach(() => {
+    clearRuntimeConfigSnapshot();
   });
 
   it.each([undefined])(
@@ -221,6 +230,7 @@ describe("sessions.github.publish", () => {
               },
             },
           });
+          await captureRuntimeConfigAsyncReader()();
           const profile = await ensureCanonicalUserProfileForEmail("publisher@example.test");
           const creator = await ensureCanonicalUserProfileForEmail("session-creator@example.test");
           await upsertSessionEntryCore(
@@ -310,6 +320,7 @@ describe("sessions.github.publish", () => {
                   }
                 : { ownership: "explicit", entries: { ops: {}, research: {} } },
           });
+          await captureRuntimeConfigAsyncReader()();
           for (const agentId of ["ops", "research"]) {
             await upsertSessionEntryCore(
               { agentId, sessionKey: "global" },
