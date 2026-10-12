@@ -270,6 +270,7 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/session-sharing-preparation.test.ts",
   "src/gateway/session-sharing.worker.test.ts",
   "src/gateway/session-startup-migration.test.ts",
+  "src/gateway/session-subagent-reactivation.test.ts",
   "src/gateway/session-subagent-resume.test.ts",
   "src/gateway/session-swarm-summary.test.ts",
   "src/gateway/session-transcript-preview.hydration.test.ts",

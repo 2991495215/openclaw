@@ -52,6 +52,7 @@ import { clientVoiceSessionTesting } from "../../../talk/client-voice-session.te
 import { captureEnv, setTestEnvValue } from "../../../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../../../test-utils/session-state-cleanup.js";
 import { captureGatewayDeviceRevocation } from "../../device-revocation.js";
+import { prepareGatewayRecipientProfile } from "../../expected-profile.js";
 import { makeClient } from "../../server-broadcast.test-helpers.js";
 import { createDirectChatContext } from "../../server-chat.agent-events.test-helpers.js";
 import {
@@ -272,6 +273,8 @@ describe("voice creation authority", () => {
       };
       setRuntimeConfigSnapshot(config);
       const client = roleClient("write", "cross-store-voice");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+      prepareGatewayRecipientProfile(client);
       const prepare = (scope: typeof local, method = "sessions.patch") => {
         const result = resolveSessionMutationAuthorization({
           method,
