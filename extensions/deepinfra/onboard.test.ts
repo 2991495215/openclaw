@@ -4,6 +4,8 @@ import {
   resolveAgentModelPrimaryValue,
 } from "openclaw/plugin-sdk/provider-onboard";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolvePluginMetadataSnapshotAsync } from "../../src/plugins/plugin-metadata-snapshot.js";
+import { resolveProviderAuthLookupMaps } from "../../src/secrets/provider-env-vars.js";
 import { DEEPINFRA_BASE_URL } from "./media-models.js";
 import { applyDeepInfraConfig } from "./onboard.js";
 import { DEEPINFRA_DEFAULT_MODEL_REF, DEEPINFRA_MODEL_CATALOG } from "./provider-static-catalog.js";
@@ -11,6 +13,19 @@ import { DEEPINFRA_DEFAULT_MODEL_REF, DEEPINFRA_MODEL_CATALOG } from "./provider
 const { resolveEnvApiKey } = providerAuth;
 
 const emptyCfg: OpenClawConfig = {};
+
+async function resolveDeepInfraEnvApiKey() {
+  const env = process.env;
+  const config = {};
+  const metadataSnapshot = await resolvePluginMetadataSnapshotAsync({ config, env });
+  const maps = resolveProviderAuthLookupMaps({ config, env, metadataSnapshot });
+  return resolveEnvApiKey("deepinfra", env, {
+    config,
+    aliasMap: maps.aliasMap,
+    candidateMap: maps.envCandidateMap,
+    authEvidenceMap: maps.authEvidenceMap,
+  });
+}
 
 describe("DeepInfra provider config", () => {
   describe("applyDeepInfraConfig", () => {
@@ -51,16 +66,16 @@ describe("DeepInfra provider config", () => {
   describe("env var resolution", () => {
     afterEach(() => vi.unstubAllEnvs());
 
-    it("resolves DEEPINFRA_API_KEY from env", () => {
+    it("resolves DEEPINFRA_API_KEY from env", async () => {
       vi.stubEnv("DEEPINFRA_API_KEY", "test-deepinfra-key");
-      const result = resolveEnvApiKey("deepinfra");
+      const result = await resolveDeepInfraEnvApiKey();
       expect(result?.apiKey).toBe("test-deepinfra-key");
       expect(result?.source.endsWith("DEEPINFRA_API_KEY")).toBe(true);
     });
 
-    it("returns null when DEEPINFRA_API_KEY is not set", () => {
+    it("returns null when DEEPINFRA_API_KEY is not set", async () => {
       vi.stubEnv("DEEPINFRA_API_KEY", undefined);
-      expect(resolveEnvApiKey("deepinfra")).toBeNull();
+      expect(await resolveDeepInfraEnvApiKey()).toBeNull();
     });
   });
 });

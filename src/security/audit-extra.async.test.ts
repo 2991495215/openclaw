@@ -30,6 +30,7 @@ vi.mock("../skills/loading/workspace-skill-loader.js", () => {
   };
   return {
     loadWorkspaceSkills,
+    prepareWorkspaceSkills: async (workspaceDir: string) => loadWorkspaceSkills(workspaceDir),
   };
 });
 

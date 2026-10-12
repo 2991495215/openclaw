@@ -2,6 +2,7 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import type { EmbeddingProviderOptions } from "./embeddings.types.js";
 import { requireApiKey, resolveApiKeyForProvider } from "./openclaw-runtime-auth.js";
 import {
+  resolvePluginMetadataSnapshotAsync,
   resolveProviderRequestPolicyConfig,
   resolveProviderTransportSsrFPolicy,
   type SsrFPolicy,
@@ -180,7 +181,13 @@ export async function resolveRemoteEmbeddingBearerClient(params: {
   const headers = Object.fromEntries(
     new Map(entries.map((entry) => [entry[0].toLowerCase(), entry])).values(),
   );
+  const metadataSnapshot = await resolvePluginMetadataSnapshotAsync({
+    config: params.options.config,
+    env: process.env,
+    allowWorkspaceScopedCurrent: true,
+  });
   const policy = resolveProviderRequestPolicyConfig({
+    providerMetadataOwners: metadataSnapshot.owners,
     provider: params.provider,
     api: providerConfig?.api ?? "openai-completions",
     baseUrl,

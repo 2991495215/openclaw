@@ -429,7 +429,14 @@ async function createOpenAICompatibleEmbeddingClient(
     }
   }
   const localServiceOptions = options as LocalServiceAwareEmbeddingOptions;
+  const { resolvePluginMetadataSnapshotAsync } = await import("./plugin-metadata-snapshot.js");
+  const metadataSnapshot = await resolvePluginMetadataSnapshotAsync({
+    config: options.config,
+    env: process.env,
+    allowWorkspaceScopedCurrent: true,
+  });
   const policy = resolveProviderRequestPolicyConfig({
+    providerMetadataOwners: metadataSnapshot.owners,
     provider: providerId,
     api: configuredProvider?.api ?? "openai-completions",
     baseUrl,

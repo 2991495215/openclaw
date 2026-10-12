@@ -58,7 +58,7 @@ for (const scope of ["shared", "local"] as const) {
   await withOpenClawTestState(
     { layout: "state-only", label: `auth-save-${scope}` },
     async (state) => {
-      const localDir = state.agentDir();
+      const localDir = state.agentDir("local");
       await persistAuthProfileBatch({
         stateDir: state.stateDir,
         profiles: [{ profileId: "shared", credential: apiKey("original") }],

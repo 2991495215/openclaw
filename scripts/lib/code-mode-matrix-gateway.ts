@@ -1263,10 +1263,7 @@ export async function runGatewayMatrixCell(
   const providerConfig: OpenClawConfig = {
     plugins: { allow: [provider], entries: { [provider]: { enabled: true } } },
   };
-  const { preparePluginMetadataMachineStateAsync } =
-    await import("../../src/plugins/installed-plugin-index-record-state.js");
-  await preparePluginMetadataMachineStateAsync({});
-  const credentials = matrixProviderEnv(params.cell.model, providerConfig, process.env);
+  const credentials = await matrixProviderEnv(params.cell.model, providerConfig, process.env);
   const credentialValues = Object.values(credentials).filter((value): value is string =>
     Boolean(value),
   );

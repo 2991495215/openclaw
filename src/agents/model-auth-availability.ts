@@ -398,6 +398,7 @@ export function createModelAuthAvailabilityResolver(
       profileId !== undefined &&
       !resolveAuthProfileEligibility({
         cfg: readOnlyAuthConfig,
+        authAliasLookupParams,
         store: orderStore,
         provider: normalizeProvider(provider),
         profileId,
@@ -475,6 +476,7 @@ export function createModelAuthAvailabilityResolver(
   const hasMatchingProfileEvidence = (provider: string, profileId: string) => {
     const reason = resolveAuthProfileEligibility({
       cfg: params.cfg,
+      authAliasLookupParams,
       store,
       provider,
       profileId,

@@ -3,6 +3,8 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import type { OpenClawConfig } from "../config/config.js";
+import * as pluginMetadata from "../plugins/plugin-metadata-snapshot.js";
+import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import type {
   ProviderResolveUsageAuthContext,
   ProviderResolvedUsageAuth,
@@ -108,6 +110,34 @@ describe("resolveProviderAuths key normalization", () => {
   });
 
   beforeEach(() => {
+    vi.spyOn(pluginMetadata, "resolvePluginMetadataSnapshotAsync").mockResolvedValue(
+      createPluginMetadataSnapshotFixture({
+        plugins: [
+          {
+            id: "zai",
+            providers: ["zai"],
+            setup: { providers: [{ id: "zai", envVars: ["ZAI_API_KEY", "Z_AI_API_KEY"] }] },
+          },
+          {
+            id: "minimax",
+            providers: ["minimax"],
+            setup: {
+              providers: [
+                {
+                  id: "minimax",
+                  envVars: ["MINIMAX_CODE_PLAN_KEY", "MINIMAX_CODING_API_KEY", "MINIMAX_API_KEY"],
+                },
+              ],
+            },
+          },
+          {
+            id: "xiaomi",
+            providers: ["xiaomi"],
+            setup: { providers: [{ id: "xiaomi", envVars: ["XIAOMI_API_KEY"] }] },
+          },
+        ],
+      }),
+    );
     authProfileMocks.store.profiles = {};
     authProfileMocks.orders = {};
     authProfileMocks.resolvedProfiles.clear();

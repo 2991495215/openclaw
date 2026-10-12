@@ -207,7 +207,7 @@ async function observeCommandSelection(fixture: TurnModelDifferentialFixture) {
     sessionAgentId: "main",
     workspaceDir: suiteTempRoot,
     pluginsEnabled: false,
-    modelManifestContext: {},
+    modelManifestContext: { manifestPlugins: [] },
     configuredThinkingCatalog: [],
     isSubagentLane: false,
     suppressVisibleSessionEffects: true,

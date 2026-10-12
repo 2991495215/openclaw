@@ -5,7 +5,7 @@
  */
 import { isDeepStrictEqual } from "node:util";
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
-import { getRuntimeConfig } from "../../config/config.js";
+import { captureRuntimeConfigAsyncReader } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { parseSecretRef } from "../../config/types.secrets.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -349,7 +349,7 @@ async function resolveApiKeyForProfileOwned(
   if (profileId === CLAUDE_CLI_PROFILE_ID) {
     return null;
   }
-  const configForRefResolution = cfg ?? getRuntimeConfig();
+  const configForRefResolution = cfg ?? (await captureRuntimeConfigAsyncReader()());
   const refDefaults = configForRefResolution.secrets?.defaults;
   const runtimeProfile = resolveRuntimeAuthProfile({
     agentDir: params.agentDir,

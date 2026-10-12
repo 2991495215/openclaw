@@ -11,6 +11,7 @@ import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import {
   createPluginRuntimeMock,
   useProviderCatalogMetadata,
+  useBundledProviderPolicyArtifactsForTest,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
 import type { SessionCatalogProvider as RegisteredSessionCatalogProvider } from "openclaw/plugin-sdk/session-catalog";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +32,7 @@ import {
 } from "./session-catalog.js";
 
 useProviderCatalogMetadata(new URL(".", import.meta.url));
+useBundledProviderPolicyArtifactsForTest(["anthropic"]);
 
 type OwnerMethod = "list" | "read" | "continueSession" | "openTerminal";
 type OwnerMethods = Pick<RegisteredSessionCatalogProvider, OwnerMethod>;

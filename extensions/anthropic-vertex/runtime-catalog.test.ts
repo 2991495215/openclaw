@@ -6,7 +6,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import anthropicVertexPlugin from "./index.js";
 
-useProviderCatalogMetadata(new URL(".", import.meta.url));
+useProviderCatalogMetadata(new URL(".", import.meta.url), new URL("../google/", import.meta.url));
 
 describe("Anthropic Vertex registered runtime model resolution", () => {
   afterEach(() => vi.unstubAllEnvs());

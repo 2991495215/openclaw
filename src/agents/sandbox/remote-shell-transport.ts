@@ -68,7 +68,8 @@ export function createRemoteShellSandboxSession(
     params: RemoteShellRunParams,
     checkCurrent = true,
   ): Promise<SandboxBackendCommandResult> => {
-    const command = await options.buildCommand(params);
+    const prepared = options.buildCommand(params);
+    const command = prepared instanceof Promise ? await prepared : prepared;
     if (command.argv.length === 0) {
       throw new Error("Remote shell command argv is empty");
     }
@@ -89,7 +90,7 @@ export function createRemoteShellSandboxSession(
       });
     };
     // Released guards cannot retain foreign-writer authority across broker IPC.
-    // Keep the final check and native launch synchronous until the next SDK major.
+    // Keep the final check and native launch in the same synchronous frame.
     const result = await (checkCurrent && options.assertCurrent
       ? runWithSpawnBroker(undefined, launch)
       : launch());

@@ -13,9 +13,17 @@ vi.mock("openclaw/plugin-sdk/media-runtime", async () => ({
   canonicalizeBase64: (await import("@openclaw/media-core/base64")).canonicalizeBase64,
   transcodeAudioBufferToOpus: transcode,
 }));
-const { assertOkOrThrowProviderErrorMock, postJsonRequestMock: post } = getProviderHttpMocks();
+const {
+  assertOkOrThrowProviderErrorMock,
+  postJsonRequestMock: post,
+  resolveProviderHttpRequestConfigMock,
+} = getProviderHttpMocks();
 let buildGoogleSpeechProvider: typeof import("./speech-provider.js").buildGoogleSpeechProvider;
 beforeAll(async () => {
+  const http = await vi.importActual<typeof import("openclaw/plugin-sdk/provider-http")>(
+    "openclaw/plugin-sdk/provider-http",
+  );
+  resolveProviderHttpRequestConfigMock.mockImplementation(http.resolveProviderHttpRequestConfig);
   ({ buildGoogleSpeechProvider } = await import("./speech-provider.js"));
 });
 installProviderHttpMockCleanup();

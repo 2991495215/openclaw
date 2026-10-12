@@ -1,4 +1,10 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  getRuntimeConfigSnapshot,
+  getRuntimeConfigSourceSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 
 /** Reuses real provider registrations while each case retains its own tool-schema inputs. */
 export function useProviderToolSchemaRuntimeForTest(pluginIds: readonly string[]): void {
@@ -24,9 +30,20 @@ export function useProviderToolSchemaRuntimeForTest(pluginIds: readonly string[]
         entries: Object.fromEntries(pluginIds.map((id) => [id, { enabled: true }])),
       },
     };
+    const previousConfig = getRuntimeConfigSnapshot();
+    const previousSource = getRuntimeConfigSourceSnapshot();
+    setRuntimeConfigSnapshot(config);
     const cache = caches.createPluginCache();
     const closeCache = async () => {
-      expect((await caches.retirePluginCache(cache)).failures).toEqual([]);
+      try {
+        expect((await caches.retirePluginCache(cache)).failures).toEqual([]);
+      } finally {
+        if (previousConfig) {
+          setRuntimeConfigSnapshot(previousConfig, previousSource ?? undefined);
+        } else {
+          clearRuntimeConfigSnapshot();
+        }
+      }
     };
     close = closeCache;
     const prepared = await caches.withPluginCache(cache, async () => ({

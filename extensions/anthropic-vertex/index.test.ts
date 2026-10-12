@@ -20,7 +20,7 @@ vi.mock("./region.js", async (importOriginal) => {
 import anthropicVertexPlugin from "./index.js";
 import { buildAnthropicVertexProvider } from "./provider-catalog.js";
 
-useProviderCatalogMetadata(new URL(".", import.meta.url));
+useProviderCatalogMetadata(new URL(".", import.meta.url), new URL("../google/", import.meta.url));
 
 function staleModel(
   id: string,

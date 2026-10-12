@@ -167,7 +167,7 @@ const composeTestConfig = (baseConfig: Record<string, unknown>) => {
   return applyImplicitAgentRosterDefaults(composed) as OpenClawConfig;
 };
 
-function readGatewayTestConfig(): OpenClawConfig {
+export function readGatewayTestConfig(): OpenClawConfig {
   const configPath = resolveConfigPath();
   let fileConfig: Record<string, unknown> = {};
   try {
@@ -188,8 +188,9 @@ export function loadGatewayTestConfig(): OpenClawConfig {
   }).config;
 }
 
-export async function loadGatewayTestConfigAsync(): Promise<OpenClawConfig> {
-  const config = readGatewayTestConfig();
+export async function loadGatewayTestConfigAsync(
+  config = readGatewayTestConfig(),
+): Promise<OpenClawConfig> {
   const { resolvePluginMetadataSnapshotAsync } =
     await import("../plugins/plugin-metadata-snapshot.js");
   const metadata = await resolvePluginMetadataSnapshotAsync({ config, env: process.env });
@@ -322,7 +323,7 @@ export function createGatewayConfigOverrides(actual: GatewayConfigRuntime): Gate
     if (runtimeSnapshot) {
       return runtimeSnapshot;
     }
-    const config = loadGatewayTestConfig();
+    const config = readGatewayTestConfig();
     actual.setRuntimeConfigSnapshot(config);
     return config;
   };

@@ -59,7 +59,10 @@ import { gatewayFixtureLifetime } from "./gateway-fixture-lifetime.test-support.
 import type { GatewayServerOptions } from "./server.js";
 import { disposeSessionReadContexts } from "./session-read-contexts.test-support.js";
 import { invalidateSessionSharingSnapshot } from "./session-sharing-snapshot-cache.js";
-import { loadGatewayTestConfigAsync } from "./test-helpers.config-runtime.js";
+import {
+  loadGatewayTestConfigAsync,
+  readGatewayTestConfig,
+} from "./test-helpers.config-runtime.js";
 import { GATEWAY_TEST_ENV_KEYS } from "./test-helpers.env.js";
 import { getGatewayTestPort, canRetryPort, startClaimedGateway } from "./test-helpers.listener.js";
 import { resetTestPluginRegistry } from "./test-helpers.plugin-registry.js";
@@ -116,7 +119,12 @@ function hasUnsyncedGatewayTestSessionConfig(): boolean {
 }
 
 async function publishGatewayTestConfig(config?: OpenClawConfig): Promise<OpenClawConfig> {
-  const prepared = config ?? (await loadGatewayTestConfigAsync());
+  const fixture = config ?? readGatewayTestConfig();
+  setRuntimeConfigSnapshot(fixture);
+  if (config) {
+    return config;
+  }
+  const prepared = await loadGatewayTestConfigAsync(fixture);
   setRuntimeConfigSnapshot(prepared);
   return prepared;
 }
