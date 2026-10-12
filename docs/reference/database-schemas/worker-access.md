@@ -114,6 +114,15 @@ facts; an unknown receipt falls back to the durable marker. Each new transcript
 read snapshot selects the indexed cold marker before consuming transcript rows.
 Repeated reads inside that snapshot reuse its local fact; a committed-write receipt
 captured before the snapshot cannot replace that initial marker read.
+
+The session actor also publishes compact transcript projection metadata with its
+committed postimage. History requests carry that receipt to the existing worker,
+which uses it while the session write scope is unchanged. Append, rewrite, rewind,
+reset, compaction, archive/restore, and index rebuild replace or invalidate these
+facts; cold or invalidated actors use the canonical snapshot read. Trajectory
+append and trim touch no session fields and preserve those receipts. Transcript
+bodies and byte limits remain SQL-owned bounded reads.
+
 Participant projections carry an autocommit read into the metadata CAS owner's
 unchanged immediate write transaction. Ordinary readers establish their own native
 snapshot. Concurrent participant updates remain independent of metadata CAS. These
@@ -5399,8 +5408,19 @@ repeat ACP lookups or their schema admission checks. ACP publications invalidate
 the existing row revision, and entry lifecycle matching still rejects stale
 runtime metadata. Optional preview and terminal-message facts use the retained
 history worker, with foreground priority and row-generation checks before
-publication. The host evaluates fallback notices using its current runtime plugin
-aliases; configuration and model policy do not travel to the read worker.
+publication. Ordinary active-message appends also carry a bounded preview in the
+existing committed transcript receipt. Resident rows publish it immediately,
+without waiting for the background queue or rereading the transcript. A newer
+receipt supersedes an older pending preview read. Actor commands carry this
+publication through native settlement before installing their full replica.
+Complete participant receipts update resident participants while retaining
+unaffected transcript, Board, and runtime facts; their display-only lifecycle
+notice does not schedule another database read. The same 64 KiB message bound
+applies; an oversized newest message clears the preview. Cold rows, rewrites,
+non-display messages, and fallback-model facts retain the bounded worker reader.
+The host evaluates fallback notices using its current runtime plugin aliases;
+configuration and model policy do not travel to the read worker. This changes no
+stored bytes, schema, durability, retention, or update behavior.
 
 Targeted Memory transcript notifications queue session identities directly. The
 indexing owner resolves their corpus and forgetting tombstones once when the
