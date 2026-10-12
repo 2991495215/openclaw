@@ -7,6 +7,7 @@ import {
   retainSqliteWorkerErrorCode,
   SqliteWorkerError,
 } from "../../infra/sqlite-worker-contract.js";
+import type { DatabasePathIdentity } from "../../infra/sqlite-worker-identity.js";
 import {
   createSqliteWorkerOperationAdmission,
   type SqliteWorkerOperationAdmission,
@@ -89,6 +90,7 @@ export async function withSessionEntryWorker<T>(
   ) => boolean,
   releaseSource?: () => void | Promise<void>,
   operationMode: "write" | "prepared-read" = "write",
+  expectedCreationIdentity?: DatabasePathIdentity,
 ): Promise<T> {
   let execution: OpenClawAgentDatabaseExecution;
   let env: SessionEntryCommitContext["env"];
@@ -99,18 +101,16 @@ export async function withSessionEntryWorker<T>(
     env = Object.freeze({ ...(options.env ?? process.env) });
     execution =
       retainedExecution ??
-      captureOpenClawAgentDatabaseExecution(
-        options,
-        databaseIdentity
+      captureOpenClawAgentDatabaseExecution(options, {
+        expectedCreationIdentity,
+        expectedIdentity: databaseIdentity
           ? {
-              expectedIdentity: {
-                kind: "file",
-                physicalIdentity: databaseIdentity,
-                nativeLocation: options.path,
-              },
+              kind: "file",
+              physicalIdentity: databaseIdentity,
+              nativeLocation: options.path,
             }
-          : {},
-      );
+          : undefined,
+      });
   } catch (error) {
     try {
       await releaseSource?.();

@@ -4,13 +4,18 @@ import {
   isSessionEntryDataSql,
   observeHostDataSql,
 } from "../../../test/helpers/sqlite-statement-execution-counter.js";
+import { readDatabasePathIdentitySync } from "../../infra/sqlite-worker-identity.js";
 import * as admission from "../../infra/sqlite-worker-operation-admission.js";
+import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
+import { captureOpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import {
   patchSessionEntryCore as patchInternalSessionEntry,
   recordInboundSessionMeta,
+  replaceSessionEntry,
 } from "./session-accessor.sqlite-entry.js";
 import { createSessionCompoundWorkerFixture as fixture } from "./session-compound-worker.test-support.js";
+import { readSessionEntryInWorker } from "./session-entry-read-writable.js";
 
 // mock-isolation: Background maintenance must not race the transaction/commit authority fixture.
 vi.mock("./session-accessor.sqlite-maintenance-kick.js", () => ({
@@ -20,6 +25,25 @@ vi.mock("./session-accessor.sqlite-maintenance-kick.js", () => ({
 vi.mock("./session-history-eviction.js", () => ({ kickSessionHistoryDiskBudgetMaintenance() {} }));
 
 afterEach(() => vi.restoreAllMocks());
+
+it("creates a session entry while another borrower retains its original creation reference", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    const options = { agentId: "main" };
+    const storePath = resolveOpenClawAgentSqlitePath(options);
+    const creator = captureOpenClawAgentDatabaseExecution(options, {
+      expectedCreationIdentity: readDatabasePathIdentitySync(storePath),
+    });
+    const scope = { ...options, storePath, sessionKey: "agent:main:creating-patch" };
+    const entry = { sessionId: "creating-patch", updatedAt: 1, label: "created in worker" };
+    try {
+      await expect(replaceSessionEntry(scope, entry)).resolves.toMatchObject(entry);
+      expect(creator.fileIdentity).toMatchObject({ kind: "file" });
+      await expect(readSessionEntryInWorker(scope)).resolves.toMatchObject(entry);
+    } finally {
+      await creator.release();
+    }
+  });
+});
 
 it("transfers an ordinary patch candidate with its final authority grant", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {

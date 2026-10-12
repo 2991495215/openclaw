@@ -442,6 +442,7 @@ async function patchSqliteSessionEntrySnapshot(
   const workerPatch = (source: PreparedSessionSourceAuthority, assertSource?: () => void) =>
     patchSessionEntryInWorker({
       database: { ...databaseOptions, path: databasePath },
+      expectedCreationIdentity: targetIdentity,
       databaseIdentity:
         typeof captured?.databaseIdentity === "string" ? captured.databaseIdentity : undefined,
       agentId: resolved.agentId,
