@@ -37,7 +37,7 @@ type SettingsRowProps = {
   stackedOnNarrow?: boolean;
 };
 
-export type SettingsSectionProps = {
+type SettingsSectionProps = {
   title?: unknown;
   description?: unknown;
   /** Right-aligned inline actions next to the heading (e.g. an Add button). */
@@ -56,7 +56,7 @@ type SettingsHelpTriggerProps = {
   popoverId: string;
 };
 
-export type SettingsPageHeaderProps = {
+type SettingsPageHeaderProps = {
   title: unknown;
   subtitle?: unknown;
   actions?: TemplateResult | typeof nothing;
