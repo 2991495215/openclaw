@@ -161,7 +161,8 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   // +2: deprecated media projection type and builder.
   "reply-payload": 2,
   // +7: released auth-store and TTS methods retain synchronous compatibility.
-  "agent-runtime": 11,
+  // +1: released snapshot publication remains during its approved async replacement.
+  "agent-runtime": 12,
   "memory-host-core": 2,
   // +4: session-write lease no-op compatibility stubs through the 2026.10 train.
   // +4: legacy AgentHarness, attempt, embedded-run, and side-question contracts remain
