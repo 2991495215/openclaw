@@ -13,6 +13,7 @@ import { runWebSearch } from "./runtime.js";
 // mock-isolation: Provider fixtures supply metadata without opening shared machine state.
 vi.mock("../plugins/installed-plugin-index-record-state.js", () => ({
   preparePluginMetadataMachineStateAsync: async () => () => {},
+  getPersistedInstalledPluginIndexCacheEntry: () => ({ state: { status: "missing" } }),
 }));
 
 // mock-isolation: Use fixed discovery policy without opening machine state for provider fixtures.

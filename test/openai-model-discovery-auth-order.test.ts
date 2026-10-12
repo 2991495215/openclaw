@@ -39,9 +39,10 @@ const discovery = vi.hoisted(() => ({
 
 vi.mock("../src/plugins/provider-discovery.runtime.js", () => ({
   resolvePluginDiscoveryProvidersRuntime: () => discovery.providers,
+  resolvePluginDiscoveryProvidersRuntimeAsync: async () => discovery.providers,
 }));
 
-vi.mock("../src/plugins/provider-hook-runtime.js", async () => {
+vi.mock("../src/plugins/provider-hook-runtime.js", async (importOriginal) => {
   const { createProviderHookRuntime } =
     await import("../src/plugins/provider-hook-runtime-core.js");
   const { matchesProviderPluginRef } = await import("../src/plugins/provider-registry-shared.js");
@@ -56,7 +57,7 @@ vi.mock("../src/plugins/provider-hook-runtime.js", async () => {
           params.providerRefs.some((ref) => matchesProviderPluginRef(provider, ref))),
     );
   // Discovery and runtime hooks use the same fixture providers; no plugin loading is under test.
-  return createProviderHookRuntime({
+  const resolver: Parameters<typeof createProviderHookRuntime>[0] = {
     isPluginProvidersLoadInFlight: () => false,
     resolvePluginProviderRegistryCore: (params) => {
       const providers = selectProviders(params);
@@ -81,7 +82,15 @@ vi.mock("../src/plugins/provider-hook-runtime.js", async () => {
       }
       return providers.map((provider) => Object.assign({}, provider, { pluginId: provider.id }));
     },
-  });
+    resolvePluginProviderRegistryCoreAsync: async (params) =>
+      resolver.resolvePluginProviderRegistryCore(params),
+    resolvePluginProvidersCoreAsync: async (params, onSelectedRegistry) =>
+      resolver.resolvePluginProvidersCore(params, onSelectedRegistry),
+  };
+  return {
+    ...(await importOriginal<typeof import("../src/plugins/provider-hook-runtime.js")>()),
+    ...createProviderHookRuntime(resolver),
+  };
 });
 
 function createCatalogProviderRegistry(providers = discovery.providers) {
@@ -108,7 +117,10 @@ describe("Provider model discovery auth preparation", () => {
     discovery.providers = [buildOpenAIProvider()];
     // These fixtures supply refreshable providers and mock their refresh operation.
     // Keep capability discovery at the same boundary instead of loading the full runtime.
-    vi.spyOn(providerRuntime, "resolveProviderOAuthRefreshCapabilityWithPlugin").mockResolvedValue({
+    vi.spyOn(
+      providerRuntime,
+      "resolveProviderOAuthRefreshCapabilityWithLazyRuntime",
+    ).mockResolvedValue({
       status: "available",
     });
   });
@@ -317,11 +329,11 @@ describe("Provider model discovery auth preparation", () => {
       });
 
       expect(
-        providerRuntime.resolveProviderOAuthRefreshCapabilityWithPlugin,
+        providerRuntime.resolveProviderOAuthRefreshCapabilityWithLazyRuntime,
       ).toHaveBeenCalledOnce();
-      expect(providerRuntime.resolveProviderOAuthRefreshCapabilityWithPlugin).toHaveBeenCalledWith(
-        expect.objectContaining({ provider: providerId }),
-      );
+      expect(
+        providerRuntime.resolveProviderOAuthRefreshCapabilityWithLazyRuntime,
+      ).toHaveBeenCalledWith(expect.objectContaining({ provider: providerId }));
       expect(refresh).toHaveBeenCalledOnce();
       expect(refresh).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -435,7 +447,7 @@ describe("Provider model discovery auth preparation", () => {
           },
         }),
       );
-      vi.mocked(providerRuntime.resolveProviderOAuthRefreshCapabilityWithPlugin).mockRestore();
+      vi.mocked(providerRuntime.resolveProviderOAuthRefreshCapabilityWithLazyRuntime).mockRestore();
       const profileId = "radius:oauth";
       const keyProfileId = "radius:key";
       const store = createExpiredOauthStore({
@@ -918,7 +930,10 @@ describe("provider catalog late-result finalization", () => {
     };
     await state.writeAuthProfiles(store);
     vi.spyOn(providerRuntime, "buildProviderAuthDoctorHintWithPlugin").mockResolvedValue(undefined);
-    vi.spyOn(providerRuntime, "resolveProviderOAuthRefreshCapabilityWithPlugin").mockResolvedValue({
+    vi.spyOn(
+      providerRuntime,
+      "resolveProviderOAuthRefreshCapabilityWithLazyRuntime",
+    ).mockResolvedValue({
       status: "available",
     });
     vi.spyOn(providerRuntime, "resolveProviderOAuthCredentialWithPlugin").mockRejectedValue(

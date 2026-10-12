@@ -297,7 +297,7 @@ describe("cron preparation plugin ownership", () => {
     async (owner) => {
       const input = { config, workspaceDir: state.workspaceDir, agentDir: state.agentDir() };
       const metadataSnapshot = loadPluginMetadataSnapshot(input);
-      const registry = createPreparedInboundRegistryLoader()(input, metadataSnapshot);
+      const registry = await createPreparedInboundRegistryLoader()(input, metadataSnapshot);
       prepareOwnedPluginLoadContext(input, process.env, registry, metadataSnapshot, true);
       if (owner === "global") {
         setActivePluginRegistry(registry);

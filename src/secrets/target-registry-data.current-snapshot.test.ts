@@ -55,7 +55,8 @@ function writeChannelContract(params: {
     id: params.pluginId,
     origin: "config" as const,
     channels: params.ownership === "channels" ? [params.channelId] : [],
-    channelConfigs: params.ownership === "channelConfigs" ? { [params.channelId]: {} } : {},
+    channelConfigs:
+      params.ownership === "channelConfigs" ? { [params.channelId]: { schema: {} } } : {},
     rootDir,
   };
 }

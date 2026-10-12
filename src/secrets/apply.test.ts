@@ -528,7 +528,7 @@ describe("secrets apply", () => {
     await writeJsonFile(resolveAuthProfileDatabasePath(agentDir), local);
     await writeJsonFile(fixture.configPath, { agents: { entries: { ops: { agentDir } } } });
     replaceRuntimeAuthProfileStoreSnapshots([
-      { agentDir, store: loadAuthProfileStoreWithoutExternalProfiles(agentDir) },
+      { agentDir, store: await loadAuthProfileStoreWithoutExternalProfilesAsync(agentDir) },
     ]);
     expect(getRuntimeAuthProfileStoreSnapshot(agentDir)?.profiles["openai:inherited"]).toEqual(
       shared.profiles["openai:inherited"],
