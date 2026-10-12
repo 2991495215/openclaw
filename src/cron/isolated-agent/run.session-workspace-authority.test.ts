@@ -258,12 +258,11 @@ describe("scheduled workspace authority through creator, storage, scheduler and 
     await execution.start();
     try {
       await execution.run(job.id, "force");
-      const runState = execution.getJob(job.id)?.state;
       if (scenario === "foreign" || scenario === "archived" || scenario.startsWith("managed-")) {
         expect(reads).toEqual([]);
-        expect(runState?.lastRunStatus).toBe("error");
+        expect(execution.getJob(job.id)?.state.lastRunStatus).toBe("error");
       } else {
-        expect(runState?.lastRunStatus, runState?.lastError).toBe("ok");
+        expect(execution.getJob(job.id)?.state.lastRunStatus).toBe("ok");
         expect(reads).toHaveLength(1);
         expect(reads[0]).toContain(scenario === "operator" ? "FOREIGN_WORKSPACE" : "OWN_WORKSPACE");
       }

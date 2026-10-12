@@ -87,6 +87,7 @@ export async function readSessionTranscriptAnchorsAsync(
   };
   const request = {
     entryIds: [...selection.entryIds],
+    activePathEntryId: selection.activePathEntryId,
     afterSeq: selection.afterSeq,
     includeMessagesForRunId: selection.includeMessagesForRunId,
     includeSession: selection.includeSession,

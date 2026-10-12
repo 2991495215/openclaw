@@ -1,10 +1,6 @@
 import { expect, it } from "vitest";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
-import {
-  loadSessionEntry,
-  replaceSessionEntry,
-  replaceSessionEntrySync,
-} from "../config/sessions/session-accessor.js";
+import { loadSessionEntry, replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -49,7 +45,7 @@ it.each([
       tools: { listChars: 11, schemaChars: 19, entries: [] },
     };
     for (const agentId of ["main", "research", "retired"]) {
-      replaceSessionEntrySync(
+      await replaceSessionEntry(
         { agentId, sessionKey: `agent:${agentId}:visible` },
         {
           sessionId: `${agentId}-visible`,

@@ -45,6 +45,7 @@ it.for([
   "fallback-direct-rejected",
 ] as const)(
   "dispatchInboundMessageWithBufferedDispatcher settles %s streamed blocks before final suppression",
+  { timeout: 60000 },
   async (scenario, { signal }) => {
     const timesOut = scenario === "timeout-media";
     const fallback = scenario.startsWith("fallback-");
@@ -559,5 +560,4 @@ it.for([
       resetCommandQueueStateForTest();
     }
   },
-  60000,
 );

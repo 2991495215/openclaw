@@ -12,6 +12,7 @@ import {
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import {
   loadSessionEntry,
+  replaceSessionEntry,
   replaceSessionEntrySync,
 } from "../../../config/sessions/session-accessor.js";
 import { applySessionEntryOperation } from "../../../config/sessions/session-accessor.sqlite-entry.js";

@@ -150,8 +150,7 @@ it("keeps prepared lineage current across publications and store lifetimes witho
           ...(kind === "archived" ? { archivedAt: 1 } : {}),
           ...(incognito ? { incognito: true as const } : {}),
         };
-        const replaceEntry = incognito ? replaceSessionEntry : replaceSessionEntrySync;
-        await replaceEntry(scope, stored);
+        await replaceSessionEntry(scope, stored);
         await projection.ensureMaterialized();
         const eventKey = incognito
           ? sessionKey.replace("agent:main:", "AGENT:MAIN:")
@@ -161,7 +160,7 @@ it("keeps prepared lineage current across publications and store lifetimes witho
         const harness = createLineageHarness(projection, eventKey);
         harnesses.push(harness);
         await harness.expectLineage(parent);
-        await replaceEntry(scope, {
+        await replaceSessionEntry(scope, {
           ...stored,
           sessionId: `replacement-${kind}`,
           updatedAt: 2,
