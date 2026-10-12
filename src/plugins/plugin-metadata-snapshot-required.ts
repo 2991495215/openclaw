@@ -3,7 +3,6 @@ import { isPluginSourceModulePath, tryNativeRequireModule } from "./native-modul
 import {
   snapshotReaderSlot,
   type CurrentSnapshotModule,
-  type SnapshotLoaderModule,
 } from "./plugin-metadata-snapshot-readers.js";
 
 // Required policy readers must preserve loader failures. Source and built code
@@ -31,16 +30,6 @@ export function getCurrentPluginMetadataSnapshotRequiredRuntime(
   const reader =
     snapshotReaderSlot.getCurrentPluginMetadataSnapshot ??
     loadRequiredSnapshotReaders().getCurrentPluginMetadataSnapshot;
-  return reader(params);
-}
-
-/** Loads metadata through its canonical owner without suppressing discovery errors. */
-export function loadPluginMetadataSnapshotRuntime(
-  params: Parameters<SnapshotLoaderModule["loadPluginMetadataSnapshot"]>[0],
-): ReturnType<SnapshotLoaderModule["loadPluginMetadataSnapshot"]> {
-  const reader =
-    snapshotReaderSlot.loadPluginMetadataSnapshot ??
-    loadRequiredSnapshotReaders().loadPluginMetadataSnapshot;
   return reader(params);
 }
 

@@ -139,6 +139,7 @@ const loadPluginMetadataSnapshot = vi.hoisted(() =>
   })),
 );
 
+// mock-isolation: Attribution fixtures own the reader slot and must not register or read process metadata.
 vi.mock("../plugins/plugin-metadata-snapshot-readers.js", () => ({
   registerPluginMetadataSnapshotReaders: () => {},
   snapshotReaderSlot: {

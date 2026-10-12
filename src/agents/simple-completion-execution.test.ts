@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../llm/stream.js", () => ({ completeSimple: mocks.complete }));
 vi.mock("./ai-transport-runtime-host.js", () => ({}));
+// mock-isolation: Completion routing uses fixture endpoint owners without discovering host plugins.
 vi.mock("../plugins/plugin-metadata-snapshot.js", () => ({
   resolvePluginMetadataSnapshotAsync: async () => ({
     owners: {

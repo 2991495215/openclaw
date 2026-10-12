@@ -18,6 +18,7 @@ import { selectUpdateRepairInference } from "./update-repair-inference.js";
 
 const mocks = vi.hoisted(() => ({ probe: vi.fn(), refresh: vi.fn() }));
 
+// mock-isolation: Use fixture-only external auth hooks instead of the native plugin-bound store.
 vi.mock("../agents/auth-profiles/store-runtime.js", async () => {
   const { createAuthProfileStoreRuntime } = await import("../agents/auth-profiles/store.js");
   const { createExternalAuthRuntime } = await import("../agents/auth-profiles/external-auth.js");
@@ -28,7 +29,8 @@ vi.mock("../agents/auth-profiles/store-runtime.js", async () => {
     ),
   );
 });
-vi.mock("../plugins/provider-runtime.runtime.js", () => ({
+vi.mock("../plugins/provider-runtime.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../plugins/provider-runtime.runtime.js")>()),
   formatProviderAuthProfileApiKeyWithLazyRuntime: ({ context }: { context: OAuthCredential }) =>
     context.access,
   resolveProviderOAuthRefreshCapabilityWithLazyRuntime: async () => ({ status: "available" }),

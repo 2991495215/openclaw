@@ -38,6 +38,7 @@ vi.mock("./channel-presence-policy.js", () => ({
   listExplicitConfiguredChannelIdsForConfig: () => [],
 }));
 
+// mock-isolation: Fixture channel ids and startup plans replace persisted channel discovery.
 vi.mock("./channel-plugin-ids.js", () => ({
   listExplicitConfiguredChannelIdsForConfig: (
     ...args: Parameters<typeof mocks.listExplicitConfiguredChannelIdsForConfig>
@@ -50,10 +51,9 @@ vi.mock("./channel-plugin-ids.js", () => ({
 }));
 
 vi.mock("./plugin-metadata-snapshot.js", async (importOriginal) => {
-  const { rebasePluginMetadataSnapshotManifestRegistry } =
-    await importOriginal<typeof import("./plugin-metadata-snapshot.js")>();
+  const actual = await importOriginal<typeof import("./plugin-metadata-snapshot.js")>();
   return {
-    rebasePluginMetadataSnapshotManifestRegistry,
+    ...actual,
     resolvePluginMetadataSnapshotAsync: (
       ...args: Parameters<typeof mocks.resolvePluginMetadataSnapshotAsync>
     ) => mocks.resolvePluginMetadataSnapshotAsync(...args),

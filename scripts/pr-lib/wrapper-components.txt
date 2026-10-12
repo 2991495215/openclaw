@@ -1293,6 +1293,7 @@ src/plugins/bundle-manifest.ts
 src/plugins/bundled-channel-runtime.ts
 src/plugins/bundled-compat.ts
 src/plugins/bundled-dir.ts
+src/plugins/bundled-discovery-state.native.ts
 src/plugins/bundled-discovery-state.ts
 src/plugins/bundled-load-path-aliases.ts
 src/plugins/bundled-plugin-scan.ts
@@ -1311,13 +1312,17 @@ src/plugins/compat/auth-async-record.ts
 src/plugins/compat/channel-pairing-record.ts
 src/plugins/compat/cron-store-path-record.ts
 src/plugins/compat/deprecation-marking.ts
+src/plugins/compat/media-discovery-record.ts
 src/plugins/compat/media-legacy-projection.ts
 src/plugins/compat/mention-inbox-record.ts
 src/plugins/compat/model-account-connect-record.ts
+src/plugins/compat/model-ref-record.ts
+src/plugins/compat/model-session-auth-profile-record.ts
 src/plugins/compat/native-exec-approval-record.ts
 src/plugins/compat/plugin-sdk-removed-export-records.ts
 src/plugins/compat/plugin-sdk-subpath-records.ts
 src/plugins/compat/progress-receipt-handoff-record.ts
+src/plugins/compat/provider-discovery-records.ts
 src/plugins/compat/sqlite-runtime-records.ts
 src/plugins/compat/binding-persistence-records.ts
 src/plugins/compat/registry-records.ts
@@ -1993,7 +1998,6 @@ src/config/sessions/session-transcript-projection-rebuild.ts
 src/config/sessions/session-transcript-read-bytes.ts
 src/config/sessions/session-transcript-worker.types.ts
 src/config/sessions/transcript-assistant-delivery-read.ts
-src/config/sessions/transcript-entry-anchor.ts
 src/config/sessions/transcript-header.ts
 src/config/sessions/transcript-message-identity.ts
 src/config/sessions/transcript-navigation-fields.ts

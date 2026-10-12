@@ -41,7 +41,8 @@ vi.mock("../cli-credentials.js", () => ({
   readMiniMaxCliCredentialsCached: () => null,
 }));
 
-vi.mock("../../plugins/provider-runtime.runtime.js", () => ({
+vi.mock("../../plugins/provider-runtime.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../plugins/provider-runtime.runtime.js")>()),
   buildProviderAuthDoctorHintWithPlugin: async () => null,
   formatProviderAuthProfileApiKeyWithLazyRuntime: async (params: {
     context?: { access?: string };
@@ -55,9 +56,11 @@ vi.mock("../../plugins/provider-runtime.runtime.js", () => ({
   resolveProviderOAuthRefreshCapabilityWithLazyRuntime: async () => ({ status: "unhandled" }),
 }));
 
-vi.mock("../../plugins/provider-external-auth-core.js", () => ({
+vi.mock("../../plugins/provider-external-auth-core.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../plugins/provider-external-auth-core.js")>()),
   createProviderExternalAuthResolver: () => ({
     resolveExternalAuthProfilesWithPlugins: () => [],
+    prepareExternalAuthProfilesWithPlugins: async () => () => [],
   }),
 }));
 

@@ -7,7 +7,7 @@ import {
   resolveSessionRuntimeOverrideForProvider,
 } from "./session-runtime-compat.js";
 
-// The compatibility boundary consumes one supplied metadata generation; CLI registrations below own alias policy.
+// mock-isolation: Runtime compatibility uses empty metadata; fixture CLI registrations below own alias policy.
 vi.mock("../plugins/plugin-metadata-snapshot.js", () => ({
   resolvePluginMetadataSnapshotAsync: vi.fn(async () => ({ plugins: [], index: { plugins: [] } })),
 }));

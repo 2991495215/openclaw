@@ -30,6 +30,7 @@ vi.mock("../plugins/synthetic-auth.runtime.js", () => ({
   resolveRuntimeSyntheticAuthProviderRefs,
 }));
 
+// mock-isolation: Synthetic auth callbacks use fixture credentials instead of installed provider runtimes.
 vi.mock("../plugins/provider-runtime.js", () => ({
   applyProviderResolvedTransportWithPlugin: () => undefined,
   normalizeProviderResolvedModelWithPlugin: () => undefined,

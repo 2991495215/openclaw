@@ -24,7 +24,8 @@ vi.mock("../../llm/oauth.js", () => ({
   getOAuthProviders: () => [{ id: "openai" }],
 }));
 
-vi.mock("../../plugins/provider-runtime.runtime.js", () => ({
+vi.mock("../../plugins/provider-runtime.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../plugins/provider-runtime.runtime.js")>()),
   buildProviderAuthDoctorHintWithPlugin: async () => undefined,
   formatProviderAuthProfileApiKeyWithLazyRuntime: async (params: { context?: OAuthCredential }) =>
     params.context?.access,

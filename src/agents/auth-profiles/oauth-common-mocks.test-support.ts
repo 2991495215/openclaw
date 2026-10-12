@@ -26,7 +26,8 @@ vi.mock("../cli-credentials.js", () => ({
   readMiniMaxCliCredentialsCached: () => null,
 }));
 
-vi.mock("../../plugins/provider-runtime.runtime.js", () => ({
+vi.mock("../../plugins/provider-runtime.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../plugins/provider-runtime.runtime.js")>()),
   formatProviderAuthProfileApiKeyWithLazyRuntime: (params: { context?: { access?: string } }) =>
     oauthProviderRuntimeMocks.formatProviderAuthProfileApiKeyWithPluginMock() ??
     params?.context?.access,

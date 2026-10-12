@@ -270,6 +270,7 @@ vi.mock("../plugins/setup-registry.js", () => ({
   }),
 }));
 
+// mock-isolation: Wizard orchestration controls provider choices while credential persistence is exercised separately.
 vi.mock("../plugins/provider-auth-choice.runtime.js", () => ({
   resolveProviderPluginChoice,
   resolveAuthChoicePluginProviders: resolvePluginProviders,

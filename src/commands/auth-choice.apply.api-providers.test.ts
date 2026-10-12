@@ -22,6 +22,7 @@ const resolveDeprecatedProviderInstallCatalogEntry = vi.hoisted(() =>
   >(),
 );
 
+// mock-isolation: API-key choice normalization uses synthetic provider methods without runtime discovery.
 vi.mock("../plugins/provider-auth-choice.runtime.js", () => ({
   resolveAuthChoicePluginProviders: resolvePluginProviders,
   resolvePluginSetupProvider,

@@ -19,6 +19,7 @@ const runProviderModelSelectedHookMock = vi.hoisted(() =>
 );
 const runAuthMethodMock = vi.hoisted(() => vi.fn(async () => ({ profiles: [] })));
 
+// mock-isolation: Preferred-provider resolution uses a synthetic auth-choice registry without loading provider runtime.
 vi.mock("../../plugins/provider-auth-choice.runtime.js", () => ({
   resolveAuthChoicePluginProviders: resolvePluginProvidersMock,
   resolvePluginSetupProvider: resolvePluginSetupProviderMock,

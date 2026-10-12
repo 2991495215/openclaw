@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildMediaUnderstandingCapabilityRegistryAsync } from "./provider-capability-registry.js";
 
+// mock-isolation: Config capability inference uses an empty inventory without loading plugins.
 vi.mock("../plugins/capability-provider-acquisition.js", () => ({
   acquirePluginCapabilityProviders: vi.fn(async () => ({
     providers: [],

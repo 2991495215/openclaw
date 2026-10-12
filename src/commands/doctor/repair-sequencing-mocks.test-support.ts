@@ -51,6 +51,7 @@ vi.mock("../doctor-plugin-registry.js", () => ({
   maybeRepairStaleManagedNpmBundledPlugins: hoistedMocks.maybeRepairStaleManagedNpmBundledPlugins,
 }));
 
+// mock-isolation: Repair sequencing supplies its own metadata and must not read machine discovery state.
 vi.mock("../../plugins/bundled-discovery-state.js", () => ({
   prepareBundledDiscoveryMode: async () => () => {},
 }));

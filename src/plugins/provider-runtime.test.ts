@@ -337,6 +337,7 @@ describe("provider-runtime", () => {
           isPluginProvidersLoadInFlightMock(params),
       };
     });
+    // mock-isolation: Exercise real hook logic against fixture registries, without native bindings.
     vi.doMock("./provider-hook-runtime.js", async () => {
       const { createProviderHookRuntime } = await import("./provider-hook-runtime-core.js");
       const providers = await import("./providers.runtime.js");

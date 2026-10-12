@@ -38,11 +38,18 @@ vi.mock("../src/talk/provider-registry.js", () => ({
     ),
   listRealtimeVoiceProviders: () => mocks.providers,
 }));
-vi.mock("../src/tts/provider-registry.js", () => ({
-  canonicalizeSpeechProviderId: (id: string | undefined) => id,
-  getSpeechProvider: () => undefined,
-  listSpeechProviders: () => [],
-}));
+// mock-isolation: Browser Talk fixtures use an empty speech registry without runtime discovery.
+vi.mock("../src/tts/provider-registry.js", () => {
+  const registry = {
+    canonicalizeSpeechProviderId: (id: string | undefined) => id,
+    getSpeechProvider: () => undefined,
+    listSpeechProviders: () => [],
+  };
+  return {
+    withSpeechProviderRegistry: async (_cfg: unknown, run: (value: typeof registry) => unknown) =>
+      run(registry),
+  };
+});
 vi.mock("../src/realtime-transcription/provider-registry.js", () => ({
   canonicalizeRealtimeTranscriptionProviderId: (id: string | undefined) => id,
   getRealtimeTranscriptionProvider: () => undefined,

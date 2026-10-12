@@ -116,6 +116,7 @@ vi.mock("../plugins/effective-plugin-ids.js", () => ({
   ) => mocks.resolveEffectivePluginIdsAsync(...args),
 }));
 
+// mock-isolation: Fixture load contexts avoid ambient config and persisted metadata discovery.
 vi.mock("../plugins/runtime/load-context.resolve.js", () => ({
   resolvePluginRuntimeLoadContextAsync: (
     ...args: Parameters<typeof mocks.resolvePluginRuntimeLoadContextAsync>
