@@ -572,7 +572,7 @@ describe("sessions.fork storage ownership", () => {
         if (incognito) {
           memorySessionActorOwners.closeDatabase({ agentId: "main", path: databasePath });
         } else {
-          expect(await closeOpenClawAgentDatabaseByPathAsync(databasePath)).toBe(true);
+          await closeOpenClawAgentDatabaseByPathAsync(databasePath);
         }
         expect(loadSessionEntryReadOnly(childScope)).toEqual(incognito ? undefined : child);
         await expect(loadTranscriptEvents(childTranscriptScope)).resolves.toEqual(

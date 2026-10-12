@@ -5,6 +5,10 @@ import { Type } from "typebox";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
+import {
   appendTranscriptMessages,
   appendTranscriptMessageSync,
   upsertSessionEntryCore,
@@ -75,6 +79,7 @@ afterEach(() => {
   resetDiagnosticRunActivityForTest();
   resetGlobalHookRunner();
   resetSecretRedactionRegistryForTest();
+  clearRuntimeConfigSnapshot();
 });
 
 describe("AgentSession runtime and transcript projections", () => {
@@ -543,6 +548,7 @@ describe("AgentSession runtime and transcript projections", () => {
   });
 
   it("preserves source across reused managers and ordinary append batches", async () => {
+    setRuntimeConfigSnapshot({});
     const { dir, scope } = createSessionScope("source-reuse");
     await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
     const manager = SessionManager.open(scope, dir);
