@@ -43,6 +43,27 @@ import {
 
 const reloadBarrier = vi.hoisted(() => ({ hold: undefined as (() => Promise<void>) | undefined }));
 
+// HOLD / neverLand: identify the failing RPC and reload progress without logging config or secrets.
+type ConfigPatchDiagnostic = {
+  phase:
+    | "seed-patch"
+    | "seed-assertions"
+    | "rewrite-secrets"
+    | "reload-secrets"
+    | "reload-assertions"
+    | "read-cold-baseline"
+    | "cold-patch"
+    | "cold-assertions";
+  hotReloadEntered: number;
+  hotReloadCompleted: number;
+  hotReloadFailed: number;
+  modelsChanged: boolean;
+  secretsChanged: boolean;
+};
+const reloadDiagnostic = vi.hoisted(() => ({
+  current: undefined as ConfigPatchDiagnostic | undefined,
+}));
+
 vi.mock("./config-reload.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./config-reload.js")>();
   return {
@@ -53,8 +74,29 @@ vi.mock("./config-reload.js", async (importOriginal) => {
       actual.startGatewayConfigReloader({
         ...options,
         onHotReload: async (...args) => {
-          await reloadBarrier.hold?.();
-          return await options.onHotReload(...args);
+          const diagnostic = reloadDiagnostic.current;
+          if (diagnostic) {
+            diagnostic.hotReloadEntered = Math.min(diagnostic.hotReloadEntered + 1, 32);
+            diagnostic.modelsChanged ||= args[0].changedPaths.some(
+              (key) => key === "models" || key.startsWith("models."),
+            );
+            diagnostic.secretsChanged ||= args[0].changedPaths.some(
+              (key) => key === "secrets" || key.startsWith("secrets."),
+            );
+          }
+          try {
+            await reloadBarrier.hold?.();
+            const result = await options.onHotReload(...args);
+            if (diagnostic) {
+              diagnostic.hotReloadCompleted = Math.min(diagnostic.hotReloadCompleted + 1, 32);
+            }
+            return result;
+          } catch (error) {
+            if (diagnostic) {
+              diagnostic.hotReloadFailed = Math.min(diagnostic.hotReloadFailed + 1, 32);
+            }
+            throw error;
+          }
         },
       }),
   };
@@ -93,6 +135,15 @@ describe("gateway config methods", () => {
       },
     };
 
+    const diagnostic: ConfigPatchDiagnostic = {
+      phase: "seed-patch",
+      hotReloadEntered: 0,
+      hotReloadCompleted: 0,
+      hotReloadFailed: 0,
+      modelsChanged: false,
+      secretsChanged: false,
+    };
+    reloadDiagnostic.current = diagnostic;
     try {
       const seed = await rpcReq<{ degradedSecretOwners?: unknown[] }>(
         requireClient(),
@@ -103,17 +154,21 @@ describe("gateway config methods", () => {
         },
         CONFIG_SECRETREF_RPC_TIMEOUT_MS,
       );
+      diagnostic.phase = "seed-assertions";
       expect(seed.ok, seed.error?.message).toBe(true);
       expect(seed.payload?.degradedSecretOwners).toBeUndefined();
 
+      diagnostic.phase = "rewrite-secrets";
       await writeJsonFile(secretFile, { second: "second-new" });
       await fs.chmod(secretFile, 0o600);
+      diagnostic.phase = "reload-secrets";
       const reload = await rpcReq<{ warningCount?: number }>(
         requireClient(),
         "secrets.reload",
         {},
         CONFIG_SECRETREF_RPC_TIMEOUT_MS,
       );
+      diagnostic.phase = "reload-assertions";
       expect(reload.ok).toBe(true);
       const stale = getActiveSecretsRuntimeSnapshot();
       expect(stale?.config.models?.providers?.["reload-first"]?.apiKey).toBe("first-old");
@@ -122,7 +177,9 @@ describe("gateway config methods", () => {
         { ownerKind: "provider", ownerId: "reload-first", degradationState: "stale" },
       ]);
 
+      diagnostic.phase = "read-cold-baseline";
       const beforeCold = await getCurrentConfigObject();
+      diagnostic.phase = "cold-patch";
       const cold = await rpcReq<{
         degradedSecretOwners?: Array<{ ownerId?: string; state?: string }>;
       }>(
@@ -140,6 +197,7 @@ describe("gateway config methods", () => {
         },
         CONFIG_SECRETREF_RPC_TIMEOUT_MS,
       );
+      diagnostic.phase = "cold-assertions";
       expect(cold.ok).toBe(true);
       expect(cold.payload?.degradedSecretOwners).toEqual([
         expect.objectContaining({ ownerId: "reload-first", state: "cold" }),
@@ -149,7 +207,11 @@ describe("gateway config methods", () => {
         ref("/changed"),
       );
       expect(coldSnapshot?.config.models?.providers?.["reload-second"]?.apiKey).toBe("second-new");
+    } catch (error) {
+      console.error("[config-patch-phase]", JSON.stringify(diagnostic));
+      throw error;
     } finally {
+      reloadDiagnostic.current = undefined;
       await restoreConfigFileForTest(original);
       activateSecretsRuntimeSnapshot(
         await prepareSecretsRuntimeSnapshot({
