@@ -7402,7 +7402,6 @@
 ["src/gateway/server-methods/session-discovery.authority.test.ts","../../skills/discovery/status.js","ddea7d3ba7a18c6d9567b666c0f2caa81f3a07228898996bf793d4541e7713b1",1]
 ["src/gateway/server-methods/session-discussion.test.ts","../../agents/utility-model.js","5d373931f4374d327d1719087efbea02e5fd3549464c2324af6c9a13f3736cd1",1]
 ["src/gateway/server-methods/session-discussion.test.ts","../../auto-reply/reply/conversation-label-generator.js","906b88cb9f5a70c220be1cea9592b7963e9325c5779518d54d3935b7f0ff35f0",1]
-["src/gateway/server-methods/session-discussion.test.ts","../../config/sessions/session-accessor.js","54ad6f3349c30a440f010255b3ebb27a62801ef069dd9a1c39c140ec2d0b316c",1]
 ["src/gateway/server-methods/session-discussion.test.ts","../../plugins/session-discussion-registry.js","67af200a4b8bac999e85f49ae415f8019dffb95c4b154e13fa8fcfb57d6ec0ae",1]
 ["src/gateway/server-methods/session-discussion.test.ts","./session-change-event.js","59f0dbca2e020baedfb6d85ff2ccff7f594c183b986da9de85811888337b5e3e",1]
 ["src/gateway/server-methods/session-discussion.test.ts","./sessions-shared.js","04e127d91c3029a6045a03edf1fdaaed58001203287d131b16d8eb7287429aaf",1]
