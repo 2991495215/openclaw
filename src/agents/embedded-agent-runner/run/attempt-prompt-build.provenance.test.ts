@@ -1,6 +1,10 @@
 // #143821: prompt-build hook context must carry the turn's typed input provenance so
 // plugins can distinguish inter-session deliveries from human messages.
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../../config/runtime-snapshot.js";
 import type { PluginHookBeforePromptBuildResult } from "../../../plugins/hook-before-agent-start.types.js";
 import type { PluginHookAgentContext } from "../../../plugins/hook-types.js";
 import { createHookRunner } from "../../../plugins/hooks.js";
@@ -52,6 +56,8 @@ vi.mock("../../subagents/registry/subagent-registry-terminal-effects.js", () => 
 registerAgentSessionLoopTestLifecycle();
 
 beforeEach(() => {
+  setRuntimeConfigSnapshot({});
+  onTestFinished(clearRuntimeConfigSnapshot);
   vi.restoreAllMocks();
   steeringMocks.lease.mockReset().mockResolvedValue(undefined);
 });

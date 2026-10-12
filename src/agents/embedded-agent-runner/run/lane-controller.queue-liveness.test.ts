@@ -3,6 +3,10 @@ import { createDeferred } from "../../../../test/helpers/promise.js";
 import { createReplyOperation } from "../../../auto-reply/reply/reply-run-registry.js";
 import { isReplyRunEvidenceStale } from "../../../auto-reply/reply/reply-run-registry.state.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../../config/runtime-snapshot.js";
+import {
   getAgentEventLifecycleGeneration,
   resetAgentEventsForTest,
   rotateAgentEventLifecycleGeneration,
@@ -82,6 +86,7 @@ async function waitForQueuedLane(lane: string): Promise<void> {
 }
 
 beforeEach(() => {
+  setRuntimeConfigSnapshot({});
   resetAgentEventsForTest();
   resetCommandQueueStateForTest();
 });
@@ -90,6 +95,7 @@ afterEach(() => {
   resetAgentEventsForTest();
   resetCommandQueueStateForTest();
   vi.restoreAllMocks();
+  clearRuntimeConfigSnapshot();
 });
 
 describe("queued embedded run context liveness", () => {
