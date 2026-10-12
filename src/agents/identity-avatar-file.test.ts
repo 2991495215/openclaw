@@ -205,11 +205,19 @@ describe("local agent avatar files", () => {
     const originalStat = fs.statSync(avatarPath);
     const originalFstatSync = fs.fstatSync;
     // Control the ctime tick without depending on the filesystem's timestamp resolution.
-    let ctimeMs = originalStat.ctimeMs;
+    let ctimeMs = unchangedMtime.getTime();
     vi.spyOn(fs, "fstatSync").mockImplementation((fd, options) => {
       const stat = originalFstatSync(fd, options);
-      if (stat.dev === originalStat.dev && stat.ino === originalStat.ino) {
-        stat.ctimeMs = ctimeMs;
+      if (
+        BigInt(stat.dev) === BigInt(originalStat.dev) &&
+        BigInt(stat.ino) === BigInt(originalStat.ino)
+      ) {
+        if ("ctimeNs" in stat) {
+          stat.ctimeNs = BigInt(ctimeMs) * 1_000_000n;
+          stat.ctimeMs = BigInt(ctimeMs);
+        } else {
+          stat.ctimeMs = ctimeMs;
+        }
       }
       return stat;
     });
