@@ -7,6 +7,7 @@ import { markPluginRegistryActive } from "../../plugins/registry-lifecycle.js";
 import type { PluginRegistry } from "../../plugins/registry-types.js";
 import type { SessionCatalogProvider } from "../../plugins/session-catalog.js";
 import { createDeferredCore } from "../../shared/deferred.js";
+import type { UserProfileIdentity } from "../../state/user-profiles.types.js";
 import { bindSessionRowProjection } from "../session-row-projection-access.js";
 import { createSessionRowProjectionFixture } from "../session-row-projection.test-support.js";
 
@@ -17,6 +18,7 @@ type TestClient = {
   connect: { scopes: string[] };
   connId?: string;
   authenticatedUserProfile?: { profileId: string };
+  preparedSessionProfile?: UserProfileIdentity;
 };
 
 const hoisted = vi.hoisted(() => ({
@@ -67,7 +69,11 @@ afterEach(() => {
 });
 
 function client(profileId: string, scopes = ["operator.read", "operator.write"]): TestClient {
-  return { connect: { scopes }, authenticatedUserProfile: { profileId } };
+  return {
+    connect: { scopes },
+    authenticatedUserProfile: { profileId },
+    preparedSessionProfile: { profileId, aliases: new Set([profileId]), role: null },
+  };
 }
 
 function unprofiledClient(scopes = ["operator.read", "operator.write"]): TestClient {
