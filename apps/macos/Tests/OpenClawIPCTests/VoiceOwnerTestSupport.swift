@@ -6,17 +6,20 @@ import Testing
 @testable import OpenClawKit
 
 final class VoiceOwnerLog: @unchecked Sendable {
+    let changed = AsyncTestSignal()
     private let lock = NSLock()
     private var entries: [String] = []
     private var sequences: [String: Int] = [:]
 
     @discardableResult
     func record(_ event: String) -> Int {
-        self.lock.withLock {
+        let count = self.lock.withLock {
             self.entries.append(event)
             self.sequences[event, default: 0] += 1
             return self.sequences[event, default: 0]
         }
+        self.changed.notify()
+        return count
     }
 
     func count(_ event: String) -> Int {
@@ -69,20 +72,6 @@ actor VoiceOwnerGate<Value: Sendable> {
 
 struct VoiceOwnerTimeout: Error {
     let operation: String
-}
-
-func waitForVoiceOwner(
-    _ operation: String,
-    until condition: @escaping @Sendable () async -> Bool) async throws
-{
-    try await AsyncTimeout.withTimeout(
-        seconds: 2,
-        onTimeout: { VoiceOwnerTimeout(operation: operation) },
-        operation: {
-            while await !condition() {
-                try await Task.sleep(nanoseconds: 1_000_000)
-            }
-        })
 }
 
 @MainActor
@@ -314,7 +303,7 @@ final class VoiceOwnerFixture {
             self.streams.removeAll()
             self.operations.removeAll()
         }
-        try await waitForVoiceOwner("all created relays closed") { [log] in
+        try await self.log.changed.wait("all created relays closed") { [log] in
             let created = log.snapshot().filter { $0.hasPrefix("relay.created:") }
             return created
                 .allSatisfy { log.count($0.replacingOccurrences(of: "relay.created:", with: "relay.closed:")) == 1 }
