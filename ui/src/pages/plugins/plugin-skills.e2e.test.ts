@@ -222,8 +222,8 @@ describeControlUiE2e("Plugin skill bundle routes", () => {
               focus,
               viewerConnected: viewer?.isConnected === true,
               ownerConnected: owner?.isConnected === true,
-              ownerOpen: owner !== null && Reflect.get(owner, "open") === true,
-              waOpen: wa !== null && Reflect.get(wa, "open") === true,
+              ownerOpen: owner !== null && owner.open,
+              waOpen: wa !== null && wa.open,
               nativeOpen: native?.open === true,
               selected: identify(viewer?.querySelector('.item[aria-current="true"]') ?? null),
               selectedConfig:
@@ -235,7 +235,7 @@ describeControlUiE2e("Plugin skill bundle routes", () => {
                 (element) => element !== owner,
               ),
               openTooltip: [...document.querySelectorAll("wa-tooltip")].some(
-                (element) => Reflect.get(element, "open") === true,
+                (element) => element.open,
               ),
             };
           };
