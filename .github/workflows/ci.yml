@@ -178,7 +178,18 @@ jobs:
           [[ "$MAIN_SHA" =~ ^[a-f0-9]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$MAIN_SHA"
           mkdir -p .artifacts
-          pnpm deadcode:full 2>&1 | tee .artifacts/main-dependencies.log
+          pnpm dlx --package knip@6.32.2 knip --config config/knip.config.ts --production --no-progress --reporter compact --no-config-hints --exclude duplicates 2>&1 | tee .artifacts/main-dependencies.log
+      - name: Run the independent all-exports scan on the frozen revision
+        if: ${{ !cancelled() }}
+        env:
+          OPENCLAW_LOCAL_CHECK: "0"
+          CANDIDATE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          printf 'All-exports candidate: %s\n' "$CANDIDATE_SHA"
+          pnpm dlx --package knip@6.32.2 knip --config config/knip.all-exports.config.ts --no-progress --reporter compact --no-config-hints --exports --exclude duplicates 2>&1 | tee .artifacts/main-all-exports.log
       - name: Diagnose configuration publication on immutable main
         if: ${{ !cancelled() }}
         env:
@@ -192,6 +203,7 @@ jobs:
           name: main-dependencies-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             .artifacts/main-dependencies.log
+            .artifacts/main-all-exports.log
             .artifacts/main-config-readiness.log
           if-no-files-found: warn
           retention-days: 14
