@@ -1,4 +1,5 @@
-import { isAudioFileName } from "@openclaw/media-core/mime";
+import { mediaKindFromMime } from "@openclaw/media-core/constants";
+import { isAudioFileName, mimeTypeFromFilePath } from "@openclaw/media-core/mime";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { resolveDefaultAgentId } from "../agents/agent-scope-config.js";
 import { makeZeroUsageSnapshot } from "../agents/usage.js";
@@ -40,6 +41,7 @@ import {
   projectOutboundPayloadPlanForMirror,
   resolveOutboundPayloadMirrorText,
 } from "../infra/outbound/payloads.js";
+import { collectReplyMediaEntries } from "../infra/outbound/reply-media-entries.js";
 import type { OutboundSessionContext } from "../infra/outbound/session-context.js";
 import { hasReplyChannelData } from "../interactive/payload.js";
 import { logWarn } from "../logger.js";
@@ -186,15 +188,49 @@ export async function commitBackgroundResultToSession(params: {
         }
         let displayContent: Record<string, unknown>[] | undefined;
         if (!priorMessage && payloads && mirror) {
+          const documentReferences = new Map<string, Record<string, unknown>>();
+          const displayPayloads = payloads.map((payload) => {
+            const documentNames: string[] = [];
+            const media = collectReplyMediaEntries(payload).filter(({ url, attachment }) => {
+              const mimeType = attachment?.mimeType ?? mimeTypeFromFilePath(url);
+              if (payload.sensitiveMedia === true || mediaKindFromMime(mimeType) !== "document") {
+                return true;
+              }
+              if (documentReferences.has(url)) {
+                return false;
+              }
+              documentNames.push(attachment?.name || url);
+              // Delivery confirms the reference, not permission to ingest the local file.
+              documentReferences.set(url, {
+                type: "attachment",
+                attachment: {
+                  kind: "document",
+                  label: resolveMirroredTranscriptText({
+                    mediaUrls: [attachment?.name || url],
+                  }),
+                  mimeType,
+                },
+              });
+              return false;
+            });
+            const payloadText = resolveOutboundPayloadMirrorText(payload);
+            return copyReplyPayloadMetadata(payload, {
+              ...payload,
+              text: documentNames.length
+                ? (resolveMirroredTranscriptText({
+                    text: payloadText,
+                    mediaUrls: documentNames,
+                  }) ?? undefined)
+                : payloadText,
+              mediaUrl: undefined,
+              mediaUrls: media.map(({ url }) => url),
+              attachments: media.map(({ attachment }) => attachment ?? {}),
+            });
+          });
           const { assistantContent } = await buildAssistantReplyContent({
             sessionKey,
             agentId: params.agentId,
-            payloads: payloads.map((payload) =>
-              copyReplyPayloadMetadata(payload, {
-                ...payload,
-                text: resolveOutboundPayloadMirrorText(payload),
-              }),
-            ),
+            payloads: displayPayloads,
             managedMediaLocalRoots: getAgentScopedMediaLocalRootsForSources({
               cfg: params.config,
               agentId: params.agentId,
@@ -204,9 +240,9 @@ export async function commitBackgroundResultToSession(params: {
             onManagedMediaPrepareError: (message) =>
               logWarn(`Result media embedding skipped: ${message}`),
           });
-          preparedContent = assistantContent;
-          displayContent = hasAssistantDisplayMediaContent(assistantContent)
-            ? assistantContent
+          preparedContent = [...(assistantContent ?? []), ...documentReferences.values()];
+          displayContent = hasAssistantDisplayMediaContent(preparedContent)
+            ? preparedContent
             : undefined;
         }
         const message = {

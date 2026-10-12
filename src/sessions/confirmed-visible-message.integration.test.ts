@@ -1,5 +1,7 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createSolidPngBuffer } from "../../test/helpers/image-fixtures.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
   loadSessionEntryReadOnly,
@@ -17,6 +19,7 @@ import {
   restoreActivePluginRegistrySnapshot,
   setActivePluginRegistry,
 } from "../plugins/runtime.js";
+import { readAssistantDisplayContent } from "../shared/assistant-display-content.js";
 import { closeOpenClawAgentDatabasesAsync } from "../state/openclaw-agent-db.js";
 import { createOutboundTestPlugin, createTestRegistry } from "../test-utils/channel-plugins.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
@@ -109,6 +112,65 @@ describe("confirmed visible message ownership", () => {
       });
     },
   );
+
+  it("records a confirmed document send without a failure while retaining its managed image", async () => {
+    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      const { params, storePath } = setup();
+      const documentPath = path.join(state.workspaceDir, "report.pdf");
+      const imagePath = path.join(state.workspaceDir, "chart.png");
+      await fs.mkdir(state.workspaceDir, { recursive: true });
+      await fs.writeFile(documentPath, "%PDF-1.4\nDelivered report\n%%EOF\n");
+      await fs.writeFile(imagePath, createSolidPngBuffer(2, 2, { r: 24, g: 64, b: 128 }));
+      const input = {
+        ...params,
+        config: {
+          ...params.config,
+          agents: { defaults: { workspace: state.workspaceDir } },
+        },
+        payload: {
+          text: "Quarterly report",
+          mediaUrl: documentPath,
+          mediaUrls: [documentPath, imagePath],
+        },
+      };
+      expect(await commitConfirmedVisibleMessage(input)).toMatchObject({ ok: true });
+      expect(await commitConfirmedVisibleMessage(input)).toMatchObject({ ok: true });
+      const entry = loadSessionEntryReadOnly({ sessionKey: route.sessionKey, storePath });
+      const messages = (
+        await loadTranscriptEvents({
+          sessionKey: route.sessionKey,
+          sessionId: entry!.sessionId,
+          storePath,
+        })
+      )
+        .map(readTranscriptEventMessage)
+        .filter(Boolean);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.content).toEqual([
+        { type: "text", text: "Quarterly report\nreport.pdf, chart.png" },
+      ]);
+      const display = readAssistantDisplayContent(messages[0]);
+      expect(display).toEqual([
+        { type: "text", text: "Quarterly report\nreport.pdf" },
+        {
+          type: "image",
+          artifactId: expect.any(String),
+          url: expect.stringContaining("/api/chat/media/outgoing/"),
+          openUrl: expect.stringContaining("/api/chat/media/outgoing/"),
+          alt: "chart.png",
+          mimeType: "image/png",
+          width: 2,
+          height: 2,
+          sizeBytes: expect.any(Number),
+        },
+        {
+          type: "attachment",
+          attachment: { kind: "document", label: "report.pdf", mimeType: "application/pdf" },
+        },
+      ]);
+      expect(JSON.stringify(messages)).not.toContain(state.workspaceDir);
+    });
+  });
 
   it("keeps legacy SDK mirrors source-compatible without granting another transcript target", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {

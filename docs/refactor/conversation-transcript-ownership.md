@@ -77,6 +77,13 @@ the shared writer also owns internal-channel payload and media publication.
 Recovery retains a small adapter because its receipts prove only normalized,
 single-text output, not arbitrary delivered content.
 
+Confirmed documents retain their caption and filename in model-visible text,
+plus non-error attachment metadata (kind, label, and MIME type). They do not
+grant access to local files or create download URLs. WebChat shows the filename
+text when no downloadable reference exists; images retain managed references.
+Media preparation must not turn successful document delivery into a delivery
+failure merely because the local file is not trusted for embedding.
+
 Same-conversation source-reply markers remain transcript-only: the UI and restart
 recovery consume their source-turn and terminal-receipt identities. They do not
 add model-visible conversation content. Dispatch's final-reply bookkeeping also
