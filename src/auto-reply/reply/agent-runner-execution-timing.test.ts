@@ -14,8 +14,6 @@ import {
   type FallbackRunnerParams,
 } from "./agent-runner-execution.test-support.js";
 
-vi.mock("../../gateway/session-utils.js", () => ({ loadSessionEntryAsync: vi.fn() }));
-
 const state = await setupAgentRunnerExecutionTestState();
 
 it("announces a remote native run before its worker starts writing replies", async () => {

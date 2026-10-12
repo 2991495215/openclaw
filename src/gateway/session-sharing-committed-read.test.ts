@@ -178,14 +178,14 @@ describe("committed session mutation authorization", () => {
           context,
         });
       try {
-        const warm = await capture();
+        const warm = capture();
         expect(warm.error).toBeNull();
         warm.authorization!.assertCurrent();
         const queries = observeSqliteReadSql(StatementSync.prototype);
         const messages = vi.spyOn(Worker.prototype, "postMessage");
         try {
           for (let turn = 0; turn < 50; turn += 1) {
-            const admitted = await capture();
+            const admitted = capture();
             expect(admitted.error).toBeNull();
             expect(admitted.authorization).toBeDefined();
             await Promise.resolve();
@@ -221,7 +221,7 @@ describe("committed session mutation authorization", () => {
         expect(prepared.error).toBeNull();
         expect(prepared.authorization).toBeDefined();
         prepared.authorization!.assertCurrent();
-        const result = await capture();
+        const result = capture();
         expect(result.error).toBeNull();
         const authorization = result.authorization;
         expect(authorization).toBeDefined();

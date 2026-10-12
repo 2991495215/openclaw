@@ -57,7 +57,8 @@ vi.mock("./question-session-access.js", () => ({
     return consume([undefined]);
   },
 }));
-vi.mock("./server-methods/sessions-files.js", () => ({
+vi.mock("./server-methods/sessions-files.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./server-methods/sessions-files.js")>()),
   resolveLocalSessionWorkspaceRoot: () => state.root,
   withSessionFileRoot: async (
     params: { sessionKey: string; agentId?: string },
@@ -84,7 +85,8 @@ vi.mock("./server-methods/sessions-files.js", () => ({
       () => {},
     ),
 }));
-vi.mock("../config/sessions/session-entry-read-facts.js", () => ({
+vi.mock("../config/sessions/session-entry-read-facts.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../config/sessions/session-entry-read-facts.js")>()),
   readRetainedSessionEntryFacts: (_database: unknown, request: { sessionKeys: string[] }) => ({
     entries: request.sessionKeys.map((sessionKey) => ({
       sessionKey,

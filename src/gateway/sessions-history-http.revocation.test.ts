@@ -100,6 +100,7 @@ vi.mock("./http-utils.js", () => ({
   },
 }));
 
+// mock-isolation: Drive sharing revocation and session replacement from the fixture, not stored memberships.
 vi.mock("./session-sharing.js", () => ({
   createSessionListEntryFilter: ({ client }: { client: unknown }) =>
     client ? () => fixture.visible : undefined,
@@ -115,6 +116,7 @@ vi.mock("./session-sharing.js", () => ({
   }),
 }));
 
+// mock-isolation: Keep synthetic lifecycle revisions and /tmp transcript paths out of real session stores.
 vi.mock("./session-utils.js", () => ({
   resolveGatewaySessionStoreTargetWithStoreAsync: async () => ({
     storePath: "/tmp",

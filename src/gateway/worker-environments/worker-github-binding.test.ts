@@ -43,9 +43,6 @@ vi.mock("../../agents/worktrees/registry-read.js", async (importOriginal) => ({
   readLiveRegistryWorktreeByOwner: async (_context: unknown, kind: string, id: string) =>
     mocks.worktree(kind, id),
 }));
-vi.mock("../session-utils.js", () => ({
-  loadGatewaySessionEntryReadOnlyAsync: async (...args: unknown[]) => mocks.session(...args),
-}));
 vi.mock("../session-utils-store-worker.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../session-utils-store-worker.js")>()),
   loadGatewaySessionEntryReadOnlyInWorker: async (

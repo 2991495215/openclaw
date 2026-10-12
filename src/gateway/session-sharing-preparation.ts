@@ -443,11 +443,13 @@ export async function prepareSessionMutationFacts(
       );
       const assertPaths = () => {
         for (const { candidate, identity } of candidateIdentities) {
+          // An absent candidate may be created by this request's admitted writer.
+          // Existing sources still retain their physical identity through the effect.
           const current = readDatabasePathIdentitySync(candidate.path);
           if (
             captureSessionStoreReadCandidate(candidate.path, candidate.scope).physicalPath !==
               candidate.physicalPath ||
-            !isDeepStrictEqual(current, identity)
+            (identity.birthtime !== undefined && !isDeepStrictEqual(current, identity))
           ) {
             throw new SessionMutationFactsUnavailableError();
           }

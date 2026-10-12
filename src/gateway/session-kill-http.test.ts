@@ -42,7 +42,8 @@ vi.mock("./auth.js", () => ({
   authorizeHttpGatewayConnect: authMock,
 }));
 
-vi.mock("./session-utils.js", () => ({
+vi.mock("./session-utils.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./session-utils.js")>()),
   loadSessionEntryAsync: loadSessionEntryMock,
 }));
 

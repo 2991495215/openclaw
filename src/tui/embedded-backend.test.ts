@@ -265,6 +265,7 @@ vi.mock("../gateway/session-utils-row.js", () => ({
     buildGatewaySessionRowMock(params),
 }));
 
+// mock-isolation: The embedded fixture has no stored parent sessions; never query a real lineage database.
 vi.mock("../gateway/session-utils-store-lineage.js", () => ({
   prepareGatewaySessionEntryReader: async () => () => undefined,
 }));
@@ -315,6 +316,7 @@ vi.mock("../gateway/session-utils-store-worker.js", () => ({
   }) => Promise.resolve(loadSessionEntryMock(key, opts)),
 }));
 
+// mock-isolation: Resolve embedded sessions from loadSessionEntryMock and synthetic store paths only.
 vi.mock("../gateway/session-utils.js", () => ({
   getSessionDefaults: () => getSessionDefaultsMock(),
   listAgentsForGateway: () => [],

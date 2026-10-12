@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   ambient: true,
   assertToolAllowed: vi.fn(),
 }));
+// mock-isolation: Command policy cases supply caller authority without admitting a session database.
 vi.mock("./environments.session.js", () => ({
   resolveSessionEnvironmentCaller: () => ({
     [Symbol.dispose]: () => {},
@@ -24,6 +25,7 @@ vi.mock("./environments.session.js", () => ({
     },
   }),
 }));
+// mock-isolation: Exec defaults consume the synthetic session row without opening the sharing owner.
 vi.mock("../session-sharing-preparation.js", () => ({
   prepareSessionMutationFacts: async () => ({
     readCurrent: () => ({ target: { entry: { sessionId: "conversation" } } }),

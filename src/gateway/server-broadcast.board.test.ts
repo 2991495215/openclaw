@@ -44,6 +44,7 @@ import {
   roleClient,
   rolePolicyConfig,
 } from "./session-sharing.test-utils.js";
+import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import { resolveSessionSubscriptionKeys } from "./session-subscription-keys.js";
 
 describe("board event scope guards", () => {
@@ -341,8 +342,14 @@ describe("collaboration event scope guards", () => {
                       identityId,
                     ),
                 }),
-                target: (key, targetAgentId) =>
-                  projection.sharingTarget({ key, agentId: targetAgentId }),
+                target: (key, targetAgentId) => {
+                  const { agentId: ownerAgentId } = resolveSessionStoreIdentity({
+                    cfg,
+                    sessionKey: key,
+                    agentId: targetAgentId,
+                  });
+                  return projection.sharingTarget({ key, agentId: ownerAgentId });
+                },
               },
             }),
         );
@@ -478,8 +485,14 @@ describe("collaboration event scope guards", () => {
                       identityId,
                     ),
                 }),
-                target: (key, targetAgentId) =>
-                  projection.sharingTarget({ key, agentId: targetAgentId }),
+                target: (key, targetAgentId) => {
+                  const { agentId: ownerAgentId } = resolveSessionStoreIdentity({
+                    cfg,
+                    sessionKey: key,
+                    agentId: targetAgentId,
+                  });
+                  return projection.sharingTarget({ key, agentId: ownerAgentId });
+                },
               },
             }),
         );

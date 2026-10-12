@@ -31,10 +31,12 @@ const state = vi.hoisted(() => ({
   auth: vi.fn(),
   placements: vi.fn(),
 }));
-vi.mock("./session-utils.js", () => ({
+vi.mock("./session-utils.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./session-utils.js")>()),
   loadGatewaySessionEntryReadOnlyAsync: async (...args: unknown[]) => state.loaded(...args),
 }));
-vi.mock("../config/sessions/session-entry-read-facts.js", () => ({
+vi.mock("../config/sessions/session-entry-read-facts.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../config/sessions/session-entry-read-facts.js")>()),
   readRetainedSessionEntryFacts: (_database: unknown, selection: unknown) =>
     state.retained(selection),
 }));

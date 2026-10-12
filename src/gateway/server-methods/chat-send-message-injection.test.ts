@@ -48,7 +48,8 @@ vi.mock(import("../../auto-reply/reply/reply-run-registry.js"), async (importOri
 vi.mock("../../auto-reply/reply/message-received-hooks.js", () => ({
   emitMessageReceivedHooks: vi.fn(),
 }));
-vi.mock("../../config/sessions/session-accessor.js", () => ({
+vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../config/sessions/session-accessor.js")>()),
   updateSessionEntry: vi.fn(async () => undefined),
   recordSessionParticipant: vi.fn(async () => null),
 }));

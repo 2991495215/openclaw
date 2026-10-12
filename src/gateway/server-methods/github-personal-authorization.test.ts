@@ -14,7 +14,8 @@ const mocks = vi.hoisted(() => ({
   roleScopes: undefined as string[] | undefined,
 }));
 
-vi.mock("../github-publication-availability.js", () => ({
+vi.mock("../github-publication-availability.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../github-publication-availability.js")>()),
   prepareGitHubPublicationSession: async () => ({
     initial: mocks.readSession(),
     current: mocks.readSession,

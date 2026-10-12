@@ -20,6 +20,7 @@ import { persistGatewaySessionLifecycleEvent } from "./session-lifecycle-state.j
 import { loadSessionEntryAsync } from "./session-utils.js";
 
 vi.mock("../config/io.js", () => ({ getRuntimeConfig: vi.fn(() => ({})) }));
+// mock-isolation: The fixture supplies its persisted session entry to the lifecycle worker adapter.
 vi.mock("./session-utils.js", () => {
   const load = vi.fn();
   return { loadSessionEntryAsync: load, loadGatewaySessionEntryReadOnlyAsync: load };
