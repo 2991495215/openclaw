@@ -17,10 +17,13 @@ function isStateDirectoryTarget(target: string): boolean {
 }
 
 function windowsAclQueryResult(
+  command: string,
   args: string[],
   stateGrant?: { sid: string; mask: number },
 ): { stdout: string; stderr: string } {
-  const target = expectDefined(args[1], "permission helper target");
+  expect(path.basename(command)).toBe("windows-security-helper.exe");
+  expect(args[0]).toBe("owner");
+  const target = expectDefined(args[1], "permission target");
   const currentUserSid = "S-1-5-21-1-2-3-1001";
   const grants = [
     { sid: "S-1-5-18", mask: 0x001f_01ff },
@@ -48,7 +51,7 @@ describe("security audit filesystem Windows findings", () => {
   let nativeModeEnv: ReturnType<typeof captureEnv>;
   beforeEach(() => {
     nativeModeEnv = captureEnv(["FS_SAFE_NATIVE_MODE"]);
-    // The injected helper fixture exercises the supported command fallback.
+    // The injected Windows helper fixture exercises the supported command fallback.
     setTestEnvValue("FS_SAFE_NATIVE_MODE", "off");
   });
   afterEach(() => nativeModeEnv.restore());
@@ -78,7 +81,7 @@ describe("security audit filesystem Windows findings", () => {
             configSnapshot: null,
             platform: "win32",
             env: windowsAuditEnv,
-            execIcacls: async (_cmd: string, args: string[]) => windowsAclQueryResult(args),
+            execIcacls: async (cmd: string, args: string[]) => windowsAclQueryResult(cmd, args),
           },
         );
         const forbidden = new Set([
@@ -111,8 +114,8 @@ describe("security audit filesystem Windows findings", () => {
             configSnapshot: null,
             platform: "win32",
             env: windowsAuditEnv,
-            execIcacls: async (_cmd: string, args: string[]) =>
-              windowsAclQueryResult(args, { sid: "S-1-5-32-545", mask: 0x0012_00a9 }),
+            execIcacls: async (cmd: string, args: string[]) =>
+              windowsAclQueryResult(cmd, args, { sid: "S-1-5-32-545", mask: 0x0012_00a9 }),
           },
         );
         expect(
@@ -137,8 +140,8 @@ describe("security audit filesystem Windows findings", () => {
             configSnapshot: null,
             platform: "win32",
             env: windowsAuditEnv,
-            execIcacls: async (_cmd: string, args: string[]) =>
-              windowsAclQueryResult(args, { sid: "S-1-5-7", mask: 0x001f_01ff }),
+            execIcacls: async (cmd: string, args: string[]) =>
+              windowsAclQueryResult(cmd, args, { sid: "S-1-5-7", mask: 0x001f_01ff }),
           },
         );
         expect(

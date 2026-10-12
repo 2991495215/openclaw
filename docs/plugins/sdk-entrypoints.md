@@ -62,7 +62,9 @@ OpenClaw classifies loaded plugins by their registration behavior:
 
 Use `openclaw plugins inspect <id>` to see a plugin's shape.
 
-Bundled worker backends follow the [worker schema extension contract](/reference/database-schemas/worker-access#bundled-worker-schema-extensions).
+Managed agent-database schema extension belongs to private worker backends, not
+the typed public Plugin SDK. Bundled backend authors should follow the
+[private worker schema-extension contract](/reference/database-schemas/worker-access#private-worker-schema-extensions).
 
 ## Related
 
