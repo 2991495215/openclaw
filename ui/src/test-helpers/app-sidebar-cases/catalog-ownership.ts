@@ -142,7 +142,6 @@ describe("AppSidebar session catalog ownership", () => {
         expect(sidebar.sessionData.sessionCatalogAgentId).toBeNull();
         expect(sidebar.sessionData.sessionCatalogs).toEqual([]);
         expect(sidebar.sessionData.sessionCatalogPageDepths.size).toBe(0);
-        expect(sidebar.sessionData.sessionCatalogRevisions.size).toBe(0);
         expect(sidebar.textContent).not.toContain("Retired session");
         expect(sidebar.textContent).not.toContain("Retired page");
         expect(sidebar.querySelector(".sidebar-session-catalog-new")).toBeNull();

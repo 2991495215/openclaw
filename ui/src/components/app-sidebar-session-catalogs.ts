@@ -175,14 +175,9 @@ function visibleCatalogHosts(
       if (!ownerId) {
         return true;
       }
-      const effectiveOwnerId = adoptedRow ? adoptedRow.owner?.actor.id : session.createdActor?.id;
-      return effectiveOwnerId === ownerId;
-    });
-    if (sessions.length > 0) {
-      visible.push(sessions.length === host.sessions.length ? host : { ...host, sessions });
     }
-  }
-  return visible;
+    return visibleHosts.length > 0 ? [{ ...catalog, visibleHosts }] : [];
+  });
 }
 
 export type CatalogBackingSessionDisplay = {

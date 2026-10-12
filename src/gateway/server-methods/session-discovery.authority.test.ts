@@ -21,8 +21,9 @@ import type { GatewayClient, GatewayRequestContext, RespondFn } from "./types.js
 
 const { discovery } = vi.hoisted(() => ({ discovery: vi.fn(async () => {}) }));
 // Library storage, workspace discovery, and exec-policy storage have separate owners.
+// mock-isolation: Discovery authority tests isolate exec-policy storage from the session authorization boundary.
 vi.mock("../../agents/exec-defaults.js", () => ({
-  resolveNodeExecEligibility: () => ({ canExec: false }),
+  resolveNodeExecEligibilityAsync: () => ({ canExec: false }),
 }));
 vi.mock("../../skills/discovery/chat-commands.js", () => ({
   prepareSkillCommandsForAgents: vi.fn(async () => {
@@ -81,7 +82,7 @@ async function withDiscoveryState(
     let cfg: OpenClawConfig = {
       plugins: { enabled: false },
       skills: { load: { watch: false } },
-      agents: { list: [{ id: "main", workspace: state.workspaceDir }] },
+      agents: { entries: { main: { workspace: state.workspaceDir } } },
     };
     await seed();
     const projection = await createSessionRowProjection({ cfg, modelCatalog: [] });

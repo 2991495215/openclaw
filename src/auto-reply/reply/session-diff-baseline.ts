@@ -1,4 +1,5 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { captureAgentWorkspaceReadiness } from "../../agents/workspace-readiness.js";
 import { ensureSessionDiffBaseline } from "../../sessions/session-diff-baseline.js";
 import type { SessionInitResult } from "./session-init.types.js";
 
@@ -7,15 +8,14 @@ export async function prepareReplySessionDiffBaseline(params: {
   workspaceDir: string;
   sessionState: Pick<
     SessionInitResult,
-    | "sessionEntry"
-    | "sessionEntryHandle"
-    | "sessionStore"
-    | "isNewSession"
-    | "sessionKey"
-    | "storePath"
+    "sessionEntry" | "sessionEntryHandle" | "isNewSession" | "sessionKey" | "storePath"
   >;
 }): Promise<void> {
   const { sessionState } = params;
+  if (captureAgentWorkspaceReadiness(sessionState.sessionKey)) {
+    // The workspace owner captures the complete checkout before releasing tools.
+    return;
+  }
   const entry = await ensureSessionDiffBaseline({
     agentId: params.agentId,
     cwd:
@@ -29,5 +29,4 @@ export async function prepareReplySessionDiffBaseline(params: {
   });
   sessionState.sessionEntry = entry;
   sessionState.sessionEntryHandle.replaceCurrent(entry);
-  sessionState.sessionStore[sessionState.sessionKey] = entry;
 }

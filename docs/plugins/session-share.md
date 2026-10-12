@@ -95,11 +95,13 @@ Publication is shared with the receiver's permitted viewers, not just the named 
 
 The catalog refreshes by polling, not a live transcript stream. The source node must remain connected for listings and reads. Long transcripts are paginated; individual text fields are redacted and clipped when necessary.
 
-Progressive catalog listings used during chat startup wait at most five seconds in the foreground. Concurrent viewers share the node request. If it is still pending, the receiver returns a pending host with no session rows; it does not replay a previously authorized page. The refreshed page arrives through the catalog's normal host update. Targeted metadata lookups, pagination, and callers without progress updates still await a complete response. Pending requests belong to the receiver's Session Share service; configuration changes, node reconnections, and service retirement invalidate them.
+Catalog listings, searches, and pagination use one complete snapshot per requested paired node. The receiver retains at most 32 node snapshots and runs at most four refreshes concurrently. Discovery alone does not invoke nodes. At capacity, a new host returns a loading result immediately. A later catalog request can admit it after work settles and an idle, less recently requested snapshot can be replaced. The receiver refreshes it in the background every 30 seconds, with one refresh at a time per node and a five-minute budget for all source pages (at most 30 seconds per invocation). A snapshot is limited to 10,000 sessions and 16 MiB of serialized pages. Exceeding either limit fails the refresh explicitly without publishing a partial catalog; reduce the shared groups on the source node. Background refresh failures back off from 30 seconds to at most five minutes. A catalog request starts or joins a fresh source read before disclosing rows; transcript reads also recheck sharing on the source.
 
-A failed source-discovery request withdraws the previous rows and keeps a retry action.
-Retry discovers the currently authorized sources again. A successful discovery with no
-eligible sources remains empty, without revealing filtered sources or node errors.
+Progressive catalog requests return a pending host without old rows while source authorization is in flight, then receive the authorized page through the normal host update. Non-progressive callers wait for that refresh. A failed refresh exposes no previous rows. Configuration changes, observed node disconnections or reconnections, and service retirement invalidate snapshots and pending publications. The receiver checks node connections during catalog requests, background discovery, and before publishing a refresh. There is no remote share-change subscription: displayed rows are reauthorized on the next catalog refresh, search, or page request. Updating the receiver requires no configuration or stored-state migration.
+
+The source reads its session metadata inventory in a background worker and reuses it across pages and refreshes while the database revision is unchanged. Writes from the source Gateway, database replacement, and configuration changes invalidate that inventory. Every page still prepares current creator identities and rechecks whether its selected sessions remain shared before publication.
+
+A failed source-discovery request withdraws the previous rows and keeps a retry action. Retry discovers the currently authorized sources again. A successful discovery with no eligible sources remains empty, without revealing filtered sources or node errors.
 
 Listings leave cold transcript archives untouched and use any stored title metadata. To read cold history, open the session on the source Gateway first so its normal history owner restores the archive. Each source page also bounds raw transcript reads to 8 MiB; a single larger entry returns an explicit error instead of being silently skipped. Inspect that entry on the source Gateway.
 
@@ -194,7 +196,7 @@ Refresh the catalog. The source may be offline, the session may have been delete
 
 **Catalog refreshes sometimes take 30 seconds**
 
-When receiver diagnostics and warning logs are enabled, `gateway/session-catalog` logs discovery and node invocation phases that take at least one second. A `TIMEOUT` with `nodeCommandDispatched: false` occurred before dispatch; `true` means the receiver dispatched the command, so inspect the source node and its connection. It does not prove that the source handler started. An absent field leaves dispatch unknown. These records include bounded node error codes and durations, without node identifiers, request parameters, or error messages.
+When receiver diagnostics and warning logs are enabled, `gateway/session-catalog` logs background refreshes that take at least one second, at most once per minute. Progressive catalog responses remain nonblocking while these refreshes run. A `TIMEOUT` with `nodeCommandDispatched: false` occurred before dispatch; `true` means the receiver dispatched the command, so inspect the source node and its connection. It does not prove that the source handler started. An absent field leaves dispatch unknown. These records include bounded node error codes and durations, without node identifiers, request parameters, or error messages.
 
 **Names do not link to local profiles**
 

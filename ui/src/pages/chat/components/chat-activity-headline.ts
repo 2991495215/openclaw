@@ -2,70 +2,20 @@ import { html, nothing } from "lit";
 import { AsyncDirective, directive } from "lit/async-directive.js";
 import { keyed } from "lit/directives/keyed.js";
 import type { AgentActivityItem } from "../../../../../packages/gateway-protocol/src/schema/logs-chat.js";
-import type { ToolCallGroup } from "../../../../../src/chat/tool-call-grouping.js";
 import { icons } from "../../../components/icons.ts";
-import type { ToolCard } from "../../../lib/chat/chat-types.ts";
 import { resolveToolDisplayIcon } from "../../../lib/chat/tool-display-icon.ts";
-import { resolveToolDisplay } from "../../../lib/chat/tool-display.ts";
 import type { PluginToolIcons } from "../chat-tool-icon-controller.ts";
+import type { ActivityHeadline } from "./chat-activity-headline-selection.ts";
 import { renderToolIcon } from "./chat-tool-cards.ts";
 
-export type ActivityHeadline = Pick<AgentActivityItem, "name" | "commandBearing"> & {
-  key: string;
-  title: string;
-  status: AgentActivityItem["status"];
-};
-
 const HEADLINE_HOLD_MS = 3_000;
-
-/** Reuse recorded nesting for the purpose without replacing a child's urgent outcome. */
-export function selectActivityHeadline(
-  activity: readonly AgentActivityItem[],
-  cardGroups: readonly ToolCallGroup<ToolCard>[],
-  preparedByCard: ReadonlyMap<ToolCard, AgentActivityItem>,
-): ActivityHeadline | undefined {
-  const latest = activity.at(-1);
-  const urgent = latest?.status === "failed" || latest?.status === "blocked";
-  let operation = urgent
-    ? latest
-    : (activity.findLast((item) => item.status === "running") ?? latest);
-  if (!operation) {
-    return undefined;
-  }
-  const status = operation.status;
-  for (const root of cardGroups) {
-    const pending = [...root.children];
-    for (const child of pending) {
-      if (preparedByCard.get(child.card) === operation) {
-        const parent = preparedByCard.get(root.card);
-        if (parent && activity.includes(parent)) {
-          operation = parent;
-        }
-      }
-      pending.push(...child.children);
-    }
-  }
-  return operation.title.trim()
-    ? {
-        key: operation.toolCallId ?? operation.itemId,
-        // Prepared metadata owns the purpose; never strip a localized tool prefix.
-        title:
-          (!operation.status ? operation.summary : undefined) ??
-          operation.meta ??
-          (operation.title === resolveToolDisplay({ name: operation.name }).label
-            ? ""
-            : operation.title),
-        name: operation.name,
-        commandBearing: operation.commandBearing,
-        status: urgent ? status : operation.status,
-      }
-    : undefined;
-}
 
 /** One disclosure owns its readable cadence; fast calls replace pending copy, not a queue. */
 class ActivityHeadlineDirective extends AsyncDirective {
   private scope = "";
   private pluginToolIcons?: PluginToolIcons;
+  private summary = "";
+  private outcomes: readonly string[] = [];
   private shown: ActivityHeadline | undefined;
   private pending: ActivityHeadline | undefined;
   private shownAt = 0;
@@ -77,8 +27,11 @@ class ActivityHeadlineDirective extends AsyncDirective {
     summary: string,
     currentActivity?: readonly AgentActivityItem[],
     pluginToolIcons?: PluginToolIcons,
+    outcomes: readonly string[] = [],
   ) {
     this.pluginToolIcons = pluginToolIcons;
+    this.summary = summary;
+    this.outcomes = outcomes;
     const reset = this.scope !== scope;
     this.scope = scope;
     if (reset) {
@@ -88,7 +41,7 @@ class ActivityHeadlineDirective extends AsyncDirective {
     this.pending = undefined;
     if (!activity) {
       this.shown = undefined;
-      return this.content(undefined, summary);
+      return this.content();
     }
     const urgent = activity.status === "failed" || activity.status === "blocked";
     const remaining = HEADLINE_HOLD_MS - (Date.now() - this.shownAt);
@@ -125,7 +78,8 @@ class ActivityHeadlineDirective extends AsyncDirective {
     this.shown = activity;
   }
 
-  private content(activity = this.shown, summary = "") {
+  private content() {
+    const activity = this.shown;
     const name = activity?.name;
     // Icon and purpose share the same dwell, including asynchronous tool switches.
     return html`
@@ -138,8 +92,28 @@ class ActivityHeadlineDirective extends AsyncDirective {
         >${name ? renderToolIcon(activity?.commandBearing ? "squareTerminal" : resolveToolDisplayIcon(name), { toolName: name, pluginToolIcons: this.pluginToolIcons }) : icons.listTree}</span
       >
       <span class="chat-tool-disclosure__content">
-        ${activity ? keyed(activity.title, html`<span class="chat-activity-group__label chat-activity-group__label--live">${activity.title}${activity.status === "running" ? "…" : ""}</span>`) : html`<span class="chat-activity-group__label">${summary}</span>`}
+        ${
+          // A step with no title of its own leaves the row reading as its count,
+          // not as a lone icon.
+          activity?.title
+            ? keyed(
+                activity.title,
+                html`<span class="chat-activity-group__label chat-activity-group__label--live"
+                  >${activity.title}${activity.status === "running" ? "…" : ""}</span
+                >`,
+              )
+            : html`<span class="chat-activity-group__label">${this.summary}</span>`
+        }
       </span>
+      ${
+        // The count line already carries these when it stands in for the
+        // headline, so they follow the headline this row is showing, held or not.
+        activity?.title
+          ? this.outcomes.map(
+              (label) => html`<span class="chat-activity-group__outcome muted">${label}</span>`,
+            )
+          : nothing
+      }
     `;
   }
 

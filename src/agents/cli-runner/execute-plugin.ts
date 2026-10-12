@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { stripSystemPromptCacheBoundary } from "@openclaw/ai/internal/shared";
 import { clampPositiveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { racePromiseWithAbortSignal, raceWithTimeout } from "@openclaw/retry";
 import { toErrorObject } from "../../infra/errors.js";
 import { resolveExecutablePath } from "../../infra/executable-path.js";
 import { mergePathPrepend } from "../../infra/path-prepend.js";
@@ -22,7 +23,7 @@ import {
   runBeforeToolCallHook,
 } from "../agent-tools.before-tool-call.js";
 import type { CliTerminalInterruption } from "../cli-output-contracts.js";
-import { resolveExecDefaults } from "../exec-defaults.js";
+import { resolveExecDefaultsAsync } from "../exec-defaults.js";
 import { FailoverError, isSignalTimeoutReason } from "../failover-error.js";
 import { withAgentQuestionAnswerAuthority } from "../harness/host-private-capabilities.js";
 import { runStructuredInput } from "../harness/structured-input-execution.js";
@@ -53,14 +54,14 @@ function denyTool(message: string): CliBackendToolPermissionResult {
   return { behavior: "deny", message };
 }
 
-function createPluginToolPermissionHandler(params: {
+async function createPluginToolPermissionHandler(params: {
   context: PreparedCliRunContext;
   abortSignal: AbortSignal;
   onPendingApproval: (delta: 1 | -1) => void;
   env: NodeJS.ProcessEnv;
-}): (request: CliBackendToolPermissionRequest) => Promise<CliBackendToolPermissionResult> {
+}): Promise<(request: CliBackendToolPermissionRequest) => Promise<CliBackendToolPermissionResult>> {
   const run = params.context.params;
-  const permission = resolveExecDefaults({
+  const permission = await resolveExecDefaultsAsync({
     cfg: run.config,
     sessionEntry: run.sessionEntry,
     execOverrides: run.execOverrides,
@@ -371,24 +372,14 @@ function waitForIteratorValue<T>(
   iterator: AsyncIterator<T>,
   signal: AbortSignal,
 ): Promise<IteratorResult<T>> {
-  if (signal.aborted) {
-    return Promise.reject(toErrorObject(signal.reason, "CLI plugin execution was aborted."));
-  }
-  return new Promise((resolve, reject) => {
-    const rejectAborted = () =>
-      reject(toErrorObject(signal.reason, "CLI plugin execution was aborted."));
-    signal.addEventListener("abort", rejectAborted, { once: true });
-    void iterator.next().then(
-      (value) => {
-        signal.removeEventListener("abort", rejectAborted);
-        resolve(value);
-      },
-      (error: unknown) => {
-        signal.removeEventListener("abort", rejectAborted);
-        reject(toErrorObject(error, "CLI plugin execution stream failed."));
-      },
-    );
-  });
+  return racePromiseWithAbortSignal(
+    () =>
+      iterator.next().catch((error: unknown) => {
+        throw toErrorObject(error, "CLI plugin execution stream failed.");
+      }),
+    signal,
+    () => toErrorObject(signal.reason, "CLI plugin execution was aborted."),
+  );
 }
 
 async function closePluginIterator(
@@ -397,23 +388,18 @@ async function closePluginIterator(
   if (!iterator?.return) {
     return;
   }
-  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([
+    await raceWithTimeout(
       iterator.return(),
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error("CLI plugin runtime did not close after its run ended.")),
-          PLUGIN_ITERATOR_CLOSE_TIMEOUT_MS,
-        );
-        timeout.unref();
-      }),
-    ]);
+      PLUGIN_ITERATOR_CLOSE_TIMEOUT_MS,
+      () => {
+        throw new Error("CLI plugin runtime did not close after its run ended.");
+      },
+      { ref: false },
+    );
   } catch (error) {
     recordAgentCleanupFailure();
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -576,6 +562,12 @@ export async function executePluginOwnedProcess(params: {
     } else {
       params.mcpCapture?.beginCapture(params.mcpCapture.captureKey, assertCaptureCurrent);
     }
+    const requestToolPermission = await createPluginToolPermissionHandler({
+      context: params.context,
+      abortSignal: signal,
+      onPendingApproval: updatePendingApproval,
+      env: params.env,
+    });
     assertCurrent();
     const execution = params.execute({
       command,
@@ -596,14 +588,7 @@ export async function executePluginOwnedProcess(params: {
       ...(run.cliToolAvailability ? { toolAvailability: run.cliToolAvailability } : {}),
       ...(liveSession ? { liveSession } : {}),
       // Warm transports retain their first turn's async context across plugin refreshes.
-      requestToolPermission: AsyncLocalStorage.bind(
-        createPluginToolPermissionHandler({
-          context: params.context,
-          abortSignal: signal,
-          onPendingApproval: updatePendingApproval,
-          env: params.env,
-        }),
-      ),
+      requestToolPermission: AsyncLocalStorage.bind(requestToolPermission),
       requestUserInput: createPluginUserInputHandler({
         context: params.context,
         abortSignal: signal,
