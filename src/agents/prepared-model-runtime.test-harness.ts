@@ -119,6 +119,11 @@ const preparedModelRuntimeMocks = vi.hoisted(() => ({
   >(),
 }));
 
+vi.mock("../plugins/current-plugin-metadata-snapshot.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../plugins/current-plugin-metadata-snapshot.js")>()),
+  getCurrentPluginMetadataSnapshot: () => preparedModelRuntimeMocks.pluginMetadataSnapshot,
+}));
+
 vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../plugins/plugin-metadata-snapshot.js")>()),
   isPluginMetadataSnapshotCompatible: () => true,

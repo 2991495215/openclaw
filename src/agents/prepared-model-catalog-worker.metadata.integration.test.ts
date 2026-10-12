@@ -238,7 +238,7 @@ describe("prepared catalog parent metadata ownership", () => {
 
         const catalog = await prepared.snapshot.loadFullModelCatalog!();
         expect(captureSpy).toHaveBeenCalled();
-        expect(catalog.entries).toContainEqual(
+        expect(catalog.entries, JSON.stringify(catalog.providerOutcomes)).toContainEqual(
           expect.objectContaining({ provider: PROVIDER_ID, id: "plugin-generation-v1" }),
         );
         expect(fs.readFileSync(fixture.marker, "utf8")).toBe("start\ndone\n");

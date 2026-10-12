@@ -122,6 +122,7 @@ await withOpenClawTestState(
   { layout: "state-only", label: "sdk-auth-selection" },
   async (state) => {
     const agentDir = state.agentDir();
+    const metadataSnapshot = { plugins: [] };
     const entry: SessionEntry = { sessionId: "sdk-auth-selection", updatedAt: 1 };
     const save = (provider: string) =>
       saveAuthProfileStoreAsync(
@@ -131,15 +132,16 @@ await withOpenClawTestState(
         },
         agentDir,
       );
-    await save("openai");
+    await save("fixture-provider");
     const legacyEntry: SessionEntry = { ...entry, authProfileOverride: "team:prod" };
     assert.deepEqual(
       applyLegacyModelOverride({
         cfg: {},
+        metadataSnapshot,
         agentDir,
         entry: legacyEntry,
-        currentProvider: "openai",
-        selection: { provider: "openai", model: "selected-model" },
+        currentProvider: "fixture-provider",
+        selection: { provider: "fixture-provider", model: "selected-model" },
       }),
       { updated: true },
     );
@@ -150,19 +152,20 @@ await withOpenClawTestState(
       await withoutHostSql(() =>
         applyModelOverride({
           cfg: {},
+          metadataSnapshot,
           agentDir,
           entry: selected,
-          currentProvider: "openai",
-          selection: { provider: "openai", model: "selected-model" },
+          currentProvider: "fixture-provider",
+          selection: { provider: "fixture-provider", model: "selected-model" },
         }),
       );
       return selected.authProfileOverride;
     };
     assert.equal(await select(), "team:prod");
-    await save("anthropic");
+    await save("fixture-other");
     assert.equal(await select(), undefined);
 
-    for (const provider of ["openai", "anthropic"]) {
+    for (const provider of ["fixture-provider", "fixture-other"]) {
       const personalId = `personal:${randomUUID()}:${randomUUID()}`;
       const selected: SessionEntry = {
         ...entry,
@@ -171,15 +174,19 @@ await withOpenClawTestState(
       };
       await applyModelOverride({
         cfg: {},
+        metadataSnapshot,
         agentDir,
         entry: selected,
-        currentProvider: "openai",
+        currentProvider: "fixture-provider",
         selection: { provider, model: "another-model" },
       });
-      assert.equal(selected.authProfileOverride, provider === "openai" ? personalId : undefined);
+      assert.equal(
+        selected.authProfileOverride,
+        provider === "fixture-provider" ? personalId : undefined,
+      );
       assert.equal(
         selected.authProfileOverrideSource,
-        provider === "openai" ? "user-link" : undefined,
+        provider === "fixture-provider" ? "user-link" : undefined,
       );
     }
   },

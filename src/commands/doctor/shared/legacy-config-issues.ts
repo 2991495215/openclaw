@@ -13,6 +13,7 @@ import {
   collectDoctorConfigRepairPluginIds,
   listPluginDoctorLegacyConfigRules,
 } from "../../../plugins/doctor-contract-registry.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../../plugins/plugin-metadata-snapshot.js";
 import type { PluginMetadataSnapshot } from "../../../plugins/plugin-metadata-snapshot.types.js";
 import { listDoctorConfiguredChannelIds } from "./configured-channel-ids.js";
 import { findLegacySystemAgentOwnerIssue } from "./legacy-config-migrations.runtime.system-agent.js";
@@ -45,10 +46,10 @@ export function findDoctorLegacyConfigIssues(
   ]);
 }
 
-export function addDoctorLegacyIssues(
+export async function addDoctorLegacyIssues(
   snapshot: ConfigFileSnapshot,
   pluginMetadataSnapshot?: PluginMetadataSnapshot,
-): ConfigFileSnapshot {
+): Promise<ConfigFileSnapshot> {
   if (!snapshot.exists || isConfigReadFailure(snapshot)) {
     return snapshot;
   }
@@ -64,7 +65,7 @@ export function addDoctorLegacyIssues(
     }
     return legacyIssues.length === 0 ? snapshot : { ...snapshot, legacyIssues };
   };
-  return pluginMetadataSnapshot
-    ? withPluginMetadataSnapshotScope(pluginMetadataSnapshot, collect, { config: resolvedRaw })
-    : collect();
+  const metadata =
+    pluginMetadataSnapshot ?? (await resolvePluginMetadataSnapshotAsync({ config: resolvedRaw }));
+  return withPluginMetadataSnapshotScope(metadata, collect, { config: resolvedRaw });
 }
