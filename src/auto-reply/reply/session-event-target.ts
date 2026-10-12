@@ -40,17 +40,28 @@ type CapturedEventSource = {
   selectedStore: { path: string; physicalPath: string };
 };
 
-function assertCapturedEventSource(source: CapturedEventSource | undefined) {
+function assertCapturedEventSource(
+  source: CapturedEventSource | undefined,
+  stage: "capture" | "preparation" | "retained" | "combined",
+) {
   if (!source) {
     return;
   }
   const identity = readDatabasePathIdentitySync(source.database.path);
-  if (
-    identity.key !== source.identity.key ||
-    identity.birthtime !== source.identity.birthtime ||
-    !isSessionStoreReadCandidateCurrent(source.selectedStore)
-  ) {
-    throw new Error("Session event destination storage changed after capture");
+  let mismatch: "identity" | "birthtime" | "path-custody" | undefined;
+  if (identity.key !== source.identity.key) {
+    mismatch = "identity";
+  } else if (identity.birthtime !== source.identity.birthtime) {
+    mismatch = "birthtime";
+  } else if (!isSessionStoreReadCandidateCurrent(source.selectedStore)) {
+    mismatch = "path-custody";
+  }
+  if (mismatch) {
+    const captured = source.identity.key.startsWith("file:") ? "file" : "absent";
+    const current = identity.key.startsWith("file:") ? "file" : "absent";
+    throw new Error(
+      `Session event destination storage changed after capture (stage=${stage}, mismatch=${mismatch}, captured=${captured}, current=${current})`,
+    );
   }
 }
 
@@ -178,7 +189,7 @@ export async function captureSessionEventTargetForHost(
         };
       },
     );
-    assertCapturedEventSource(source);
+    assertCapturedEventSource(source, "capture");
     let toolsAllow: string[] | undefined;
     if (caller && callerAgentMatches) {
       assertCaptureCurrent();
@@ -266,7 +277,7 @@ export async function prepareSessionEventTargetForHost(
     assertSessionEventTargetCurrent(target);
   };
   assertAcceptance();
-  assertCapturedEventSource(source);
+  assertCapturedEventSource(source, "preparation");
   let preparation:
     | ReturnType<
         typeof import("../../config/sessions/session-accessor.entry-mutation.js").prepareSessionEntryMutationDatabases
@@ -303,7 +314,7 @@ export async function prepareSessionEventTargetForHost(
       assertAcceptance();
       prepared?.assertCurrent();
       if (!prepared) {
-        assertCapturedEventSource(source);
+        assertCapturedEventSource(source, "preparation");
       } else if (source?.identity.key.startsWith("path:")) {
         const accepted = prepared.execution?.fileIdentity;
         if (!accepted || typeof accepted.birthtime !== "string") {
@@ -328,12 +339,12 @@ export async function prepareSessionEventTargetForHost(
       });
       prepared?.assertCurrent();
       assertAcceptance();
-      assertCapturedEventSource(preparedSource);
+      assertCapturedEventSource(preparedSource, "preparation");
     } finally {
       await preparation?.[Symbol.asyncDispose]();
     }
     assertAcceptance();
-    assertCapturedEventSource(preparedSource);
+    assertCapturedEventSource(preparedSource, "preparation");
     lease.assertCurrent();
     // Only canonical native preparation can advance captured physical absence.
     if (preparedSource !== source) {
@@ -346,7 +357,7 @@ export async function prepareSessionEventTargetForHost(
     const retained = lease;
     const assertTargetCurrent = () => {
       assertSessionEventTargetCurrent(target);
-      assertCapturedEventSource(preparedSource);
+      assertCapturedEventSource(preparedSource, "retained");
     };
     const assertCurrent = () => {
       assertTargetCurrent();
@@ -408,7 +419,7 @@ export function combineSessionEventTargetsForHost(
   const assertCurrent = () => {
     for (const target of retained) {
       assertSessionEventTargetCurrent(target);
-      assertCapturedEventSource(targetScopes.get(target)?.source);
+      assertCapturedEventSource(targetScopes.get(target)?.source, "combined");
     }
   };
   assertCurrent();

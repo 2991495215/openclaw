@@ -323,7 +323,10 @@ function withRevokedHook(
               { text: "before-reload" },
               "before",
             );
-            expect(current.status, await current.clone().text()).toBe(200);
+            expect(
+              current.status,
+              `Initial hook wake (${mode}): ${await current.clone().text()}`,
+            ).toBe(200);
             await waitForEvent("before-reload");
             const revoked = postHook(port, "/hooks/revoked", { text: "after-reload" }, "revoked");
             let response: Response;
