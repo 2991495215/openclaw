@@ -916,15 +916,14 @@ class AlphabeticalSequencer extends BaseSequencer {
 // Use the Gateway database-worker policy, with fixture-only membership and no
 // ordinary setup hooks that could close A's database before runner cleanup.
 export default defineConfig({
+  ...gateway,
   cacheDir: ${JSON.stringify(path.join(root, ".vite"))},
-  resolve: gateway.resolve,
   test: {
+    ...gateway.test,
+    root: ${JSON.stringify(root)},
+    dir: ${JSON.stringify(root)},
+    setupFiles: [],
     name: "gateway-worker-lifetimes",
-    pool: gateway.test.pool,
-    isolate: gateway.test.isolate,
-    runner: gateway.test.runner,
-    maxWorkers: gateway.test.maxWorkers,
-    fileParallelism: gateway.test.fileParallelism,
     include: ["a-producer.test.ts", "b-observer.test.ts"],
     sequence: { sequencer: AlphabeticalSequencer },
   },
