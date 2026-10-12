@@ -18,7 +18,10 @@ import {
   ensureProfileForTailscaleIdentity,
 } from "../../../state/user-profiles.js";
 import { observeMainThreadSql } from "../../../test-utils/main-thread-sql-spies.test-support.js";
-import { withOpenClawTestState } from "../../../test-utils/openclaw-test-state.js";
+import {
+  createOpenClawTestState,
+  withOpenClawTestState,
+} from "../../../test-utils/openclaw-test-state.js";
 import type { AuthRateLimiter } from "../../auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "../../auth.js";
 import { gitHubPublicApi } from "../../github-public-api.js";
@@ -192,6 +195,14 @@ beforeEach(() => {
 });
 
 describe("attachGatewayWsMessageHandler post-connect health refresh", () => {
+  beforeEach(async () => {
+    const state = await createOpenClawTestState({ label: "post-connect-health" });
+    onTestFinished(async () => {
+      await cleanupGatewayHarnesses();
+      await state.cleanup();
+    });
+  });
+
   beforeEach(() => {
     resetDiagnosticEventsForTest();
     vi.clearAllMocks();

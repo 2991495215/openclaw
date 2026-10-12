@@ -21,11 +21,13 @@ import { roleClient, rolePolicyConfig } from "./session-sharing.test-utils.js";
 
 const key = "agent:main:pending-stop";
 
+const profileState = { scenario: "minimal", prepareProfileCatalog: true } as const;
+
 describe("pending Stop producer binding", () => {
   it.each(["current", "replacement"] as const)(
     "uses the agent reservation's original row across %s admission",
     async (target) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      await withOpenClawTestState(profileState, async () => {
         const client = roleClient("view", "pending-agent-owner");
         client.connId = "pending-owner";
         client.connect.scopes = ["operator.sessions.write"];
@@ -109,7 +111,7 @@ describe("pending Stop producer binding", () => {
   );
 
   it("keeps a real chat admission abortable while its original session lifecycle is held", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const client = roleClient("view", "pending-chat-owner");
       client.connId = "pending-owner";
       client.connect.scopes = ["operator.sessions.write"];

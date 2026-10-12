@@ -6,16 +6,17 @@ import {
   createPersonalPublicationFixture,
   personalPublicationAccount as account,
 } from "./github-personal-publication.test-support.js";
+import * as publicationStore from "./github-publication-store-async.js";
+import {
+  claimRepositoryGitHubPublicationFixture,
+  insertRepositoryGitHubPublicationFixture,
+} from "./github-publication-store.test-support.js";
 import {
   SESSION_KEY,
   commands,
   installGitHubPublicationTestHarness,
 } from "./github-publication.test-support.js";
-import {
-  claimRepositoryGitHubPublication,
-  insertRepositoryGitHubPublication,
-  readPendingRepositoryGitHubPublication,
-} from "./github-repository-publication-store.js";
+import { readPendingRepositoryGitHubPublication } from "./github-repository-publication-store.js";
 import * as repositoryStore from "./github-repository-publication-store.js";
 import {
   repositoryReceipt,
@@ -48,7 +49,7 @@ it.each([false, true])(
         status: "needs_confirmation",
         updated_at_ms: 1_000 + Math.floor((index - 1) / 2),
       });
-      insertRepositoryGitHubPublication(row, fixture.action.assertCurrent);
+      insertRepositoryGitHubPublicationFixture(row, fixture.action.assertCurrent);
       latest ??= row;
     }
     for (const [requestId, scope] of [
@@ -57,7 +58,7 @@ it.each([false, true])(
       ["other-agent", { agent_id: "other" }],
       ["finished", { status: "published" }],
     ] as const) {
-      insertRepositoryGitHubPublication(
+      insertRepositoryGitHubPublicationFixture(
         repositoryReceipt(workspace, {
           request_id: requestId,
           idempotency_key: requestId,
@@ -114,7 +115,7 @@ it("rechecks a terminal receipt when confirming an older pending read", async ()
     identity_login: account.login,
     status: "needs_confirmation",
   });
-  insertRepositoryGitHubPublication(row, fixture.action.assertCurrent);
+  insertRepositoryGitHubPublicationFixture(row, fixture.action.assertCurrent);
   const captured = expectDefined(
     await fixture.coordinator.personalPending(fixture.action, fixture.action),
     "original pending receipt",
@@ -141,7 +142,7 @@ it("rechecks a terminal receipt when confirming an older pending read", async ()
         throw new Error("Pending read completed before its held-result boundary.");
       }),
     ]);
-    const execution = claimRepositoryGitHubPublication(row, "concurrent-publisher", {
+    const execution = claimRepositoryGitHubPublicationFixture(row, "concurrent-publisher", {
       assertCustody: fixture.action.assertCurrent,
       assertCurrent: fixture.action.assertCurrent,
     });
@@ -161,7 +162,7 @@ it("rechecks a terminal receipt when confirming an older pending read", async ()
     });
     expect(observed.confirmation).toBeNull();
     await expect(
-      fixture.coordinator.confirmPersonal(
+      fixture.coordinator.confirmPersonalV2(
         {
           sessionKey: SESSION_KEY,
           requestId: row.request_id,
@@ -183,7 +184,7 @@ it.each([false, true])(
   "falls back to the non-repository owner only after an empty successful read (corrupt=%s)",
   async (corrupt) => {
     const fixture = await createPersonalPublicationFixture();
-    const published = await fixture.coordinator.requestPersonalForSession(
+    const published = await fixture.coordinator.requestPersonalForSessionV2(
       {
         sessionKey: SESSION_KEY,
         idempotencyKey: "worktree-pending",
@@ -195,9 +196,10 @@ it.each([false, true])(
     openOpenClawStateDatabase()
       .db.prepare("UPDATE github_personal_publication_requests SET status = ? WHERE request_id = ?")
       .run("needs_confirmation", published.requestId);
+    const fallback = vi.spyOn(publicationStore, "readPersonalGitHubPublicationAsync");
     if (corrupt) {
       const workspace = await sharedRepositoryWorkspace();
-      insertRepositoryGitHubPublication(
+      insertRepositoryGitHubPublicationFixture(
         repositoryReceipt(workspace, {
           owner_profile_id: fixture.owner,
           connection_generation: fixture.generation,
@@ -211,6 +213,7 @@ it.each([false, true])(
       await expect(
         fixture.coordinator.personalPending(fixture.action, fixture.action),
       ).rejects.toThrow("GitHub repository publication receipt is corrupt");
+      expect(fallback).not.toHaveBeenCalled();
       return;
     }
     await expect(
@@ -218,6 +221,10 @@ it.each([false, true])(
     ).resolves.toMatchObject({
       result: { requestId: published.requestId, status: "needs_confirmation" },
       confirmation: { generation: fixture.generation, account },
+    });
+    expect(fallback).toHaveBeenCalledWith(fixture.owner, {
+      sessionKey: SESSION_KEY,
+      agentId: "main",
     });
   },
 );

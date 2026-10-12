@@ -32,7 +32,10 @@ import {
   assertCanonicalSessionValidationSchema,
 } from "./openclaw-agent-canonical-validation-schema.js";
 import { CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION } from "./openclaw-agent-db-contract.js";
-import { findOpenClawAgentDatabaseIdentity } from "./openclaw-agent-db-identity.js";
+import {
+  findOpenClawAgentDatabaseIdentity,
+  readOpenClawAgentDatabaseIdentity,
+} from "./openclaw-agent-db-identity.js";
 import {
   matchesAgentDatabaseReadCandidatePath,
   type OpenClawAgentDatabaseReadCandidateResource,
@@ -81,7 +84,7 @@ function bindValidationLifetime(
     return;
   }
   current?.unregister();
-  const key = resolveDatabasePathKey(database.path);
+  const key = readOpenClawAgentDatabaseIdentity(database).canonicalPath;
   const unobserve = registerSqliteSchemaMutationListener(database.db, (observed) => {
     const revoke = (schema: OpenClawAgentDatabaseValidation["schema"]) => {
       // A late reader can observe DDL already covered by a newer admitted receipt.
@@ -191,7 +194,7 @@ export function hasRevokedOpenClawAgentDatabaseValidation(
 export function getOpenClawAgentDatabaseValidation(
   database: ValidationDatabase,
 ): OpenClawAgentDatabaseValidation | undefined {
-  const pathname = resolveDatabasePathKey(database.path);
+  const pathname = readOpenClawAgentDatabaseIdentity(database).canonicalPath;
   let entry = validatedPaths.get(pathname);
   // Shared physical facts cannot undo a refusal by this path's admission owner.
   if (entry?.revoked) {
@@ -498,14 +501,11 @@ export function captureOpenClawAgentDatabaseAliasPublication(
 function canonicalValidationReceipt(
   database: CanonicalValidationDatabase,
 ): OpenClawAgentDatabaseValidation | undefined {
-  if (!database.db.isOpen || !findOpenClawAgentDatabaseIdentity(database)) {
+  const pathname = findOpenClawAgentDatabaseIdentity(database)?.canonicalPath;
+  if (!database.db.isOpen || !pathname) {
     return undefined;
   }
-  const pathname = database.path ?? database.db.location();
-  if (!pathname) {
-    return undefined;
-  }
-  const validation = validatedPaths.get(resolveDatabasePathKey(pathname))?.validation;
+  const validation = validatedPaths.get(pathname)?.validation;
   if (!validation || !matchesValidation({ ...database, path: pathname }, validation)) {
     return undefined;
   }
@@ -524,23 +524,23 @@ export function hasOpenClawAgentCanonicalValidation(
       Atomics.load(new Int32Array(validation.valid), 0) === 1
     );
   }
-  const pathname = database.path ?? findOpenClawAgentDatabaseIdentity(database)?.filename;
+  const pathname = findOpenClawAgentDatabaseIdentity(database)?.canonicalPath;
   if (
     !pathname ||
     database.db.isTransaction ||
-    validatedPaths.get(resolveDatabasePathKey(pathname))?.validation !== undefined ||
+    validatedPaths.get(pathname)?.validation !== undefined ||
     hasRevokedOpenClawAgentDatabaseValidation(pathname) ||
     !hasPersistedOpenClawAgentCanonicalValidation(database)
   ) {
     return false;
   }
   const canonical = createOpenClawAgentDatabaseValidationReceipt(database, true);
-  const entry: ValidationEntry = validatedPaths.get(resolveDatabasePathKey(pathname)) ?? {
+  const entry: ValidationEntry = validatedPaths.get(pathname) ?? {
     integrityVerified: false,
   };
   // A canonical read enriches this owner; only revocation replaces its handoff identity.
   entry.validation = canonical;
-  validatedPaths.set(resolveDatabasePathKey(pathname), entry);
+  validatedPaths.set(pathname, entry);
   bindValidationLifetime({ ...database, path: pathname }, canonical);
   return true;
 }
@@ -592,15 +592,13 @@ export function adoptOpenClawAgentDatabaseValidation(
   if (getOpenClawAgentDatabaseValidation(database)) {
     return true;
   }
-  if (hasRevokedOpenClawAgentDatabaseValidation(database.path)) {
+  const pathname = readOpenClawAgentDatabaseIdentity(database).canonicalPath;
+  if (hasRevokedOpenClawAgentDatabaseValidation(pathname)) {
     // Integrity handoff cannot replace the parent's requested canonical certification.
     Atomics.store(new Int32Array(validation.canonicalReady), 0, 0);
   }
-  invalidateOpenClawAgentDatabaseValidation(database.path);
-  validatedPaths.set(resolveDatabasePathKey(database.path), {
-    validation,
-    integrityVerified: true,
-  });
+  invalidateOpenClawAgentDatabaseValidation(pathname);
+  validatedPaths.set(pathname, { validation, integrityVerified: true });
   bindValidationLifetime(database, validation);
   return true;
 }
@@ -627,7 +625,8 @@ function isOpenClawAgentCanonicalStoreEmpty(database: { db: DatabaseSync }): boo
 export function setOpenClawAgentDatabaseValidation(
   database: ValidationDatabase,
 ): OpenClawAgentDatabaseValidation {
-  const revoked = hasRevokedOpenClawAgentDatabaseValidation(database.path);
+  const pathname = readOpenClawAgentDatabaseIdentity(database).canonicalPath;
+  const revoked = hasRevokedOpenClawAgentDatabaseValidation(pathname);
   let validation = createOpenClawAgentDatabaseValidationReceipt(
     database,
     isOpenClawAgentCanonicalStoreEmpty(database) ||
@@ -635,7 +634,7 @@ export function setOpenClawAgentDatabaseValidation(
         !database.db.isTransaction &&
         loadOpenClawAgentCanonicalValidationReceipt(database)),
   );
-  const entry = validatedPaths.get(resolveDatabasePathKey(database.path));
+  const entry = validatedPaths.get(pathname);
   if (
     !revoked &&
     entry &&
@@ -654,11 +653,8 @@ export function setOpenClawAgentDatabaseValidation(
     entry.validation = validation;
     entry.integrityVerified = true;
   } else {
-    invalidateOpenClawAgentDatabaseValidation(database.path);
-    validatedPaths.set(resolveDatabasePathKey(database.path), {
-      validation,
-      integrityVerified: true,
-    });
+    invalidateOpenClawAgentDatabaseValidation(pathname);
+    validatedPaths.set(pathname, { validation, integrityVerified: true });
   }
   bindValidationLifetime(database, validation);
   publishOpenClawAgentDatabaseSchema(database);

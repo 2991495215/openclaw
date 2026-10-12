@@ -26,9 +26,8 @@ for (const legacy of ["legacy-birthtime", "missing-column"] as const) {
     const options = { agentId: "main", env };
     const original = openOpenClawAgentDatabase(options);
     if (legacy === "missing-column") {
+      original.db.exec("ALTER TABLE session_key_contract DROP COLUMN canonical_ready");
       closeOpenClawAgentDatabaseByPath(original.path);
-      using old = new (requireNodeSqlite().DatabaseSync)(original.path);
-      old.exec("ALTER TABLE session_key_contract DROP COLUMN canonical_ready");
     }
     const database = openOpenClawAgentDatabase(options);
     const version = database.db.prepare("PRAGMA user_version").get();

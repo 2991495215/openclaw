@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { MessageChannel } from "node:worker_threads";
+import { stableStringify } from "@openclaw/normalization-core/stable-stringify";
 import {
   deferSqliteWorkerCommitReceipt,
   requestSqliteWorkerOperationAdmission,
@@ -82,7 +83,7 @@ export const authProfileOperations = {
           requestSqliteWorkerOperationAdmission({ stage: operation.stage, facts: undefined });
         } else {
           committed = operation.profile;
-          const digest = createHash("sha256").update(JSON.stringify(committed)).digest("hex");
+          const digest = createHash("sha256").update(stableStringify(committed)).digest("hex");
           requestSqliteWorkerOperationAdmission({ stage: operation.stage, facts: digest });
           deferSqliteWorkerCommitReceipt(database.db, digest);
         }

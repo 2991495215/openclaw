@@ -12,12 +12,12 @@ import {
   loadSessionEntry,
   upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
+import { addSessionSuggestionInWorker as addSessionSuggestion } from "../../config/sessions/session-metadata-write.async.js";
 import {
   addSessionMember,
   removeSessionMember,
 } from "../../config/sessions/session-sharing-store.native.js";
 import { resolveSqliteTargetFromSessionStorePath } from "../../config/sessions/session-sqlite-target.js";
-import { addSessionSuggestion } from "../../config/sessions/session-suggestion-store.js";
 import { listSessionSuggestions } from "../../config/sessions/session-suggestion-store.read.js";
 import { projectionLane } from "../../config/sessions/session-transcript-worker-resources.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -54,6 +54,8 @@ import type { GatewayRequestContext, RespondFn } from "./types.js";
 
 const mocks = getSessionSuggestionTestMocks();
 registerSessionSuggestionTestLifecycle(mocks);
+const profileState = { scenario: "minimal", prepareProfileCatalog: true } as const;
+
 beforeEach(() => mocks.afterSuggestionClaim.mockReset());
 // Register shared mocks before the handlers capture their presence dependency.
 const { sessionSuggestionHandlers } = await import("./sessions-suggestions.js");
@@ -62,10 +64,10 @@ describe("session suggestion visibility and role ceilings", () => {
   it.each(["policy", "profile", "disconnect", "session", "membership", "projection"] as const)(
     "rechecks %s after a delayed suggestion list reply",
     async (change) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      await withOpenClawTestState(profileState, async () => {
         await upsertDefaultSuggestionSession();
         for (const authorId of ["alice", "bob"]) {
-          addSessionSuggestion(
+          await addSessionSuggestion(
             { agentId: "main", sessionKey },
             { id: authorId, authorId, text: authorId },
           );
@@ -164,7 +166,7 @@ describe("session suggestion visibility and role ceilings", () => {
   );
 
   it("retains committed suggestion visibility through a tentative role relaxation", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await withOpenClawTestState(profileState, async (state) => {
       const owner = ensureProfileForEmail("policy-suggestion-owner@example.test");
       const reader = ensureProfileForEmail("policy-suggestion-reader@example.test");
       const requestClient = client(reader.id, "Reader");
@@ -196,7 +198,7 @@ describe("session suggestion visibility and role ceilings", () => {
         ["own-idea", reader.id],
         ["other-idea", owner.id],
       ] as const) {
-        addSessionSuggestion(
+        await addSessionSuggestion(
           { agentId: "main", sessionKey },
           {
             id,
@@ -244,7 +246,7 @@ describe("session suggestion visibility and role ceilings", () => {
   });
 
   it("enforces view, suggest, and hidden role ceilings while honoring explicit membership", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const ownerProfile = ensureProfileForEmail("suggestion-owner@example.test");
       const guestProfile = ensureProfileForEmail("suggestion-guest@example.test");
       await upsertSessionEntryCore(
@@ -321,7 +323,7 @@ describe("session suggestion visibility and role ceilings", () => {
   });
 
   it("hides draft suggestions from members while owner and admin can list", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const draftKey = "agent:main:draft-suggestions";
       await upsertSessionEntryCore(
         { agentId: "main", sessionKey: draftKey },
@@ -336,7 +338,7 @@ describe("session suggestion visibility and role ceilings", () => {
         { agentId: "main", sessionKey: draftKey },
         { identityId: "member", addedBy: "owner", expectedSessionId: "session-draft" },
       );
-      addSessionSuggestion(
+      await addSessionSuggestion(
         { agentId: "main", sessionKey: draftKey },
         {
           id: "draft-suggestion",
@@ -403,7 +405,7 @@ describe("session suggestion visibility and role ceilings", () => {
   });
 
   it("keeps incognito suggestion and typing surfaces admin-only", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       vi.useFakeTimers();
       const incognitoKey = "agent:main:dashboard:incognito-suggestions";
       await upsertSessionEntryCore(
@@ -416,7 +418,7 @@ describe("session suggestion visibility and role ceilings", () => {
           visibility: "suggest",
         },
       );
-      addSessionSuggestion(
+      await addSessionSuggestion(
         { agentId: "main", sessionKey: incognitoKey },
         {
           id: "incognito-suggestion",
@@ -511,7 +513,7 @@ describe("session suggestion store binding", () => {
   ] as const)(
     "dispatches a %s suggestion with %s through its original store",
     async (layout, resolution) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await withOpenClawTestState(profileState, async (state) => {
         const agentId = "ops";
         const incognito = layout === "incognito";
         const key = incognito
@@ -637,7 +639,7 @@ describe("suggestions queued behind provider review", () => {
   it.for(["add", "edit", "dismiss", "queue"] as const)(
     "preserves the lifecycle boundary for %s without replacing the session",
     async (action, { signal }) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await withOpenClawTestState(profileState, async (state) => {
         const metadataWrites =
           await import("../../config/sessions/session-metadata-write.async.js");
         const scope = { agentId: "main", sessionKey, env: state.env };
@@ -666,7 +668,11 @@ describe("suggestions queued behind provider review", () => {
         const options = { ...scope, path: database.path };
         const id = "queued-provider-review-suggestion";
         if (action !== "add") {
-          addSessionSuggestion(scope, { id, authorId: "owner", text: "Synthetic suggestion" });
+          await addSessionSuggestion(scope, {
+            id,
+            authorId: "owner",
+            text: "Synthetic suggestion",
+          });
         }
         const broadcast = vi.fn();
         const requestContext = context(broadcast);

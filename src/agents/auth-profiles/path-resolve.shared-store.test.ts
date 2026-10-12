@@ -138,5 +138,8 @@ describe("shared auth store path resolution", () => {
     noteCommittedSharedAuthStoreOwnership({ location: "state-db" }, env);
     expect(resolveSharedAuthStorePath(env)).toBe(resolveOpenClawStateSqlitePath(env));
     expect(await prepareSharedAuthStoreOwnership(env)).toEqual({ location: "state-db" });
+    vi.resetModules();
+    const sdkPaths = await import("./path-resolve.js");
+    expect(sdkPaths.resolveSharedAuthStorePath(env)).toBe(resolveOpenClawStateSqlitePath(env));
   });
 });

@@ -34,11 +34,14 @@ const resolvePersonalAccountAuthMethod = vi.hoisted(() => vi.fn());
 const exchange = vi.hoisted(() => vi.fn());
 const modelAccountLinksCurrent = vi.hoisted(() => vi.fn());
 
-vi.mock("../../state/user-profiles.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../state/user-profiles.js")>();
+vi.mock("../../state/user-profile-list.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../state/user-profile-list.js")>();
   return {
     ...actual,
-    getUserProfileRole: () => null,
+    readResidentUserProfileIdentity: (reference: string) => {
+      const profileId = resolveUserProfileId(reference);
+      return { profileId, aliases: new Set([reference, profileId]), role: null };
+    },
   };
 });
 vi.mock("../../state/user-channel-identity-operations.js", async (importOriginal) => ({

@@ -3,12 +3,12 @@ import {
   executeExistingOpenClawStateRead,
   withArtifactPreservingStateReads,
 } from "../state/openclaw-state-db-readonly.js";
+import { PluginCacheFactInvalidatedError } from "./plugin-cache.js";
 import type {
   PluginMetadataStateKey,
   PluginMetadataStateRow,
   PluginMetadataStateSelector,
-} from "./installed-plugin-index-row.js";
-import { PluginCacheFactInvalidatedError } from "./plugin-cache.js";
+} from "./plugin-metadata-state-row.kernel.js";
 
 async function readPluginMetadataState(
   selection:

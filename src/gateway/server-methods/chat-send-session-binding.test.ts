@@ -648,7 +648,7 @@ it.each(
             identityLabel: "Human",
             expectedSessionId: sessionId,
           });
-          const before = listSessionReactions(scope, { sessionId });
+          const before = await listSessionReactions(scope, { sessionId });
           expect(before[messageId]).toEqual([
             { emoji: "👍", count: 1, identities: [{ id: profile.id, label: "Human" }] },
           ]);
@@ -679,7 +679,7 @@ it.each(
           if (outcome === "allowed") {
             expect((await react()).details).toMatchObject({ messageId, changed: true });
             expect(commitRequests).toBeGreaterThan(0);
-            expect(listSessionReactions(scope, { sessionId })[messageId]).toEqual([
+            expect((await listSessionReactions(scope, { sessionId }))[messageId]).toEqual([
               {
                 emoji: "👍",
                 count: 2,
@@ -711,7 +711,7 @@ it.each(
             } else {
               expect(preparationRevoked).toBe(true);
             }
-            expect(listSessionReactions(scope, { sessionId })).toEqual(before);
+            expect(await listSessionReactions(scope, { sessionId })).toEqual(before);
             expect(broadcast.mock.calls.filter(([event]) => event === "session.reaction")).toEqual(
               [],
             );
@@ -719,7 +719,7 @@ it.each(
           probe.mockRestore();
           if (outcome === "allowed") {
             await react({ remove: true });
-            expect(listSessionReactions(scope, { sessionId })).toEqual(before);
+            expect(await listSessionReactions(scope, { sessionId })).toEqual(before);
           }
           expect(external).not.toHaveBeenCalled();
         } finally {

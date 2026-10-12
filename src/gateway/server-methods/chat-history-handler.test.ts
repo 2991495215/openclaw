@@ -736,7 +736,7 @@ describe("chat history recovery byte budget", () => {
 
 describe("chat metadata ownership", () => {
   it("previews a retained personal account with read scope without changing its cleared default", async () => {
-    await withOpenClawTestState({ layout: "state-only" }, async () => {
+    await withOpenClawTestState({ layout: "state-only", prepareProfileCatalog: true }, async () => {
       const { owner, authProfileId, metadata, readChatMetadata, request } =
         createPersonalMetadataFixture();
       clearUserProfileAuthLink({ profileId: owner.id, provider: "openai" });

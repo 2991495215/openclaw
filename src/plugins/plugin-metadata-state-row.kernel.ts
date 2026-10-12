@@ -1,13 +1,13 @@
 import type { DatabaseSync } from "node:sqlite";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
-import type { ConfigMachineStateDatabase } from "../state/config-machine-state.js";
+import type { ConfigMachineStateDatabase } from "../state/config-machine-state-row.js";
 import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
-import type {
-  PluginMetadataStateKey,
-  PluginMetadataStateRow,
-} from "./installed-plugin-index-row.js";
-
 export const INSTALLED_PLUGIN_INDEX_STATE_KEY = "plugins.installedIndex";
+export type PluginMetadataStateSelector = "installed-index" | "bundled-discovery";
+export type PluginMetadataStateKey =
+  | typeof INSTALLED_PLUGIN_INDEX_STATE_KEY
+  | "plugins.bundledDiscovery";
+export type PluginMetadataStateRow = { state_key: string; value_json: string };
 
 export function readPluginMetadataStateRowsInDatabase(
   database: DatabaseSync,

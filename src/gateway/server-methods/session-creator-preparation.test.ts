@@ -248,6 +248,9 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
       expect(receive()).toBe(true);
       const alternateRoot = `${stateDir}/absent-state`;
       await withEnvAsync({ OPENCLAW_STATE_DIR: alternateRoot }, async () => {
+        using _ = {
+          [Symbol.dispose]: (await profileAliases.prepareUserProfileCatalog()).release,
+        };
         expect(receive()).toBe(false);
         expect(fs.existsSync(alternateRoot)).toBe(false);
       });
@@ -256,6 +259,9 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
       await cleanupSessionStateForTest({ stateDir });
       const reopened = openOpenClawStateDatabase({ path: pathname }).db;
       reopened.prepare("DELETE FROM user_profiles WHERE id = ?").run(creatorId);
+      using _ = {
+        [Symbol.dispose]: (await profileAliases.prepareUserProfileCatalog()).release,
+      };
       expect(receive()).toBe(false);
     });
   });

@@ -37,6 +37,8 @@ import { handleGatewayRequest } from "../server-methods.js";
 import { transcriptsHandlers } from "./transcripts.js";
 import type { GatewayClient, GatewayRequestContext, RespondFn } from "./types.js";
 
+const profileState = { scenario: "minimal", prepareProfileCatalog: true } as const;
+
 afterEach(async () => {
   await closeOpenClawStateDatabaseAsync();
   closeOpenClawStateDatabaseForTest();
@@ -114,7 +116,7 @@ async function seed(stateDir: string) {
 
 describe("transcript Gateway read authorization and errors", () => {
   it("requires write scope and archive visibility to generate notes", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async ({ stateDir }) => {
+    await withOpenClawTestState(profileState, async ({ stateDir }) => {
       const { selector, store, session } = await seed(stateDir);
       expect((await request("transcripts.summarize", { selector }))[0]).toBe(false);
       expect(
@@ -149,7 +151,7 @@ describe("transcript Gateway read authorization and errors", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("returns explicit byte-limit errors without a partial read or download", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await withOpenClawTestState(profileState, async (state) => {
       const { store, session, selector } = await seed(state.stateDir);
       await store.appendUtteranceForSession(session, {
         text: "x".repeat(TRANSCRIPTS_EXPORT_MAX_BYTES + 1),
@@ -178,7 +180,7 @@ describe("transcript Gateway read authorization and errors", () => {
   });
 
   it("keeps configured capture intent out of RPC results and durable session metadata", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await withOpenClawTestState(profileState, async (state) => {
       const source = { providerId: "fixture-voice", channelId: "room" };
       const cfg = { transcripts: { autoStart: [source] } };
       const previousRegistry = captureActivePluginRegistrySnapshot();
@@ -225,7 +227,7 @@ describe("transcript Gateway read authorization and errors", () => {
   });
 
   it("denies every global archive read for sessions.others:none even with allowed or forged agent filters", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await withOpenClawTestState(profileState, async (state) => {
       const { selector } = await seed(state.stateDir);
       const profile = ensureProfileForEmail("transcript-guest@example.test");
       const cfg = roles("none");
@@ -251,7 +253,7 @@ describe("transcript Gateway read authorization and errors", () => {
   });
 
   it("preserves global reads for view roles and admins without treating the creation agent allowlist as read scope", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await withOpenClawTestState(profileState, async (state) => {
       const { selector } = await seed(state.stateDir);
       const profile = ensureProfileForEmail("transcript-reader@example.test");
       const caller = client(profile.id);
@@ -289,7 +291,7 @@ describe("transcript Gateway read authorization and errors", () => {
   });
 
   it("uses the normal operator role and scope fence and never advertises a capture mutation method", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       for (const [method, params] of [
         ["transcripts.list", {}],
         ["transcripts.get", { selector: "missing" }],
@@ -318,7 +320,7 @@ describe("transcript Gateway read authorization and errors", () => {
   it.each(["authority", "archive role", "cancellation"])(
     "refuses a public page after %s changes during its worker read",
     async (kind) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async ({ stateDir }) => {
+      await withOpenClawTestState(profileState, async ({ stateDir }) => {
         const { store } = await seed(stateDir);
         const profile = ensureProfileForEmail("public-page-reader@example.test");
         const cancellation = new AbortController();
@@ -383,7 +385,7 @@ describe("transcript Gateway read authorization and errors", () => {
   });
 
   it("rejects invalid requests and missing selectors, and redacts archive failures", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await withOpenClawTestState(profileState, async (state) => {
       const { session, selector } = await seed(state.stateDir);
       for (const [method, params] of [
         ["transcripts.list", { limit: 201 }],
@@ -466,7 +468,7 @@ describe("meeting transcript RPC", () => {
 
   let state: OpenClawTestState;
   beforeEach(async () => {
-    state = await createOpenClawTestState({ scenario: "minimal" });
+    state = await createOpenClawTestState(profileState);
     const stateDir = state.stateDir;
     vi.spyOn(transcriptProviders, "getTranscriptSourceProvider").mockReturnValue(undefined);
     store = new TranscriptsStore(path.join(stateDir, "transcripts"), {
