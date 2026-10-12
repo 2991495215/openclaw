@@ -14,6 +14,7 @@ import {
   appendTranscriptMessage,
   loadTranscriptEvents,
 } from "../../config/sessions/session-accessor.transcript.js";
+import { captureSessionActorStorageOwner } from "../../config/sessions/session-actor-storage-binding.js";
 import { appendPreparedTranscriptEvent } from "../../config/sessions/session-transcript-event.js";
 import { executeSqliteQuerySync } from "../../infra/kysely-sync.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
@@ -135,6 +136,28 @@ export function invokeMessageCut(
 }
 
 export async function readMutationStorage(scope: SourceScope) {
+  const memory = captureSessionActorStorageOwner(scope, { assertCurrent() {}, authorize() {} });
+  if (memory) {
+    const snapshots = memory.owner?.listSessions(memory.authority) ?? [];
+    return {
+      source: loadSessionEntry(scope),
+      history: await loadTranscriptEvents(scope),
+      sessions: memory.owner?.listSessionEntries(memory.authority) ?? [],
+      // Include retired windows so a rejected cut cannot leave orphaned private history.
+      transcripts: await Promise.all(
+        snapshots.flatMap((snapshot) =>
+          snapshot.dependencySessionIds.map(async (sessionId) => ({
+            sessionId,
+            events: await loadTranscriptEvents({
+              ...scope,
+              sessionKey: snapshot.target.sessionKey,
+              sessionId,
+            }),
+          })),
+        ),
+      ),
+    };
+  }
   const database = openOpenClawAgentDatabase(toDatabaseOptions(resolveSqliteScope(scope)));
   const db = getSessionKysely(database.db);
   return {

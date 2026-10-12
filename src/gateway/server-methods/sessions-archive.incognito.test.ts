@@ -87,6 +87,7 @@ it("prepares archive and restores an admitted human turn without opening host SQ
   const key = "agent:main:dashboard:incognito-archive";
   const entry: SessionEntry = {
     sessionId: "archive",
+    lifecycleRevision: "archive-original",
     updatedAt: Date.now(),
     incognito: true,
     archivedAt: 1,
@@ -95,7 +96,7 @@ it("prepares archive and restores an admitted human turn without opening host SQ
   const sql = observeHostDataSql();
   try {
     const prepared = await archive(key, entry);
-    assert(prepared.ok, "archive preparation failed");
+    assert(prepared.ok, prepared.ok ? "" : prepared.error.message);
     expect(prepared.value.entry).toMatchObject(entry);
     releaseSessionPatchArchive(prepared.value);
     expect(await restore(key, entry)).toMatchObject({ sessionId: entry.sessionId });
@@ -112,6 +113,7 @@ it.each(["archive", "restore"] as const)(
     const key = `agent:main:dashboard:incognito-${operation}-replacement`;
     const entry: SessionEntry = {
       sessionId: operation,
+      lifecycleRevision: "archive-original",
       updatedAt: Date.now(),
       incognito: true,
       archivedAt: 1,

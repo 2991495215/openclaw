@@ -441,7 +441,7 @@ export async function finalizeSessionEntryMaintenancePlansAfterWriterReleaseBest
         const removed = await withSqliteSessionDeletions(
           { ...scope, agentId: memory.agentId, path: memory.path },
           entries,
-          async (assertDeletionCurrent, capture, settleReceipts) => {
+          async (assertDeletionCurrent, capture) => {
             let settlement: ReturnType<typeof capture> | undefined;
             const outcome = await actor.storage!.mutate(
               {
@@ -472,9 +472,6 @@ export async function finalizeSessionEntryMaintenancePlansAfterWriterReleaseBest
             );
             settlement?.settle(outcome.kind);
             const result = readSessionActorStorageResult(outcome);
-            if (result.removedSessionKeys.length > 0) {
-              await settleReceipts(() => owner.assertCurrent());
-            }
             return new Set(result.removedSessionKeys);
           },
           { memory: owner },

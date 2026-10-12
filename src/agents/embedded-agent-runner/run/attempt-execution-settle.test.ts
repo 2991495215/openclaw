@@ -2,7 +2,6 @@ import { DatabaseSync, StatementSync } from "node:sqlite";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  appendTranscriptEvent,
   loadTranscriptEvents,
   upsertSessionEntryCore,
 } from "../../../config/sessions/session-accessor.js";
@@ -11,6 +10,7 @@ import {
   toDatabaseOptions,
 } from "../../../config/sessions/session-accessor.sqlite-scope.js";
 import { appendTranscriptEventSnapshotSync } from "../../../config/sessions/session-accessor.sqlite-transcript-write.js";
+import { appendPreparedTranscriptEvent } from "../../../config/sessions/session-transcript-event.js";
 import { sessionTranscriptIndexNeedsReconcile } from "../../../config/sessions/session-transcript-index.js";
 import { waitForSessionTranscriptProjection } from "../../../config/sessions/session-transcript-reconcile.js";
 import { resolveSessionTranscriptActiveLeafEntryId } from "../../../config/sessions/transcript-tree.js";
@@ -504,7 +504,7 @@ describe("runEmbeddedAttemptSettledPhase", () => {
             if (intervening === "side-dirty") {
               appendBeforeReconcile(sideEntry);
             } else {
-              await appendTranscriptEvent(target, sideEntry);
+              await appendPreparedTranscriptEvent(target, sideEntry, () => {});
               await waitForSessionTranscriptProjection(target);
             }
             const stored = await loadTranscriptEvents(target);

@@ -16,6 +16,7 @@ import { observeMainThreadSql } from "../../test-utils/main-thread-sql-spies.tes
 import { useSessionStoreTempDirs } from "../../test-utils/session-state-cleanup.js";
 import {
   loadSessionEntry,
+  loadTranscriptEvents,
   loadTranscriptEventsSync,
   persistCompactionBoundaryWithSessionEntrySync,
   persistCompactionBoundaryWithSessionEntryAsync,
@@ -251,7 +252,7 @@ describe("awaited compaction persistence", () => {
       type: "compaction",
       parentId: keptId,
     });
-    expect(loadTranscriptEventsSync(scope).at(-1)).toMatchObject({
+    expect((await loadTranscriptEvents(scope)).at(-1)).toMatchObject({
       id: entryId,
       type: "compaction",
     });
