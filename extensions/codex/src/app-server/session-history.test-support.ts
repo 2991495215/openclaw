@@ -4,7 +4,7 @@ import path from "node:path";
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { CURRENT_SESSION_VERSION } from "openclaw/plugin-sdk/agent-sessions";
 import type { AssistantMessage } from "openclaw/plugin-sdk/llm";
-import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
+import { deleteSessionEntry, upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import { appendSessionTranscriptMessageByIdentity } from "openclaw/plugin-sdk/session-transcript-runtime";
 import { closeOpenClawAgentDatabasesAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { afterEach } from "vitest";
@@ -12,8 +12,12 @@ import { attachCodexMirrorIdentity, attachUpstreamUserText } from "./upstream-pr
 
 export function setupSessionHistoryFixtures() {
   const tempDirs: string[] = [];
+  const memorySessions: Array<Parameters<typeof deleteSessionEntry>[0]> = [];
 
   afterEach(async () => {
+    for (const session of memorySessions.splice(0)) {
+      await deleteSessionEntry(session);
+    }
     for (const dir of tempDirs.splice(0)) {
       await closeOpenClawAgentDatabasesAsync(dir);
       await fs.rm(dir, { recursive: true, force: true });
@@ -48,11 +52,15 @@ export function setupSessionHistoryFixtures() {
       sessionId: string;
       sessionKey: string;
       storePath: string;
+      env?: NodeJS.ProcessEnv;
     };
   }> {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-codex-session-history-sqlite-"));
     tempDirs.push(dir);
-    const storePath = path.join(dir, "openclaw-agent.sqlite");
+    const env = params.incognito ? { OPENCLAW_STATE_DIR: dir } : undefined;
+    const storePath = params.incognito
+      ? path.join(dir, "agents", "main", "sessions", "incognito-openclaw-agent.sqlite")
+      : path.join(dir, "openclaw-agent.sqlite");
     const sessionId = params.incognito
       ? `codex-sqlite-${path.basename(dir)}`
       : "codex-sqlite-session";
@@ -65,7 +73,11 @@ export function setupSessionHistoryFixtures() {
       sessionId,
       sessionKey,
       storePath,
+      ...(env ? { env } : {}),
     };
+    if (params.incognito) {
+      memorySessions.push(scope);
+    }
     await upsertSessionEntry({
       ...scope,
       entry: {

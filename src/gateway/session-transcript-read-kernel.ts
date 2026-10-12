@@ -356,7 +356,9 @@ export async function filterSessionMessageHistoryVisibility(
     if (
       !projected
         .result()
-        .messages.some((message) => readChatHistoryMessageId(message) === messageId)
+        .messages.some(
+          (message) => message.display !== false && readChatHistoryMessageId(message) === messageId,
+        )
     ) {
       return { found: false, oversized: false, historyHidden: true };
     }
