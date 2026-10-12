@@ -278,6 +278,7 @@ vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => ({
   resolvePluginMetadataSnapshot: () => emptyPluginMetadataSnapshot,
 }));
 vi.mock("../plugins/provider-thinking.js", () => ({
+  prepareModelCatalogThinkingPolicies: () => undefined,
   resolveProviderBinaryThinking: () => undefined,
   resolveProviderDefaultThinkingLevel: () => undefined,
   resolveEffectiveThinkingProfile: () => undefined,

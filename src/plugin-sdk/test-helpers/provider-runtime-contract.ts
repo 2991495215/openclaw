@@ -555,6 +555,7 @@ export function describeOpenAIProviderRuntimeContract(
   manifestCatalog: unknown,
 ) {
   describe("openai provider runtime contract", { timeout: CONTRACT_SETUP_TIMEOUT_MS }, () => {
+    useProviderCatalogMetadata(new URL("../../../extensions/openai/", import.meta.url));
     const createManifestModel = createManifestModelFactory("openai", manifestCatalog);
     const codexProviderConfig = {
       api: "openai-chatgpt-responses",

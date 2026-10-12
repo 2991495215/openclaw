@@ -25,7 +25,10 @@ import { hasAnyAuthProfileStoreSourceAsync } from "./auth-profiles/source-check.
 import { resolveConversationCapabilityProfile } from "./conversation-capability-profile.js";
 import { resolveModelAsync } from "./embedded-agent-runner/model.js";
 import { resolveBundledStaticCatalogModel } from "./embedded-agent-runner/model.static-catalog.js";
-import { normalizeStaticProviderModelId } from "./model-ref-shared.js";
+import {
+  type ModelManifestNormalizationContext,
+  normalizeStaticProviderModelId,
+} from "./model-ref-shared.js";
 import { acquireReadOnlyPreparedModelRuntime } from "./prepared-model-runtime.js";
 import { createToolAccessDiagnostics } from "./tool-access-diagnostics.js";
 import { normalizeToolPolicyName } from "./tool-policy.js";
@@ -137,7 +140,9 @@ async function resolveStaticToolInventoryRuntimeModelContext(params: {
   workspaceDir?: string;
   modelProvider?: string;
   modelId?: string;
-}): Promise<{ modelApi?: string; runtimeModel?: ProviderRuntimeModel }> {
+}): Promise<
+  { modelApi?: string; runtimeModel?: ProviderRuntimeModel } & ModelManifestNormalizationContext
+> {
   const provider = normalizeProviderId(params.modelProvider ?? "");
   const modelId = params.modelId?.trim() ?? "";
   if (!provider || !modelId) {
@@ -189,7 +194,7 @@ async function resolveStaticToolInventoryRuntimeModelContext(params: {
       baseUrl: normalizeOptionalString(providerConfig?.baseUrl) ?? bundledStaticModel.baseUrl,
     } as ProviderRuntimeModel;
   } else {
-    return {};
+    return { manifestPlugins: metadataSnapshot };
   }
   const normalized = withPluginMetadataSnapshotScope(
     metadataSnapshot,
@@ -220,6 +225,7 @@ async function resolveStaticToolInventoryRuntimeModelContext(params: {
   return {
     modelApi: runtimeModel.api,
     runtimeModel,
+    manifestPlugins: metadataSnapshot,
   };
 }
 
@@ -275,7 +281,11 @@ export async function acquireEffectiveToolInventoryRuntimeModelContext(
     if (!runtimeModel) {
       return { run: (project) => project({}), [Symbol.asyncDispose]: async () => {} };
     }
-    const context = { modelApi: runtimeModel.api, runtimeModel };
+    const context = {
+      modelApi: runtimeModel.api,
+      runtimeModel,
+      manifestPlugins: lease.snapshot.metadataSnapshot,
+    };
     let released = false;
     let disposal: Promise<void> | undefined;
     const acquired = {
@@ -300,19 +310,26 @@ export async function acquireEffectiveToolInventoryRuntimeModelContext(
 }
 
 /** Resolves compatibility metadata explicitly configured for a provider/model pair. */
-export function resolveConfiguredModelCompat(params: {
-  cfg: OpenClawConfig;
-  modelProvider?: string;
-  modelId?: string;
-}) {
+export function resolveConfiguredModelCompat(
+  params: {
+    cfg: OpenClawConfig;
+    modelProvider?: string;
+    modelId?: string;
+  } & ModelManifestNormalizationContext,
+) {
   const provider = normalizeProviderId(params.modelProvider ?? "");
   const modelId = params.modelId?.trim() ?? "";
   if (!provider || !modelId) {
     return undefined;
   }
   const providerConfig = resolveMergedModelProviderConfig(params.cfg, provider);
+  if (!providerConfig?.models?.length) {
+    return undefined;
+  }
   const match = findConfiguredProviderModel(providerConfig, provider, modelId, (id) =>
-    normalizeLowercaseStringOrEmpty(normalizeStaticProviderModelId(provider, id)),
+    normalizeLowercaseStringOrEmpty(
+      normalizeStaticProviderModelId(provider, id, { manifestPlugins: params.manifestPlugins }),
+    ),
   );
   return extractModelCompat(match);
 }
@@ -332,6 +349,7 @@ export async function resolveEffectiveToolInventory(
       ? {
           modelApi: params.modelApi ?? params.runtimeModel?.api,
           runtimeModel: params.runtimeModel,
+          manifestPlugins: params.manifestPlugins,
         }
       : await resolveStaticToolInventoryRuntimeModelContext({
           cfg: params.cfg,
@@ -341,10 +359,17 @@ export async function resolveEffectiveToolInventory(
           modelProvider: params.modelProvider,
           modelId: params.modelId,
         });
+  const providerConfig = resolveMergedModelProviderConfig(params.cfg, params.modelProvider ?? "");
+  const manifestPlugins =
+    runtimeModelContext.manifestPlugins ??
+    (providerConfig?.models?.length
+      ? await resolvePluginMetadataSnapshotAsync({ config: params.cfg, workspaceDir })
+      : undefined);
   const modelCompat = resolveConfiguredModelCompat({
     cfg: params.cfg,
     modelProvider: params.modelProvider,
     modelId: params.modelId,
+    manifestPlugins,
   });
 
   const capabilityProfile =

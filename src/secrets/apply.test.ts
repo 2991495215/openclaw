@@ -27,13 +27,12 @@ import {
 import { getRuntimeAuthProfileStoreSnapshot } from "../agents/auth-profiles/store.js";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import {
+  closeOpenClawAgentDatabasesAsync,
   closeOpenClawAgentDatabasesForTest,
   openOpenClawAgentDatabase,
 } from "../state/openclaw-agent-db.js";
-import {
-  closeOpenClawStateDatabaseForTest,
-  openOpenClawStateDatabase,
-} from "../state/openclaw-state-db.js";
+import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
+import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import {
   createApplyFixture,
   createOpenAiProviderConfig,
@@ -208,8 +207,9 @@ describe("secrets apply", () => {
     clearSecretsRuntimeSnapshot();
     vi.restoreAllMocks();
     clearRuntimeAuthProfileStoreSnapshots();
+    await closeOpenClawAgentDatabasesAsync();
     closeOpenClawAgentDatabasesForTest();
-    closeOpenClawStateDatabaseForTest();
+    await closeStateDatabaseForTest();
     vi.unstubAllEnvs();
     await fs.rm(fixture.rootDir, { recursive: true, force: true });
   });
@@ -1126,7 +1126,9 @@ describe("secrets apply", () => {
       expect(nextClawdbotEnv).toContain("UNRELATED=legacy");
     } finally {
       clearSecretsRuntimeSnapshot();
+      await closeOpenClawAgentDatabasesAsync();
       closeOpenClawAgentDatabasesForTest();
+      await closeStateDatabaseForTest();
       await fs.rm(homeDir, { recursive: true, force: true });
     }
   });

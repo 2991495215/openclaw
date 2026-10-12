@@ -1,11 +1,12 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { createOpenClawCodingTools } from "openclaw/plugin-sdk/agent-harness";
+import { createOpenClawCodingToolsAsync } from "openclaw/plugin-sdk/agent-harness";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
   createTestRegistry,
   setActivePluginRegistry,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
+import { setRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -98,6 +99,8 @@ describe("session-derived Google Chat delivery", () => {
         },
       };
 
+      setRuntimeConfigSnapshot(config, config);
+
       // The session recorded its canonical destination on the inbound turn.
       await upsertSessionEntry({
         agentId: "main",
@@ -125,7 +128,7 @@ describe("session-derived Google Chat delivery", () => {
 
       // The ambient surface is webchat; the destination exists only in the folded session
       // key and in the session's stored delivery metadata.
-      const tools = createOpenClawCodingTools({
+      const tools = await createOpenClawCodingToolsAsync({
         config,
         agentId: "main",
         sessionKey: SESSION_KEY,

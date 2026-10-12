@@ -5,7 +5,7 @@ import {
   createOAuthAuthProfileStore,
   createWebSearchTestProvider,
 } from "../test-utils/web-provider-runtime.test-helpers.js";
-import { createOpenClawCodingTools } from "./agent-tools.js";
+import { createOpenClawCodingToolsAsync } from "./agent-tools.js";
 import {
   clearRuntimeAuthProfileStoreSnapshots,
   getRuntimeAuthProfileStoreSnapshotCore,
@@ -22,7 +22,10 @@ import {
 } from "./tool-search-catalog.js";
 
 // mock-isolation: Exercise real assembly without loading external plugins or credentials.
-vi.mock("./openclaw-plugin-tools.js", () => ({ resolveOpenClawPluginToolsForOptions: () => [] }));
+vi.mock("./openclaw-plugin-tools.js", () => ({
+  resolveOpenClawPluginToolsForOptions: () => [],
+  resolveOpenClawPluginToolsForOptionsAsync: async () => [],
+}));
 const { resolveProviders } = vi.hoisted(() => ({
   resolveProviders: vi.fn<() => ReturnType<typeof createWebSearchTestProvider>[]>(() => []),
 }));
@@ -192,8 +195,8 @@ describe("unconfigured web search tool surface", () => {
     },
   );
 
-  it("excludes unconfigured search from initial tools, discovery, and Code Mode", () => {
-    const tools = createOpenClawCodingTools({
+  it("excludes unconfigured search from initial tools, discovery, and Code Mode", async () => {
+    const tools = await createOpenClawCodingToolsAsync({
       config: {},
       workspaceDir: "/tmp/openclaw-web-search-test",
       disableMessageTool: true,

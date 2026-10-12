@@ -55,6 +55,7 @@ describe("sessions-list-tool", () => {
         entry,
         skipTranscriptUsageFallback: true,
         lightweightListRow: true,
+        preparedModelMetadata: null,
       }),
     );
     mocks.gatewayCall.mockResolvedValue({ path: "/tmp/sessions.json", sessions });

@@ -93,10 +93,11 @@ export type {
 export {
   getModelProviderRequestRouteFacts,
   prepareModelProviderRequestRouteFacts,
-  resolveProviderRequestHeaders,
+  resolveProviderRequestHeadersAsync,
 } from "../agents/provider-request-config.js";
 export {
   resolveProviderEndpointLegacy as resolveProviderEndpoint,
   resolveProviderRequestCapabilitiesLegacy as resolveProviderRequestCapabilities,
   resolveProviderRequestPolicyLegacy as resolveProviderRequestPolicy,
+  resolveProviderRequestHeadersLegacy as resolveProviderRequestHeaders,
 } from "../agents/provider-attribution-sdk.js";

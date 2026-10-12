@@ -27,7 +27,9 @@ import {
   type SessionBindingAdapter,
   type SessionBindingPlacement,
 } from "../../../infra/outbound/session-binding-service.js";
+import { createPluginMetadataSnapshotFixture } from "../../../plugins/plugin-metadata.test-support.js";
 import { setActivePluginRegistry } from "../../../plugins/runtime.js";
+import { withPluginRuntimeGenerationScope } from "../../../plugins/runtime/generation-scope.js";
 import {
   createChannelTestPluginBase,
   createTestRegistry,
@@ -819,7 +821,12 @@ describe("spawnAcpDirect", () => {
           },
         },
       };
-      expectAcceptedSpawn(await spawn({ agentId: "codex-acp", thinking }));
+      expectAcceptedSpawn(
+        await withPluginRuntimeGenerationScope(
+          { metadataSnapshot: createPluginMetadataSnapshotFixture() },
+          () => spawn({ agentId: "codex-acp", thinking }),
+        ),
+      );
       expectInitializeSessionFields({
         agent: "codex",
         backendId: "acpx",

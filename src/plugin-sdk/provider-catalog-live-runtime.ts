@@ -1,5 +1,5 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { resolveProviderRequestHeaders } from "../agents/provider-request-config.js";
+import { resolveProviderRequestHeadersAsync } from "../agents/provider-request-config.js";
 import type {
   ProviderCatalogContext,
   ProviderCatalogOutcome,
@@ -269,16 +269,19 @@ export function createUpstreamProviderCatalog(params: {
   const projectRows = params.projectRows ?? projectProviderCatalogSnapshotRows;
   // Discovery identifies the client the same way inference does; the attribution
   // owner decides which providers and endpoints receive those headers.
-  const buildRequestHeaders = (ctx: LiveModelCatalogHeaderContext): HeadersInit => ({
-    ...resolveProviderRequestHeaders({
+  const prepareRequestHeaders = async () => {
+    const attributionHeaders = await resolveProviderRequestHeadersAsync({
       provider: params.providerId,
       api: params.providerConfig.api,
       baseUrl: params.providerConfig.baseUrl,
       capability: "llm",
       transport: "http",
-    }),
-    ...buildDefaultLiveModelCatalogHeaders(ctx),
-  });
+    });
+    return (ctx: LiveModelCatalogHeaderContext): HeadersInit => ({
+      ...attributionHeaders,
+      ...buildDefaultLiveModelCatalogHeaders(ctx),
+    });
+  };
   const buildStaticProvider = (apiKey?: string): ModelProviderConfig => ({
     ...params.providerConfig,
     ...(apiKey ? { apiKey } : {}),
@@ -327,7 +330,7 @@ export function createUpstreamProviderCatalog(params: {
         signal: request.signal,
         timeoutMs: params.timeoutMs,
         auditContext: params.starterModelAuditContext,
-        buildRequestHeaders,
+        buildRequestHeaders: await prepareRequestHeaders(),
       });
       const preferredModelId = request.preferredModelRef.replace(`${params.providerId}/`, "");
       return liveModelIds.includes(preferredModelId) ? request.preferredModelRef : undefined;
@@ -359,7 +362,7 @@ export function createUpstreamProviderCatalog(params: {
         timeoutMs: params.timeoutMs,
         ttlMs: params.ttlMs,
         auditContext: params.auditContext,
-        buildRequestHeaders,
+        buildRequestHeaders: await prepareRequestHeaders(),
         projectRows: (rows) => projectRows(rows, snapshot),
       });
     },

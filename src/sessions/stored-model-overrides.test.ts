@@ -69,6 +69,40 @@ describe("resolveStoredModelOverride", () => {
     expect(loadSessionEntry).toHaveBeenCalledWith("agent:main:telegram:dm:parent");
   });
 
+  it.each(["session", "parent"] as const)(
+    "uses prepared manifest aliases for the %s override",
+    async (source) => {
+      const sessionEntry = {
+        sessionId: "selected-session",
+        updatedAt: 1,
+        providerOverride: "fixture-provider",
+        modelOverride: "raw",
+      };
+      const result = await resolveStoredModelOverrideAsync({
+        defaultProvider: "openai",
+        manifestPlugins: [
+          {
+            modelIdNormalization: {
+              providers: { "fixture-provider": { aliases: { raw: "canonical" } } },
+            },
+          },
+        ],
+        ...(source === "session"
+          ? { sessionEntry }
+          : {
+              sessionKey: "agent:main:telegram:dm:parent:thread:child",
+              loadSessionEntry: async () => sessionEntry,
+            }),
+      });
+      expect(result).toEqual({
+        provider: "fixture-provider",
+        model: "canonical",
+        source,
+        routeResolution: "raw",
+      });
+    },
+  );
+
   it("does not inherit active automatic fallback overrides from parent sessions", async () => {
     expect(
       await resolveParentOverride({

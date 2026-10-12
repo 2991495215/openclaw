@@ -1,7 +1,10 @@
 // Model set tests cover persisting default model/provider selections.
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { tryResolveConfiguredAgentWorkspaceDir } from "../../agents/agent-scope-config.js";
 import type { OpenClawConfig, TransformConfigFileParams } from "../../config/config.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
+import { withPluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
 import type { RuntimeEnv } from "../../runtime.js";
 
 const mocks = vi.hoisted(() => ({
@@ -37,7 +40,17 @@ vi.mock("../../config/logging.js", () => ({
 
 // Real provider activation is covered by model-selection.runtime.test.ts.
 vi.mock("./model-selection.runtime.js", () => ({
-  withModelCommandProviderRuntime: (_params: unknown, run: () => unknown) => run(),
+  withModelCommandProviderRuntime: async (
+    params: { runtimeConfig: OpenClawConfig },
+    run: () => unknown,
+  ) => {
+    const metadataSnapshot = await resolvePluginMetadataSnapshotAsync({
+      config: params.runtimeConfig,
+      env: process.env,
+      workspaceDir: tryResolveConfiguredAgentWorkspaceDir(params.runtimeConfig, process.env),
+    });
+    return withPluginRuntimeGenerationScope({ metadataSnapshot }, run);
+  },
 }));
 
 vi.mock("../runtime-plugin-install.js", () => ({

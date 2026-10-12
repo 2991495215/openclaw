@@ -66,9 +66,13 @@ function holdNextCatalogWrite() {
 describe("prepared model runtime owner selection", () => {
   it("awaits cold metadata preparation before deriving runtime selections", async () => {
     const prepared = createDeferred<pluginMetadata.PluginMetadataSnapshot>();
+    const resolvingMetadata = createDeferred();
     using resolveMetadata = vi
       .spyOn(pluginMetadata, "resolvePluginMetadataSnapshotAsync")
-      .mockReturnValueOnce(prepared.promise);
+      .mockImplementationOnce(() => {
+        resolvingMetadata.resolve();
+        return prepared.promise;
+      });
     const deriveRuntimePluginSelections = vi.fn(() => []);
     const input = fixture.agentInput("cold-metadata", {});
     const metadataSnapshot = createPluginMetadataSnapshot({
@@ -78,6 +82,7 @@ describe("prepared model runtime owner selection", () => {
     const pending = acquireAgentRunPreparedModelRuntime(input, {
       deriveRuntimePluginSelections,
     });
+    await resolvingMetadata.promise;
     expect(resolveMetadata).toHaveBeenCalledOnce();
     expect(deriveRuntimePluginSelections).not.toHaveBeenCalled();
     prepared.resolve(metadataSnapshot);

@@ -172,6 +172,14 @@ Await it before using a cold model and reuse the returned model through stream
 and completion calls. Already prepared models reuse their captured facts without
 another metadata lookup.
 
+For direct HTTP requests, await `resolveProviderRequestHeadersAsync` from
+`openclaw/plugin-sdk/provider-http`. It prepares metadata through the existing
+owner and preserves the request's transport, endpoint, and header precedence.
+Pass existing `providerMetadataOwners` to reuse an already prepared request.
+The synchronous `resolveProviderRequestHeaders` export, shipped in `v2026.10.2`,
+retains cold native discovery with a bounded deprecation warning and will be
+removed in a later release after stable deprecation.
+
 Direct policy readers use `getModelProviderRequestRouteFacts` from the same seam
 and pass its `providerMetadataOwners` to their policy/header inputs (or as the
 second argument to `resolveProviderEndpoint`). The policy functions and the

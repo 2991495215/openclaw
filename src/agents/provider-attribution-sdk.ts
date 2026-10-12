@@ -7,12 +7,17 @@ import {
   resolveProviderRequestCapabilities as resolveCapabilities,
   resolveProviderRequestPolicy as resolvePolicy,
 } from "./provider-attribution.js";
+import { resolveProviderRequestHeaders as resolveHeaders } from "./provider-request-config.js";
 
-function prepareLegacyOwners(owners: PluginMetadataSnapshotOwnerMaps | undefined, method: string) {
+function prepareLegacyOwners(
+  owners: PluginMetadataSnapshotOwnerMaps | undefined,
+  method: string,
+  replacement = "prepareModelProviderRequestRouteFacts",
+) {
   warnPluginSdkDeprecation({
     family: "provider-http-sync-policy",
     method,
-    replacement: "prepareModelProviderRequestRouteFacts",
+    replacement,
     compatibility: "The synchronous helpers retain cold native metadata discovery.",
   });
   return (
@@ -62,4 +67,16 @@ export function resolveProviderRequestCapabilitiesLegacy(
     },
     env,
   );
+}
+
+/** @deprecated Await resolveProviderRequestHeadersAsync; removed in a later release after stable deprecation. */
+export function resolveProviderRequestHeadersLegacy(params: Parameters<typeof resolveHeaders>[0]) {
+  return resolveHeaders({
+    ...params,
+    providerMetadataOwners: prepareLegacyOwners(
+      params.providerMetadataOwners,
+      "resolveProviderRequestHeaders",
+      "resolveProviderRequestHeadersAsync",
+    ),
+  });
 }

@@ -48,6 +48,11 @@ vi.mock("./channel-resolution.js", () => ({
   normalizeDeliverableOutboundChannel: (value?: string | null) =>
     typeof value === "string" ? value.trim().toLowerCase() || undefined : undefined,
   resolveOutboundChannelPlugin: hoistedMessageActionRunnerMocks.resolveOutboundChannelPlugin,
+  resolveOutboundChannelPluginAsync: async (
+    params: Parameters<
+      typeof import("./channel-resolution.js").resolveOutboundChannelPluginAsync
+    >[0],
+  ) => hoistedMessageActionRunnerMocks.resolveOutboundChannelPlugin(params),
   resetOutboundChannelResolutionStateForTest: vi.fn(),
 }));
 

@@ -11,6 +11,7 @@ import {
   promptDefaultModel,
   promptModelAllowlist,
 } from "../flows/model-picker.js";
+import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
 import type { WizardMultiSelectParams, WizardPrompter } from "../wizard/prompts.js";
 import { makePrompter } from "./setup/__tests__/test-utils.js";
 
@@ -21,6 +22,11 @@ const modelCatalogRouteVariants = vi.hoisted(() => ({
 vi.mock("../agents/prepared-model-catalog.js", () => ({
   loadProviderScopedThinkingCatalog: vi.fn(async () => []),
   loadPreparedModelCatalogSnapshot: async (params: LoadPreparedModelCatalogParams) => {
+    await resolvePluginMetadataSnapshotAsync({
+      config: params.config,
+      env: params.env ?? process.env,
+      workspaceDir: params.workspaceDir,
+    });
     if (params.providerDiscoveryProviderIds) {
       return loadScopedModelCatalog(params);
     }

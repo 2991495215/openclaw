@@ -588,7 +588,7 @@ export function resolveProviderRequestConfig(params: {
 
 type ResolvedProviderRequestConfig = ReturnType<typeof resolveProviderRequestConfig>;
 
-/** @deprecated Prepare model route facts asynchronously before deriving request headers. */
+/** Derive headers from metadata already prepared by the request or model owner. */
 export function resolveProviderRequestHeaders(params: {
   provider: string;
   api?: RequestApi;
@@ -613,6 +613,23 @@ export function resolveProviderRequestHeaders(params: {
     precedence: params.precedence,
     request: params.request,
   }).headers;
+}
+
+/** Prepare cold request metadata before deriving headers for HTTP or stream transports. */
+export async function resolveProviderRequestHeadersAsync(
+  params: Parameters<typeof resolveProviderRequestHeaders>[0],
+  context: { config?: OpenClawConfig; workspaceDir?: string } = {},
+): Promise<ReturnType<typeof resolveProviderRequestHeaders>> {
+  if (params.providerMetadataOwners) {
+    return resolveProviderRequestHeaders(params);
+  }
+  const { resolvePluginMetadataSnapshotAsync } =
+    await import("../plugins/plugin-metadata-snapshot.js");
+  const snapshot = await resolvePluginMetadataSnapshotAsync({
+    ...context,
+    allowWorkspaceScopedCurrent: true,
+  });
+  return resolveProviderRequestHeaders({ ...params, providerMetadataOwners: snapshot.owners });
 }
 
 const MODEL_PROVIDER_REQUEST_TRANSPORT_SYMBOL = Symbol.for(

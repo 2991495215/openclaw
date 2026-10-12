@@ -421,7 +421,7 @@ vi.mock("./models-config.providers.implicit.js", () => ({
 
 vi.mock("./runtime-plugins.js", () => ({
   acquireAgentRuntimePluginRegistry: async (...args: unknown[]) => {
-    const registry = preparedModelRuntimeMocks.loadAgentRuntimePluginRegistryHandle(...args);
+    const registry = await preparedModelRuntimeMocks.loadAgentRuntimePluginRegistryHandle(...args);
     return { registry, primaryRegistry: registry };
   },
   loadAgentRuntimePluginRegistryHandle: (...args: unknown[]) =>

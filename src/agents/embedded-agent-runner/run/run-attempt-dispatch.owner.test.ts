@@ -378,7 +378,8 @@ it.each(dispatchCases)(
         operationalRunInstance: createOperationalRunInstanceRef(runId),
       });
       const admittedRunContext = await admission.admit("plugin-harness", "owner-test");
-      setActivePluginRegistry(createEmptyPluginRegistry());
+      const registry = createEmptyPluginRegistry();
+      setActivePluginRegistry(registry);
       const runAttempt = vi.fn<AgentHarness["runAttempt"]>(async (params) => ({
         terminal: { kind: "ok" },
         sessionIdUsed: params.sessionId,
@@ -626,7 +627,7 @@ it.each(dispatchCases)(
               }))
           : undefined;
       const pending = withPluginRuntimeGenerationScope(
-        { metadataSnapshot: createPluginMetadataSnapshotFixture() },
+        { metadataSnapshot: createPluginMetadataSnapshotFixture(), pluginRegistry: registry },
         () => prepareAndDispatchEmbeddedRunAttempt(input),
       );
       void pending.catch(() => {});

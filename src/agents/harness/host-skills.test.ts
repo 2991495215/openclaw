@@ -239,9 +239,9 @@ it("keeps the host-owned skill root when plugin options widen placement or repla
     await expect(read.execute("outside", { name: "outside" })).rejects.toThrow(
       "is not available to this agent",
     );
-    expect(() => createTools({ sessionPermissionPolicy: { root: parent, mode: "full" } })).toThrow(
-      "escapes the captured required workspace",
-    );
+    await expect(
+      createTools({ sessionPermissionPolicy: { root: parent, mode: "full" } }),
+    ).rejects.toThrow("escapes the captured required workspace");
   } finally {
     host.closeHost();
     host.closeAdmission();

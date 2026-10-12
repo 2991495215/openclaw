@@ -4,6 +4,7 @@ import { afterAll, afterEach, describe, expect, it, onTestFinished, vi } from "v
 import {
   clearRuntimeConfigSnapshot,
   createRuntimeConfigReader,
+  getRuntimeConfigSnapshot,
   resetConfigRuntimeState,
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
@@ -14,6 +15,7 @@ import { createDeferredCore } from "../shared/deferred.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import { activatePluginRegistry } from "./loader-shared.js";
 import {
+  acquirePluginRegistryForInspection,
   loadOpenClawPluginCliRegistry,
   loadOpenClawPluginsAsync,
   loadPluginRegistryHandleAsync,
@@ -39,6 +41,41 @@ import { startPluginServices } from "./services.test-support.js";
 
 afterEach(resetPluginLoaderTestStateForTest);
 afterAll(cleanupPluginLoaderFixturesForTest);
+
+it.each([false, true])(
+  "binds inspection config without publishing over the runtime (%s)",
+  async (hasRuntime) => {
+    useNoBundledPlugins();
+    const globalConfig: OpenClawConfig = { env: { vars: { INSPECTION_LABEL: "runtime" } } };
+    clearRuntimeConfigSnapshot();
+    if (hasRuntime) {
+      setRuntimeConfigSnapshot(globalConfig);
+    }
+    const observed = path.join(makePluginLoaderTempDir(), "inspection-config.json");
+    const plugin = writePlugin({
+      id: "inspection-config",
+      body: `module.exports = { id: "inspection-config", register(api) {
+      require("node:fs").writeFileSync(${JSON.stringify(observed)},
+        JSON.stringify(api.runtime.config.current().env.vars.INSPECTION_LABEL));
+    } };`,
+    });
+    const config: OpenClawConfig = {
+      env: { vars: { INSPECTION_LABEL: "inspection" } },
+      plugins: { allow: [plugin.id], load: { paths: [plugin.dir] }, slots: { memory: "none" } },
+    };
+    const inspection = await acquirePluginRegistryForInspection({ config });
+    try {
+      expect(inspection.registry.plugins).toContainEqual(
+        expect.objectContaining({ id: plugin.id, status: "loaded" }),
+      );
+      expect(JSON.parse(fs.readFileSync(observed, "utf8"))).toBe("inspection");
+      expect(getRuntimeConfigSnapshot()).toBe(hasRuntime ? globalConfig : null);
+    } finally {
+      await inspection.release();
+      clearRuntimeConfigSnapshot();
+    }
+  },
+);
 
 it("keeps effective enablement separate from reason-only CLI activation", async () => {
   const imported = path.join(makePluginLoaderTempDir(), "imported");

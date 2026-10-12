@@ -405,6 +405,11 @@ describe("doctor lint state isolation", () => {
                 if (!check.repair) {
                   throw new Error("state-integrity repair is missing");
                 }
+                const sourceContext = {
+                  ...ctx,
+                  env: state.env,
+                  configPath: state.configPath,
+                };
                 const effects = exists
                   ? []
                   : [
@@ -416,14 +421,14 @@ describe("doctor lint state isolation", () => {
                       },
                     ];
                 await expect(
-                  check.repair({ ...ctx, mode: "fix", dryRun: true }, []),
+                  check.repair({ ...sourceContext, mode: "fix", dryRun: true }, []),
                 ).resolves.toEqual({
                   status: "repaired",
                   changes: [],
                   effects,
                 });
                 await expect(
-                  check.repair({ ...ctx, mode: "fix", dryRun: false }, []),
+                  check.repair({ ...sourceContext, mode: "fix", dryRun: false }, []),
                 ).resolves.toEqual({
                   status: "skipped",
                   reason: "legacy doctor state integrity contribution owns state repairs",

@@ -15,6 +15,7 @@ import {
 } from "openclaw/plugin-sdk/plugin-test-runtime";
 import {
   clearSessionStoreCacheForTest,
+  resolveStorePath,
   upsertSessionEntry,
 } from "openclaw/plugin-sdk/session-store-runtime";
 import {
@@ -104,6 +105,7 @@ describe("Codex command RPC helpers", () => {
     await upsertSessionEntry({
       agentId: "main",
       sessionKey,
+      storePath: resolveStorePath(undefined, { agentId: "main" }),
       entry: { sessionId: "session-1", updatedAt: Date.now() },
     });
   });
@@ -292,6 +294,7 @@ describe("Codex command RPC helpers", () => {
       await upsertSessionEntry({
         agentId: "main",
         sessionKey,
+        storePath: resolveStorePath(undefined, { agentId: "main" }),
         entry: {
           sessionId: "session-1",
           updatedAt: Date.now(),

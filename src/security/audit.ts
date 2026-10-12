@@ -8,6 +8,7 @@ import { resolveExecDefaults } from "../agents/exec-defaults.js";
 import { resolveSandboxConfigForAgent } from "../agents/sandbox/config.js";
 import type { AnyChannelPlugin as ChannelPlugin } from "../channels/plugins/types.plugin.js";
 import type { ConfigFileSnapshot, OpenClawConfig } from "../config/config.js";
+import { resolveConfigWidePluginMetadataSnapshotAsync } from "../config/io.plugin-metadata.js";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.js";
 import { copyConfigResolutionFacts } from "../config/resolution-facts.js";
 import type { GatewayAuthConfig } from "../config/types.gateway.js";
@@ -33,6 +34,7 @@ import {
 } from "../infra/exec-safe-bin-runtime-policy.js";
 import { listRiskyConfiguredSafeBins } from "../infra/exec-safe-bin-semantics.js";
 import { resolvePluginControlPlaneWorkspace } from "../plugins/control-plane-workspace.js";
+import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { collectAgentRosterFindings } from "./audit-agent-roster.js";
 import { collectDeepCodeSafetyFindings } from "./audit-deep-code-safety.js";
 import { collectDeepProbeFindings } from "./audit-deep-probe-findings.js";
@@ -1080,8 +1082,22 @@ async function createAuditExecutionContext(
 export async function runSecurityAuditCore(
   opts: SecurityAuditOptions,
 ): Promise<SecurityAuditReport> {
-  const findings: SecurityAuditFinding[] = [];
   const context = await createAuditExecutionContext(opts);
+  const metadata = await resolveConfigWidePluginMetadataSnapshotAsync({
+    config: context.sourceConfig,
+    env: context.env,
+    ...(opts.stateDir ? { stateDir: opts.stateDir } : {}),
+  });
+  return withPluginMetadataSnapshotScope(metadata, () => runPreparedSecurityAudit(context), {
+    config: context.cfg,
+    env: context.env,
+  });
+}
+
+async function runPreparedSecurityAudit(
+  context: AuditExecutionContext,
+): Promise<SecurityAuditReport> {
+  const findings: SecurityAuditFinding[] = [];
   const { cfg, env, platform, stateDir, configPath } = context;
   copyConfigResolutionFacts(context.sourceConfig, cfg);
   const auditNonDeep = await import("./audit.nondeep.runtime.js");

@@ -68,7 +68,7 @@ it.each([false, true])(
         });
         const runningRegistry = createEmptyPluginRegistry();
         setActivePluginRegistry(runningRegistry);
-        const loaded = vi.spyOn(loader, "loadPluginRegistryHandle");
+        const loaded = vi.spyOn(loader, "loadPluginRegistryHandleAsync");
         const projectRoot = resolvePluginNpmProjectDir({
           npmDir: state.statePath("npm"),
           packageName: "@fixture/provider",

@@ -6,6 +6,8 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { ConfigWriteOptions } from "../../config/io.js";
+import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
+import { withPluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
 import type { ProviderAuthProfile, ProviderPlugin } from "../../plugins/types.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { ProviderAuthConfigApplyError } from "../../shared/provider-auth-result.js";
@@ -1422,7 +1424,10 @@ describe("modelsAuthLoginCommand", () => {
     useCoderAgentConfig();
     mocks.clackPassword.mockResolvedValue("sk-openai-chatgpt-api-key-value");
 
-    await modelsAuthPasteApiKeyCommand({ provider: "openai", agent: "coder" }, runtime);
+    await withPluginRuntimeGenerationScope(
+      { metadataSnapshot: createPluginMetadataSnapshotFixture() },
+      () => modelsAuthPasteApiKeyCommand({ provider: "openai", agent: "coder" }, runtime),
+    );
 
     expect(mocks.resolveDefaultAgentId).not.toHaveBeenCalled();
     expect(mocks.upsertAuthProfileWithLock).toHaveBeenCalledWith({
@@ -1457,7 +1462,10 @@ describe("modelsAuthLoginCommand", () => {
     restoreStdin?.();
     restoreStdin = withPipedStdin("sk-openai-\nchat-api-key-value\n");
 
-    await modelsAuthPasteApiKeyCommand({ provider: "openai" }, runtime);
+    await withPluginRuntimeGenerationScope(
+      { metadataSnapshot: createPluginMetadataSnapshotFixture() },
+      () => modelsAuthPasteApiKeyCommand({ provider: "openai" }, runtime),
+    );
 
     expect(mocks.clackPassword).not.toHaveBeenCalled();
     expect(mocks.upsertAuthProfileWithLock).toHaveBeenCalledWith({

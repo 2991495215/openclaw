@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthProfileStore } from "../../agents/auth-profiles.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import type { RuntimeEnv } from "../../runtime.js";
 
 const mocks = vi.hoisted(() => ({
@@ -23,7 +24,11 @@ vi.mock("../../agents/auth-profiles.js", () => ({
 }));
 
 vi.mock("./load-config.js", () => ({
-  loadModelsConfig: mocks.loadModelsConfig,
+  loadModelsConfig: async (...args: unknown[]) => {
+    const config = await mocks.loadModelsConfig(...args);
+    await resolvePluginMetadataSnapshotAsync({ config, env: process.env });
+    return config;
+  },
 }));
 
 vi.mock("./shared.js", async (importOriginal) => {

@@ -346,12 +346,12 @@ describe("model command provider preparation", () => {
       config.agents!.entries!.probe = { workspace: root };
       await withEnvAsync({ ALIAS_CACHE_RETENTION: "long" }, () =>
         isolated(async () => {
-          const metadataSnapshot = loadManifestMetadataSnapshot({
+          const registry = loadOpenClawPluginsForTest({
             config,
             env: process.env,
             workspaceDir: root,
           });
-          const registry = loadOpenClawPluginsForTest({
+          const metadataSnapshot = loadManifestMetadataSnapshot({
             config,
             env: process.env,
             workspaceDir: root,

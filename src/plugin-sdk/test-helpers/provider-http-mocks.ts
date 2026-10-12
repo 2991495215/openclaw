@@ -6,7 +6,7 @@ import type {
   fetchWithTimeoutGuarded,
   postMultipartRequest,
   resolveProviderHttpRequestConfig,
-  resolveProviderRequestHeaders,
+  resolveProviderRequestHeadersAsync,
   sanitizeConfiguredModelProviderRequest,
 } from "../provider-http.js";
 
@@ -14,7 +14,7 @@ type ResolveProviderHttpRequestConfigParams = Parameters<
   typeof resolveProviderHttpRequestConfig
 >[0];
 type FetchWithTimeoutGuardedParams = Parameters<typeof fetchWithTimeoutGuarded>;
-type ResolveProviderRequestHeadersParams = Parameters<typeof resolveProviderRequestHeaders>[0];
+type ResolveProviderRequestHeadersParams = Parameters<typeof resolveProviderRequestHeadersAsync>[0];
 type PostMultipartRequestParams = Parameters<typeof postMultipartRequest>[0];
 type SanitizeConfiguredModelProviderRequestParams = Parameters<
   typeof sanitizeConfiguredModelProviderRequest
@@ -208,6 +208,8 @@ vi.mock("openclaw/plugin-sdk/provider-http", async (importActual) => {
     readProviderJsonResponse: providerHttpMocks.readProviderJsonResponseMock,
     resolveProviderHttpRequestConfig: providerHttpMocks.resolveProviderHttpRequestConfigMock,
     resolveProviderRequestHeaders: providerHttpMocks.resolveProviderRequestHeadersMock,
+    resolveProviderRequestHeadersAsync: async (params: ResolveProviderRequestHeadersParams) =>
+      providerHttpMocks.resolveProviderRequestHeadersMock(params),
     [providerHttpMockKeys.sanitizeConfiguredModelProviderRequest]:
       providerHttpMocks.sanitizeConfiguredModelProviderRequestMock,
   };

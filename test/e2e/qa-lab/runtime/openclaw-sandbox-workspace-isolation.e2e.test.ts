@@ -4,6 +4,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../../../src/config/config.js";
 import type { OpenClawConfig } from "../../../../src/config/types.openclaw.js";
 import { captureEnv, setTestEnvValue } from "../../../../src/test-utils/env.js";
 
@@ -95,8 +99,10 @@ test("Docker enforces none, read-only, and read-write workspace isolation", asyn
 
       let sandbox: SandboxContext | null = null;
       try {
+        const config = createConfig({ access, image, prefix, workspaceRoot });
+        setRuntimeConfigSnapshot(config);
         sandbox = await resolveSandboxContext({
-          config: createConfig({ access, image, prefix, workspaceRoot }),
+          config,
           agentId: `workspace-${access}`,
           sessionKey: `agent:workspace-${access}:qa-${randomUUID()}`,
           workspaceDir: hostWorkspace,
@@ -155,6 +161,7 @@ test("Docker enforces none, read-only, and read-write workspace isolation", asyn
     for (const runtimeId of runtimes) {
       await execDocker(["rm", "-f", runtimeId], { allowFailure: true });
     }
+    clearRuntimeConfigSnapshot();
     env.restore();
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -184,6 +191,7 @@ test("Docker confines subagent attachments to the authorized session", async () 
   });
   config.agents!.defaults!.sandbox!.scope = "agent";
   config.tools = { sessions_spawn: { attachments: { enabled: true } } };
+  setRuntimeConfigSnapshot(config);
 
   try {
     const [
@@ -308,6 +316,7 @@ test("Docker confines subagent attachments to the authorized session", async () 
         attachmentId,
       });
     }
+    clearRuntimeConfigSnapshot();
     env.restore();
     await fs.rm(root, { recursive: true, force: true });
   }

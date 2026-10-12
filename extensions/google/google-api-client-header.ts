@@ -1,36 +1,23 @@
 import {
   getModelProviderRequestRouteFacts,
   prepareModelProviderRequestRouteFacts,
-  resolveProviderRequestHeaders,
+  resolveProviderRequestHeadersAsync,
   type ProviderRequestCapability,
   type ProviderRequestTransport,
 } from "openclaw/plugin-sdk/provider-http";
 import { DEFAULT_GOOGLE_API_BASE_URL } from "./provider-policy.js";
 
-export function resolveGoogleApiClientHeaders(params?: {
+type GoogleApiClientHeaderParams = {
   api?: string;
   baseUrl?: string;
   capability?: ProviderRequestCapability;
   transport?: ProviderRequestTransport;
   providerMetadataOwners?: Parameters<
-    typeof resolveProviderRequestHeaders
+    typeof resolveProviderRequestHeadersAsync
   >[0]["providerMetadataOwners"];
-}): Record<string, string> {
-  return (
-    resolveProviderRequestHeaders({
-      provider: "google",
-      api: params?.api ?? "google-generative-ai",
-      baseUrl: params?.baseUrl ?? DEFAULT_GOOGLE_API_BASE_URL,
-      capability: params?.capability ?? "other",
-      transport: params?.transport ?? "http",
-      providerMetadataOwners: params?.providerMetadataOwners,
-    }) ?? {}
-  );
-}
+};
 
-export async function prepareGoogleApiClientMetadata(
-  params: Parameters<typeof resolveGoogleApiClientHeaders>[0] = {},
-) {
+export async function prepareGoogleApiClientMetadata(params: GoogleApiClientHeaderParams = {}) {
   const model = await prepareModelProviderRequestRouteFacts({
     provider: "google",
     api: params.api ?? "google-generative-ai",
@@ -40,10 +27,16 @@ export async function prepareGoogleApiClientMetadata(
 }
 
 export async function resolveGoogleApiClientHeadersAsync(
-  params?: Parameters<typeof resolveGoogleApiClientHeaders>[0],
+  params?: GoogleApiClientHeaderParams,
 ): Promise<Record<string, string>> {
-  return resolveGoogleApiClientHeaders({
-    ...params,
-    providerMetadataOwners: await prepareGoogleApiClientMetadata(params),
-  });
+  return (
+    (await resolveProviderRequestHeadersAsync({
+      provider: "google",
+      api: params?.api ?? "google-generative-ai",
+      baseUrl: params?.baseUrl ?? DEFAULT_GOOGLE_API_BASE_URL,
+      capability: params?.capability ?? "other",
+      transport: params?.transport ?? "http",
+      providerMetadataOwners: params?.providerMetadataOwners,
+    })) ?? {}
+  );
 }

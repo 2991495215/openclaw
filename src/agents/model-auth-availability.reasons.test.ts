@@ -8,6 +8,7 @@ import {
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { useProviderCatalogMetadata } from "../plugin-sdk/test-helpers/provider-catalog.js";
 import { createApiKeyCredential } from "./auth-profiles/credential-fixtures.test-support.js";
 import { createModelAuthAvailabilityResolver } from "./model-auth-availability.js";
 import {
@@ -17,6 +18,11 @@ import {
   routeResolverFactory,
 } from "./model-auth-availability.test-support.js";
 import { prepareAgentRuntimeAuth } from "./runtime-plan/prepare-auth.js";
+
+useProviderCatalogMetadata(
+  new URL("../../extensions/openai/", import.meta.url),
+  new URL("../../extensions/anthropic/", import.meta.url),
+);
 
 describe("model auth unavailability reasons", () => {
   it.each([

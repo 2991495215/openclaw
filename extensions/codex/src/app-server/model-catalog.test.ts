@@ -20,9 +20,17 @@ const profiles = vi.hoisted((): { store: AuthProfileStore } => ({
 vi.mock("./auth-profile.js", async () => {
   const { resolveAuthProfileOrder } = await import("openclaw/plugin-sdk/provider-auth");
   const { createCodexAuthProfileSelection } = await import("./auth-profile-selection.js");
+  const { resolvePluginMetadataSnapshotAsync } =
+    await import("../../../../src/plugins/plugin-metadata-snapshot.js");
   return createCodexAuthProfileSelection({
     ensureAuthProfileStore: () => profiles.store,
-    ensureAuthProfileStoreAsync: async () => profiles.store,
+    ensureAuthProfileStoreAsync: async (_agentDir, options) => {
+      await resolvePluginMetadataSnapshotAsync({
+        config: options?.config ?? {},
+        allowWorkspaceScopedCurrent: true,
+      });
+      return profiles.store;
+    },
     resolveAuthProfileOrder,
   });
 });

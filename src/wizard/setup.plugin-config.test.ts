@@ -8,7 +8,7 @@ import { setupPluginConfig } from "./setup.plugin-config.js";
 
 const loadPluginManifestRegistryCore = vi.fn();
 vi.mock("../plugins/plugin-metadata-snapshot.js", () => ({
-  loadPluginMetadataSnapshot: () => loadPluginManifestRegistryCore(),
+  resolvePluginMetadataSnapshotAsync: async () => loadPluginManifestRegistryCore(),
 }));
 
 function makeManifestPlugin(

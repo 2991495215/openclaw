@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { createRuntimeConfigReader } from "../config/runtime-snapshot.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeAgentToolResultMiddlewareRuntimeIds } from "./agent-tool-result-middleware.js";
 import { createUnavailableRuntime } from "./api-builder.js";
@@ -248,6 +249,8 @@ export function* loadOpenClawPluginsSteps(
           : createLazyPluginRuntime({
               devSourceRoot: context.devSourceRoot,
               pluginSdkResolution: options.pluginSdkResolution,
+              // Offline inspection owns its supplied config without publishing a runtime snapshot.
+              readConfig: inspectionResources ? createRuntimeConfigReader(context.cfg) : undefined,
               runtimeOptions: {
                 ...options.runtimeOptions,
                 // Defaults are immutable host facts; each runtime retains its mutable method view.

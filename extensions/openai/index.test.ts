@@ -101,6 +101,8 @@ function expectNoBeforePromptBuildHook(on: unknown): void {
   expect(hasBeforePromptBuild).toBe(false);
 }
 
+useProviderCatalogMetadata(new URL(".", import.meta.url));
+
 describe("openai plugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();

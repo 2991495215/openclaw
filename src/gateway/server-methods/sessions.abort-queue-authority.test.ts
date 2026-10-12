@@ -2,7 +2,7 @@
 // oxfmt-ignore
 import { useChatAbortRegistryFixture } from "./chat.abort-registry.test-support.js";
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { resolveEmbeddedSessionLane } from "../../agents/embedded-agent-runner/lanes.js";
 import {
@@ -19,6 +19,7 @@ import {
   enqueueCommandInLane,
   getQueueSize,
 } from "../../process/command-queue.js";
+import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import {
@@ -30,9 +31,15 @@ import { createActiveRun } from "./chat.abort.test-helpers.js";
 import { sessionAbortHandlers } from "./sessions-abort.js";
 
 useChatAbortRegistryFixture();
+let releaseProfileCatalog: (() => void) | undefined;
+beforeEach(async () => {
+  releaseProfileCatalog = (await prepareUserProfileCatalog()).release;
+});
 const key = "agent:main:queued-stop";
 const sessionId = "original-stop-session";
 afterEach(() => {
+  releaseProfileCatalog?.();
+  releaseProfileCatalog = undefined;
   for (const queueKey of [key, sessionId]) {
     clearFollowupQueue(queueKey);
     clearFollowupDrainCallback(queueKey);
