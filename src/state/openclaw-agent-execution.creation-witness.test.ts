@@ -7,6 +7,10 @@ import {
   getRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
+import {
+  replaceSessionEntry,
+  upsertSessionEntryCore,
+} from "../config/sessions/session-accessor.sqlite-entry.js";
 import { readDatabasePathIdentitySync } from "../infra/sqlite-worker-identity.js";
 import {
   createSqliteWorkerOperationAdmission,
@@ -625,15 +629,27 @@ it("reserves schema-missing first birth against a sibling captured before its wi
   }
 });
 
-it("refuses an absent witness when another logical owner was captured first", async () => {
+it.each([
+  { name: "replacement", write: replaceSessionEntry },
+  { name: "upsert", write: upsertSessionEntryCore },
+])("allows the first session $name while an ordinary owner is retained", async ({ write }) => {
   const options = fixture();
-  const observed = readDatabasePathIdentitySync(options.path);
   const sibling = captureOpenClawAgentDatabaseExecution(options);
+  const sessionKey = "agent:main:first-entry";
+  const entry = { sessionId: "first-session", updatedAt: 1 };
   try {
-    expect(() =>
-      captureOpenClawAgentDatabaseExecution(options, { expectedCreationIdentity: observed }),
-    ).toThrow(/originally observed target/);
     expect(fs.existsSync(options.path)).toBe(false);
+    await expect(
+      write(
+        { agentId: options.agentId, env: options.env, storePath: options.path, sessionKey },
+        entry,
+      ),
+    ).resolves.toMatchObject(entry);
+    await expect(
+      sibling.runExisting(source(), (scope) =>
+        scope.execute({ type: "session.entry.read", input: { sessionKeys: [sessionKey] } }),
+      ),
+    ).resolves.toMatchObject({ entries: [{ sessionKey, entry }] });
   } finally {
     await sibling.release();
   }
