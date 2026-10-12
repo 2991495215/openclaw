@@ -13,6 +13,7 @@ import { makeUserMessage } from "../../../../test/helpers/user-message.js";
 import { loadTranscriptEvents } from "../../../config/sessions/session-accessor.js";
 import { buildTimestampPrefix } from "../../../gateway/server-methods/agent-timestamp.js";
 import type { Model, UserMessage } from "../../../llm/types.js";
+import { preparePluginMetadataMachineStateAsync } from "../../../plugins/installed-plugin-index-record-state.js";
 import {
   buildLateMediaAttachedProjection,
   createUserTurnTranscriptRecorder,
@@ -140,9 +141,10 @@ async function capture(
 
 describe("prompt-cache boundary regressions", () => {
   let env: ReturnType<typeof captureEnv>;
-  beforeEach(() => {
+  beforeEach(async () => {
     env = captureEnv(["OPENCLAW_PROMPT_CACHE_ASSERT"]);
     setTestEnvValue("OPENCLAW_PROMPT_CACHE_ASSERT", "1");
+    await preparePluginMetadataMachineStateAsync({});
   });
   afterEach(() => env.restore());
 

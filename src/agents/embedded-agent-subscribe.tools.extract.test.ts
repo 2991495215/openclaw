@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveMessagingToolPayloadDedupe } from "../auto-reply/reply/reply-payloads-dedupe.js";
 import type { ChannelPlugin } from "../channels/plugins/types.public.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { createChannelTestPluginBase, createTestRegistry } from "../test-utils/channel-plugins.js";
 import {
@@ -150,7 +151,8 @@ describe("extractMessagingToolSend", () => {
     expect(extractMessagingToolSend("message", args)).toBeUndefined();
   });
 
-  it("keeps explicit thread evidence with an implicit provider", () => {
+  it("keeps explicit thread evidence with an implicit provider", async () => {
+    await preparePluginMetadataMachineStateAsync({});
     expect(
       extractMessagingToolSend("message", {
         action: "send",

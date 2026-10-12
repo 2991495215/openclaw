@@ -22,6 +22,7 @@ vi.mock("./enable.js", () => ({
   enablePluginWithCapabilityConsent,
 }));
 
+// mock-isolation: The fixture supplies setup providers without loading plugin instances.
 vi.mock("./providers.runtime.js", () => ({
   resolvePluginProvidersCoreAsync,
 }));

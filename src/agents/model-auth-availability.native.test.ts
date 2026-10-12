@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { useProviderCatalogMetadata } from "../plugin-sdk/test-helpers/provider-catalog.js";
 import {
   createApiKeyCredential,
   createAuthProfileStoreFixture,
@@ -16,6 +17,8 @@ import {
   routeResolverFactory,
 } from "./model-auth-availability.test-support.js";
 import { resolveApiKeyForProviderCore } from "./model-auth-provider.js";
+
+useProviderCatalogMetadata(new URL("../../extensions/openai/", import.meta.url));
 
 function resolver(mode?: "api_key" | "oauth" | "token", cfg: OpenClawConfig = {}, complete = true) {
   return createModelAuthAvailabilityResolver({
