@@ -314,6 +314,7 @@ describe("session-share receiver catalog", () => {
     ["agent:research:shared", "/chat/research/~key/shared"],
     ["agent:research:global", "/chat/research/~key/global"],
     ["session-share:research:global", "/chat/research/~global"],
+    ["main", undefined],
     ["global", undefined],
   ])("builds source-owned links for %s and withdraws them on reload", async (threadId, path) => {
     const fixture = await catalogFixture();

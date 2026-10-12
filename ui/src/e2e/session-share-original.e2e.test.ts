@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { buildControlUiSessionPath } from "@openclaw/session-url-contract";
 import { expect, it } from "vitest";
-import { sessionShareOriginalUrl } from "../../../extensions/session-share/src/original-url.ts";
 import { createControlUiE2eArtifactDir } from "../test-helpers/control-ui-e2e-artifacts.ts";
 import { takeControlUiViewportScreenshot } from "../test-helpers/control-ui-e2e-screenshot.ts";
 import { createChatFlowE2eSuite, installMockGateway } from "./chat-flow.test-support.ts";
@@ -12,7 +12,7 @@ const originalUrl =
 
 suite.define(() => {
   it.each(["main", "workspace"])(
-    "keeps source-generated %s pinned through browser reload after a home-key change",
+    "keeps public-contract %s links pinned through browser reload after a home-key change",
     async (mainKey) => {
       await suite.withPage({ viewport: { width: 1440, height: 900 } }, async ({ page }) => {
         const artifacts = createControlUiE2eArtifactDir(`session-share-literal-${mainKey}`);
@@ -25,11 +25,16 @@ suite.define(() => {
             { role: "assistant", content: [{ type: "text", text: "The pinned main transcript." }] },
           ],
         });
-        const url = sessionShareOriginalUrl(
-          new URL(suite.server.baseUrl).origin,
-          `agent:research:${mainKey}`,
-          "/openclaw",
-        )!;
+        const url = new URL(
+          buildControlUiSessionPath({
+            namespace: "chat",
+            sessionKey: `agent:research:${mainKey}`,
+            basePath: "/openclaw",
+            exactKey: true,
+            literalKey: true,
+          })!,
+          suite.server.baseUrl,
+        ).href;
         await page.goto(url);
         const first = await gateway.waitForRequest("chat.startup");
         await page
@@ -81,10 +86,16 @@ suite.define(() => {
           },
         ],
       });
-      const url = sessionShareOriginalUrl(
-        new URL(suite.server.baseUrl).origin,
-        "session-share:research:global",
-      )!;
+      const url = new URL(
+        buildControlUiSessionPath({
+          namespace: "chat",
+          sessionKey: "global",
+          fallbackAgentId: "research",
+          exactKey: true,
+          literalKey: true,
+        })!,
+        suite.server.baseUrl,
+      ).href;
       await page.goto(url);
       const startup = await gateway.waitForRequest("chat.startup");
       await page.screenshot({ path: path.join(artifacts, "source-transcript.png") });

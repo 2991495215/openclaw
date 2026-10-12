@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { buildControlUiSessionPath } from "@openclaw/session-url-contract";
 import { describe, expect, it, vi } from "vitest";
-import { sessionShareOriginalUrl } from "../../../../extensions/session-share/src/original-url.ts";
 import { normalizeInitialApplicationLocation } from "../../app/bootstrap-location.ts";
 import { SESSION_FACE_PREFERENCE_PARAM } from "../../lib/sessions/route-navigation.ts";
 import { navigateChatPage } from "./chat-page-navigation.ts";
@@ -173,17 +172,17 @@ describe("literal session permalink identity", () => {
   });
 });
 
-describe("source-generated exact transcript links", () => {
+describe("public exact transcript links", () => {
   it.each([
     ["agent:research:main", "main"],
     ["agent:research:workspace", "workspace"],
     ["agent:research:project", "project"],
     ["agent:research:global", "global"],
     ["agent:research:release.js:~key:a/b", "workspace"],
-    ["session-share:research:global", "workspace"],
+    ["global", "workspace"],
   ])(
     "pins %s across home=%s, startup, canonicalization, face and reload",
-    async (threadId, mainKey) => {
+    async (sessionKey, mainKey) => {
       const { context, request } = contextFor({ ok: false });
       context.basePath = "/control";
       context.agents.state.agentsList = {
@@ -192,14 +191,15 @@ describe("source-generated exact transcript links", () => {
         scope: "per-sender",
         agents: [],
       };
-      const sessionKey = threadId.startsWith("session-share:") ? "global" : threadId;
-      const url = sessionShareOriginalUrl(
-        "https://source.example.com",
-        threadId,
-        context.basePath,
-      )!;
       const original = {
-        pathname: new URL(url).pathname,
+        pathname: buildControlUiSessionPath({
+          namespace: "chat",
+          sessionKey,
+          fallbackAgentId: "research",
+          basePath: context.basePath,
+          exactKey: true,
+          literalKey: true,
+        })!,
         search: "?draft=hello",
         hash: "#message",
       };
@@ -230,8 +230,4 @@ describe("source-generated exact transcript links", () => {
       expect(request).not.toHaveBeenCalled();
     },
   );
-  it("does not invent source ownership for raw main or global", () => {
-    expect(sessionShareOriginalUrl("https://source.example.com", "main")).toBeUndefined();
-    expect(sessionShareOriginalUrl("https://source.example.com", "global")).toBeUndefined();
-  });
 });
