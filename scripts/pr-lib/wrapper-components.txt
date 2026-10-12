@@ -604,6 +604,8 @@ src/config/sessions/archive-compression.ts
 src/config/sessions/artifacts.ts
 src/config/sessions/auth-profile-override-provenance.ts
 src/config/sessions/goals-operations.types.ts
+src/config/sessions/group-display.ts
+src/config/sessions/metadata-projection.ts
 src/config/sessions/migration-required.ts
 src/config/sessions/model-override-provenance.ts
 src/config/sessions/paths.ts
@@ -2129,6 +2131,7 @@ src/boards/session-actor-board-memory.ts
 src/chat/sender-identity.ts
 src/chat/work-context.ts
 src/config/sessions/ambient-transcript-watermark-projection.ts
+src/config/sessions/cleanup-service-read.policy.ts
 src/config/sessions/conversation-authority.ts
 src/config/sessions/conversation-delivery-policy.ts
 src/config/sessions/conversation-delivery-store.types.ts

@@ -9,6 +9,7 @@ import {
   replaceSessionEntrySync,
 } from "../../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../../config/sessions/session-actor-memory-owner.js";
+import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   disposeSessionReadContexts,
@@ -82,10 +83,7 @@ async function withInventory(
     for (const [index, definition] of definitions.entries()) {
       const row = rows[index]!;
       const scope = scopes[index]!;
-      const replace = isIncognitoSessionKey(scope.sessionKey)
-        ? replaceSessionEntry
-        : replaceSessionEntrySync;
-      await replace(scope, {
+      const entry: SessionEntry = {
         sessionId: scope.sessionId,
         updatedAt: row.updatedAt ?? 0,
         label: row.label,
@@ -94,7 +92,12 @@ async function withInventory(
         visibility: "shared",
         createdActor: { type: "human", source: "profile", id: owner.id },
         ...(isIncognitoSessionKey(scope.sessionKey) ? { incognito: true } : {}),
-      });
+      };
+      if (isIncognitoSessionKey(scope.sessionKey)) {
+        await replaceSessionEntry(scope, entry);
+      } else {
+        replaceSessionEntrySync(scope, entry);
+      }
       if (!definition.transcript) {
         continue;
       }

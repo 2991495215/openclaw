@@ -60,6 +60,7 @@ vi.mock("node:sqlite", () => ({
 vi.mock("../config/state-dir.js", () => ({
   resolveStateDir: (env: NodeJS.ProcessEnv) => env.OPENCLAW_STATE_DIR ?? "/synthetic/default",
 }));
+// mock-isolation: Use a deterministic route to observe the captured environment before admission.
 vi.mock("./openclaw-agent-db.paths.js", () => ({
   INCOGNITO_AGENT_SQLITE_BASENAME: "incognito-openclaw-agent.sqlite",
   resolveOpenClawAgentSqlitePath: boundary.route,
@@ -101,6 +102,7 @@ vi.mock("../infra/sqlite-integrity.js", () => ({
 vi.mock("../infra/sqlite-wal-write-admission.js", () => ({
   registerDeferredSqliteWalWriteAdmission: vi.fn(),
 }));
+// mock-isolation: Exercise the admission owner without native database initialization.
 vi.mock("./openclaw-agent-db.js", async () => {
   const { DatabaseSync } = await import("node:sqlite");
   const { createSqliteWalReclamationResult } = await import("../infra/sqlite-wal-reclamation.js");

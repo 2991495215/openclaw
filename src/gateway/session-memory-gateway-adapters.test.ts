@@ -43,6 +43,7 @@ vi.mock("node:worker_threads", async (importOriginal) => ({
     throw new Error("Memory adapter allocated a worker");
   }),
 }));
+// mock-isolation: Keep durable placement state outside the memory-only adapter fixture.
 vi.mock("./session-worker-placement-context.js", () => ({
   resolveSessionWorkerPlacementContext: () => ({
     workerSessionPlacementService: { getMany: () => new Map() },

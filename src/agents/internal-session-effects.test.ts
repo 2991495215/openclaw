@@ -85,9 +85,7 @@ describe("internal session effects", () => {
         });
 
         expect(reset.archivedTranscripts).toEqual([]);
-        expect(
-          loadExactSessionEntry({ ...target, sessionId: reset.nextEntry.sessionId })?.entry,
-        ).toMatchObject({
+        expect(loadExactSessionEntry(target)?.entry).toMatchObject({
           sessionId: "internal-session-effects-rotated",
           sessionFile: nextTranscript,
         });

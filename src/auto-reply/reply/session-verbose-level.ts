@@ -16,7 +16,7 @@ export async function prepareSessionVerboseLevelReader(params: {
 }): Promise<() => VerboseLevel | undefined> {
   let initialLevel = normalizeVerboseLevel(params.initialLevel ?? "");
   let preparedScope: SessionEntryReadOnlyWorkerScope | undefined;
-  let native = false;
+  let incognito = false;
   const assertCurrent = params.assertCurrent ?? (() => {});
   if (params.scope) {
     try {
@@ -28,7 +28,7 @@ export async function prepareSessionVerboseLevelReader(params: {
             initialLevel = normalizeVerboseLevel(read.value?.verboseLevel ?? "");
           }
           preparedScope = owner.scope;
-          native = owner.kind === "native" || owner.kind === "incognito";
+          incognito = owner.kind === "incognito";
         },
       );
     } catch {
@@ -38,8 +38,8 @@ export async function prepareSessionVerboseLevelReader(params: {
   assertCurrent();
   return () => {
     try {
-      if (native && params.scope) {
-        // The process-held incognito owner retains its native contract until its cutover.
+      if (incognito && params.scope) {
+        // The memory actor exposes committed preferences without a SQLite read.
         return normalizeVerboseLevel(loadSessionEntryReadOnly(params.scope)?.verboseLevel ?? "");
       }
       if (preparedScope) {
