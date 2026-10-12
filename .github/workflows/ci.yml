@@ -171,7 +171,7 @@ jobs:
   main-dependencies:
     name: Main dependency attribution
     needs: [render]
-    if: ${{ always() && !inputs.diagnose_readiness && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot }}
+    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -215,13 +215,6 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           printf 'All-exports candidate: %s\n' "$CANDIDATE_SHA"
           pnpm dlx --package knip@6.32.2 knip --config config/knip.all-exports.config.ts --no-progress --reporter compact --no-config-hints --exports --exclude duplicates 2>&1 | tee .artifacts/main-all-exports.log
-      - name: Diagnose configuration publication on immutable main
-        if: ${{ !cancelled() }}
-        env:
-          OPENCLAW_LOCAL_CHECK: "0"
-        run: |
-          set -euo pipefail
-          pnpm test src/gateway/server.agents.config-readiness.test.ts --maxWorkers=1 2>&1 | tee .artifacts/main-config-readiness.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: ${{ always() }}
         with:
@@ -229,7 +222,6 @@ jobs:
           path: |
             .artifacts/main-dependencies.log
             .artifacts/main-all-exports.log
-            .artifacts/main-config-readiness.log
           if-no-files-found: warn
           retention-days: 14
   sdk-static:
@@ -678,6 +670,8 @@ jobs:
             runtime: node
           - group: fixture-imports-node
             runtime: node
+          - group: native-and-merge-node
+            runtime: node
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -731,6 +725,15 @@ jobs:
               files=(
                 src/agents/embedded-agent-runner/skill-runtime.library-read.test.ts
                 src/auto-reply/reply/agent-runner-result-accounting.fallback.test.ts
+              )
+              ;;
+            native-and-merge-node)
+              files=(
+                src/gateway/talk/handlers/client-native-actions.test.ts
+                src/gateway/server-methods/chat.abort-incarnation.test.ts
+                src/gateway/server-methods/sessions.abort-yielded.test.ts
+                src/gateway/server-plugin-subagent-runtime.test.ts
+                src/infra/session-cost-usage-cache.creation-race.test.ts
               )
               ;;
           esac
