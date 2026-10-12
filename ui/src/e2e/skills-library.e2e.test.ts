@@ -7,6 +7,7 @@ import type {
 import { installMockGateway } from "../test-helpers/control-ui-e2e.ts";
 import { buildSkillLibraryMock } from "../test-helpers/skill-library-fixtures.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
+import { installOverlayFailureProbe } from "./overlay-failure-probe.test-support.ts";
 
 const suite = createControlUiE2eSuite({ name: "Custom skill libraries" });
 const own = buildSkillLibraryMock()[0];
@@ -294,6 +295,7 @@ suite.define(() => {
 
   it("imports local support files privately and keeps shared entries read-only", async () => {
     await suite.withPage({}, async ({ page }) => {
+      const reportOverlayFailure = await installOverlayFailureProbe(page);
       const gateway = await installMockGateway(page, {
         operatorScopes: ["operator.read", "operator.write"],
         methodResponses: {
@@ -342,18 +344,23 @@ suite.define(() => {
       ]);
       await reselection.setFiles(selectedFiles);
       await importSkill.click();
-      await page.getByRole("button", { name: "Save skill", exact: true }).click();
-      expect((await gateway.waitForRequest("skills.library.save")).params).toMatchObject({
-        expectedRevision: null,
-        slug: "checklist",
-        files: [
-          {
-            path: "notes.txt",
-            content: Buffer.from("untouched\r\n").toString("base64"),
-            encoding: "base64",
-          },
-        ],
-      });
+      try {
+        await page.getByRole("button", { name: "Save skill", exact: true }).click();
+        expect((await gateway.waitForRequest("skills.library.save")).params).toMatchObject({
+          expectedRevision: null,
+          slug: "checklist",
+          files: [
+            {
+              path: "notes.txt",
+              content: Buffer.from("untouched\r\n").toString("base64"),
+              encoding: "base64",
+            },
+          ],
+        });
+      } catch (error) {
+        await reportOverlayFailure("skills-import-save");
+        throw error;
+      }
       await page.getByText(/Saved release-notes to personal library/u).waitFor();
       await page.getByRole("button", { name: "Close", exact: true }).click();
       await page.getByRole("radio", { name: "Team", exact: true }).click();

@@ -4,6 +4,7 @@ import type { WorkboardCard } from "@openclaw/workboard-contract";
 import { webkit, type Browser, type Locator, type Page } from "playwright";
 import { expect, it } from "vitest";
 import { createControlUiE2eSuite } from "../../e2e/control-ui-e2e-suite.test-support.ts";
+import { installOverlayFailureProbe } from "../../e2e/overlay-failure-probe.test-support.ts";
 import {
   takeControlUiScreenshotFrame,
   waitForControlUiProofSurface,
@@ -97,8 +98,10 @@ suite.define(() => {
             engine === "chromium"
               ? await suite.newBrowserContext(options)
               : await webkitBrowser!.newContext(options);
+          let reportOverlayFailure: ((scope: string) => Promise<void>) | undefined;
           try {
             const page = await context.newPage();
+            reportOverlayFailure = await installOverlayFailureProbe(page);
             page.setDefaultTimeout(controlUiE2eWaitTimeoutMs);
             const errors: string[] = [];
             page.on("pageerror", (error) => errors.push(error.message));
@@ -222,6 +225,9 @@ suite.define(() => {
               .toBe(true);
             expect(await gateway.getRequests("workboard.cards.create")).toEqual([]);
             expect(errors).toEqual([]);
+          } catch (error) {
+            await reportOverlayFailure?.(`workboard-${engine}-${view.name}-${theme}`);
+            throw error;
           } finally {
             if (engine === "chromium") {
               await suite.closeBrowserContext(context);
