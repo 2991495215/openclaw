@@ -490,7 +490,7 @@ jobs:
           retention-days: 14
   worktree-selection:
     if: ${{ inputs.diagnose_copilot }}
-    name: Frozen session creation (${{ matrix.role }})
+    name: Frozen scheduled message invocation (${{ matrix.role }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -522,7 +522,7 @@ jobs:
           install-bun: "false"
           dependency-cache: "false"
           frozen-lockfile: "true"
-      - name: Diagnose the frozen session creation flow
+      - name: Diagnose frozen scheduled message invocation
         env:
           OPENCLAW_LOCAL_CHECK: "0"
           OPENCLAW_VITEST_RUNTIME: node
@@ -534,7 +534,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$PROOF_SHA"
           mkdir -p .artifacts
           node --input-type=module -e 'console.log(JSON.stringify({ commit: process.env.PROOF_SHA, workflow: process.env.WORKFLOW_SHA }, null, 2))' > .artifacts/session-create-provenance.json
-          pnpm test src/gateway/server.sessions.create.worktree-selection.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/session-create.log
+          pnpm test src/agents/scheduled-message-invocation.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/session-create.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: ${{ always() }}
         with:
