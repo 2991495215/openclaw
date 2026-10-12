@@ -33,7 +33,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}
+  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}
   cancel-in-progress: false
 jobs:
   render:
