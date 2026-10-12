@@ -14,8 +14,12 @@ import {
   replaceSessionEntry,
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.sqlite-entry.js";
-import { retireSessionHistoryWorkerDatabases } from "../config/sessions/session-transcript-worker-resources.js";
+import {
+  costRefreshLane,
+  retireSessionHistoryWorkerDatabases,
+} from "../config/sessions/session-transcript-worker-resources.js";
 import { closeAgentWorkAdmissions } from "../sessions/session-lifecycle-admission.js";
+import { AsyncWorkScope } from "../shared/async-work-scope.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import {
   closeOpenClawAgentDatabasesAsync,
@@ -599,7 +603,7 @@ it("keeps usage exclusion in its mixed-case Windows state root", async () => {
       expect(process.platform).toBe(hostPlatform);
       await setImmediate();
       expect(readLock()).toBeUndefined();
-      expect(acquired).toBe(true);
+      expect(acquired).toBe(false);
       release.resolve();
       await reservation;
       expect(await acquiring).toBe(true);
@@ -624,6 +628,107 @@ it("keeps usage exclusion in its mixed-case Windows state root", async () => {
         await closeOpenClawAgentDatabasesAsync();
         await closeOpenClawStateDatabaseAsync();
       }
+    }
+  });
+});
+
+it("finishes a foreground session write while pruning a cold existing usage store", async ({
+  signal,
+}) => {
+  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    const agentId = "main";
+    const template = openOpenClawAgentDatabase({ agentId, env: state.env });
+    runOpenClawAgentWriteTransaction(
+      ({ db }) =>
+        writeSessionCostUsageRollupInDatabase(db, {
+          rollupId: "removed-session.jsonl",
+          valueJson: Buffer.from('{"totalTokens":7}'),
+          blob: null,
+          updatedAt: 1,
+        }),
+      { agentId, path: template.path, env: state.env },
+      { operationLabel: "session-cost-usage.rollup.write" },
+    );
+    await closeOpenClawAgentDatabaseByPathAsync(template.path, agentId);
+    const storePath = state.statePath("cold-usage.sqlite");
+    // A closed snapshot gives the reader an existing file with no process admission yet.
+    fs.copyFileSync(template.path, storePath);
+    const scope = { agentId, sessionKey: `agent:${agentId}:first`, storePath, env: state.env };
+    const entry = { sessionId: "created-during-prune", updatedAt: 1 };
+    const dispatchReady = createDeferredCore();
+    const releaseDispatch = createDeferredCore();
+    const writerEntered = createDeferredCore();
+    const run = costRefreshLane.pool.run;
+    vi.spyOn(costRefreshLane.pool, "run").mockImplementation(async (input, options) => {
+      dispatchReady.resolve();
+      await releaseDispatch.promise;
+      return run.call(costRefreshLane.pool, input, options);
+    });
+    const admit = writerAdmission.runOpenClawAgentWorkerWrite;
+    vi.spyOn(writerAdmission, "runOpenClawAgentWorkerWrite").mockImplementation(
+      (options, write, timing, writeSignal, priority) =>
+        admit(
+          options,
+          async () => {
+            if (!("target" in options) && options.path === storePath && priority !== "background") {
+              writerEntered.resolve();
+            }
+            return write();
+          },
+          timing,
+          writeSignal,
+          priority,
+        ),
+    );
+    const work = new AsyncWorkScope();
+    const refreshing = work.track(() =>
+      refreshCostUsageCacheForAgent({
+        agentId,
+        databasePath: storePath,
+        storePath,
+        env: state.env,
+      }),
+    );
+    const refreshed = Promise.allSettled([refreshing]);
+    let writing: Promise<unknown> | undefined;
+    let written: Promise<unknown> | undefined;
+    try {
+      await withinTest(
+        awaitGateBeforeSettlement(dispatchReady.promise, refreshing, "Usage scan did not dispatch"),
+        signal,
+      );
+      writing = (async () => {
+        await using preparation = prepareSessionEntryMutationDatabases(
+          [{ scope, assertCurrent() {} }],
+          Promise.resolve(),
+        );
+        const storage = await preparation.preparations[0]!;
+        return await createSessionEntryWithTranscript(scope, () => ({ ok: true, entry }), {
+          commitGuard: storage.assertCurrent,
+        });
+      })();
+      written = Promise.allSettled([writing]);
+      await withinTest(
+        awaitGateBeforeSettlement(writerEntered.promise, writing, "Session writer did not enter"),
+        signal,
+      );
+      releaseDispatch.resolve();
+      const [refreshResult, writeResult] = await withinTest(
+        Promise.all([refreshing, writing]),
+        signal,
+      );
+      expect(refreshResult).toBe("refreshed");
+      expect(writeResult).toMatchObject({ ok: true, entry });
+      const database = openOpenClawAgentDatabase({ agentId, path: storePath, env: state.env });
+      expect(readExactSessionEntryRow(database, scope.sessionKey)?.entry).toMatchObject(entry);
+      expect(
+        readSessionCostUsageRollupRows(agentId, storePath).map((row) => row.key),
+      ).not.toContain("removed-session.jsonl");
+    } finally {
+      work.beginClose();
+      releaseDispatch.resolve();
+      await Promise.all([refreshed, written]);
+      await work.drain();
     }
   });
 });
