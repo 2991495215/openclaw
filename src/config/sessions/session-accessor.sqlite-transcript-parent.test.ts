@@ -7,6 +7,7 @@ import {
   openOpenClawAgentDatabase,
   runOpenClawAgentWriteTransaction,
 } from "../../state/openclaw-agent-db.js";
+import { runOpenClawAgentWriteAdmission } from "../../state/openclaw-agent-write-admission.js";
 import { useSessionStoreTempDirs } from "../../test-utils/session-state-cleanup.js";
 import {
   loadTranscriptEventsSync,
@@ -32,16 +33,19 @@ async function createTranscript(events: TranscriptEvent[]) {
     storePath: path.join(sessionDirs.make(), "sessions.json"),
   };
   await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
-  replaceTranscriptEventsSync(scope, [
-    { type: "session", version: 3, id: scope.sessionId },
-    ...events,
-  ]);
+  const databaseOptions = {
+    agentId: scope.agentId,
+    path: resolveSessionTranscriptDatabasePath(scope),
+  };
+  await runOpenClawAgentWriteAdmission(databaseOptions, () =>
+    replaceTranscriptEventsSync(scope, [
+      { type: "session", version: 3, id: scope.sessionId },
+      ...events,
+    ]),
+  );
   return {
     scope,
-    database: openOpenClawAgentDatabase({
-      agentId: scope.agentId,
-      path: resolveSessionTranscriptDatabasePath(scope),
-    }),
+    database: openOpenClawAgentDatabase(databaseOptions),
   };
 }
 
@@ -263,29 +267,33 @@ describe("SQLite transcript append ancestry", () => {
     },
   ])("preserves $name", async ({ events, parentId, expected }) => {
     const { database, scope } = await createTranscript(events);
-    expect(
-      runSqliteImmediateTransactionSync(database.db, () =>
-        resolveTranscriptMessageAppendParent(database, scope.sessionId, {
-          appendIntent: "active-branch",
-          parentId,
-        }),
-      ),
-    ).toBe(expected);
+    await runOpenClawAgentWriteAdmission({ agentId: scope.agentId, path: database.path }, () => {
+      expect(
+        runSqliteImmediateTransactionSync(database.db, () =>
+          resolveTranscriptMessageAppendParent(database, scope.sessionId, {
+            appendIntent: "active-branch",
+            parentId,
+          }),
+        ),
+      ).toBe(expected);
+    });
   });
 
   it("does not traverse an ancestor from another session", async () => {
     const { database, scope } = await createTranscript([message("tail", "foreign")]);
     const other = { ...scope, sessionId: "other", sessionKey: "agent:main:other" };
     await upsertSessionEntryCore(other, { sessionId: other.sessionId, updatedAt: 1 });
-    replaceTranscriptEventsSync(other, [message("foreign", "root")]);
-    expect(
-      runSqliteImmediateTransactionSync(database.db, () =>
-        resolveTranscriptMessageAppendParent(database, scope.sessionId, {
-          appendIntent: "active-branch",
-          parentId: "root",
-        }),
-      ),
-    ).toBe("root");
+    await runOpenClawAgentWriteAdmission({ agentId: scope.agentId, path: database.path }, () => {
+      replaceTranscriptEventsSync(other, [message("foreign", "root")]);
+      expect(
+        runSqliteImmediateTransactionSync(database.db, () =>
+          resolveTranscriptMessageAppendParent(database, scope.sessionId, {
+            appendIntent: "active-branch",
+            parentId: "root",
+          }),
+        ),
+      ).toBe("root");
+    });
   });
 });
 
