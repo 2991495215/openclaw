@@ -45,6 +45,7 @@ function resolveUtilityCompletionForAgent(
     model: selection.modelId,
     authProfileId: selection.profileId ?? params.preferredProfile,
     outputTextPolicy: "strict-visible" as const,
+    thinkLevel: "off" as const,
     agentId: params.agentId,
     agentDir: selection.agentDir,
     ...(inheritedRuntime ? { agentHarnessRuntimeOverride: inheritedRuntime } : {}),
