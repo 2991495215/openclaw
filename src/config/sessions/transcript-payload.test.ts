@@ -282,6 +282,7 @@ describe("transcript payload storage boundary", () => {
   it.each([[3]])("keeps a genuine large header in identity storage with version %j", (version) => {
     const database = openNodeSqliteDatabase(":memory:");
     try {
+      admitSqliteSchema(database);
       const original = JSON.stringify({
         type: "session",
         id: "header",
