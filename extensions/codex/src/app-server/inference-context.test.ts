@@ -83,17 +83,12 @@ describe("native inference metadata", () => {
       nodeReplAutoReviewRequired: false,
       generation: "generation",
     });
-    for (const key of [
-      "session-id",
-      "thread-id",
-      "x-codex-parent-thread-id",
-      "x-openai-subagent",
-    ]) {
+    for (const key of ["thread-id", "x-codex-parent-thread-id", "x-openai-subagent"]) {
       expect(() => readCodexInferenceMetadata(source, { ...headers, [key]: "other" })).toThrow(
         "metadata disagrees",
       );
     }
-    for (const key of ["turn_id", "parent_turn_id", "root_turn_id"]) {
+    for (const key of ["session_id", "turn_id", "parent_turn_id", "root_turn_id"]) {
       expect(() =>
         readCodexInferenceMetadata(
           request("child", "generation", nested, { ...flat, [key]: "other" }),

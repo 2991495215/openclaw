@@ -70,7 +70,10 @@ import { createCodexElicitationResponse } from "./elicitation-response.js";
 import { CodexEphemeralTurn } from "./ephemeral-turn.js";
 import { CodexNativeToolLifecycleProjector } from "./event-projector-native-tool-lifecycle.js";
 import { CODEX_INFERENCE_GENERATION_KEY } from "./inference-context.js";
-import { getCodexInferenceThread } from "./inference-routing.js";
+import {
+  getCodexInferenceThread,
+  getCodexInferenceThreadQualification,
+} from "./inference-routing.js";
 import { prepareCodexNativeExecutionPolicyForRun } from "./native-execution-policy.js";
 import {
   assertCodexNativeHookRelayAllowed,
@@ -80,6 +83,8 @@ import {
   resolveCodexNativeHookRelayTtlMs,
 } from "./native-hook-relay.js";
 import { createCodexNativePreToolUseFailureBuffer } from "./native-pre-tool-use-failures.js";
+import type { ParentRegistrationHandle } from "./native-subagent-monitor-types.js";
+import { codexNativeSubagentMonitorRuntime } from "./native-subagent-monitor.js";
 import {
   mergeCodexThreadConfigs,
   refreshCodexPluginAppApprovalPolicy,
@@ -410,6 +415,7 @@ export async function runCodexAppServerSideQuestion(
     | undefined;
   let forkInferenceGeneration: string | undefined;
   let releaseForkInferenceContext: (() => void) | undefined;
+  let forkModelRegistration: ParentRegistrationHandle | undefined;
   const releaseSandboxEnvironment = async () => {
     if (!sandboxEnvironment) {
       return;
@@ -872,6 +878,30 @@ export async function runCodexAppServerSideQuestion(
                 forkInferenceGeneration = registration.generation;
                 releaseForkInferenceContext = registration.release;
               }
+              // The prefix generation is not model authority. Admit this distinct
+              // root thread under the side run before its first native request.
+              const modelSource = sideRunParams.hostCapabilities.retainSourceAuthority?.();
+              try {
+                const configurationQualification = getCodexInferenceThreadQualification(
+                  forkClient,
+                  binding.threadId,
+                );
+                forkModelRegistration = await codexNativeSubagentMonitorRuntime.register({
+                  client: forkClient,
+                  parentThreadId: childThreadId,
+                  modelSource,
+                  configurationQualification,
+                  unqualifiedModelExecution:
+                    modelSource && !configurationQualification ? true : undefined,
+                  onUnqualifiedModelCancelled: (reason) => runAbortController.abort(reason),
+                  assertCurrent,
+                });
+                await forkModelRegistration.ready;
+                assertCurrentBinding();
+              } catch (error) {
+                modelSource?.release();
+                throw error;
+              }
             }
             // A terminal answer may still be projecting after transport closure;
             // native hook authority ends with the route, not that projection.
@@ -1003,6 +1033,15 @@ export async function runCodexAppServerSideQuestion(
     );
     turnId = turnResponse.turn.id;
     assertCurrent();
+    if (forkSettings) {
+      forkModelRegistration?.bindTurn(turnId, {
+        nativeModel: {
+          provider: forkSettings.thread.modelProvider ?? params.provider,
+          model: forkSettings.turn.model ?? forkSettings.thread.model ?? modelSelection.model,
+        },
+        authorizedModel: { provider: params.provider, model: params.model },
+      });
+    }
     nativeToolLifecycleProjector = new CodexNativeToolLifecycleProjector(
       { ...sideRunParams, agentId: sessionAgentId },
       sideThreadId,
@@ -1082,6 +1121,7 @@ export async function runCodexAppServerSideQuestion(
         },
         () => collector?.route.release(),
         () => releaseForkInferenceContext?.(),
+        () => forkModelRegistration?.unregister(),
         () => nativeToolLifecycleProjector?.finalizeActive(nativeToolRunWasAbortedBeforeCleanup),
         () =>
           nativePreToolUseFailures.activateFallback(nativeToolRunWasAbortedBeforeCleanup === true),

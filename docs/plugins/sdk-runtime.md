@@ -92,9 +92,11 @@ The timeout defaults to 30 seconds.
 The fork uses the session's model and harness, with no model override. Codex
 inherits the conversation and tool definitions in an ephemeral thread, but denies
 every tool call at dispatch. It reuses the live parent's recorded native settings
-and admitted inference instructions rather than rebuilding the prompt. Start a
-normal parent turn in the current runtime before requesting a fork. The native
-hook relay must be enabled and available; otherwise the request fails closed.
+and admitted inference instructions rather than rebuilding the prompt. The fork
+keeps the parent's cache routing but has its own thread, session, and model
+authority for the background request's lifetime. Start a normal parent turn in
+the current runtime before requesting a fork. The native hook relay must be
+enabled and available; otherwise the request fails closed.
 The built-in runtime uses simplified context
 without tools, so it does not promise Codex's prompt-cache parity. CLI backends
 must explicitly declare tool-free side-question support.

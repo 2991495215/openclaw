@@ -2,6 +2,8 @@ import type { AgentHarnessSideQuestionParamsV2 } from "openclaw/plugin-sdk/agent
 import { createAdmittedHostCapabilityTestFixture } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { describe, expect, it, vi } from "vitest";
 import { CodexAppServerClient } from "./client.js";
+import { createCodexInferenceModelBinding } from "./inference-dispatch.js";
+import { codexNativeSubagentMonitorRuntime } from "./native-subagent-monitor.js";
 import { isJsonObject } from "./protocol.js";
 import {
   createStartedThreadHarness,
@@ -19,6 +21,7 @@ setupRunAttemptTestHooks();
 
 describe("active parent session fork", () => {
   it("uses the recorded parent client and settings across differing acquisition keys", async () => {
+    let inferenceAdmitted = false;
     const harness = createStartedThreadHarness(
       async (method, request) => {
         if (method === "thread/fork") {
@@ -29,19 +32,40 @@ describe("active parent session fork", () => {
           isJsonObject(request) &&
           request.threadId === "fork-thread"
         ) {
-          queueMicrotask(() => {
-            void harness.notify({
-              method: "turn/completed",
-              params: {
-                threadId: "fork-thread",
-                turn: {
-                  id: "fork-turn",
-                  status: "completed",
-                  items: [{ id: "fork-answer", type: "agentMessage", text: "Read-only review." }],
+          void (async () => {
+            try {
+              const execution = await createCodexInferenceModelBinding({
+                client: harness.client,
+                provider: "openai",
+                assertCurrent: () => {},
+                memoryConfigured: () => false,
+                captureModelSource: codexNativeSubagentMonitorRuntime.captureModelSource,
+                resolveModelThreadId: codexNativeSubagentMonitorRuntime.resolveModelThreadId,
+              })({
+                path: "/responses",
+                body: { model: "gpt-5" },
+                headers: {},
+                metadata: { threadId: "fork-thread", turnId: "fork-turn", requestKind: "turn" },
+                transport: "http",
+                signal: new AbortController().signal,
+              });
+              execution.assertCurrent();
+              inferenceAdmitted = true;
+              execution.release();
+            } finally {
+              await harness.notify({
+                method: "turn/completed",
+                params: {
+                  threadId: "fork-thread",
+                  turn: {
+                    id: "fork-turn",
+                    status: "completed",
+                    items: [{ id: "fork-answer", type: "agentMessage", text: "Read-only review." }],
+                  },
                 },
-              },
-            });
-          });
+              });
+            }
+          })().catch(() => {});
           return turnStartResult("fork-turn");
         }
         return undefined;
@@ -116,6 +140,14 @@ describe("active parent session fork", () => {
         }),
       ).resolves.toMatchObject({ text: "Read-only review." });
       expect(start).not.toHaveBeenCalled();
+      expect(inferenceAdmitted).toBe(true);
+      expect(
+        await codexNativeSubagentMonitorRuntime.captureModelSource({
+          client: harness.client,
+          threadId: "fork-thread",
+          turnId: "fork-turn",
+        }),
+      ).toBeUndefined();
       const parentStart = harness.requests.find(({ method }) => method === "thread/start");
       const fork = harness.requests.find(({ method }) => method === "thread/fork");
       if (!isJsonObject(parentStart?.params) || !isJsonObject(fork?.params)) {
