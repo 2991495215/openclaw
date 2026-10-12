@@ -261,7 +261,7 @@ type ScrollProbeElement = HTMLElement & {
   scrollProof: { samples: ScrollSample[]; receipts: unknown[]; stop: () => void };
 };
 export async function startScrollProbe(page: Page) {
-  const traceScroll = process.env.OPENCLAW_TRACE_COLLABORATOR_SCROLL === "1";
+  const traceScroll = true;
   return page.locator(".chat-pane-cache__pane--active .chat-thread").evaluate((element, trace) => {
     const viewport = element.getBoundingClientRect();
     const paragraph = [...element.querySelectorAll<HTMLElement>(".chat-text p")].find(
