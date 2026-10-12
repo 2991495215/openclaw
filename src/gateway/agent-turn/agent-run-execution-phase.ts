@@ -27,7 +27,6 @@ import {
   setChannelSourceTurnId,
   setChannelSourceTurnSameThreadRequired,
 } from "../../auto-reply/reply/source-turn-id.js";
-import { runWithoutOwnedSessionTranscriptWrites } from "../../config/sessions/transcript-write-context.js";
 import { isAbortError } from "../../infra/abort-signal.js";
 import { assertAgentRunLifecycleGenerationCurrent } from "../../infra/agent-events.js";
 import { adoptExecRequestSession } from "../../infra/exec-request-context.js";
@@ -73,8 +72,7 @@ import {
 export async function startAgentRunExecution(params: StartAgentRunExecutionParams): Promise<void> {
   return await runWithChatAbortExecution(
     params.prepared.activeRunAbort.entry,
-    // Every admitted Gateway turn owns its transcript, including nested in-process launches.
-    () => runWithoutOwnedSessionTranscriptWrites(() => executeAgentRun(params)),
+    () => executeAgentRun(params),
     params.prepared.activeRunAbort.cleanup,
   );
 }

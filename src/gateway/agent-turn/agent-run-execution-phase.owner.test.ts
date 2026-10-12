@@ -23,11 +23,6 @@ import {
   makeRegistry,
 } from "../../config/plugin-auto-enable.test-helpers.js";
 import type { SessionEntry } from "../../config/sessions.js";
-import {
-  assertOwnedTranscriptWriteCommit,
-  SessionTranscriptWriterClaimReboundError,
-  withOwnedSessionTranscriptWrites,
-} from "../../config/sessions/transcript-write-context.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { PluginRegistryInspectionResources } from "../../plugins/registry-inspection-resources.js";
@@ -228,45 +223,6 @@ describe("startAgentRunExecution Gateway ownership", () => {
   beforeEach(() => {
     dispatchAgentRunFromGateway.mockReset();
     agentCommand.mockReset();
-  });
-
-  it("starts an independent turn without borrowing its caller's transcript writer", async () => {
-    const parent = {
-      agentId: "main",
-      sessionId: "parent-id",
-      sessionKey: "agent:main:parent",
-      storePath: "/tmp/parent-sessions",
-    };
-    const child = { ...parent, sessionId: "child-id", sessionKey: "agent:main:child" };
-    const assertParent = vi.fn();
-    const childWriteAccepted = vi.fn();
-    const execution = createExecution();
-    execution.params.resolvedSessionKey = child.sessionKey;
-    execution.params.resolvedSessionId = child.sessionId;
-    dispatchAgentRunFromGateway.mockImplementationOnce(async () => {
-      await Promise.resolve();
-      assertOwnedTranscriptWriteCommit(child);
-      childWriteAccepted();
-    });
-
-    await withOwnedSessionTranscriptWrites(
-      {
-        sessionTarget: parent,
-        assertCommitAllowed: assertParent,
-        withTranscriptWrite: async (write) => await write(),
-      },
-      async () => {
-        await startAgentRunExecution(execution.params);
-        expect(dispatchAgentRunFromGateway).toHaveBeenCalledOnce();
-        expect(childWriteAccepted).toHaveBeenCalledOnce();
-        expect(assertParent).not.toHaveBeenCalled();
-        expect(() => assertOwnedTranscriptWriteCommit(child)).toThrow(
-          SessionTranscriptWriterClaimReboundError,
-        );
-        assertOwnedTranscriptWriteCommit(parent);
-        expect(assertParent).toHaveBeenCalledOnce();
-      },
-    );
   });
 
   it.each(["success", "startup failure", "cleanup failure", "completed cleanup failure"] as const)(
