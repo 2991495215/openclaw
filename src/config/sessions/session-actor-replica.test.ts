@@ -2,6 +2,7 @@ import path from "node:path";
 import "../../test-utils/prepare-compiled-subprocesses.js";
 import { expect, it, vi } from "vitest";
 import { openNodeSqliteDatabase } from "../../infra/node-sqlite.js";
+import { readSessionCostUsageRefreshLockInDatabase } from "../../infra/session-cost-usage-cache.kernel.js";
 import {
   readSqliteDatabaseScopedWriteTokenForPath,
   sqliteSessionIdWriteScope,
@@ -16,6 +17,8 @@ import {
   openOpenClawAgentDatabase,
   runOpenClawAgentWriteTransaction,
 } from "../../state/openclaw-agent-db.js";
+import { loadUsageCacheOperations } from "../../state/openclaw-agent-execution-operations.js";
+import type { AgentWorkerOperationContext } from "../../state/openclaw-agent-operation-context.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import {
   beginRestartRecoveryTerminalDelivery,
@@ -139,6 +142,54 @@ function hydrate({ replica, load }: Fixture, epoch = "first", sequence = 0) {
   expect(selected.install(snapshot)).toBe(true);
   return snapshot;
 }
+
+it("keeps actor facts after usage cache writes and refresh lock release", async () => {
+  await withReplica(async (fixture) => {
+    const { database, scope, replica } = fixture;
+    const operations = await loadUsageCacheOperations();
+    const options = { agentId: scope.agentId, path: database.path, env: scope.env };
+    const context: AgentWorkerOperationContext = {
+      options,
+      open: () => database,
+      admit() {},
+      writeTransaction(operationLabel, _owner, write) {
+        return runOpenClawAgentWriteTransaction(write, options, { operationLabel });
+      },
+    };
+    const snapshot = hydrate(fixture);
+    expect(
+      operations["usageCache.acquireLock"](
+        {
+          previousRaw: null,
+          previousOwnerIsRunning: false,
+          lockJson: "usage-owner",
+          startedAt: 1,
+        },
+        context,
+      ),
+    ).toBe(true);
+    expect(replica.read()).toEqual(snapshot);
+    const valueJson = new TextEncoder().encode("{}");
+    expect(
+      operations["usageCache.writeRollup"](
+        {
+          rollupId: "usage-rollup",
+          previousValueJson: null,
+          valueJson,
+          blob: null,
+          updatedAt: 1,
+        },
+        context,
+      ),
+    ).toBe(true);
+    expect(replica.read()).toEqual(snapshot);
+    operations["usageCache.prune"]([{ key: "usage-rollup", valueJson, updatedAt: 1 }], context);
+    expect(replica.read()).toEqual(snapshot);
+    operations["usageCache.releaseLock"]("usage-owner", context);
+    expect(readSessionCostUsageRefreshLockInDatabase(database.db)).toBeNull();
+    expect(replica.read()).toEqual(snapshot);
+  });
+});
 
 it("retains a new session's committed entry before its first reader and invalidates later writes", async () => {
   await withReplica(async ({ scope, load, database }) => {
