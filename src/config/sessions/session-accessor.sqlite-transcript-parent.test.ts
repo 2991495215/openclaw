@@ -22,6 +22,7 @@ import {
   appendTranscriptMessageSnapshotSync,
 } from "./session-accessor.sqlite-transcript-write.js";
 import { replaceTranscriptEventsSync } from "./session-accessor.sqlite-transcript-write.test-support.js";
+import { waitForSessionTranscriptIndexReconcile } from "./session-transcript-reconcile.js";
 
 const sessionDirs = useSessionStoreTempDirs(afterAll, "openclaw-ancestry-");
 
@@ -182,12 +183,17 @@ it.each(["dirty", "unclassified"] as const)(
     } finally {
       peer.close();
     }
-    const fresh = append("after-foreign", "after-rollback");
-    expect(fresh.result?.anchor).toBeUndefined();
-    expect(fresh.visibleTail).toEqual({
-      entryId: "after-foreign",
-      generation: fresh.after.generation,
-    });
+    try {
+      const fresh = append("after-foreign", "after-rollback");
+      expect(fresh.result?.anchor).toBeUndefined();
+      expect(fresh.visibleTail).toEqual({
+        entryId: "after-foreign",
+        generation: fresh.after.generation,
+      });
+    } finally {
+      // The invalidated append schedules a worker that shares lease state with later fixtures.
+      await waitForSessionTranscriptIndexReconcile({ agentId: scope.agentId, path: database.path });
+    }
   },
 );
 
