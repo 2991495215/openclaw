@@ -7,13 +7,17 @@ import {
 import { approveDevicePairing } from "../../infra/device-pairing-approval.js";
 import {
   captureNodePairingGeneration,
-  captureNodePairingState,
   isPairedDeviceNodeBindingCurrent,
   resolveCurrentPairedDeviceNodeBinding,
 } from "../../infra/device-pairing-node-state.js";
 import * as nodePairing from "../../infra/device-pairing-node.js";
 import { rotateDeviceToken } from "../../infra/device-pairing-tokens.js";
-import { listDevicePairing, requestDevicePairing } from "../../infra/device-pairing.js";
+import {
+  getPairedDevice,
+  listDevicePairing,
+  requestDevicePairing,
+  resolveNodePairingState,
+} from "../../infra/device-pairing.js";
 import {
   onInternalDiagnosticEvent,
   resetDiagnosticEventsForTest,
@@ -47,6 +51,10 @@ import { createWorkerSupervisorNodeClient } from "./nodes.runner-inventory.test-
 import type { GatewayRequestHandlerOptions } from "./types.js";
 
 const createdStates: OpenClawTestState[] = [];
+
+async function captureNodePairingState(nodeId: string) {
+  return resolveNodePairingState(await getPairedDevice(nodeId));
+}
 
 async function createNodeState(
   nodeId: string,
@@ -497,6 +505,7 @@ describe("nodeHandlers node.pair.approve", () => {
         isPairingStateCurrent: isPairedDeviceNodeBindingCurrent,
       });
       const client = createWorkerSupervisorNodeClient("conn-before-reapproval");
+      const send = vi.spyOn(client.socket, "send");
       client.connect.device = { ...client.connect.device!, id: nodeId };
       registry.register(client, {
         pairingIdentity: staleState.identity.key,
@@ -519,7 +528,7 @@ describe("nodeHandlers node.pair.approve", () => {
       try {
         await invokeNode("node.pair.approve", opts);
         expect((await captureNodePairingGeneration(nodeId))?.key).not.toBe(staleGeneration.key);
-        expect(client.socket.send).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
         await expect(registry.getCurrentConnected(nodeId)).resolves.toBeUndefined();
         expectApproved(opts, nodeId);
       } finally {
@@ -551,6 +560,7 @@ describe("nodeHandlers node.pair.approve", () => {
       isPairingStateCurrent: isPairedDeviceNodeBindingCurrent,
     });
     const client = createWorkerSupervisorNodeClient("conn-authenticated-before-token-rotation");
+    const send = vi.spyOn(client.socket, "send");
     client.connect.device = { ...client.connect.device!, id: nodeId };
     registry.register(client, { pairingIdentity: staleState?.identity.key ?? "" });
     const { context, opts } = createOptions({ requestId: pending.request.requestId });
@@ -558,7 +568,7 @@ describe("nodeHandlers node.pair.approve", () => {
 
     try {
       await invokeNode("node.pair.approve", opts);
-      expect(client.socket.send).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
       await expect(registry.getCurrentConnected(nodeId)).resolves.toBeUndefined();
       expectApproved(opts, nodeId);
     } finally {
