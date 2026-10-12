@@ -105,9 +105,9 @@ async function saveReceipt(file: string, receipt: Receipt) {
 }
 
 async function readIdentities(databases: readonly string[]) {
-  const identities: Receipt["databaseIdentities"] = {};
+  const identities: Record<string, Pick<BackupSqliteSnapshotFact, "dev" | "ino">> = {};
   for (const database of databases) {
-    const info = await fs.stat(database).catch((error: unknown) => {
+    const info = await fs.stat(database, { bigint: true }).catch((error: unknown) => {
       if (hasNodeErrorCode(error, "ENOENT")) {
         return undefined;
       }
@@ -120,8 +120,19 @@ async function readIdentities(databases: readonly string[]) {
   return identities;
 }
 
+// Keep the receipt format while live backup coverage retains exact filesystem identities.
+function serializeIdentities(
+  identities: Awaited<ReturnType<typeof readIdentities>>,
+): Receipt["databaseIdentities"] {
+  return Object.fromEntries(
+    Object.entries(identities).map(
+      ([file, { dev, ino }]) => [file, { dev: Number(dev), ino: Number(ino) }] as const,
+    ),
+  );
+}
+
 async function readConfigIdentity(configPath: string): Promise<Receipt["configIdentity"]> {
-  const identity = (await readIdentities([configPath]))[configPath];
+  const identity = serializeIdentities(await readIdentities([configPath]))[configPath];
   return identity ? { path: configPath, ...identity } : null;
 }
 
@@ -186,7 +197,7 @@ export async function updateMigrateCommand(backupRoot: string): Promise<void> {
         status: "backed-up",
         backup,
         databases,
-        databaseIdentities,
+        databaseIdentities: serializeIdentities(databaseIdentities),
         configIdentity: await readConfigIdentity(resolveConfigPath(env)),
         configFiles: [config, ...(config.includedFiles ?? [])].map((entry) => {
           const pathSnapshot =
@@ -251,7 +262,7 @@ export async function updateMigrateCommand(backupRoot: string): Promise<void> {
       );
     }
     receipt.status = "migrated";
-    receipt.databaseIdentities = await readIdentities(receipt.databases);
+    receipt.databaseIdentities = serializeIdentities(await readIdentities(receipt.databases));
     receipt.configIdentity = await readConfigIdentity(receipt.configPath);
     await saveReceipt(file, receipt);
   } catch (error) {
@@ -286,7 +297,7 @@ export async function updateRestoreCommand(backupRoot: string): Promise<void> {
         assertCurrent: () => {},
       });
       receipt.status = "restoring-config";
-      receipt.databaseIdentities = await readIdentities(receipt.databases);
+      receipt.databaseIdentities = serializeIdentities(await readIdentities(receipt.databases));
       await saveReceipt(file, receipt);
     }
     const lock = await acquireGatewayLock({
@@ -388,7 +399,7 @@ export async function updateRestoreCommand(backupRoot: string): Promise<void> {
       await lock.release();
     }
     receipt.status = "restored";
-    receipt.databaseIdentities = await readIdentities(receipt.databases);
+    receipt.databaseIdentities = serializeIdentities(await readIdentities(receipt.databases));
     receipt.configIdentity = await readConfigIdentity(receipt.configPath);
     delete receipt.error;
     await saveReceipt(file, receipt);

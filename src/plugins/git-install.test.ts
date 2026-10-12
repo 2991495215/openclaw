@@ -50,6 +50,7 @@ vi.mock("./install-security-scan.js", async () => {
 
 vi.resetModules();
 
+const installSourceUtils = await import("../infra/install-source-utils.js");
 const { installPluginFromGitSpec, parseGitPluginSpec } = await import("./git-install.js");
 const { onInternalDiagnosticEvent } = await import("../infra/diagnostic-events.js");
 
@@ -578,8 +579,9 @@ describe("installPluginFromGitSpec", () => {
       .mockResolvedValueOnce({ code: 0, stdout: "abc123\n", stderr: "" })
       .mockResolvedValueOnce({ code: 0, stdout: "", stderr: "" });
     mockSuccessfulPackageInstall();
-    const mkdtempSpy = vi
-      .spyOn(fs, "mkdtemp")
+    // Native temp creation can bypass fs.mkdtemp; fail the workspace owner itself.
+    const workspaceSpy = vi
+      .spyOn(installSourceUtils, "withInstallWorkspace")
       .mockRejectedValueOnce(Object.assign(new Error("read-only filesystem"), { code: "EROFS" }));
 
     try {
@@ -588,29 +590,26 @@ describe("installPluginFromGitSpec", () => {
         gitDir,
       });
 
-      expect(result.ok).toBe(true);
-      const cloneWorkspaceCalls = mkdtempSpy.mock.calls.filter(([prefix]) =>
-        path.basename(prefix).startsWith("openclaw-git-plugin-"),
-      );
-      expect(cloneWorkspaceCalls).toHaveLength(2);
-      const targetPrefix = cloneWorkspaceCalls[0]?.[0];
-      const fallbackPrefix = cloneWorkspaceCalls[1]?.[0];
+      expect(result).toMatchObject({ ok: true });
+      expect(workspaceSpy).toHaveBeenCalledTimes(2);
       const persistentRepoDir = expectedGitRepoDir({
         gitDir,
         normalizedSpec: "git:https://github.com/acme/demo.git",
       });
-      expect(path.dirname(expectDefined(targetPrefix, "targetPrefix test invariant"))).toBe(
-        await fs.realpath(path.dirname(persistentRepoDir)),
-      );
-      // withTempDir roots fallback staging at resolvePreferredOpenClawTmpDir(), which
-      // prefers /tmp/openclaw and only degrades to a uid-scoped os.tmpdir path when
-      // that is unsafe. Recompute it here so the assertion holds on every host.
-      expect(path.dirname(expectDefined(fallbackPrefix, "fallbackPrefix test invariant"))).toBe(
+      expect(workspaceSpy.mock.calls[0]).toEqual([
+        "openclaw-git-plugin-",
+        expect.any(Function),
+        { rootDir: path.dirname(persistentRepoDir) },
+      ]);
+      expect(workspaceSpy.mock.calls[1]).toEqual(["openclaw-git-plugin-", expect.any(Function)]);
+      const cloneDir = expectDefined(commandArgvAt(0).at(-1), "cloneDir test invariant");
+      expect(path.dirname(path.dirname(cloneDir))).toBe(
         await fs.realpath(resolvePreferredOpenClawTmpDir()),
       );
+      expect((await fs.stat(persistentRepoDir)).isDirectory()).toBe(true);
       expect(runCommandWithTimeoutMock).toHaveBeenCalledTimes(3);
     } finally {
-      mkdtempSpy.mockRestore();
+      workspaceSpy.mockRestore();
     }
   });
 

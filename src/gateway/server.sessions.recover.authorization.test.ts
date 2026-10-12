@@ -8,6 +8,7 @@ import {
   captureGatewayDeviceRevocation,
   invalidateGatewayDeviceRevocation,
 } from "./device-revocation.js";
+import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import type { retainGatewayOperatorRun } from "./operator-run-cancellation.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "./server-methods.js";
@@ -150,11 +151,13 @@ test("sessions.recover denies a narrow continuation into a linked foreign succes
   const { storePath } = await createSessionStoreDir();
   const sourceKey = "agent:main:dashboard:linked-foreign-recovery";
   const sourceSessionId = "linked-foreign-recovery-source";
-  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
   const sourceOwner = roleClient("view", "linked-recovery-owner");
   sourceOwner.connect.scopes = ["operator.sessions.write"];
   const broadWriter = roleClient("write", "linked-recovery-writer");
   broadWriter.connect.scopes = ["operator.write"];
+  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+  prepareGatewayRecipientProfile(sourceOwner);
+  prepareGatewayRecipientProfile(broadWriter);
   const cfg = recoveryConfig(storePath);
   const revokedRole = rolePolicyConfig().gateway!.roles!;
   const writeRole = revokedRole.definitions.write;
@@ -256,9 +259,10 @@ test("sessions.recover retains source revocation for its accepted own successor"
   const { storePath } = await createSessionStoreDir();
   const sourceKey = "agent:main:dashboard:narrow-own-recovery";
   const sourceSessionId = "narrow-own-recovery-source";
-  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
   const owner = roleClient("view", "narrow-recovery-owner");
   owner.connect.scopes = ["operator.sessions.write"];
+  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+  prepareGatewayRecipientProfile(owner);
   await seedRecoverableSession({
     sourceKey,
     sourceSessionId,
