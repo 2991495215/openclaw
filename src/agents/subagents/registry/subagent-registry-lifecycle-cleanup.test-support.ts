@@ -575,13 +575,15 @@ export function registerDeliveryRetryOwnerTests({
         resumeSubagentRun: () =>
           controller.startSubagentAnnounceCleanupFlow(readLifecycleRun(entry)),
       });
+      const join = observeRootWork();
       try {
         controller.startSubagentAnnounceCleanupFlow(entry);
-        await waitForLifecycleState(() =>
-          expect(readLifecycleRun(entry).cleanupHandled).toBe(false),
-        );
+        await join(true);
+        expect(readLifecycleRun(entry).cleanupHandled).toBe(false);
+        // Settle each detached attempt before advancing its mocked retry delay.
         for (let retry = 0; retry < 3; retry += 1) {
-          await vi.runOnlyPendingTimersAsync();
+          await vi.advanceTimersByTimeAsync(1_000 * 2 ** retry);
+          await join(true);
         }
         expect(countPendingDescendantRuns).toHaveBeenCalledTimes(4);
         expect(readLifecycleRun(entry).requesterSettleWake).toBeUndefined();
@@ -599,11 +601,13 @@ export function registerDeliveryRetryOwnerTests({
             throw new Error("descendant preparation crossed delivery deadline");
           });
         }
-        await vi.runOnlyPendingTimersAsync();
+        await vi.advanceTimersByTimeAsync(8_000);
+        await join(true);
         if (outcome.startsWith("expired during")) {
-          await vi.runOnlyPendingTimersAsync();
+          await vi.advanceTimersByTimeAsync(8_000);
+          await join(true);
         }
-        await waitForLifecycleState(() => expect(getActiveGatewayRootWorkCount()).toBe(0));
+        expect(getActiveGatewayRootWorkCount()).toBe(0);
         expect(readLifecycleRun(entry).delivery?.status).toBe(
           outcome === "delivered" ? "delivered" : "suspended",
         );
@@ -619,6 +623,7 @@ export function registerDeliveryRetryOwnerTests({
           expect(runSubagentAnnounceFlow.mock.lastCall?.[0].signal?.aborted).toBe(true);
         }
       } finally {
+        await join();
         controller.clearScheduledResumeTimers();
         vi.useRealTimers();
       }
