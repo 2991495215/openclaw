@@ -132,6 +132,7 @@ describe("current-session completion media", () => {
             },
           ]),
         );
+        let deliveryFailureContext: string | undefined;
         let available = true;
         let revoked = false;
         const revokeOccurrence = () => {
@@ -178,6 +179,10 @@ describe("current-session completion media", () => {
               { ...job, ...fixture.params.deliveryPlan },
             );
             const result = await dispatchCronDelivery(fixture.params);
+            deliveryFailureContext = JSON.stringify({
+              error: result.deliveryError,
+              diagnostics: result.diagnostics,
+            });
             expect(result.delivered).toBe(stage === "commit");
             if (stage === "commit") {
               expect(result).toMatchObject({
@@ -233,7 +238,7 @@ describe("current-session completion media", () => {
           expect(sendMedia).toHaveBeenCalledTimes(stage === "commit" ? 1 : 0);
           expect(await fixture.messages()).toHaveLength(0);
           if (stage === "commit") {
-            expect(await fixture.records()).toEqual([]);
+            expect(await fixture.records(), deliveryFailureContext).toEqual([]);
           }
         } finally {
           cron.stop();
