@@ -119,7 +119,7 @@ it.each([
           config: cfg,
           workspaceDir: state.workspaceDir,
           providerRefs: ["arcee"],
-          activate: false,
+          activate: true,
         });
         const { model } = await resolveModelAsync(
           "arcee",

@@ -1,6 +1,7 @@
 import type { ModelCatalogAlias } from "@openclaw/model-catalog-core/model-catalog-types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelDefinitionConfig } from "../../config/types.models.js";
+import { preparePluginMetadataMachineStateAsync } from "../../plugins/installed-plugin-index-record-state.js";
 import type { PluginManifestRecord } from "../../plugins/manifest-registry.types.js";
 import { createManifestRecord } from "./model.static-catalog.test-helpers.js";
 
@@ -126,8 +127,9 @@ function createMistralManifestPlugin(overrides?: {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   clearPluginMetadataLifecycleCaches();
+  await preparePluginMetadataMachineStateAsync({});
   for (const mock of [...Object.values(manifestMocks), ...Object.values(providerMocks)]) {
     mock.mockReset();
   }
@@ -148,7 +150,7 @@ describe("resolveBundledStaticCatalogModel", () => {
   it("keeps static catalog plans inside their metadata owner for the same env and config", () => {
     const plugin = createMistralManifestPlugin();
     setManifestPlugins([plugin]);
-    const env = {};
+    const env = { ...process.env };
     const cfg = {};
     const lookup = { ...mistralLookup, cfg, env };
     expect(resolveBundledStaticCatalogModel(lookup)?.contextWindow).toBe(262144);

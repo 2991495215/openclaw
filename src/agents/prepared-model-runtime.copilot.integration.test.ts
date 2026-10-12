@@ -4,6 +4,7 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import * as pluginState from "../plugin-state/plugin-state-store.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import * as pluginModuleRuntime from "../plugins/loader-module-runtime.js";
 import { loadAndActivateRootPluginRegistry } from "../plugins/loader.js";
 import {
@@ -24,6 +25,7 @@ afterEach(() => {
 afterAll(cleanupPluginLoaderFixturesForTest);
 
 it("prepares an agent-local Copilot BYOK harness without replacing the active root registry", async () => {
+  await preparePluginMetadataMachineStateAsync({});
   const openStore = vi
     .spyOn(pluginState, "createPluginStateSyncKeyedStore")
     .mockImplementation(() => {

@@ -1,12 +1,17 @@
 import { createServer } from "node:http";
 import { performance } from "node:perf_hooks";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { makeUserMessage } from "../../test/helpers/user-message.js";
+import { resolvePluginProvidersCoreAsync } from "../plugins/providers.runtime.js";
 import { summarizeCompactionHistory } from "./compaction.js";
 import type { AgentMessage } from "./runtime/index.js";
 import type { ExtensionContext } from "./sessions/index.js";
 
 describe("compaction retry backoff over real HTTP", () => {
+  beforeEach(async () => {
+    await resolvePluginProvidersCoreAsync({ providerRefs: ["openai"], activate: true });
+  });
+
   it("aborts after one provider response without changing the source history", async () => {
     const controller = new AbortController();
     const requests: Array<{ method: string; path: string }> = [];

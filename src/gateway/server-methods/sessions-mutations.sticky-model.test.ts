@@ -478,7 +478,11 @@ describe("sessions.patch personal model-account ownership", () => {
       const connections = new Set([caller]);
       const requestContext = context(connections);
       const catalog = createDeferredCore<ReturnType<typeof catalogSnapshot>>();
-      requestContext.loadGatewayModelCatalogSnapshot.mockReturnValueOnce(catalog.promise);
+      const catalogRequested = createDeferredCore<void>();
+      requestContext.loadGatewayModelCatalogSnapshot.mockImplementationOnce(() => {
+        catalogRequested.resolve();
+        return catalog.promise;
+      });
       const readCredential = vi.spyOn(userModelAccounts, "readUserModelAuthProfile");
       const pending = patchSession(
         {
@@ -491,9 +495,13 @@ describe("sessions.patch personal model-account ownership", () => {
         caller,
       );
       try {
-        await vi.waitFor(() =>
-          expect(requestContext.loadGatewayModelCatalogSnapshot).toHaveBeenCalledOnce(),
-        );
+        await Promise.race([
+          catalogRequested.promise,
+          pending.then(() => {
+            throw new Error("Session patch completed before requesting the model catalog");
+          }),
+        ]);
+        expect(requestContext.loadGatewayModelCatalogSnapshot).toHaveBeenCalledOnce();
         if (loss === "invalidated") {
           caller.invalidated = true;
         } else if (loss === "disconnected") {

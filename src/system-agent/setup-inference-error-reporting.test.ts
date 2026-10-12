@@ -94,7 +94,7 @@ async function observeScenario(scenario: Scenario, json: boolean) {
           },
           auth: { profiles: { "openai:proof": { provider: "openai", mode: "api_key" } } },
         };
-        const metadata = createSystemAgentPluginMetadataTestSnapshot(config);
+        const metadata = await createSystemAgentPluginMetadataTestSnapshot(config);
         await metadata.run(async () => {
           const fixture = await createSystemAgentVerifiedInferenceTestFixture(config);
           let changedArtifact = false;

@@ -147,7 +147,7 @@ export async function fixture(
   await fs.writeFile(configPath, before);
   clearConfigCache();
   const agentDir = resolveAgentDir(config, "main");
-  const metadata = createSystemAgentPluginMetadataTestSnapshot(config);
+  const metadata = await createSystemAgentPluginMetadataTestSnapshot(config);
   const choice: ProviderAuthChoiceMetadata = {
     pluginId: "openai",
     providerId: "openai",

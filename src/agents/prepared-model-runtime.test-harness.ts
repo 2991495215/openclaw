@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { SubsystemLogger } from "../logging/subsystem.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import {
@@ -501,6 +502,7 @@ export function getPreparedModelRuntimeTestApi(): PreparedModelRuntimeTestApi {
 export async function resetPreparedModelRuntimeHarness(state: OpenClawTestState): Promise<void> {
   await import("./prepared-model-runtime.js");
   await getPreparedModelRuntimeTestApi().resetPreparedModelRuntimeSnapshotsForTest();
+  await preparePluginMetadataMachineStateAsync({});
   agentScopeMocks.resolveAgentDir
     .mockReset()
     .mockImplementation(

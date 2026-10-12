@@ -17,6 +17,7 @@ import type { CliDeps } from "../cli/deps.types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { makeCronJob } from "../cron/delivery.test-helpers.js";
 import { loadCronStore, resolveCronJobsStorePath, saveCronStore } from "../cron/store.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import {
   getPluginRuntimeGatewayRequestScope,
@@ -191,6 +192,7 @@ describe("local gateway request context", () => {
   });
 
   it("refreshes local models.list auth after login and logout", async () => {
+    await preparePluginMetadataMachineStateAsync({});
     const cfg = {
       agents: {
         entries: {

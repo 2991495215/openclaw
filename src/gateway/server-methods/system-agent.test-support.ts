@@ -131,7 +131,7 @@ export function useSystemAgentGatewayTestFixture() {
   }
 
   beforeAll(async () => {
-    pluginMetadataSnapshot = createSystemAgentPluginMetadataTestSnapshot(verifiedConfig);
+    pluginMetadataSnapshot = await createSystemAgentPluginMetadataTestSnapshot(verifiedConfig);
     const fixture = await pluginMetadataSnapshot.run(() =>
       createSystemAgentVerifiedInferenceTestFixture(verifiedConfig),
     );

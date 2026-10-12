@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, vi } from "vitest";
 import type { FixtureReceiptChannel } from "../../../test/helpers/fixture-receipts.js";
 import { withinTest } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { preparePluginAutoEnableTestDiscovery } from "../../config/plugin-auto-enable.test-helpers.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import { resolveRuntimeWorkerUrl } from "../../infra/runtime-worker-url.js";
 import * as workerCpu from "../../infra/worker-cpu.js";
@@ -54,6 +55,7 @@ export function usePreparedCatalogWorkerFixtures(
       .toEqual([]);
   }
   beforeEach(() => {
+    preparePluginAutoEnableTestDiscovery();
     const createWorker = workerCpu.createCpuTrackedWorker;
     const catalogWorkerUrl = resolveRuntimeWorkerUrl(
       runtimeProcessEntrypoints.preparedModelCatalog,
@@ -357,6 +359,7 @@ export async function seedFixturePluginModelCatalog(
   pluginId: string,
   providerId: string,
 ): Promise<void> {
+  preparePluginAutoEnableTestDiscovery(env);
   await replacePersistedPluginModelCatalogs({
     agentDir,
     env,

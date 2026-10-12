@@ -11,6 +11,7 @@ import {
 } from "../agents/execution-auth-binding.js";
 import { resolveCliRuntimeExecutionProvider } from "../agents/model-runtime-aliases.js";
 import { resolveSimpleCompletionSelectionForAgent } from "../agents/simple-completion-runtime.js";
+import { preparePluginAutoEnableTestDiscovery } from "../config/plugin-auto-enable.test-helpers.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { resolveInstalledPluginIndexPolicyHash } from "../plugins/installed-plugin-index-policy.js";
@@ -20,7 +21,7 @@ import {
 } from "../plugins/plugin-cache.js";
 import { resolvePluginControlPlaneFingerprint } from "../plugins/plugin-control-plane-context.js";
 import {
-  loadPluginMetadataSnapshot,
+  resolvePluginMetadataSnapshotAsync,
   type resolvePluginMetadataSnapshot,
 } from "../plugins/plugin-metadata-snapshot.js";
 import { listSystemAgentAuditEntriesForTests } from "./audit.test-support.js";
@@ -78,16 +79,22 @@ export function installSystemAgentClaudeCliBackendTestFixture(): () => void {
 }
 
 /** Prepare one inventory; each test operation owns its scoped config and environment. */
-export function createSystemAgentPluginMetadataTestSnapshot(
+export async function createSystemAgentPluginMetadataTestSnapshot(
   config: OpenClawConfig = {},
-): SystemAgentPluginMetadataTestSnapshot {
-  const prepared = loadPluginMetadataSnapshot({ config, env: process.env, allowCurrent: false });
+): Promise<SystemAgentPluginMetadataTestSnapshot> {
+  const prepared = await resolvePluginMetadataSnapshotAsync({
+    config,
+    env: process.env,
+    allowCurrent: false,
+  });
   let boundParams: Parameters<typeof resolvePluginMetadataSnapshot>[0] = {
     config,
     env: process.env,
   };
   const prepareSnapshot = (params: Parameters<typeof resolvePluginMetadataSnapshot>[0]) => {
-    const policyHash = resolveInstalledPluginIndexPolicyHash(params.config);
+    const env = params.env ?? process.env;
+    preparePluginAutoEnableTestDiscovery(env);
+    const policyHash = resolveInstalledPluginIndexPolicyHash(params.config, env);
     const index =
       prepared.index.policyHash === policyHash ? prepared.index : { ...prepared.index, policyHash };
     const snapshot = {

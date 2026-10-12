@@ -62,7 +62,10 @@ function createCompletionRuntime(
   });
   return {
     model: bindModelLlmRuntime(
-      attachModelProviderRequestRouteFacts(model, makeEmptyPluginMetadataOwners()),
+      attachModelProviderRuntimePluginHandle(
+        attachModelProviderRequestRouteFacts(model, makeEmptyPluginMetadataOwners()),
+        { provider: model.provider, modelId: model.id, plugin: undefined },
+      ),
       runtime,
     ),
     runtime,

@@ -95,6 +95,8 @@ describe("collectSmallModelRiskFindings", () => {
       detailExcludes: ["web=[browser]"],
     },
   ])("$name", async ({ cfg, env, expectedSeverity, detailIncludes, detailExcludes }) => {
+    // Model-ref normalization uses process state while audit policy uses its explicit env.
+    await prepareBundledDiscoveryMode();
     await prepareBundledDiscoveryMode(env);
     const finding = expectDefined(
       collectSmallModelRiskFindings({

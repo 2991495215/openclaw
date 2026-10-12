@@ -1,13 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type { SessionEntry } from "../config/sessions/types.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { createOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
   resolveDirectStoredModelOverride,
   resolveStoredModelOverride,
   resolveStoredModelOverrideAsync,
 } from "./stored-model-overrides.js";
+
+beforeEach(async () => {
+  await preparePluginMetadataMachineStateAsync({});
+});
 
 function resolveParentOverride(parent: Partial<SessionEntry>) {
   const parentKey = "agent:main:discord:channel:root";

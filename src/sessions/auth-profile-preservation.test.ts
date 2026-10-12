@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authStore from "../agents/auth-profiles/store.js";
 import type { SessionEntry } from "../config/sessions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import {
@@ -33,6 +34,10 @@ const entry = {
   updatedAt: 1,
   authProfileOverride: "fixture-provider:work",
 } satisfies SessionEntry;
+
+beforeEach(async () => {
+  await preparePluginMetadataMachineStateAsync({});
+});
 
 describe("shouldPreserveSessionAuthProfileOverride", () => {
   it.each([

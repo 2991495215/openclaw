@@ -1,7 +1,8 @@
 // Skill loading tests cover bundled, plugin, and workspace skill resolution.
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { preparePluginAutoEnableTestDiscovery } from "../../config/plugin-auto-enable.test-helpers.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -52,11 +53,17 @@ const makeWorkspace = async () => await fixtureSuite.createCaseDir("workspace");
 const buildWorkspaceSkillsPrompt = async (
   workspaceDir: string,
   opts?: Parameters<typeof buildSkillSnapshot>[1],
-): Promise<string> => (await buildSkillSnapshot(workspaceDir, opts)).prompt;
+): Promise<string> => {
+  preparePluginAutoEnableTestDiscovery();
+  return (await buildSkillSnapshot(workspaceDir, opts)).prompt;
+};
 const apiKeyField = ["api", "Key"].join("");
 
 function withWorkspaceHome<T>(workspaceDir: string, cb: () => T): T {
-  return withPathResolutionEnv(workspaceDir, { PATH: "" }, () => cb());
+  return withPathResolutionEnv(workspaceDir, { PATH: "" }, () => {
+    preparePluginAutoEnableTestDiscovery();
+    return cb();
+  });
 }
 
 async function writePromptLimitSkills(workspaceDir: string) {
@@ -183,6 +190,10 @@ afterAll(async () => {
   await fixtureSuite.cleanup();
 });
 
+beforeEach(() => {
+  preparePluginAutoEnableTestDiscovery();
+});
+
 afterEach(() => {
   clearRuntimeConfigSnapshot();
   clearPluginMetadataLifecycleCaches();
@@ -287,6 +298,7 @@ describe("buildWorkspaceSkillCommandSpecs", () => {
       "utf-8",
     );
     clearPluginMetadataLifecycleCaches();
+    preparePluginAutoEnableTestDiscovery();
 
     const commands = buildWorkspaceSkillCommandSpecs(workspaceDir, {
       ...resolveTestSkillDirs(workspaceDir),
