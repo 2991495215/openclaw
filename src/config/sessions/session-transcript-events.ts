@@ -31,7 +31,7 @@ import {
 import { captureSessionTranscriptStorageEnvironment } from "./transcript-target-binding.js";
 
 /** Load durable raw events through the existing full-transcript hydration owner. */
-export async function loadTranscriptEvents(
+export async function loadSessionTranscriptEvents(
   scope: SessionTranscriptReadScope,
 ): Promise<TranscriptEvent[]> {
   const memory = captureSessionActorTranscriptRead(scope);

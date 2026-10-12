@@ -91,14 +91,7 @@ export function forkMemorySessionEntryFromParent(
     },
     async (memory) => {
       const { cliBackendSupportsSessionFork } = await import("../../agents/cli-backends.js");
-      const {
-        commitGuard: _guard,
-        patch: callback,
-        skipPatch,
-        skipForkWhen,
-        decisionSkipPatch,
-        ...data
-      } = params;
+      const { commitGuard: _guard, ...data } = params;
       return readSessionActorStorageResult(
         await memory.actor.storage.mutate(
           {
@@ -114,10 +107,6 @@ export function forkMemorySessionEntryFromParent(
             assertCurrent: () => memory.authority.assertCurrent(),
             parentFork: {
               supportsCliFork: cliBackendSupportsSessionFork,
-              patch: callback,
-              skipPatch,
-              skipForkWhen,
-              decisionSkipPatch,
             },
           },
         ),

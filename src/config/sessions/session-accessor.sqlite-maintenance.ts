@@ -15,7 +15,6 @@ import {
 import type { SessionLifecycleArchivedTranscript } from "./session-accessor.sqlite-contract.js";
 import {
   hasPreparedNativeSessionDeletion,
-  preparedSessionDeletionRequiresNativeTransaction,
   withSqliteSessionDeletions,
 } from "./session-accessor.sqlite-deletion.js";
 import { collectSessionStateIdsForEntry } from "./session-accessor.sqlite-lifecycle-state.js";
@@ -568,7 +567,7 @@ export async function finalizeSessionEntryMaintenancePlansAfterWriterReleaseBest
             entries: batch.entryRemovals,
             materializedPlans,
           });
-          return options.retainedExecution && !preparedSessionDeletionRequiresNativeTransaction()
+          return options.retainedExecution
             ? finalizeSessionMaintenanceInWorker(
                 plan,
                 options.retainedExecution,

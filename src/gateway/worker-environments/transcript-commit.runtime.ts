@@ -1,9 +1,9 @@
 import { stableStringify } from "@openclaw/normalization-core";
 import type { BoundAgentRunSessionTarget } from "../../agents/run-session-target.types.js";
 import { redactTranscriptMessage } from "../../agents/transcript-redact.js";
-import { publishTranscriptUpdate } from "../../config/sessions/session-accessor.js";
 import type { SessionTranscriptWriteScope } from "../../config/sessions/session-accessor.sqlite-contract.js";
 import { publishSessionEntryWorkerMetadataInvalidation } from "../../config/sessions/session-accessor.sqlite-entry-cache-publication.js";
+import { publishTranscriptUpdate } from "../../config/sessions/session-accessor.sqlite-events.js";
 import {
   resolveSqliteTranscriptScope,
   toDatabaseOptions,

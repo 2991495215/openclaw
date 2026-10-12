@@ -2,9 +2,6 @@ import { performance } from "node:perf_hooks";
 import { listAgentIds, withAgentRosterFactsBatch } from "../agents/agent-scope-config.js";
 import { resolveUtilityModelRefForAgent } from "../agents/utility-model.js";
 import { isInternalSessionEffectsKey } from "../config/sessions/internal-session-key.js";
-import { readCommittedSessionEntryCache } from "../config/sessions/session-accessor.sqlite-entry-cache.js";
-import { readExactSessionEntryRow } from "../config/sessions/session-accessor.sqlite-entry-read.js";
-import { projectSqliteSessionParticipants } from "../config/sessions/session-accessor.sqlite-participant-projection.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import {
   captureSessionActorStorageOwner,
@@ -12,12 +9,12 @@ import {
   runWithSessionActorStorage,
 } from "../config/sessions/session-actor-storage-binding.js";
 import { isIncognitoSessionKey } from "../routing/session-key.js";
-import { withOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly.js";
 import { isIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import type { SessionRepositoryWorkspaceRecord } from "../state/session-repository-workspaces.types.js";
 import { readSessionRowFacts } from "./server-methods/session-placement-read-projection.js";
 import { readPreparedGatewayModelMetadata } from "./server-model-catalog-view.js";
 import { readSessionRowModelFacts } from "./session-row-model-facts.js";
+import { SessionRowFactsPending } from "./session-row-prepared-read.js";
 import { isColdArchivedSessionRow } from "./session-row-projection-archive.js";
 import * as records from "./session-row-projection-record.js";
 import { readSessionRowLookup, type prepareSessionRowScopes } from "./session-row-scope.js";
@@ -349,18 +346,14 @@ export function readSessionRowEntry(row: records.Row) {
     );
     return memory?.owner?.readSession(row.key, memory.authority)?.entry;
   }
-  const result = withOpenClawAgentDatabaseReadOnly(
-    (database) => {
-      const cache = readCommittedSessionEntryCache(database.db);
-      const cached = cache?.get(row.key);
-      const entry = cache
-        ? cached && projectSqliteSessionParticipants(database.db, row.key, cached)
-        : readExactSessionEntryRow(database, row.key, "list")?.entry;
-      return entry;
-    },
-    { agentId: row.storeTarget.agentId, path: row.storeTarget.storePath },
-  );
-  return result.found ? result.value : undefined;
+  const facts = row.pendingDatabaseFacts ?? row.retainedDatabaseFacts;
+  if (facts) {
+    return facts.entry;
+  }
+
+  // Durable reads reenter the existing worker preparation owner after invalidation.
+  const { key, agentId, storeTarget } = row;
+  throw new SessionRowFactsPending([{ key, agentId, storePath: storeTarget.storePath }]);
 }
 
 /** Exact incognito acquisition never admits an ephemeral store to the resident roster. */

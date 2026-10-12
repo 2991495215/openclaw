@@ -9,7 +9,7 @@ import { memorySessionActorOwners } from "./session-actor-memory-owner.js";
 import { createMemorySessionActorOwner } from "./session-actor-memory.js";
 import { runWithSessionActorStorage } from "./session-actor-storage-binding.js";
 import { appendPreparedTranscriptEvent } from "./session-transcript-event.js";
-import { loadTranscriptEvents } from "./session-transcript-events.js";
+import { loadSessionTranscriptEvents } from "./session-transcript-events.js";
 import type { SqliteSessionTurnOptions } from "./session-turn.types.js";
 
 // The public turn path must neither open SQLite nor allocate worker capacity for memory sessions.
@@ -110,7 +110,7 @@ describe("memory actor transcript turn binding", () => {
       expect(await appendPreparedTranscriptEvent(scope, event, () => {})).toBe(true);
       expect(await appendPreparedTranscriptEvent(scope, event, () => {})).toBe(false);
     }
-    const before = await loadTranscriptEvents(scope);
+    const before = await loadSessionTranscriptEvents(scope);
     expect(before.slice(-2)).toEqual(events);
     await expect(
       appendPreparedTranscriptEvent(
@@ -124,7 +124,7 @@ describe("memory actor transcript turn binding", () => {
         throw new Error("Event authority ended");
       }),
     ).rejects.toThrow("Event authority ended");
-    expect(await loadTranscriptEvents(scope)).toEqual(before);
+    expect(await loadSessionTranscriptEvents(scope)).toEqual(before);
     memorySessionActorOwners.closeSession(
       { agentId: scope.agentId, path: scope.storePath },
       sessionKey,
@@ -132,7 +132,7 @@ describe("memory actor transcript turn binding", () => {
     await expect(
       appendPreparedTranscriptEvent(scope, { type: "custom", id: "closed" }, () => {}),
     ).rejects.toMatchObject({ code: "INCOGNITO_SESSION_MISSING" });
-    expect(await loadTranscriptEvents(scope)).toEqual([]);
+    expect(await loadSessionTranscriptEvents(scope)).toEqual([]);
   });
 
   it("acquires an unbound incognito owner for turns and notifications without recreating closed sessions", async () => {

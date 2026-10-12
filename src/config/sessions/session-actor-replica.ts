@@ -552,12 +552,13 @@ export function createSessionActorReplica(params: {
     },
     beginCommand() {
       const previous = owned.snapshot;
+      const previousGeneration = owned.generation;
       const settle = begin();
       return {
         settle<Value>(outcome: SessionActorOutcome<Value>): boolean {
           return settle((expectedGeneration) => {
             if (outcome.kind === "rolled-back") {
-              return previous !== undefined && install(previous, expectedGeneration);
+              return previous !== undefined && install(previous, previousGeneration);
             }
             if (outcome.kind === "unknown") {
               discard(owned);

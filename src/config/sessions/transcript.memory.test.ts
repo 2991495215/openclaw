@@ -5,7 +5,7 @@ import { resolveIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-ag
 import type { SessionActorAuthority } from "./session-actor-contract.js";
 import { memorySessionActorOwners } from "./session-actor-memory-owner.js";
 import { readSessionActorStorageResult } from "./session-actor-storage-result.js";
-import { loadTranscriptEvents } from "./session-transcript-events.js";
+import { loadSessionTranscriptEvents } from "./session-transcript-events.js";
 import {
   appendAssistantMessageToSessionTranscript,
   appendExactAssistantMessageToSessionTranscript,
@@ -93,7 +93,7 @@ describe("memory assistant transcript entry points", () => {
       expect.objectContaining({ role: "assistant", text: "Prepared answer" }),
     ]);
     expect(
-      (await loadTranscriptEvents(scope)).filter(
+      (await loadSessionTranscriptEvents(scope)).filter(
         (event) => isRecord(event) && event.type === "message",
       ),
     ).toHaveLength(1);
@@ -110,7 +110,7 @@ describe("memory assistant transcript entry points", () => {
     expect(second.ok).toBe(true);
     expect(second).not.toEqual(first);
     expect(
-      (await loadTranscriptEvents(scope)).filter(
+      (await loadSessionTranscriptEvents(scope)).filter(
         (event) => isRecord(event) && event.type === "message",
       ),
     ).toHaveLength(2);
@@ -136,7 +136,7 @@ describe("memory assistant transcript entry points", () => {
       }),
     ).rejects.toThrow("delivery authority ended");
     expect(
-      (await loadTranscriptEvents(scope)).filter(
+      (await loadSessionTranscriptEvents(scope)).filter(
         (event) => isRecord(event) && event.type === "message",
       ),
     ).toEqual([]);

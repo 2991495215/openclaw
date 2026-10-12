@@ -163,11 +163,9 @@ test("rebuilds resident thinking facts on config and catalog publication", async
       getModelCatalog: async () => catalog,
     });
     const read = () => projection.snapshot({ agentId: "main", key }).row;
-    const readThinking = () => projection.modelFacts({ agentId: "main", key }).thinkingProjection;
     try {
       await projection.ensureMaterialized();
       expect(read()).toMatchObject({ thinkingLevel: "medium", thinkingDefault: "off" });
-      expect(readThinking().effectiveThinkingLevel).toBe("high");
       const initialCalls = fixture.policyCalls();
       cfg = {
         ...cfg,
@@ -177,7 +175,6 @@ test("rebuilds resident thinking facts on config and catalog publication", async
       sessionChanges.emit({ all: true, scope: "config" });
       await projection.ensureMaterialized();
       expect(read()).toMatchObject({ thinkingLevel: "medium", thinkingDefault: "high" });
-      expect(readThinking().effectiveThinkingLevel).toBe("high");
       expect(fixture.policyCalls()).toBeGreaterThan(initialCalls);
       const configuredCalls = fixture.policyCalls();
       const next: ModelCatalogSnapshot = {
@@ -198,7 +195,6 @@ test("rebuilds resident thinking facts on config and catalog publication", async
         ],
       ]);
       expect(read()?.thinkingLevel).toBe("medium");
-      expect(readThinking().effectiveThinkingLevel).toBe("high");
       notifyPreparedModelRuntimePublication({ phase: "catalog-published" });
       await projection.ensureMaterialized();
       expect(read()).toMatchObject({
@@ -206,7 +202,6 @@ test("rebuilds resident thinking facts on config and catalog publication", async
         thinkingDefault: "off",
         thinkingOptions: ["off", "ultra"],
       });
-      expect(readThinking().effectiveThinkingLevel).toBe("off");
       expect(fixture.policyCalls()).toBeGreaterThan(configuredCalls);
     } finally {
       projection.dispose();

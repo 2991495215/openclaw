@@ -8,8 +8,8 @@ import {
 } from "./session-accessor.sqlite-scope.js";
 import { readActiveTranscriptEntryAnchor } from "./session-accessor.sqlite-transcript-anchor.js";
 import {
-  rewriteAssistantTranscriptMessageForRun,
-  rewriteTranscriptMessageAtAnchor,
+  rewriteNativeAssistantTranscriptMessageForRun,
+  rewriteNativeTranscriptMessageAtAnchor,
 } from "./session-accessor.sqlite-transcript-message-rewrite.js";
 import type { SessionTranscriptAccessScope } from "./session-accessor.types.js";
 import {
@@ -32,7 +32,7 @@ import {
   withOwnedSessionTranscriptWriterFence,
 } from "./transcript-write-context.js";
 
-/** Bundled pure preparation; opaque public callbacks retain their transaction-local adapter. */
+/** Prepare callback output outside SQLite; the existing worker owns selection and commit. */
 async function rewritePreparedTranscriptMessage<T>(params: {
   scope: SessionTranscriptWriteScope;
   readSource?: SessionEntryReadSource;
@@ -157,7 +157,7 @@ export async function rewritePreparedTranscriptMessageAtAnchor<T>(
   > & { active?: "exact" | "sequence"; assertNativeCurrent?: () => void } = {},
 ) {
   if (!isMainThread) {
-    return rewriteTranscriptMessageAtAnchor(anchor, (message) => {
+    return rewriteNativeTranscriptMessageAtAnchor(anchor, (message) => {
       options.assertCurrent?.();
       options.assertNativeCurrent?.();
       if (options.active) {
@@ -190,7 +190,7 @@ export async function rewritePreparedAssistantTranscriptMessageForRun(params: {
 }): Promise<{ messageId: string } | null> {
   if (!isMainThread) {
     const resolved = resolveSqliteTranscriptScope(params.scope, params.readSource);
-    return rewriteAssistantTranscriptMessageForRun(
+    return rewriteNativeAssistantTranscriptMessageForRun(
       params,
       params.readSource ? resolved : undefined,
     );

@@ -18,7 +18,7 @@ import {
   runWithSessionActorStorage,
   type SessionActorStorageBinding,
 } from "../config/sessions/session-actor-storage-binding.js";
-import { loadTranscriptEvents } from "../config/sessions/session-transcript-events.js";
+import { loadSessionTranscriptEvents as loadTranscriptEvents } from "../config/sessions/session-transcript-events.js";
 import type { InternalSessionEntry as SessionEntry } from "../config/sessions/types.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { createCliDispatchTranscriptRecorder } from "./embedded-agent-runner/cli-backend-dispatch-transcript.js";

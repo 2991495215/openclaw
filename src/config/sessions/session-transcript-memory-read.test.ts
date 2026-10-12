@@ -19,7 +19,7 @@ import { readSessionTranscriptAnchorsAsync } from "./session-transcript-anchor-r
 import { readLatestTranscriptAssistantTextAsync } from "./session-transcript-assistant-read.js";
 import { readSessionTranscriptModelContextAsync } from "./session-transcript-context-read.js";
 import { withSessionTranscriptDeltaReader } from "./session-transcript-delta-read.js";
-import { loadTranscriptEvents } from "./session-transcript-events.js";
+import { loadSessionTranscriptEvents } from "./session-transcript-events.js";
 import { prepareSessionTranscriptHydration } from "./session-transcript-hydration.js";
 import { hasSessionTranscriptMessage } from "./session-transcript-message-presence.js";
 import { runWithSessionTranscriptReadFence } from "./session-transcript-read-fence.js";
@@ -151,7 +151,7 @@ describe("memory transcript read adapters", () => {
     const { scope, events, append } = await fixture();
     expect(bindSessionTranscriptStoreScope(scope).storePath).toBe(scope.storePath);
     expect(resolveSessionTranscriptReadTarget(scope)).toMatchObject(scope);
-    expect(await loadTranscriptEvents(scope)).toEqual(events);
+    expect(await loadSessionTranscriptEvents(scope)).toEqual(events);
     expect(
       await readRecentUserAssistantTextForSession({ ...scope, role: "assistant", limit: 2 }),
     ).toEqual([{ id: "answer", role: "assistant", text: "Answer one" }]);
@@ -164,7 +164,9 @@ describe("memory transcript read adapters", () => {
     const context = await readSessionTranscriptModelContextAsync(scope, (value) => value);
     expect(ids(context.events)).toContain("answer");
 
-    await expect(loadTranscriptEvents({ ...scope, maxEventBytes: 1 })).rejects.toThrow("too large");
+    await expect(loadSessionTranscriptEvents({ ...scope, maxEventBytes: 1 })).rejects.toThrow(
+      "too large",
+    );
     expect(await readLatestTranscriptAssistantTextAsync(scope)).toMatchObject({
       text: "Answer one",
     });
@@ -247,8 +249,8 @@ describe("memory transcript read adapters", () => {
         authority,
       ),
     );
-    expect(await loadTranscriptEvents(sibling.scope)).toEqual(sibling.events);
-    expect(await loadTranscriptEvents({ ...sibling.scope, sessionKey: undefined })).toEqual(
+    expect(await loadSessionTranscriptEvents(sibling.scope)).toEqual(sibling.events);
+    expect(await loadSessionTranscriptEvents({ ...sibling.scope, sessionKey: undefined })).toEqual(
       sibling.events,
     );
     expect(await resolveSessionKeyBySessionIdAsync(sibling.scope)).toBe(sibling.scope.sessionKey);
@@ -261,12 +263,12 @@ describe("memory transcript read adapters", () => {
       sessionId: "two",
       selectedSessionId: "two-new",
     });
-    expect(await loadTranscriptEvents({ ...otherAgent.scope, sessionKey: undefined })).toEqual(
-      otherAgent.events,
-    );
+    expect(
+      await loadSessionTranscriptEvents({ ...otherAgent.scope, sessionKey: undefined }),
+    ).toEqual(otherAgent.events);
     const before = root.owner.listSessions(authority).length;
     const missing = { ...root.scope, sessionKey: undefined, sessionId: "missing" };
-    expect(await loadTranscriptEvents(missing)).toEqual([]);
+    expect(await loadSessionTranscriptEvents(missing)).toEqual([]);
     expect(
       await readRecentSessionConversationTextAsync(missing, { role: "user", limit: 2 }),
     ).toEqual([]);
@@ -298,7 +300,7 @@ describe("memory transcript read adapters", () => {
     await expect(captured.read()).rejects.toThrow();
     expect(() => captured.assertCurrent()).toThrow();
     expect(await absent.read()).toMatchObject({ kind: "full", snapshot: { events: [] } });
-    expect(await loadTranscriptEvents(scope)).toHaveLength(3);
+    expect(await loadSessionTranscriptEvents(scope)).toHaveLength(3);
   });
 
   it("manually compacts current rows and accounting while preserving a newer entry update", async () => {
@@ -354,7 +356,7 @@ describe("memory transcript read adapters", () => {
         },
       }),
     ).resolves.toEqual({ compacted: true, kept: 2 });
-    expect(await loadTranscriptEvents(scope)).toMatchObject([
+    expect(await loadSessionTranscriptEvents(scope)).toMatchObject([
       { type: "session", id: "one" },
       { id: "answer", parentId: null },
     ]);
@@ -401,7 +403,7 @@ describe("memory transcript read adapters", () => {
         }),
       ),
     ).rejects.toThrow("manual compaction permission withdrawn");
-    expect(await loadTranscriptEvents(scope)).toEqual(events);
+    expect(await loadSessionTranscriptEvents(scope)).toEqual(events);
     expect(owner.readSession(scope.sessionKey, authority)?.entry).toEqual(before);
   });
 
@@ -418,7 +420,7 @@ describe("memory transcript read adapters", () => {
     const receipt = { ...anchor, role: "user" as const, logicalTurnId: "current-turn" };
     await runWithSessionActorStorage(binding, () =>
       runWithSessionTranscriptReadFence(receipt, async () => {
-        expect(ids(await loadTranscriptEvents(scope))).toEqual(["one", "user", "answer"]);
+        expect(ids(await loadSessionTranscriptEvents(scope))).toEqual(["one", "user", "answer"]);
         expect(await readLatestTranscriptAssistantTextAsync(scope)).toMatchObject({
           text: "Answer one",
         });

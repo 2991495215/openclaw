@@ -6,7 +6,6 @@ import type {
   SessionModelContextLimits,
   SessionTranscriptContextSnapshot,
 } from "../../config/sessions/session-history-read.types.js";
-import { readSessionTranscriptAnchorsFromSource } from "../../config/sessions/session-transcript-anchor-read.js";
 import {
   readSessionTranscriptModelContextAsync,
   type PreparedSessionTranscriptModelContext,
@@ -20,10 +19,7 @@ import {
 import { withSessionTranscriptReadSource } from "../../config/sessions/session-transcript-read-source.js";
 import { readSessionTranscriptContextMessagesInWorker } from "../../config/sessions/session-transcript-read-worker-runtime.js";
 import type { SessionHistoryWorkerLane } from "../../config/sessions/session-transcript-worker-resources.js";
-import {
-  sameTranscriptEntryAnchor,
-  type TranscriptEntryAnchor,
-} from "../../config/sessions/transcript-entry-anchor.js";
+import type { TranscriptEntryAnchor } from "../../config/sessions/transcript-entry-anchor.js";
 import { captureSessionTranscriptTargetBinding } from "../../config/sessions/transcript-target-binding.js";
 import {
   captureOwnedTranscriptWriteAssertion,
@@ -211,6 +207,11 @@ export async function readSessionManagerContextAsync<T>(
           assertReadOwner();
         };
         assertDurable();
+        if (admission && !expectedIdentity) {
+          throw new SessionTranscriptReadFenceError(
+            "Session transcript changed during context read",
+          );
+        }
         const snapshot = await readSessionTranscriptContextMessagesInWorker(
           readTarget,
           admission,
@@ -220,38 +221,7 @@ export async function readSessionManagerContextAsync<T>(
         assertDurable();
         const result = await consumeSnapshot(snapshot, () => owner.assertCurrent());
         assertDurable();
-        if (readSessionManagerActorTranscript(captured, snapshot.version)) {
-          return result;
-        }
-        let accepted: { value: T } | undefined;
-        await readSessionTranscriptAnchorsFromSource(
-          { ...source, scope: readTarget },
-          {
-            entryIds: admission ? [admission.entryId] : [],
-            contextValidation: { version: snapshot.version, admission },
-          },
-          signal,
-          (facts) => {
-            assertDurable();
-            if (!facts.contextValidated && (snapshot.version || admission)) {
-              throw new SessionTranscriptReadFenceError(
-                "Session transcript changed during context read",
-              );
-            }
-            if (admission && !sameTranscriptEntryAnchor(admission, facts.anchors[0])) {
-              throw new SessionTranscriptReadFenceError(
-                "Current-turn transcript admission changed",
-              );
-            }
-            accepted = { value: result };
-          },
-        );
-        if (!accepted) {
-          throw new SessionTranscriptReadFenceError(
-            "Session transcript changed during context read",
-          );
-        }
-        return accepted.value;
+        return result;
       },
       signal,
     );

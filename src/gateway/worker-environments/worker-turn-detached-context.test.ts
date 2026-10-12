@@ -481,7 +481,7 @@ describe("worker detached model-context branch parity", () => {
     },
   );
 
-  it("rejects a missing canonical user admission before worker effects", async () => {
+  it("rejects a missing canonical user admission", async () => {
     seedPrevious();
     const inputRecorder = recorder();
     inputRecorder.markRuntimePersisted(buildPersistedUserTurnMessage({ text: "current request" }));

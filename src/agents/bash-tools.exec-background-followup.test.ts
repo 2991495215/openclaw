@@ -188,20 +188,21 @@ test("starts and notifies when identity enrichment fails, then resolves child id
   }
 });
 
-test("reports manual collection after real destination capture fails, then recovers on the same tool", async ({
+test("reports manual collection after destination capture fails, then recovers on the same tool", async ({
   signal,
 }) => {
   const sessionKey = "agent:main:exec-capture-failure";
   await seedOrigin(sessionKey);
-  const captureTarget = sessionEvents.captureSessionEventTargetForHost;
-  vi.spyOn(sessionEvents, "captureSessionEventTargetForHost").mockImplementationOnce(
-    (agentId, targetSessionKey, options) =>
-      captureTarget(agentId, targetSessionKey, {
-        ...options,
-        assertCaptureCurrent: () => {
-          throw new Error("session event producer no longer owns its invocation");
-        },
-      }),
+  let faults = 0;
+  const capture = sessionEvents.captureSessionEventTargetForHost;
+  vi.spyOn(sessionEvents, "captureSessionEventTargetForHost").mockImplementation(
+    async (...args) => {
+      if (args[0] === "main" && args[1] === sessionKey && faults === 0) {
+        faults++;
+        throw new Error("session event destination unavailable");
+      }
+      return capture(...args);
+    },
   );
   const exec = createExecTool({
     config,
@@ -224,6 +225,7 @@ test("reports manual collection after real destination capture fails, then recov
         command: nodeCommand(child),
         background: true,
       });
+      expect(faults).toBe(1);
       expect(started.details.status).toBe("running");
       if (started.details.status !== "running") {
         throw new Error("Expected a background process");

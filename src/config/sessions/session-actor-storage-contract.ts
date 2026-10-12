@@ -121,7 +121,7 @@ export type SessionActorStorageOutcome<Value> =
     };
 
 export type SessionActorStorageAuthority = SessionActorAuthority & {
-  /** Released fork callbacks remain with the host while the actor owns their synchronous execution. */
+  /** The host supplies CLI fork capabilities; memory entry patches travel with the command. */
   parentFork?: SessionActorMemoryParentForkCallbacks;
   /** The existing live pending-input owner decides whether reconciliation may interrupt custody. */
   isPendingInputProtected?(

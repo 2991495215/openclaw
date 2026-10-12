@@ -298,7 +298,13 @@ it("uses current actor media policy for unbound incognito reads and refuses clos
   const { actor, owner } = await fixture();
   const requestAuth = { authMethod: "token" as const, operatorScopes: ["operator.admin"] };
   const selection = { config: cfg, sessionKey, agentId: "main", requestAuth };
-  const policy = resolveAssistantMediaPolicy(selection);
+  using policyRead = {
+    value: await resolveAssistantMediaPolicy(selection),
+    [Symbol.dispose]() {
+      this.value?.placementRead?.release();
+    },
+  };
+  const policy = policyRead.value;
   expect(policy?.session).toEqual({ sessionKey, agentId: "main", sessionId: sessionKey });
   expect(policy?.localRoots).toContain("/synthetic/workspace");
   const changed = await actor.storage!.mutate(
@@ -312,13 +318,19 @@ it("uses current actor media policy for unbound incognito reads and refuses clos
   expect(() => assertAssistantMediaPolicyCurrent(selection, policy!, false, requestAuth)).toThrow(
     "Media access changed",
   );
-  const current = resolveAssistantMediaPolicy(selection);
+  using currentRead = {
+    value: await resolveAssistantMediaPolicy(selection),
+    [Symbol.dispose]() {
+      this.value?.placementRead?.release();
+    },
+  };
+  const current = currentRead.value;
   expect(current?.localRoots).toContain("/synthetic/changed");
   expect(() =>
     assertAssistantMediaPolicyCurrent(selection, current!, false, requestAuth),
   ).not.toThrow();
   owner.closeSession(sessionKey);
-  expect(resolveAssistantMediaPolicy(selection)).toBeUndefined();
+  expect(await resolveAssistantMediaPolicy(selection)).toBeUndefined();
   expect(() => assertAssistantMediaPolicyCurrent(selection, current!, false, requestAuth)).toThrow(
     "Media access changed",
   );

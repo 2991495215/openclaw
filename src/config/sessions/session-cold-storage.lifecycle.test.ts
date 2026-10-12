@@ -49,6 +49,7 @@ import {
   prepareConversationIdentities,
   upsertConversationIdentities,
 } from "./session-accessor.sqlite-conversation.js";
+import { forkSessionEntryFromParentTargetWithPatch } from "./session-accessor.sqlite-parent-session.js";
 import { replaceTranscriptEvents } from "./session-accessor.sqlite-transcript-write.test-support.js";
 import { trimSessionTranscriptForManualCompact } from "./session-accessor.transcript.js";
 import { memorySessionActorOwners } from "./session-actor-memory-owner.js";
@@ -944,13 +945,15 @@ describe("cold current transcript lifecycle", () => {
     await fs.unlink(fixture.archivePath);
     const before = fixture.snapshot();
     await expect(
-      forkSessionEntryFromParentTarget({
-        agentId: fixture.scope.agentId,
-        storePath: fixture.scope.storePath,
-        parentTarget: fixture.target,
-        sessionTarget: { canonicalKey: childKey, storeKeys: [childKey] },
-        skipForkWhen: (entry) => entry.sessionId === "existing-child",
-      }),
+      forkSessionEntryFromParentTargetWithPatch(
+        {
+          agentId: fixture.scope.agentId,
+          storePath: fixture.scope.storePath,
+          parentTarget: fixture.target,
+          sessionTarget: { canonicalKey: childKey, storeKeys: [childKey] },
+        },
+        { skipExisting: true },
+      ),
     ).resolves.toMatchObject({
       status: "skipped",
       reason: "existing-entry",

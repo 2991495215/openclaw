@@ -62,11 +62,8 @@ function commitParentFork(
   if (!base) {
     return { status: "missing-entry" };
   }
-  if (
-    callbacks?.skipForkWhen?.(structuredClone(base)) ??
-    (input.patch?.skipExisting && base.sessionId.trim())
-  ) {
-    const skipped = callbacks?.skipPatch?.(structuredClone(base)) ?? input.patch?.skipped;
+  if (input.patch?.skipExisting && base.sessionId.trim()) {
+    const skipped = input.patch.skipped;
     const sessionEntry = skipped
       ? installSessionActorMemoryEntry(
           context.edit(targetKey),
@@ -83,26 +80,11 @@ function commitParentFork(
   const source = resolveParentForkSourceTranscript(parent.events.map(({ event }) => event));
   const decision = planParentForkDecision(parentEntry, estimateParentForkPromptTokens(source));
   if (decision.status === "skip") {
-    const patch = callbacks?.decisionSkipPatch?.({
-      decision,
-      entry: structuredClone(base),
-      parentEntry: structuredClone(parentEntry),
-    });
-    const sessionEntry = patch
-      ? installSessionActorMemoryEntry(
-          context.edit(targetKey),
-          preserveSqliteSameKeySessionRolloverLineage({
-            next: mergeSessionEntry(base, patch),
-            previous: base,
-            sessionKey: targetKey,
-          }),
-        )
-      : base;
     return {
       status: "skipped",
       reason: "decision-skip",
       parentEntry,
-      sessionEntry,
+      sessionEntry: base,
       decision,
     };
   }
@@ -110,13 +92,7 @@ function commitParentFork(
     return { status: "failed" };
   }
   const sessionId = randomUUID();
-  const patch =
-    callbacks?.patch?.({
-      decision,
-      entry: structuredClone(base),
-      parentEntry: structuredClone(parentEntry),
-      fork: { sessionId, sessionFile: targetKey },
-    }) ?? input.patch?.forked;
+  const patch = input.patch?.forked;
   const next: SessionEntry = {
     ...mergeSessionEntry(base, {
       ...patch,

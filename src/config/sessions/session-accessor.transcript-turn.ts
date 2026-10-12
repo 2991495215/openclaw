@@ -309,7 +309,7 @@ async function appendTranscriptTurnMessages(
     }
   }
   // Resolve cursors only after the last explicit parent has chosen the branch.
-  rememberCommittedTranscriptMessageSequences(target, appendedMessages);
+  await rememberCommittedTranscriptMessageSequences(target, appendedMessages);
   return appendedMessages;
 }
 

@@ -3,7 +3,6 @@ import { resolveIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-ag
 import { upsertSessionEntryCore } from "./session-accessor.sqlite-entry.js";
 import { rewindSessionToMessage } from "./session-accessor.sqlite-message-cut.js";
 import {
-  forkSessionEntryFromParentTarget,
   forkSessionEntryFromParentTargetWithPatch,
   forkSessionTranscriptFromParent,
   prepareSessionForkTranscript,
@@ -266,70 +265,24 @@ it.each(["main", "research"])(
   },
 );
 
-it.each(["callback", "typed"])(
-  "forks current memory state through the %s entry API",
-  async (mode) => {
-    const { parent, childKey } = await fixture();
-    const params = {
+it("forks current memory state with a data-only entry patch", async () => {
+  const { parent, childKey } = await fixture();
+  const result = await forkSessionEntryFromParentTargetWithPatch(
+    {
       storePath: parent.owner.path,
       agentId: "main",
       parentTarget: { canonicalKey: parentKey, storeKeys: [parentKey] },
       sessionTarget: { canonicalKey: childKey, storeKeys: [childKey] },
       fallbackEntry: { sessionId: "child-seed", updatedAt: 2 },
-    };
-    const result =
-      mode === "callback"
-        ? await forkSessionEntryFromParentTarget({
-            ...params,
-            patch: ({ fork }) => ({ label: fork.sessionId }),
-          })
-        : await forkSessionEntryFromParentTargetWithPatch(params, {
-            forked: { label: "Copied child" },
-          });
-    expect(result.status).toBe("forked");
-    if (result.status !== "forked") {
-      throw new Error("Expected child fork");
-    }
-    expect(result.sessionEntry.label).toBe(
-      mode === "callback" ? result.fork.sessionId : "Copied child",
-    );
-    expect(parent.owner.readSession(childKey, authority)?.entry?.sessionId).toBe(
-      result.fork.sessionId,
-    );
-  },
-);
-
-it.each(["existing-entry", "decision-skip"])(
-  "checks authority after selecting a %s memory child patch",
-  async (reason) => {
-    const { parent, childKey } = await fixture("main", {
-      totalTokens: 200_000,
-      totalTokensFresh: true,
-      totalTokensVersion: 1,
-    });
-    let patchSelected = false;
-    const selectPatch = () => {
-      patchSelected = true;
-      return { label: "unauthorized" };
-    };
-    await expect(
-      forkSessionEntryFromParentTarget({
-        agentId: "main",
-        storePath: parent.owner.path,
-        parentTarget: { canonicalKey: parentKey, storeKeys: [parentKey] },
-        sessionTarget: { canonicalKey: childKey, storeKeys: [childKey] },
-        fallbackEntry: { sessionId: "child-seed", updatedAt: 2 },
-        skipForkWhen: () => reason === "existing-entry",
-        skipPatch: selectPatch,
-        decisionSkipPatch: selectPatch,
-        commitGuard: () => {
-          if (patchSelected) {
-            throw new Error("parent authority closed");
-          }
-        },
-      }),
-    ).rejects.toThrow("parent authority closed");
-    expect(patchSelected).toBe(true);
-    expect(parent.owner.readSession(childKey, authority)?.entry).toBeUndefined();
-  },
-);
+    },
+    { forked: { label: "Copied child" } },
+  );
+  expect(result.status).toBe("forked");
+  if (result.status !== "forked") {
+    throw new Error("Expected child fork");
+  }
+  expect(result.sessionEntry.label).toBe("Copied child");
+  expect(parent.owner.readSession(childKey, authority)?.entry?.sessionId).toBe(
+    result.fork.sessionId,
+  );
+});

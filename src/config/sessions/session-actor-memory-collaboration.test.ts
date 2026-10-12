@@ -21,6 +21,7 @@ import {
 } from "./session-sharing-store.async.js";
 import { isSessionMember, readSessionMembersInWorker } from "./session-sharing-store.js";
 import { listSessionSuggestions } from "./session-suggestion-store.read.js";
+import type { SessionEntry } from "./types.js";
 
 vi.mock("node:sqlite", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:sqlite")>()),
@@ -92,6 +93,45 @@ describe("memory collaboration through the public adapters", () => {
     ).rejects.toThrow("session changed before reaction mutation");
     expect(await updateSessionGroupCategoriesInWorker({ scope, from: "Work" })).toBe(0);
     expect(memorySessionActorOwners.list()).toEqual([]);
+  });
+  it("publishes stable communication facts for activity and changed facts for policy", async () => {
+    const { actor, storage, scope } = await fixture();
+    const bindings: Array<string | undefined> = [];
+    const stop = sessionChanges.subscribeFacts((change) => {
+      if (
+        "sessionKey" in change &&
+        change.sessionKey === scope.sessionKey &&
+        change.facts?.kind === "replacement"
+      ) {
+        bindings.push(change.facts.communicationBinding);
+      }
+    });
+    const replace = async (patch: Partial<SessionEntry>) => {
+      const before = actor.snapshot(authority)?.entry;
+      if (!before) {
+        throw new Error("Expected the current memory entry");
+      }
+      committed(
+        await storage.mutate(
+          {
+            type: "session.entry.replace",
+            input: { expected: before, entry: { ...before, ...patch } },
+          },
+          authority,
+        ),
+      );
+    };
+    try {
+      await replace({ updatedAt: 2 });
+      await replace({ updatedAt: 3 });
+      await replace({ communication: { receive: "never" } });
+      expect(bindings).toHaveLength(3);
+      expect(bindings[0]).toEqual(expect.any(String));
+      expect(bindings[1]).toBe(bindings[0]);
+      expect(bindings[2]).not.toBe(bindings[1]);
+    } finally {
+      stop();
+    }
   });
   it("publishes current membership and preserves a re-added grant against stale removal", async () => {
     const { actor, scope } = await fixture();

@@ -1,6 +1,5 @@
 import type { ParentForkSourceTranscript } from "./session-accessor.sqlite-parent-fork.js";
 import type {
-  ForkSessionEntryFromParentTargetParams,
   ForkSessionEntryFromParentTargetResult,
   ForkSessionFromParentTranscriptResult,
 } from "./session-accessor.types.js";
@@ -17,11 +16,8 @@ export type SessionActorMemoryForkReads = {
   };
 };
 
-/** Host callbacks run against the current memory transaction, outside the cloned command. */
-export type SessionActorMemoryParentForkCallbacks = Pick<
-  ForkSessionEntryFromParentTargetParams,
-  "patch" | "skipPatch" | "skipForkWhen" | "decisionSkipPatch"
-> & {
+/** CLI capability lookup stays with the host; entry patches are command data. */
+export type SessionActorMemoryParentForkCallbacks = {
   supportsCliFork?: (provider: string) => boolean;
 };
 
