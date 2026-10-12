@@ -198,7 +198,7 @@ describe("Web Push router authority at the worker grant", () => {
       expect(prepareUserProfileSelectionAuthority).toHaveBeenCalledWith(
         client.authenticatedUserProfile?.profileId,
       );
-      expect(readResidentUserProfileId).toHaveBeenCalled();
+      expect(readResidentUserProfileId).not.toHaveBeenCalled();
       expect(persisted).not.toHaveBeenCalled();
       if (scenario === "transport retirement") {
         connection.abort();
