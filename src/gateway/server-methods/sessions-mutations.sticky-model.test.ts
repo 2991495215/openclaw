@@ -69,6 +69,7 @@ import { registerSessionNativeRuntimeConsentTests } from "./sessions-mutations.n
 import { registerSessionOperatorPreparationTests } from "./sessions-mutations.operator-preparation.test-support.js";
 import { registerSessionRuntimeWindowTests } from "./sessions-mutations.runtime-windows.test-support.js";
 import { registerSessionSandboxStickyModelTests } from "./sessions-mutations.sandbox.test-support.js";
+import { sessionLog } from "./sessions-shared.js";
 
 const defaultAgents: Record<string, AgentEntryConfig> = {
   main: {},
@@ -486,6 +487,7 @@ describe("sessions.patch personal model-account ownership", () => {
         return catalog.promise;
       });
       const readCredential = vi.spyOn(userModelAccounts, "readUserModelAuthProfile");
+      const warnings = vi.spyOn(sessionLog, "warn");
       const pending = patchSession(
         {
           key: sessionKey,
@@ -499,8 +501,15 @@ describe("sessions.patch personal model-account ownership", () => {
       try {
         await Promise.race([
           catalogEntered.promise,
-          pending.then(() => {
-            throw new Error("Session patch completed before loading the model catalog");
+          pending.then((response) => {
+            throw new Error(
+              `Session patch completed before loading the model catalog: ${JSON.stringify({
+                loss,
+                ok: response[0],
+                error: response[2],
+                warnings: warnings.mock.calls,
+              })}`,
+            );
           }),
         ]);
         expect(requestContext.loadGatewayModelCatalogSnapshot).toHaveBeenCalledOnce();

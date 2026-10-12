@@ -82,6 +82,7 @@ export async function registerNative(
     receiptEndpoint?: string;
   } = {},
 ) {
+  // Transcript writes read the Gateway-published runtime config; the test state resets it on exit.
   setRuntimeConfigSnapshot(config);
   const peer = fileURLToPath(
     {
