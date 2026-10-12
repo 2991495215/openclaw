@@ -32,7 +32,7 @@
  import { connectGatewayClient, disconnectGatewayClient } from "./test-helpers.e2e.js";
 
  const cliEntrypoint = resolveRuntimeWorkerArgv(
-@@ -51,6 +61,182 @@
+@@ -51,6 +61,183 @@
    let reloadScheduler: GatewayScheduler | undefined;
    const reloadFailures: string[] = [];
    const cronWarnings: unknown[][] = [];
@@ -69,9 +69,9 @@
 +  const runTurn = admissionTurn.runWithSqliteDatabaseAdmissionTurn;
 +  const turnSpy = vi
 +    .spyOn(admissionTurn, "runWithSqliteDatabaseAdmissionTurn")
-+    .mockImplementation((locations, operation, families) => {
++    .mockImplementation((locations, operation, families, signal) => {
 +      if (![...locations, ...(families ?? [])].some((location) => location.includes(agentId))) {
-+        return runTurn(locations, operation, families);
++        return runTurn(locations, operation, families, signal);
 +      }
 +      const stack = new Error().stack ?? "";
 +      const owner = stack.includes("session-cost-usage-worker-scope")
@@ -92,6 +92,7 @@
 +          }
 +        },
 +        families,
++        signal,
 +      );
 +    });
 +  let writerSequence = 0;
@@ -215,7 +216,7 @@
    const toPinoLikeLogger = logging.toPinoLikeLogger;
    const cronLoggerSpy = vi.spyOn(logging, "toPinoLikeLogger").mockImplementation((...args) => {
      const logger = toPinoLikeLogger(...args);
-@@ -83,6 +269,8 @@
+@@ -83,6 +270,8 @@
          overlapPhases,
          reloadFailures,
          cronWarnings,
@@ -224,7 +225,7 @@
        }),
      );
    });
-@@ -162,6 +350,14 @@
+@@ -162,6 +351,14 @@
      reloadInfo.mockRestore();
      reloadError.mockRestore();
      cronLoggerSpy.mockRestore();
