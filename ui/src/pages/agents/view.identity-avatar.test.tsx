@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFailed, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { setAvatarGatewayOrigin } from "../../lib/identity-avatar-context.ts";
 import { mountSolid } from "../../test-helpers/solid-render.tsx";
@@ -21,10 +21,32 @@ const revokeObjectURL = vi.fn<typeof URL.revokeObjectURL>();
 
 beforeEach(() => {
   const nativeFetch = globalThis.fetch;
+  const requests: { path: string; stack: string[] }[] = [];
+  onTestFailed(() => {
+    console.error("[identity-avatar fetch diagnostic]", JSON.stringify(requests, null, 2));
+  });
   fetchAvatar.mockReset();
   vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : String(input);
-    return url.startsWith("data:") ? nativeFetch(input, init) : fetchAvatar(input, init);
+    if (url.startsWith("data:")) {
+      return nativeFetch(input, init);
+    }
+    let path = "<unparseable>";
+    try {
+      const parsed = new URL(url, globalThis.location.href);
+      const revision = parsed.searchParams.get("v");
+      path = parsed.pathname + (revision && /^\d+$/.test(revision) ? `?v=${revision}` : "");
+    } catch {
+      // Diagnostics must not change how the existing fetch mock handles the input.
+    }
+    requests.push({
+      path,
+      stack: (new Error().stack ?? "")
+        .split("\n")
+        .flatMap((line) => line.match(/(?:ui\/src|node_modules)\/[^\s)?]+/)?.[0] ?? [])
+        .slice(0, 8),
+    });
+    return fetchAvatar(input, init);
   });
   let sequence = 0;
   createObjectURL.mockReset().mockImplementation(() => `blob:settings-avatar-${++sequence}`);
