@@ -12,6 +12,7 @@ import {
 } from "../../scripts/lib/local-build-metadata.mts";
 import {
   createOpenClawTestInstance,
+  type GatewayReadinessDiagnostic,
   type OpenClawTestInstance,
 } from "../../test/helpers/openclaw-test-instance.js";
 import { createDeferred, withinTest, withTestTimeout } from "../../test/helpers/promise.js";
@@ -94,13 +95,36 @@ describe("Gateway Active Memory", () => {
           let recallRequests = 0;
           let memoryToolIssued = false;
           let phase = "preparing fixture";
+          const clientLogs: string[] = [];
+          const captureClientLog = (message: string) => {
+            clientLogs.push(message);
+            if (clientLogs.length > 32) {
+              clientLogs.shift();
+            }
+          };
           const diagnostics: {
             statusLines?: string[];
             preparedRecallConfig?: Record<string, boolean>;
+            connectFailure?: {
+              transportConnected: boolean;
+              pid?: number;
+              exitCode?: number | null;
+              signalCode?: NodeJS.Signals | null;
+              readiness?: Pick<
+                GatewayReadinessDiagnostic,
+                "outcome" | "attempts" | "elapsedMs" | "lastProbe"
+              >;
+            };
           } = {};
           let sessionFound = false;
           let modelSelectionLocked = false;
-          onTestFailed(() => {
+          onTestFailed(async () => {
+            const { redactSensitiveText } = await import("../logging/redact.js");
+            const redact = (text: string) =>
+              redactSensitiveText(
+                instance ? text.replaceAll(instance.gatewayToken, "[gateway token]") : text,
+                { mode: "tools" },
+              );
             const gatewayLogs = instance?.logs() ?? "";
             console.info({
               phase,
@@ -111,6 +135,9 @@ describe("Gateway Active Memory", () => {
               preparedRecallConfig: diagnostics.preparedRecallConfig,
               sessionFound,
               modelSelectionLocked,
+              connectFailure: diagnostics.connectFailure,
+              clientLogs: redact(clientLogs.join("\n")).slice(-16_384),
+              gatewayLogs: redact(gatewayLogs).slice(-65_536),
               recallStatus: diagnostics.statusLines
                 ?.find((line) => line.startsWith("🧩 Active Memory: status="))
                 ?.slice(0, 240),
@@ -298,6 +325,7 @@ describe("Gateway Active Memory", () => {
           signal.throwIfAborted();
           await instance.startGateway();
           signal.throwIfAborted();
+          phase = "connecting Gateway client";
           const sessionKey = "agent:main:main";
           const runId = randomUUID();
           const connected = createDeferred();
@@ -316,6 +344,8 @@ describe("Gateway Active Memory", () => {
             hostDeps: {
               signDevicePayload: signEd25519Payload,
               publicKeyRawBase64UrlFromPem: publicKeyRawBase64UrlFromEd25519Pem,
+              logDebug: captureClientLog,
+              logError: captureClientLog,
             },
             onHelloOk: () => connected.resolve(),
             onConnectError: connected.reject,
@@ -344,6 +374,21 @@ describe("Gateway Active Memory", () => {
             signal.throwIfAborted();
             client.start();
             await withTestTimeout(connected.promise, 10_000, "Gateway connect timeout");
+          } catch (error) {
+            const readiness = instance.readiness.at(-1);
+            diagnostics.connectFailure = {
+              transportConnected: client.connected,
+              pid: instance.child?.pid,
+              exitCode: instance.child?.exitCode,
+              signalCode: instance.child?.signalCode,
+              readiness: readiness && {
+                outcome: readiness.outcome,
+                attempts: readiness.attempts,
+                elapsedMs: readiness.elapsedMs,
+                lastProbe: readiness.lastProbe,
+              },
+            };
+            throw error;
           } finally {
             signal.removeEventListener("abort", abortConnect);
           }
