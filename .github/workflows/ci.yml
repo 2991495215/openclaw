@@ -27,6 +27,11 @@ on:
         required: false
         default: false
         type: boolean
+      diagnose_node_wire:
+        description: Run the frozen node worker launch wire regression
+        required: false
+        default: false
+        type: boolean
       base_sha:
         description: Full predecessor commit SHA
         required: true
@@ -38,7 +43,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}
+  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}-${{ inputs.diagnose_node_wire }}
   cancel-in-progress: false
 jobs:
   render:
@@ -141,7 +146,7 @@ jobs:
   main-dependencies:
     name: Main dependency attribution
     needs: [render]
-    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.verify_sdk_static && !inputs.diagnose_doctor }}
+    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.verify_sdk_static && !inputs.diagnose_doctor && !inputs.diagnose_node_wire }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -392,5 +397,50 @@ jobs:
         with:
           name: doctor-regression-${{ github.run_id }}-${{ github.run_attempt }}
           path: .artifacts/doctor-regression*
+          if-no-files-found: warn
+          retention-days: 14
+  node-wire:
+    if: ${{ inputs.diagnose_node_wire }}
+    name: Frozen node worker launch wire regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.head_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .ci-harness
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.ci-harness/.github/actions/setup-node-env
+        with:
+          node-version: "24.21.0"
+          semantic-checks: "true"
+          cache-mode: off
+          install-bun: "false"
+          dependency-cache: "false"
+          frozen-lockfile: "true"
+      - name: Verify the frozen node worker launch wire
+        env:
+          OPENCLAW_LOCAL_CHECK: "0"
+          OPENCLAW_VITEST_RUNTIME: node
+          CANDIDATE_SHA: ${{ inputs.head_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          mkdir -p .artifacts
+          node --input-type=module -e 'console.log(JSON.stringify({ candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, runtime: "node", test: "test/e2e/qa-lab/runtime/node-worker-launch-wire.e2e.test.ts" }, null, 2))' > .artifacts/node-wire-provenance.json
+          pnpm test test/e2e/qa-lab/runtime/node-worker-launch-wire.e2e.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/node-wire.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: ${{ always() }}
+        with:
+          name: node-wire-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/node-wire*
           if-no-files-found: warn
           retention-days: 14
