@@ -85,6 +85,7 @@ export function isCliRuntimeAliasForProvider(params: {
 
 type RuntimeAliasComparisonOptions = {
   config?: OpenClawConfig;
+  metadataSnapshot?: PluginMetadataSnapshot | null;
 };
 
 function canonicalizeRuntimeAliasProvider(
@@ -96,6 +97,7 @@ function canonicalizeRuntimeAliasProvider(
       runtime: provider,
       config: options.config,
       includeSetupRegistry: options.config !== undefined,
+      metadataSnapshot: options.metadataSnapshot,
     }) ?? provider
   );
 }
@@ -113,8 +115,11 @@ function normalizeRuntimeModelRefForComparison(
     canonicalizeRuntimeAliasProvider(parsed.provider, options),
   );
   const modelId =
-    resolveProviderModelCatalogId({ provider: canonicalProvider, modelId: parsed.modelId }) ??
-    parsed.modelId;
+    resolveProviderModelCatalogId({
+      provider: canonicalProvider,
+      modelId: parsed.modelId,
+      metadataSnapshot: options.metadataSnapshot,
+    }) ?? parsed.modelId;
   return `${canonicalProvider}/${modelId}`;
 }
 

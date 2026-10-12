@@ -14,7 +14,8 @@ import {
 } from "./refresh-state.js";
 import { resolveReusableWorkspaceSkillSnapshot } from "./session-snapshot.js";
 
-vi.mock("../loading/plugin-skills.js", () => ({
+vi.mock("../loading/plugin-skills.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../loading/plugin-skills.js")>()),
   resolvePluginSkillRoots: () => [],
   resolvePluginSkillRootsFromMetadata: () => [],
 }));

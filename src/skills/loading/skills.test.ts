@@ -35,7 +35,8 @@ import type { SkillEntry, SkillSnapshot } from "../types.js";
 import { shouldIncludeSkill } from "./config.js";
 import { buildSkillSnapshot } from "./workspace-skill-prompt.js";
 
-vi.mock("./plugin-skills.js", () => ({
+vi.mock("./plugin-skills.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./plugin-skills.js")>()),
   resolvePluginSkillRoots: () => [],
   resolvePluginSkillRootsFromMetadata: () => [],
 }));
