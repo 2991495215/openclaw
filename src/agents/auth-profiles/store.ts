@@ -907,11 +907,11 @@ export function createAuthProfileStoreRuntime(
     if (isEnvOnlyAuthProfileRuntime()) {
       return createEmptyAuthProfileStore();
     }
-    if (!preparedRows) {
-      prepareSharedAuthStoreOwnershipForNative(env ?? getScopedAuthProfileEnv());
-    }
     const effectiveAgentDir = resolveRuntimeAuthProfileAgentDir(agentDir);
     const effectiveOptions = resolveRuntimeAuthProfileLoadOptions(options);
+    if (!preparedRows && !effectiveAgentDir) {
+      prepareSharedAuthStoreOwnershipForNative(env ?? getScopedAuthProfileEnv());
+    }
     const databasePath = effectiveAgentDir
       ? resolveAgentAuthPath(effectiveAgentDir)
       : resolveSharedAuthPath(env);
@@ -1035,6 +1035,9 @@ export function createAuthProfileStoreRuntime(
     }
     const effectiveAgentDir = resolveRuntimeAuthProfileAgentDir(agentDir);
     const effectiveOptions = resolveRuntimeAuthProfileLoadOptions(options);
+    if (!readPreparedStore && (!effectiveAgentDir || !effectiveOptions?.inheritedAuthDir)) {
+      prepareSharedAuthStoreOwnershipForNative(env ?? getScopedAuthProfileEnv());
+    }
     const authPath = effectiveAgentDir
       ? resolveAgentAuthPath(effectiveAgentDir)
       : resolveSharedAuthPath(env);

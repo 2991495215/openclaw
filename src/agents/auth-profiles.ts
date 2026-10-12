@@ -70,6 +70,7 @@ export {
 export {
   clearRuntimeAuthProfileStoreSnapshots,
   replaceRuntimeAuthProfileStoreSnapshots,
+  replaceRuntimeAuthProfileStoreSnapshotsAsync,
 } from "./auth-profiles/runtime-snapshots.js";
 export type {
   AuthProfileCredential,

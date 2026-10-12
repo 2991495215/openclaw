@@ -37,13 +37,14 @@ it("counts caller-visible conversations once through direct and delegated work b
       agents: { entries: { main: {}, work: {} } },
     });
     const client = identifiedClient(ada);
+    const now = Date.now();
     const seed = (name: string, agentId = "main", fields: Partial<SessionEntry> = {}) => {
       const sessionKey = "agent:" + agentId + ":" + name;
       const scope = { agentId, sessionKey };
       const { owner, participants, ...entry } = fields;
       replaceSessionEntrySync(scope, {
         sessionId: name,
-        updatedAt: 100,
+        updatedAt: now,
         visibility: "shared",
         createdActor: actor(ada),
         ...entry,
@@ -56,7 +57,7 @@ it("counts caller-visible conversations once through direct and delegated work b
         });
       }
       for (const participant of participants ?? []) {
-        recordSessionParticipant(scope, { identity: participant.identity, promptedAt: 100 });
+        recordSessionParticipant(scope, { identity: participant.identity, promptedAt: now });
       }
       return sessionKey;
     };
@@ -72,7 +73,7 @@ it("counts caller-visible conversations once through direct and delegated work b
     seed("reassigned-to-bob", "work", { owner: { actor: actor(bob) } });
     seed("own-draft", "main", { visibility: "draft" });
     const visibleChild = seed("dashboard:visible-child", "work", { spawnedBy: idle });
-    seed("archive", "main", { archivedAt: 100, status: "done" });
+    seed("archive", "main", { archivedAt: now, status: "done" });
     const privateKey = seed("private", "work", { createdActor: actor(bob), visibility: "draft" });
     seed("incognito", "main", { incognito: true });
     const child = seed("subagent:hidden", "main", { spawnedBy: idle });

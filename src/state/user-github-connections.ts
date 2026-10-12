@@ -13,6 +13,7 @@ import {
 } from "./openclaw-state-worker-context.js";
 import { runOpenClawStateWorkerOperation } from "./openclaw-state-worker-store.js";
 import {
+  invalidateUserGitHubConnectionAuthority,
   observeUserGitHubConnectionAuthority,
   publishUserGitHubConnectionCommit,
 } from "./user-github-connection-events.js";
@@ -194,37 +195,49 @@ export async function listUserGitHubConnectionsAsync(): Promise<UserGitHubConnec
   }));
 }
 
-async function write<Key extends keyof UserGitHubConnectionWorkerOperations>(
+async function write<Key extends "userGitHubConnections.mutate" | "userGitHubConnections.refresh">(
   type: Key,
   input: UserGitHubConnectionWorkerOperations[Key]["input"],
   assertCurrent: () => void,
 ): Promise<UserGitHubConnectionWorkerOperations[Key]["output"]> {
   const context = captureOpenClawStateWorkerContext();
   const captured = structuredClone(input);
-  return await runOpenClawStateWorkerOperation(
-    context,
-    (scope) => scope.execute({ type, input: captured }),
-    {
-      assertCurrent,
-      createAdmission: () => {
-        const admission = createSqliteWorkerOperationAdmission((_request, grant) => {
-          context.admission.assertCurrent();
-          assertCurrent();
-          if (_request.stage === "commit" && !isUserGitHubConnectionCommit(_request.facts)) {
-            throw new Error("Personal GitHub connection returned invalid commit facts");
-          }
-          grant();
-        });
-        observeSqliteWorkerCommittedFacts(admission, ({ facts }) => {
-          if (!isUserGitHubConnectionCommit(facts)) {
-            throw new Error("Personal GitHub connection returned an invalid commit receipt");
-          }
-          publishUserGitHubConnectionCommit(context.admission.databasePath, facts);
-        });
-        return { admission, nativeLocations: [context.admission.databasePath] };
+  const affectedOwners = new Set([captured.owner]);
+  try {
+    return await runOpenClawStateWorkerOperation(
+      context,
+      (scope) => scope.execute({ type, input: captured }),
+      {
+        assertCurrent,
+        createAdmission: () => {
+          const admission = createSqliteWorkerOperationAdmission((_request, grant) => {
+            context.admission.assertCurrent();
+            assertCurrent();
+            if (_request.stage === "commit") {
+              if (!isUserGitHubConnectionCommit(_request.facts)) {
+                throw new Error("Personal GitHub connection returned invalid commit facts");
+              }
+              for (const owner of _request.facts.changedOwners) {
+                affectedOwners.add(owner);
+              }
+            }
+            grant();
+          });
+          observeSqliteWorkerCommittedFacts(admission, ({ facts }) => {
+            if (!isUserGitHubConnectionCommit(facts)) {
+              throw new Error("Personal GitHub connection returned an invalid commit receipt");
+            }
+            publishUserGitHubConnectionCommit(context.admission.databasePath, facts);
+          });
+          return { admission, nativeLocations: [context.admission.databasePath] };
+        },
       },
-    },
-  );
+    );
+  } catch (error) {
+    // A lost receipt cannot leave credentials prepared before the write authoritative.
+    invalidateUserGitHubConnectionAuthority(context.admission.databasePath, [...affectedOwners]);
+    throw error;
+  }
 }
 
 export async function mutateUserGitHubConnection(

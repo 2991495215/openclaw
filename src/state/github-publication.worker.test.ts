@@ -121,7 +121,7 @@ function read(row: RepositoryPublicationRow) {
 }
 function holdNextReply(commandType = "githubPublications.repository") {
   const ready = createDeferredCore();
-  let deliver: (() => void) | undefined;
+  let deliver: ((error?: Error) => void) | undefined;
   let target: { worker: Worker; id: number } | undefined;
   // oxlint-disable-next-line typescript/unbound-method -- Reflect.apply preserves the posting Worker.
   const postMessage = Worker.prototype.postMessage;
@@ -153,19 +153,26 @@ function holdNextReply(commandType = "githubPublications.repository") {
   ) {
     if (event === "message" && this === target?.worker && reply.id === target.id && reply.ok) {
       messages.mockRestore();
-      deliver = () => {
-        Reflect.apply(emit, this, [event, reply]);
+      deliver = (error) => {
+        const outcome: SqliteWorkerReply = error
+          ? {
+              id: reply.id,
+              ok: false,
+              error: { name: error.name, message: error.message, code: "outcome-unknown" },
+            }
+          : reply;
+        Reflect.apply(emit, this, [event, outcome]);
       };
       ready.resolve();
       return true;
     }
     return Reflect.apply(emit, this, [event, reply]);
   });
-  const release = () => {
+  const release = (error?: Error) => {
     const send = deliver;
     deliver = undefined;
     heldReplies.delete(release);
-    send?.();
+    send?.(error);
   };
   heldReplies.add(release);
   return { ready: ready.promise, release };
@@ -479,6 +486,54 @@ it("revokes personal source authority at commit before reply delivery without re
     );
     expect(read(row)).toMatchObject({ ok: true, rows: [] });
   } finally {
+    await source.release();
+  }
+});
+
+it("revokes cached personal authority when a committed disconnect loses its receipt", async ({
+  signal,
+}) => {
+  const owner = ensureProfileForEmail("publication-lost-receipt@example.test").id;
+  updateUserGitHubConnection(
+    owner,
+    () => ({
+      ...disconnectedUserGitHubConnection(),
+      selection: {
+        kind: "connected",
+        profileId: "ghp_0123456789abcdef0123456789abcdef",
+        accountId: 42,
+        login: "fixture-user",
+        refreshToken: "synthetic-refresh",
+        accessExpiresAtMs: 1000,
+        refreshExpiresAtMs: 2000,
+        scopes: ["repo"],
+      },
+    }),
+    () => {},
+  );
+  const connection = await prepareUserGitHubConnection(owner);
+  const { source } = await sourceFixture("source-lost-connection-receipt", () => {}, owner);
+  const receipt = holdNextReceipt();
+  const reply = holdNextReply("userGitHubConnections.mutate");
+  const disconnected = mutateUserGitHubConnection(owner, { kind: "disconnect" }, () => {});
+  const refused = expect(disconnected).rejects.toThrow("connection write outcome is unknown");
+  try {
+    await withinTest(
+      awaitGateBeforeSettlement(
+        Promise.all([receipt.ready, reply.ready]),
+        disconnected,
+        "connection receipt and reply were not held",
+      ),
+      signal,
+    );
+    reply.release(new Error("connection write outcome is unknown"));
+    await refused;
+    expect(() => connection.read()).toThrow("My GitHub connection changed");
+    expect(() => bindGitHubPublicationSource(source)).toThrow("source authority changed");
+    expect((await prepareUserGitHubConnection(owner)).read()?.selection.kind).toBe("disconnected");
+  } finally {
+    receipt.release();
+    reply.release();
     await source.release();
   }
 });
