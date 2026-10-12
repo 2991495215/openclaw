@@ -24,7 +24,7 @@ resolveGlobalSingleton(cleanupKey, () => ({}), async () => {
     Reflect.deleteProperty(globalThis, cleanupKey);
   }
 });
-const options = { env: { OPENCLAW_STATE_DIR: path.join(root, "producer-state") } };
+const options = { env: { OPENCLAW_STATE_DIR: path.join(root, "producer-state") }, artifactPreservingReadOnly: false };
 let database: ReturnType<typeof openOpenClawStateDatabase>;
 registerClawInstallSchemaVersionSnapshotListener(() => {
   appendFileSync(log, "A:" + readCachedClawInstallSchemaVersions(options).kind + "\\n");
@@ -43,7 +43,7 @@ afterAll(() => {
 });
 `,
     "b-observer.test.ts": `${imports}
-const options = { env: { OPENCLAW_STATE_DIR: path.join(root, "observer-state") } };
+const options = { env: { OPENCLAW_STATE_DIR: path.join(root, "observer-state") }, artifactPreservingReadOnly: false };
 registerClawInstallSchemaVersionSnapshotListener(() => {
   appendFileSync(log, "B:" + readCachedClawInstallSchemaVersions(options).kind + "\\n");
 });

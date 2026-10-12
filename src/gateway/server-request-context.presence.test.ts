@@ -7,11 +7,12 @@ import { captureRuntimeConfigAsyncReader } from "../config/config.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { listSystemPresence } from "../infra/system-presence.js";
 import {
+  getUserProfileDisplay,
   prepareUserProfileCatalog,
   readResidentUserProfileId,
 } from "../state/user-profile-list.js";
 import { linkCanonicalUserProfileEmail } from "../state/user-profile-writes.js";
-import { ensureProfileForEmail, getUserProfileDisplay } from "../state/user-profiles.js";
+import { ensureProfileForEmail } from "../state/user-profiles.js";
 import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,

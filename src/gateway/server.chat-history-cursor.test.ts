@@ -380,7 +380,7 @@ describe("chat.history cursor catch-up", () => {
       const avatarUrls: string[] = [];
       for (const byte of [1, 2]) {
         expect(setAvatar(profile.id, new Uint8Array([byte]), "image/png").ok).toBe(true);
-        const { avatarRevision } = userProfiles.getUserProfileDisplay(profile.id);
+        const { avatarRevision } = userProfileList.getUserProfileDisplay(profile.id);
         const avatarUrl = buildControlUiUserAvatarPath(profile.id, avatarRevision);
         avatarUrls.push(avatarUrl);
         lookup.mockClear();
