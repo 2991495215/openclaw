@@ -1,9 +1,7 @@
 // Streams LLM responses through registered providers and normalizes events.
 // This facade owns the process-default AI runtime wiring: it installs the
-// OpenClaw host policy ports and registers built-in providers exactly once,
-// before any caller imports the stream API.
-import { defaultApiRegistry, defaultLlmRuntime } from "@openclaw/ai/internal/runtime";
-import { registerBuiltInApiProviders } from "@openclaw/ai/providers";
+// OpenClaw host policy ports; the process-default runtime owns built-in registration.
+import { defaultLlmRuntime } from "@openclaw/ai/internal/runtime";
 import { makeZeroUsageSnapshot } from "../agents/usage.js";
 import { classifyGatewayStorageFailure } from "../infra/sqlite-error-diagnostics.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
@@ -20,8 +18,6 @@ import type {
   SimpleStreamOptions,
 } from "./types.js";
 import { createAssistantMessageEventStream } from "./utils/event-stream.js";
-
-registerBuiltInApiProviders(defaultApiRegistry);
 
 // The process host outlives requests; only provider invocation carries caller authority.
 const ensureTransportRuntimeHost = createLazyPromise(
