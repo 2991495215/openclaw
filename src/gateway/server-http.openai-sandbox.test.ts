@@ -52,7 +52,11 @@ let proxyListener: Awaited<ReturnType<typeof reserveTestPortListener>>;
 let ownerListener: Awaited<ReturnType<typeof reserveTestPortListener>>;
 
 beforeAll(async () => {
-  state = await createOpenClawTestState({ label: "http-session-sandbox", scenario: "minimal" });
+  state = await createOpenClawTestState({
+    label: "http-session-sandbox",
+    scenario: "minimal",
+    prepareProfileCatalog: true,
+  });
   cfg = {
     agents: {
       entries: { main: {} },

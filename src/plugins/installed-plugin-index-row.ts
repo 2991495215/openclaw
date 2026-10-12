@@ -6,15 +6,17 @@ import {
 import {
   INSTALLED_PLUGIN_INDEX_STATE_KEY,
   readPluginMetadataStateRowsInDatabase,
+  type PluginMetadataStateKey,
+  type PluginMetadataStateRow,
+  type PluginMetadataStateSelector,
 } from "./plugin-metadata-state-row.kernel.js";
 
-export { INSTALLED_PLUGIN_INDEX_STATE_KEY } from "./plugin-metadata-state-row.kernel.js";
-
-export type PluginMetadataStateSelector = "installed-index" | "bundled-discovery";
-export type PluginMetadataStateKey =
-  | typeof INSTALLED_PLUGIN_INDEX_STATE_KEY
-  | "plugins.bundledDiscovery";
-export type PluginMetadataStateRow = { state_key: string; value_json: string };
+export {
+  INSTALLED_PLUGIN_INDEX_STATE_KEY,
+  type PluginMetadataStateKey,
+  type PluginMetadataStateRow,
+  type PluginMetadataStateSelector,
+} from "./plugin-metadata-state-row.kernel.js";
 
 /** Shared inspection commands use the same existing-only, artifact-preserving reader. */
 export function readPluginMetadataStateRowSync(

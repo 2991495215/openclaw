@@ -18,6 +18,8 @@ import { sessionSubscriptionHandlers } from "./server-methods/sessions-subscript
 import * as workspace from "./server-methods/workspace-files.js";
 import { roleClient, rolePolicyConfig, sharingPolicyClient } from "./session-sharing.test-utils.js";
 
+const profileState = { scenario: "minimal", prepareProfileCatalog: true } as const;
+
 afterEach(() => vi.restoreAllMocks());
 
 const methods = ["sessions.files.list", "sessions.files.get", "sessions.branches.list"] as const;
@@ -78,7 +80,7 @@ describe("narrow session read owners", () => {
   it.each([false, true])(
     "binds describe and message subscriptions to visible rows (roles=%s)",
     async (roles) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await withOpenClawTestState(profileState, async (state) => {
         const reader = roleClient("view", "row-reader");
         reader.connect.scopes = ["operator.sessions.read"];
         const owner = roleClient("view", "row-owner");
@@ -180,7 +182,7 @@ describe("narrow session read owners", () => {
   it.each(["current", "source", "generation"] as const)(
     "keeps the original %s through message subscription preparation",
     async (change) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      await withOpenClawTestState(profileState, async () => {
         const client = {
           ...roleClient("view", "subscription-reader"),
           connId: "subscription-reader",
@@ -270,7 +272,7 @@ describe("narrow session read owners", () => {
   it.each(["chat.metadata", "chat.startup"] as const)(
     "%s hides foreign draft metadata and rechecks held shared reads",
     async (method) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await withOpenClawTestState(profileState, async (state) => {
         const client = roleClient("view", "metadata-reader");
         const owner = roleClient("view", "metadata-owner");
         const cfg = rolePolicyConfig();
@@ -376,7 +378,7 @@ describe("narrow session read owners", () => {
 
   it("separates a trusted solo operator from its sharing exemption", async () => {
     const method = "sessions.files.get";
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const client = sharingPolicyClient({
         user: GATEWAY_OWNER_PROFILE_ID,
         scopes: ["operator.sessions.read"],
@@ -422,7 +424,7 @@ describe("narrow session read owners", () => {
   });
 
   it.each(methods)("%s retains shared VIEW and hides foreign drafts before I/O", async (method) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const reader = roleClient("view", "scoped-reader");
       reader.connect.scopes = ["operator.sessions.read"];
       const owner = roleClient("view", "scoped-owner");
@@ -483,7 +485,7 @@ describe("narrow session read owners", () => {
   });
 
   it.each(methods)("%s retains only current session read facts", async (method) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const reader = roleClient("view", "retained-reader");
       reader.connect.scopes = ["operator.sessions.read"];
       const cfg = rolePolicyConfig();
@@ -567,7 +569,7 @@ describe("narrow session read owners", () => {
   });
 
   it("rechecks session visibility before fetching a remote file after stat", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await withOpenClawTestState(profileState, async (state) => {
       const reader = roleClient("view", "remote-reader");
       reader.connect.scopes = ["operator.sessions.read"];
       const cfg = rolePolicyConfig();
@@ -636,7 +638,9 @@ describe("narrow session read owners", () => {
         if (revoke) {
           expect(respond.mock.calls[0]?.[1]).toBeUndefined();
         } else {
-          expect(respond.mock.calls[0]?.[1]).toMatchObject({ file: { content: "remote content" } });
+          expect(respond.mock.calls[0]?.[1]).toMatchObject({
+            file: { content: "remote content" },
+          });
         }
       }
     });
@@ -648,7 +652,7 @@ describe("narrow session read owners", () => {
     ["sessions.files.get", "solo"],
     ["sessions.files.get", "internal"],
   ] as const)("%s keeps missing-row access for %s callers", async (method, identity) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const client =
         identity === "internal"
           ? null

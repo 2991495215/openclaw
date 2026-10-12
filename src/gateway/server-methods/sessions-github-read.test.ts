@@ -12,7 +12,10 @@ import {
 } from "../../agents/github-tool-identity.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { createDeferredCore } from "../../shared/deferred.js";
-import type { UserGitHubConnection } from "../../state/user-github-connections.js";
+import {
+  prepareUserGitHubConnection,
+  type UserGitHubConnection,
+} from "../../state/user-github-connections.js";
 import { updateUserGitHubConnection } from "../../state/user-github-connections.test-support.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import * as prRead from "../control-ui-session-pr-read.js";
@@ -481,10 +484,10 @@ describe("publication receipt reads", () => {
           );
         }
         if (change === "github-unavailable") {
-          fixture.personalConnectionStatus.mockImplementationOnce(async (action) => ({
-            ...personalGitHubStatus(action),
-            state: "unavailable",
-          }));
+          fixture.personalConnectionStatus.mockImplementationOnce(async (action) => {
+            await prepareUserGitHubConnection(action.owner);
+            return { ...personalGitHubStatus(action), state: "unavailable" };
+          });
         }
         const entered = createDeferredCore();
         const pending = createDeferredCore<SessionGitHubStatusResult | null>();

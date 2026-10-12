@@ -15,10 +15,12 @@ import { upsertSessionEntryCore } from "./session-accessor.sqlite-entry.js";
 import { addSessionMember, removeSessionMember } from "./session-sharing-store.js";
 import { loadTranscriptEvents } from "./session-transcript-events.js";
 
+const profileState = { scenario: "minimal", prepareProfileCatalog: true } as const;
+
 it.each([false, true])(
   "retains foreign input authority through transcript rewrite (revoked: %s)",
   async (revoked) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await withOpenClawTestState(profileState, async (state) => {
       const cfg = rolePolicyConfig();
       const client = roleClient("view", "foreign-mirror-member");
       const profileId = expectDefined(client.authenticatedUserProfile, "fixture profile").profileId;

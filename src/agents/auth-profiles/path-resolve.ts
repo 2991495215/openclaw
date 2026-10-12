@@ -5,6 +5,7 @@
 import path from "node:path";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { resolveStateDir } from "../../config/paths.js";
+import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { readConfigMachineStateAsync } from "../../state/config-machine-state-async.js";
 import { readConfigMachineState } from "../../state/config-machine-state.js";
 import { isArtifactPreservingStateRead } from "../../state/openclaw-state-db-readonly.js";
@@ -31,7 +32,11 @@ export function captureAuthProfileOwnerScope(
 
 // Explicit env callers can address another state root in the same process.
 // Pin each root once so later row changes require an owner-controlled restart.
-const sharedAuthStoreOwnershipByDatabasePath = new Map<string, SharedAuthStoreOwnership>();
+// Worker entrypoints and plugin SDK chunks must consume the same published owner.
+const sharedAuthStoreOwnershipByDatabasePath = resolveGlobalSingleton(
+  Symbol.for("openclaw.sharedAuthStoreOwnershipByDatabasePath"),
+  () => new Map<string, SharedAuthStoreOwnership>(),
+);
 
 class InvalidSharedAuthStoreOwnershipError extends Error {
   readonly code = "INVALID_SHARED_AUTH_STORE_OWNERSHIP" as const;

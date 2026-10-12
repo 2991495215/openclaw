@@ -62,7 +62,7 @@ async function dispatch(
 it.each(["person", "shared owner"] as const)(
   "serves profile administration for %s through registered Gateway methods without main-thread SQL",
   async (kind) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const admin =
         kind === "shared owner"
           ? ensureGatewayOwnerProfile(null)
@@ -130,7 +130,7 @@ it.each(["person", "shared owner"] as const)(
 );
 
 it("rejects malformed or conflicting assignments without changing the saved binding", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const admin = ensureProfileForEmail("admin@example.test");
     const other = ensureProfileForEmail("other@example.test");
     const link = { profileId: admin.id, identity };

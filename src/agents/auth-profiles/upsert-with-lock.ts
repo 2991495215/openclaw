@@ -5,6 +5,7 @@ import { AUTH_STORE_VERSION } from "./constants.js";
 import { normalizeAuthProfileCredential } from "./credential-normalize.js";
 import { withOAuthProfileLock, withOAuthProfileLocks } from "./oauth-profile-lock.js";
 import { isOAuthRefreshFence, isSameOAuthRefreshGeneration } from "./oauth-refresh-marker.js";
+import { prepareSharedAuthStoreOwnership } from "./path-resolve.js";
 import { loadPersistedAuthProfileStore, loadPersistedSharedAuthProfileStore } from "./persisted.js";
 import {
   deletePersistedAuthProfileStoreRaw,
@@ -18,7 +19,7 @@ import {
   saveAuthProfileStoreWithPreparedOwner,
   updateAuthProfileStoreWithLock,
 } from "./store-runtime.js";
-import { findPersistedAuthProfileCredential } from "./store.js";
+import { findPersistedAuthProfileCredential, getScopedAuthProfileEnv } from "./store.js";
 import type { AuthProfileCredential, AuthProfileStore, OAuthCredential } from "./types.js";
 import { resetAuthProfileFailureState } from "./usage-state.js";
 
@@ -37,7 +38,9 @@ function loadAuthProfileWriteTarget(params: {
 }
 
 function resolveAuthProfileWriteEnv(params: { stateDir?: string }): NodeJS.ProcessEnv {
-  return params.stateDir ? { ...process.env, OPENCLAW_STATE_DIR: params.stateDir } : process.env;
+  return params.stateDir
+    ? { ...process.env, OPENCLAW_STATE_DIR: params.stateDir }
+    : (getScopedAuthProfileEnv() ?? process.env);
 }
 
 function loadAuthProfileWriteAuthorities(
@@ -172,8 +175,11 @@ export async function persistAuthProfileBatch(
   const authorityProfileIds = [...profiles.entries()]
     .filter(([, entry]) => needsOAuthRefreshAuthority(entry.credential))
     .map(([profileId]) => profileId);
+  if (authorityProfileIds.length > 0) {
+    await prepareSharedAuthStoreOwnership(resolveAuthProfileWriteEnv(params));
+  }
   const readAuthorities = () => loadAuthProfileWriteAuthorities(params, authorityProfileIds);
-  // Capture before yielding so a queued batch cannot restore an OAuth generation consumed while waiting.
+  // Capture before the lock wait so a queued batch cannot restore a consumed OAuth generation.
   const observedProfiles = readAuthorities();
 
   return await withOAuthProfileLocks(
@@ -351,6 +357,9 @@ export async function upsertAuthProfileWithLock(
   params: AuthProfileUpsertParams,
 ): Promise<AuthProfileStore | null> {
   const credential = normalizeAuthProfileCredential(params.credential);
+  if (needsOAuthRefreshAuthority(credential)) {
+    await prepareSharedAuthStoreOwnership(resolveAuthProfileWriteEnv(params));
+  }
   const observed = needsOAuthRefreshAuthority(credential)
     ? loadAuthProfileWriteAuthorities(params, [params.profileId]).get(params.profileId)
     : undefined;

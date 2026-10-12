@@ -768,14 +768,22 @@ describe("local setup recovery", () => {
   it("never completes a competing onboarding owner after setup succeeds", async () => {
     const pending = pendingOwner();
     const replacement = { ...pending, runId: "replacement-run" };
-    await rejectsRecovery(
-      replacement,
-      async () => {
-        localOnboarding.states.set(configPath, replacement);
-        return setupResult();
-      },
-      "Another onboarding run replaced this setup operation",
-    );
+    await expect(
+      setup({
+        deps: {
+          applySetup: async () => {
+            localOnboarding.states.set(configPath, replacement);
+            return setupResult();
+          },
+        },
+      }),
+    ).rejects.toThrow("Another onboarding run replaced this setup operation");
+    expect(localOnboarding.complete).toHaveBeenCalledExactlyOnceWith({
+      configPath,
+      runId: pending.runId,
+    });
+    expect(localOnboarding.states.get(configPath)).toEqual(replacement);
+    expect(lines.join("\n")).not.toContain("[openclaw] done: openclaw.setup");
   });
 
   it("rejects a replaced config identity at the setup config-write boundary", async () => {

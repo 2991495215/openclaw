@@ -35,7 +35,7 @@ import { listProjectedSessions } from "./session-utils-list.js";
 afterEach(() => vi.restoreAllMocks());
 
 it("projects send policy and recipient restrictions, clearing them when the current role permits sending", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const cfg = rolePolicyConfig();
     cfg.gateway!.roles!.definitions.write!.sandbox = "required";
     cfg.gateway!.roles!.definitions.restricted = {
@@ -111,7 +111,7 @@ it.each(["running", "queued", "capacity-wait"] as const)(
   "projects %s follow-up activity through completed subagent lineage outside the selected list page",
   async (state) => {
     using _ = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const cfg = rolePolicyConfig();
       const parent = "agent:main:parent";
       const child = "agent:main:subagent:child";
@@ -287,7 +287,7 @@ it.each(["running", "queued", "capacity-wait"] as const)(
 
 it("presents current recipient roles without SQLite while rejecting source overrides and excluded children", async () => {
   using _ = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const owner = ensureProfileForEmail("owner@presentation.test");
     const member = ensureProfileForEmail("member@presentation.test");
     const viewer = ensureProfileForEmail("viewer@presentation.test");
@@ -575,7 +575,7 @@ it("presents current recipient roles without SQLite while rejecting source overr
 });
 
 it("preserves selected account across role changes but rejects a changed merge identity without SQL", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const source = ensureProfileForEmail("source@expected-profile.test");
     const target = ensureProfileForEmail("target@expected-profile.test");
     const client = sharingPolicyClient({ user: source.id }) as GatewayWsClient;

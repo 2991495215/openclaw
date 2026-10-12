@@ -34,6 +34,8 @@ async function request(
   return expectDefined(respond.mock.calls[0], "RPC response");
 }
 
+const profileState = { scenario: "minimal", prepareProfileCatalog: true } as const;
+
 describe("registered chat read scope", () => {
   it.each([
     { name: "owner draft", actor: "owner", visibility: "draft", allowed: true },
@@ -61,7 +63,7 @@ describe("registered chat read scope", () => {
   ] as const)(
     "$name applies identical session visibility to history and full messages",
     async (testCase) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await withOpenClawTestState(profileState, async (state) => {
         const cfg = rolePolicyConfig();
         if (testCase.actor === "admin") {
           expectDefined(cfg.gateway?.roles?.definitions.write, "admin role definition").scopes = [
@@ -145,7 +147,7 @@ describe("registered chat read scope", () => {
   );
 
   it("traverses a full hidden page and keeps raw custody counts separate from execution", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const client = roleClient("write", "pagination-owner");
       const scope = {
         agentId: "main",
@@ -243,7 +245,7 @@ describe("registered chat read scope", () => {
   it.each(["draft", "replacement"] as const)(
     "rechecks %s after an asynchronous transcript read",
     async (change) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await withOpenClawTestState(profileState, async (state) => {
         const cfg = rolePolicyConfig();
         await state.writeConfig(cfg);
         const owner = roleClient("write", "async-owner");

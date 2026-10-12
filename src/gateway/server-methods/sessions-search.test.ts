@@ -117,6 +117,8 @@ async function useRestrictedSearchMetadata(others: "none" | "view" = "none") {
   };
 }
 
+const profileState = { scenario: "minimal", prepareProfileCatalog: true } as const;
+
 describe("sessions.search gateway method", () => {
   beforeEach(() => {
     cfg = {
@@ -135,7 +137,7 @@ describe("sessions.search gateway method", () => {
   });
 
   it("finds visible rows in a cold retired main store without an explicit key filter", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const { viewer, other } = await useRestrictedSearchMetadata();
       const visibleKey = "agent:main:retained";
       for (const [sessionKey, profileId] of [
@@ -168,7 +170,7 @@ describe("sessions.search gateway method", () => {
   });
 
   it("reports duplicate retired rows before searching either transcript store", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await withOpenClawTestState(profileState, async (state) => {
       const { viewer } = await useRestrictedSearchMetadata();
       cfg = {
         ...cfg,
@@ -207,7 +209,7 @@ describe("sessions.search gateway method", () => {
   });
 
   it("hides a retired session whose visibility changes while its transcript is searched", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const { viewer, other } = await useRestrictedSearchMetadata("view");
       const sessionKey = "agent:main:retained";
       const entry = {

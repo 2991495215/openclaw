@@ -79,13 +79,15 @@ export type PreparedRepositoryPublicationStatus = {
 
 export async function preparePersonalRepositoryPublicationStatus(requestId: string) {
   const row = await readRepositoryGitHubPublicationAsync(requestId);
-  return row && row.owner_profile_id !== null && !terminalRepositoryGitHubPublication(row)
-    ? {
-        requestId: row.request_id,
-        workspaceId: row.workspace_id,
-        repository: await getSessionRepositoryWorkspaceStore().prepare(row.workspace_id),
-      }
-    : undefined;
+  if (!row || row.owner_profile_id === null || terminalRepositoryGitHubPublication(row)) {
+    return undefined;
+  }
+  await prepareUserGitHubConnection(row.owner_profile_id);
+  return {
+    requestId: row.request_id,
+    workspaceId: row.workspace_id,
+    repository: await getSessionRepositoryWorkspaceStore().prepare(row.workspace_id),
+  };
 }
 
 /** Source owners supply liveness; personal status never grants execution authority. */

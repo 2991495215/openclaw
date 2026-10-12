@@ -58,6 +58,8 @@ function identifiedClient(scopes: string[], profileId = "viewer@example.com"): G
   };
 }
 
+const profileState = { scenario: "minimal", prepareProfileCatalog: true } as const;
+
 describe("artifact session authorization", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -101,7 +103,7 @@ describe("artifact session authorization", () => {
   });
 
   it("denies direct and indirect incognito selectors while preserving admin access", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const sessionKey = "agent:main:dashboard:incognito-artifacts";
       const cfg = { agents: { entries: { main: {} } } };
       await upsertSessionEntryCore(
@@ -164,7 +166,7 @@ describe("artifact session authorization", () => {
   ] as const)(
     "hides $name artifacts behind direct and run selectors",
     async ({ visibility, cfg, role }) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      await withOpenClawTestState(profileState, async () => {
         const viewerProfile = ensureProfileForEmail("viewer@example.com");
         const ownerProfile = ensureProfileForEmail("owner@example.com");
         const sessionKey = "agent:main:foreign-artifacts";
@@ -215,7 +217,7 @@ describe("artifact session authorization", () => {
   it.each(["shared", "read-only", "suggest"] as const)(
     "allows reading foreign %s artifacts without participation",
     async (visibility) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      await withOpenClawTestState(profileState, async () => {
         const owner = ensureProfileForEmail("artifact-owner@example.test");
         const viewer = roleClient("view", "artifact-reader");
         const sessionKey = "agent:main:readable-artifacts";
@@ -239,7 +241,7 @@ describe("artifact session authorization", () => {
   );
 
   it("preserves solo and system reads while denying identityless reads with roles", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState(profileState, async () => {
       const sessionKey = "agent:main:solo-artifacts";
       await upsertSessionEntryCore(
         { agentId: "main", sessionKey },

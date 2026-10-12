@@ -511,9 +511,9 @@ describe("loader", () => {
             },
           },
         };
-        const state = await import("../state/config-machine-state.js");
-        const installed = vi.spyOn(state, "readConfigMachineState");
-        installed.mockReturnValue(
+        const state = await import("../state/config-machine-state-async.js");
+        const installed = vi.spyOn(state, "readConfigMachineStateAsync");
+        installed.mockResolvedValue(
           removal === "install removal"
             ? { pack: { source: "path", hooks: ["selected-name"] } }
             : undefined,
@@ -533,7 +533,7 @@ describe("loader", () => {
             delete entries["selected-name"];
           }
           if (removal === "install removal") {
-            installed.mockReturnValue(undefined);
+            installed.mockResolvedValue(undefined);
           }
           const next: OpenClawConfig = {
             ...config,

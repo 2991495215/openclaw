@@ -3,13 +3,11 @@ import type {
   WorkerOperationHandlers,
   WorkerOperations,
 } from "../state/worker-operation-registry.js";
-import type {
-  PluginMetadataStateKey,
-  PluginMetadataStateSelector,
-} from "./installed-plugin-index-row.js";
 import {
   INSTALLED_PLUGIN_INDEX_STATE_KEY,
   readPluginMetadataStateRowsInDatabase,
+  type PluginMetadataStateKey,
+  type PluginMetadataStateSelector,
 } from "./plugin-metadata-state-row.kernel.js";
 
 export const pluginMetadataReadOperations = {

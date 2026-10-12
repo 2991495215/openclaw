@@ -414,12 +414,21 @@ describe("GitHub OAuth authorization lifecycle", () => {
     const lifecycle = createLifecycle();
     const started = await startAuthorization(lifecycle, "system");
     const upstream = deferred<{ status: "authorization_pending" }>();
-    mocks.pollDeviceToken.mockReturnValue(upstream.promise);
+    const pollStarted = deferred();
+    mocks.pollDeviceToken.mockImplementation(() => {
+      pollStarted.resolve();
+      return upstream.promise;
+    });
     await advanceToPoll(started.requestId);
 
     const first = lifecycle.pollAuthorization(started.requestId);
     const second = lifecycle.pollAuthorization(started.requestId);
     expect(second).toBe(first);
+    await awaitGateBeforeSettlement(
+      pollStarted.promise,
+      first,
+      "authorization settled before polling the device token",
+    );
     expect(mocks.pollDeviceToken).toHaveBeenCalledOnce();
     upstream.resolve({ status: "authorization_pending" });
     await expect(first).resolves.toMatchObject({ status: "pending" });

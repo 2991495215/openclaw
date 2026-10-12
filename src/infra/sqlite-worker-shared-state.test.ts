@@ -60,9 +60,9 @@ function databaseOptions(captured: ReturnType<typeof context>) {
   return { path: captured.admission.databasePath, env: captured.environment };
 }
 
-const readMetadata = {
-  type: "plugins.metadata.read",
-  input: { selector: "installed-index", artifactPreservingReadOnly: true },
+const readBindingApprovals = {
+  type: "plugins.conversationBindingApprovals.read",
+  input: undefined,
 } as const;
 
 async function seedMetadata(captured: ReturnType<typeof context>, value = { plugins: [] }) {
@@ -249,19 +249,18 @@ describe("canonical shared-state worker admission", () => {
   );
 
   it.each(["Web Push", "GitHub publication"] as const)(
-    "keeps metadata inspection and the first %s operation in the same actor",
+    "keeps writer inspection and the first %s operation in the same actor",
     async (operation) => {
       const captured = context();
-      const value = { generation: "prepared-metadata", plugins: [] };
-      await seedMetadata(captured, value);
+      await seedMetadata(captured);
       const reopened = captureOpenClawStateWorkerContext(databaseOptions(captured));
       const messages = vi.spyOn(Worker.prototype, "postMessage");
       await runOpenClawStateWorkerOperation(
         reopened,
         async (scope) => {
-          expect(await scope.execute(readMetadata)).toEqual({ value_json: JSON.stringify(value) });
-          const metadataWorker = messages.mock.contexts[0];
-          expect(metadataWorker).toBeInstanceOf(Worker);
+          expect(await scope.execute(readBindingApprovals)).toEqual([]);
+          const actorWorker = messages.mock.contexts[0];
+          expect(actorWorker).toBeInstanceOf(Worker);
           messages.mockClear();
           if (operation === "Web Push") {
             expect(
@@ -283,8 +282,8 @@ describe("canonical shared-state worker admission", () => {
             ).toBeUndefined();
           }
           expect(messages.mock.contexts.length).toBeGreaterThan(0);
-          expect(messages.mock.contexts.every((worker) => worker === metadataWorker)).toBe(true);
-          expect(await scope.execute(readMetadata)).toEqual({ value_json: JSON.stringify(value) });
+          expect(messages.mock.contexts.every((worker) => worker === actorWorker)).toBe(true);
+          expect(await scope.execute(readBindingApprovals)).toEqual([]);
         },
         { existingOnly: true },
       );
@@ -310,9 +309,11 @@ describe("canonical shared-state worker admission", () => {
       const databasePath = seeded.admission.databasePath;
       await seedMetadata(seeded);
       const captured = captureOpenClawStateWorkerContext(databaseOptions(seeded));
-      await runOpenClawStateWorkerOperation(captured, (scope) => scope.execute(readMetadata), {
-        existingOnly: true,
-      });
+      await runOpenClawStateWorkerOperation(
+        captured,
+        (scope) => scope.execute(readBindingApprovals),
+        { existingOnly: true },
+      );
       const before = statSync(databasePath, { bigint: true });
       // macOS can change birth time without reallocating the inode.
       execFileSync("/usr/bin/SetFile", ["-d", "01/02/2000 03:04:05", databasePath]);
@@ -353,7 +354,7 @@ describe("canonical shared-state worker admission", () => {
         env: original.environment,
       });
       const inspect = (captured: typeof opening) =>
-        runOpenClawStateWorkerOperation(captured, (scope) => scope.execute(readMetadata), {
+        runOpenClawStateWorkerOperation(captured, (scope) => scope.execute(readBindingApprovals), {
           existingOnly: true,
         });
       await inspect(opening);
@@ -451,10 +452,10 @@ describe("canonical shared-state worker admission", () => {
             expect(
               await runOpenClawStateWorkerOperation(
                 survivingAlias,
-                (scope) => scope.execute(readMetadata),
+                (scope) => scope.execute(readBindingApprovals),
                 { existingOnly: true },
               ),
-            ).toEqual({ value_json: JSON.stringify(value) });
+            ).toEqual([]);
           }
         }
         const relocate = () => {
@@ -487,9 +488,7 @@ describe("canonical shared-state worker admission", () => {
         const relocatedDuringCallback = await runOpenClawStateWorkerOperation(
           original,
           async (scope) => {
-            expect(await scope.execute(readMetadata)).toEqual({
-              value_json: JSON.stringify(value),
-            });
+            expect(await scope.execute(readBindingApprovals)).toEqual([]);
             if (ownership === "active callback") {
               const relocated = relocate();
               // The old callback cannot await its own retirement through a new caller.
@@ -518,7 +517,7 @@ describe("canonical shared-state worker admission", () => {
         ) {
           await runOpenClawStateWorkerOperation(
             survivingAlias,
-            (scope) => scope.execute(readMetadata),
+            (scope) => scope.execute(readBindingApprovals),
             { existingOnly: true },
           );
           await originalMaintenance.close();

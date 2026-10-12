@@ -36,7 +36,7 @@ export async function withMentionInbox(
   cfg: OpenClawConfig = {},
   options: InboxFixtureOptions = {},
 ) {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const fixture = await createFixture(cfg, options);
     try {
       await run(fixture);
