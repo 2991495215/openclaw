@@ -108,27 +108,48 @@ describe("models.authLogout with a concurrent registered config set", () => {
         let performSave = false;
         let writer: Promise<void> | undefined;
         let logout: Promise<unknown> | undefined;
+        let traceStartedAt = performance.now();
+        const mark = (phase: string) => {
+          console.error(
+            `[auth-removal-phase] ${phase} ${Math.round(performance.now() - traceStartedAt)}ms`,
+          );
+        };
         try {
           await server.startupSettled;
           const authLogout = await import("../../commands/models/auth-logout.js");
           const authRefresh = await import("../model-auth-refresh.js");
-          const traceStartedAt = performance.now();
+          const configMutations = await import("../../commands/models/shared.js");
+          const writeApplications = await import("../../config/runtime-write-application.js");
+          traceStartedAt = performance.now();
           const trace = async <T>(
-            phase: "writer-save" | "remove-credentials" | "refresh-auth-state",
+            phase: "writer-save" | "remove-credentials" | "refresh-auth-state" | "update-config",
             operation: () => Promise<T>,
           ): Promise<T> => {
-            const mark = (edge: "start" | "end") => {
-              console.error(
-                `[auth-removal-phase] ${phase}-${edge} ${Math.round(performance.now() - traceStartedAt)}ms`,
-              );
-            };
-            mark("start");
+            mark(`${phase}-start`);
             try {
               return await operation();
             } finally {
-              mark("end");
+              mark(`${phase}-end`);
             }
           };
+          const updateConfig = configMutations.updateConfig;
+          vi.spyOn(configMutations, "updateConfig").mockImplementation((...args) =>
+            trace("update-config", () => updateConfig(...args)),
+          );
+          const createApplication = writeApplications.createRuntimeConfigWriteApplication;
+          vi.spyOn(writeApplications, "createRuntimeConfigWriteApplication").mockImplementation(
+            (...args) => {
+              const application = createApplication(...args);
+              void application.result.then((result) => mark(`application-settled-${result}`));
+              const claim = application.claim;
+              vi.spyOn(application, "claim").mockImplementation(() => {
+                const claimed = claim();
+                mark(claimed ? "application-claimed" : "application-already-claimed");
+                return claimed;
+              });
+              return application;
+            },
+          );
           const removeCredentials = authLogout.removeModelAuthCredentials;
           vi.spyOn(authLogout, "removeModelAuthCredentials").mockImplementation((params) =>
             trace("remove-credentials", () => removeCredentials(params)),
@@ -243,6 +264,7 @@ describe("models.authLogout with a concurrent registered config set", () => {
           );
           expect(hotReloadRecovery).not.toHaveBeenCalled();
         } finally {
+          mark("teardown-start");
           save.resolve();
           await writer?.catch(() => undefined);
           await logout?.catch(() => undefined);
