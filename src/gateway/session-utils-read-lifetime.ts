@@ -3,7 +3,11 @@ import { getRuntimeConfig } from "../config/io.js";
 import { retainPreparedSessionEntryPredicate } from "../config/sessions/session-accessor.sqlite-entry-cache-publication-state.js";
 import { captureSessionEntryRead } from "../config/sessions/session-accessor.sqlite-entry-read-lifetime.js";
 import type { SessionEntryReadScope } from "../config/sessions/session-accessor.types.js";
-import { getSessionActorStorageBinding } from "../config/sessions/session-actor-storage-binding.js";
+import type { SessionActorHotState } from "../config/sessions/session-actor-contract.js";
+import {
+  captureSessionActorStorageOwner,
+  getSessionActorStorageBinding,
+} from "../config/sessions/session-actor-storage-binding.js";
 import { assertCapturedSessionEntryReadSource } from "../config/sessions/session-entry-read-source.js";
 import { attachSessionEntrySnapshots } from "../config/sessions/session-entry-snapshot-values.js";
 import { captureIncognitoSessionSource } from "../config/sessions/session-incognito-binding.js";
@@ -47,26 +51,26 @@ function captureMemoryRead(params: {
   }
   const requestedPath =
     params.env && resolveIncognitoOpenClawAgentSqlitePath({ agentId, env: params.env });
-  if (agentId === binding.agentId) {
-    getSessionActorStorageBinding({ agentId, storePath: requestedPath, sessionActor: binding });
-  }
+  const captured = captureSessionActorStorageOwner({
+    agentId,
+    storePath: requestedPath,
+    sessionActor: binding,
+  });
   const storePath =
-    agentId === binding.agentId
-      ? binding.path
-      : resolveIncognitoOpenClawAgentSqlitePath({
-          agentId,
-          env: { OPENCLAW_STATE_DIR: path.resolve(binding.path, "../../../..") },
-        });
+    captured?.path ??
+    resolveIncognitoOpenClawAgentSqlitePath({
+      agentId,
+      env: { OPENCLAW_STATE_DIR: path.resolve(binding.path, "../../../..") },
+    });
   const read = () => {
-    binding.actor.assertReadable();
-    const entry =
-      agentId === binding.agentId
-        ? binding.actor.storage.readCurrent(
-            { type: "session.entry.read", input: { sessionKey: canonicalKey } },
-            binding.authority,
-          )
-        : undefined;
-    return entry && attachSessionEntrySnapshots(entry, {}, params.projection);
+    let snapshot: SessionActorHotState | undefined;
+    if (binding.actor.target.sessionKey === canonicalKey) {
+      snapshot = binding.actor.snapshot(binding.authority);
+    } else {
+      binding.actor.assertReadable();
+      snapshot = captured?.owner?.readSession(canonicalKey, binding.authority);
+    }
+    return snapshot?.entry && attachSessionEntrySnapshots(snapshot.entry, {}, params.projection);
   };
   return {
     binding,
