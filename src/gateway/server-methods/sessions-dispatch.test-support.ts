@@ -177,12 +177,15 @@ export function makeSessionTarget(entry?: DispatchSessionEntry) {
   const pinnedEntry = entry
     ? { providerOverride: "anthropic", modelOverride: "claude-test", ...entry }
     : undefined;
+  const store: Record<string, DispatchSessionEntry> = pinnedEntry
+    ? { [dispatchTestSessionKey]: pinnedEntry }
+    : {};
   return {
     agentId: "main",
     storePath: "/tmp/openclaw-agent.sqlite",
     canonicalKey: dispatchTestSessionKey,
     storeKeys: [dispatchTestSessionKey],
-    store: pinnedEntry ? { [dispatchTestSessionKey]: pinnedEntry } : {},
+    store,
   };
 }
 

@@ -69,6 +69,7 @@ vi.mock("../../config/sessions/session-entry-read-facts.js", async (original) =>
         return actual.readRetainedSessionEntryFacts(database, request, owner);
       }
       return {
+        kind: "session-exact-entries",
         entries: [{ sessionKey: session.sessionKey, entry: mocks.session().entry }],
         lifecycleTimestamps: {},
       };
