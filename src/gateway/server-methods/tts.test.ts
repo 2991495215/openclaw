@@ -60,6 +60,7 @@ vi.mock("../../config/config.js", () => ({
     mocks.getRuntimeConfig as typeof import("../../config/config.js").getRuntimeConfig,
 }));
 
+// mock-isolation: TTS RPC fixtures use an explicit speech registry without loading provider runtimes.
 vi.mock("../../tts/provider-registry.js", () => {
   const registry = {
     getSpeechProvider: mocks.getSpeechProvider,

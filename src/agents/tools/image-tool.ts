@@ -402,7 +402,7 @@ export function createImageTool(options?: {
                   try {
                     await acquired.release();
                   } finally {
-                    await capturedOperator.release?.();
+                    capturedOperator.release?.();
                   }
                 },
               });

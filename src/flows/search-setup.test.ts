@@ -122,6 +122,7 @@ const mockCodexProvider = vi.hoisted(() => ({
   credentialPath: "",
 }));
 
+// mock-isolation: Setup interaction fixtures provide exact provider choices without loading plugin runtimes.
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProvidersAsync: webSearchProviderMocks.resolvePluginWebSearchProviders,
 }));

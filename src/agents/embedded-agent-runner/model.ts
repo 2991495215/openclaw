@@ -17,6 +17,7 @@ import {
   loadPreparedModelRuntimeSnapshot,
   type PreparedModelRuntimeSnapshot,
 } from "../prepared-model-runtime.js";
+import { attachModelProviderRequestRouteFacts } from "../provider-request-config.js";
 import { AuthStorage } from "../sessions/auth-storage.js";
 import { ModelRegistry } from "../sessions/model-registry.js";
 import { mergeModelMediaInput } from "./model.compat.js";
@@ -210,7 +211,15 @@ export async function resolveModelAsync(
           : undefined;
       options?.assertCurrent?.();
       if (suppressedRuntimeModel) {
-        return { model: suppressedRuntimeModel, logicalRef, authStorage, modelRegistry };
+        return {
+          model: attachModelProviderRequestRouteFacts(
+            suppressedRuntimeModel,
+            preparedMetadataSnapshot.owners,
+          ),
+          logicalRef,
+          authStorage,
+          modelRegistry,
+        };
       }
       return {
         error: explicitModel.error ?? buildUnknownModelError(registryParams),
@@ -306,7 +315,12 @@ export async function resolveModelAsync(
       }
     }
     if (model) {
-      return { model, logicalRef, authStorage, modelRegistry };
+      return {
+        model: attachModelProviderRequestRouteFacts(model, preparedMetadataSnapshot.owners),
+        logicalRef,
+        authStorage,
+        modelRegistry,
+      };
     }
     return {
       error: buildUnknownModelError(registryParams),

@@ -38,6 +38,7 @@ vi.mock("./providers.js", () => ({
   resolveDiscoveredProviderPluginIds: mocks.resolveDiscoveredProviderPluginIds,
 }));
 
+// mock-isolation: Discovery tests supply runtime provider results without loading installed plugins.
 vi.mock("./providers.runtime.js", () => ({
   resolvePluginProvidersCoreAsync: async (...args: unknown[]) =>
     mocks.resolvePluginProvidersCore(...args),

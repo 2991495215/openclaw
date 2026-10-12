@@ -42,6 +42,7 @@ vi.mock("../../agents/model-selection.js", () => ({
   resolveDefaultModelForAgent: () => ({ provider: "openai", model: "model" }),
 }));
 vi.mock("../../flows/search-setup.js", () => ({ listSearchProviderOptions: mocks.providers }));
+// mock-isolation: Auth status fixtures provide their web provider inventory without runtime discovery.
 vi.mock("../../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProvidersAsync: mocks.providers,
 }));

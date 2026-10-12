@@ -16,6 +16,7 @@ import { scanNodeHostedSkills } from "./skills.js";
 vi.mock("../infra/path-env.js", () => ({ ensureOpenClawCliOnPath: vi.fn() }));
 vi.mock("./mcp.js", () => ({ startNodeHostMcpManager: vi.fn() }));
 vi.mock("./skills.js", () => ({ scanNodeHostedSkills: vi.fn() }));
+// mock-isolation: Node command fixtures reuse the test registry without loading installed plugins.
 vi.mock("../plugins/loader.js", () => ({
   loadPluginRegistryHandleAsync: async () => getActivePluginRegistry(),
 }));

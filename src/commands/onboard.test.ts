@@ -111,7 +111,7 @@ vi.mock("../config/config.js", () => ({
 }));
 
 vi.mock("../plugins/provider-auth-choice.runtime.js", () => ({
-  resolvePluginProviders: mocks.resolvePluginProviders,
+  resolveAuthChoicePluginProviders: mocks.resolvePluginProviders,
 }));
 
 vi.mock("../wizard/setup.migration-snapshot.js", () => ({

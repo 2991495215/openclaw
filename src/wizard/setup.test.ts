@@ -55,9 +55,9 @@ const resolveProviderPluginChoice = vi.hoisted(() =>
   vi.fn<ResolveProviderPluginChoice>(() => null),
 );
 const resolvePluginProviders = vi.hoisted(() =>
-  vi.fn<typeof import("../plugins/provider-auth-choice.runtime.js").resolvePluginProviders>(
-    () => [],
-  ),
+  vi.fn<
+    typeof import("../plugins/provider-auth-choice.runtime.js").resolveAuthChoicePluginProviders
+  >(() => []),
 );
 const warnIfModelConfigLooksOff = vi.hoisted(() => vi.fn(async () => {}));
 
@@ -272,7 +272,7 @@ vi.mock("../plugins/setup-registry.js", () => ({
 
 vi.mock("../plugins/provider-auth-choice.runtime.js", () => ({
   resolveProviderPluginChoice,
-  resolvePluginProviders,
+  resolveAuthChoicePluginProviders: resolvePluginProviders,
 }));
 
 vi.mock("../flows/model-picker.js", () => ({ promptDefaultModel }));

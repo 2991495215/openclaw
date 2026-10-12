@@ -92,6 +92,7 @@ vi.mock("../secrets/target-registry.js", () => ({
   }),
 }));
 
+// mock-isolation: Secret-target validation uses fixture provider descriptors without loading plugin runtimes.
 vi.mock("../plugins/web-fetch-providers.runtime.js", () => ({
   resolvePluginWebFetchProvidersAsync: vi.fn((params: { config?: Record<string, unknown> }) => [
     {
@@ -142,6 +143,7 @@ vi.mock("../plugins/web-fetch-providers.runtime.js", () => ({
   ]),
 }));
 
+// mock-isolation: Secret-target validation uses fixture provider descriptors without loading plugin runtimes.
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProvidersAsync: vi.fn(() => [
     {

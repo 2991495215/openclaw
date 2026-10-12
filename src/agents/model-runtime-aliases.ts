@@ -5,6 +5,7 @@ import { parseModelCatalogRef } from "@openclaw/model-catalog-core/model-catalog
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import { resolveProviderModelCatalogId } from "../plugins/provider-model-routes.js";
 import { normalizeOptionalAgentRuntimeId } from "./agent-runtime-id.js";
 import { resolveAgentDir } from "./agent-scope-config.js";
@@ -72,11 +73,13 @@ export function isCliRuntimeAliasForProvider(params: {
   runtime: string | undefined;
   provider: string | undefined;
   cfg?: OpenClawConfig;
+  metadataSnapshot?: PluginMetadataSnapshot | null;
 }): boolean {
   return isCliRuntimeModelBackendForProvider({
     provider: params.provider,
     runtime: params.runtime,
     config: params.cfg,
+    metadataSnapshot: params.metadataSnapshot,
   });
 }
 

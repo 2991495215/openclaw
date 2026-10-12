@@ -255,7 +255,7 @@ export async function prepareAuthChoiceLoadedPluginProvider<T>(
   const agentId = params.agentId ?? resolveDefaultAgentId(params.config);
   const workspaceDir = params.workspaceDir ?? resolveAgentWorkspaceDir(params.config, agentId);
   const {
-    resolvePluginProviders,
+    resolveAuthChoicePluginProviders,
     resolvePluginSetupProvider,
     resolveProviderPluginChoice,
     runProviderModelSelectedHook,
@@ -344,8 +344,8 @@ export async function prepareAuthChoiceLoadedPluginProvider<T>(
         };
         return withPluginCache(cache, () =>
           preparedInstallRecords
-            ? resolvePluginProviders(request, preparedInstallRecords)
-            : resolvePluginProviders(request),
+            ? resolveAuthChoicePluginProviders(request, preparedInstallRecords)
+            : resolveAuthChoicePluginProviders(request),
         );
       };
 

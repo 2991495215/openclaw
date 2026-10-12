@@ -31,6 +31,7 @@ vi.mock("./installed-plugin-index-record-state.js", () => ({
   preparePluginMetadataMachineStateAsync: async () => () => {},
 }));
 
+// mock-isolation: Web provider lifecycle fixtures control exact registry acquisition without loading installed plugins.
 vi.mock("./loader.js", () => ({
   loadPluginRegistryHandleAsync: mocks.loadPluginRegistryHandleAsync,
   resolveCompatibleRuntimePluginRegistry: mocks.resolveCompatibleRuntimePluginRegistry,

@@ -4,7 +4,10 @@
  * and decides which runtime profiles may be persisted back to the store.
  */
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
+import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import type {
+  ProviderExternalAuthProfileAsyncResolver,
   ProviderExternalAuthProfile,
   ProviderExternalAuthProfileResolver,
 } from "../../plugins/provider-external-auth.types.js";
@@ -28,6 +31,7 @@ type ExternalAuthProfileMap = Map<string, ProviderExternalAuthProfile>;
 export type ExternalCliOverlayOptions = {
   allowKeychainPrompt?: boolean;
   config?: OpenClawConfig;
+  pluginMetadataSnapshot?: PluginMetadataSnapshot;
   externalCliProviderIds?: Iterable<string>;
   externalCliProfileIds?: Iterable<string>;
 };
@@ -61,6 +65,7 @@ function isExternalAuthProfileAllowed(
   config: OpenClawConfig | undefined,
   explicitProfileIds: ReadonlySet<string> | undefined,
   env: NodeJS.ProcessEnv,
+  metadataSnapshot: PluginMetadataSnapshot | undefined,
 ): boolean {
   // A provider pin protects its declared auth from ambient takeover. Stored and explicitly
   // bound profiles deliberately keep precedence; see runtime-plan/prepare-auth.test.ts.
@@ -69,7 +74,7 @@ function isExternalAuthProfileAllowed(
   }
   return isAmbientCredentialAllowedByProviderAuthPin({
     config,
-    authAliasLookupParams: { env },
+    authAliasLookupParams: { env, metadataSnapshot },
     provider: profile.credential.provider,
     type: profile.credential.type,
   });
@@ -95,6 +100,7 @@ function resolveAllowedExternalCliAuthProfiles(params: {
       params.externalCli?.config,
       explicitProfileIds,
       env,
+      params.externalCli?.pluginMetadataSnapshot,
     ),
   );
 }
@@ -143,30 +149,41 @@ export function syncPersistedExternalCliAuthProfiles(
 // Only external-profile-dependent operations are bound; module state stays above.
 export function createExternalAuthRuntime(
   resolveExternalAuthProfilesWithPlugins: ProviderExternalAuthProfileResolver,
+  resolveExternalAuthProfilesWithPluginsAsync: ProviderExternalAuthProfileAsyncResolver,
 ) {
-  function resolveExternalAuthProfiles(params: {
+  type ResolveParams = {
     store: AuthProfileStore;
     agentDir?: string;
     env?: NodeJS.ProcessEnv;
     externalCli?: ExternalCliOverlayOptions;
-  }): {
+  };
+
+  function resolverParams(
+    params: ResolveParams,
+  ): Parameters<ProviderExternalAuthProfileResolver>[0] {
+    const env = params.env ?? process.env;
+    return {
+      env,
+      config: params.externalCli?.config,
+      pluginMetadataSnapshot: params.externalCli?.pluginMetadataSnapshot,
+      context: {
+        config: params.externalCli?.config,
+        agentDir: params.agentDir,
+        workspaceDir: params.externalCli?.pluginMetadataSnapshot?.workspaceDir,
+        env,
+        store: params.store,
+      },
+    };
+  }
+
+  function resolveExternalAuthProfiles(
+    params: ResolveParams,
+    profiles: ProviderExternalAuthProfile[],
+  ): {
     profiles: ExternalAuthProfileMap;
     pluginProfileIds: ReadonlySet<string>;
   } {
     const env = params.env ?? process.env;
-    const resolveProfiles =
-      resolveExternalAuthProfilesForRuntime ?? resolveExternalAuthProfilesWithPlugins;
-    const profiles = resolveProfiles({
-      env,
-      config: params.externalCli?.config,
-      context: {
-        config: params.externalCli?.config,
-        agentDir: params.agentDir,
-        workspaceDir: undefined,
-        env,
-        store: params.store,
-      },
-    });
     const resolved: ExternalAuthProfileMap = new Map(
       resolveAllowedExternalCliAuthProfiles(params).map((profile) => [profile.profileId, profile]),
     );
@@ -187,6 +204,7 @@ export function createExternalAuthRuntime(
           params.externalCli?.config,
           explicitProfileIds,
           env,
+          params.externalCli?.pluginMetadataSnapshot,
         )
       ) {
         continue;
@@ -204,14 +222,18 @@ export function createExternalAuthRuntime(
     env?: NodeJS.ProcessEnv;
     externalCli?: ExternalCliOverlayOptions;
   }): RuntimeExternalOAuthProfile[] {
-    return Array.from(resolveExternalAuthProfiles(params).profiles.values());
+    const resolver =
+      resolveExternalAuthProfilesForRuntime ?? resolveExternalAuthProfilesWithPlugins;
+    return Array.from(
+      resolveExternalAuthProfiles(params, resolver(resolverParams(params))).profiles.values(),
+    );
   }
 
   /** Overlay external auth profiles onto a cloned auth store for runtime use. */
-  function overlayExternalAuthProfiles(
+  function prepareOverlay(
     store: AuthProfileStore,
     params?: { agentDir?: string; env?: NodeJS.ProcessEnv } & ExternalCliOverlayOptions,
-  ): AuthProfileStore {
+  ) {
     const scoped = hasScopedExternalCliOverlay(params);
     const runtimeExternalCliProfileIds = new Set(getRuntimeExternalCliProfileIds(store));
     // Provider hooks are authoritative on every combined refresh. Remove their previous
@@ -235,12 +257,14 @@ export function createExternalAuthRuntime(
       }
     }
     const base = removeRuntimeExternalProfileReferences({ store, profileIds: refreshedProfileIds });
-    const resolved = resolveExternalAuthProfiles({
-      store: base,
-      agentDir: params?.agentDir,
-      env: params?.env,
-      externalCli: params,
-    });
+    return { base, scoped };
+  }
+
+  function finishOverlay(
+    base: AuthProfileStore,
+    scoped: boolean,
+    resolved: ReturnType<typeof resolveExternalAuthProfiles>,
+  ): AuthProfileStore {
     const next = overlayRuntimeExternalOAuthProfiles(base, resolved.profiles.values(), {
       runtimeExternalProfileIdsAuthoritative: !scoped,
     });
@@ -251,8 +275,54 @@ export function createExternalAuthRuntime(
     return next;
   }
 
+  function overlayExternalAuthProfiles(
+    store: AuthProfileStore,
+    params?: { agentDir?: string; env?: NodeJS.ProcessEnv } & ExternalCliOverlayOptions,
+  ): AuthProfileStore {
+    const { base, scoped } = prepareOverlay(store, params);
+    const request = {
+      store: base,
+      agentDir: params?.agentDir,
+      env: params?.env,
+      externalCli: params,
+    };
+    const resolver =
+      resolveExternalAuthProfilesForRuntime ?? resolveExternalAuthProfilesWithPlugins;
+    return finishOverlay(
+      base,
+      scoped,
+      resolveExternalAuthProfiles(request, resolver(resolverParams(request))),
+    );
+  }
+
+  async function overlayExternalAuthProfilesAsync(
+    store: AuthProfileStore,
+    params?: { agentDir?: string; env?: NodeJS.ProcessEnv } & ExternalCliOverlayOptions,
+  ): Promise<AuthProfileStore> {
+    const pluginMetadataSnapshot =
+      params?.pluginMetadataSnapshot ??
+      (await resolvePluginMetadataSnapshotAsync({
+        config: params?.config ?? {},
+        env: params?.env,
+      }));
+    const options = { ...params, pluginMetadataSnapshot };
+    const { base, scoped } = prepareOverlay(store, options);
+    const request = {
+      store: base,
+      agentDir: options.agentDir,
+      env: options.env,
+      externalCli: options,
+    };
+    const lookup = { ...resolverParams(request), pluginMetadataSnapshot };
+    const profiles = resolveExternalAuthProfilesForRuntime
+      ? resolveExternalAuthProfilesForRuntime(lookup)
+      : await resolveExternalAuthProfilesWithPluginsAsync(lookup);
+    return finishOverlay(base, scoped, resolveExternalAuthProfiles(request, profiles));
+  }
+
   return {
     listRuntimeExternalAuthProfiles,
     overlayExternalAuthProfiles,
+    overlayExternalAuthProfilesAsync,
   };
 }

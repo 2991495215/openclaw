@@ -283,6 +283,7 @@ async function runCatalogRequest(
     const resolveSyntheticCredentials = (providerIds: readonly string[]) =>
       withPluginRuntimeGenerationScope(pluginGenerationScope, () =>
         resolveAmbientAgentCredentialsForDiscovery({
+          metadataSnapshot: pluginGenerationScope.metadataSnapshot,
           config: value.input.config,
           env: value.input.env,
           authoritativeSyntheticAuthProviderRefs:
@@ -326,7 +327,10 @@ async function runCatalogRequest(
     }
     const credentials = {
       ...resolveSyntheticCredentials(request.providerIds ?? value.providerIds),
-      ...resolveAgentCredentialMapFromStore(authStore, { config: value.input.config }),
+      ...resolveAgentCredentialMapFromStore(authStore, {
+        config: value.input.config,
+        metadataSnapshot: pluginGenerationScope.metadataSnapshot,
+      }),
     };
     if (request.kind === "auth-refresh") {
       return {

@@ -777,7 +777,11 @@ export { preserveResolvedSecretBackedCredentials } from "./runtime-snapshot-owne
 export function createAuthProfileStoreRuntime(
   externalAuth: ReturnType<typeof createExternalAuthRuntime>,
 ) {
-  const { listRuntimeExternalAuthProfiles, overlayExternalAuthProfiles } = externalAuth;
+  const {
+    listRuntimeExternalAuthProfiles,
+    overlayExternalAuthProfiles,
+    overlayExternalAuthProfilesAsync,
+  } = externalAuth;
 
   function maybeSyncPersistedExternalCliAuthProfiles(params: {
     store: AuthProfileStore;
@@ -1034,6 +1038,36 @@ export function createAuthProfileStoreRuntime(
         ? shared
         : materializePersonalAuthProfile(shared, options.profileId);
     }
+    const prepared = prepareRuntimeAuthProfileStore(agentDir, options, env, readPreparedStore);
+    return prepared.finish(overlayExternalAuthProfiles(prepared.store, prepared.options));
+  }
+
+  async function loadRuntimeAuthProfileStoreAsync(
+    agentDir?: string,
+    options?: LoadAuthProfileStoreOptions,
+    env?: NodeJS.ProcessEnv,
+    readPreparedStore?: (databasePath: string) => AuthProfileStore,
+  ): Promise<AuthProfileStore> {
+    if (isEnvOnlyAuthProfileRuntime()) {
+      return createEmptyAuthProfileStore();
+    }
+    const prepared = prepareRuntimeAuthProfileStore(agentDir, options, env, readPreparedStore);
+    const store = prepared.finish(
+      await overlayExternalAuthProfilesAsync(prepared.store, prepared.options),
+    );
+    return options?.profileId &&
+      isUserModelAuthProfileId(options.profileId) &&
+      !captureScope().isolated
+      ? materializePersonalAuthProfile(store, options.profileId)
+      : store;
+  }
+
+  function prepareRuntimeAuthProfileStore(
+    agentDir?: string,
+    options?: LoadAuthProfileStoreOptions,
+    env?: NodeJS.ProcessEnv,
+    readPreparedStore?: (databasePath: string) => AuthProfileStore,
+  ) {
     const effectiveAgentDir = resolveRuntimeAuthProfileAgentDir(agentDir);
     const effectiveOptions = resolveRuntimeAuthProfileLoadOptions(options);
     const authPath = effectiveAgentDir
@@ -1064,16 +1098,21 @@ export function createAuthProfileStoreRuntime(
     const mergedStore = mainStore
       ? mergeAuthProfileStores(mainStore, store, { preserveBaseRuntimeExternalProfiles: true })
       : store;
-    return setRuntimeLocalProfileMetadata(
-      overlayExternalAuthProfiles(mergedStore, {
+    return {
+      store: mergedStore,
+      options: {
         agentDir: effectiveAgentDir,
         ...(env ? { env } : {}),
         ...externalCli,
-      }),
-      listRuntimeLocalProfileIds(store, mainStore),
-      !isMainStore && runtimeStoreInheritsMainState(mergedStore, store),
-      isMainStore ? undefined : store,
-    );
+      },
+      finish: (overlaid: AuthProfileStore) =>
+        setRuntimeLocalProfileMetadata(
+          overlaid,
+          listRuntimeLocalProfileIds(store, mainStore),
+          !isMainStore && runtimeStoreInheritsMainState(mergedStore, store),
+          isMainStore ? undefined : store,
+        ),
+    };
   }
 
   const {
@@ -1087,6 +1126,7 @@ export function createAuthProfileStoreRuntime(
     resolveRuntimeAuthProfileLoadOptions,
     loadAuthProfileStoreForAgent,
     loadRuntimeAuthProfileStore,
+    loadRuntimeAuthProfileStoreAsync,
     captureScope,
   });
 
@@ -1220,6 +1260,7 @@ export function createAuthProfileStoreRuntime(
     captureScope,
     withPreparedAuthProfileStoreReads,
     overlayExternalAuthProfiles,
+    overlayExternalAuthProfilesAsync,
     setRuntimeAuthProfileStoreSnapshot,
     updateRuntimeAuthProfileStoreSnapshot,
   });

@@ -2,6 +2,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Result } from "@openclaw/normalization-core/result";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { warnPluginSdkDeprecation } from "../../plugins/sdk-deprecation.js";
 import { isUserModelAuthProfileId } from "../../state/user-model-account-id.js";
 import { cloneAuthProfileStore } from "./clone.js";
@@ -60,6 +61,9 @@ type StoreReadHost = Pick<
   overlayExternalAuthProfiles: ReturnType<
     typeof createExternalAuthRuntime
   >["overlayExternalAuthProfiles"];
+  overlayExternalAuthProfilesAsync: ReturnType<
+    typeof createExternalAuthRuntime
+  >["overlayExternalAuthProfilesAsync"];
   setRuntimeAuthProfileStoreSnapshot: typeof SetRuntimeAuthProfileStoreSnapshot;
   updateRuntimeAuthProfileStoreSnapshot: typeof UpdateRuntimeAuthProfileStoreSnapshot;
 };
@@ -72,7 +76,14 @@ function hasScopedExternalCliOverlay(options: ExternalCliOverlayOptions): boolea
 
 type AuthProfileStoreReadRequest =
   | { kind: "store"; agentDir?: string; options?: LoadAuthProfileStoreOptions }
-  | { kind: "shared-path" };
+  | { kind: "shared-path" }
+  | {
+      kind: "external-overlay";
+      store: AuthProfileStore;
+      options: Parameters<
+        ReturnType<typeof createExternalAuthRuntime>["overlayExternalAuthProfiles"]
+      >[1];
+    };
 type AuthProfileStoreReadValue =
   | { kind: "store"; store: AuthProfileStore }
   | { kind: "shared-path"; path: string };
@@ -118,6 +129,7 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
     captureScope,
     withPreparedAuthProfileStoreReads,
     overlayExternalAuthProfiles,
+    overlayExternalAuthProfilesAsync,
     setRuntimeAuthProfileStoreSnapshot,
     updateRuntimeAuthProfileStoreSnapshot,
   } = host;
@@ -143,10 +155,15 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
                   kind: "shared-path",
                   path: resolveNativeSharedAuthStorePath(getScopedAuthProfileEnv()),
                 }
-              : {
-                  kind: "store",
-                  store: loadAuthProfileStoreForAgent(step.value.agentDir, step.value.options),
-                },
+              : step.value.kind === "external-overlay"
+                ? {
+                    kind: "store",
+                    store: overlayExternalAuthProfiles(step.value.store, step.value.options),
+                  }
+                : {
+                    kind: "store",
+                    store: loadAuthProfileStoreForAgent(step.value.agentDir, step.value.options),
+                  },
         };
       } catch (error) {
         result = { ok: false, error };
@@ -176,17 +193,25 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
     };
     let step = advance();
     while (!step.done) {
+      const request = step.value;
       let result: Result<AuthProfileStoreReadValue, unknown>;
       try {
         result = {
           ok: true,
           value:
-            step.value.kind === "shared-path"
+            request.kind === "shared-path"
               ? { kind: "shared-path", path: await prepared.sharedPath() }
-              : {
-                  kind: "store",
-                  store: await prepared.readStore(step.value.agentDir, step.value.options ?? {}),
-                },
+              : request.kind === "external-overlay"
+                ? {
+                    kind: "store",
+                    store: await prepared.runInCapturedScope(() =>
+                      overlayExternalAuthProfilesAsync(request.store, request.options),
+                    ),
+                  }
+                : {
+                    kind: "store",
+                    store: await prepared.readStore(request.agentDir, request.options ?? {}),
+                  },
         };
       } catch (error) {
         result = { ok: false, error };
@@ -349,6 +374,7 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
       profileId?: string;
       allowKeychainPrompt?: boolean;
       config?: OpenClawConfig;
+      pluginMetadataSnapshot?: PluginMetadataSnapshot;
       externalCli?: ExternalCliAuthDiscovery;
       externalCliProviderIds?: Iterable<string>;
       externalCliProfileIds?: Iterable<string>;
@@ -402,18 +428,26 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
       effectiveOptions,
       env,
     );
-    const store = overlayExternalAuthProfiles(
-      yield* ensureAuthProfileStoreWithoutExternalProfilesReads(
+    const result = yield {
+      kind: "external-overlay",
+      store: yield* ensureAuthProfileStoreWithoutExternalProfilesReads(
         effectiveAgentDir,
         effectiveOptions,
         env,
       ),
-      {
+      options: {
         agentDir: effectiveAgentDir,
         ...(env ? { env } : {}),
         ...externalCli,
       },
-    );
+    };
+    if (!result.ok) {
+      throw result.error;
+    }
+    if (result.value.kind !== "store") {
+      throw new Error("Auth profile overlay returned a different requested fact");
+    }
+    const store = result.value.store;
     if (!runtimeStore) {
       if (
         !getScopedSharedAuthStore() &&

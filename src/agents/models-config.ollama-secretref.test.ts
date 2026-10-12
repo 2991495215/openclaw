@@ -21,6 +21,7 @@ import { planOpenClawModelsJson } from "./models-config.plan.js";
 import { encodePluginModelCatalogRelativePath } from "./plugin-model-catalog.js";
 
 const discovery = vi.hoisted(() => ({ providers: new Array<ProviderPlugin>() }));
+// mock-isolation: Ollama catalog fixtures select their provider inventory without loading plugin runtimes.
 vi.mock("../plugins/provider-discovery.runtime.js", () => {
   const runtime = {
     resolvePluginDiscoveryProvidersRuntime: () => discovery.providers,

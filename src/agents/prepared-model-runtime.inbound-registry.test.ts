@@ -112,7 +112,7 @@ describe("prepared reply dispatch runtime", () => {
       ],
       "static",
       {},
-      () => registry,
+      async () => registry,
       undefined,
       metadata,
     );

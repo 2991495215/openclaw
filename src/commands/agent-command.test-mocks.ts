@@ -10,6 +10,7 @@ vi.mock("../agents/harness/runtime-plugin.js", () => ({
   ensureSelectedAgentHarnessPlugin: agentHarnessPluginMocks.ensureSelectedAgentHarnessPlugin,
 }));
 
+// mock-isolation: Agent-command fixtures run callbacks with empty registries without plugin resource acquisition.
 vi.mock("../agents/runtime-plugins.js", async () => {
   const { createEmptyPluginRegistry } = await import("../plugins/registry-empty.js");
   return {

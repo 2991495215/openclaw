@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as metadata from "../../plugins/plugin-metadata-snapshot.js";
+import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
+import { createProviderExternalAuthResolver } from "../../plugins/provider-external-auth-core.js";
 import {
   createExternalAuthRuntime,
   syncPersistedExternalCliAuthProfiles,
@@ -36,6 +39,7 @@ beforeEach(() => {
 afterEach(() => {
   testing.resetResolveExternalAuthProfilesForTest();
   clearRuntimeAuthProfileStoreSnapshots();
+  vi.restoreAllMocks();
 });
 
 describe("external auth owner", () => {
@@ -81,7 +85,10 @@ describe("external auth owner", () => {
         }),
       ).toBe(false);
       expect(readMiniMax).toHaveBeenCalledOnce();
-      const overlaid = createExternalAuthRuntime(() => []).overlayExternalAuthProfiles(store);
+      const overlaid = createExternalAuthRuntime(
+        () => [],
+        async () => [],
+      ).overlayExternalAuthProfiles(store);
       expect(overlaid.profiles[profileId]).toEqual(synced.profiles[profileId]);
       expect(getRuntimeExternalCliProfileIds(overlaid)).toEqual([]);
     },
@@ -94,7 +101,7 @@ describe("external auth owner", () => {
     };
     const pluginCredential = credential();
     const resolver = vi.fn(() => [{ profileId: "openai:default", credential: pluginCredential }]);
-    const runtime = createExternalAuthRuntime(resolver);
+    const runtime = createExternalAuthRuntime(resolver, async () => resolver());
     const first = runtime.overlayExternalAuthProfiles(
       { version: 1, profiles: {} },
       { config, externalCliProviderIds: ["openai"] },
@@ -112,6 +119,63 @@ describe("external auth owner", () => {
     );
   });
 
+  it("prepares cold external hooks and applies auth pins with the captured metadata", async () => {
+    testing.resetResolveExternalAuthProfilesForTest();
+    const pluginMetadataSnapshot = createPluginMetadataSnapshotFixture({
+      plugins: [
+        {
+          id: "alias-owner",
+          providers: ["alias"],
+          contracts: { externalAuthProviders: ["alias"] },
+          providerAuthAliases: { alias: "canonical" },
+        },
+      ],
+    });
+    const prepareMetadata = vi
+      .spyOn(metadata, "resolvePluginMetadataSnapshotAsync")
+      .mockResolvedValue(pluginMetadataSnapshot);
+    const syncHooks = vi.fn(() => {
+      throw new Error("synchronous hook discovery");
+    });
+    const asyncHooks = vi.fn(async () => [
+      {
+        id: "alias",
+        label: "Alias",
+        auth: [],
+        resolveExternalAuthProfiles: () => [
+          {
+            profileId: "alias:external",
+            credential: credential({ provider: "alias" }),
+          },
+        ],
+      },
+    ]);
+    const resolver = createProviderExternalAuthResolver({
+      resolveProviderPluginsForHooks: syncHooks,
+      resolveProviderPluginsForHooksAsync: asyncHooks,
+    });
+    const runtime = createExternalAuthRuntime(
+      resolver.resolveExternalAuthProfilesWithPlugins,
+      resolver.resolveExternalAuthProfilesWithPluginsAsync,
+    );
+    const config = {
+      models: { providers: { canonical: { auth: "api-key" as const, baseUrl: "", models: [] } } },
+    };
+    const result = await runtime.overlayExternalAuthProfilesAsync(
+      { version: 1, profiles: {} },
+      { config, env: {}, externalCliProviderIds: [] },
+    );
+    expect(result.profiles).toEqual({});
+    expect(prepareMetadata).toHaveBeenCalledWith({ config, env: {} });
+    expect(asyncHooks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginMetadataSnapshot,
+        onlyPluginIds: ["alias-owner"],
+      }),
+    );
+    expect(syncHooks).not.toHaveBeenCalled();
+  });
+
   it("releases only the requested retired CLI overlay", () => {
     const store: RuntimeAuthProfileStore = {
       version: 1,
@@ -122,7 +186,10 @@ describe("external auth owner", () => {
       runtimeExternalProfileIds: ["openai:default", "claude-cli:default"],
       runtimeExternalCliProfileIds: ["openai:default", "claude-cli:default"],
     };
-    const next = createExternalAuthRuntime(() => []).overlayExternalAuthProfiles(store, {
+    const next = createExternalAuthRuntime(
+      () => [],
+      async () => [],
+    ).overlayExternalAuthProfiles(store, {
       externalCliProfileIds: ["openai:default"],
     });
     expect(next.profiles["openai:default"]).toBeUndefined();

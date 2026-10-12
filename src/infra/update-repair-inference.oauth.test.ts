@@ -21,12 +21,17 @@ const mocks = vi.hoisted(() => ({ probe: vi.fn(), refresh: vi.fn() }));
 vi.mock("../agents/auth-profiles/store-runtime.js", async () => {
   const { createAuthProfileStoreRuntime } = await import("../agents/auth-profiles/store.js");
   const { createExternalAuthRuntime } = await import("../agents/auth-profiles/external-auth.js");
-  return createAuthProfileStoreRuntime(createExternalAuthRuntime(() => []));
+  return createAuthProfileStoreRuntime(
+    createExternalAuthRuntime(
+      () => [],
+      async () => [],
+    ),
+  );
 });
 vi.mock("../plugins/provider-runtime.runtime.js", () => ({
-  formatProviderAuthProfileApiKeyWithPlugin: ({ context }: { context: OAuthCredential }) =>
+  formatProviderAuthProfileApiKeyWithLazyRuntime: ({ context }: { context: OAuthCredential }) =>
     context.access,
-  resolveProviderOAuthRefreshCapabilityWithPlugin: async () => ({ status: "available" }),
+  resolveProviderOAuthRefreshCapabilityWithLazyRuntime: async () => ({ status: "available" }),
   resolveProviderOAuthCredentialWithPlugin: mocks.refresh,
 }));
 vi.mock("../agents/model-auth-runtime.js", () => ({

@@ -65,6 +65,7 @@ vi.mock("../plugins/plugin-registry-contributions.js", () => ({
   resolveManifestContractOwnerPluginId: resolveManifestContractOwnerPluginIdMock,
 }));
 
+// mock-isolation: Search execution fixtures supply synthetic providers without loading installed plugins.
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProviders: resolvePluginWebSearchProvidersMock,
   resolvePluginWebSearchProvidersAsync: resolvePluginWebSearchProvidersMock,

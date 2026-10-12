@@ -47,6 +47,7 @@ vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => ({
     hoisted.loadPluginMetadataSnapshot(...args),
 }));
 
+// mock-isolation: Runtime planning tests supply exact registry identities without loading plugin code.
 vi.mock("../plugins/loader.js", () => ({
   loadPluginRegistryHandleAsync: async (...args: unknown[]) =>
     hoisted.loadPluginRegistryHandle(...args),

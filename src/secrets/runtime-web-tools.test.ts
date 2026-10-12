@@ -81,6 +81,7 @@ let createResolverContext: typeof import("./runtime-shared.js").createResolverCo
 let resolveRuntimeWebTools: typeof import("./runtime-web-tools.js").resolveRuntimeWebTools;
 let restoreResolveSecretRefValuesSpy: (() => void) | undefined;
 
+// mock-isolation: Fallback tests provide exact web provider ownership without executing installed plugin runtimes.
 vi.mock("./runtime-web-tools-fallback.runtime.js", () => ({
   runtimeWebToolsFallbackProviders: {
     resolvePluginWebSearchProvidersAsync: resolvePluginWebSearchProvidersMock,

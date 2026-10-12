@@ -43,6 +43,7 @@ vi.mock("../agents/agent-scope.js", () => ({
   resolveAgentWorkspaceDir: mocks.resolveAgentWorkspaceDir,
 }));
 
+// mock-isolation: Memory facade tests acquire fixture registries without loading installed plugins.
 vi.mock("./loader.js", () => ({
   loadPluginRegistryHandleAsync: mocks.loadPluginRegistryHandleAsync,
 }));

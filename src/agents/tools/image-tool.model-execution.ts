@@ -196,7 +196,7 @@ export async function runImagePrompt(params: {
               try {
                 await acquired.release();
               } finally {
-                await execution?.release();
+                execution?.release();
               }
             },
           });

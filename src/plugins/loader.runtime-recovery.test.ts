@@ -210,7 +210,7 @@ it.each(["installed", "bundled-mjs"] as const)(
 
               const loadInbound = createPreparedInboundRegistryLoader();
               for (let pass = 0; pass < 2; pass++) {
-                const inbound = withPluginRuntimeRegistryScope(restored, () =>
+                const inbound = await withPluginRuntimeRegistryScope(restored, () =>
                   loadInbound(
                     { config, workspaceDir: root, allowGatewaySubagentBinding: true },
                     metadata,

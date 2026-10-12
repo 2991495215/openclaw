@@ -80,6 +80,7 @@ const mocks = vi.hoisted(() => ({
   withBundledPluginEnablementCompat: vi.fn(({ config }) => config),
 }));
 
+// mock-isolation: Capability selection fixtures control registry acquisition and cache identity without executing plugins.
 vi.mock("./loader.js", () => ({
   loadPluginRegistryHandleAsync: mocks.loadPluginRegistryHandleAsync,
   resolvePluginRegistryLoadCacheKey: mocks.resolvePluginRegistryLoadCacheKey,
@@ -97,6 +98,7 @@ vi.mock("./active-runtime-registry.js", async (importOriginal) => ({
   },
 }));
 
+// mock-isolation: Capability selection fixtures control registry acquisition and cache identity without executing plugins.
 vi.mock("./bundled-capability-runtime.js", () => ({
   loadBundledCapabilityRuntimeRegistryAsync: mocks.loadBundledCapabilityRuntimeRegistryAsync,
 }));

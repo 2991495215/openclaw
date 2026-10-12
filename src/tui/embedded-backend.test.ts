@@ -199,6 +199,7 @@ vi.mock("../agents/agent-scope.js", async (importOriginal) => ({
     params.agentId ?? /^agent:([^:]+):/.exec(params.sessionKey ?? "")?.[1] ?? "main",
 }));
 
+// mock-isolation: Backend fixtures control prepared registry loading without initializing real plugins.
 vi.mock("../agents/runtime-plugins.js", () => ({
   loadAgentRuntimePluginRegistryHandle: async (...args: unknown[]) =>
     loadAgentRuntimePluginRegistryHandleMock(...args),

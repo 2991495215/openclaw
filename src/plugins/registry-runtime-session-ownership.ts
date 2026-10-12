@@ -1,4 +1,3 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { normalizeTrimmedStringList } from "@openclaw/normalization-core/string-normalization";
 import { normalizeOptionalAgentRuntimeId } from "../agents/agent-runtime-id.js";
@@ -27,8 +26,10 @@ import {
   isAgentHarnessSessionKeyOwnedBy,
   resolveSessionPinnedHarnessId,
 } from "../sessions/agent-harness-session-key.js";
+import { createPluginGatewaySessionOwnershipAssertion } from "./registry-runtime-session-gateway-ownership.js";
 import type { PluginRegistryState } from "./registry-state.js";
 import type { PluginRegistry } from "./registry-types.js";
+import { getPluginRuntimeLoadContext } from "./runtime/load-context.js";
 import type { PluginRuntime } from "./runtime/types.js";
 
 type PluginSessionRuntime = PluginRuntime["agent"]["session"];
@@ -36,36 +37,6 @@ type SessionOwnershipFields = Pick<
   SessionEntry,
   "modelSelectionLocked" | "pluginOwnerId" | "agentHarnessId"
 >;
-
-const PLUGIN_GATEWAY_SESSION_MUTATION_METHODS = new Set([
-  "agent",
-  "chat.abort",
-  "chat.inject",
-  "chat.send",
-  "message.action",
-  "plugins.sessionAction",
-  "send",
-  "sessions.abort",
-  "sessions.compact",
-  "sessions.branches.switch",
-  "sessions.rewind",
-  "sessions.fork",
-  "sessions.create",
-  "sessions.delete",
-  "sessions.patchMany",
-  "sessions.patch",
-  "sessions.pluginPatch",
-  "sessions.reset",
-  "sessions.send",
-  "sessions.steer",
-  "wake",
-]);
-
-const PLUGIN_GATEWAY_GLOBAL_SESSION_MUTATION_METHODS = new Set([
-  "sessions.cleanup",
-  "sessions.groups.delete",
-  "sessions.groups.rename",
-]);
 
 /** Session ownership checks loaded only when a plugin invokes an async action. */
 export function createPluginSessionOwnership(
@@ -544,51 +515,14 @@ export function createPluginSessionOwnership(
         provider,
         entry,
         cfg,
+        metadataSnapshot: getPluginRuntimeLoadContext(resolveRegistry())?.metadataSnapshot,
       }),
     };
   };
-  const assertGatewaySessionRequestOwned = (
-    method: string,
-    params: Record<string, unknown> | undefined,
-  ): void => {
-    if (PLUGIN_GATEWAY_GLOBAL_SESSION_MUTATION_METHODS.has(method)) {
-      throw new Error(`Plugin "${pluginId}" cannot request global session mutation "${method}".`);
-    }
-    if (!PLUGIN_GATEWAY_SESSION_MUTATION_METHODS.has(method)) {
-      return;
-    }
-    const request = params ?? {};
-    if (method === "sessions.patchMany" && Array.isArray(request.targets)) {
-      for (const target of request.targets) {
-        if (!isRecord(target)) {
-          continue;
-        }
-        assertSessionIdentitiesOwned({
-          action: `request gateway method "${method}" for`,
-          agentId: target.agentId,
-          sessionKeys: [target.key],
-        });
-      }
-      return;
-    }
-    const sessionKeys = [request.sessionKey, request.key, request.parentSessionKey];
-    const sessionIds = [request.sessionId];
-    assertSessionIdentitiesOwned({
-      action: `request gateway method "${method}" for`,
-      agentId: request.agentId,
-      sessionIds,
-      sessionKeys,
-    });
-    if (
-      method === "sessions.abort" &&
-      !sessionKeys.some((value) => normalizeOptionalString(value)) &&
-      !sessionIds.some((value) => normalizeOptionalString(value))
-    ) {
-      throw new Error(
-        `Plugin "${pluginId}" must provide a session key when requesting gateway method "${method}".`,
-      );
-    }
-  };
+  const assertGatewaySessionRequestOwned = createPluginGatewaySessionOwnershipAssertion(
+    pluginId,
+    assertSessionIdentitiesOwned,
+  );
   const assertStoreEntryOwned = (params: {
     action: string;
     before?: SessionEntry;

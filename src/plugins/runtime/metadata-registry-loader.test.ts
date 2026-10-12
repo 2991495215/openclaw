@@ -17,6 +17,7 @@ vi.mock("../../config/plugin-auto-enable.js", () => ({
   applyPluginAutoEnable: (...args: unknown[]) => applyPluginAutoEnableMock(...args),
 }));
 
+// mock-isolation: Loader-option tests capture fixture requests without executing installed plugins.
 vi.mock("../loader.js", () => ({
   loadOpenClawPlugins: (...args: unknown[]) => loadOpenClawPluginsMock(...args),
   loadPluginRegistryHandleAsync: async (options: Record<string, unknown> = {}) =>

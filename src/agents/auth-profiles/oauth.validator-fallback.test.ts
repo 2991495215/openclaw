@@ -26,7 +26,7 @@ vi.mock("../../llm/oauth.js", () => ({
 
 vi.mock("../../plugins/provider-runtime.runtime.js", () => ({
   buildProviderAuthDoctorHintWithPlugin: async () => undefined,
-  formatProviderAuthProfileApiKeyWithPlugin: async (params: { context?: OAuthCredential }) =>
+  formatProviderAuthProfileApiKeyWithLazyRuntime: async (params: { context?: OAuthCredential }) =>
     params.context?.access,
   resolveProviderOAuthCredentialWithPlugin: async (params: { credential: OAuthCredential }) => {
     const credential = await refreshProviderOAuthCredentialWithPluginMock(params.credential);
@@ -34,7 +34,7 @@ vi.mock("../../plugins/provider-runtime.runtime.js", () => ({
       ? { status: "available" as const, credential, apiKey: credential.access }
       : { status: "unhandled" as const };
   },
-  resolveProviderOAuthRefreshCapabilityWithPlugin: async () => ({
+  resolveProviderOAuthRefreshCapabilityWithLazyRuntime: async () => ({
     status: "available" as const,
   }),
 }));

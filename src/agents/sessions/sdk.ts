@@ -14,7 +14,10 @@ import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadat
 import type { PluginMetadataSnapshotOwnerMaps } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { sanitizeCompactionReplayMessages } from "../compaction-replay.js";
 import { resolveProviderRequestPolicy } from "../provider-attribution.js";
-import { getModelProviderRequestRouteFacts } from "../provider-request-config.js";
+import {
+  attachModelProviderRequestRouteFacts,
+  getModelProviderRequestRouteFacts,
+} from "../provider-request-config.js";
 import {
   Agent,
   type AgentMessage,
@@ -234,7 +237,10 @@ export async function createAgentSession(
       const providerMetadataOwners =
         getModelProviderRequestRouteFacts(modelResult)?.providerMetadataOwners ??
         (await resolvePluginMetadataSnapshotAsync({ allowWorkspaceScopedCurrent: true })).owners;
-      const auth = await modelRegistry.getApiKeyAndHeaders(modelResult);
+      const requestModel = getModelProviderRequestRouteFacts(modelResult)
+        ? modelResult
+        : attachModelProviderRequestRouteFacts(modelResult, providerMetadataOwners);
+      const auth = await modelRegistry.getApiKeyAndHeaders(requestModel);
       if (!auth.ok) {
         throw new Error(auth.error);
       }
@@ -243,11 +249,11 @@ export async function createAgentSession(
       optionsLocal?.signal?.throwIfAborted();
       const providerRetrySettings = settingsManager.getProviderRetrySettings();
       const attributionHeaders = getAttributionHeaders(
-        modelResult,
+        requestModel,
         settingsManager,
         providerMetadataOwners,
       );
-      return modelRegistryRuntime.llmRuntime.streamSimple(modelResult, context, {
+      return modelRegistryRuntime.llmRuntime.streamSimple(requestModel, context, {
         ...optionsLocal,
         apiKey: auth.apiKey,
         timeoutMs: optionsLocal?.timeoutMs ?? providerRetrySettings.timeoutMs,

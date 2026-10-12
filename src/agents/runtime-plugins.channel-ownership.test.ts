@@ -5,6 +5,7 @@ const loaders = vi.hoisted(() => ({
   loadPluginRegistryHandle: vi.fn(),
   acquirePluginRegistryForInspection: vi.fn(),
 }));
+// mock-isolation: Channel custody tests provide exact loader-owned instances and must not load replacement runtimes.
 vi.mock("../plugins/loader.js", () => ({
   ...loaders,
   loadPluginRegistryHandleAsync: async (...args: unknown[]) =>

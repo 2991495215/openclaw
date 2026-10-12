@@ -25,6 +25,7 @@ vi.mock("../../agents/model-selection.js", () => ({
   resolveDefaultModelForAgent: () => ({ provider: "custom", model: "model" }),
 }));
 vi.mock("../../flows/search-setup.js", () => ({ listSearchProviderOptions: mocks.options }));
+// mock-isolation: Status projection uses configured fixture providers without constructing search runtimes.
 vi.mock("../../web-search/runtime.js", () => ({
   isWebSearchProviderConfigured: mocks.configured,
   listConfiguredWebSearchProvidersAsync: mocks.available,

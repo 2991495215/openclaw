@@ -89,6 +89,7 @@ vi.mock("../secrets/runtime-web-tools-public-artifacts.runtime.js", () => ({
   resolveBundledWebFetchProvidersFromPublicArtifacts: () => [],
 }));
 
+// mock-isolation: Startup secret ownership uses fixture providers without loading fallback plugin runtimes.
 vi.mock("../secrets/runtime-web-tools-fallback.runtime.js", () => ({
   runtimeWebToolsFallbackProviders: {
     resolvePluginWebSearchProvidersAsync: async () => webSearchProviders,

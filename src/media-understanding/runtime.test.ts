@@ -56,6 +56,7 @@ vi.mock("./runner.js", () => ({
   runCapability: mocks.runCapability,
 }));
 
+// mock-isolation: Media execution fixtures own their provider registry and release handles without plugin discovery.
 vi.mock("./provider-registry.js", async () => ({
   acquireMediaUnderstandingRegistry: async () => {
     const { createMediaProviderAcquisition } = await import("./runner.test-mocks.js");

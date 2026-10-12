@@ -46,13 +46,13 @@ function createRuntimeHostErrorMessage(model: Model, error: unknown): AssistantM
 
 function deferUntilTransportRuntimeHost(
   model: Model,
-  start: () => AssistantMessageEventStreamContract,
+  start: (model: Model) => AssistantMessageEventStreamContract,
 ): AssistantMessageEventStreamContract {
   const output = createAssistantMessageEventStream();
   void (async () => {
     try {
-      await ensureTransportRuntimeHost();
-      for await (const event of start()) {
+      const preparedModel = await prepareTransportModel(model);
+      for await (const event of start(preparedModel)) {
         output.push(event);
       }
     } catch (error) {
@@ -65,6 +65,13 @@ function deferUntilTransportRuntimeHost(
   return output;
 }
 
+async function prepareTransportModel<TApi extends Api>(model: Model<TApi>): Promise<Model<TApi>> {
+  await ensureTransportRuntimeHost();
+  const { prepareModelProviderRequestRouteFacts } =
+    await import("../agents/provider-request-config.js");
+  return await prepareModelProviderRequestRouteFacts(model);
+}
+
 function resolveRuntime(model: Model) {
   return getModelLlmRuntime(model) ?? defaultLlmRuntime;
 }
@@ -74,8 +81,8 @@ export function stream<TApi extends Api>(
   context: Context,
   options?: ProviderStreamOptions,
 ): AssistantMessageEventStreamContract {
-  return deferUntilTransportRuntimeHost(model, () =>
-    resolveRuntime(model).stream(model, context, options),
+  return deferUntilTransportRuntimeHost(model, (preparedModel) =>
+    resolveRuntime(preparedModel).stream(preparedModel, context, options),
   );
 }
 
@@ -85,10 +92,10 @@ export async function complete<TApi extends Api>(
   options?: ProviderStreamOptions,
   assertCurrent?: () => void,
 ): Promise<AssistantMessage> {
-  await ensureTransportRuntimeHost();
+  const preparedModel = await prepareTransportModel(model);
   assertCurrent?.();
   options?.signal?.throwIfAborted();
-  return await resolveRuntime(model).complete(model, context, options);
+  return await resolveRuntime(preparedModel).complete(preparedModel, context, options);
 }
 
 export function streamSimple<TApi extends Api>(
@@ -96,8 +103,8 @@ export function streamSimple<TApi extends Api>(
   context: Context,
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStreamContract {
-  return deferUntilTransportRuntimeHost(model, () =>
-    resolveRuntime(model).streamSimple(model, context, options),
+  return deferUntilTransportRuntimeHost(model, (preparedModel) =>
+    resolveRuntime(preparedModel).streamSimple(preparedModel, context, options),
   );
 }
 
@@ -107,9 +114,9 @@ export async function completeSimple<TApi extends Api>(
   options?: SimpleStreamOptions,
   assertCurrent?: () => void,
 ): Promise<AssistantMessage> {
-  await ensureTransportRuntimeHost();
+  const preparedModel = await prepareTransportModel(model);
   // Runtime setup can outlive its caller. Admit only a current request to the provider.
   assertCurrent?.();
   options?.signal?.throwIfAborted();
-  return await resolveRuntime(model).completeSimple(model, context, options);
+  return await resolveRuntime(preparedModel).completeSimple(preparedModel, context, options);
 }

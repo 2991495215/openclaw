@@ -74,6 +74,7 @@ vi.mock("../agents/agent-scope.js", () => ({
   resolveAgentWorkspaceDir,
 }));
 
+// mock-isolation: Doctor memory diagnostics use fixture search configuration without provider discovery.
 vi.mock("../agents/memory-search.js", () => ({
   resolveMemorySearchConfigAsync: async (...args: unknown[]) => resolveMemorySearchConfig(...args),
 }));

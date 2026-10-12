@@ -27,6 +27,7 @@ const { resolveProviders } = vi.hoisted(() => ({
 vi.mock("../plugins/plugin-registry-contributions.js", () => ({
   resolveManifestContractOwnerPluginId: () => undefined,
 }));
+// mock-isolation: Autodetection order tests supply exact provider inventories without plugin runtime discovery.
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProviders: resolveProviders,
   resolvePluginWebSearchProvidersAsync: resolveProviders,

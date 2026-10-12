@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   >(() => undefined),
 }));
 
+// mock-isolation: Embedding adapter fixtures provide exact capability owners without loading plugin runtimes.
 vi.mock("./capability-provider-runtime.js", () => ({
   resolvePluginCapabilityProvider: mocks.resolvePluginCapabilityProvider,
   resolvePluginCapabilityProviders: mocks.resolvePluginCapabilityProviders,

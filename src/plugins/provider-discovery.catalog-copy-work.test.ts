@@ -27,6 +27,7 @@ const fixture = vi.hoisted(() => ({
   idReads: 0,
 }));
 
+// mock-isolation: Catalog-copy tests instrument fixture provider rows without loading provider runtimes.
 vi.mock("./provider-discovery.runtime.js", () => {
   const runtime = {
     resolvePluginDiscoveryProvidersRuntime: () => fixture.providers,

@@ -132,6 +132,7 @@ describe("resolvePluginProviders", () => {
   beforeAll(async () => {
     vi.resetModules();
     setManifestPlugins([]);
+    // mock-isolation: Provider resolution fixtures supply metadata and loader results without executing installed plugins.
     vi.doMock("./loader.js", () => ({
       loadOpenClawPluginsAsync: runtimeLoader,
       isPluginRegistryLoadInFlight: isPluginRegistryLoadInFlightMock,
@@ -147,6 +148,7 @@ describe("resolvePluginProviders", () => {
     vi.doMock("./manifest-registry.js", () => ({
       loadPluginManifestRegistryCore: manifestLoader,
     }));
+    // mock-isolation: Provider resolution fixtures supply metadata and loader results without executing installed plugins.
     vi.doMock("./plugin-metadata-snapshot.js", () => {
       const loadSnapshot = (params: Parameters<LoadPluginMetadataSnapshot>[0]) => {
         metadataLoader(params);

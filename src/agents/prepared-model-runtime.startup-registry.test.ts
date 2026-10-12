@@ -178,7 +178,7 @@ it.each([
         await using retiredBuild = new PreparedModelRuntimeBuildResources(
           retainPreparedPluginRegistry,
         );
-        expect(() =>
+        await expect(
           prepareWorkspacePluginRegistries(
             input,
             metadata,
@@ -186,7 +186,7 @@ it.each([
             loadInbound,
             true,
           ),
-        ).toThrow(/retired|reloaded or disabled/);
+        ).rejects.toThrow(/retired|reloaded or disabled/);
         expect(captures).toHaveLength(1);
       }
     });

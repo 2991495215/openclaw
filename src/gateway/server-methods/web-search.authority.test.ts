@@ -22,6 +22,7 @@ vi.mock("./web-search-status.js", () => ({ prepareWebSearchStatus: mocks.prepare
 vi.mock("../../plugins/plugin-registry-contributions.js", () => ({
   resolveManifestContractOwnerPluginId: () => "parallel",
 }));
+// mock-isolation: Authority tests hold the fixture provider load boundary without discovering installed plugins.
 vi.mock("../../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProvidersAsync: async () => mocks.providers,
   resolveRuntimeWebSearchProvidersAsync: async () => mocks.providers,

@@ -81,6 +81,7 @@ import type { UserModelAccountSelection } from "./model-account-authority.js";
 import { isSessionUnreadAckOnlyPatch } from "./server-methods/session-unread-ack.js";
 import {
   prepareSessionPatchModelSelection,
+  prepareSessionPatchRuntimeMetadata,
   resolveSessionPatchModelSelection,
 } from "./server-methods/sessions-patch-model-selection.js";
 import { resolveProtectedSessionVisibilityError } from "./server-methods/sessions-shared.js";
@@ -110,6 +111,7 @@ type SessionPatchProjectionParams = {
   preparedAgentRuntime?: string;
   archivedBy?: SessionEntry["archivedBy"];
   providerAuthMetadataSnapshot?: Pick<PluginMetadataSnapshot, "plugins">;
+  runtimeMetadataSnapshot?: PluginMetadataSnapshot | null;
   /** Exact harness owner authorized to project its new reserved session row. */
   authorizedAgentHarnessId?: string;
   personalModelSelection?: UserModelAccountSelection;
@@ -182,6 +184,7 @@ export async function projectSessionsPatchEntry(
 ): Promise<SessionPatchProjectionResult> {
   const preparation = prepareSessionsPatchEntry({
     ...params,
+    runtimeMetadataSnapshot: await prepareSessionPatchRuntimeMetadata(params),
     preparedAuthProfileProvider: await prepareSessionPatchAuthProfileProvider(params),
   });
   if (preparation.kind === "complete") {
@@ -584,6 +587,7 @@ function* projectSessionPatchSteps(
       }
       const runtime = resolveModelRuntimeDirective({
         cfg,
+        metadataSnapshot: params.runtimeMetadataSnapshot,
         provider: selection.provider,
         rawRuntime: patch.agentRuntime ?? undefined,
         sessionEntry: next,

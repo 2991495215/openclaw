@@ -401,6 +401,7 @@ export async function resolveEmbeddedModelSelection(params: {
     provider,
     entry: sessionEntryForAttempt,
     cfg: params.cfg,
+    metadataSnapshot: params.pluginsEnabled ? params.manifestMetadataSnapshot : null,
   });
   await ensureSelectedAgentHarnessPlugin({
     config: params.cfg,

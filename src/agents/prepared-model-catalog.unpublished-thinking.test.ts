@@ -3,6 +3,7 @@ import { createOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { loadProviderScopedThinkingCatalog } from "./prepared-model-catalog.js";
 
 const discovery = vi.hoisted(() => vi.fn(() => []));
+// mock-isolation: Unpublished-thinking probes must not start provider discovery.
 vi.mock("../plugins/provider-discovery.runtime.js", () => {
   const runtime = {
     resolvePluginDiscoveryProvidersRuntime: discovery,

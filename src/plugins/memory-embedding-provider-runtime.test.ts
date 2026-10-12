@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   >(() => undefined),
 }));
 
+// mock-isolation: Memory embedding fixtures supply capability owners without plugin runtime discovery.
 vi.mock("./capability-provider-runtime.js", () => ({
   resolvePluginCapabilityProvider: mocks.resolvePluginCapabilityProvider,
   resolvePluginCapabilityProviders: mocks.resolvePluginCapabilityProviders,

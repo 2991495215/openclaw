@@ -2,43 +2,24 @@ import { findCapabilityProviderById } from "../../packages/media-generation-core
 import { normalizeMediaProviderId } from "../../packages/media-understanding-common/src/provider-id.js";
 import type { OpenClawConfig } from "../config/types.js";
 import { acquirePluginCapabilityProviders } from "../plugins/capability-provider-acquisition.js";
-import { resolvePluginCapabilityProvider } from "../plugins/capability-provider-runtime.js";
 import { runWithAsyncWorkResources } from "../shared/async-work-resources.js";
 import { resolveImageCapableConfigProviderIds } from "./config-provider-models.js";
 import { resolveConfiguredMediaEntryCapabilities } from "./entry-capabilities.js";
 import type { MediaUnderstandingCapabilityRegistry, MediaUnderstandingProvider } from "./types.js";
 
 /** Resolves capability metadata for configured shared media model providers. */
-export function buildMediaUnderstandingCapabilityRegistry(
-  cfg?: OpenClawConfig,
-  preparedProviders?: readonly MediaUnderstandingProvider[],
+function buildPreparedCapabilityRegistry(
+  cfg: OpenClawConfig | undefined,
+  providerIds: ReadonlySet<string>,
+  preparedProviders: readonly MediaUnderstandingProvider[],
 ): MediaUnderstandingCapabilityRegistry {
   const registry: MediaUnderstandingCapabilityRegistry = new Map();
-  const providerIds = new Set<string>();
-  for (const entry of cfg?.tools?.media?.models ?? []) {
-    if (
-      typeof entry?.provider === "string" &&
-      (entry.type ?? (entry.command ? "cli" : "provider")) === "provider" &&
-      !resolveConfiguredMediaEntryCapabilities(entry)
-    ) {
-      const providerId = normalizeMediaProviderId(entry.provider);
-      if (providerId) {
-        providerIds.add(providerId);
-      }
-    }
-  }
   for (const providerId of providerIds) {
-    const provider = preparedProviders
-      ? findCapabilityProviderById({
-          providers: preparedProviders,
-          providerId,
-          normalizeProviderId: normalizeMediaProviderId,
-        })
-      : resolvePluginCapabilityProvider({
-          key: "mediaUnderstandingProviders",
-          providerId,
-          cfg,
-        });
+    const provider = findCapabilityProviderById({
+      providers: preparedProviders,
+      providerId,
+      normalizeProviderId: normalizeMediaProviderId,
+    });
     if (provider) {
       // Keep canonical keys: runtime aliases do not independently opt entries into inference.
       registry.set(normalizeMediaProviderId(provider.id), { capabilities: provider.capabilities });
@@ -84,8 +65,9 @@ export async function buildMediaUnderstandingCapabilityRegistryAsync(cfg?: OpenC
         acquisitions.push(acquired);
       }),
     );
-    return buildMediaUnderstandingCapabilityRegistry(
+    return buildPreparedCapabilityRegistry(
       cfg,
+      providerIds,
       acquisitions.flatMap(({ providers }) => providers),
     );
   });

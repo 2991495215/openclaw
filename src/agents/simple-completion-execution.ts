@@ -25,6 +25,7 @@ import type { AssistantMessage, Model, SimpleStreamOptions } from "../llm/types.
 import { createModelLifecycle } from "./embedded-agent-runner/run/attempt.model-diagnostic-lifecycle.js";
 import { createModelObserver } from "./embedded-agent-runner/run/attempt.model-diagnostic-observation.js";
 import type { ResolvedProviderAuth } from "./model-auth.js";
+import { prepareModelProviderRequestRouteFacts } from "./provider-request-config.js";
 
 type SimpleCompletionModelOptions = {
   headers?: Record<string, string>;
@@ -67,6 +68,9 @@ export async function completeWithPreparedSimpleCompletionModel(
 async function completePreparedModel(params: PreparedCompletionParams): Promise<AssistantMessage> {
   // Direct SDK calls prepare transport hooks before entering the stream facade.
   await import("./ai-transport-runtime-host.js");
+  const requestModel = await prepareModelProviderRequestRouteFacts(params.model, {
+    config: params.cfg,
+  });
   params.assertCurrent?.();
   params.options?.signal?.throwIfAborted();
   const runtime = getModelLlmRuntime(params.model);
@@ -76,7 +80,7 @@ async function completePreparedModel(params: PreparedCompletionParams): Promise<
       // Direct SDK callers that did not use the preparation helper keep the shipped
       // process-default behavior; all prepared host paths carry their lifecycle owner.
       apiRegistry: runtime?.registry ?? defaultApiRegistry,
-      model: params.model,
+      model: requestModel,
       cfg: params.cfg,
       auth: { mode: params.auth.mode, authFlow: params.auth.authFlow },
     });
@@ -92,7 +96,7 @@ async function completePreparedModel(params: PreparedCompletionParams): Promise<
     level: rawReasoning,
   });
   const reasoning = providerReasoning === "adaptive" ? "medium" : providerReasoning;
-  const headers = prepareHeadersForSimpleCompletion(params.model, options);
+  const headers = prepareHeadersForSimpleCompletion(requestModel, options);
   const completionOptions: SimpleStreamOptions = {
     ...options,
     ...(reasoning ? { reasoning } : {}),

@@ -37,6 +37,7 @@ vi.mock("../../globals.js", () => ({
   logVerbose: vi.fn(),
 }));
 
+// mock-isolation: Command routing uses a synthetic speech registry without initializing provider runtimes.
 vi.mock("../../tts/provider-registry.js", () => {
   const registry = {
     getSpeechProvider: vi.fn(() => undefined),

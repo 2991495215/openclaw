@@ -381,6 +381,7 @@ vi.mock("../context-engine/registry.js", () => ({
     ingest: async () => ({ ingested: false }),
   })),
 }));
+// mock-isolation: Spawn fixtures supply an empty prepared registry without starting plugin discovery.
 vi.mock("./runtime-plugins.js", async () => {
   const { createEmptyPluginRegistry } = await import("../plugins/registry-empty.js");
   return { loadAgentRuntimePluginRegistryHandle: vi.fn(async () => createEmptyPluginRegistry()) };

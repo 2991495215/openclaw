@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
     vi.fn<typeof import("../channel-plugin-ids.js").resolveConfiguredChannelPluginIds>(),
   resolveChannelPluginIds:
     vi.fn<typeof import("../channel-plugin-ids.js").resolveChannelPluginIds>(),
-  resolveEffectivePluginIds:
-    vi.fn<typeof import("../effective-plugin-ids.js").resolveEffectivePluginIds>(),
+  resolveEffectivePluginIdsAsync:
+    vi.fn<typeof import("../effective-plugin-ids.js").resolveEffectivePluginIdsAsync>(),
   collectConfiguredMemoryEmbeddingProviderIds:
     vi.fn<
       typeof import("../gateway-startup-plugin-ids.js").collectConfiguredMemoryEmbeddingProviderIds
@@ -54,8 +54,8 @@ vi.mock("../channel-plugin-ids.js", () => ({
 // mock-isolation: Loader scope uses fixture plugin ids without installed-plugin discovery.
 vi.mock("../effective-plugin-ids.js", () => ({
   resolveEffectivePluginIdsAsync: async (
-    ...args: Parameters<typeof mocks.resolveEffectivePluginIds>
-  ) => mocks.resolveEffectivePluginIds(...args),
+    ...args: Parameters<typeof mocks.resolveEffectivePluginIdsAsync>
+  ) => mocks.resolveEffectivePluginIdsAsync(...args),
 }));
 
 vi.mock("../gateway-startup-plugin-ids.js", () => ({
@@ -201,11 +201,11 @@ describe("ensurePluginRegistryLoaded", () => {
   it("loads effective plugin ids for the all scope", async () => {
     const env = { HOME: "/tmp/openclaw-home" };
     const config = { plugins: { enabled: true } };
-    mocks.resolveEffectivePluginIds.mockReturnValue(["demo", "memory-core"]);
+    mocks.resolveEffectivePluginIdsAsync.mockResolvedValue(["demo", "memory-core"]);
 
     await ensurePluginRegistryLoaded({ scope: "all", config, env });
 
-    expect(mocks.resolveEffectivePluginIds).toHaveBeenCalledWith({
+    expect(mocks.resolveEffectivePluginIdsAsync).toHaveBeenCalledWith({
       config,
       env,
       workspaceDir: "/resolved-workspace",
@@ -253,7 +253,7 @@ describe("ensurePluginRegistryLoaded", () => {
       ensurePluginRegistryLoaded({ scope: "sandbox-backends", config }),
     ).resolves.toBeUndefined();
     expect(requireLoadOptions().onlyPluginIds).toEqual(["research-owner", "sandbox-owner"]);
-    expect(mocks.resolveEffectivePluginIds).not.toHaveBeenCalled();
+    expect(mocks.resolveEffectivePluginIdsAsync).not.toHaveBeenCalled();
   });
 
   it("loads installed persisted sandbox owners after configuration switches to Docker", async () => {
@@ -306,7 +306,7 @@ describe("ensurePluginRegistryLoaded", () => {
       });
 
       expect(requireLoadOptions().onlyPluginIds).toEqual([]);
-      expect(mocks.resolveEffectivePluginIds).not.toHaveBeenCalled();
+      expect(mocks.resolveEffectivePluginIdsAsync).not.toHaveBeenCalled();
     },
   );
 

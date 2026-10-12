@@ -47,7 +47,10 @@ const providerRegistry = Object.freeze(
 const providerHooks = Object.freeze(createProviderHookRuntime(providerRegistry));
 const externalProfiles = Object.freeze(createProviderExternalAuthResolver(providerHooks));
 const externalAuth = Object.freeze(
-  createExternalAuthRuntime(externalProfiles.resolveExternalAuthProfilesWithPlugins),
+  createExternalAuthRuntime(
+    externalProfiles.resolveExternalAuthProfilesWithPlugins,
+    externalProfiles.resolveExternalAuthProfilesWithPluginsAsync,
+  ),
 );
 const authStore = Object.freeze(createAuthProfileStoreRuntime(externalAuth));
 const authAvailability = Object.freeze(createProviderAuthAvailability(authStore));

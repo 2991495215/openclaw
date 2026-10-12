@@ -116,7 +116,7 @@ function asyncRuntimeHook<K extends RuntimeHookName>(name: K) {
     const plugin = await resolveProviderRuntimePluginAsync(params);
     // SAFETY: The selected name determines both the callable and its argument/result contract.
     const hook = plugin?.[name] as ((context: Parameters<Hook>[0]) => ReturnType<Hook>) | undefined;
-    return await hook?.call(plugin, params.context);
+    return hook?.call(plugin, params.context);
   };
 }
 

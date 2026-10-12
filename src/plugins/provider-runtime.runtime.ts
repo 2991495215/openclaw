@@ -14,7 +14,7 @@ export const buildProviderAuthDoctorHintWithPlugin = bindProviderRuntime(
   (runtime) => runtime.buildProviderAuthDoctorHintWithPlugin,
 );
 
-export const formatProviderAuthProfileApiKeyWithPlugin = bindProviderRuntime(
+export const formatProviderAuthProfileApiKeyWithLazyRuntime = bindProviderRuntime(
   (runtime) => runtime.formatProviderAuthProfileApiKeyWithPluginAsync,
 );
 
@@ -26,7 +26,7 @@ export const resolveProviderOAuthCredentialWithPlugin = bindProviderRuntime(
   (runtime) => runtime.resolveProviderOAuthCredentialWithPlugin,
 );
 
-export const resolveProviderOAuthRefreshCapabilityWithPlugin = bindProviderRuntime(
+export const resolveProviderOAuthRefreshCapabilityWithLazyRuntime = bindProviderRuntime(
   (runtime) => runtime.resolveProviderOAuthRefreshCapabilityWithPluginAsync,
 );
 

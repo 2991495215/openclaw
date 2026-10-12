@@ -92,6 +92,7 @@ vi.mock("../../../browser-lifecycle-cleanup.js", () => ({
   >(async () => {}),
 }));
 
+// mock-isolation: Archive lifecycle fixtures use an empty prepared registry without loading plugin runtimes.
 vi.mock("../../runtime-plugins.js", async () => {
   const { createEmptyPluginRegistry } = await import("../../../plugins/registry-empty.js");
   return {

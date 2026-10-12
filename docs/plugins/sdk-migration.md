@@ -149,6 +149,22 @@ warning. It requires an already prepared and loaded provider registry; cold
 discovery must use the async replacement. The synchronous export remains available
 until the next Plugin SDK major.
 
+### Bundled provider request policy
+
+The local-only `openclaw/plugin-sdk/provider-http` seam exports
+`prepareModelProviderRequestRouteFacts` for bundled provider and transport code.
+Await it before using a cold model and reuse the returned model through stream
+and completion calls. Already prepared models reuse their captured facts without
+another metadata lookup.
+
+Direct policy readers use `getModelProviderRequestRouteFacts` from the same seam
+and pass its `providerMetadataOwners` to their policy/header inputs (or as the
+second argument to `resolveProviderEndpoint`). The policy functions and the
+local-only `provider-model-shared` endpoint helper consume prepared metadata;
+they do not perform cold native discovery. These local seams are not public
+third-party SDK contracts. Metadata preparation does not grant credential or
+execution authority.
+
 ### Speech provider discovery
 
 Use `getSpeechProviderAsync` from `openclaw/plugin-sdk/speech` or

@@ -202,6 +202,7 @@ vi.mock("../agents/tools/model-config.helpers.js", () => ({
   hasAuthProfileForProvider,
 }));
 
+// mock-isolation: Proxy finalization fixtures provide search status without plugin runtime discovery.
 vi.mock("../web-search/runtime.js", () => ({
   listConfiguredWebSearchProvidersAsync: listConfiguredWebSearchProviders,
 }));

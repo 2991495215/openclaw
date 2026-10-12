@@ -10,6 +10,7 @@ import { clearPluginMetadataLifecycleCaches } from "../plugins/plugin-metadata-l
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { loadAgentRuntimePluginRegistryHandle } from "./runtime-plugins.js";
 
+// mock-isolation: Captured-config tests inspect loader inputs without loading the 200 synthetic plugin registries.
 vi.mock("../plugins/loader.js", () => ({ loadPluginRegistryHandleAsync: vi.fn() }));
 
 afterEach(() => {

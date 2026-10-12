@@ -48,6 +48,7 @@ const activeRegistryMocks = vi.hoisted(() => ({
 // Only the load entry points are intercepted. The registry-resolution bindings
 // stay wired to their real owners so a consumer that crosses them observes
 // production behavior instead of a double that no production path reaches.
+// mock-isolation: Optional-tool tests use synthetic loader results while retaining real active-registry and cache-key helpers.
 vi.mock("./loader.js", async () => {
   const [activeRuntimeRegistry, loaderCache] = await Promise.all([
     import("./active-runtime-registry.js"),

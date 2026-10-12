@@ -2,6 +2,7 @@
 import type { AuthProfileStore, OAuthCredential } from "../agents/auth-profiles/types.js";
 import type { ModelProviderAuthMode, ModelProviderConfig } from "../config/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { PluginMetadataSnapshot } from "./plugin-metadata-snapshot.types.js";
 import type { SecretInputMode } from "./provider-auth-types.js";
 
 export type ProviderAuthOptionBag = {
@@ -49,5 +50,12 @@ export type ProviderExternalAuthProfileResolver = (params: {
   config?: OpenClawConfig;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
+  pluginMetadataSnapshot?: PluginMetadataSnapshot;
   context: ProviderResolveExternalAuthProfilesContext;
 }) => ProviderExternalAuthProfile[];
+
+export type ProviderExternalAuthProfileAsyncResolver = (
+  params: Parameters<ProviderExternalAuthProfileResolver>[0] & {
+    pluginMetadataSnapshot: PluginMetadataSnapshot;
+  },
+) => Promise<ProviderExternalAuthProfile[]>;

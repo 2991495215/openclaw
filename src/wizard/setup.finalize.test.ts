@@ -211,6 +211,7 @@ vi.mock("../agents/tools/model-config.helpers.js", () => ({
   hasAuthProfileForProvider,
 }));
 
+// mock-isolation: Finalize fixtures provide configured search status without loading provider runtimes.
 vi.mock("../web-search/runtime.js", () => ({
   listConfiguredWebSearchProvidersAsync: listConfiguredWebSearchProviders,
 }));

@@ -340,7 +340,13 @@ describe("provider-runtime", () => {
     vi.doMock("./provider-hook-runtime.js", async () => {
       const { createProviderHookRuntime } = await import("./provider-hook-runtime-core.js");
       const providers = await import("./providers.runtime.js");
-      return createProviderHookRuntime(providers);
+      return createProviderHookRuntime({
+        ...providers,
+        resolvePluginProviderRegistryCoreAsync: async (params) =>
+          providers.resolvePluginProviderRegistryCore(params),
+        resolvePluginProvidersCoreAsync: async (params, onSelectedRegistry) =>
+          providers.resolvePluginProvidersCore(params, onSelectedRegistry),
+      });
     });
     vi.doMock("./provider-external-auth.js", async () => {
       const { createProviderExternalAuthResolver } =

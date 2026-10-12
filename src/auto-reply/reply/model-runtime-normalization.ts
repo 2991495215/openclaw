@@ -15,10 +15,9 @@ import { resolveEffectiveAgentRuntime } from "../../agents/thinking-runtime.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { getCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata-snapshot.js";
-import {
-  isManifestPluginAvailableForControlPlane,
-  loadManifestMetadataSnapshot,
-} from "../../plugins/manifest-contract-eligibility.js";
+import { isManifestPluginAvailableForControlPlane } from "../../plugins/manifest-contract-eligibility.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
+import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import {
   applyModelRuntimeDirective,
   resolveModelRuntimeDirective,
@@ -64,6 +63,7 @@ export function isKnownModelSelectionProvider(params: {
   cfg: OpenClawConfig;
   provider: string;
   catalog: readonly ModelCatalogEntry[];
+  metadataSnapshot?: PluginMetadataSnapshot | null;
 }): boolean {
   const provider = normalizeProviderId(params.provider);
   if (
@@ -72,7 +72,15 @@ export function isKnownModelSelectionProvider(params: {
   ) {
     return true;
   }
-  const snapshot = loadManifestMetadataSnapshot({ config: params.cfg });
+  if (params.metadataSnapshot === null) {
+    return false;
+  }
+  const snapshot =
+    params.metadataSnapshot ??
+    getCurrentPluginMetadataSnapshot({ config: params.cfg, allowWorkspaceScopedSnapshot: true });
+  if (!snapshot) {
+    throw new Error("Model selection metadata is not prepared; await runtime preparation first.");
+  }
   return snapshot.plugins.some(
     (plugin) =>
       plugin.providers.some((id) => normalizeProviderId(id) === provider) &&
@@ -121,12 +129,20 @@ export async function prepareModelSelectionRuntime(params: {
         authProfileOverrideSource: "user" as const,
       }
     : params.sessionEntry;
-  let runtime = resolveModelRuntimeDirective(params);
+  const metadataSnapshot =
+    params.cfg.plugins?.enabled === false
+      ? null
+      : await resolvePluginMetadataSnapshotAsync({
+          config: params.cfg,
+          workspaceDir: params.workspaceDir,
+          allowWorkspaceScopedCurrent: true,
+        });
+  let runtime = resolveModelRuntimeDirective({ ...params, metadataSnapshot });
   if (runtime.kind === "invalid") {
     return { status: "rejected", reason: "invalid-runtime", message: runtime.errorText };
   }
   const selected = findSelectedCatalogEntry(params);
-  if (!isKnownModelSelectionProvider(params)) {
+  if (!isKnownModelSelectionProvider({ ...params, metadataSnapshot })) {
     return {
       status: "rejected",
       reason: "unknown-provider",
@@ -149,6 +165,7 @@ export async function prepareModelSelectionRuntime(params: {
     const effectiveRuntime = resolveEffectiveAgentRuntime({
       ...runtimeFacts,
       cfg: params.cfg,
+      metadataSnapshot,
       sessionEntry,
     });
     if (runtime.kind === "clear" || !sessionEntry?.agentRuntimeOverride) {
@@ -194,6 +211,7 @@ export async function prepareModelSelectionRuntime(params: {
       : resolveEffectiveAgentRuntime({
           cfg: params.cfg,
           ...runtimeFacts,
+          metadataSnapshot,
           sessionEntry: runtimeEntry,
         });
   let hydratedSelection: ModelCatalogEntry | undefined;

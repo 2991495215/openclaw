@@ -10,6 +10,7 @@ import {
   capturePluginLifecycleAuthority,
   capturePluginRegistryLifecycleEpoch,
   capturePluginRegistryLifecycleSignal,
+  createPluginRegistryPreparationScope,
   isPluginRecordActive,
   isPluginRegistryPreparing,
   isPluginRegistryLifecycleEpochActive,
@@ -47,6 +48,30 @@ afterEach(() => resetPluginRuntimeStateForTest());
 afterEach(resetPluginLoaderTestStateForTest);
 
 describe("plugin registry retirement notifications", () => {
+  it("keeps deferred registration authority until the loader publishes or abandons its scope", async () => {
+    const registry = createEmptyPluginRegistry();
+    const record = createPluginRecord({ id: "deferred-registration" });
+    registry.plugins.push(record);
+    using scope = createPluginRegistryPreparationScope(registry);
+    const deferredRegistration = scope.run(async () => {
+      await Promise.resolve();
+      const authority = capturePluginLifecycleAuthority(registry, record, { registration: true });
+      expect(authority?.()).toBe(true);
+      return authority;
+    });
+
+    expect(isPluginRegistryPreparing(registry)).toBe(false);
+    const authority = await deferredRegistration;
+    scope[Symbol.dispose]();
+    scope.run(() => {
+      expect(isPluginRegistryPreparing(registry)).toBe(false);
+      expect(authority?.()).toBe(false);
+      expect(
+        capturePluginLifecycleAuthority(registry, record, { registration: true }),
+      ).toBeUndefined();
+    });
+  });
+
   it.each(["return", "throw", "resolve", "reject"] as const)(
     "releases preparation authority and its registry after %s",
     async (outcome) => {

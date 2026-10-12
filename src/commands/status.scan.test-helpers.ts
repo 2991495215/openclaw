@@ -263,6 +263,7 @@ export async function loadStatusScanModuleForTest(
   vi.doMock("../cli/command-config-resolution.js", () => ({
     resolveCommandConfigWithSecrets: mocks.resolveCommandSecretRefsViaGateway,
   }));
+  // mock-isolation: Status fixtures supply search configuration without loading embedding providers.
   vi.doMock("../agents/memory-search.js", () => ({
     resolveMemorySearchConfigAsync: async (...args: unknown[]) =>
       resolveMemorySearchConfig(...args),

@@ -165,6 +165,7 @@ vi.mock("../../../state/user-preferences.js", async (importOriginal) => ({
   getCanonicalUserPreferences: mocks.getCanonicalUserPreferences,
 }));
 
+// mock-isolation: Talk RPC fixtures supply exact speech providers without runtime discovery.
 vi.mock("../../../tts/provider-registry.js", () => {
   const registry = {
     canonicalizeSpeechProviderId: mocks.canonicalizeSpeechProviderId,

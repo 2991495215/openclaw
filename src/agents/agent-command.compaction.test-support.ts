@@ -144,6 +144,7 @@ vi.mock("./harness/runtime-plugin.js", () => ({
   ensureSelectedAgentHarnessPlugin: vi.fn(async () => undefined),
 }));
 
+// mock-isolation: Compaction fixtures supply an empty prepared registry without acquiring plugin runtimes.
 vi.mock("./runtime-plugins.js", async () => {
   const { createEmptyPluginRegistry } = await import("../plugins/registry-empty.js");
   return {

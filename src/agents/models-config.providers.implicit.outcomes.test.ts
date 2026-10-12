@@ -11,6 +11,7 @@ import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { resolveImplicitProviders } from "./models-config.providers.implicit.js";
 
 const fixture = vi.hoisted(() => ({ providers: new Array<ProviderPlugin>() }));
+// mock-isolation: Outcome fixtures supply exact provider inventories without loading plugin runtimes.
 vi.mock("../plugins/provider-discovery.runtime.js", () => {
   const runtime = {
     resolvePluginDiscoveryProvidersRuntime: () => fixture.providers,

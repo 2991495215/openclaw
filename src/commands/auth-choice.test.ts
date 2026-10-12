@@ -30,7 +30,7 @@ vi.mock("../plugins/provider-install-catalog.js", () => ({
 }));
 
 vi.mock("../plugins/provider-auth-choice.runtime.js", () => ({
-  resolvePluginProviders,
+  resolveAuthChoicePluginProviders: resolvePluginProviders,
   resolvePluginSetupProvider: () => undefined,
   resolveProviderPluginChoice,
   runProviderModelSelectedHook,

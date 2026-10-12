@@ -31,6 +31,7 @@ const { resolveExternalAuthProfilesWithPluginsMock, resolvePluginWebSearchProvid
     resolvePluginWebSearchProvidersMock: vi.fn(() => buildTestWebSearchProviders()),
   }));
 
+// mock-isolation: Secret snapshot fixtures isolate configured provider facts from plugin discovery.
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProvidersAsync: resolvePluginWebSearchProvidersMock,
 }));

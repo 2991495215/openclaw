@@ -126,12 +126,12 @@ async function resolveHarnessSourceVisibleRepliesDefault(params: {
   }
   try {
     const allowPluginNormalization = params.cfg.plugins?.enabled !== false;
-    if (allowPluginNormalization) {
-      await resolvePluginMetadataSnapshotAsync({
-        config: params.cfg,
-        allowWorkspaceScopedCurrent: true,
-      });
-    }
+    const metadataSnapshot = allowPluginNormalization
+      ? await resolvePluginMetadataSnapshotAsync({
+          config: params.cfg,
+          allowWorkspaceScopedCurrent: true,
+        })
+      : null;
     const modelContext = {
       cfg: params.cfg,
       agentId: params.sessionAgentId,
@@ -207,6 +207,7 @@ async function resolveHarnessSourceVisibleRepliesDefault(params: {
         provider: candidate.provider,
         entry: params.entry,
         cfg: params.cfg,
+        metadataSnapshot,
       });
       const defaults = resolveAgentHarnessDeliveryDefaults({
         provider: candidate.provider,

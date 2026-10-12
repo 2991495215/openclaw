@@ -31,20 +31,20 @@ vi.mock("../config/config.js", () => ({
   getRuntimeConfig: mocks.config,
   loadConfig: mocks.config,
 }));
-vi.mock("../config/io.plugin-metadata.js", () => ({
-  resolveConfigWidePluginMetadataSnapshot: mocks.metadataSnapshot,
-}));
 vi.mock("../config/plugin-auto-enable.js", () => ({ applyPluginAutoEnable: mocks.autoEnable }));
+// mock-isolation: Status tests combine fixture metadata with the real projection helper without runtime discovery.
 vi.mock("./loader.js", () => ({
   loadOpenClawPlugins: mocks.load,
   loadPluginRegistryHandleAsync: async (options: Record<string, unknown> = {}) =>
     mocks.load({ ...options, activate: false }),
   resolveCompatibleRuntimePluginRegistry: mocks.runtimeRegistry,
 }));
+// mock-isolation: Status tests combine fixture metadata with the real projection helper without runtime discovery.
 vi.mock("./runtime/metadata-registry-loader.js", () => ({
   loadPluginMetadataRegistrySnapshotAsync: async (...args: unknown[]) =>
     mocks.metadataRegistry(...args),
 }));
+// mock-isolation: Status tests combine fixture metadata with the real projection helper without runtime discovery.
 vi.mock("./plugin-metadata-snapshot.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./plugin-metadata-snapshot.js")>();
   return {

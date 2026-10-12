@@ -48,6 +48,7 @@ describe("plugin contract registry public artifacts", () => {
       },
     ]);
 
+    // mock-isolation: Public-artifact contract tests reject fallback runtime acquisition.
     vi.doMock("../bundled-capability-runtime.js", () => ({
       prepareBundledCapabilityRuntime,
     }));
@@ -92,6 +93,7 @@ describe("plugin contract registry public artifacts", () => {
       },
     ]);
 
+    // mock-isolation: Public-artifact contract tests reject fallback runtime acquisition.
     vi.doMock("../bundled-capability-runtime.js", () => ({
       prepareBundledCapabilityRuntime,
     }));

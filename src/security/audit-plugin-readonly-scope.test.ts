@@ -32,6 +32,7 @@ vi.mock("../plugins/runtime/load-context.resolve.js", () => ({
     applyPluginAutoEnableMock(...args),
 }));
 
+// mock-isolation: Audit scope tests capture loader requests without executing installed plugin runtimes.
 vi.mock("../plugins/runtime/metadata-registry-loader.js", () => ({
   loadPluginMetadataRegistrySnapshotAsync: async (...args: unknown[]) =>
     loadPluginMetadataRegistrySnapshotMock(...args),

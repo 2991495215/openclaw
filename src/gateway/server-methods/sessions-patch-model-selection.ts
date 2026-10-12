@@ -33,6 +33,8 @@ import type { SessionEntry } from "../../config/sessions.js";
 import { resolveCollapsedSessionAuthPinSource } from "../../config/sessions/auth-profile-override-provenance.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
+import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { isSessionStatusModelPatchOrigin } from "../session-model-patch-origin.js";
 import { SessionMutationAuthorizationChangedError } from "../session-sharing.js";
 import type { SessionWorkerPlacementContext } from "../worker-environments/session-placement-lifecycle.js";
@@ -41,6 +43,27 @@ import {
   prepareSessionWorkerPlacementPatchError,
   resolveSessionWorkerPlacementPatchError,
 } from "./sessions-shared.js";
+
+export async function prepareSessionPatchRuntimeMetadata(params: {
+  cfg: OpenClawConfig;
+  patch: SessionsPatchParams;
+  existingEntry?: Pick<SessionEntry, "agentRuntimeOverride">;
+  runtimeMetadataSnapshot?: PluginMetadataSnapshot | null;
+}): Promise<PluginMetadataSnapshot | null | undefined> {
+  if (params.runtimeMetadataSnapshot !== undefined) {
+    return params.runtimeMetadataSnapshot;
+  }
+  if (!params.patch.agentRuntime && !params.existingEntry?.agentRuntimeOverride) {
+    return undefined;
+  }
+  if (params.cfg.plugins?.enabled === false) {
+    return null;
+  }
+  return resolvePluginMetadataSnapshotAsync({
+    config: params.cfg,
+    allowWorkspaceScopedCurrent: true,
+  });
+}
 
 export function persistSessionPatchModelSelection(params: {
   callerScopes: readonly string[];

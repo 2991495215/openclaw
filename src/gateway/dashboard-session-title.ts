@@ -5,7 +5,7 @@ import type { AdmittedRunOperatorAuthority } from "../agents/admitted-run-contex
 import { resolveNativeModelPrimary } from "../agents/agent-scope.js";
 import { splitTrailingAuthProfile } from "../agents/model-ref-profile.js";
 import { resolveSessionModelRef } from "../agents/session-model-ref.js";
-import { resolveSessionRuntimeOverrideForProvider } from "../agents/session-runtime-compat.js";
+import { resolveSessionRuntimeOverrideForProviderAsync } from "../agents/session-runtime-compat.js";
 import { createCrustaceanSlug } from "../agents/session-slug.js";
 import { resolveUtilityModelRefForAgent } from "../agents/utility-model.js";
 import type { WorktreeSourceStage } from "../agents/worktrees/types.js";
@@ -247,7 +247,7 @@ async function generateDashboardSessionTitle(params: {
     return null;
   }
   const regularModel = resolveSessionModelRef(params.cfg, params.entry, params.agentId);
-  const agentHarnessRuntimeOverride = resolveSessionRuntimeOverrideForProvider({
+  const agentHarnessRuntimeOverride = await resolveSessionRuntimeOverrideForProviderAsync({
     provider: regularModel.provider,
     entry: params.entry,
     cfg: params.cfg,

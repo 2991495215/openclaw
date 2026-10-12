@@ -341,6 +341,7 @@ vi.mock("../agents/auth-profiles/store-runtime.js", async (importOriginal) => ({
   })),
 }));
 
+// mock-isolation: Capability CLI cases use fixed provider/config facts without initializing runtime discovery.
 vi.mock("../agents/memory-search.js", () => ({
   resolveMemorySearchConfigAsync: async (
     ...args: Parameters<typeof mocks.resolveMemorySearchConfig>
@@ -388,6 +389,7 @@ vi.mock("../plugins/memory-embedding-provider-runtime.js", () => ({
   listRegisteredMemoryEmbeddingProviderAdapters: mocks.listMemoryEmbeddingProviders,
 }));
 
+// mock-isolation: Capability CLI cases use fixed provider/config facts without initializing runtime discovery.
 vi.mock("../plugins/embedding-provider-runtime.js", () => ({
   listEmbeddingProvidersAsync: async () => mocks.listEmbeddingProviders(),
 }));
@@ -421,6 +423,7 @@ vi.mock("../tts/tts.js", () => ({
   textToSpeech: mocks.textToSpeech,
 }));
 
+// mock-isolation: Capability CLI cases use fixed provider/config facts without initializing runtime discovery.
 vi.mock("../tts/provider-registry.js", () => ({
   canonicalizeSpeechProviderId: vi.fn((provider: string) => provider),
   listSpeechProviders: mocks.listSpeechProviders,

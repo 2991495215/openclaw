@@ -322,6 +322,7 @@ export async function prepareWorkspaceBuildGroup(
     const ambientCredentialsStartedAt = performance.now();
     reportStage("ambient credentials");
     const ambientCredentials = await prepareAmbientAgentCredentialsForDiscovery({
+      metadataSnapshot: pluginMetadataSnapshot,
       signal: options.signal,
       config: input.config,
       env,
@@ -369,6 +370,7 @@ export async function prepareWorkspaceBuildGroup(
           () => options.assertCurrent?.(candidate),
           options.providerDiscoveryProviderIds,
           options.includeCredentialProviders,
+          pluginMetadataSnapshot,
         ),
       );
     }

@@ -13,9 +13,9 @@ import { hasSqliteWorkerOutcomeUnknown } from "../../infra/sqlite-worker-contrac
 import { getOAuthApiKey, getOAuthProviders, type OAuthCredentials } from "../../llm/oauth.js";
 import { OAuthProviderConfiguredUnavailableError } from "../../plugins/provider-runtime.errors.js";
 import {
-  formatProviderAuthProfileApiKeyWithPlugin,
+  formatProviderAuthProfileApiKeyWithLazyRuntime,
   resolveProviderOAuthCredentialWithPlugin,
-  resolveProviderOAuthRefreshCapabilityWithPlugin,
+  resolveProviderOAuthRefreshCapabilityWithLazyRuntime,
 } from "../../plugins/provider-runtime.runtime.js";
 import { secretRefKey } from "../../secrets/ref-contract.js";
 import { resolveAuthProfileSecretOwnerId } from "../../secrets/runtime-auth-profile-owner.js";
@@ -168,7 +168,7 @@ export async function refreshOAuthCredentialForRuntime(params: {
 
 const oauthManager = createOAuthManager({
   async buildApiKey(provider, credentials, context) {
-    const formatted = await formatProviderAuthProfileApiKeyWithPlugin({
+    const formatted = await formatProviderAuthProfileApiKeyWithLazyRuntime({
       provider,
       config: context.cfg,
       context: credentials,
@@ -177,7 +177,7 @@ const oauthManager = createOAuthManager({
   },
   refreshCredential: refreshOAuthCredential,
   async canRefreshCredential(credential, context) {
-    const pluginCapability = await resolveProviderOAuthRefreshCapabilityWithPlugin({
+    const pluginCapability = await resolveProviderOAuthRefreshCapabilityWithLazyRuntime({
       provider: credential.provider,
       config: context.cfg,
     });

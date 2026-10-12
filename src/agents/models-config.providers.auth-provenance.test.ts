@@ -16,6 +16,7 @@ import { prepareSharedAuthStoreOwnershipForNative } from "./auth-profiles/path-r
 import type { AuthProfileCredential, AuthProfileStore } from "./auth-profiles/types.js";
 
 const discovery = vi.hoisted(() => ({ providers: new Array<ProviderPlugin>() }));
+// mock-isolation: Auth provenance fixtures supply provider inventories without runtime discovery or credentials.
 vi.mock("../plugins/provider-discovery.runtime.js", () => {
   const runtime = {
     resolvePluginDiscoveryProvidersRuntime: () => discovery.providers,

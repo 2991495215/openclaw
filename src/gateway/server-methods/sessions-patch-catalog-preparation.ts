@@ -7,6 +7,7 @@ import {
   projectSessionsPatchEntry,
 } from "../sessions-patch.js";
 import type { SessionPatchDiagnostics } from "./sessions-patch-diagnostics.js";
+import { prepareSessionPatchRuntimeMetadata } from "./sessions-patch-model-selection.js";
 
 export type SessionPatchCatalogResult = Result<ModelCatalogSnapshot, unknown>;
 
@@ -73,6 +74,7 @@ export function createSessionPatchCatalogPreparation(
       }
       const projection = prepareSessionsPatchEntry({
         ...params.projection,
+        runtimeMetadataSnapshot: await prepareSessionPatchRuntimeMetadata(params.projection),
         preparedAuthProfileProvider: await prepareAuthProvider(params.projection),
       });
       if (projection.kind === "complete") {

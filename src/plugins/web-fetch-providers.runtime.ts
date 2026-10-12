@@ -9,7 +9,6 @@ import {
   resolveManifestDeclaredWebProviderCandidatePluginIds,
 } from "./web-provider-resolution-shared.js";
 import {
-  resolvePluginWebProviders,
   resolvePluginWebProvidersAsync,
   type ResolvePluginWebProvidersParams,
   type ResolveRuntimeWebProvidersParams,
@@ -28,31 +27,6 @@ const providerResolution = {
   mapRegistryProviders: ({ registry, onlyPluginIds }) =>
     mapRegistryProviders({ registry, entries: registry.webFetchProviders, onlyPluginIds }),
 } satisfies WebProviderRuntimeResolution<PluginWebFetchProviderEntry>;
-
-/** Resolves web fetch providers from bundled artifacts or scoped plugin loads. */
-/** @deprecated Use resolvePluginWebFetchProvidersAsync for cold discovery. */
-export function resolvePluginWebFetchProviders(
-  params: ResolvePluginWebProvidersParams,
-): PluginWebFetchProviderEntry[] {
-  return resolvePluginWebProviders(params, {
-    ...providerResolution,
-    resolveBundledPublicArtifactProviders: resolveBundledWebFetchProvidersFromPublicArtifacts,
-    resolveBundledRuntimeArtifactProviders:
-      resolveBundledRuntimeWebFetchProvidersFromPublicArtifacts,
-  });
-}
-
-/** Resolves already-eligible runtime web fetch providers without setup-mode activation. */
-/** @deprecated Use resolveRuntimeWebFetchProvidersAsync for cold discovery. */
-export function resolveRuntimeWebFetchProviders(
-  params: ResolveRuntimeWebProvidersParams,
-): PluginWebFetchProviderEntry[] {
-  return resolvePluginWebProviders(params, {
-    ...providerResolution,
-    resolveBundledRuntimeArtifactProviders:
-      resolveBundledRuntimeWebFetchProvidersFromPublicArtifacts,
-  });
-}
 
 /** Resolves plugin web fetch providers after preparing worker-owned metadata. */
 export function resolvePluginWebFetchProvidersAsync(

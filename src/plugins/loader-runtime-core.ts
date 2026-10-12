@@ -45,7 +45,7 @@ import {
   isPluginRecordBorrowed,
   isPluginRegistryActivated,
   markPluginRecordBorrowed,
-  withPluginRegistryPreparationScope,
+  createPluginRegistryPreparationScope,
 } from "./registry-lifecycle.js";
 import type { PluginRecord } from "./registry-types.js";
 import { createPluginRegistry, type PluginRegistry } from "./registry.js";
@@ -278,6 +278,7 @@ export function* loadOpenClawPluginsSteps(
     });
     const builder = registryBuilder;
     const { registry } = builder;
+    using preparation = createPluginRegistryPreparationScope(registry);
     inspectionResources?.attach(registry);
     // The load context has verified the current generation's workspace, config, and scope.
     const suppliedManifestRegistry =
@@ -564,11 +565,7 @@ export function* loadOpenClawPluginsSteps(
           state,
           preparedConfig: input?.source === candidate.source ? input.config : { input: undefined },
         });
-      if (options.previousRegistry) {
-        withPluginRegistryPreparationScope(registry, loadCandidate);
-      } else {
-        loadCandidate();
-      }
+      preparation.run(loadCandidate);
       if (state.pluginLoadAttemptCount !== attemptedBefore) {
         yield;
         if (getPluginCache().retirement) {

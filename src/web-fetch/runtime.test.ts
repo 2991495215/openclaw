@@ -44,10 +44,9 @@ vi.mock("../plugins/runtime.js", async (importOriginal) => {
   };
 });
 
+// mock-isolation: Fetch execution fixtures supply synthetic provider acquisitions without plugin discovery.
 vi.mock("../plugins/web-fetch-providers.runtime.js", () => ({
-  resolvePluginWebFetchProviders: resolvePluginWebFetchProvidersMock,
   resolvePluginWebFetchProvidersAsync: resolvePluginWebFetchProvidersMock,
-  resolveRuntimeWebFetchProviders: resolveRuntimeWebFetchProvidersMock,
   resolveRuntimeWebFetchProvidersAsync: resolveRuntimeWebFetchProvidersMock,
 }));
 
