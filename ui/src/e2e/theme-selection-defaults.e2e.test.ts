@@ -152,8 +152,27 @@ suite.define(() => {
           .toContainEqual({ entries: { "ui.accent": "#5b9cf6" } });
         reads = (await gateway.getRequests("users.prefs.get")).length;
         await gateway.deferNext("users.prefs.get");
+        const socketsBeforeReconnect = await gateway.getSocketCount();
+        const requestsBeforeReconnect = (await gateway.getRequests()).length;
         await gateway.closeLatest();
-        await respondProfile(custom, reads);
+        try {
+          await respondProfile(custom, reads);
+        } catch (error) {
+          await Promise.all([gateway.getSocketCount(), gateway.getRequests()])
+            .then(([sockets, requests]) => {
+              console.error("[theme-reconnect] preference read did not arrive", {
+                socketsBeforeReconnect,
+                sockets,
+                preferencesBeforeReconnect: reads,
+                preferences: requests.filter(({ method }) => method === "users.prefs.get").length,
+                newMethods: requests
+                  .slice(requestsBeforeReconnect, requestsBeforeReconnect + 100)
+                  .map(({ method }) => method),
+              });
+            })
+            .catch(() => undefined);
+          throw error;
+        }
         await expect.poll(read).toMatchObject({
           theme: "absolutely",
           ui: expect.stringContaining("Geist"),
