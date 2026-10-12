@@ -33,7 +33,7 @@ on:
         default: false
         type: boolean
       diagnose_copilot:
-        description: Run the frozen Copilot attempt baseline
+        description: Diagnose the frozen session creation baseline and candidate
         required: false
         default: false
         type: boolean
@@ -476,15 +476,24 @@ jobs:
           path: .artifacts/node-wire*
           if-no-files-found: warn
           retention-days: 14
-  copilot-baseline:
+  worktree-selection:
     if: ${{ inputs.diagnose_copilot }}
-    name: Frozen inherited-failure baseline
+    name: Frozen session creation (${{ matrix.role }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - role: base
+            commit: ${{ inputs.base_sha }}
+          - role: head
+            commit: ${{ inputs.head_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.base_sha }}
+          ref: ${{ matrix.commit }}
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -501,29 +510,24 @@ jobs:
           install-bun: "false"
           dependency-cache: "false"
           frozen-lockfile: "true"
-      - name: Run unresolved failures on the immutable baseline
+      - name: Diagnose the frozen session creation flow
         env:
           OPENCLAW_LOCAL_CHECK: "0"
           OPENCLAW_VITEST_RUNTIME: node
-          BASELINE_SHA: ${{ inputs.base_sha }}
-          CANDIDATE_SHA: ${{ inputs.head_sha }}
+          PROOF_SHA: ${{ matrix.commit }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          [[ "$BASELINE_SHA" =~ ^[a-f0-9]{40}$ ]]
-          test "$(git rev-parse HEAD)" = "$BASELINE_SHA"
+          [[ "$PROOF_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$PROOF_SHA"
           mkdir -p .artifacts
-          node --input-type=module -e 'console.log(JSON.stringify({ baseline: process.env.BASELINE_SHA, candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA }, null, 2))' > .artifacts/copilot-baseline-provenance.json
-          failed=0
-          for file in extensions/copilot/src/attempt-active-run.test.ts extensions/copilot/src/attempt-transcript-journal.test.ts src/state/openclaw-agent-db.integrity-lease.test.ts; do
-            pnpm test "$file" --maxWorkers=1 --reporter=verbose 2>&1 | tee -a .artifacts/copilot-baseline.log || failed=1
-          done
-          exit "$failed"
+          node --input-type=module -e 'console.log(JSON.stringify({ commit: process.env.PROOF_SHA, workflow: process.env.WORKFLOW_SHA }, null, 2))' > .artifacts/session-create-provenance.json
+          pnpm test src/gateway/server.sessions.create.worktree-selection.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/session-create.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: ${{ always() }}
         with:
-          name: copilot-baseline-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .artifacts/copilot-baseline*
+          name: session-create-${{ matrix.role }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/session-create*
           if-no-files-found: warn
           retention-days: 14
   final-regressions:
