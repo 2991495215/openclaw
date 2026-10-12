@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import * as pluginMetadata from "../plugins/plugin-metadata-snapshot.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
@@ -193,13 +194,22 @@ describe("resolveProviderAuths key normalization", () => {
     return withSuiteHome(async (home) => {
       const suiteEnv = buildSuiteEnv(home, env);
       await preparePluginMetadataMachineStateAsync({ env: suiteEnv });
-      return resolveProviderAuths({
-        providers,
+      const snapshot = await pluginMetadata.resolvePluginMetadataSnapshotAsync({
         config,
         env: suiteEnv,
-        store: authProfileMocks.store,
-        agentDir: agentDirForHome(home),
       });
+      return withPluginMetadataSnapshotScope(
+        snapshot,
+        () =>
+          resolveProviderAuths({
+            providers,
+            config,
+            env: suiteEnv,
+            store: authProfileMocks.store,
+            agentDir: agentDirForHome(home),
+          }),
+        { env: suiteEnv, trustConfigIdentity: true },
+      );
     });
   }
 

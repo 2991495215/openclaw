@@ -122,12 +122,8 @@ describe("openclaw-tools progress_card gating", () => {
     "gates personal instructions on multiple people (%s) without general filesystem access",
     async (multipleProfiles) => {
       const identityCount = vi
-        .spyOn(userProfileList, "prepareUserProfileCatalog")
-        .mockResolvedValue({
-          hasMultipleSessionSharingIdentities: () => multipleProfiles,
-          readCurrentIdentity: () => undefined,
-          release: () => {},
-        });
+        .spyOn(userProfileList, "hasMultipleSessionSharingIdentities")
+        .mockReturnValue(multipleProfiles);
       const tools = await createOpenClawCodingToolsAsync({
         sessionKey: "agent:main:dashboard:project",
         runSessionKey: "agent:main:dashboard:project",

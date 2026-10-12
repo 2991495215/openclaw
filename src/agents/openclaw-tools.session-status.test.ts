@@ -173,6 +173,7 @@ function createAuthProfilesModuleMock() {
   return {
     ensureAuthProfileStore: () => ({ profiles: {} }),
     resolveAuthProfileDisplayLabel: () => undefined,
+    isConfiguredAwsSdkAuthProfileForProvider: () => false,
     resolveAuthProfileOrder: () => [],
   };
 }
