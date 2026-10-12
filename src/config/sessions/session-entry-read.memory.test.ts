@@ -16,6 +16,7 @@ import {
   captureSessionActorStorageOwner,
   runWithSessionActorStorage,
 } from "./session-actor-storage-binding.js";
+import { listSessionChildEntriesReadOnly } from "./session-entry-children-read.js";
 import { captureNativeSessionEntryCurrentRead } from "./session-entry-current-runtime.js";
 import { prepareSessionEntryPresenceRead } from "./session-entry-presence-read.js";
 import {
@@ -36,6 +37,54 @@ function fixture() {
     database: { agentId, path: storePath },
   };
 }
+
+it("unbound child readers observe memory lineage writes without opening SQLite", async () => {
+  const { scope, database } = fixture();
+  const owner = memorySessionActorOwners.get(database);
+  const authority = { assertCurrent() {}, authorize() {} };
+  const lifetime = { assertCurrent() {}, assertReadable() {} };
+  const childKey = "agent:main:dashboard:incognito-child";
+  const actor = await owner.acquire({ database: owner.identity, sessionKey: childKey }, lifetime);
+  try {
+    await actor.storage!.mutate(
+      {
+        type: "session.entry.create",
+        input: {
+          entry: {
+            sessionId: "child",
+            updatedAt: 1,
+            incognito: true,
+            skillsSnapshot: { prompt: "private instructions", skills: [] },
+          },
+        },
+      },
+      authority,
+    );
+    expect(await listSessionChildEntriesReadOnly(scope)).toEqual([]);
+    await actor.storage!.mutate(
+      {
+        type: "session.entry.patch",
+        input: { operation: { kind: "fields", patch: { parentSessionKey: scope.sessionKey } } },
+      },
+      authority,
+    );
+    const children = await listSessionChildEntriesReadOnly({ ...scope, projection: "list" });
+    expect(children).toMatchObject([{ sessionKey: childKey, entry: { sessionId: "child" } }]);
+    expect(children[0]?.entry).not.toHaveProperty("skillsSnapshot");
+    const selected = await readSessionEntriesFromStoreInWorker({
+      ...scope,
+      selection: { kind: "children", parentSessionKeys: [scope.sessionKey] },
+      projection: "list",
+    });
+    expect(selected.entries).toMatchObject([
+      { sessionKey: childKey, entry: { parentSessionKey: scope.sessionKey } },
+    ]);
+    expect(await listSessionChildEntriesReadOnly(scope, [scope.sessionKey, childKey])).toEqual([]);
+  } finally {
+    await actor.release();
+    memorySessionActorOwners.closeDatabase(database);
+  }
+});
 
 it("keeps absent incognito metadata absent across ordinary read entry points", async () => {
   const { scope, database } = fixture();

@@ -35,8 +35,8 @@ export function readSessionRowFacts(params: {
   activitySummaryEnabled?: boolean;
   databaseFacts: Pick<SessionRowDatabaseFacts, "hasBoard" | "activitySummaryWatermark">;
 }) {
-  const { cfg, entry, placementFactsReader } = params;
-  const { key, agentId, storeTarget } = params.target;
+  const { cfg, entry, placementFactsReader, activitySummaryEnabled } = params;
+  const { key, agentId } = params.target;
   const context = params.context ?? {};
   let placementSource = placementFactsReader?.getProjectionFacts(entry.sessionId);
   const readPlacementFacts = () => {
@@ -82,16 +82,23 @@ export function readSessionRowFacts(params: {
     };
   };
   let placementFacts = readPlacementFacts();
-  const activitySummary = projectSessionActivitySummary({
-    key,
-    agentId,
-    cfg,
-    entry,
-    enabled: params.activitySummaryEnabled,
-    watermark: params.databaseFacts.activitySummaryWatermark,
-  });
+  let activitySummaryFacts = params.databaseFacts;
+  const readActivitySummary = () =>
+    projectSessionActivitySummary({
+      key,
+      agentId,
+      cfg,
+      entry,
+      enabled: activitySummaryEnabled,
+      watermark: activitySummaryFacts.activitySummaryWatermark,
+    });
+  let activitySummary = readActivitySummary();
   return {
     hasBoard: params.databaseFacts.hasBoard,
+    refreshActivitySummary(databaseFacts = activitySummaryFacts) {
+      activitySummaryFacts = databaseFacts;
+      activitySummary = readActivitySummary();
+    },
     present: () => {
       const currentSource = placementFactsReader?.getProjectionFacts(entry.sessionId);
       if (currentSource !== placementSource) {

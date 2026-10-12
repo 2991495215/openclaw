@@ -31,6 +31,7 @@ vi.mock("../../agents/utility-model.js", () => ({
 vi.mock("../../auto-reply/reply/conversation-label-generator.js", () => ({
   generateConversationLabelWithFallback: mocks.generateConversationLabelWithFallback,
 }));
+// mock-isolation: Title persistence is captured by this fixture without opening a database.
 vi.mock("../../config/sessions/session-accessor.js", () => ({
   patchSessionEntryCore: mocks.updateSessionEntry,
 }));

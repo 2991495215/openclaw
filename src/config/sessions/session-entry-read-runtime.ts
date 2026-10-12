@@ -436,6 +436,8 @@ export async function withSessionEntriesFromStoreInWorker<T>(
     } else if (selection.kind === "session-id") {
       const selected = memory.readById(selection.sessionId, projection, selection.orderBy);
       entries = selected ? [selected] : [];
+    } else if (selection.kind === "children") {
+      entries = memory.children(selection.parentSessionKeys, projection);
     } else {
       entries = memory
         .entries(projection)

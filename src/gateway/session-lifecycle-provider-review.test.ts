@@ -193,6 +193,12 @@ it("records an incognito pause in actor state without SQL and rejects stale fact
         sessionId: `review-session-${variant}`,
         lifecycleRevision: "generation-1",
       };
+      const entryScope = {
+        agentId: target.agentId,
+        storePath,
+        sessionKey: target.sessionKey,
+        env,
+      };
       const review: SessionProviderReview = {
         id: `review-${variant}`,
         sessionId: target.sessionId,
@@ -215,13 +221,10 @@ it("records an incognito pause in actor state without SQL and rejects stale fact
           ? { providerReview: { ...review, id: "newer-review" } }
           : {}),
       };
-      await createSessionEntryWithTranscript(
-        { ...target, env, sessionId: entry.sessionId },
-        () => ({ ok: true, entry }),
-      );
+      await createSessionEntryWithTranscript(entryScope, () => ({ ok: true, entry }));
       if (entry.providerReview) {
         await sessionEntries.patchSessionEntryCore(
-          { ...target, env, sessionId: entry.sessionId },
+          entryScope,
           () => ({ providerReview: entry.providerReview }),
           { providerReviewMutation: true, skipMaintenance: true },
         );
@@ -294,23 +297,20 @@ it("records an incognito pause in actor state without SQL and rejects stale fact
           });
           if (variant === "revoked") {
             await expect(persistence).rejects.toThrow("Source authority expired");
-            expect(
-              sessionEntries.loadSessionEntry({ ...target, sessionId: entry.sessionId })?.status,
-            ).toBeUndefined();
+            expect(sessionEntries.loadSessionEntry(entryScope)?.status).toBeUndefined();
           } else {
             await persistence;
           }
           expect(statements.queries.filter(isSessionEntryDataSql)).toEqual([]);
           if (variant === "current" || variant === "ordinary") {
-            expect(sessionEntries.loadSessionEntry(target)?.status).toBe("failed");
+            expect(sessionEntries.loadSessionEntry(entryScope)?.status).toBe("failed");
           }
         } finally {
           statements.restore();
         }
-        expect(
-          sessionEntries.loadSessionEntry({ ...target, sessionId: entry.sessionId })
-            ?.providerReview,
-        ).toEqual(variant === "current" ? review : entry.providerReview);
+        expect(sessionEntries.loadSessionEntry(entryScope)?.providerReview).toEqual(
+          variant === "current" ? review : entry.providerReview,
+        );
       } finally {
         clearAgentRunContext(runId, lifecycleGeneration);
       }

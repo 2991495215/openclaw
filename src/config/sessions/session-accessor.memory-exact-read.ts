@@ -1,5 +1,6 @@
 import path from "node:path";
 import { getAsyncWorkSignal } from "../../shared/async-work-scope.js";
+import { isInternalSessionEffectsKey } from "./internal-session-key.js";
 import { resolveSqliteSessionKey } from "./session-accessor.sqlite-scope-helpers.js";
 import {
   captureSessionActorStorageOwner,
@@ -49,6 +50,17 @@ export function captureMemoryExactSessionReader(
     identity?.kind === "memory"
       ? { agentId, path: captured.path, databaseIdentity: identity.incarnation }
       : undefined;
+  const entries = (projection?: SessionEntryProjection) => {
+    if (owner) {
+      return owner.listSessionEntries(authority, projection);
+    }
+    return (
+      binding?.actor.storage?.readCurrent(
+        { type: "session.entries.read", input: { projection } },
+        authority,
+      ) ?? []
+    );
+  };
   return {
     source,
     agentId,
@@ -74,16 +86,21 @@ export function captureMemoryExactSessionReader(
         }
       );
     },
-    entries(projection?: SessionEntryProjection) {
-      if (owner) {
-        return owner.listSessionEntries(authority, projection);
-      }
-      return (
-        binding?.actor.storage?.readCurrent(
-          { type: "session.entries.read", input: { projection } },
-          authority,
-        ) ?? []
+    entries,
+    children(parentSessionKeys: readonly string[], projection?: SessionEntryProjection) {
+      const parents = new Set(
+        parentSessionKeys.map((key) => resolveSqliteSessionKey(key, agentId)),
       );
+      return entries(projection)
+        .filter(
+          ({ sessionKey, entry }) =>
+            !isInternalSessionEffectsKey(sessionKey) &&
+            !parents.has(sessionKey) &&
+            (parents.has(entry.parentSessionKey ?? "") || parents.has(entry.spawnedBy ?? "")),
+        )
+        .toSorted((left, right) =>
+          left.sessionKey < right.sessionKey ? -1 : left.sessionKey > right.sessionKey ? 1 : 0,
+        );
     },
     facts(sessionKey: string) {
       if (owner) {

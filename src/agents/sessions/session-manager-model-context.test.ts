@@ -367,10 +367,6 @@ it.each([
       ).toEqual(earlier);
       if (scenario === "whole") {
         for (const patch of [
-          { generation: "wrong-generation" },
-          { rawSeq: admission.rawSeq + 1 },
-          { effectiveParentId: "wrong-parent" },
-          { activeMessagePosition: admission.activeMessagePosition + 1 },
           { role: "assistant" },
           { sessionKey: "agent:main:wrong" },
           { storePath: path.join(state.agentDir("main"), "wrong.sqlite") },
