@@ -46,7 +46,6 @@ import {
   expireUserGitHubAuthorization,
   updateUserGitHubConnection,
 } from "../../state/user-github-connections.test-support.js";
-import type { UserGitHubConnectionCommit } from "../../state/user-github-connections.types.js";
 import { getUserProfileListItem } from "../../state/user-profile-list-item.test-support.js";
 import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { linkCanonicalUserProfileEmail } from "../../state/user-profile-writes.js";
@@ -67,6 +66,8 @@ import {
   expectReceiptBackedPersonalGitHubAuthority,
   preparePersonalGitHubPoll,
 } from "./users-github.authority.test-support.js";
+
+type AuthorityChange = Parameters<Parameters<typeof observeUserGitHubConnectionAuthority>[0]>[0];
 
 let state: OpenClawTestState;
 let lifecycle: ReturnType<typeof createGitHubOAuthLifecycle>;
@@ -293,7 +294,7 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     }
     const pending = await start();
     const action = { owner: owner(), assertCurrent: () => {} };
-    const publications: UserGitHubConnectionCommit[] = [];
+    const publications: AuthorityChange[] = [];
     const unobserve = observeUserGitHubConnectionAuthority((commit) => publications.push(commit));
     const warning = vi.spyOn(process, "emitWarning").mockImplementation(() => {});
     try {
@@ -750,7 +751,7 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       const observedOwners: Array<string | undefined> = [];
       const authorityOwners: Array<string | undefined> = [];
       const authoritySeenAtRetirement: number[] = [];
-      const publications: UserGitHubConnectionCommit[] = [];
+      const publications: AuthorityChange[] = [];
       const unobserveAuthority = observeUserGitHubConnectionAuthority((publication) => {
         authorityOwners.push(resolvePersonalGitHubOwner(owner()));
         publications.push(publication);
