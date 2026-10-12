@@ -6,7 +6,7 @@ import { promoteToPopoverTopLayer } from "./menu-surface.ts";
 import { Icon, type IconName } from "./solid/icon.tsx";
 import "./web-awesome.ts";
 
-export type CatalogSessionMenuAction = "viewer" | "import" | "terminal" | "delete";
+export type CatalogSessionMenuAction = "viewer" | "import" | "original" | "terminal" | "delete";
 type Props = {
   x: number;
   y: number;
@@ -15,12 +15,14 @@ type Props = {
   terminalDisabled: boolean;
   canDelete: boolean;
   canImport: boolean;
+  canOpenOriginal: boolean;
   onAction: (action: CatalogSessionMenuAction) => void;
   onClose: () => void;
 };
 const actions: readonly [CatalogSessionMenuAction, string, IconName][] = [
   ["viewer", "chat.catalog.openInOpenClaw", "messageSquare"],
   ["import", "chat.catalog.importToOpenClaw", "download"],
+  ["original", "chat.catalog.openOriginal", "externalLink"],
   ["terminal", "chat.catalog.openInTerminal", "terminal"],
   ["delete", "chat.catalog.deleteSession", "trash"],
 ];
@@ -67,7 +69,7 @@ defineSolidBridge<Props>(
           style={{
             position: "fixed",
             left: `${Math.max(8, Math.min(props.x, window.innerWidth - 248))}px`,
-            top: `${Math.max(8, Math.min(props.y, window.innerHeight - 148 - (props.canDelete ? 40 : 0) - (props.canImport ? 40 : 0)))}px`,
+            top: `${Math.max(8, Math.min(props.y, window.innerHeight - 148 - (props.canDelete ? 40 : 0) - (props.canImport ? 40 : 0) - (props.canOpenOriginal ? 40 : 0)))}px`,
             width: "1px",
             height: "1px",
             opacity: "0",
@@ -83,7 +85,13 @@ defineSolidBridge<Props>(
           {([action, key, icon]) => (
             <Show
               when={
-                action === "import" ? props.canImport : action === "delete" ? props.canDelete : true
+                action === "import"
+                  ? props.canImport
+                  : action === "original"
+                    ? props.canOpenOriginal
+                    : action === "delete"
+                      ? props.canDelete
+                      : true
               }
             >
               <wa-dropdown-item
@@ -120,6 +128,7 @@ defineSolidBridge<Props>(
       terminalDisabled: { default: false, attribute: false },
       canDelete: { default: false, attribute: false },
       canImport: { default: false, attribute: false },
+      canOpenOriginal: { default: false, attribute: false },
       onAction: { default: () => {}, attribute: false },
       onClose: { default: () => {}, attribute: false },
     },

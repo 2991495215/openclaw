@@ -116,6 +116,7 @@ let chromiumLaunchOptions: ReturnType<typeof resolveChromiumLaunchOptions> | nul
 // Re-add modal-dialog.browser (CDP media emulation) and web-awesome-accessibility.node
 // (CDP accessibility tree) after their browser-neutral replacements land.
 const webkitTestFiles = [
+  "src/components/catalog-session-menu.browser.test.ts",
   "src/components/web-awesome-dropdown.browser.test.ts",
   "src/components/web-awesome-dropdown-owner.browser.test.ts",
   "src/components/web-awesome-select-controls.browser.test.ts",

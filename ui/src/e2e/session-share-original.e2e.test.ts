@@ -203,6 +203,37 @@ suite.define(() => {
             menu.getByText("Open in OpenClaw", { exact: true }),
           ]),
         );
+        // The maintained menu ignores unrecognized Web Awesome selections.
+        // Exercise the registered sidebar entry point, not a standalone renderer.
+        await menu.locator("wa-dropdown").evaluate((dropdown) => {
+          dropdown.dispatchEvent(
+            new CustomEvent("wa-select", {
+              detail: { item: { value: "unknown-action" } },
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        });
+        await expect.poll(() => menu.count()).toBe(1);
+        await page.keyboard.press("Escape");
+        await expect.poll(() => menu.count()).toBe(0);
+        const menuTrigger = row.getByRole("button", { name: "Open session menu" });
+        expect(await menuTrigger.evaluate((element) => element === document.activeElement)).toBe(
+          true,
+        );
+        await menuTrigger.click();
+        await menu.getByText("Open in OpenClaw", { exact: true }).waitFor();
+        if (configured) {
+          const opened = page.context().waitForEvent("page");
+          await menu.getByText("Open original", { exact: true }).click();
+          const source = await opened;
+          await source.waitForURL(originalUrl);
+          expect(await source.evaluate(() => window.opener)).toBeNull();
+          expect(await source.evaluate(() => document.referrer)).toBe("");
+          await source.close();
+          await page.bringToFront();
+          await expect.poll(() => menu.count()).toBe(0);
+        }
         expect(
           (await gateway.getRequests()).some(({ method }) =>
             [
