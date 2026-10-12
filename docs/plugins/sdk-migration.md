@@ -377,7 +377,7 @@ The `agent-runtime` snapshot publisher now provides
 `replaceRuntimeAuthProfileStoreSnapshotsAsync`. Await it when publishing a default
 shared-owner snapshot; it resolves cold ownership through the database worker.
 The synchronous `replaceRuntimeAuthProfileStoreSnapshots` remains deprecated until
-the next Plugin SDK major and retains native cold-owner admission for compatibility.
+a later stable release and retains native cold-owner admission for compatibility.
 Entries with explicit database paths or agent directories remain in-memory publications.
 
 ### Realtime transcription provider discovery

@@ -9,7 +9,8 @@ import { resolveAllowedModelRefCore } from "../agents/model-selection-resolve.js
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import { createPluginCapabilityCatalogContext } from "./capability-catalog-context.js";
 import { preparePluginMetadataMachineStateAsync } from "./installed-plugin-index-record-state.js";
-import { isPluginRegistryLoadInFlight } from "./loader-cache.js";
+import { isPluginRegistryCacheEnabled, isPluginRegistryLoadInFlight } from "./loader-cache.js";
+import { resolvePluginLoadCacheContext } from "./loader-load-context.js";
 import {
   loadOpenClawPluginsCore,
   loadOpenClawPluginsSteps,
@@ -118,13 +119,25 @@ export async function loadOpenClawPluginsAsync(
     env: cloneEnvWithPlatformSemantics(options.env ?? process.env),
   };
   await preparePluginMetadataMachineStateAsync({ env: preparedOptions.env });
-  const steps = loadOpenClawPluginsSteps(preparedOptions, loaderBindings);
-  let step = steps.next();
-  while (!step.done) {
-    await nextTurn();
-    step = steps.next();
+  const load = async () => {
+    const steps = loadOpenClawPluginsSteps(preparedOptions, loaderBindings);
+    let step = steps.next();
+    while (!step.done) {
+      await nextTurn();
+      step = steps.next();
+    }
+    return step.value;
+  };
+  if (
+    preparedOptions.previousRegistry ||
+    preparedOptions.borrowRegistry ||
+    preparedOptions.moduleRecoveries ||
+    !isPluginRegistryCacheEnabled(preparedOptions)
+  ) {
+    return await load();
   }
-  return step.value;
+  const context = resolvePluginLoadCacheContext(preparedOptions);
+  return await context.cacheState.loadAsync(context.cacheKey, load);
 }
 
 /** Publishes synchronously, then joins every accepted health write before returning to its host. */

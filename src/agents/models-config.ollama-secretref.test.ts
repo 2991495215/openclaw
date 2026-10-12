@@ -54,7 +54,7 @@ function planWithOllamaMetadata(params: Parameters<typeof planOpenClawModelsJson
         ...params,
         context: { ...params.context, pluginMetadataSnapshot },
       }),
-    { config: params.context.cfg, env: params.context.env },
+    { config: params.context.cfg, env: params.context.env, trustConfigIdentity: true },
   );
 }
 

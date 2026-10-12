@@ -1,5 +1,5 @@
 import "../test-utils/prepare-compiled-subprocesses.js";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
@@ -26,11 +26,13 @@ const cfg: OpenClawConfig = {
 };
 let actor: Awaited<ReturnType<typeof openIncognitoTestActor>>;
 beforeAll(async () => {
-  await prepareBundledDiscoveryMode();
   actor = await openIncognitoTestActor(
     { OPENCLAW_STATE_DIR: dirs.make("title-actor-") },
     authority,
   );
+});
+beforeEach(async () => {
+  await prepareBundledDiscoveryMode();
 });
 afterAll(async () => actor?.close());
 

@@ -1011,8 +1011,8 @@ Await `resolveCronStorePathAsync(storePath?)` from
 shared-state worker; an explicit path still takes precedence.
 
 The `cron-store-sync-path` compatibility record retains
-`resolveCronStorePath(storePath?)` with its synchronous return value until the
-next Plugin SDK major and explicit approval of a breaking release. Legacy calls
+`resolveCronStorePath(storePath?)` with its synchronous return value until a
+later stable release. Legacy calls
 emit one bounded `DEP_PLUGIN_SDK` warning per plugin and capability family.
 Stored cron data, partition selection, and update behavior are unchanged.
 
@@ -1026,7 +1026,7 @@ workers and excludes incognito sessions.
 The synchronous `loadCombinedSessionStoreForGateway(config, options)` keeps its
 return shape for installed plugins and emits a bounded deprecation warning.
 Bundled plugins use the asynchronous replacement. The synchronous export is
-scheduled for removal in the next Plugin SDK major.
+scheduled for removal in a later stable release.
 
 ### Web search provider lists
 
