@@ -102,7 +102,7 @@ export async function withSessionEntryWorker<T>(
     execution =
       retainedExecution ??
       captureOpenClawAgentDatabaseExecution(options, {
-        expectedCreationIdentity,
+        expectedCreationIdentity: databaseIdentity ? undefined : expectedCreationIdentity,
         expectedIdentity: databaseIdentity
           ? {
               kind: "file",

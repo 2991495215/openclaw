@@ -11,9 +11,11 @@ import { captureOpenClawAgentDatabaseExecution } from "../../state/openclaw-agen
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import {
   patchSessionEntryCore as patchInternalSessionEntry,
+  patchSessionEntryTarget,
   recordInboundSessionMeta,
   replaceSessionEntry,
 } from "./session-accessor.sqlite-entry.js";
+import type { SessionEntryTargetPatchScope } from "./session-accessor.types.js";
 import { createSessionCompoundWorkerFixture as fixture } from "./session-compound-worker.test-support.js";
 import { readSessionEntryInWorker } from "./session-entry-read-writable.js";
 
@@ -26,7 +28,7 @@ vi.mock("./session-history-eviction.js", () => ({ kickSessionHistoryDiskBudgetMa
 
 afterEach(() => vi.restoreAllMocks());
 
-it("creates a session entry while another borrower retains its original creation reference", async () => {
+it("creates an entry under a creation reference and patches its admitted read target", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     const options = { agentId: "main" };
     const storePath = resolveOpenClawAgentSqlitePath(options);
@@ -38,7 +40,22 @@ it("creates a session entry while another borrower retains its original creation
     try {
       await expect(replaceSessionEntry(scope, entry)).resolves.toMatchObject(entry);
       expect(creator.fileIdentity).toMatchObject({ kind: "file" });
-      await expect(readSessionEntryInWorker(scope)).resolves.toMatchObject(entry);
+      let target: SessionEntryTargetPatchScope | undefined;
+      await expect(
+        readSessionEntryInWorker(scope, undefined, undefined, (captured) => {
+          target = captured;
+        }),
+      ).resolves.toMatchObject(entry);
+      if (!target) {
+        throw new Error("Session read did not return its admitted target");
+      }
+      const updated = { ...entry, label: "updated through read target" };
+      await expect(
+        patchSessionEntryTarget(target, () => ({ label: updated.label }), {
+          skipMaintenance: true,
+        }),
+      ).resolves.toMatchObject(updated);
+      await expect(readSessionEntryInWorker(scope)).resolves.toMatchObject(updated);
     } finally {
       await creator.release();
     }

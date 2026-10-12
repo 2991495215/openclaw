@@ -279,6 +279,7 @@ it("publishes agent mutations before acknowledging immediate session and roster 
                         operator.request("agents.delete", deletion),
                         otherOperator.request("agents.delete", deletion),
                       ]);
+                      const rejection = results.find((result) => result.status === "rejected");
                       expect(results).toEqual(
                         expect.arrayContaining([
                           {
@@ -287,13 +288,31 @@ it("publishes agent mutations before acknowledging immediate session and roster 
                           },
                           {
                             status: "rejected",
-                            reason: expect.objectContaining({
-                              code: "INVALID_REQUEST",
-                              message: `agent "${overlapAgentId}" not found`,
-                            }),
+                            reason: expect.objectContaining(
+                              rejection?.reason?.code === "UNAVAILABLE"
+                                ? {
+                                    code: "UNAVAILABLE",
+                                    message: expect.stringMatching(
+                                      new RegExp(
+                                        `^OpenClawStateLeaseError: agent deletion core:agent-deletion/${overlapAgentId} is held by \\S+ \\(lease epoch \\d+\\): code=OPENCLAW_STATE_LEASE_HELD$`,
+                                      ),
+                                    ),
+                                  }
+                                : {
+                                    code: "INVALID_REQUEST",
+                                    message: `agent "${overlapAgentId}" not found`,
+                                  },
+                            ),
                           },
                         ]),
                       );
+                      // A concurrent waiter may exhaust the lease budget before deletion settles.
+                      await expect(
+                        operator.request("agents.delete", deletion),
+                      ).rejects.toMatchObject({
+                        code: "INVALID_REQUEST",
+                        message: `agent "${overlapAgentId}" not found`,
+                      });
                     } else {
                       await expect(
                         operator.request("agents.delete", deletion),
