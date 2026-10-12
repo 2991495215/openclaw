@@ -826,7 +826,7 @@ describe("Gateway admitted Discord transcript capture", () => {
         caller: { kind: "operator", source: "scheduled" },
       };
       phase("routed-provider:resolve");
-      const routedProvider = resolveSourceProvider("discord-voice", routedContext);
+      const routedProvider = await resolveSourceProvider("discord-voice", routedContext);
       const activeRegistry = getActivePluginRegistry();
       expect(
         routedProvider,

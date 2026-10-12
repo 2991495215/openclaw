@@ -245,8 +245,8 @@ describe("doctor lint state isolation", () => {
       let privateDatabase: ReturnType<typeof openOpenClawStateDatabase> | undefined;
       const privateInspection = vi.fn(async (ctx: HealthCheckContext) => {
         expect(process.env.OPENCLAW_STATE_DIR).not.toBe(state.stateDir);
-        expect(ctx.env.OPENCLAW_STATE_DIR).toBe(process.env.OPENCLAW_STATE_DIR);
-        expect(ctx.env.OPENCLAW_CONFIG_PATH).toBe(state.env.OPENCLAW_CONFIG_PATH);
+        expect(ctx.env?.OPENCLAW_STATE_DIR).toBe(process.env.OPENCLAW_STATE_DIR);
+        expect(ctx.env?.OPENCLAW_CONFIG_PATH).toBe(state.env.OPENCLAW_CONFIG_PATH);
         // Runtime inspectors can refresh OAuth state; that write must stay private.
         writeConfigMachineState("doctorLint.synthetic.privateWrite", true);
         privateDatabase = openOpenClawStateDatabase();

@@ -102,7 +102,6 @@ export async function prepareModelsListResult(
   const runOwned = <T>(run: () => T) =>
     withPluginRuntimeRegistryScope(owner.preparedPluginRegistry, () =>
       withPluginMetadataSnapshotScope(metadataSnapshot, run, {
-        config: owner.cfg,
         trustConfigIdentity: true,
       }),
     );

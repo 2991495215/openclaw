@@ -169,6 +169,7 @@ describe("resolveStoredModelOverride", () => {
       const config = { agents: { entries: { main: {} } } };
       await state.writeConfig(config);
       setRuntimeConfigSnapshot(config);
+      await preparePluginMetadataMachineStateAsync({ env: state.env });
       for (const [index, entry] of [
         {
           providerOverride: "anthropic",

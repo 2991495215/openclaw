@@ -19,7 +19,7 @@ import {
   initializeSessionReadContext,
 } from "../server-methods/sessions-read-cache.test-support.js";
 import type { GatewayRequestContext } from "../server-methods/types.js";
-import { loadGatewayTestConfig } from "../test-helpers.config-runtime.js";
+import { loadGatewayTestConfigAsync } from "../test-helpers.config-runtime.js";
 import { embeddedRunMock, testState } from "../test-helpers.runtime-state.js";
 import * as gatewayTestHelpers from "../test-helpers.server.js";
 import {
@@ -368,7 +368,7 @@ function createGatewaySessionsTestHarness(startServer: boolean, setup?: GatewayS
     const dir = path.join(requireSharedSessionStoreDir(), `case-${sessionStoreCaseSeq++}`);
     await fs.mkdir(dir, { recursive: true });
     testState.sessionStorePath = path.join(dir, "sessions.json");
-    setRuntimeConfigSnapshot(loadGatewayTestConfig());
+    setRuntimeConfigSnapshot(await loadGatewayTestConfigAsync());
     return { dir, storePath: testState.sessionStorePath };
   }
 
@@ -383,7 +383,7 @@ function createGatewaySessionsTestHarness(startServer: boolean, setup?: GatewayS
       systemAgent: { agentId: "main" },
       sessionStore: { agentId: "main" },
     };
-    setRuntimeConfigSnapshot(loadGatewayTestConfig());
+    setRuntimeConfigSnapshot(await loadGatewayTestConfigAsync());
     return {
       dir,
       storeTemplate,

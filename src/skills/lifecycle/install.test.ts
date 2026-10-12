@@ -38,6 +38,7 @@ vi.mock("../../process/exec.js", () => ({
 
 vi.mock("../loading/plugin-skills.js", () => ({
   resolvePluginSkillRoots: () => [],
+  resolvePluginSkillRootsFromMetadata: () => [],
 }));
 
 vi.mock("../loading/config.js", { spy: true });
