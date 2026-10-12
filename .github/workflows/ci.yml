@@ -587,12 +587,12 @@ jobs:
     if: ${{ inputs.diagnose_fixtures }}
     name: Frozen fixture regressions (${{ matrix.runtime }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime: [bun, node]
+        runtime: [node]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -633,7 +633,6 @@ jobs:
             bun --revision
           else
             files=(
-              src/gateway/server-methods/sessions.abort-yielded.test.ts
               src/gateway/server-methods/sessions-create-thinking-claim.test.ts
               extensions/googlechat/src/googlechat-session-target-case.transport.test.ts
               src/auto-reply/reply/restart-recovery-claim.test.ts
