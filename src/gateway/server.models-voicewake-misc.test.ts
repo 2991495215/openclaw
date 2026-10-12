@@ -6,10 +6,10 @@ import { WebSocket } from "ws";
 import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import { resetPreparedModelCatalogStateForTest } from "../agents/prepared-model-runtime.test-support.js";
 import { clearConfigCache, clearRuntimeConfigSnapshot } from "../config/config.js";
+import { resolveStateDir } from "../config/state-dir.js";
 import type { GatewayAgentRuntime } from "../shared/session-types.js";
 import { closeSkillsWatchers, registerSkillsChangeListener } from "../skills/runtime/refresh.js";
 import { createSkillsWatcherMock } from "../skills/runtime/refresh.watcher.test-support.js";
-import { createTempHomeEnv } from "../test-utils/temp-home.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
 import { publishConfiguredModelRuntimeSnapshots } from "./server-startup-model-runtime.js";
 import {
@@ -32,6 +32,7 @@ installGatewayTestHooks({ scope: "suite" });
 let server: Awaited<ReturnType<typeof startServerWithClient>>["server"];
 let ws: WebSocket;
 let port: number;
+let stateDir: string;
 
 afterAll(async () => {
   ws.close();
@@ -47,6 +48,7 @@ beforeAll(async () => {
   server = started.server;
   ws = started.ws;
   port = started.port;
+  stateDir = resolveStateDir();
 });
 
 type ModelCatalogRpcEntry = {
@@ -103,15 +105,6 @@ describe("gateway server models + voicewake", () => {
     }
   };
 
-  const withTempHome = async <T>(fn: (homeDir: string) => Promise<T>): Promise<T> => {
-    const tempHome = await createTempHomeEnv("openclaw-home-");
-    try {
-      return await fn(tempHome.home);
-    } finally {
-      await tempHome.restore();
-    }
-  };
-
   type NodeGatewayEvent = {
     type: "event";
     event: string;
@@ -120,31 +113,30 @@ describe("gateway server models + voicewake", () => {
 
   const withConnectedNodeEvent = async <T>(
     eventName: string,
-    run: (nodeWs: WebSocket, firstEvent: NodeGatewayEvent, homeDir: string) => Promise<T>,
-  ): Promise<T> =>
-    withTempHome(async (homeDir) => {
-      const nodeWs = new WebSocket(`ws://127.0.0.1:${port}`);
-      trackConnectChallengeNonce(nodeWs);
-      try {
-        await new Promise<void>((resolve) => {
-          nodeWs.once("open", resolve);
-        });
-        const firstEventP = onceMessage<NodeGatewayEvent>(
-          nodeWs,
-          (o) => o.type === "event" && o.event === eventName,
-        );
-        await connectOk(nodeWs, {
-          role: "node",
-          client: NODE_CLIENT,
-        });
-        return await run(nodeWs, await firstEventP, homeDir);
-      } finally {
-        nodeWs.close();
-      }
-    });
+    run: (nodeWs: WebSocket, firstEvent: NodeGatewayEvent) => Promise<T>,
+  ): Promise<T> => {
+    const nodeWs = new WebSocket(`ws://127.0.0.1:${port}`);
+    trackConnectChallengeNonce(nodeWs);
+    try {
+      await new Promise<void>((resolve) => {
+        nodeWs.once("open", resolve);
+      });
+      const firstEventP = onceMessage<NodeGatewayEvent>(
+        nodeWs,
+        (o) => o.type === "event" && o.event === eventName,
+      );
+      await connectOk(nodeWs, {
+        role: "node",
+        client: NODE_CLIENT,
+      });
+      return await run(nodeWs, await firstEventP);
+    } finally {
+      nodeWs.close();
+    }
+  };
 
   test("persists normalized voicewake triggers and broadcasts to operators and nodes", async () => {
-    await withConnectedNodeEvent("voicewake.changed", async (nodeWs, first, homeDir) => {
+    await withConnectedNodeEvent("voicewake.changed", async (nodeWs, first) => {
       const defaults = ["openclaw", "claude", "computer"];
       expect(first.payload?.triggers).toEqual(defaults);
       const initial = await rpcReq<{ triggers: string[] }>(ws, "voicewake.get");
@@ -168,7 +160,7 @@ describe("gateway server models + voicewake", () => {
       expect(after.ok).toBe(true);
       expect(after.payload?.triggers).toEqual(["hi", "there"]);
       await expect(
-        fs.readFile(path.join(homeDir, ".openclaw", "settings", "voicewake.json"), "utf8"),
+        fs.readFile(path.join(stateDir, "settings", "voicewake.json"), "utf8"),
       ).rejects.toThrow(/ENOENT/u);
     });
   });
