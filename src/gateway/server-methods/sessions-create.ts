@@ -640,12 +640,8 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
         await handleDirectExternalChatSend(sendOptions);
       },
     };
-    diagnostics?.mark("serviceAdmission");
     const created = await createGatewaySession(createParams).catch((error: unknown) => {
-      diagnostics?.failure(error, {
-        requestAborted: signal?.aborted === true,
-        connectionAborted: client?.connectionSignal?.aborted === true,
-      });
+      diagnostics?.failure(error, signal, client?.connectionSignal);
       if (error === catalogWait.unavailable) {
         respond(false, undefined, catalogWait.unavailable.error);
         return undefined;

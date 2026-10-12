@@ -36,7 +36,7 @@ export function startSessionCreateDiagnostics() {
   };
   return {
     mark,
-    failure(error: unknown, signals: { requestAborted: boolean; connectionAborted: boolean }) {
+    failure(error: unknown, requestSignal?: AbortSignal, connectionSignal?: AbortSignal) {
       try {
         diagnosticsChannel.publish({
           event: "service-rejection",
@@ -47,7 +47,8 @@ export function startSessionCreateDiagnostics() {
             error instanceof Error &&
             (error.message === "Gateway caller authority is no longer active." ||
               error.message === "Gateway requester authority changed"),
-          ...signals,
+          requestAborted: requestSignal?.aborted === true,
+          connectionAborted: connectionSignal?.aborted === true,
         });
       } catch {
         // Preserve the original rejection if its diagnostic sink fails.

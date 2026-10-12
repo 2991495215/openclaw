@@ -132,6 +132,7 @@ import { projectSessionsPatchEntry } from "./sessions-patch.js";
 export function createGatewaySession(
   params: CreateGatewaySessionParams,
 ): Promise<CreateGatewaySessionResult> {
+  params.onPhase?.("serviceAdmission");
   return withSessionCreateAdmission(params, createAdmittedGatewaySession);
 }
 
