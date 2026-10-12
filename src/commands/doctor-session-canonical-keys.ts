@@ -1,3 +1,4 @@
+import { channel } from "node:diagnostics_channel";
 import {
   applySessionEntryLifecycleMutation,
   copySessionOwnedStateForCanonicalRepair,
@@ -72,6 +73,8 @@ export type CanonicalSessionKeyRepairReport = {
 };
 
 const CANONICAL_SESSION_REPAIR_BATCH_GROUP_LIMIT = 64;
+// HOLD/neverLand: locate the scale child's work without logging repair inputs.
+const canonicalRepairProgress = channel("openclaw.doctor.canonical-repair");
 
 function hydrateCanonicalSessionCandidate(
   fact: CanonicalSessionCandidateFact,
@@ -331,7 +334,9 @@ async function repairCanonicalSessionGroupsInSingleDatabase(
   if (!first) {
     return [];
   }
+  canonicalRepairProgress.publish("generations-started");
   await ensureTranscriptGenerationsForCanonicalRepair(groups.flatMap((group) => group.candidates));
+  canonicalRepairProgress.publish("generations-finished");
   const destination = first.selected.destination;
   const result = await applySessionEntryLifecycleMutation({
     agentId: destination.agentId,
@@ -514,26 +519,33 @@ export async function repairCanonicalSessionKeys(params: {
     env,
     params.cfg,
   );
+  canonicalRepairProgress.publish("targets-resolved");
   const archivedTranscriptDirectories = new Set<string>();
   let repairBatches = 0;
   let repairedGroups = 0;
   if (params.apply) {
+    canonicalRepairProgress.publish("database-open-started");
     for (const store of stores) {
       setCanonicalSqliteSessionMainKey(
         openOpenClawAgentDatabase(resolveTargetSqliteOptions(store, env)),
         params.cfg.session?.mainKey,
       );
     }
+    canonicalRepairProgress.publish("database-open-finished");
   }
+  canonicalRepairProgress.publish("inventory-started");
   let repairGroups = collectCanonicalSessionRepairGroups({ cfg: params.cfg, env }, stores);
+  canonicalRepairProgress.publish("inventory-finished");
   const foundGroups = repairGroups.length;
   const removedRows = repairGroups.reduce((total, group) => total + group.removedRows, 0);
   if (params.apply) {
     while (repairGroups.length > 0) {
       const candidateGroups = repairGroups.slice(0, CANONICAL_SESSION_REPAIR_BATCH_GROUP_LIMIT);
+      canonicalRepairProgress.publish("hydration-started");
       const hydrated = hydrateCanonicalSessionCandidates(
         candidateGroups.flatMap((candidateGroup) => candidateGroup.candidates),
       );
+      canonicalRepairProgress.publish("hydration-finished");
       let hydratedOffset = 0;
       const hydratedGroups = candidateGroups.map((candidateGroup) => {
         const candidates = hydrated.slice(
@@ -570,6 +582,7 @@ export async function repairCanonicalSessionKeys(params: {
           batch.push(nextSingleDatabaseGroup);
         }
       }
+      canonicalRepairProgress.publish("selection-finished");
       const directories = singleDatabaseGroup
         ? await repairCanonicalSessionGroupsInSingleDatabase(batch)
         : await repairCanonicalSessionGroup(candidates, { cfg: params.cfg, env });
@@ -578,7 +591,9 @@ export async function repairCanonicalSessionKeys(params: {
       }
       repairBatches += 1;
       repairedGroups += singleDatabaseGroup ? batch.length : 1;
+      canonicalRepairProgress.publish("reinventory-started");
       repairGroups = collectCanonicalSessionRepairGroups({ cfg: params.cfg, env }, stores);
+      canonicalRepairProgress.publish("reinventory-finished");
     }
   }
   return {

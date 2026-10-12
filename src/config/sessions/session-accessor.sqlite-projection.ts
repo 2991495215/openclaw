@@ -1,3 +1,4 @@
+import { channel } from "node:diagnostics_channel";
 import path from "node:path";
 import { isMainThread } from "node:worker_threads";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
@@ -76,6 +77,12 @@ export async function applySessionEntryLifecycleMutation(
     }),
   ),
 ): Promise<SessionEntryLifecycleMutationResult> {
+  // HOLD/neverLand: fixed stages separate repair CPU work from preparation waits.
+  const markRepairPhase = (phase: string): void => {
+    if (params.allowCanonicalRepair) {
+      channel("openclaw.doctor.canonical-repair").publish(phase);
+    }
+  };
   const removals = [...(params.removals ?? [])];
   const upserts = [...(params.upserts ?? [])];
   const databaseOptions = toDatabaseOptions(resolved);
@@ -106,6 +113,7 @@ export async function applySessionEntryLifecycleMutation(
     const preparedWrite = await runPreparedSqliteSessionWrite(
       resolved,
       async () => {
+        markRepairPhase("lifecycle-planning-started");
         const projectionInput = {
           ...(params.allowCanonicalRepair ? { allowCanonicalRepair: true } : {}),
           archiveDirectory: resolveSqliteTranscriptArchiveDirectory(resolved),
@@ -131,6 +139,7 @@ export async function applySessionEntryLifecycleMutation(
             upserts,
           });
         }
+        markRepairPhase("lifecycle-planning-finished");
         const deletedOwners = projected.removals.flatMap(({ sessionKey, expectedEntry: entry }) => {
           return entry &&
             !projected.upsertedEntries.some((upsert) => upsert.sessionKey === sessionKey)
@@ -146,6 +155,7 @@ export async function applySessionEntryLifecycleMutation(
           ...(projected.deletePlans.length > 0 || resetSources.length > 0
             ? {
                 beforeCommit: async () => {
+                  markRepairPhase("archive-materialization-started");
                   if (resetSources.length > 0) {
                     const { restoreSessionColdTranscript } =
                       await import("./session-cold-storage.js");
@@ -166,6 +176,7 @@ export async function applySessionEntryLifecycleMutation(
                     removalArchiveMaterializationFailed = true;
                     captureArtifactCleanupError(error);
                   }
+                  markRepairPhase("archive-materialization-finished");
                 },
               }
             : {}),
@@ -301,6 +312,7 @@ export async function applySessionEntryLifecycleMutation(
       undefined,
       useWorker && upserts.length === 0 ? "worker" : "foreground",
     );
+    markRepairPhase("lifecycle-prepared-write-finished");
     const committed = preparedWrite.result;
 
     function commitProjectedLifecycleMutation(
@@ -309,6 +321,7 @@ export async function applySessionEntryLifecycleMutation(
       preservation: PreparedSessionMaintenancePreservation | undefined,
       assertSourceCurrent?: () => void,
     ) {
+      markRepairPhase("lifecycle-transaction-started");
       const commitResult = runOpenClawAgentWriteTransaction(
         (transactionDb) => {
           execution?.assertCurrent();
@@ -355,6 +368,7 @@ export async function applySessionEntryLifecycleMutation(
         { operationLabel: "session.lifecycle.project" },
       );
       commitResult.publish();
+      markRepairPhase("lifecycle-transaction-finished");
       return withArchivePublication(commitResult);
     }
 
@@ -386,10 +400,12 @@ export async function applySessionEntryLifecycleMutation(
     let publishedRemovalTranscripts: SessionLifecycleArchivedTranscript[] = [];
     try {
       if (committed.publishArchives) {
+        markRepairPhase("archive-publication-started");
         publishedRemovalTranscripts = await publishSessionStateArchives(
           resolved,
           committed.archivedTranscripts,
         );
+        markRepairPhase("archive-publication-finished");
       }
     } catch (error) {
       captureArtifactCleanupError(error);
