@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { addSessionMember } from "../config/sessions/session-sharing-store.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createTestApprovalManager } from "./exec-approval-manager.test-support.js";
 import { createGatewayMethodRegistry } from "./methods/registry.js";
@@ -536,86 +537,84 @@ describe("invocation-owned session mutations", () => {
   it.each(["source", "generation", "missing-single", "missing-batch"] as const)(
     "session mutation preserves the original %s fence",
     async (changed) => {
-      await withOpenClawTestState(
-        { scenario: "minimal", prepareProfileCatalog: true },
-        async () => {
-          const client = roleClient("view", "batch-owner");
-          client.connect.scopes = ["operator.sessions.write"];
-          const cfg = rolePolicyConfig();
-          const entry = {
-            ...ownedEntry(client, "original"),
-            lifecycleRevision: "original",
-          };
-          const missing = changed.startsWith("missing");
-          const method = changed === "missing-single" ? "sessions.patch" : "sessions.patchMany";
-          if (!missing) {
-            await upsertSessionEntryCore(scope, entry);
-          }
-          const entered = createDeferredCore();
-          const resume = createDeferredCore();
-          let current = true;
-          const respond = vi.fn();
-          const handler: GatewayRequestHandler = async (options) => {
-            entered.resolve();
-            await resume.promise;
-            await sessionMutationHandlers[method]!(options);
-          };
-          const request = handleGatewayRequest({
-            req: {
-              type: "req",
-              id: changed,
-              method,
-              params:
-                method === "sessions.patch"
-                  ? { key, label: "Unowned claim" }
-                  : {
-                      targets: [{ key }],
-                      patch: missing ? { label: "Unowned claim" } : { unread: true },
-                    },
-            },
-            client,
-            context: createDirectChatContext({ getRuntimeConfig: () => cfg }),
-            respond,
-            hasCurrentClientAuthority: () => current,
-            isWebchatConnect: () => false,
-            extraHandlers: { [method]: handler },
-          });
-          try {
-            await Promise.race([entered.promise, request]);
-            if (missing) {
-              resume.resolve();
-              await request;
-              expect(respond).toHaveBeenCalledExactlyOnceWith(
-                false,
-                undefined,
-                expect.objectContaining({
-                  code: "INVALID_REQUEST",
-                  message: expect.stringContaining("was not found"),
-                }),
-              );
-              expect(loadSessionEntry(scope)).toBeUndefined();
-              return;
-            }
-            expect(respond).not.toHaveBeenCalled();
-            if (changed === "source") {
-              current = false;
-            } else {
-              await upsertSessionEntryCore(scope, { ...entry, lifecycleRevision: "replacement" });
-            }
-          } finally {
+      await withOpenClawTestState({ scenario: "minimal" }, async () => {
+        const client = roleClient("view", "batch-owner");
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+        client.connect.scopes = ["operator.sessions.write"];
+        const cfg = rolePolicyConfig();
+        const entry = {
+          ...ownedEntry(client, "original"),
+          lifecycleRevision: "original",
+        };
+        const missing = changed.startsWith("missing");
+        const method = changed === "missing-single" ? "sessions.patch" : "sessions.patchMany";
+        if (!missing) {
+          await upsertSessionEntryCore(scope, entry);
+        }
+        const entered = createDeferredCore();
+        const resume = createDeferredCore();
+        let current = true;
+        const respond = vi.fn();
+        const handler: GatewayRequestHandler = async (options) => {
+          entered.resolve();
+          await resume.promise;
+          await sessionMutationHandlers[method]!(options);
+        };
+        const request = handleGatewayRequest({
+          req: {
+            type: "req",
+            id: changed,
+            method,
+            params:
+              method === "sessions.patch"
+                ? { key, label: "Unowned claim" }
+                : {
+                    targets: [{ key }],
+                    patch: missing ? { label: "Unowned claim" } : { unread: true },
+                  },
+          },
+          client,
+          context: createDirectChatContext({ getRuntimeConfig: () => cfg }),
+          respond,
+          hasCurrentClientAuthority: () => current,
+          isWebchatConnect: () => false,
+          extraHandlers: { [method]: handler },
+        });
+        try {
+          await Promise.race([entered.promise, request]);
+          if (missing) {
             resume.resolve();
             await request;
+            expect(respond).toHaveBeenCalledExactlyOnceWith(
+              false,
+              undefined,
+              expect.objectContaining({
+                code: "INVALID_REQUEST",
+                message: expect.stringContaining("was not found"),
+              }),
+            );
+            expect(loadSessionEntry(scope)).toBeUndefined();
+            return;
           }
-          expect(loadSessionEntry(scope)?.markedUnreadAt).toBeUndefined();
-          expect(respond).toHaveBeenCalledOnce();
-          const [ok, payload] = respond.mock.calls[0]!;
-          if (ok) {
-            expect(payload).toMatchObject({ outcomes: [{ ok: false }] });
+          expect(respond).not.toHaveBeenCalled();
+          if (changed === "source") {
+            current = false;
           } else {
-            expect(payload).toBeUndefined();
+            await upsertSessionEntryCore(scope, { ...entry, lifecycleRevision: "replacement" });
           }
-        },
-      );
+        } finally {
+          resume.resolve();
+          await request;
+        }
+        expect(loadSessionEntry(scope)?.markedUnreadAt).toBeUndefined();
+        expect(respond).toHaveBeenCalledOnce();
+        const [ok, payload] = respond.mock.calls[0]!;
+        if (ok) {
+          expect(payload).toMatchObject({ outcomes: [{ ok: false }] });
+        } else {
+          expect(payload).toBeUndefined();
+        }
+      });
     },
   );
 });
