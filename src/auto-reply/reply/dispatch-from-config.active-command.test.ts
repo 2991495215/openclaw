@@ -187,6 +187,9 @@ describe("dispatch active command admission", () => {
     async (controlName, controlBody) => {
       const sessionKey = "agent:main:login-ticket";
       const releaseLogin = createDeferred();
+      onTestFinished(() => releaseLogin.resolve());
+      const loginStarted = createDeferred();
+      const controlStarted = createDeferred();
       const loginEntered = vi.fn();
       const controlEntered = vi.fn();
       const shellEntered = vi.fn();
@@ -208,12 +211,14 @@ describe("dispatch active command admission", () => {
         });
       const login = dispatchCommand("/login openrouter", "login", async () => {
         loginEntered();
+        loginStarted.resolve();
         await releaseLogin.promise;
         return markCommandReplyForDelivery({ text: "Login ended." });
       });
       const pending = [login];
       try {
-        await vi.waitFor(() => expect(loginEntered).toHaveBeenCalledOnce());
+        await Promise.race([loginStarted.promise, login]);
+        expect(loginEntered).toHaveBeenCalledOnce();
         const shell = dispatchCommand("/bash echo ready", "bash", async () => {
           shellEntered();
           return markCommandReplyForDelivery({ text: "Shell command completed." });
@@ -221,11 +226,13 @@ describe("dispatch active command admission", () => {
         pending.push(shell);
         const control = dispatchCommand(controlBody, controlName, async () => {
           controlEntered();
+          controlStarted.resolve();
           return markCommandReplyForDelivery({ text: "Control command completed." });
         });
         pending.push(control);
 
-        await vi.waitFor(() => expect(controlEntered).toHaveBeenCalledOnce());
+        await Promise.race([controlStarted.promise, control]);
+        expect(controlEntered).toHaveBeenCalledOnce();
         expect(shellEntered).not.toHaveBeenCalled();
         expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
         releaseLogin.resolve();
