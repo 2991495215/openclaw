@@ -1,7 +1,6 @@
 // Fixed-vocabulary Gateway startup outcomes keep normal boot logs useful
 // without exposing configuration values, paths, or startup errors.
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { resolveInternalHookSelection } from "../hooks/configured.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 
 const GATEWAY_STARTUP_SUBSYSTEMS = [
@@ -39,6 +38,7 @@ export type GatewayStartupOutcomeRecorder = {
 type GatewayStartupOutcomeRecorderParams = {
   cfg: OpenClawConfig;
   gatewayStartHooks: boolean;
+  internalHooksConfigured: boolean;
   env?: NodeJS.ProcessEnv;
 };
 
@@ -50,13 +50,13 @@ function skipped(
 }
 
 /** Create the complete initial outcome set; awaited startup work may replace entries later. */
-export async function createGatewayStartupOutcomeRecorder(
+export function createGatewayStartupOutcomeRecorder(
   params: GatewayStartupOutcomeRecorderParams,
-): Promise<GatewayStartupOutcomeRecorder> {
+): GatewayStartupOutcomeRecorder {
   const internalHooks =
     params.cfg.hooks?.internal?.enabled === false
       ? "hooks-disabled"
-      : (await resolveInternalHookSelection(params.cfg)).configured
+      : params.internalHooksConfigured
         ? "no-handlers-loaded"
         : "not-configured";
   const gmailWatcher = !params.cfg.hooks?.enabled

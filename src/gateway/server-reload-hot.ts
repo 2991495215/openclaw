@@ -14,7 +14,7 @@ import { resolveDefaultAgentWorkspaceDir } from "../agents/workspace-default.js"
 import { isRestartEnabled } from "../config/commands.flags.js";
 import { getRuntimeConfig } from "../config/io.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { resolveCronJobsStorePathFromConfigAsync } from "../cron/store.js";
+import { resolveCronJobsStorePathFromConfigAsync } from "../cron/store/paths.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { resetDirectoryCache } from "../infra/outbound/target-resolver.js";
 import { setGatewayRestartPolicy } from "../infra/restart.js";
@@ -144,8 +144,10 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
       | { previous: GatewayCronExitWatcherHandoff; next: GatewayCronExitWatcherHandoff }
       | undefined;
     if (plan.restartCron) {
-      const { buildGatewayCronService } = await import("./server-cron.js");
-      const storePath = await resolveCronJobsStorePathFromConfigAsync(nextConfig, candidateEnv);
+      const [{ buildGatewayCronService }, storePath] = await Promise.all([
+        import("./server-cron.js"),
+        resolveCronJobsStorePathFromConfigAsync(nextConfig, candidateEnv),
+      ]);
       assertCronReloadCurrent();
       nextState.cronState = buildGatewayCronService({
         storePath,
@@ -484,9 +486,7 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
           {
             retainDebtAcrossConfigChanges: true,
             debtConfig: publication?.sourceConfig ?? nextConfig,
-            ...(publication?.prepareRestartRuntimeConfig
-              ? { prepareRuntimeConfig: publication.prepareRestartRuntimeConfig }
-              : {}),
+            prepareRuntimeConfig: publication?.prepareRestartRuntimeConfig,
           },
         );
         settleRecoveryRestart(restartTransaction, surface);

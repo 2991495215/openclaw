@@ -148,6 +148,7 @@ function sanitizeCronHeartbeatOverride(
 export function buildGatewayCronService(params: {
   storePath: string;
   scheduler: GatewayScheduler;
+  storePath: string;
   cfg: OpenClawConfig;
   deps: CliDeps;
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;

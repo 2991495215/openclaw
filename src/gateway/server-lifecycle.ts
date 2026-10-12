@@ -77,6 +77,7 @@ export async function prepareGatewayLifecycle(params: {
     mentionInbox,
     broadcast,
     cfgAtStart,
+    cronStorePath,
     pluginRuntime,
     authRateLimiter,
     nodeReapprovalCoordinator,
@@ -227,6 +228,7 @@ export async function prepareGatewayLifecycle(params: {
     cronState: createLazyGatewayCronState({
       storePath: await resolveCronJobsStorePathFromConfigAsync(cfgAtStart),
       scheduler: runtime.scheduler,
+      storePath: cronStorePath,
       cfg: cfgAtStart,
       deps,
       broadcast,

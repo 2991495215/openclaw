@@ -2,17 +2,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveInternalHookSelection } from "./configured.js";
 
-const readConfigMachineStateMock = vi.hoisted(() => vi.fn());
+const readHookInstallsMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../state/config-machine-state-async.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../state/config-machine-state-async.js")>()),
-  readConfigMachineStateAsync: readConfigMachineStateMock,
+vi.mock("./installs.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./installs.js")>()),
+  readHookInstallsAsync: readHookInstallsMock,
 }));
 
 describe("resolveInternalHookSelection", () => {
   beforeEach(() => {
-    readConfigMachineStateMock.mockReset();
-    readConfigMachineStateMock.mockReturnValue(undefined);
+    readHookInstallsMock.mockReset();
+    readHookInstallsMock.mockResolvedValue({});
   });
 
   it("keeps CLI-shaped named entries closed when the master flag is enabled", async () => {
@@ -47,7 +47,7 @@ describe("resolveInternalHookSelection", () => {
   });
 
   it("uses declared install hook names as an allowlist", async () => {
-    readConfigMachineStateMock.mockReturnValue({
+    readHookInstallsMock.mockResolvedValue({
       pack: { source: "path", hooks: ["installed-one", "installed-two"] },
     });
 
@@ -57,7 +57,7 @@ describe("resolveInternalHookSelection", () => {
   });
 
   it("keeps installs with unknown dynamic hook names open-ended", async () => {
-    readConfigMachineStateMock.mockReturnValue({ pack: { source: "path" } });
+    readHookInstallsMock.mockResolvedValue({ pack: { source: "path" } });
 
     expect((await resolveInternalHookSelection({})).names).toBeNull();
   });

@@ -74,6 +74,7 @@ it.each([false, true])(
     const { cron } = createLazyGatewayCronState({
       storePath,
       cfg: {},
+      storePath,
       deps: {} as CliDeps,
       broadcast: vi.fn(),
       scheduler,
