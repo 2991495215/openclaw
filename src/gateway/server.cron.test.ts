@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import type WebSocket from "ws";
 import { createInfoWarnErrorLogger } from "../../test/helpers/mock-logger.js";
 import { createDeferred, withinTest } from "../../test/helpers/promise.js";
-import { resetConfigRuntimeState } from "../config/config.js";
+import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/config.js";
 import type * as CronDelivery from "../cron/delivery.js";
 import { readCronRunRecordsForTests } from "../cron/run-history.test-support.js";
 import {
@@ -32,6 +32,7 @@ import {
   expectCronJobIdFromResponse,
   expectEnqueuedRunPayload,
 } from "./server.cron.assertions.test-support.js";
+import { loadGatewayTestConfigAsync } from "./test-helpers.config-runtime.js";
 import {
   agentCommandMock,
   connectOk,
@@ -186,6 +187,7 @@ async function createDirectCronState(params?: {
     import("../config/config.js"),
     import("./server-cron.js"),
   ]);
+  setRuntimeConfigSnapshot(await loadGatewayTestConfigAsync());
   const cronState = {
     ...buildGatewayCronService({
       storePath: await resolveCronJobsStorePathFromConfigAsync(getRuntimeConfig()),

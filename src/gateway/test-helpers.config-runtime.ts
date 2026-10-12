@@ -296,6 +296,12 @@ export function createGatewayConfigOverrides(actual: GatewayConfigRuntime): Gate
   const readConfigFileSnapshotWithPluginMetadata =
     async (): Promise<ReadConfigFileSnapshotWithPluginMetadataResult> => {
       const snapshot = await readConfigFileSnapshot();
+      const { resolvePluginMetadataSnapshotAsync } =
+        await import("../plugins/plugin-metadata-snapshot.js");
+      const pluginMetadataSnapshot = await resolvePluginMetadataSnapshotAsync({
+        config: snapshot.config,
+        env: process.env,
+      });
       const validation = validateConfigObjectWithPlugins(snapshot.config, {
         env: process.env,
         pluginValidation: "skip",
@@ -307,6 +313,7 @@ export function createGatewayConfigOverrides(actual: GatewayConfigRuntime): Gate
           issues: validation.ok ? [] : validation.issues,
           warnings: validation.warnings,
         },
+        pluginMetadataSnapshot,
       };
     };
 

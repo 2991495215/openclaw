@@ -18,6 +18,7 @@ import {
   hasLiveAgentRunContext,
   registerAgentRunContext,
 } from "../infra/agent-run-registry.js";
+import { preparePluginTestRuntimeMetadata } from "../plugin-sdk/plugin-test-runtime.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
@@ -37,6 +38,7 @@ let storePath: string;
 
 beforeAll(async () => {
   state = await createOpenClawTestState({ label: "restart-drain-session-settlement" });
+  await preparePluginTestRuntimeMetadata(cfg);
   setRuntimeConfigSnapshot(cfg, cfg);
   storePath = state.statePath("agents", "main", "sessions", "sessions.json");
 });
