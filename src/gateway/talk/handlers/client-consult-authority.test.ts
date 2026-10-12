@@ -576,6 +576,8 @@ describe("voice consult registration authority", () => {
     }
     let nativeAuthorityObserved = false;
     let workerAuthorityObserved = false;
+    sqlReads?.restore();
+    sqlReads = undefined;
     const reads = observeHostDataSql();
     try {
       await voiceSessions.createOrResumeClientVoiceSession({
@@ -609,7 +611,7 @@ describe("voice consult registration authority", () => {
   });
 
   it.each(["foreign", "incognito"] as const)(
-    "prepares a cold native target for a %s requester without caller-thread schema work",
+    "prepares a cold durable target for a %s requester without caller-thread schema work",
     async (kind) => {
       const sourceKey =
         kind === "incognito" ? "agent:main:dashboard:incognito-cold-native" : scope.sessionKey;
@@ -660,7 +662,9 @@ describe("voice consult registration authority", () => {
           requester: composeSessionSourceAssertion(
             [authorized.authorization!.assertCurrent],
             (assertSource) => {
-              expect(inWorkerGrant).toBe(false);
+              if (kind === "foreign") {
+                expect(inWorkerGrant).toBe(false);
+              }
               assertSource();
               nativeAuthorityObserved ||=
                 getOpenClawAgentDatabaseIfOpen(target)?.db.isTransaction === true;

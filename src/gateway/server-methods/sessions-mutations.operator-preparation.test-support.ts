@@ -7,6 +7,7 @@ import * as sessionFork from "../../auto-reply/reply/session-fork.js";
 import {
   createSessionEntryWithTranscript,
   loadSessionEntry,
+  loadTranscriptEvents,
   loadTranscriptEventsSync,
   persistSessionTranscriptTurn,
   upsertSessionEntryCore,
@@ -461,9 +462,11 @@ export function registerSessionOperatorPreparationTests(fixture: {
         const revoked = new Error("original creation source ended before entry commit");
         let childSessionId: string | undefined;
         let parentReplacement: ReturnType<typeof loadSessionEntry>;
-        const assertNoForkState = (sessionKey: string, sessionId: string) => {
+        const assertNoForkState = async (sessionKey: string, sessionId: string) => {
           expect(loadSessionEntry({ agentId: "main", sessionKey })).toBeUndefined();
-          expect(loadTranscriptEventsSync({ agentId: "main", sessionKey, sessionId })).toEqual([]);
+          expect(await loadTranscriptEvents({ agentId: "main", sessionKey, sessionId })).toEqual(
+            [],
+          );
           if (storage === "incognito") {
             return;
           }
@@ -482,7 +485,7 @@ export function registerSessionOperatorPreparationTests(fixture: {
             .mockImplementation(async (params) => {
               const prepared = await prepareFork(params);
               if (prepared.status === "prepared") {
-                assertNoForkState(params.sessionKey, prepared.transcript.sessionId);
+                await assertNoForkState(params.sessionKey, prepared.transcript.sessionId);
                 if (!childSessionId) {
                   childSessionId = prepared.transcript.sessionId;
                   if (ending === "source-and-retry") {
@@ -547,7 +550,7 @@ export function registerSessionOperatorPreparationTests(fixture: {
                           ([, scope]) => scope.sessionKey === childKey,
                         )?.[1].sessionId;
                         if (childId) {
-                          const transcript = loadTranscriptEventsSync({
+                          const transcript = await loadTranscriptEvents({
                             agentId: "main",
                             sessionKey: childKey,
                             sessionId: childId,
@@ -578,7 +581,10 @@ export function registerSessionOperatorPreparationTests(fixture: {
             (result) => ({ result }),
             (error: unknown) => ({ error }),
           );
-          expect(childSessionId).toBeDefined();
+          expect(
+            childSessionId,
+            "error" in outcome ? String(outcome.error) : JSON.stringify(outcome.result),
+          ).toBeDefined();
           if (ending === "source-after-commit") {
             expect(outcome).toMatchObject({ result: { ok: true } });
             expect(loadSessionEntry({ agentId: "main", sessionKey: childKey })).toHaveProperty(
@@ -600,10 +606,10 @@ export function registerSessionOperatorPreparationTests(fixture: {
             expect(loadSessionEntry({ agentId: "main", sessionKey: childKey })).toBeUndefined();
             const rejectedKey = childKey;
             if (fork) {
-              assertNoForkState(rejectedKey, childSessionId!);
+              await assertNoForkState(rejectedKey, childSessionId!);
             } else {
               expect(
-                loadTranscriptEventsSync({
+                await loadTranscriptEvents({
                   agentId: "main",
                   sessionKey: rejectedKey,
                   sessionId: childSessionId!,
@@ -621,7 +627,7 @@ export function registerSessionOperatorPreparationTests(fixture: {
                 "sessionId",
               );
               expect(
-                loadTranscriptEventsSync({
+                await loadTranscriptEvents({
                   agentId: "main",
                   sessionKey: rejectedKey,
                   sessionId: childSessionId!,

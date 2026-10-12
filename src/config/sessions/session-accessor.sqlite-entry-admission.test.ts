@@ -267,7 +267,7 @@ it.each(["worker", "incognito"] as const)(
         },
       ),
     );
-    expect(called).toBe(mode === "native compatibility");
+    expect(called).toBe(false);
     await expect(operation).resolves.toMatchObject({ label: mode });
     expect(called).toBe(true);
     expect(native).not.toHaveBeenCalled();

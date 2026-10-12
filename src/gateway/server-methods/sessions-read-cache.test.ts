@@ -29,7 +29,6 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resetAgentEventsForTest } from "../../infra/agent-events.js";
 import { clearAgentRunContext, registerAgentRunContext } from "../../infra/agent-run-registry.js";
 import { sessionChanges } from "../../sessions/session-row-changes.js";
-import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
 import {
   registerOpenClawAgentDatabase,
   unregisterOpenClawAgentDatabase,
@@ -394,9 +393,12 @@ describe("resident sessions.list", () => {
       const request = { archived: "all" as const, limit: 100, includeLastMessage: true };
       const clock = vi.spyOn(Date, "now").mockReturnValue(60_400);
 
+      const initialBackfill = observeSessionRowBackfill(["agent:main:active"]);
       const first = await listSessions({ client, context, request });
+      await initialBackfill;
       clock.mockReturnValue(60_401);
 
+      const committedBackfill = observeSessionRowBackfill(["agent:main:active"]);
       await persistSessionTranscriptTurn(
         { agentId: "main", sessionId: "main-active", sessionKey: "agent:main:active" },
         {
@@ -404,17 +406,13 @@ describe("resident sessions.list", () => {
           touchSessionEntry: false,
         },
       );
-      emitSessionTranscriptUpdate({
-        target: { agentId: "main", sessionId: "main-active", sessionKey: "agent:main:active" },
-      });
-      await vi.waitFor(() =>
-        expect(
-          getSessionRowProjection(context)?.snapshot(
-            { agentId: "main", key: "agent:main:active" },
-            { includeLastMessage: true },
-          ).row?.lastMessagePreview,
-        ).toBe("Fresh committed preview"),
-      );
+      await committedBackfill;
+      expect(
+        getSessionRowProjection(context)?.snapshot(
+          { agentId: "main", key: "agent:main:active" },
+          { includeLastMessage: true },
+        ).row?.lastMessagePreview,
+      ).toBe("Fresh committed preview");
       const refreshed = await listSessions({ client, context, request });
       expect(
         first.sessions.find((row) => row.key === "agent:main:active")?.lastMessagePreview,

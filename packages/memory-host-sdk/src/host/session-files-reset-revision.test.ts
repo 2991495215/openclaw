@@ -10,6 +10,7 @@ import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appendTranscriptEvent,
+  appendTranscriptMessage,
   patchSessionEntryCore,
   persistSessionTranscriptTurn,
   readActiveTranscriptEntryAnchor,
@@ -314,9 +315,8 @@ describe("SQLite session snapshots and reset content revision", () => {
         updatedAt: 1,
         ...(incognito ? { incognito: true } : {}),
       });
-      await appendTranscriptEvent(scope, {
-        type: "message",
-        id: "visible",
+      await appendTranscriptMessage(scope, {
+        eventId: "visible",
         message: { role: "user", content: "Visible transcript" },
       });
       expect((await buildSessionEntry(scope.sessionKey, scope))?.content).toBe(

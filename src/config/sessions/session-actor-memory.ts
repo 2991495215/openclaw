@@ -446,7 +446,10 @@ export function createMemorySessionActorOwner(options: { agentId: string; path: 
         ];
       });
     },
-    acquireExisting(sessionKey: string, lifetime: SessionActorLifetime) {
+    acquireExisting(
+      sessionKey: string,
+      lifetime: SessionActorLifetime,
+    ): Promise<SessionActor | undefined> {
       assertOpen();
       const record = sessions.get(sessionKey);
       return !record || record.closed
