@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
-import { loadSessionEntry, replaceSessionEntrySync } from "../config/sessions/session-accessor.js";
+import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
@@ -43,7 +43,7 @@ it.each([
       tools: { listChars: 11, schemaChars: 19, entries: [] },
     };
     for (const agentId of ["main", "research", "retired"]) {
-      replaceSessionEntrySync(
+      await replaceSessionEntry(
         { agentId, sessionKey: `agent:${agentId}:visible` },
         {
           sessionId: `${agentId}-visible`,
@@ -57,14 +57,14 @@ it.each([
       agentId: "main",
       sessionKey: "agent:main:dashboard:incognito-private",
     };
-    replaceSessionEntrySync(incognitoScope, {
+    const incognitoEntry = await replaceSessionEntry(incognitoScope, {
       sessionId: "private-session",
       updatedAt: 9,
       incognito: true,
       skillsSnapshot: { prompt: "Private plugin instructions", skills: [] },
       systemPromptReport,
     });
-    expect(loadSessionEntry(incognitoScope)).toMatchObject({
+    expect(incognitoEntry).toMatchObject({
       sessionId: "private-session",
       incognito: true,
     });
@@ -84,7 +84,7 @@ it.each([
       expect.soft(entry.systemPromptReport).toEqual(systemPromptReport);
     }
     const changedKey = expectedKeys[0]!;
-    replaceSessionEntrySync(
+    await replaceSessionEntry(
       { agentId: "main", sessionKey: changedKey },
       { sessionId: "new-incarnation", updatedAt: 8, skillsSnapshot, systemPromptReport },
     );

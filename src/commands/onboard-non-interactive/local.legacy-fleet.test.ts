@@ -3,8 +3,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { withTempHome } from "openclaw/plugin-sdk/test-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { upsertAuthProfile } from "../../agents/auth-profiles/profiles.js";
-import { loadAuthProfileStoreWithoutExternalProfiles } from "../../agents/auth-profiles/store-runtime.js";
+import { upsertAuthProfileAsync } from "../../agents/auth-profiles/profiles.js";
+import { loadAuthProfileStoreWithoutExternalProfilesAsync } from "../../agents/auth-profiles/store-runtime.js";
 import { readConfigFileSnapshot, resetConfigRuntimeState } from "../../config/io.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { RuntimeEnv } from "../../runtime.js";
@@ -171,7 +171,7 @@ describe("local setup fleet owner persistence", () => {
             target: OnboardingAgentTarget;
           }) => {
             expect(target).toEqual({ agentId: "beta", agentDir, workspaceDir: workspace });
-            upsertAuthProfile({
+            await upsertAuthProfileAsync({
               agentDir: target.agentDir,
               profileId,
               credential: { type: "api_key", provider: "fixture", key: "synthetic-setup-key" },
@@ -251,12 +251,14 @@ describe("local setup fleet owner persistence", () => {
             expect(persisted.agents.defaults.systemAgent).toEqual({ agentId: "beta" });
           }
           expect(
-            loadAuthProfileStoreWithoutExternalProfiles(agentDir).profiles[profileId],
+            (await loadAuthProfileStoreWithoutExternalProfilesAsync(agentDir)).profiles[profileId],
           ).toMatchObject({ provider: "fixture" });
           for (const nonOwner of ["alpha", "ignored"]) {
             expect(
-              loadAuthProfileStoreWithoutExternalProfiles(
-                path.join(stateDir, "agents", nonOwner, "agent"),
+              (
+                await loadAuthProfileStoreWithoutExternalProfilesAsync(
+                  path.join(stateDir, "agents", nonOwner, "agent"),
+                )
               ).profiles[profileId],
               `credentials must not be stored for ${nonOwner}`,
             ).toBeUndefined();
