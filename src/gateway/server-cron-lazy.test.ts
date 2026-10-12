@@ -409,6 +409,7 @@ function createParams(overrides: Partial<OpenClawConfig> = {}) {
   return {
     storePath: "/tmp/openclaw-cron.json",
     scheduler: createTestGatewayScheduler(),
+    storePath: "/tmp/openclaw-cron.json",
     cfg: {
       ...overrides,
     } as OpenClawConfig,

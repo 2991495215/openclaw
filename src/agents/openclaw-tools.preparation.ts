@@ -3,7 +3,11 @@ import { isEmbeddedMode } from "../infra/embedded-mode.js";
 import { prepareBundledDiscoveryMode } from "../plugins/bundled-discovery-state.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { getActiveRuntimeWebToolsMetadataFromState } from "../secrets/runtime-web-tools-state.js";
-import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
+import {
+  hasMultipleSessionSharingIdentities,
+  isUserProfileCatalogReady,
+  prepareUserProfileCatalog,
+} from "../state/user-profile-list.js";
 import { prepareWebSearchConfiguration } from "../web-search/runtime.js";
 import {
   resolveAgentDir,
@@ -102,11 +106,14 @@ export async function prepareOpenClawTools(
   ]);
   let personalInstructionsEnabled = false;
   if (!isEmbeddedMode()) {
-    const profiles = await prepareUserProfileCatalog();
+    const profileOptions = { env: shared.env };
+    const catalog = isUserProfileCatalogReady(profileOptions)
+      ? undefined
+      : await prepareUserProfileCatalog(profileOptions);
     try {
-      personalInstructionsEnabled = profiles.hasMultipleSessionSharingIdentities();
+      personalInstructionsEnabled = hasMultipleSessionSharingIdentities(profileOptions);
     } finally {
-      profiles.release();
+      catalog?.release();
     }
   }
   return {

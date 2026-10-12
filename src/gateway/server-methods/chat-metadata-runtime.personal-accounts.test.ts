@@ -299,23 +299,23 @@ describe("gateway chat metadata personal accounts", () => {
       async () => {
         const { harness, owner, alice, bob, aliceScope, bobScope } =
           await createPersonalChatMetadataFixture();
-        const shared = await harness.runtime.read({ agentId: "main" });
-        const readDraft = async (request: Parameters<typeof harness.runtime.read>[0]) => {
-          const sql = forbidMainThreadSql("draft account selection queried host SQLite");
+        const readAliceDefaults = async () => {
+          const sql = forbidMainThreadSql("personal defaults queried host SQLite");
           try {
-            return await harness.runtime.read(request);
+            return await harness.runtime.read(aliceScope);
           } finally {
             sql.restore();
           }
         };
-        expect(await readDraft(aliceScope)).toEqual(shared);
+        const shared = await harness.runtime.read({ agentId: "main" });
+        expect(await readAliceDefaults()).toEqual(shared);
         const aliceAuthId = connectChatMetadataAccount(alice.id);
         const available = {
           models: expect.arrayContaining([
             expect.objectContaining({ id: "gpt-5.6-luna", available: true }),
           ]),
         };
-        await expect(readDraft(aliceScope)).resolves.toMatchObject(available);
+        await expect(readAliceDefaults()).resolves.toMatchObject(available);
         for (const selector of [
           { sessionKey: "agent:main:existing", sessionEntry: { sessionId: randomUUID() } },
           { sessionKey: "agent:main:missing" },
@@ -364,7 +364,7 @@ describe("gateway chat metadata personal accounts", () => {
           source: "user-link",
         });
         clearUserProfileAuthLink({ profileId: alice.id, provider: "openai" });
-        expect(await readDraft(aliceScope)).toEqual(shared);
+        expect(await readAliceDefaults()).toEqual(shared);
         await expect(
           harness.runtime.read(createDraftChatMetadataScope(alice.id, aliceAuthId).params),
         ).resolves.toMatchObject({

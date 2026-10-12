@@ -1,6 +1,11 @@
 import path from "node:path";
 import { isRootFileMissingFailure } from "../infra/boundary-file-read.js";
-import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
+import {
+  hasMultipleSessionSharingIdentities,
+  isUserProfileCatalogReady,
+  prepareUserProfileCatalog,
+  readUserProfileIdentity,
+} from "../state/user-profile-list.js";
 import { resolveUserPath } from "../utils.js";
 import {
   createLoadedWorkspaceBootstrapFile,
@@ -17,12 +22,12 @@ export async function loadPersonalUserBootstrapFile(
   if (!profileId) {
     return undefined;
   }
-  const profiles = await prepareUserProfileCatalog();
+  const catalog = isUserProfileCatalogReady() ? undefined : await prepareUserProfileCatalog();
   try {
-    if (!profiles.hasMultipleSessionSharingIdentities()) {
+    if (!hasMultipleSessionSharingIdentities()) {
       return undefined;
     }
-    const canonicalId = profiles.readCurrentIdentity(profileId)?.profileId;
+    const canonicalId = readUserProfileIdentity(profileId)?.profileId;
     // IDs are opaque, single path segments, not display names or caller-selected paths.
     if (!canonicalId || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(canonicalId)) {
       return undefined;
@@ -42,13 +47,13 @@ export async function loadPersonalUserBootstrapFile(
     }
     // A merge while the file was being read must not inject a retired profile's overlay.
     if (
-      !profiles.hasMultipleSessionSharingIdentities() ||
-      profiles.readCurrentIdentity(profileId)?.profileId !== canonicalId
+      !hasMultipleSessionSharingIdentities() ||
+      readUserProfileIdentity(profileId)?.profileId !== canonicalId
     ) {
       return undefined;
     }
     return createLoadedWorkspaceBootstrapFile(DEFAULT_USER_FILENAME, filePath, loaded, true);
   } finally {
-    profiles.release();
+    catalog?.release();
   }
 }

@@ -21,7 +21,7 @@ import {
   isRemoteCatalogSourceActive,
   isRemoteModelCatalogRefreshEnabled,
 } from "./remote-config.js";
-import { readRemoteModelCatalog, readRemoteModelCatalogAsync } from "./remote-store.js";
+import { readRemoteModelCatalogAsync } from "./remote-store.js";
 
 export type RemoteCatalogPublicationResult = "published" | "unchanged" | "superseded";
 
@@ -55,7 +55,7 @@ function isCompatible(bundle: RemoteModelCatalogWireBundle, bundledGeneratedAt: 
 }
 
 function selectCompatibleRemoteModelCatalog(
-  stored: ReturnType<typeof readRemoteModelCatalog>,
+  stored: Awaited<ReturnType<typeof readRemoteModelCatalogAsync>>,
   bundledGeneratedAt: number,
 ): ActiveRemoteModelCatalog | null {
   if (!stored) {
@@ -90,25 +90,6 @@ function publishRemoteModelCatalogStartupSnapshot(
   // Downloads are inert; workers inherit only the host's accepted rows/pricing pair.
   setEnvironmentData(STARTUP_SNAPSHOT_KEY, { catalog: snapshot });
   return snapshot;
-}
-
-/** Synchronous boot admission only, before the Gateway starts serving work. */
-export function captureRemoteModelCatalogStartupSnapshotAtBoot(): ActiveRemoteModelCatalog | null {
-  const inherited = inheritedRemoteModelCatalogStartupSnapshot();
-  if (inherited !== undefined) {
-    return inherited.catalog;
-  }
-  let snapshot: ActiveRemoteModelCatalog | null;
-  try {
-    const bundledGeneratedAt = bundledCatalogGeneratedAt();
-    snapshot =
-      bundledGeneratedAt === undefined
-        ? null
-        : selectCompatibleRemoteModelCatalog(readRemoteModelCatalog(), bundledGeneratedAt);
-  } catch {
-    snapshot = null;
-  }
-  return publishRemoteModelCatalogStartupSnapshot(snapshot);
 }
 
 /** Read the already-published startup pair without loading persistent state. */

@@ -6,7 +6,10 @@ import {
 import { captureRuntimeConfigAsyncReader } from "../config/config.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { listSystemPresence } from "../infra/system-presence.js";
-import { readResidentUserProfileId } from "../state/user-profile-list.js";
+import {
+  prepareUserProfileCatalog,
+  readResidentUserProfileId,
+} from "../state/user-profile-list.js";
 import { linkCanonicalUserProfileEmail } from "../state/user-profile-writes.js";
 import { ensureProfileForEmail, getUserProfileDisplay } from "../state/user-profiles.js";
 import {
@@ -174,6 +177,7 @@ describe("createGatewayRequestContext presence", () => {
       const source = ensureProfileForEmail("merge-source@example.test");
       const target = ensureProfileForEmail("merge-target@example.test");
       const unrelatedProfile = ensureProfileForEmail("merge-unrelated@example.test");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
       const sourceClient = {
         ...makeProfileClient("merge-source", "merge-source@example.test", {
           profileId: source.id,

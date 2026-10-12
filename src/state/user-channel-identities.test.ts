@@ -100,6 +100,7 @@ it.each(["email binding", "stale role reply"] as const)(
               return reply;
             })
         : undefined;
+    let releaseCatalog = () => {};
     try {
       if (change === "email binding") {
         const target = ensureProfileForEmail("target@example.test", options);
@@ -119,7 +120,8 @@ it.each(["email binding", "stale role reply"] as const)(
         });
       }
       expect(prepared?.isCurrent()).toBe(true);
-      expect(prepared?.profileId).toBe(source.id);
+      releaseCatalog = (await prepareUserProfileCatalog(options)).release;
+      expect(readResidentUserProfileIdentity(source.id, options)?.profileId).toBe(source.id);
       expect(admin?.isCurrent()).toBe(false);
       expect(rolePolicy?.isCurrent()).toBe(false);
       expect(channel?.isCurrent()).toBe(false);
@@ -128,6 +130,7 @@ it.each(["email binding", "stale role reply"] as const)(
         true,
       );
     } finally {
+      releaseCatalog();
       read?.mockRestore();
     }
   },

@@ -33,8 +33,9 @@ const state = vi.hoisted(() => ({
   rootCalls: 0,
   beforeRoot: undefined as (() => Promise<void>) | undefined,
 }));
-vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../state/user-profile-list.js")>()),
+// mock-isolation: exercise profile revocation without opening shared profile storage.
+vi.mock("../../state/user-profile-list.js", () => ({
+  isUserProfileCatalogReady: () => true,
   prepareUserProfileCatalog: async () => ({
     hasMultipleSessionSharingIdentities: () => state.multipleProfiles,
     readCurrentIdentity: (id: string) => ({

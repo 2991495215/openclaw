@@ -7,7 +7,12 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
-import { isHookLoadable, isHookNameSelected, resolveInternalHookSelection } from "./configured.js";
+import {
+  type InternalHookSelection,
+  isHookLoadable,
+  isHookNameSelected,
+  resolveInternalHookSelection,
+} from "./configured.js";
 import { buildImportUrl } from "./import-url.js";
 import { isKnownInternalHookEventKey } from "./internal-hook-types.js";
 import {
@@ -53,13 +58,14 @@ export async function prepareInternalHooks(
     managedHooksDir?: string;
     bundledHooksDir?: string;
     failureMode?: "atomic" | "best-effort";
+    selection?: InternalHookSelection;
   },
 ): Promise<PreparedInternalHooks> {
   const enabled = cfg.hooks?.internal?.enabled !== false;
   const previousGeneration = hookOwner.generation;
   const registrations: HookGeneration["registrations"] = [];
   let loadedCount = 0;
-  const selection = await resolveInternalHookSelection(cfg);
+  const selection = opts?.selection ?? (await resolveInternalHookSelection(cfg));
   const shouldLoadHook = (entry: HookPolicyEntry) =>
     isHookLoadable({ entry, config: cfg, names: selection.names });
   const discovery = selection.configured

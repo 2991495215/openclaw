@@ -1708,6 +1708,7 @@ describe("gateway hot reload model state", () => {
           storePath: await resolveCronJobsStorePathFromConfigAsync(config),
           scheduler,
           cfg: config,
+          storePath: path.join(fixtureDir, "jobs.json"),
           deps: {} as never,
           broadcast: vi.fn(),
         });
@@ -2057,6 +2058,7 @@ describe("gateway hot reload model state", () => {
         }),
         scheduler,
         cfg: initialConfig,
+        storePath: path.join(fixtureDir, "cron", "jobs.json"),
         deps: {} as never,
         env: { ...process.env, OPENCLAW_STATE_DIR: fixtureDir, OPENCLAW_SKIP_CRON: "0" },
         broadcast: vi.fn(),
