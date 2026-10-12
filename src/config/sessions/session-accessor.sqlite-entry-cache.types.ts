@@ -79,6 +79,10 @@ export function projectSessionSharingEntry(entry: InternalSessionEntry) {
     parentSessionKey: entry.parentSessionKey,
     sessionStartedAt: entry.sessionStartedAt,
     permissionMode: entry.permissionMode,
+    execNode: entry.execNode,
+    sessionRoot: entry.sessionRoot,
+    spawnedCwd: entry.spawnedCwd,
+    spawnedWorkspaceDir: entry.spawnedWorkspaceDir,
     toolOverrides: entry.toolOverrides ? structuredClone(entry.toolOverrides) : undefined,
   };
 }

@@ -27,7 +27,8 @@ const preparation = vi.hoisted(() => {
 vi.mock("../../auto-reply/reply/model-runtime-normalization.js", () => ({
   prepareModelSelectionRuntime: preparation.prepare,
 }));
-vi.mock("./sessions-shared.js", () => ({
+vi.mock("./sessions-shared.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./sessions-shared.js")>()),
   prepareSessionWorkerPlacementPatchCheck: async () => () => undefined,
 }));
 

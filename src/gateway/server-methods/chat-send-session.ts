@@ -29,7 +29,6 @@ import {
 import { prepareQualifiedSessionEntryTarget } from "../../config/sessions/session-accessor.js";
 import type { QualifiedSessionEntryAccessTarget } from "../../config/sessions/session-accessor.types.js";
 import { buildSessionCreationStamp } from "../../config/sessions/session-entry-provenance.js";
-import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import type { CapturedSessionEntryReadSource } from "../../config/sessions/session-entry-read-source.types.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -618,13 +617,6 @@ export async function prepareChatSendNativeRuntimeRestriction(params: {
       session.assertSessionTargetCurrent();
       prepared.assertSkillSelection();
       const currentConfig = context.getRuntimeConfig();
-      const current = readRetainedSessionEntryFacts(
-        { agentId: session.agentId, path: session.storePath },
-        { sessionKeys: [sessionKey] },
-      );
-      if (!current) {
-        throw new Error("Native session creation facts are unavailable. Retry.");
-      }
       const currentCreation = resolveOperatorSessionCreation(client);
       const currentModel = resolveSessionModelRef(currentConfig, undefined, agentId);
       const creationError = authorizeGatewaySessionCreation({
@@ -638,7 +630,6 @@ export async function prepareChatSendNativeRuntimeRestriction(params: {
       if (
         creationError ||
         !hasGatewayAdminScope(client) ||
-        current.entries.some((row) => row.entry) ||
         session.sessionRoutingChanged(currentConfig) ||
         currentCreation.actor?.id !== prepared.entry.createdActor?.id ||
         resolveCreatorSandbox(currentConfig, currentCreation) !== prepared.entry.sandbox ||

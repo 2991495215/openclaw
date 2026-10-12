@@ -320,7 +320,7 @@ describe("session accessor readonly listing", () => {
     update.run(
       JSON.stringify({ sessionId: "pending", updatedAt: 30, label: "fresh" }),
       30,
-      "pending-updated",
+      "pending",
       "agent:main:pending",
     );
     update.run("{", 40, "bad-json", "agent:main:bad-json");
@@ -415,6 +415,7 @@ describe("session accessor readonly listing", () => {
     update.run(
       JSON.stringify({ skillsSnapshot: { prompt: "invalid prompt-only row" } }),
       2000,
+      "retained",
       retainedScope.sessionKey,
     );
     expect(() => loadExactSessionEntryReadOnly({ ...retainedScope, projection: "list" })).toThrow(

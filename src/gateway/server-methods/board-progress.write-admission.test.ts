@@ -167,6 +167,7 @@ describe("board and progress-card database write admission", () => {
                     ? "grant"
                     : "putWidget",
               );
+        let mutationCalls: number;
         let request: Promise<void> | undefined;
         let inGrant = false;
         const stages: string[] = [];
@@ -215,7 +216,6 @@ describe("board and progress-card database write admission", () => {
           expect(boardRowCounts()).toEqual(previousBoardRowCounts);
           expect(respond).not.toHaveBeenCalled();
           expect(board.broadcast).not.toHaveBeenCalled();
-          expect(mutation).toHaveBeenCalledOnce();
           if (change === "abort") {
             controller.abort(new Error("request closed"));
           } else if (change === "guard") {
@@ -233,6 +233,7 @@ describe("board and progress-card database write admission", () => {
           release.resolve();
           await reservation;
           await request;
+          mutationCalls = mutation.mock.calls.length;
           mutation.mockRestore();
           grants.mockRestore();
           reads.restore();
@@ -271,6 +272,7 @@ describe("board and progress-card database write admission", () => {
           }
           return;
         }
+        expect(mutationCalls).toBe(1);
         expect(respond.mock.calls[0]?.[0]).toBe(true);
         if (method === "board.update") {
           expect((await boardStore.getSnapshot(target)).tabs).toEqual([

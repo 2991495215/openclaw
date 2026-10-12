@@ -41,6 +41,9 @@ afterEach(async () => {
 it.each([
   ["permission", "metadata"],
   ["placement", "content"],
+  ["session root", "content"],
+  ["spawned cwd", "content"],
+  ["spawned workspace", "content"],
   ["abort", "content"],
 ] as const)(
   "cleans earlier image files and records when %s changes during audio %s preparation",
@@ -70,7 +73,11 @@ it.each([
       sessionId: target.sessionId,
       lifecycleRevision: "initial",
       permissionMode: "full",
-      sessionRoot: selected,
+      ...(change === "spawned cwd"
+        ? { spawnedCwd: selected }
+        : change === "spawned workspace"
+          ? { spawnedWorkspaceDir: selected }
+          : { sessionRoot: selected }),
       updatedAt: 1,
     };
     await replaceSessionEntry(target, entry);
@@ -80,6 +87,7 @@ it.each([
       sessionKey: SESSION_KEY,
       sessionLoadOptions: { agentId: "main" },
     });
+    expect(scope.workspace).toEqual({ remote: false, workspaceDir: selected });
     const opened = createDeferred();
     const release = createDeferred();
     const audioReadCounts: Array<() => number> = [];
@@ -125,6 +133,9 @@ it.each([
           ...entry,
           ...(change === "permission" ? { permissionMode: "workspace" } : {}),
           ...(change === "placement" ? { execNode: "remote-test-node" } : {}),
+          ...(change === "session root" ? { sessionRoot: workspace } : {}),
+          ...(change === "spawned cwd" ? { spawnedCwd: workspace } : {}),
+          ...(change === "spawned workspace" ? { spawnedWorkspaceDir: workspace } : {}),
         });
       }
       authorityChanged = true;

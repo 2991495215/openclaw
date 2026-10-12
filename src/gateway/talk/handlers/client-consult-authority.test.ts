@@ -37,7 +37,7 @@ import type { ChatSendInternalOptions } from "../../server-methods/chat-send-opt
 import type { GatewayRequestHandlerOptions } from "../../server-methods/types.js";
 import { createGatewayRequestContext } from "../../server-request-context.js";
 import { makeContextParams } from "../../server-request-context.test-support.js";
-import { resolveSessionMutationAuthorizationAsync } from "../../session-sharing.js";
+import { resolveSessionMutationAuthorizationAsync } from "../../session-sharing-authorization-async.js";
 import { createIdleRelayProvider } from "../relay/index.test-support.js";
 import { closeRelaySession, registerTalkRealtimeRelayAgentRun } from "../relay/operations.js";
 import { createTalkRealtimeRelaySession } from "../relay/session-create.js";

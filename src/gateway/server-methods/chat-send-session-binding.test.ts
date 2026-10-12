@@ -274,6 +274,7 @@ it.each(admissionScenarios)(
         if (dashboardRead) {
           expect(admission.admittedSessionId).toBe(initialSessionId);
           expect(dashboardRead.sessionId).toBe(binding.sessionId);
+          await dashboardRead.prepare?.();
           dashboardRead.assertCurrent();
         }
         clone.mockClear();
@@ -524,6 +525,7 @@ it.each(
         });
         const promptSource = readUserTurnPromptReactionSource(owned.userTurn.recorder);
         expect(promptSource).toBeDefined();
+        await promptSource?.prepare?.();
         promptSource?.assertCurrent();
         return { ...source, owned, options };
       }

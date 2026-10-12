@@ -25,7 +25,7 @@ import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { prepareSessionRepositoryWorkspace } from "./server-methods/session-create-project.js";
 import { createGatewaySession } from "./session-create-service.js";
-import { resolveSessionMutationAuthorization } from "./session-sharing.js";
+import { resolveSessionMutationAuthorizationAsync } from "./session-sharing-authorization-async.js";
 import { roleClient, rolePolicyConfig } from "./session-sharing.test-utils.js";
 import { resolveGatewaySessionStoreTargetAsync } from "./session-utils.js";
 
@@ -397,7 +397,7 @@ describe("Gateway creation preparation", () => {
         const cfg = rolePolicyConfig();
         const key = "agent:main:created-handoff";
         const generated = method === "generated-create";
-        const captured = resolveSessionMutationAuthorization({
+        const captured = await resolveSessionMutationAuthorizationAsync({
           client,
           context: createDirectChatContext({ getRuntimeConfig: () => cfg }),
           method: generated ? "sessions.create" : method,

@@ -1,13 +1,7 @@
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import { captureIncognitoSessionBinding } from "../../config/sessions/session-incognito-binding.js";
 import type { StoredSessionSuggestion } from "../../config/sessions/session-sharing-store.types.js";
-import {
-  isSessionWorkStartInvalidatedError,
-  SessionWorkStartInvalidatedError,
-} from "../../config/sessions/work-start-error.js";
-import { isIncognitoSessionKey } from "../../routing/session-key.js";
-import { withReadySessionRows } from "../session-row-prepared-read.js";
-import { requireSessionRowProjection } from "../session-row-projection-access.js";
+import { isSessionWorkStartInvalidatedError } from "../../config/sessions/work-start-error.js";
 import type { SessionSharingTarget } from "../session-sharing-policy.js";
 import {
   resolveSessionMutationAuthorization,
@@ -109,40 +103,26 @@ export async function dispatchSuggestion(params: {
             sessionId: params.expectedSessionId,
           },
         })
-      : await withReadySessionRows(
-          requireSessionRowProjection(params.context),
-          () => [{ key: params.target.canonicalKey, agentId: params.target.agentId }],
-          (sessionRowRead) => {
-            const row = sessionRowRead.describe({
-              key: params.target.canonicalKey,
-              agentId: params.target.agentId,
-            });
-            const rowSourcePath =
-              row &&
-              (isIncognitoSessionKey(row.key)
-                ? row.storeTarget.storePath
-                : sessionRowRead.readSource(row)?.path);
-            if (!row || rowSourcePath !== current.physicalStorePath) {
-              throw new SessionWorkStartInvalidatedError(
-                "session source changed before suggestion dispatch",
-              );
-            }
-            return resolveSessionMutationAuthorization({
-              client: chatClient,
-              method: "chat.send",
-              requestParams: chatParams,
-              context: params.context,
-              sessionRowRead,
-              expectedTarget: {
-                agentId: params.target.agentId,
-                sessionKey: params.target.canonicalKey,
-                // Prepared rows retain aliases; the source check above binds the physical store.
-                storePath: row.storeTarget.storePath,
-                sessionId: params.expectedSessionId,
-              },
-            });
+      : resolveSessionMutationAuthorization({
+          client: chatClient,
+          method: "chat.send",
+          requestParams: chatParams,
+          context: params.context,
+          preparedTargetRead: () => {
+            const prepared = params.readCurrent();
+            return {
+              target: prepared.target,
+              storageTarget: prepared.target,
+              members: prepared.members,
+            };
           },
-        );
+          expectedTarget: {
+            agentId: params.target.agentId,
+            sessionKey: params.target.canonicalKey,
+            storePath: current.target.storePath,
+            sessionId: params.expectedSessionId,
+          },
+        });
     assertRequestCurrent();
     params.readCurrent();
     if (authorization.error) {

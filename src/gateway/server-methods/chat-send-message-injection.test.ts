@@ -78,6 +78,12 @@ vi.mock("../../auto-reply/command-auth.js", () => ({
 vi.mock("../../auto-reply/reply/reply-tool-authority.js", () => ({
   resolveInboundReplyToolAuthorityOverlay: vi.fn(() => ({})),
 }));
+// mock-isolation: This registry contract receives already-prepared steering source authority.
+vi.mock(import("../../auto-reply/reply/steering-delivery-preparation.js"), () => ({
+  prepareSteeringDelivery: ({ assertCurrent }) => ({
+    prepareCurrent: async () => assertCurrent(),
+  }),
+}));
 
 function makeParams() {
   const context = {

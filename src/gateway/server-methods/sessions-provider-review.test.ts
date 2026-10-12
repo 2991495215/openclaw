@@ -33,7 +33,8 @@ vi.mock("../session-sharing.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../session-sharing-authorization-async.js", () => ({
+vi.mock("../session-sharing-authorization-async.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../session-sharing-authorization-async.js")>()),
   resolveSessionMutationAuthorizationAsync: mocks.resolveAuthorization,
 }));
 

@@ -33,7 +33,12 @@ it("reads current qualified facts and recovers lifecycle timestamps only when re
       { type: "session", id: sessionId, version: 3, timestamp: "1970-01-01T00:00:01.000Z" },
     ]);
     addSessionMember(scope, { identityId: "first-member", addedBy: "owner", addedAt: 1 });
-    const selected = resolveGatewaySessionStoreTargetWithStore({ cfg, key, env, exactRead: true });
+    const selected = await resolveGatewaySessionStoreTargetWithStoreAsync({
+      cfg,
+      key,
+      env,
+      exactRead: true,
+    });
     const qualified = prepareQualifiedSessionEntryTarget(
       {
         ...selected,

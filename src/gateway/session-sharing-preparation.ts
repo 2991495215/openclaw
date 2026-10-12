@@ -640,6 +640,9 @@ export async function prepareSessionMutationFacts(
         setExpectedPlaceholder: (placeholder) => {
           expectedPlaceholder = placeholder;
         },
+        onCreatedFacts: (createdFacts) => {
+          facts = createdFacts;
+        },
       });
       readFacts = preparedRead.read;
       facts = readFacts();

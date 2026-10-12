@@ -1,3 +1,5 @@
+import { ErrorCodes, errorShape } from "../../packages/gateway-protocol/src/index.js";
+import { extractErrorCode, readErrorCause } from "../infra/errors.js";
 import {
   resolveRequestedSessionAgentId,
   resolveRequestedSessionAgentInput,
@@ -76,7 +78,7 @@ export async function resolveSessionMutationAuthorizationAsync(
           method: params.method,
           requestParams: params.requestParams,
           context: params.context,
-        }) ?? targets);
+        }) ?? []);
     const reads = new Map<string, SessionFactsRead<PreparedSessionMutationFacts>>();
     const identity = (target: { sessionKey: string; agentId?: string }, current = cfg) => {
       const selected = resolveSessionStoreIdentity({ cfg: current, ...target });
@@ -154,6 +156,16 @@ export async function resolveSessionMutationAuthorizationAsync(
       return result;
     } catch (error) {
       release();
+      const cause =
+        error instanceof SessionMutationFactsUnavailableError ? readErrorCause(error) : error;
+      if (extractErrorCode(cause) === "SESSION_CANONICAL_KEY_MIGRATION_REQUIRED") {
+        return {
+          error: errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            cause instanceof Error ? cause.message : String(cause),
+          ),
+        };
+      }
       throw error;
     }
   }

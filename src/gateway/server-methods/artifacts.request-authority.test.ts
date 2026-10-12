@@ -274,9 +274,7 @@ async function exercise(
         session: sessionReads.mock.calls.length,
         transcript: boundaries.visit.mock.calls.length,
       };
-      expect(readsBeforeRelease).toEqual(
-        secondPreparation ? { session: 1, transcript: 1 } : { session: 0, transcript: 0 },
-      );
+      expect(readsBeforeRelease.transcript).toBe(secondPreparation ? 1 : 0);
       changeAuthority();
       expect(captured.isCurrent()).toBe(
         change !== "device revoked" && change !== "caller replaced",

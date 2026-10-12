@@ -221,7 +221,19 @@ async function handleChatSendWithOptions(
     } = userTurn;
     const persistGatewayUserTurnTranscript = (
       ...args: Parameters<typeof persistUserTurnTranscript>
-    ) => admission.withInputCommitPublication(() => persistUserTurnTranscript(...args));
+    ) =>
+      admission.withInputCommitPublication(
+        () => persistUserTurnTranscript(...args),
+        (readSource, committedEntry) =>
+          sessionMutationAuthorization?.recordCreatedSession?.({
+            agentId: session.agentId,
+            sessionKey,
+            storePath,
+            sessionId: committedEntry.sessionId,
+            lifecycleRevision: committedEntry.lifecycleRevision,
+            readSource,
+          }),
+      );
     dashboardAuthority.bindPromptRecorder(userTurnRecorder);
     bindPreparedMediaRecorder(userTurnRecorder);
     phase?.mark("preparation");

@@ -133,7 +133,7 @@ const mockState = vi.hoisted(() => {
     replyDispatchRun: undefined as ReplyDispatchRun | undefined,
     triggerUserMessagePersisted: false,
     runtimeUserMessagePersistenceError: null as Error | null,
-    onAfterAgentRunStart: null as (() => void) | null,
+    onAfterAgentRunStart: null as (() => void | Promise<void>) | null,
     agentRunId: "run-agent-1",
     sessionEntry: {} as Record<string, unknown>,
     sessionIdsByKey: new Map<string, string>(),
@@ -344,7 +344,7 @@ dispatchInboundMessageMock.mockImplementation(
         undefined,
         mockState.replyDispatchRun,
       );
-      mockState.onAfterAgentRunStart?.();
+      await mockState.onAfterAgentRunStart?.();
     }
     if (mockState.triggerUserMessagePersisted) {
       params.replyOptions?.userTurnTranscriptRecorder?.markRuntimePersisted({
@@ -2860,12 +2860,14 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
         lifecycleRevision: "revision-a",
         activeWriterRunId: "run-settled",
       };
+      await seedSqliteSessionEntry(mockState.sessionEntry);
       if (replaced) {
-        mockState.onAfterAgentRunStart = () => {
+        mockState.onAfterAgentRunStart = async () => {
           mockState.sessionEntry = {
             lifecycleRevision: "revision-a",
             activeWriterRunId: "replacement-run",
           };
+          await seedSqliteSessionEntry(mockState.sessionEntry);
         };
       }
       const reply: TestReply = replaced

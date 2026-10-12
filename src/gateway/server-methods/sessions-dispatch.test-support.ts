@@ -6,6 +6,7 @@ import {
 } from "../../../packages/gateway-protocol/src/client-info.js";
 import type { SessionsReclaimParams } from "../../../packages/gateway-protocol/src/schema/session-placement.js";
 import { managedWorktrees } from "../../agents/worktrees/service.js";
+import * as sessionEntryReadFacts from "../../config/sessions/session-entry-read-facts.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import { NODE_WORKER_SUPERVISOR_PROTOCOL_FEATURE } from "../../infra/node-runner-inventory.js";
 import type { NodeWorkerSupervisorNodeProof } from "../node-registry-private.js";
@@ -26,7 +27,35 @@ export function getDispatchTestMocks() {
   return dispatchTestMocks;
 }
 
+const readRetained = sessionEntryReadFacts.readRetainedSessionEntryFacts;
+
 beforeEach(() => {
+  vi.spyOn(sessionEntryReadFacts, "readRetainedSessionEntryFacts").mockImplementation(
+    (database, request, owner) => {
+      if (database.path !== "/tmp/openclaw-agent.sqlite") {
+        return readRetained(database, request, owner);
+      }
+      // Synthetic dispatch targets share the current metadata used by worker reads.
+      const target: ReturnType<typeof makeSessionTarget> = dispatchTestMocks.resolveTarget({
+        key: request.sessionKeys?.[0],
+        agentId: database.agentId,
+      });
+      return {
+        kind: "session-exact-entries",
+        entries: (request.sessionKeys ?? []).flatMap((sessionKey) => {
+          const entry = target.store[sessionKey];
+          return entry ? [{ sessionKey, entry: { updatedAt: 1, ...entry } }] : [];
+        }),
+        lifecycleTimestamps: {},
+        source: { ...database, databaseIdentity: "dispatch-fixture" },
+        databaseIdentity: {
+          identity: "dispatch-fixture",
+          incarnation: "dispatch-fixture",
+          filename: database.path,
+        },
+      };
+    },
+  );
   const readFixtureEntry: typeof sessionStore.loadGatewaySessionEntryReadOnlyAsync = async (
     key,
     opts,

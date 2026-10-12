@@ -45,6 +45,7 @@ export function createSessionSharingReceiptRead({
   releases,
   getExpectedPlaceholder,
   setExpectedPlaceholder,
+  onCreatedFacts,
 }: {
   selected: GatewaySessionStoreTarget;
   canonicalKey: string;
@@ -58,6 +59,7 @@ export function createSessionSharingReceiptRead({
   releases: Array<() => void>;
   getExpectedPlaceholder: () => SessionEntryPlaceholder | undefined;
   setExpectedPlaceholder: (placeholder: SessionEntryPlaceholder | undefined) => void;
+  onCreatedFacts: (facts: PreparedSessionSourceFacts) => void;
 }) {
   let readFacts: () => PreparedSessionSourceFacts;
   let acknowledgedCreation: { databaseIdentity: string; sessionId: string } | undefined;
@@ -119,6 +121,7 @@ export function createSessionSharingReceiptRead({
           retained: ReturnType<typeof retainPreparedSessionSharingFacts>;
         }
       | undefined;
+    let committedCreation: CommittedSessionMutationTarget | undefined;
     captureCreatedPublication = (change) => {
       if (
         !("sessionKey" in change) ||
@@ -162,17 +165,31 @@ export function createSessionSharingReceiptRead({
           birthtime: published.source.birthtime,
         });
       }
+      if (committedCreation) {
+        recordCreated?.(committedCreation);
+      }
       return true;
     };
     recordCreated = (created) => {
-      const pending = pendingCreated;
-      const current = pending?.retained.readCurrent();
       if (
-        !pending ||
-        !current?.entry ||
         created.agentId !== selected.agentId ||
         created.sessionKey !== canonicalKey ||
-        created.storePath !== selected.storePath ||
+        created.storePath !== selected.storePath
+      ) {
+        throw new SessionMutationFactsUnavailableError();
+      }
+      const pending = pendingCreated;
+      if (!pending) {
+        // The writer acknowledges COMMIT before publishing its postimage to observers.
+        committedCreation = {
+          ...created,
+          ...(created.readSource ? { readSource: { ...created.readSource } } : {}),
+        };
+        return;
+      }
+      const current = pending.retained.readCurrent();
+      if (
+        !current?.entry ||
         created.sessionId !== current.entry.sessionId ||
         created.lifecycleRevision !== current.entry.lifecycleRevision ||
         (created.readSource &&
@@ -207,6 +224,7 @@ export function createSessionSharingReceiptRead({
       };
       captureCreatedPublication = () => false;
       recordCreated = undefined;
+      onCreatedFacts(readFacts());
     };
   }
 
@@ -218,7 +236,7 @@ export function createSessionSharingReceiptRead({
         return undefined;
       }
       recordCreated(created);
-      return readFacts();
+      return acknowledgedCreation ? readFacts() : undefined;
     },
     acknowledgesIdentityMutation: (change: SessionIdentityMutation) =>
       // The creator already installed this idless-to-id COMMIT receipt.

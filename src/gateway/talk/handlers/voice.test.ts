@@ -188,7 +188,7 @@ describe("Talk voice RPC ownership", () => {
 
   beforeEach(async () => {
     state = await createOpenClawTestState({ label: "talk-voice-rpc", scenario: "minimal" });
-    changeRequested = createDeferred<void>();
+    changeRequested = createDeferred();
     broadcast.mockClear();
     broadcast.mockImplementation((event, payload) => {
       if (
