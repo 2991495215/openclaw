@@ -98,15 +98,17 @@ describe("external auth owner", () => {
     const config = {
       models: { providers: { openai: { auth: "oauth" as const, baseUrl: "", models: [] } } },
     };
+    const pluginMetadataSnapshot = createPluginMetadataSnapshotFixture();
     const pluginCredential = credential();
     const resolver = vi.fn(() => [{ profileId: "openai:default", credential: pluginCredential }]);
     const runtime = createExternalAuthRuntime(resolver, async () => resolver);
     const first = runtime.overlayExternalAuthProfiles(
       { version: 1, profiles: {} },
-      { config, externalCliProviderIds: ["openai"] },
+      { config, pluginMetadataSnapshot, externalCliProviderIds: ["openai"] },
     );
     const next = runtime.overlayExternalAuthProfiles(first, {
       config,
+      pluginMetadataSnapshot,
       externalCliProviderIds: ["openai"],
     });
     expect(next.profiles["openai:default"]).toEqual(pluginCredential);

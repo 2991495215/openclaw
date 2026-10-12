@@ -93,6 +93,7 @@ async function makeTestState(): Promise<OpenClawTestState> {
     },
   });
   states.push(state);
+  await preparePluginMetadataMachineStateAsync({ env: state.env });
   return state;
 }
 

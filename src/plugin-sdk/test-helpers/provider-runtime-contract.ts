@@ -8,6 +8,7 @@ import { registerProviderPlugin, requireRegisteredProvider } from "../plugin-tes
 import { buildManifestModelProviderConfig } from "../provider-catalog-shared.js";
 import type { ProviderPlugin } from "../provider-model-shared.js";
 import { createProviderUsageFetch, makeResponse } from "../test-env.js";
+import { useProviderCatalogMetadata } from "./provider-catalog.js";
 
 const CONTRACT_SETUP_TIMEOUT_MS = 300_000;
 
@@ -927,6 +928,7 @@ export function describeVeniceProviderRuntimeContract(
 
 export function describeZAIProviderRuntimeContract(load: ProviderRuntimeContractPluginLoader) {
   describe("zai provider runtime contract", { timeout: CONTRACT_SETUP_TIMEOUT_MS }, () => {
+    useProviderCatalogMetadata(new URL("../../../extensions/zai/", import.meta.url));
     const requireProviderContractProvider = installRuntimeHooks([
       { providerIds: ["zai"], pluginId: "zai", name: "Z.AI", load },
     ]);

@@ -2,12 +2,12 @@
  * Provider catalog contract assertions and expected Codex catalog fixtures.
  */
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, vi } from "vitest";
-import { setGatewayPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata-snapshot.js";
-import { setCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata.test-support.js";
+import { aroundEach, vi } from "vitest";
+import { withPluginMetadataSnapshotScope } from "../../plugins/current-plugin-metadata-snapshot.js";
 import { preparePluginMetadataMachineStateAsync } from "../../plugins/installed-plugin-index-record-state.js";
 import * as jitiFactory from "../../plugins/jiti-factory.js";
 import { loadPluginManifest } from "../../plugins/manifest.js";
+import { createPluginCache, withPluginCache } from "../../plugins/plugin-cache.js";
 import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
 
 export {
@@ -27,16 +27,22 @@ export function useProviderCatalogMetadata(pluginRoot: URL, ...additionalPluginR
     }
     return loaded.manifest;
   });
-  const snapshot = createPluginMetadataSnapshotFixture({ plugins });
-  beforeEach(async () => {
-    await preparePluginMetadataMachineStateAsync({});
-    setGatewayPluginMetadataSnapshot(snapshot);
-    const loader = vi.spyOn(jitiFactory, "createJiti").mockImplementation(() => {
-      throw new Error("Provider catalog tests must use prepared metadata without Jiti");
+  aroundEach(async (runTest) => {
+    await using cache = createPluginCache();
+    await withPluginCache(cache, async () => {
+      await preparePluginMetadataMachineStateAsync({});
+      const snapshot = createPluginMetadataSnapshotFixture({ plugins });
+      const loader = vi.spyOn(jitiFactory, "createJiti").mockImplementation(() => {
+        throw new Error("Provider catalog tests must use prepared metadata without Jiti");
+      });
+      try {
+        // Cases vary request config and env while retaining these fixed manifest facts.
+        await withPluginMetadataSnapshotScope(snapshot, runTest, { trustConfigIdentity: true });
+      } finally {
+        loader.mockRestore();
+      }
     });
-    return () => loader.mockRestore();
   });
-  afterEach(() => setCurrentPluginMetadataSnapshot(undefined));
 }
 
 type ProviderRuntimeCatalogModule = Pick<
