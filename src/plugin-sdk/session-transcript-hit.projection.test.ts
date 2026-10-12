@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { expect, it } from "vitest";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import {
@@ -76,10 +77,19 @@ it.each([
         incognito: true,
       });
 
-      const sql = observeHostDataSql();
+      const invocation = new AsyncLocalStorage<boolean>();
+      const queries: string[] = [];
+      // Ambient WAL maintenance has its own context and is not work caused by this SDK read.
+      const sql = observeHostDataSql((query) => {
+        if (invocation.getStore()) {
+          queries.push(query);
+        }
+      });
       try {
-        const { store } = await loadCombinedSessionStoreForGatewayAsync(cfg, options);
-        expect(sql.queries).toEqual([]);
+        const { store } = await invocation.run(true, () =>
+          loadCombinedSessionStoreForGatewayAsync(cfg, options),
+        );
+        expect(queries).toEqual([]);
         expect(Object.keys(store).toSorted()).toEqual(expectedKeys);
         for (const entry of Object.values(store)) {
           expect.soft(entry.skillsSnapshot).toEqual(skillsSnapshot);
@@ -87,6 +97,7 @@ it.each([
         }
       } finally {
         sql.restore();
+        invocation.disable();
       }
     } finally {
       memorySessionActorOwners.closeDatabase({

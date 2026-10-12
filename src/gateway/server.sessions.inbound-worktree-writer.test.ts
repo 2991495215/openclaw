@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { expect, onTestFinished, test, vi } from "vitest";
 import { captureMethodCall } from "../../test/helpers/capture-method-call.js";
-import { withinTest } from "../../test/helpers/promise.js";
+import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promise.js";
 import { managedWorktrees, ManagedWorktreeService } from "../agents/worktrees/service.js";
 import { loadSessionEntry } from "../config/sessions/session-accessor.js";
 import { isSessionLifecycleMutationActive } from "../sessions/session-lifecycle-admission.js";
@@ -100,16 +100,22 @@ test.for([false, true])(
     let independent: ReturnType<typeof directSessionReq> | undefined;
     let admissionDone = false;
     try {
-      await Promise.race([entered.promise, allocation]);
+      await withinTest(
+        awaitGateBeforeSettlement(entered.promise, allocation, "allocation lease was not acquired"),
+        signal,
+      );
       admission = coordinator.ensureDispatchReplyOperation("pre_dispatch").then((result) => {
         admissionDone = true;
         return result;
       });
       if (alreadyRestored) {
-        await expect(admission).resolves.toEqual({ status: "ready" });
+        await expect(withinTest(admission, signal)).resolves.toEqual({ status: "ready" });
         expect(restore).not.toHaveBeenCalled();
       } else {
-        await Promise.race([restoreEntered.promise, admission]);
+        await withinTest(
+          awaitGateBeforeSettlement(restoreEntered.promise, admission, "restore was not attempted"),
+          signal,
+        );
         expect(restore).toHaveBeenCalledOnce();
         expect(isSessionLifecycleMutationActive(storePath, [key, sessionId])).toBe(true);
       }
@@ -117,8 +123,8 @@ test.for([false, true])(
         key: peerKey,
         label: "Independent inbound peer",
       });
-      // The unrelated write must finish while the allocation lease remains held.
-      await withinTest(independent, signal);
+      // Test cancellation reaches finally even if the writer blocks behind the allocation lease.
+      expect(await withinTest(independent, signal)).toMatchObject({ ok: true });
       if (!alreadyRestored) {
         expect(admissionDone).toBe(false);
         expect(isSessionLifecycleMutationActive(storePath, [key, sessionId])).toBe(true);
@@ -136,7 +142,6 @@ test.for([false, true])(
     }
     await allocation;
     await expect(admission).resolves.toEqual({ status: "ready" });
-    expect(await independent).toMatchObject({ ok: true });
     expect(loadSessionEntry({ storePath, sessionKey: peerKey })?.label).toBe(
       "Independent inbound peer",
     );

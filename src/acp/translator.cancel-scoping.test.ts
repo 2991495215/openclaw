@@ -3,7 +3,7 @@ import { createInMemorySessionStore } from "@openclaw/acp-core/session";
 import { expectDefined } from "@openclaw/normalization-core";
 import { describe, expect, it, vi } from "vitest";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
-import { createDeferred } from "../../test/helpers/promise.js";
+import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import type { GatewayClient } from "../gateway/client.js";
 import {
   createAcpConnection,
@@ -145,7 +145,9 @@ describe("acp translator cancel and run scoping", () => {
     await expect(replacement).resolves.toEqual({ stopReason: "cancelled" });
   });
 
-  it("closes an admitted prompt when shutdown interrupts its blocked final snapshot", async () => {
+  it("closes an admitted prompt when shutdown interrupts its blocked final snapshot", async ({
+    signal,
+  }) => {
     const harness = createHarness({ accepted: true });
     const pending = await start(harness);
     const started = createDeferred();
@@ -161,7 +163,7 @@ describe("acp translator cancel and run scoping", () => {
     await started.promise;
     const shutdown = harness.agent.shutdown();
     try {
-      await shutdown;
+      await withinTest(shutdown, signal);
       await expect(pending.promptPromise).resolves.toEqual({ stopReason: "cancelled" });
     } finally {
       snapshot.resolve({ sessions: [] });
