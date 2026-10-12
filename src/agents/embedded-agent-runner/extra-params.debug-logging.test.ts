@@ -85,10 +85,9 @@ function createFixture(responseFormat: Record<string, unknown>) {
 
 beforeAll(async () => {
   await logPaths.setup();
-  await resolvePluginMetadataSnapshotAsync({ config: {} });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   previousVerbose = isVerbose();
   // Exercise managed runtime settings instead of Vitest's default silent sinks.
   vi.stubEnv("OPENCLAW_LOG_LEVEL", undefined);
@@ -98,6 +97,7 @@ beforeEach(() => {
   setConsoleSubsystemFilter(null);
   resetLogger();
   applyLoggingConfig({ level: "silent", consoleLevel: "silent" });
+  await resolvePluginMetadataSnapshotAsync({ config: {} });
 });
 
 afterEach(async () => {

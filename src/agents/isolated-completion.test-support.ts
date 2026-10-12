@@ -96,7 +96,8 @@ vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => ({
   resolvePluginMetadataSnapshotAsync: async () =>
     createEmptyPluginMetadataSnapshot("/tmp/workspace"),
 }));
-vi.mock("./prepared-model-runtime.js", () => ({
+vi.mock("./prepared-model-runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./prepared-model-runtime.js")>()),
   acquireAgentRunPreparedModelRuntime: isolatedCompletionMocks.acquireAgentRunPreparedModelRuntime,
   acquireReadOnlyPreparedModelRuntime: isolatedCompletionMocks.acquireAgentRunPreparedModelRuntime,
 }));

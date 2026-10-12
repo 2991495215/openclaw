@@ -2,7 +2,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { preparePluginMetadataMachineStateAsync } from "../../../plugins/installed-plugin-index-record-state.js";
 import {
   cleanupPluginLoaderFixturesForTest,
-  loadOpenClawPlugins,
+  loadOpenClawPluginsForTest,
   resetPluginLoaderTestStateForTest,
 } from "../../../plugins/loader.test-fixtures.js";
 import { createVoiceProviderFixture } from "../../../talk/provider-discovery.test-fixtures.js";
@@ -20,7 +20,7 @@ describe("Talk catalog provider discovery", () => {
     cfg.talk = { realtime: { providers: { "configured-voice": { ready: true } } } };
     await withEnvAsync(env, async () => {
       await preparePluginMetadataMachineStateAsync({ env });
-      const registry = loadOpenClawPlugins({ config: cfg, onlyPluginIds: ["active-voice"] });
+      const registry = loadOpenClawPluginsForTest({ config: cfg, onlyPluginIds: ["active-voice"] });
       const result = await callGatewayHandler(
         talkHandlers,
         "talk.catalog",

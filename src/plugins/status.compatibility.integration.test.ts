@@ -5,7 +5,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { withEnv } from "../test-utils/env.js";
 import {
   cleanupPluginLoaderFixturesForTest,
-  loadOpenClawPlugins,
+  loadOpenClawPluginsForTest,
   makePluginLoaderTempDir,
   resetPluginLoaderTestStateForTest,
   useNoBundledPlugins,
@@ -50,7 +50,7 @@ describe("plugin compatibility snapshot notices", () => {
       // Activate through the resolved runtime context like Gateway and CLI loads do:
       // the load identity includes the resolved physical sources, and the snapshot
       // path only reuses an active registry whose identity matches exactly.
-      const registry = loadOpenClawPlugins(
+      const registry = loadOpenClawPluginsForTest(
         buildPluginRuntimeLoadOptions(resolvePluginRuntimeLoadContext(params), { cache: false }),
       );
       expect(fs.existsSync(runtimeMarker)).toBe(true);

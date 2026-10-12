@@ -31,7 +31,7 @@ export type InstalledPluginIdRecovery = ReadonlyMap<string, InstalledPluginIdOwn
 
 async function resolveInstalledPluginIdOwners(config: OpenClawConfig, env: NodeJS.ProcessEnv) {
   await using cache = createPluginCache();
-  return withPluginCache(cache, async () => {
+  return await withPluginCache(cache, async () => {
     await preparePluginMetadataMachineStateAsync({ env });
     const records = loadInstalledPluginIndexInstallRecordsSync({ env });
     // Explicit records force complete maintenance discovery, including disabled,

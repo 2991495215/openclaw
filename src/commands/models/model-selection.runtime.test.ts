@@ -11,7 +11,7 @@ import {
 import { DEFAULT_MODEL_ALIASES } from "../../config/defaults.js";
 import { ConfigMutationConflictError } from "../../config/mutation-conflict.js";
 import {
-  loadOpenClawPlugins,
+  loadOpenClawPluginsForTest,
   resetPluginLoaderTestStateForTest,
 } from "../../plugins/loader.test-fixtures.js";
 import { loadManifestMetadataSnapshot } from "../../plugins/manifest-contract-eligibility.js";
@@ -435,7 +435,7 @@ describe("model command provider preparation", () => {
     config.plugins!.load!.paths!.unshift(foreignDir);
     config.agents!.entries!.probe = { workspace: root };
     await isolated(async () => {
-      const registry = loadOpenClawPlugins({ config, workspaceDir: root, env: process.env });
+      const registry = loadOpenClawPluginsForTest({ config, workspaceDir: root, env: process.env });
       expect(registry.providers.map((entry) => entry.pluginId)).toEqual([
         "aaa-foreign",
         "alias-fixture",
@@ -474,7 +474,11 @@ describe("model command provider preparation", () => {
             env: process.env,
             workspaceDir: root,
           });
-          const registry = loadOpenClawPlugins({ config, env: process.env, workspaceDir: root });
+          const registry = loadOpenClawPluginsForTest({
+            config,
+            env: process.env,
+            workspaceDir: root,
+          });
           expect(
             resolvePluginProviderRegistryCore({
               config,

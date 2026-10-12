@@ -2,7 +2,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   cleanupPluginLoaderFixturesForTest,
-  loadOpenClawPlugins,
+  loadOpenClawPluginsForTest,
   resetPluginLoaderTestStateForTest,
 } from "../plugins/loader.test-fixtures.js";
 import { withEnv } from "../test-utils/env.js";
@@ -26,7 +26,10 @@ describe("realtime voice provider discovery", () => {
     "discovers %s config ahead of a configured active provider",
     (configKey) => {
       withVoiceProviders((cfg) => {
-        const registry = loadOpenClawPlugins({ config: cfg, onlyPluginIds: ["active-voice"] });
+        const registry = loadOpenClawPluginsForTest({
+          config: cfg,
+          onlyPluginIds: ["active-voice"],
+        });
         expect(registry.realtimeVoiceProviders.map((entry) => entry.provider.id)).toEqual([
           "active-voice",
         ]);
@@ -113,7 +116,7 @@ describe("realtime voice provider discovery", () => {
     { label: "not allowed", policy: { allow: ["active-voice"] } },
   ])("does not auto-select a $label configured owner", ({ policy }) => {
     withVoiceProviders((cfg) => {
-      loadOpenClawPlugins({ config: cfg, onlyPluginIds: ["active-voice"] });
+      loadOpenClawPluginsForTest({ config: cfg, onlyPluginIds: ["active-voice"] });
       const result = resolveConfiguredRealtimeVoiceProvider({
         cfg,
         providerConfigs: {
@@ -141,7 +144,7 @@ describe("realtime voice provider discovery", () => {
 
   it("keeps a caller-supplied provider list authoritative", () => {
     withVoiceProviders((cfg) => {
-      const registry = loadOpenClawPlugins({ config: cfg, onlyPluginIds: ["active-voice"] });
+      const registry = loadOpenClawPluginsForTest({ config: cfg, onlyPluginIds: ["active-voice"] });
       const result = resolveConfiguredRealtimeVoiceProvider({
         cfg,
         providers: registry.realtimeVoiceProviders.map((entry) => entry.provider),

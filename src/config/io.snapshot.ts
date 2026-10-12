@@ -328,6 +328,9 @@ async function readConfigSnapshotWithPreparation(
       resolutionFacts: readResolution.resolutionFacts,
     });
     if (!validated.ok) {
+      if (context.options.pluginValidation !== "core-only" && !pluginMetadata.getSnapshot()) {
+        await pluginMetadata.loadAsync(coerceConfig(effectiveConfigRaw));
+      }
       const availableSnapshot = pluginMetadata.getSnapshot();
       const collect = () =>
         context.options.pluginValidation === "core-only"
