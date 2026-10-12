@@ -7,7 +7,7 @@ import { PluginLoaderCacheState } from "./loader-cache-state.js";
 describe("PluginLoaderCacheState", () => {
   it("reuses the completed registry cache for concurrent async callers", async () => {
     const cache = new PluginLoaderCacheState<object>(2);
-    const entered = createDeferredCore<void>();
+    const entered = createDeferredCore();
     const completed = createDeferredCore<object>();
     const register = vi.fn(async () => {
       entered.resolve();

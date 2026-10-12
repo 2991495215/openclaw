@@ -7871,7 +7871,6 @@
 ["src/gateway/talk/handlers/index.test.ts","../../sessions-resolve.js","1110f746ed41029c5426547633575e02fe0164e5fab938acfaa9b0d23c123f52",1]
 ["src/gateway/talk/handlers/native-consult-target.test.ts","../../../agents/bootstrap-files.js","389be9f2690dd4b56be29936744de1fd88403d80f54f6d18472e5a3b0a41ee00",1]
 ["src/gateway/talk/handlers/native-consult-target.test.ts","../../../agents/embedded-agent.js","57c9977eb8107861991e36858f0bd6df5d71d826e5d0c338d2f2779a0127b0c3",1]
-["src/gateway/talk/handlers/native-consult-target.test.ts","../../../talk/provider-registry.js","b948940f6adf2319670bc713a1a824b7c3931829e2dc81edc56d43346ef63b43",1]
 ["src/gateway/talk/handlers/target.test.ts","../../../agents/realtime-bootstrap-context.js","d5080217607538b75bfb4cc18799e1f7d394d0f15312f0975b9b7c571df8c6af",1]
 ["src/gateway/test-helpers.acquisition.test.ts","../../packages/gateway-client/src/websocket.js","cdee6b5d202edf122771bc40679cf86f8a24aae148826af32e51d5776973f83a",1]
 ["src/gateway/test-helpers.acquisition.test.ts","./server.js","b2968504a50c250d7e45e2a90859fe4f549c5fb56d7cfa637f20436f75069b7d",1]
