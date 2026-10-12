@@ -11,6 +11,7 @@ import {
   applyGatewayLaneConcurrency,
   resolveGatewayLaneConcurrency,
 } from "../gateway/server-lanes.js";
+import { withDiagnosticsTimelineObserver } from "../infra/diagnostics-timeline.js";
 import {
   OutboundDeliveryError,
   PlatformMessageNotDispatchedError,
@@ -63,11 +64,13 @@ it.each([
     });
     const scheduler = createTestGatewayScheduler();
     const requests: Array<{ method?: string; url?: string; model?: string }> = [];
+    let firstProviderRequestAt: number | undefined;
     const toolRequestBodies: string[] = [];
     const attempted: Array<{ kind: string; text: string | undefined; mediaUrls?: string[] }> = [];
     const delivered: Array<{ kind: string; text: string | undefined; mediaUrls?: string[] }> = [];
     const fallbackEvents: string[] = [];
     const server = createServer((request, response) => {
+      firstProviderRequestAt ??= performance.now();
       const requestRecord: { method?: string; url?: string; model?: string } = {
         method: request.method,
         url: request.url,
@@ -339,11 +342,41 @@ it.each([
         },
         cfg,
       };
-      const dispatch = dispatchInboundMessageWithBufferedDispatcher({
+      const dispatchStartedAt = performance.now();
+      let firstBlockStartedAt: number | undefined;
+      let terminalOutcome: "completed" | "failed" | undefined;
+      type DispatchResult = Awaited<
+        ReturnType<typeof dispatchInboundMessageWithBufferedDispatcher>
+      >;
+      let dispatchOutcome:
+        | { status: "pending" }
+        | { status: "resolved"; settledReceipt: DispatchResult["settledReceipt"] }
+        | { status: "rejected"; error: string } = { status: "pending" };
+      const activeSpans = new Set<{ name: string; startedAt: number }>();
+      const completedSpans: Array<{ name: string; durationMs: number }> = [];
+      const observeSpan: Parameters<typeof withDiagnosticsTimelineObserver>[0] = (
+        name,
+        attributes,
+      ) => {
+        const span = {
+          name:
+            name === "agent.prepare" && typeof attributes?.stage === "string"
+              ? `${name}:${attributes.stage}`
+              : name,
+          startedAt: performance.now(),
+        };
+        activeSpans.add(span);
+        return () => {
+          activeSpans.delete(span);
+          completedSpans.push({ name: span.name, durationMs: performance.now() - span.startedAt });
+        };
+      };
+      const dispatchRequest: Parameters<typeof dispatchInboundMessageWithBufferedDispatcher>[0] = {
         ...dispatchParams,
         replyOptions: {
           blockReplyTimeoutMs: timesOut ? 50 : undefined,
-          onAgentRunTerminalOutcome: () => {
+          onAgentRunTerminalOutcome: (outcome) => {
+            terminalOutcome = outcome;
             if (timesOut) {
               releaseBlock.resolve();
             }
@@ -381,6 +414,7 @@ it.each([
                 throw new Error("transport response lost after send");
               }
               if (scenario === "concurrent" && blocks === 1) {
+                firstBlockStartedAt = performance.now();
                 blockStarted.resolve();
                 await releaseBlock.promise;
               }
@@ -413,8 +447,53 @@ it.each([
             return { visibleReplySent: true };
           },
         },
-      });
+      };
+      const startDispatch = () => dispatchInboundMessageWithBufferedDispatcher(dispatchRequest);
+      const dispatch = (
+        scenario === "concurrent"
+          ? withDiagnosticsTimelineObserver(observeSpan, startDispatch)
+          : startDispatch()
+      ).then(
+        (result) => {
+          dispatchOutcome = { status: "resolved", settledReceipt: result.settledReceipt };
+          return result;
+        },
+        (error: unknown) => {
+          dispatchOutcome = {
+            status: "rejected",
+            error: error instanceof Error ? error.message : String(error),
+          };
+          throw error;
+        },
+      );
       if (scenario === "concurrent") {
+        const logDispatchState = (phase: string) => {
+          const now = performance.now();
+          console.error(
+            `streamed-block concurrency diagnostic (${phase}): ${JSON.stringify({
+              elapsedMs: now - dispatchStartedAt,
+              activeSpans: [...activeSpans].map(({ name, startedAt }) => ({
+                name,
+                elapsedMs: now - startedAt,
+              })),
+              slowestCompletedSpans: completedSpans
+                .toSorted((left, right) => right.durationMs - left.durationMs)
+                .slice(0, 10),
+              firstProviderRequestMs:
+                firstProviderRequestAt === undefined
+                  ? null
+                  : firstProviderRequestAt - dispatchStartedAt,
+              firstBlockStartedMs:
+                firstBlockStartedAt === undefined ? null : firstBlockStartedAt - dispatchStartedAt,
+              requests,
+              attempted,
+              delivered,
+              terminalOutcome,
+              dispatchOutcome,
+            })}`,
+          );
+        };
+        let failed = false;
         let otherDispatch:
           | ReturnType<typeof dispatchInboundMessageWithBufferedDispatcher>
           | undefined;
@@ -439,10 +518,20 @@ it.each([
           expect(other.settledReceipt?.counts.block.delivered).toBe(3);
           expect(other.settledReceipt?.counts.final.delivered).toBe(0);
           expect(delivered).toEqual([]);
+        } catch (error) {
+          failed = true;
+          logDispatchState("before cleanup");
+          throw error;
         } finally {
           releaseBlock.resolve();
-          await dispatch;
-          await otherDispatch;
+          try {
+            await dispatch;
+            await otherDispatch;
+          } finally {
+            if (failed) {
+              logDispatchState("after cleanup");
+            }
+          }
         }
       }
       if (scenario === "direct-no-delivery") {
