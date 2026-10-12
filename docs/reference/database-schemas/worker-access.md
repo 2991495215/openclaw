@@ -1549,8 +1549,15 @@ data, retention, durability, permission, or update migration.
 Gateway deleted-agent checks batch ACP metadata candidates through the shared-state
 reader only for free ACP keys whose agent is absent. When initial admission needs
 the content-version marker, the reader fetches it and the first metadata cohort in
-one statement. Later reads reuse admitted version facts; the existing read revision
-still owns ACP row freshness and reuse.
+one statement. Later reads reuse admitted version facts. The ACP writer publishes
+the exact changed metadata keys through the existing database admission exchange,
+including native incognito writes and offline migration/Doctor imports. Managed
+transactions combine their changed keys and publish only after commit; rollback
+retains the previous receipt. ACP cohorts invalidate on ACP receipts and schema
+changes, so unrelated shared-state writes do not discard them. Readers discard
+the whole bounded cohort on an ACP receipt because they can skip intervening
+receipts. Transactions, pinned snapshots, and authorizer-controlled reads keep
+their direct-read contracts.
 Reset rebinding uses the ACP
 writer after the session entry commits, retaining that entry writer's physical
 custody and accepted cleanup authority until the metadata settles. If the session
@@ -1566,6 +1573,12 @@ ACP writes publish the row returned by their upsert,
 and clearing the exact metadata keys publishes absence without a readback. Native
 Doctor writes and the released synchronous SDK reader retain their contracts.
 Schemas, stored bytes, retention, permissions, and update behavior are unchanged.
+
+The native ACP mutation adapter serves incognito session paths and exclusive native
+maintenance/deletion scopes; ordinary durable runtime mutations use the worker.
+Its legacy provenance read is also used by this adapter, so it is not classified
+as Doctor-only. Remove the incognito adapter with its actor cutover; the released
+synchronous SDK reader needs deprecation and later removal.
 
 Reset reuses its prepared entry snapshot across transcript-only cold restoration;
 the committing worker still compares the complete current target before changing
@@ -1586,14 +1599,10 @@ handoff consumption and native service-control lock operations retain their
 existing synchronous contracts. Schemas, stored formats, retention, permissions,
 and published-driver update behavior are unchanged.
 
-Supervised restarts can preload the shared-state worker's code while accepted
-work drains. This optional preparation opens no database and grants no authority;
-normal work can reclaim its capacity. The broker binds it to the captured runtime
-source and the next successful close, then consumes it once through ordinary
-admission after native writers retire. Failed or stale preparations are retired,
-and unused preparation is joined before an in-process fallback or normal exit.
+The run loop retains the shared-state worker through server close, then publishes
+the supervisor handoff through that owner before final shared-state cleanup.
 The handoff still captures and checks the physical database and live request at
-use time, so warming does not move persistence ahead of shutdown settlement.
+use time. An in-process restart reuses the owner through ordinary admission.
 
 Conversation directory registration and outbound binding predicates use the existing
 agent writer. Registration retains the selected physical store across directory
@@ -3038,8 +3047,17 @@ an in-process write receipt changes. Sibling handles and workers share that rece
 blocked or failed checkpoints keep retrying when a reader may have released.
 Connections without a known write receipt continue checkpointing on every tick.
 Page reclamation and blocking checkpoint modes keep their zero-timeout scope.
-Existing worker-local maintenance and synchronous offline/close checkpoints retain
-their owners; durability, schemas, retention, and update behavior are unchanged.
+The Gateway run loop retains the shared-state database cache, actor owner, and
+SQLite worker broker until the final lifecycle outcome is recorded. Orderly
+retirement then joins the writer's final checkpoint before closing the host
+handle. A delegated host handle neither repeats that checkpoint nor restores an
+inline checkpoint fallback when cancelling maintenance. Interrupted retirement
+relies on WAL recovery and never certifies a clean close from stale observations.
+After native close, a delegated host accepts a clean seal only when its canonical
+WAL is empty or absent; the existing lease owner refuses to seal with live siblings.
+A pinned WAL retains in-process validation but leaves restart validation unsealed.
+Synchronous offline checkpoints retain their owners; durability, schemas,
+retention, and update behavior are unchanged.
 
 Worker authority requests retain their unbounded live-owner wait unless the caller
 explicitly supplies a `deadlineMs` budget. Only cron's runtime mutation preparation

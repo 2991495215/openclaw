@@ -13,7 +13,7 @@ import { retainPreparedSessionSharingFacts } from "../../config/sessions/session
 import { projectSessionSharingEntry } from "../../config/sessions/session-accessor.sqlite-entry-cache.types.js";
 import * as entryPublication from "../../config/sessions/session-accessor.sqlite-entry-worker-publication.js";
 import * as historyMaintenance from "../../config/sessions/session-history-eviction.js";
-import type { SessionAcpMeta } from "../../config/sessions/types.js";
+import type { SessionAcpMeta, SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import * as admissions from "../../infra/sqlite-worker-operation-admission.js";
 import { sessionChanges, type SessionRowFacts } from "../../sessions/session-row-changes.js";
@@ -29,6 +29,7 @@ import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import * as entryWorker from "./session-meta-entry.js";
 import { buildAcpDatabaseSessionKey } from "./session-meta-keys.js";
 import { readAcpSessionEntryAsync } from "./session-meta-read.js";
+import { readAcpSessionMetaForEntries } from "./session-meta-readonly.js";
 import { upsertAcpSessionMeta } from "./session-meta-write.js";
 import { readAcpSessionEntry, writeAcpSessionMetaForMigration } from "./session-meta.js";
 
@@ -143,6 +144,11 @@ it.each(["incognito", "file"] as const)(
           expect(paths.filter((filename) => fs.existsSync(filename))).toEqual([]);
         }
         const observe = observeHostDataSql();
+        const readMetadata = (entry: SessionEntry) =>
+          readAcpSessionMetaForEntries({
+            env: state.env,
+            entries: [{ sessionKey: scope.sessionKey, agentId: scope.agentId, entry }],
+          });
         let latestAcp: Extract<SessionRowFacts, { kind: "acp" }> | undefined;
         const observedAcp: Array<Extract<SessionRowFacts, { kind: "acp" }>> = [];
         const releaseFacts = sessionChanges.subscribeFacts((change) => {
@@ -185,6 +191,8 @@ it.each(["incognito", "file"] as const)(
           }
           if (incognito) {
             expect((await readAcpSessionEntryAsync(scope))?.acp).toEqual(META);
+          } else {
+            expect(await readMetadata(created)).toEqual([META]);
           }
           const retainedMembership: boolean[] = [];
           const releases: Array<() => void> = [];
@@ -217,6 +225,7 @@ it.each(["incognito", "file"] as const)(
             if (incognito) {
               expect((await readAcpSessionEntryAsync(scope))?.acp).toEqual(updatedMeta);
             } else {
+              expect(await readMetadata(created)).toEqual([updatedMeta]);
               expect(retainedMembership.length).toBeGreaterThan(0);
               expect(retainedMembership.every(Boolean)).toBe(true);
             }
@@ -232,13 +241,14 @@ it.each(["incognito", "file"] as const)(
           const cleared = await upsertAcpSessionMeta({ ...scope, mutate: () => null });
           expect(cleared?.acp).toBeUndefined();
           expect(observedAcp.at(-1)?.acp).toBeNull();
-          expect(observe.queries).toEqual([]);
           if (!incognito) {
+            expect(await readMetadata(created)).toEqual([null]);
             expect(maintenance.mock.calls.length).toBeGreaterThan(0);
             expect(
               maintenance.mock.calls.every(([input]) => input.maintenanceConfig?.maxEntries === 37),
             ).toBe(true);
           }
+          expect(observe.queries).toEqual([]);
         } finally {
           releaseFacts();
           releaseObservers();

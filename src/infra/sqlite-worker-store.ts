@@ -18,7 +18,6 @@ import {
   type SqliteWorkerAdmissionFactory,
   type SqliteWorkerAdmissionRequest,
 } from "./sqlite-worker-operation-admission.js";
-import type { SqliteWorkerRuntimePreparation } from "./sqlite-worker-runtime-preparation.types.js";
 import type { SqliteWorkerStateContext } from "./sqlite-worker-state-context.js";
 
 function withCallerErrors<T>(result: Promise<T>): Promise<T> {
@@ -75,17 +74,8 @@ function resolveSqliteWorkerBroker() {
     Symbol.for("openclaw.sqliteWorkerBroker"),
     () => new SqliteWorkerBroker(),
     (broker) => withCallerErrors(broker.close()),
+    "shared-state",
   );
-}
-
-/** Preload code for one post-drain shared-state opening without admitting native storage. */
-export function prepareSharedStateSqliteWorkerRuntime(
-  source: Pick<SqliteWorkerStoreOptions, "moduleUrl" | "runtimeGeneration">,
-): SqliteWorkerRuntimePreparation | undefined {
-  if (!isMainThread) {
-    return undefined;
-  }
-  return resolveSqliteWorkerBroker().prepareRuntime(source);
 }
 
 export type { SqliteWorkerInputPreparation } from "./sqlite-worker-broker.types.js";

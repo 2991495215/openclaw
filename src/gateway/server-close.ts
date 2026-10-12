@@ -14,7 +14,6 @@ import { createInternalHookEvent, triggerInternalHook } from "../hooks/internal-
 import { formatErrorMessage, hasErrnoCode } from "../infra/errors.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { closePluginStateDatabaseAsync } from "../plugin-state/plugin-state-store.js";
 import type { GatewayPluginMetadataOwner } from "../plugins/plugin-metadata-lifecycle.js";
 import { hasRetainedPluginRuntimeCloseError } from "../plugins/runtime-close-error.js";
 import type { createPluginRegistryOwner } from "../plugins/runtime.js";
@@ -155,6 +154,7 @@ async function closeHttpListener(params: {
 }
 
 export type GatewayCloseParams = {
+  retainSharedState?: boolean;
   resolveGatewayContext: GatewayRunShutdownParams["resolveGatewayContext"];
   closePluginRegistry: ReturnType<typeof createPluginRegistryOwner>["close"];
   pluginMetadata: Pick<GatewayPluginMetadataOwner, "beginClose" | "close">;
@@ -558,12 +558,11 @@ async function closeGatewayResources(
               await measureCloseStep("debug-proxy", () =>
                 finalizeActiveDebugProxyCaptures().catch(recordResourceCleanupFailure),
               );
-              if (mediaCleanupStopResult !== undefined) {
-                await measureCloseStep("plugin-state-database", closePluginStateDatabaseAsync);
-              }
               try {
                 await measureCloseStep("global-singletons", () =>
-                  drainGlobalSingletonLifecycleState(restart ? "restart" : "close"),
+                  drainGlobalSingletonLifecycleState(restart ? "restart" : "close", {
+                    retainSharedState: params.retainSharedState,
+                  }),
                 );
               } finally {
                 try {
