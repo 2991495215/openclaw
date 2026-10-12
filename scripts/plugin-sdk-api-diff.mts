@@ -36,6 +36,7 @@ type Args = {
   jsonPath: string | null;
   requireAcknowledgement: boolean;
   summaryPath: string | null;
+  surfacesDirectory: string | null;
 };
 
 const GIT_MAX_BUFFER = 64 * 1024 * 1024;
@@ -43,7 +44,7 @@ const SCRIPT_PATH = fileURLToPath(import.meta.url);
 
 function usage(): never {
   console.error(
-    "Usage: plugin-sdk-api-diff (--base <git-ref> | --bases-json <beta/latest refs>) --head <git-ref> [--evidence <path>] [--json <path>] [--summary <path>] [--require-acknowledgement --acknowledge <8-hex-digest>]",
+    "Usage: plugin-sdk-api-diff (--base <git-ref> | --bases-json <beta/latest refs>) --head <git-ref> [--surfaces-directory <path>] [--evidence <path>] [--json <path>] [--summary <path>] [--require-acknowledgement --acknowledge <8-hex-digest>]",
   );
   process.exit(2);
 }
@@ -67,6 +68,7 @@ function parseArgs(argv: string[]): Args {
     jsonPath: null,
     requireAcknowledgement: false,
     summaryPath: null,
+    surfacesDirectory: null,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -112,6 +114,10 @@ function parseArgs(argv: string[]): Args {
         break;
       case "--require-acknowledgement":
         options.requireAcknowledgement = true;
+        break;
+      case "--surfaces-directory":
+        options.surfacesDirectory = path.resolve(readValue(argv, index, arg));
+        index += 1;
         break;
       case "--summary":
         options.summaryPath = path.resolve(readValue(argv, index, arg));
@@ -360,6 +366,57 @@ export async function renderPluginSdkApiRevisions(
   }
 }
 
+const SURFACE_ARTIFACT_SCHEMA = "openclaw.plugin-sdk-api-surface/v1";
+
+async function readSurfaceArtifacts(
+  directory: string,
+  commits: readonly string[],
+  workflowSha: string,
+): Promise<Map<string, PluginSdkApiDiffSurface>> {
+  return new Map(
+    await Promise.all(
+      commits.map(async (commit) => {
+        const value: unknown = JSON.parse(
+          await fs.readFile(path.join(directory, `${commit}.json`), "utf8"),
+        );
+        if (
+          !isRecord(value) ||
+          value.schema !== SURFACE_ARTIFACT_SCHEMA ||
+          value.commit !== commit ||
+          value.workflowSha !== workflowSha
+        ) {
+          throw new Error(`Plugin SDK API surface identity does not match ${commit}`);
+        }
+        return [commit, parsePluginSdkApiDiffSurface(JSON.stringify(value.surface))] as const;
+      }),
+    ),
+  );
+}
+
+async function renderRevisionArtifact(argv: string[]): Promise<boolean> {
+  if (argv[0] !== "--render-revision") {
+    return false;
+  }
+  const ref = argv[1];
+  const outputPath = argv[2] === "--output" ? argv[3] : undefined;
+  if (!ref || !outputPath || argv.length !== 4) {
+    throw new Error("Expected --render-revision <git-ref> --output <path>");
+  }
+  const repoRoot = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
+  const commit = git(repoRoot, ["rev-parse", "--verify", `${ref}^{commit}`]);
+  const workflowSha = git(repoRoot, ["rev-parse", "HEAD"]);
+  const surfaces = await renderPluginSdkApiRevisions(repoRoot, [commit]);
+  const surface = surfaces.get(commit);
+  if (!surface) {
+    throw new Error(`Plugin SDK API surface is missing for ${commit}`);
+  }
+  await writeFile(
+    outputPath,
+    `${JSON.stringify({ schema: SURFACE_ARTIFACT_SCHEMA, commit, workflowSha, surface })}\n`,
+  );
+  return true;
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const repoRoot = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
@@ -382,14 +439,16 @@ async function main(): Promise<void> {
   if (commits.length > 0) {
     commits.push(headCommit);
   }
-  const surfaces = await renderPluginSdkApiRevisions(repoRoot, commits);
+  const workflowSha = git(repoRoot, ["rev-parse", "HEAD"]);
+  const surfaces = args.surfacesDirectory
+    ? await readSurfaceArtifacts(args.surfacesDirectory, commits, workflowSha)
+    : await renderPluginSdkApiRevisions(repoRoot, commits);
   const diffs = new Map<string, PluginSdkApiDiff>([
     [
       headCommit,
       createPluginSdkApiDiff({ entrypointsAdded: [], entrypointsRemoved: [], exports: [] }),
     ],
   ]);
-  const workflowSha = git(repoRoot, ["rev-parse", "HEAD"]);
   const comparisons = bases.map((base) => {
     let diff = diffs.get(base.commit);
     if (!diff) {
@@ -468,7 +527,12 @@ const isMain =
   typeof process.argv[1] === "string" &&
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
-  const run = renderWorker(process.argv.slice(2)).then((handled) => (handled ? undefined : main()));
+  const argv = process.argv.slice(2);
+  const run = renderWorker(argv).then(async (handled) => {
+    if (!handled && !(await renderRevisionArtifact(argv))) {
+      await main();
+    }
+  });
   await run.catch((error: unknown) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode ||= 1;
