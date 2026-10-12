@@ -3487,6 +3487,7 @@
     "native.apple.9b44f40a0b4af488": "檢查憑證",
     "native.apple.9b4713a8ca183ee2": "Gateway 預期收到一次性挑戰回應，但缺少隨機值（nonce）。",
     "native.apple.9b718e05739d272e": "工具變更將套用至下次執行。",
+    "native.apple.9b7f1144eec4f829": "OPENCLAW_HELPER_SESSION",
     "native.apple.9b8659ac1cfe8b5d": "允許 OpenClaw 讀取 %@ 中的文字",
     "native.apple.9bcf01e2032db1de": "選取",
     "native.apple.9bdf4f3d4ea8129f": "請在已授權的裝置上開啟儀表板，以審核此核准請求。",

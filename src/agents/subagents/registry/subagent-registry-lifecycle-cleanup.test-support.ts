@@ -21,6 +21,7 @@ import {
   SUBAGENT_ENDED_REASON_KILLED,
 } from "./subagent-lifecycle-events.js";
 import * as cleanupPolicy from "./subagent-registry-cleanup.js";
+import { resolveAnnounceRetryDelayMs } from "./subagent-registry-helpers.js";
 import { scheduleResumeSubagentRun } from "./subagent-registry-lifecycle-cleanup.js";
 import {
   readLifecycleRun,
@@ -544,6 +545,8 @@ export function registerDeliveryRetryOwnerTests({
     "keeps a required final scheduled after detached cleanup failures (%s)",
     async (outcome) => {
       await useRetryTimers();
+      // Worker maintenance must not advance this retry proof to an unrelated deadline.
+      const maintenance = setTimeout(() => {}, 30_000);
       const entry = createRunEntry({
         endedAt: Date.now(),
         expectsCompletionMessage: true,
@@ -576,19 +579,23 @@ export function registerDeliveryRetryOwnerTests({
           controller.startSubagentAnnounceCleanupFlow(readLifecycleRun(entry)),
       });
       const join = observeRootWork();
+      const advanceRetry = async () => {
+        await vi.advanceTimersByTimeAsync(
+          resolveAnnounceRetryDelayMs(countPendingDescendantRuns.mock.calls.length),
+        );
+        await join(true);
+      };
       try {
         controller.startSubagentAnnounceCleanupFlow(entry);
         await join(true);
         expect(readLifecycleRun(entry).cleanupHandled).toBe(false);
-        // Settle each detached attempt before advancing its mocked retry delay.
         for (let retry = 0; retry < 3; retry += 1) {
-          await vi.advanceTimersByTimeAsync(1_000 * 2 ** retry);
-          await join(true);
+          await advanceRetry();
         }
         expect(countPendingDescendantRuns).toHaveBeenCalledTimes(4);
         expect(readLifecycleRun(entry).requesterSettleWake).toBeUndefined();
         expect(readLifecycleRun(entry).delivery?.status).toBe("pending");
-        expect(vi.getTimerCount()).toBe(1);
+        expect(controller.scheduledResumeTimers.size).toBe(1);
 
         if (outcome === "delivered") {
           countPendingDescendantRuns.mockResolvedValue(0);
@@ -601,11 +608,9 @@ export function registerDeliveryRetryOwnerTests({
             throw new Error("descendant preparation crossed delivery deadline");
           });
         }
-        await vi.advanceTimersByTimeAsync(8_000);
-        await join(true);
+        await advanceRetry();
         if (outcome.startsWith("expired during")) {
-          await vi.advanceTimersByTimeAsync(8_000);
-          await join(true);
+          await advanceRetry();
         }
         expect(getActiveGatewayRootWorkCount()).toBe(0);
         expect(readLifecycleRun(entry).delivery?.status).toBe(
@@ -624,6 +629,7 @@ export function registerDeliveryRetryOwnerTests({
         }
       } finally {
         await join();
+        clearTimeout(maintenance);
         controller.clearScheduledResumeTimers();
         vi.useRealTimers();
       }

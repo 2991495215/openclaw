@@ -3487,6 +3487,7 @@
     "native.apple.9b44f40a0b4af488": "Comprobar el certificado",
     "native.apple.9b4713a8ca183ee2": "El Gateway esperaba una respuesta a un desafío de un solo uso, pero faltaba el nonce.",
     "native.apple.9b718e05739d272e": "Los cambios en las herramientas se aplicarán en la próxima ejecución.",
+    "native.apple.9b7f1144eec4f829": "OPENCLAW_HELPER_SESSION",
     "native.apple.9b8659ac1cfe8b5d": "Permitir que OpenClaw lea texto de %@",
     "native.apple.9bcf01e2032db1de": "Seleccionar",
     "native.apple.9bdf4f3d4ea8129f": "Abre el panel de control en un dispositivo autorizado para revisar esta aprobación.",

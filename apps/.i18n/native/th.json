@@ -3487,6 +3487,7 @@
     "native.apple.9b44f40a0b4af488": "ตรวจสอบใบรับรอง",
     "native.apple.9b4713a8ca183ee2": "Gateway ต้องการการตอบกลับคำท้าแบบใช้ครั้งเดียว แต่ไม่มีค่า nonce",
     "native.apple.9b718e05739d272e": "การเปลี่ยนแปลงเครื่องมือจะมีผลในการทำงานครั้งถัดไป",
+    "native.apple.9b7f1144eec4f829": "OPENCLAW_HELPER_SESSION",
     "native.apple.9b8659ac1cfe8b5d": "อนุญาตให้ OpenClaw อ่านข้อความจาก %@",
     "native.apple.9bcf01e2032db1de": "เลือก",
     "native.apple.9bdf4f3d4ea8129f": "เปิดแดชบอร์ดบนอุปกรณ์ที่ได้รับอนุญาตเพื่อตรวจสอบคำขออนุมัตินี้",

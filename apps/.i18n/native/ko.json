@@ -3487,6 +3487,7 @@
     "native.apple.9b44f40a0b4af488": "인증서 확인",
     "native.apple.9b4713a8ca183ee2": "Gateway가 일회용 챌린지 응답을 기다렸지만 nonce가 누락되었습니다.",
     "native.apple.9b718e05739d272e": "도구 변경 사항은 다음 실행부터 적용됩니다.",
+    "native.apple.9b7f1144eec4f829": "OPENCLAW_HELPER_SESSION",
     "native.apple.9b8659ac1cfe8b5d": "OpenClaw가 %@에서 텍스트를 읽도록 허용",
     "native.apple.9bcf01e2032db1de": "선택",
     "native.apple.9bdf4f3d4ea8129f": "이 승인 요청을 검토하려면 승인된 기기에서 대시보드를 여세요.",
