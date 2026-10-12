@@ -12,7 +12,6 @@ import {
 } from "../config/sessions/session-accessor.sqlite-entry-cache.js";
 import type { SessionEntryCreationOperation } from "../config/sessions/session-accessor.sqlite-entry-cache.types.js";
 import { readCommittedIncognitoSessionSharing } from "../config/sessions/session-accessor.sqlite-incognito-sharing.js";
-import { readSessionEntriesFromStoreInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type { CapturedSessionEntryReadSource } from "../config/sessions/session-entry-read-source.types.js";
 import { captureIncognitoSessionBinding } from "../config/sessions/session-incognito-binding.js";
 import { resolveUnsuffixedSqliteTargetFromSessionStorePath } from "../config/sessions/session-sqlite-target-paths.js";
@@ -53,6 +52,7 @@ import {
   type CommittedSessionMutationTarget,
   type PreparedSessionSourceFacts,
 } from "./session-sharing-created-facts.js";
+import { readSessionSharingFactsInWorker } from "./session-sharing-facts-read.js";
 import {
   captureIncognitoSessionMutationFacts,
   SessionMutationFactsUnavailableError,
@@ -480,7 +480,7 @@ export async function prepareSessionMutationFacts(
       const sourceIdentities = new Map<string, CapturedSessionEntryReadSource>();
       const members = new Map<
         string,
-        NonNullable<Awaited<ReturnType<typeof readSessionEntriesFromStoreInWorker>>["sharing"]>
+        NonNullable<Awaited<ReturnType<typeof readSessionSharingFactsInWorker>>["sharing"]>
       >();
       const retainedReads = new Map<string, ReturnType<typeof retainPreparedSessionSharingFacts>>();
       const selected = await inventoryRead.withRead(async (sources, assertDiscoveryCurrent) => {
@@ -509,13 +509,11 @@ export async function prepareSessionMutationFacts(
           async (reads, select) => {
             for (const read of reads) {
               assertActive();
-              const loaded = await readSessionEntriesFromStoreInWorker(
+              const loaded = await readSessionSharingFactsInWorker(
                 {
                   agentId: read.agentId ?? agentId,
                   storePath: read.storePath,
                   sessionKeys: read.options.exactKeys!,
-                  projection: "sharing",
-                  includeAuthorization: true,
                   env: inventory.env,
                 },
                 (source) => {
@@ -525,43 +523,44 @@ export async function prepareSessionMutationFacts(
                   }
                 },
               );
+              const sharing = loaded.sharing;
               assertActive();
               const store = Object.fromEntries(
                 loaded.entries.map(({ sessionKey, entry }) => [sessionKey, entry]),
               );
               read.result = ok(store);
-              if (loaded.sharing) {
+              if (sharing) {
                 const source = loaded.databaseIdentity;
                 if (
                   !source ||
                   !source.incarnation ||
-                  source.filename !== loaded.sharing.source.path ||
-                  `file:${source.identity}` !== loaded.sharing.databaseIdentity ||
+                  source.filename !== sharing.source.path ||
+                  `file:${source.identity}` !== sharing.databaseIdentity ||
                   source.birthtime === undefined
                 ) {
                   throw new SessionMutationFactsUnavailableError();
                 }
                 assertPaths();
                 assertExistingDatabaseIdentity(
-                  loaded.sharing.source.path,
-                  loaded.sharing.databaseIdentity,
+                  sharing.source.path,
+                  sharing.databaseIdentity,
                   source.birthtime,
                 );
                 preparedSources.push({
-                  ...loaded.sharing.source,
-                  identity: loaded.sharing.databaseIdentity,
+                  ...sharing.source,
+                  identity: sharing.databaseIdentity,
                   birthtime: source.birthtime,
                 });
                 const readSource = {
-                  ...loaded.sharing.source,
+                  ...sharing.source,
                   databaseIdentity: source.identity,
                   databaseBirthtime: source.birthtime,
                 };
                 read.readSource = readSource;
                 sourceIdentities.set(read.storePath, readSource);
-                members.set(read.storePath, loaded.sharing);
+                members.set(read.storePath, sharing);
                 for (const sessionKey of read.options.exactKeys!) {
-                  const key = `${loaded.sharing.databaseIdentity}\0${sessionKey}`;
+                  const key = `${sharing.databaseIdentity}\0${sessionKey}`;
                   const retained = acquiringReads.get(key);
                   if (!retained) {
                     throw new SessionMutationFactsUnavailableError();
@@ -571,12 +570,11 @@ export async function prepareSessionMutationFacts(
                     const entry = store[sessionKey];
                     retained.initialize({
                       entry: entry ? projectSessionSharingEntry(entry) : undefined,
-                      placeholder: loaded.sharing.placeholders.find(
+                      placeholder: sharing.placeholders.find(
                         (row) => row.sessionKey === sessionKey,
                       ),
                       membership: new Set(
-                        loaded.sharing.members.find((row) => row.sessionKey === sessionKey)
-                          ?.identityIds,
+                        sharing.members.find((row) => row.sessionKey === sessionKey)?.identityIds,
                       ),
                     });
                     initializedReads.add(key);

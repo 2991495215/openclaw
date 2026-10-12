@@ -4,7 +4,6 @@ import { resolveSessionWorkStartError } from "../../config/sessions.js";
 import { SESSION_ROUTING_CHANGED_ERROR_REASON } from "../../config/sessions/main-session.js";
 import { hasRestartRecoveryTerminalRun } from "../../config/sessions/restart-recovery-state.js";
 import { loadExactSessionEntryCandidates } from "../../config/sessions/session-accessor.js";
-import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import { isSessionTranscriptProjectionUnavailableError } from "../../config/sessions/session-transcript-projection-error.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { sessionDeliveryChannel } from "../../utils/delivery-context.read.js";
@@ -586,22 +585,15 @@ export async function runChatSendPreAdmission(
           }),
           entry: recoveryEntry,
           authorizedPluginId: client?.internal?.pluginRuntimeOwnerId,
-          commitGuard: () => {
+          commitGuard: (currentEntry = recoveryEntry) => {
             params.assertCurrent?.();
             if (sessionRoutingChanged(context.getRuntimeConfig())) {
               throw new Error(SESSION_ROUTING_CHANGED_ERROR_REASON);
             }
-            const currentFacts = readRetainedSessionEntryFacts(
-              { agentId: session.agentId, path: session.storePath },
-              { sessionKeys: [sessionKey] },
-            );
-            if (!currentFacts) {
-              throw new Error("Session recovery facts are unavailable. Retry.");
-            }
             const current = {
               canonicalKey: sessionKey,
               storePath: session.storePath,
-              entry: currentFacts.entries.find((row) => row.sessionKey === sessionKey)?.entry,
+              entry: currentEntry,
             };
             const conflict = resolveChatSendRequestConflict(
               { ...params, session: { ...session, entry: current.entry } },

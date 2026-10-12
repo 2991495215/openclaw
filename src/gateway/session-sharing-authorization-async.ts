@@ -1,19 +1,12 @@
 import { ErrorCodes, errorShape } from "../../packages/gateway-protocol/src/index.js";
 import { extractErrorCode, readErrorCause } from "../infra/errors.js";
-import {
-  resolveRequestedSessionAgentId,
-  resolveRequestedSessionAgentInput,
-} from "./session-request-agent.js";
+import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
 import {
   prepareSessionMutationAuthorizationRequest,
   sessionMutationTargetChanged,
 } from "./session-sharing-authorization.js";
+import type { PreparedSessionMutationFacts } from "./session-sharing-policy.js";
 import {
-  withSessionSharingTarget,
-  type PreparedSessionMutationFacts,
-} from "./session-sharing-policy.js";
-import {
-  captureSessionMutationRouting,
   prepareSessionMutationFacts,
   SessionMutationFactsUnavailableError,
   type SessionFactsRead,
@@ -21,7 +14,6 @@ import {
 import { prepareSessionSharingProfiles } from "./session-sharing-read.js";
 import {
   resolveChatSendAuthorizationParams,
-  resolveDirectSessionTargets,
   resolveSessionMutationTargets,
   resolveTalkSessionTargetInput,
 } from "./session-sharing-target-input.js";
@@ -65,145 +57,113 @@ export async function resolveSessionMutationAuthorizationAsync(
       ? await prepareTalkSessionTarget(cfg, talkInput.sessionKey)
       : talkInput?.target;
   params.assertInvocationCurrent?.();
-  const targets = resolveDirectSessionTargets(params.method, params.requestParams);
-  if (params.method !== "chat.send" || targets.length !== 1) {
-    const mutationTargets = preparedTalkSessionTarget
-      ? [
-          {
-            sessionKey: preparedTalkSessionTarget.canonicalKey,
-            agentId: preparedTalkSessionTarget.agentId,
-          },
-        ]
-      : (resolveSessionMutationTargets({
-          method: params.method,
-          requestParams: params.requestParams,
-          context: params.context,
-        }) ?? []);
-    const reads = new Map<string, SessionFactsRead<PreparedSessionMutationFacts>>();
-    const identity = (target: { sessionKey: string; agentId?: string }, current = cfg) => {
-      const selected = resolveSessionStoreIdentity({ cfg: current, ...target });
-      return JSON.stringify([selected.agentId, selected.canonicalKey]);
-    };
-    let active = true;
-    const release = () => {
-      active = false;
-      for (const read of reads.values()) {
-        read.release();
-      }
-      reads.clear();
-    };
-    try {
-      for (const target of mutationTargets) {
-        const agent = resolveRequestedSessionAgentId(cfg, target.sessionKey, target.agentId);
-        if (!agent.ok) {
-          release();
-          return { error: agent.error };
-        }
-        const key = identity(target);
-        if (!reads.has(key)) {
-          reads.set(
-            key,
-            await prepareSessionMutationFacts({
-              cfg,
-              ...target,
-              agentId: agent.agentId,
-              allowMissing: true,
-            }),
-          );
-          params.assertInvocationCurrent?.();
-        }
-      }
-      const result = resolveSessionMutationAuthorization({
-        ...params,
-        preparedTalkSessionTarget,
-        preparedTargetRead: (target, current) => {
-          if (!active) {
-            throw new Error("Session authorization has been released");
-          }
-          const read = reads.get(identity(target, current));
-          if (!read) {
-            return undefined;
-          }
-          try {
-            const facts = read.readCurrent(current);
-            return {
-              target: facts.target,
-              storageTarget: read.storageTarget,
-              members: [...facts.membership],
-            };
-          } catch (error) {
-            if (error instanceof SessionMutationFactsUnavailableError) {
-              throw sessionMutationTargetChanged(params.method, target.sessionKey);
-            }
-            throw error;
-          }
+  const mutationTargets = preparedTalkSessionTarget
+    ? [
+        {
+          sessionKey: preparedTalkSessionTarget.canonicalKey,
+          agentId: preparedTalkSessionTarget.agentId,
         },
-      });
-      if (!result.authorization || result.error) {
-        release();
-        return result;
-      }
-      const previousRecordCreated = result.authorization.recordCreatedSession;
-      result.authorization.recordCreatedSession = (created) => {
-        previousRecordCreated?.(created);
-        reads.get(identity(created))?.recordCreated?.(created);
-      };
-      const previousRelease = result.authorization.release;
-      result.authorization.release = () => {
-        previousRelease?.();
-        release();
-      };
-      return result;
-    } catch (error) {
-      release();
-      const cause =
-        error instanceof SessionMutationFactsUnavailableError ? readErrorCause(error) : error;
-      if (extractErrorCode(cause) === "SESSION_CANONICAL_KEY_MIGRATION_REQUIRED") {
-        return {
-          error: errorShape(
-            ErrorCodes.INVALID_REQUEST,
-            cause instanceof Error ? cause.message : String(cause),
-          ),
-        };
-      }
-      throw error;
+      ]
+    : (resolveSessionMutationTargets({
+        method: params.method,
+        requestParams: params.requestParams,
+        context: params.context,
+      }) ?? []);
+  const reads = new Map<string, SessionFactsRead<PreparedSessionMutationFacts>>();
+  const identity = (target: { sessionKey: string; agentId?: string }, current = cfg) => {
+    const selected = resolveSessionStoreIdentity({ cfg: current, ...target });
+    return JSON.stringify([selected.agentId, selected.canonicalKey]);
+  };
+  let active = true;
+  const release = () => {
+    active = false;
+    for (const read of reads.values()) {
+      read.release();
     }
-  }
-  const target = targets[0]!;
-  const input = resolveRequestedSessionAgentInput(target.sessionKey, target.agentId);
-  if (!input.ok) {
-    return { error: input.error };
-  }
-  const assertRoutingCurrent = captureSessionMutationRouting(cfg, undefined, [target]);
-  const preparedProfiles = await prepareSessionSharingProfiles(params.client);
-  params.assertInvocationCurrent?.();
-  return withSessionSharingTarget(
-    { cfg, sessionKey: target.sessionKey, agentId: input.value },
-    (read) => {
-      const selectedSource = read.selection?.source;
-      const selection = read.selection &&
-        selectedSource && {
-          ...read.selection,
-          source: {
-            ...selectedSource,
-            assertCurrent() {
-              selectedSource.assertCurrent();
-              assertRoutingCurrent(params.context.getRuntimeConfig());
-            },
-          },
-        };
-      const assertCurrent = () => {
+    reads.clear();
+  };
+  try {
+    const preparedProfiles =
+      params.method === "chat.send"
+        ? await prepareSessionSharingProfiles(params.client)
+        : undefined;
+    params.assertInvocationCurrent?.();
+    for (const target of mutationTargets) {
+      const agent = resolveRequestedSessionAgentId(cfg, target.sessionKey, target.agentId);
+      if (!agent.ok) {
+        release();
+        return { error: agent.error };
+      }
+      const key = identity(target);
+      if (!reads.has(key)) {
+        reads.set(
+          key,
+          await prepareSessionMutationFacts({
+            cfg,
+            ...target,
+            agentId: agent.agentId,
+            allowMissing: true,
+          }),
+        );
         params.assertInvocationCurrent?.();
-        preparedProfiles.readCurrent();
-        read.assertCurrent();
-        assertRoutingCurrent(params.context.getRuntimeConfig());
+      }
+    }
+    const result = resolveSessionMutationAuthorization({
+      ...params,
+      preparedTalkSessionTarget,
+      preparedProfiles,
+      preparedTargetRead: (target, current) => {
+        params.assertInvocationCurrent?.();
+        preparedProfiles?.readCurrent();
+        if (!active) {
+          throw new Error("Session authorization has been released");
+        }
+        const read = reads.get(identity(target, current));
+        if (!read) {
+          return undefined;
+        }
+        try {
+          const facts = read.readCurrent(current);
+          return {
+            target: facts.target,
+            storageTarget: read.storageTarget,
+            members: [...facts.membership],
+          };
+        } catch (error) {
+          if (error instanceof SessionMutationFactsUnavailableError) {
+            throw sessionMutationTargetChanged(params.method, target.sessionKey);
+          }
+          throw error;
+        }
+      },
+    });
+    if (!result.authorization || result.error) {
+      release();
+      return result;
+    }
+    const previousRecordCreated = result.authorization.recordCreatedSession;
+    result.authorization.recordCreatedSession = (created) => {
+      previousRecordCreated?.(created);
+      reads.get(identity(created))?.recordCreated?.(created);
+    };
+    const previousRelease = result.authorization.release;
+    result.authorization.release = () => {
+      previousRelease?.();
+      release();
+    };
+    return result;
+  } catch (error) {
+    release();
+    const cause =
+      error instanceof SessionMutationFactsUnavailableError ? readErrorCause(error) : error;
+    if (extractErrorCode(cause) === "SESSION_CANONICAL_KEY_MIGRATION_REQUIRED") {
+      return {
+        error: errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          cause instanceof Error ? cause.message : String(cause),
+        ),
       };
-      assertCurrent();
-      return resolveSessionMutationAuthorization({
-        ...params,
-        preparedProfiles,
-        preparedSharing: { ...read, selection, assertCurrent },
-      });
-    },
-  );
+    }
+    throw error;
+  }
 }

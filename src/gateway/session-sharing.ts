@@ -594,12 +594,13 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
           ? {
               withCurrent: async <T>(consume: () => T): Promise<T> => {
                 if (
-                  chatTarget.projection &&
-                  chatTarget.resolved &&
-                  chatTarget.projection.sharingTargetState({
-                    key: chatTarget.resolved.canonicalKey,
-                    agentId: chatTarget.resolved.agentId,
-                  }).status === "ready"
+                  params.preparedTargetRead ||
+                  (chatTarget.projection &&
+                    chatTarget.resolved &&
+                    chatTarget.projection.sharingTargetState({
+                      key: chatTarget.resolved.canonicalKey,
+                      agentId: chatTarget.resolved.agentId,
+                    }).status === "ready")
                 ) {
                   return withSelectedStorage(() =>
                     consumeSharing(undefined, () => {
