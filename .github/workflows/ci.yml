@@ -593,6 +593,7 @@ jobs:
             test_files+=(src/gateway/server-agent-database-startup.test.ts)
           elif [ "$PROOF_CASE" = agent-wait-candidate ]; then
             test_files+=(src/gateway/worker-environments/placement-dispatch-staged-results.test.ts)
+            test_files+=(src/gateway/server-methods/sessions.abort-embedded.test.ts)
           fi
           pnpm test "${test_files[@]}" --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/final-regression.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
