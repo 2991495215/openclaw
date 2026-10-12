@@ -1,3 +1,4 @@
+import { isMainThread, threadId } from "node:worker_threads";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 
 export type TranscriptAppendRefusal =
@@ -47,5 +48,17 @@ export class SessionTranscriptWriterClaimReboundError extends Error {
   constructor(cause?: TranscriptAppendRefusal) {
     super("session writer claim changed before transcript persistence", { cause });
     this.name = "SessionTranscriptWriterClaimReboundError";
+    if (process.env.OPENCLAW_REDMAIN_WRITER_REBOUND_TRACE === "1") {
+      process.stderr.write(
+        `[redmain-writer-rebound] ${JSON.stringify({
+          at: Date.now(),
+          pid: process.pid,
+          isMainThread,
+          threadId,
+          refusal: parseTranscriptAppendRefusal(cause),
+          stack: this.stack?.replaceAll(process.cwd(), "<cwd>"),
+        })}\n`,
+      );
+    }
   }
 }
