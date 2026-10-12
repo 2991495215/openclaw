@@ -1,4 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { rotateAgentEventLifecycleGeneration } from "../infra/agent-events.js";
 import {
   enqueueCommandInLane,
@@ -49,6 +53,7 @@ afterEach(() => {
   uninstallProvider = undefined;
   settleRequesterAfterSessionSpawns.mockReset();
   settleRequesterAfterSessionSpawns.mockResolvedValue(true);
+  clearRuntimeConfigSnapshot();
 });
 
 describe("captured compaction placement owner", () => {
@@ -119,6 +124,8 @@ describe("captured compaction placement owner", () => {
 });
 
 describe("local turn placement admission", () => {
+  beforeEach(() => setRuntimeConfigSnapshot({}));
+
   const turnParams = {
     admittedRunContext: createTestAdmittedRunContext("run-1"),
     sessionId: "session-1",
