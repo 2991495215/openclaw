@@ -2,8 +2,10 @@ import { inspect } from "node:util";
 import { withTimeout } from "@openclaw/fs-safe/advanced";
 import { Command } from "commander";
 import { describe, expect, it, vi } from "vitest";
+import { registerPreparedModelRuntimePublicationListener } from "../../agents/prepared-model-runtime.publication-events.js";
 import { registerConfigCli } from "../../cli/config-cli.js";
 import { readConfigFileSnapshot } from "../../config/config.js";
+import * as writeApplication from "../../config/runtime-write-application.js";
 import * as configLock from "../../config/write-lock.js";
 import { defaultRuntime } from "../../runtime.js";
 import { createDeferredCore } from "../../shared/deferred.js";
@@ -108,8 +110,40 @@ describe("models.authLogout with a concurrent registered config set", () => {
         let performSave = false;
         let writer: Promise<void> | undefined;
         let logout: Promise<unknown> | undefined;
+        let stopPublicationTrace: (() => void) | undefined;
+        const traceStartedAt = performance.now();
+        const trace = (phase: string, details: Record<string, unknown> = {}) => {
+          console.warn(
+            "[auth-logout-diag]",
+            JSON.stringify({
+              phase,
+              reloadMode,
+              elapsedMs: Math.round(performance.now() - traceStartedAt),
+              ...details,
+            }),
+          );
+        };
+        const applications: ReturnType<
+          typeof writeApplication.createRuntimeConfigWriteApplication
+        >[] = [];
         try {
           await server.startupSettled;
+          trace("startup-settled");
+          stopPublicationTrace = registerPreparedModelRuntimePublicationListener((event) => {
+            trace("model-publication", { event: event.phase });
+          });
+          const createApplication = writeApplication.createRuntimeConfigWriteApplication;
+          vi.spyOn(writeApplication, "createRuntimeConfigWriteApplication").mockImplementation(
+            (...args) => {
+              const application = createApplication(...args);
+              const receipt = applications.push(application);
+              trace("application-created", { receipt });
+              void application.result.then((result) => {
+                trace("application-settled", { receipt, result });
+              });
+              return application;
+            },
+          );
           vi.spyOn(defaultRuntime, "exit").mockImplementation((code) => {
             throw new Error(`Registered config command exited with ${code}`);
           });
@@ -138,6 +172,7 @@ describe("models.authLogout with a concurrent registered config set", () => {
             });
           });
           await withTimeout(acquired.promise, 10_000, "fixture config lock");
+          trace("writer-lock-held");
           const observation = vi
             .spyOn(configLock, "withConfigWriteLock")
             .mockImplementation(
@@ -149,6 +184,7 @@ describe("models.authLogout with a concurrent registered config set", () => {
               },
             );
           // Observe scheduling only; both registered commands retain the real write owners.
+          trace("logout-requested");
           logout = client
             .request("models.authLogout", {
               provider: "fixture",
@@ -160,11 +196,18 @@ describe("models.authLogout with a concurrent registered config set", () => {
               (error: unknown) => ({ ok: false, error }),
             );
           await withTimeout(attempted.promise, 10_000, "pending removal config lock");
+          trace("logout-lock-attempted");
           observation.mockRestore();
           performSave = true;
           save.resolve();
           await writer;
+          trace("writer-completed", {
+            claimed: applications.map((application) => application.claimed),
+          });
           const outcome = await logout;
+          trace("logout-settled", {
+            claimed: applications.map((application) => application.claimed),
+          });
           expect(outcome, inspect(outcome, { depth: 5 })).toMatchObject(
             conflict
               ? {
@@ -213,9 +256,13 @@ describe("models.authLogout with a concurrent registered config set", () => {
           );
           expect(hotReloadRecovery).not.toHaveBeenCalled();
         } finally {
+          trace("cleanup-started", {
+            claimed: applications.map((application) => application.claimed),
+          });
           save.resolve();
           await writer?.catch(() => undefined);
           await logout?.catch(() => undefined);
+          stopPublicationTrace?.();
           vi.restoreAllMocks();
           await disconnectGatewayClient(client);
           await server.close();
