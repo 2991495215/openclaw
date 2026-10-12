@@ -516,7 +516,7 @@ suite.define(() => {
                 const checkpoint = async (stage: string) => {
                   await markCollaboratorVisuals(reader, mode + ":" + stage);
                   await waitForChatScrollIdle(reader);
-                  const samples = await readScrollProbe(reader);
+                  const { samples, receipts } = await readScrollProbe(reader);
                   const latest = samples.at(-1)!;
                   checkpoints.push({ stage, ...latest });
                   console.info(
@@ -529,6 +529,12 @@ suite.define(() => {
                       current: latest,
                     }),
                   );
+                  if (receipts.length) {
+                    console.info(
+                      "REAL_GATEWAY_SCROLL_RECEIPTS",
+                      JSON.stringify({ mode, stage, receipts }),
+                    );
+                  }
                   if (mode.startsWith("reading")) {
                     expect
                       .soft(
@@ -582,7 +588,7 @@ suite.define(() => {
                     mode + ": queued sender keeps the active reply present",
                   )
                   .toEqual([]);
-                const samples = await readScrollProbe(reader, true);
+                const { samples, receipts } = await readScrollProbe(reader, true);
                 let largestStep = 1;
                 for (let i = 2; i < samples.length; i += 1) {
                   if (
@@ -610,6 +616,7 @@ suite.define(() => {
                   before,
                   checkpoints,
                   samples,
+                  scrollReceipts: receipts,
                   maxDrift,
                 });
                 if (mode.startsWith("reading")) {

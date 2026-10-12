@@ -258,10 +258,11 @@ type ScrollSample = {
   rows: Array<{ key?: string; height: number }>;
 };
 type ScrollProbeElement = HTMLElement & {
-  scrollProof: { samples: ScrollSample[]; stop: () => void };
+  scrollProof: { samples: ScrollSample[]; receipts: unknown[]; stop: () => void };
 };
 export async function startScrollProbe(page: Page) {
-  return page.locator(".chat-pane-cache__pane--active .chat-thread").evaluate((element) => {
+  const traceScroll = process.env.OPENCLAW_TRACE_COLLABORATOR_SCROLL === "1";
+  return page.locator(".chat-pane-cache__pane--active .chat-thread").evaluate((element, trace) => {
     const viewport = element.getBoundingClientRect();
     const paragraph = [...element.querySelectorAll<HTMLElement>(".chat-text p")].find(
       (candidate) => {
@@ -307,6 +308,45 @@ export async function startScrollProbe(page: Page) {
     };
     const before = sample();
     const samples = [before];
+    const receipts: unknown[] = [];
+    const nativeScrollTo = element.scrollTo;
+    const scrollToDescriptor = Object.getOwnPropertyDescriptor(element, "scrollTo");
+    const record = (kind: string, requested?: ScrollToOptions) => {
+      const state = element.closest<HTMLElement & { state?: ChatPageHost }>(
+        "openclaw-chat-pane",
+      )?.state;
+      receipts.push({
+        at: performance.now(),
+        kind,
+        requested,
+        top: element.scrollTop,
+        max: element.scrollHeight - element.clientHeight,
+        lastTop: state?.chatLastScrollTop,
+        locked: state?.chatFollowLocked,
+        maintenance: state?.chatIsMaintenanceScroll?.(),
+        programmatic: state?.chatIsProgrammaticScroll?.(),
+        rows: [...element.querySelectorAll<HTMLElement>(".chat-virtual-row")].map((row) => ({
+          index: row.dataset.index,
+          key: row.dataset.virtualRowKey,
+        })),
+      });
+      if (receipts.length > 64) {
+        receipts.shift();
+      }
+    };
+    const beforeScroll = () => record("native:before");
+    const afterScroll = () => record("native:after");
+    if (trace) {
+      // HOLD diagnostics: delegate every write unchanged and observe the existing policy owner.
+      element.scrollTo = function (options?: ScrollToOptions | number, y?: number) {
+        const requested = typeof options === "number" ? { left: options, top: y } : options;
+        record("scrollTo:before", requested);
+        Reflect.apply(nativeScrollTo, this, arguments);
+        record("scrollTo:after", requested);
+      };
+      element.addEventListener("scroll", beforeScroll, true);
+      element.addEventListener("scroll", afterScroll);
+    }
     let frame = 0;
     const tick = () => {
       samples.push(sample());
@@ -314,11 +354,23 @@ export async function startScrollProbe(page: Page) {
     };
     (element as ScrollProbeElement).scrollProof = {
       samples,
-      stop: () => cancelAnimationFrame(frame),
+      receipts,
+      stop: () => {
+        cancelAnimationFrame(frame);
+        if (trace) {
+          element.removeEventListener("scroll", beforeScroll, true);
+          element.removeEventListener("scroll", afterScroll);
+          if (scrollToDescriptor) {
+            Object.defineProperty(element, "scrollTo", scrollToDescriptor);
+          } else {
+            Reflect.deleteProperty(element, "scrollTo");
+          }
+        }
+      },
     };
     frame = requestAnimationFrame(tick);
     return { ...before, anchorText };
-  });
+  }, traceScroll);
 }
 export async function readScrollProbe(page: Page, stop = false) {
   return page
@@ -328,6 +380,6 @@ export async function readScrollProbe(page: Page, stop = false) {
       if (shouldStop) {
         probe.stop();
       }
-      return probe.samples;
+      return { samples: probe.samples, receipts: probe.receipts };
     }, stop);
 }
