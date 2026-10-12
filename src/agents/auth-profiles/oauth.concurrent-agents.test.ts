@@ -123,6 +123,9 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
   it("gives one copied refresh generation one durable main-store owner", async () => {
     const work = new AsyncWorkScope();
     const { promise: finishRefreshGate, resolve: finishRefresh } = createDeferredCore();
+    const mark = (phase: string) => {
+      console.error(`[oauth-claim-stage] ${phase} ${Date.now()}ms`);
+    };
     const trace = async <T>(
       phase: "owner-update" | "peer-discovery" | "peer-update",
       ordinal: number,
@@ -158,9 +161,12 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
       );
     // Vitest can time out the observer before the accepted refresh finishes.
     settleCaseWork = async () => {
+      mark("teardown-provider-gate-release");
       finishRefresh();
       try {
+        mark("teardown-drain-start");
         await work.drain();
+        mark("teardown-drain-end");
       } finally {
         ownerSpy.mockRestore();
         discoverySpy.mockRestore();
@@ -212,6 +218,7 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
         console.error(`[oauth-claim-stage] provider-entered ${Date.now()}ms`);
         markStarted();
         await finishRefreshGate;
+        mark("provider-gate-return");
         return {
           type: "oauth",
           provider,
@@ -233,22 +240,30 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
         agentDir: firstAgentDir,
       });
       await Promise.race([started, first]);
+      mark("sync-owner-lookup-start");
       expect(
         resolvePersistedAuthProfileOwnerAgentDir({
           agentDir: subAgents[1],
           profileId,
         }),
       ).toBeUndefined();
+      mark("sync-owner-lookup-end");
+      mark("copied-owner-lookup-start");
       await expect(
         resolvePersistedAuthProfileOwnerAgentDirAsync({ agentDir: subAgents[1], profileId }),
       ).resolves.toBeUndefined();
+      mark("copied-owner-lookup-end");
+      mark("independent-owner-lookup-start");
       await expect(
         resolvePersistedAuthProfileOwnerAgentDirAsync({ agentDir: subAgents[2], profileId }),
       ).resolves.toBe(subAgents[2]);
+      mark("independent-owner-lookup-end");
       // A portable copy is not fenced, but its matching refresh generation still reads main.
+      mark("portable-owner-lookup-start");
       await expect(
         resolvePersistedAuthProfileOwnerAgentDirAsync({ agentDir: subAgents[3], profileId }),
       ).resolves.toBeUndefined();
+      mark("portable-owner-lookup-end");
       expect(callCount).toBe(1);
       for (const agentDir of subAgents.slice(0, 2)) {
         const fenced = read(agentDir);
@@ -267,13 +282,16 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
         refresh: "refresh-token",
       });
 
+      mark("provider-gate-release");
       finishRefresh();
+      mark("refresh-settlement-start");
       await expect(first).resolves.toEqual(
         expect.objectContaining({
           apiKey: "cross-agent-refreshed-access",
           provider,
         }),
       );
+      mark("refresh-settlement-end");
       expect(callCount).toBe(1);
       for (const [index, agentDir] of subAgents.slice(0, 2).entries()) {
         const persisted = loadPersistedAuthProfileStore(agentDir);
@@ -290,10 +308,13 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
         copyToAgents: true,
       });
 
+      mark("removal-start");
       await removeAuthProfilesAcrossOwnerStores({
         profileIds: [profileId],
         agentDir: mainAgentDir,
       });
+      mark("removal-end");
+      mark("final-resolvers-start");
       await expect(resolveFrom(subAgents[1])).resolves.toBeNull();
       clearRuntimeAuthProfileStoreSnapshots();
       await expect(resolveFrom(subAgents[1])).resolves.toBeNull();
@@ -304,6 +325,7 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
       await expect(resolveFrom(subAgents[3])).resolves.toEqual(
         expect.objectContaining({ apiKey: "portable-access" }),
       );
+      mark("final-resolvers-end");
     });
   }, 10_000);
 
