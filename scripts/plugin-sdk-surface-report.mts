@@ -196,7 +196,8 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   "security-runtime": 1,
   // +2: approved released upstream-link writes retained during worker migration.
   "session-catalog": 2,
-  "session-store-runtime": 7,
+  // +1: readTranscriptStatsSync remains while plugins adopt readTranscriptStatsAsync.
+  "session-store-runtime": 8,
   // +2: shipped Slack and Discord setup helpers retained through their package migration window.
   "setup-runtime": 2,
   "reply-history": 6,
@@ -251,7 +252,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // Auth, media-discovery, and model-session compat records retain their synchronous pairs.
       // +1: deprecated createSessionHeaderLink retained from shipped 2026.10.1.
       // +5: parseModelRefAsync, prepareModelRefResolver, and their three preparation/resolver types.
-      3706,
+      // +2: approved readTranscriptStatsAsync and PreparedAgentRunStart replacements;
+      // the released synchronous stats reader and onAgentRunStart callback remain compatible.
+      3708,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -279,7 +282,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +4: the same auth-save, media-discovery, and model-session replacement functions.
       // +1: the same deprecated createSessionHeaderLink.
       // +2: the same async model-reference parser and prepared resolver factory.
-      2164,
+      // +1: readTranscriptStatsAsync replaces the retained synchronous stats reader.
+      2165,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -296,7 +300,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // and applyModelOverrideWithAuthProfileCompatibility retain their shipped contracts.
       // +1: createSessionHeaderLink from shipped 2026.10.1 until plugin-sdk-session-header-link expires.
       // +2: model-ref-sync-discovery retains parseModelRef and resolveModelRefFromString.
-      190,
+      // +1: readTranscriptStatsSync remains until the next Plugin SDK major.
+      191,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(
