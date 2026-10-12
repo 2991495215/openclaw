@@ -589,6 +589,8 @@ jobs:
           test_files=("$TEST_FILE")
           if [ "$PROOF_CASE" = protocol-candidate ]; then
             test_files+=(src/config/sessions/session-transcript-context-read.worker.test.ts)
+          elif [ "$PROOF_CASE" = registry-candidate ]; then
+            test_files+=(src/gateway/server-plugin-in-process-dispatch.authorization.test.ts)
           elif [ "$PROOF_CASE" = startup-candidate ]; then
             test_files+=(src/gateway/server-agent-database-startup.test.ts)
           elif [ "$PROOF_CASE" = agent-wait-candidate ]; then
