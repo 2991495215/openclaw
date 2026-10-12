@@ -17,10 +17,7 @@ import {
   resolveCanonicalNodeTestConfig,
   resolveStartupCorpusTestFiles,
 } from "../../scripts/lib/ci-node-test-plan.mts";
-import {
-  isPolicyTestOwnedPath,
-  resolvePolicyTestTargets,
-} from "../../scripts/lib/ci-policy-test-watch.mts";
+import { resolvePolicyTestTargets } from "../../scripts/lib/ci-policy-test-watch.mts";
 import {
   isCiProofTestFile,
   isReleaseOnlyRuntimeTestFile,
@@ -2007,7 +2004,6 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
       "test/tsconfig/tsconfig.core.test.ui-e2e-chat.json",
     ]) {
       expect(resolvePolicyTestTargets([changedPath]), changedPath).toContain(guard);
-      expect(isPolicyTestOwnedPath(changedPath), changedPath).toBe(false);
     }
     for (const changedPath of [
       "src/infra/outbound/message.ts",
@@ -2038,7 +2034,6 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
       for (const [guard] of guards) {
         expect(targets, changedPath).toContain(guard);
       }
-      expect(isPolicyTestOwnedPath(changedPath), changedPath).toBe(false);
     }
     const newModule = "src/plugins/unrelated-new-plugin.ts";
     const newModuleTargets = resolvePolicyTestTargets([newModule]);
@@ -2047,8 +2042,6 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
       expect(newModuleTargets).toContain(guard);
       expect(testOnlyTargets).not.toContain(guard);
     }
-    expect(isPolicyTestOwnedPath(newModule)).toBe(false);
-    expect(isPolicyTestOwnedPath(manifest)).toBe(true);
     const shards = expectDefined(createChangedNodeTestShards([manifest]), "manifest test plan");
     for (const [guard, config] of guards) {
       const owners = shards
@@ -2087,7 +2080,6 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
 
   it("matches policy owners with literal and native glob semantics", () => {
     const changedPath = "ui/src/styles/base.css";
-    expect(isPolicyTestOwnedPath(changedPath)).toBe(true);
     expect(resolvePolicyTestTargets([changedPath])).not.toEqual([]);
     expect(resolvePolicyTestTargets([changedPath], { completeOwnersOnly: true })).toEqual([
       "ui/src/styles/base-theme-tokens.node.test.ts",
@@ -2100,8 +2092,6 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
       "ui/src/styles/base-theme-tokens.node.test.ts",
       "ui/src/styles/base-theme-contrast.node.test.ts",
     ]);
-    expect(isPolicyTestOwnedPath("ui/public/themes/tide.css")).toBe(true);
-    expect(isPolicyTestOwnedPath("ui/src/styles/./base.css")).toBe(true);
     expect(
       resolvePolicyTestTargets(["ui/src/styles/./base.css"], { completeOwnersOnly: true }),
     ).toEqual([
@@ -2113,7 +2103,6 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
       resolvePolicyTestTargets(["ui/src/pages/chat/view.ts"], { completeOwnersOnly: true }),
     ).toEqual([]);
     for (const lookalike of [` ${changedPath}`, String.raw`ui\src\pages\chat\view.ts`]) {
-      expect(isPolicyTestOwnedPath(lookalike), lookalike).toBe(false);
       expect(resolvePolicyTestTargets([lookalike]), lookalike).toEqual([]);
     }
   });

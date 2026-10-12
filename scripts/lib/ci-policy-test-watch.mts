@@ -2051,11 +2051,3 @@ export function resolvePolicyTestTargets(
     )
     .map(({ testFile }) => testFile);
 }
-
-/** True when the policy tests are the complete bounded owner for this path. */
-export function isPolicyTestOwnedPath(changedPath: string): boolean {
-  const literal = isPlainRepoRelativePath(changedPath);
-  return policyTestWatches.some(({ ownerGlobs }) =>
-    ownerGlobs?.some((ownerGlob) => matchesPolicyPattern(changedPath, ownerGlob, literal)),
-  );
-}
