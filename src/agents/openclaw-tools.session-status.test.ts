@@ -261,7 +261,10 @@ vi.mock("./tools/in-process-gateway.js", () => ({
   hasGatewayToolRoutingContext: () => false,
 }));
 vi.mock("../config/config.js", createConfigModuleMock);
-vi.mock("../agents/prepared-model-catalog.js", createModelCatalogModuleMock);
+vi.mock("../agents/prepared-model-catalog.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../agents/prepared-model-catalog.js")>()),
+  ...createModelCatalogModuleMock(),
+}));
 vi.mock("../agents/provider-model-normalization.runtime.js", () => ({
   normalizeProviderModelIdWithRuntime: () => undefined,
 }));
