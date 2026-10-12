@@ -3,7 +3,9 @@
  */
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, vi } from "vitest";
+import { setGatewayPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata-snapshot.js";
 import { setCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata.test-support.js";
+import { preparePluginMetadataMachineStateAsync } from "../../plugins/installed-plugin-index-record-state.js";
 import * as jitiFactory from "../../plugins/jiti-factory.js";
 import { loadPluginManifest } from "../../plugins/manifest.js";
 import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
@@ -16,7 +18,7 @@ export {
 } from "../../plugins/provider-runtime.test-support.js";
 export type { ProviderPlugin } from "../provider-model-shared.js";
 
-/** Supplies manifest facts without cold runtime discovery in provider catalog tests. */
+/** Supplies immutable boot facts without cold runtime discovery in provider catalog tests. */
 export function useProviderCatalogMetadata(pluginRoot: URL, ...additionalPluginRoots: URL[]): void {
   const plugins = [pluginRoot, ...additionalPluginRoots].map((root) => {
     const loaded = loadPluginManifest(fileURLToPath(root));
@@ -26,8 +28,9 @@ export function useProviderCatalogMetadata(pluginRoot: URL, ...additionalPluginR
     return loaded.manifest;
   });
   const snapshot = createPluginMetadataSnapshotFixture({ plugins });
-  beforeEach(() => {
-    setCurrentPluginMetadataSnapshot(snapshot);
+  beforeEach(async () => {
+    await preparePluginMetadataMachineStateAsync({});
+    setGatewayPluginMetadataSnapshot(snapshot);
     const loader = vi.spyOn(jitiFactory, "createJiti").mockImplementation(() => {
       throw new Error("Provider catalog tests must use prepared metadata without Jiti");
     });

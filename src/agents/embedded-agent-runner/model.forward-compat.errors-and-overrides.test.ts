@@ -93,6 +93,7 @@ vi.mock("../prepared-model-runtime.js", async () => {
   const discovery = await import("../agent-model-discovery.js");
   const { createPluginMetadataSnapshot } =
     await import("../../config/plugin-auto-enable.test-helpers.js");
+  const { prepareBundledDiscoveryMode } = await import("../../plugins/bundled-discovery-state.js");
   const createSnapshot = async (input: {
     agentDir: string;
     config?: OpenClawConfig;
@@ -100,6 +101,12 @@ vi.mock("../prepared-model-runtime.js", async () => {
   }) => {
     const config = input.config ?? {};
     const { authStorage } = await discovery.discoverAuthStorageFacts(input.agentDir);
+    await prepareBundledDiscoveryMode();
+    const metadataSnapshot = createPluginMetadataSnapshot({
+      config,
+      manifestRegistry: { plugins: [], diagnostics: [] },
+      ...(input.workspaceDir ? { workspaceDir: input.workspaceDir } : {}),
+    });
     return {
       catalogOwner: undefined,
       agentDir: input.agentDir,
@@ -110,15 +117,13 @@ vi.mock("../prepared-model-runtime.js", async () => {
       observationConfig: config,
       isCurrent: () => true,
       authModes: {},
-      metadataSnapshot: createPluginMetadataSnapshot({
-        config,
-        manifestRegistry: { plugins: [], diagnostics: [] },
-        ...(input.workspaceDir ? { workspaceDir: input.workspaceDir } : {}),
-      }),
+      metadataSnapshot,
       modelCatalog: { entries: [], routeVariants: [] },
       configuredRuntimeModels: [],
       findConfiguredRuntimeModel: () => undefined,
-      inlineProviderModels: buildInlineProviderModels(config.models?.providers ?? {}),
+      inlineProviderModels: buildInlineProviderModels(config.models?.providers ?? {}, {
+        providerMetadataOwners: metadataSnapshot.owners,
+      }),
       createStores: () => {
         const modelRegistry = discovery.discoverModels(authStorage, input.agentDir, {
           ...(input.config ? { config: input.config } : {}),

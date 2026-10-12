@@ -2,27 +2,25 @@
 import { tryResolveConfiguredAgentWorkspaceDir } from "../../agents/agent-scope-config.js";
 import { modelKey, type ModelRef } from "../../agents/model-ref-shared.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { prepareBundledDiscoveryModeNative } from "../../plugins/bundled-discovery-state.native.js";
-import { loadManifestMetadataSnapshot } from "../../plugins/manifest-contract-eligibility.js";
-import { resolvePluginProviderRegistryCore } from "../../plugins/providers.runtime.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
+import { resolvePluginProviderRegistryCoreAsync } from "../../plugins/providers.runtime.js";
 import {
   getPluginRuntimeGenerationRegistry,
   withPluginRuntimeGenerationScope,
 } from "../../plugins/runtime/generation-scope.js";
 
-export function withModelCommandProviderRuntime<T>(
+export async function withModelCommandProviderRuntime<T>(
   params: {
     runtimeConfig: OpenClawConfig;
     selectModelRefs: () => readonly (ModelRef | undefined)[];
   },
   run: (providerRegistryAvailable: boolean) => T,
-): T {
+): Promise<T> {
   const retainedRegistry = getPluginRuntimeGenerationRegistry();
   const config = params.runtimeConfig;
   const env = process.env;
-  prepareBundledDiscoveryModeNative(env);
   const workspaceDir = tryResolveConfiguredAgentWorkspaceDir(config, env);
-  const metadataSnapshot = loadManifestMetadataSnapshot({ config, env, workspaceDir });
+  const metadataSnapshot = await resolvePluginMetadataSnapshotAsync({ config, env, workspaceDir });
   const providerRefs = new Set<string>();
   const modelRefs = new Set<string>();
   // Reuse the operation's selection policy with hooks fenced off. Combining
@@ -35,7 +33,7 @@ export function withModelCommandProviderRuntime<T>(
     }
   }
   const selected = providerRefs.size
-    ? resolvePluginProviderRegistryCore({
+    ? await resolvePluginProviderRegistryCoreAsync({
         config,
         env,
         workspaceDir,

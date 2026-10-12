@@ -1,13 +1,13 @@
 import { afterEach, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { createOpenClawCodingTools } from "./agent-tools.js";
+import { createOpenClawCodingToolsAsync } from "./agent-tools.js";
 import { applyCodeModeCatalog, createCodeModeTools } from "./code-mode.js";
 import { clearToolSearchCatalog, createToolSearchCatalogRef } from "./tool-search-catalog.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
-it("keeps core shell and file signatures visible when the real catalog overflows", () => {
+it("keeps core shell and file signatures visible when the real catalog overflows", async () => {
   const workspaceDir = tempDirs.make("code-mode-catalog-index-");
   const config: OpenClawConfig = {
     agents: {
@@ -29,7 +29,7 @@ it("keeps core shell and file signatures visible when the real catalog overflows
       web: { search: { provider: "brave" } },
     },
   };
-  const targets = createOpenClawCodingTools({
+  const targets = await createOpenClawCodingToolsAsync({
     config,
     agentId: "main",
     cwd: workspaceDir,

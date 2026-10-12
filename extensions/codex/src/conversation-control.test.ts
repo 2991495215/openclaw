@@ -15,6 +15,7 @@ import {
   withIncognitoSessionBinding,
 } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { preparePluginMetadataMachineStateAsync } from "../../../src/plugins/installed-plugin-index-record-state.js";
 import {
   buildCodexSupervisionTestConnectionFingerprint,
   readCodexAppServerBinding,
@@ -104,10 +105,11 @@ vi.mock("./app-server/shared-client.js", async (importOriginal) => ({
 }));
 
 describe("codex conversation controls", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetCodexTestBindingStore();
     tempDir = sessionDirs.make();
     vi.stubEnv("OPENCLAW_STATE_DIR", tempDir);
+    await preparePluginMetadataMachineStateAsync({});
     sharedClientMocks.getSharedCodexAppServerClient.mockReset();
     sharedClientMocks.releaseLeasedSharedCodexAppServerClient.mockReset();
   });

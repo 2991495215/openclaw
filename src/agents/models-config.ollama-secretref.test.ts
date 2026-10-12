@@ -5,6 +5,7 @@ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createTestPluginApi } from "../plugin-sdk/plugin-test-api.js";
 import { clearLiveCatalogCacheForTests } from "../plugin-sdk/provider-catalog-shared.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import type { OpenClawPluginDefinition, ProviderPlugin } from "../plugins/types.js";
 import { NON_ENV_SECRETREF_MARKER } from "../secrets/provider-credential-values.js";
@@ -75,6 +76,8 @@ describe("registered Ollama catalog", () => {
     async (owner, baseUrl, explicitModels, runtimeKey) => {
       const stateDir = tempDirs.make("ollama-catalog-ref-");
       await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir, OLLAMA_API_KEY: undefined }, async () => {
+        await preparePluginMetadataMachineStateAsync({ env: {} });
+        await preparePluginMetadataMachineStateAsync({});
         const agentDir = path.join(stateDir, "agent");
         const ref = { source: "store", provider: "default", id: "OLLAMA_DISCOVERY_KEY" } as const;
         const profile = {
@@ -183,6 +186,8 @@ describe("registered Ollama catalog", () => {
   it("lists chat models pulled after setup, keeps setup model settings, and keeps setup models when listing fails", async () => {
     const stateDir = tempDirs.make("ollama-catalog-pull-");
     await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir, OLLAMA_API_KEY: undefined }, async () => {
+      await preparePluginMetadataMachineStateAsync({ env: {} });
+      await preparePluginMetadataMachineStateAsync({});
       const setupModel = {
         id: "qwen2.5:0.5b",
         name: "qwen2.5:0.5b",

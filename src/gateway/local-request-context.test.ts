@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as preparedModelCatalog from "../agents/prepared-model-catalog.js";
 import type { PublishedModelCatalogOwnerCandidate } from "../agents/prepared-model-catalog.types.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
@@ -42,6 +42,8 @@ type PublishedOwnerSnapshot = Awaited<
 
 const asPublishedOwner = (value: PublishedModelCatalogOwnerCandidate): PublishedOwnerSnapshot =>
   value as unknown as PublishedOwnerSnapshot;
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("local gateway request context", () => {
   it("keeps local RPC available without claiming Gateway routing or readiness", async () => {

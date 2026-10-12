@@ -121,6 +121,7 @@ import type {
   PreparedAuthProfileStoreOwner,
   RuntimeAuthProfileStore,
 } from "./types.js";
+import { runAuthProfileUsage } from "./usage-lifecycle.js";
 
 function withCredentialSources(
   store: AuthProfileStore,
@@ -1652,13 +1653,16 @@ export function createAuthProfileStoreRuntime(
    * Commit only while both persisted auth rows still match the captured baseline.
    * The caller claims `owned` before publishing because publication is fallible.
    */
-  function saveAuthProfileStoreIfPersistenceSnapshotMatches(params: {
-    store: AuthProfileStore;
-    snapshot: AuthProfileStorePersistenceSnapshot;
-    agentDir?: string;
-    options?: SaveAuthProfileStoreOptions;
-    stateDir?: string;
-  }): CommittedAuthProfileStoreSave {
+  function saveAuthProfileStoreIfPersistenceSnapshotMatches(
+    params: {
+      store: AuthProfileStore;
+      snapshot: AuthProfileStorePersistenceSnapshot;
+      agentDir?: string;
+      options?: SaveAuthProfileStoreOptions;
+      stateDir?: string;
+    },
+    preparedExternalProfiles = listRuntimeExternalAuthProfiles,
+  ): CommittedAuthProfileStoreSave {
     const agentDir = resolveRuntimeAuthProfileAgentDir(params.agentDir);
     assertAuthProfilePersistenceOwner(params.snapshot.owner, agentDir, params.stateDir);
     const { owned, publication } = runAuthProfileWriteTransaction(
@@ -1685,6 +1689,8 @@ export function createAuthProfileStoreRuntime(
           params.options,
           database,
           owner,
+          false,
+          preparedExternalProfiles,
         );
         const ownedSnapshot = {
           owner,
@@ -1721,6 +1727,18 @@ export function createAuthProfileStoreRuntime(
     };
   }
 
+  async function saveAuthProfileStoreIfPersistenceSnapshotMatchesAsync(
+    params: Parameters<typeof saveAuthProfileStoreIfPersistenceSnapshotMatches>[0],
+  ): Promise<CommittedAuthProfileStoreSave> {
+    return runAuthProfileUsage(async () => {
+      const preparedExternalProfiles =
+        params.options?.filterExternalAuthProfiles === false
+          ? () => []
+          : await prepareRuntimeExternalAuthProfiles({ env: params.snapshot.owner.env });
+      return saveAuthProfileStoreIfPersistenceSnapshotMatches(params, preparedExternalProfiles);
+    });
+  }
+
   return {
     prepareAuthProfileStoreForModelRuntime,
     createAuthProfileStoreReadScope,
@@ -1741,6 +1759,7 @@ export function createAuthProfileStoreRuntime(
     saveAuthProfileStoreAsync: createAuthProfileStoreSaver(updateAuthProfileStoreWithLock),
     saveAuthProfileStoreWithPreparedOwner,
     saveAuthProfileStoreIfPersistenceSnapshotMatches,
+    saveAuthProfileStoreIfPersistenceSnapshotMatchesAsync,
     findPersistedAuthProfileCredential,
     findPersistedAuthProfileCredentialAsync,
     resolvePersistedAuthProfileOwnerAgentDirAsync,

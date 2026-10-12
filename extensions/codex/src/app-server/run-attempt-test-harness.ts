@@ -27,6 +27,7 @@ import {
 import { drainSessionDiskBudgetWorkers } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/temp-path";
 import { afterAll, afterEach, beforeEach, expect, vi } from "vitest";
+import { preparePluginMetadataMachineStateAsync } from "../../../../src/plugins/installed-plugin-index-record-state.js";
 import { defaultCodexAppInventoryCache } from "./app-inventory-cache.js";
 import { CodexAppServerClient } from "./client.js";
 import {
@@ -697,6 +698,7 @@ export function setupRunAttemptTestHooks(
       vi.stubEnv("CODEX_HOME", "");
     }
     await context.codexAttemptRuntime.start();
+    await preparePluginMetadataMachineStateAsync({});
     // createParams models an ordinary durable session; seeded native bindings
     // must have the same authoritative core owner as a real resumed conversation.
     if (options.sessionOwner !== null) {

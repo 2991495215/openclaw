@@ -15,6 +15,7 @@ import {
   type TempWorkspace,
 } from "openclaw/plugin-sdk/temp-path";
 import { afterEach, beforeEach, expect, vi } from "vitest";
+import { resolvePluginMetadataSnapshotAsync } from "../../../../src/plugins/plugin-metadata-snapshot.js";
 import { defaultCodexAppInventoryCache } from "../app-server/app-inventory-cache.js";
 import type { CodexAppServerCloseResult } from "../app-server/transport.js";
 
@@ -185,6 +186,7 @@ async function createCodexFixture(): Promise<{
   vi.stubEnv("HOME", homeDir);
   vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
   vi.stubEnv("OPENCLAW_AGENT_DIR", "");
+  await resolvePluginMetadataSnapshotAsync({ config: {} });
   await writeFile(path.join(codexHome, "skills", "tweet-helper", "SKILL.md"), "# Tweet helper\n");
   await writeFile(path.join(codexHome, "skills", ".system", "system-skill", "SKILL.md"));
   await writeFile(path.join(homeDir, ".agents", "skills", "personal-style", "SKILL.md"));

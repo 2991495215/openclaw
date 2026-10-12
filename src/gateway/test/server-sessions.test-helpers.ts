@@ -8,6 +8,7 @@ import { registerAcpSessionResetControls } from "../../acp/control-plane/manager
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
 import type { InternalHookEvent } from "../../hooks/internal-hooks.js";
 import { resetSystemEventsForTest } from "../../infra/system-events.js";
+import { prepareBundledDiscoveryMode } from "../../plugins/bundled-discovery-state.js";
 import type { HookRunner } from "../../plugins/hooks.js";
 import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
@@ -585,6 +586,7 @@ export async function directSessionReq<TPayload = unknown>(
   payload?: TPayload;
   error?: { code?: string; message?: string; details?: unknown };
 }> {
+  await prepareBundledDiscoveryMode();
   const sessionsHandlers = await getSessionsHandlers();
   const { getRuntimeConfig } = await getGatewayConfigModule();
   let result:

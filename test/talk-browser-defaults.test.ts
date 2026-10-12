@@ -46,6 +46,7 @@ vi.mock("../src/tts/provider-registry.js", () => {
     listSpeechProviders: () => [],
   };
   return {
+    ...registry,
     withSpeechProviderRegistry: async (_cfg: unknown, run: (value: typeof registry) => unknown) =>
       run(registry),
   };

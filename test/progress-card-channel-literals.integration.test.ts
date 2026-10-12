@@ -10,6 +10,7 @@ import { createOpenClawTools } from "../src/agents/openclaw-tools.js";
 import type { InProcessGatewayCaller } from "../src/agents/tools/in-process-gateway.js";
 import { createChannelProgressDraftCompositor } from "../src/channels/progress-draft-compositor.js";
 import { normalizeAgentPlanSteps } from "../src/channels/streaming.js";
+import { preparePluginMetadataMachineStateAsync } from "../src/plugins/installed-plugin-index-record-state.js";
 
 const { createDiscordDraftPreviewController } = await loadDiscordDraftPreview();
 
@@ -51,6 +52,7 @@ async function runRegisteredCard(
   gatewayCall.mockResolvedValue({
     card: { sessionKey: "agent:main:literal-test", revision: 1, updatedAt: 1, markdown },
   });
+  await preparePluginMetadataMachineStateAsync({});
   const tool = createOpenClawTools({
     agentSessionKey: "agent:main:literal-test",
     config: { tools: { allow: ["progress_card"] } },

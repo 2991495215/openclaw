@@ -8,7 +8,10 @@ import type {
   OpenClawPluginNodeHostCommand,
 } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
-import { createPluginRuntimeMock } from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
+  createPluginRuntimeMock,
+  useProviderCatalogMetadata,
+} from "openclaw/plugin-sdk/plugin-test-runtime";
 import type { SessionCatalogProvider as RegisteredSessionCatalogProvider } from "openclaw/plugin-sdk/session-catalog";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { listClaudeSessions } from "./session-catalog-discovery.js";
@@ -26,6 +29,8 @@ import {
   listLocalClaudeSessionPage,
   readLocalClaudeTranscriptPage,
 } from "./session-catalog.js";
+
+useProviderCatalogMetadata(new URL(".", import.meta.url));
 
 type OwnerMethod = "list" | "read" | "continueSession" | "openTerminal";
 type OwnerMethods = Pick<RegisteredSessionCatalogProvider, OwnerMethod>;

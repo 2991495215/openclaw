@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { listKnownProviderAuthEnvVarNamesCore } from "../secrets/provider-env-vars.js";
 import { createOpenClawCodingTools } from "./agent-tools.js";
 import { createCodeModeCatalogProjection } from "./code-mode-catalog.js";
@@ -14,7 +15,8 @@ vi.mock("./openclaw-plugin-tools.js", () => ({
 
 const baseTools = ["read", "web_search", "exec"];
 
-beforeEach(() => {
+beforeEach(async () => {
+  await preparePluginMetadataMachineStateAsync({});
   for (const name of listKnownProviderAuthEnvVarNamesCore()) {
     vi.stubEnv(name, undefined);
   }

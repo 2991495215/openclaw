@@ -4,6 +4,7 @@ import {
   createDeferred,
   withinTest,
 } from "../../test/helpers/promise.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import type { ProviderCatalogOutcome } from "../plugins/provider-catalog.types.js";
 import type { ProviderPlugin } from "../plugins/types.js";
@@ -26,6 +27,7 @@ vi.mock("../plugins/provider-discovery.runtime.js", () => {
 
 it("keeps canonical outcome authority when only its alias is selected", async () => {
   await withOpenClawTestState({ label: "implicit-catalog-outcomes" }, async (state) => {
+    await preparePluginMetadataMachineStateAsync({ env: state.env });
     const failure: ProviderCatalogOutcome = {
       provider: "canonical",
       profileId: "canonical:account",
@@ -95,6 +97,7 @@ it("bounds concurrent discovery and preserves merge order when catalogs finish o
   signal,
 }) => {
   await withOpenClawTestState({ label: "concurrent-catalogs" }, async (state) => {
+    await preparePluginMetadataMachineStateAsync({ env: state.env });
     vi.useFakeTimers();
     const entered = createDeferred();
     const delays = [60, 50, 40, 10, 10, 10];

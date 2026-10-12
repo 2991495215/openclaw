@@ -3,6 +3,7 @@ import { expectDefined } from "@openclaw/normalization-core/expect";
 import { describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import { setConfigResolutionFacts } from "../config/resolution-facts.js";
+import { prepareBundledDiscoveryMode } from "../plugins/bundled-discovery-state.js";
 import {
   collectAttackSurfaceSummaryFindings,
   collectSmallModelRiskFindings,
@@ -93,7 +94,8 @@ describe("collectSmallModelRiskFindings", () => {
       detailIncludes: ["web=[off]", "No web/browser tools detected"],
       detailExcludes: ["web=[browser]"],
     },
-  ])("$name", ({ cfg, env, expectedSeverity, detailIncludes, detailExcludes }) => {
+  ])("$name", async ({ cfg, env, expectedSeverity, detailIncludes, detailExcludes }) => {
+    await prepareBundledDiscoveryMode(env);
     const finding = expectDefined(
       collectSmallModelRiskFindings({
         cfg,

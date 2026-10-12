@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPluginMetadataSnapshot } from "../config/plugin-auto-enable.test-helpers.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { noteCommittedSharedAuthStoreOwnership } from "./auth-profiles/path-resolve.js";
 import { resolveLegacyInheritedAuthDir } from "./legacy-inherited-auth-dir.js";
 import type { ModelCatalogEntry, ModelCatalogSnapshot } from "./model-catalog.types.js";
@@ -110,7 +111,8 @@ const entry = {
 } satisfies ModelCatalogEntry;
 
 describe("loadProviderScopedThinkingCatalog", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await preparePluginMetadataMachineStateAsync({});
     noteCommittedSharedAuthStoreOwnership({ location: "legacy-main" });
     vi.clearAllMocks();
     manifestCatalogMock.mockReturnValue([]);

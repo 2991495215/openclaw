@@ -13,7 +13,6 @@ import { createEmptyRuntimeWebToolsMetadata } from "./runtime-fast-path.js";
 import { activateSecretsRuntimeSnapshotState } from "./runtime-state.js";
 import { activateSecretsRuntimeSnapshot, clearSecretsRuntimeSnapshot } from "./runtime.js";
 import { asConfig, setupSecretsRuntimeSnapshotTestHooks } from "./runtime.test-support.ts";
-import { discoverConfigSecretTargetsByIds } from "./target-registry.js";
 
 const firecrawlPath = "plugins.entries.firecrawl.config.webSearch.apiKey";
 const forcedFallbackConfig = {
@@ -63,8 +62,6 @@ const forcedWebProviderConfig = {
     },
   },
 } as OpenClawConfig;
-
-discoverConfigSecretTargetsByIds(forcedFallbackConfig, new Set([firecrawlPath]));
 
 function activateMinimalSecretsRuntimeSnapshot(params: {
   config: OpenClawConfig;

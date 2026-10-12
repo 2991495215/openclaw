@@ -16,6 +16,7 @@ export const {
   saveAuthProfileStoreAsync,
   saveAuthProfileStoreWithPreparedOwner,
   saveAuthProfileStoreIfPersistenceSnapshotMatches,
+  saveAuthProfileStoreIfPersistenceSnapshotMatchesAsync,
 } = nativePluginBindings.authStore;
 
 /** @deprecated Use saveAuthProfileStoreAsync. Removed at the next Plugin SDK major. */

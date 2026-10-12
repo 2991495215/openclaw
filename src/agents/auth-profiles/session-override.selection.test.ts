@@ -198,6 +198,7 @@ describe("session auth selection prepared facts", () => {
   });
   it("still rotates a legacy source-less automatic pin on a new session", async () => {
     await withAuthState(async (state) => {
+      await resolvePluginMetadataSnapshotAsync({ config: {} });
       configureProfiles();
       const sessionEntry: SessionEntry = {
         sessionId: "s1",
@@ -224,6 +225,7 @@ describe("session auth selection prepared facts", () => {
 it("clears an incompatible global pin only in the selected agent store", async () => {
   const sessionKey = "global";
   await withAuthState(async (state) => {
+    await resolvePluginMetadataSnapshotAsync({ config: {} });
     const storePath = state.statePath("sessions.json");
     const mainScope = { agentId: "main", sessionKey, storePath };
     const opsScope = { agentId: "ops", sessionKey, storePath };

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import { createConfigRuntimeEnv } from "../config/env-vars.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import * as authProfileStoreRuntime from "./auth-profiles/store-runtime.js";
@@ -74,6 +75,8 @@ function provider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
   };
 }
 async function generate(params: Partial<Parameters<typeof planModelsJsonForTest>[0]> = {}) {
+  await preparePluginMetadataMachineStateAsync({ env: params.env ?? {} });
+  await preparePluginMetadataMachineStateAsync({});
   const authStore = params.authStore ?? { version: 1, profiles: {} };
   vi.spyOn(authProfileStoreRuntime, "ensureAuthProfileStoreAsync").mockResolvedValue(authStore);
   const plan = await planModelsJsonForTest({

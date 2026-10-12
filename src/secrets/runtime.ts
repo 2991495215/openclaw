@@ -225,12 +225,14 @@ export async function prepareSecretsRuntimeSnapshot(params: {
   const { listSecretAssignmentOwners, resolveAndApplySecretAssignments } =
     await loadRuntimeOwnerAssignmentHelpers();
   let manifestRegistry = params.manifestRegistry ?? params.pluginMetadataSnapshot?.manifestRegistry;
-  if (!manifestRegistry && shouldLoadPluginMetadataForSecrets(sourceConfig)) {
-    const { resolveConfigWidePluginManifestRegistry } = await loadRuntimeManifestHelpers();
-    manifestRegistry = resolveConfigWidePluginManifestRegistry({
-      config: sourceConfig,
-      env: runtimeEnv,
-    });
+  if (
+    !manifestRegistry &&
+    (shouldLoadPluginMetadataForSecrets(sourceConfig) || authStores.length > 0)
+  ) {
+    const { resolveConfigWidePluginMetadataSnapshotAsync } = await loadRuntimeManifestHelpers();
+    manifestRegistry = (
+      await resolveConfigWidePluginMetadataSnapshotAsync({ config: sourceConfig, env: runtimeEnv })
+    ).manifestRegistry;
   }
   const loadablePluginOrigins =
     params.loadablePluginOrigins ??

@@ -6,6 +6,7 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/memory-core-host-engine
 import { listSessionTranscriptCorpusEntriesForAgent } from "openclaw/plugin-sdk/memory-core-host-engine-sessions";
 import { listMemoryArtifactProvenance } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
 import { resetPluginStateStoreForTests } from "openclaw/plugin-sdk/plugin-state-test-runtime";
+import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import { appendSessionTranscriptMessageByIdentity } from "openclaw/plugin-sdk/session-transcript-runtime";
 import {
@@ -18,6 +19,8 @@ import {
   configureMemoryCoreDreamingStateForTests,
   createMemoryCoreTestHarness,
 } from "./test-helpers.js";
+
+useProviderCatalogMetadata(new URL("..", import.meta.url));
 
 describe("memory forget curated writes", () => {
   const { createTempWorkspace } = createMemoryCoreTestHarness();

@@ -21,8 +21,8 @@ import {
   writePersistedAuthProfileStateRaw,
 } from "../agents/auth-profiles/sqlite.js";
 import {
-  loadAuthProfileStoreWithoutExternalProfiles,
-  saveAuthProfileStore,
+  loadAuthProfileStoreWithoutExternalProfilesAsync,
+  saveAuthProfileStoreAsync,
 } from "../agents/auth-profiles/store-runtime.js";
 import { getRuntimeAuthProfileStoreSnapshot } from "../agents/auth-profiles/store.js";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
@@ -353,7 +353,7 @@ describe("secrets apply", () => {
     const ambientMainDir = path.join(ambientStateDir, "agents", "main", "agent");
     const ambientOpsDir = path.join(ambientStateDir, "agents", "ops", "agent");
     vi.stubEnv("OPENCLAW_STATE_DIR", ambientStateDir);
-    saveAuthProfileStore(
+    await saveAuthProfileStoreAsync(
       createAuthProfileStoreFixture({
         "openai:ambient-shared": {
           type: "api_key",
@@ -364,7 +364,7 @@ describe("secrets apply", () => {
       ambientMainDir,
       { filterExternalAuthProfiles: false, syncExternalCli: false },
     );
-    saveAuthProfileStore(
+    await saveAuthProfileStoreAsync(
       createAuthProfileStoreFixture({
         "openai:ambient-ops": {
           type: "api_key",
@@ -595,7 +595,7 @@ describe("secrets apply", () => {
     replaceRuntimeAuthProfileStoreSnapshots([
       {
         agentDir: fixture.agentDir,
-        store: loadAuthProfileStoreWithoutExternalProfiles(fixture.agentDir),
+        store: await loadAuthProfileStoreWithoutExternalProfilesAsync(fixture.agentDir),
       },
     ]);
     const publicationFailure = failNextRuntimeAuthSnapshotPublication();
@@ -716,7 +716,7 @@ describe("secrets apply", () => {
         },
         order: { openai: ["openai:default"] },
       };
-      saveAuthProfileStore(initialStore, firstAgentDir, { syncExternalCli: false });
+      await saveAuthProfileStoreAsync(initialStore, firstAgentDir, { syncExternalCli: false });
       replaceRuntimeAuthProfileStoreSnapshots([{ agentDir: firstAgentDir, store: initialStore }]);
       const secondDatabase = openOpenClawAgentDatabase({
         agentId: "second",
