@@ -315,6 +315,7 @@ describe("sessions_spawn model fallback through the Gateway", () => {
           provider = await startProvider(scenario);
           const token = randomUUID();
           setTestEnvValue("OPENCLAW_GATEWAY_TOKEN", token);
+          setTestEnvValue("OPENCLAW_REDMAIN_WRITER_REBOUND_TRACE", "1");
           const primary = scenario.configuredAlias
             ? "proof-primary/fast"
             : scenario.configuredProfile

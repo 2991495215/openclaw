@@ -150,6 +150,7 @@ describe("session notification store ownership through the Gateway", () => {
           provider = await startProvider();
           const token = randomUUID();
           setTestEnvValue("OPENCLAW_GATEWAY_TOKEN", token);
+          setTestEnvValue("OPENCLAW_REDMAIN_WRITER_REBOUND_TRACE", "1");
           const oldStore = path.join(home.tempHome, "old-store", "sessions.json");
           const newStore = path.join(home.tempHome, "new-store", "sessions.json");
           const cfg: OpenClawConfig = {
@@ -231,7 +232,8 @@ describe("session notification store ownership through the Gateway", () => {
           if (!child) {
             throw new Error("Parent did not receive sessions_spawn receipt");
           }
-          expect((await wait(child.runId)).status).toBe("ok");
+          const childResult = await wait(child.runId);
+          expect(childResult.status, JSON.stringify(childResult)).toBe("ok");
           const before = await gateway.client.request<SessionsListResult>("sessions.list", {
             agentId: "main",
             limit: 100,
