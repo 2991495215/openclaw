@@ -166,7 +166,7 @@ jobs:
   main-dependencies:
     name: Main dependency attribution
     needs: [render]
-    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.verify_sdk_static && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot }}
+    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -615,11 +615,9 @@ jobs:
       max-parallel: 4
       matrix:
         include:
-          - group: agents-node
+          - group: codex-compact-tools-node
             runtime: node
-          - group: reply-node
-            runtime: node
-          - group: config-node
+          - group: codex-run-attempt-node
             runtime: node
           - group: gateway-node
             runtime: node
@@ -659,41 +657,32 @@ jobs:
           mkdir -p .artifacts
           node --input-type=module -e 'console.log(JSON.stringify({ candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, runtime: process.env.OPENCLAW_VITEST_RUNTIME }, null, 2))' > .artifacts/fixture-provenance.json
           case "$PROOF_GROUP" in
-            agents-node)
+            codex-compact-tools-node)
               files=(
-                src/agents/embedded-agent-runner.run-embedded-agent.finalization-scope.test.ts
-                src/agents/session-tool-result-guard.transcript-events.test.ts
-                src/agents/tools/media-generate-background-retention.test.ts
-                src/agents/tools/message-tool.internal-source-reply.integration.test.ts
-                src/cli/config-model-validation.runtime.test.ts
+                extensions/codex/src/app-server/compact.test.ts
+                extensions/codex/src/app-server/compact.cancellation.test.ts
+                extensions/codex/src/app-server/compact.client-ownership.test.ts
+                extensions/codex/src/app-server/dynamic-tool-build.test.ts
+                extensions/codex/src/app-server/dynamic-tool-build.sandbox.test.ts
+                extensions/codex/src/app-server/dynamic-tool-build.web-search.test.ts
+                extensions/codex/src/app-server/dynamic-tool-skills.test.ts
               )
               ;;
-            reply-node)
+            codex-run-attempt-node)
               files=(
-                src/auto-reply/reply/agent-runner.stalled-turn.test.ts
-                src/auto-reply/reply/queue.pending-inputs.test.ts
-                src/auto-reply/reply/reply-run-registry.preparation.test.ts
-                src/auto-reply/reply/reply-tool-authority.worker.test.ts
-                src/claws/lifecycle-remove-approvals.test.ts
-              )
-              ;;
-            config-node)
-              files=(
-                src/config/sessions/session-accessor.candidate-runtime.test.ts
-                src/config/sessions/session-accessor.pending-inputs.test.ts
-                src/config/sessions/session-accessor.sqlite-history-input-visibility.test.ts
-                src/config/sessions/session-accessor.sqlite-owner.test.ts
-                src/config/sessions/session-accessor.sqlite-replacement-receipts.test.ts
-                src/config/sessions/targets-read-availability.test.ts
+                extensions/codex/src/app-server/run-attempt.test.ts
+                extensions/codex/src/app-server/run-attempt.protocol-validation.test.ts
+                extensions/codex/src/app-server/run-attempt.native-config.test.ts
+                extensions/codex/src/app-server/side-question.test.ts
               )
               ;;
             gateway-node)
               files=(
-                src/gateway/server-broadcast.board.test.ts
-                src/gateway/server-methods/chat-reply-media.authority.test.ts
-                src/gateway/server-methods/sessions-rewind.test.ts
-                src/gateway/session-utils.queued-collector.test.ts
-                src/sessions/user-turn-transcript.test.ts
+                src/gateway/agent-turn/agent-wait-dedupe.test.ts
+                src/gateway/server-methods/cron.runs.test.ts
+                src/gateway/session-list-serialization.test.ts
+                src/gateway/session-sharing-committed-read.test.ts
+                src/gateway/sessions-resolve-projection.test.ts
               )
               ;;
           esac
