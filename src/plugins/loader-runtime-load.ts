@@ -1,6 +1,7 @@
 /** Native composition entry for ordinary, restricted, and cold provider-hook loading. */
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { createExternalAuthRuntime } from "../agents/auth-profiles/external-auth.js";
+import { withLegacyExternalAuthPreparation } from "../agents/auth-profiles/external-auth.native.js";
 import { createAuthProfileStoreRuntime } from "../agents/auth-profiles/store.js";
 import { resolveModelRuntimePolicy } from "../agents/model-runtime-policy.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection-config.js";
@@ -46,10 +47,20 @@ const providerRegistry = Object.freeze(
 );
 const providerHooks = Object.freeze(createProviderHookRuntime(providerRegistry));
 const externalProfiles = Object.freeze(createProviderExternalAuthResolver(providerHooks));
+const legacyExternalProfiles = createProviderExternalAuthResolver({
+  resolveProviderPluginsForHooks: (params) =>
+    providerRegistry.resolveLegacyPluginProvidersCore(
+      { ...params, activate: false, skipIfLoadInFlight: true },
+      loadOpenClawPlugins,
+    ),
+  resolveProviderPluginsForHooksAsync: providerHooks.resolveProviderPluginsForHooksAsync,
+});
 const externalAuth = Object.freeze(
-  createExternalAuthRuntime(
-    externalProfiles.resolveExternalAuthProfilesWithPlugins,
-    externalProfiles.prepareExternalAuthProfilesWithPlugins,
+  withLegacyExternalAuthPreparation(
+    createExternalAuthRuntime(
+      legacyExternalProfiles.resolveExternalAuthProfilesWithPlugins,
+      externalProfiles.prepareExternalAuthProfilesWithPlugins,
+    ),
   ),
 );
 const authStore = Object.freeze(createAuthProfileStoreRuntime(externalAuth));

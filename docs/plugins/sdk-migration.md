@@ -175,10 +175,11 @@ another metadata lookup.
 Direct policy readers use `getModelProviderRequestRouteFacts` from the same seam
 and pass its `providerMetadataOwners` to their policy/header inputs (or as the
 second argument to `resolveProviderEndpoint`). The policy functions and the
-local-only `provider-model-shared` endpoint helper consume prepared metadata;
-they do not perform cold native discovery. These local seams are not public
-third-party SDK contracts. Metadata preparation does not grant credential or
-execution authority.
+local-only `provider-model-shared` endpoint helper also retain cold native
+discovery through deprecated compatibility adapters. They emit a bounded warning;
+bundled callers should prepare metadata asynchronously. These local seams are not
+public third-party SDK contracts. Metadata preparation does not grant credential
+or execution authority.
 
 Google's plugin-local `api.ts` and `runtime-api.ts` expose
 `resolveGoogleGenerativeAiHttpRequestConfigAsync` for callers that need cold
@@ -188,6 +189,21 @@ prepared metadata, emits a bounded deprecation warning, and remains available
 until the next Plugin SDK major. Bundled callers use the async replacement.
 The local-only `provider-http` seam exposes `warnPluginSdkDeprecation` so these
 plugin-local compatibility exports share the existing warning budget.
+
+### Realtime voice provider discovery
+
+Use `getRealtimeVoiceProviderAsync`, `listRealtimeVoiceProvidersAsync`,
+`canonicalizeRealtimeVoiceProviderIdAsync`, and
+`resolveConfiguredRealtimeVoiceProviderAsync` from
+`openclaw/plugin-sdk/realtime-voice`. They prepare metadata and load provider
+registrations asynchronously. Returned provider callbacks remain owned by the
+calling SDK resource host until it closes.
+
+The synchronous counterparts emit a bounded deprecation warning and retain
+their cold native discovery behavior through the current Plugin SDK major.
+They will be removed in the next major. Prepared Gateway consumers use the
+internal registry directly; the native compatibility path belongs only to the
+deprecated SDK exports.
 
 ### Speech provider discovery
 

@@ -1,4 +1,4 @@
-import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/test-helpers/provider-catalog";
+import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/plugin-test-runtime";
 // Google tests cover api plugin behavior.
 import { describe, expect, it } from "vitest";
 import {

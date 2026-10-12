@@ -99,4 +99,4 @@ export {
   resolveProviderEndpoint,
   resolveProviderRequestCapabilities,
   resolveProviderRequestPolicy,
-} from "../agents/provider-attribution.js";
+} from "../agents/provider-attribution-sdk.js";

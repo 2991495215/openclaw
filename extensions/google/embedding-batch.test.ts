@@ -1,6 +1,6 @@
 import * as embeddingSdk from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
+import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { withServer } from "openclaw/plugin-sdk/test-env";
-import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/test-helpers/provider-catalog";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runGeminiEmbeddingBatches } from "./embedding-batch.js";
 import type { GeminiEmbeddingClient } from "./embedding-provider.js";

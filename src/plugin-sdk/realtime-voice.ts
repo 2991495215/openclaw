@@ -133,9 +133,14 @@ export {
   canonicalizeRealtimeVoiceProviderId,
   getRealtimeVoiceProvider,
   listRealtimeVoiceProviders,
+  resolveConfiguredRealtimeVoiceProvider,
+} from "../talk/provider-registry-sdk.js";
+export {
+  canonicalizeRealtimeVoiceProviderIdAsync,
+  getRealtimeVoiceProviderAsync,
+  listRealtimeVoiceProvidersAsync,
 } from "../talk/provider-registry.js";
 export {
-  resolveConfiguredRealtimeVoiceProvider,
   resolveConfiguredRealtimeVoiceProviderAsync,
   type ResolvedRealtimeVoiceProvider,
 } from "../talk/provider-resolver.js";

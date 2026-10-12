@@ -649,6 +649,19 @@ export function createProviderRegistryResolver(dependencies: {
     return projectProviders(resolved, onSelectedRegistry);
   }
 
+  /** Only the native compatibility owner supplies a synchronous loader. */
+  function resolveLegacyPluginProvidersCore(
+    params: ProviderRegistryParams,
+    load: (options: PluginLoadOptions) => PluginRegistry,
+  ): ProviderPlugin[] {
+    const plan = preparePluginProviderRegistry(params);
+    if (!plan) {
+      return [];
+    }
+    const resolved = plan.kind === "load" ? plan.select(load(plan.options)) : plan.selection;
+    return projectProviders(resolved);
+  }
+
   function projectProviders(
     resolved: ProviderRegistrySelection,
     onSelectedRegistry?: Parameters<typeof resolvePluginProvidersCore>[1],
@@ -675,6 +688,7 @@ export function createProviderRegistryResolver(dependencies: {
     resolvePluginProviderRegistryCore,
     resolvePluginProviderRegistryCoreAsync,
     resolvePluginProvidersCore,
+    resolveLegacyPluginProvidersCore,
     resolvePluginProvidersCoreAsync,
   };
 }

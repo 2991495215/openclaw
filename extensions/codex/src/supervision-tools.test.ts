@@ -3,13 +3,13 @@ import {
   clearRuntimeAuthProfileStoreSnapshots,
   replaceRuntimeAuthProfileStoreSnapshots,
 } from "openclaw/plugin-sdk/agent-runtime";
+import { preparePluginTestRuntimeMetadata } from "openclaw/plugin-sdk/plugin-test-runtime";
 import {
   ensureAuthProfileStore,
   ensureAuthProfileStoreAsync,
   resolveAuthProfileOrder,
 } from "openclaw/plugin-sdk/provider-auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolvePluginMetadataSnapshotAsync } from "../../../src/plugins/plugin-metadata-snapshot.js";
 import { createCodexAuthProfileSelection } from "./app-server/auth-profile-selection.js";
 import { resolveCodexSupervisionAppServerRuntimeOptions } from "./app-server/config-runtime.js";
 import { createCodexSupervisionTools } from "./supervision-tools.js";
@@ -96,7 +96,7 @@ function createTools(
 
 describe("Codex supervision compatibility tools", () => {
   beforeEach(async () => {
-    await resolvePluginMetadataSnapshotAsync({ config: {} });
+    await preparePluginTestRuntimeMetadata();
     requestCodexAppServerJsonMock.mockReset();
   });
 

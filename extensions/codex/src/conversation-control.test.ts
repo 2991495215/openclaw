@@ -1,5 +1,6 @@
 import path from "node:path";
 import { MODEL_SELECTION_LOCKED_MESSAGE } from "openclaw/plugin-sdk/model-session-runtime";
+import { preparePluginTestRuntimeMetadata } from "openclaw/plugin-sdk/plugin-test-runtime";
 import {
   getSessionEntry,
   resolveStorePath,
@@ -15,7 +16,6 @@ import {
   withIncognitoSessionBinding,
 } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { preparePluginMetadataMachineStateAsync } from "../../../src/plugins/installed-plugin-index-record-state.js";
 import {
   buildCodexSupervisionTestConnectionFingerprint,
   readCodexAppServerBinding,
@@ -109,7 +109,7 @@ describe("codex conversation controls", () => {
     resetCodexTestBindingStore();
     tempDir = sessionDirs.make();
     vi.stubEnv("OPENCLAW_STATE_DIR", tempDir);
-    await preparePluginMetadataMachineStateAsync({});
+    await preparePluginTestRuntimeMetadata();
     sharedClientMocks.getSharedCodexAppServerClient.mockReset();
     sharedClientMocks.releaseLeasedSharedCodexAppServerClient.mockReset();
   });

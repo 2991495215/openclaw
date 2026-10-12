@@ -370,6 +370,32 @@ describe("resolvePluginProviders", () => {
     ]);
   });
 
+  it("keeps cold synchronous loading confined to the native compatibility operation", async () => {
+    const { createProviderRegistryResolver } = await import("./providers.runtime-core.js");
+    const resolver = createProviderRegistryResolver({
+      loadOpenClawPluginsAsync: runtimeLoader,
+      isPluginRegistryLoadInFlight: isPluginRegistryLoadInFlightMock,
+    });
+    const provider = { id: "google", label: "Google", auth: [] };
+    const nativeLoader = vi.fn(() => providerRegistry(provider));
+    const params = {
+      config: {},
+      onlyPluginIds: ["google"],
+      pluginMetadataSnapshot: {
+        manifestRegistry: manifestLoader(),
+        index: createProviderRegistrySnapshotFixture(),
+      },
+    };
+    expect(() => resolver.resolvePluginProvidersCore(params)).toThrow(
+      "Provider plugins are not loaded",
+    );
+    expect(resolver.resolveLegacyPluginProvidersCore(params, nativeLoader)).toEqual([
+      { ...provider, pluginId: "google" },
+    ]);
+    expect(nativeLoader).toHaveBeenCalledOnce();
+    expect(runtimeLoader).not.toHaveBeenCalled();
+  });
+
   it("resolves external auth hook plugin ids from manifest contracts without runtime loading", () => {
     setManifestPlugins([
       manifest("external-auth-owner", {

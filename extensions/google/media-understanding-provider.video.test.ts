@@ -1,8 +1,10 @@
 // Google tests cover media understanding provider.video plugin behavior.
 import { createServer, type Server } from "node:http";
-import { createCapturedPluginRegistration } from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
+  createCapturedPluginRegistration,
+  useProviderCatalogMetadata,
+} from "openclaw/plugin-sdk/plugin-test-runtime";
 import { withFetchPreconnect } from "openclaw/plugin-sdk/test-env";
-import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/test-helpers/provider-catalog";
 import {
   createRequestCaptureJsonFetch,
   installPinnedHostnameTestHooks,

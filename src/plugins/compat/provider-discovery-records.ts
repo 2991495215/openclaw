@@ -12,6 +12,21 @@ const DISCOVERY_MIGRATION = {
 export const PROVIDER_DISCOVERY_COMPAT_RECORDS = [
   {
     ...DISCOVERY_MIGRATION,
+    code: "provider-http-sync-policy",
+    replacement:
+      "Await prepareModelProviderRequestRouteFacts and pass its providerMetadataOwners to endpoint and request policy helpers. Synchronous SDK helpers retain cold native metadata discovery until the next Plugin SDK major.",
+    docsPath: "/plugins/sdk-migration#bundled-provider-request-policy",
+    surfaces: [
+      "openclaw/plugin-sdk/provider-http resolveProviderEndpoint",
+      "openclaw/plugin-sdk/provider-http resolveProviderRequestPolicy",
+      "openclaw/plugin-sdk/provider-http resolveProviderRequestCapabilities",
+      "openclaw/plugin-sdk/provider-model-shared resolveProviderEndpoint",
+    ],
+    diagnostics: ["Bounded DEP_PLUGIN_SDK warning for synchronous provider HTTP policy"],
+    tests: ["src/plugin-sdk/provider-http-compat.test.ts"],
+  },
+  {
+    ...DISCOVERY_MIGRATION,
     code: "provider-catalog-sync-discovery",
     replacement:
       "Await resolvePluginProvidersAsync. The synchronous resolvePluginProviders export remains available for an already prepared and loaded provider registry; it does not perform cold native discovery.",
@@ -19,6 +34,21 @@ export const PROVIDER_DISCOVERY_COMPAT_RECORDS = [
     surfaces: ["openclaw/plugin-sdk/provider-catalog-runtime resolvePluginProviders"],
     diagnostics: ["Bounded DEP_PLUGIN_SDK warning for synchronous provider selection"],
     tests: ["src/plugin-sdk/provider-catalog-runtime.test.ts"],
+  },
+  {
+    ...DISCOVERY_MIGRATION,
+    code: "realtime-voice-registry-sync",
+    replacement:
+      "Await getRealtimeVoiceProviderAsync, listRealtimeVoiceProvidersAsync, canonicalizeRealtimeVoiceProviderIdAsync, or resolveConfiguredRealtimeVoiceProviderAsync. Synchronous SDK counterparts retain cold native discovery until the next Plugin SDK major.",
+    docsPath: "/plugins/sdk-migration#realtime-voice-provider-discovery",
+    surfaces: [
+      "openclaw/plugin-sdk/realtime-voice getRealtimeVoiceProvider",
+      "openclaw/plugin-sdk/realtime-voice listRealtimeVoiceProviders",
+      "openclaw/plugin-sdk/realtime-voice canonicalizeRealtimeVoiceProviderId",
+      "openclaw/plugin-sdk/realtime-voice resolveConfiguredRealtimeVoiceProvider",
+    ],
+    diagnostics: ["Bounded DEP_PLUGIN_SDK warning for synchronous realtime voice discovery"],
+    tests: ["src/talk/provider-registry-sdk.test.ts"],
   },
   {
     ...DISCOVERY_MIGRATION,

@@ -1,4 +1,4 @@
-import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/test-helpers/provider-catalog";
+import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/plugin-test-runtime";
 // Google tests cover GenAI SDK runtime wiring.
 import { afterEach, describe, expect, it, vi } from "vitest";
 

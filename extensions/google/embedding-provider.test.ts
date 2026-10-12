@@ -1,6 +1,6 @@
 // Google tests cover embedding provider plugin behavior.
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
-import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/test-helpers/provider-catalog";
+import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { withTimeout } from "openclaw/plugin-sdk/time-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
