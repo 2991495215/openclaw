@@ -31,13 +31,11 @@ vi.mock("../version.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../version.js")>()),
   VERSION: "1.0.0",
 }));
-vi.mock("../state/config-machine-state.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../state/config-machine-state.js")>()),
-  readConfigMachineState: vi.fn(() => null),
+vi.mock("../state/config-machine-state-async.js", () => ({
+  readConfigMachineStateAsync: vi.fn(async () => null),
 }));
-vi.mock("../state/config-machine-state-write.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../state/config-machine-state-write.js")>()),
-  writeConfigMachineState: vi.fn(),
+vi.mock("../state/config-machine-state-write-async.js", () => ({
+  writeConfigMachineStateAsync: vi.fn(async () => {}),
 }));
 vi.mock("../model-catalog/remote-config.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../model-catalog/remote-config.js")>()),
