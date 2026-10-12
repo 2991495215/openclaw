@@ -110,6 +110,34 @@ describe("models.authLogout with a concurrent registered config set", () => {
         let logout: Promise<unknown> | undefined;
         try {
           await server.startupSettled;
+          const authLogout = await import("../../commands/models/auth-logout.js");
+          const authRefresh = await import("../model-auth-refresh.js");
+          const traceStartedAt = performance.now();
+          const trace = async <T>(
+            phase: "writer-save" | "remove-credentials" | "refresh-auth-state",
+            operation: () => Promise<T>,
+          ): Promise<T> => {
+            const mark = (edge: "start" | "end") => {
+              console.error(
+                `[auth-removal-phase] ${phase}-${edge} ${Math.round(performance.now() - traceStartedAt)}ms`,
+              );
+            };
+            mark("start");
+            try {
+              return await operation();
+            } finally {
+              mark("end");
+            }
+          };
+          const removeCredentials = authLogout.removeModelAuthCredentials;
+          vi.spyOn(authLogout, "removeModelAuthCredentials").mockImplementation((params) =>
+            trace("remove-credentials", () => removeCredentials(params)),
+          );
+          const refreshAuthState = authRefresh.refreshModelAuthStateAfterMutation;
+          vi.spyOn(authRefresh, "refreshModelAuthStateAfterMutation").mockImplementation(
+            (getRuntimeConfig, agentId) =>
+              trace("refresh-auth-state", () => refreshAuthState(getRuntimeConfig, agentId)),
+          );
           vi.spyOn(defaultRuntime, "exit").mockImplementation((code) => {
             throw new Error(`Registered config command exited with ${code}`);
           });
@@ -120,21 +148,23 @@ describe("models.authLogout with a concurrent registered config set", () => {
             if (!performSave) {
               return;
             }
-            const program = new Command().exitOverride();
-            registerConfigCli(program);
-            await program.parseAsync(
-              [
-                "config",
-                "set",
-                `models.providers.${updatedProvider}.apiKey`,
-                JSON.stringify(replacement),
-                "--strict-json",
-              ],
-              { from: "user" },
-            );
-            const committed = await readConfigFileSnapshot();
-            expect(committed.parsed).toMatchObject({
-              models: { providers: { [updatedProvider]: { apiKey: replacement } } },
+            await trace("writer-save", async () => {
+              const program = new Command().exitOverride();
+              registerConfigCli(program);
+              await program.parseAsync(
+                [
+                  "config",
+                  "set",
+                  `models.providers.${updatedProvider}.apiKey`,
+                  JSON.stringify(replacement),
+                  "--strict-json",
+                ],
+                { from: "user" },
+              );
+              const committed = await readConfigFileSnapshot();
+              expect(committed.parsed).toMatchObject({
+                models: { providers: { [updatedProvider]: { apiKey: replacement } } },
+              });
             });
           });
           await withTimeout(acquired.promise, 10_000, "fixture config lock");
