@@ -260,6 +260,18 @@ it.each(["forced cleanup", "stale admission"])(
 
 it("does not certify a failed checkpoint or native close", () => {
   const owner = openOwner();
+  vi.spyOn(owner.database.walMaintenance, "health", "get").mockReturnValue({
+    state: "error",
+    observedAtMs: Date.now(),
+    walBytes: null,
+    databaseBytes: null,
+    logFrames: null,
+    checkpointedFrames: null,
+    lastCompletedAtMs: null,
+    consecutiveBlocked: 0,
+    warning: true,
+    error: "synthetic checkpoint failed",
+  });
   vi.spyOn(owner.database.walMaintenance, "close").mockReturnValueOnce(false);
   closeOpenClawAgentDatabaseByPath(owner.database.path);
   expect(owner.record()).toBeUndefined();
