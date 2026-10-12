@@ -24,6 +24,7 @@ import {
 } from "../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { acquireTestPortBlock } from "../test-utils/port-claims.js";
+import type { GatewayClientRequestError } from "./client.js";
 import * as configReload from "./config-reload.js";
 import * as agentDatabases from "./server-reload-agent-databases.js";
 import { startGatewayServer } from "./server.js";
@@ -279,6 +280,9 @@ it("publishes agent mutations before acknowledging immediate session and roster 
                         operator.request("agents.delete", deletion),
                         otherOperator.request("agents.delete", deletion),
                       ]);
+                      const heldDeletionLease = new RegExp(
+                        `^OpenClawStateLeaseError: agent deletion core:agent-deletion/${overlapAgentId} is held by [\\da-f-]+ \\(lease epoch \\d+\\): code=OPENCLAW_STATE_LEASE_HELD$`,
+                      );
                       expect(results).toEqual(
                         expect.arrayContaining([
                           {
@@ -287,10 +291,14 @@ it("publishes agent mutations before acknowledging immediate session and roster 
                           },
                           {
                             status: "rejected",
-                            reason: expect.objectContaining({
-                              code: "INVALID_REQUEST",
-                              message: `agent "${overlapAgentId}" not found`,
-                            }),
+                            // The loser may exhaust the lease wait before deletion finishes.
+                            reason: expect.toSatisfy(
+                              (error: GatewayClientRequestError) =>
+                                (error.code === "INVALID_REQUEST" &&
+                                  error.message === `agent "${overlapAgentId}" not found`) ||
+                                (error.code === "UNAVAILABLE" &&
+                                  heldDeletionLease.test(error.message)),
+                            ),
                           },
                         ]),
                       );
