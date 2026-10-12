@@ -330,7 +330,7 @@ describe("Google Chat sender authority through real guarded HTTP", () => {
         const resolving = resolveGoogleChatOutboundSessionRoute({
           cfg,
           agentId: "main",
-          target: "spaces/METADATA_TOKEN_WAIT",
+          target: `spaces/METADATA_${when.toUpperCase()}`,
           assertDirectAdapterHandoff: authority.assert,
         });
         if (when === "during") {
