@@ -72,7 +72,7 @@ test.each(["normal", "incognito", "replacement"])(
   async (mode) => {
     const registeredHarnesses = listRegisteredAgentHarnesses();
     const { storePath } = await createSessionStoreDir();
-    const sessionKey = `agent:main:${mode === "incognito" ? "incognito" : "dashboard"}:closing-reset`;
+    const sessionKey = `agent:main:dashboard:${mode === "incognito" ? "incognito-" : ""}closing-reset`;
     const sessionId = "closing-reset";
     await writeSessionStore({
       entries: {
@@ -143,7 +143,7 @@ test.each([false, true])(
   "sessions.reset rejects caller closure before cleanup (incognito: %s)",
   async (incognito) => {
     const { storePath } = await createSessionStoreDir();
-    const sessionKey = `agent:main:${incognito ? "incognito" : "dashboard"}:early-reset`;
+    const sessionKey = `agent:main:dashboard:${incognito ? "incognito-" : ""}early-reset`;
     await writeSessionStore({
       entries: {
         [sessionKey]: sessionStoreEntry("early-reset", {
