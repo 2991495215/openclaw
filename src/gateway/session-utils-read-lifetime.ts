@@ -246,12 +246,14 @@ export async function retainGatewaySessionEntryReadOnly(
     };
   }
   const { canonicalKey } = resolveSessionStoreIdentity({ cfg, sessionKey, agentId });
-  if (isIncognitoSessionKey(canonicalKey)) {
+  const incognitoBinding = captureIncognitoSessionSource();
+  if (incognitoBinding || isIncognitoSessionKey(canonicalKey)) {
     return retainNativeIncognitoSessionEntryReadOnly(
       canonicalKey,
       agentId,
       allowMetadataChanges,
       cfg,
+      incognitoBinding,
     );
   }
   const assertRoutingCurrent = captureSessionMutationRouting(cfg, undefined, [
@@ -340,8 +342,9 @@ function retainNativeIncognitoSessionEntryReadOnly(
   agentId: string,
   allowMetadataChanges: ((previous: SessionEntry, current: SessionEntry) => boolean) | undefined,
   cfg: OpenClawConfig,
+  incognitoBinding: ReturnType<typeof captureIncognitoSessionSource>,
 ) {
-  const options = { agentId, projection: "list" as const };
+  const options = { agentId, projection: "list" as const, incognitoBinding };
   const selected = loadIncognitoGatewaySessionEntryReadOnly(sessionKey, options, cfg);
   let released = false;
   const sameRoute = () => {

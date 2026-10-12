@@ -14,6 +14,10 @@ import { captureSessionTranscriptTargetBinding } from "../config/sessions/transc
 import { withSessionTranscriptWriteAssertion } from "../config/sessions/transcript-write-context.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import {
+  readSqliteDatabaseScopedWriteTokenForPath,
+  sqliteSessionIdWriteScope,
+} from "../infra/sqlite-database-admission.js";
 import { runExclusiveSessionLifecycleMutation } from "../sessions/session-lifecycle-admission.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
@@ -559,18 +563,28 @@ export async function prepareWorkerPlacementRepositoryManifestRefs(
       : metadata
         ? metadata.readCurrent()
         : target
-          ? readPreparedWorkerPlacementSessionStoreTarget(target, placement).store[
-              target.canonicalKey
-            ]
+          ? target.store[target.canonicalKey]
           : undefined;
   const entry = readEntry();
   if (entry?.sessionId !== placement.sessionId) {
     return () => null;
   }
+  const sourcePath = target?.readSource?.path ?? target?.storePath;
+  const readReceipt = () =>
+    sourcePath && target
+      ? readSqliteDatabaseScopedWriteTokenForPath(sourcePath, [
+          target.canonicalKey,
+          sqliteSessionIdWriteScope(entry.sessionId),
+        ])
+      : undefined;
+  const receipt = readReceipt();
   const prepared = entry.repositoryWorkspaceId
     ? await getSessionRepositoryWorkspaceStore().prepare(entry.repositoryWorkspaceId)
     : undefined;
   return () => {
+    if (target && (!receipt || readReceipt() !== receipt)) {
+      return null;
+    }
     const current = readEntry();
     if (
       current?.sessionId !== placement.sessionId ||

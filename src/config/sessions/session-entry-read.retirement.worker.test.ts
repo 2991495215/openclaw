@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import { sessionChanges } from "../../sessions/session-row-changes.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { isActiveStoreWriter } from "../../shared/store-writer-queue.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
@@ -19,6 +20,13 @@ it.each(["refusal", "eviction"] as const)(
       const sessionKey = "agent:main:ordered-retirement";
       const entry = { sessionId: "ordered-retirement-session", updatedAt: 1 };
       writeSessionEntry(database, sessionKey, entry);
+      // This fixture exercises worker retirement, so discard the write's resident receipt.
+      sessionChanges.emit({
+        sessionKey,
+        agentId: database.agentId,
+        storePath: database.path,
+        factsInvalidated: true,
+      });
       const cleanupEntered = createDeferredCore();
       const releaseCleanup = createDeferredCore();
       const writerSettled = createDeferredCore();

@@ -452,6 +452,12 @@ describe("worker placement session maintenance ownership", () => {
         placement.workspaceBaseManifestRef = `sha256:${"b".repeat(64)}`;
         const currentManifestRefs = await additionalManifestRefs(currentPlacement);
         expect(currentManifestRefs()).toEqual([originalManifest]);
+        await patchSessionEntryCore(
+          { ...placement, storePath },
+          (current) => ({ ...current, lifecycleRevision: "repository-retention-reset" }),
+          { skipMaintenance: true },
+        );
+        expect(currentManifestRefs()).toBeNull();
       } finally {
         prepared?.release();
         createRetention.mockRestore();

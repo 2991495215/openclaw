@@ -326,7 +326,11 @@ it.each([
       } else {
         expect(client.connectionSignal.aborted).toBe(true);
       }
-      expect(lookup).toHaveBeenCalledOnce();
+      if (native && revoke) {
+        expect(lookup).not.toHaveBeenCalled();
+      } else {
+        expect(lookup).toHaveBeenCalledOnce();
+      }
       if (revoke) {
         expect(response).toMatchObject({ ok: false, error: { message: "approval not found" } });
         expect(getOperatorApproval({ id: record.id, databaseOptions })).toEqual(before);

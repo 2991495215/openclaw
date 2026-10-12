@@ -53,6 +53,20 @@ export async function loadVisibleApproval(params: {
     params.execApprovalManager.getLiveSnapshot(params.id) ??
     params.pluginApprovalManager.getLiveSnapshot(params.id) ??
     params.systemAgentApprovalManager?.getLiveSnapshot(params.id);
+  let bindingId = params.id;
+  let admittedRecord = liveRecord?.resolvedAtMs === undefined ? liveRecord : undefined;
+  let admittedManager = admittedRecord
+    ? [
+        params.execApprovalManager,
+        params.pluginApprovalManager,
+        params.systemAgentApprovalManager,
+      ].find((manager) => manager?.getLocalSnapshot(params.id) === admittedRecord)
+    : undefined;
+  let sourceSessionKey = admittedRecord?.request.sessionKey;
+  let sourceAgentId = admittedRecord?.request.agentId;
+  if (admittedRecord) {
+    params.authority.bindSource(admittedRecord.request);
+  }
   let sessionAccess = await prepareApprovalSessionAccess({
     client: params.client,
     getCfg: params.getCfg,
@@ -86,20 +100,6 @@ export async function loadVisibleApproval(params: {
     )
   ) {
     return null;
-  }
-  let bindingId = params.id;
-  let admittedRecord = liveRecord?.resolvedAtMs === undefined ? liveRecord : undefined;
-  let admittedManager = admittedRecord
-    ? [
-        params.execApprovalManager,
-        params.pluginApprovalManager,
-        params.systemAgentApprovalManager,
-      ].find((manager) => manager?.getLocalSnapshot(params.id) === admittedRecord)
-    : undefined;
-  let sourceSessionKey = admittedRecord?.request.sessionKey;
-  let sourceAgentId = admittedRecord?.request.agentId;
-  if (admittedRecord) {
-    params.authority.bindSource(admittedRecord.request);
   }
   const assertBindingCurrent = () => {
     if (
