@@ -15,7 +15,6 @@ import {
   operatorSessionCap,
   resolveGatewayOperatorRoleActor,
 } from "./operator-role-policy.js";
-import { gatewayClientSessionCreator } from "./server-methods/gateway-client-identity.js";
 import type { SessionMutationAuthorization } from "./server-methods/types.js";
 import { isSessionCreatorProfile } from "./session-creator.js";
 import { isRequiredSessionTargetMethod, mayCreateSessionTarget } from "./session-method-policy.js";
@@ -64,8 +63,7 @@ import {
 import {
   readSessionSharingStringParam,
   resolveSessionMutationGuardTarget,
-  resolveDirectIncognitoTargets,
-  resolveDirectSessionTargets,
+  resolveProtectedSessionTargets,
   resolveSessionMutationTargets,
   resolveTalkSessionTargetInput,
   type SessionMutationTarget,
@@ -250,18 +248,14 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
   const talkTargets = talkSessionTarget
     ? [{ sessionKey: talkSessionTarget.canonicalKey, agentId: talkSessionTarget.agentId }]
     : undefined;
-  const directTargets =
-    talkTargets ?? resolveDirectSessionTargets(params.method, params.requestParams);
-  const hidesForeignSessions =
-    !adminBypass &&
-    directTargets.length > 0 &&
-    gatewayClientSessionCreator(params.client) &&
-    sessionCap(getPolicyConfig()) === "none";
-  // Incognito and role-hidden direct reads share the same non-disclosing access boundary.
-  const protectedTargets = hidesForeignSessions
-    ? directTargets
-    : (talkTargets?.filter((target) => isIncognitoSessionKey(target.sessionKey)) ??
-      resolveDirectIncognitoTargets(params.method, params.requestParams));
+  const { hidesForeignSessions, protectedTargets } = resolveProtectedSessionTargets({
+    client: params.client,
+    method: params.method,
+    requestParams: params.requestParams,
+    adminBypass,
+    talkTargets,
+    sessionCap: () => sessionCap(getPolicyConfig()),
+  });
   for (const targetRef of protectedTargets) {
     const resolved = resolveAuthorizedTarget(targetRef, protectedTargets.length);
     if ("error" in resolved) {

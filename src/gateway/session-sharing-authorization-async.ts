@@ -14,9 +14,14 @@ import {
   SessionMutationFactsUnavailableError,
   type SessionFactsRead,
 } from "./session-sharing-preparation.js";
-import { prepareSessionSharingProfiles } from "./session-sharing-read.js";
+import {
+  prepareProjectedSessionSharing,
+  prepareSessionSharingProfiles,
+} from "./session-sharing-read.js";
 import {
   resolveChatSendAuthorizationParams,
+  resolveDirectSessionTargets,
+  resolveProtectedSessionTargets,
   resolveSessionMutationTargets,
   resolveTalkSessionTargetInput,
 } from "./session-sharing-target-input.js";
@@ -86,12 +91,31 @@ export async function resolveSessionMutationAuthorizationAsync(
     reads.clear();
   };
   try {
+    const policyConfig = params.context.getCommittedRuntimeConfig?.() ?? cfg;
     const preparedProfiles =
-      params.method === "chat.send"
+      mutationTargets.length > 0 ||
+      (policyConfig.gateway?.roles &&
+        resolveDirectSessionTargets(params.method, params.requestParams).length > 0)
         ? await prepareSessionSharingProfiles(params.client)
         : undefined;
     params.assertInvocationCurrent?.();
-    for (const target of mutationTargets) {
+    const { protectedTargets } = resolveProtectedSessionTargets({
+      client: params.client,
+      method: params.method,
+      requestParams: params.requestParams,
+      adminBypass: preparation.adminBypass,
+      talkTargets: preparedTalkSessionTarget ? mutationTargets : undefined,
+      sessionCap: () =>
+        preparedProfiles
+          ? prepareProjectedSessionSharing({
+              cfg: policyConfig,
+              client: params.client,
+              profiles: preparedProfiles,
+              isMember: () => false,
+            }).sessionCap
+          : undefined,
+    });
+    for (const target of [...mutationTargets, ...protectedTargets]) {
       const agent = resolveRequestedSessionAgentId(cfg, target.sessionKey, target.agentId);
       if (!agent.ok) {
         release();

@@ -406,7 +406,8 @@ describe("worker placement session maintenance ownership", () => {
   it("retains a configured-store repository base after its placement manifest advances", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       const storePath = state.path("custom-sessions", "openclaw-agent.sqlite");
-      await state.writeConfig({ session: { store: storePath } });
+      const cfg = { session: { store: storePath } };
+      await state.writeConfig(cfg);
       const placement = {
         ...createPlacementFixture("agent:main:dashboard:repository-retention"),
         workspaceBaseManifestRef: `sha256:${"a".repeat(64)}`,
@@ -440,6 +441,7 @@ describe("worker placement session maintenance ownership", () => {
         | Awaited<ReturnType<WorkerSessionPlacementStore["prepareRuntimeRefresh"]>>
         | undefined;
       try {
+        vi.mocked(getRuntimeConfig).mockReturnValue(cfg);
         createMaintenanceRuntime({ placements: [placement] });
         const options = createRetention.mock.calls.at(-1)?.[0];
         const additionalManifestRefs = options?.additionalManifestRefs;
@@ -461,6 +463,7 @@ describe("worker placement session maintenance ownership", () => {
       } finally {
         prepared?.release();
         createRetention.mockRestore();
+        vi.mocked(getRuntimeConfig).mockReturnValue({});
       }
     });
   });
