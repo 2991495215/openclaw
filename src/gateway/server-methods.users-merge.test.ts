@@ -19,14 +19,16 @@ import {
 } from "../state/user-model-accounts.js";
 import { getUserPreferences, setUserPreferences } from "../state/user-preferences.test-support.js";
 import { getUserProfileListItem } from "../state/user-profile-list-item.test-support.js";
-import { prepareUserProfileIdentity } from "../state/user-profile-list.js";
+import {
+  prepareUserProfileIdentity,
+  readResidentUserProfileId,
+} from "../state/user-profile-list.js";
 import { setDisplayName, setUserProfileRole } from "../state/user-profile-writes.worker.js";
 import { userProfilesDb } from "../state/user-profiles-internal.js";
 import {
   ensureGatewayOwnerProfile,
   ensureProfileForEmail,
   ensureProfileForTailscaleIdentity,
-  resolveUserProfileId,
 } from "../state/user-profiles.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createExpectedProfileBinding } from "./expected-profile.js";
@@ -176,7 +178,7 @@ it("merges an email-less person through admin RPC without main-thread SQL and re
         queries.mockRestore();
       }
       expect(storedRedirect(source.id)).toBe(target.id);
-      expect(resolveUserProfileId(source.id)).toBe(target.id);
+      expect(readResidentUserProfileId(source.id)).toBe(target.id);
       expect(ensureProfileForTailscaleIdentity(providerIdentity).id).toBe(target.id);
       expect(resolveUserChannelIdentity(identity)?.profileId).toBe(target.id);
       expect(getUserPreferences(target.id)).toEqual({ shared: "target", sourceOnly: true });

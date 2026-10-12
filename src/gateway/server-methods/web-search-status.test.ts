@@ -30,6 +30,7 @@ vi.mock("../../web-search/runtime.js", () => ({
   listConfiguredWebSearchProviders: mocks.available,
   resolveWebSearchProviderId: mocks.selection,
 }));
+// mock-isolation: Provider status uses fixed metadata without loading the discovery registry.
 vi.mock("../../config/io.plugin-metadata.js", () => ({
   resolveConfigWidePluginMetadataSnapshotAsync: mocks.metadata,
 }));

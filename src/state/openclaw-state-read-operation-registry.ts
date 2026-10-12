@@ -71,12 +71,16 @@ export const stateReadRegistry = createWorkerOperationRegistry<Operations, Datab
     import("../config/io.health-state.kernel.js").then((m) => m.configHealthReadOperations),
   plugins: async () => {
     const [migrations, metadata] = await Promise.all([
-      import("../infra/deferred-plugin-migrations.js"),
-      import("../plugins/plugin-metadata-state.read.worker.js"),
+      import("../infra/deferred-plugin-migrations.js").then(
+        (m) => m.deferredPluginMigrationReadOperations,
+      ),
+      import("../plugins/plugin-metadata-state.read.worker.js").then(
+        (m) => m.pluginMetadataReadOperations,
+      ),
     ]);
     return {
-      ...migrations.deferredPluginMigrationReadOperations,
-      ...metadata.pluginMetadataReadOperations,
+      ...migrations,
+      ...metadata,
     };
   },
   generatedHtmlProvenance: () =>

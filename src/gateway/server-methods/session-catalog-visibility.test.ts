@@ -21,7 +21,7 @@ type TestClient = {
 
 const hoisted = vi.hoisted(() => ({
   activeRegistry: {} as TestPluginRegistry,
-  getUserProfileRole: vi.fn((): string | null => null),
+  profileRole: vi.fn((): string | null => null),
   hasMultipleSessionSharingIdentities: vi.fn(() => false),
   resolveSessionSharingRole: vi.fn<
     typeof import("../session-sharing-policy.js").resolveSessionSharingRole
@@ -37,7 +37,6 @@ vi.mock("../../plugins/runtime.js", async (importOriginal) => ({
 }));
 vi.mock("../../state/user-profiles.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../state/user-profiles.js")>()),
-  getUserProfileRole: hoisted.getUserProfileRole,
   hasMultipleSessionSharingIdentities: hoisted.hasMultipleSessionSharingIdentities,
 }));
 vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
@@ -47,7 +46,7 @@ vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
   readResidentUserProfileId: (id: string) => id,
   readResidentUserProfileIdentity: (id: string) => ({
     profileId: id,
-    role: hoisted.getUserProfileRole(),
+    role: hoisted.profileRole(),
   }),
 }));
 vi.mock("../session-sharing.js", async (importOriginal) => ({
@@ -169,7 +168,7 @@ describe("session catalog caller visibility", () => {
     hoisted.activeRegistry = createEmptyPluginRegistry() as TestPluginRegistry;
     markPluginRegistryActive(hoisted.activeRegistry as PluginRegistry);
     hoisted.hasMultipleSessionSharingIdentities.mockReset().mockReturnValue(false);
-    hoisted.getUserProfileRole.mockReset().mockReturnValue(null);
+    hoisted.profileRole.mockReset().mockReturnValue(null);
     sessionEntries = [];
     hoisted.resolveSessionSharingRole.mockReset().mockReturnValue("viewer");
     hoisted.resolveSessionSharingTarget.mockReset().mockReturnValue(null);

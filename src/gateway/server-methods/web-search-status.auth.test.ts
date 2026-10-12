@@ -45,6 +45,7 @@ vi.mock("../../flows/search-setup.js", () => ({ listSearchProviderOptions: mocks
 vi.mock("../../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProviders: mocks.providers,
 }));
+// mock-isolation: Prepared-auth status uses fixed metadata without loading the discovery registry.
 vi.mock("../../config/io.plugin-metadata.js", () => ({
   resolveConfigWidePluginMetadataSnapshotAsync: async () => ({ byPluginId: new Map() }),
 }));

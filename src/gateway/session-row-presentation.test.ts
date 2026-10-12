@@ -13,7 +13,10 @@ import {
   getAgentRunLifecycleGeneration,
   releaseAgentRunContext,
 } from "../infra/agent-run-registry.js";
-import { readUserProfileIdentity, prepareUserProfileCatalog } from "../state/user-profile-list.js";
+import {
+  readResidentUserProfileIdentity,
+  prepareUserProfileCatalog,
+} from "../state/user-profile-list.js";
 import { linkEmail, setUserProfileRole } from "../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
@@ -605,7 +608,7 @@ it("preserves selected account across role changes but rejects a changed merge i
       const afterMerge = vi.spyOn(DatabaseSync.prototype, "prepare");
       expect(() => binding.assertCurrent()).toThrow(ExpectedProfileMismatchError);
       expect(() => targetBinding.assertCurrent()).not.toThrow();
-      expect(readUserProfileIdentity(source.id)?.profileId).toBe(target.id);
+      expect(readResidentUserProfileIdentity(source.id)?.profileId).toBe(target.id);
       expect(afterMerge).not.toHaveBeenCalled();
     } finally {
       release();

@@ -134,7 +134,8 @@ vi.mock("../config/config.js", () => ({
   mutateConfigFile: mockConfig.mutate,
   withConfigMutationExclusive: mockConfig.exclusive,
 }));
-vi.mock("../state/local-onboarding-state.js", () => ({
+vi.mock("../state/local-onboarding-state.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/local-onboarding-state.js")>()),
   readLocalOnboardingState: localOnboarding.read,
   readLocalOnboardingStateForConfigAsync: localOnboarding.readForConfig,
   completeLocalOnboarding: localOnboarding.complete,

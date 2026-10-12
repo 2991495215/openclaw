@@ -42,7 +42,8 @@ vi.mock("../../infra/push-web.js", () => ({
   resolveVapidKeys: vi.fn(),
   setWebPushSubscriptionPreferences: vi.fn(),
 }));
-vi.mock("../../state/user-profile-list.js", () => ({
+vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../state/user-profile-list.js")>()),
   readResidentUserProfileId: vi.fn(),
   readResidentUserProfileIdentity: vi.fn(),
 }));

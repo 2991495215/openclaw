@@ -33,7 +33,8 @@ const state = vi.hoisted(() => ({
   rootCalls: 0,
   beforeRoot: undefined as (() => Promise<void>) | undefined,
 }));
-vi.mock("../../state/user-profile-list.js", () => ({
+vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../state/user-profile-list.js")>()),
   prepareUserProfileCatalog: async () => ({
     hasMultipleSessionSharingIdentities: () => state.multipleProfiles,
     readCurrentIdentity: (id: string) => ({

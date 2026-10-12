@@ -63,24 +63,19 @@ export const hasMultipleSessionSharingIdentities = (options: OpenClawStateDataba
     selectHasMultipleSessionSharingIdentities,
   ) ?? false;
 
-/** Native compatibility reader; Gateway callers use readResidentUserProfileIdentity. */
-export function readUserProfileIdentity(
-  profileId: string,
-  options: OpenClawStateDatabaseOptions = {},
-) {
-  return readProfileCatalog(
-    options,
-    (resident) => projectCatalogUserProfileIdentity(resident, profileId),
-    (db) => selectUserProfileIdentityInDatabase(db, profileId),
-  );
-}
-
 /** Native compatibility reader; Gateway callers use readResidentUserProfileAliases. */
 export const readUserProfileAliases = (
   profileId: string,
   options: OpenClawStateDatabaseOptions = {},
 ): ReadonlySet<string> =>
-  new Set([profileId, ...(readUserProfileIdentity(profileId, options)?.aliases ?? [])]);
+  new Set([
+    profileId,
+    ...(readProfileCatalog(
+      options,
+      (resident) => projectCatalogUserProfileIdentity(resident, profileId),
+      (db) => selectUserProfileIdentityInDatabase(db, profileId),
+    )?.aliases ?? []),
+  ]);
 
 function requireResidentProfileCatalog(options: OpenClawStateDatabaseOptions) {
   const catalog = profileCatalogs.get(profileCatalogPath(options));

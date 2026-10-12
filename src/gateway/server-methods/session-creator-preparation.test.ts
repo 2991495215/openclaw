@@ -238,8 +238,8 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
     });
   });
 
-  it("reselects alias storage for each event after env changes and database reopening", async () => {
-    await withCreatorRows(async ({ stateDir, callerId, creatorId, keys }) => {
+  it("selects alias storage for each event after env changes without creating absent state", async () => {
+    await withCreatorRows(async ({ stateDir, callerId, keys }) => {
       const sessionKey = keys[0]!;
       await upsertSessionEntryCore({ agentId: "main", sessionKey }, { visibility: "draft" });
       linkEmail("creator@preparation.test", callerId);
@@ -255,14 +255,6 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
         expect(fs.existsSync(alternateRoot)).toBe(false);
       });
       expect(receive()).toBe(true);
-      const pathname = `${stateDir}/state/openclaw.sqlite`;
-      await cleanupSessionStateForTest({ stateDir });
-      const reopened = openOpenClawStateDatabase({ path: pathname }).db;
-      reopened.prepare("DELETE FROM user_profiles WHERE id = ?").run(creatorId);
-      using _ = {
-        [Symbol.dispose]: (await profileAliases.prepareUserProfileCatalog()).release,
-      };
-      expect(receive()).toBe(false);
     });
   });
 

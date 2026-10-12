@@ -427,6 +427,7 @@ vi.mock("../tts/provider-registry.js", () => ({
   ),
 }));
 
+// mock-isolation: Command routing uses fixture providers without the auth and plugin runtime graph.
 vi.mock("../web-search/runtime.js", () => ({
   listWebSearchProvidersAsync: mocks.listWebSearchProvidersAsync,
   isWebSearchProviderConfigured: mocks.isWebSearchProviderConfigured,

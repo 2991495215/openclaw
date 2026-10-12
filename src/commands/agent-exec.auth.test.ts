@@ -15,6 +15,7 @@ import {
   resolvePersistedAuthProfileOwnerAgentDir,
   saveAuthProfileStore,
 } from "../agents/auth-profiles.js";
+import { prepareSharedAuthStoreOwnership } from "../agents/auth-profiles/path-resolve.js";
 import {
   clearRuntimeAuthProfileStoreSnapshots,
   setRuntimeAuthProfileStoreSnapshot,
@@ -171,6 +172,7 @@ describe("agent exec stored auth", () => {
         };
         writePersistedAuthProfileStoreRaw(sharedStore);
         writePersistedAuthProfileStoreRaw(localStore, state.agentDir());
+        await prepareSharedAuthStoreOwnership(state.env);
         setRuntimeAuthProfileStoreSnapshot(sharedStore, state.agentDir());
         const result = await run({
           runAgent: async () => {

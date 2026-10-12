@@ -8,10 +8,10 @@ import {
   openOpenClawStateDatabase,
 } from "./openclaw-state-db.js";
 import { onUserProfilesChanged } from "./user-profile-events.js";
-import { readUserProfileIdentity, prepareUserProfileCatalog } from "./user-profile-list.js";
+import { readResidentUserProfileIdentity, prepareUserProfileCatalog } from "./user-profile-list.js";
 import { setCanonicalUserProfileRole } from "./user-profile-writes.js";
 import { setUserProfileRole } from "./user-profile-writes.worker.js";
-import { ensureProfileForEmail, getUserProfileRole } from "./user-profiles.js";
+import { ensureProfileForEmail } from "./user-profiles.js";
 
 const delivery = vi.hoisted(() => ({
   afterResult: undefined as ((index: number) => Promise<void>) | undefined,
@@ -106,8 +106,7 @@ it.each(["ordered", "reversed", "recovery first", "native successor", "native AB
           });
         }
       }
-      expect(getUserProfileRole(profile.id)).toBe(expected);
-      expect(readUserProfileIdentity(profile.id)?.role).toBe(expected);
+      expect(readResidentUserProfileIdentity(profile.id)?.role).toBe(expected);
     } finally {
       for (const gate of gates) {
         gate.resume.resolve();
@@ -136,7 +135,7 @@ it.each(["delivered", "lost during close"] as const)(
       release = (await prepareUserProfileCatalog()).release;
       const observed: Array<string | null | undefined> = [];
       stop = onUserProfilesChanged(() => {
-        observed.push(readUserProfileIdentity(profile.id)?.role);
+        observed.push(readResidentUserProfileIdentity(profile.id)?.role);
       });
       if (reply === "lost during close") {
         delivery.afterResult = async () => {
@@ -158,8 +157,7 @@ it.each(["delivered", "lost during close"] as const)(
       }
       expect(observed).toEqual(["guest"]);
       vi.restoreAllMocks();
-      expect(readUserProfileIdentity(profile.id)?.role).toBe("guest");
-      expect(getUserProfileRole(profile.id)).toBe("guest");
+      expect(readResidentUserProfileIdentity(profile.id)?.role).toBe("guest");
     } finally {
       vi.restoreAllMocks();
       await Promise.allSettled([closing]);
