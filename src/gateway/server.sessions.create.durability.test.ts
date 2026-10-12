@@ -106,8 +106,14 @@ afterEach(() => {
 });
 
 test("persists and dispatches concurrent Gateway inputs while participant writes queue", async () => {
+  const startedAt = Date.now();
+  const trace = (stage: string, key = "fixture") =>
+    console.error(`[create-durability:${key}] ${Date.now() - startedAt}ms ${stage}`);
+  trace("store.begin");
   const { storePath } = await createSessionStoreDir();
+  trace("client.begin");
   const { ws } = await openClient();
+  trace("client.ready");
   const inputs = Array.from({ length: 8 }, (_, index) => ({
     agentId: "main",
     key: `agent:main:dashboard:concurrent-initial-${index}`,
@@ -118,6 +124,7 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
   vi.spyOn(sessionInputActors, "acquireSessionInputActor").mockImplementation(async (...args) => {
     const input = await acquire(...args);
     if (input) {
+      trace("actor.acquired", input.actor.target.sessionKey);
       const accept = input.actor.acceptInput;
       vi.spyOn(input.actor, "acceptInput").mockImplementationOnce(async (...command) => {
         const recordParticipant = (promptedAt: number) =>
@@ -135,11 +142,15 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
               sessionAgentId: "main",
             },
           );
+        trace("participant.before.begin", input.actor.target.sessionKey);
         await recordParticipant(1);
+        trace("participant.before.done", input.actor.target.sessionKey);
         const pending = accept(...command);
+        trace("actor.accept.sent", input.actor.target.sessionKey);
         // This independent writer must wait behind the complete admission, including its rebase.
         competingWrites.push(runOutsideStoreWriterContext(() => recordParticipant(2)));
         const outcome = await pending;
+        trace(`actor.accept.result:${outcome.kind}`, input.actor.target.sessionKey);
         expect(outcome).toMatchObject({
           kind: "stale-version",
           postimage: { target: input.actor.target },
@@ -153,10 +164,25 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
   dashboardTitleScheduleMocks.schedule.mockImplementation(() => {});
   try {
     const created = await Promise.all(
-      inputs.map((params) =>
-        rpcReq<{ sessionId: string; runStarted: boolean }>(ws, "sessions.create", params),
-      ),
+      inputs.map((params) => {
+        trace("rpc.sessions.create.begin", params.key);
+        return rpcReq<{ sessionId: string; runStarted: boolean }>(
+          ws,
+          "sessions.create",
+          params,
+        ).then(
+          (response) => {
+            trace(`rpc.sessions.create.response:${response.ok}`, params.key);
+            return response;
+          },
+          (error: unknown) => {
+            trace("rpc.sessions.create.rejected", params.key);
+            throw error;
+          },
+        );
+      }),
     );
+    trace(`rpc.sessions.create.all.done:dispatches=${dispatch.start.mock.calls.length}`);
     for (const [index, response] of created.entries()) {
       expect(response.ok, JSON.stringify(response)).toBe(true);
       expect(response.payload?.runStarted, JSON.stringify(response)).toBe(true);
@@ -175,7 +201,9 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
     }
     expect(dispatch.start).toHaveBeenCalledTimes(inputs.length);
   } finally {
+    trace(`cleanup.participants.begin:dispatches=${dispatch.start.mock.calls.length}`);
     await Promise.all(competingWrites);
+    trace("cleanup.participants.done");
     const released = getSessionWorkAdmissionRelease({
       scope: storePath,
       identities: inputs.map((input) => input.key),
@@ -186,6 +214,7 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
       clearAgentRunContext(turn.session.clientRunId, turn.admission.lifecycleGeneration);
     }
     await released;
+    trace("cleanup.admissions.done");
     ws.close();
   }
 });
