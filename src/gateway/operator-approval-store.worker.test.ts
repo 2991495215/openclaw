@@ -11,13 +11,13 @@ import {
 } from "../state/openclaw-state-db.js";
 import { observeMainThreadSql } from "../test-utils/main-thread-sql-spies.test-support.js";
 import * as store from "./operator-approval-store.js";
-import * as native from "./operator-approval-store.kernel.js";
+import * as native from "./operator-approval-store.kernel.worker.js";
 import { operatorApprovalPublication } from "./operator-approval-store.publication.js";
 import {
   getOperatorApprovalResolutionKey,
   OPERATOR_APPROVAL_TERMINAL_RETENTION_MS,
 } from "./operator-approval-store.rows.js";
-import * as nativeTransitions from "./operator-approval-store.transitions.js";
+import * as nativeTransitions from "./operator-approval-store.transitions.worker.js";
 import type { OperatorApprovalRow } from "./operator-approval-store.types.js";
 
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
@@ -232,10 +232,74 @@ it("runs startup recovery, lookup, expiry and history without host SQLite calls 
   }
 });
 
-it("keeps native reads between earlier and later worker mutations", async () => {
+it.each(["worker", "native-compatibility"] as const)(
+  "runs %s approval operations without host SQLite through close",
+  async (family) => {
+    const databaseOptions = options();
+    await store.insertOperatorApproval({ approval: approval("off-thread"), databaseOptions });
+    const guard = { family, assertCurrent() {} };
+    requireNodeSqlite();
+    const counters = observeMainThreadSql();
+    try {
+      counters.calibrate();
+      expect(
+        await store.resolveOperatorApproval({
+          id: "off-thread",
+          decision: "allow-once",
+          resolver: { kind: "device", id: "reviewer" },
+          nowMs: 2000,
+          databaseOptions,
+          guard,
+        }),
+      ).toMatchObject({ outcome: "resolved" });
+      expect(
+        await store.consumeOperatorApprovalAllowOnce({
+          id: "off-thread",
+          consumerId: "synthetic-consumer",
+          nowMs: 2001,
+          databaseOptions,
+          guard,
+        }),
+      ).toMatchObject({ outcome: "consumed" });
+      await store.insertOperatorApproval({ approval: approval("expiry"), databaseOptions, guard });
+      const pending = await store.listPendingOperatorApprovals({
+        nowMs: 2002,
+        databaseOptions,
+        guard,
+      });
+      expect(pending.map((record) => record.id)).toEqual(["expiry"]);
+      expect(
+        (await store.expireDueOperatorApprovals({ nowMs: 10_000, databaseOptions, guard }))
+          .affected,
+      ).toBe(1);
+      expect(
+        await store.getOperatorApprovalDetailed({
+          id: "expiry",
+          nowMs: 10_001,
+          databaseOptions,
+          guard,
+        }),
+      ).toMatchObject({ outcome: "found", record: { status: "expired" } });
+      expect(
+        await store.listTerminalOperatorApprovals({ nowMs: 10_002, databaseOptions, guard }),
+      ).toMatchObject({
+        records: [
+          { id: "expiry", status: "expired" },
+          { id: "off-thread", status: "allowed" },
+        ],
+      });
+      await closeOpenClawStateDatabaseAsync();
+      counters.expectIdle();
+    } finally {
+      counters.restore();
+    }
+  },
+);
+
+it("keeps legacy callback reads between earlier and later worker mutations", async () => {
   const databaseOptions = options();
   const inserted = store.insertOperatorApproval({ approval: approval("ordered"), databaseOptions });
-  const nativeRead = store.getOperatorApprovalDetailed({
+  const guardedRead = store.getOperatorApprovalDetailed({
     id: "ordered",
     nowMs: 2000,
     databaseOptions,
@@ -250,7 +314,7 @@ it("keeps native reads between earlier and later worker mutations", async () => 
   });
   const [insertResult, readResult, resolveResult] = await Promise.all([
     inserted,
-    nativeRead,
+    guardedRead,
     resolved,
   ]);
   expect(insertResult.outcome).toBe("inserted");
@@ -311,14 +375,12 @@ it.each(["worker", "native-compatibility"] as const)(
     try {
       let refuse = true;
       let current = true;
-      if (family === "worker") {
-        probe.admission(workerAdmission, (request, grant, admit) => {
-          if (request.stage === "commit" && refuse) {
-            current = false;
-          }
-          return admit(request, grant);
-        });
-      }
+      probe.admission(workerAdmission, (request, grant, admit) => {
+        if (request.stage === "commit" && refuse) {
+          current = false;
+        }
+        return admit(request, grant);
+      });
       const input = {
         id: "receipt-rollback",
         decision: "allow-once" as const,
@@ -329,14 +391,6 @@ it.each(["worker", "native-compatibility"] as const)(
         guard: {
           family,
           assertCurrent: () => {
-            if (family === "native-compatibility" && refuse) {
-              const observed = native.getOperatorApprovalDetailedInDatabase({
-                id: "receipt-rollback",
-                nowMs: 2000,
-                databaseOptions,
-              });
-              current = observed.outcome !== "found" || observed.record.decision !== "allow-once";
-            }
             if (!current) {
               throw new Error("synthetic commit refusal");
             }

@@ -178,10 +178,10 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
     recoveryPlacements: await params.startup.placementStore.listAsync(),
   });
   const workerEnvironmentLog = params.log.child("worker-environments");
-  const listRetainedBundleHashes = () =>
+  const listRetainedBundleHashes = async () =>
     listRetainedWorkerBundleHashes({
       environments: params.startup.store.list(),
-      placements: params.startup.placementStore.list(),
+      placements: await params.startup.placementStore.listAsync(),
     });
   let workerBundleProducer: WorkerBundleProducer | undefined;
   let workerNpmArtifact: Promise<WorkerNpmArtifact> | undefined;
