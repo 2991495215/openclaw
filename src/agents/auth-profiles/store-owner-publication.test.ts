@@ -35,7 +35,9 @@ import {
 } from "./sqlite.js";
 import {
   ensureAuthProfileStoreWithoutExternalProfiles,
+  findPersistedAuthProfileCredentialAsync,
   loadAuthProfileStoreWithoutExternalProfiles,
+  resolvePersistedAuthProfileOwnerAgentDirAsync,
   saveAuthProfileStore,
   saveAuthProfileStoreIfPersistenceSnapshotMatches,
   updateAuthProfileStoreWithLock,
@@ -47,13 +49,107 @@ import {
   restoreAuthProfileStorePersistenceSnapshot,
   withAuthProfileStoreAgentDir,
 } from "./store.js";
-import type { AuthProfileCredential } from "./types.js";
+import type { AuthProfileCredential, OAuthCredential } from "./types.js";
 import { persistAuthProfileBatch } from "./upsert-with-lock.js";
 
 const { tempDirs, saveOptions, apiKey, store, snapshotAt, unreadableOuter, seedRoot } =
   createAuthOwnerTestFixtures();
 
 describe("auth publication owner receipts", () => {
+  it("resolves pending OAuth owners after shared and local write receipts", async () => {
+    const owner = await seedRoot("pending-refresh");
+    const profileIds = ["pending", "independent", "portable"] as const;
+    const credential: OAuthCredential = {
+      type: "oauth",
+      provider: "openai",
+      access: "main-drifted-access",
+      refresh: "shared-refresh-generation",
+      expires: Date.now() - 60_000,
+      accountId: "acct-a",
+    };
+    const freshExpiry = Date.now() + 60 * 60 * 1000;
+    const fences = {
+      pending: createOAuthRefreshFence({ profileId: "pending", credential }),
+      independent: createOAuthRefreshFence({ profileId: "independent", credential }),
+      portable: createOAuthRefreshFence({ profileId: "portable", credential }),
+    };
+    await withEnvAsync(owner.env, async () => {
+      saveAuthProfileStore(
+        {
+          version: 1,
+          profiles: {
+            pending: {
+              ...credential,
+              access: "local-drifted-access",
+              expires: Date.now() - 1_000,
+              accountId: undefined,
+            },
+            independent: {
+              ...credential,
+              access: "independent-access",
+              refresh: "independent-refresh-generation",
+              expires: freshExpiry,
+            },
+            portable: {
+              ...credential,
+              access: "portable-access",
+              copyToAgents: true,
+              expires: freshExpiry,
+            },
+          },
+        },
+        owner.agentDir,
+        saveOptions,
+      );
+      saveAuthProfileStore(
+        {
+          version: 1,
+          profiles: Object.fromEntries(profileIds.map((id) => [id, { ...credential }])),
+        },
+        undefined,
+        saveOptions,
+      );
+      const readOwners = () =>
+        Promise.all(
+          profileIds.map((profileId) =>
+            resolvePersistedAuthProfileOwnerAgentDirAsync({
+              agentDir: owner.agentDir,
+              profileId,
+            }),
+          ),
+        );
+      await expect(readOwners()).resolves.toEqual([undefined, owner.agentDir, undefined]);
+
+      await updateAuthProfileStoreWithLock({
+        saveOptions,
+        updater: (current) => {
+          current.profiles = fences;
+          return true;
+        },
+      });
+      await updateAuthProfileStoreWithLock({
+        agentDir: owner.agentDir,
+        saveOptions,
+        updater: (current) => {
+          // Refresh writes the owner's exact fence into each nonportable peer.
+          current.profiles.pending = fences.pending;
+          return true;
+        },
+      });
+
+      await expect(readOwners()).resolves.toEqual([undefined, owner.agentDir, undefined]);
+      await expect(
+        findPersistedAuthProfileCredentialAsync({
+          agentDir: owner.agentDir,
+          profileId: "pending",
+        }),
+      ).resolves.toEqual(fences.pending);
+      await expect(
+        findPersistedAuthProfileCredentialAsync({ profileId: "portable" }),
+      ).resolves.toEqual(fences.portable);
+    });
+  });
+
   it.each(["cold", "cached", "admitted"] as const)(
     "observes exact shared and local credential owners through a %s read",
     async (mode) => {
