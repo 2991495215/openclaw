@@ -8,6 +8,7 @@ import {
   type ApplySessionModelSelectionParams,
   type ApplySessionModelSelectionResult,
 } from "../model-picker/apply-session-model-selection.js";
+import { loadLegacyPluginMetadataSnapshotRuntime } from "../plugins/plugin-metadata-snapshot-required.js";
 import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import {
   applyModelOverrideWithAuthProfileCompatibilityCore as applyPreparedModelOverride,
@@ -47,6 +48,12 @@ export function applyModelOverrideWithAuthProfileCompatibility(
     method: "applyModelOverrideWithAuthProfileCompatibility",
     replacement: "applyModelOverrideWithAuthProfileCompatibilityAsync",
   });
+  const metadataSnapshot =
+    params.metadataSnapshot ??
+    loadLegacyPluginMetadataSnapshotRuntime({
+      config: params.cfg,
+      allowWorkspaceScopedCurrent: true,
+    });
   const profileId = params.entry.authProfileOverride?.trim();
   const recordedProvider =
     params.recordedProvider ??
@@ -57,5 +64,5 @@ export function applyModelOverrideWithAuthProfileCompatibility(
             findPersistedAuthProfileCredential({ agentDir: params.agentDir, profileId })?.provider,
         }
       : { provider: undefined });
-  return applyPreparedModelOverride({ ...params, recordedProvider });
+  return applyPreparedModelOverride({ ...params, metadataSnapshot, recordedProvider });
 }

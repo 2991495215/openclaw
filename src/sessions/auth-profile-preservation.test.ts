@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authStore from "../agents/auth-profiles/store.js";
 import type { SessionEntry } from "../config/sessions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
+import * as pluginMetadata from "../plugins/plugin-metadata-snapshot.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
+import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import {
+  applyModelOverrideWithAuthProfileCompatibilityAsync,
   applyModelOverrideWithAuthProfileCompatibilityCore as applyModelOverrideWithAuthProfileCompatibility,
   shouldPreserveSessionAuthProfileOverride,
 } from "./auth-profile-preservation.js";
@@ -36,7 +38,42 @@ const entry = {
 } satisfies SessionEntry;
 
 beforeEach(async () => {
-  await preparePluginMetadataMachineStateAsync({});
+  await pluginMetadata.resolvePluginMetadataSnapshotAsync({ config: {} });
+});
+
+describe("applyModelOverrideWithAuthProfileCompatibilityAsync", () => {
+  it.each([false, true])("uses prepared aliases with a supplied snapshot: %s", async (supplied) => {
+    const prepared = createPluginMetadataSnapshotFixture({ plugins: [workspaceAliasPlugin] });
+    const resolveMetadata = vi
+      .spyOn(pluginMetadata, "resolvePluginMetadataSnapshotAsync")
+      .mockResolvedValue(prepared);
+    const cfg: OpenClawConfig = {
+      plugins: { entries: { "fixture-provider": { enabled: true } } },
+    };
+    const selected = { ...entry };
+    try {
+      await applyModelOverrideWithAuthProfileCompatibilityAsync({
+        cfg,
+        agentDir: "/fixture/agent",
+        entry: selected,
+        currentProvider: "fixture-provider",
+        selection: { provider: "fixture-provider-plan", model: "selected-model" },
+        recordedProvider: { provider: "fixture-provider" },
+        ...(supplied ? { metadataSnapshot: prepared } : {}),
+      });
+      expect(selected.authProfileOverride).toBe("fixture-provider:work");
+      if (supplied) {
+        expect(resolveMetadata).not.toHaveBeenCalled();
+      } else {
+        expect(resolveMetadata).toHaveBeenCalledExactlyOnceWith({
+          config: cfg,
+          allowWorkspaceScopedCurrent: true,
+        });
+      }
+    } finally {
+      resolveMetadata.mockRestore();
+    }
+  });
 });
 
 describe("shouldPreserveSessionAuthProfileOverride", () => {

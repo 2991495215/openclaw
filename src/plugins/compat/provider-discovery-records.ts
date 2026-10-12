@@ -11,6 +11,20 @@ const DISCOVERY_MIGRATION = {
 
 export const PROVIDER_DISCOVERY_COMPAT_RECORDS = [
   {
+    status: "deprecated",
+    owner: "sdk",
+    introduced: "2026-10-01",
+    deprecated: "2026-10-12",
+    warningStarts: "2026-10-12",
+    code: "sandbox-env-sync",
+    replacement:
+      "Await sanitizeEnvVarsAsync from openclaw/plugin-sdk/sandbox. The synchronous sanitizeEnvVars helper retains native metadata discovery during its stable deprecation window.",
+    docsPath: "/plugins/sdk-migration#sandbox-environment-filtering",
+    surfaces: ["openclaw/plugin-sdk/sandbox sanitizeEnvVars"],
+    diagnostics: ["Bounded DEP_PLUGIN_SDK warning for synchronous sandbox env filtering"],
+    tests: ["src/agents/sandbox/sanitize-env-vars.metadata.test.ts"],
+  },
+  {
     ...DISCOVERY_MIGRATION,
     code: "provider-http-sync-policy",
     replacement:

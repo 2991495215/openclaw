@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetConfigRuntimeState } from "../../config/config.js";
 import {
   resolveProviderFollowupFallbackRoute,
+  resolveProviderRuntimePlugin,
   resolveProviderRuntimePluginHandle,
   type ProviderRuntimePluginHandle,
 } from "../../plugins/provider-hook-runtime.js";
@@ -288,6 +289,51 @@ describe("AgentRuntimePlan", () => {
 
     const followupCall = latestFollowupRouteCall();
     expect(followupCall.runtimeHandle).toBe(suppliedHandle);
+  });
+
+  it("keeps transcript policy within its prepared provider handle", () => {
+    const config = {};
+    const buildPlan = (preserveSignatures: boolean) =>
+      buildAgentRuntimePlan({
+        config,
+        provider: "fixture-provider",
+        modelId: "fixture-model",
+        providerRuntimeHandle: {
+          provider: "fixture-provider",
+          modelId: "fixture-model",
+          prepared: true,
+          plugin: {
+            id: "fixture-provider",
+            label: "Fixture",
+            auth: [],
+            buildReplayPolicy: () => ({ preserveSignatures }),
+          },
+        },
+      });
+    const first = buildPlan(true);
+    expect(first.transcript.policy.preserveSignatures).toBe(true);
+    const replacement = buildPlan(false);
+    expect(replacement.transcript.policy.preserveSignatures).toBe(false);
+    expect(first.transcript.resolvePolicy().preserveSignatures).toBe(true);
+  });
+
+  it("keeps the prepared unowned transcript policy without rediscovery", () => {
+    vi.mocked(resolveProviderRuntimePlugin).mockClear();
+    const plan = buildAgentRuntimePlan({
+      config: {},
+      provider: "custom-openai",
+      modelId: "fixture-model",
+      modelApi: "openai-completions",
+      providerRuntimeHandle: {
+        provider: "custom-openai",
+        modelId: "fixture-model",
+        prepared: true,
+        plugin: undefined,
+      },
+    });
+
+    expect(plan.transcript.policy.sanitizeToolCallIds).toBe(true);
+    expect(resolveProviderRuntimePlugin).not.toHaveBeenCalled();
   });
 
   it("threads prepared tool metadata without discovery", () => {

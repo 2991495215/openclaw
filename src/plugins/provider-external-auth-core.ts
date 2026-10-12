@@ -6,7 +6,6 @@ import type {
   ProviderExternalAuthProfileResolverPreparation,
 } from "./provider-external-auth.types.js";
 import type { createProviderHookRuntime } from "./provider-hook-runtime-core.js";
-import { resolveExternalAuthProfileProviderPluginIds } from "./providers.js";
 import { getActivePluginRegistryWorkspaceDirFromState } from "./runtime-state.js";
 
 export function createProviderExternalAuthResolver(
@@ -43,12 +42,10 @@ export function createProviderExternalAuthResolver(
     ) {
       return [];
     }
-    const externalAuthPluginIds = resolveExternalAuthProfileProviderPluginIds({
-      config: params.config,
-      workspaceDir,
-      env,
-      manifestRegistry,
-    });
+    const externalAuthPluginIds = manifestRegistry.plugins
+      .filter((plugin) => (plugin.contracts?.externalAuthProviders?.length ?? 0) > 0)
+      .map((plugin) => plugin.id)
+      .toSorted((left, right) => left.localeCompare(right));
     if (externalAuthPluginIds.length === 0) {
       return [];
     }

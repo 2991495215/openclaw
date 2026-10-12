@@ -393,3 +393,15 @@ voice-call consumers use these replacements.
 deprecated, emit a bounded warning, and require prepared provider registrations.
 They remain available through the stable deprecation window and will be removed
 in a later release after stable deprecation.
+
+### Sandbox environment filtering
+
+Await `sanitizeEnvVarsAsync` from `openclaw/plugin-sdk/sandbox` before forwarding
+host environment values to a sandbox. It prepares credential metadata through
+the database worker, then applies the same name and value filters. Discovery
+always uses host metadata, never environment values supplied by the sandbox.
+
+`sanitizeEnvVars` is deprecated and emits a bounded warning. It retains its
+synchronous native metadata behavior for existing third-party plugins and will
+be removed in a later release after stable deprecation. All bundled callers use
+the asynchronous replacement.

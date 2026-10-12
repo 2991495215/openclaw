@@ -58,6 +58,7 @@ import {
 import type { PreparedConfigValidationPluginMetadata } from "./validation.types.js";
 
 export type ConfigRecoveryCandidateTransform = (params: {
+  env: NodeJS.ProcessEnv;
   candidate: ConfigRecoveryCandidate;
   configPath: string;
   includeProvenance: NonNullable<ConfigFileSnapshot["includeProvenance"]>;
@@ -255,6 +256,7 @@ export function createConfigIoContext(
       const prepareValidation = (pending: readonly DeferredPluginMigration[]) => {
         const authoredCandidate = transformRecoveryCandidate
           ? transformRecoveryCandidate({
+              env: deps.env,
               candidate,
               configPath,
               includeProvenance,

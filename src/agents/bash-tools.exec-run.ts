@@ -430,7 +430,7 @@ export function createExecTool(defaults?: ExecToolDefaults) {
         const secretEgressBindings = useSecretEgress
           ? (storeEnv.secretEgressBindings ?? [])
           : undefined;
-        const { env, requestedEnv, executionContext } = resolvePreparedExecEnvironment({
+        const { env, requestedEnv, executionContext } = await resolvePreparedExecEnvironment({
           execParams: params,
           host,
           sandbox,

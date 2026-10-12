@@ -119,11 +119,24 @@ export async function applyModelOverrideWithAuthProfileCompatibilityAsync(
     "recordedProvider"
   > & { recordedProvider?: SessionAuthProfilePreservationParams["recordedProvider"] },
 ): Promise<{ updated: boolean }> {
+  let metadataSnapshot = params.metadataSnapshot;
+  if (!metadataSnapshot) {
+    const { resolvePluginMetadataSnapshotAsync } =
+      await import("../plugins/plugin-metadata-snapshot.js");
+    metadataSnapshot = await resolvePluginMetadataSnapshotAsync({
+      config: params.cfg,
+      allowWorkspaceScopedCurrent: true,
+    });
+  }
   const profileId = normalizeOptionalString(params.entry.authProfileOverride);
   const recordedProvider =
     params.recordedProvider ??
     (profileId && !params.profileOverride
       ? await prepareAuthProfileProvider({ agentDir: params.agentDir, profileId })
       : { provider: undefined });
-  return applyModelOverrideWithAuthProfileCompatibilityCore({ ...params, recordedProvider });
+  return applyModelOverrideWithAuthProfileCompatibilityCore({
+    ...params,
+    metadataSnapshot,
+    recordedProvider,
+  });
 }

@@ -13,6 +13,7 @@ import {
   findConfiguredProviderModel,
   resolveMergedModelProviderConfig,
 } from "../config/model-provider-config.js";
+import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
 import { extractModelCompat } from "../plugins/provider-model-compat.js";
 import type { ProviderRuntimeModel } from "../plugins/provider-runtime-model.types.js";
 import { normalizeProviderTransportWithPlugin } from "../plugins/provider-runtime.js";
@@ -128,14 +129,14 @@ function resolveConfiguredFallbackApi(
 }
 
 /** Resolves configured or bundled metadata without starting provider discovery. */
-function resolveStaticToolInventoryRuntimeModelContext(params: {
+async function resolveStaticToolInventoryRuntimeModelContext(params: {
   cfg: OpenClawConfig;
   agentId?: string;
   agentDir?: string;
   workspaceDir?: string;
   modelProvider?: string;
   modelId?: string;
-}): { modelApi?: string; runtimeModel?: ProviderRuntimeModel } {
+}): Promise<{ modelApi?: string; runtimeModel?: ProviderRuntimeModel }> {
   const provider = normalizeProviderId(params.modelProvider ?? "");
   const modelId = params.modelId?.trim() ?? "";
   if (!provider || !modelId) {
@@ -143,15 +144,22 @@ function resolveStaticToolInventoryRuntimeModelContext(params: {
   }
   const agentId = params.agentId?.trim() || resolveSessionAgentId({ config: params.cfg });
   const workspaceDir = params.workspaceDir ?? resolveAgentWorkspaceDir(params.cfg, agentId);
+  const metadataSnapshot = await resolvePluginMetadataSnapshotAsync({
+    config: params.cfg,
+    workspaceDir,
+  });
   const providerConfig = resolveMergedModelProviderConfig(params.cfg, provider);
   const configuredModel = findConfiguredProviderModel(providerConfig, provider, modelId, (id) =>
-    normalizeLowercaseStringOrEmpty(normalizeStaticProviderModelId(provider, id)),
+    normalizeLowercaseStringOrEmpty(
+      normalizeStaticProviderModelId(provider, id, { manifestPlugins: metadataSnapshot }),
+    ),
   );
   const bundledStaticModel = resolveBundledStaticCatalogModel({
     provider,
     modelId,
     cfg: params.cfg,
     workspaceDir,
+    metadataSnapshot,
   });
   let runtimeModel: ProviderRuntimeModel;
   if (configuredModel) {
@@ -209,8 +217,8 @@ function resolveStaticToolInventoryRuntimeModelContext(params: {
   };
 }
 
-type ToolInventoryRuntimeModelContext = ReturnType<
-  typeof resolveStaticToolInventoryRuntimeModelContext
+type ToolInventoryRuntimeModelContext = Awaited<
+  ReturnType<typeof resolveStaticToolInventoryRuntimeModelContext>
 >;
 
 /** Keeps dynamic model hooks owned and scoped until inventory projection finishes. */
@@ -219,7 +227,7 @@ export async function acquireEffectiveToolInventoryRuntimeModelContext(
 ): Promise<
   { run: <T>(project: (context: ToolInventoryRuntimeModelContext) => T) => T } & AsyncDisposable
 > {
-  const staticContext = resolveStaticToolInventoryRuntimeModelContext(params);
+  const staticContext = await resolveStaticToolInventoryRuntimeModelContext(params);
   if (staticContext.runtimeModel) {
     return { run: (project) => project(staticContext), [Symbol.asyncDispose]: async () => {} };
   }
@@ -319,7 +327,7 @@ export async function resolveEffectiveToolInventory(
           modelApi: params.modelApi ?? params.runtimeModel?.api,
           runtimeModel: params.runtimeModel,
         }
-      : resolveStaticToolInventoryRuntimeModelContext({
+      : await resolveStaticToolInventoryRuntimeModelContext({
           cfg: params.cfg,
           agentId,
           agentDir,
