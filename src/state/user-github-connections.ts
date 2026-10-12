@@ -98,7 +98,7 @@ export async function readCanonicalUserGitHubConnectionAsync(profile: string) {
 }
 
 type PreparedUserGitHubConnection = {
-  read(): UserGitHubConnection | undefined;
+  read: () => UserGitHubConnection | undefined;
 };
 type ConnectionRead = {
   databasePath: string;

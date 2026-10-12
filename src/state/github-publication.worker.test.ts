@@ -445,7 +445,7 @@ it("revokes personal source authority at commit before reply delivery without re
       }),
     ).toThrow("rollback connection");
     expect(() => bindGitHubPublicationSource(source)).not.toThrow();
-    expect(connection.read).not.toThrow();
+    expect(() => connection.read()).not.toThrow();
     const receipt = holdNextReceipt();
     const reply = holdNextReply("userGitHubConnections.mutate");
     const disconnected = mutateUserGitHubConnection(owner, { kind: "disconnect" }, () => {});
@@ -461,7 +461,7 @@ it("revokes personal source authority at commit before reply delivery without re
       // Receipt and reply use separate ports; deliver the real commit facts before asserting.
       receipt.release();
       expect(() => bindGitHubPublicationSource(source)).toThrow("source authority changed");
-      expect(connection.read).toThrow("My GitHub connection changed");
+      expect(() => connection.read()).toThrow("My GitHub connection changed");
     } finally {
       receipt.release();
       reply.release();
@@ -472,7 +472,7 @@ it("revokes personal source authority at commit before reply delivery without re
       () => original,
       () => {},
     );
-    expect(connection.read).toThrow("My GitHub connection changed");
+    expect(() => connection.read()).toThrow("My GitHub connection changed");
     expect((await prepareUserGitHubConnection(owner)).read()).toEqual(original);
     await expect(insertRepositoryGitHubPublicationAsync(row, source)).rejects.toThrow(
       "source authority changed",
