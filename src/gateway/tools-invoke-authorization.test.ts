@@ -1,7 +1,10 @@
 import { expectDefined } from "@openclaw/normalization-core";
+import { Type } from "typebox";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AnyAgentTool } from "../agents/tools/common.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { setPluginToolMeta } from "../plugins/tool-metadata.js";
 import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
@@ -11,6 +14,7 @@ import {
 } from "./server/ws-connection/authenticated-request-dispatch.test-support.js";
 import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
 import { createToolsInvokeHttpTestServer } from "./tools-invoke-http.test-support.js";
+import { invokeGatewayTool } from "./tools-invoke-shared.js";
 
 const runtime = vi.hoisted(() => {
   const execute = vi.fn(async () => ({ ok: true }));
@@ -21,7 +25,15 @@ const runtime = vi.hoisted(() => {
       blocked: false as const,
       params,
     })),
-    createTools: vi.fn(async () =>
+    createTools: vi.fn<
+      () => Promise<
+        Array<{
+          name: string;
+          parameters: object;
+          execute: (...args: Parameters<AnyAgentTool["execute"]>) => Promise<unknown>;
+        }>
+      >
+    >(async () =>
       ["session_status", "plugin_doctor"].map((name) => ({
         name,
         parameters: { type: "object", properties: {} },
@@ -211,6 +223,82 @@ describe.each(["HTTP", "WebSocket"] as const)(
           expect(runtime.execute).toHaveBeenCalledOnce();
         }
       });
+    });
+  },
+);
+
+it.each([
+  ["send", "settled", "core", false, 200],
+  ["read", "settled", "core", false, 500],
+  ["send", "dryRun", "core", false, 500],
+  ["send", "settled", "plugin", false, 500],
+  ["send", "settled", "core", true, 500],
+] as const)(
+  "keeps the result boundary for %s (%s, %s, revoked=%s)",
+  async (action, deliveryStatus, source, revokeCaller, expectedStatus) => {
+    await withOpenClawTestState({ label: "standalone-tool-creation" }, async () => {
+      const sessionKey = "agent:main:outbound-first-contact";
+      let callerCurrent = true;
+      runtime.cfg = { agents: { entries: { main: {} } } };
+      runtime.authorize.mockResolvedValue({ ok: true, method: "token" });
+      runtime.createTools.mockImplementationOnce(async () => {
+        const tool: AnyAgentTool = {
+          name: "message",
+          label: "Message",
+          description: "Message result fixture",
+          parameters: Type.Object({ action: Type.String() }),
+          execute: async () => {
+            await upsertSessionEntryCore(
+              { agentId: "main", sessionKey },
+              {
+                sessionId: "outbound-created-session",
+                updatedAt: 1,
+              },
+            );
+            callerCurrent = !revokeCaller;
+            return {
+              content: [{ type: "text", text: "private tool result" }],
+              details: {
+                messageDelivery: {
+                  status: deliveryStatus,
+                  primaryPlatformMessageId: "accepted-message",
+                  partialDelivery: false,
+                  createdThreadIds: [],
+                },
+              },
+            };
+          },
+        };
+        if (source === "plugin") {
+          setPluginToolMeta(tool, { pluginId: "fixture", optional: true });
+        }
+        return [tool];
+      });
+      const input = { name: "message", sessionKey, args: { action } };
+      if (revokeCaller) {
+        const outcome = await invokeGatewayTool({
+          cfg: runtime.cfg,
+          input,
+          senderIsOwner: true,
+          toolCallIdPrefix: "http",
+          assertInvocationCurrent: () => {
+            if (!callerCurrent) {
+              throw new Error("caller credentials revoked");
+            }
+          },
+        });
+        expect(outcome).toMatchObject({ ok: false, status: expectedStatus });
+        expect(JSON.stringify(outcome)).not.toContain("private tool result");
+        return;
+      }
+      const response = await postToolsInvoke({
+        port: sharedPort,
+        headers: gatewayAuthHeaders(),
+        body: input,
+      });
+      expect(response.status).toBe(expectedStatus);
+      const body = await response.text();
+      expect(body.includes("private tool result")).toBe(expectedStatus === 200);
     });
   },
 );
