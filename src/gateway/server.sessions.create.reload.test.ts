@@ -1,4 +1,5 @@
-import { expect, test, vi } from "vitest";
+import { channel } from "node:diagnostics_channel";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../test/helpers/promise.js";
 import { getSessionWorkAdmissionRelease } from "../sessions/session-lifecycle-admission.js";
 import * as chatSession from "./server-methods/chat-send-session.js";
@@ -16,7 +17,14 @@ test.each([
   { role: "operator", scopes: ["operator.write", "operator.read"] },
 ])(
   "sessions.create retains its first message across unrelated agent changes for $role",
-  async ({ scopes }) => {
+  async ({ role, scopes }) => {
+    const diagnostics = channel("openclaw.session.create");
+    const logPhases = (sample: unknown) =>
+      console.error(`[create-phases:reload:${role}] ${JSON.stringify(sample)}`);
+    diagnostics.subscribe(logPhases);
+    onTestFinished(() => {
+      diagnostics.unsubscribe(logPhases);
+    });
     const { storePath } = await createSessionStoreDir();
     testState.agentsConfig = { ownership: "explicit", entries: { main: {}, other: {} } };
     testState.agentConfig = { systemAgent: { agentId: "main" }, sessionStore: { agentId: "main" } };

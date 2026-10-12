@@ -1,6 +1,7 @@
+import { channel } from "node:diagnostics_channel";
 import { once } from "node:events";
 import { expectDefined } from "@openclaw/normalization-core/expect";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import type { AgentCommandGatewayIngressOpts } from "../agents/command/types.js";
 import {
@@ -106,6 +107,13 @@ afterEach(() => {
 });
 
 test("persists and dispatches concurrent Gateway inputs while participant writes queue", async () => {
+  const diagnostics = channel("openclaw.session.create");
+  const logPhases = (sample: unknown) =>
+    console.error(`[create-phases:durability] ${JSON.stringify(sample)}`);
+  diagnostics.subscribe(logPhases);
+  onTestFinished(() => {
+    diagnostics.unsubscribe(logPhases);
+  });
   const { storePath } = await createSessionStoreDir();
   const { ws } = await openClient();
   const inputs = Array.from({ length: 8 }, (_, index) => ({
