@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { expect, it, vi } from "vitest";
 import {
@@ -32,6 +31,8 @@ import {
   onInternalDiagnosticEvent,
   waitForDiagnosticEventsDrained,
 } from "../../infra/diagnostic-events.js";
+import { openNodeSqliteDatabase } from "../../infra/node-sqlite.js";
+import { admitSqliteSchema } from "../../infra/sqlite-schema-facts.js";
 import { readDatabasePathIdentitySync } from "../../infra/sqlite-worker-identity.js";
 import { withPluginRuntimePluginScope } from "../../plugins/runtime/gateway-request-scope.js";
 import {
@@ -793,7 +794,8 @@ it("keeps one bounded context snapshot and observes a foreign rewrite on the nex
         .spyOn(contextWorker, "readSessionTranscriptModelContextInWorker")
         .mockImplementationOnce(async (...args) => {
           const context = await read(...args);
-          const foreign = new DatabaseSync(scope.storePath);
+          const foreign = openNodeSqliteDatabase(scope.storePath);
+          admitSqliteSchema(foreign);
           try {
             foreign.exec("BEGIN IMMEDIATE");
             rewriteSqliteTranscriptEventRowsInTransaction({ ...database, db: foreign }, scope, [
