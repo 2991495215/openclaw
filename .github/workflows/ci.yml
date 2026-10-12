@@ -698,6 +698,8 @@ jobs:
             runtime: node
           - group: session-utils-node
             runtime: node
+          - group: publication-history-node
+            runtime: node
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -779,6 +781,13 @@ jobs:
                 src/gateway/session-utils-store-lookup.test.ts
                 src/gateway/session-utils.single-row-cache.test.ts
                 src/gateway/session-utils.test.ts
+              )
+              ;;
+            publication-history-node)
+              files=(
+                src/gateway/server.sessions-send.test.ts
+                src/gateway/github-shared-publication-read.test.ts
+                src/gateway/github-publication-boundaries.test.ts
               )
               ;;
             typed-fixtures-node)
