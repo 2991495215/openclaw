@@ -59,6 +59,7 @@ export async function snapshotNodeWorkerNativeInferenceAsync(
             provider: providerId,
             providerConfig: provider,
             cfg: config,
+            env,
           });
         },
         { config, env },
