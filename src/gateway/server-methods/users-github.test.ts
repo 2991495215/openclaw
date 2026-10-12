@@ -303,16 +303,16 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
         { pluginId: "personal-github-legacy-service-test" },
         async () => {
           expect(lifecycle.personal.cancelAuthorization(action, pending.requestId)).toBe(true);
-          expect((await readConnection(owner()))?.pending).toBeUndefined();
           expect(publications).toHaveLength(1);
+          expect((await readConnection(owner()))?.pending).toBeUndefined();
           expect(lifecycle.personal.cancelAuthorization(action, pending.requestId)).toBe(false);
           expect(publications).toHaveLength(1);
           const previous = (await readConnection(owner()))?.generation;
           expect(lifecycle.personal.disconnect(action)).toBeUndefined();
+          expect(publications).toHaveLength(2);
           const disconnected = await readConnection(owner());
           expect(disconnected?.generation).not.toBe(previous);
           expect(disconnected?.selection).toEqual({ kind: "disconnected" });
-          expect(publications).toHaveLength(2);
         },
       );
       expect(warning).toHaveBeenCalledExactlyOnceWith(
@@ -449,11 +449,11 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
         });
         expect(response.mock.calls[0]?.[0]).toBe(true);
         const { requestId } = response.mock.calls[0]![1] as { requestId: string };
-        const pending = readGitHubDeviceAuthorizationRecord(requestId);
+        const pending = await readGitHubDeviceAuthorizationRecord(requestId);
         if (!pending) {
           throw new Error("Expected shared device authorization");
         }
-        writeGitHubDeviceAuthorizationRecord({ ...pending, nextPollAtMs: Date.now() });
+        await writeGitHubDeviceAuthorizationRecord({ ...pending, nextPollAtMs: Date.now() });
         const polled = await rpc(alice, "tools.github.authorize.poll", { requestId });
         expect(polled.mock.calls[0]?.[1]).toMatchObject({ status: "success" });
       }
@@ -862,8 +862,8 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     expect((await fs.stat(dir)).mode & 0o077).toBe(0);
     expect(await listSecretStoreEntries({ scope: { kind: "team" } })).toEqual([]);
     expect(await readSecretStoreExecEnvironment({ includeSecretSentinels: true })).toEqual({});
-    expect(listGitHubOAuthRecords()).toEqual([]);
-    expect(listGitHubDeviceAuthorizationRecords()).toEqual([]);
+    expect(await listGitHubOAuthRecords()).toEqual([]);
+    expect(await listGitHubDeviceAuthorizationRecords()).toEqual([]);
     await purgeExpiredSecretStoreEntries();
     await cleanupRetiredManagedGitHubProfiles({ config });
     expect(await fs.readFile(path.join(dir, "hosts.yml"), "utf8")).toContain(tokens.accessToken);
