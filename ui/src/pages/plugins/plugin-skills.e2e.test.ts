@@ -163,6 +163,142 @@ describeControlUiE2e("Plugin skill bundle routes", () => {
         );
         const modal = page.locator("openclaw-file-preview-modal");
         await modal.locator('[data-path="SKILL.md"][aria-current="true"]').waitFor();
+        // HOLD / neverLand: observe Escape delivery without adding a wait before the key press.
+        const escapeDiagnostic = await page.evaluateHandle(() => {
+          const viewer = document.querySelector("openclaw-file-preview-modal");
+          const owner = viewer?.querySelector("openclaw-modal-dialog") ?? null;
+          const wa = owner?.shadowRoot?.querySelector("wa-dialog") ?? null;
+          const native = wa?.shadowRoot?.querySelector("dialog") ?? null;
+          const identify = (target: EventTarget | null) => {
+            if (!(target instanceof Element)) {
+              return {
+                tag: target === window ? "window" : target === document ? "document" : "other",
+              };
+            }
+            const tags = [
+              "html",
+              "body",
+              "button",
+              "input",
+              "textarea",
+              "a",
+              "div",
+              "span",
+              "slot",
+              "dialog",
+              "openclaw-file-preview-modal",
+              "openclaw-modal-dialog",
+              "wa-dialog",
+              "wa-tooltip",
+              "wa-popup",
+            ];
+            const role = target.getAttribute("role") ?? "";
+            return {
+              tag: tags.includes(target.localName) ? target.localName : "other",
+              classes: [
+                "item",
+                "is-active",
+                "button",
+                "close-button",
+                "search",
+                "body",
+                "markdown",
+              ].filter((className) => target.classList.contains(className)),
+              role: ["dialog", "button", "textbox", "link", "tooltip"].includes(role)
+                ? role
+                : "other",
+              connected: target.isConnected,
+              current: target.getAttribute("aria-current") === "true",
+            };
+          };
+          const snapshot = () => {
+            const focus = [];
+            let active = document.activeElement;
+            while (active && focus.length < 12) {
+              focus.push(identify(active));
+              active = active.shadowRoot?.activeElement ?? null;
+            }
+            return {
+              focus,
+              viewerConnected: viewer?.isConnected === true,
+              ownerConnected: owner?.isConnected === true,
+              ownerOpen: owner !== null && Reflect.get(owner, "open") === true,
+              waOpen: wa !== null && Reflect.get(wa, "open") === true,
+              nativeOpen: native?.open === true,
+              selected: identify(viewer?.querySelector('.item[aria-current="true"]') ?? null),
+              selectedConfig:
+                viewer?.querySelector('[data-path="references/config.md"][aria-current="true"]') !=
+                null,
+              activePathConfig:
+                viewer !== null && Reflect.get(viewer, "activePath") === "references/config.md",
+              otherModal: [...document.querySelectorAll("openclaw-modal-dialog")].some(
+                (element) => element !== owner,
+              ),
+              openTooltip: [...document.querySelectorAll("wa-tooltip")].some(
+                (element) => Reflect.get(element, "open") === true,
+              ),
+            };
+          };
+          const events: Array<{
+            type: string;
+            capture: boolean;
+            at: ReturnType<typeof identify>;
+            target: ReturnType<typeof identify>;
+            path: ReturnType<typeof identify>[];
+            prevented: boolean;
+            trusted: boolean;
+            state: ReturnType<typeof snapshot>;
+          }> = [];
+          let escapeSeen = false;
+          for (const target of [window, document, viewer, owner, wa, native]) {
+            if (!target) {
+              continue;
+            }
+            for (const capture of [true, false]) {
+              for (const type of [
+                "keydown",
+                "modal-cancel",
+                "file-preview-close",
+                "wa-hide",
+                "cancel",
+              ]) {
+                target.addEventListener(
+                  type,
+                  (event) => {
+                    if (type === "keydown") {
+                      if (!(event instanceof KeyboardEvent) || event.key !== "Escape") {
+                        return;
+                      }
+                      escapeSeen = true;
+                    }
+                    if (escapeSeen && events.length < 64) {
+                      events.push({
+                        type,
+                        capture,
+                        at: identify(target),
+                        target: identify(event.target),
+                        path: event.composedPath().slice(0, 16).map(identify),
+                        prevented: event.defaultPrevented,
+                        trusted: event.isTrusted,
+                        state: snapshot(),
+                      });
+                    }
+                  },
+                  { capture, passive: true },
+                );
+              }
+            }
+          }
+          let pageError = false;
+          let unhandledRejection = false;
+          window.addEventListener("error", () => {
+            pageError = true;
+          });
+          window.addEventListener("unhandledrejection", () => {
+            unhandledRejection = true;
+          });
+          return { read: () => ({ events, final: snapshot(), pageError, unhandledRejection }) };
+        });
         expect(await modal.getByRole("textbox").count()).toBe(0);
         expect(await modal.getByRole("button", { name: /Copy/ }).count()).toBe(0);
         expect(
@@ -210,8 +346,16 @@ describeControlUiE2e("Plugin skill bundle routes", () => {
             await captureScreenshot(page, `skill-bundle-${width}.png`, "viewport");
           }
         }
-        await page.keyboard.press("Escape");
-        await expect.poll(() => modal.count()).toBe(0);
+        try {
+          await page.keyboard.press("Escape");
+          await expect.poll(() => modal.count()).toBe(0);
+        } catch (error) {
+          const diagnostic = await escapeDiagnostic
+            .evaluate((observer) => observer.read())
+            .catch(() => ({ unavailable: true }));
+          console.warn("[HOLD/neverLand plugin-skill-escape]", JSON.stringify(diagnostic));
+          throw error;
+        }
         expect(new URL(page.url()).pathname).toBe(`/${route}`);
         expect(await gateway.getRequests("plugins.install")).toHaveLength(0);
       } finally {
