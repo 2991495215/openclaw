@@ -175,7 +175,7 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
   const placementGate = createWorkerSessionPlacementGate(params.startup.placementStore, {
     // Claims loaded before this Gateway acquired the state lock remain usable only by
     // workspace recovery. Worker authority is minted from claims created in this lifecycle.
-    rejectExistingWorkerClaims: true,
+    recoveryPlacements: await params.startup.placementStore.listAsync(),
   });
   const workerEnvironmentLog = params.log.child("worker-environments");
   const listRetainedBundleHashes = () =>

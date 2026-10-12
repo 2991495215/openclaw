@@ -178,7 +178,7 @@ it.each([
         promptedAt: 1,
       });
     }
-    const context = withLocalGatewayRequestScope(
+    const context = await withLocalGatewayRequestScope(
       { deps: {} as CliDeps, getRuntimeConfig: () => cfg },
       () => getPluginRuntimeGatewayRequestScope()!.context!,
     );

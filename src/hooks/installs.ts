@@ -2,6 +2,7 @@ import { expectDefined } from "@openclaw/normalization-core";
 import type { HookInstallRecord } from "../config/types.hooks.js";
 import { updateConfigMachineState } from "../state/config-machine-state-write.js";
 import { readConfigMachineState } from "../state/config-machine-state.js";
+import { executeExistingOpenClawStateRead } from "../state/openclaw-state-db-readonly.js";
 import type { OpenClawStateDatabaseOptions } from "../state/openclaw-state-db.js";
 
 export type HookInstallUpdate = HookInstallRecord & { hookId: string };
@@ -20,6 +21,21 @@ export function readHookInstalls(
     readConfigMachineState<Record<string, HookInstallRecord>>("hooks.internal.installs", options) ??
     {}
   );
+}
+
+export async function readHookInstallsAsync(
+  options: OpenClawStateDatabaseOptions = {},
+): Promise<Record<string, HookInstallRecord>> {
+  const result = await executeExistingOpenClawStateRead(options, {
+    type: "hooks.internal.installs",
+  });
+  if (!result) {
+    return {};
+  }
+  if (!result.ok || result.type !== "hooks.internal.installs") {
+    throw new Error(result.ok ? "Unexpected hook installs reply" : result.message);
+  }
+  return result.row ? (JSON.parse(result.row.value_json) as Record<string, HookInstallRecord>) : {};
 }
 
 export function recordHookInstall(

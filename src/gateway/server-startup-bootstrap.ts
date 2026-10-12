@@ -437,7 +437,7 @@ export async function prepareGatewayServerBootstrap(input: {
       reapplyCompareOverlays,
     };
   };
-  setAppliedRuntimeConfigSnapshot(cfgAtStart, configSnapshot.sourceConfig);
+  await setAppliedRuntimeConfigSnapshot(cfgAtStart, configSnapshot.sourceConfig);
   applyLoggingConfig(cfgAtStart.logging);
   initializePublishedConfigRuntimeEnv(configSnapshot.sourceConfig, {
     ownedEnv: collectConfigRuntimeEnvOwnership(
@@ -520,7 +520,7 @@ export async function prepareGatewayServerBootstrap(input: {
   // prepared owners are created so request-time exact-owner lookups cannot see the pre-activation
   // snapshot and reject the Gateway's own model catalog.
   copyConfigResolutionFacts(cfgAtStart, gatewayPluginConfigAtStart);
-  setAppliedRuntimeConfigSnapshot(gatewayPluginConfigAtStart, configSnapshot.sourceConfig);
+  await setAppliedRuntimeConfigSnapshot(gatewayPluginConfigAtStart, configSnapshot.sourceConfig);
   const coreGatewayMethodNames = listCoreGatewayMethodNames();
   const existingPluginMetadataSnapshot = getGatewayPluginMetadataSnapshot();
   const currentPluginMetadataSnapshot = existingPluginMetadataSnapshot ?? pluginMetadataSnapshot;

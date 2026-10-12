@@ -4,7 +4,10 @@ import {
   deferSqliteWorkerCommitReceipt,
   requestSqliteWorkerOperationAdmission,
 } from "../infra/sqlite-worker-operation-admission.js";
-import type { OpenClawStateDatabaseOptions } from "../state/openclaw-state-db-contract.js";
+import type {
+  OpenClawStateDatabase,
+  OpenClawStateDatabaseOptions,
+} from "../state/openclaw-state-db-contract.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
 import type { WorkerOperationContext } from "../state/worker-operation-registry.js";
 import * as grants from "./operator-approval-standing-grants.js";
@@ -33,13 +36,17 @@ type Context = Pick<WorkerOperationContext, "open" | "stateOptions"> & {
 };
 type Input<Handler extends (input: never) => unknown> = Omit<
   NonNullable<Parameters<Handler>[0]>,
-  "databaseOptions"
+  "databaseOptions" | "database"
 >;
 
 function transact<Payload, Result>(
   input: Payload,
   context: Context,
-  apply: (input: Payload & { databaseOptions: OpenClawStateDatabaseOptions }) => Result,
+  apply: (
+    input: Payload & {
+      databaseOptions: OpenClawStateDatabaseOptions & { database: OpenClawStateDatabase };
+    },
+  ) => Result,
   receiptOf?: (result: Result) => OperatorApprovalCommitReceipt | undefined,
 ): Result {
   const options = { ...context.stateOptions(), database: context.open() };
@@ -85,6 +92,16 @@ function transact<Payload, Result>(
 }
 
 export const operatorApprovalOperations = {
+  "operatorApprovals.recoverStartup": (
+    input: Input<typeof transitions.recoverOperatorApprovalsInDatabase>,
+    context,
+  ) =>
+    transact(input, context, (params) =>
+      transitions.recoverOperatorApprovalsInDatabase({
+        ...params,
+        database: params.databaseOptions.database,
+      }),
+    ),
   "operatorApprovals.insert": (
     input: Input<typeof store.insertOperatorApprovalInDatabase>,
     context,

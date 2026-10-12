@@ -60,6 +60,19 @@ paths are migration debt, not a pattern to extend. The
 [migration inventory](/reference/database-schemas/worker-access-inventory) separates
 candidate main-thread paths from SQL already executing in workers.
 
+Gateway startup awaits business initialization before accepting connections.
+Approval recovery closes prior-runtime requests and prunes terminal rows in one
+shared-state worker transaction. Config revision keys use that same writer's
+atomic get-or-create operation. Applied config publication awaits registered
+worker preparers, including Claw consent provenance, before installing the
+runtime and source snapshots. Secrets startup prepares the process-stable shared
+auth-store owner through its worker before taking the synchronous fast path.
+Placement startup reads inherited claims through the existing placement worker
+before constructing its recovery-only claim set. Remote catalog capture uses its
+read worker, and startup sidecars share one prepared internal-hook selection.
+These changes preserve recovery, consent, stored bytes, schemas, and update
+behavior; admission and migration remain with their existing owners.
+
 Cold session creation uses the existing session-entry worker for requested-key
 and parent lookups. Personal default selection reads profile links and its selected
 credential through the existing shared-state and auth-store readers; credential
@@ -568,6 +581,10 @@ discard/path rewrite remains Doctor/offline migration work. These exceptions
 are not ordinary runtime writer routes and are not replaced by unawaited promises.
 
 Host-bound approval requests use workers, including reads that expire rows.
+Gateway startup also batches orphan cancellation and terminal retention pruning
+through the approval worker, then awaits the committed recovery before accepting
+requests. Browser notification recovery waits for that commit but remains
+background work joined by Gateway close.
 The final exec-policy SELECT, current
 placement/parent checks, and released opaque callback guards remain current
 authority boundaries. This cutover adds no freshness probes, persistent schema,

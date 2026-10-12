@@ -45,7 +45,7 @@ import {
   parseCronExecOperationBinding,
 } from "./operator-approval-standing-grants.js";
 import {
-  closeOrphanedOperatorApprovals,
+  recoverOperatorApprovalsOnStartup,
   listCronStandingGrants,
   revokeCronStandingGrant,
   insertOperatorApproval,
@@ -811,7 +811,7 @@ describe("cron standing grant consumption", () => {
     closeOpenClawStateDatabaseForTest();
     // New runtime epoch: startup cancels orphaned pending approvals only; the
     // resolved allow-always parent and its grant remain valid durable truth.
-    closeOrphanedOperatorApprovals({
+    await recoverOperatorApprovalsOnStartup({
       runtimeEpoch: "epoch-2",
       nowMs: NOW_MS + 5_000,
       databaseOptions,

@@ -421,7 +421,7 @@ export class ComposedGatewayHarness {
     this.liveEventsValue.clear();
     this.liveEventsValue = liveEvents.createWorkerLiveEventReceiver();
     this.placementGateValue = createWorkerSessionPlacementGate(this.placementStore, {
-      rejectExistingWorkerClaims: true,
+      recoveryPlacements: this.placementStore.list(),
     });
     this.useReplacementExecutor = true;
     this.serviceValue = this.createService();

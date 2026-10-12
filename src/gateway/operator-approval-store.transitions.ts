@@ -2,7 +2,10 @@
 import { normalizeNullableString } from "@openclaw/normalization-core/string-coerce";
 import { mintMcpToolGrantLocked } from "../infra/exec-approvals-sqlite.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
-import type { OpenClawStateDatabaseOptions } from "../state/openclaw-state-db-contract.js";
+import type {
+  OpenClawStateDatabase,
+  OpenClawStateDatabaseOptions,
+} from "../state/openclaw-state-db-contract.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
 import { mintCronStandingGrantLocked } from "./operator-approval-standing-grants.js";
 import type { CronStandingGrantMintSpec } from "./operator-approval-standing-grants.types.js";
@@ -234,59 +237,69 @@ export function expireDueOperatorApprovalsInDatabase(params: {
   }, params.databaseOptions);
 }
 
-export function closeOrphanedOperatorApprovals(params: {
+export function recoverOperatorApprovalsInDatabase(params: {
   runtimeEpoch: string;
   nowMs?: number;
-  databaseOptions?: OpenClawStateDatabaseOptions;
-}): TerminalizeOperatorApprovalsResult {
+  database: OpenClawStateDatabase;
+}): TerminalizeOperatorApprovalsResult & { pruned: number } {
   const runtimeEpoch = requireString(params.runtimeEpoch, "operator approval runtime epoch");
-  return runOpenClawStateWriteTransaction((database) => {
-    const nowMs = params.nowMs ?? Date.now();
-    const stateDb = getNodeSqliteKysely<OperatorApprovalDatabase>(database.db);
-    const orphanRows = executeSqliteQuerySync(
+  const { database } = params;
+  const nowMs = params.nowMs ?? Date.now();
+  const stateDb = getNodeSqliteKysely<OperatorApprovalDatabase>(database.db);
+  const orphanRows = executeSqliteQuerySync(
+    database.db,
+    stateDb
+      .selectFrom("operator_approvals")
+      .selectAll()
+      .where("status", "=", "pending")
+      .where("runtime_epoch", "!=", runtimeEpoch)
+      .orderBy("created_at_ms", "asc")
+      .orderBy("approval_id", "asc"),
+  ).rows;
+  let affected = 0;
+  const terminalRows: OperatorApprovalRow[] = [];
+  for (const row of orphanRows) {
+    const auditTimestampMs = clampAuditTimestamp(nowMs, row.created_at_ms);
+    const terminalFields = operatorApprovalTerminalFields(
+      "cancelled",
+      "gateway-restart",
+      auditTimestampMs,
+    );
+    const result = executeSqliteQuerySync(
       database.db,
       stateDb
-        .selectFrom("operator_approvals")
-        .selectAll()
-        .where("status", "=", "pending")
-        .where("runtime_epoch", "!=", runtimeEpoch)
-        .orderBy("created_at_ms", "asc")
-        .orderBy("approval_id", "asc"),
-    ).rows;
-    if (orphanRows.length === 0) {
-      return { affected: 0, records: [] };
+        .updateTable("operator_approvals")
+        .set(terminalFields)
+        .where("approval_id", "=", row.approval_id)
+        .where("status", "=", "pending"),
+    );
+    const rowAffected = Number(result.numAffectedRows ?? 0n);
+    affected += rowAffected;
+    if (rowAffected === 1) {
+      terminalRows.push({ ...row, ...terminalFields });
     }
-    let affected = 0;
-    const terminalRows: OperatorApprovalRow[] = [];
-    for (const row of orphanRows) {
-      const auditTimestampMs = clampAuditTimestamp(nowMs, row.created_at_ms);
-      const terminalFields = operatorApprovalTerminalFields(
-        "cancelled",
-        "gateway-restart",
-        auditTimestampMs,
-      );
-      const result = executeSqliteQuerySync(
-        database.db,
-        stateDb
-          .updateTable("operator_approvals")
-          .set(terminalFields)
-          .where("approval_id", "=", row.approval_id)
-          .where("status", "=", "pending"),
-      );
-      const rowAffected = Number(result.numAffectedRows ?? 0n);
-      affected += rowAffected;
-      if (rowAffected === 1) {
-        terminalRows.push({ ...row, ...terminalFields });
-      }
-    }
-    operatorApprovalPublication.stagePostimages(database.db, terminalRows);
-    return {
-      affected,
-      records: terminalRows
-        .map((row) => decodeOperatorApprovalRow(row))
-        .filter((record): record is OperatorApprovalRecord => record !== null),
-    };
-  }, params.databaseOptions);
+  }
+  operatorApprovalPublication.stagePostimages(database.db, terminalRows);
+  const prunedRows = executeSqliteQuerySync(
+    database.db,
+    stateDb
+      .deleteFrom("operator_approvals")
+      .where("status", "!=", "pending")
+      .where("resolved_at_ms", "is not", null)
+      .where("resolved_at_ms", "<=", nowMs - OPERATOR_APPROVAL_TERMINAL_RETENTION_MS)
+      .returning("approval_id"),
+  ).rows;
+  operatorApprovalPublication.stageDeletions(
+    database.db,
+    prunedRows.map((row) => row.approval_id),
+  );
+  return {
+    affected,
+    pruned: prunedRows.length,
+    records: terminalRows
+      .map((row) => decodeOperatorApprovalRow(row))
+      .filter((record): record is OperatorApprovalRecord => record !== null),
+  };
 }
 
 export function consumeOperatorApprovalAllowOnceInDatabase(params: {
@@ -364,35 +377,5 @@ export function consumeOperatorApprovalAllowOnceInDatabase(params: {
     record = requireDecodedRecord(row);
     operatorApprovalPublication.stagePostimages(database.db, [row]);
     return { outcome: "consumed", record };
-  }, params.databaseOptions);
-}
-
-export function pruneTerminalOperatorApprovals(params: {
-  nowMs?: number;
-  retentionMs?: number;
-  databaseOptions?: OpenClawStateDatabaseOptions;
-}): number {
-  const retentionMs = params.retentionMs ?? OPERATOR_APPROVAL_TERMINAL_RETENTION_MS;
-  if (!Number.isSafeInteger(retentionMs) || retentionMs < 0) {
-    throw new Error("operator approval retention must be a non-negative safe integer");
-  }
-  return runOpenClawStateWriteTransaction((database) => {
-    const nowMs = params.nowMs ?? Date.now();
-    const cutoffMs = nowMs - retentionMs;
-    const stateDb = getNodeSqliteKysely<OperatorApprovalDatabase>(database.db);
-    const result = executeSqliteQuerySync(
-      database.db,
-      stateDb
-        .deleteFrom("operator_approvals")
-        .where("status", "!=", "pending")
-        .where("resolved_at_ms", "is not", null)
-        .where("resolved_at_ms", "<=", cutoffMs)
-        .returning("approval_id"),
-    );
-    operatorApprovalPublication.stageDeletions(
-      database.db,
-      result.rows.map((row) => row.approval_id),
-    );
-    return result.rows.length;
   }, params.databaseOptions);
 }

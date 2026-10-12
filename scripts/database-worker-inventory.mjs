@@ -763,10 +763,10 @@ const reviewedOperations = new Map([
     "src/gateway/operator-approval-store.transitions.ts",
     [
       {
-        tier: "T2",
-        operations: ["closeOrphanedOperatorApprovals", "pruneTerminalOperatorApprovals"],
+        tier: "W",
+        operations: ["recoverOperatorApprovalsInDatabase"],
         evidence:
-          "Boot calls only in server-aux-handlers.ts:105,109; remaining transitions retain native SDK compatibility",
+          "Only operatorApprovals.recoverStartup in operator-approval-store.operations.ts calls these kernels outside tests. server-core-runtime.ts awaits the worker recovery before publishing handlers; remaining transitions retain native SDK compatibility.",
       },
       {
         tier: "W",
@@ -1199,17 +1199,6 @@ const reviewedOperations = new Map([
         operations: ["embedSessionColdArchivesInSnapshot"],
         evidence:
           "infra/backup-sqlite-snapshot.ts:292 via backup-create.ts:320,332,352; snapshot/openclaw-snapshot-copy.ts:72 via local-repository.ts:148 and git-backup.ts:310. Roots are commands/backup.ts:52, backup-sqlite.ts:80, backup-git.ts:131, Doctor/update backup and developer reliability scripts; SQL targets a temporary snapshot.",
-      },
-    ],
-  ],
-  [
-    "src/gateway/config-revision-token.ts",
-    [
-      {
-        tier: "T2",
-        operations: ["loadOrCreateConfigRevisionKey", "loadGatewayConfigRevisionKey"],
-        evidence:
-          "Gateway construction at server-kernel-request-runtime.ts:48; local-request-context.ts:107 also initializes it via agents/agent-command-local.ts:61 for standalone commands/boot. Existing Gateway scopes return before local allocation at local-request-context.ts:237. Request hashing captures the key and performs no SQL.",
       },
     ],
   ],
