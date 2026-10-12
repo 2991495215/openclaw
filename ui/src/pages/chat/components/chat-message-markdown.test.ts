@@ -4,7 +4,7 @@
 // transcript mutation actions.
 import { html, nothing, render } from "lit";
 import { describe, expect, it, vi } from "vitest";
-import { markdownBlocks } from "../../../components/markdown-blocks.ts";
+import { MarkdownBlocks } from "../../../components/markdown-blocks-owner.ts";
 import { handleMarkdownCodeBlockClick } from "../../../components/markdown-code-blocks.ts";
 import { resolveMessageDisplayMarkdown } from "../../../lib/chat/message-display.ts";
 import { extractText } from "../../../lib/chat/message-extract.ts";
@@ -268,9 +268,10 @@ describe("streaming message Markdown", () => {
       "\n",
     );
     const prefix = `\`\`\`ts\n${code}\n\`\`\`\n\n`;
-    const renderTail = (text: string, streaming: boolean) =>
+    const blocks = new MarkdownBlocks(container);
+    const renderTail = (text: string, streaming: boolean) => {
       render(
-        html`<section ${markdownBlocks()} @click=${handleMarkdownCodeBlockClick}>
+        html`<section @click=${handleMarkdownCodeBlockClick}>
           ${renderMessageMarkdown(
             prefix + text,
             "retained-fence",
@@ -280,6 +281,8 @@ describe("streaming message Markdown", () => {
         </section>`,
         container,
       );
+      blocks.update(true);
+    };
     try {
       renderTail("The answer", true);
       await Promise.resolve();
@@ -306,6 +309,7 @@ describe("streaming message Markdown", () => {
         tail.split("\n\n").at(-1),
       );
     } finally {
+      blocks.dispose();
       render(nothing, container);
       container.remove();
     }
@@ -319,9 +323,10 @@ describe("streaming message Markdown", () => {
   ] as const)("updates streaming Markdown after a %s change", async (change) => {
     const container = document.body.appendChild(document.createElement("div"));
     const source = "```ts\nconst original = 42;\n```\n\nSee [guide][ref]\n\nTail";
-    const show = (markdown: string, key = "message", interactive = true) =>
+    const blocks = new MarkdownBlocks(container);
+    const show = (markdown: string, key = "message", interactive = true) => {
       render(
-        html`<section ${markdownBlocks()} @click=${handleMarkdownCodeBlockClick}>
+        html`<section @click=${handleMarkdownCodeBlockClick}>
           ${renderMessageMarkdown(
             markdown,
             key,
@@ -331,6 +336,8 @@ describe("streaming message Markdown", () => {
         </section>`,
         container,
       );
+      blocks.update(true);
+    };
     try {
       show(source);
       await Promise.resolve();
@@ -359,6 +366,7 @@ describe("streaming message Markdown", () => {
       }
       expect(container.querySelectorAll("pre code")).toHaveLength(1);
     } finally {
+      blocks.dispose();
       render(nothing, container);
       container.remove();
     }

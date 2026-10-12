@@ -3,16 +3,13 @@ import { html, nothing, render } from "lit";
 import { AsyncDirective, directive } from "lit/async-directive.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
-import { markdownBlocks } from "../../../components/markdown-blocks.ts";
+import { MarkdownBlocks } from "../../../components/markdown-blocks-owner.ts";
 import {
   handleMarkdownCodeBlockClick,
   readMarkdownCodeBlockCopyText,
 } from "../../../components/markdown-code-blocks.ts";
 import type { MarkdownRenderOptions } from "../../../components/markdown-render-options.ts";
-import {
-  enhanceMarkdownTables,
-  releaseMarkdownTables,
-} from "../../../components/markdown-tables.ts";
+import { enhanceMarkdownTables } from "../../../components/markdown-tables.ts";
 import { toSanitizedMarkdownHtml } from "../../../components/markdown.ts";
 import {
   prepareMarkdownMedia,
@@ -22,15 +19,17 @@ import {
 import { renderMessageMarkdown } from "./chat-message-text.ts";
 
 let container: HTMLDivElement;
+let blocks: MarkdownBlocks;
 
 beforeEach(() => {
   container = document.createElement("div");
   document.body.append(container);
+  blocks = new MarkdownBlocks(container);
   container.addEventListener("click", handleMarkdownCodeBlockClick);
 });
 
 afterEach(() => {
-  releaseMarkdownTables(container);
+  blocks.dispose();
   container.removeEventListener("click", handleMarkdownCodeBlockClick);
   render(nothing, container);
   container.remove();
@@ -50,8 +49,8 @@ function draw(
     options?: MarkdownRenderOptions;
   } = {},
 ) {
-  return render(
-    html`<section ${markdownBlocks()}>
+  const part = render(
+    html`<section>
       ${renderMessageMarkdown(
         source,
         key,
@@ -63,6 +62,8 @@ function draw(
     </section>`,
     container,
   );
+  blocks.update(true);
+  return part;
 }
 
 describe("streaming Markdown DOM", () => {
@@ -458,8 +459,10 @@ describe("streaming Markdown DOM", () => {
       await Promise.resolve();
       expect(container.querySelector("button")).toBe(card);
       expect(card.textContent).toBe("denied");
+      blocks.setConnected(false);
       part.setConnected(false);
       part.setConnected(true);
+      blocks.setConnected(true);
       expect(connections).toEqual([false, true]);
       policy = "allowed again";
       draw(source, { streaming: false, media: prepared.media });

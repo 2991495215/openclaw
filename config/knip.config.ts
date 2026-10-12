@@ -783,6 +783,7 @@ const config = {
     "ui/src/pages/chat/components/chat-ci-details.{ts,tsx}": ["types"],
     "ui/src/pages/chat/components/chat-clawhub-card.tsx": ["exports"],
     "ui/src/pages/chat/components/chat-details.tsx": ["types"],
+    "ui/src/pages/chat/components/chat-pane-header.tsx": ["exports"],
     "ui/src/pages/chat/components/chat-question-card{,-view}.{ts,tsx}": ["types"],
     "ui/src/pages/chat/components/chat-skill-learned-notice.tsx": ["exports"],
     "ui/src/pages/chat/components/chat-svg-attachment.tsx": ["exports"],
