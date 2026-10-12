@@ -18,6 +18,7 @@ import { runQaGatewayFixture } from "../../test/helpers/qa-gateway-cleanup.js";
 import { resetPreparedGatewayModelCatalogForTest } from "../agents/prepared-model-runtime.test-support.js";
 import {
   getRuntimeConfig,
+  getRuntimeConfigSnapshot,
   parseConfigJson5,
   resetConfigRuntimeState,
   setRuntimeConfigSnapshot,
@@ -125,6 +126,10 @@ async function publishGatewayTestConfig(config?: OpenClawConfig): Promise<OpenCl
     return config;
   }
   const prepared = await loadGatewayTestConfigAsync(fixture);
+  const current = getRuntimeConfigSnapshot();
+  if (current && current !== fixture) {
+    return current;
+  }
   setRuntimeConfigSnapshot(prepared);
   return prepared;
 }

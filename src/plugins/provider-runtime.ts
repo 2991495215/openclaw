@@ -957,7 +957,7 @@ export async function captureProviderSyntheticAuthFacts(params: {
 
 export { resolveExternalAuthProfilesWithPlugins } from "./provider-external-auth.js";
 
-export function shouldDeferProviderSyntheticProfileAuthWithPlugin(
+export async function shouldDeferProviderSyntheticProfileAuthWithPlugin(
   params: ProviderRuntimeLookup & {
     context: ProviderDeferSyntheticProfileAuthContext;
     modelApi?: string;
@@ -969,10 +969,11 @@ export function shouldDeferProviderSyntheticProfileAuthWithPlugin(
     params.modelApi,
   );
   for (const providerRef of providerRefs) {
-    const resolved = resolveProviderRuntimePlugin({
+    const plugin = await resolveProviderRuntimePluginAsync({
       ...params,
       provider: providerRef,
-    })?.shouldDeferSyntheticProfileAuth?.(params.context);
+    });
+    const resolved = plugin?.shouldDeferSyntheticProfileAuth?.(params.context);
     if (resolved !== undefined) {
       return resolved;
     }

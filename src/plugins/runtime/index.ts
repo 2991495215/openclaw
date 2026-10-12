@@ -25,6 +25,7 @@ import {
   listWebSearchProvidersAsync,
   runWebSearch,
 } from "../../web-search/runtime.js";
+import { prepareBundledDiscoveryMode } from "../bundled-discovery-state.js";
 import {
   resolveNativePluginModelAuth,
   resolveNativePluginModelConfig,
@@ -262,6 +263,7 @@ function createRuntimeSandbox(agent: PluginRuntime["agent"]): PluginRuntime["san
       const params = { ...input };
       const source = captureIncognitoSessionSource(params);
       const prepare = async () => {
+        await prepareBundledDiscoveryMode();
         const sessionEntry = await agent.session.getSessionEntryAsync({
           agentId: params.agentId,
           sessionKey: params.sessionKey,

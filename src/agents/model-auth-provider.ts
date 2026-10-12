@@ -64,15 +64,15 @@ function assertAuthProfileNotRetired(params: {
   );
 }
 
-function shouldDeferSyntheticProfileAuth(params: {
+async function shouldDeferSyntheticProfileAuth(params: {
   cfg: OpenClawConfig | undefined;
   provider: string;
   resolvedApiKey: string | undefined;
   modelApi?: string;
-}): boolean {
+}): Promise<boolean> {
   const providerConfig = resolveMergedModelProviderConfig(params.cfg, params.provider);
   return (
-    shouldDeferProviderSyntheticProfileAuthWithPlugin({
+    (await shouldDeferProviderSyntheticProfileAuthWithPlugin({
       provider: params.provider,
       config: params.cfg,
       modelApi: params.modelApi,
@@ -82,7 +82,7 @@ function shouldDeferSyntheticProfileAuth(params: {
         providerConfig,
         resolvedApiKey: params.resolvedApiKey,
       },
-    }) === true
+    })) === true
   );
 }
 
@@ -360,12 +360,12 @@ async function resolvePreparedApiKeyForProvider(
     // profileId, so we cannot assume explicit === user-locked.
     if (
       !params.lockedProfile &&
-      shouldDeferSyntheticProfileAuth({
+      (await shouldDeferSyntheticProfileAuth({
         cfg,
         provider,
         resolvedApiKey: resolved.apiKey,
         modelApi: params.modelApi,
-      })
+      }))
     ) {
       return resolveApiKeyForProviderCore({
         ...params,
@@ -568,7 +568,7 @@ async function resolvePreparedApiKeyForProvider(
           continue;
         }
         if (
-          shouldDeferSyntheticProfileAuth({
+          await shouldDeferSyntheticProfileAuth({
             cfg,
             provider,
             resolvedApiKey: resolved.apiKey,

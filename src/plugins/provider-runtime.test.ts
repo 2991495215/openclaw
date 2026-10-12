@@ -255,15 +255,15 @@ function withExternalAuthProviders<T>(providers: ProviderPlugin[], run: () => T)
   return withPluginRuntimeGenerationScope({ metadataSnapshot, pluginRegistry }, run);
 }
 
-function expectResolvedValues(
+async function expectResolvedValues(
   cases: ReadonlyArray<{
     actual: () => unknown;
     expected: unknown;
   }>,
 ) {
-  cases.forEach(({ actual, expected }) => {
-    expect(actual()).toEqual(expected);
-  });
+  for (const { actual, expected } of cases) {
+    expect(await actual()).toEqual(expected);
+  }
 }
 
 async function expectResolvedMatches(
@@ -2308,7 +2308,7 @@ describe("provider-runtime", () => {
       }),
     ).resolves.toEqual("Repair demo:default");
 
-    expectResolvedValues([
+    await expectResolvedValues([
       {
         actual: () =>
           resolveProviderCacheTtlEligibility({

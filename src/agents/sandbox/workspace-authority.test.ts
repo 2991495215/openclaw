@@ -6,6 +6,7 @@ import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { AgentSandboxConfig } from "../../config/types.agents-shared.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { prepareBundledDiscoveryMode } from "../../plugins/bundled-discovery-state.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
@@ -283,7 +284,8 @@ describe("resolveSandboxWorkspaceAuthority", () => {
     expect(result.confinementError).toBeUndefined();
   });
 
-  it("applies the configured target model's provider policy", () => {
+  it("applies the configured target model's provider policy", async () => {
+    await prepareBundledDiscoveryMode();
     const config = configWithSandbox({ mode: "all", workspaceAccess: "rw" });
     config.agents!.defaults!.model = "anthropic/claude-sonnet-4-6";
     config.tools!.byProvider = { anthropic: { deny: ["workboard_complete"] } };

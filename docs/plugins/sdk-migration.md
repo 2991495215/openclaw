@@ -199,6 +199,16 @@ replacement.
 The local-only `provider-http` seam exposes `warnPluginSdkDeprecation` so these
 plugin-local compatibility exports share the existing warning budget.
 
+### Provider auth aliases
+
+Await `resolveProviderIdForAuthAsync` from `openclaw/plugin-sdk/provider-auth-aliases`
+when resolving credential-provider aliases. It prepares plugin metadata through
+its existing owner and preserves workspace trust and endpoint matching.
+The synchronous `resolveProviderIdForAuth` export shipped in `v2026.10.2` is
+now deprecated. It retains cold native discovery with a bounded warning and
+will be removed in a later release after stable deprecation. Calls with prepared
+metadata, including a compatible current snapshot, reuse it without a warning.
+
 ### Realtime voice provider discovery
 
 Use `getRealtimeVoiceProviderAsync`, `listRealtimeVoiceProvidersAsync`,

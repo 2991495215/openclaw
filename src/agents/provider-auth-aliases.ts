@@ -14,7 +14,10 @@ import {
   normalizePluginConfigId,
 } from "../plugins/plugin-config-trust.js";
 import { buildPluginMetadataProviderAuthAliases } from "../plugins/plugin-metadata-provider-facts.js";
-import { loadPluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
+import {
+  loadPluginMetadataSnapshot,
+  resolvePluginMetadataSnapshotAsync,
+} from "../plugins/plugin-metadata-snapshot.js";
 import type {
   PluginMetadataSnapshot,
   PluginProviderAuthAliasCandidate,
@@ -48,13 +51,17 @@ function shouldUsePluginAuthAliases(
   });
 }
 
-function resolveProviderAuthAliasCandidates(
+/** Reads only prepared alias facts, including the existing compatible default snapshot. */
+export function getPreparedProviderAuthAliasSnapshot(
   params?: ProviderAuthAliasLookupParams,
-): ReadonlyMap<string, readonly PluginProviderAuthAliasCandidate[]> {
+): ProviderAuthAliasLookupParams["metadataSnapshot"] {
   const config = params?.config;
-  const context = { env: params?.env ?? process.env, workspaceDir: params?.workspaceDir };
-  const lookup = { ...context, allowWorkspaceScopedSnapshot: true };
-  const snapshot =
+  const lookup = {
+    env: params?.env ?? process.env,
+    workspaceDir: params?.workspaceDir,
+    allowWorkspaceScopedSnapshot: true,
+  };
+  return (
     params?.metadataSnapshot ??
     getCurrentPluginMetadataSnapshot({
       ...lookup,
@@ -63,8 +70,20 @@ function resolveProviderAuthAliasCandidates(
     }) ??
     (config && normalizePluginsConfig(config.plugins).loadPaths.length === 0
       ? getCurrentPluginMetadataSnapshot({ ...lookup, requireDefaultDiscoveryContext: true })
-      : undefined) ??
-    loadPluginMetadataSnapshot({ ...context, config: config ?? {} });
+      : undefined)
+  );
+}
+
+function resolveProviderAuthAliasCandidates(
+  params?: ProviderAuthAliasLookupParams,
+): ReadonlyMap<string, readonly PluginProviderAuthAliasCandidate[]> {
+  const snapshot =
+    getPreparedProviderAuthAliasSnapshot(params) ??
+    loadPluginMetadataSnapshot({
+      env: params?.env ?? process.env,
+      workspaceDir: params?.workspaceDir,
+      config: params?.config ?? {},
+    });
   return (
     snapshot.owners?.providerAuthAliases ?? buildPluginMetadataProviderAuthAliases(snapshot.plugins)
   );
@@ -183,4 +202,20 @@ export function resolveProviderIdForAuth(
         matchesProviderAuthEndpoint(normalized, candidate, params),
     )?.target ?? normalized
   );
+}
+
+/** Prepare plugin metadata before resolving a credential provider alias. */
+export async function resolveProviderIdForAuthAsync(
+  provider: string,
+  params?: ProviderAuthAliasLookupParams,
+): Promise<string> {
+  const metadataSnapshot =
+    params?.metadataSnapshot ??
+    (await resolvePluginMetadataSnapshotAsync({
+      config: params?.config ?? {},
+      env: params?.env,
+      workspaceDir: params?.workspaceDir,
+      allowWorkspaceScopedCurrent: true,
+    }));
+  return resolveProviderIdForAuth(provider, { ...params, metadataSnapshot });
 }
