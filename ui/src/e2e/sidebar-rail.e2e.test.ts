@@ -182,25 +182,116 @@ suite.define(() => {
       if (!box) {
         throw new Error("Missing target pin bounds");
       }
-      // Playwright drives native mouse drag/drop, beginning on the anchor itself.
-      await source.dragTo(target, { targetPosition: { x: box.width / 2, y: 2 } });
       const reordered = [entries[2]!, entries[0]!, entries[1]!, ...entries.slice(3)];
-      await expect.poll(pinOrder).toEqual(reordered);
-
       const menu = page.locator(".sidebar-rail-pin-menu");
-      for (const key of ["Shift+F10", "ContextMenu"]) {
-        await source.focus();
-        await page.keyboard.press(key);
-        await menu.getByRole("menuitem", { name: "Move down", exact: true }).waitFor();
-        await expect
-          .poll(() =>
-            menu
-              .getByRole("menuitem", { name: "Move down", exact: true })
-              .evaluate((el) => el.matches(":focus-within")),
-          )
-          .toBe(true);
-        await page.keyboard.press("Escape");
-        await expect.poll(() => source.evaluate((el) => el === document.activeElement)).toBe(true);
+      const diagnostics = await page.evaluateHandle(() => {
+        const describe = (element: EventTarget | null | undefined) =>
+          element instanceof Element
+            ? {
+                tag: element.localName,
+                classes: [...element.classList],
+                pin: element.closest(".sidebar-rail__pin")?.getAttribute("data-sidebar-entry"),
+              }
+            : null;
+        const snapshot = () => {
+          const focus = [];
+          for (
+            let active = document.activeElement;
+            active;
+            active = active.shadowRoot?.activeElement ?? null
+          ) {
+            focus.push(describe(active));
+          }
+          const dropdown = document.querySelector(".sidebar-rail-pin-menu");
+          return {
+            time: performance.now(),
+            focus,
+            menu: dropdown
+              ? { open: dropdown.hasAttribute("open"), inert: dropdown.hasAttribute("inert") }
+              : null,
+            tooltips: [...document.querySelectorAll("openclaw-tooltip[open]")].map(describe),
+          };
+        };
+        const events: {
+          phase: string;
+          event: Event;
+          target: ReturnType<typeof describe>;
+          state: ReturnType<typeof snapshot>;
+        }[] = [];
+        const record = (phase: string, event: Event) => {
+          if (events.length === 120) {
+            events.shift();
+          }
+          events.push({
+            phase,
+            event,
+            target: describe(event.composedPath()[0] ?? event.target),
+            state: snapshot(),
+          });
+        };
+        const capture = (event: Event) => record("capture", event);
+        const bubble = (event: Event) => record("bubble", event);
+        const types = ["keydown", "focusin", "wa-show", "wa-hide", "wa-after-hide"];
+        for (const type of types) {
+          window.addEventListener(type, capture, true);
+        }
+        window.addEventListener("keydown", bubble);
+        return {
+          read: () => ({
+            final: snapshot(),
+            events: events.map(({ phase, event, target: eventTarget, state }) => ({
+              phase,
+              type: event.type,
+              key: event instanceof KeyboardEvent ? event.key : undefined,
+              shift: event instanceof KeyboardEvent ? event.shiftKey : undefined,
+              target: eventTarget,
+              // Read after dispatch, including Escape consumed before it could bubble.
+              defaultPrevented: event.defaultPrevented,
+              state,
+            })),
+          }),
+          stop: () => {
+            for (const type of types) {
+              window.removeEventListener(type, capture, true);
+            }
+            window.removeEventListener("keydown", bubble);
+          },
+        };
+      });
+      try {
+        // Playwright drives native mouse drag/drop, beginning on the anchor itself.
+        await source.dragTo(target, { targetPosition: { x: box.width / 2, y: 2 } });
+        await expect.poll(pinOrder).toEqual(reordered);
+
+        for (const key of ["Shift+F10", "ContextMenu"]) {
+          await source.focus();
+          await page.keyboard.press(key);
+          await menu.getByRole("menuitem", { name: "Move down", exact: true }).waitFor();
+          await expect
+            .poll(() =>
+              menu
+                .getByRole("menuitem", { name: "Move down", exact: true })
+                .evaluate((el) => el.matches(":focus-within")),
+            )
+            .toBe(true);
+          await page.keyboard.press("Escape");
+          await expect
+            .poll(() => source.evaluate((el) => el === document.activeElement))
+            .toBe(true);
+        }
+      } catch (error) {
+        try {
+          console.error(
+            "Sidebar rail focus diagnostics:",
+            JSON.stringify(await diagnostics.evaluate((trace) => trace.read())),
+          );
+        } catch (diagnosticError) {
+          console.error("Sidebar rail focus diagnostics unavailable:", diagnosticError);
+        }
+        throw error;
+      } finally {
+        await diagnostics.evaluate((trace) => trace.stop()).catch(() => undefined);
+        await diagnostics.dispose().catch(() => undefined);
       }
       await rail
         .getByRole("link", { name: "Release notes", exact: true })
