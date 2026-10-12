@@ -29,7 +29,7 @@ const finalMediaUrl = "https://example.test/final.png";
 const mediaCaption = "Here is the generated image.";
 const fallbackText = "The backup produced a second answer.";
 
-it.each([
+it.for([
   "rejected",
   "deferred-rejection",
   "mixed",

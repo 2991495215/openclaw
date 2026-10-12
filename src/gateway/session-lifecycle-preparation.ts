@@ -7,7 +7,10 @@ import {
 } from "../../packages/gateway-protocol/src/index.js";
 import { prepareSessionEntryMutationDatabases } from "../config/sessions/session-accessor.entry-mutation.js";
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.js";
-import { getSessionActorStorageBinding } from "../config/sessions/session-actor-storage-binding.js";
+import {
+  acquireSessionActorStorage,
+  getSessionActorStorageBinding,
+} from "../config/sessions/session-actor-storage-binding.js";
 import {
   composeSessionSourceAssertion,
   sessionEntryCommitGuardOptions,
@@ -85,14 +88,24 @@ export function prepareGatewaySessionLifecycleTargets(params: {
       ? getSessionActorStorageBinding({})
       : undefined;
     if (memory) {
+      const assertCurrent = () => memory.authority.assertCurrent();
+      const selected = expectDefined(
+        await acquireSessionActorStorage(
+          { ...target, sessionKey: target.canonicalKey },
+          {
+            authority: memory.authority,
+            lifetime: { assertCurrent, assertReadable: assertCurrent },
+          },
+        ),
+        "memory lifecycle target",
+      );
       return {
         matchesCurrent() {
-          memory.actor.assertCurrent();
-          memory.authority.assertCurrent();
+          selected.actor.assertCurrent();
           return true;
         },
         bindCreation() {},
-        release() {},
+        release: () => selected.actor.release(),
       };
     }
     let preparedStorage: { assertCurrent(): void } | undefined;
@@ -205,7 +218,7 @@ export function prepareGatewaySessionLifecycleTargets(params: {
       creationSelection?.reject(new Error("Session creation ended before target selection"));
       for (const result of await Promise.allSettled(preparations)) {
         if (result.status === "fulfilled") {
-          result.value.release();
+          await result.value.release();
         }
       }
       await databasePreparation?.catch(() => {});

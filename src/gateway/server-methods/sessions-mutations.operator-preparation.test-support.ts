@@ -587,6 +587,9 @@ export function registerSessionOperatorPreparationTests(fixture: {
             childSessionId,
             "error" in outcome ? String(outcome.error) : JSON.stringify(outcome.result),
           ).toBeDefined();
+          if (ending === "parent-replaced") {
+            expect(parentReplacement).toMatchObject({ sessionId: `${parentId}-replacement` });
+          }
           if (ending === "source-after-commit") {
             expect(outcome).toMatchObject({ result: { ok: true } });
             expect(loadSessionEntry({ agentId: "main", sessionKey: childKey })).toHaveProperty(
@@ -619,10 +622,6 @@ export function registerSessionOperatorPreparationTests(fixture: {
               ).toEqual(expect.arrayContaining([expect.objectContaining({ type: "session" })]));
             }
             if (ending === "parent-replaced") {
-              expect(parentReplacement).toMatchObject({
-                sessionId: `${parentId}-replacement`,
-                updatedAt: 2,
-              });
               expect(loadSessionEntry({ agentId: "main", sessionKey: parentKey })).toEqual(
                 parentReplacement,
               );

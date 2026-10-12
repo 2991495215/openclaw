@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { isMainThread, threadId } from "node:worker_threads";
+import { racePromiseWithAbortSignal } from "../../packages/retry/src/index.js";
 import {
   assertExistingDatabaseIdentity,
   readDatabasePathIdentitySync,
@@ -126,12 +127,24 @@ export function runOpenClawAgentPathWriteAdmission<T>(
 }
 
 /** Reserve a native write permit without admitting inherited foreground callbacks. */
-export function runOpenClawAgentWorkerWrite<T>(
+export async function runOpenClawAgentWorkerWrite<T>(
   options: OpenClawAgentDatabaseOptions,
   run: () => Promise<T>,
   timing?: StoreWriterTiming,
   signal?: AbortSignal,
+  priority?: "background",
 ): Promise<T> {
+  if (priority === "background") {
+    const storePath = readDatabasePathIdentitySync(
+      resolveOpenClawAgentSqlitePath(options),
+    ).canonicalPath;
+    // Rebuildable work waits outside the FIFO until existing foreground work drains.
+    // Once admitted, its bounded transaction settles under the ordinary writer rules.
+    let draining: Promise<void> | null | undefined;
+    while ((draining = admission.queues.get(storePath)?.drainPromise)) {
+      await racePromiseWithAbortSignal(draining, signal, (aborted) => aborted.reason);
+    }
+  }
   return observeWriteAdmission("worker", timing, (observed) => {
     return runOpenClawAgentWriteAdmission(
       options,
