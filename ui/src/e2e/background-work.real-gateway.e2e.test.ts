@@ -147,6 +147,25 @@ suite.define(() => {
         });
         const page = await context.newPage();
         const wire = observeBackgroundWorkRpc(page, signal);
+        signal.addEventListener(
+          "abort",
+          () => {
+            if (proof.complete === true) {
+              return;
+            }
+            console.error(
+              "[background-work] interrupted",
+              JSON.stringify({
+                stage: proof.stage,
+                parentRequests: provider.parentRequests(),
+                parentPending: provider.parentIsPending(),
+                processOpen: provider.processIsOpen(),
+                rpc: wire.diagnostics(),
+              }),
+            );
+          },
+          { once: true },
+        );
         proof.stage = "create parent and pair browser";
         await runCli([
           "gateway",
@@ -193,6 +212,7 @@ suite.define(() => {
           await provider.wait(gate, signal);
         }
         await composer.fill(fixture.draft);
+        proof.stage = "persist parent draft";
         await waitForCommittedComposerDraft(
           page,
           "chat:v3:" + fixture.key + "\u0000agent:main",
@@ -220,6 +240,7 @@ suite.define(() => {
           .locator("xpath=ancestor::*[@data-session-key]")
           .getAttribute("data-session-key");
         expect(childKey).toMatch(/^agent:main:subagent:/);
+        proof.stage = "observe child roster response";
         const roster = payloadOf(
           await wire.waitFor(
             (rpc) =>
@@ -240,6 +261,7 @@ suite.define(() => {
         await childOpen.click();
         const detail = subagents.locator(".chat-subagent-detail");
         await detail.getByText(fixture.childTask, { exact: false }).waitFor();
+        proof.stage = "observe child in-flight history response";
         const history = payloadOf(
           await wire.waitFor(
             (rpc) =>
@@ -252,6 +274,7 @@ suite.define(() => {
         proof.childHistory = { runId: run.runId, sessionAbortable: run.sessionAbortable ?? false };
         expect(run.runId).toBeTruthy();
         expect(run.runId).not.toBe(parentRunId);
+        proof.stage = "render child streaming progress";
         provider.writeChildProgress();
         await detail.getByText(fixture.childText, { exact: true }).waitFor();
         const childStop = detail.getByRole("button", { name: "Stop generating", exact: true });
@@ -338,6 +361,7 @@ suite.define(() => {
             runIds: expect.arrayContaining([run.runId]),
           });
         }
+        proof.stage = "settle child provider cancellation";
         await provider.wait(provider.childClosed, signal);
         await childStop.waitFor({ state: "hidden" });
         expect(provider.processIsOpen(), "child Stop must not stop parent exec").toBe(true);
@@ -379,6 +403,7 @@ suite.define(() => {
         expect(payloadOf(stoppedProcess) as SessionsProcessesStopResult).toEqual({
           requested: true,
         });
+        proof.stage = "settle process cancellation and observe terminal response";
         await provider.wait(provider.processClosed, signal);
         const terminal = (
           payloadOf(

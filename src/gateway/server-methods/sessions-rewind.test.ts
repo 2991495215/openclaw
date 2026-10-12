@@ -342,13 +342,11 @@ async function expectSessionWorkCleared(work: QueuedSessionWork): Promise<void> 
 }
 
 async function archiveSourceSession(storePath?: string): Promise<void> {
-  const entry = expectDefined(
-    loadSessionEntry({ agentId: "main", sessionKey, storePath }),
+  expectDefined(
+    await patchSessionEntryCore({ agentId: "main", sessionKey, storePath }, () => ({
+      archivedAt: Date.now(),
+    })),
     "source session",
-  );
-  await upsertSessionEntryCore(
-    { agentId: "main", sessionKey, storePath },
-    { ...entry, archivedAt: Date.now() },
   );
 }
 

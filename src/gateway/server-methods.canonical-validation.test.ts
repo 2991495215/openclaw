@@ -134,7 +134,6 @@ it("authorizes exact rows independently of bulk validation and fences corrupt su
     const projection = await createSessionRowProjection({ cfg: {}, modelCatalog: [] });
     const work: Promise<unknown>[] = [];
     const bulkEntered = createDeferredCore();
-    const rowEntered = createDeferredCore();
     const releaseRow = createDeferredCore();
     const joinedBulk = createDeferredCore<string>();
     let resumeBulk: (() => void) | undefined;
@@ -183,7 +182,6 @@ it("authorizes exact rows independently of bulk validation and fences corrupt su
       );
       const readFacts = rowFacts.withSessionRowDatabaseFacts;
       vi.spyOn(rowFacts, "withSessionRowDatabaseFacts").mockImplementation(async (...args) => {
-        rowEntered.resolve();
         await releaseRow.promise;
         return readFacts(...args);
       });
@@ -238,11 +236,7 @@ it("authorizes exact rows independently of bulk validation and fences corrupt su
         parse.mock.calls.filter(([json]) => json.includes('"sessionId":"dirty-')),
       ).toHaveLength(0);
       parse.mockRestore();
-      let dirtySettled = false;
-      const dirty = authorize("agent:main:dirty-0").then((result) => {
-        dirtySettled = true;
-        return result;
-      });
+      const dirty = authorize("agent:main:dirty-0");
       const revokedClient = sharingPolicyClient({
         user: "reader",
         scopes: ["operator.sessions.read"],
@@ -254,16 +248,13 @@ it("authorizes exact rows independently of bulk validation and fences corrupt su
         client,
         bindSessionRowProjection({ ...context, unavailableGatewayMethods }, () => projection),
       );
-      expect(await Promise.race([rowEntered.promise.then(() => "row"), joinedBulk.promise])).toBe(
-        "row",
-      );
-      expect(dirtySettled).toBe(false);
+      // Revoke during asynchronous profile authorization, independently of display-row work.
       revokedClient.connect.scopes = [];
       unavailableGatewayMethods.add("sessions.messages.subscribe");
-      releaseRow.resolve();
       expect(await Promise.race([dirty, joinedBulk.promise])).toMatchObject({ error: null });
       expect(await revoked).toMatchObject({ error: { code: "FORBIDDEN" } });
       expect(await unavailable).toMatchObject({ error: { code: "UNAVAILABLE" } });
+      releaseRow.resolve();
       expect(resumeBulk).toBeDefined();
 
       const current = openOpenClawAgentDatabase({ agentId: "main" });
