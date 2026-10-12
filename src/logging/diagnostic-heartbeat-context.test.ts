@@ -1,12 +1,14 @@
 import { DatabaseSync, StatementSync } from "node:sqlite";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
-import { replaceSessionEntrySync } from "../config/sessions/session-accessor.sqlite-entry.js";
-import { appendTranscriptMessageSync } from "../config/sessions/session-accessor.sqlite-transcript-write.js";
+import { replaceSessionEntry } from "../config/sessions/session-accessor.sqlite-entry.js";
+import { appendTranscriptMessage } from "../config/sessions/session-accessor.sqlite-transcript-write.js";
+import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import {
   areDiagnosticsEnabledForProcess,
   setDiagnosticsEnabledForProcess,
 } from "../infra/diagnostic-events.js";
+import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
@@ -43,12 +45,12 @@ beforeAll(async () => {
       sessionKey: incognito ? incognitoKey : `agent:heartbeat:${label}`,
       sessionId: `heartbeat-${label}`,
     };
-    replaceSessionEntrySync(scope, {
+    await replaceSessionEntry(scope, {
       sessionId: scope.sessionId,
       updatedAt: 1,
       ...(incognito ? { incognito: true } : {}),
     });
-    appendTranscriptMessageSync(scope, {
+    await appendTranscriptMessage(scope, {
       message: { role: "assistant", content: incognito ? privateReply : reply },
     });
   }
@@ -71,6 +73,10 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  memorySessionActorOwners.closeDatabase({
+    agentId: "heartbeat",
+    path: resolveIncognitoOpenClawAgentSqlitePath({ agentId: "heartbeat", env: state.env }),
+  });
   await state.cleanup();
   setDiagnosticsEnabledForProcess(diagnosticsEnabled);
 });
