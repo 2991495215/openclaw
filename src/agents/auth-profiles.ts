@@ -66,6 +66,7 @@ export {
   loadAuthProfileStoreForRuntime,
   loadAuthProfileStoreForRuntimeAsync,
   saveAuthProfileStore,
+  saveAuthProfileStoreAsync,
 } from "./auth-profiles/store-runtime.js";
 export {
   clearRuntimeAuthProfileStoreSnapshots,

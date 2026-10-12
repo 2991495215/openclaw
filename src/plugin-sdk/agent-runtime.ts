@@ -144,6 +144,7 @@ export {
   loadAuthProfileStoreForRuntimeAsync,
   replaceRuntimeAuthProfileStoreSnapshots,
   saveAuthProfileStore,
+  saveAuthProfileStoreAsync,
   findPersistedAuthProfileCredential,
   findPersistedAuthProfileCredentialAsync,
   resolvePersistedAuthProfileOwnerAgentDir,

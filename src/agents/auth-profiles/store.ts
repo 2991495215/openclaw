@@ -1546,13 +1546,18 @@ export function createAuthProfileStoreRuntime(
     };
   }
 
-  /** Save the auth profile store plus sidecar state, preserving runtime overlay metadata. */
+  /** @deprecated Use saveAuthProfileStoreAsync. Removed at the next Plugin SDK major. */
   function saveAuthProfileStore(
     store: AuthProfileStore,
     agentDir?: string,
     options?: SaveAuthProfileStoreOptions,
     database?: AuthProfileDatabase,
   ): void {
+    warnPluginSdkDeprecation({
+      family: "auth-profiles",
+      method: "saveAuthProfileStore",
+      replacement: "saveAuthProfileStoreAsync",
+    });
     // Reject lossy SDK inputs before opening the write owner; normalize its detached copy later.
     for (const credential of Object.values(store.profiles)) {
       normalizeAuthProfileSecretRefs(credential);
@@ -1583,6 +1588,34 @@ export function createAuthProfileStoreRuntime(
       },
       { sharedStoreWrite: options?.sharedStoreWrite, env: getScopedAuthProfileEnv() },
     );
+  }
+
+  /** Replace the selected owner's store and publish its committed runtime state. */
+  async function saveAuthProfileStoreAsync(
+    store: AuthProfileStore,
+    agentDir?: string,
+    options?: SaveAuthProfileStoreOptions,
+  ): Promise<void> {
+    for (const credential of Object.values(store.profiles)) {
+      normalizeAuthProfileSecretRefs(credential);
+    }
+    const replacement = cloneAuthProfileStore(store);
+    const updated = await updateAuthProfileStoreWithLock({
+      agentDir,
+      sharedStoreWrite: options?.sharedStoreWrite,
+      saveOptions: options,
+      updater(current) {
+        // A whole-store save must clear omitted state and runtime metadata too.
+        for (const key of Object.keys(current)) {
+          Reflect.deleteProperty(current, key);
+        }
+        Object.assign(current, replacement);
+        return true;
+      },
+    });
+    if (!updated) {
+      throw new Error("Failed to save auth profile store; retry when its writer is available.");
+    }
   }
 
   /** Core transaction callers carry the owner already selected before opening SQLite. */
@@ -1694,6 +1727,7 @@ export function createAuthProfileStoreRuntime(
     ensureAuthProfileStoreForLocalUpdate,
     ensureAuthProfileStoreForLocalUpdateAsync,
     saveAuthProfileStore,
+    saveAuthProfileStoreAsync,
     saveAuthProfileStoreWithPreparedOwner,
     saveAuthProfileStoreIfPersistenceSnapshotMatches,
     findPersistedAuthProfileCredential,

@@ -13,10 +13,13 @@ export const {
   ensureAuthProfileStoreAsync,
   ensureAuthProfileStoreWithoutExternalProfilesAsync,
   ensureAuthProfileStoreForLocalUpdateAsync,
-  saveAuthProfileStore,
+  saveAuthProfileStoreAsync,
   saveAuthProfileStoreWithPreparedOwner,
   saveAuthProfileStoreIfPersistenceSnapshotMatches,
 } = nativePluginBindings.authStore;
+
+/** @deprecated Use saveAuthProfileStoreAsync. Removed at the next Plugin SDK major. */
+export const saveAuthProfileStore = nativePluginBindings.authStore.saveAuthProfileStore;
 
 /** @deprecated Use loadAuthProfileStoreForRuntimeAsync. Removed at the next Plugin SDK major. */
 export const loadAuthProfileStoreForRuntime =

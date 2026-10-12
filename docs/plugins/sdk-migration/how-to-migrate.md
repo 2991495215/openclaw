@@ -1403,6 +1403,7 @@ Keep the same arguments and await the replacement's result:
 | `provider-auth`                          | `listUsableProviderAuthProfileIds`            | `listUsableProviderAuthProfileIdsAsync`            |
 | `provider-auth-runtime`                  | `resolveProviderAuthProfileMetadata`          | `resolveProviderAuthProfileMetadataAsync`          |
 | `agent-runtime`                          | `loadAuthProfileStoreWithoutExternalProfiles` | `loadAuthProfileStoreWithoutExternalProfilesAsync` |
+| `agent-runtime`                          | `saveAuthProfileStore`                        | `saveAuthProfileStoreAsync`                        |
 | `agent-runtime`                          | `findPersistedAuthProfileCredential`          | `findPersistedAuthProfileCredentialAsync`          |
 | `agent-runtime`                          | `resolvePersistedAuthProfileOwnerAgentDir`    | `resolvePersistedAuthProfileOwnerAgentDirAsync`    |
 | `agent-harness-runtime`                  | `resolveModelAuthMode`                        | `resolveModelAuthModeAsync`                        |
@@ -1456,6 +1457,15 @@ profile; it preserves neighboring profiles. `upsertApiKeyProfileAsync` resolves
 to the profile ID after the write completes. A store returned for local update
 is a snapshot, not permission to replace newer owner state; use the owner-backed
 mutation API for the write.
+
+Existing `agent-runtime` integrations that intentionally replace an entire store
+can await `saveAuthProfileStoreAsync(store, agentDir?, options?)`. It uses the
+existing canonical writer and publishes the committed state before resolving.
+Like the synchronous save, omitted profiles and bookkeeping fields are removed;
+use `upsertAuthProfileAsync` to preserve neighboring profiles. The asynchronous
+save does not accept the legacy native transaction argument. The synchronous
+`saveAuthProfileStore` retains its current contract, with a bounded deprecation
+warning, until the next Plugin SDK major.
 
 Image, music, video, speech, realtime voice, and realtime transcription provider
 plugins should implement

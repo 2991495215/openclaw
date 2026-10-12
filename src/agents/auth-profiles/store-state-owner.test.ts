@@ -10,7 +10,7 @@ import {
   activateSecretsRuntimeSnapshotStateIfCurrent,
 } from "../../secrets/runtime-state.js";
 import { closeOpenClawAgentDatabaseByPathAsync } from "../../state/openclaw-agent-db.js";
-import { withEnv } from "../../test-utils/env.js";
+import { withEnv, withEnvAsync } from "../../test-utils/env.js";
 import { loadPersistedAuthProfileStore, loadPersistedSharedAuthProfileStore } from "./persisted.js";
 import {
   getRuntimeAuthProfileStoreCredentialsRevision,
@@ -24,6 +24,8 @@ import {
 import { resolveAuthProfileDatabasePath } from "./sqlite.js";
 import {
   loadAuthProfileStoreWithoutExternalProfiles,
+  loadAuthProfileStoreWithoutExternalProfilesAsync,
+  saveAuthProfileStoreAsync,
   saveAuthProfileStoreIfPersistenceSnapshotMatches,
   updateAuthProfileStoreWithLock,
 } from "./store-runtime.js";
@@ -39,6 +41,56 @@ const { tempDirs, saveOptions, apiKey, store, snapshotAt, unreadableOuter, seedR
   createAuthOwnerTestFixtures();
 
 describe("explicit auth state ownership", () => {
+  it.each(["shared", "local"] as const)(
+    "publishes a complete %s replacement and clears omitted state before the next read",
+    async (scope) => {
+      const root = await seedRoot("original");
+      const agentDir = scope === "local" ? root.agentDir : undefined;
+      const profileId = scope === "local" ? "local" : "shared";
+      await withEnvAsync(root.env, async () => {
+        await saveAuthProfileStoreAsync(
+          {
+            version: 1,
+            profiles: { [profileId]: apiKey("before"), obsolete: apiKey("obsolete") },
+            order: { openai: [profileId, "obsolete"] },
+            lastGood: { openai: profileId },
+            usageStats: { [profileId]: { lastUsed: 42 } },
+          },
+          agentDir,
+          saveOptions,
+        );
+        expect(
+          (await loadAuthProfileStoreWithoutExternalProfilesAsync(agentDir)).usageStats,
+        ).toEqual({ [profileId]: { lastUsed: 42 } });
+
+        const replacement = { version: 1, profiles: { [profileId]: apiKey("after") } };
+        const saving = saveAuthProfileStoreAsync(replacement, agentDir, saveOptions);
+        replacement.profiles[profileId] = apiKey("mutated-after-save");
+        await saving;
+
+        const persisted =
+          scope === "local"
+            ? loadPersistedAuthProfileStore(agentDir)
+            : loadPersistedSharedAuthProfileStore(root.env);
+        expect(persisted).toEqual({
+          version: 1,
+          profiles: { [profileId]: apiKey("after") },
+        });
+        const current = await loadAuthProfileStoreWithoutExternalProfilesAsync(agentDir);
+        expect(current.profiles[profileId]).toEqual(apiKey("after"));
+        expect(current.profiles.obsolete).toBeUndefined();
+        expect(current.order).toBeUndefined();
+        expect(current.lastGood).toBeUndefined();
+        expect(current.usageStats).toBeUndefined();
+        const local = await loadAuthProfileStoreWithoutExternalProfilesAsync(root.agentDir);
+        expect(local.profiles).toEqual({
+          shared: apiKey(scope === "shared" ? "after" : "original"),
+          local: apiKey(scope === "local" ? "after" : "original-local"),
+        });
+      });
+    },
+  );
+
   it.each(["mixed-live", "cleared-local"] as const)(
     "preserves $0 bookkeeping ownership across shared-root activation",
     async (bookkeepingOwner) => {
