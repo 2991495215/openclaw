@@ -8,6 +8,7 @@ import {
   readCapturedSessionActorEntry,
 } from "../../config/sessions/session-actor-storage-binding.js";
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
+import { composeSessionSourceAssertion } from "../../config/sessions/session-source-authority.js";
 import { normalizeStoreSessionKey } from "../../config/sessions/store-entry.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import { assertAgentRunLifecycleGenerationCurrent } from "../../infra/agent-events.js";
@@ -197,13 +198,12 @@ export async function finalizeEmbeddedAgentCommand(params: {
   let terminalError: string | undefined;
   let maintenanceRequest: SessionMaintenanceRequest | undefined;
   let { runOwnedSessionId, sessionReboundDuringRun } = params.sessionOwnership;
-  const publishSessionOwnership = (committedCompactionSessionId?: string) => {
-    // Outer restart-recovery cleanup runs even after later delivery failures.
+  // Outer restart-recovery cleanup runs even after later delivery failures.
+  const publishSessionOwnership = (committedCompactionSessionId?: string) =>
     params.onSessionOwnershipChanged(
       { runOwnedSessionId, sessionReboundDuringRun },
       committedCompactionSessionId,
     );
-  };
 
   try {
     await fallbackTrajectoryRecorder?.flush();
@@ -561,11 +561,11 @@ export async function finalizeEmbeddedAgentCommand(params: {
       sessionEntry,
       result,
       payloads,
-      assertDeliveryCurrent: () => {
-        params.opts.assertSourceCurrent?.();
+      assertDeliveryCurrent: composeSessionSourceAssertion([assertSourceCurrent], (check) => {
+        check();
         params.opts.abortSignal?.throwIfAborted();
         assertAgentRunLifecycleGenerationCurrent(lifecycleGeneration);
-      },
+      }),
       onDeliveryResult: (delivered: AgentCommandDeliveryResult) => {
         const deliveryStatus = delivered.deliveryStatus;
         const terminalDelivery = normalizeAgentRunTerminalDeliverySnapshot(

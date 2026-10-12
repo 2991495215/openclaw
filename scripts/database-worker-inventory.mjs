@@ -197,7 +197,7 @@ const reviewed = new Map([
     {
       priority: 99,
       evidence:
-        "Async registry reads use the session actor or session-transcript.worker.ts. selectConversationRows remains native for incognito, deprecated SDK getConversationSession, and session-entry-current-check.ts's retained synchronous source assertion; do not classify the shared read as worker-only.",
+        "Async registry reads use the session actor or session-transcript.worker.ts. selectConversationRows remains native for deprecated SDK getConversationSession and session-entry-current-check.ts's retained synchronous source assertion; do not classify the shared read as worker-only.",
     },
   ],
   [
@@ -205,7 +205,7 @@ const reviewed = new Map([
     {
       priority: 99,
       evidence:
-        "session-transcript.worker.ts and session-source-predicate.worker.ts read conversation rows in workers; conversation-registry.ts and entry-mutation.ts retain native incognito, deprecated SDK, and borrowed transaction callers. The shared query remains mixed.",
+        "session-transcript.worker.ts and session-source-predicate.worker.ts read conversation rows in workers; conversation-registry.ts and entry-mutation.ts retain deprecated SDK and borrowed transaction callers; incognito reads memory actor state. The shared query remains mixed.",
     },
   ],
   [
@@ -213,7 +213,7 @@ const reviewed = new Map([
     {
       priority: 99,
       evidence:
-        "All mutations flow through writeSessionEntry in entry-store.ts, or conversation.register in openclaw-agent-execution-operations.ts. The latter is worker-only; writeSessionEntry also serves native incognito, opaque SDK transactions, and CLI import. Preserve the mixed classification of the shared identity and association kernels.",
+        "All mutations flow through writeSessionEntry in entry-store.ts, or conversation.register in openclaw-agent-execution-operations.ts. The latter is worker-only; writeSessionEntry also serves opaque SDK transactions and CLI import. Preserve the mixed classification of the shared identity and association kernels.",
     },
   ],
   [
@@ -229,7 +229,7 @@ const reviewed = new Map([
     {
       priority: 99,
       evidence:
-        "reclaimSqliteSessionInTransaction dispatches archive metadata writes in mutation workers; archive-store.ts also calls it only in its !supportsOpenClawAgentDatabaseExecution native branch. Durable publication uses publishSessionStateArchivesInWorker; native incognito/compatibility publication remains.",
+        "reclaimSqliteSessionInTransaction dispatches archive metadata writes in mutation workers; archive-store.ts also calls it only in its !supportsOpenClawAgentDatabaseExecution native branch. Durable publication uses publishSessionStateArchivesInWorker; native compatibility publication remains; incognito never enters these kernels.",
     },
   ],
   [
@@ -474,7 +474,7 @@ const reviewedOperations = new Map([
         tier: "T1",
         operations: ["hasPendingSessionTranscriptArchives"],
         evidence:
-          "Entry/lifecycle reader workers and replacement-state.ts query pending publication. Replacement-state also serves native incognito and opaque SDK replacement transactions; keep this shared read mixed.",
+          "Entry/lifecycle reader workers and replacement-state.ts query pending publication. Replacement-state also serves opaque SDK replacement transactions; keep this shared read mixed.",
       },
       {
         tier: "T1",
@@ -483,13 +483,13 @@ const reviewedOperations = new Map([
           "recordSessionTranscriptArchivePublishResults",
         ],
         evidence:
-          "Durable archive publication uses openclaw-agent-execution-operations.ts workers. archive-transaction.ts retains the !supportsOpenClawAgentDatabaseExecution native publication path from archive-store.ts; no worker-only classification while that compatibility/incognito owner remains.",
+          "Durable archive publication uses openclaw-agent-execution-operations.ts workers. archive-transaction.ts retains the !supportsOpenClawAgentDatabaseExecution native publication path from archive-store.ts; no worker-only classification while that compatibility owner remains.",
       },
       {
         tier: "T1",
         operations: ["persistSessionTranscriptArchive"],
         evidence:
-          "Only lifecycle-state.ts deleteMaterializedSessionStatePlans inserts the canonical recovery copy. That lifecycle kernel serves mutation workers plus native incognito and opaque SDK deletion transactions; retain the shared user-data integrity check and mixed tier.",
+          "Only lifecycle-state.ts deleteMaterializedSessionStatePlans inserts the canonical recovery copy. That lifecycle kernel serves mutation workers plus opaque SDK deletion transactions; retain the shared user-data integrity check and mixed tier.",
       },
     ],
   ],
@@ -1058,7 +1058,7 @@ const reviewedOperations = new Map([
         tier: "T1",
         operations: ["listTranscriptArchivesFromDatabase"],
         evidence:
-          "Durable archive enumeration reaches this query through transcript, Memory corpus, and usage-cost workers. session-transcript-inventory-runtime.ts retains its native incognito branch; deprecated loadArchivedSessions rejects unbound durable sync access. The shared list kernel remains mixed.",
+          "Durable archive enumeration reaches this query through transcript, Memory corpus, and usage-cost workers. session-transcript-inventory-runtime.ts returns an empty archive inventory for memory actors. Synchronous history/SDK readers retain the shared durable kernel. The shared list kernel remains mixed.",
       },
     ],
   ],

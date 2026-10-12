@@ -185,7 +185,6 @@ async function agentCommandInternal(
   let releaseForeground: (() => void) | undefined;
   let maintenanceRequest: SessionMaintenanceRequest | undefined;
   let preparedRunAdmission: ReturnType<typeof prepareAgentCommandExecutionIdentity> | undefined;
-  let completionSource: Awaited<ReturnType<typeof bindCommandHarnessCompletionAssertion>>["source"];
   let commandError: unknown;
   try {
     const operatorSession =
@@ -398,7 +397,7 @@ async function agentCommandInternal(
         // cancellation invalidates the task during the awaited session write.
         sessionEntry = persisted;
         trackedRestartRecoveryDeliveryClaim = persisted?.restartRecoveryDeliveryRunId === runId;
-        const completion = await bindCommandHarnessCompletionAssertion({
+        const completion = bindCommandHarnessCompletionAssertion({
           claim: guardedHarnessCompletion,
           persisted,
           sessionKey,
@@ -406,7 +405,6 @@ async function agentCommandInternal(
           opts,
         });
         opts = completion.opts;
-        completionSource = completion.source;
         if (operatorSession && (!persisted || persisted.sessionId !== sessionId)) {
           throw createSessionWorkStartChangedError(sessionKey);
         }
@@ -584,7 +582,6 @@ async function agentCommandInternal(
       sessionWorkAdmission,
       cleanupInternalModelRunTargets,
       releaseForeground,
-      completionSource,
     });
     if (maintenanceRequest) {
       scheduleSessionMaintenance(maintenanceRequest);

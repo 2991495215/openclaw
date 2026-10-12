@@ -129,7 +129,9 @@ describe("Memory export from the session actor", () => {
     expect(await readSessionResetRecallCutoff({ ...scope, sessionId: "after-reset" })).toEqual({
       state: "absent",
     });
-    expect(() => statSessionEntrySync(scope.sessionKey, scope)).toThrow("buildSessionEntry");
+    expect(() => statSessionEntrySync(scope.sessionKey, scope)).toThrow(
+      "statSessionEntrySync cannot access an incognito session synchronously. Await statSessionEntry instead.",
+    );
   });
 
   it("reads another agent's memory inventory and leaves an absent explicit owner absent", async () => {

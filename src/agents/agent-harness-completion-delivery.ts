@@ -26,7 +26,7 @@ import { rethrowIncognitoSessionError } from "../state/incognito-session-error.j
 import {
   getOwedHarnessCompletionTask,
   hasHarnessCompletionFinalReceipt,
-  readAdmittedHarnessCompletionInput,
+  readAdmittedHarnessCompletionInputAsync,
 } from "./agent-harness-completion-recovery.js";
 
 const log = createSubsystemLogger("agents/harness-completion-recovery");
@@ -221,7 +221,7 @@ async function reconcileCurrentHarnessCompletionDelivery(
     }
     // Cold custody is pending only while its exact admitted input remains executable.
     // Missing/rejected input retains the durable task, not an uncharged process retry.
-    const validInput = readAdmittedHarnessCompletionInput({
+    const validInput = await readAdmittedHarnessCompletionInputAsync({
       claim,
       entry,
       storePath: params.storePath,

@@ -21,8 +21,6 @@ import {
   withOwnedSessionTranscriptWriterFence,
 } from "../../config/sessions/transcript-write-context.js";
 import type { Message } from "../../llm/types.js";
-import { captureLoggingRedactionPatternGuard } from "../../logging/config.js";
-import { getSecretRedactionRegistryRevision } from "../../logging/secret-redaction-registry.js";
 import { trackAsyncWork } from "../../shared/async-work-scope.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { runInDetachedAsyncContext } from "../../shared/detached-async-context.js";
@@ -257,18 +255,8 @@ export async function appendSessionTranscriptNote(
         if (!actor || !admission) {
           throw new Error("Missing memory session write admission");
         }
-        const redactionRevision = getSecretRedactionRegistryRevision();
-        const redactionCurrent = captureLoggingRedactionPatternGuard(
-          append.config?.logging?.redactPatterns,
-        );
         const prepared = prepareTranscriptMessageAppendForWorker(append);
         Object.freeze(prepared.persistedMessage);
-        const assertPrepared = () => {
-          admission?.assertCurrent();
-          if (getSecretRedactionRegistryRevision() !== redactionRevision || !redactionCurrent?.()) {
-            throw new Error("Transcript message redaction changed before persistence");
-          }
-        };
         const { env: _env, ...scope } = captured;
         const receipt = await receiveSessionManagerCommit(
           "session.transcript.appendMessage",
@@ -276,7 +264,7 @@ export async function appendSessionTranscriptNote(
             (await import("./session-manager-metadata-runtime.js")).withSessionMetadataWorker(
               admission.options,
               actor,
-              assertPrepared,
+              () => admission.assertCurrent(),
               (worker) =>
                 worker.execute({
                   type: "session.transcript.appendMessage",
@@ -302,7 +290,7 @@ export async function appendSessionTranscriptNote(
           if (receipt.failure) {
             throw receipt.failure;
           }
-          assertPrepared();
+          admission.assertCurrent();
         } catch (cause) {
           throw new SessionTranscriptMessageCommittedError(
             result.messageId,

@@ -7,7 +7,6 @@ import {
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
-import * as redact from "../logging/redact.js";
 import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
@@ -208,29 +207,23 @@ describe("session companion context", () => {
       .prepare("UPDATE transcript_events SET event_json = '{' WHERE session_id = ? AND seq = 1")
       .run(scope.sessionId);
 
-    const redaction = vi.spyOn(redact, "redactToolPayloadText");
-    try {
-      const result = await defaultSessionCompanionContextReader.read(scope);
+    const result = await defaultSessionCompanionContextReader.read(scope);
 
-      expect(result.kind).toBe("ready");
-      if (result.kind !== "ready") {
-        return;
-      }
-      expect(result.context.messages).toHaveLength(40);
-      expect(result.context.messages.at(0)).toEqual({
-        role: "assistant",
-        text: "message 161",
-        ts: 161,
-      });
-      expect(result.context.messages.at(-1)).toEqual({
-        role: "user",
-        text: "message 200",
-        ts: 200,
-      });
-      expect(redaction).toHaveBeenCalledTimes(40);
-    } finally {
-      redaction.mockRestore();
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") {
+      return;
     }
+    expect(result.context.messages).toHaveLength(40);
+    expect(result.context.messages.at(0)).toEqual({
+      role: "assistant",
+      text: "message 161",
+      ts: 161,
+    });
+    expect(result.context.messages.at(-1)).toEqual({
+      role: "user",
+      text: "message 200",
+      ts: 200,
+    });
   });
 
   it("pages past a tool-heavy tail while retaining the selected session's latest user turn", async () => {

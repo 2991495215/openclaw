@@ -309,7 +309,7 @@ it.each(["append", "persist"] as const)(
 );
 
 it.each(["registry", "pattern"] as const)(
-  "refuses static notes after %s redaction drift and accepts fresh preparation",
+  "preserves static notes when %s logging redaction changes during commit",
   async (policy) => {
     const { target, binding } = await create(`redaction-${policy}`);
     const marker = `synthetic-note-${policy}-private-value`;
@@ -339,16 +339,14 @@ it.each(["registry", "pattern"] as const)(
         },
       },
     };
-    await expect(
-      runWithSessionActorStorage(guarded, () => appendSessionTranscriptNote(target, note)),
-    ).rejects.toThrow("Transcript message redaction changed before persistence");
+    const committed = await runWithSessionActorStorage(guarded, () =>
+      appendSessionTranscriptNote(target, note),
+    );
     expect(changed).toBe(true);
-    expect((await SessionManager.openAsync(target)).getEntries()).toEqual([]);
-    const committed = await appendSessionTranscriptNote(target, note);
     const reopened = await SessionManager.openAsync(target);
     expect(reopened.getEntries()).toHaveLength(1);
     expect(reopened.getEntry(committed.messageId)).toMatchObject({ message: committed.message });
-    expect(JSON.stringify(committed.message)).not.toContain(marker);
+    expect(committed.message).toEqual(note);
   },
 );
 

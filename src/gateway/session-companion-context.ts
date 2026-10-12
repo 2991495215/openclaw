@@ -6,7 +6,6 @@ import { extractStoredAssistantText } from "../agents/tools/chat-history-text.js
 import { getRuntimeConfig } from "../config/io.js";
 import { withSessionActorStorage } from "../config/sessions/session-actor-storage-binding.js";
 import { captureSessionEntryMetadataRead } from "../config/sessions/session-entry-source-authority.js";
-import { redactToolPayloadText } from "../logging/redact.js";
 import { isIncognitoSessionKey } from "../routing/session-key.js";
 import {
   selectSessionCompanionReferenceItems,
@@ -37,10 +36,7 @@ export type SessionCompanionContextReader = {
 };
 
 function normalizeContextText(value: string): string {
-  return truncateUtf16Safe(
-    redactToolPayloadText(value).replace(/\s+/gu, " ").trim(),
-    CONTEXT_MESSAGE_MAX_CHARS,
-  );
+  return truncateUtf16Safe(value.replace(/\s+/gu, " ").trim(), CONTEXT_MESSAGE_MAX_CHARS);
 }
 
 function extractUserText(message: unknown): string | undefined {

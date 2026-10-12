@@ -19,6 +19,7 @@ import { runOpenClawAgentWorkerWrite } from "../state/openclaw-agent-write-admis
 import type { SessionCostUsageCacheRead } from "./session-cost-usage-cache-read.js";
 import type { SessionCostUsageRollupSnapshot } from "./session-cost-usage-cache.kernel.js";
 import { isSessionActorUsageRefreshRunning } from "./session-cost-usage-memory.js";
+import { readDatabasePathIdentitySync } from "./sqlite-worker-identity.js";
 import { createSqliteWorkerOperationAdmission } from "./sqlite-worker-operation-admission.js";
 
 // Per-agent SQLite storage for rebuildable per-session usage rollups.
@@ -41,7 +42,12 @@ type CacheWriteAuthority = () => void;
 type CacheWriteKey = Extract<keyof AgentDatabaseOperations, `usageCache.${string}`>;
 
 function createCacheWriter(options: ReturnType<typeof captureCacheDatabaseOptions>) {
-  const execution = captureOpenClawAgentDatabaseExecution(options);
+  const observed = readDatabasePathIdentitySync(options.path);
+  // Refresh-lock discovery can yield before the first write; retain its creation witness.
+  const execution = captureOpenClawAgentDatabaseExecution(
+    options,
+    observed.key.startsWith("path:") ? { expectedCreationIdentity: observed } : undefined,
+  );
   let prepared = false;
   let lockWriteStarted = false;
   let lockIdentity: AgentDatabaseExecutionFileIdentity | undefined;
