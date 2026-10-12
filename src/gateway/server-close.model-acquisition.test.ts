@@ -23,6 +23,36 @@ const auditMaintenance = vi.hoisted(() => ({
   gate: undefined as { entered: () => void; release: Promise<void> } | undefined,
 }));
 
+function observeFakeTimeoutOrigins() {
+  const schedule = globalThis.setTimeout;
+  const cancel = globalThis.clearTimeout;
+  const pending = new Map<unknown, { delay: number | undefined; frames: string[] }>();
+  const scheduled = vi
+    .spyOn(globalThis, "setTimeout")
+    .mockImplementation((callback, delay, ...args) => {
+      const frames = (new Error().stack ?? "")
+        .split("\n")
+        .flatMap((frame) => frame.match(/(?:src|test)\/[^\s)]+:\d+:\d+/u)?.[0] ?? []);
+      const timer = schedule(function (this: unknown) {
+        pending.delete(timer);
+        callback.apply(this, args);
+      }, delay);
+      pending.set(timer, { delay, frames });
+      return timer;
+    });
+  const cancelled = vi.spyOn(globalThis, "clearTimeout").mockImplementation((timer) => {
+    pending.delete(timer);
+    return cancel(timer);
+  });
+  return {
+    snapshot: () => [...pending.values()],
+    dispose: () => {
+      scheduled.mockRestore();
+      cancelled.mockRestore();
+    },
+  };
+}
+
 it("joins managed reload acquisition during Gateway close", async () => {
   const fixture = await createGatewayMetadataCloseFixture("managed-model-close");
   process.env.OPENCLAW_TEST_MINIMAL_GATEWAY = "0";
@@ -263,6 +293,7 @@ it.each(["static catalog", "synthetic auth"] as const)(
     });
     let closing: Promise<void> | undefined;
     let publication: Promise<void> | undefined;
+    let timeoutOrigins: ReturnType<typeof observeFakeTimeoutOrigins> | undefined;
     const logFile = fixture.state.path("shutdown.log");
     setLoggerOverride({ file: logFile, level: "debug", consoleLevel: "silent" });
     try {
@@ -284,6 +315,7 @@ it.each(["static catalog", "synthetic auth"] as const)(
       });
       expect(process.listenerCount(fixture.event)).toBe(fixture.listeners + 1);
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      timeoutOrigins = observeFakeTimeoutOrigins();
       publication = publishConfiguredModelRuntimeSnapshots({ cfg: fixture.config });
       await Promise.race([
         entered.promise,
@@ -297,7 +329,10 @@ it.each(["static catalog", "synthetic auth"] as const)(
         degraded: true,
         pendingAgents: ["late"],
       });
+      console.warn("CLOSE_TIMER_ORIGINS", phase, JSON.stringify(timeoutOrigins.snapshot()));
       expect(vi.getTimerCount()).toBe(0);
+      timeoutOrigins.dispose();
+      timeoutOrigins = undefined;
       vi.useRealTimers();
       expect((await fetch(`http://127.0.0.1:${port}/readyz`)).status).toBe(200);
       const startedAt = performance.now();
@@ -347,6 +382,7 @@ it.each(["static catalog", "synthetic auth"] as const)(
       expect(getPreparedModelRuntimeStartupStatus()?.degraded).not.toBe(false);
       await expect(fetch(`http://127.0.0.1:${port}/readyz`)).rejects.toThrow();
     } finally {
+      timeoutOrigins?.dispose();
       vi.useRealTimers();
       release.resolve();
       finishAcquisition.resolve();
