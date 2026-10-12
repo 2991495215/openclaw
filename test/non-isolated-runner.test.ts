@@ -980,7 +980,7 @@ export default defineConfig({
         namePrefix: "",
         root: canonicalRoot,
         config: `${canonicalRoot}/vitest.config.ts`,
-        pool: "threads",
+        pool: "forks",
       },
     ]);
     const report: JsonTestResults = JSON.parse(await fs.readFile(reportPath, "utf8"));
