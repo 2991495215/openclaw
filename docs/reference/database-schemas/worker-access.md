@@ -39,6 +39,19 @@ Missing outcomes and already committed claims for the same run return without
 another write. New claims keep their atomic conditional update and live commit
 authority check; retries retain the original claim timestamp.
 
+Ordinary admitted session-entry and prepared transcript reads use the existing
+read workers and WAL snapshots without reserving the writer FIFO. Writer receipts
+invalidate retained entry facts, and reads retain their admitted physical database
+and lifecycle. An explicit transcript lock lends its writer connection and
+settlement queue for read-your-writes. Synchronous authority acceptance, mutation
+preparation, cold initialization, retirement comparisons, and accepted-write
+barriers retain their ordered reservations.
+
+Session actor mutations borrow the connection opened by their transaction owner;
+they do not request a second handle admission before that transaction. Current
+transaction authority and final commit admission remain unchanged. These changes
+require no schema, stored-format, retention, or update migration.
+
 Runtime database access belongs in workers. The Gateway main thread owns live
 projections, caches, and caller authority; it awaits prepared facts and installs
 committed results. Synchronous boot admission, migrations, Doctor/CLI one-shots,
@@ -400,7 +413,9 @@ synchronous prompt adapter remains deprecated with a runtime warning.
 
 Plugin metadata reads, including retained artifact snapshots, use the shared read
 worker. Opening a database no longer reloads Claw provenance: explicit config
-preparation publishes those facts. Plugin-state consume deletes and returns its
+preparation publishes those facts. Setup credential activation and compensation
+use the auth worker, changing only the selected credential so neighboring profile
+and usage updates survive rollback. Plugin-state consume deletes and returns its
 live row in one statement, with decoding inside the transaction.
 
 Subagent descendant selection runs in the registry worker. Deletion consumes the
@@ -794,9 +809,13 @@ even if the old connection is restored. Profile-retirement notifications carry
 only the affected profile IDs. OAuth and refresh semantics and the existing stored
 representation remain unchanged.
 
-Cancellation without a matching pending request returns after a read in the same
-worker FIFO, without a write transaction or publication. Matching requests are
-still reread inside the mutation transaction. GitHub role checks prepare only the
+Cancellation checks the pending request once inside its mutation transaction;
+a stale request cannot cancel its successor. Personal credential and publication
+guards prepare their connection through the shared-state worker, then consume
+SQL-free authority revoked by the connection owner's write receipts. Restoring
+the same connection does not revive an earlier guard. Publication status RPCs
+use `personalStatusAsync`; the synchronous SDK method remains deprecated.
+GitHub role checks prepare only the
 canonical profile ID, role, and verified GitHub login through the existing profile
 authority fence. The Gateway reuses its retained profile catalog without another
 worker request. Standalone authority preparation without a retained catalog uses
@@ -4627,6 +4646,25 @@ retained continuations; benign aliases added to the target profile do not revoke
 it. Callers revalidate after preparation, and assertions reread profile facts
 after source callbacks. External plugin authority callbacks retain their existing
 synchronous contract and may have their own storage dependencies.
+
+Gateway role policy, theme requests, preference notifications, and session
+pull-request subscriptions use the profile catalog retained by the session
+projection. Startup prepares that catalog before request dispatch and scheduled
+cron work. Committed profile changes update the same owner, including removal of
+deleted rows; role policy has no separate assignment cache. Theme writes and PR
+disclosure still check current identity at their effect boundary. Accepted
+operator work retains its independent profile authority after the originating
+transport completes.
+
+This does not make every shared profile query worker-only. Synchronous SDK
+catalog projectors (`createSessionCatalogSourceActorProjector` and
+`createSessionCatalogGitHubLinker`) still read verified GitHub identity rows.
+Cold display, alias, and personal-bootstrap readers also serve standalone SDK
+callers and native participant recording. The channel identity resolver retains
+native CLI/update authorization reads, while profile schema admission and Doctor
+repairs keep their one-shot transactions. These shared kernels retain their
+documented inventory tiers; the Gateway's resident request paths do not require
+those cold reads. Schemas, stored bytes, and update behavior are unchanged.
 
 Session metadata and membership facts are prepared through the existing session
 worker. Their canonical writers publish committed changes before observers, and

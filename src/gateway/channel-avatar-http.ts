@@ -9,6 +9,7 @@ import { readMediaBuffer } from "../media/store.js";
 import { normalizeSessionKeyPreservingOpaquePeerIds } from "../sessions/session-key-utils.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { sessionDeliveryOrigin } from "../utils/delivery-context.read.js";
+import { matchesChannelAvatarSender } from "./channel-avatar-reference.js";
 import { parseControlUiResourcePath } from "./control-ui-contract.js";
 import { respondNotFound } from "./control-ui-http-utils.js";
 import { sendMethodNotAllowed } from "./http-common.js";
@@ -92,7 +93,8 @@ export async function handleChannelAvatarHttpRequest(
     basePath?: string;
   },
 ): Promise<boolean> {
-  const pathname = req.url ? new URL(req.url, "http://localhost").pathname : undefined;
+  const requestUrl = new URL(req.url ?? "/", "http://localhost");
+  const pathname = requestUrl.pathname;
   const parsed = parseControlUiResourcePath("channelAvatar", pathname, opts.basePath);
   if (!parsed.matched) {
     return false;
@@ -157,7 +159,8 @@ export async function handleChannelAvatarHttpRequest(
   };
   if (source) {
     const entry = source.readCurrent();
-    const reference = sessionDeliveryOrigin(entry)?.avatar;
+    const origin = sessionDeliveryOrigin(entry);
+    const reference = origin?.avatar;
     const assertCurrent = () => {
       requestAuth.assertCurrent();
       const current = source.readCurrent();
@@ -169,7 +172,10 @@ export async function handleChannelAvatarHttpRequest(
         throw new Error("Channel avatar session authority changed");
       }
     };
-    return serve(reference, assertCurrent);
+    return serve(
+      matchesChannelAvatarSender(requestUrl.searchParams, origin) ? reference : undefined,
+      assertCurrent,
+    );
   }
   let reference: string | undefined;
   try {
@@ -180,7 +186,10 @@ export async function handleChannelAvatarHttpRequest(
       key: requestedKey,
       assertActive: requestAuth.assertCurrent,
     });
-    reference = sessionDeliveryOrigin(entry)?.avatar;
+    const origin = sessionDeliveryOrigin(entry);
+    reference = matchesChannelAvatarSender(requestUrl.searchParams, origin)
+      ? origin?.avatar
+      : undefined;
   } catch {
     // Invalid or missing session keys are ordinary route misses.
   }

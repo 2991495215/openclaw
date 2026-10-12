@@ -559,11 +559,16 @@ test("dispatched authorization rejects an instance replaced during catalog prepa
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     const member = await ensureCanonicalUserProfileForEmail("member@example.com");
     const sessionKey = "agent:main:commit-bound-authorization";
-    // A write-scoped model reset revalidates retained thinking. Admin scope would
+    // A write-scoped model reset revalidates the retained context window. Admin scope would
     // bypass the session-instance authorization this request must exercise.
     await upsertSessionEntryCore(
       { agentId: "main", sessionKey },
-      { sessionId: "session-shared", updatedAt: 1, visibility: "shared", thinkingLevel: "off" },
+      {
+        sessionId: "session-shared",
+        updatedAt: 1,
+        visibility: "shared",
+        contextWindow: "extended",
+      },
     );
     const entered = createDeferredCore();
     const release = createDeferredCore();
@@ -616,7 +621,7 @@ test("dispatched authorization rejects an instance replaced during catalog prepa
           {
             sessionId: "session-draft-replacement",
             updatedAt: 2,
-            thinkingLevel: undefined,
+            contextWindow: undefined,
             visibility: "draft",
             createdVia: "operator",
             createdActor: { type: "human", source: "profile", id: "owner" },
@@ -645,7 +650,7 @@ test("dispatched authorization rejects an instance replaced during catalog prepa
         visibility: "draft",
       });
       expect(current).not.toHaveProperty("label");
-      expect(current).not.toHaveProperty("thinkingLevel");
+      expect(current).not.toHaveProperty("contextWindow");
     } finally {
       release.resolve();
       await Promise.allSettled([request, replacement]);

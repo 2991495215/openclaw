@@ -4,6 +4,7 @@ import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { setUserProfileRole } from "../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
@@ -171,6 +172,7 @@ describe.each(["HTTP", "WebSocket"] as const)(
       await withOpenClawTestState({ label: "standalone-tool-role" }, async () => {
         const email = "standalone-operator@example.test";
         const profile = ensureProfileForEmail(email);
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
         runtime.cfg = {
           agents: {
             defaults: { sandbox: { mode: "off" } },

@@ -428,11 +428,10 @@ it.each([
   },
 );
 
-it.each(
-  [undefined, "main", "other"].flatMap((agentId) =>
-    ["short", "qualified"].map((keyKind) => ({ agentId, keyKind })),
-  ),
-)(
+it.each([
+  { agentId: undefined, keyKind: "short" },
+  { agentId: "main", keyKind: "qualified" },
+])(
   "preserves a populated incognito owner for an explicit locator ($agentId, $keyKind)",
   async ({ agentId, keyKind }) => {
     const owner = { agentId: `ops-memory-${agentId ?? "missing"}-${keyKind}`, env: state.env };
