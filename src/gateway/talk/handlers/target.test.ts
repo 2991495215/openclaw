@@ -24,7 +24,6 @@ import type { GatewayRequestContext, GatewayRequestHandlers } from "../../server
 import { sharingPolicyClient } from "../../session-sharing.test-utils.js";
 import { closeTalkClientGatewayControlSession } from "../client-gateway-control.js";
 import { cleanupTalkConnection } from "../session-registry.js";
-import { createTalkClient } from "./client-create.js";
 import { talkClientHandlers } from "./client.js";
 import { talkSessionHandlers } from "./session.js";
 
@@ -441,7 +440,6 @@ describe("Talk target preparation through Gateway authorization", () => {
   );
 
   it.each([
-    "owner",
     "removed-agent",
     "main-key",
     "global-main-key",
@@ -470,8 +468,6 @@ describe("Talk target preparation through Gateway authorization", () => {
         config = { ...config, agents: { ownership: "explicit", entries: { primary: {} } } };
       } else if (change === "global-main-key") {
         config = { ...config, session: { scope: "global", mainKey: "changed" } };
-      } else if (change === "owner") {
-        config = { ...config, talk: { agentId: "primary" } };
       } else if (change === "main-key") {
         config = { ...config, session: { mainKey: "changed" } };
       } else if (change === "scope") {
@@ -552,28 +548,6 @@ describe("Talk target preparation through Gateway authorization", () => {
     },
   );
 
-  it("does not retarget between router authorization and lazy handler dispatch", async () => {
-    const gate = createDeferredCore();
-    const started = createDeferredCore();
-    const pending = dispatch("talk.client.create", createParams, {
-      "talk.client.create": async (request) => {
-        started.resolve();
-        await gate.promise;
-        return createTalkClient(request);
-      },
-    });
-    await started.promise;
-    config = { ...config, talk: { agentId: "primary" } };
-    gate.resolve();
-    expect(await pending).toHaveBeenCalledWith(
-      false,
-      undefined,
-      expect.objectContaining({ code: "INVALID_REQUEST" }),
-    );
-    expect(mocks.bootstrap).not.toHaveBeenCalled();
-    expect(createBrowserSession).not.toHaveBeenCalled();
-  });
-
   it.each(["main", undefined])(
     "passes the authorized %s target into relay creation",
     async (sessionKey) => {
@@ -622,7 +596,7 @@ describe("Talk target preparation through Gateway authorization", () => {
     expect(loadSessionEntry({ agentId: "voice", sessionKey: "agent:voice:main" })).toBeUndefined();
   });
 
-  it.each(["owner", "sharing", "incognito", "replacement"] as const)(
+  it.each(["sharing", "incognito", "replacement"] as const)(
     "rechecks %s after session preparation and before committing the voice call",
     async (change) => {
       if (change === "sharing") {
@@ -647,16 +621,12 @@ describe("Talk target preparation through Gateway authorization", () => {
           };
           const sessionId = loadSessionEntry(scope)?.sessionId;
           expect(sessionId).toBeTruthy();
-          if (change === "owner") {
-            config = { ...config, talk: { agentId: "primary" } };
-          } else {
-            await replaceSessionEntry(scope, {
-              sessionId: change === "replacement" ? "replacement-session" : sessionId!,
-              updatedAt: 2,
-              createdActor: { type: "human", source: "profile", id: "another-person" },
-              ...(change === "incognito" ? { incognito: true } : { visibility: "read-only" }),
-            });
-          }
+          await replaceSessionEntry(scope, {
+            sessionId: change === "replacement" ? "replacement-session" : sessionId!,
+            updatedAt: 2,
+            createdActor: { type: "human", source: "profile", id: "another-person" },
+            ...(change === "incognito" ? { incognito: true } : { visibility: "read-only" }),
+          });
           changedBeforeVoiceCommit = true;
           return createVoice(params);
         },
@@ -697,25 +667,5 @@ describe("Talk target preparation through Gateway authorization", () => {
     expect(
       loadSessionEntry({ agentId: "voice", sessionKey: "agent:voice:main" })?.createdActor,
     ).toEqual({ type: "human", source: "profile", id: client.authenticatedUserProfile?.profileId });
-  });
-
-  it("rejects a default-owner change while profile preparation is awaited", async () => {
-    const gate = createDeferredCore<undefined>();
-    const started = createDeferredCore();
-    mocks.bootstrap.mockImplementationOnce(async () => {
-      started.resolve();
-      await gate.promise;
-      return "Agent context fixture.";
-    });
-    const pending = dispatch("talk.client.create", createParams);
-    await started.promise;
-    config = { ...config, talk: { agentId: "primary" } };
-    gate.resolve(undefined);
-    expect(await pending).toHaveBeenCalledWith(
-      false,
-      undefined,
-      expect.objectContaining({ code: "INVALID_REQUEST" }),
-    );
-    expect(createBrowserSession).not.toHaveBeenCalled();
   });
 });

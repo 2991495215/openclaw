@@ -317,14 +317,10 @@ export function withPreparedSessionSharingSource(params: {
     changed,
     params.targets,
   );
-  const talkAgentId = params.sourceConfig.talk?.agentId;
   const assertSourceCurrent = () => {
     const cfg = assertSource();
     assertRoutingCurrent(cfg);
-    if (
-      (params.talk && cfg.talk?.agentId !== talkAgentId) ||
-      (params.talk?.kind === "relay" && !params.talk.isCurrent())
-    ) {
+    if (params.talk?.kind === "relay" && !params.talk.isCurrent()) {
       throw changed();
     }
   };

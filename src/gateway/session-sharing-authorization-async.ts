@@ -60,10 +60,20 @@ export async function resolveSessionMutationAuthorizationAsync(
     params.requestParams,
     params.client?.connId,
   );
-  const preparedTalkSessionTarget =
-    talkInput?.kind === "request"
-      ? await prepareTalkSessionTarget(cfg, talkInput.sessionKey)
-      : talkInput?.target;
+  let preparedTalkSessionTarget: Awaited<ReturnType<typeof prepareTalkSessionTarget>> | undefined;
+  try {
+    preparedTalkSessionTarget =
+      talkInput?.kind === "request"
+        ? await prepareTalkSessionTarget(cfg, talkInput.sessionKey)
+        : talkInput?.target;
+  } catch (error) {
+    return {
+      error: errorShape(
+        ErrorCodes.INVALID_REQUEST,
+        error instanceof Error ? error.message : String(error),
+      ),
+    };
+  }
   params.assertInvocationCurrent?.();
   const mutationTargets = preparedTalkSessionTarget
     ? [

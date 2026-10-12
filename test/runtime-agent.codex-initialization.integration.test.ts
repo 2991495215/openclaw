@@ -28,10 +28,7 @@ import { createPluginRecord } from "../src/plugins/status.test-helpers.js";
 import { sessionChanges } from "../src/sessions/session-row-changes.js";
 import * as upstreamLinks from "../src/sessions/session-upstream-links.js";
 import { readSessionUpstreamLinkInDatabase } from "../src/sessions/session-upstream-links.kernel.js";
-import {
-  openOpenClawAgentDatabase,
-  runOpenClawAgentWriteTransaction,
-} from "../src/state/openclaw-agent-db.js";
+import { runOpenClawAgentWriteTransaction } from "../src/state/openclaw-agent-db.js";
 import { openOpenClawStateDatabase } from "../src/state/openclaw-state-db.js";
 import { observeMainThreadReads } from "../src/test-utils/main-thread-sql-spies.test-support.js";
 import { withOpenClawTestState } from "../src/test-utils/openclaw-test-state.js";
@@ -101,6 +98,7 @@ describe("Codex initialization through the registered session deletion owner", (
         let linkOperation: "write" | "cleanup" | undefined;
         let linkGrantReads = 0;
         let rollbackCommitRefused = false;
+        let importWriteRefused = false;
         let rejectReadinessCommit = false;
         let readinessCommitRefused = false;
         let readinessPublicationRefused = false;
@@ -134,6 +132,15 @@ describe("Codex initialization through the registered session deletion owner", (
           (admit, attachment) => {
             const operation = linkOperation;
             return createAdmission((request, grant) => {
+              if (
+                failure === "import" &&
+                request.stage === "transaction" &&
+                isRecord(request.facts) &&
+                request.facts.kind === "session-transcript-lock-source"
+              ) {
+                importWriteRefused = true;
+                throw new Error("injected import failure");
+              }
               if (
                 rejectReadinessCommit &&
                 request.stage === "commit" &&
@@ -259,11 +266,6 @@ describe("Codex initialization through the registered session deletion owner", (
                   context.agentId,
                 );
               }
-              if (failure === "import") {
-                openOpenClawAgentDatabase({ agentId: "main" }).db.exec(
-                  "CREATE TEMP TRIGGER reject_import BEFORE INSERT ON transcript_events BEGIN SELECT RAISE(ABORT, 'injected import failure'); END",
-                );
-              }
               const patch = await input.afterCreate!(context);
               if (!patch) {
                 throw new Error("Codex initializer did not return its final patch");
@@ -375,6 +377,10 @@ describe("Codex initialization through the registered session deletion owner", (
 
         if (failure === "rollback commit") {
           expect(rollbackCommitRefused).toBe(true);
+        }
+        if (failure === "import") {
+          expect(importWriteRefused).toBe(true);
+          expect(result.message).toContain("injected import failure");
         }
         if (failure === "final readiness") {
           expect(readinessCommitRefused).toBe(true);

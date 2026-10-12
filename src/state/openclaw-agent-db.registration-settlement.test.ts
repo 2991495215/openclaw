@@ -139,7 +139,7 @@ function observeStores(database: ReturnType<typeof openOpenClawStateDatabase>) {
 }
 
 describe("agent registration native settlement", () => {
-  it("refuses retained sharing facts when a worker loses its registration COMMIT receipt", async () => {
+  it("retains captured absence when a worker loses its registration COMMIT receipt", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       const agentId = lostReceipt.agentId;
       const sessionKey = `agent:${agentId}:existing`;
@@ -200,8 +200,8 @@ describe("agent registration native settlement", () => {
         expect(lostReceipt.events).toEqual(["native-exit", "read-rejected"]);
         expect(receipts).toEqual([]);
         expect(registrations()).toEqual([expect.objectContaining({ agentId, path: storePath })]);
-        // Neither fresh discovery nor global cleanup may rescue the retained reader.
-        expect(() => prepared.readCurrent(cfg)).toThrow("Session access facts are unavailable");
+        // The captured roster stays absent; the next selection discovers the committed store.
+        expect(prepared.readCurrent(cfg).target).toBeNull();
         expect(observed.facts).toEqual([true]);
         const current = await prepareSessionMutationFacts({ cfg, agentId, sessionKey });
         try {

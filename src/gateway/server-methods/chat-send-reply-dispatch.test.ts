@@ -274,11 +274,11 @@ describe("chat delivery watermark preparation", () => {
               const transcriptReads = sql.queries.filter((query) =>
                 /\bfrom\s+"?transcript_events\b/i.test(query),
               );
-              expect(transcriptReads.length > 0).toBe(incognito);
+              expect(transcriptReads).toEqual([]);
               const sessionReads = sql.queries.filter((query) =>
                 /\bfrom\s+"?session_(?:nodes|participants)\b/i.test(query),
               );
-              expect(sessionReads.length > 0).toBe(incognito);
+              expect(sessionReads).toEqual([]);
             } finally {
               sql.restore();
             }
