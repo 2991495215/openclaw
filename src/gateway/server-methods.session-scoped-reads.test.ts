@@ -7,6 +7,7 @@ import * as sessions from "../config/sessions/session-accessor.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import { createSessionMessageSubscriberRegistry } from "./server-chat-state.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "./server-methods.js";
@@ -86,6 +87,8 @@ describe("narrow session read owners", () => {
         const reader = roleClient("view", "row-reader");
         reader.connect.scopes = ["operator.sessions.read"];
         const owner = roleClient("view", "row-owner");
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+        prepareGatewayRecipientProfile(reader);
         const cfg = roles ? rolePolicyConfig() : {};
         setRuntimeConfigSnapshot(cfg);
         await state.writeConfig(cfg);
@@ -190,6 +193,8 @@ describe("narrow session read owners", () => {
           ...roleClient("view", "subscription-reader"),
           connId: "subscription-reader",
         };
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+        prepareGatewayRecipientProfile(client);
         client.connect.scopes = ["operator.sessions.read"];
         const cfg = rolePolicyConfig();
         setRuntimeConfigSnapshot(cfg);
@@ -279,6 +284,8 @@ describe("narrow session read owners", () => {
       await withOpenClawTestState(profileState, async (state) => {
         const client = roleClient("view", "metadata-reader");
         const owner = roleClient("view", "metadata-owner");
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+        prepareGatewayRecipientProfile(client);
         const cfg = rolePolicyConfig();
         setRuntimeConfigSnapshot(cfg);
         await state.writeConfig(cfg);
@@ -438,6 +445,7 @@ describe("narrow session read owners", () => {
       cfg.gateway!.roles!.definitions.view!.scopes.push("operator.admin");
       setRuntimeConfigSnapshot(cfg);
       using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+      prepareGatewayRecipientProfile(reader);
       const context = createDirectChatContext({ getRuntimeConfig: () => cfg });
       const io = prepareRead(method, async () => {});
       const request = async () => {
@@ -495,6 +503,8 @@ describe("narrow session read owners", () => {
   it.each(methods)("%s retains only current session read facts", async (method) => {
     await withOpenClawTestState(profileState, async () => {
       const reader = roleClient("view", "retained-reader");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+      prepareGatewayRecipientProfile(reader);
       reader.connect.scopes = ["operator.sessions.read"];
       const cfg = rolePolicyConfig();
       setRuntimeConfigSnapshot(cfg);
@@ -580,6 +590,8 @@ describe("narrow session read owners", () => {
   it("rechecks session visibility before fetching a remote file after stat", async () => {
     await withOpenClawTestState(profileState, async (state) => {
       const reader = roleClient("view", "remote-reader");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+      prepareGatewayRecipientProfile(reader);
       reader.connect.scopes = ["operator.sessions.read"];
       const cfg = rolePolicyConfig();
       setRuntimeConfigSnapshot(cfg);
@@ -669,6 +681,10 @@ describe("narrow session read owners", () => {
           : identity === "solo"
             ? sharingPolicyClient({ user: GATEWAY_OWNER_PROFILE_ID, scopes: ["operator.read"] })
             : roleClient("view", "missing-reader");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+      if (client) {
+        prepareGatewayRecipientProfile(client);
+      }
       if (identity === "narrow" && client) {
         client.connect.scopes = ["operator.sessions.read"];
       }

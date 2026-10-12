@@ -1559,8 +1559,15 @@ data, retention, durability, permission, or update migration.
 Gateway deleted-agent checks batch ACP metadata candidates through the shared-state
 reader only for free ACP keys whose agent is absent. When initial admission needs
 the content-version marker, the reader fetches it and the first metadata cohort in
-one statement. Later reads reuse admitted version facts; the existing read revision
-still owns ACP row freshness and reuse.
+one statement. Later reads reuse admitted version facts. The ACP writer publishes
+the exact changed metadata keys through the existing database admission exchange,
+including native incognito writes and offline migration/Doctor imports. Managed
+transactions combine their changed keys and publish only after commit; rollback
+retains the previous receipt. ACP cohorts invalidate on ACP receipts and schema
+changes, so unrelated shared-state writes do not discard them. Readers discard
+the whole bounded cohort on an ACP receipt because they can skip intervening
+receipts. Transactions, pinned snapshots, and authorizer-controlled reads keep
+their direct-read contracts.
 Reset rebinding uses the ACP
 writer after the session entry commits, retaining that entry writer's physical
 custody and accepted cleanup authority until the metadata settles. If the session
@@ -1576,6 +1583,12 @@ ACP writes publish the row returned by their upsert,
 and clearing the exact metadata keys publishes absence without a readback. Native
 Doctor writes and the released synchronous SDK reader retain their contracts.
 Schemas, stored bytes, retention, permissions, and update behavior are unchanged.
+
+The native ACP mutation adapter serves incognito session paths and exclusive native
+maintenance/deletion scopes; ordinary durable runtime mutations use the worker.
+Its legacy provenance read is also used by this adapter, so it is not classified
+as Doctor-only. Remove the incognito adapter with its actor cutover; the released
+synchronous SDK reader needs deprecation and later removal.
 
 Reset reuses its prepared entry snapshot across transcript-only cold restoration;
 the committing worker still compares the complete current target before changing
@@ -5658,15 +5671,18 @@ disclosure still check current identity at their effect boundary. Accepted
 operator work retains its independent profile authority after the originating
 transport completes.
 
-This does not make every shared profile query worker-only. Synchronous SDK
-catalog projectors (`createSessionCatalogSourceActorProjector` and
-`createSessionCatalogGitHubLinker`) still read verified GitHub identity rows.
-Cold display, alias, and personal-bootstrap readers also serve standalone SDK
-callers and native participant recording. The channel identity resolver retains
-native CLI/update authorization reads, while profile schema admission and Doctor
-repairs keep their one-shot transactions. These shared kernels retain their
-documented inventory tiers; the Gateway's resident request paths do not require
-those cold reads. Schemas, stored bytes, and update behavior are unchanged.
+Runtime display, alias, and identity readers consume only the prepared profile
+catalog; an absent catalog never triggers a native database fallback. Standalone
+async tool construction and personal bootstrap prepare it through the profile
+worker when needed. Personal-file disclosure still checks the current canonical
+identity after reading the file. Native participant recording uses resident aliases;
+participant and history workers use explicit native readers. The deprecated
+synchronous SDK catalog projectors
+(`createSessionCatalogSourceActorProjector` and `createSessionCatalogGitHubLinker`)
+and synchronous tool factories retain their native compatibility path for removal
+in a later release after stable deprecation. The channel identity resolver retains native CLI/update
+authorization reads, while profile schema admission and Doctor repairs keep their
+one-shot transactions. Schemas, stored bytes, and update behavior are unchanged.
 
 Session metadata and membership facts are prepared through the existing session
 worker. Their canonical writers publish committed changes before observers, and
@@ -6314,6 +6330,15 @@ replays. Plugin-state keyed lookup and lookupMany reuse the same bounded receipt
 postimages and tombstones as observe when every key is resident. Cold batches
 still read through the worker; expiry and committed native or worker writes
 invalidate or replace cached values. Returned JSON remains caller-owned.
+
+Namespace lists share that cache owner with a 64-namespace, 8 MiB bound. A
+committed write invalidates its namespace, unknown settlement invalidates the
+database's lists, and each read filters expired entries without another worker
+request. Returned lists and values are detached from the retained snapshot.
+
+Agent dispatch reads ACP metadata only after finding a completed subagent run
+eligible for reactivation. Ordinary turns without such a run skip that worker
+request; actual reactivation retains the ACP exclusion and live dispatch checks.
 
 Voice-wake reads and writes, configuration-write metadata, and Claw MCP/package
 adoption use the existing shared-state workers. Voice-wake writes return the

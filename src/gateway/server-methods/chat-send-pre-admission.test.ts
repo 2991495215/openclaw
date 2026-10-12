@@ -15,7 +15,10 @@ import {
 import { SessionTranscriptProjectionUnavailableError } from "../../config/sessions/session-transcript-projection-error.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { beginSessionWorkAdmission } from "../../sessions/session-lifecycle-admission.js";
-import { readResidentUserProfileId } from "../../state/user-profile-list.js";
+import {
+  prepareUserProfileCatalog,
+  readResidentUserProfileId,
+} from "../../state/user-profile-list.js";
 import { linkEmail } from "../../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
@@ -592,6 +595,7 @@ describe("chat send retry identity", () => {
         const sourceEmail = "recovery-source@example.test";
         const source = ensureProfileForEmail(sourceEmail);
         const target = ensureProfileForEmail("recovery-target@example.test");
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
         const scope = { agentId: params.session.agentId, sessionKey: params.session.sessionKey };
         await upsertSessionEntryCore(scope, { sessionId: "mention-session", updatedAt: 100 });
         const originalEntry = loadSessionEntry(scope);

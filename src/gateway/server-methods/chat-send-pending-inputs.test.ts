@@ -38,10 +38,12 @@ import {
   getOpenClawAgentDatabaseIfOpen,
   openOpenClawAgentDatabase,
 } from "../../state/openclaw-agent-db.js";
+import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { setDisplayName } from "../../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { useUserProfileCatalogForTest } from "../../test-utils/user-profile-catalog.js";
+import { prepareGatewayRecipientProfile } from "../expected-profile.js";
 import { createMentionInbox } from "../mention-inbox.js";
 import { readMentionInbox, dismissMentionInbox } from "../mention-inbox.test-support.js";
 import { dispatchInboundMessageMock, installGatewayTestHooks } from "../test-helpers.js";
@@ -74,6 +76,10 @@ describe("ordinary chat input admission", () => {
     fixture.client.authenticatedUserProfile = alice;
     const bobClient = { ...fixture.client, connId: "bob-one", authenticatedUserProfile: bob };
     const carolClient = { ...fixture.client, connId: "carol", authenticatedUserProfile: carol };
+    const profileCatalog = await prepareUserProfileCatalog();
+    for (const client of [fixture.client, bobClient, carolClient]) {
+      prepareGatewayRecipientProfile(client);
+    }
     const mentionBroadcast = vi.fn();
     const inbox = createMentionInbox({
       scheduler: createTestGatewayScheduler(),
@@ -95,8 +101,12 @@ describe("ordinary chat input admission", () => {
       read,
       mentionBroadcast,
       cleanup: async () => {
-        await inbox.dispose();
-        await fixture.cleanup();
+        try {
+          await inbox.dispose();
+          await fixture.cleanup();
+        } finally {
+          profileCatalog.release();
+        }
       },
     };
   }
