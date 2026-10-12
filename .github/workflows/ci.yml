@@ -7,6 +7,11 @@ on:
         required: false
         default: false
         type: boolean
+      diagnose_readiness:
+        description: Diagnose frozen session publication with test-only stage instrumentation
+        required: false
+        default: false
+        type: boolean
       diagnose_upgrade:
         description: Run the frozen Linux Bun upgrade owner diagnostic
         required: false
@@ -63,7 +68,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}-${{ inputs.diagnose_node_wire }}-${{ inputs.diagnose_copilot }}-${{ inputs.diagnose_final }}-${{ inputs.diagnose_protocol }}-${{ inputs.diagnose_fixtures }}
+  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}-${{ inputs.diagnose_node_wire }}-${{ inputs.diagnose_copilot }}-${{ inputs.diagnose_final }}-${{ inputs.diagnose_protocol }}-${{ inputs.diagnose_fixtures }}-${{ inputs.diagnose_readiness }}
   cancel-in-progress: false
 jobs:
   render:
@@ -166,7 +171,7 @@ jobs:
   main-dependencies:
     name: Main dependency attribution
     needs: [render]
-    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot }}
+    if: ${{ always() && !inputs.diagnose_readiness && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -281,6 +286,60 @@ jobs:
         with:
           name: sdk-static-${{ github.run_id }}-${{ github.run_attempt }}
           path: .artifacts/sdk-static*
+          if-no-files-found: warn
+          retention-days: 14
+  readiness-diagnostic:
+    if: ${{ inputs.diagnose_readiness }}
+    name: Frozen session publication diagnostic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .ci-harness
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.ci-harness/.github/actions/setup-node-env
+        with:
+          node-version: "24.21.0"
+          semantic-checks: "true"
+          cache-mode: off
+          install-bun: "false"
+          dependency-cache: "false"
+          frozen-lockfile: "true"
+      - name: Apply the diagnostic-only owner facts
+        env:
+          CANDIDATE_SHA: ${{ inputs.head_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          mkdir -p .artifacts
+          patch=.ci-harness/.github/diagnostics/readiness-authority-diagnostic.patch
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff -- src/gateway/server.agents.config-readiness.test.ts > .artifacts/readiness-diagnostic.patch
+          node --input-type=module -e 'console.log(JSON.stringify({ candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, runtime: "node", test: "src/gateway/server.agents.config-readiness.test.ts" }, null, 2))' > .artifacts/readiness-diagnostic-provenance.json
+          sha256sum "$patch"
+      - name: Diagnose frozen session publication
+        env:
+          OPENCLAW_LOCAL_CHECK: "0"
+          OPENCLAW_VITEST_RUNTIME: node
+        run: |
+          set -euo pipefail
+          pnpm test src/gateway/server.agents.config-readiness.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/readiness-diagnostic.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: ${{ always() }}
+        with:
+          name: readiness-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/readiness-diagnostic*
           if-no-files-found: warn
           retention-days: 14
   upgrade-diagnostic:
