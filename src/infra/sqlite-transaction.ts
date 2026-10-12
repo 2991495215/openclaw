@@ -39,6 +39,16 @@ import { normalizeDatabasePath } from "./sqlite-worker-identity.js";
 const DEFAULT_SLOW_BUSY_WAIT_MS = 1_000;
 const DEFAULT_SLOW_TRANSACTION_HOLD_MS = 1_000;
 
+// HOLD/neverLand: opt-in evidence for the reply session suite's first lock failure.
+const sessionLockDiagnostics =
+  process.env.VITEST === "true" && process.env.OPENCLAW_TEST_SESSION_SQLITE_DIAGNOSTICS === "1";
+// Nonblocking admission can retry the same handle; this bounds diagnostics only.
+const diagnosedLockDatabases = new WeakSet<DatabaseSync>();
+if (sessionLockDiagnostics) {
+  // This module loads in both the requesting isolate and database workers.
+  Error.stackTraceLimit = Math.max(Error.stackTraceLimit, 50);
+}
+
 // The same native handle can cross transformed SDK module graphs. Retain the
 // first terminal failure even when an inner caller catches it and continues.
 const abortedTransactionSymbol = Symbol.for("openclaw.sqliteAbortedTransaction");
@@ -327,11 +337,38 @@ function execTimedTransactionStep(params: {
     return elapsedMs;
   } catch (error) {
     const elapsedMs = Date.now() - startedAt;
-    if (
-      isSqliteLockError(error) &&
+    const reportLockFailure =
       shouldReportSqliteLockFailure(params.db) &&
-      !(params.step === "begin" && params.options?.beginLockFailureReporting === "suppress")
+      !(params.step === "begin" && params.options?.beginLockFailureReporting === "suppress");
+    if (
+      sessionLockDiagnostics &&
+      isSqliteLockError(error) &&
+      (reportLockFailure || !diagnosedLockDatabases.has(params.db))
     ) {
+      diagnosedLockDatabases.add(params.db);
+      try {
+        // Bypass Vitest's silent sinks; no SQL text, bound values, or session payloads.
+        const { database, operation } = transactionDiagnosticLabels(params.db, params.options);
+        process.stderr.write(
+          `[session-sqlite-lock] ${JSON.stringify({
+            database,
+            operation,
+            beginAdmission,
+            elapsedMs,
+            isMainThread,
+            pid: process.pid,
+            reportLockFailure,
+            sqliteErrcode: sqliteExtendedResultCode(error),
+            step: params.step,
+            threadId,
+            stack: error instanceof Error ? error.stack : undefined,
+          })}\n`,
+        );
+      } catch {
+        // A diagnostic failure must preserve the original SQLite failure.
+      }
+    }
+    if (isSqliteLockError(error) && reportLockFailure) {
       logTransactionStep(
         { beginAdmission, db: params.db, elapsedMs, options: params.options, step: params.step },
         { error },
