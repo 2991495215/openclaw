@@ -309,7 +309,7 @@ export async function startScrollProbe(page: Page) {
     const before = sample();
     const samples = [before];
     const receipts: unknown[] = [];
-    const nativeScrollTo = element.scrollTo;
+    const nativeScrollTo = element.scrollTo.bind(element);
     const scrollToDescriptor = Object.getOwnPropertyDescriptor(element, "scrollTo");
     const record = (kind: string, requested?: ScrollToOptions) => {
       const state = element.closest<HTMLElement & { state?: ChatPageHost }>(
@@ -338,10 +338,11 @@ export async function startScrollProbe(page: Page) {
     const afterScroll = () => record("native:after");
     if (trace) {
       // HOLD diagnostics: delegate every write unchanged and observe the existing policy owner.
-      element.scrollTo = function (options?: ScrollToOptions | number, y?: number) {
+      element.scrollTo = (...args: [options?: ScrollToOptions | number, y?: number]) => {
+        const [options, y] = args;
         const requested = typeof options === "number" ? { left: options, top: y } : options;
         record("scrollTo:before", requested);
-        Reflect.apply(nativeScrollTo, this, arguments);
+        Reflect.apply(nativeScrollTo, element, args);
         record("scrollTo:after", requested);
       };
       element.addEventListener("scroll", beforeScroll, true);
