@@ -20,7 +20,6 @@ import {
   prepareUserProfileCatalog,
   prepareUserProfileIdentity,
   readUserProfileAliases,
-  readUserProfileIdentity,
   readResidentUserProfileAliases,
   readResidentUserProfileId,
   readResidentUserProfileIdentity,
@@ -320,14 +319,14 @@ describe("resident profile display and reference catalog", () => {
           merge();
           setDisplayName(second.id, "Rolled back", options);
           setUserProfileRole(second.id, "rolled-back-role", options);
-          expect(readUserProfileIdentity(second.id, options)?.role).toBeNull();
+          expect(readResidentUserProfileIdentity(second.id, options)?.role).toBeNull();
           expect(getUserProfileDisplay(first.id, options).id).toBe(first.id);
           expect(seen).not.toHaveBeenCalled();
           throw new Error("rollback");
         }, options),
       ).toThrow("rollback");
       expect(seen).not.toHaveBeenCalled();
-      expect(readUserProfileIdentity(second.id, options)?.role).toBeNull();
+      expect(readResidentUserProfileIdentity(second.id, options)?.role).toBeNull();
       merge();
       expect(seen.mock.results.at(-1)?.value).toEqual(new Set([first.id, second.id]));
       linkEmail("first@example.test", third.id, options);
@@ -349,7 +348,7 @@ describe("resident profile display and reference catalog", () => {
           hasAvatar: true,
           avatarRevision: expect.stringMatching(/-png$/),
         });
-        expect(readUserProfileIdentity(id, options)).toMatchObject({
+        expect(readResidentUserProfileIdentity(id, options)).toMatchObject({
           profileId: head.value,
           role: "reader",
         });
@@ -502,7 +501,7 @@ describe("resident profile display and reference catalog", () => {
     expect(reads).not.toHaveBeenCalled();
     const reopened = vi.spyOn(db, "prepare");
     expect(getUserProfileDisplay(source.id, canonical).displayName).toBe("alias-source");
-    expect(readUserProfileIdentity(source.id, canonical)?.role).toBe("reader");
+    expect(readResidentUserProfileIdentity(source.id, canonical)?.role).toBe("reader");
     expect(reopened).not.toHaveBeenCalled();
     reopened.mockRestore();
     setDisplayName(source.id, "Through alias", alias);
@@ -559,7 +558,7 @@ describe("resident profile display and reference catalog", () => {
         id: nextTarget.id,
         displayName: "Replacement person",
       });
-      expect(readUserProfileIdentity(nextSource.id, options)).toMatchObject({
+      expect(readResidentUserProfileIdentity(nextSource.id, options)).toMatchObject({
         profileId: nextTarget.id,
         role: "reader",
         aliases: new Set([nextSource.id, nextTarget.id]),

@@ -5,7 +5,8 @@ import { resolveInternalHookSelection } from "./configured.js";
 
 const readConfigMachineStateMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../state/config-machine-state-async.js", () => ({
+vi.mock("../state/config-machine-state-async.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/config-machine-state-async.js")>()),
   readConfigMachineStateAsync: readConfigMachineStateMock,
 }));
 

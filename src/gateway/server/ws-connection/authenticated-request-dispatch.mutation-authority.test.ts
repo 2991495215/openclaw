@@ -65,7 +65,7 @@ afterEach(() => clearRuntimeConfigSnapshot());
 
 describe("authenticated request mutation custody", () => {
   it("keeps original wildcard model ceilings separate through WS capture and contiguous collect", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const profile = ensureProfileForEmail("queued-model-ceiling@example.test");
       const modelA = { provider: "fixture", model: "family-a" };
       const modelB = { provider: "fixture", model: "family-b" };

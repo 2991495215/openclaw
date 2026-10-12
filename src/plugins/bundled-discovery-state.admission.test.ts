@@ -24,14 +24,16 @@ const reads = vi.hoisted(() => ({
   metadata: vi.fn(),
 }));
 
-vi.mock("../state/openclaw-state-db-readonly.js", () => ({
+vi.mock("../state/openclaw-state-db-readonly.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/openclaw-state-db-readonly.js")>()),
   getActiveOpenClawStateDatabaseReadSnapshot: reads.snapshot,
   isArtifactPreservingStateRead: reads.artifact,
   executeExistingOpenClawStateRead: reads.metadata,
   withArtifactPreservingStateReads: <T>(read: () => T): T => read(),
 }));
 vi.mock("../state/config-machine-state.js", () => ({ readConfigMachineState: reads.mode }));
-vi.mock("../state/config-machine-state-async.js", () => ({
+vi.mock("../state/config-machine-state-async.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/config-machine-state-async.js")>()),
   readConfigMachineStateAsync: reads.asyncMode,
 }));
 

@@ -54,7 +54,6 @@ vi.mock("../../plugins/session-conversation-binding.js", () => ({
   bindPluginSessionConversation: conversationBindingMocks.bindPluginSessionConversation,
 }));
 vi.mock("../../state/user-profiles.js", () => ({
-  getUserProfileRole: vi.fn(() => null),
   hasMultipleSessionSharingIdentities: hoisted.hasMultipleSessionSharingIdentities,
 }));
 vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({

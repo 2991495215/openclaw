@@ -65,6 +65,11 @@ const readBindingApprovals = {
   input: undefined,
 } as const;
 
+const readProvenance = {
+  type: "claws.install-schema-versions",
+  input: { artifactPreservingReadOnly: true },
+} as const;
+
 async function seedMetadata(captured: ReturnType<typeof context>, value = { plugins: [] }) {
   writeConfigMachineState("plugins.installedIndex", value, databaseOptions(captured));
   await closeOpenClawStateDatabaseAsync();
@@ -309,11 +314,9 @@ describe("canonical shared-state worker admission", () => {
       const databasePath = seeded.admission.databasePath;
       await seedMetadata(seeded);
       const captured = captureOpenClawStateWorkerContext(databaseOptions(seeded));
-      await runOpenClawStateWorkerOperation(
-        captured,
-        (scope) => scope.execute(readBindingApprovals),
-        { existingOnly: true },
-      );
+      await runOpenClawStateWorkerOperation(captured, (scope) => scope.execute(readProvenance), {
+        existingOnly: true,
+      });
       const before = statSync(databasePath, { bigint: true });
       // macOS can change birth time without reallocating the inode.
       execFileSync("/usr/bin/SetFile", ["-d", "01/02/2000 03:04:05", databasePath]);
@@ -354,7 +357,7 @@ describe("canonical shared-state worker admission", () => {
         env: original.environment,
       });
       const inspect = (captured: typeof opening) =>
-        runOpenClawStateWorkerOperation(captured, (scope) => scope.execute(readBindingApprovals), {
+        runOpenClawStateWorkerOperation(captured, (scope) => scope.execute(readProvenance), {
           existingOnly: true,
         });
       await inspect(opening);
@@ -452,7 +455,7 @@ describe("canonical shared-state worker admission", () => {
             expect(
               await runOpenClawStateWorkerOperation(
                 survivingAlias,
-                (scope) => scope.execute(readBindingApprovals),
+                (scope) => scope.execute(readProvenance),
                 { existingOnly: true },
               ),
             ).toEqual([]);
@@ -488,7 +491,7 @@ describe("canonical shared-state worker admission", () => {
         const relocatedDuringCallback = await runOpenClawStateWorkerOperation(
           original,
           async (scope) => {
-            expect(await scope.execute(readBindingApprovals)).toEqual([]);
+            expect(await scope.execute(readProvenance)).toEqual([]);
             if (ownership === "active callback") {
               const relocated = relocate();
               // The old callback cannot await its own retirement through a new caller.
@@ -517,7 +520,7 @@ describe("canonical shared-state worker admission", () => {
         ) {
           await runOpenClawStateWorkerOperation(
             survivingAlias,
-            (scope) => scope.execute(readBindingApprovals),
+            (scope) => scope.execute(readProvenance),
             { existingOnly: true },
           );
           await originalMaintenance.close();

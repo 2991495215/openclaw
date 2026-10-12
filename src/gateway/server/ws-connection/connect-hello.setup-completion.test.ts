@@ -33,7 +33,8 @@ vi.mock("../health-state.js", () => ({
   getHealthVersion: vi.fn(() => 1),
 }));
 
-vi.mock("../../../state/user-profile-list.js", () => ({
+vi.mock("../../../state/user-profile-list.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../state/user-profile-list.js")>()),
   hasMultipleResidentSessionSharingIdentities: vi.fn(() => false),
 }));
 

@@ -39,7 +39,8 @@ vi.mock("../config/config.js", async (importOriginal) => ({
   })),
 }));
 
-vi.mock("../state/local-onboarding-state.js", () => ({
+vi.mock("../state/local-onboarding-state.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/local-onboarding-state.js")>()),
   readLocalOnboardingStateForConfigAsync: mocks.readLocalOnboardingState,
 }));
 

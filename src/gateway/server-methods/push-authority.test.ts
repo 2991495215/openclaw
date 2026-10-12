@@ -59,7 +59,8 @@ vi.mock("../../state/user-preferences.js", () => ({
   getCanonicalUserPreferences: vi.fn(async () => ({ profileId: "profile-owner", entries: {} })),
   setCanonicalUserPreferences: vi.fn(),
 }));
-vi.mock("../../state/user-channel-identity-operations.js", () => ({
+vi.mock("../../state/user-channel-identity-operations.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../state/user-channel-identity-operations.js")>()),
   prepareUserProfileSelectionAuthority: vi.fn(async (id: string) => {
     const profileId = readResidentUserProfileId(id);
     return profileId
@@ -67,7 +68,8 @@ vi.mock("../../state/user-channel-identity-operations.js", () => ({
       : undefined;
   }),
 }));
-vi.mock("../../state/user-profile-list.js", () => ({
+vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../state/user-profile-list.js")>()),
   readResidentUserProfileId: vi.fn(),
   prepareUserProfileCatalog: async () => ({
     readCurrentIdentity: (id: string) => ({ profileId: readResidentUserProfileId(id) }),

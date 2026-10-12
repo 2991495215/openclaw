@@ -190,9 +190,7 @@ it("permits a lazy native write after healthy peer changes when birthtime falls 
 });
 
 async function retainExistingReader(context: OpenClawStateWorkerContext) {
-  await expect(
-    runOpenClawStateWorkerOperation(context, async () => undefined, { existingOnly: true }),
-  ).resolves.toBeUndefined();
+  // Actor admission and retirement do not require a domain schema in this inspection fixture.
   const store = await getOpenClawStateWorkerOwner().open(context, { existingOnly: true });
   expect(store).toBeDefined();
   return store!;

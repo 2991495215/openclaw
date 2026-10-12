@@ -5,7 +5,10 @@ import { AUTH_STORE_VERSION } from "./constants.js";
 import { normalizeAuthProfileCredential } from "./credential-normalize.js";
 import { withOAuthProfileLock, withOAuthProfileLocks } from "./oauth-profile-lock.js";
 import { isOAuthRefreshFence, isSameOAuthRefreshGeneration } from "./oauth-refresh-marker.js";
-import { prepareSharedAuthStoreOwnership } from "./path-resolve.js";
+import {
+  getPreparedSharedAuthStoreOwnership,
+  prepareSharedAuthStoreOwnership,
+} from "./path-resolve.js";
 import { loadPersistedAuthProfileStore, loadPersistedSharedAuthProfileStore } from "./persisted.js";
 import {
   deletePersistedAuthProfileStoreRaw,
@@ -175,8 +178,9 @@ export async function persistAuthProfileBatch(
   const authorityProfileIds = [...profiles.entries()]
     .filter(([, entry]) => needsOAuthRefreshAuthority(entry.credential))
     .map(([profileId]) => profileId);
-  if (authorityProfileIds.length > 0) {
-    await prepareSharedAuthStoreOwnership(resolveAuthProfileWriteEnv(params));
+  const env = resolveAuthProfileWriteEnv(params);
+  if (authorityProfileIds.length > 0 && !getPreparedSharedAuthStoreOwnership(env)) {
+    await prepareSharedAuthStoreOwnership(env);
   }
   const readAuthorities = () => loadAuthProfileWriteAuthorities(params, authorityProfileIds);
   // Capture before the lock wait so a queued batch cannot restore a consumed OAuth generation.

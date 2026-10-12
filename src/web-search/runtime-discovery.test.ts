@@ -9,6 +9,7 @@ vi.mock("../plugins/bundled-discovery-state.js", () => ({
   prepareBundledDiscoveryMode: discovery.prepare,
   readBundledDiscoveryModeMemoized: () => undefined,
 }));
+// mock-isolation: Discovery ordering uses fixture providers without initializing the plugin loader.
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProviders: discovery.providers,
   resolveRuntimeWebSearchProviders: discovery.providers,

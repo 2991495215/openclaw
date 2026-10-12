@@ -14,8 +14,6 @@ import type {
 
 export {
   getTtsMachinePathAdmission,
-  normalizeConfigMachineStateKey,
-  publishConfigMachineStateRow,
   readConfigMachineStateRowInDatabase,
   type ConfigMachineStateDatabase,
 } from "./config-machine-state-row.js";
