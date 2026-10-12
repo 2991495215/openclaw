@@ -137,9 +137,9 @@ for (const name of ["ws", "undici"]) {
   // The Gateway loads ws/lib directly to bypass Bun's smaller built-in adapter.
   if (name === "ws") {
     moduleEntries.push(
-      ...runtimeJavaScriptEntries(path.join(directory, "lib")).map((entry) =>
+      ...runtimeJavaScriptEntries(path.join(directory, "lib")).map((filename) =>
         path
-          .relative(runtimeRoot, path.join(directory, "lib", entry))
+          .relative(runtimeRoot, path.join(directory, "lib", filename))
           .split(path.sep)
           .join("/"),
       ),
@@ -425,6 +425,15 @@ const result = await Bun.build({
                 node.source.start,
                 `globalThis.__openclawStandaloneImport(${physicalUrl}, `,
               ]);
+              if (node.source.value === workers.workerThreadsShim) {
+                edits.push([
+                  node.source.start,
+                  node.source.end,
+                  JSON.stringify(
+                    embeddedPaths[path.relative(runtimeRoot, workers.workerThreadsShim)],
+                  ),
+                ]);
+              }
             }
             if (
               node.type === "CallExpression" &&
