@@ -45,6 +45,15 @@ const reviewed = new Map<string, readonly string[]>([
   ["src/pairing/pairing-store.ts", ["readChannelAllowFromStoreSync"]],
   ["src/media-generation/runtime-shared.ts", ["resolveCapabilityModelCandidates"]],
   ["src/talk/provider-resolver.ts", ["resolveConfiguredRealtimeVoiceProvider"]],
+  [
+    "src/talk/provider-registry-sdk.ts",
+    [
+      "listRealtimeVoiceProviders",
+      "getRealtimeVoiceProvider",
+      "canonicalizeRealtimeVoiceProviderId",
+      "resolveConfiguredRealtimeVoiceProvider",
+    ],
+  ],
   ["src/auto-reply/commands-registry.ts", ["resolveCommandArgMenu"]],
   [
     "src/channels/direct-dm-access.ts",

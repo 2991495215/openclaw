@@ -12,11 +12,15 @@ import {
   buildCapabilityProviderIndex,
   normalizeCapabilityProviderId,
 } from "../plugins/provider-registry-shared.js";
+import type { PluginRegistry } from "../plugins/registry-types.js";
 import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
+import type { RealtimeVoiceProviderPlugin } from "../plugins/types.js";
 import {
   resolveConfiguredRealtimeVoiceProvider as resolvePreparedRealtimeVoiceProvider,
   type ResolveConfiguredRealtimeVoiceProviderParams,
+  type ResolvedRealtimeVoiceProvider,
 } from "./provider-resolver.js";
+import type { RealtimeVoiceProviderId } from "./provider-types.js";
 
 type VoiceResolution = ReturnType<
   typeof preparePluginCapabilityProviderResolution<"realtimeVoiceProviders">
@@ -35,7 +39,7 @@ function warnLegacy(method: string, replacement: string) {
 }
 
 // Released SDK readers retain native loading; internal registry consumers stay prepared-only.
-function loadLegacyVoiceEntries(load: VoiceLoad) {
+function loadLegacyVoiceEntries(load: VoiceLoad): PluginRegistry["realtimeVoiceProviders"] {
   if (load.loadOptions.onlyPluginIds?.length === 0) {
     return [];
   }
@@ -55,14 +59,14 @@ function loadLegacyVoiceEntries(load: VoiceLoad) {
 export function listRealtimeVoiceProviders(
   cfg?: OpenClawConfig,
   additionalProviderIds?: readonly string[],
-) {
+): RealtimeVoiceProviderPlugin[] {
   warnLegacy("listRealtimeVoiceProviders", "listRealtimeVoiceProvidersAsync");
   const snapshot = loadLegacyPluginMetadataSnapshotRuntime({
     config: cfg,
     allowWorkspaceScopedCurrent: true,
   });
   using projection = createLegacyPluginSdkProviderProjection();
-  const resolution = preparePluginCapabilityProviderResolution(
+  const resolution = preparePluginCapabilityProviderResolution<"realtimeVoiceProviders">(
     { key: "realtimeVoiceProviders", cfg, additionalProviderIds },
     (registry) => projection.select(registry),
     snapshot,
@@ -75,7 +79,10 @@ export function listRealtimeVoiceProviders(
 }
 
 /** @deprecated Await getRealtimeVoiceProviderAsync; removed in the next Plugin SDK major. */
-export function getRealtimeVoiceProvider(providerId: string | undefined, cfg?: OpenClawConfig) {
+export function getRealtimeVoiceProvider(
+  providerId: string | undefined,
+  cfg?: OpenClawConfig,
+): RealtimeVoiceProviderPlugin | undefined {
   warnLegacy("getRealtimeVoiceProvider", "getRealtimeVoiceProviderAsync");
   const normalized = normalizeCapabilityProviderId(providerId);
   if (!normalized) {
@@ -86,7 +93,7 @@ export function getRealtimeVoiceProvider(providerId: string | undefined, cfg?: O
     allowWorkspaceScopedCurrent: true,
   });
   using projection = createLegacyPluginSdkProviderProjection();
-  const resolution = preparePluginCapabilityProviderLookup(
+  const resolution = preparePluginCapabilityProviderLookup<"realtimeVoiceProviders">(
     { key: "realtimeVoiceProviders", providerId: normalized, cfg },
     (registry) => projection.select(registry),
     snapshot,
@@ -102,7 +109,7 @@ export function getRealtimeVoiceProvider(providerId: string | undefined, cfg?: O
 export function canonicalizeRealtimeVoiceProviderId(
   providerId: string | undefined,
   cfg?: OpenClawConfig,
-) {
+): RealtimeVoiceProviderId | undefined {
   warnLegacy("canonicalizeRealtimeVoiceProviderId", "canonicalizeRealtimeVoiceProviderIdAsync");
   const normalized = normalizeCapabilityProviderId(providerId);
   return normalized ? (getRealtimeVoiceProvider(normalized, cfg)?.id ?? normalized) : undefined;
@@ -111,7 +118,7 @@ export function canonicalizeRealtimeVoiceProviderId(
 /** @deprecated Await resolveConfiguredRealtimeVoiceProviderAsync; removed in the next Plugin SDK major. */
 export function resolveConfiguredRealtimeVoiceProvider(
   params: ResolveConfiguredRealtimeVoiceProviderParams,
-) {
+): ResolvedRealtimeVoiceProvider {
   warnLegacy(
     "resolveConfiguredRealtimeVoiceProvider",
     "resolveConfiguredRealtimeVoiceProviderAsync",
