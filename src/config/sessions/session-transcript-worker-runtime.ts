@@ -136,7 +136,6 @@ export function retainSessionHistoryWorkerDatabase(
       onRequest,
       timeoutMs = 60_000,
     ) => {
-      const validation = captureOpenClawAgentDatabaseReadValidation(database);
       let retirement: Promise<void> | undefined;
       const hostEffects = new Set<Promise<WorkerTaskResponse>>();
       return withSessionHistoryReadAdmission(
@@ -149,8 +148,10 @@ export function retainSessionHistoryWorkerDatabase(
         },
         async (admit, requestLane) => {
           try {
-            const reply = await admit((requestSignal, remaining) =>
-              runWithSqliteDatabaseAdmissionTurn([database.path], () =>
+            const reply = await admit((requestSignal, remaining) => {
+              // A writer ahead of this read can renew the receipt during admission.
+              const validation = captureOpenClawAgentDatabaseReadValidation(database);
+              return runWithSqliteDatabaseAdmissionTurn([database.path], () =>
                 requestLane.pool.run(
                   () => {
                     assertCurrent();
@@ -191,8 +192,8 @@ export function retainSessionHistoryWorkerDatabase(
                     },
                   },
                 ),
-              ),
-            );
+              );
+            });
             await retirement;
             const received =
               unwrapSessionTranscriptWorkerReply<SessionHistoryWorkerInput["kind"]>(reply);
