@@ -55,21 +55,58 @@ const execFileAsync = promisify(execFile);
 
 test("sessions.patchMany releases unrelated writes while restoration waits for allocation", async ({
   signal,
+  onTestFailed,
 }) => {
+  let phase = "setup";
+  let allocationEntered = false;
+  let restoreEntered = false;
+  const settlements: Record<string, "pending" | "fulfilled" | "rejected"> = {};
+  const snapshot = () => ({
+    phase,
+    allocationEntered,
+    restoreEntered,
+    settlements: { ...settlements },
+  });
+  let atAbort: ReturnType<typeof snapshot> | undefined;
+  const captureAbort = () => {
+    atAbort = snapshot();
+  };
+  signal.addEventListener("abort", captureAbort, { once: true });
+  onTestFinished(() => signal.removeEventListener("abort", captureAbort));
+  onTestFailed(() => {
+    console.error("Archive allocation diagnostic", { atAbort, atFailure: snapshot() });
+  });
+  const observe = (name: string, promise: Promise<unknown>) => {
+    phase = name;
+    settlements[name] = "pending";
+    void promise.then(
+      () => {
+        settlements[name] = "fulfilled";
+      },
+      () => {
+        settlements[name] = "rejected";
+      },
+    );
+  };
   const { key, sessionId, storePath, worktree, cleanupWorktrees } =
     await createArchiveWorktreeFixture();
+  phase = "peer-creation";
   const peer = await directSessionReq<{ key: string; sessionId: string }>("sessions.create", {
     agentId: "main",
   });
+  phase = "batch-peer-creation";
   const batchPeer = await directSessionReq<{ key: string; sessionId: string }>("sessions.create", {
     agentId: "main",
   });
   expect(peer.ok).toBe(true);
   expect(batchPeer.ok).toBe(true);
+  phase = "draft-write";
   await fs.writeFile(path.join(worktree.path, "draft.txt"), "preserved work\n");
+  phase = "archive";
   expect(
     await directSessionReq("sessions.patch", { key, expectedSessionId: sessionId, archived: true }),
   ).toMatchObject({ ok: true });
+  phase = "GC";
   await cleanupWorktrees();
   const entered = createDeferredCore();
   const release = createDeferredCore();
@@ -83,14 +120,17 @@ test("sessions.patchMany releases unrelated writes while restoration waits for a
       waitMs: 5_000,
     },
     async () => {
+      allocationEntered = true;
       entered.resolve();
       await release.promise;
     },
   );
+  observe("allocation", allocation);
   const originalRestore = captureMethodCall("restore")(ManagedWorktreeService.prototype);
   const restore = vi
     .spyOn(ManagedWorktreeService.prototype, "restore")
     .mockImplementation(function (this: ManagedWorktreeService, params) {
+      restoreEntered = true;
       operationEntered.resolve();
       return originalRestore(this, params);
     });
@@ -110,6 +150,7 @@ test("sessions.patchMany releases unrelated writes while restoration waits for a
       ],
       patch: { archived: false },
     });
+    observe("restore", mutation);
     await withinTest(
       awaitGateBeforeSettlement(operationEntered.promise, mutation, "restore was not attempted"),
       signal,
@@ -120,20 +161,24 @@ test("sessions.patchMany releases unrelated writes while restoration waits for a
         return result;
       },
     );
+    observe("same-session-write", successor);
     independent = directSessionReq("sessions.patch", {
       key: peer.payload!.key,
       label: "Independent session",
     });
+    observe("unrelated-write", independent);
     expect(await withinTest(independent, signal)).toMatchObject({ ok: true });
     expect(successorDone).toBe(false);
     expect(loadSessionEntry({ storePath, sessionKey: key })?.archivedAt).toEqual(
       expect.any(Number),
     );
   } finally {
+    phase = "final-join";
     release.resolve();
     await Promise.allSettled([allocation, mutation, independent, successor]);
     restore.mockRestore();
   }
+  phase = "final-assertions";
   expect(await mutation).toMatchObject({
     ok: true,
     payload: { outcomes: [{ ok: true }, { ok: true }] },
