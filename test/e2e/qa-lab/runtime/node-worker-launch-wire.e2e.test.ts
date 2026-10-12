@@ -10,12 +10,15 @@ import { redactSensitiveText } from "openclaw/plugin-sdk/logging-core";
 import { afterEach, describe, expect, it } from "vitest";
 import { createQaGatewayChild } from "../../../../extensions/qa-lab/api.js";
 import type { AuditRunInspectResult } from "../../../../packages/gateway-protocol/src/index.js";
+import { workspaceQuiescenceArgv } from "../../../../src/gateway/worker-environments/workspace-quiescence-scripts.js";
 import {
   NODE_WORKER_BUNDLE_INSTALL_COMMAND,
   NODE_WORKER_SUPERVISOR_LAUNCH_COMMAND,
   NODE_WORKER_SUPERVISOR_STATUS_COMMAND,
   NODE_WORKER_WORKSPACE_EXEC_COMMAND,
 } from "../../../../src/infra/node-commands.js";
+import { parseNodeWorkerWorkspaceExecInput } from "../../../../src/worker/node-workspace-protocol.js";
+import { createDeferred, withinTest } from "../../../helpers/promise.js";
 import { stopQaGatewayFixture } from "../../../helpers/qa-gateway-cleanup.js";
 import { useAutoCleanupTempDirTracker } from "../../../helpers/temp-dir.js";
 import {
@@ -46,6 +49,11 @@ const FINALIZATION_LOAD_CONCURRENCY = 12;
 const FINALIZATION_LOAD_WAVES = 3;
 const MIN_CONTROL_PROBE_SAMPLES = 12;
 const WORKSPACE_INVENTORY_FILES = 4_096;
+const REMOTE_WORKSPACE_RESUME_JS = workspaceQuiescenceArgv(
+  "/synthetic-workspace",
+  { action: "release", nonce: "0".repeat(32) },
+  "dedicated",
+)[2];
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
@@ -81,7 +89,7 @@ describe("node worker launch wire", () => {
   it(
     "transfers and reconciles a gateway-push workspace through a device runner",
     { timeout: TEST_TIMEOUT_MS },
-    async () => {
+    async ({ signal }) => {
       const root = tempDirs.make("openclaw-node-worker-launch-wire-");
       const provider = await startMidturnProvider();
       const published = await createPublishedWireWorkspace(root);
@@ -100,6 +108,8 @@ describe("node worker launch wire", () => {
       let workerAuditBeforeRestart: string | undefined;
       let testFailure: { error: unknown } | undefined;
       let cleanupFailures: unknown[];
+      let workspaceAwaitingReconciliation: string | undefined;
+      const workspaceReconciled = createDeferred();
 
       try {
         gateway = await startPairedNodeWorkerGateway({
@@ -140,6 +150,20 @@ describe("node worker launch wire", () => {
             }
           },
           afterInvoke: async (frame, host) => {
+            if (
+              workspaceAwaitingReconciliation &&
+              frame.command === NODE_WORKER_WORKSPACE_EXEC_COMMAND
+            ) {
+              const input = parseNodeWorkerWorkspaceExecInput(frame.paramsJSON);
+              if (
+                (input.quiescence?.action === "release" &&
+                  input.argv[1] === workspaceAwaitingReconciliation) ||
+                (input.argv[2] === REMOTE_WORKSPACE_RESUME_JS &&
+                  input.argv[3] === workspaceAwaitingReconciliation)
+              ) {
+                workspaceReconciled.resolve();
+              }
+            }
             if (frame.command !== NODE_WORKER_SUPERVISOR_LAUNCH_COMMAND || reconnected) {
               return;
             }
@@ -197,6 +221,7 @@ describe("node worker launch wire", () => {
           throw new Error("active worker placement did not expose a remote workspace directory");
         }
         const baseManifestRef = placement?.workspaceBaseManifestRef;
+        workspaceAwaitingReconciliation = remoteWorkspaceDir;
         await expect(
           fs.readFile(path.join(remoteWorkspaceDir, "gateway-push.txt"), "utf8"),
         ).resolves.toBe("dirty gateway workspace\n");
@@ -274,6 +299,8 @@ describe("node worker launch wire", () => {
               wireMessageText(message).includes(BASELINE_REPLY),
           ),
         ).toHaveLength(1);
+        // The owner resumes the workspace after committing its accepted manifest and files.
+        await withinTest(workspaceReconciled.promise, signal);
         const described = (await gateway.call("sessions.describe", { key: SESSION_KEY })) as {
           session?: { execCwd?: string; spawnedCwd?: string; placement?: Record<string, unknown> };
         };

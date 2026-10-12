@@ -160,6 +160,10 @@ const mocks = vi.hoisted(() => {
       value: await fn(),
     })),
     withStableDeliveryPreparation: vi.fn(),
+    loadSessionEntryInWorker:
+      vi.fn<
+        typeof import("./session-utils-store-worker.js").loadGatewaySessionEntryReadOnlyInWorker
+      >(),
     resolveSessionTarget:
       vi.fn<
         typeof import("./session-utils-store-worker.js").resolveGatewaySessionStoreTargetInWorker
@@ -494,6 +498,7 @@ vi.mock("./server-restart-update-run.js", async () => {
 
 // mock-isolation: These producer tests use supplied rows; worker authority has its own boundary suite.
 vi.mock("./session-utils-store-worker.js", () => ({
+  loadGatewaySessionEntryReadOnlyInWorker: mocks.loadSessionEntryInWorker,
   resolveGatewaySessionStoreTargetInWorker: mocks.resolveSessionTarget,
 }));
 
@@ -656,6 +661,7 @@ describe("scheduleRestartSentinelWake", () => {
     mocks.getRuntimeConfig.mockReset();
     mocks.getRuntimeConfig.mockReturnValue({ commands: { ownerAllowFrom: ["+15550002"] } });
     configureRestartSessionEventMocks(mocks);
+    mocks.loadSessionEntryInWorker.mockReset();
     mocks.loadSessionEntryAsync.mockReset();
     mocks.loadSessionEntryAsync.mockImplementation(async (sessionKey: string) =>
       sessionFixture(
@@ -980,6 +986,12 @@ describe("scheduleRestartSentinelWake", () => {
     );
     const deliveryRead = await vi.importActual<typeof import("../utils/delivery-context.read.js")>(
       "../utils/delivery-context.read.js",
+    );
+    const sessionWorker = await vi.importActual<typeof import("./session-utils-store-worker.js")>(
+      "./session-utils-store-worker.js",
+    );
+    mocks.loadSessionEntryInWorker.mockImplementation(
+      sessionWorker.loadGatewaySessionEntryReadOnlyInWorker,
     );
     mocks.loadSessionEntryAsync.mockImplementation(sessionUtils.loadSessionEntryAsync);
     mocks.deliveryContextFromSession.mockImplementation(deliveryRead.deliveryContextFromSession);
