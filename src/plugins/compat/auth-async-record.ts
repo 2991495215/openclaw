@@ -10,7 +10,7 @@ export const AUTH_ASYNC_COMPAT_RECORD = {
   warningStarts: "2026-10-11",
   removalGate: "next-plugin-sdk-major",
   replacement:
-    "Await the Async-suffixed auth-store, snapshot-publication, profile-upsert, provider-availability, profile-metadata, model-auth, model-header, provider-selection, and TTS methods. Implement isConfiguredAsync for media, speech, and realtime providers, and resolveConfigAsync for realtime voice providers. Released synchronous methods retain their signatures, immediate results, and completion timing until the next Plugin SDK major and explicit breaking-release approval.",
+    "Await the Async-suffixed auth-store, snapshot-publication, profile-upsert, provider-availability, profile-metadata, model-auth, model-header, provider-selection, and TTS methods. Implement isConfiguredAsync for media, speech, and realtime providers, and resolveConfigAsync for realtime voice providers. Released synchronous methods retain their signatures, immediate results, and completion timing until a later stable release.",
   docsPath:
     "/plugins/sdk-migration/how-to-migrate#await-auth-profile-and-provider-availability-operations",
   surfaces: [
@@ -65,5 +65,5 @@ export const AUTH_ASYNC_COMPAT_RECORD = {
     "src/plugins/compat/registry.test.ts",
   ],
   releaseNote:
-    "Auth-profile reads and writes, provider availability, and model selection use the existing database workers. Bundled callers await the new APIs; released synchronous contracts remain supported through the next Plugin SDK major. Stored data, schemas, and update behavior are unchanged.",
+    "Auth-profile reads and writes, provider availability, and model selection use the existing database workers. Bundled callers await the new APIs; released synchronous contracts remain supported until a later stable release. Stored data, schemas, and update behavior are unchanged.",
 } as const satisfies PluginCompatRecord;

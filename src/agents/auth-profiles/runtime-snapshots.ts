@@ -326,7 +326,7 @@ export function hasAnyRuntimeAuthProfileStoreSource(agentDir?: string): boolean 
   );
 }
 
-/** @deprecated Use replaceRuntimeAuthProfileStoreSnapshotsAsync. Removed at the next Plugin SDK major. */
+/** @deprecated Use replaceRuntimeAuthProfileStoreSnapshotsAsync. Removal is planned for a later stable release. */
 export function replaceRuntimeAuthProfileStoreSnapshots(
   entries: Array<{ databasePath?: string; agentDir?: string; store: AuthProfileStore }>,
 ): void {

@@ -9,7 +9,7 @@ export const WEB_SEARCH_PROVIDER_LIST_COMPAT_RECORD = {
   warningStarts: "2026-10-11",
   removalGate: "next-plugin-sdk-major",
   replacement:
-    "Await runtime.webSearch.listProvidersAsync(params). The synchronous listProviders(params) retains its return shape until the next Plugin SDK major and explicit breaking-release approval.",
+    "Await runtime.webSearch.listProvidersAsync(params). The synchronous listProviders(params) retains its return shape until a later stable release.",
   docsPath: "/plugins/sdk-migration/compatibility-policy#web-search-provider-lists",
   surfaces: ["PluginRuntime.webSearch.listProviders"],
   diagnostics: ["Bounded DEP_PLUGIN_SDK warning for synchronous web-search provider lists"],

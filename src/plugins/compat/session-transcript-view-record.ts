@@ -9,7 +9,7 @@ export const SESSION_TRANSCRIPT_VIEW_COMPAT_RECORD = {
   warningStarts: "2026-10-11",
   removalGate: "next-plugin-sdk-major",
   replacement:
-    "Await loadCombinedSessionStoreForGatewayAsync from openclaw/plugin-sdk/session-transcript-hit. The synchronous export retains its complete, non-incognito view until the next Plugin SDK major.",
+    "Await loadCombinedSessionStoreForGatewayAsync from openclaw/plugin-sdk/session-transcript-hit. The synchronous export retains its complete, non-incognito view until a later stable release.",
   docsPath: "/plugins/sdk-migration/compatibility-policy#session-transcript-search-views",
   surfaces: ["openclaw/plugin-sdk/session-transcript-hit loadCombinedSessionStoreForGateway"],
   diagnostics: ["Bounded DEP_PLUGIN_SDK warning for synchronous session transcript views"],

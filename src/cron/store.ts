@@ -362,7 +362,7 @@ export async function saveCronJobsStore(
 }
 
 // Public plugin SDK seam; core callers use the SQLite-backed cron-jobs names above.
-/** @deprecated Await resolveCronStorePathAsync. Removed in the next Plugin SDK major. */
+/** @deprecated Await resolveCronStorePathAsync. Removal is planned for a later stable release. */
 export function resolveCronStorePath(storePath?: string) {
   warnPluginSdkDeprecation({
     family: "cron-store-path",
