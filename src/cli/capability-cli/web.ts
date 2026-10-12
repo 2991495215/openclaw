@@ -122,7 +122,7 @@ export function registerWebCapabilityCommands(capability: Command): void {
           ...scopedTargets,
           config: rawConfig,
         });
-        const resolved = resolveWebFetchDefinition({
+        const resolved = await resolveWebFetchDefinition({
           config: cfg,
           providerId: provider,
         });
@@ -159,7 +159,7 @@ export function registerWebCapabilityCommands(capability: Command): void {
         id: provider.id,
         envVars: provider.envVars,
       })),
-      fetch: listWebFetchProviders({ config: cfg }).map((provider) => ({
+      fetch: (await listWebFetchProviders({ config: cfg })).map((provider) => ({
         available: true,
         configured: isWebFetchProviderConfigured({ provider, config: cfg }),
         selected: provider.id === selectedFetchProvider,

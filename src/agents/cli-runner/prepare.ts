@@ -36,6 +36,7 @@ import {
 } from "../../gateway/mcp-http.runtime.js";
 import { claimHeartbeatContextForUserRun } from "../../infra/heartbeat-outcome-store.js";
 import { buildSystemAgentToolsMcpServerConfig } from "../../mcp/openclaw-tools-serve-config.js";
+import { prepareBundledDiscoveryMode } from "../../plugins/bundled-discovery-state.js";
 import { CliBackendAuthProfilePreparationError } from "../../plugins/cli-backend-errors.js";
 import type {
   CliBackendPreparedExecution,
@@ -209,6 +210,7 @@ async function prepareCliRunContextWithinReadFence(
       onContextEngineTurnCandidate: undefined,
     };
   }
+  await prepareBundledDiscoveryMode();
   const runConfig = params.config!;
   const sessionOwner = normalizeAgentId(
     parseAgentSessionKey(params.sessionKey)?.agentId ||

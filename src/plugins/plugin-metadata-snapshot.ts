@@ -652,12 +652,12 @@ export async function resolvePluginMetadataSnapshotAsync(
   const release = retainPluginCache(cache);
   try {
     return await withPluginCache(cache, async () => {
+      const activateDiscovery = await prepareBundledDiscoveryMode(captured.env);
+      activateDiscovery();
       const current = selectPluginMetadataSnapshot(captured, false);
       if (current.kind === "current") {
         return current.snapshot;
       }
-      const activateDiscovery = await prepareBundledDiscoveryMode(captured.env);
-      activateDiscovery();
       const prepared = selectPluginMetadataSnapshot(captured);
       if (prepared.kind === "current") {
         return prepared.snapshot;

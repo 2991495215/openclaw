@@ -9,6 +9,7 @@ import {
   shouldDeferShellEnvFallback,
   shouldEnableShellEnvFallback,
 } from "../infra/shell-env.js";
+import { prepareBundledDiscoveryModeNative } from "../plugins/bundled-discovery-state.native.js";
 import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { loadInstalledPluginIndexInstallRecords } from "../plugins/installed-plugin-index-record-reader.js";
 import { getPluginMetadataSnapshotCache, withPluginCache } from "../plugins/plugin-cache.js";
@@ -180,6 +181,8 @@ export function createConfigIoContext(
     let pending: Promise<PreparedConfigValidationPluginMetadata> | undefined;
     return {
       load: (config: OpenClawConfig) => {
+        // Synchronous config admission serves boot, offline commands and legacy SDK readers.
+        prepareBundledDiscoveryModeNative(params.env);
         snapshot ??= resolveConfigWidePluginMetadataSnapshot({
           config,
           env: params.env,

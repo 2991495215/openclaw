@@ -93,7 +93,10 @@ vi.mock("./plugin-registry-snapshot.js", () => ({
 }));
 
 vi.mock("./plugin-metadata-snapshot.js", () => ({
-  loadPluginMetadataSnapshot: (params: { config?: OpenClawConfig; env?: NodeJS.ProcessEnv }) => {
+  resolvePluginMetadataSnapshotAsync: async (params: {
+    config?: OpenClawConfig;
+    env?: NodeJS.ProcessEnv;
+  }) => {
     const loaded = mocks.loadPluginRegistrySnapshotWithMetadata(params);
     const manifestRegistry = mocks.loadPluginManifestRegistry({
       index: loaded.snapshot,

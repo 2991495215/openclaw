@@ -325,6 +325,8 @@ export async function acquirePluginToolInspectionRegistry(params: {
   scopes: readonly PluginToolInspectionScope[];
   runWithPluginMetadataSnapshot?: PluginMetadataSnapshotScopeRunner;
 }): Promise<{ registry?: PluginRegistry; release: () => Promise<void> }> {
+  const { prepareBundledDiscoveryMode } = await import("./bundled-discovery-state.js");
+  await prepareBundledDiscoveryMode(params.loadContext.env);
   const inventory = new Map(
     (params.loadContext.manifestRegistry?.plugins ?? []).map((plugin) => [plugin.id, plugin]),
   );
@@ -385,6 +387,8 @@ export type PluginToolRegistryAcquisition = {
 export async function acquireStandalonePluginToolRegistry(
   params: Omit<PluginToolResolutionParams, "runtimeRegistry" | "preparedRuntime">,
 ): Promise<PluginToolRegistryAcquisition> {
+  const { prepareBundledDiscoveryMode } = await import("./bundled-discovery-state.js");
+  await prepareBundledDiscoveryMode(params.env);
   const loadState = resolvePluginToolLoadState(params);
   if (!loadState || loadState.onlyPluginIds.length === 0) {
     return { resolveTools: () => [], release: async () => {} };

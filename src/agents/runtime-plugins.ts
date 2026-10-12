@@ -340,19 +340,20 @@ export async function withAgentPluginRegistry<T>(params: {
     return await params.run(requestPluginRegistry);
   }
   // Borrowed Gateway registries must not load direct-host context dependencies.
-  const [{ setPluginRuntimeLoadContext }, { resolvePluginRuntimeLoadContext }] = await Promise.all([
-    import("../plugins/runtime/load-context.js"),
-    import("../plugins/runtime/load-context.resolve.js"),
-  ]);
+  const [{ setPluginRuntimeLoadContext }, { resolvePluginRuntimeLoadContextAsync }] =
+    await Promise.all([
+      import("../plugins/runtime/load-context.js"),
+      import("../plugins/runtime/load-context.resolve.js"),
+    ]);
   // Direct hosts resolve one policy generation; disabled plugins never reopen discovery.
-  const context = resolvePluginRuntimeLoadContext({
+  const context = await resolvePluginRuntimeLoadContextAsync({
     config: params.config,
     activationSourceConfig: projectConfigOntoRuntimeSourceSnapshot(params.config),
     env: params.env,
     workspaceDir: params.workspaceDir,
     ...(params.config.plugins?.enabled === false
       ? { manifestRegistry: { plugins: [], diagnostics: [] } }
-      : { metadataSnapshot: loadPluginMetadataSnapshot(params) }),
+      : {}),
   });
   // The resolver inherits request or configured scope; an empty override drops hook-only plugins.
   const pluginRegistry = loadAgentRuntimePluginRegistryHandle({

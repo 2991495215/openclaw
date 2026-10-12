@@ -2,6 +2,7 @@
 import { tryResolveConfiguredAgentWorkspaceDir } from "../../agents/agent-scope-config.js";
 import { modelKey, type ModelRef } from "../../agents/model-ref-shared.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { prepareBundledDiscoveryModeNative } from "../../plugins/bundled-discovery-state.native.js";
 import { loadManifestMetadataSnapshot } from "../../plugins/manifest-contract-eligibility.js";
 import { resolvePluginProviderRegistryCore } from "../../plugins/providers.runtime.js";
 import {
@@ -19,6 +20,7 @@ export function withModelCommandProviderRuntime<T>(
   const retainedRegistry = getPluginRuntimeGenerationRegistry();
   const config = params.runtimeConfig;
   const env = process.env;
+  prepareBundledDiscoveryModeNative(env);
   const workspaceDir = tryResolveConfiguredAgentWorkspaceDir(config, env);
   const metadataSnapshot = loadManifestMetadataSnapshot({ config, env, workspaceDir });
   const providerRefs = new Set<string>();

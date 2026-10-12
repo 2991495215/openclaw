@@ -23,7 +23,7 @@ import {
   buildAgentHookContextIdentityFields,
 } from "../../plugins/hook-agent-context.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
-import { loadPluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import {
   runOutsidePluginRuntimeGenerationScope,
   withPluginRuntimeGenerationScope,
@@ -297,11 +297,11 @@ async function runEmbeddedAgentForSession(
           });
         const pluginMetadataSnapshot =
           params.pluginGeneration?.pluginMetadataSnapshot ??
-          loadPluginMetadataSnapshot({
+          (await resolvePluginMetadataSnapshotAsync({
             config,
             workspaceDir: runtimeWorkspaceResolution.workspaceDir,
             env: process.env,
-          });
+          }));
         const runtimePluginSelections = resolveModelCandidateChain({
           cfg: config,
           agentId: requestedWorkspaceResolution.agentId,

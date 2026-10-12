@@ -2,6 +2,7 @@ import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/st
 import { resolveRuntimeConfigCacheKey } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.js";
 import { logVerbose } from "../globals.js";
+import { prepareBundledDiscoveryMode } from "../plugins/bundled-discovery-state.js";
 import { sortPluginEntriesForAutoDetect } from "../plugins/plugin-entry-order.js";
 import { getActivePluginRegistryVersion } from "../plugins/runtime.js";
 import type {
@@ -68,9 +69,10 @@ export function isWebFetchProviderConfigured(params: {
   return hasEntryCredential(params.provider, params.config);
 }
 
-export function listWebFetchProviders(params?: {
+export async function listWebFetchProviders(params?: {
   config?: OpenClawConfig;
-}): PluginWebFetchProviderEntry[] {
+}): Promise<PluginWebFetchProviderEntry[]> {
+  await prepareBundledDiscoveryMode();
   return resolvePluginWebFetchProviders({
     config: params?.config,
   });
@@ -140,13 +142,14 @@ function resolveWebFetchProvidersForOptions(
   return providers;
 }
 
-export function resolveWebFetchDefinition(
+export async function resolveWebFetchDefinition(
   options?: ResolveWebFetchDefinitionParams,
-): WebFetchDefinitionResolution {
+): Promise<WebFetchDefinitionResolution> {
   const fetch = resolveWebProviderConfig(options?.config, "fetch") as WebFetchConfig;
   if (fetch?.enabled === false) {
     return null;
   }
+  await prepareBundledDiscoveryMode();
   const runtimeWebFetch =
     options?.runtimeWebFetch ?? getActiveRuntimeWebToolsMetadataFromState()?.fetch;
   const providers = resolveWebFetchProvidersForOptions(options);

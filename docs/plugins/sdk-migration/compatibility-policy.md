@@ -933,3 +933,16 @@ shape for installed plugins and emits one bounded `DEP_PLUGIN_SDK` warning per
 plugin and capability family. It is scheduled for removal in the next Plugin SDK
 major. Native synchronous discovery remains for offline CLI/Doctor preparation
 and this compatibility method; Gateway web-search preparation uses the async owner.
+
+### Media discovery
+
+Await `resolveAutoMediaKeyProvidersAsync(params)` and
+`resolveDefaultMediaModelAsync(params)` from `openclaw/plugin-sdk/media-runtime`
+when media defaults need plugin discovery. Supplying `providerRegistry` uses that
+prepared registry directly.
+
+The synchronous names retain their signatures and return values, prepare native
+discovery only for compatibility, and emit one bounded `DEP_PLUGIN_SDK` warning
+per plugin and capability family. They are scheduled for removal in the next
+Plugin SDK major. Core media execution prepares discovery asynchronously before
+deriving image, document, or transcription defaults.

@@ -4,7 +4,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { bindModelLlmRuntime } from "../llm/model-runtime-binding.js";
 import type { Model } from "../llm/types.js";
-import { resolvePluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import {
   attachModelProviderRuntimePluginHandle,
@@ -514,14 +514,14 @@ async function acquireCommittedSimpleCompletionModel(
     });
   const pluginIdScope = resolvePluginIdScope(tentativeSelection, tentativeRequest.shorthandModelId);
   const resolveMetadata = (scope: ReturnType<typeof createAgentRuntimeMetadataPluginIdScope>) =>
-    resolvePluginMetadataSnapshot({
+    resolvePluginMetadataSnapshotAsync({
       config: params.cfg,
       env: process.env,
       workspaceDir,
       pluginIdScope: scope,
       allowWorkspaceScopedCurrent: true,
     });
-  let metadataSnapshot = resolveMetadata(pluginIdScope);
+  let metadataSnapshot = await resolveMetadata(pluginIdScope);
   const resolveSelection = () => {
     const request = resolveRequest(metadataSnapshot);
     return request ? { ...request.selection, agentDir } : null;
@@ -538,7 +538,7 @@ async function acquireCommittedSimpleCompletionModel(
       : undefined,
   );
   if (canonicalPluginIdScope.key !== pluginIdScope.key) {
-    metadataSnapshot = resolveMetadata(canonicalPluginIdScope);
+    metadataSnapshot = await resolveMetadata(canonicalPluginIdScope);
     selection = resolveSelection();
     if (!selection) {
       return { error: `No model configured for agent ${agentId}.` };

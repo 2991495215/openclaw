@@ -28,8 +28,20 @@ vi.mock("../plugins/widget-presenters.js", () => ({
   adoptRuntimeWidgetPresenterRegistrations: hoisted.adoptRuntimeWidgetPresenterRegistrations,
 }));
 
-vi.mock("../plugins/plugin-metadata-snapshot.js", () => ({
+vi.mock("../plugins/bundled-discovery-state.js", () => ({
+  prepareBundledDiscoveryMode: async () => () => {},
+}));
+
+vi.mock("../config/io.plugin-metadata.js", () => ({
+  resolveConfigWidePluginMetadataSnapshotAsync: async (...args: unknown[]) =>
+    hoisted.loadPluginMetadataSnapshot(...args),
+}));
+
+vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../plugins/plugin-metadata-snapshot.js")>()),
   loadPluginMetadataSnapshot: hoisted.loadPluginMetadataSnapshot,
+  resolvePluginMetadataSnapshotAsync: async (...args: unknown[]) =>
+    hoisted.loadPluginMetadataSnapshot(...args),
 }));
 
 vi.mock("../plugins/loader.js", () => ({

@@ -273,6 +273,8 @@ export async function compactEmbeddedAgentSessionDirect(
       { reason: "model_selection_locked" },
     );
   }
+  const { prepareBundledDiscoveryMode } = await import("../../plugins/bundled-discovery-state.js");
+  await prepareBundledDiscoveryMode();
   const sharedRuntimeWorkspace = resolveSharedPluginRuntimeWorkspace(
     {
       ...requestedParams,

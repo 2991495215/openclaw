@@ -667,6 +667,8 @@ export async function runCapability(params: {
   activeModel?: ActiveMediaModel;
   request?: MediaRequestOverrides;
 }): Promise<RunCapabilityResult> {
+  const { prepareBundledDiscoveryMode } = await import("../plugins/bundled-discovery-state.js");
+  await prepareBundledDiscoveryMode();
   const { capability, cfg, ctx } = params;
   const config: MediaUnderstandingConfig = params.config ?? cfg.tools?.media?.[capability] ?? {};
   const selection = selectAttachments({

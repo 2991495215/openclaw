@@ -6,6 +6,7 @@ import { BINDING_PERSISTENCE_COMPAT_RECORDS } from "./binding-persistence-record
 import { CHANNEL_PAIRING_COMPAT_RECORD } from "./channel-pairing-record.js";
 import { CRON_STORE_PATH_COMPAT_RECORD } from "./cron-store-path-record.js";
 import { DEPRECATION_MARKING_COMPAT_RECORDS } from "./deprecation-marking.js";
+import { MEDIA_DISCOVERY_COMPAT_RECORD } from "./media-discovery-record.js";
 import { MEDIA_LEGACY_PROJECTION_COMPAT_RECORD } from "./media-legacy-projection.js";
 import { MENTION_INBOX_COMPAT_RECORD } from "./mention-inbox-record.js";
 import { MODEL_ACCOUNT_CONNECT_COMPAT_RECORD } from "./model-account-connect-record.js";
@@ -47,6 +48,7 @@ export const PLUGIN_COMPAT_RECORDS = [
   MENTION_INBOX_COMPAT_RECORD,
   MODEL_ACCOUNT_CONNECT_COMPAT_RECORD,
   MODEL_SESSION_AUTH_PROFILE_COMPAT_RECORD,
+  MEDIA_DISCOVERY_COMPAT_RECORD,
   WORKSPACE_MUTATION_GUARD_COMPAT_RECORD,
   ...SESSION_PERSISTENCE_COMPAT_RECORDS,
   SKILL_COMMAND_DISCOVERY_COMPAT_RECORD,

@@ -38,6 +38,7 @@ import {
   isDangerousHostEnvVarName,
   normalizeEnvVarKey,
 } from "../infra/host-env-security.js";
+import { prepareBundledDiscoveryModeNative } from "../plugins/bundled-discovery-state.native.js";
 import type { PluginManifestRegistry } from "../plugins/manifest-registry.js";
 import {
   isPluginIntegrationSecretProviderConfig,
@@ -563,6 +564,7 @@ export async function buildGatewayInstallPlan(params: {
     GatewayServiceEnvironmentValueSource | undefined
   >;
 }): Promise<GatewayInstallPlan> {
+  prepareBundledDiscoveryModeNative(params.env);
   const platform = params.platform ?? process.platform;
   const wrapperInput = params.wrapperPath ?? params.env[OPENCLAW_WRAPPER_ENV_KEY];
   const generatedWrapperPath =

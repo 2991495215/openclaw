@@ -19,7 +19,7 @@ import { hashRuntimeConfigValue } from "../config/runtime-snapshot.js";
 import { privateFileStore } from "../infra/private-file-store.js";
 import { resolveInstalledManifestRegistryIndexFingerprint } from "../plugins/manifest-registry-installed.js";
 import {
-  resolvePluginMetadataSnapshot,
+  resolvePluginMetadataSnapshotAsync,
   type PluginMetadataSnapshot,
 } from "../plugins/plugin-metadata-snapshot.js";
 import type { ProviderCatalogOutcome } from "../plugins/provider-catalog.types.js";
@@ -223,12 +223,12 @@ async function prepareModelsConfigContext(
   const providerScopedDiscovery = Boolean(capturedOptions.providerDiscoveryProviderIds?.length);
   const pluginMetadataSnapshot =
     capturedOptions.pluginMetadataSnapshot ??
-    resolvePluginMetadataSnapshot({
+    (await resolvePluginMetadataSnapshotAsync({
       config: cfg,
       env,
       ...(workspaceDir ? { workspaceDir } : {}),
       ...(providerScopedDiscovery ? { preferPersisted: false } : {}),
-    });
+    }));
   return {
     cfg,
     discoveryAuthConfig: resolved.discoveryAuthConfig,

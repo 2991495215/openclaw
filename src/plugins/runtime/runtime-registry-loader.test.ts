@@ -69,7 +69,14 @@ vi.mock("../../config/plugin-auto-enable.js", () => ({
     mocks.applyPluginAutoEnable(...args),
 }));
 
+vi.mock("../bundled-discovery-state.js", () => ({
+  prepareBundledDiscoveryMode: async () => () => {},
+}));
+
 vi.mock("../../config/io.plugin-metadata.js", () => ({
+  resolveConfigWidePluginMetadataSnapshotAsync: async (
+    ...args: Parameters<typeof mocks.resolvePluginMetadataSnapshot>
+  ) => mocks.resolvePluginMetadataSnapshot(...args),
   resolveConfigWidePluginMetadataSnapshot: (
     ...args: Parameters<typeof mocks.resolvePluginMetadataSnapshot>
   ) => mocks.resolvePluginMetadataSnapshot(...args),
@@ -78,6 +85,9 @@ vi.mock("../../config/io.plugin-metadata.js", () => ({
 vi.mock("../plugin-metadata-snapshot.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../plugin-metadata-snapshot.js")>()),
   resolvePluginMetadataSnapshot: (
+    ...args: Parameters<typeof mocks.resolvePluginMetadataSnapshot>
+  ) => mocks.resolvePluginMetadataSnapshot(...args),
+  resolvePluginMetadataSnapshotAsync: async (
     ...args: Parameters<typeof mocks.resolvePluginMetadataSnapshot>
   ) => mocks.resolvePluginMetadataSnapshot(...args),
 }));

@@ -188,7 +188,7 @@ function buildPluginGroups(params: {
 }
 
 export const toolsCatalogHandlers: GatewayRequestHandlers = {
-  "tools.catalog": ({ params, respond, context }) => {
+  "tools.catalog": async ({ params, respond, context }) => {
     if (!assertValidParams(params, validateToolsCatalogParams, "tools.catalog", respond)) {
       return;
     }
@@ -201,6 +201,9 @@ export const toolsCatalogHandlers: GatewayRequestHandlers = {
       return;
     }
     const { cfg, agentId } = resolved;
+    const { prepareBundledDiscoveryMode } =
+      await import("../../plugins/bundled-discovery-state.js");
+    await prepareBundledDiscoveryMode();
     const groups = buildCoreGroups({ cfg, agentId });
     if (params.includePlugins !== false) {
       groups.push(

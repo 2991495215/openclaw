@@ -120,6 +120,8 @@ async function runFile(
   params: RunMediaUnderstandingFileParams,
   request: MediaRequestOverrides,
 ): Promise<RunMediaUnderstandingFileResult> {
+  const { prepareBundledDiscoveryMode } = await import("../plugins/bundled-discovery-state.js");
+  await prepareBundledDiscoveryMode();
   const { cfg } = params;
   const requestTimeoutSeconds =
     typeof params.timeoutMs === "number" &&
@@ -263,6 +265,8 @@ export async function prepareImageDescriptionInput(params: PrepareImageDescripti
 }
 
 export async function describePreparedImageWithModel(params: DescribePreparedImageWithModelParams) {
+  const { prepareBundledDiscoveryMode } = await import("../plugins/bundled-discovery-state.js");
+  await prepareBundledDiscoveryMode();
   const timeoutMs = resolveMediaRuntimeTimeoutMs(params.timeoutMs);
   const providerRegistry = buildProviderRegistry(undefined, params.cfg);
   const provider = providerRegistry.get(normalizeMediaProviderId(params.provider));
@@ -350,6 +354,8 @@ export async function resolveAudioInputBudget(params: {
   if (config?.enabled === false) {
     return { enabled: false };
   }
+  const { prepareBundledDiscoveryMode } = await import("../plugins/bundled-discovery-state.js");
+  await prepareBundledDiscoveryMode();
   const capability = "audio";
   const entries = resolveModelEntries({
     cfg,
