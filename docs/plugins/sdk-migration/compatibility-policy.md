@@ -529,10 +529,14 @@ incognito. Private transcripts are not added to the durable Memory ingestion
 corpus.
 
 The synchronous `loadMemorySessionMetadata` and
-`loadMemorySessionMetadataBatch` helpers remain durable ingestion admission
-guards. `statSessionEntrySync`, batch transcript stats, and synchronous archive
-and selector readers retain their existing durable/offline contracts. Incognito
-targets refuse synchronous storage access with
+`loadMemorySessionMetadataBatch` helpers are deprecated. Await
+`loadMemorySessionMetadataAsync` and `loadMemorySessionMetadataBatchAsync`
+instead; bundled ingestion resolves each store batch in the existing history
+worker. The synchronous helpers retain their signatures until the next Plugin
+SDK major. Like the other inventory readers, their deprecation is documented
+without a runtime warning. `statSessionEntrySync`, batch transcript stats, and
+synchronous archive and selector readers retain their existing durable/offline
+contracts. Incognito targets refuse synchronous storage access with
 `IncognitoSessionSyncAccessError`: await `resolveMemorySessionTargetsAsync`,
 `loadArchivedSessionsAsync`, or `buildSessionEntry` as named by the error.
 Worker snapshot kernels and supplied transcript statistics remain synchronous.

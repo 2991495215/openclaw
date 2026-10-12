@@ -15,7 +15,7 @@ import type { SessionCollaborationScope } from "./session-collaboration-scope.js
 import {
   SessionReactionLimitError,
   SessionReactionMessageMissingError,
-} from "./session-reaction-store.kernel.js";
+} from "./session-reaction-errors.js";
 import type {
   SessionReactionWrite,
   SetSessionReactionParams,

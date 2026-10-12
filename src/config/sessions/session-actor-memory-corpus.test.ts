@@ -4,6 +4,11 @@ import {
   statSessionEntrySync,
 } from "../../../packages/memory-host-sdk/src/host/session-files.js";
 import { readSessionResetRecallCutoff } from "../../../packages/memory-host-sdk/src/host/session-reset-recall-read.js";
+import {
+  loadMemorySessionMetadata,
+  loadMemorySessionMetadataAsync,
+  loadMemorySessionMetadataBatchAsync,
+} from "../../plugin-sdk/memory-core-host-engine-sessions.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import type { SessionActorAuthority } from "./session-actor-contract.js";
 import { memorySessionActorOwners } from "./session-actor-memory-owner.js";
@@ -102,6 +107,19 @@ describe("Memory export from the session actor", () => {
         )
       ).kind,
     ).toBe("committed");
+    expect(await loadMemorySessionMetadataAsync(scope)).toMatchObject({
+      agentId: "main",
+      sessionId: "before-reset",
+      sessionKey: scope.sessionKey,
+      resolution: "live",
+    });
+    expect(
+      await loadMemorySessionMetadataBatchAsync({
+        ...scope,
+        sessions: [{ sessionId: "after-reset" }, { sessionId: "missing" }],
+      }),
+    ).toMatchObject([{ sessionId: "after-reset", sessionKey: scope.sessionKey }]);
+    expect(() => loadMemorySessionMetadata(scope)).toThrow("loadMemorySessionMetadataAsync");
     const entry = await buildSessionEntry(scope.sessionKey, scope);
     expect(entry?.content).toBe("User: Previous discussion\nUser: Current discussion");
     expect(await readSessionResetRecallCutoff(scope)).toEqual({

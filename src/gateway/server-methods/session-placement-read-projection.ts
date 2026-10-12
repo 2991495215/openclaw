@@ -85,7 +85,6 @@ export function readSessionRowFacts(params: {
   const activitySummary = projectSessionActivitySummary({
     key,
     agentId,
-    storeTarget,
     cfg,
     entry,
     enabled: params.activitySummaryEnabled,

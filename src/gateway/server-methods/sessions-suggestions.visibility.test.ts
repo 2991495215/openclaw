@@ -18,7 +18,6 @@ import {
   removeSessionMember,
 } from "../../config/sessions/session-sharing-store.native.js";
 import { resolveSqliteTargetFromSessionStorePath } from "../../config/sessions/session-sqlite-target.js";
-import { addSessionSuggestion } from "../../config/sessions/session-suggestion-store.js";
 import { listSessionSuggestions } from "../../config/sessions/session-suggestion-store.read.js";
 import { projectionLane } from "../../config/sessions/session-transcript-worker-resources.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -66,7 +65,7 @@ describe("session suggestion visibility and role ceilings", () => {
       await withOpenClawTestState({ scenario: "minimal" }, async () => {
         await upsertDefaultSuggestionSession();
         for (const authorId of ["alice", "bob"]) {
-          addSessionSuggestion(
+          await addSessionSuggestionInWorker(
             { agentId: "main", sessionKey },
             { id: authorId, authorId, text: authorId },
           );
@@ -197,7 +196,7 @@ describe("session suggestion visibility and role ceilings", () => {
         ["own-idea", reader.id],
         ["other-idea", owner.id],
       ] as const) {
-        addSessionSuggestion(
+        await addSessionSuggestionInWorker(
           { agentId: "main", sessionKey },
           {
             id,
@@ -337,7 +336,7 @@ describe("session suggestion visibility and role ceilings", () => {
         { agentId: "main", sessionKey: draftKey },
         { identityId: "member", addedBy: "owner", expectedSessionId: "session-draft" },
       );
-      addSessionSuggestion(
+      await addSessionSuggestionInWorker(
         { agentId: "main", sessionKey: draftKey },
         {
           id: "draft-suggestion",
@@ -667,7 +666,11 @@ describe("suggestions queued behind provider review", () => {
         const options = { ...scope, path: database.path };
         const id = "queued-provider-review-suggestion";
         if (action !== "add") {
-          addSessionSuggestion(scope, { id, authorId: "owner", text: "Synthetic suggestion" });
+          await addSessionSuggestionInWorker(scope, {
+            id,
+            authorId: "owner",
+            text: "Synthetic suggestion",
+          });
         }
         const broadcast = vi.fn();
         const requestContext = context(broadcast);

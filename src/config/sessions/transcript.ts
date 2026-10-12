@@ -62,22 +62,15 @@ import {
   type AssistantBeforeMessageWrite,
 } from "./transcript-assistant-message.js";
 import {
-  extractRecentConversationText,
-  type ReadRecentSessionConversationTextOptions,
-  type SessionRecentConversationText,
-} from "./transcript-conversation-text.js";
-import {
   resolveMirroredTranscriptText,
   type SessionTranscriptDeliveryMirror,
 } from "./transcript-mirror.js";
-import {
-  isWithinTranscriptWindow,
-  normalizeRecentTranscriptLimit,
-} from "./transcript-recent-window.js";
+import type {
+  ReadRecentSessionConversationTextOptions,
+  SessionRecentConversationText,
+} from "./transcript-recent-text.js";
 import { streamSessionTranscriptLinesReverse } from "./transcript-stream.js";
 import { captureOwnedTranscriptWriteAssertion } from "./transcript-write-context.js";
-
-export type { SessionRecentConversationText } from "./transcript-conversation-text.js";
 
 type SessionTranscriptAppendTarget = {
   agentId?: string;
@@ -118,6 +111,8 @@ export type SessionTranscriptAssistantMessage = Parameters<SessionManager["appen
   [ASSISTANT_DISPLAY_CONTENT_FIELD]?: Array<Record<string, unknown>>;
 };
 
+export type { SessionRecentConversationText } from "./transcript-recent-text.js";
+
 type ReadRecentSessionConversationTextParams = ReadRecentSessionConversationTextOptions & {
   agentId: string;
   sessionKey: string;
@@ -156,38 +151,13 @@ async function readRecentUserAssistantTextFromSqliteTranscript(
   assertCurrent: () => void,
   options: ReadRecentSessionConversationTextOptions = {},
 ): Promise<SessionRecentConversationText[]> {
-  const limit = normalizeRecentTranscriptLimit(options.limit);
-  const pageSize = 250;
   try {
-    const { readSessionTranscriptBoundedMessageTailPageAsync } =
+    const { readRecentSessionConversationTextAsync } =
       await import("../../gateway/session-transcript-readers.js");
     const { readRestoredSessionTranscript } = await import("./session-cold-storage-read.js");
     return await readRestoredSessionTranscript(
       scope,
-      async () => {
-        const recent: SessionRecentConversationText[] = [];
-        for (let offset = 0; recent.length < limit; offset += pageSize) {
-          const page = await readSessionTranscriptBoundedMessageTailPageAsync(scope, {
-            maxMessages: pageSize,
-            // Preserve the existing message-count-only bound for this text projection.
-            maxBytes: Number.MAX_SAFE_INTEGER,
-            offset,
-          });
-          if (page.events.length === 0) {
-            break;
-          }
-          for (const event of page.events.toReversed()) {
-            const entry = extractRecentConversationText(event.event, options);
-            if (entry && isWithinTranscriptWindow(entry.timestamp, options)) {
-              recent.push(entry);
-              if (recent.length >= limit) {
-                break;
-              }
-            }
-          }
-        }
-        return recent.toReversed();
-      },
+      () => readRecentSessionConversationTextAsync(scope, options),
       { assertCurrent },
     );
   } catch (error) {

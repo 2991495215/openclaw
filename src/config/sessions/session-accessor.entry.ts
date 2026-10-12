@@ -71,7 +71,6 @@ export {
 } from "./session-accessor.sqlite-canonical-repair.js";
 export {
   ensureSessionEntrySync,
-  listSessionChildEntriesReadOnly,
   listSessionEntriesReadOnly,
   listSessionEntryKeysReadOnly,
   loadExactSessionEntry,
@@ -92,6 +91,7 @@ export {
   upsertSessionEntryCore,
   withSessionEntryReadOnlyScope,
 } from "./session-accessor.sqlite-entry.js";
+export { listSessionChildEntriesReadOnly } from "./session-entry-children-read.js";
 
 export { resolveSessionEntryFromStore, resolveSessionEntrySelection };
 export { resolveSessionEntryCandidateTargetForRuntime } from "./session-entry-candidate-runtime.js";

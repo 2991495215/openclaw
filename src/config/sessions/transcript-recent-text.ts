@@ -1,4 +1,4 @@
-import { asOptionalObjectRecord } from "@openclaw/normalization-core/record-coerce";
+import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   extractAssistantPhaseText,
   extractFirstTextBlock,
@@ -7,8 +7,14 @@ import {
   CRON_DIRECT_DELIVERY_CONTEXT_KIND,
   isTranscriptOnlyOpenClawAssistantMessage,
 } from "../../shared/transcript-only-openclaw-assistant.js";
-import type { TranscriptEvent } from "./session-accessor.types.js";
+import type { TranscriptEvent } from "./session-accessor.sqlite-contract.js";
+import type {
+  SessionTranscriptBoundedMessageTailOptions,
+  SessionTranscriptBoundedMessageTailPage,
+} from "./session-accessor.sqlite-projection-read.js";
 import {
+  isWithinTranscriptWindow,
+  normalizeRecentTranscriptLimit,
   normalizeTranscriptTimestamp,
   readPreferredUpstreamUserText,
 } from "./transcript-recent-window.js";
@@ -30,12 +36,12 @@ export type ReadRecentSessionConversationTextOptions = {
   preferUpstreamUserText?: boolean;
 };
 
-export function extractRecentConversationText(
+function extractRecentConversationText(
   event: TranscriptEvent,
   options: ReadRecentSessionConversationTextOptions = {},
 ): SessionRecentConversationText | undefined {
-  const parsed = asOptionalObjectRecord(event);
-  const message = asOptionalObjectRecord(parsed?.message);
+  const parsed = asOptionalRecord(event);
+  const message = asOptionalRecord(parsed?.message);
   if (
     !message ||
     (message.role !== "user" && message.role !== "assistant") ||
@@ -72,7 +78,7 @@ export function extractRecentConversationText(
   if (!text) {
     return undefined;
   }
-  const provenance = asOptionalObjectRecord(message.provenance);
+  const provenance = asOptionalRecord(message.provenance);
   const timestamp = normalizeTranscriptTimestamp(message.timestamp);
   return {
     ...(typeof parsed?.id === "string" && parsed.id ? { id: parsed.id } : {}),
@@ -83,4 +89,32 @@ export function extractRecentConversationText(
       ? { sourceChannel: provenance.sourceChannel.trim() }
       : {}),
   };
+}
+
+/** Select recent text inside the caller's single transcript snapshot. */
+export function readRecentTranscriptConversationText(
+  readPage: (
+    options: SessionTranscriptBoundedMessageTailOptions,
+  ) => SessionTranscriptBoundedMessageTailPage,
+  options: ReadRecentSessionConversationTextOptions = {},
+): SessionRecentConversationText[] {
+  const limit = normalizeRecentTranscriptLimit(options.limit);
+  const pageSize = 250;
+  const recent: SessionRecentConversationText[] = [];
+  for (let offset = 0; recent.length < limit; offset += pageSize) {
+    const page = readPage({ maxMessages: pageSize, maxBytes: Number.MAX_SAFE_INTEGER, offset });
+    for (const event of page.events.toReversed()) {
+      const entry = extractRecentConversationText(event.event, options);
+      if (entry && isWithinTranscriptWindow(entry.timestamp, options)) {
+        recent.push(entry);
+        if (recent.length >= limit) {
+          break;
+        }
+      }
+    }
+    if (offset + page.scannedMessages >= page.totalMessages) {
+      break;
+    }
+  }
+  return recent.toReversed();
 }

@@ -8,6 +8,7 @@ import { bindSessionTranscriptStoreScope } from "../config/sessions/session-acce
 import { withSessionActorStorage } from "../config/sessions/session-actor-storage-binding.js";
 import { captureSessionActorTranscriptRead } from "../config/sessions/session-actor-transcript-read.js";
 import type { SessionTranscriptAccountingOptions } from "../config/sessions/session-transcript-accounting.types.js";
+import type { ReadRecentSessionConversationTextOptions } from "../config/sessions/transcript-recent-text.js";
 import { captureSessionTranscriptStorageEnvironment } from "../config/sessions/transcript-target-binding.js";
 import type {
   SessionArtifactReadQuery,
@@ -132,6 +133,32 @@ export async function readSessionTranscriptBoundedMessageTailPageAsync(
     await import("../config/sessions/session-history-worker-runtime.js");
   return readSessionHistoryPageInWorker(
     { kind: "bounded-tail", params: { target, options: captured } },
+    signal,
+  );
+}
+
+export async function readRecentSessionConversationTextAsync(
+  scope: SessionTranscriptReadScope,
+  options: ReadRecentSessionConversationTextOptions,
+  signal?: AbortSignal,
+) {
+  signal?.throwIfAborted();
+  const captured = structuredClone(options);
+  const memory = captureSessionActorTranscriptRead(scope, signal);
+  if (memory) {
+    const result = memory.missing
+      ? []
+      : await memory.read("session.history.recent-text", {
+          options: captured,
+        });
+    memory.assertCurrent();
+    return result;
+  }
+  const target = captureHistoryReadScope(scope);
+  const { readSessionHistoryPageInWorker } =
+    await import("../config/sessions/session-history-worker-runtime.js");
+  return readSessionHistoryPageInWorker(
+    { kind: "recent-text", params: { target, options: captured } },
     signal,
   );
 }
