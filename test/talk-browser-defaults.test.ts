@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
   createSession: vi.fn(),
 }));
 
-vi.mock("../src/talk/provider-registry.js", () => {
+vi.mock("../src/talk/provider-registry.js", async (importOriginal) => {
   const registry = {
     canonicalizeRealtimeVoiceProviderId: (id: string | undefined) => {
       const normalized = id?.trim().toLowerCase();
@@ -41,7 +41,10 @@ vi.mock("../src/talk/provider-registry.js", () => {
     listRealtimeVoiceProviders: () => mocks.providers,
   };
   return {
+    ...(await importOriginal<typeof import("../src/talk/provider-registry.js")>()),
     ...registry,
+    canonicalizeRealtimeVoiceProviderIdAsync: async (id: string | undefined) =>
+      registry.canonicalizeRealtimeVoiceProviderId(id),
     getRealtimeVoiceProviderAsync: async (id: string) => registry.getRealtimeVoiceProvider(id),
     listRealtimeVoiceProvidersAsync: async () => registry.listRealtimeVoiceProviders(),
   };

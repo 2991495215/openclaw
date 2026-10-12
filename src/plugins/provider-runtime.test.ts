@@ -348,6 +348,7 @@ describe("provider-runtime", () => {
       >("./providers.runtime.js");
       return createProviderHookRuntime({
         ...providers,
+        resolveLegacyPluginProvidersCore: (params) => providers.resolvePluginProvidersCore(params),
         resolvePluginProviderRegistryCoreAsync: async (params) =>
           providers.resolvePluginProviderRegistryCore(params),
         resolvePluginProvidersCoreAsync: async (params, onSelectedRegistry) =>

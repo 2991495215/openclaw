@@ -37,7 +37,8 @@ const discovery = vi.hoisted(() => ({
   providers: new Array<ProviderPlugin>(),
 }));
 
-vi.mock("../src/plugins/provider-discovery.runtime.js", () => ({
+vi.mock("../src/plugins/provider-discovery.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/plugins/provider-discovery.runtime.js")>()),
   resolvePluginDiscoveryProvidersRuntime: () => discovery.providers,
   resolvePluginDiscoveryProvidersRuntimeAsync: async () => discovery.providers,
 }));
@@ -86,6 +87,7 @@ vi.mock("../src/plugins/provider-hook-runtime.js", async (importOriginal) => {
       resolver.resolvePluginProviderRegistryCore(params),
     resolvePluginProvidersCoreAsync: async (params, onSelectedRegistry) =>
       resolver.resolvePluginProvidersCore(params, onSelectedRegistry),
+    resolveLegacyPluginProvidersCore: (params) => resolver.resolvePluginProvidersCore(params),
   };
   return {
     ...(await importOriginal<typeof import("../src/plugins/provider-hook-runtime.js")>()),
