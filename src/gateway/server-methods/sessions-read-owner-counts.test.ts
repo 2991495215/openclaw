@@ -266,7 +266,27 @@ it("counts caller-visible conversations once through direct and delegated work b
         }));
         await ensure();
       });
-      expect(await listSessions({ client, context, request })).toMatchObject({
+      const result = await listSessions({ client, context, request });
+      const row = projection.capture({ agentId: "main", key: running });
+      const profileLabel = (id: string | undefined) =>
+        id === ada ? "ada" : id === bob ? "bob" : id ? "other" : "absent";
+      const entryFacts = (entry: SessionEntry | undefined) => ({
+        visibility: entry?.visibility ?? "absent",
+        owner: profileLabel(entry?.owner?.actor.id),
+      });
+      const diagnostic = JSON.stringify({
+        counts: result.ownerSessionCounts?.map(({ profileId, open, running: active }) => ({
+          owner: profileLabel(profileId),
+          open,
+          running: active,
+        })),
+        affectedRow: {
+          entry: entryFacts(row?.entry),
+          sharing: entryFacts(row?.sharingEntry),
+          stored: entryFacts(row?.storedEntry),
+        },
+      });
+      expect(result, diagnostic).toMatchObject({
         ownerSessionCounts: expected(7, 0),
       });
     } finally {
