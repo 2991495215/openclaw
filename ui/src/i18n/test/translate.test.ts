@@ -8,10 +8,12 @@ import * as translate from "../lib/translate.ts";
 let translateImportCase = 0;
 
 async function importFreshTranslate() {
-  return importFreshModule<typeof import("../lib/translate.ts")>(
+  const fresh = await importFreshModule<typeof import("../lib/translate.ts")>(
     import.meta.url,
     `../lib/translate.ts?case=${++translateImportCase}`,
   );
+  await vi.dynamicImportSettled();
+  return fresh;
 }
 
 function stubDocumentLocaleMetadata() {
