@@ -59,10 +59,62 @@ type ConfigPatchDiagnostic = {
   hotReloadFailed: number;
   modelsChanged: boolean;
   secretsChanged: boolean;
+  boundaries: string[];
 };
 const reloadDiagnostic = vi.hoisted(() => ({
   current: undefined as ConfigPatchDiagnostic | undefined,
 }));
+
+function recordConfigPatchBoundary(boundary: string): void {
+  const diagnostic = reloadDiagnostic.current;
+  if (diagnostic && diagnostic.boundaries.length < 64) {
+    diagnostic.boundaries.push(`${diagnostic.phase}:${boundary}`);
+  }
+}
+
+vi.mock("./server-methods/config-write-flow.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./server-methods/config-write-flow.js")>();
+  return {
+    ...actual,
+    commitGatewayConfigWrite: async (
+      ...args: Parameters<typeof actual.commitGatewayConfigWrite>
+    ) => {
+      recordConfigPatchBoundary("persist-entered");
+      const result = await actual.commitGatewayConfigWrite(...args);
+      recordConfigPatchBoundary("persist-completed");
+      if (result.application) {
+        void result.application.then(
+          () => recordConfigPatchBoundary("application-settled"),
+          () => recordConfigPatchBoundary("application-rejected"),
+        );
+      }
+      return result;
+    },
+    resolveGatewayConfigRestartWriteResult: async (
+      ...args: Parameters<typeof actual.resolveGatewayConfigRestartWriteResult>
+    ) => {
+      recordConfigPatchBoundary("sentinel-entered");
+      const result = await actual.resolveGatewayConfigRestartWriteResult(...args);
+      recordConfigPatchBoundary("sentinel-completed");
+      return result;
+    },
+  };
+});
+
+vi.mock("../config/config-journal-snapshot.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../config/config-journal-snapshot.js")>();
+  return {
+    ...actual,
+    upsertConfigSnapshotAuditRecordAsync: async (
+      ...args: Parameters<typeof actual.upsertConfigSnapshotAuditRecordAsync>
+    ) => {
+      recordConfigPatchBoundary("snapshot-upsert-entered");
+      const result = await actual.upsertConfigSnapshotAuditRecordAsync(...args);
+      recordConfigPatchBoundary("snapshot-upsert-completed");
+      return result;
+    },
+  };
+});
 
 vi.mock("./config-reload.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./config-reload.js")>();
@@ -73,7 +125,13 @@ vi.mock("./config-reload.js", async (importOriginal) => {
     ) =>
       actual.startGatewayConfigReloader({
         ...options,
+        onConfigAccepted: async (...args) => {
+          recordConfigPatchBoundary("config-accept-entered");
+          await options.onConfigAccepted?.(...args);
+          recordConfigPatchBoundary("config-accept-completed");
+        },
         onHotReload: async (...args) => {
+          recordConfigPatchBoundary("hot-reload-entered");
           const diagnostic = reloadDiagnostic.current;
           if (diagnostic) {
             diagnostic.hotReloadEntered = Math.min(diagnostic.hotReloadEntered + 1, 32);
@@ -87,6 +145,7 @@ vi.mock("./config-reload.js", async (importOriginal) => {
           try {
             await reloadBarrier.hold?.();
             const result = await options.onHotReload(...args);
+            recordConfigPatchBoundary("hot-reload-completed");
             if (diagnostic) {
               diagnostic.hotReloadCompleted = Math.min(diagnostic.hotReloadCompleted + 1, 32);
             }
@@ -142,6 +201,7 @@ describe("gateway config methods", () => {
       hotReloadFailed: 0,
       modelsChanged: false,
       secretsChanged: false,
+      boundaries: [],
     };
     reloadDiagnostic.current = diagnostic;
     try {
