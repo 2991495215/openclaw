@@ -8,6 +8,7 @@ import type {
   SessionActorStorageBinding,
 } from "../config/sessions/session-actor-storage-binding.js";
 import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
+import { buildUsageOverview } from "../shared/usage-overview.js";
 import type { SessionCostUsageRollupRow } from "./session-cost-usage-cache.kernel.js";
 import type { UsageCostResolver } from "./session-cost-usage-pricing.js";
 import {
@@ -132,7 +133,7 @@ async function runCapturedSessionActorUsage(
             input: {
               includeEvents: refresh,
               includeRollupBodies: operation.kind === "summary" || operation.kind === "sessions",
-              ...(operation.kind === "sessions" ? { sessionIds: ids } : {}),
+              ...(ids ? { sessionIds: ids } : {}),
             },
           },
           binding.authority,
@@ -217,6 +218,19 @@ async function runCapturedSessionActorUsage(
             };
       // This is the disclosure boundary; ordinary bookkeeping uses the captured immutable snapshot.
       binding.actor?.snapshot(binding.authority);
+      if (result.kind === "sessions" && operation.kind === "sessions" && operation.overview) {
+        return {
+          kind: "overview",
+          result: buildUsageOverview({
+            ...operation.overview,
+            summaries: result.summaries,
+            dayBucket: operation.dayBucket,
+          }),
+          cacheStatus: result.cacheStatus,
+          staleSessionFiles: result.staleSessionFiles,
+          invalidRows: [...invalidRows.values()],
+        };
+      }
       return { ...result, invalidRows: [...invalidRows.values()] };
     }
     if (!binding.actor) {
@@ -276,7 +290,17 @@ async function runCapturedSessionActorUsage(
       }
       changed ||= outcome.value;
     }
-    return { kind: "refresh", changed };
+    if (!limit || stale.length <= limit) {
+      return { kind: "refresh", changed };
+    }
+    return {
+      kind: "refresh",
+      changed,
+      remainingFiles: stale.slice(limit).map(({ file }) => ({
+        sessionFile: file.sourcePath,
+        rollupId: file.filePath,
+      })),
+    };
   } finally {
     if (refresh) {
       refreshes.delete(key);

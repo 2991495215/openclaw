@@ -11,6 +11,7 @@ import type { InternalSessionEntry } from "../config/sessions/types.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { readTranscriptRecords } from "./session-cost-usage-collection.js";
 import { runSessionActorUsage } from "./session-cost-usage-memory.js";
+import { resolveUsageCostPricingFingerprint } from "./session-cost-usage-pricing-context.js";
 import { prepareUsageCostWorker, runUsageCostWorker } from "./session-cost-usage-worker-runtime.js";
 
 vi.mock("node:sqlite", async (importOriginal) => ({
@@ -34,10 +35,14 @@ afterEach(() => {
   memorySessionActorOwners.reset();
 });
 
-async function fixture(entry: Partial<InternalSessionEntry> = {}) {
+async function fixture(
+  entry: Partial<InternalSessionEntry> = {},
+  target = { sessionKey, sessionId },
+) {
+  const { sessionKey: fixtureSessionKey, sessionId: fixtureSessionId } = target;
   const storePath = resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main", env });
   const binding = await acquireSessionActorStorage(
-    { agentId: "main", storePath, sessionKey, env },
+    { agentId: "main", storePath, sessionKey: fixtureSessionKey, env },
     { lifetime: { assertCurrent() {}, assertReadable() {} }, authority, create: true },
   );
   if (!binding) {
@@ -49,13 +54,19 @@ async function fixture(entry: Partial<InternalSessionEntry> = {}) {
     await actor.storage!.mutate(
       {
         type: "session.entry.create",
-        input: { entry: { sessionId, updatedAt: 1, ...entry }, cwd: "/synthetic" },
+        input: {
+          entry: { sessionId: fixtureSessionId, updatedAt: 1, ...entry },
+          cwd: "/synthetic",
+        },
       },
       authority,
     ),
   ).toMatchObject({ kind: "committed" });
   let next = 0;
-  const append = async (input: number) => {
+  const append = async (
+    input: number,
+    cost = { input: 0.01, output: 0.02, cacheRead: 0, cacheWrite: 0, total: 0.03 },
+  ) => {
     const id = `assistant-${++next}`;
     expect(
       await actor.appendTranscriptEvent(
@@ -65,7 +76,12 @@ async function fixture(entry: Partial<InternalSessionEntry> = {}) {
           append: {
             kind: "metadata",
             input: {
-              scope: { agentId: "main", sessionKey, sessionId, storePath: binding.path },
+              scope: {
+                agentId: "main",
+                sessionKey: fixtureSessionKey,
+                sessionId: fixtureSessionId,
+                storePath: binding.path,
+              },
               event: {
                 type: "message",
                 id,
@@ -82,7 +98,7 @@ async function fixture(entry: Partial<InternalSessionEntry> = {}) {
                     cacheRead: 0,
                     cacheWrite: 0,
                     totalTokens: input + 2,
-                    cost: { input: 0.01, output: 0.02, cacheRead: 0, cacheWrite: 0, total: 0.03 },
+                    cost,
                   },
                 }),
                 cwd: "/synthetic",
@@ -99,7 +115,7 @@ async function fixture(entry: Partial<InternalSessionEntry> = {}) {
   const sessionFile = formatSqliteSessionFileMarker({
     agentId: "main",
     storePath: binding.path,
-    sessionId,
+    sessionId: fixtureSessionId,
   });
   return { owner, actor, binding, append, sessionFile };
 }
@@ -155,6 +171,62 @@ describe("actor memory usage", () => {
       cacheStatus: { staleFiles: 0 },
     });
     expect(await refresh()).toEqual({ kind: "refresh", changed: false });
+  });
+
+  it("includes all selected memory sessions in overview totals before limiting rows", async () => {
+    const first = await fixture();
+    const secondTarget = {
+      sessionKey: "agent:main:dashboard:incognito-usage-second",
+      sessionId: "usage-2",
+    };
+    const second = await fixture({}, secondTarget);
+    const cost = { input: 0.8, output: 0.2, cacheRead: 0, cacheWrite: 0, total: 1 };
+    await first.append(8, cost);
+    await second.append(8, cost);
+    const prepared = prepareUsageCostWorker({
+      agentId: "main",
+      storePath: first.binding.path,
+      env,
+    });
+    const sessionFiles = [first.sessionFile, second.sessionFile];
+    const pricingFingerprint = await resolveUsageCostPricingFingerprint(
+      prepared.config,
+      prepared.agentDir,
+    );
+    await expect(runUsageCostWorker(prepared, { kind: "refresh", sessionFiles })).resolves.toEqual({
+      kind: "refresh",
+      changed: true,
+    });
+    await expect(
+      runUsageCostWorker(prepared, {
+        kind: "sessions",
+        projection: "overview",
+        pricingFingerprint,
+        sessions: sessionFiles.map((sessionFile) => ({ sessionFile })),
+        dayBucket: { mode: "utc-offset", utcOffsetMinutes: 0 },
+        overview: {
+          sessions: [
+            { sessionKey, sessionId, sessionFile: first.sessionFile },
+            { ...secondTarget, sessionFile: second.sessionFile },
+          ].map((target) => ({
+            key: target.sessionKey,
+            sessionId: target.sessionId,
+            agentId: "main",
+            updatedAt: 10_000,
+            instances: [{ sessionId: target.sessionId, sessionFile: target.sessionFile }],
+          })),
+          options: { limit: 1 },
+        },
+      }),
+    ).resolves.toMatchObject({
+      kind: "overview",
+      result: {
+        totals: { totalTokens: 20, totalCost: 2 },
+        sessions: [{ usage: { totalTokens: 10, totalCost: 1 } }],
+        overview: { total: 2, selectedRowCount: 2, limit: 1 },
+      },
+      cacheStatus: { status: "fresh", cachedFiles: 2 },
+    });
   });
 
   it("returns empty usage for an absent private owner without creating storage or borrowing a database worker", async () => {

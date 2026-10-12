@@ -16,7 +16,7 @@ import {
   resolveRegisteredExecApprovalDecision,
 } from "../bash-tools.exec-approval-request.js";
 import {
-  resolveExecDefaults,
+  resolveExecDefaultsAsync,
   prepareExecDefaults,
   resolvePreparedExecDefaultsAsync,
   type ExecPolicyOverrides,
@@ -239,7 +239,7 @@ export function createTerminalTool(opts: TerminalToolOptions = {}): AnyAgentTool
               await import("../../infra/exec-approvals-store.js");
             return loadExecApprovalsReadOnlyAsync();
           })
-        : resolveExecDefaults(policyInput);
+        : await resolveExecDefaultsAsync(policyInput);
       assertSessionCurrent();
       if (policy.mode === "deny") {
         throw new ToolInputError("Terminal input denied by execution policy");
