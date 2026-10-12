@@ -308,7 +308,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: model-ref-sync-discovery retains parseModelRef and resolveModelRefFromString.
       // +2: retained synchronous transcript event/stat reads until the next SDK major.
       // +2: their retained, prepared-only synchronous counterparts.
-      194,
+      // +1: released snapshot publication remains during its approved async replacement.
+      195,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(
