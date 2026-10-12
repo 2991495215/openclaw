@@ -159,7 +159,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   main-dependencies:
-    if: ${{ !inputs.verify_sdk_static }}
     name: Main dependency attribution
     needs: [render]
     if: ${{ always() && !inputs.diagnose_upgrade && !inputs.verify_sdk_static && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot }}
