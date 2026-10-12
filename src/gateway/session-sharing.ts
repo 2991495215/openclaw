@@ -147,7 +147,9 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
   });
   const { policy: preparedPolicy, consume: consumeSharing } = consuming;
   const sessionCap = (cfg: OpenClawConfig) =>
-    consuming.sharing ? preparedPolicy(cfg)?.sessionCap : operatorSessionCap(params.client, cfg);
+    consuming.sharing || consuming.profiles
+      ? preparedPolicy(cfg)?.sessionCap
+      : operatorSessionCap(params.client, cfg);
   const authorizeTargetPolicy = (
     targetRef: SessionMutationTarget,
     target: SessionSharingTarget | null,
@@ -156,11 +158,13 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
     members?: readonly string[],
     visibilityAuthorized?: boolean,
   ) => {
+    const cfg = readPolicyConfig();
+    const policy = preparedPolicy(cfg, members);
     const error =
       (target && authorizesAgentRun
         ? authorizeSessionAgentRun(
-            { cfg: readPolicyConfig(), client: params.client, target },
-            consuming.sharing ? { policy: preparedPolicy(readPolicyConfig())!.policy } : undefined,
+            { cfg, client: params.client, target },
+            policy ? { policy: policy.policy } : undefined,
           )
         : null) ??
       authorizeIncognitoSessionTarget({
@@ -177,30 +181,30 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
     ) {
       return error;
     }
-    const cfg = readPolicyConfig();
     const identity = sharingIdentity(params.client, resolveGatewayOperatorRoleActor(params.client));
-    return authorizesRead
-      ? createSessionListEntryFilter({ cfg, client: params.client })?.(
-          target.storeKey,
-          target.entry,
-        ) === false
+    if (authorizesRead) {
+      const entryFilter = policy
+        ? policy.entryFilter
+        : createSessionListEntryFilter({ cfg, client: params.client });
+      return entryFilter?.(target.storeKey, target.entry) === false
         ? hiddenSessionNotFound(target.canonicalKey)
-        : null
-      : consuming.sharing
-        ? authorizeSessionSharingTarget(
-            { cfg, client: params.client, target, ...targetOwnership },
-            {
-              value: preparedPolicy(cfg)!.sessionCap,
-              role: preparedPolicy(cfg)!.roleForTarget(target),
-            },
-          )
-        : authorizeSessionSharingTarget({
-            cfg,
-            client: params.client,
-            target,
-            ...targetOwnership,
-            isMember: resolveSessionSharingMembership(target, identity?.id, members, projection),
-          });
+        : null;
+    }
+    return policy
+      ? authorizeSessionSharingTarget(
+          { cfg, client: params.client, target, ...targetOwnership },
+          {
+            value: policy.sessionCap,
+            role: policy.roleForTarget(target),
+          },
+        )
+      : authorizeSessionSharingTarget({
+          cfg,
+          client: params.client,
+          target,
+          ...targetOwnership,
+          isMember: resolveSessionSharingMembership(target, identity?.id, members, projection),
+        });
   };
   let lookupCaches: SessionSharingLookupCaches | undefined;
   const resolveAuthorizedTarget = (targetRef: SessionMutationTarget, targetCount: number) => {
@@ -275,9 +279,12 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
     if (
       hidesForeignSessions &&
       target &&
-      !isSessionCreatorProfile(
-        target.entry.createdActor,
-        params.client?.authenticatedUserProfile?.profileId,
+      !(
+        preparedPolicy(getPolicyConfig())?.isCreator(target.entry.createdActor) ??
+        isSessionCreatorProfile(
+          target.entry.createdActor,
+          params.client?.authenticatedUserProfile?.profileId,
+        )
       )
     ) {
       return { error: hiddenSessionNotFound(targetRef.sessionKey) };
@@ -348,6 +355,7 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
         client: params.client,
         target,
         expectedProfileId: ownSessionProfileId,
+        isCreator: preparedPolicy(getPolicyConfig())?.isCreator,
       }) ??
       authorizeTargetPolicy(
         targetRef,
@@ -497,9 +505,7 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
           client: params.client,
           target: current,
           expectedProfileId: ownSessionProfileId,
-          ...(consuming.sharing?.isMember
-            ? { isCreator: preparedPolicy(currentCfg)!.isCreator }
-            : {}),
+          isCreator: preparedPolicy(currentCfg)?.isCreator,
         });
         if (ownershipError) {
           throw new SessionMutationAuthorizationChangedError(ownershipError);

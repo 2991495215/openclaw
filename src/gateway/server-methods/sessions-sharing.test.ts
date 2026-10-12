@@ -698,7 +698,7 @@ describe("session sharing handlers", () => {
             requestParams,
             context: requestContext,
           });
-          using _release = { [Symbol.dispose]: () => result.authorization?.release?.() };
+          using _ = { [Symbol.dispose]: () => result.authorization?.release?.() };
           const error = result.error;
           if (allowed) {
             expect(error, method).toBeNull();
@@ -731,7 +731,7 @@ describe("session sharing handlers", () => {
         requestParams: { key: sessionKey, profileId: "shared" },
         context: requestContext,
       });
-      using _release = { [Symbol.dispose]: () => captured.authorization?.release?.() };
+      using _ = { [Symbol.dispose]: () => captured.authorization?.release?.() };
       expect(captured.error).toBeNull();
       await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({ visibility: "draft" }));
       await expectAccess(false);

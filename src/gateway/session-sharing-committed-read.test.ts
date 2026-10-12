@@ -218,7 +218,7 @@ describe("committed session mutation authorization", () => {
             sessionId: shared.sessionId,
           },
         });
-        using _preparedRelease = {
+        using _ = {
           [Symbol.dispose]: () => prepared.authorization?.release?.(),
         };
         expect(prepared.error).toBeNull();

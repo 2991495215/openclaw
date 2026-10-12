@@ -28,7 +28,7 @@ import * as execApprovalsStore from "../infra/exec-approvals-store.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 import {
-  closeOpenClawAgentDatabasesForTest,
+  closeOpenClawAgentDatabasesAsync,
   resolveIncognitoOpenClawAgentSqlitePath,
 } from "../state/openclaw-agent-db.js";
 import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
@@ -46,7 +46,6 @@ import {
 } from "./session-utils-model.js";
 import { buildSessionListRowMetadataContext } from "./session-utils-projection.js";
 import { buildGatewaySessionRow as buildGatewaySessionRowOwner } from "./session-utils-row.js";
-import type { GatewaySessionStoreDiscoveryCache } from "./session-utils-store-candidates.js";
 import {
   resolveGatewaySessionStoreTargetAsync,
   resolveGatewaySessionStoreTargetWithStoreAsync,
@@ -1499,7 +1498,7 @@ describe("gateway session utils", () => {
     });
   });
 
-  test("loadGatewaySessionEntryReadOnly discovers stores once but reads changed rows live", async () => {
+  test("loadGatewaySessionEntryReadOnly reads changed rows after an in-process write", async () => {
     await withConfiguredStateDir("session-utils-request-discovery-", async ({ stateDir }) => {
       const storePath = path.join(stateDir, "agents", "main", "sessions", "sessions.json");
       const cfg = {
@@ -1511,27 +1510,15 @@ describe("gateway session utils", () => {
         [sessionKey]: { sessionId: "session-before", updatedAt: 1 },
       });
       setRuntimeConfigSnapshot(cfg, cfg);
-      const targetDiscoveryCache: GatewaySessionStoreDiscoveryCache = new Map();
-      const discoveryWrites = vi.spyOn(targetDiscoveryCache, "set");
-      try {
-        const first = await loadGatewaySessionEntryReadOnlyAsync(sessionKey, {
-          targetDiscoveryCache,
-        });
-        await replaceSessionEntry(
-          { sessionKey, storePath },
-          { sessionId: "session-after", updatedAt: 2 },
-        );
-        const second = await loadGatewaySessionEntryReadOnlyAsync(sessionKey, {
-          targetDiscoveryCache,
-        });
+      const first = await loadGatewaySessionEntryReadOnlyAsync(sessionKey);
+      await replaceSessionEntry(
+        { sessionKey, storePath },
+        { sessionId: "session-after", updatedAt: 2 },
+      );
+      const second = await loadGatewaySessionEntryReadOnlyAsync(sessionKey);
 
-        expect(first.entry?.sessionId).toBe("session-before");
-        expect(second.entry?.sessionId).toBe("session-after");
-        expect(targetDiscoveryCache.size).toBe(1);
-        expect(discoveryWrites).toHaveBeenCalledTimes(1);
-      } finally {
-        discoveryWrites.mockRestore();
-      }
+      expect(first.entry?.sessionId).toBe("session-before");
+      expect(second.entry?.sessionId).toBe("session-after");
     });
   });
 
@@ -1630,7 +1617,7 @@ describe("gateway session utils", () => {
           expect(loaded.canonicalKey).toBe("agent:main:main");
           expect(loaded.storePath).toBe(path.resolve(deletedStorePath));
           expect(loaded.entry?.sessionId).toBe("sess-deleted-main");
-          closeOpenClawAgentDatabasesForTest();
+          await closeOpenClawAgentDatabasesAsync();
           const parse = JSON.parse;
           let liveDefaultParses = 0;
           const parseSpy = vi.spyOn(JSON, "parse").mockImplementation((text, reviver) => {

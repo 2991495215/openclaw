@@ -44,12 +44,32 @@ const mocks = vi.hoisted(() => ({
 }));
 // mock-isolation: Keep session-owner SQL outside the worktree-read measurement.
 vi.mock("./session-utils.js", () => ({
-  loadGatewaySessionEntryReadOnlyAsync: async (...args: unknown[]) => mocks.session(...args),
+  loadIncognitoGatewaySessionEntryReadOnly: (...args: unknown[]) => mocks.session(...args),
 }));
 // mock-isolation: Keep session-worker state outside the worktree-read measurement.
 vi.mock("./session-utils-store-worker.js", () => ({
   loadGatewaySessionEntryReadOnlyInWorker: mocks.sessionRead,
 }));
+vi.mock("../config/sessions/session-entry-read-facts.js", async (original) => {
+  const actual = await original<typeof import("../config/sessions/session-entry-read-facts.js")>();
+  return {
+    ...actual,
+    readRetainedSessionEntryFacts: ((database, request, owner) => {
+      if (
+        database.agentId !== session.agentId ||
+        database.path !== sessionStorePath ||
+        !request.sessionKeys?.includes(session.sessionKey)
+      ) {
+        return actual.readRetainedSessionEntryFacts(database, request, owner);
+      }
+      return {
+        kind: "session-exact-entries",
+        entries: [{ sessionKey: session.sessionKey, entry: mocks.session().entry }],
+        lifecycleTimestamps: {},
+      };
+    }) satisfies typeof actual.readRetainedSessionEntryFacts,
+  };
+});
 // mock-isolation: Use the synthetic registry without starting managed-worktree services.
 vi.mock("../agents/worktrees/service.js", () => ({
   managedWorktrees: {
@@ -82,6 +102,7 @@ vi.mock("../secrets/runtime-state.js", () => ({
 }));
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+const sessionStorePath = "/publication-availability/sessions.sqlite";
 const session = { sessionKey: "agent:main:publication", sessionId: "session", agentId: "main" };
 const worktree: ManagedWorktreeRecord = {
   id: "publication-worktree",
@@ -103,6 +124,8 @@ beforeEach(async () => {
   mocks.session.mockReset().mockReturnValue({
     canonicalKey: session.sessionKey,
     agentId: session.agentId,
+    storePath: sessionStorePath,
+    readSource: { agentId: session.agentId, path: sessionStorePath },
     entry: {
       sessionId: session.sessionId,
       lifecycleRevision: "lifecycle",
@@ -139,6 +162,8 @@ it("rejects an unbound session without dispatching a worktree read", async () =>
   mocks.session.mockReturnValue({
     canonicalKey: session.sessionKey,
     agentId: session.agentId,
+    storePath: sessionStorePath,
+    readSource: { agentId: session.agentId, path: sessionStorePath },
     entry: { sessionId: session.sessionId, lifecycleRevision: "lifecycle" },
   });
   expect(await prepareGitHubPublicationAvailability(session)).toBe(false);

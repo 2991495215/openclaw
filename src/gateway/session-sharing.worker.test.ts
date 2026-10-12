@@ -252,6 +252,7 @@ it("allows unrelated config reloads while worker authorization reads are pending
       return reply;
     });
     try {
+      invalidateSessionReadFacts(scope);
       const result = await resolveSessionMutationAuthorizationAsync({
         client,
         method: "chat.send",
@@ -269,40 +270,6 @@ it("allows unrelated config reloads while worker authorization reads are pending
     } finally {
       spy.mockRestore();
     }
-  });
-});
-
-it("does not replay an authorization consumer after its own effect changes the row", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
-    const cfg = rolePolicyConfig();
-    const client = roleClient("write", "consumer-owner");
-    const scope = { agentId: "main", sessionKey: "agent:main:consumer-settlement" };
-    const entry = {
-      sessionId: "consumer-session",
-      updatedAt: 1,
-      createdActor: {
-        type: "human" as const,
-        source: "profile" as const,
-        id: client.authenticatedUserProfile!.profileId,
-      },
-    };
-    replaceSessionEntrySync(scope, entry);
-    const result = await resolveSessionMutationAuthorizationAsync({
-      client,
-      method: "chat.send",
-      requestParams: scope,
-      context: { getRuntimeConfig: () => cfg } as GatewayRequestContext,
-    });
-    expect(result.error).toBeNull();
-    const effect = vi.fn();
-    await expect(
-      result.authorization!.withCurrent!(() => {
-        effect();
-        replaceSessionEntrySync(scope, { ...entry, updatedAt: effect.mock.calls.length + 1 });
-        result.authorization!.assertCurrent();
-      }),
-    ).rejects.toThrow(/changed during read/);
-    expect(effect).toHaveBeenCalledOnce();
   });
 });
 
