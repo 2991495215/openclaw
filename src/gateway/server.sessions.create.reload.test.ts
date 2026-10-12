@@ -7,6 +7,7 @@ import {
   setupSessionCreateTestHarness,
 } from "./server.sessions.create.test-support.js";
 import { dispatchInboundMessageMock, rpcReq, testState } from "./test-helpers.js";
+import { settleGatewaySessionStoreFixture } from "./test/server-sessions-resources.test-helpers.js";
 import { getGatewayConfigModule } from "./test/server-sessions.test-helpers.js";
 
 const { createSessionStoreDir, openClient } = setupSessionCreateTestHarness();
@@ -17,7 +18,7 @@ test.each([
 ])(
   "sessions.create retains its first message across unrelated agent changes for $role",
   async ({ scopes }) => {
-    const { storePath } = await createSessionStoreDir();
+    const { dir, storePath } = await createSessionStoreDir();
     testState.agentsConfig = { ownership: "explicit", entries: { main: {}, other: {} } };
     testState.agentConfig = { systemAgent: { agentId: "main" }, sessionStore: { agentId: "main" } };
     const { ws } = await openClient({ scopes });
@@ -84,14 +85,20 @@ test.each([
           ).toContain(message);
         } finally {
           resume.resolve();
-          await request;
+          await Promise.allSettled([request]);
           await getSessionWorkAdmissionRelease({ scope: storePath, identities: [key] });
         }
       }
     } finally {
-      prepare.mockRestore();
-      config.setRuntimeConfigSnapshot(originalConfig);
       ws.terminate();
+      try {
+        await settleGatewaySessionStoreFixture(dir);
+      } finally {
+        // A request can fail before consuming its one-shot dispatch callback.
+        dispatchInboundMessageMock.mockReset();
+        prepare.mockRestore();
+        config.setRuntimeConfigSnapshot(originalConfig);
+      }
     }
   },
 );
