@@ -101,10 +101,11 @@ moduleEntries.push(
     .filter((entry) => entry.endsWith(".mjs"))
     .toSorted(),
 );
-// These libraries expose a few computed imports (notably secure-temp-root).
-const runtimeRequire = createRequire(path.join(runtimeRoot, "package.json"));
-for (const packageName of ["@openclaw/fs-safe", "@openclaw/proc-safe"]) {
-  const manifest = runtimeRequire.resolve(`${packageName}/package.json`);
+// Include conditional ESM/CJS entries reached through computed imports.
+for (const packageName of ["@openclaw/fs-safe", "@openclaw/proc-safe", "sqlite-vec", "ws"]) {
+  const manifest = fs.realpathSync(
+    path.join(runtimeRoot, "node_modules", packageName, "package.json"),
+  );
   const exports = JSON.parse(fs.readFileSync(manifest, "utf8")).exports;
   const pending = [exports];
   while (pending.length) {
@@ -122,29 +123,95 @@ for (const packageName of ["@openclaw/fs-safe", "@openclaw/proc-safe"]) {
     }
   }
 }
-moduleEntries.push(
-  path.relative(runtimeRoot, runtimeRequire.resolve("sqlite-vec")).split(path.sep).join("/"),
-);
 const moduleAliases = {};
+const commonJsPackageRoots = [];
 for (const name of ["ws", "undici"]) {
   const directory = fs.realpathSync(path.join(runtimeRoot, "node_modules", name));
   const manifest = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
   const entry = path.resolve(directory, manifest.main);
   moduleAliases[name] = entry;
   moduleEntries.push(path.relative(runtimeRoot, entry).split(path.sep).join("/"));
+  if (manifest.type !== "module") {
+    commonJsPackageRoots.push(directory + path.sep);
+  }
+  // The Gateway loads ws/lib directly to bypass Bun's smaller built-in adapter.
+  if (name === "ws") {
+    moduleEntries.push(
+      ...runtimeJavaScriptEntries(path.join(directory, "lib")).map((entry) =>
+        path
+          .relative(runtimeRoot, path.join(directory, "lib", entry))
+          .split(path.sep)
+          .join("/"),
+      ),
+    );
+  }
 }
 const runtimeBootstrap = path.join(outputRoot, "standalone-runtime.mjs");
+const workers = prepareStandaloneWorkers({
+  runtimeRoot,
+  outputRoot,
+  workerEntries,
+  runtimeBootstrap,
+  moduleAliases,
+});
+moduleEntries.push(path.relative(runtimeRoot, workers.workerThreadsShim));
+const moduleInputs = new Map();
+const outputNames = new Map();
+for (const entry of new Set(moduleEntries)) {
+  const name = path.posix.normalize(`runtime/${entry.replace(/\.[cm]js$/, ".js")}`);
+  outputNames.set(name, [...(outputNames.get(name) ?? []), entry]);
+}
+for (const [name, entries] of outputNames) {
+  for (const entry of entries) {
+    const source = path.resolve(runtimeRoot, entry);
+    if (entries.length === 1) {
+      moduleInputs.set(entry, { source, output: name });
+      continue;
+    }
+    // Conditional .cjs/.mjs siblings otherwise both emit index.js. Keep both contracts.
+    const facade = path.join(outputRoot, "standalone-entries", `${entry}.mjs`);
+    const ast = parse(fs.readFileSync(source, "utf8"), {
+      ecmaVersion: "latest",
+      sourceType: "module",
+    });
+    const hasDefault =
+      entry.endsWith(".cjs") ||
+      ast.body.some(
+        (node) =>
+          node.type === "ExportDefaultDeclaration" ||
+          node.specifiers?.some((specifier) => specifier.exported?.name === "default"),
+      );
+    fs.mkdirSync(path.dirname(facade), { recursive: true });
+    fs.writeFileSync(
+      facade,
+      `export * from ${JSON.stringify(source)};\n` +
+        (hasDefault ? `export { default } from ${JSON.stringify(source)};\n` : ""),
+    );
+    moduleInputs.set(entry, {
+      source: facade,
+      output: path
+        .relative(outputRoot, facade)
+        .replace(/\.mjs$/, ".js")
+        .split(path.sep)
+        .join("/"),
+    });
+  }
+}
 const embeddedPaths = Object.fromEntries(
-  moduleEntries.map((entry) => [
-    entry,
-    `/$bunfs/root/runtime/${entry.replace(/\.[cm]js$/, ".js")}`,
-  ]),
+  [...moduleInputs].map(([entry, { output }]) => [entry, `/$bunfs/root/${output}`]),
 );
 for (const [name, entry] of Object.entries(moduleAliases)) {
   embeddedPaths[name] = embeddedPaths[path.relative(runtimeRoot, entry).split(path.sep).join("/")];
 }
 const commonJsEntries = [
-  ...moduleEntries.filter((entry) => entry.endsWith(".cjs")).map((entry) => embeddedPaths[entry]),
+  ...moduleEntries
+    .filter(
+      (entry) =>
+        entry.endsWith(".cjs") ||
+        (entry.endsWith(".js") &&
+          commonJsPackageRoots.some((root) => path.resolve(runtimeRoot, entry).startsWith(root))),
+    )
+    .map((entry) => embeddedPaths[entry]),
   ...Object.keys(moduleAliases).map((name) => embeddedPaths[name]),
 ];
 fs.writeFileSync(
@@ -156,8 +223,10 @@ const root = path.join(path.dirname(process.execPath), "runtime");
 globalThis.__openclawStandaloneRootUrl = pathToFileURL(root + "/").href;
 globalThis.__zod_globalConfig = { ...globalThis.__zod_globalConfig, jitless: true };
 const entries = ${JSON.stringify(embeddedPaths)};
+const embeddedEntries = new Set(Object.values(entries));
 const commonJsEntries = new Set(${JSON.stringify(commonJsEntries)});
 function embedded(pathname) {
+  if (embeddedEntries.has(pathname)) return pathname;
   return entries[pathname] ?? entries[path.relative(root, pathname).split(path.sep).join("/")];
 }
 globalThis.__openclawStandaloneImport = (parent, specifier, options) => {
@@ -194,8 +263,8 @@ if (isMainThread) Bun.plugin({ name: "openclaw-embedded-modules", setup(build) {
           catch { return Bun.resolveSync(specifier, root); }
         })();
     } catch { return; } finally { resolving = false; }
-    const embedded = entries[path.relative(root, target).split(path.sep).join("/")];
-    if (embedded) return {path: embedded, namespace: "file"};
+    const entry = embedded(target);
+    if (entry) return {path: entry, namespace: "file"};
   });
 }});
 if (process.env.OPENCLAW_STANDALONE_TRACE_PRELOAD) {
@@ -203,13 +272,6 @@ if (process.env.OPENCLAW_STANDALONE_TRACE_PRELOAD) {
 }
 `,
 );
-const workers = prepareStandaloneWorkers({
-  runtimeRoot,
-  outputRoot,
-  workerEntries,
-  runtimeBootstrap,
-  moduleAliases,
-});
 const workerMap = workerEntries
   .map(
     (entry) =>
@@ -250,7 +312,7 @@ const external = ["chromium-bidi/*", "@audio/decode-ape"];
 const result = await Bun.build({
   entrypoints: [
     bootstrap,
-    ...moduleEntries.map((entry) => path.join(runtimeRoot, entry)),
+    ...[...moduleInputs.values()].map(({ source }) => source),
     ...workers.entrypoints,
   ],
   root: outputRoot,
