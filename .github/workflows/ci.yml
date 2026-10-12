@@ -22,6 +22,11 @@ on:
         required: false
         default: false
         type: boolean
+      diagnose_doctor:
+        description: Run the frozen Doctor yes-mode regression
+        required: false
+        default: false
+        type: boolean
       base_sha:
         description: Full predecessor commit SHA
         required: true
@@ -33,7 +38,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}
+  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}
   cancel-in-progress: false
 jobs:
   render:
@@ -136,7 +141,7 @@ jobs:
   main-dependencies:
     name: Main dependency attribution
     needs: [render]
-    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.verify_sdk_static }}
+    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.verify_sdk_static && !inputs.diagnose_doctor }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -341,5 +346,51 @@ jobs:
         with:
           name: usage-regression-${{ github.run_id }}-${{ github.run_attempt }}
           path: .artifacts/usage-regression*
+          if-no-files-found: warn
+          retention-days: 14
+  doctor-regression:
+    if: ${{ inputs.diagnose_doctor }}
+    name: Frozen Doctor yes-mode regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.base_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .ci-harness
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.ci-harness/.github/actions/setup-node-env
+        with:
+          node-version: "24.21.0"
+          semantic-checks: "true"
+          cache-mode: off
+          install-bun: "false"
+          dependency-cache: "false"
+          frozen-lockfile: "true"
+      - name: Diagnose the frozen Doctor yes-mode regression
+        env:
+          OPENCLAW_LOCAL_CHECK: "0"
+          OPENCLAW_VITEST_RUNTIME: node
+          BASELINE_SHA: ${{ inputs.base_sha }}
+          CANDIDATE_SHA: ${{ inputs.head_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$BASELINE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$BASELINE_SHA"
+          mkdir -p .artifacts
+          node --input-type=module -e 'console.log(JSON.stringify({ baseline: process.env.BASELINE_SHA, candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, runtime: "node", test: "src/commands/doctor.runs-legacy-state-migrations-yes-mode-without.e2e.test.ts", testTimeoutMs: 30000 }, null, 2))' > .artifacts/doctor-regression-provenance.json
+          pnpm test src/commands/doctor.runs-legacy-state-migrations-yes-mode-without.e2e.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/doctor-regression.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: ${{ always() }}
+        with:
+          name: doctor-regression-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/doctor-regression*
           if-no-files-found: warn
           retention-days: 14
