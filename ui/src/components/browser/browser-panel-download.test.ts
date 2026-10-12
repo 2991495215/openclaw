@@ -141,12 +141,22 @@ describe("Browser panel downloads", () => {
     async (change) => {
       const panel = makePanel();
       const body = createDeferred<Blob>();
-      fetchFile.mockResolvedValue({ ...response(), blob: () => body.promise });
+      const fetchCalls: Array<{ url: string; stack: string | undefined }> = [];
+      const pendingResponse = { ...response(), blob: () => body.promise };
+      fetchFile.mockImplementation((input: string | URL | Request) => {
+        fetchCalls.push({
+          url: typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+          stack: new Error("Browser download fetch").stack,
+        });
+        return Promise.resolve(pendingResponse);
+      });
       const saving = panel.download.save();
-      await vi.waitFor(() => expect(fetchFile).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() =>
+        expect(fetchFile, JSON.stringify(fetchCalls, null, 2)).toHaveBeenCalledTimes(1),
+      );
       expect(panel.download.pending).toBe(true);
       await panel.download.save();
-      expect(fetchFile).toHaveBeenCalledTimes(1);
+      expect(fetchFile, JSON.stringify(fetchCalls, null, 2)).toHaveBeenCalledTimes(1);
       if (change === "tab switch") {
         panel.activeTargetId = "other-tab";
       }
