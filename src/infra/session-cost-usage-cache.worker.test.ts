@@ -453,6 +453,8 @@ it("leaves an empty usage store absent until a transcript needs a rollup", async
       }),
     ).toMatchObject({ summaries: [{ totalTokens: 10 }], cacheStatus: { status: "fresh" } });
   });
+  // A cache-miss worker retains no database; runtime shutdown owns its retirement.
+  await closeStateDatabaseForTest();
 });
 
 it("prunes legacy-only usage caches during a full refresh", async () => {
