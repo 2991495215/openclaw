@@ -1,4 +1,5 @@
-import { expect, test, vi } from "vitest";
+import { channel } from "node:diagnostics_channel";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../test/helpers/promise.js";
 import { getSessionWorkAdmissionRelease } from "../sessions/session-lifecycle-admission.js";
 import * as chatSession from "./server-methods/chat-send-session.js";
@@ -22,6 +23,13 @@ test.each([
     const trace = (stage: string, change = "fixture") =>
       console.error(`[create-reload:${role}:${change}] ${Date.now() - startedAt}ms ${stage}`);
     trace("store.begin");
+    const diagnostics = channel("openclaw.session.create");
+    const logPhases = (sample: unknown) =>
+      console.error(`[create-phases:reload:${role}] ${JSON.stringify(sample)}`);
+    diagnostics.subscribe(logPhases);
+    onTestFinished(() => {
+      diagnostics.unsubscribe(logPhases);
+    });
     const { dir, storePath } = await createSessionStoreDir();
     testState.agentsConfig = { ownership: "explicit", entries: { main: {}, other: {} } };
     testState.agentConfig = { systemAgent: { agentId: "main" }, sessionStore: { agentId: "main" } };
