@@ -123,7 +123,6 @@ it("delivers an allowed implicit cron directory recipient and stops a denied one
           unverifiedMessageToolDelivery: false,
         },
         deliveryBestEffort: false,
-        deliveryPayloadHasStructuredContent: false,
         deliveryPayloads: [{ text: "scheduled update" }],
         synthesizedText: "scheduled update",
         summary: "scheduled update",
