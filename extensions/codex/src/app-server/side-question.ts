@@ -27,6 +27,10 @@ import {
   resolveCodexBindingAppServerConnection,
 } from "./binding-connection.js";
 import {
+  requireCodexThreadForkSettings,
+  type CodexThreadForkSettings,
+} from "./client-fork-settings.js";
+import {
   isCodexAppServerApprovalRequest,
   isCodexAppServerIndeterminateRequestCancellationError,
   type CodexAppServerClient,
@@ -65,6 +69,8 @@ import { routeCodexAppServerElicitationRequest } from "./elicitation-bridge.js";
 import { createCodexElicitationResponse } from "./elicitation-response.js";
 import { CodexEphemeralTurn } from "./ephemeral-turn.js";
 import { CodexNativeToolLifecycleProjector } from "./event-projector-native-tool-lifecycle.js";
+import { CODEX_INFERENCE_GENERATION_KEY } from "./inference-context.js";
+import { getCodexInferenceThread } from "./inference-routing.js";
 import { prepareCodexNativeExecutionPolicyForRun } from "./native-execution-policy.js";
 import {
   assertCodexNativeHookRelayAllowed,
@@ -386,6 +392,11 @@ export async function runCodexAppServerSideQuestion(
   let nativeHookRelay: ReturnType<typeof registerNativeHookRelayForBundledRuntime> | undefined;
   const activeDynamicToolCalls = new Set<Promise<unknown>>();
   let primaryFailure: { error: unknown } | undefined;
+  let forkSettings:
+    | (CodexThreadForkSettings & { turn: NonNullable<CodexThreadForkSettings["turn"]> })
+    | undefined;
+  let forkInferenceGeneration: string | undefined;
+  let releaseForkInferenceContext: (() => void) | undefined;
   const releaseSandboxEnvironment = async () => {
     if (!sandboxEnvironment) {
       return;
@@ -468,13 +479,13 @@ export async function runCodexAppServerSideQuestion(
     });
     // Forks inherit dynamic declarations; BTW retains its native-only search policy.
     const webSearchPlan =
-      requestedWebSearchPlan.kind === "managed"
+      !denyToolCalls && requestedWebSearchPlan.kind === "managed"
         ? resolveCodexWebSearchPlan({ config: sideRunParams.config, webSearchAllowed: false })
         : requestedWebSearchPlan;
     // Side threads do not own the compaction lifecycle that expires screenshot coordinates.
-    const exposedTools = tools.filter(
-      (tool) => tool.name !== "web_search" && tool.name !== "computer",
-    );
+    const exposedTools = denyToolCalls
+      ? tools
+      : tools.filter((tool) => tool.name !== "web_search" && tool.name !== "computer");
     return {
       toolBridge: createCodexDynamicToolBridge({
         assertCurrent: nativeExecutionPolicy.assertCurrent,
@@ -497,6 +508,9 @@ export async function runCodexAppServerSideQuestion(
   }
 
   try {
+    if (denyToolCalls) {
+      forkSettings = requireCodexThreadForkSettings(client, binding.threadId);
+    }
     assertCurrent();
     const autoApproveMcpTools = shouldAutoApproveCodexAppServerApprovals(appServer);
     const projectedMcpServers = loadCodexBundleMcpApprovalConfig({
@@ -747,11 +761,13 @@ export async function runCodexAppServerSideQuestion(
               assertCurrentBinding();
               assertCodexSupervisionThreadLineage(binding, thread);
             }
-            await ensureSandboxEnvironment(forkClient);
+            if (!denyToolCalls) {
+              await ensureSandboxEnvironment(forkClient);
+            }
             assertCurrentBinding();
             const executionCwd = sandboxEnvironment?.cwd ?? cwd;
             let pluginAppsConfigPatch: JsonObject | undefined;
-            if (binding.pluginAppPolicyContext) {
+            if (!denyToolCalls && binding.pluginAppPolicyContext) {
               const refreshed = await refreshCodexPluginAppApprovalPolicy({
                 policyContext: binding.pluginAppPolicyContext,
                 configCwd: executionCwd,
@@ -776,30 +792,43 @@ export async function runCodexAppServerSideQuestion(
                 pluginAppsConfigPatch,
                 appServer.networkProxy?.configPatch,
               ) ?? runtimeThreadConfig;
+            const forkConfig = forkSettings
+              ? mergeCodexThreadConfigs(
+                  forkSettings.thread.config ?? undefined,
+                  nativeHookRelayConfig,
+                )
+              : undefined;
             const response = assertCodexThreadForkResponse(
               await forkCodexSideThread(
                 forkClient,
-                {
-                  threadId: binding.threadId,
-                  model: modelSelection.model,
-                  ...(modelSelection.modelProvider
-                    ? { modelProvider: modelSelection.modelProvider }
-                    : {}),
-                  cwd: executionCwd,
-                  ...(sessionPermissionPolicy
-                    ? { runtimeWorkspaceRoots: [sessionPermissionPolicy.root] }
-                    : {}),
-                  approvalPolicy,
-                  approvalsReviewer: appServer.approvalsReviewer,
-                  ...(sandboxEnvironment || appServer.networkProxy ? {} : { sandbox }),
-                  ...(serviceTier ? { serviceTier } : {}),
-                  config: threadConfig,
-                  ...(denyToolCalls ? {} : { developerInstructions: SIDE_DEVELOPER_INSTRUCTIONS }),
-                  ephemeral: true,
-                  // Paginated ephemeral forks require metadata-only responses; history stays native.
-                  excludeTurns: true,
-                  threadSource: "user",
-                },
+                forkSettings
+                  ? {
+                      ...forkSettings.thread,
+                      threadId: binding.threadId,
+                      ...(forkConfig ? { config: forkConfig } : {}),
+                      ephemeral: true,
+                      excludeTurns: true,
+                    }
+                  : {
+                      threadId: binding.threadId,
+                      model: modelSelection.model,
+                      ...(modelSelection.modelProvider
+                        ? { modelProvider: modelSelection.modelProvider }
+                        : {}),
+                      cwd: executionCwd,
+                      ...(sessionPermissionPolicy
+                        ? { runtimeWorkspaceRoots: [sessionPermissionPolicy.root] }
+                        : {}),
+                      approvalPolicy,
+                      approvalsReviewer: appServer.approvalsReviewer,
+                      ...(sandboxEnvironment || appServer.networkProxy ? {} : { sandbox }),
+                      ...(serviceTier ? { serviceTier } : {}),
+                      config: threadConfig,
+                      developerInstructions: SIDE_DEVELOPER_INSTRUCTIONS,
+                      ephemeral: true,
+                      excludeTurns: true,
+                      threadSource: "user",
+                    },
                 currentRequestOptions(),
               ),
             );
@@ -818,6 +847,19 @@ export async function runCodexAppServerSideQuestion(
               onNotification: (notification) =>
                 nativeToolLifecycleProjector?.handleNotification(notification),
             });
+            if (forkSettings) {
+              const inference = getCodexInferenceThread(forkClient, binding.threadId);
+              if (inference) {
+                const registration = inference.context.fork({
+                  sourceThreadId: binding.threadId,
+                  threadId: childThreadId,
+                  signal: runAbortController.signal,
+                  assertCurrent,
+                });
+                forkInferenceGeneration = registration.generation;
+                releaseForkInferenceContext = registration.release;
+              }
+            }
             // A terminal answer may still be projecting after transport closure;
             // native hook authority ends with the route, not that projection.
             if (nativeHookRelay) {
@@ -879,43 +921,58 @@ export async function runCodexAppServerSideQuestion(
       await client
         .request(
           "turn/start",
-          {
-            threadId: sideThreadId,
-            input: buildCodexUserInput(params.question.trim(), params.images),
-            additionalContext: buildCodexTemporalAdditionalContext(sideRunParams, {
-              sessionStatusAvailable: toolBridge.availableTools.some(
-                (tool) => tool.name === "session_status",
-              ),
-            }),
-            ...(sandboxEnvironment
-              ? {
-                  cwd: sandboxEnvironment.cwd,
-                  sandboxPolicy: resolveCodexExternalSandboxPolicyForOpenClawSandbox(
-                    params.sandbox ?? undefined,
+          forkSettings
+            ? {
+                ...forkSettings.turn,
+                threadId: sideThreadId,
+                input: buildCodexUserInput(params.question.trim(), params.images),
+                ...(forkInferenceGeneration
+                  ? {
+                      responsesapiClientMetadata: {
+                        [CODEX_INFERENCE_GENERATION_KEY]: forkInferenceGeneration,
+                      },
+                    }
+                  : {}),
+              }
+            : {
+                threadId: sideThreadId,
+                input: buildCodexUserInput(params.question.trim(), params.images),
+                additionalContext: buildCodexTemporalAdditionalContext(sideRunParams, {
+                  sessionStatusAvailable: toolBridge.availableTools.some(
+                    (tool) => tool.name === "session_status",
                   ),
-                  environments: resolveCodexSandboxEnvironmentSelection(
-                    sandboxEnvironment,
-                    nativeToolSurfaceEnabled,
-                  ),
-                }
-              : { cwd }),
-            model: modelSelection.model,
-            ...(usesSupervisionConnection ? {} : { personality: CODEX_NATIVE_PERSONALITY_NONE }),
-            ...(serviceTier ? { serviceTier } : {}),
-            ...(usesSupervisionConnection
-              ? {}
-              : {
-                  effort,
-                  collaborationMode: {
-                    mode: "default" as const,
-                    settings: {
-                      model: modelSelection.model,
-                      reasoning_effort: effort,
-                      developer_instructions: null,
-                    },
-                  },
                 }),
-          },
+                ...(sandboxEnvironment
+                  ? {
+                      cwd: sandboxEnvironment.cwd,
+                      sandboxPolicy: resolveCodexExternalSandboxPolicyForOpenClawSandbox(
+                        params.sandbox ?? undefined,
+                      ),
+                      environments: resolveCodexSandboxEnvironmentSelection(
+                        sandboxEnvironment,
+                        nativeToolSurfaceEnabled,
+                      ),
+                    }
+                  : { cwd }),
+                model: modelSelection.model,
+                ...(usesSupervisionConnection
+                  ? {}
+                  : { personality: CODEX_NATIVE_PERSONALITY_NONE }),
+                ...(serviceTier ? { serviceTier } : {}),
+                ...(usesSupervisionConnection
+                  ? {}
+                  : {
+                      effort,
+                      collaborationMode: {
+                        mode: "default" as const,
+                        settings: {
+                          model: modelSelection.model,
+                          reasoning_effort: effort,
+                          developer_instructions: null,
+                        },
+                      },
+                    }),
+              },
           {
             timeoutMs: appServer.requestTimeoutMs,
             signal: runAbortController.signal,
@@ -1011,6 +1068,7 @@ export async function runCodexAppServerSideQuestion(
           }
         },
         () => collector?.route.release(),
+        () => releaseForkInferenceContext?.(),
         () => nativeToolLifecycleProjector?.finalizeActive(nativeToolRunWasAbortedBeforeCleanup),
         () =>
           nativePreToolUseFailures.activateFallback(nativeToolRunWasAbortedBeforeCleanup === true),

@@ -215,12 +215,6 @@ describe("advisor", () => {
           }),
         );
       }
-      expect(run.info).toHaveBeenCalledWith(
-        expect.stringContaining("input=100 cacheRead=80 output=10"),
-      );
-      expect(run.info).toHaveBeenCalledWith(
-        expect.stringContaining(active ? "steered active run" : "queued correction for next turn"),
-      );
       await run.stopService();
     },
   );

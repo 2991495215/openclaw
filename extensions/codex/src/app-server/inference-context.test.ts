@@ -151,6 +151,38 @@ describe("native inference metadata", () => {
 });
 
 describe("parent-local inference context", () => {
+  it("copies the exact admitted prefix into an independently authorized root fork", () => {
+    const { context, register } = fixture();
+    const parent = register("private persona\n\nskills\n\nmemory");
+    const expectedInstructions = context.prepare(request("root", parent.generation)).body
+      .instructions;
+    const forkController = new AbortController();
+    const fork = context.fork({
+      sourceThreadId: "root",
+      threadId: "fork",
+      signal: forkController.signal,
+      assertCurrent: () => {},
+    });
+    const source = request("fork", fork.generation);
+    const prepared = context.prepare(source);
+    expect(prepared.body.instructions).toBe(expectedInstructions);
+    parent.release();
+    expect(context.prepare(source).body.instructions).toBe(expectedInstructions);
+    expect(() => context.prepare(request("fork", parent.generation))).toThrow("current admitted");
+    expect(() =>
+      context.fork({
+        sourceThreadId: "missing",
+        threadId: "another",
+        signal: forkController.signal,
+        assertCurrent: () => {},
+      }),
+    ).toThrow("active parent");
+    forkController.abort();
+    expect(() => prepared.assertCurrent()).toThrow();
+    expect(() => context.prepare(source)).toThrow("current admitted");
+    context.close();
+  });
+
   it("rejects explicit non-string instructions", () => {
     const { context, register } = fixture();
     expect(() =>

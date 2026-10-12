@@ -23,13 +23,22 @@ import { patchSessionEntry, upsertSessionEntry } from "openclaw/plugin-sdk/sessi
 import { useSessionStoreTempDirs } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import * as clientCleanup from "./attempt-client-cleanup.js";
+import {
+  recordCodexThreadForkSettings,
+  recordCodexTurnForkSettings,
+} from "./client-fork-settings.js";
+import { ensureCodexAppServerClientRuntime } from "./client-runtime.js";
 import { codexTestTurnIds, nativeCommandItem } from "./codex-app-server.test-fixtures.js";
 import { resolveCodexSupervisionAppServerRuntimeOptions } from "./config.js";
 import * as elicitationBridge from "./elicitation-bridge.js";
 import { CodexEphemeralTurn } from "./ephemeral-turn.js";
 import { CodexNativeToolLifecycleProjector } from "./event-projector-native-tool-lifecycle.js";
 import { buildCodexAppServerConnectionFingerprint } from "./plugin-app-cache-key.js";
-import { isJsonObject } from "./protocol.js";
+import {
+  isJsonObject,
+  type CodexThreadStartParams,
+  type CodexTurnStartParams,
+} from "./protocol.js";
 import { createSandboxContext } from "./sandbox-exec-server.test-helpers.js";
 import { createCodexTestBindingStore } from "./session-binding.test-helpers.js";
 import { createClientHarness, createCodexTestModel } from "./test-support.js";
@@ -150,6 +159,51 @@ describe("runCodexAppServerSideQuestion", () => {
       completeTurn: false,
       onTurnStart: () => turnStarted.resolve(),
     });
+    const parentThread: CodexThreadStartParams = {
+      model: "gpt-5.5",
+      modelProvider: "openai",
+      cwd: "/tmp/parent-workspace",
+      runtimeWorkspaceRoots: ["/tmp/parent-root"],
+      approvalPolicy: "never",
+      approvalsReviewer: "guardian_subagent",
+      permissions: "parent-permissions",
+      developerInstructions: "Exact parent generic policy and workspace instructions.",
+      serviceTier: "priority",
+      config: {
+        web_search: "disabled",
+        "features.code_mode": false,
+        "features.computer_use": true,
+        "features.custom_parent_feature": true,
+      },
+    };
+    const parentTurn: CodexTurnStartParams = {
+      threadId: "parent-thread",
+      input: [],
+      cwd: "/tmp/parent-workspace",
+      runtimeWorkspaceRoots: ["/tmp/parent-root"],
+      approvalPolicy: "never",
+      approvalsReviewer: "guardian_subagent",
+      sandboxPolicy: { type: "externalSandbox", networkAccess: "restricted" },
+      model: "gpt-5.5",
+      effort: "high",
+      personality: "none",
+      serviceTier: "priority",
+      environments: [{ environmentId: "exact-parent-environment", cwd: "/workspace" }],
+      collaborationMode: {
+        mode: "default",
+        settings: {
+          model: "gpt-5.5",
+          reasoning_effort: "high",
+          developer_instructions: null,
+        },
+      },
+      additionalContext: {
+        parent_context: { kind: "application", value: "Unchanged parent context" },
+      },
+    };
+    ensureCodexAppServerClientRuntime(client, { agentDir: "/tmp/agent" });
+    recordCodexThreadForkSettings(client, "parent-thread", parentThread);
+    recordCodexTurnForkSettings(client, parentTurn);
     const baseRequest = client.request.getMockImplementation()!;
     let relayId = "";
     client.request.mockImplementation(async (method, requestParams) => {
@@ -161,7 +215,18 @@ describe("runCodexAppServerSideQuestion", () => {
           throw new Error("Expected fork config");
         }
         const config = requestParams.config;
-        expect(requestParams).not.toHaveProperty("developerInstructions");
+        expect(requestParams).toMatchObject({
+          ...parentThread,
+          ephemeral: true,
+          excludeTurns: true,
+          threadId: "parent-thread",
+        });
+        expect(requestParams).not.toHaveProperty("dynamicTools");
+        for (const [key, value] of Object.entries(config)) {
+          if (!key.startsWith("hooks.") && key !== "features.hooks") {
+            expect(parentThread.config?.[key]).toEqual(value);
+          }
+        }
         expect(config["hooks.Stop"]).toEqual([]);
         relayId = extractRelayIdFromThreadConfig(config);
         const response = await invokeNativeHookRelay({
@@ -180,6 +245,13 @@ describe("runCodexAppServerSideQuestion", () => {
           },
         });
         expect(response.stdout).toContain("Tool calls are denied");
+      }
+      if (method === "turn/start") {
+        expect(requestParams).toEqual({
+          ...parentTurn,
+          threadId: "side-thread",
+          input: [{ type: "text", text: "What changed?", text_elements: [] }],
+        });
       }
       return baseRequest(method, requestParams);
     });
@@ -222,6 +294,7 @@ describe("runCodexAppServerSideQuestion", () => {
     } finally {
       client.emit(turnCompleted("side-thread", "turn-1", "Read-only review."));
       await run.catch(() => undefined);
+      client.close();
       host.closeHost();
       host.closeAdmission();
     }
