@@ -2,6 +2,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { Model } from "../../llm/types.js";
 import { withPluginMetadataSnapshotScope } from "../../plugins/current-plugin-metadata-snapshot.js";
 import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
+import { resolveProviderRuntimePluginAsync } from "../../plugins/provider-hook-runtime.js";
 import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.types.js";
 import { providerOwnsDynamicModelPreparation } from "../../plugins/provider-runtime.js";
 import { withPluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
@@ -147,6 +148,15 @@ export async function resolveModelAsync(
       modelIdSource: options?.modelIdSource,
     });
     const logicalRef = { provider: normalizedRef.provider, model: normalizedRef.model };
+    if (!options?.runtimeHooks && !options?.skipProviderRuntimeHooks) {
+      await resolveProviderRuntimePluginAsync({
+        provider: normalizedRef.provider,
+        modelId: normalizedRef.model,
+        config: cfg,
+        workspaceDir,
+        pluginMetadataSnapshot: preparedMetadataSnapshot,
+      });
+    }
     let { authStorage, modelRegistry } = options ?? {};
     if (!authStorage || !modelRegistry) {
       const stores = preparedModelRuntime?.createStores() ?? createEmptyAgentDiscoveryStores();
