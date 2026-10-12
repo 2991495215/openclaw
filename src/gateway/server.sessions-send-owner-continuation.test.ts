@@ -360,9 +360,7 @@ it.for(["success", "child error", "owner revoked", "owner reassigned", "new user
                 message: "finish authorized work",
                 timeoutSeconds: 1,
               });
-              expect(result.details, JSON.stringify(result.details)).toMatchObject({
-                status: "accepted",
-              });
+              expect(result.details).toMatchObject({ status: "accepted" });
             }),
         );
         await withinTest(
