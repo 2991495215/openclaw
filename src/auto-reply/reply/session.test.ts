@@ -122,6 +122,13 @@ vi.mock("../../agents/prepared-model-catalog.js", () => ({
   ]),
 }));
 
+// Keep the fixture caller visible when a nested database admission fails.
+const previousStackTraceLimit = Error.stackTraceLimit;
+Error.stackTraceLimit = 64;
+afterAll(() => {
+  Error.stackTraceLimit = previousStackTraceLimit;
+});
+
 const suiteRoot = useSessionStoreTempDirs(afterAll, "openclaw-session-suite-").make();
 let suiteCase = 0;
 

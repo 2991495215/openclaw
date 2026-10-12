@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { resolveSqliteSessionKey } from "../../config/sessions/session-accessor.sqlite-scope-helpers.js";
 import type { SessionTranscriptRuntimeTarget } from "../../config/sessions/session-accessor.types.js";
 import type {
   SessionActor,
@@ -97,13 +98,17 @@ function retainAcquisition(
   selected: { actor: SessionActor },
 ): SessionManagerMemoryBinding {
   const storage = selected.actor.storage!;
+  const sessionKey = selected.actor.target.sessionKey;
   const assertCurrent = () => binding.authority.assertCurrent();
   return {
     ...binding,
     // Storage retains the owner factory, not a live manager handle. A new caller lifetime
     // lets this manager survive release of the caller that originally opened it.
     acquire: () =>
-      storage.acquire(binding.target.sessionKey, { assertCurrent, assertReadable: assertCurrent }),
+      storage.acquire(sessionKey, {
+        assertCurrent,
+        assertReadable: assertCurrent,
+      }),
   };
 }
 
@@ -145,6 +150,7 @@ export function captureSessionManagerIncognitoBinding(
     return undefined;
   }
   const { agentId, path } = captured;
+  const sessionKey = resolveSqliteSessionKey(target.sessionKey, agentId);
   let owner = captured.owner;
   const assertCurrent = authority.assertCurrent;
   const lifetime = { assertCurrent, assertReadable: assertCurrent };
@@ -157,8 +163,8 @@ export function captureSessionManagerIncognitoBinding(
       owner ??= memorySessionActorOwners.read({ agentId, path });
       if (owner) {
         return create
-          ? owner.acquire({ database: owner.identity, sessionKey: target.sessionKey }, lifetime)
-          : owner.acquireExisting(target.sessionKey, lifetime);
+          ? owner.acquire({ database: owner.identity, sessionKey }, lifetime)
+          : owner.acquireExisting(sessionKey, lifetime);
       }
       if (!create) {
         return undefined;

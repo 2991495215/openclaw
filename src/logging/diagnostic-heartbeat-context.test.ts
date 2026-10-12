@@ -1,6 +1,7 @@
 import { DatabaseSync, StatementSync } from "node:sqlite";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
+import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { appendTranscriptMessage } from "../config/sessions/session-accessor.sqlite-transcript-write.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
@@ -38,6 +39,7 @@ beforeAll(async () => {
     layout: "state-only",
     prefix: "openclaw-heartbeat-context-",
   });
+  setRuntimeConfigSnapshot({});
   for (const label of ["enabled", "disabled", "incognito"]) {
     const incognito = label === "incognito";
     const scope = {

@@ -1,5 +1,9 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -54,6 +58,7 @@ describe("plugin registry SQLite session ownership", () => {
       });
 
       try {
+        setRuntimeConfigSnapshot(config);
         const sessionKey = "subagent:workboard-default-unassigned";
         await expect(api.runtime.subagent.run({ sessionKey, message: "start" })).resolves.toEqual({
           runId: "workboard-run",
@@ -96,6 +101,7 @@ describe("plugin registry SQLite session ownership", () => {
         expect(subagent.run).toHaveBeenCalledOnce();
       } finally {
         closeOpenClawAgentDatabasesForTest();
+        clearRuntimeConfigSnapshot();
       }
     });
   });

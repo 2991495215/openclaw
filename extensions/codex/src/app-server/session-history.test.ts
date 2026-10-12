@@ -355,8 +355,11 @@ describe("readCodexMirroredSessionHistoryMessages", () => {
     },
   );
 
-  it("reads incognito model context from the memory actor", async () => {
-    const { marker, sessionTarget } = await writeSqliteSession({ incognito: true });
+  it("reads incognito model context from the memory actor with a mixed-case session key", async () => {
+    const { marker, sessionTarget } = await writeSqliteSession({
+      incognito: true,
+      sessionKey: "agent:main:dashboard:incognito-MiXeD",
+    });
     const result = await readCodexMirroredSessionHistoryMessages({
       ...sessionTarget,
       sessionTarget,
