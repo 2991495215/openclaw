@@ -33,7 +33,10 @@ vi.mock("../../auto-reply/reply/conversation-label-generator.js", () => ({
 }));
 vi.mock("../../config/sessions/session-accessor.js", () => ({
   patchSessionEntryCore: mocks.updateSessionEntry,
-  loadSessionEntry: () => mocks.loadSessionTarget()?.entry,
+}));
+// mock-isolation: Discussion title tests supply current entry facts without opening SQLite.
+vi.mock("../../config/sessions/session-entry-read-runtime.js", () => ({
+  readSessionEntryReadOnlyInWorker: async () => mocks.loadSessionTarget()?.entry,
 }));
 vi.mock("../dashboard-session-title.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../dashboard-session-title.js")>();

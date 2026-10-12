@@ -29,6 +29,7 @@ import {
   runExclusiveSqliteSessionWrite,
   toDatabaseOptions,
 } from "../../config/sessions/session-accessor.sqlite-scope.js";
+import { memorySessionActorOwners } from "../../config/sessions/session-actor-memory-owner.js";
 import { readSessionColdTranscript } from "../../config/sessions/session-cold-storage-state.js";
 import { runSessionColdStorageMaintenance } from "../../config/sessions/session-cold-storage.js";
 import {
@@ -687,7 +688,11 @@ describe("sessions.fork storage ownership", () => {
           ? resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main" })
           : resolveOpenClawAgentSqlitePath({ agentId: "main" });
         expect(fs.existsSync(databasePath)).toBe(!incognito);
-        expect(await closeOpenClawAgentDatabaseByPathAsync(databasePath)).toBe(true);
+        if (incognito) {
+          memorySessionActorOwners.closeDatabase({ agentId: "main", path: databasePath });
+        } else {
+          expect(await closeOpenClawAgentDatabaseByPathAsync(databasePath)).toBe(true);
+        }
         expect(loadSessionEntry(childScope)).toEqual(incognito ? undefined : child);
         await expect(loadTranscriptEvents(childTranscriptScope)).resolves.toEqual(
           incognito ? [] : childEvents,

@@ -7,6 +7,7 @@ import { ErrorCodes } from "../../../packages/gateway-protocol/src/index.js";
 import type { McpToolCatalog } from "../../agents/agent-bundle-mcp-types.js";
 import { makeProviderModelFixture } from "../../agents/test-helpers/provider-model-fixture.js";
 import { memorySessionActorOwners } from "../../config/sessions/session-actor-memory-owner.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { setPluginToolMeta } from "../../plugins/tool-metadata.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { toolsEffectiveHandlers, testing } from "./tools-effective.js";
@@ -820,29 +821,33 @@ describe("tools.effective handler", () => {
   });
 
   it("loads a bare session through the persisted fixed-store owner", async () => {
-    runtimeMocks.loadSessionEntry.mockReturnValueOnce({
-      cfg: {},
+    const cfg: OpenClawConfig = {
+      session: { store: "/tmp/shared-sessions.sqlite", scope: "global" },
+      agents: {
+        ownership: "explicit",
+        entries: { ops: {}, research: {} },
+        defaults: { sessionStore: { agentId: "ops" } },
+      },
+    };
+    const entry = { sessionId: "session-ops-global", updatedAt: 1 };
+    runtimeMocks.loadSessionEntry.mockReturnValue({
+      cfg,
+      agentId: "ops",
       canonicalKey: "global",
-      entry: { sessionId: "session-ops-global", updatedAt: 1 },
+      entry,
+      store: { global: entry },
       storePath: "/tmp/shared-sessions.sqlite",
-    } as never);
-    runtimeMocks.resolveSessionAgentId.mockReturnValueOnce("ops");
+      storeKeys: ["global"],
+      legacyKey: undefined,
+    });
+    runtimeMocks.resolveSessionAgentId.mockReturnValue("ops");
     runtimeMocks.resolveEffectiveToolInventory.mockResolvedValueOnce(makeCoreInventory());
 
-    const { respond, invoke } = createInvokeParams(
-      { sessionKey: "global" },
-      {
-        session: { store: "/tmp/shared-sessions.sqlite", scope: "global" },
-        agents: {
-          ownership: "explicit",
-          entries: { ops: {}, research: {} },
-          defaults: { sessionStore: { agentId: "ops" } },
-        },
-      },
-    );
+    const { respond, invoke } = createInvokeParams({ sessionKey: "global" }, cfg);
     await invoke();
 
     expect(runtimeMocks.loadSessionEntry).toHaveBeenCalledWith("global", { agentId: "ops" });
     expect(firstRespondCall(respond)?.[0]).toBe(true);
+    expect(resolveEffectiveToolInventoryArg()?.agentId).toBe("ops");
   });
 });
