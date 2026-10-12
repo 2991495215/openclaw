@@ -2472,6 +2472,7 @@ jobs:
       - name: Test Control UI suites with a real Gateway
         if: matrix.run_tests
         env:
+          OPENCLAW_TRACE_COLLABORATOR_SCROLL: "1"
           FROZEN_TARGET: *frozen_target
           OPENCLAW_CAPTURE_UI_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.capture_ui_proof && '1' || '0' }}
           OPENCLAW_UI_E2E_ARTIFACT_DIR: .artifacts/control-ui-e2e/real-gateway
