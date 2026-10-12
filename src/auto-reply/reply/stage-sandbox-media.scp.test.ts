@@ -443,6 +443,7 @@ describe("stageSandboxMedia SCP", () => {
             state,
             plugins: { deny: [INSTALLED_OWNER_PLUGIN_ID] },
           });
+          await prepareBundledDiscoveryMode();
           publishInstalledOwnerSnapshot(denied.cfg, denied.pluginDir);
           const log = vi.spyOn(globals, "logVerbose").mockImplementation(() => {});
 

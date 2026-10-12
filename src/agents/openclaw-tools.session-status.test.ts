@@ -146,21 +146,26 @@ function createModelCatalogModuleMock() {
     readPreparedModelCatalog: async () => {
       throw new Error("prepared model catalog owner config was replaced during the read (/tmp)");
     },
-    loadPublishedPreparedModelCatalog: async () => [
-      {
-        provider: "anthropic",
-        id: "claude-sonnet-4-6",
-        name: "Claude Sonnet 4.6",
-        contextWindow: 200000,
+    loadPublishedPreparedModelCatalogOwnerSnapshot: async () => ({
+      metadataSnapshot: emptyPluginMetadataSnapshot,
+      modelCatalog: {
+        entries: [
+          {
+            provider: "anthropic",
+            id: "claude-sonnet-4-6",
+            name: "Claude Sonnet 4.6",
+            contextWindow: 200000,
+          },
+          {
+            provider: "openai",
+            id: "gpt-5.4",
+            name: "GPT-5.4",
+            reasoning: true,
+            contextWindow: 400000,
+          },
+        ],
       },
-      {
-        provider: "openai",
-        id: "gpt-5.4",
-        name: "GPT-5.4",
-        reasoning: true,
-        contextWindow: 400000,
-      },
-    ],
+    }),
   };
 }
 

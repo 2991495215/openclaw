@@ -118,7 +118,7 @@ describe("AgentSession tool source fidelity", () => {
             ),
           ),
         )
-        .mockImplementation((_activeModel, context, options) => {
+        .mockImplementation((activeModel, context, options) => {
           liveContext = context;
           const capture = async (payload: unknown, requestModel: Model) => {
             const replacement = await options?.onPayload?.(payload, requestModel);
@@ -126,12 +126,12 @@ describe("AgentSession tool source fidelity", () => {
             throw new Error("synthetic probe stops before any network operation");
           };
           return api === "anthropic-messages"
-            ? streamAnthropic(model as Model<"anthropic-messages">, context, {
+            ? streamAnthropic(activeModel as Model<"anthropic-messages">, context, {
                 ...options,
                 apiKey: "synthetic-probe-auth",
                 onPayload: capture,
               })
-            : streamOpenAIResponses(model as Model<"openai-responses">, context, {
+            : streamOpenAIResponses(activeModel as Model<"openai-responses">, context, {
                 ...options,
                 apiKey: "synthetic-probe-auth",
                 onPayload: capture,
