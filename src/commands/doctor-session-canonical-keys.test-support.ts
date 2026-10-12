@@ -5,17 +5,30 @@ import type { InternalSessionEntry as SessionEntry } from "../config/sessions/ty
 import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import { repairCanonicalSessionKeys as repairSessionKeys } from "./doctor-session-canonical-keys.js";
 
-export async function repairCanonicalSessionKeys(params: Parameters<typeof repairSessionKeys>[0]) {
+export async function repairCanonicalSessionKeys(
+  params: Parameters<typeof repairSessionKeys>[0],
+  onPhase?: (
+    phase: "maintenance-requested" | "repair-started" | "repair-returned" | "maintenance-released",
+  ) => void,
+) {
   if (!params.apply) {
     return repairSessionKeys(params);
   }
   // Match Doctor's offline owner; runtime admission must not inspect partly repaired rows.
   const { withDoctorSqliteMaintenanceLock } = await import("./doctor-sqlite-maintenance-lock.js");
-  return withDoctorSqliteMaintenanceLock({
+  onPhase?.("maintenance-requested");
+  const result = await withDoctorSqliteMaintenanceLock({
     env: params.env,
     operation: "session SQLite import",
-    run: () => repairSessionKeys(params),
+    run: async () => {
+      onPhase?.("repair-started");
+      const repaired = await repairSessionKeys(params);
+      onPhase?.("repair-returned");
+      return repaired;
+    },
   });
+  onPhase?.("maintenance-released");
+  return result;
 }
 
 export function insertLegacySession(params: {
