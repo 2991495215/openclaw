@@ -6,8 +6,10 @@ import {
 } from "../../../test/helpers/promise.js";
 import { prepareReplyToolAuthorityCallerRead } from "../../agents/harness/host-private-capabilities.js";
 import { createNativeSessionBindingAuthority } from "../../agents/harness/native-session/binding-authority.js";
+import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { beginRestartRecoveryTerminalDelivery } from "../../config/sessions/restart-recovery-receipt.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { observeMainThreadSql } from "../../test-utils/main-thread-sql-spies.test-support.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
@@ -35,6 +37,11 @@ it("adopts active steering through prepared policy without caller-thread SQL", a
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     const key = "agent:main:active-worker-steering";
     const policyKey = "agent:main:active-worker-policy";
+    const config: OpenClawConfig = {
+      agents: { defaults: { sandbox: { mode: "all" } }, entries: { main: {} } },
+      tools: { sandbox: { tools: { deny: ["exec"] } } },
+    };
+    setRuntimeConfigSnapshot(config);
     await upsertSessionEntryCore(
       { agentId: "main", sessionKey: policyKey },
       { sessionId: "policy", updatedAt: 1, sandboxMode: "off" },
@@ -49,10 +56,7 @@ it("adopts active steering through prepared policy without caller-thread SQL", a
       sessionKey: key,
       runtimePolicySessionKey: policyKey,
       senderIsOwner: true,
-      config: {
-        agents: { defaults: { sandbox: { mode: "all" } }, entries: { main: {} } },
-        tools: { sandbox: { tools: { deny: ["exec"] } } },
-      },
+      config,
     });
     const operation = createTestReplyOperation({ sessionKey: key, sessionId: run.run.sessionId });
     await operation.bindToolAuthoritySnapshotAsync(

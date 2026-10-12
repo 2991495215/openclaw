@@ -113,7 +113,6 @@ describe("accepted input custody", () => {
       receipt.finish("interrupted");
     }
     await Promise.allSettled(retained.map(async (receipt) => receipt.settled?.()));
-    closeOpenClawAgentDatabasesForTest();
   });
 
   it("keeps accepted input outside the active transcript and applies its hook once across replay and promotion", async () => {
@@ -528,7 +527,7 @@ describe("accepted input custody", () => {
   });
 
   it("binds lazy recorder collection to approved sources and reports consumed source retry without execution", async () => {
-    const target = { ...scope(), sessionEntry: undefined };
+    const target = { ...scope(), sessionEntry: undefined, config: {} };
     const hook = vi.fn(({ message: input }: { message: PersistedUserTurnMessage }) => ({
       ...input,
       content: "Approved source",

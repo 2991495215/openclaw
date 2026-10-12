@@ -873,14 +873,14 @@ describe("pooled agent publication owner (captured source)", () => {
     const failures: unknown[] = [];
     try {
       const closing = await Promise.allSettled(revokeAgentDatabaseResources(selection));
-      expect(closing).toContainEqual({
-        status: "rejected",
-        reason: expect.objectContaining({
-          errors: expect.arrayContaining([
-            expect.objectContaining({ message: "controlled worker lease cleanup failure" }),
-          ]),
-        }),
-      });
+      const causes = (error: unknown): unknown[] =>
+        error instanceof AggregateError ? error.errors.flatMap(causes) : [error];
+      const cleanupErrors = closing.flatMap((result) =>
+        result.status === "rejected" ? causes(result.reason) : [],
+      );
+      expect(cleanupErrors).toContainEqual(
+        expect.objectContaining({ message: "controlled worker lease cleanup failure" }),
+      );
       expect(readLeases()).toEqual(retainedLeases);
       await expect(
         worker.run(

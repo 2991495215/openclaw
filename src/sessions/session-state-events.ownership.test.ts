@@ -1,4 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
 import {
@@ -26,7 +30,14 @@ import {
 } from "./session-state-events.test-support.js";
 import { enqueueSessionStateNotice } from "./session-state-notices.js";
 
-afterEach(cleanupSessionStateTestState);
+beforeEach(() => {
+  setRuntimeConfigSnapshot({});
+});
+
+afterEach(async () => {
+  await cleanupSessionStateTestState();
+  clearRuntimeConfigSnapshot();
+});
 
 describe("session state watch ownership", () => {
   it("refuses raw, malformed, and contradictory watch addresses before registering", async () => {

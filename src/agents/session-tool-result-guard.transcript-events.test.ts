@@ -10,6 +10,10 @@ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { makeTextToolResult } from "../../test/helpers/text-tool-result.js";
 import { makeUserMessage } from "../../test/helpers/user-message.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
+import {
   appendTranscriptMessage,
   appendTranscriptMessageSync,
   loadSessionEntry,
@@ -109,6 +113,7 @@ afterEach(async () => {
   }
   await closeOpenClawAgentDatabasesAsync();
   closeOpenClawAgentDatabasesForTest();
+  clearRuntimeConfigSnapshot();
 });
 
 describe("guardSessionManager transcript updates", () => {
@@ -333,6 +338,7 @@ describe("guardSessionManager transcript updates", () => {
   it.each(["physical", "alias"])(
     "consumes staged input via the %s database path through a reused guard with one approval",
     async (locator) => {
+      setRuntimeConfigSnapshot({});
       const { root, target, sessionEntry } = await openPersistedSessionManager();
       const recorderTarget = { ...target, sessionEntry };
       const aliasRoot = path.join(root, "alias");

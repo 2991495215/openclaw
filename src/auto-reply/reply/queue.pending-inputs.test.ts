@@ -3,6 +3,10 @@ import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest"
 import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
 import { useSqliteWorkerFault } from "../../../test/helpers/sqlite-worker-fault.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
+import {
   appendTranscriptMessage,
   listSessionPendingInputs,
   loadTranscriptEvents,
@@ -53,6 +57,7 @@ describe("followup queue durable input consumption", () => {
   beforeEach(async () => {
     sessionKey = `agent:main:queue-pending-${++caseSequence}`;
     vi.mocked(executeAgentTurn).mockReset();
+    setRuntimeConfigSnapshot({ session: { store: fixture.storePath() } });
     await upsertSessionEntryCore(scope(), { sessionId, updatedAt: 1 });
   });
 
@@ -62,6 +67,7 @@ describe("followup queue durable input consumption", () => {
       recorder.finishPendingInput?.("interrupted");
     }
     closeOpenClawAgentDatabasesForTest();
+    clearRuntimeConfigSnapshot();
   });
 
   const createStagedRun = async (runId: string) => {

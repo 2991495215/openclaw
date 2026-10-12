@@ -61,6 +61,7 @@ describe("first transcript turn initialization", () => {
       .get();
   const admit = (options: Partial<SessionTranscriptTurnPersistOptions> = {}) =>
     persistSessionTranscriptTurn(scope(), {
+      config: {},
       expectedSessionId: sessionId,
       initialSessionEntry,
       messages: [
