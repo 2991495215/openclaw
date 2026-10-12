@@ -280,11 +280,11 @@ async function runGatewayUpdateCheckOwned(
     onAttempt: recordAutoUpdateAttempt,
     setSchedule,
   });
-  const announceDevGitUpdate: NonNullable<UpdateCheckLifecycle["announceDevGitUpdate"]> = (
+  const announceDevGitUpdate: NonNullable<UpdateCheckLifecycle["announceDevGitUpdate"]> = async (
     target,
     installStatus,
   ) => {
-    void lifecycle
+    await lifecycle
       .run(async () => {
         const state = await readState();
         const lastAttemptAt = state.autoLastAttemptAt ? Date.parse(state.autoLastAttemptAt) : null;
@@ -499,7 +499,9 @@ async function runGatewayUpdateCheckOwned(
       });
     }
     if (shouldRunAutoUpdate && canRunDevGitCampaign(git)) {
-      announceDevGitUpdate(target, installStatus);
+      if (!recentAttempt) {
+        announceUpdate(target, installStatus, "dev", "dev");
+      }
     } else {
       updateCampaign.clear();
     }
