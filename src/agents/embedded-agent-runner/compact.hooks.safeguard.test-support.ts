@@ -184,6 +184,7 @@ export function registerCompactionSafeguardTests({
           content: "b".repeat(52_602),
           timestamp: 3,
         }),
+        "pending compaction user entry",
       );
       const contextEngineRuntimeContext = {};
       attachCompactionAccountingRecorder(contextEngineRuntimeContext, { pendingUserEntryId });

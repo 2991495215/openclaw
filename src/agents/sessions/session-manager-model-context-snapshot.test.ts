@@ -284,9 +284,8 @@ it("uses resident actor anchors for replay and rejects a rewritten hydrated turn
         try {
           expect(await replay()).toMatchObject({ entryId: userId });
           expect(validated).not.toHaveBeenCalled();
-          runWithoutOwnedSessionTranscriptWrites(
-            async () =>
-              await source.removeTrailingEntriesAsync((entry) => entry.type === "message"),
+          await runWithoutOwnedSessionTranscriptWrites(() =>
+            source.removeTrailingEntriesAsync((entry) => entry.type === "message"),
           );
           await expect(replay()).rejects.toThrow(
             /Persisted user turn changed|Session transcript projection is rebuilding/,

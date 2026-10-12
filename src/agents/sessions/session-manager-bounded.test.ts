@@ -306,7 +306,7 @@ it("excludes interleaved display payloads without inventing events or losing fen
   const tailId = await display();
   const limits = { maxEvents: 3, maxBytes: 4096 };
   const read = () => readSessionTranscriptBoundedActiveContextCore(scope, limits);
-  const context = await read();
+  const context = read();
   expect(context.events).toHaveLength(4); // Header plus the three real context events.
   expect(context.serializedBytes).toBe(
     context.events.reduce<number>(
@@ -329,7 +329,7 @@ it("excludes interleaved display payloads without inventing events or losing fen
   await runWithSessionTranscriptReadFence(
     { ...appended.anchor, logicalTurnId: "display-turn", role: "user" },
     async () => {
-      expect((await read()).events).toEqual(context.events);
+      expect(read().events).toEqual(context.events);
       const fenced = await SessionManager.openBoundedAsync(scope, limits);
       expect(fenced.getAppendParentId()).toBe(tailId);
       expect(fenced.buildSessionContext()).toEqual(manager.buildSessionContext());

@@ -420,6 +420,7 @@ export function createPersonalGitHubPublicationCoordinator(
       });
     },
     async personalStatusAsync(
+      this: void,
       action: PersonalGitHubAction,
       session: SessionIdentity & { archivedAt?: number | null },
       requestId: string,
@@ -433,6 +434,7 @@ export function createPersonalGitHubPublicationCoordinator(
       return status(row, action, session);
     },
     async personalPending(
+      this: void,
       action: PersonalGitHubAction,
       session: SessionIdentity & { archivedAt?: number | null },
     ) {
