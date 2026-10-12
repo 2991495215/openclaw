@@ -6,6 +6,13 @@ import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import type { GatewayClient } from "./server-methods/types.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
+import { prepareSessionMutationFacts } from "./session-sharing-preparation.js";
+import {
+  canReceiveSessionEvent,
+  prepareProjectedSessionSharing,
+  prepareSessionSharingProfiles,
+} from "./session-sharing-read.js";
+import { resolveSessionStoreIdentity } from "./session-store-key.js";
 
 const profileSubscriptions = new Set<() => void>();
 afterEach(() => {
@@ -109,4 +116,51 @@ export function roleClient(
   refresh();
   profileSubscriptions.add(onUserProfilesChanged(refresh));
   return client;
+}
+
+export async function canReceivePreparedSessionEvent(
+  params: Omit<Parameters<typeof canReceiveSessionEvent>[0], "prepared">,
+): Promise<boolean> {
+  const reads = [];
+  try {
+    for (const sessionKey of params.sessionKeys) {
+      const { agentId } = resolveSessionStoreIdentity({
+        cfg: params.cfg,
+        sessionKey,
+        agentId: params.agentId,
+      });
+      reads.push({
+        sessionKey,
+        read: await prepareSessionMutationFacts({
+          cfg: params.cfg,
+          sessionKey,
+          agentId,
+          allowMissing: true,
+        }),
+      });
+    }
+    const facts = new Map(
+      reads.map(({ sessionKey, read }) => [sessionKey, read.readCurrent(params.cfg)]),
+    );
+    const sharing = prepareProjectedSessionSharing({
+      cfg: params.policyConfig ?? params.cfg,
+      client: params.client,
+      profiles: await prepareSessionSharingProfiles(params.client),
+      isMember: (target, identityId) =>
+        [...facts.values()].some(
+          (fact) =>
+            fact.target?.storePath === target.storePath &&
+            fact.target?.storeKey === target.storeKey &&
+            fact.membership.has(identityId),
+        ),
+    });
+    return canReceiveSessionEvent({
+      ...params,
+      prepared: { sharing, target: (sessionKey) => facts.get(sessionKey)?.target ?? null },
+    });
+  } finally {
+    for (const { read } of reads) {
+      read.release();
+    }
+  }
 }

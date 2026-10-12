@@ -115,7 +115,6 @@ export const sessionActivitySummaryHandlers: GatewayRequestHandlers = {
                 : await service.ensure({
                     key: target.key,
                     agentId: target.agentId,
-                    sessionId: target.sessionId,
                   })),
               canEnsure: true,
             },

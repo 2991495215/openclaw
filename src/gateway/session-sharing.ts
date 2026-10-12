@@ -99,7 +99,6 @@ export {
   isResolvedIncognitoSession,
   isSessionVisibilityAllowed,
   resolveSessionSharingRole,
-  resolveIncognitoSessionSharingTarget,
   resolveSessionSharingTargetAsync,
   resolveSessionVisibility,
 } from "./session-sharing-policy.js";
@@ -116,6 +115,7 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
     params,
     authorizesAgentRun,
     authorizesRead,
+    bindsProgressLifecycle,
     adminBypass,
     bypassTargetAuthorization,
     targetOwnership,

@@ -368,10 +368,8 @@ export function createIncognitoComputeWorker(
             case "session.compute.projection.deleteChunk":
             case "session.compute.projection.appendChunk": {
               const { request } = command.input;
-              if (
-                sourceFor(command.input, true).claimId !== request.claimId ||
-                request.sessionId !== input.sessionId
-              ) {
+              sourceFor(command.input, true);
+              if (request.sessionId !== input.sessionId) {
                 throw new Error("Incognito projection chunk belongs to another transcript");
               }
               return command.type === "session.compute.projection.deleteChunk"

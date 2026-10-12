@@ -17,7 +17,7 @@ export const environmentsSessionExecHandlers: GatewayRequestHandlers = {
     validateEnvironmentsSessionExecParams,
     async (options) => {
       const { params, respond, context } = options;
-      await using caller = await resolveSessionEnvironmentCaller(options, params);
+      using caller = await resolveSessionEnvironmentCaller(options, params);
       const service = context.workerEnvironmentService;
       const binding = service?.getSessionAttachment(caller.identity.sessionId);
       if (

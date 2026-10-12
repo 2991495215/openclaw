@@ -259,7 +259,12 @@ async function runMediaTurn(
       context,
       isIncognito: final?.incognito,
     },
-    { cfg, client: null, activeSessionAgentId: "main" },
+    {
+      cfg,
+      client: null,
+      activeSessionAgentId: "main",
+      prepared: { lifecycleStorePath: scope.storePath },
+    },
   );
   return {
     result,

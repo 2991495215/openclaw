@@ -79,7 +79,7 @@ async function withSource<T>(
 it.each(["unbound", "actor", "absent"] as const)(
   "refuses private provider continuation before session acquisition (%s)",
   async (source) => {
-    const target = vi.spyOn(sharing, "resolveSessionSharingTarget");
+    const target = vi.spyOn(sharing, "resolveSessionSharingTargetAsync");
     const sql = observeMainThreadSql();
     try {
       await withSource(source, async (sessionKey) => {
@@ -148,7 +148,7 @@ it("reports private activity recaps unavailable without acquiring a source or sc
     handleLifecycle() {},
     async dispose() {},
   };
-  const target = vi.spyOn(sharing, "resolveSessionSharingTarget");
+  const target = vi.spyOn(sharing, "resolveSessionSharingTargetAsync");
   const sql = observeMainThreadSql();
   try {
     await withSource("actor", async (sessionKey) => {

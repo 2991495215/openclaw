@@ -39,7 +39,7 @@ import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js"
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
   authorizePreparedSessionMutation,
-  resolveSessionSharingTarget,
+  resolveSessionSharingTargetAsync,
 } from "./session-sharing-policy.js";
 import { prepareSessionMutationFacts } from "./session-sharing-preparation.js";
 import { rolePolicyConfig, sharingPolicyClient } from "./session-sharing.test-utils.js";
@@ -935,7 +935,7 @@ it("invalidates selected facts before observers when another searched store gain
       { sessionId: "other", updatedAt: 1 },
     );
     const scope = { cfg, sessionKey, agentId: "main" };
-    expect(resolveSessionSharingTarget(scope)?.entry.sessionId).toBe("selected");
+    expect((await resolveSessionSharingTargetAsync(scope))?.entry.sessionId).toBe("selected");
     let prepared: Awaited<ReturnType<typeof prepareSessionMutationFacts>> | undefined;
     const observed: unknown[] = [];
     const stop = sessionChanges.subscribe((change) => {
@@ -968,7 +968,7 @@ it("invalidates selected facts before observers when another searched store gain
       expect(observed[0]).toBeInstanceOf(Error);
       expect(observed[0]).toHaveProperty("message", unavailableMessage);
       expect(() => prepared!.readCurrent(cfg)).toThrow(unavailableMessage);
-      expect(() => resolveSessionSharingTarget(scope)).toThrow(
+      await expect(resolveSessionSharingTargetAsync(scope)).rejects.toThrow(
         "duplicate rows resolve to canonical session key",
       );
     } finally {

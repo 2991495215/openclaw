@@ -231,7 +231,7 @@ async function loadSessionFiles(
                 { agentId, path: storePath },
                 {
                   sessionKeys: [canonicalKey],
-                  snapshotFields: ["sessionId", "lifecycleRevision", "worktree"],
+                  snapshotFields: [],
                 },
               )?.entries.find((row) => row.sessionKey === canonicalKey)?.entry;
           if (

@@ -125,7 +125,7 @@ type PublicationSessionRead = Pick<
 >;
 
 /** Process-owned sessions retain their existing synchronous metadata owner. */
-export function readGitHubPublicationSession(
+function readGitHubPublicationSession(
   sessionKey: string,
   options: { agentId?: string } = {},
 ): PublicationSessionRead {

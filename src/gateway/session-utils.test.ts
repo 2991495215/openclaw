@@ -56,7 +56,6 @@ import {
   listAgentsForGateway,
   loadGatewaySessionEntryReadOnlyAsync,
   loadGatewaySessionEntryAsync as loadSessionEntryAsync,
-  resolveCanonicalGatewaySessionStoreKey,
 } from "./session-utils-store.js";
 import { withAgentPermissionState } from "./session-utils.permissions.test-support.js";
 import {
@@ -1875,7 +1874,7 @@ describe("gateway session utils", () => {
     });
   });
 
-  test("resolveCanonicalGatewaySessionStoreKey rejects legacy aliases", () => {
+  test("session store target preparation rejects legacy aliases", async () => {
     const cfg = {
       session: { mainKey: "work" },
       agents: { entries: { ops: {} } },
@@ -1891,13 +1890,13 @@ describe("gateway session utils", () => {
       } as SessionEntry,
     };
 
-    expect(() =>
-      resolveCanonicalGatewaySessionStoreKey({
+    await expect(
+      resolveGatewaySessionStoreTargetWithStoreAsync({
         cfg,
         key: "agent:ops:main",
         store,
       }),
-    ).toThrow("openclaw doctor --fix");
+    ).rejects.toThrow("openclaw doctor --fix");
   });
 
   test("listAgentsForGateway rejects avatar symlink escapes outside workspace", async () => {

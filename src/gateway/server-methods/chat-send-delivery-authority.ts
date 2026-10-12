@@ -4,7 +4,11 @@ import {
   type ReplyPayload,
 } from "../../auto-reply/reply-payload.js";
 import type { ChatAbortControllerEntry } from "../chat-abort.types.js";
-import { prepareSessionMutationFacts } from "../session-sharing-preparation.js";
+import type { PreparedSessionMutationFacts } from "../session-sharing-policy.js";
+import {
+  prepareSessionMutationFacts,
+  type SessionFactsRead,
+} from "../session-sharing-preparation.js";
 import { captureWebchatReplyMediaScope } from "./chat-reply-media.js";
 import type { PreparedChatSendSession } from "./chat-send-session.js";
 import type { GatewayRequestContext } from "./types.js";
@@ -28,7 +32,7 @@ export async function createChatSendReplyFinalizationAuthority(
   onUnauthorized?: () => void,
 ) {
   const { cfg, sessionKey, agentId, sessionLoadOptions } = params.session;
-  const sources = new Map<string, Awaited<ReturnType<typeof prepareSessionMutationFacts>>>();
+  const sources = new Map<string, SessionFactsRead<PreparedSessionMutationFacts>>();
   try {
     for (const payload of payloads) {
       const authority = getReplyPayloadMetadata(payload)?.sessionWriterDeliveryAuthority;

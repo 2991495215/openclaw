@@ -184,17 +184,14 @@ export async function finalizeChatSendDispatchedReplies(
     suppressReplies,
   });
   const rawFinalPayloads = selectedInputs.map(readChatSendReplyPayload);
-  await using authority = await createChatSendReplyFinalizationAuthority(
-    params,
-    rawFinalPayloads,
-    () =>
-      broadcastChatFinal({
-        context,
-        runId: clientRunId,
-        sessionKey,
-        agentId,
-        terminalEntry: params.terminalEntry,
-      }),
+  using authority = await createChatSendReplyFinalizationAuthority(params, rawFinalPayloads, () =>
+    broadcastChatFinal({
+      context,
+      runId: clientRunId,
+      sessionKey,
+      agentId,
+      terminalEntry: params.terminalEntry,
+    }),
   );
   const { authorizeDelivery, captureMediaScope } = authority;
   if (!authorizeDelivery("finalization")) {
@@ -205,7 +202,7 @@ export async function finalizeChatSendDispatchedReplies(
     transcriptMirrorResolution.kind === "owner" || transcriptMirrorResolution.kind === "blocked"
       ? transcriptMirrorResolution.owner
       : undefined;
-  await using mediaScope = await captureMediaScope();
+  using mediaScope = await captureMediaScope();
   const sourceSession = await loadGatewaySessionEntryReadOnlyInWorker({
     cfg: context.getRuntimeConfig(),
     key: sessionKey,

@@ -222,10 +222,7 @@ async function finalizeChatSendAgentReplyPayloads(
   if (agentRunReplyPayloads.length === 0) {
     return { kind: "dropped", reason: "no-visible-content" };
   }
-  await using authority = await createChatSendReplyFinalizationAuthority(
-    params,
-    agentRunReplyPayloads,
-  );
+  using authority = await createChatSendReplyFinalizationAuthority(params, agentRunReplyPayloads);
   const { deliveryAuthorized, authorizeDelivery, captureMediaScope } = authority;
   if (!authorizeDelivery("finalization")) {
     return { kind: "dropped", reason: "no-visible-content" };
@@ -234,7 +231,7 @@ async function finalizeChatSendAgentReplyPayloads(
   const hasSourceReplyTranscriptMirror = agentRunReplyPayloads.some(
     isSourceReplyTranscriptMirrorPayload,
   );
-  await using mediaScope = await captureMediaScope();
+  using mediaScope = await captureMediaScope();
   const { storePath: latestStorePath, entry: latestEntry } =
     await loadGatewaySessionEntryReadOnlyInWorker({
       cfg: context.getRuntimeConfig(),

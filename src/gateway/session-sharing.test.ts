@@ -7,13 +7,12 @@ import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { authorizeOperatorScopesForMethod } from "./method-scopes.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import type { GatewayClient, GatewayRequestContext } from "./server-methods/types.js";
+import { resolveSessionMutationAuthorizationAsync } from "./session-sharing-authorization-async.js";
 import {
   allowedSessionVisibilities,
   authorizeIncognitoSessionTarget,
   authorizeResolvedSessionMutation,
   authorizeSessionSharingTarget,
-  resolveSessionMutationAuthorization,
-  canReceiveSessionEvent,
   createSessionListEntryFilter,
   resolveSessionSharingRole,
   resolveSessionSharingTargetAsync,
@@ -21,6 +20,7 @@ import {
   SessionMutationAuthorizationChangedError,
 } from "./session-sharing.js";
 import {
+  canReceivePreparedSessionEvent,
   sharingPolicyClient as client,
   roleClient,
   rolePolicyConfig,
@@ -77,8 +77,8 @@ describe("session sharing policy", () => {
         createdActor: { type: "human", source: "profile", id: creatorId },
       });
       const context = createDirectChatContext({ getRuntimeConfig: () => cfg });
-      const authorize = (requestClient: GatewayClient, many = false) =>
-        resolveSessionMutationAuthorization({
+      const authorize = async (requestClient: GatewayClient, many = false) =>
+        await resolveSessionMutationAuthorizationAsync({
           client: requestClient,
           method: many ? "sessions.patchMany" : "sessions.patch",
           requestParams: many
@@ -87,17 +87,19 @@ describe("session sharing policy", () => {
           context,
         });
       for (const many of [false, true]) {
-        expect(authorize(peer, many).error).toMatchObject({ code: "FORBIDDEN" });
-        expect(authorize(creator, many).error).toBeNull();
+        expect((await authorize(peer, many)).error).toMatchObject({ code: "FORBIDDEN" });
+        expect((await authorize(creator, many)).error).toBeNull();
       }
       const admin = roleClient("write", "communication-admin");
       admin.connect.scopes = ["operator.admin"];
-      expect(authorize(admin).error).toBeNull();
-      expect(authorize({ ...admin, internal: { syntheticClient: true } }).error).toMatchObject({
+      expect((await authorize(admin)).error).toBeNull();
+      expect(
+        (await authorize({ ...admin, internal: { syntheticClient: true } })).error,
+      ).toMatchObject({
         code: "FORBIDDEN",
         message: "Session communication settings require a direct human request.",
       });
-      const admitted = authorize(creator);
+      const admitted = await authorize(creator);
       creator.authenticatedUserProfile = peer.authenticatedUserProfile;
       expect(() => admitted.authorization?.assertCurrent()).toThrow(
         SessionMutationAuthorizationChangedError,
@@ -131,13 +133,13 @@ describe("session sharing policy", () => {
         { identityId: memberId, addedBy: ownerId, expectedSessionId: "narrow-owned" },
       );
       const context = createDirectChatContext({ getRuntimeConfig: () => cfg });
-      const mutation = (requestClient: GatewayClient) => {
+      const mutation = async (requestClient: GatewayClient) => {
         const admission = authorizeOperatorScopesForMethod(
           "sessions.patch",
           requestClient.connect.scopes ?? [],
         );
         expect(admission.allowed).toBe(true);
-        return resolveSessionMutationAuthorization({
+        return await resolveSessionMutationAuthorizationAsync({
           client: requestClient,
           method: "sessions.patch",
           requestParams: { key: scope.sessionKey, label: "updated" },
@@ -145,12 +147,12 @@ describe("session sharing policy", () => {
           sessionScope: admission.allowed ? admission.sessionScope : undefined,
         });
       };
-      expect(mutation(member).error).toBeNull();
+      expect((await mutation(member)).error).toBeNull();
       member.connect.scopes = ["operator.sessions.write"];
       expect(
         createSessionListEntryFilter({ client: member, cfg })?.(scope.sessionKey, row.entry),
       ).toBe(true);
-      expect(mutation(member).error).toMatchObject({ code: "FORBIDDEN" });
+      expect((await mutation(member)).error).toMatchObject({ code: "FORBIDDEN" });
       // The generic owner must not subtract an independently admitted capability.
       expect(
         authorizeResolvedSessionMutation(
@@ -159,7 +161,7 @@ describe("session sharing policy", () => {
         ),
       ).toBeNull();
       owner.connect.scopes = ["operator.sessions.write"];
-      const owned = mutation(owner);
+      const owned = await mutation(owner);
       expect(owned.error).toBeNull();
       expect(owned.authorization).toBeDefined();
       expect(() => owned.authorization?.assertCurrent()).not.toThrow();
@@ -181,7 +183,7 @@ describe("session sharing policy", () => {
       const owner = roleClient("view", "narrow-create-owner");
       owner.connect.scopes = ["operator.sessions.write"];
       const cfg = rolePolicyConfig();
-      const captured = resolveSessionMutationAuthorization({
+      const captured = await resolveSessionMutationAuthorizationAsync({
         client: owner,
         method: "sessions.create",
         requestParams: {},
@@ -242,8 +244,14 @@ describe("session sharing policy", () => {
         ["wake", { sessionKey }],
       ] as const) {
         expect(
-          resolveSessionMutationAuthorization({ client: writer, method, requestParams, context })
-            .error,
+          (
+            await resolveSessionMutationAuthorizationAsync({
+              client: writer,
+              method,
+              requestParams,
+              context,
+            })
+          ).error,
           method,
         ).toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("main") });
       }
@@ -253,8 +261,14 @@ describe("session sharing policy", () => {
         ["sessions.goal.clear", { sessionKey }],
       ] as const) {
         expect(
-          resolveSessionMutationAuthorization({ client: writer, method, requestParams, context })
-            .error,
+          (
+            await resolveSessionMutationAuthorizationAsync({
+              client: writer,
+              method,
+              requestParams,
+              context,
+            })
+          ).error,
           method,
         ).toBeNull();
       }
@@ -308,22 +322,26 @@ describe("session sharing policy", () => {
           "wake",
         ]) {
           expect(
-            resolveSessionMutationAuthorization({
-              client: viewer,
-              method,
-              requestParams: { sessionKey },
-              context: { getRuntimeConfig: () => cfg } as GatewayRequestContext,
-            }).error,
+            (
+              await resolveSessionMutationAuthorizationAsync({
+                client: viewer,
+                method,
+                requestParams: { sessionKey },
+                context: { getRuntimeConfig: () => cfg } as GatewayRequestContext,
+              })
+            ).error,
             `${roleName}: ${method}`,
           ).toMatchObject({ details: { code: "SESSION_PARTICIPATION_REQUIRED" } });
         }
         expect(
-          resolveSessionMutationAuthorization({
-            client: viewer,
-            method: "sessions.assignOwner",
-            requestParams: { key: sessionKey },
-            context: { getRuntimeConfig: () => cfg } as GatewayRequestContext,
-          }).error,
+          (
+            await resolveSessionMutationAuthorizationAsync({
+              client: viewer,
+              method: "sessions.assignOwner",
+              requestParams: { key: sessionKey },
+              context: { getRuntimeConfig: () => cfg } as GatewayRequestContext,
+            })
+          ).error,
         ).toMatchObject({ details: { code: "SESSION_PARTICIPATION_REQUIRED" } });
         for (const method of [
           "chat.history",
@@ -333,12 +351,14 @@ describe("session sharing policy", () => {
           "sessions.companion.state",
         ]) {
           expect(
-            resolveSessionMutationAuthorization({
-              client: viewer,
-              method,
-              requestParams: { sessionKey },
-              context: { getRuntimeConfig: () => cfg } as GatewayRequestContext,
-            }).error,
+            (
+              await resolveSessionMutationAuthorizationAsync({
+                client: viewer,
+                method,
+                requestParams: { sessionKey },
+                context: { getRuntimeConfig: () => cfg } as GatewayRequestContext,
+              })
+            ).error,
             `${roleName}: ${method}`,
           ).toBeNull();
         }
@@ -401,7 +421,11 @@ describe("session sharing policy", () => {
       ).toBe(false);
       expect(createSessionListEntryFilter({ cfg, client: systemOwner })).toBeUndefined();
       expect(
-        canReceiveSessionEvent({ cfg, client: client({}) as never, sessionKeys: [sessionKey] }),
+        await canReceivePreparedSessionEvent({
+          cfg,
+          client: client({}) as never,
+          sessionKeys: [sessionKey],
+        }),
       ).toBe(false);
     });
   });
@@ -434,12 +458,14 @@ describe("session sharing policy", () => {
         );
         const context = { getRuntimeConfig: () => cfg } as GatewayRequestContext;
         expect(
-          resolveSessionMutationAuthorization({
-            client: writer,
-            method: "chat.send",
-            requestParams: { sessionKey },
-            context,
-          }).error,
+          (
+            await resolveSessionMutationAuthorizationAsync({
+              client: writer,
+              method: "chat.send",
+              requestParams: { sessionKey },
+              context,
+            })
+          ).error,
         ).not.toBeNull();
       }
     });
@@ -485,13 +511,25 @@ describe("session sharing policy", () => {
         }),
       ).toBe(true);
       expect(
-        canReceiveSessionEvent({ cfg, client: restricted as never, sessionKeys: [foreignKey] }),
+        await canReceivePreparedSessionEvent({
+          cfg,
+          client: restricted as never,
+          sessionKeys: [foreignKey],
+        }),
       ).toBe(false);
       expect(
-        canReceiveSessionEvent({ cfg, client: creator as never, sessionKeys: [foreignKey] }),
+        await canReceivePreparedSessionEvent({
+          cfg,
+          client: creator as never,
+          sessionKeys: [foreignKey],
+        }),
       ).toBe(true);
       expect(
-        canReceiveSessionEvent({ cfg, client: restricted as never, sessionKeys: [ownKey] }),
+        await canReceivePreparedSessionEvent({
+          cfg,
+          client: restricted as never,
+          sessionKeys: [ownKey],
+        }),
       ).toBe(true);
 
       const context = { getRuntimeConfig: () => cfg } as GatewayRequestContext;
@@ -526,12 +564,14 @@ describe("session sharing policy", () => {
         ["wake", { sessionKey: foreignKey }],
       ] as const) {
         expect(
-          resolveSessionMutationAuthorization({
-            client: restricted,
-            method,
-            requestParams,
-            context,
-          }).error,
+          (
+            await resolveSessionMutationAuthorizationAsync({
+              client: restricted,
+              method,
+              requestParams,
+              context,
+            })
+          ).error,
           method,
         ).toMatchObject({
           code: "INVALID_REQUEST",
@@ -540,22 +580,26 @@ describe("session sharing policy", () => {
       }
       for (const method of ["chat.history", "chat.send"] as const) {
         expect(
-          resolveSessionMutationAuthorization({
-            client: creator,
-            method,
-            requestParams: { sessionKey: foreignKey },
-            context,
-          }).error,
+          (
+            await resolveSessionMutationAuthorizationAsync({
+              client: creator,
+              method,
+              requestParams: { sessionKey: foreignKey },
+              context,
+            })
+          ).error,
           `creator ${method}`,
         ).toBeNull();
       }
       expect(
-        resolveSessionMutationAuthorization({
-          client: restricted,
-          method: "chat.history",
-          requestParams: { sessionKey: ownKey },
-          context,
-        }).error,
+        (
+          await resolveSessionMutationAuthorizationAsync({
+            client: restricted,
+            method: "chat.history",
+            requestParams: { sessionKey: ownKey },
+            context,
+          })
+        ).error,
       ).toBeNull();
       expect(
         createSessionListEntryFilter({ cfg: {}, client: restricted })?.(foreignKey, foreignEntry),
@@ -563,17 +607,19 @@ describe("session sharing policy", () => {
       const admin = client({ user: restrictedId, scopes: ["operator.admin"] });
       expect(createSessionListEntryFilter({ cfg, client: admin })).toBeUndefined();
       expect(
-        resolveSessionMutationAuthorization({
-          client: admin,
-          method: "chat.history",
-          requestParams: { sessionKey: foreignKey },
-          context,
-        }).error,
+        (
+          await resolveSessionMutationAuthorizationAsync({
+            client: admin,
+            method: "chat.history",
+            requestParams: { sessionKey: foreignKey },
+            context,
+          })
+        ).error,
       ).toBeNull();
     });
   });
 
-  it("returns retryable unavailability from direct session guards while profile sync is pending", () => {
+  it("returns retryable unavailability from direct session guards while profile sync is pending", async () => {
     const pending = client({ githubSyncPending: true });
     const ownedTarget = target({ type: "human", id: "profile-owner" });
     const incognitoTarget = {
@@ -594,12 +640,14 @@ describe("session sharing policy", () => {
       details: { code: "AUTHENTICATED_PROFILE_UNAVAILABLE" },
     });
     expect(
-      resolveSessionMutationAuthorization({
-        client: pending,
-        method: "send",
-        requestParams: { sessionKey: "agent:main:main" },
-        context: {} as GatewayRequestContext,
-      }).error,
+      (
+        await resolveSessionMutationAuthorizationAsync({
+          client: pending,
+          method: "send",
+          requestParams: { sessionKey: "agent:main:main" },
+          context: {} as GatewayRequestContext,
+        })
+      ).error,
     ).toMatchObject({
       code: "UNAVAILABLE",
       retryable: true,
@@ -629,7 +677,7 @@ describe("session sharing policy", () => {
         ["sessions.branches.switch", { sessionKey }],
       ] as const) {
         expect(
-          resolveSessionMutationAuthorization({
+          await resolveSessionMutationAuthorizationAsync({
             client: client({ user: "owner@example.com" }),
             method,
             requestParams,
@@ -638,12 +686,14 @@ describe("session sharing policy", () => {
           method,
         ).toMatchObject({ error: null, authorization: expect.any(Object) });
         expect(
-          resolveSessionMutationAuthorization({
-            client: client({ user: "viewer@example.com" }),
-            method,
-            requestParams,
-            context,
-          }).error,
+          (
+            await resolveSessionMutationAuthorizationAsync({
+              client: client({ user: "viewer@example.com" }),
+              method,
+              requestParams,
+              context,
+            })
+          ).error,
           method,
         ).toMatchObject({ details: { code: "SESSION_PARTICIPATION_REQUIRED" } });
       }
@@ -664,7 +714,7 @@ describe("session sharing policy", () => {
             createdActor: { type: "human", source: "profile", id: "owner@example.com" },
           },
         );
-        const authorization = resolveSessionMutationAuthorization({
+        const authorization = await resolveSessionMutationAuthorizationAsync({
           client: client({ user: "viewer@example.com" }),
           method: "sessions.assignOwner",
           requestParams: { key: sessionKey, owner: { type: "agent", id: "main" } },
@@ -674,7 +724,7 @@ describe("session sharing policy", () => {
         expect(authorization.error).toBeNull();
         expect(() => authorization.authorization?.assertCurrent()).not.toThrow();
 
-        const capped = resolveSessionMutationAuthorization({
+        const capped = await resolveSessionMutationAuthorizationAsync({
           client: roleClient("view", `assignment-${visibility}`),
           method: "sessions.assignOwner",
           requestParams: { key: sessionKey, owner: { type: "agent", id: "main" } },
@@ -764,7 +814,7 @@ describe("session sharing policy", () => {
       ] as const) {
         expect(isListed(requestClient, sessionKey, entry)).toBe(visible);
         expect(
-          canReceiveSessionEvent({
+          await canReceivePreparedSessionEvent({
             cfg,
             client: requestClient as never,
             sessionKeys: [sessionKey],
@@ -772,7 +822,7 @@ describe("session sharing policy", () => {
         ).toBe(visible);
         for (const requestedKey of [sessionKey, sessionAlias]) {
           for (const request of directRequests(requestedKey)) {
-            const { error } = resolveSessionMutationAuthorization({
+            const { error } = await resolveSessionMutationAuthorizationAsync({
               client: requestClient,
               ...request,
               context,
@@ -839,7 +889,7 @@ describe("session sharing policy", () => {
         ["progressCard.get", { sessionKey: "global", agentId: "work" }],
         ["progressCard.put", { sessionKey: "global", agentId: "work" }],
       ] as const) {
-        const { error } = resolveSessionMutationAuthorization({
+        const { error } = await resolveSessionMutationAuthorizationAsync({
           client: outsider,
           method,
           requestParams,
@@ -853,45 +903,53 @@ describe("session sharing policy", () => {
       }
       for (const method of ["progressCard.get", "progressCard.put"]) {
         expect(
-          resolveSessionMutationAuthorization({
-            client: outsider,
-            method,
-            requestParams: { sessionKey: "global", agentId: "main" },
-            context,
-          }).error,
+          (
+            await resolveSessionMutationAuthorizationAsync({
+              client: outsider,
+              method,
+              requestParams: { sessionKey: "global", agentId: "main" },
+              context,
+            })
+          ).error,
         ).toBeNull();
       }
       expect(
-        resolveSessionMutationAuthorization({
-          client: client({}),
-          method: "chat.send",
-          requestParams: { sessionKey: "agent:main:solo-draft" },
-          context,
-        }).error,
+        (
+          await resolveSessionMutationAuthorizationAsync({
+            client: client({}),
+            method: "chat.send",
+            requestParams: { sessionKey: "agent:main:solo-draft" },
+            context,
+          })
+        ).error,
       ).toBeNull();
     });
   });
 
-  it("fails closed when a required session mutation has no target", () => {
+  it("fails closed when a required session mutation has no target", async () => {
     const context = { chatAbortControllers: new Map(), getRuntimeConfig: () => ({}) } as never;
     for (const method of ["sessions.reset", "sessions.move"]) {
       expect(
-        resolveSessionMutationAuthorization({
-          client: client({}),
-          method,
-          requestParams: {},
-          context,
-        }).error,
+        (
+          await resolveSessionMutationAuthorizationAsync({
+            client: client({}),
+            method,
+            requestParams: {},
+            context,
+          })
+        ).error,
         method,
       ).toMatchObject({ details: { code: "SESSION_MUTATION_TARGET_REQUIRED" } });
     }
     expect(
-      resolveSessionMutationAuthorization({
-        client: client({ scopes: ["operator.admin"] }),
-        method: "sessions.reset",
-        requestParams: {},
-        context,
-      }).error,
+      (
+        await resolveSessionMutationAuthorizationAsync({
+          client: client({ scopes: ["operator.admin"] }),
+          method: "sessions.reset",
+          requestParams: {},
+          context,
+        })
+      ).error,
     ).toBeNull();
   });
 
@@ -937,8 +995,8 @@ describe("session sharing policy", () => {
             expectedSessionId: sessionId,
           });
         }
-        const check = (recipient: GatewayClient, event?: string) =>
-          canReceiveSessionEvent({
+        const check = async (recipient: GatewayClient, event?: string) =>
+          await canReceivePreparedSessionEvent({
             cfg: {},
             client: recipient,
             sessionKeys: [sessionKey],
@@ -948,18 +1006,18 @@ describe("session sharing policy", () => {
               : {}),
           });
         for (const [recipient, event, visible] of recipients) {
-          expect(check(recipient, event), `${visibility}: ${event}`).toBe(visible);
+          expect(await check(recipient, event), `${visibility}: ${event}`).toBe(visible);
         }
         if (visibility === "suggest") {
           const recipient = client({ user: "author", displayName: "Viewer" });
           recipient.internal = { operatorRoleActor: { kind: "operator", profileId: "viewer" } };
-          expect(check(recipient, "session.suggestion")).toBe(true);
+          expect(await check(recipient, "session.suggestion")).toBe(true);
           recipient.authenticatedUserProfile!.profileId = "viewer";
-          expect(check(recipient, "session.suggestion")).toBe(false);
+          expect(await check(recipient, "session.suggestion")).toBe(false);
           recipient.internal.operatorRoleActor = { kind: "operator", profileId: "author" };
-          expect(check(recipient, "session.suggestion")).toBe(false);
+          expect(await check(recipient, "session.suggestion")).toBe(false);
           recipient.authenticatedUserProfile = undefined;
-          expect(check(recipient, "session.suggestion")).toBe(true);
+          expect(await check(recipient, "session.suggestion")).toBe(true);
         }
       }
     });

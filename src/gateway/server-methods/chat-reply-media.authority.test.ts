@@ -74,7 +74,7 @@ it.each([
       updatedAt: 1,
     };
     await replaceSessionEntry(target, entry);
-    await using scope = await captureWebchatReplyMediaScope({
+    using scope = await captureWebchatReplyMediaScope({
       cfg,
       agentId: "main",
       sessionKey: SESSION_KEY,
@@ -149,7 +149,7 @@ it.each([
 );
 
 it("preserves already-produced text after its turn is aborted", async () => {
-  await using scope = await captureWebchatReplyMediaScope({
+  using scope = await captureWebchatReplyMediaScope({
     cfg: {},
     agentId: "main",
     sessionKey: SESSION_KEY,

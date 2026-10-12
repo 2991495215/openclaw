@@ -32,6 +32,7 @@ import {
   captureSessionActorMutationFacts,
   captureSessionSharingActorBinding,
 } from "./session-sharing-incognito.js";
+import type { SessionSharingTarget } from "./session-sharing-target.types.js";
 import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import type { GatewaySessionStoreDiscoveryCache } from "./session-utils-store-candidates.js";
 import {
@@ -47,16 +48,7 @@ import {
 import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
 import type { GatewaySessionStoreTargetWithStore } from "./session-utils-store.types.js";
 
-export type SessionSharingTarget = {
-  agentId: string;
-  canonicalKey: string;
-  entry: SessionEntry;
-  storeKey: string;
-  storeKeys: string[];
-  storePath: string;
-  /** Physical source selected by the store reader, independent of its configured locator. */
-  readSource?: CapturedSessionEntryReadSource;
-};
+export type { SessionSharingTarget } from "./session-sharing-target.types.js";
 
 export function resolveSessionVisibility(
   entry: Pick<SessionEntry, "visibility">,

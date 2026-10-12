@@ -62,7 +62,6 @@ function resolveCompanionTarget(
 }
 
 function companionTargetIsVisible(
-  target: { sessionKey: string; agentId: string },
   client: Parameters<GatewayRequestHandlers[string]>[0]["client"],
   context: Parameters<GatewayRequestHandlers[string]>[0]["context"],
   prepared: { target: SessionSharingTarget | null },
@@ -135,7 +134,7 @@ export const sessionCompanionHandlers: GatewayRequestHandlers = {
       const initialSharingTarget = actorFacts
         ? actorFacts.readCurrent().target
         : durable.facts!.readCurrent(sourceCfg).target;
-      if (!companionTargetIsVisible(target, client, context, { target: initialSharingTarget })) {
+      if (!companionTargetIsVisible(client, context, { target: initialSharingTarget })) {
         respond(false, undefined, hiddenSessionNotFound(target.sessionKey));
         return;
       }
@@ -178,7 +177,7 @@ export const sessionCompanionHandlers: GatewayRequestHandlers = {
         () => {
           assertLifetimeCurrent();
           if (
-            !companionTargetIsVisible(target, client, context, {
+            !companionTargetIsVisible(client, context, {
               target: actorFacts
                 ? actorFacts.readCurrent().target
                 : durable.facts!.readCurrent(context.getRuntimeConfig()).target,
@@ -329,7 +328,7 @@ export const sessionCompanionHandlers: GatewayRequestHandlers = {
         sessionKey: target.sessionKey,
         agentId: target.agentId,
       });
-      if (!companionTargetIsVisible(target, client, context, { target: sharingTarget })) {
+      if (!companionTargetIsVisible(client, context, { target: sharingTarget })) {
         respond(false, undefined, hiddenSessionNotFound(target.sessionKey));
         return;
       }

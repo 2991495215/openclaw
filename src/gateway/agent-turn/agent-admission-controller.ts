@@ -14,7 +14,11 @@ import {
   consumeExpectedSessionWorkAdmission,
   type ExpectedExistingSessionConstraint,
 } from "../server-methods/agent-expected-session.js";
-import { prepareSessionMutationFacts } from "../session-sharing-preparation.js";
+import type { PreparedSessionMutationFacts } from "../session-sharing-policy.js";
+import {
+  prepareSessionMutationFacts,
+  type SessionFactsRead,
+} from "../session-sharing-preparation.js";
 import type { AgentDedupeLifecycle } from "./agent-dedupe-lifecycle.js";
 import {
   buildAbortedAgentPayload,
@@ -47,7 +51,7 @@ export function createAgentAdmissionController(params: {
   setAdmittedSessionId: (sessionId: string) => void;
 }) {
   let admission: SessionWorkAdmissionLease | undefined;
-  let sessionFacts: Awaited<ReturnType<typeof prepareSessionMutationFacts>> | undefined;
+  let sessionFacts: SessionFactsRead<PreparedSessionMutationFacts> | undefined;
   let admittedRunAbort: ReturnType<typeof registerChatAbortController> | undefined;
   let postAdmissionAbort: ReturnType<typeof readGatewayDedupeEntry>;
   let postAdmissionTimeout: ReturnType<typeof buildAbortedAgentPayload> | undefined;

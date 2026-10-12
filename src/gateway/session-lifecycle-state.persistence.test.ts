@@ -71,7 +71,11 @@ vi.mock("./session-utils-store-worker.js", async (importOriginal) => ({
       typeof import("./session-utils-store-worker.js").loadGatewaySessionEntryReadOnlyInWorker
     >[0],
   ) => {
-    const loaded = routing.loadSessionEntry(params.key, { agentId: params.agentId }, params.cfg);
+    const loaded = await routing.loadSessionEntry(
+      params.key,
+      { agentId: params.agentId },
+      params.cfg,
+    );
     return { ...loaded, storeKeys: loaded.storeKeys ?? [loaded.canonicalKey] };
   },
 }));
@@ -340,8 +344,18 @@ it.each(["success", "failed-write"])(
     let heldWriter: Promise<unknown> | undefined;
     let subscriptions: ReturnType<typeof startGatewayEventSubscriptions> | undefined;
     let interruption: ReturnType<typeof startSessionWorkAdmissionInterruption> | undefined;
-    const actual = await vi.importActual<typeof import("./session-utils.js")>("./session-utils.js");
-    routing.loadSessionEntry.mockImplementation(actual.loadSessionEntry);
+    const actual = await vi.importActual<typeof import("./session-utils-store-worker.js")>(
+      "./session-utils-store-worker.js",
+    );
+    routing.loadSessionEntry.mockImplementation((key, options, sourceCfg) =>
+      actual.loadGatewaySessionEntryReadOnlyInWorker({
+        cfg: sourceCfg,
+        key,
+        ...options,
+        excludeInternalEffects: true,
+        readOnly: false,
+      }),
+    );
     const readHistory = async () => {
       const respond = vi.fn();
       await chatHistoryHandlers["chat.history"]!({

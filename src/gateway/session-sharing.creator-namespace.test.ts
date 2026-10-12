@@ -8,13 +8,13 @@ import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import type { GatewayClient, GatewayRequestContext } from "./server-methods/types.js";
 import { isSessionCreatorProfile } from "./session-creator.js";
+import { resolveSessionMutationAuthorizationAsync } from "./session-sharing-authorization-async.js";
 import {
-  canReceiveSessionEvent,
   createSessionListEntryFilter,
-  resolveSessionMutationAuthorization,
   resolveSessionSharingRole,
-  resolveSessionSharingTarget,
+  resolveSessionSharingTargetAsync,
 } from "./session-sharing.js";
+import { canReceivePreparedSessionEvent } from "./session-sharing.test-utils.js";
 
 describe("creator namespace authorization", () => {
   it("reuses caller alias facts across rows and refreshes them after a real merge", async () => {
@@ -90,7 +90,7 @@ describe("creator namespace authorization", () => {
             assignedBy: { type: "human", id: profile.id },
           },
         );
-        const target = resolveSessionSharingTarget({ cfg, sessionKey });
+        const target = await resolveSessionSharingTargetAsync({ cfg, sessionKey });
         if (!target) {
           throw new Error("missing persisted session");
         }
@@ -107,13 +107,17 @@ describe("creator namespace authorization", () => {
         for (let pass = 0; pass < 2; pass++) {
           expect
             .soft(
-              canReceiveSessionEvent({ cfg, client: client as never, sessionKeys: [sessionKey] }),
+              await canReceivePreparedSessionEvent({
+                cfg,
+                client: client as never,
+                sessionKeys: [sessionKey],
+              }),
               sessionKey,
             )
             .toBe(isCreator);
         }
         for (const method of ["sessions.get", "sessions.patch"]) {
-          const result = resolveSessionMutationAuthorization({
+          const result = await resolveSessionMutationAuthorizationAsync({
             client,
             method,
             requestParams: { key: sessionKey },
@@ -144,12 +148,16 @@ describe("creator namespace authorization", () => {
           createdActor: { type: "human", source: "profile", id: old.id },
         },
       );
-      const receive = () =>
-        canReceiveSessionEvent({ cfg: {}, client: client as never, sessionKeys: [sessionKey] });
-      expect(receive()).toBe(false);
+      const receive = async () =>
+        await canReceivePreparedSessionEvent({
+          cfg: {},
+          client: client as never,
+          sessionKeys: [sessionKey],
+        });
+      expect(await receive()).toBe(false);
       linkEmail("old@example.test", current.id);
-      expect(receive()).toBe(true);
-      const target = resolveSessionSharingTarget({ cfg: {}, sessionKey });
+      expect(await receive()).toBe(true);
+      const target = await resolveSessionSharingTargetAsync({ cfg: {}, sessionKey });
       if (!target) {
         throw new Error("missing merged creator session");
       }

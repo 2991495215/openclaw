@@ -173,7 +173,7 @@ export const environmentsSessionHandlers: GatewayRequestHandlers = {
     validateEnvironmentsSessionCreateParams,
     async (options) => {
       const { params, respond, context } = options;
-      await using caller = await resolveSessionEnvironmentCaller(options, params);
+      using caller = await resolveSessionEnvironmentCaller(options, params);
       const { presentation, ...request } = params;
       if (presentation) {
         try {
@@ -232,7 +232,7 @@ export const environmentsSessionHandlers: GatewayRequestHandlers = {
     validateEnvironmentsSessionStatusParams,
     async (options) => {
       const { params, respond, context } = options;
-      await using caller = await resolveSessionEnvironmentCaller(options, params);
+      using caller = await resolveSessionEnvironmentCaller(options, params);
       const result = context.workerEnvironmentService?.getSessionAttachmentStatus(
         caller.identity.sessionId,
       );
@@ -258,7 +258,7 @@ export const environmentsSessionHandlers: GatewayRequestHandlers = {
     validateEnvironmentsSessionDestroyParams,
     async (options) => {
       const { params, respond, context } = options;
-      await using caller = await resolveSessionEnvironmentCaller(options, params);
+      using caller = await resolveSessionEnvironmentCaller(options, params);
       const service = context.workerEnvironmentService;
       if (!service) {
         throw new Error("Cloud worker environments are not configured");

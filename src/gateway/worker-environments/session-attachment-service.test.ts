@@ -84,7 +84,7 @@ describe("conversation-owned temporary environments", () => {
         receiptAuthority: () => live,
       },
       async () => {
-        await using caller = await resolveSessionEnvironmentCaller(options);
+        using caller = await resolveSessionEnvironmentCaller(options);
         await expect(
           resolveSessionEnvironmentCaller(options, { sessionKey: "agent:main:other" }),
         ).rejects.toThrow("only manage its own");

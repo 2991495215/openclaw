@@ -91,7 +91,7 @@ async function mutatePortal(
     return;
   }
   try {
-    await using operations = await portalOperations(options, service, environmentId);
+    using operations = await portalOperations(options, service, environmentId);
     const result = await mutate(operations);
     broadcastPortalChange(options.context, service);
     options.respond(true, result, undefined);
@@ -118,7 +118,7 @@ export const portalHandlers: GatewayRequestHandlers = {
       const scopes = client?.connect.scopes ?? [];
       let portals: PortalSummary[];
       try {
-        await using operations = await portalOperations(options, service, params.environmentId);
+        using operations = await portalOperations(options, service, params.environmentId);
         portals = operations.list().portals;
       } catch (error) {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(error)));

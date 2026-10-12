@@ -128,6 +128,7 @@ export function prepareSessionMutationAuthorizationRequest(
     params,
     authorizesAgentRun,
     authorizesRead,
+    bindsProgressLifecycle,
     adminBypass,
     bypassTargetAuthorization:
       adminBypass &&

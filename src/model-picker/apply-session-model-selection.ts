@@ -343,18 +343,8 @@ export async function applySessionModelSelectionInternal(
   // An explicit selection retains the existing persistence and conflict semantics even when idempotent.
   nextEntry.updatedAt = Date.now();
   let persistedEntry: SessionEntry;
-  // The pre-persistence read above can be overtaken by placement activation before the
-  // durable write commits. Revalidate placement inside the synchronous commit boundary so an
-  // override that became incompatible during that window is rejected without mutating state.
   const validateCommit = () =>
-    params.validateAuthProfileSelection?.() ??
-    prepared.validateRuntimeSelection?.() ??
-    resolveActivePlacementModelSelectionError({
-      cfg: params.cfg,
-      agentId: params.agentId,
-      sessionKey: params.sessionKey,
-      entry: nextEntry,
-    });
+    params.validateAuthProfileSelection?.() ?? prepared.validateRuntimeSelection?.();
   if (params.storePath) {
     const persistence = await persistReplySessionEntry({
       storePath: params.storePath,

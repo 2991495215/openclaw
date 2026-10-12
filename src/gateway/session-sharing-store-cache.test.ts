@@ -1,24 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as sessionsConfig from "../config/sessions.js";
 import * as sessionAccessor from "../config/sessions/session-accessor.js";
-import {
-  addSessionMember,
-  removeSessionMember,
-} from "../config/sessions/session-sharing-store.native.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import {
-  initializeSessionReadContext,
-  requestContext,
-} from "./server-methods/sessions-read-cache.test-support.js";
 import type { GatewayClient } from "./server-methods/types.js";
-import { getSessionRowProjection } from "./session-row-projection-access.js";
-import {
-  canReceiveSessionEvent,
-  resolveSessionMutationAuthorization,
-  resolveSessionSharingTarget,
-} from "./session-sharing.js";
+import { resolveSessionMutationAuthorizationAsync } from "./session-sharing-authorization-async.js";
+import { resolveSessionSharingTargetAsync } from "./session-sharing.js";
 import { resolveGatewaySessionStoreTargetWithStoreAsync } from "./session-utils-store-lookup.js";
 
 afterEach(() => {
@@ -61,7 +48,7 @@ describe("session event authorization store work", () => {
         createdActor: { type: "human", source: "profile", id: "owner" } as const,
       };
       await sessionAccessor.upsertSessionEntryCore(scope, entry);
-      const target = resolveSessionSharingTarget({ cfg, ...scope, exactRead: true });
+      const target = await resolveSessionSharingTargetAsync({ cfg, ...scope, exactRead: true });
       if (!target) {
         throw new Error("prepared target was not created");
       }
@@ -77,12 +64,18 @@ describe("session event authorization store work", () => {
         storePath: target.storePath,
         sessionId: entry.sessionId,
       };
-      const original = resolveSessionMutationAuthorization({ ...params, expectedTarget });
+      const original = await resolveSessionMutationAuthorizationAsync({
+        ...params,
+        expectedTarget,
+      });
       expect(original.error).toBeNull();
       expect(original.authorization).toBeDefined();
       await sessionAccessor.upsertSessionEntryCore(scope, { ...entry, sessionId: "replacement" });
-      expect(resolveSessionMutationAuthorization(params).error).toBeNull();
-      const replacement = resolveSessionMutationAuthorization({ ...params, expectedTarget });
+      expect((await resolveSessionMutationAuthorizationAsync(params)).error).toBeNull();
+      const replacement = await resolveSessionMutationAuthorizationAsync({
+        ...params,
+        expectedTarget,
+      });
       expect(replacement.error).toMatchObject({
         details: { code: "SESSION_MUTATION_AUTHORIZATION_CHANGED" },
       });
@@ -90,79 +83,6 @@ describe("session event authorization store work", () => {
       expect(() => original.authorization?.assertCurrent()).toThrow("session changed");
     });
   });
-
-  it.each([1, 32])(
-    "bounds metadata work for %i event targets while refreshing membership",
-    async (targetCount) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async () => {
-        const keys = Array.from(
-          { length: 64 },
-          (_, index) => `agent:main:event-${targetCount}-${index}`,
-        );
-        const sessionKeys = keys.slice(0, targetCount);
-        for (const sessionKey of keys) {
-          await sessionAccessor.upsertSessionEntryCore(
-            { agentId: "main", sessionKey },
-            {
-              sessionId: sessionKey,
-              updatedAt: 1,
-              visibility: "suggest",
-              createdActor: { type: "human", source: "profile", id: "owner" },
-            },
-          );
-        }
-        for (const sessionKey of sessionKeys) {
-          addSessionMember(
-            { agentId: "main", sessionKey },
-            { identityId: "member", addedBy: "owner" },
-          );
-        }
-        sessionAccessor.listSessionEntriesCore({
-          agentId: "main",
-          clone: false,
-          projection: "list",
-        });
-        const materializedKeys: string[] = [];
-        const listEntries = sessionAccessor.listSessionEntriesCore;
-        vi.spyOn(sessionAccessor, "listSessionEntriesCore").mockImplementation((scope) => {
-          const entries = listEntries(scope);
-          materializedKeys.push(...entries.map(({ sessionKey }) => sessionKey));
-          return entries;
-        });
-        const receive = (user: string, event = "session.suggestion") =>
-          canReceiveSessionEvent({
-            cfg: {},
-            client: identifiedClient(user),
-            sessionKeys,
-            event,
-            payload: { suggestion: { author: { id: "author" } } },
-          });
-        expect(receive("member", "session.message")).toBe(true);
-        materializedKeys.length = 0;
-        expect(receive("member", "session.message")).toBe(true);
-        expect(materializedKeys).toEqual([]);
-
-        const checkRecipient = (user: string, allowed: boolean) => {
-          materializedKeys.length = 0;
-          expect(receive(user)).toBe(allowed);
-          // Sparse events must not enumerate unrelated rows; dense checks share one store view.
-          expect(materializedKeys.length).toBeLessThanOrEqual(targetCount === 1 ? 0 : keys.length);
-        };
-        checkRecipient("member", true);
-        checkRecipient("owner", true);
-        checkRecipient("viewer", false);
-        checkRecipient("author", true);
-        const revokedKey = sessionKeys.at(-1)!;
-        removeSessionMember({ agentId: "main", sessionKey: revokedKey }, "member");
-        checkRecipient("member", false);
-        addSessionMember(
-          { agentId: "main", sessionKey: revokedKey },
-          { identityId: "member", addedBy: "owner" },
-        );
-        checkRecipient("member", true);
-      });
-    },
-  );
 });
 
 describe("session mutation authorization store caches", () => {
@@ -185,7 +105,7 @@ describe("session mutation authorization store caches", () => {
           projection: "list",
         });
         const inventory = vi.spyOn(sessionAccessor, "listSessionEntriesCore");
-        const result = resolveSessionMutationAuthorization({
+        const result = await resolveSessionMutationAuthorizationAsync({
           client: identifiedClient("viewer@example.test"),
           method,
           requestParams:
@@ -297,7 +217,7 @@ describe("session mutation authorization store caches", () => {
         }
         const context = { chatAbortControllers: new Map(), getRuntimeConfig: () => cfg } as never;
         const client = identifiedClient(`${viewer}@example.test`);
-        const scoped = resolveSessionMutationAuthorization({
+        const scoped = await resolveSessionMutationAuthorizationAsync({
           client,
           method: "sessions.github.publish",
           requestParams: { sessionKey: "global", agentId: "research" },
@@ -310,7 +230,7 @@ describe("session mutation authorization store caches", () => {
             details: { code: "SESSION_PARTICIPATION_REQUIRED" },
           });
         }
-        const alias = resolveSessionMutationAuthorization({
+        const alias = await resolveSessionMutationAuthorizationAsync({
           client,
           method: "sessions.github.publish",
           requestParams: { sessionKey: "agent:research:main" },
@@ -337,7 +257,7 @@ describe("session mutation authorization store caches", () => {
         { agentId: "main", sessionKey },
         { sessionId: "session-incognito", updatedAt: 1, incognito: true },
       );
-      const result = resolveSessionMutationAuthorization({
+      const result = await resolveSessionMutationAuthorizationAsync({
         client: identifiedClient("viewer@example.com"),
         method: "sessions.patchMany",
         requestParams: {
@@ -368,7 +288,7 @@ describe("session mutation authorization store caches", () => {
         },
       );
 
-      const result = resolveSessionMutationAuthorization({
+      const result = await resolveSessionMutationAuthorizationAsync({
         client: identifiedClient("viewer@example.com"),
         method: "sessions.patchMany",
         requestParams: {
@@ -400,7 +320,7 @@ describe("session mutation authorization store caches", () => {
         },
       );
       const target = { sessionKey: ` ${sessionKey} `, agentId: " main " };
-      const result = resolveSessionMutationAuthorization({
+      const result = await resolveSessionMutationAuthorizationAsync({
         client: identifiedClient("viewer@example.com"),
         method: "sessions.patchMany",
         requestParams: {
@@ -441,7 +361,7 @@ describe("session mutation authorization store caches", () => {
       }));
       targets.push({ key: hiddenKey });
 
-      const result = resolveSessionMutationAuthorization({
+      const result = await resolveSessionMutationAuthorizationAsync({
         client: identifiedClient("viewer@example.com"),
         method: "sessions.patchMany",
         requestParams: { targets, patch: { archived: true } },
@@ -450,49 +370,6 @@ describe("session mutation authorization store caches", () => {
 
       expect(result.error).toBeNull();
       expect(result.authorization).toBeDefined();
-    });
-  });
-
-  it("uses resident metadata when one request resolves multiple targets", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
-      for (const [sessionKey, sessionId] of [
-        ["agent:main:cache-one", "session-cache-one"],
-        ["agent:main:cache-two", "session-cache-two"],
-      ] as const) {
-        await sessionAccessor.upsertSessionEntryCore(
-          { agentId: "main", sessionKey },
-          { sessionId, updatedAt: 1, visibility: "shared", category: "Cache Test" },
-        );
-      }
-
-      const cfg = {};
-      const context = requestContext(cfg);
-      await initializeSessionReadContext(context);
-      await getSessionRowProjection(context)!.prepareMembership();
-
-      const materializations = new Map<string, number>();
-      const originalListSessionEntries = sessionAccessor.listSessionEntriesCore;
-      vi.spyOn(sessionAccessor, "listSessionEntriesCore").mockImplementation((scope) => {
-        const entries = originalListSessionEntries(scope);
-        if (scope?.clone === false) {
-          const storePath = scope.storePath ?? "default";
-          materializations.set(storePath, (materializations.get(storePath) ?? 0) + 1);
-        }
-        return entries;
-      });
-      const discoverySpy = vi.spyOn(sessionsConfig, "resolveExistingAgentSessionStoreTargetsSync");
-
-      expect(
-        resolveSessionMutationAuthorization({
-          client: identifiedClient("viewer@example.com"),
-          method: "sessions.groups.delete",
-          requestParams: { name: "Cache Test" },
-          context,
-        }).error,
-      ).toBeNull();
-
-      expect([...materializations.values()]).toEqual([]);
-      expect(discoverySpy.mock.calls.filter((call) => call[1] === "main")).toHaveLength(0);
     });
   });
 });

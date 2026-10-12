@@ -14,6 +14,7 @@ import {
 } from "../../auto-reply/reply-payload.js";
 import type { ReplyDispatcherOptions } from "../../auto-reply/reply/reply-dispatcher.js";
 import type { ReplyDispatchOperation } from "../../auto-reply/reply/reply-dispatcher.types.js";
+import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import {
   resolveSessionTranscriptDatabasePath,
   waitForSessionTranscriptProjection,
@@ -119,7 +120,12 @@ export function createChatSendReplyDispatch(params: {
   const finalizedAgentMediaTranscriptKeys = new Set<string>();
   const commentaryMedia = createAssistantCommentaryMediaCustody({
     requesterContext: params.requesterContext,
-    session,
+    session: {
+      ...session,
+      storePath:
+        session.storePath ??
+        resolveSessionStorePathCore(cfg.session?.store, { agentId: session.agentId }),
+    },
     accountId,
     getRunId: () => agentRunId,
     isCurrent: () => isAgentRunStarted() && params.isRunCurrent?.() === true,
@@ -317,7 +323,7 @@ export function createChatSendReplyDispatch(params: {
     const sessionKey = transcript?.sessionKey ?? session.sessionKey;
     const agentId = transcript?.agentId ?? session.agentId;
     const ttsSupplementMarker = buildTtsSupplementTranscriptMarker(payload);
-    await using mediaScope = await captureWebchatReplyMediaScope({
+    using mediaScope = await captureWebchatReplyMediaScope({
       requesterContext: params.requesterContext,
       cfg,
       sessionKey,

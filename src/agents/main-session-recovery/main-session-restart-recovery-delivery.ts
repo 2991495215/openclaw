@@ -56,6 +56,7 @@ export function resolveRestartRecoveryDeliveryContext(params: {
 }
 
 type RestartRecoveryDeliveryScope = MainSessionRecoveryStoreTarget & {
+  agentId: string;
   sessionId: string;
   recoveryRunId: string;
   lifecycleGeneration: string;

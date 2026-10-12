@@ -159,7 +159,7 @@ describe("agent event handler", () => {
   }
 
   function mockSessionEntry(
-    entry: ReturnType<typeof loadSessionEntry>["entry"],
+    entry: Awaited<ReturnType<typeof loadSessionEntryAsync>>["entry"],
     canonicalKey = "session-1",
   ) {
     vi.mocked(loadSessionEntryAsync).mockResolvedValue({
@@ -1331,11 +1331,19 @@ describe("agent event handler", () => {
   });
 
   it("uses newer session verbose state for in-flight tool events", async () => {
+    const cfg = { agents: { entries: { main: {} } } };
+    vi.mocked(getRuntimeConfig).mockReturnValue(cfg);
+    lineageProjection = createSessionRowProjectionFixture({
+      cfg,
+      agentId: "main",
+      store: {
+        "session-1": { sessionId: "session-1", verboseLevel: "on", updatedAt: 1_500 },
+      },
+    });
     const h = createHarness({
       now: 1_000,
       resolveSessionKeyForRun: () => "session-1",
     });
-    mockSessionEntry({ sessionId: "session-1", verboseLevel: "on", updatedAt: 1_500 });
 
     registerAgentRunContext("run-tool-toggle", {
       sessionKey: "session-1",

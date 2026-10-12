@@ -179,7 +179,7 @@ function observeChatSendCommentaryMedia(params: AssistantCommentaryMediaCustodyP
       previous
         .then(async () => {
           assertLive();
-          await using mediaScope = await captureWebchatReplyMediaScope({
+          using mediaScope = await captureWebchatReplyMediaScope({
             requesterContext: params.requesterContext,
             cfg: session.cfg,
             sessionKey: scope.sessionKey,

@@ -217,8 +217,9 @@ async function invokeGatewayToolWithSignal(
     preparedSession?: { entry: SessionEntry | undefined };
   },
 ): Promise<ToolsInvokeOutcome> {
+  const retainedReads: Array<{ release: () => void }> = [];
   using retainedScope = {
-    reads: [] as Array<{ release: () => void }>,
+    reads: retainedReads,
     [Symbol.dispose]() {
       for (const read of this.reads) {
         read.release();
