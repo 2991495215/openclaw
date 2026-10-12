@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
@@ -43,6 +44,10 @@ describe("CronService silent failure alerts", { concurrent: false }, () => {
       { layout: "state-only", prefix: "openclaw-cron-silent-failure-" },
       async (state) => {
         await preparePluginMetadataMachineStateAsync({});
+        const cfg = {
+          agents: { defaults: { model: `${modelRef.provider}/${modelRef.model}` } },
+        };
+        setRuntimeConfigSnapshot(cfg);
         const sendCronFailureAlert = vi.fn(
           async (_params: SendCronFailureAlertParams) => undefined,
         );
@@ -63,7 +68,7 @@ describe("CronService silent failure alerts", { concurrent: false }, () => {
           runIsolatedAgentJob: async (runParams) =>
             await runCronIsolatedAgentTurn({
               ...runParams,
-              cfg: { agents: { defaults: { model: `${modelRef.provider}/${modelRef.model}` } } },
+              cfg,
               deps: {},
               sessionKey: `cron:${runParams.job.id}`,
             }),

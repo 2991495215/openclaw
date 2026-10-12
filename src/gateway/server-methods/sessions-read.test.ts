@@ -6,6 +6,7 @@ import type { AgentsListResult } from "../../../packages/gateway-protocol/src/in
 import { createDeferred } from "../../../test/helpers/promise.js";
 import * as runtimeMetadata from "../../agents/agent-runtime-metadata.js";
 import { preparePluginAutoEnableTestDiscovery } from "../../config/plugin-auto-enable.test-helpers.js";
+import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import {
   resolveSessionStorePathCore as resolveStorePath,
   SESSION_TOTAL_TOKENS_VERSION,
@@ -111,15 +112,18 @@ async function listAgentIdsViaRpc(
 
 async function setAgentsConfig(agentsConfig: Record<string, unknown> | undefined): Promise<void> {
   testState.agentsConfig = agentsConfig;
-  const { clearConfigCache, clearRuntimeConfigSnapshot } = await getGatewayConfigModule();
+  const { clearConfigCache, clearRuntimeConfigSnapshot, getRuntimeConfig } =
+    await getGatewayConfigModule();
   clearRuntimeConfigSnapshot();
   clearConfigCache();
   preparePluginAutoEnableTestDiscovery();
+  getRuntimeConfig();
 }
 
 test("agents.list includes system rows only when negotiated", async () => {
   fs.mkdirSync(path.join(requireStateDir(), "agents", "openclaw"), { recursive: true });
   testState.agentConfig = { model: { primary: "local/shared-reasoner" } };
+  await setAgentsConfig(undefined);
   const readPreparedGatewayModelCatalog = vi.fn(async () => ({
     entries: [
       {
@@ -841,6 +845,7 @@ test("searches rich displayed fields before selecting a page across visible agen
         },
       },
     };
+    setRuntimeConfigSnapshot(config);
     const client = identifiedClient("owner@example.com");
     const context = requestContext(config);
     const put = async (agentId: string, name: string, entry: Partial<SessionEntry>) => {

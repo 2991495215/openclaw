@@ -11,7 +11,7 @@ import {
 } from "../state/openclaw-state-db.js";
 import { prepareBundledDiscoveryMode } from "./bundled-discovery-state.js";
 import { inspectPersistedInstalledPluginIndexInstallRecordsSync } from "./installed-plugin-index-record-state.js";
-import { readPersistedInstalledPluginIndexInstallRecords } from "./installed-plugin-index-records.js";
+import { readPersistedInstalledPluginIndexInstallRecordsAsync } from "./installed-plugin-index-records.js";
 import { refreshPersistedInstalledPluginIndexWithLeaseSync } from "./installed-plugin-index-store-write.js";
 import {
   readPersistedInstalledPluginIndex,
@@ -100,7 +100,7 @@ describe("installed plugin index read state", () => {
       expect(inspectPersistedInstalledPluginIndexInstallRecordsSync({ stateDir })).toEqual({
         status: "missing",
       });
-      expect(readPersistedInstalledPluginIndexInstallRecords({ stateDir })).toBeNull();
+      expect(await readPersistedInstalledPluginIndexInstallRecordsAsync({ stateDir })).toBeNull();
       await expect(readPersistedInstalledPluginIndex({ stateDir })).resolves.toBeNull();
       expect(missing === "database" ? fs.existsSync(filePath) : fs.readFileSync(filePath)).toEqual(
         before ?? false,
@@ -194,7 +194,9 @@ describe("installed plugin index read state", () => {
       expect(inspectPersistedInstalledPluginIndexInstallRecordsSync({ stateDir }).status).toBe(
         recordStatus,
       );
-      expect(readPersistedInstalledPluginIndexInstallRecords({ stateDir })).toEqual(records);
+      expect(await readPersistedInstalledPluginIndexInstallRecordsAsync({ stateDir })).toEqual(
+        records,
+      );
       await expect(readPersistedInstalledPluginIndex({ stateDir })).resolves.toBeNull();
     },
   );

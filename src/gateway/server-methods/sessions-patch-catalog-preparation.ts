@@ -1,13 +1,12 @@
 import { err, ok, type Result } from "@openclaw/normalization-core/result";
 import type { ModelCatalogSnapshot } from "../../agents/model-catalog.js";
 import { getOrCreatePromise } from "../../shared/lazy-promise.js";
+import { prepareSessionsPatchEntry, projectSessionsPatchEntry } from "../sessions-patch.js";
+import type { SessionPatchDiagnostics } from "./sessions-patch-diagnostics.js";
 import {
   prepareSessionPatchAuthProfileProvider,
-  prepareSessionsPatchEntry,
-  projectSessionsPatchEntry,
-} from "../sessions-patch.js";
-import type { SessionPatchDiagnostics } from "./sessions-patch-diagnostics.js";
-import { prepareSessionPatchRuntimeMetadata } from "./sessions-patch-model-selection.js";
+  prepareSessionPatchRuntimeMetadata,
+} from "./sessions-patch-model-selection.js";
 
 export type SessionPatchCatalogResult = Result<ModelCatalogSnapshot, unknown>;
 
@@ -72,7 +71,7 @@ export function createSessionPatchCatalogPreparation(
           }),
         };
       }
-      const projection = prepareSessionsPatchEntry({
+      const projection = await prepareSessionsPatchEntry({
         ...params.projection,
         runtimeMetadataSnapshot: await prepareSessionPatchRuntimeMetadata(params.projection),
         preparedAuthProfileProvider: await prepareAuthProvider(params.projection),

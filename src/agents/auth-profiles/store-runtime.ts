@@ -2,13 +2,14 @@
 import { nativePluginBindings } from "../../plugins/loader-runtime-load.js";
 export const {
   createAuthProfileStoreReadScope,
+  createAuthProfileStoreReadScopeAsync,
   updateAuthProfileStoreWithLock,
   loadAuthProfileStore,
   loadAuthProfileStoreForRuntimeAsync,
   prepareAuthProfileProvider,
   findPersistedAuthProfileCredentialAsync,
   resolvePersistedAuthProfileOwnerAgentDirAsync,
-  loadAuthProfileStoreForSecretsRuntime,
+  loadAuthProfileStoreForSecretsRuntimeAsync,
   loadAuthProfileStoreWithoutExternalProfilesAsync,
   ensureAuthProfileStoreAsync,
   ensureAuthProfileStoreWithoutExternalProfilesAsync,
@@ -19,7 +20,19 @@ export const {
   saveAuthProfileStoreIfPersistenceSnapshotMatchesAsync,
 } = nativePluginBindings.authStore;
 
-/** @deprecated Use saveAuthProfileStoreAsync; removed in a later release after stable deprecation. */
+/**
+ * @deprecated Await loadAuthProfileStoreForRuntimeAsync from openclaw/plugin-sdk/agent-runtime
+ * with readOnly: true and allowKeychainPrompt: false. Retained until removal in a later stable
+ * release after deprecation ships.
+ */
+export const loadAuthProfileStoreForSecretsRuntime =
+  nativePluginBindings.authStore.loadAuthProfileStoreForSecretsRuntime;
+
+/**
+ * @deprecated Use saveAuthProfileStoreAsync for replacement or updateAuthProfileStoreWithLock
+ * from openclaw/plugin-sdk/provider-auth for partial updates.
+ * Retained until removal in a later stable release after deprecation ships.
+ */
 export const saveAuthProfileStore = nativePluginBindings.authStore.saveAuthProfileStore;
 
 /** @deprecated Use loadAuthProfileStoreForRuntimeAsync. Removed at the next Plugin SDK major. */

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ArtifactsListResult } from "../../../packages/gateway-protocol/src/index.js";
 import { observeSqliteReadSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { readTranscriptDisplayPosition } from "../../chat/transcript-display-position.js";
+import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import { materializeRuntimeConfig } from "../../config/materialize.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import {
@@ -77,6 +78,7 @@ async function append(content: unknown) {
 describe("bounded Activity image discovery", () => {
   it("pages canonical uploaded images from mixed user media with Chat's path preference", async () => {
     await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
       const urls = Array.from({ length: 5 }, (_, index) => `media://inbound/upload-${index}.png`);
       const localPath = "/synthetic/nonexistent/upload.png";
@@ -135,6 +137,7 @@ describe("bounded Activity image discovery", () => {
 
   it("honors assistant image filters and binds pagination to the same role", async () => {
     await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
       const urls = Array.from(
         { length: 6 },
@@ -176,6 +179,7 @@ describe("bounded Activity image discovery", () => {
 
   it("pages newest images within one message and includes Markdown local images without reading files", async () => {
     await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
       await append([{ type: "image", data: "aGVsbG8=", mimeType: "image/png", alt: "inline" }]);
       await append(
@@ -223,6 +227,7 @@ describe("bounded Activity image discovery", () => {
       await withOpenClawTestState(
         { scenario: "minimal", prepareProfileCatalog: true },
         async () => {
+          await captureRuntimeConfigAsyncReader()();
           await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
           const data =
             kind === "oversized"
@@ -274,6 +279,7 @@ describe("bounded Activity image discovery", () => {
 
   it("bounds inline previews for images without transcript download references", async () => {
     await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
       const url = "data:image/png;base64,aGVsbG8=";
       await append([
@@ -316,6 +322,7 @@ describe("bounded Activity image discovery", () => {
 
   it("rejects copied, retargeted, and reset cursors while rechecking current session access", async () => {
     await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
       await append(
         Array.from({ length: 6 }, (_, index) => ({
@@ -639,6 +646,7 @@ describe("persisted chat image artifact recovery", () => {
 
   it("recovers each visible legacy image when transcript rows reuse a message id", async () => {
     await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       const images = ["Zmlyc3Q=", "c2Vjb25k"];
       await seedUnindexedTranscriptForTest({
         ...transcriptScope,
@@ -683,6 +691,7 @@ describe("persisted chat image artifact recovery", () => {
 
   it("downloads the exact image bytes referenced by history and committed live messages", async () => {
     await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       await upsertSessionEntryCore(transcriptScope, {
         sessionId: transcriptScope.sessionId,
         updatedAt: 1,
@@ -761,6 +770,7 @@ describe("persisted chat image artifact recovery", () => {
 
   it("does not retarget references across sessions or replacement incarnations with the same message id", async () => {
     await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       const message = {
         role: "assistant",
         content: [{ type: "image", data: "b3JpZ2luYWw=", mimeType: "image/png" }],
@@ -823,6 +833,7 @@ describe("persisted chat image artifact recovery", () => {
   ] as const)("rechecks $revocation after the $phase await", async ({ phase, revocation }) => {
     await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       let config: OpenClawConfig = {};
+      setRuntimeConfigSnapshot(config);
       const context = createDirectChatContext({ getRuntimeConfig: () => config });
       const owner = ensureProfileForEmail("image-owner@example.test");
       const viewer = ensureProfileForEmail("image-viewer@example.test");

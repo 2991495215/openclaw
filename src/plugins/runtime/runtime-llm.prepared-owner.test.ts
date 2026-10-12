@@ -239,7 +239,7 @@ it.each([
     };
     await withEnvAsync(env, async () => {
       prepareSharedAuthStoreOwnershipForNative();
-      const create = vi.spyOn(ModelRegistry, "create");
+      const create = vi.spyOn(ModelRegistry, "fromCapturedSources");
       const fork = vi.spyOn(ModelRegistry.prototype, "fork");
       const setRuntimeKey = vi.spyOn(AuthStorage.prototype, "setRuntimeApiKey");
       const resolveModel = modelResolution.resolveModelAsync;

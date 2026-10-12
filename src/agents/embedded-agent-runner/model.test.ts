@@ -7,7 +7,7 @@ import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../../test-utils/openclaw-test-state.js";
-import { discoverAuthStorageFacts, discoverModels } from "../agent-model-discovery.js";
+import { discoverAuthStorageFacts, discoverModelsAsync } from "../agent-model-discovery.js";
 import {
   clearRuntimeAuthProfileStoreSnapshots,
   replaceRuntimeAuthProfileStoreSnapshots,
@@ -128,7 +128,7 @@ vi.mock("../prepared-model-runtime.js", async () => {
       return current;
     }
     const { authStorage } = await discovery.discoverAuthStorageFacts(input.agentDir);
-    const modelRegistry = discovery.discoverModels(authStorage, input.agentDir, {
+    const modelRegistry = await discovery.discoverModelsAsync(authStorage, input.agentDir, {
       ...(input.config ? { config: input.config } : {}),
       ...(workspaceDir ? { workspaceDir } : {}),
     });
@@ -177,9 +177,10 @@ vi.mock("../prepared-model-runtime.js", async () => {
   };
 });
 
+// mock-isolation: Model resolution fixtures control discovery without loading real credentials or model stores.
 vi.mock("../agent-model-discovery.js", () => ({
   discoverAuthStorageFacts: vi.fn(() => ({ authStorage: { mocked: true } })),
-  discoverModels: vi.fn(() => ({ find: vi.fn(() => null) })),
+  discoverModelsAsync: vi.fn(async () => ({ find: vi.fn(() => null) })),
 }));
 
 vi.mock("./model.static-catalog.js", () => ({
@@ -218,8 +219,8 @@ beforeEach(() => {
   preparedSnapshotState.configuredRuntimeModels = [];
   preparedSnapshotState.inlineProviderModels = [];
   clearRuntimeAuthProfileStoreSnapshots();
-  resetMockDiscoverModels(discoverModels);
-  vi.mocked(discoverModels).mockClear();
+  resetMockDiscoverModels(discoverModelsAsync);
+  vi.mocked(discoverModelsAsync).mockClear();
   vi.mocked(discoverAuthStorageFacts).mockClear();
   resolveBundledStaticCatalogModelMock.mockReset();
   resolveBundledProviderStaticCatalogModelMock.mockReset();
@@ -257,7 +258,7 @@ async function resolveModelForTest(
   const agentDir = state.agentDir();
   return await resolveModelAsync(provider, modelId, agentDir, cfg, {
     authStorage: { mocked: true } as never,
-    modelRegistry: discoverModels({ mocked: true } as never, agentDir),
+    modelRegistry: await discoverModelsAsync({ mocked: true } as never, agentDir),
     ...options,
     runtimeHooks: options?.runtimeHooks ?? createRuntimeHooks(),
   });
@@ -299,7 +300,7 @@ function mockMinimalModelDiscovery(
   modelId: string,
   overrides: Record<string, unknown> = {},
 ) {
-  mockDiscoveredModel(discoverModels, {
+  mockDiscoveredModel(discoverModelsAsync, {
     provider,
     modelId,
     templateModel: { ...makeModel(modelId), provider, ...overrides },
@@ -479,7 +480,7 @@ describe("resolveModel", () => {
     expectResolvedModel(first);
     expectResolvedModel(second);
     expect(discoverAuthStorageFacts).toHaveBeenCalledTimes(1);
-    expect(discoverModels).toHaveBeenCalledTimes(1);
+    expect(discoverModelsAsync).toHaveBeenCalledTimes(1);
   });
 
   it("uses the resolved default agent directory and workspace for prepared discovery", async () => {
@@ -495,7 +496,7 @@ describe("resolveModel", () => {
       runtimeHooks: createRuntimeHooks(),
     });
     expectResolvedModel(result);
-    expect(discoverModels).toHaveBeenCalledWith(
+    expect(discoverModelsAsync).toHaveBeenCalledWith(
       expect.anything(),
       agentDir,
       expect.objectContaining({ workspaceDir: state.workspaceDir }),
@@ -521,7 +522,7 @@ describe("resolveModel", () => {
     const result = await resolveModelAsync("openai", "gpt-5.5", agentDir, cfg, options);
 
     expectResolvedModel(result);
-    expect(discoverModels).toHaveBeenCalledWith(authStorage, agentDir, {
+    expect(discoverModelsAsync).toHaveBeenCalledWith(authStorage, agentDir, {
       config: cfg,
       workspaceDir,
     });
@@ -550,7 +551,7 @@ describe("resolveModel", () => {
     expectResolvedModel(first);
     expectResolvedModel(second);
     expect(discoverAuthStorageFacts).toHaveBeenCalledTimes(1);
-    expect(discoverModels).toHaveBeenCalledTimes(1);
+    expect(discoverModelsAsync).toHaveBeenCalledTimes(1);
   });
 
   it("resolves opt-in provider static catalog rows while skipping agent discovery", async () => {
@@ -613,7 +614,7 @@ describe("resolveModel", () => {
       metadataSnapshot,
     });
     expect(discoverAuthStorageFacts).not.toHaveBeenCalled();
-    expect(discoverModels).not.toHaveBeenCalled();
+    expect(discoverModelsAsync).not.toHaveBeenCalled();
   });
 
   it("keeps the prepared auth mode through async provider model resolution", async () => {
@@ -708,7 +709,7 @@ describe("resolveModel", () => {
       healthUrl: "http://127.0.0.1:18080/health",
     });
     expect(discoverAuthStorageFacts).not.toHaveBeenCalled();
-    expect(discoverModels).not.toHaveBeenCalled();
+    expect(discoverModelsAsync).not.toHaveBeenCalled();
   });
 
   it("leaves maxTokens undefined when no configured or catalog value is available (regression: #98295)", async () => {
@@ -1106,7 +1107,7 @@ describe("resolveModel", () => {
   });
 
   it("prefers alias-specific overrides over canonical ones for gpt-5.4-codex", async () => {
-    mockOpenAICodexTemplateModel(discoverModels);
+    mockOpenAICodexTemplateModel(discoverModelsAsync);
 
     const cfg = makeProviderConfig("openai", {
       api: "openai-chatgpt-responses",

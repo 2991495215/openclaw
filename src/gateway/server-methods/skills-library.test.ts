@@ -7,6 +7,10 @@ import type {
   SkillsLibraryReceipt,
 } from "../../../packages/gateway-protocol/src/schema/skill-library.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
+import {
   upsertSessionEntryCore,
   loadSessionEntry,
   patchSessionEntryCore,
@@ -40,6 +44,7 @@ afterEach(async () => {
     await cleanupSessionStateForTest({ stateDir: currentStateDir });
     currentStateDir = undefined;
   }
+  clearRuntimeConfigSnapshot();
   vi.unstubAllEnvs();
 });
 const content =
@@ -359,6 +364,7 @@ describe("read-only session skill library projection", () => {
     const bob = ensureProfileForEmail("bob@example.test");
     using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
     const cfg = { agents: { entries: { main: { workspace: path.join(root, "workspace") } } } };
+    setRuntimeConfigSnapshot(cfg);
     const actor = (profileId: string): SkillLibraryAuthority => ({
       profileId,
       scopes: ["operator.read", "operator.write"],

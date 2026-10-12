@@ -25,6 +25,7 @@ import {
   useNoBundledPlugins,
   writePlugin,
 } from "./loader.test-fixtures.js";
+import { clearActivePluginRegistry } from "./runtime.js";
 
 export const getEmbeddingProvider = (id: string) => getRegisteredEmbeddingProvider(id)?.adapter;
 
@@ -944,7 +945,8 @@ export function collectStartupTraceMetrics(
   return metrics;
 }
 
-export const globalAfterEach0 = () => {
+export const globalAfterEach0 = async () => {
+  await clearActivePluginRegistry();
   resetDiagnosticEventsForTest();
   clearRuntimeConfigSnapshot();
   resetPluginLoaderTestStateForTest();

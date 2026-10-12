@@ -17,9 +17,6 @@ export async function readConfigMachineStateAsync<T>(
   if (!result) {
     return undefined;
   }
-  if (!result.ok || result.type !== "machineState.read") {
-    throw new Error(result.ok ? "Unexpected machine state reply" : result.message);
-  }
   // SAFETY: Each key's owner defines its persisted JSON shape.
   return result.row ? (JSON.parse(result.row.value_json) as T) : undefined;
 }
@@ -31,9 +28,6 @@ export async function readVoiceWakeMachineState(
   const result = await executeExistingOpenClawStateRead(options, { type: key });
   if (!result) {
     return undefined;
-  }
-  if (!result.ok || result.type !== key) {
-    throw new Error(result.ok ? "Unexpected voice wake state reply" : result.message);
   }
   return result.row
     ? { value: JSON.parse(result.row.value_json) as unknown, updatedAtMs: result.row.updated_at_ms }

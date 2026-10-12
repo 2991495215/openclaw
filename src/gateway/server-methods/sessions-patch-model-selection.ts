@@ -9,7 +9,12 @@ import {
   assertOperatorModelAllowed,
   type AdmittedRunOperatorAuthority,
 } from "../../agents/admitted-run-context.js";
-import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import {
+  resolveAgentDir,
+  resolveDefaultAgentId,
+  resolveSessionAgentId,
+} from "../../agents/agent-scope.js";
+import { prepareAuthProfileProvider } from "../../agents/auth-profiles.runtime.js";
 import { resolveAgentHarnessSessionExecutionRestriction } from "../../agents/harness/execution-environment.js";
 import type { AgentHarness } from "../../agents/harness/types.js";
 import type { ModelCatalogEntry } from "../../agents/model-catalog.js";
@@ -35,6 +40,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
+import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { isSessionStatusModelPatchOrigin } from "../session-model-patch-origin.js";
 import { SessionMutationAuthorizationChangedError } from "../session-sharing.js";
 import type { SessionWorkerPlacementContext } from "../worker-environments/session-placement-lifecycle.js";
@@ -43,6 +49,31 @@ import {
   prepareSessionWorkerPlacementPatchError,
   resolveSessionWorkerPlacementPatchError,
 } from "./sessions-shared.js";
+
+export async function prepareSessionPatchAuthProfileProvider(params: {
+  cfg: OpenClawConfig;
+  agentId?: string;
+  storeKey: string;
+  patch: SessionsPatchParams;
+  existingEntry?: Pick<SessionEntry, "authProfileOverride">;
+  preparedAuthProfileProvider?: { provider: string | undefined };
+}): Promise<{ provider: string | undefined }> {
+  if (params.preparedAuthProfileProvider) {
+    return params.preparedAuthProfileProvider;
+  }
+  const profileId = params.existingEntry?.authProfileOverride?.trim();
+  return profileId && "model" in params.patch
+    ? prepareAuthProfileProvider({
+        agentDir: resolveAgentDir(
+          params.cfg,
+          params.agentId ??
+            parseAgentSessionKey(params.storeKey)?.agentId ??
+            resolveDefaultAgentId(params.cfg),
+        ),
+        profileId,
+      })
+    : { provider: undefined };
+}
 
 export async function prepareSessionPatchRuntimeMetadata(params: {
   cfg: OpenClawConfig;

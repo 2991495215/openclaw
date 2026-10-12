@@ -1,5 +1,7 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { describe, expect, it, vi } from "vitest";
+import { captureRuntimeConfigAsyncReader } from "../../config/config.js";
+import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import {
   appendTranscriptMessage,
   loadTranscriptEvents,
@@ -71,6 +73,7 @@ describe("registered chat read scope", () => {
           ];
         }
         await state.writeConfig(cfg);
+        setRuntimeConfigSnapshot(cfg);
         const owner = roleClient("write", "synthetic-owner");
         const client =
           testCase.actor === "owner"
@@ -148,6 +151,7 @@ describe("registered chat read scope", () => {
 
   it("traverses a full hidden page and keeps raw custody counts separate from execution", async () => {
     await withOpenClawTestState(profileState, async () => {
+      await captureRuntimeConfigAsyncReader()();
       const client = roleClient("write", "pagination-owner");
       const scope = {
         agentId: "main",
@@ -248,6 +252,7 @@ describe("registered chat read scope", () => {
       await withOpenClawTestState(profileState, async (state) => {
         const cfg = rolePolicyConfig();
         await state.writeConfig(cfg);
+        setRuntimeConfigSnapshot(cfg);
         const owner = roleClient("write", "async-owner");
         const client = roleClient("view", "async-reader");
         const scope = {

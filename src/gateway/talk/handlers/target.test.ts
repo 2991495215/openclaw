@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setRuntimeConfigSnapshot } from "../../../config/runtime-snapshot.js";
 import {
   loadSessionEntry,
   readSessionTranscriptMessageEvents,
@@ -134,6 +135,7 @@ beforeEach(async () => {
     agents: { ownership: "explicit", entries: { primary: {}, voice: {} } },
     talk: { agentId: "voice" },
   };
+  setRuntimeConfigSnapshot(config);
   vi.clearAllMocks();
   createdCalls.length = 0;
   createBrowserSession.mockReset().mockResolvedValue(browserSession);
@@ -208,6 +210,7 @@ describe("Talk target preparation through Gateway authorization", () => {
     },
   ])("uses a valid $name default without authored talk.agentId", async ({ cfg }) => {
     config = cfg;
+    setRuntimeConfigSnapshot(config);
     const respond = await dispatch("talk.client.create", createParams);
     expect(respond).toHaveBeenCalledWith(true, expect.objectContaining(browserSession), undefined);
     expect(createBrowserSession).toHaveBeenCalledWith(
@@ -472,16 +475,22 @@ describe("Talk target preparation through Gateway authorization", () => {
       await started.promise;
       if (change === "removed-agent") {
         config = { ...config, agents: { ownership: "explicit", entries: { primary: {} } } };
+        setRuntimeConfigSnapshot(config);
       } else if (change === "global-main-key") {
         config = { ...config, session: { scope: "global", mainKey: "changed" } };
+        setRuntimeConfigSnapshot(config);
       } else if (change === "owner") {
         config = { ...config, talk: { agentId: "primary" } };
+        setRuntimeConfigSnapshot(config);
       } else if (change === "main-key") {
         config = { ...config, session: { mainKey: "changed" } };
+        setRuntimeConfigSnapshot(config);
       } else if (change === "scope") {
         config = { ...config, session: { scope: "global" } };
+        setRuntimeConfigSnapshot(config);
       } else if (change === "store") {
         config = { ...config, session: { store: state.statePath("changed", "sessions.sqlite") } };
+        setRuntimeConfigSnapshot(config);
       } else {
         await replaceSessionEntry(
           { agentId: "voice", sessionKey: "agent:voice:main" },
@@ -568,6 +577,7 @@ describe("Talk target preparation through Gateway authorization", () => {
     });
     await started.promise;
     config = { ...config, talk: { agentId: "primary" } };
+    setRuntimeConfigSnapshot(config);
     gate.resolve();
     expect(await pending).toHaveBeenCalledWith(
       false,
@@ -653,6 +663,7 @@ describe("Talk target preparation through Gateway authorization", () => {
           expect(sessionId).toBeTruthy();
           if (change === "owner") {
             config = { ...config, talk: { agentId: "primary" } };
+            setRuntimeConfigSnapshot(config);
           } else {
             await replaceSessionEntry(scope, {
               sessionId: change === "replacement" ? "replacement-session" : sessionId!,
@@ -714,6 +725,7 @@ describe("Talk target preparation through Gateway authorization", () => {
     const pending = dispatch("talk.client.create", createParams);
     await started.promise;
     config = { ...config, talk: { agentId: "primary" } };
+    setRuntimeConfigSnapshot(config);
     gate.resolve(undefined);
     expect(await pending).toHaveBeenCalledWith(
       false,

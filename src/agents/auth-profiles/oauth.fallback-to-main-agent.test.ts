@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import {
   FILE_LOCK_TIMEOUT_ERROR_CODE,
@@ -105,6 +106,7 @@ describe("resolveApiKeyForProfile fallback to main agent", () => {
     setTestEnvValue("OPENCLAW_AGENT_DIR", mainAgentDir);
     deleteTestEnvValue("OPENAI_API_KEY");
     clearRuntimeAuthProfileStoreSnapshots();
+    setRuntimeConfigSnapshot({});
   });
 
   function createOauthStore(params: {
@@ -130,6 +132,7 @@ describe("resolveApiKeyForProfile fallback to main agent", () => {
   }
 
   afterEach(async () => {
+    clearRuntimeConfigSnapshot();
     resetFileLockStateForTest();
     clearRuntimeAuthProfileStoreSnapshots();
     await cleanupSessionStateForTest({ stateDir: tmpDir });

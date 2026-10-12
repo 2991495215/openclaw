@@ -6,6 +6,7 @@ import {
   createDeferred,
   withinTest,
 } from "../../../test/helpers/promise.js";
+import { setRuntimeConfigSnapshot } from "../../config/config.js";
 import { compareSessionProviderReview } from "../../config/sessions/provider-review-store.js";
 import type { SessionProviderReview } from "../../config/sessions/provider-review.types.js";
 import {
@@ -65,6 +66,7 @@ describe("session suggestion visibility and role ceilings", () => {
     "rechecks %s after a delayed suggestion list reply",
     async (change) => {
       await withOpenClawTestState(profileState, async () => {
+        setRuntimeConfigSnapshot({});
         await upsertDefaultSuggestionSession();
         for (const authorId of ["alice", "bob"]) {
           await addSessionSuggestion(
@@ -87,6 +89,7 @@ describe("session suggestion visibility and role ceilings", () => {
           },
         });
         let committed = policy(change === "membership" ? "view" : "write");
+        setRuntimeConfigSnapshot(committed);
         if (change === "membership") {
           addSessionMember(
             { agentId: "main", sessionKey },
@@ -167,6 +170,7 @@ describe("session suggestion visibility and role ceilings", () => {
 
   it("retains committed suggestion visibility through a tentative role relaxation", async () => {
     await withOpenClawTestState(profileState, async (state) => {
+      setRuntimeConfigSnapshot({});
       const owner = ensureProfileForEmail("policy-suggestion-owner@example.test");
       const reader = ensureProfileForEmail("policy-suggestion-reader@example.test");
       const requestClient = client(reader.id, "Reader");
@@ -185,6 +189,7 @@ describe("session suggestion visibility and role ceilings", () => {
       const runtime = policy("write");
       let committed = policy("view");
       await state.writeConfig(runtime);
+      setRuntimeConfigSnapshot(runtime);
       await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
         {
@@ -247,6 +252,7 @@ describe("session suggestion visibility and role ceilings", () => {
 
   it("enforces view, suggest, and hidden role ceilings while honoring explicit membership", async () => {
     await withOpenClawTestState(profileState, async () => {
+      setRuntimeConfigSnapshot({});
       const ownerProfile = ensureProfileForEmail("suggestion-owner@example.test");
       const guestProfile = ensureProfileForEmail("suggestion-guest@example.test");
       await upsertSessionEntryCore(
@@ -274,33 +280,39 @@ describe("session suggestion visibility and role ceilings", () => {
         },
       });
 
+      const viewingConfig = roleConfig("view");
+      setRuntimeConfigSnapshot(viewingConfig);
       const denied = await call(
         "session.suggestions.add",
         { sessionKey, text: "view-only suggestion" },
         guest,
-        context(vi.fn(), roleConfig("view")),
+        context(vi.fn(), viewingConfig),
       );
       expect(denied.responses[0]?.[2]).toMatchObject({
         code: "FORBIDDEN",
         message: expect.stringContaining("viewing sessions only"),
       });
 
+      const hiddenConfig = roleConfig("none");
+      setRuntimeConfigSnapshot(hiddenConfig);
       const hidden = await call(
         "session.suggestions.list",
         { sessionKey },
         guest,
-        context(vi.fn(), roleConfig("none")),
+        context(vi.fn(), hiddenConfig),
       );
       expect(hidden.responses[0]?.[2]).toMatchObject({
         code: "INVALID_REQUEST",
         message: `unknown session: ${sessionKey}`,
       });
 
+      const suggestingConfig = roleConfig("suggest");
+      setRuntimeConfigSnapshot(suggestingConfig);
       const suggested = await call(
         "session.suggestions.add",
         { sessionKey, text: "permitted suggestion" },
         guest,
-        context(vi.fn(), roleConfig("suggest")),
+        context(vi.fn(), suggestingConfig),
       );
       expect(suggested.responses[0]?.[0]).toBe(true);
 
@@ -312,11 +324,12 @@ describe("session suggestion visibility and role ceilings", () => {
           expectedSessionId: "session-main",
         },
       );
+      setRuntimeConfigSnapshot(viewingConfig);
       const invited = await call(
         "session.suggestions.add",
         { sessionKey, text: "explicitly invited member" },
         guest,
-        context(vi.fn(), roleConfig("view")),
+        context(vi.fn(), viewingConfig),
       );
       expect(invited.responses[0]?.[0]).toBe(true);
     });
@@ -324,6 +337,7 @@ describe("session suggestion visibility and role ceilings", () => {
 
   it("hides draft suggestions from members while owner and admin can list", async () => {
     await withOpenClawTestState(profileState, async () => {
+      setRuntimeConfigSnapshot({});
       const draftKey = "agent:main:draft-suggestions";
       await upsertSessionEntryCore(
         { agentId: "main", sessionKey: draftKey },
@@ -406,6 +420,7 @@ describe("session suggestion visibility and role ceilings", () => {
 
   it("keeps incognito suggestion and typing surfaces admin-only", async () => {
     await withOpenClawTestState(profileState, async () => {
+      setRuntimeConfigSnapshot({});
       vi.useFakeTimers();
       const incognitoKey = "agent:main:dashboard:incognito-suggestions";
       await upsertSessionEntryCore(
@@ -524,6 +539,16 @@ describe("session suggestion store binding", () => {
           : state.statePath("original", "session.sqlite");
         const scope = { agentId, sessionKey: key, storePath: physicalStorePath, env: state.env };
         const sessionId = "session-store-binding";
+        const aliasStorePath = state.statePath("selected", "session.sqlite");
+        const cfg: ReturnType<GatewayRequestContext["getRuntimeConfig"]> = {
+          agents: {
+            ownership: "explicit",
+            defaults: { sessionStore: { agentId } },
+            entries: { ops: {} },
+          },
+          ...(!incognito ? { session: { store: aliasStorePath } } : {}),
+        };
+        setRuntimeConfigSnapshot(cfg);
         await upsertSessionEntryCore(scope, {
           sessionId,
           updatedAt: 1,
@@ -531,19 +556,10 @@ describe("session suggestion store binding", () => {
           createdActor: { type: "human", source: "profile", id: "owner" },
           visibility: "suggest",
         });
-        const cfg: ReturnType<GatewayRequestContext["getRuntimeConfig"]> = {
-          agents: {
-            ownership: "explicit",
-            defaults: { sessionStore: { agentId } },
-            entries: { ops: {} },
-          },
-        };
-        const aliasStorePath = state.statePath("selected", "session.sqlite");
         if (!incognito) {
           const nativeTarget = resolveSqliteTargetFromSessionStorePath(physicalStorePath, scope);
           await closeOpenClawAgentDatabaseByPathAsync(nativeTarget.path, nativeTarget.agentId);
           symlinkSync(state.statePath("original"), state.statePath("selected"), "junction");
-          cfg.session = { store: aliasStorePath };
           // Gateway startup registers its writable store before capturing request authority.
           const aliasTarget = resolveSqliteTargetFromSessionStorePath(aliasStorePath, scope);
           if (!aliasTarget.agentId) {
@@ -640,6 +656,7 @@ describe("suggestions queued behind provider review", () => {
     "preserves the lifecycle boundary for %s without replacing the session",
     async (action, { signal }) => {
       await withOpenClawTestState(profileState, async (state) => {
+        setRuntimeConfigSnapshot({});
         const metadataWrites =
           await import("../../config/sessions/session-metadata-write.async.js");
         const scope = { agentId: "main", sessionKey, env: state.env };

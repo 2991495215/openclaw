@@ -490,9 +490,7 @@ export async function listUserProfileAuthLinksAsync(
     { type: "userModelAccounts.links", profileId },
     { context, current: true, preferIndependentWarmRead: true },
   );
-  if (reply && (!reply.ok || reply.type !== "userModelAccounts.links")) {
-    throw new Error(reply.ok ? "Unexpected model account links reply" : reply.message);
-  }
+  context.admission.assertCurrent();
   const links = reply?.links ?? [];
   userProfileAuthLinks.set(key, { links, isCurrent });
   pruneMapToMaxSize(userProfileAuthLinks, 512);

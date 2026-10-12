@@ -509,6 +509,7 @@ it("keeps copied state directories self-contained for combined gateway reads", a
 
   await withEnvAsync({ OPENCLAW_STATE_DIR: canonicalSourceStateDir }, async () => {
     const env = { ...process.env };
+    setRuntimeConfigSnapshot(cfg);
     await replaceSessionEntry(
       { agentId: "main", env, sessionKey },
       { sessionId: "copied-session", updatedAt: 1 },

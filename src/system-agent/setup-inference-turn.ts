@@ -22,8 +22,8 @@ import { loadInstalledPluginIndexInstallRecords } from "../plugins/installed-plu
 import { loadInstalledPluginIndex } from "../plugins/installed-plugin-index.js";
 import { createPluginCache, withPluginCache, type PluginCache } from "../plugins/plugin-cache.js";
 import {
-  resolvePluginMetadataSnapshot,
   resolvePluginMetadataSnapshotAsync,
+  type resolvePluginMetadataSnapshot,
 } from "../plugins/plugin-metadata-snapshot.js";
 import { getPluginRegistryForContext } from "../plugins/runtime/gateway-request-scope.js";
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
@@ -257,7 +257,9 @@ export async function loadSetupInferencePluginGeneration(params: {
   workspaceDir: string;
   selection: AgentHarnessPluginSelection;
   pendingPluginInstalls?: Record<string, PluginInstallRecord>;
-  resolvePluginMetadataSnapshot?: typeof resolvePluginMetadataSnapshot;
+  resolvePluginMetadataSnapshot?:
+    | typeof resolvePluginMetadataSnapshot
+    | typeof resolvePluginMetadataSnapshotAsync;
 }) {
   // Revalidation must select the probed artifacts: switching a built Gateway
   // owner to source files would report drift even when neither tree changed.

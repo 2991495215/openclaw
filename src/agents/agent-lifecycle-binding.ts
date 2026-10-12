@@ -121,12 +121,6 @@ async function readLifecycleFactsInWorker(
     { context, current: true },
   );
   context.admission.assertCurrent();
-  if (reply && !reply.ok) {
-    throw new Error(reply.message);
-  }
-  if (reply && reply.type !== "agentLifecycle.read") {
-    throw new Error("Unexpected agent lifecycle result");
-  }
   const observed = store.agents.get(agentId);
   // A committed receipt supersedes an in-flight read, including an unknown outcome.
   if (observed === pending) {

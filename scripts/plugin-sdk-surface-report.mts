@@ -150,6 +150,9 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   "approval-handler-runtime": 1,
   "approval-reply-runtime": 0,
   "config-contracts": 0,
+  // +1: getRuntimeConfig keeps its shipped cold-load contract while callers prepare
+  // with captureRuntimeConfigAsyncReader and consume readRuntimeConfig.
+  "runtime-config-snapshot": 1,
   "inbound-reply-dispatch": 21,
   "interactive-runtime": 11,
   "ssrf-policy": 1,
@@ -162,11 +165,13 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   // +2: deprecated media projection type and builder.
   "reply-payload": 2,
   // +7: released auth-store and TTS methods retain synchronous compatibility.
-  // +1: auth-profile-sync-operations retains saveAuthProfileStore during async migration.
-  // +2: model-ref-sync-discovery retains parseModelRef and resolveModelRefFromString.
+  // +3: loadAuthProfileStoreForSecretsRuntime -> loadAuthProfileStoreForRuntimeAsync
+  // with readOnly:true and allowKeychainPrompt:false; saveAuthProfileStore ->
+  // provider-auth.updateAuthProfileStoreWithLock. resolveAuthStorePathForDisplay
+  // stays compatible; its resolveAuthStorePathForDisplayAsync replacement is core-internal.
   // +1: released snapshot publication remains during its approved async replacement.
-  "agent-runtime": 15,
-  // model-session-sync-auth-profile retains the synchronous model override helper.
+  "agent-runtime": 17,
+  // +2: deprecated model-reference parsers; model-session retains its sync override.
   "model-session-runtime": 1,
   "memory-host-core": 2,
   // +4: session-write lease no-op compatibility stubs through the 2026.10 train.
@@ -189,12 +194,14 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   // Released synchronous allowlist compatibility during the approved worker-read migration.
   "channel-pairing": 1,
   "channel-policy": 7,
-  // Released synchronous conversation binding APIs remain until the next Plugin SDK major.
+  // Released synchronous conversation binding APIs remain until removal after stable deprecation.
   "conversation-binding-inspection-runtime": 1,
   "conversation-runtime": 3,
   "channel-send-result": 1,
   "reply-runtime": 1,
   "security-runtime": 1,
+  // Released sanitizer remains native while plugins adopt sanitizeEnvVarsAsync.
+  sandbox: 1,
   // +2: approved released upstream-link writes retained during worker migration.
   "session-catalog": 2,
   // +2: released synchronous transcript event/stat reads during the worker cutover.
@@ -262,7 +269,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: resolvePluginProvidersAsync and resolveMemorySearchConfigAsync on existing public subpaths.
       // +10: shared database-engine contracts and operations after the SQLite export cutover.
       // +1: replaceRuntimeAuthProfileStoreSnapshotsAsync replaces synchronous snapshot publication.
-      3722,
+      // +2: prepared runtime config readers; +1: sanitizeEnvVarsAsync.
+      3725,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -294,14 +302,15 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: the same provider and memory async discovery replacements.
       // +5: shared database-engine host and worker operations.
       // +1: the same async auth-profile snapshot publication replacement.
-      2174,
+      // +2: prepared runtime config readers; +1: sanitizeEnvVarsAsync.
+      2177,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_DEPRECATED_EXPORTS",
-      // Remove deprecated sync channel envelope helpers and their compat records at the next Plugin SDK major.
-      // +2: approved synchronous upstream-link write compatibility until the next Plugin SDK major.
-      // +1: synchronous session entry getter remains until the next Plugin SDK major.
+      // Remove deprecated sync channel envelope helpers and their compat records after stable deprecation.
+      // +2: approved synchronous upstream-link write compatibility until removal after stable deprecation.
+      // +1: synchronous session entry getter remains until removal after stable deprecation.
       // +6: released session callbacks and provider replay contracts during async migration.
       // +4: released synchronous conversation binding contracts during V2 migration.
       // +3: released synchronous skill-command list helpers during async migration.
@@ -311,10 +320,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // and applyModelOverrideWithAuthProfileCompatibility retain their shipped contracts.
       // +1: createSessionHeaderLink from shipped 2026.10.1 until plugin-sdk-session-header-link expires.
       // +2: model-ref-sync-discovery retains parseModelRef and resolveModelRefFromString.
-      // +2: retained synchronous transcript event/stat reads until the next SDK major.
+      // +2: retained synchronous transcript event/stat reads until removal after stable deprecation.
       // +2: their retained, prepared-only synchronous counterparts.
       // +1: released snapshot publication remains during its approved async replacement.
-      195,
+      // +3: runtime config, secret-read and display compatibility; +1: sandbox sanitizer.
+      199,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

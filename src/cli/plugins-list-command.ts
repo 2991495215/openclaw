@@ -1,5 +1,5 @@
 // `openclaw plugins list`: builds registry reports and defers terminal-only formatting modules.
-import { getRuntimeConfig } from "../config/config.js";
+import { captureRuntimeConfigAsyncReader } from "../config/config.js";
 import type { PluginRecord } from "../plugins/registry.js";
 import { defaultRuntime, writeRuntimeJson, type RuntimeEnv } from "../runtime.js";
 import { quietPluginJsonLogger } from "./plugins-json-logger.js";
@@ -28,7 +28,7 @@ export async function runPluginsListCommand(
     ]);
   await preparePluginMetadataMachineStateAsync({});
   // The inventory projector owns plugin metadata validation from the installed index.
-  const cfg = getRuntimeConfig({ skipPluginValidation: true });
+  const cfg = await captureRuntimeConfigAsyncReader({ skipPluginValidation: true })();
   const report = buildPluginRegistrySnapshotReport({
     config: cfg,
     ...(opts.json ? { logger: quietPluginJsonLogger } : {}),

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { rootDir } from "./agent-runner.misc.runreplyagent.test-support.js";
 import {
   createTestQueueSettings,
@@ -91,6 +92,9 @@ export function createBaseRun(options: BaseRunOptions = {}) {
     sessionCtx,
     resolvedQueue,
     followupRun,
-    run: () => runTestReplyAgent(replyParams),
+    run: () => {
+      setRuntimeConfigSnapshot(followupRun.run.config, followupRun.run.config);
+      return runTestReplyAgent(replyParams);
+    },
   };
 }

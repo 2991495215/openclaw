@@ -37,7 +37,8 @@ export function prepareLegacyAuthProfileSave(store: AuthProfileStore): void {
   warnPluginSdkDeprecation({
     family: "auth-profiles",
     method: "saveAuthProfileStore",
-    replacement: "saveAuthProfileStoreAsync",
+    replacement:
+      "saveAuthProfileStoreAsync for replacement or updateAuthProfileStoreWithLock from openclaw/plugin-sdk/provider-auth for partial updates",
   });
   validateAuthProfileStoreSecrets(store);
 }
