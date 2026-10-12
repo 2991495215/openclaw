@@ -44,6 +44,7 @@ vi.mock("../../state/user-profile-list.js", () => ({
     }),
     release: () => {},
   }),
+  hasMultipleSessionSharingIdentities: () => state.multipleProfiles,
   hasMultipleResidentSessionSharingIdentities: () => state.multipleProfiles,
   readResidentUserProfileId: (id: string) => (id === "alice-alias" ? state.canonical : id),
   readResidentUserProfileIdentity: (id: string) => ({ profileId: id, role: state.role }),
