@@ -633,6 +633,8 @@ jobs:
               src/gateway/server-methods/sessions-create-thinking-claim.test.ts
               extensions/googlechat/src/googlechat-session-target-case.transport.test.ts
               src/auto-reply/reply/restart-recovery-claim.test.ts
+              extensions/codex/src/command-rpc.test.ts
+              extensions/codex/src/command-plugins-runtime.test.ts
             )
           fi
           pnpm test "${files[@]}" --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/fixture-regressions.log
