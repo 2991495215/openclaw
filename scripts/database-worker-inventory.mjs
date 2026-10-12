@@ -2141,6 +2141,20 @@ const reviewedOperations = new Map([
     ],
   ],
   [
+    "src/state/github-publication-session-lifecycles.ts",
+    [
+      {
+        tier: "W",
+        operations: [
+          "insertGitHubPublicationSessionLifecycle",
+          "readGitHubPublicationSessionLifecycle",
+        ],
+        evidence:
+          "Native insert/read kernels run only in gateway/github-publication-store.worker.ts, gateway/github-personal-publication-store.worker.ts, state/github-publication.worker.ts and state/openclaw-state-read.worker.ts. Gateway callers use readGitHubPublicationSessionLifecycleInWorker; remaining native references are test fixtures.",
+      },
+    ],
+  ],
+  [
     "src/state/openclaw-agent-canonical-validation-receipt.ts",
     [
       {

@@ -27,9 +27,10 @@ export function loadCombinedSessionStoreForGateway(
   opts: { agentId?: string; configuredAgentsOnly?: boolean } = {},
 ) {
   warnPluginSdkDeprecation({
-    family: "session-transcript-hit",
+    family: "session-transcript-store",
     method: "loadCombinedSessionStoreForGateway",
     replacement: "loadCombinedSessionStoreForGatewayAsync",
+    compatibility: "The synchronous loader retains its complete session-entry return value.",
   });
   // This published view has no projection option; installed plugins receive complete entries.
   const result = loadGatewaySessionStore(cfg, {

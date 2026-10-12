@@ -43,8 +43,8 @@ export function insertGitHubPublicationSessionLifecycle(
 
 /**
  * A missing binding is unproven; a retained NULL records an originally absent revision.
- * @deprecated Gateway reads use readGitHubPublicationSessionLifecycleInWorker;
- * native access remains for worker kernels and released synchronous SDK adapters.
+ * Worker kernels and test fixtures call this native reader; Gateway reads use
+ * readGitHubPublicationSessionLifecycleInWorker.
  */
 export function readGitHubPublicationSessionLifecycle(
   input: PublicationIdentity,
