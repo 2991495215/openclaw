@@ -295,8 +295,9 @@ describe("provider-runtime", () => {
     }));
     vi.doMock("./providers.runtime.js", async (importOriginal) => {
       const actual = await importOriginal<typeof import("./providers.runtime.js")>();
+      const { nativePluginBindings } = await import("./loader-runtime-load.js");
       const resolveRegistry = (params: Parameters<ResolvePluginProviders>[0]) => {
-        const loaded = actual.resolvePluginProviderRegistryCore({
+        const loaded = nativePluginBindings.providerRegistry.resolvePluginProviderRegistryCore({
           ...params,
           registryScope: "loaded",
         });
@@ -340,7 +341,11 @@ describe("provider-runtime", () => {
     // mock-isolation: Exercise real hook logic against fixture registries, without native bindings.
     vi.doMock("./provider-hook-runtime.js", async () => {
       const { createProviderHookRuntime } = await import("./provider-hook-runtime-core.js");
-      const providers = await import("./providers.runtime.js");
+      const providers = await vi.importMock<
+        typeof import("./providers.runtime.js") & {
+          resolvePluginProviderRegistryCore: typeof import("./loader-runtime-load.js").nativePluginBindings.providerRegistry.resolvePluginProviderRegistryCore;
+        }
+      >("./providers.runtime.js");
       return createProviderHookRuntime({
         ...providers,
         resolvePluginProviderRegistryCoreAsync: async (params) =>

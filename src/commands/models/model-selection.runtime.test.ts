@@ -10,13 +10,13 @@ import {
 } from "../../config/config.js";
 import { DEFAULT_MODEL_ALIASES } from "../../config/defaults.js";
 import { ConfigMutationConflictError } from "../../config/mutation-conflict.js";
+import { nativePluginBindings } from "../../plugins/loader-runtime-load.js";
 import {
   loadOpenClawPluginsForTest,
   resetPluginLoaderTestStateForTest,
 } from "../../plugins/loader.test-fixtures.js";
 import { loadManifestMetadataSnapshot } from "../../plugins/manifest-contract-eligibility.js";
 import { clearPluginMetadataLifecycleCaches } from "../../plugins/plugin-metadata-lifecycle.js";
-import { resolvePluginProviderRegistryCore } from "../../plugins/providers.runtime.js";
 import { withPluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { withEnvAsync } from "../../test-utils/env.js";
@@ -480,7 +480,7 @@ describe("model command provider preparation", () => {
             workspaceDir: root,
           });
           expect(
-            resolvePluginProviderRegistryCore({
+            nativePluginBindings.providerRegistry.resolvePluginProviderRegistryCore({
               config,
               workspaceDir: root,
               providerRefs: ["compat"],

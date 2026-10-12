@@ -454,7 +454,7 @@ export function preparePluginCapabilityProviderLookup<K extends CapabilityProvid
           }
         : undefined;
     });
-  const selectProvider = (entries: PluginRegistry[K]) => {
+  const selectProvider = (entries: PluginRegistry[K]): CapabilityProviderFor<K> | undefined => {
     const provider = findCapabilityProviderEntry<PluginRegistry[K][number]>(
       entries,
       params.providerId,
