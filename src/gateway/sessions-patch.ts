@@ -14,7 +14,7 @@ import {
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
 } from "../agents/agent-scope.js";
-import { prepareAuthProfileProvider } from "../agents/auth-profiles/store.js";
+import { prepareAuthProfileProvider } from "../agents/auth-profiles.runtime.js";
 import {
   requiresAgentHarnessPluginSelection,
   resolveAgentHarnessOwnerPluginIds,

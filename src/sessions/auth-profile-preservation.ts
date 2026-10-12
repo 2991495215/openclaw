@@ -2,7 +2,7 @@ import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
-import { prepareAuthProfileProvider } from "../agents/auth-profiles/store.js";
+import { prepareAuthProfileProvider } from "../agents/auth-profiles.runtime.js";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import { resolveModelProviderAuthConfig } from "../agents/model-auth-provider-route.js";
 import { resolveProviderIdForAuth } from "../agents/provider-auth-aliases.js";

@@ -1,7 +1,7 @@
 import { stableStringify } from "@openclaw/normalization-core/stable-stringify";
 import { type FastMode, normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { resolveAgentDir } from "../agents/agent-scope.js";
-import { prepareAuthProfileProvider } from "../agents/auth-profiles/store.js";
+import { prepareAuthProfileProvider } from "../agents/auth-profiles.runtime.js";
 import type { ModelCatalogSnapshot } from "../agents/model-catalog.types.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
