@@ -2281,6 +2281,7 @@ const reviewedOperations = new Map([
   ],
 ]);
 const workerModules = new Set([
+  "src/claws/provenance-runtime-read.kernel.ts", // Only openclaw-state-worker-runtime.ts reads consent rows; host imports are types.
   "src/config/sessions/session-accessor.sqlite-worktree-owner.ts", // Only session-entry-read.worker.ts reads the worktree projection after owner-protection's worker cutover.
   "src/gateway/worker-environments/placement-move-intent.ts", // Move reads and mutations run only in placement lifecycle, turn-claim, and projection workers.
   "src/state/user-background.store.ts", // Background read/write workers; preference validation and profile merge/link/GitHub-sync also run in shared-state workers.

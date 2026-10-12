@@ -1,30 +1,28 @@
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
-import * as snapshots from "../infra/sqlite-snapshot-source.js";
 import {
   closeOpenClawStateDatabaseForTest,
   openOpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import {
-  initializeCachedClawInstallSchemaVersions,
+  prepareClawInstallSchemaVersions,
   readCachedClawInstallSchemaVersions,
 } from "./provenance-runtime-read.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 afterEach(() => {
-  vi.restoreAllMocks();
   closeOpenClawStateDatabaseForTest();
 });
 
 describe("Claw runtime provenance cache", () => {
-  it("treats an absent first-run state database as empty ownership", () => {
+  it("treats an absent first-run state database as empty ownership", async () => {
     const root = tempDirs.make("openclaw-claw-runtime-provenance-first-run-");
     const options = { env: { OPENCLAW_STATE_DIR: root } };
 
-    initializeCachedClawInstallSchemaVersions(options);
+    (await prepareClawInstallSchemaVersions(options)).publish();
 
     expect(readCachedClawInstallSchemaVersions(options)).toMatchObject({
       kind: "ready",
@@ -32,12 +30,12 @@ describe("Claw runtime provenance cache", () => {
     });
   });
 
-  it("refreshes install ownership written by another process", () => {
+  it("reloads persisted install ownership when preparing a new snapshot", async () => {
     const root = tempDirs.make("openclaw-claw-runtime-provenance-");
     const options = { env: { OPENCLAW_STATE_DIR: root } };
     const database = openOpenClawStateDatabase(options);
 
-    initializeCachedClawInstallSchemaVersions(options);
+    (await prepareClawInstallSchemaVersions(options)).publish();
     expect(readCachedClawInstallSchemaVersions(options)).toMatchObject({
       kind: "ready",
       schemaVersions: new Map(),
@@ -79,7 +77,7 @@ describe("Claw runtime provenance cache", () => {
       external.close();
     }
 
-    initializeCachedClawInstallSchemaVersions(options);
+    (await prepareClawInstallSchemaVersions(options)).publish();
     const refreshed = readCachedClawInstallSchemaVersions(options);
     expect(refreshed.kind).toBe("ready");
     if (refreshed.kind !== "ready") {
@@ -93,7 +91,7 @@ describe("Claw runtime provenance cache", () => {
 
     closeOpenClawStateDatabaseForTest();
     rmSync(database.path);
-    initializeCachedClawInstallSchemaVersions(options);
+    (await prepareClawInstallSchemaVersions(options)).publish();
     expect(readCachedClawInstallSchemaVersions(options)).toMatchObject({
       kind: "state-error",
       knownAgentIds: new Set(["worker"]),
@@ -101,15 +99,12 @@ describe("Claw runtime provenance cache", () => {
     });
   });
 
-  it("does not create WAL/SHM sidecar files when reading schema versions", () => {
+  it("does not create WAL/SHM sidecar files when reading schema versions", async () => {
     const root = tempDirs.make("openclaw-claw-runtime-provenance-sidecar-");
     const options = { env: { OPENCLAW_STATE_DIR: root } };
     const database = openOpenClawStateDatabase(options);
     closeOpenClawStateDatabaseForTest();
-    const prepare = vi.spyOn(snapshots, "prepareSqliteReadOnlyLocationSync");
-
-    initializeCachedClawInstallSchemaVersions(options);
-    expect(prepare).toHaveBeenCalledTimes(1);
+    (await prepareClawInstallSchemaVersions(options)).publish();
     expect(readCachedClawInstallSchemaVersions(options)).toMatchObject({
       kind: "ready",
       schemaVersions: new Map(),

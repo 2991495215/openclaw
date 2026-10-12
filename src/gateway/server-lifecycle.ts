@@ -7,6 +7,7 @@ import { prepareWorktreeRunEndClose } from "../agents/worktrees/run-end-lifecycl
 import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.js";
 import { listLoadedChannelPluginsForRegistry } from "../channels/plugins/registry-loaded.js";
 import { getRuntimeConfig } from "../config/io.js";
+import { resolveCronJobsStorePathFromConfigAsync } from "../cron/store/paths.js";
 import { markGatewaySuspendExiting } from "../infra/gateway-suspend-coordinator.js";
 import { commitPresence, upsertPresence } from "../infra/system-presence.js";
 import { stopGatewayDiagnosticHeartbeat } from "../logging/diagnostic.js";
@@ -110,7 +111,10 @@ export async function prepareGatewayLifecycle(params: {
   const nodeDesktopServiceRef: {
     current?: import("./desktop/node-source.js").NodeDesktopService;
   } = {};
-  const { createGatewayNodeSessionRuntime } = await import("./server-node-session-runtime.js");
+  const [{ createGatewayNodeSessionRuntime }, cronStorePath] = await Promise.all([
+    import("./server-node-session-runtime.js"),
+    resolveCronJobsStorePathFromConfigAsync(cfgAtStart),
+  ]);
   const { nodeWorkerSupervisorTransport, ...nodeRuntime } = createGatewayNodeSessionRuntime({
     broadcast,
     sessionEventSubscribers,
@@ -225,6 +229,7 @@ export async function prepareGatewayLifecycle(params: {
     hookClientIpConfig: initialHookClientIpConfig,
     cronState: createLazyGatewayCronState({
       scheduler: runtime.scheduler,
+      storePath: cronStorePath,
       cfg: cfgAtStart,
       deps,
       broadcast,

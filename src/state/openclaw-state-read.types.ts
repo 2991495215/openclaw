@@ -288,6 +288,7 @@ export type OpenClawStateReadCommand =
   | { type: "worktrees.list" }
   | { type: "workerPlacements.changeSnapshot"; profileIds?: string[] }
   | { type: "nodeHost.config" }
+  | { type: "cron.store" }
   | { type: "hooks.internal.installs" }
   | { type: "tts.prefsPath" }
   | { type: "voicewake.triggers" }
@@ -581,6 +582,7 @@ export type OpenClawStateReadResult =
   | {
       type:
         | "nodeHost.config"
+        | "cron.store"
         | "hooks.internal.installs"
         | "operator.channelPolicy"
         | "tts.prefsPath"

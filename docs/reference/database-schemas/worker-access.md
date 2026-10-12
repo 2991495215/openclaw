@@ -70,6 +70,9 @@ auth-store owner through its worker before taking the synchronous fast path.
 Placement startup reads inherited claims through the existing placement worker
 before constructing its recovery-only claim set. Remote catalog capture uses its
 read worker, and startup sidecars share one prepared internal-hook selection.
+Cron startup and reload resolve their stored partition through that reader once;
+the lazy proxy passes the selected path to the concrete scheduler without a
+second machine-state query.
 These changes preserve recovery, consent, stored bytes, schemas, and update
 behavior; admission and migration remain with their existing owners.
 
@@ -1797,8 +1800,8 @@ caller, or channel authority with a captured permission. Released opaque
 `GatewayRequestHandlerOptions.sessionMutationCommitGuard` callbacks now run at
 the worker precommit boundary and can reject the write. They retain their signature,
 but cannot inspect the worker's tentative rows or depend on the former host
-transaction view. Approval SQL kernels run only in workers; orphan cleanup and
-terminal pruning remain synchronous boot-admission exceptions. Existing other-owner
+transaction view. Approval SQL kernels run only in workers; startup awaits their
+batched orphan cleanup and terminal pruning before accepting requests. Existing other-owner
 session authority reads remain separate migration debt. Schemas, stored bytes,
 retention, durability, and update behavior are unchanged.
 
@@ -4288,16 +4291,14 @@ migration import/checkpoint recovery retain their native audit-store operations.
 These shared kernels remain in the conservative static inventory even when
 their bundled asynchronous callers execute the same operations in workers.
 
-Claw consent provenance retains a synchronous final-authority guard before
-runtime-config publication, including secrets reload and late preparer
-registration. Native shared-state open/reopen also refreshes those consent facts.
-The released synchronous snapshot setter must reject unavailable, mismatched,
-or legacy provenance before installing tool consent. Raw SDK writers
-can change the database without complete revocation publication,
-so previously prepared facts cannot replace this final read. Prepared tool
-construction already consumes worker facts within its captured scope. Retiring
-the native guard requires the next Plugin SDK major's synchronous-publication
-and raw-writer cutover, together with complete owner revocation publication. It remains live runtime debt, not a cold-only or worker-only site.
+Claw consent provenance loads through the shared-state read worker before awaited
+runtime-config publication, including startup and secrets reload. Standalone agent
+commands prepare the same facts alongside their secrets snapshot before activation.
+Late preparer registration and synchronous snapshot setters only bind candidates to the owner's
+cached facts, failing closed when those facts are unavailable, mismatched, or
+legacy. Committed Claw writes and database lifecycle events update or invalidate
+those facts. Prepared tool construction consumes the same facts within its
+captured scope; opening another handle does not refresh them.
 
 Reply dispatch prepares the machine-owned TTS preference path through the existing
 shared-state reader and carries it through eligibility checks, delivery callbacks,

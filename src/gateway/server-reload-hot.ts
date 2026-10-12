@@ -14,6 +14,7 @@ import { resolveDefaultAgentWorkspaceDir } from "../agents/workspace-default.js"
 import { isRestartEnabled } from "../config/commands.flags.js";
 import { getRuntimeConfig } from "../config/io.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { resolveCronJobsStorePathFromConfigAsync } from "../cron/store/paths.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { resetDirectoryCache } from "../infra/outbound/target-resolver.js";
 import { setGatewayRestartPolicy } from "../infra/restart.js";
@@ -145,11 +146,15 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
       | { previous: GatewayCronExitWatcherHandoff; next: GatewayCronExitWatcherHandoff }
       | undefined;
     if (plan.restartCron) {
-      const { buildGatewayCronService } = await import("./server-cron.js");
+      const [{ buildGatewayCronService }, storePath] = await Promise.all([
+        import("./server-cron.js"),
+        resolveCronJobsStorePathFromConfigAsync(nextConfig, publication?.runtimeEnv ?? process.env),
+      ]);
       assertCronReloadCurrent();
       nextState.cronState = buildGatewayCronService({
         scheduler: params.scheduler,
         cfg: nextConfig,
+        storePath,
         deps: params.deps,
         broadcast: params.broadcast,
         env: publication?.runtimeEnv ?? process.env,
