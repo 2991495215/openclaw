@@ -9,7 +9,7 @@ import {
   attachSessionTranscriptRunId,
   resolveTerminalAssistantTranscriptRunId,
 } from "../../sessions/transcript-events.js";
-import { captureRuntimeConfigAsyncReader } from "../io.js";
+import { captureRuntimeConfigAsyncReader, getRuntimeConfigSnapshot } from "../io.js";
 import { tryResolveLegacyCompatibilityAgentId } from "../legacy.default-agent-owner.js";
 import type { OpenClawConfig } from "../types.openclaw.js";
 import { resolveSessionStorePathCore } from "./paths.js";
@@ -425,7 +425,8 @@ async function prepareTranscriptTurnTarget(
   if (!sessionKey || !scope.sessionId) {
     throw new Error("Cannot persist a transcript turn without a session key and session id");
   }
-  const effectiveConfig = config ?? (await captureRuntimeConfigAsyncReader()());
+  const effectiveConfig =
+    config ?? getRuntimeConfigSnapshot() ?? (await captureRuntimeConfigAsyncReader()());
   const agentId = resolveTranscriptTurnAgentId({
     config: effectiveConfig,
     scopeAgentId: scope.agentId,

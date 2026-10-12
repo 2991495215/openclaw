@@ -7,11 +7,3 @@ export function expectCronJobIdFromResponse(response: { ok?: unknown; payload?: 
   expect(id.length > 0).toBe(true);
   return id;
 }
-
-export function expectEnqueuedRunPayload(payload: unknown): string {
-  const record = payload as { ok?: unknown; enqueued?: unknown; runId?: unknown } | null;
-  expect(record?.ok).toBe(true);
-  expect(record?.enqueued).toBe(true);
-  expect(typeof record?.runId).toBe("string");
-  return record?.runId as string;
-}

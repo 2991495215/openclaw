@@ -181,27 +181,44 @@ export async function resolveRemoteEmbeddingBearerClient(params: {
   const headers = Object.fromEntries(
     new Map(entries.map((entry) => [entry[0].toLowerCase(), entry])).values(),
   );
+  return {
+    baseUrl,
+    headers,
+    ssrfPolicy: await resolveEmbeddingProviderSsrFPolicy({
+      config: params.options.config,
+      provider: params.provider,
+      api: providerConfig?.api ?? "openai-completions",
+      baseUrl,
+      allowPrivateNetwork: providerConfig?.request?.allowPrivateNetwork,
+    }),
+  };
+}
+
+/** Embedding adapters share inference's endpoint classification and explicit network policy. */
+export async function resolveEmbeddingProviderSsrFPolicy(params: {
+  config: EmbeddingProviderOptions["config"];
+  provider: string;
+  api?: string;
+  baseUrl: string;
+  allowPrivateNetwork?: boolean;
+}): Promise<SsrFPolicy | undefined> {
   const metadataSnapshot = await resolvePluginMetadataSnapshotAsync({
-    config: params.options.config,
+    config: params.config,
     env: process.env,
     allowWorkspaceScopedCurrent: true,
   });
   const policy = resolveProviderRequestPolicyConfig({
     providerMetadataOwners: metadataSnapshot.owners,
     provider: params.provider,
-    api: providerConfig?.api ?? "openai-completions",
-    baseUrl,
+    api: params.api,
+    baseUrl: params.baseUrl,
     capability: "other",
-    request: { allowPrivateNetwork: providerConfig?.request?.allowPrivateNetwork },
+    request: { allowPrivateNetwork: params.allowPrivateNetwork },
   });
-  return {
-    baseUrl,
-    headers,
-    ssrfPolicy: resolveProviderTransportSsrFPolicy({
-      baseUrl,
-      url: baseUrl,
-      allowPrivateNetwork: policy.allowPrivateNetwork,
-      trustConfiguredBaseUrlOrigin: policy.trustConfiguredBaseUrlOrigin,
-    }),
-  };
+  return resolveProviderTransportSsrFPolicy({
+    baseUrl: params.baseUrl,
+    url: params.baseUrl,
+    allowPrivateNetwork: policy.allowPrivateNetwork,
+    trustConfiguredBaseUrlOrigin: policy.trustConfiguredBaseUrlOrigin,
+  });
 }

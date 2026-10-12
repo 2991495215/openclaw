@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { expect, it, vi } from "vitest";
+import { formatErrorMessageWithCode } from "../infra/errors.js";
 import { createDeferredCore } from "../shared/deferred.js";
 
 type ConfigState = { hash: string; path: string; config: Record<string, unknown> };
@@ -69,12 +70,24 @@ export function registerAgentConfigMutationTests({
   it.each([false, true])(
     "agents.delete preserves newer writes across a large shrink (authority revoked: %s)",
     async (revoke) => {
+      const patchConfig = async (phase: string, params: unknown) => {
+        try {
+          return await rpc("config.patch", params);
+        } catch (error) {
+          console.error("[config-agent-mutation-rpc]", {
+            phase,
+            authorityRevoked: revoke,
+            error: formatErrorMessageWithCode(error),
+          });
+          throw error;
+        }
+      };
       const configFactory = await import("../config/io.factory.js");
       const { readAgentDeletionJournal } = await import("../state/agent-deletion-journal.js");
       const { removeAgentDeletionJournal } =
         await import("../test-utils/agent-deletion-journal.js");
       const original = await getCurrentConfigObject();
-      const seed = await rpc("config.patch", {
+      const seed = await patchConfig("seed logging", {
         raw: JSON.stringify({ logging: { level: "warn" } }),
         baseHash: original.hash,
       });
@@ -84,7 +97,7 @@ export function registerAgentConfigMutationTests({
         expect(created.ok, created.error?.message).toBe(true);
         // Config RPC settlement publishes the new roster before the next agent RPC.
         const current = await getCurrentConfigObject();
-        const applied = await rpc("config.patch", {
+        const applied = await patchConfig(`publish ${name} roster`, {
           baseHash: current.hash,
           raw: JSON.stringify({ agents: { entries: { main: { name } } } }),
         });
@@ -151,7 +164,7 @@ export function registerAgentConfigMutationTests({
               },
             },
           });
-          const stale = await rpc("config.patch", {
+          const stale = await patchConfig("reject stale revision after deletion", {
             baseHash: before.hash,
             raw: JSON.stringify({ logging: { level: "debug" } }),
           });

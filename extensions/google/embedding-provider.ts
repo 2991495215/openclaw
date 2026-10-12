@@ -1,8 +1,8 @@
 import type { EmbeddingInput } from "openclaw/plugin-sdk/embedding-providers";
 import {
-  buildRemoteBaseUrlPolicy,
   debugEmbeddingsLog,
   embeddingProviderOwnsDestination,
+  resolveEmbeddingProviderSsrFPolicy,
   formatEmbeddingTaskText,
   normalizeEmbeddingModelWithPrefixes,
   resolveEmbeddingEndpointUrl,
@@ -437,7 +437,13 @@ async function resolveGeminiEmbeddingClient(
     );
   }
 
-  const ssrfPolicy = buildRemoteBaseUrlPolicy(baseUrl);
+  const ssrfPolicy = await resolveEmbeddingProviderSsrFPolicy({
+    config: options.config,
+    provider: "google",
+    api: providerConfig?.api ?? "google-generative-ai",
+    baseUrl,
+    allowPrivateNetwork: providerConfig?.request?.allowPrivateNetwork,
+  });
   const headerOverrides: Record<string, string> = {};
   for (const [path, source] of [
     [
