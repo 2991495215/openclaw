@@ -51,7 +51,7 @@ export default definePluginEntry({
           signal: scheduler ? AbortSignal.any([signal, scheduler.signal]) : signal,
         });
         api.logger.info(
-          `advisor: review usage for session ${sessionKey}: input=${result.usage?.inputTokens ?? "unknown"} cacheRead=${result.usage?.cacheReadTokens ?? "unknown"} output=${result.usage?.outputTokens ?? "unknown"}`,
+          `advisor: review usage for session ${sessionKey}: input=${result.usage?.inputTokens ?? "unknown"} cacheRead=${result.usage?.cacheReadTokens ?? "unknown"} cacheWrite=${result.usage?.cacheWriteTokens ?? "unknown"} output=${result.usage?.outputTokens ?? "unknown"}`,
         );
         return parseReviewOutput(result.text);
       },
