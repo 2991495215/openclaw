@@ -97,9 +97,15 @@ keeps the parent's cache routing but has its own thread, session, and model
 authority for the background request's lifetime. Start a normal parent turn in
 the current runtime before requesting a fork. The native hook relay must be
 enabled and available; otherwise the request fails closed.
-The built-in runtime uses simplified context
-without tools, so it does not promise Codex's prompt-cache parity. CLI backends
-must explicitly declare tool-free side-question support.
+The built-in `openclaw` runtime replays the parent's recorded provider request
+with one appended user message, preserving its system prompt, tools, reasoning
+settings, and prompt-cache affinity for OpenAI and Anthropic. Tool calls are
+denied without execution, with at most two additional inference attempts.
+Snapshots stay in bounded process memory until expiry or session cleanup.
+After a restart or without a prepared parent turn, the request fails closed:
+"Cache-parity session fork requires a parent turn prepared by this OpenClaw
+runtime. Send a normal message first." Ordinary `/btw` keeps its lightweight,
+tool-free context. CLI backends must explicitly declare tool-free side-question support.
 
 Conversation access is required through
 `plugins.entries.<id>.hooks.allowConversationAccess` (enabled by default only for

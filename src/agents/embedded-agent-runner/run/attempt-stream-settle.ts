@@ -35,6 +35,7 @@ import {
   type ProviderPromptState,
   wrapStreamFnWithProviderPromptState,
 } from "../provider-prompt-state.js";
+import { wrapStreamFnWithSessionFork } from "../session-fork.js";
 import type { ToolResultPromptProjectionState } from "../session-prompt-state.js";
 import {
   resolveEmbeddedAgentApiKey,
@@ -448,9 +449,10 @@ export async function prepareEmbeddedAttemptTransport(input: {
     workspaceDir: input.workspaceDir,
     auth,
   });
+  const sessionFork = { sessionId: attempt.sessionId, runId: attempt.runId };
   const directProviderStreamFn = providerStreamFn
     ? wrapStreamFnWithMessageTransform(
-        providerStreamFn,
+        wrapStreamFnWithSessionFork(providerStreamFn, sessionFork),
         (messages) => messages,
         async ({ context, ...provider }) => {
           assertRunCurrent?.();
@@ -495,6 +497,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
     authProfileId: attempt.runtimePlan?.auth.forwardedAuthProfileId,
     authStorage: attempt.authStorage,
     assertCurrent: assertRunCurrent,
+    sessionFork,
   });
   session.agent.streamFn = streamFn;
   // Install inside provider/config wrappers so their full onPayload chain runs

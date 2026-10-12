@@ -63,6 +63,7 @@ import {
 } from "./openai-responses-replay-internal.js";
 import { createResponsesRequestFetch } from "./openai-responses-request-fetch.js";
 import {
+  independentResponsesRequest,
   responsesRequestLifecycle,
   withResponsesRequestAcceptance,
 } from "./openai-responses-request-lifecycle.js";
@@ -171,6 +172,7 @@ type ResponsesTransportExecutorOptions = {
 function createResponsesTransportExecutor(config: ResponsesTransportExecutorOptions): StreamFn {
   return (model, context, options) => {
     const responsesOptions = options as OpenAIResponsesOptions | undefined;
+    const independent = independentResponsesRequest.has(options);
     const compactRequest = claimResponsesCompactRequest(responsesOptions);
     const { eventStream, stream } = createWritableTransportEventStream();
     void (async () => {
@@ -180,10 +182,9 @@ function createResponsesTransportExecutor(config: ResponsesTransportExecutorOpti
       const requestLifecycle = responsesRequestLifecycle.get(options);
       try {
         const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
-        const websocketMode = resolveNativeOpenAIResponsesWebSocketMode(
-          model,
-          responsesOptions?.transport,
-        );
+        const websocketMode = independent
+          ? undefined
+          : resolveNativeOpenAIResponsesWebSocketMode(model, responsesOptions?.transport);
         const encodeBody = prepareModelRequestBody(
           websocketMode || compactRequest ? undefined : options,
         );
@@ -311,6 +312,7 @@ function createResponsesTransportExecutor(config: ResponsesTransportExecutorOpti
         // their existing eligibility and final request storage checks below.
         const httpContinuationEligible =
           config.httpContinuation &&
+          !independent &&
           !websocketMode &&
           !getAiTransportHost().requiresManagedTransport(model) &&
           (supportsNativeOpenAIResponsesEndpoint(model) ||
@@ -547,7 +549,12 @@ function createResponsesTransportExecutor(config: ResponsesTransportExecutorOpti
             throw new Error(output.errorMessage ?? "An unknown error occurred");
           }
           const admitted = transport === "websocket" ? websocketBaseline : continuationBaseline;
-          if (terminal && admitted && supportsNativeOpenAIResponsesEndpoint(model)) {
+          if (
+            !independent &&
+            terminal &&
+            admitted &&
+            supportsNativeOpenAIResponsesEndpoint(model)
+          ) {
             recordResponsesReasoningState(
               output,
               model,
@@ -559,7 +566,7 @@ function createResponsesTransportExecutor(config: ResponsesTransportExecutorOpti
           if (continuationClaim && continuationBaseline && terminal) {
             continuationClaim.commit(continuationBaseline, terminal, dispatchedPreviousResponseId);
           }
-          if (terminal && admitted && contextUsageEligible) {
+          if (!independent && terminal && admitted && contextUsageEligible) {
             recordResponsesContextUsage(
               output,
               model,
