@@ -632,28 +632,39 @@ it("reserves schema-missing first birth against a sibling captured before its wi
 it.each([
   { name: "replacement", write: replaceSessionEntry },
   { name: "upsert", write: upsertSessionEntryCore },
-])("allows the first session $name while an ordinary owner is retained", async ({ write }) => {
-  const options = fixture();
-  const sibling = captureOpenClawAgentDatabaseExecution(options);
-  const sessionKey = "agent:main:first-entry";
-  const entry = { sessionId: "first-session", updatedAt: 1 };
-  try {
-    expect(fs.existsSync(options.path)).toBe(false);
-    await expect(
-      write(
+])(
+  "allows the first session $name while an ordinary owner is retained",
+  async ({ name, write }) => {
+    const options = fixture();
+    const sibling = captureOpenClawAgentDatabaseExecution(options);
+    const sessionKey = "agent:main:first-entry";
+    const entry = { sessionId: "first-session", updatedAt: 1 };
+    try {
+      expect(fs.existsSync(options.path)).toBe(false);
+      const writeStartedAt = Date.now();
+      const written = await write(
         { agentId: options.agentId, env: options.env, storePath: options.path, sessionKey },
         entry,
-      ),
-    ).resolves.toMatchObject(entry);
-    await expect(
-      sibling.runExisting(source(), (scope) =>
+      );
+      const writeFinishedAt = Date.now();
+      assert(written);
+      expect(written.sessionId).toBe(entry.sessionId);
+      if (name === "replacement") {
+        expect(written).toEqual(entry);
+      } else {
+        expect(written.updatedAt).toBeGreaterThanOrEqual(writeStartedAt);
+        expect(written.updatedAt).toBeLessThanOrEqual(writeFinishedAt);
+      }
+      const read = await sibling.runExisting(source(), (scope) =>
         scope.execute({ type: "session.entry.read", input: { sessionKeys: [sessionKey] } }),
-      ),
-    ).resolves.toMatchObject({ entries: [{ sessionKey, entry }] });
-  } finally {
-    await sibling.release();
-  }
-});
+      );
+      assert(read);
+      expect(read.entries).toEqual([{ sessionKey, entry: written }]);
+    } finally {
+      await sibling.release();
+    }
+  },
+);
 
 it("releases an unused creation reservation while a sibling remains", async () => {
   const options = fixture();

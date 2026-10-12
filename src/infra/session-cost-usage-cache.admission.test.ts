@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { setImmediate } from "node:timers/promises";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, assert, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as configEnv from "../config/config-env-vars.js";
@@ -736,35 +736,48 @@ it("finishes a foreground session write while pruning a cold existing usage stor
 it.each([
   { name: "replacement", write: replaceSessionEntry },
   { name: "upsert", write: upsertSessionEntryCore },
-])("allows the first session $name while a fresh usage refresh is scanning", async ({ write }) => {
-  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
-    const agentId = "main";
-    const storePath = state.statePath("fresh-usage-patch.sqlite");
-    const scope = { agentId, sessionKey: `agent:${agentId}:first`, storePath, env: state.env };
-    const entry = { sessionId: "patched-during-refresh", updatedAt: 1 };
-    const lock = prepareSessionCostUsageRefreshLock(agentId, storePath, { env: state.env });
-    try {
-      expect(await lock.acquire()).toBe(true);
-      expect(fs.existsSync(storePath)).toBe(false);
-      expect(await write(scope, entry)).toMatchObject(entry);
-      expect(
-        await lock.writeRollup({
-          rollupId: "session.jsonl",
-          valueJson: Buffer.from('{"totalTokens":7}'),
-          blob: null,
-          updatedAt: 1,
-        }),
-      ).toBe(true);
-      const database = openOpenClawAgentDatabase({ agentId, path: storePath, env: state.env });
-      expect(readExactSessionEntryRow(database, scope.sessionKey)?.entry).toMatchObject(entry);
-      expect(readSessionCostUsageRollupRows(agentId, storePath)).toEqual([
-        { key: "session.jsonl", valueJson: '{"totalTokens":7}', updatedAt: 1 },
-      ]);
-    } finally {
-      await lock.release();
-    }
-  });
-});
+])(
+  "allows the first session $name while a fresh usage refresh is scanning",
+  async ({ name, write }) => {
+    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      const agentId = "main";
+      const storePath = state.statePath("fresh-usage-patch.sqlite");
+      const scope = { agentId, sessionKey: `agent:${agentId}:first`, storePath, env: state.env };
+      const entry = { sessionId: "patched-during-refresh", updatedAt: 1 };
+      const lock = prepareSessionCostUsageRefreshLock(agentId, storePath, { env: state.env });
+      try {
+        expect(await lock.acquire()).toBe(true);
+        expect(fs.existsSync(storePath)).toBe(false);
+        const writeStartedAt = Date.now();
+        const written = await write(scope, entry);
+        const writeFinishedAt = Date.now();
+        assert(written);
+        expect(written.sessionId).toBe(entry.sessionId);
+        if (name === "replacement") {
+          expect(written).toEqual(entry);
+        } else {
+          expect(written.updatedAt).toBeGreaterThanOrEqual(writeStartedAt);
+          expect(written.updatedAt).toBeLessThanOrEqual(writeFinishedAt);
+        }
+        expect(
+          await lock.writeRollup({
+            rollupId: "session.jsonl",
+            valueJson: Buffer.from('{"totalTokens":7}'),
+            blob: null,
+            updatedAt: 1,
+          }),
+        ).toBe(true);
+        const database = openOpenClawAgentDatabase({ agentId, path: storePath, env: state.env });
+        expect(readExactSessionEntryRow(database, scope.sessionKey)?.entry).toEqual(written);
+        expect(readSessionCostUsageRollupRows(agentId, storePath)).toEqual([
+          { key: "session.jsonl", valueJson: '{"totalTokens":7}', updatedAt: 1 },
+        ]);
+      } finally {
+        await lock.release();
+      }
+    });
+  },
+);
 
 it("allows first session creation while a fresh usage refresh awaits acquisition", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
