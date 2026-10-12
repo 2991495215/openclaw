@@ -11,6 +11,7 @@ import {
   runOpenClawAgentWriteTransaction,
   withOpenClawAgentDatabaseRuntime,
 } from "../../state/openclaw-agent-db.js";
+import { captureOpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution.js";
 import { prepareSessionMetaPatch } from "./metadata.js";
 import type {
   RecordInboundSessionMetaParams,
@@ -460,6 +461,13 @@ async function patchSqliteSessionEntrySnapshot(
     return result.entry;
   }
   let wrote = false;
+  // A background owner can retain the same absent store before its first write.
+  const creatingExecution =
+    useWorker && !options.retainedExecution && targetIdentity.key.startsWith("path:")
+      ? captureOpenClawAgentDatabaseExecution(databaseOptions, {
+          expectedCreationIdentity: targetIdentity,
+        })
+      : undefined;
   const workerPatch = (source: PreparedSessionSourceAuthority, assertSource?: () => void) =>
     patchSessionEntryInWorker({
       database: { ...databaseOptions, path: databasePath },
@@ -475,7 +483,7 @@ async function patchSqliteSessionEntrySnapshot(
       },
       shouldCommit: options.shouldCommit,
       preparedSource: source,
-      retainedExecution: options.retainedExecution,
+      retainedExecution: options.retainedExecution ?? creatingExecution,
       reduction:
         typeof params.update === "function"
           ? undefined
@@ -635,7 +643,7 @@ async function patchSqliteSessionEntrySnapshot(
     options.retainedExecution || (useWorker && !sourceAssertion)
       ? "foreground-reentrant"
       : "foreground",
-  );
+  ).finally(() => creatingExecution?.release());
   if (wrote) {
     kickSessionEntryMaintenanceAfterWrite({
       activeSessionKey: sessionKey,

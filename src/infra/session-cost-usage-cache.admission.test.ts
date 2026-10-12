@@ -10,6 +10,10 @@ import {
   prepareSessionEntryMutationDatabases,
 } from "../config/sessions/session-accessor.entry-mutation.js";
 import { readExactSessionEntryRow } from "../config/sessions/session-accessor.sqlite-entry-store.js";
+import {
+  replaceSessionEntry,
+  upsertSessionEntryCore,
+} from "../config/sessions/session-accessor.sqlite-entry.js";
 import { retireSessionHistoryWorkerDatabases } from "../config/sessions/session-transcript-worker-resources.js";
 import { closeAgentWorkAdmissions } from "../sessions/session-lifecycle-admission.js";
 import { createDeferredCore } from "../shared/deferred.js";
@@ -620,6 +624,39 @@ it("keeps usage exclusion in its mixed-case Windows state root", async () => {
         await closeOpenClawAgentDatabasesAsync();
         await closeOpenClawStateDatabaseAsync();
       }
+    }
+  });
+});
+
+it.each([
+  { name: "replacement", write: replaceSessionEntry },
+  { name: "upsert", write: upsertSessionEntryCore },
+])("allows the first session $name while a fresh usage refresh is scanning", async ({ write }) => {
+  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    const agentId = "main";
+    const storePath = state.statePath("fresh-usage-patch.sqlite");
+    const scope = { agentId, sessionKey: `agent:${agentId}:first`, storePath, env: state.env };
+    const entry = { sessionId: "patched-during-refresh", updatedAt: 1 };
+    const lock = prepareSessionCostUsageRefreshLock(agentId, storePath, { env: state.env });
+    try {
+      expect(await lock.acquire()).toBe(true);
+      expect(fs.existsSync(storePath)).toBe(false);
+      expect(await write(scope, entry)).toMatchObject(entry);
+      expect(
+        await lock.writeRollup({
+          rollupId: "session.jsonl",
+          valueJson: Buffer.from('{"totalTokens":7}'),
+          blob: null,
+          updatedAt: 1,
+        }),
+      ).toBe(true);
+      const database = openOpenClawAgentDatabase({ agentId, path: storePath, env: state.env });
+      expect(readExactSessionEntryRow(database, scope.sessionKey)?.entry).toMatchObject(entry);
+      expect(readSessionCostUsageRollupRows(agentId, storePath)).toEqual([
+        { key: "session.jsonl", valueJson: '{"totalTokens":7}', updatedAt: 1 },
+      ]);
+    } finally {
+      await lock.release();
     }
   });
 });
