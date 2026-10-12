@@ -5,7 +5,7 @@ import { observeSqliteReadSql } from "../../test/helpers/sqlite-statement-execut
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as kyselySync from "../infra/kysely-sync.js";
 import * as nodeSqlite from "../infra/node-sqlite.js";
-import { admitSqliteSchema } from "../infra/sqlite-schema-facts.js";
+import { retainSqliteDatabaseAdmissionLocation } from "../infra/sqlite-database-admission.js";
 import {
   clearOpenClawAgentIntegrityVerification,
   clearOpenClawDatabaseQuarantine,
@@ -72,9 +72,9 @@ function failReceiptWrite(
 
 it("shares quarantine decisions while an admitted sibling remains open", () => {
   const fixture = createFixture();
+  retainSqliteDatabaseAdmissionLocation(fixture.storePath);
   const sibling = nodeSqlite.openNodeSqliteDatabase(fixture.storePath);
   try {
-    admitSqliteSchema(sibling);
     fixture.record();
     const open = nodeSqlite.openNodeSqliteDatabase;
     const timeouts: unknown[] = [];
@@ -168,9 +168,10 @@ it("validates a replaced quarantine store once while an admitted sibling remains
   const fixture = createFixture();
   fs.renameSync(fixture.storePath, `${fixture.storePath}.original`);
   fs.copyFileSync(`${fixture.storePath}.original`, fixture.storePath);
+  // Keep quarantine facts alive without adding generic catalog admission and its DDL refresh.
+  retainSqliteDatabaseAdmissionLocation(fixture.storePath);
   const sibling = nodeSqlite.openNodeSqliteDatabase(fixture.storePath);
   try {
-    admitSqliteSchema(sibling);
     const open = nodeSqlite.openNodeSqliteDatabase;
     const statements: string[] = [];
     vi.spyOn(nodeSqlite, "openNodeSqliteDatabase").mockImplementation((...args) => {
