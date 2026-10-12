@@ -61,6 +61,8 @@ import * as deletionRecovery from "../server-agent-deletion-recovery.js";
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
 import { createGatewayMemoryCloseRegistryFactory } from "../server-close.memory.test-support.js";
 import { startGatewayServer } from "../server.js";
+import type { SessionCreatePhase } from "../session-create-diagnostics.js";
+import * as sessionCreation from "../session-create-service.js";
 import { connectGatewayClient, disconnectGatewayClient } from "../test-helpers.e2e.js";
 
 const nativeApi = await loadBundledPluginFacade<NativeBindingTestApi & NativeBindingClientTestApi>({
@@ -75,6 +77,52 @@ afterEach(async () => {
   scenarioWork = undefined;
 });
 
+// HOLD / neverLand: identify the pending creation boundary without logging request data.
+async function traceSuccessfulSessionCreation(params: {
+  client: Awaited<ReturnType<typeof connectGatewayClient>>;
+  agentId: string;
+  key: string;
+  label: "recreated" | "late-write-initial" | "late-write-first" | "late-write-second";
+  signal: AbortSignal;
+}): Promise<{ key: string; sessionId: string }> {
+  let phase: SessionCreatePhase | "service-not-observed" | "service-entered" =
+    "service-not-observed";
+  const create = sessionCreation.createGatewaySession;
+  const spy = vi.spyOn(sessionCreation, "createGatewaySession").mockImplementation((options) => {
+    if (options.key !== params.key) {
+      return create(options);
+    }
+    phase = "service-entered";
+    return create({
+      ...options,
+      onPhase(next) {
+        phase = next;
+        options.onPhase?.(next);
+      },
+    });
+  });
+  const report = (outcome: "request-failed" | "test-aborted") => {
+    console.error("HOLD agent deletion creation phase", { label: params.label, phase, outcome });
+  };
+  const onAbort = () => report("test-aborted");
+  params.signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    if (params.signal.aborted) {
+      onAbort();
+    }
+    return await params.client.request<{ key: string; sessionId: string }>("sessions.create", {
+      agentId: params.agentId,
+      key: params.key,
+    });
+  } catch (error) {
+    report("request-failed");
+    throw error;
+  } finally {
+    params.signal.removeEventListener("abort", onAbort);
+    spy.mockRestore();
+  }
+}
+
 async function exerciseLateSessionWritesDuringDeletion(params: {
   state: OpenClawTestState;
   client: Awaited<ReturnType<typeof connectGatewayClient>>;
@@ -85,9 +133,12 @@ async function exerciseLateSessionWritesDuringDeletion(params: {
   const { state, client, agentId, workspace, signal } = params;
   const databasePath = path.join(state.agentDir(agentId), "openclaw-agent.sqlite");
   const storePath = path.join(state.sessionsDir(agentId), "sessions.json");
-  let session = await client.request<{ key: string; sessionId: string }>("sessions.create", {
+  let session = await traceSuccessfulSessionCreation({
+    client,
     agentId,
     key: `agent:${agentId}:late-write-0`,
+    label: "late-write-initial",
+    signal,
   });
   // Two cycles cover every held phase before and after same-agent recreation.
   for (let iteration = 0; iteration < 2; iteration += 1) {
@@ -219,9 +270,12 @@ async function exerciseLateSessionWritesDuringDeletion(params: {
       agentId,
     });
     expect(readAgentDeletionJournal(agentId)).toBeUndefined();
-    session = await client.request<{ key: string; sessionId: string }>("sessions.create", {
+    session = await traceSuccessfulSessionCreation({
+      client,
       agentId,
       key: `agent:${agentId}:late-write-${iteration + 1}`,
+      label: iteration === 0 ? "late-write-first" : "late-write-second",
+      signal,
     });
     expect(session.sessionId).toBeTruthy();
   }
@@ -503,10 +557,13 @@ it.for(["active", "restart-draining", "legacy-retiring"] as const)(
                 ).resolves.toMatchObject({ ok: true, agentId });
                 expect(readAgentDeletionJournal(agentId)).toBeUndefined();
 
-                const recreatedSession = await client.request<{ key: string; sessionId: string }>(
-                  "sessions.create",
-                  { agentId, key: `agent:${agentId}:recreated` },
-                );
+                const recreatedSession = await traceSuccessfulSessionCreation({
+                  client,
+                  agentId,
+                  key: `agent:${agentId}:recreated`,
+                  label: "recreated",
+                  signal,
+                });
                 for (const message of [
                   { role: "user", content: "Remember the synthetic blue preference." },
                   { role: "assistant", content: "The completed turn recorded blue." },
