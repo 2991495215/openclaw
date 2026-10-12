@@ -6,12 +6,16 @@ import type {
   MentionsListResult,
 } from "../../packages/gateway-protocol/src/index.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { deferSqlitePostCommitPublication } from "../infra/sqlite-post-commit.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { warnMentionInboxDeprecation } from "../plugins/compat/mention-inbox-deprecation.js";
 import { onSessionIdentityMutation } from "../sessions/session-lifecycle-events.js";
 import { sessionChanges } from "../sessions/session-row-changes.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
-import { registerOpenClawStateDatabaseAsyncResource } from "../state/openclaw-state-db-cache.js";
+import {
+  openClawStateDatabaseCache,
+  registerOpenClawStateDatabaseAsyncResource,
+} from "../state/openclaw-state-db-cache.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { onUserProfilesChanged, readUserProfileVersion } from "../state/user-profile-events.js";
 import { readGatewayAccessRevision } from "./gateway-access-revision.js";
@@ -28,7 +32,6 @@ import {
   removeMentionItem,
   expireMentionItems,
   serializeMentionSource,
-  MAX_GLOBAL_ITEMS,
   type InboxState,
   type StoredMention,
 } from "./mention-inbox-projection.js";
@@ -36,11 +39,7 @@ import { createMentionInputRecorder } from "./mention-inbox-recording.js";
 import { MAX_MENTION_SOURCES } from "./mention-inbox-store.js";
 import { createMentionTargetCache } from "./mention-inbox-targets.js";
 import { readMentionSnapshot, commitMentionChanges } from "./mention-inbox-worker.js";
-import {
-  mutateNativeMentionSnapshot,
-  readNativeMentionTarget,
-  recordNativeMentionInvolvement,
-} from "./mention-inbox.native.js";
+import { mutateNativeMentionSnapshot, readNativeMentionTarget } from "./mention-inbox.native.js";
 import type {
   MentionCommittedInput,
   MentionInbox,
@@ -689,44 +688,17 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
       if (closing || scheduler.signal.aborted) {
         return;
       }
-      try {
-        if (!prepareCommittedInput(input)) {
-          return;
-        }
-        const target = readNativeTarget(input.sessionKey, input.agentId);
-        recordNativeMentionInvolvement(
-          input,
-          target,
-          policy.involvedProfiles(input, target, params.getRuntimeConfig()),
-        );
-        let committed: StoredMention[] = [];
-        mutateNative(
-          (draft) => {
-            committed = applyCommittedInput(
-              input,
-              draft,
-              [],
-              {
-                sourceIndex: draft.processed,
-                itemLimit: MAX_GLOBAL_ITEMS,
-              },
-              readNativeTarget,
-            );
-          },
-          () => {
-            try {
-              publishCommittedMentions(committed, readNativeTarget);
-            } catch {
-              log.warn("Mention delivery could not be completed; the posted message is unchanged.");
-            }
-          },
-        );
-      } catch {
-        log.warn("Mention delivery could not be completed; the posted message is unchanged.");
+      const captured = structuredClone(input);
+      const record = () => void recordCommittedInputAsync(captured);
+      // Legacy callers may still submit inside a transaction. Rollback must not enqueue a mention.
+      const database = openClawStateDatabaseCache.getOpenClawStateDatabaseIfOpenAtPath(
+        context.admission.identity.canonicalPath,
+      );
+      if (!database || !deferSqlitePostCommitPublication(database.db, record)) {
+        record();
       }
     },
     recordCommittedInputAsync,
-
     invalidate,
     invalidateAsync,
     dispose,

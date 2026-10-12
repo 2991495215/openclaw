@@ -1,4 +1,3 @@
-import { updateSessionProfileInvolvement } from "../config/sessions/session-involvement-store.js";
 import { resolveExistingAgentSessionStoreTargetsSync } from "../config/sessions/targets-discovery.native.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { stageSqliteTransactionState } from "../infra/sqlite-post-commit.js";
@@ -15,7 +14,6 @@ import {
   type InboxState,
 } from "./mention-inbox-projection.js";
 import { readMentionStoreSnapshot, writeMentionStoreChanges } from "./mention-inbox-store.js";
-import type { MentionCommittedInput } from "./mention-inbox.types.js";
 import type { SessionSharingTarget } from "./session-sharing-policy.js";
 import { resolveNativeGatewaySessionStoreTargetWithStore } from "./session-utils-store-lookup.js";
 import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
@@ -52,23 +50,6 @@ export function readNativeMentionTarget(
         readSource: target.capturedReadSource,
       }
     : null;
-}
-
-export function recordNativeMentionInvolvement(
-  input: MentionCommittedInput,
-  target: SessionSharingTarget | null,
-  profileIds: string[],
-): void {
-  if (target && profileIds.length) {
-    updateSessionProfileInvolvement(
-      { agentId: target.agentId, sessionKey: target.storeKey, storePath: target.storePath },
-      {
-        expectedSessionId: input.sessionId,
-        profileIds,
-        change: { kind: "mention", source: input.committedSource },
-      },
-    );
-  }
 }
 
 // Released 2026.9.8 SDK calls stay synchronous until the next Plugin SDK major.

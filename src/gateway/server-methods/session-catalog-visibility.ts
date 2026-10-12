@@ -13,9 +13,10 @@ import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { readUserProfileAliases } from "../../state/user-profile-list.js";
 import { hasMultipleSessionSharingIdentities } from "../../state/user-profiles.js";
 import { ADMIN_SCOPE, authorizeOperatorScopesForRequiredScope } from "../method-scopes.js";
-import { operatorSessionCap } from "../operator-role-policy.js";
+import { operatorSessionCap, resolveGatewayOperatorRoleActor } from "../operator-role-policy.js";
 import { prepareSessionCreatorProfile } from "../session-creator.js";
 import { requireSessionRowProjection } from "../session-row-projection-access.js";
+import { sharingIdentity } from "../session-sharing-policy.js";
 import { resolveSessionSharingRole, resolveSessionSharingTargetAsync } from "../session-sharing.js";
 import { createSessionCatalogRequestEntrySnapshot } from "./session-catalog-entry-snapshot.js";
 import type { GatewayClient, GatewayRequestContext } from "./types.js";
@@ -230,8 +231,19 @@ export async function resolveSessionCatalogThreadVisibility(params: {
         cfg: config,
         sessionKey: session.sessionKey,
       });
+      const identity = sharingIdentity(
+        params.client,
+        resolveGatewayOperatorRoleActor(params.client),
+      );
       return target !== null &&
-        resolveSessionSharingRole({ cfg: config, client: params.client, target }) === "member"
+        resolveSessionSharingRole({
+          cfg: config,
+          client: params.client,
+          target,
+          isMember: Boolean(
+            identity && projection.hasMembership(target.storePath, target.storeKey, identity.id),
+          ),
+        }) === "member"
         ? { visibility, source: { sessionKey: target.canonicalKey, entry: visibleEntry } }
         : null;
     }

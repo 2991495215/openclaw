@@ -296,7 +296,6 @@ export function createHumanMentionPolicy(params: {
   }
 
   return {
-    involvedProfiles,
     async recordCommittedInvolvementAsync(input: MentionCommittedInput): Promise<void> {
       const cfg = params.getRuntimeConfig();
       const agent = resolveRequestedSessionAgentId(cfg, input.sessionKey, input.agentId);
