@@ -159,10 +159,9 @@ describe("acp translator cancel and run scoping", () => {
     });
     const terminalEvent = harness.agent.handleGatewayEvent(chat(pending.runId));
     await started.promise;
-    const settled = vi.fn();
-    const shutdown = harness.agent.shutdown().then(settled);
+    const shutdown = harness.agent.shutdown();
     try {
-      await vi.waitFor(() => expect(settled).toHaveBeenCalledOnce());
+      await shutdown;
       await expect(pending.promptPromise).resolves.toEqual({ stopReason: "cancelled" });
     } finally {
       snapshot.resolve({ sessions: [] });

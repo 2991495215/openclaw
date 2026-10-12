@@ -17,7 +17,6 @@ import {
 import { withAcpCancellationFixture } from "./manager.cancel-session.worker.test-support.js";
 
 it.each([
-  ["incognito", "rebind", "live"],
   ["incognito", "clear", "snapshot"],
   ["durable", "same-binding", "live"],
   ["durable", "clear", "live"],

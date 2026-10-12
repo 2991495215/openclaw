@@ -693,6 +693,13 @@ destination lifecycle owners retain accepted work; ordinary reply loss does not
 release their custody or authorize replay. These typed requesters and source
 capabilities are the reusable boundary for subsequent publication guard migration.
 
+Incognito publication captures only the memory actor's session and membership
+authority fields. The shared-state worker reads the remaining publication facts
+and validates them in its ordinary destination transaction. Its commit grant
+checks the captured memory owner and requester; it never opens or reserves a
+session database. Closing the memory session before that grant rolls back the
+publication request. The durable source-fence path remains unchanged.
+
 New external effects require live action authority. Execution claims, head updates, dispatch markers,
 observed effects, completion, and interruption require custody of that exact
 execution, without preparing another source reservation. A dispatch marker may

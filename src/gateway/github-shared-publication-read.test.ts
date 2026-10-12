@@ -21,6 +21,8 @@ import {
   runOpenClawStateWriteTransaction,
 } from "../state/openclaw-state-db.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
+import * as publicationSource from "./github-publication-source.js";
+import { readGitHubPublicationRequestAsync } from "./github-publication-store-async.js";
 import {
   claimGitHubPublicationExecutionFixture,
   createGitHubPublicationExecutionStoreFixture,
@@ -115,40 +117,73 @@ async function createPrivatePublicationSession(sessionKey: string) {
 }
 
 describe("shared worktree receipt observation", () => {
-  it("publishes a memory-only private worktree through the existing coordinator without host session reads", async () => {
-    const privateKey = "agent:main:dashboard:incognito-publication-execute";
-    const { location } = await createPrivatePublicationSession(privateKey);
-    try {
-      await deleteRegistryWorktree(process.env, "worktree-1");
-      await insertRegistryWorktree(process.env, {
-        id: "worktree-1",
-        name: "publication",
-        repoRoot: "/repo",
-        repoFingerprint: "fingerprint-1",
-        path: "/repo/worktree",
-        branch: BRANCH,
-        baseRef: "origin/main",
-        ownerKind: "session",
-        ownerId: privateKey,
-        createdAt: 1,
-        lastActiveAt: 1,
-      });
-      const sql = observeHostDataSql();
-      try {
-        const result = await sharedPublicationCoordinator().requestForSessionV2({
-          sessionKey: privateKey,
-          agentId: "main",
-          idempotencyKey: "memory-publication",
-        });
-        expect(result).toMatchObject({ status: "published", headCommit: NEW_HEAD });
-        expect(sql.queries.filter((query) => /\bsession_nodes\b/.test(query))).toEqual([]);
-      } finally {
-        sql.restore();
+  it.each([false, true])(
+    "publishes a memory-only private worktree without host session reads unless closed at commit: %s",
+    async (closeAtCommit) => {
+      const privateKey = "agent:main:dashboard:incognito-publication-execute";
+      const { owner, location } = await createPrivatePublicationSession(privateKey);
+      if (closeAtCommit) {
+        const bind = publicationSource.bindGitHubPublicationSource;
+        vi.spyOn(publicationSource, "bindGitHubPublicationSource").mockImplementation(
+          (capability) => {
+            const binding = bind(capability);
+            return {
+              ...binding,
+              createAdmission(operation) {
+                const admission = binding.createAdmission(operation);
+                admission.admission.observeRequests((request) => {
+                  if (request.stage === "commit") {
+                    owner.closeSession(privateKey);
+                  }
+                });
+                return admission;
+              },
+            };
+          },
+        );
       }
-    } finally {
-      memorySessionActorOwners.closeDatabase(location);
-    }
-  });
+      try {
+        await deleteRegistryWorktree(process.env, "worktree-1");
+        await insertRegistryWorktree(process.env, {
+          id: "worktree-1",
+          name: "publication",
+          repoRoot: "/repo",
+          repoFingerprint: "fingerprint-1",
+          path: "/repo/worktree",
+          branch: BRANCH,
+          baseRef: "origin/main",
+          ownerKind: "session",
+          ownerId: privateKey,
+          createdAt: 1,
+          lastActiveAt: 1,
+        });
+        const sql = observeHostDataSql();
+        try {
+          const publication = sharedPublicationCoordinator().requestForSessionV2({
+            sessionKey: privateKey,
+            agentId: "main",
+            idempotencyKey: "memory-publication",
+          });
+          if (closeAtCommit) {
+            await expect(publication).rejects.toThrow(/session|source|requester/i);
+            expect(
+              await readGitHubPublicationRequestAsync({
+                sessionId: session.sessionId,
+                idempotencyKey: "memory-publication",
+              }),
+            ).toBeUndefined();
+          } else {
+            expect(await publication).toMatchObject({ status: "published", headCommit: NEW_HEAD });
+          }
+          expect(sql.queries.filter((query) => /\bsession_nodes\b/.test(query))).toEqual([]);
+        } finally {
+          sql.restore();
+        }
+      } finally {
+        memorySessionActorOwners.closeDatabase(location);
+      }
+    },
+  );
   it("publishes a durable draft worktree through the coordinator without host session reads", async () => {
     const privateKey = "agent:main:dashboard:private-publication-execute";
     const loadSession = mocks.loadSession.getMockImplementation()!;
