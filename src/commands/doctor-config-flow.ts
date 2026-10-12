@@ -17,6 +17,7 @@ import { CONFIG_PATH } from "../config/paths.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { callGateway } from "../gateway/call.js";
 import type { PreparedAgentDatabaseMigrationDiscovery } from "../infra/state-migrations.media-persistence-targets.js";
+import type { LegacyStateMigrationStepReceipt } from "../infra/state-migrations.types.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { createPluginCapabilityConsentPrompter } from "../wizard/plugin-capability-consent.js";
 import {
@@ -67,6 +68,8 @@ async function refreshGatewayAuthStateAfterAuthProfileRepair(): Promise<void> {
 
 export async function loadAndMaybeMigrateDoctorConfig(params: {
   options: DoctorOptions;
+  retiredStateAdmitted?: boolean;
+  stateSchemaPreparation?: LegacyStateMigrationStepReceipt;
   agentDatabaseMigrationDiscovery?: PreparedAgentDatabaseMigrationDiscovery;
   confirm: (p: { message: string; initialValue: boolean }) => Promise<boolean>;
   runtime?: RuntimeEnv;
@@ -81,6 +84,8 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     },
     (progress) =>
       runDoctorConfigPreflight({
+        retiredStateAdmitted: params.retiredStateAdmitted,
+        stateSchemaPreparation: params.stateSchemaPreparation,
         observe: false,
         invocationPurpose: "doctor",
         repairPrefixedConfig: shouldRepair,
