@@ -148,8 +148,11 @@ Configure the tunnel ingress rules to route only the webhook path:
 Confirmed outbound messages are recorded in the destination conversation's history.
 OpenClaw reuses existing session routes and space types learned from inbound events,
 direct-message lookups, and send responses. The first send to a previously unseen
-space can make one metadata request to distinguish a DM from a group; repeated
-sends reuse the bounded account-scoped cache. If the type remains unavailable,
+space can make one metadata request to distinguish a DM from a group. Known space
+types and permission or not-found errors remain cached until the channel restarts.
+Transient failures and incomplete responses allow one retry on a later send after
+15 minutes; concurrent sends share that lookup. Inbound events and send responses
+can repair the cached classification immediately. If the type remains unavailable,
 delivery still succeeds and a diagnostic explains why history recording was skipped.
 
 ### Inbound durability

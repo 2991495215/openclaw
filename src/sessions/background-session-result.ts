@@ -430,7 +430,8 @@ export async function commitConfirmedVisibleMessage(
     !normalizeOptionalString(payload.text) &&
     !normalizeOptionalString(payload.spokenText) &&
     !payload.mediaUrl &&
-    !payload.mediaUrls?.length
+    !payload.mediaUrls?.length &&
+    !payload.location
   ) {
     return {
       ok: true,

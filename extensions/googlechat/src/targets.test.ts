@@ -178,6 +178,7 @@ describe("outbound session routing", () => {
   });
   afterEach(() => {
     stopSpaceCache();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -294,20 +295,74 @@ describe("outbound session routing", () => {
     },
   );
 
-  it.each(["unclassified", "failed"] as const)(
-    "does not retry a %s space classification on later sends",
+  it.each([403, 404] as const)(
+    "does not retry a permanent %s space classification on later sends",
     async (outcome) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
       const fetchMock = vi.fn().mockImplementation(async () => {
-        if (outcome === "failed") {
-          throw new Error("read unavailable");
-        }
-        return new Response(JSON.stringify({ name: "spaces/AAA" }), { status: 200 });
+        return new Response("unavailable", { status: outcome });
       });
       vi.stubGlobal("fetch", fetchMock);
       const destination = { cfg: {}, agentId: "main", target: "spaces/AAA" };
       await expect(resolveGoogleChatOutboundSessionRoute(destination)).resolves.toBeNull();
+      vi.setSystemTime(Date.now() + 24 * 60 * 60_000);
       await expect(resolveGoogleChatOutboundSessionRoute(destination)).resolves.toBeNull();
       expect(fetchMock).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["unclassified", "network", "timeout", 429, 500, 503] as const)(
+    "retries a transient %s lookup only on a later send after fifteen minutes",
+    async (failure) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const startedAt = Date.now();
+      const retry = Promise.withResolvers<Response>();
+      const retryStarted = Promise.withResolvers<void>();
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          if (failure === "unclassified") {
+            return new Response(JSON.stringify({ name: "spaces/RETRY" }), { status: 200 });
+          }
+          if (typeof failure === "number") {
+            return new Response("unavailable", { status: failure });
+          }
+          throw failure === "timeout"
+            ? new DOMException("request timed out", "TimeoutError")
+            : new TypeError("fetch failed");
+        })
+        .mockImplementationOnce(() => {
+          retryStarted.resolve();
+          return retry.promise;
+        });
+      vi.stubGlobal("fetch", fetchMock);
+      const destination = { cfg: {}, agentId: "main", target: "spaces/RETRY" };
+      await expect(resolveGoogleChatOutboundSessionRoute(destination)).resolves.toBeNull();
+      vi.setSystemTime(startedAt + 15 * 60_000 - 1);
+      await expect(resolveGoogleChatOutboundSessionRoute(destination)).resolves.toBeNull();
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      vi.setSystemTime(startedAt + 15 * 60_000);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const retries = [
+        resolveGoogleChatOutboundSessionRoute(destination),
+        resolveGoogleChatOutboundSessionRoute(destination),
+      ];
+      await retryStarted.promise;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      retry.resolve(
+        new Response(JSON.stringify({ name: destination.target, spaceType: "DIRECT_MESSAGE" }), {
+          status: 200,
+        }),
+      );
+      const routes = await Promise.all(retries);
+      expect(routes[0]).toMatchObject({
+        peer: { kind: "direct", id: destination.target },
+        recipientSessionExact: true,
+      });
+      expect(routes[1]).toEqual(routes[0]);
+      expect(await resolveGoogleChatOutboundSessionRoute(destination)).toEqual(routes[0]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     },
   );
 });
@@ -337,13 +392,17 @@ describe("downloadGoogleChatMedia", () => {
     expect(lastGuardedFetchOptions().timeoutMs).toBe(30_001);
   });
 
-  it("cancels a stalled media error body", async () => {
+  it.each([403, 500])("preserves HTTP %s when a media error body stalls", async (status) => {
     vi.useFakeTimers();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createStalledResponse(500)));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createStalledResponse(status)));
 
     const result = expect(
       downloadGoogleChatMedia({ account, resourceName: "media/123", maxBytes: 10 }),
-    ).rejects.toThrow("Google Chat API error response stalled after 30000ms");
+    ).rejects.toMatchObject({
+      name: "GoogleChatApiError",
+      status,
+      message: "Google Chat API error response stalled after 30000ms",
+    });
     await vi.advanceTimersByTimeAsync(30_001);
     await result;
   });

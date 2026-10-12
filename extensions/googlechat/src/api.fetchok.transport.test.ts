@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveGoogleChatAccount, type ResolvedGoogleChatAccount } from "./accounts.js";
+import { GoogleChatApiError } from "./api-error.js";
 import { deleteGoogleChatMessage, sendGoogleChatMessage } from "./api.js";
 import { startGoogleChatSpaceCache } from "./space-cache.js";
 import { resolveGoogleChatOutboundSessionRoute } from "./targets.js";
@@ -363,7 +364,8 @@ describe("Google Chat real guarded transport", () => {
           (error: unknown) => error,
         ),
       );
-      expect(outcome).toBeInstanceOf(Error);
+      expect(outcome).toBeInstanceOf(GoogleChatApiError);
+      expect(outcome).toMatchObject({ status: 403 });
       expect(receivedAuthorization).toBe(`Bearer ${proofToken}`);
       expect((outcome as Error).message).toContain("Google Chat API 403");
       expect((outcome as Error).message).toContain("Chat permission denied");

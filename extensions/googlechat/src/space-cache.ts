@@ -2,10 +2,15 @@ import { createHash } from "node:crypto";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { createPluginRuntimeStore } from "openclaw/plugin-sdk/runtime-store";
 import type { ResolvedGoogleChatAccount } from "./accounts.js";
+import { GoogleChatApiError } from "./api-error.js";
 import type { GoogleChatSpace } from "./types.js";
 
 type ChatType = "direct" | "group";
-type SpaceEntry = { chatType?: ChatType; lookup?: Promise<ChatType | undefined> };
+type SpaceEntry = {
+  chatType?: ChatType;
+  lookup?: Promise<ChatType | undefined>;
+  retryAfter?: number;
+};
 type AccountSpaces = {
   credentialKey: string;
   spaces: Map<string, SpaceEntry>;
@@ -14,6 +19,7 @@ type AccountSpaces = {
 
 const MAX_ACCOUNTS = 32;
 const MAX_SPACES_PER_ACCOUNT = 1024;
+const TRANSIENT_LOOKUP_BACKOFF_MS = 15 * 60_000;
 const log = createSubsystemLogger("googlechat/space-cache");
 const store = createPluginRuntimeStore<Map<string, AccountSpaces>>({
   key: "googlechat:space-classifications",
@@ -105,23 +111,36 @@ export async function resolveCachedGoogleChatSpaceChatType(
 ): Promise<ChatType | undefined> {
   const cache = accountSpaces(account);
   const entry = cache && admitSpace(cache, spaceName);
-  if (!entry || entry.chatType || entry.lookup) {
+  if (
+    !entry ||
+    entry.chatType ||
+    (entry.lookup && (entry.retryAfter === undefined || Date.now() < entry.retryAfter))
+  ) {
     return entry?.chatType ?? entry?.lookup;
   }
+  entry.retryAfter = undefined;
   entry.lookup = (async () => {
     try {
       const space = await load();
       // A newer inbound/send observation takes precedence over this pending read.
       entry.chatType ??= resolveGoogleChatSpaceChatType(space);
       if (!entry.chatType) {
+        entry.retryAfter = Date.now() + TRANSIENT_LOOKUP_BACKOFF_MS;
         log.warn(
-          "Space type unavailable; destination transcript routing skipped (cached until restart).",
+          "Space type unavailable; destination transcript routing skipped (retry on a later send after 15 minutes).",
         );
       }
-    } catch {
+    } catch (error) {
+      const permanent =
+        error instanceof GoogleChatApiError && (error.status === 403 || error.status === 404);
+      if (!permanent) {
+        entry.retryAfter = Date.now() + TRANSIENT_LOOKUP_BACKOFF_MS;
+      }
       // Do not log API errors: they may contain remote text or credential details.
       log.warn(
-        "Space metadata read failed; destination transcript routing skipped (cached until restart).",
+        permanent
+          ? "Space metadata read failed; destination transcript routing skipped (cached until restart)."
+          : "Space metadata read failed; destination transcript routing skipped (retry on a later send after 15 minutes).",
       );
     }
     return entry.chatType;

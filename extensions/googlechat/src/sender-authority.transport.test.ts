@@ -312,29 +312,38 @@ describe("Google Chat sender authority through real guarded HTTP", () => {
     );
   });
 
-  it("blocks first-contact metadata HTTP when authority expires during token acquisition", async () => {
-    const authority = createAuthority();
-    const tokenStarted = createDeferred<void>();
-    const token = createDeferred<string>();
-    transport.token.mockImplementationOnce(() => {
-      tokenStarted.resolve();
-      return token.promise;
-    });
-    await withChatServer(respondWithMessage, async (requests) => {
-      const resolving = resolveGoogleChatOutboundSessionRoute({
-        cfg,
-        agentId: "main",
-        target: "spaces/METADATA_TOKEN_WAIT",
-        assertDirectAdapterHandoff: authority.assert,
+  it.each(["before", "during"] as const)(
+    "blocks first-contact metadata HTTP when authority expires %s token acquisition",
+    async (when) => {
+      const authority = createAuthority();
+      const tokenStarted = createDeferred<void>();
+      const token = createDeferred<string>();
+      if (when === "before") {
+        authority.revoke();
+      } else {
+        transport.token.mockImplementationOnce(() => {
+          tokenStarted.resolve();
+          return token.promise;
+        });
+      }
+      await withChatServer(respondWithMessage, async (requests) => {
+        const resolving = resolveGoogleChatOutboundSessionRoute({
+          cfg,
+          agentId: "main",
+          target: "spaces/METADATA_TOKEN_WAIT",
+          assertDirectAdapterHandoff: authority.assert,
+        });
+        if (when === "during") {
+          await tokenStarted.promise;
+          authority.revoke();
+          token.resolve("test-default");
+        }
+        expect(await resolving).toBeNull();
+        expect(requests).toEqual([]);
+        expect(transport.token).toHaveBeenCalledTimes(when === "before" ? 0 : 1);
       });
-      await tokenStarted.promise;
-      authority.revoke();
-      token.resolve("test-default");
-      expect(await resolving).toBeNull();
-      expect(requests).toEqual([]);
-      expect(transport.token).toHaveBeenCalledOnce();
-    });
-  });
+    },
+  );
 
   it("keeps overlapping accounts' tokens, recipients and callbacks independent", async () => {
     const authorityA = createAuthority();

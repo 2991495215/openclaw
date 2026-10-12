@@ -10,6 +10,7 @@ import { readProviderJsonResponse } from "openclaw/plugin-sdk/provider-http";
 import { readResponseWithLimit } from "openclaw/plugin-sdk/response-limit-runtime";
 import { fetchWithSsrFGuard } from "openclaw/plugin-sdk/ssrf-runtime";
 import type { ResolvedGoogleChatAccount } from "./accounts.js";
+import { GoogleChatApiError } from "./api-error.js";
 import { shouldSuppressGoogleChatManualExecApprovalFollowupText } from "./approval-card-actions.js";
 import { getGoogleChatAccessToken } from "./auth.js";
 import { rememberGoogleChatSpace } from "./space-cache.js";
@@ -30,16 +31,6 @@ type GoogleChatRequestHooks = Pick<
   ChannelMessageActionContext,
   "assertDirectAdapterHandoff" | "onPlatformSendDispatch"
 >;
-
-export class GoogleChatApiError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "GoogleChatApiError";
-  }
-}
 
 function resolveGoogleChatMediaTimeoutMs(maxBytes?: number): number {
   if (!maxBytes) {
@@ -106,7 +97,12 @@ async function withGoogleChatResponse<T>(
   });
   try {
     if (!response.ok) {
-      const text = await readGoogleChatErrorResponse(response);
+      let text: string;
+      try {
+        text = await readGoogleChatErrorResponse(response);
+      } catch (error) {
+        throw new GoogleChatApiError(response.status, formatErrorMessage(error));
+      }
       throw new GoogleChatApiError(
         response.status,
         `Google Chat API ${response.status}: ${text || response.statusText}`,
