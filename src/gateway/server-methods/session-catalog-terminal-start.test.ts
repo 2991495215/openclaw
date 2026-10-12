@@ -8,9 +8,9 @@ import type { SessionCatalogProvider } from "../../plugins/session-catalog.js";
 import { withEnvAsync } from "../../test-utils/env.js";
 import { sessionCatalogHandlers } from "./session-catalog.js";
 
-vi.mock("../../state/user-profiles.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../state/user-profiles.js")>()),
-  getUserProfileRole: vi.fn(() => null),
+vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../state/user-profile-list.js")>()),
+  readResidentUserProfileIdentity: (profileId: string) => ({ profileId, role: null }),
 }));
 
 function provider(overrides: Partial<SessionCatalogProvider> = {}): SessionCatalogProvider {

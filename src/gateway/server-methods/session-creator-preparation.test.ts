@@ -98,6 +98,7 @@ async function withCreatorRows(
   await withOpenClawTestState(
     {
       scenario: "minimal",
+      prepareProfileCatalog: true,
       env: {
         OPENCLAW_STATE_DIR: undefined,
         VITEST: undefined,

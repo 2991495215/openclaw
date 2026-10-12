@@ -17,6 +17,7 @@ import {
 } from "../infra/sqlite-worker-operation-admission.js";
 import { runWithSqliteWorkerStateContext } from "../infra/sqlite-worker-state-context.js";
 import { withStateDatabaseSchemaMaintenance } from "../infra/state-database-maintenance.js";
+import { readPluginMetadataStateRow } from "../plugins/plugin-metadata-state-worker.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
@@ -288,15 +289,9 @@ it.each(["config.health.patch", "diagnostic.register"] as const)(
       }),
     );
     backends.add(first).add(second);
-    await first[SQLITE_WORKER_PREPARE_COMMAND]?.("plugins.metadata.read");
     await second[SQLITE_WORKER_PREPARE_COMMAND]?.(operation);
     expect(
-      runWithSqliteWorkerStateContext(context, () =>
-        first.execute({
-          type: "plugins.metadata.read",
-          input: { selector: "bundled-discovery", artifactPreservingReadOnly: false },
-        }),
-      ),
+      await readPluginMetadataStateRow("bundled-discovery", { path: databasePath, env: state.env }),
     ).toBeUndefined();
     expect(readFileSync(databasePath)).toEqual(initialBytes);
 
@@ -370,7 +365,7 @@ it.each(["config.health.patch", "diagnostic.register"] as const)(
       }),
     );
     backends.add(reopened);
-    await reopened[SQLITE_WORKER_PREPARE_COMMAND]?.("plugins.metadata.read");
+    await reopened[SQLITE_WORKER_PREPARE_COMMAND]?.(operation);
     const reopenedDatabase = openOpenClawStateDatabase();
     if (operation === "config.health.patch") {
       expect(readConfigHealthStateInDatabase(reopenedDatabase.db)).toMatchObject({

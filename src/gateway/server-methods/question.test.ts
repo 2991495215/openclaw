@@ -117,7 +117,7 @@ async function sharingFixture(others: "none" | "suggest" = "none") {
 }
 
 it("conceals foreign session questions for role-none readers while preserving global prompts", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const { client, cfg } = await sharingFixture();
     manager.request({ ...requestParams, id: "foreign-question" });
     manager.request({
@@ -144,7 +144,7 @@ it("conceals foreign session questions for role-none readers while preserving gl
 });
 
 it("requires membership to resolve a suggest-capped guest question", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const { owner, guest, cfg, client } = await sharingFixture("suggest");
     manager.request({ ...requestParams, id: "foreign-question" });
 
@@ -163,7 +163,7 @@ it("requires membership to resolve a suggest-capped guest question", async () =>
 });
 
 it("scopes requested and resolved questions to operators allowed to see their session", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const { owner, guest, cfg, profile: userProfile } = await sharingFixture();
     const viewer = ensureProfileForEmail("viewer@example.test");
     setUserProfileRole(viewer.id, "viewer");
@@ -382,7 +382,7 @@ it("requires admin scope to mint store-bound questions", async () => {
 it.each(["replacement", "abort"] as const)(
   "fences a pending credential on exact requester %s while preserving ordinary questions",
   async (closure) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const id = await requestSecretQuestion();
       const ordinary = await call("question.request", requestParams);
       const ordinaryId = (ordinary[1] as { id: string }).id;
@@ -500,7 +500,7 @@ it("requires admitted authority, not an admin's supplied run metadata", async ()
 });
 
 it("diverts operator-entered credentials into the store and exposes only a stored marker", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const id = await requestSecretQuestion();
     const value = "test-secret-value-gateway-diversion-123";
     const client = {
@@ -541,7 +541,7 @@ it("diverts operator-entered credentials into the store and exposes only a store
 });
 
 it("uses operator-edited hosts and keeps invalid store submissions pending for retry", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const id = await requestSecretQuestion();
     const value = "test-secret-value-retry-123";
     const answers = { answers: { secret_value: [value] } };
@@ -578,7 +578,7 @@ it.each([
     answers: { secret_value: ["test-secret-value-only"], destination: ["Home"] },
   },
 ])("keeps a secret question pending when there is $behavior", async ({ answers }) => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const id = await requestSecretQuestion();
 
     expect(await call("question.resolve", { id, answers: { answers } })).toMatchObject(
@@ -590,7 +590,7 @@ it.each([
 });
 
 it("rejects masked env requests while preserving ordinary question host validation and cancellation", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     expect(
       await call(
         "question.request",
@@ -625,7 +625,7 @@ it("rejects masked env requests while preserving ordinary question host validati
 });
 
 it("settles the SQLite commit before a second answer races its deferred refresh", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     mockReferencedStoreSnapshot();
     const reload = createDeferred<{ warningCount: number }>();
     const reloadStarted = createDeferred();
@@ -681,7 +681,7 @@ it("settles the SQLite commit before a second answer races its deferred refresh"
 });
 
 it("keeps a committed answer terminal and reports refresh failure without inviting overwrite", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     mockReferencedStoreSnapshot();
     reloadSecrets.mockRejectedValue(new Error("synthetic refresh failure"));
     const id = await requestSecretQuestion();
@@ -727,7 +727,7 @@ it("keeps a committed answer terminal and reports refresh failure without inviti
 });
 
 it("keeps store-bound questions pending when the write service is unavailable", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+  await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     vi.spyOn(storeWriteService, "write").mockImplementation(() => {
       throw new Error("database unavailable");
     });
@@ -802,7 +802,7 @@ it.each([
 ])(
   "saves only the consented host policy: $scenario",
   async ({ existing, proposal, override, shown }) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const entry = {
         scope: { kind: "team" as const },
         name: "SERVICE_API_KEY",

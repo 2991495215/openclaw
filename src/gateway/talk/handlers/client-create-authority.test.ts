@@ -45,6 +45,7 @@ import * as voiceSessions from "../../../talk/client-voice-session.js";
 import { clientVoiceSessionTesting } from "../../../talk/client-voice-session.test-support.js";
 import { captureEnv, setTestEnvValue } from "../../../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../../../test-utils/session-state-cleanup.js";
+import { useUserProfileCatalogForTest } from "../../../test-utils/user-profile-catalog.js";
 import { captureGatewayDeviceRevocation } from "../../device-revocation.js";
 import { makeClient } from "../../server-broadcast.test-helpers.js";
 import { createDirectChatContext } from "../../server-chat.agent-events.test-helpers.js";
@@ -128,6 +129,7 @@ async function invokeClose(params: Record<string, unknown>) {
 }
 
 describe("voice creation authority", () => {
+  const prepareProfiles = useUserProfileCatalogForTest();
   const tempDirs = useAutoCleanupTempDirTracker((remove) =>
     afterEach(async () => {
       if (ownedVoiceSessionId) {
@@ -189,6 +191,7 @@ describe("voice creation authority", () => {
     ownedVoiceSessionKey = sessionKey;
     tempDir = tempDirs.make("openclaw-voice-authority-");
     setTestEnvValue("OPENCLAW_STATE_DIR", tempDir);
+    await prepareProfiles();
     await replaceSessionEntry(
       { agentId: "main", sessionKey },
       { sessionId, updatedAt: Date.now() },

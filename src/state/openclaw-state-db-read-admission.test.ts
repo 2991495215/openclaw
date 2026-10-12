@@ -191,15 +191,7 @@ it("permits a lazy native write after healthy peer changes when birthtime falls 
 
 async function retainExistingReader(context: OpenClawStateWorkerContext) {
   await expect(
-    runOpenClawStateWorkerOperation(
-      context,
-      (scope) =>
-        scope.execute({
-          type: "plugins.metadata.read",
-          input: { selector: "installed-index", artifactPreservingReadOnly: true },
-        }),
-      { existingOnly: true },
-    ),
+    runOpenClawStateWorkerOperation(context, async () => undefined, { existingOnly: true }),
   ).resolves.toBeUndefined();
   const store = await getOpenClawStateWorkerOwner().open(context, { existingOnly: true });
   expect(store).toBeDefined();

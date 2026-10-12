@@ -19,7 +19,7 @@ import {
 
 describe("creator namespace authorization", () => {
   it("reuses caller alias facts across rows and refreshes them after a real merge", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const caller = ensureProfileForEmail("cached-caller@example.test");
       const other = ensureProfileForEmail("cached-other@example.test");
       using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
@@ -46,7 +46,7 @@ describe("creator namespace authorization", () => {
   });
 
   it("never turns matching attribution or responsibility into a profile creator grant", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const profile = ensureProfileForEmail("creator@example.test");
       const client = {
         connect: { scopes: ["operator.read", "operator.write"] },
@@ -128,7 +128,7 @@ describe("creator namespace authorization", () => {
   });
 
   it("resolves profile tombstones after warming event snapshots without rewriting creators", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
       const old = ensureProfileForEmail("old@example.test");
       const current = ensureProfileForEmail("current@example.test");
       const client = {

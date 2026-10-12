@@ -48,8 +48,10 @@ vi.mock("../../plugins/web-search-providers.runtime.js", () => ({
 vi.mock("../../config/io.plugin-metadata.js", () => ({
   resolveConfigWidePluginMetadataSnapshotAsync: async () => ({ byPluginId: new Map() }),
 }));
+// mock-isolation: Use fixed discovery policy without opening machine state for status projection.
 vi.mock("../../plugins/bundled-discovery-state.js", () => ({
   prepareBundledDiscoveryMode: async () => () => {},
+  readBundledDiscoveryModeMemoized: () => undefined,
 }));
 vi.mock("../../agents/web-search-tool-policy.js", () => ({
   resolveWebSearchToolPolicy: () => ({ allowed: true }),

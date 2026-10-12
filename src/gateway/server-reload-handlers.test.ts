@@ -2033,14 +2033,14 @@ describe("gateway hot reload model state", () => {
       const clock = createGatewaySchedulerClock(Date.now());
       const scheduler = createTestGatewayScheduler(clock.clock);
       const fixtureDir = autoCleanupTempDirs.make("openclaw-monitor-publication-");
-      const initialConfig = {
+      const initialConfig: OpenClawConfig = {
         agents: {
           entries: {
             first: { heartbeat: { every: "1h" } },
             second: { heartbeat: { every: "1h" } },
           },
         },
-      } satisfies OpenClawConfig;
+      };
       const nextConfig = {
         ...initialConfig,
         agents: {

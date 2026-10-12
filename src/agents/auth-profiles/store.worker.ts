@@ -5,7 +5,6 @@ import {
   deferSqliteWorkerCommitReceipt,
   requestSqliteWorkerOperationAdmission,
 } from "../../infra/sqlite-worker-operation-admission.js";
-import { readConfigMachineState } from "../../state/config-machine-state.js";
 import {
   withArtifactPreservingStateReads,
   withExistingOpenClawStateDatabaseReadOnly,
@@ -18,7 +17,7 @@ import {
 } from "../../state/user-model-accounts.js";
 import type { WorkerOperationHandlers } from "../../state/worker-operation-registry.js";
 import { bootstrapSharedAuthStoreInWorker } from "./shared-store-bootstrap.worker.js";
-import { readAuthProfileRows, SHARED_AUTH_STORE_STATE_KEY } from "./sqlite-json.js";
+import { readAuthProfileRows } from "./sqlite-json.js";
 import { isMissingDatabasePath } from "./sqlite-read-pool.js";
 import { updateAuthProfileStoreInDatabase } from "./store-update-kernel.js";
 import { sendAuthProfileUpdateValue } from "./store-update-transfer.js";
@@ -181,10 +180,6 @@ export const authProfileOperations = {
       port1.close();
       port2.close();
     }
-  },
-  "authProfiles.sharedOwnership": (input: { artifactPreserving: boolean }, { stateOptions }) => {
-    const read = () => readConfigMachineState(SHARED_AUTH_STORE_STATE_KEY, stateOptions());
-    return input.artifactPreserving ? withArtifactPreservingStateReads(read) : read();
   },
   "authProfiles.personal": (
     input: { profileId: string; artifactPreserving: boolean },

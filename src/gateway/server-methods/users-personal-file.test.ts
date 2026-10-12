@@ -34,6 +34,14 @@ const state = vi.hoisted(() => ({
   beforeRoot: undefined as (() => Promise<void>) | undefined,
 }));
 vi.mock("../../state/user-profile-list.js", () => ({
+  prepareUserProfileCatalog: async () => ({
+    hasMultipleSessionSharingIdentities: () => state.multipleProfiles,
+    readCurrentIdentity: (id: string) => ({
+      profileId: id === "alice-alias" ? state.canonical : id,
+      role: state.role,
+    }),
+    release: () => {},
+  }),
   hasMultipleResidentSessionSharingIdentities: () => state.multipleProfiles,
   readResidentUserProfileId: (id: string) => (id === "alice-alias" ? state.canonical : id),
   readResidentUserProfileIdentity: (id: string) => ({ profileId: id, role: state.role }),

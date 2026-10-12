@@ -25,6 +25,7 @@ import { createDeferredCore } from "../shared/deferred.js";
 import { drainGlobalSingletonLifecycleState } from "../shared/global-singleton.js";
 import { setUserProfileRole } from "../state/user-profile-writes.worker.js";
 import { ensureGatewayOwnerProfile, ensureProfileForEmail } from "../state/user-profiles.js";
+import { useUserProfileCatalogForTest } from "../test-utils/user-profile-catalog.js";
 import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import { createGatewayWorkerPlacementReclaimBarriers } from "./server-worker-placement-reclaim.js";
 import { recoverGatewaySession } from "./session-recovery-service.js";
@@ -61,8 +62,10 @@ vi.mock("../auto-reply/reply/conversation-label-generator.js", async (importOrig
 afterEach(() => drainGlobalSingletonLifecycleState());
 
 const { createSessionStoreDir } = setupGatewaySessionsHandlerTestHarness();
+const prepareProfiles = useUserProfileCatalogForTest();
 
-beforeEach(() => {
+beforeEach(async () => {
+  await prepareProfiles();
   titleGeneration.mockReset().mockResolvedValue("Recovered session");
 });
 

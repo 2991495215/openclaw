@@ -1,13 +1,14 @@
 import type { DatabaseSync } from "node:sqlite";
-import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
-import type { ConfigMachineStateDatabase } from "../state/config-machine-state.js";
 import {
   withExistingOpenClawStateDatabaseArtifactPreservingReadOnly,
   withExistingOpenClawStateDatabaseReadOnly,
 } from "../state/openclaw-state-db-readonly.js";
-import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
+import {
+  INSTALLED_PLUGIN_INDEX_STATE_KEY,
+  readPluginMetadataStateRowsInDatabase,
+} from "./plugin-metadata-state-row.kernel.js";
 
-export const INSTALLED_PLUGIN_INDEX_STATE_KEY = "plugins.installedIndex";
+export { INSTALLED_PLUGIN_INDEX_STATE_KEY } from "./plugin-metadata-state-row.kernel.js";
 
 export type PluginMetadataStateSelector = "installed-index" | "bundled-discovery";
 export type PluginMetadataStateKey =
@@ -39,18 +40,8 @@ export function readPluginMetadataStateRowsSync(
   databaseOptions: Parameters<typeof withExistingOpenClawStateDatabaseReadOnly>[1],
   artifactPreservingReadOnly = false,
 ): PluginMetadataStateRow[] {
-  const read = ({ db }: { db: DatabaseSync }) => {
-    if (!tableExists(db, "config_machine_state")) {
-      return [];
-    }
-    return executeSqliteQuerySync(
-      db,
-      getNodeSqliteKysely<ConfigMachineStateDatabase>(db)
-        .selectFrom("config_machine_state")
-        .select(["state_key", "value_json"])
-        .where("state_key", "in", stateKeys),
-    ).rows;
-  };
+  const read = ({ db }: { db: DatabaseSync }) =>
+    readPluginMetadataStateRowsInDatabase(db, stateKeys);
   return (
     (artifactPreservingReadOnly
       ? withExistingOpenClawStateDatabaseArtifactPreservingReadOnly(read, databaseOptions)

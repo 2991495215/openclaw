@@ -134,7 +134,7 @@ async function prepare(
 
 describe("sessions.title.prepare", () => {
   beforeAll(async () => {
-    testState = await createOpenClawTestState({ scenario: "minimal" });
+    testState = await createOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true });
     ownerId = ensureProfileForEmail("title-owner@example.test").id;
     otherId = ensureProfileForEmail("title-other@example.test").id;
     personalAccountId = connectUserModelAccount({

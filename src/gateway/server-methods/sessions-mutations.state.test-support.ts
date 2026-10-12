@@ -13,7 +13,7 @@ import { flushPendingSessionsChangedEvents } from "./session-change-event.js";
 export function setupSessionMutationState() {
   let state: OpenClawTestState;
   beforeAll(async () => {
-    state = await createOpenClawTestState({ scenario: "minimal" });
+    state = await createOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true });
   });
   beforeEach(() => {
     state.applyEnv();

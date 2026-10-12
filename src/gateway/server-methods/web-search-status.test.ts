@@ -33,8 +33,10 @@ vi.mock("../../web-search/runtime.js", () => ({
 vi.mock("../../config/io.plugin-metadata.js", () => ({
   resolveConfigWidePluginMetadataSnapshotAsync: mocks.metadata,
 }));
+// mock-isolation: Use fixed discovery policy without opening machine state for status projection.
 vi.mock("../../plugins/bundled-discovery-state.js", () => ({
   prepareBundledDiscoveryMode: async () => () => {},
+  readBundledDiscoveryModeMemoized: () => undefined,
 }));
 vi.mock("../../plugins/credential-descriptors.js", () => ({
   resolvePluginCredentialDescriptors: () => [credential],

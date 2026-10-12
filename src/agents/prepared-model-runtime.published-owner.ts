@@ -1,4 +1,7 @@
-import { prepareSharedAuthStoreOwnership } from "./auth-profiles/path-resolve.js";
+import {
+  getPreparedSharedAuthStoreOwnership,
+  prepareSharedAuthStoreOwnership,
+} from "./auth-profiles/path-resolve.js";
 import type { ModelCatalogSnapshot } from "./model-catalog.types.js";
 import { assertPreparedModelRuntimeAdmissionCanWait } from "./prepared-model-runtime-admission.js";
 import { capturePreparedModelRuntimeCatalog } from "./prepared-model-runtime.capture.js";
@@ -82,7 +85,9 @@ export async function loadPreparedModelRuntimeOwner<T>(
   project: (owner: PreparedModelRuntimeOwner, snapshot: PreparedModelRuntimeSnapshot) => T,
 ): Promise<T> {
   const assertLifetime = context.captureLifetime();
-  await prepareSharedAuthStoreOwnership(rawInput.env);
+  if (!getPreparedSharedAuthStoreOwnership(rawInput.env ?? process.env)) {
+    await prepareSharedAuthStoreOwnership(rawInput.env);
+  }
   assertLifetime();
   let input = normalizePreparedModelRuntimeInput({
     ...rawInput,
@@ -134,7 +139,9 @@ async function projectPublishedModelRuntimeOwner<T>(
   project: (owner: PreparedModelRuntimeOwner, snapshot: PreparedModelRuntimeSnapshot) => T,
 ): Promise<T> {
   const assertLifetime = context.captureLifetime();
-  await prepareSharedAuthStoreOwnership(rawInput.env);
+  if (!getPreparedSharedAuthStoreOwnership(rawInput.env ?? process.env)) {
+    await prepareSharedAuthStoreOwnership(rawInput.env);
+  }
   assertLifetime();
   const input = normalizePreparedModelRuntimeInput(rawInput);
   let replacement = context.getPendingReplacement(input);

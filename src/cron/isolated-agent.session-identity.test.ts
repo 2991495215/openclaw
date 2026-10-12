@@ -8,6 +8,7 @@ import { SessionManager } from "../agents/sessions/index.js";
 import * as thinking from "../auto-reply/thinking.js";
 import { loadSessionEntry } from "../config/sessions/session-accessor.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
+import { useUserProfileCatalogForTest } from "../test-utils/user-profile-catalog.js";
 import { runCronIsolatedAgentTurn } from "./isolated-agent.js";
 import {
   makeCfg,
@@ -37,6 +38,7 @@ import { normalizeCronJobCreate } from "./normalize.js";
 import type { CronJob, CronStoredJob } from "./types.js";
 
 setupRunCronIsolatedAgentTurnSuite();
+const prepareProfiles = useUserProfileCatalogForTest();
 
 async function useRealCronSessionState(): Promise<void> {
   const [sessionRuntime, sessionAccessor] = await Promise.all([
@@ -156,6 +158,7 @@ describe("runCronIsolatedAgentTurn session identity", () => {
     async (source) => {
       await useRealCronSessionState();
       await withTempHome(async (home) => {
+        await prepareProfiles();
         const storePath = await writeSessionStore(home, { delivery: { kind: "internal" } });
         const profile = ensureProfileForEmail("cron-creator@example.test");
         const createdActor = { type: "human" as const, source, id: profile.id };

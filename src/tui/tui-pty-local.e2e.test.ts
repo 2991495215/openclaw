@@ -53,7 +53,7 @@ import {
   startGatewayCaseControlClient,
   waitForOutputAfter,
 } from "./tui-pty-local-test-support.js";
-import { readRequestBody, writeJson } from "./tui-pty-model-http-test-support.js";
+import { readRequestBody, writeTuiModelHttpJson } from "./tui-pty-model-http-test-support.js";
 import { buildTuiProcessArgs } from "./tui-pty-process-test-support.js";
 import { startRuntimePty, waitFor, type PtyRun } from "./tui-pty-test-support.js";
 
@@ -336,11 +336,11 @@ async function startRoutedMockModelServer(
     void (async () => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       if (req.method === "GET" && (url.pathname === "/healthz" || url.pathname === "/readyz")) {
-        writeJson(res, 200, { ok: true });
+        writeTuiModelHttpJson(res, 200, { ok: true });
         return;
       }
       if (req.method === "GET" && url.pathname === "/v1/models") {
-        writeJson(res, 200, {
+        writeTuiModelHttpJson(res, 200, {
           data: Object.keys(behaviors).map((id) => ({
             id,
             object: "model",
@@ -361,7 +361,9 @@ async function startRoutedMockModelServer(
           const behavior = behaviors[modelId];
           if (!behavior) {
             rejectedRequests.push(request);
-            writeJson(res, 400, { error: `unknown mock model: ${modelId || "missing"}` });
+            writeTuiModelHttpJson(res, 400, {
+              error: `unknown mock model: ${modelId || "missing"}`,
+            });
             return;
           }
           const modelRequests = requestsByModel.get(modelId) ?? [];
@@ -384,10 +386,10 @@ async function startRoutedMockModelServer(
           );
           return;
         }
-        writeJson(res, 404, { error: "not found" });
+        writeTuiModelHttpJson(res, 404, { error: "not found" });
         return;
       }
-      writeJson(res, 404, { error: "not found" });
+      writeTuiModelHttpJson(res, 404, { error: "not found" });
     })();
   });
 
