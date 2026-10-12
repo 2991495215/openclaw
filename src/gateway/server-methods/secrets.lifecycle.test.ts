@@ -72,7 +72,7 @@ describe("secret store mutation lifecycle", () => {
       });
       const reloadSecrets = vi.fn(async () => ({ warningCount: 0 }));
       const storeWriteService = createSecretStoreWriteService({ reloadSecrets });
-      const write = storeWriteService.write;
+      const write = storeWriteService.write.bind(storeWriteService);
       vi.spyOn(storeWriteService, "write").mockImplementation(async (input) => {
         try {
           return await write(input);
