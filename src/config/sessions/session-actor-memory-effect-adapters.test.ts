@@ -289,7 +289,7 @@ describe("memory actor effect adapters", () => {
       }),
     );
     const prepared = await lineage.admission!.prepare();
-    expect(lineage.isCurrent()).toBe(true);
+    expect(prepared.isCurrent()).toBe(true);
     readSessionActorStorageResult(
       await child.storage!.mutate(
         {
@@ -304,7 +304,7 @@ describe("memory actor effect adapters", () => {
         authority,
       ),
     );
-    expect(lineage.isCurrent()).toBe(false);
+    expect(prepared.isCurrent()).toBe(false);
     expect(() => prepared.current!.assertCurrent([])).toThrow("requester policy");
   });
 });

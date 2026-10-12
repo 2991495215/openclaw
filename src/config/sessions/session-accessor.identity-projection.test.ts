@@ -3,7 +3,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { closeOpenClawAgentDatabaseByPathAsync } from "../../state/openclaw-agent-db.js";
-import { resolveIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
@@ -19,7 +18,6 @@ import {
   resolveSessionEntryAccessTarget,
   updateResolvedSessionEntry,
 } from "./session-accessor.entry.js";
-import { memorySessionActorOwners } from "./session-actor-memory-owner.js";
 import type { SessionEntry } from "./types.js";
 
 describe("qualified session accessor projection", () => {
@@ -32,21 +30,18 @@ describe("qualified session accessor projection", () => {
     storePath = state.path("sessions.json");
   });
   afterEach(async () => {
-    memorySessionActorOwners.reset();
     await state.cleanup();
   });
 
-  async function captureSession(entry: SessionEntry, incognito = false) {
+  async function captureSession(entry: SessionEntry) {
     const cfg: OpenClawConfig = {
-      ...(!incognito ? { session: { store: storePath, scope: "global" as const } } : {}),
+      session: { store: storePath, scope: "global" },
       agents: { entries: { main: {} } },
     };
-    const sessionKey = incognito ? "agent:main:dashboard:incognito-capture" : "global";
+    const sessionKey = "global";
     const physical = {
       agentId: "main",
-      storePath: incognito
-        ? resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main" })
-        : storePath,
+      storePath,
       sessionKey,
     };
     await replaceSessionEntry(physical, entry);
@@ -211,59 +206,37 @@ describe("qualified session accessor projection", () => {
   it.each([
     { kind: "session", error: "Captured session generation changed" },
     { kind: "file", error: "file identity changed" },
-    { kind: "incognito", recreated: false, error: /Captured session database/ },
-    { kind: "incognito", recreated: true, error: /Captured session database/ },
-  ] as const)(
-    "rejects a replaced or retired $kind capture (recreated=$recreated)",
-    async (variant) => {
-      const capturedEntry: SessionEntry =
-        variant.kind === "session"
-          ? { sessionId: "original", updatedAt: 1 }
-          : { sessionId: "same-session", lifecycleRevision: "same", updatedAt: 1 };
-      const { physical, scope, target } = await captureSession(
-        capturedEntry,
-        variant.kind === "incognito",
-      );
-      if (variant.kind === "session") {
-        await replaceSessionEntry(physical, { sessionId: "replacement", updatedAt: 2 });
-      } else if (variant.kind === "file") {
-        await closeOpenClawAgentDatabaseByPathAsync(target.storePath);
-        const previousPath = `${target.storePath}.original`;
-        fs.renameSync(target.storePath, previousPath);
-        fs.copyFileSync(previousPath, target.storePath);
-      } else {
-        const memory = { agentId: "main", path: target.storePath };
-        const owner = memorySessionActorOwners.read(memory);
-        expect(owner).toBeDefined();
-        expect(target.readSource?.databaseIdentity).toBe(owner!.identity.incarnation);
-        memorySessionActorOwners.closeDatabase(memory);
-        if (variant.recreated) {
-          await replaceSessionEntry(physical, capturedEntry);
-        }
-      }
-      const update = vi.fn((entry: SessionEntry) => {
-        entry.label = "must not write";
+  ] as const)("rejects a replaced $kind capture", async (variant) => {
+    const capturedEntry: SessionEntry =
+      variant.kind === "session"
+        ? { sessionId: "original", updatedAt: 1 }
+        : { sessionId: "same-session", lifecycleRevision: "same", updatedAt: 1 };
+    const { physical, scope, target } = await captureSession(capturedEntry);
+    if (variant.kind === "session") {
+      await replaceSessionEntry(physical, { sessionId: "replacement", updatedAt: 2 });
+    } else if (variant.kind === "file") {
+      await closeOpenClawAgentDatabaseByPathAsync(target.storePath);
+      const previousPath = `${target.storePath}.original`;
+      fs.renameSync(target.storePath, previousPath);
+      fs.copyFileSync(previousPath, target.storePath);
+    }
+    const update = vi.fn((entry: SessionEntry) => {
+      entry.label = "must not write";
+    });
+    await expect(updateResolvedSessionEntry(scope, update, { target })).rejects.toThrow(
+      variant.error,
+    );
+    expect(update).not.toHaveBeenCalled();
+    expect(loadSessionEntryReadOnly(physical)?.label).toBeUndefined();
+    if (variant.kind === "file") {
+      expect(loadSessionEntryReadOnly(physical)).toMatchObject({
+        sessionId: "same-session",
+        lifecycleRevision: "same",
       });
-      await expect(updateResolvedSessionEntry(scope, update, { target })).rejects.toThrow(
-        variant.error,
-      );
-      expect(update).not.toHaveBeenCalled();
-      expect(loadSessionEntryReadOnly(physical)?.label).toBeUndefined();
-      if (variant.kind === "file") {
-        expect(loadSessionEntryReadOnly(physical)).toMatchObject({
-          sessionId: "same-session",
-          lifecycleRevision: "same",
-        });
-        const fresh = resolveSessionEntryAccessTarget(scope, { keyFormat: "agent-qualified" });
-        expect(fresh.readSource?.databaseIdentity).not.toBe(target.readSource?.databaseIdentity);
-      } else if (variant.kind === "incognito") {
-        expect(loadSessionEntryReadOnly(physical)?.sessionId).toBe(
-          variant.recreated ? "same-session" : undefined,
-        );
-        expect(fs.existsSync(target.storePath)).toBe(false);
-      }
-    },
-  );
+      const fresh = resolveSessionEntryAccessTarget(scope, { keyFormat: "agent-qualified" });
+      expect(fresh.readSource?.databaseIdentity).not.toBe(target.readSource?.databaseIdentity);
+    }
+  });
 
   it("rejects a successor lifecycle with the same SID after waiting for FIFO admission", async () => {
     const { physical, scope, target } = await captureSession({

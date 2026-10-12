@@ -23,6 +23,7 @@ import { setUserProfileRole } from "../../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import {
+  appendTranscriptMessage,
   appendTranscriptMessageSync,
   loadTranscriptEvents,
   upsertSessionEntryCore,
@@ -105,7 +106,7 @@ describe("accepted input worker custody", () => {
     expect(await listSessionPendingInputs(scope)).toMatchObject({ items: [], total: 0 });
   });
 
-  it("appends and finishes pending input through the native incognito owner", async () => {
+  it("appends and finishes pending input through the memory session actor", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async ({ env }) => {
       const scope = {
         agentId: "incognito-agent",
@@ -139,11 +140,11 @@ describe("accepted input worker custody", () => {
         role: "user",
         content: "Continue in memory",
         timestamp: 100,
-        idempotencyKey: "incognito-native:user",
+        idempotencyKey: "incognito-memory:user",
       };
       try {
         receipt = await stageSessionPendingInput(scope, {
-          runId: "incognito-native",
+          runId: "incognito-memory",
           message,
           assertCurrent: authorization.assertCurrent,
           assertAdmittedCurrent: authorization.assertCurrent,
@@ -158,9 +159,9 @@ describe("accepted input worker custody", () => {
         await expect(
           admitted.runAsync(() => {
             effects++;
-            return appendTranscriptMessageSync(scope, { message: admitted.message });
+            return appendTranscriptMessage(scope, { message: admitted.message });
           }),
-        ).resolves.toMatchObject({ ok: true, value: { appended: true } });
+        ).resolves.toMatchObject({ appended: true });
         client.connect.scopes = ["operator.read", "operator.write"];
         await expect(
           admitted.runAsync(() => {

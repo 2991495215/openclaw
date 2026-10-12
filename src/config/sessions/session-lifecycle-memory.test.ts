@@ -72,6 +72,7 @@ beforeEach(() => {
 afterEach(() => {
   memorySessionActorOwners.reset();
   registries.splice(0).forEach(markPluginRegistryRetired);
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -275,6 +276,7 @@ it.each([false, true])(
     const owner = await fixture();
     const externalOwner = harness();
     const nowMs = Date.now() + 60_000;
+    vi.spyOn(Date, "now").mockReturnValue(nowMs);
     if (renewed) {
       external.findWorkspaces.mockImplementationOnce(async () => {
         const writer = await owner.acquireExisting(sessionKey, {
