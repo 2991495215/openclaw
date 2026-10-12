@@ -194,6 +194,8 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   "conversation-runtime": 3,
   "channel-send-result": 1,
   "reply-runtime": 1,
+  // +2: released synchronous get/list helpers remain while plugins adopt async preparation.
+  "realtime-transcription": 2,
   "security-runtime": 1,
   // +2: approved released upstream-link writes retained during worker migration.
   "session-catalog": 2,
@@ -221,7 +223,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
     publicEntrypoints: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_ENTRYPOINTS",
       // +1: the shared state-owner boundary for plugin CLIs.
-      152,
+      // +2: shared database-engine host and worker adapters.
+      154,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -259,7 +262,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: approved async transcript event/stat read replacements.
       // +1: approved PreparedAgentRunStart contract.
       // +2: resolvePluginProvidersAsync and resolveMemorySearchConfigAsync on existing public subpaths.
-      3711,
+      // +10: shared database-engine contracts and operations after the SQLite export cutover.
+      // +1: replaceRuntimeAuthProfileStoreSnapshotsAsync replaces synchronous snapshot publication.
+      // +2: getRealtimeTranscriptionProviderAsync and listRealtimeTranscriptionProvidersAsync.
+      3724,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -289,7 +295,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: the same async model-reference parser and prepared resolver factory.
       // +2: the same transcript read replacement pairs.
       // +2: the same provider and memory async discovery replacements.
-      2168,
+      // +5: shared database-engine host and worker operations.
+      // +1: the same async auth-profile snapshot publication replacement.
+      // +2: the same async realtime-transcription provider get/list replacements.
+      2176,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -309,7 +318,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: retained synchronous transcript event/stat reads until the next SDK major.
       // +2: their retained, prepared-only synchronous counterparts.
       // +1: released snapshot publication remains during its approved async replacement.
-      195,
+      // +2: retained synchronous realtime-transcription provider get/list exports.
+      197,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

@@ -8,8 +8,11 @@ import { loadAuthProfileStoreWithoutExternalProfilesAsync } from "../../agents/a
 import { readConfigFileSnapshot, resetConfigRuntimeState } from "../../config/io.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { RuntimeEnv } from "../../runtime.js";
-import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
-import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
+import {
+  closeOpenClawAgentDatabasesAsync,
+  closeOpenClawAgentDatabasesForTest,
+} from "../../state/openclaw-agent-db.js";
+import { closeStateDatabaseForTest } from "../../test-utils/database-cleanup.js";
 import { runDoctorConfigPreflight } from "../doctor-config-preflight.js";
 import {
   applyOnboardingPrimaryModel,
@@ -33,10 +36,11 @@ vi.mock("./local/auth-choice.js", () => ({
 
 import { runNonInteractiveSetup } from "../onboard-non-interactive.js";
 
-afterEach(() => {
+afterEach(async () => {
   vi.resetAllMocks();
+  await closeOpenClawAgentDatabasesAsync();
   closeOpenClawAgentDatabasesForTest();
-  closeOpenClawStateDatabaseForTest();
+  await closeStateDatabaseForTest();
   resetConfigRuntimeState();
 });
 
@@ -210,8 +214,9 @@ describe("local setup fleet owner persistence", () => {
             runtime,
             expect.objectContaining({ agentId: "beta", skipBootstrap: true }),
           );
-          closeOpenClawAgentDatabasesForTest();
-          closeOpenClawStateDatabaseForTest();
+          await closeOpenClawAgentDatabasesAsync(stateDir);
+          closeOpenClawAgentDatabasesForTest(stateDir);
+          await closeStateDatabaseForTest();
           resetConfigRuntimeState();
           const reopened = await readConfigFileSnapshot();
           expect(reopened.valid, JSON.stringify(reopened.issues)).toBe(true);

@@ -6,7 +6,7 @@ import {
   replaceRuntimeAuthProfileStoreSnapshots,
 } from "openclaw/plugin-sdk/agent-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
-import { upsertAuthProfile } from "openclaw/plugin-sdk/provider-auth";
+import { upsertAuthProfile, upsertAuthProfileAsync } from "openclaw/plugin-sdk/provider-auth";
 import { withTempDir } from "openclaw/plugin-sdk/test-env";
 import { afterEach, describe, expect, it as baseIt, vi } from "vitest";
 import {
@@ -1793,17 +1793,18 @@ describe("Codex auth bridge", () => {
     });
 
     await fs.mkdir(childAgentDir, { recursive: true });
-    persistProfile(
-      childAgentDir,
-      oauthProfile("test", {
+    await upsertAuthProfileAsync({
+      agentDir: childAgentDir,
+      profileId: "openai:work",
+      credential: oauthProfile("test", {
         access: "child-stale-access-token",
         refresh: "child-stale-refresh-token",
         expires: Date.now() - 60_000,
         accountId: "account-main",
         email: "main-codex@example.test",
       }),
-    );
-    upsertAuthProfile({
+    });
+    await upsertAuthProfileAsync({
       profileId: "openai:work",
       credential: oauthProfile("test", {
         access: "main-current-access-token",
