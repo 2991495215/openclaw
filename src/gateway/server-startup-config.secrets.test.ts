@@ -33,7 +33,11 @@ import type { PreparedSecretsRuntimeSnapshot } from "../secrets/runtime.js";
 import { captureEnv, withEnvAsync } from "../test-utils/env.js";
 import { prepareGatewayStartupConfig } from "./server-startup-config-helpers.js";
 import { createRuntimeSecretsActivator } from "./server-startup-config.js";
-import { makePreparedSecretsSnapshot as preparedSnapshot } from "./server-startup-config.test-support.js";
+import {
+  createStartupProviderConfig as providerConfig,
+  makePreparedSecretsSnapshot as preparedSnapshot,
+  withStartupGatewayTokenConfig as gatewayTokenConfig,
+} from "./server-startup-config.test-support.js";
 import { buildTestConfigSnapshot } from "./test-helpers.config-snapshots.js";
 
 type PrepareRuntimeSecretsSnapshotForTest =
@@ -134,34 +138,6 @@ async function activateDeferred(
       DEFERRED_RELOAD,
     ),
   ).resolves.toBe(snapshot);
-}
-
-function providerConfig(refId?: string): OpenClawConfig {
-  return gatewayTokenConfig({
-    models: {
-      providers: {
-        openai: {
-          apiKey: refId ? { source: "env", provider: "default", id: refId } : "fixture",
-          models: [],
-          baseUrl: "https://api.openai.com/v1",
-        },
-      },
-    },
-  });
-}
-
-function gatewayTokenConfig(config: OpenClawConfig): OpenClawConfig {
-  return {
-    ...config,
-    gateway: {
-      ...config.gateway,
-      auth: {
-        ...config.gateway?.auth,
-        mode: config.gateway?.auth?.mode ?? "token",
-        token: config.gateway?.auth?.token ?? "startup-test-token",
-      },
-    },
-  };
 }
 
 function asConfig(value: unknown): OpenClawConfig {

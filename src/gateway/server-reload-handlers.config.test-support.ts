@@ -78,6 +78,15 @@ export function enableChannelReloadsForTest() {
   };
 }
 
+export async function withChannelReloadsEnabled<T>(run: () => Promise<T>): Promise<T> {
+  const restoreChannelReloadEnv = enableChannelReloadsForTest();
+  try {
+    return await run();
+  } finally {
+    restoreChannelReloadEnv();
+  }
+}
+
 export function createTestConfigRevisionProjector(): ManagedGatewayConfigReloaderParams["configRevisionProjector"] {
   return {
     projectRawHash: (hash) => hash,

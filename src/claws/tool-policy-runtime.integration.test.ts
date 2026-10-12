@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { resolveAgentRuntimeConfig } from "../agents/agent-runtime-config.js";
 import { toAgentEntriesRecord } from "../agents/agent-scope-config.js";
@@ -23,10 +24,10 @@ import * as configIo from "../config/io.js";
 import {
   clearRuntimeConfigSnapshot,
   setAppliedRuntimeConfigSnapshot,
-  setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import * as sqliteSnapshot from "../infra/sqlite-snapshot-source.js";
+import { setRuntimeConfigSnapshot } from "../plugin-sdk/runtime-config-snapshot.js";
 import { clearSecretsRuntimeSnapshot } from "../secrets/runtime.js";
 import { withArtifactPreservingStateReads } from "../state/openclaw-state-db-readonly.js";
 import {
@@ -36,7 +37,11 @@ import {
 } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { applyClawMigrationPlan, buildClawMigrationPlan } from "./migrate.js";
-import { persistClawInstallRecord } from "./provenance.js";
+import {
+  deleteClawInstallRecord,
+  persistClawInstallRecord,
+  updateClawInstallRecord,
+} from "./provenance.js";
 import { makeProvenancePlan, stateEnv } from "./provenance.test-helpers.js";
 import {
   isFrozenClawToolAllowPolicy,
@@ -91,6 +96,39 @@ async function migrateToolConsentAgent() {
 }
 
 describe("Claw tool policy consent provenance", () => {
+  it("keeps synchronous SDK publication current through provenance writes and closure without SQL", async () => {
+    const root = tempDirs.make("openclaw-claw-sync-consent-");
+    const env = stateEnv(root);
+    vi.stubEnv("OPENCLAW_STATE_DIR", env.OPENCLAW_STATE_DIR);
+    const { plan } = await makeToolConsentPlan(root);
+    persistClawInstallRecord(plan, { env });
+    const config = { agents: { entries: toAgentEntriesRecord([plan.agent.config]) } };
+    await setAppliedRuntimeConfigSnapshot(config, config);
+    const publish = () => {
+      const sql = observeHostDataSql();
+      try {
+        setRuntimeConfigSnapshot(config);
+        const capability = resolveConversationCapabilityProfile({ agentId: "worker", config });
+        return isFrozenClawToolAllowPolicy(capability.policy.agentPolicy);
+      } finally {
+        sql.restore();
+        expect(sql.queries).toEqual([]);
+      }
+    };
+
+    expect(publish()).toBe(true);
+    updateClawInstallRecord(plan, { env, agentConfigDigest: "changed-consent" });
+    expect(publish).toThrow("Cannot verify the installed tool authority");
+    updateClawInstallRecord(plan, { env });
+    expect(publish()).toBe(true);
+    deleteClawInstallRecord("worker", { env });
+    expect(publish()).toBe(false);
+    persistClawInstallRecord(plan, { env });
+    expect(publish()).toBe(true);
+    closeOpenClawStateDatabase();
+    expect(publish).toThrow("Cannot verify the installed tool authority");
+  });
+
   it("prepares restarted Claw consent before standalone agent capability resolution", async () => {
     const root = tempDirs.make("openclaw-claw-standalone-consent-");
     const env = stateEnv(root);

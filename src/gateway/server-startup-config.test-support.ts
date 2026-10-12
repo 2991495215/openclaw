@@ -10,6 +10,34 @@ import { createEmptyRuntimeWebToolsMetadata } from "../secrets/runtime-fast-path
 import type { PreparedSecretsRuntimeSnapshot } from "../secrets/runtime.js";
 import { createRuntimeSecretsActivator } from "./server-startup-config.js";
 
+export function createStartupProviderConfig(refId?: string): OpenClawConfig {
+  return withStartupGatewayTokenConfig({
+    models: {
+      providers: {
+        openai: {
+          apiKey: refId ? { source: "env", provider: "default", id: refId } : "fixture",
+          models: [],
+          baseUrl: "https://api.openai.com/v1",
+        },
+      },
+    },
+  });
+}
+
+export function withStartupGatewayTokenConfig(config: OpenClawConfig): OpenClawConfig {
+  return {
+    ...config,
+    gateway: {
+      ...config.gateway,
+      auth: {
+        ...config.gateway?.auth,
+        mode: config.gateway?.auth?.mode ?? "token",
+        token: config.gateway?.auth?.token ?? "startup-test-token",
+      },
+    },
+  };
+}
+
 export function createTestRuntimeSecretsActivator(
   prepareRuntimeSecretsSnapshot: NonNullable<
     Parameters<typeof createRuntimeSecretsActivator>[0]["prepareRuntimeSecretsSnapshot"]

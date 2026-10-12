@@ -25,7 +25,6 @@ import type * as deliveryTarget from "../cron/isolated-agent/delivery-target.js"
 import { CronService } from "../cron/service.js";
 import { waitForCronRunQueue } from "../cron/service/run-queue.js";
 import { onTimer as onCronTimer } from "../cron/service/timer.test-support.js";
-import { resolveSelectedCronJobsStorePath } from "../cron/store/paths.js";
 import type { HeartbeatRunResult } from "../infra/heartbeat-wake.js";
 import {
   OutboundDeliveryError,
@@ -52,6 +51,7 @@ import {
   registerGatewayCronStreamMutationTests,
 } from "./server-cron.mutation-lifecycle.test-support.js";
 import { registerGatewayCronQueueTests } from "./server-cron.queue.test-support.js";
+import { buildGatewayCronService } from "./server-cron.service.test-support.js";
 
 type RunCronIsolatedAgentTurnMock = (params: {
   abortSignal?: AbortSignal;
@@ -280,29 +280,6 @@ import { resetActiveCronTaskRunsForTests } from "../cron/service/active-run-canc
 import type { CronServiceState } from "../cron/service/state.js";
 import type { CronJob, CronJobCreate } from "../cron/types.js";
 import { fireOnExitJob } from "./server-cron-event-dispatch.js";
-import { buildGatewayCronService as buildGatewayCronServiceRuntime } from "./server-cron.js";
-
-function buildGatewayCronService(
-  params: Omit<Parameters<typeof buildGatewayCronServiceRuntime>[0], "storePath">,
-) {
-  const legacyStore = (params.cfg.cron as { store?: unknown } | undefined)?.store;
-  const env =
-    typeof legacyStore === "string"
-      ? {
-          ...process.env,
-          OPENCLAW_SKIP_CRON: "0",
-          OPENCLAW_STATE_DIR: path.dirname(legacyStore),
-        }
-      : (params.env ?? process.env);
-  return buildGatewayCronServiceRuntime({
-    ...params,
-    env,
-    storePath: resolveSelectedCronJobsStorePath(
-      typeof legacyStore === "string" ? legacyStore : undefined,
-      env,
-    ),
-  });
-}
 
 function createCronConfig(name: string): OpenClawConfig {
   const tmpDir = path.join(os.tmpdir(), `${name}-${Date.now()}`);

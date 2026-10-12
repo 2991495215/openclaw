@@ -140,6 +140,7 @@ import {
   enableChannelReloadsForTest,
   makePluginReloadResult,
   publishConfigWrite,
+  withChannelReloadsEnabled,
 } from "./server-reload-handlers.config.test-support.js";
 import {
   createSupervisedExitWatcherFixture,
@@ -172,15 +173,6 @@ import {
 
 type ReloadHandlerParams = Parameters<typeof createGatewayReloadHandlersImpl>[0];
 type ManagedReloaderParams = Parameters<typeof startManagedGatewayConfigReloaderImpl>[0];
-async function withChannelReloadsEnabled<T>(run: () => Promise<T>): Promise<T> {
-  const restoreChannelReloadEnv = enableChannelReloadsForTest();
-  try {
-    return await run();
-  } finally {
-    restoreChannelReloadEnv();
-  }
-}
-
 type ManagedReloaderTestParams = Pick<
   ManagedReloaderParams,
   "initialConfig" | "readSnapshot" | "subscribeToWrites"
