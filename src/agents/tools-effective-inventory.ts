@@ -13,6 +13,7 @@ import {
   findConfiguredProviderModel,
   resolveMergedModelProviderConfig,
 } from "../config/model-provider-config.js";
+import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
 import { extractModelCompat } from "../plugins/provider-model-compat.js";
 import type { ProviderRuntimeModel } from "../plugins/provider-runtime-model.types.js";
@@ -190,20 +191,25 @@ async function resolveStaticToolInventoryRuntimeModelContext(params: {
   } else {
     return {};
   }
-  const normalized = normalizeProviderTransportWithPlugin({
-    provider,
-    modelId: runtimeModel.id,
-    config: params.cfg,
-    workspaceDir,
-    context: {
-      config: params.cfg,
-      workspaceDir,
-      provider,
-      modelId: runtimeModel.id,
-      api: runtimeModel.api,
-      baseUrl: runtimeModel.baseUrl,
-    },
-  });
+  const normalized = withPluginMetadataSnapshotScope(
+    metadataSnapshot,
+    () =>
+      normalizeProviderTransportWithPlugin({
+        provider,
+        modelId: runtimeModel.id,
+        config: params.cfg,
+        workspaceDir,
+        context: {
+          config: params.cfg,
+          workspaceDir,
+          provider,
+          modelId: runtimeModel.id,
+          api: runtimeModel.api,
+          baseUrl: runtimeModel.baseUrl,
+        },
+      }),
+    { config: params.cfg, workspaceDir },
+  );
   if (normalized) {
     runtimeModel = {
       ...runtimeModel,

@@ -26,6 +26,7 @@ import {
   closeOpenClawStateDatabaseAsync,
   closeOpenClawStateDatabaseForTest,
 } from "../../state/openclaw-state-db.js";
+import { attachPreparedProviderModelFixture } from "../provider-request.test-support.js";
 import { SessionManager } from "../sessions/session-manager.js";
 import {
   buildEmbeddedRunnerAssistant,
@@ -263,11 +264,11 @@ describe("embedded retry transcript ownership", () => {
       const callerOwned = suppliedManager || sessionPersistence === "detached";
       const callerManager = suppliedManager ? SessionManager.inMemory(workspaceDir) : undefined;
       const toolCalls = ["call_1", "call_2"];
-      const model = {
+      const model = attachPreparedProviderModelFixture({
         ...createResolvedEmbeddedRunnerModel("openai", "gpt-5.6-luna").model,
         api: "openai-responses" as const,
         input: ["text" as const],
-      };
+      });
       const fetchMock = vi
         .fn<typeof fetch>()
         .mockRejectedValue(Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }));
