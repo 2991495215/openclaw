@@ -3752,6 +3752,7 @@ async function waitForShutdown(): Promise<void> {
 }
 
 const options = parseArgs(process.argv.slice(2));
+console.log("[control-ui-mock] preparing scenario");
 const scenario = await createChatPickerScenario(options.fixture);
 if (options.operatorScopes) {
   scenario.operatorScopes = options.operatorScopes;
@@ -3766,6 +3767,9 @@ const cacheDir = await mkdtemp(path.join(cacheRoot, "server-"));
 process.once("exit", () => rmSync(cacheDir, { recursive: true, force: true }));
 let server: ViteDevServer | undefined;
 try {
+  console.log("[control-ui-mock] preparing Gateway fixture");
+  const gatewayPlugin = await createMockGatewayPlugin(scenario, options.fixture);
+  console.log("[control-ui-mock] creating Vite server");
   server = await createServer({
     base: "/",
     cacheDir,
@@ -3792,7 +3796,7 @@ try {
     },
     plugins: [
       ...createStandaloneMockIsolationPlugins(),
-      await createMockGatewayPlugin(scenario, options.fixture),
+      gatewayPlugin,
       createBoardFixturePlugin(),
       ...(options.fixture === "attachments" ? [createChatAttachmentFixturePlugin()] : []),
     ],
@@ -3813,6 +3817,7 @@ try {
     },
   });
 
+  console.log("[control-ui-mock] listening");
   await server.listen();
   console.log(
     `[control-ui-mock] ${resolveServerUrl(server, options.host, controlUiSessionPath(scenario.sessionKey ?? "agent:main:main"))}`,

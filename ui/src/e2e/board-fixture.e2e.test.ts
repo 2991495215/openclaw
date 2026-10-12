@@ -74,6 +74,8 @@ async function startFixtureServer(fixture?: "attachments" | "workboard"): Promis
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  const startedAt = Date.now();
+  let lastReadiness = "not requested";
   let output = "";
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
@@ -91,15 +93,29 @@ async function startFixtureServer(fixture?: "attachments" | "workboard"): Promis
     }
     try {
       const response = await fetch(url);
+      lastReadiness = `HTTP ${response.status}`;
       if (response.ok) {
         return mockServer;
       }
-    } catch {}
+    } catch (error) {
+      lastReadiness =
+        error instanceof Error
+          ? `${error.name}: ${error.message}${error.cause instanceof Error ? ` (${error.cause.message})` : ""}`
+          : String(error);
+    }
     await delay(100);
   }
 
+  const startup = {
+    elapsedMs: Date.now() - startedAt,
+    lastReadiness,
+    exitCode: child.exitCode,
+    signalCode: child.signalCode,
+  };
   await stopFixtureServer(mockServer);
-  throw new Error(`timed out waiting for Control UI mock server\n${output}`);
+  throw new Error(
+    `timed out waiting for Control UI mock server\n${JSON.stringify(startup)}\n${output}`,
+  );
 }
 
 async function stopFixtureServer(server: FixtureServer | undefined): Promise<void> {
