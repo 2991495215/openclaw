@@ -762,9 +762,10 @@ const reviewedOperations = new Map([
           "bind",
           "completeMutation",
           "retire",
+          "find",
         ],
         evidence:
-          "List/mutations run only in node-worker-journal.worker.ts:14,19,26,31,36; selectRow/write are mutation-only helpers; native findSync at node-worker-prepared-workspace-store.ts:31 reaches only find, which stays T1",
+          "node-worker-journal.worker.ts owns workspace list/find/mutations; selectRow/write are mutation-only helpers after the deprecated findSync removal.",
       },
     ],
   ],
@@ -1762,9 +1763,9 @@ const reviewedOperations = new Map([
     [
       {
         tier: "W",
-        operations: ["deleteExecApprovalsConfigRow"],
+        operations: ["deleteExecApprovalsConfigRow", "mintMcpToolGrantLocked"],
         evidence:
-          "exec-approvals-mutation.worker.ts restores an absent policy row through the shared-state writer.",
+          "exec-approvals-mutation.worker.ts restores an absent policy row through the shared-state writer; operator-approval-store.transitions.worker.ts alone mints MCP grants.",
       },
     ],
   ],
@@ -2186,9 +2187,14 @@ const reviewedOperations = new Map([
     [
       {
         tier: "W",
-        operations: ["connectUserModelAccount"],
+        operations: [
+          "connectUserModelAccount",
+          "listUserModelAccounts",
+          "setUserProfileAuthLink",
+          "clearUserProfileAuthLink",
+        ],
         evidence:
-          "Personal sign-in persistence executes only through userProfiles.modelAccount.connect in user-profiles.worker.ts. Inventory/link/unlink kernels retain T1 for deprecated v2026.9.8 Gateway SDK methods; bundled callers use the Async replacements. Shared credential/OAuth kernels and the live account pin guard also retain T1.",
+          "Personal sign-in persistence and account inventory/link/unlink execute only through user-profiles.worker.ts after deprecated Gateway SDK removal. Shared credential/OAuth kernels and the live account pin guard retain their independent classifications.",
       },
       {
         tier: "T3",

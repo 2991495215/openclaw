@@ -5,12 +5,11 @@ import {
   loadSqliteVecExtension,
   openOpenClawAgentDatabaseReadOnly,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
+import { resolveOpenClawAgentSqlitePath, tableExists } from "openclaw/plugin-sdk/sqlite-runtime";
 import {
+  observeHostDataSql,
   openOpenClawAgentDatabase,
-  resolveOpenClawAgentSqlitePath,
-  tableExists,
-} from "openclaw/plugin-sdk/sqlite-runtime";
-import { observeHostDataSql } from "openclaw/plugin-sdk/sqlite-runtime-testing";
+} from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import {
   openNodeSqliteDatabase,
   readSqliteDatabaseWriteTokenForPath,

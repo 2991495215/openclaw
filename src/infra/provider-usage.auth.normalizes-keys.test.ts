@@ -114,7 +114,7 @@ describe("resolveProviderAuths key normalization", () => {
     providerRuntimeMocks.providerRuntimeMock.resolveProviderUsageAuthWithPlugin
       .mockReset()
       .mockImplementation(async ({ context }) => {
-        const token = context.resolveApiKeyFromConfigAndStore();
+        const token = (await context.resolveApiKeyCandidatesFromConfigAndStore?.())?.[0];
         return token ? { token } : null;
       });
     clearRuntimeConfigSnapshot();
@@ -192,6 +192,14 @@ describe("resolveProviderAuths key normalization", () => {
       "xiaomi:default": { type: "api_key", provider: "xiaomi", key: "xiao-\r\nmi" },
     };
     authProfileMocks.orders = { minimax: ["minimax:default"], xiaomi: ["xiaomi:default"] };
+    authProfileMocks.resolvedProfiles.set("minimax:default", {
+      apiKey: "mini-\r\nmax",
+      provider: "minimax",
+    });
+    authProfileMocks.resolvedProfiles.set("xiaomi:default", {
+      apiKey: "xiao-\r\nmi",
+      provider: "xiaomi",
+    });
     expect(await resolve(["minimax", "xiaomi"])).toEqual([
       { provider: "minimax", token: "mini-max" },
       { provider: "xiaomi", token: "xiao-mi" },

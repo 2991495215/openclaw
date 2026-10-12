@@ -66,11 +66,11 @@ export { isSessionBindingError } from "./session-binding-errors.js";
 export type SessionBindingService = {
   bind: (input: SessionBindingBindInput) => Promise<SessionBindingRecord>;
   getCapabilities: (params: SessionBindingScope) => SessionBindingCapabilities;
-  /** @deprecated Use listBySessionAsync; removed in the next Plugin SDK major. */
+  /** @deprecated Use listBySessionAsync; removed in a later normal release after stable deprecation and a compatibility period. */
   listBySession: (targetSessionKey: string) => SessionBindingRecord[];
-  /** @deprecated Use resolveByConversationAsync. The synchronous form will be removed in the next Plugin SDK major. */
+  /** @deprecated Use resolveByConversationAsync. The synchronous form will be removed in a later normal release after stable deprecation and a compatibility period. */
   resolveByConversation: (ref: ConversationRef) => SessionBindingRecord | null;
-  /** @deprecated Use touchAsync. The synchronous form will be removed in the next Plugin SDK major. */
+  /** @deprecated Use touchAsync. The synchronous form will be removed in a later normal release after stable deprecation and a compatibility period. */
   touch: (bindingId: string, at?: number, scope?: SessionBindingScope) => void;
   unbind: (input: SessionBindingUnbindInput) => Promise<SessionBindingRecord[]>;
 };
@@ -136,7 +136,7 @@ const ADAPTERS_BY_CHANNEL_ACCOUNT = resolveGlobalMap<string, SessionBindingAdapt
   SESSION_BINDING_ADAPTERS_KEY,
 );
 
-/** @deprecated Use registerSessionBindingAdapterV2; removed in the next Plugin SDK major. */
+/** @deprecated Use registerSessionBindingAdapterV2; removed in a later normal release after stable deprecation and a compatibility period. */
 export function registerSessionBindingAdapter(adapter: SessionBindingAdapter): void {
   warnPluginSdkDeprecation({
     family: "conversation-bindings",
@@ -327,7 +327,7 @@ export async function listSessionBindingsBySessionAsync(
   );
 }
 
-/** @deprecated Use inspectSessionBindingByConversationAsync; removed in the next Plugin SDK major. */
+/** @deprecated Use inspectSessionBindingByConversationAsync; removed in a later normal release after stable deprecation and a compatibility period. */
 export function inspectSessionBindingByConversation(
   ref: ConversationRef,
 ): SessionBindingInspection {

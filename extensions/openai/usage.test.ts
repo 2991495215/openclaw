@@ -14,7 +14,6 @@ async function fetchAdminUsage(params: {
     config: {},
     env: { OPENAI_ADMIN_KEY: params.apiKey },
     provider: "openai",
-    resolveApiKeyFromConfigAndStore: () => undefined,
     resolveOAuthToken: async () => null,
   });
   if (!("token" in auth) || !auth.token) {
@@ -32,19 +31,19 @@ async function fetchAdminUsage(params: {
 
 describe("OpenAI provider usage", () => {
   it("does not offer token-sharing credentials to Codex usage or API-key fallback", async () => {
-    const resolveApiKeyFromConfigAndStore = vi.fn();
+    const resolveApiKeyCandidatesFromConfigAndStore = vi.fn(async () => []);
     const result = await resolveOpenAIUsageAuth({
       config: {},
       env: {},
       provider: "openai",
-      resolveApiKeyFromConfigAndStore,
+      resolveApiKeyCandidatesFromConfigAndStore,
       resolveOAuthToken: async () => ({
         token: "test-chatpass-token",
         authFlow: "chatgpt-token-sharing",
       }),
     });
     expect(result).toEqual({ handled: true });
-    expect(resolveApiKeyFromConfigAndStore).not.toHaveBeenCalled();
+    expect(resolveApiKeyCandidatesFromConfigAndStore).not.toHaveBeenCalled();
   });
   it("aggregates provider-reported costs, tokens, models, and categories", async () => {
     const fetchFn = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
@@ -171,7 +170,7 @@ describe("OpenAI provider usage", () => {
       },
       env: { OPENAI_ADMIN_KEY: "sk-admin-explicit" },
       provider: "openai",
-      resolveApiKeyFromConfigAndStore: () => "sk-proj-fallback",
+      resolveApiKeyCandidatesFromConfigAndStore: async () => ["sk-proj-fallback"],
       resolveOAuthToken: async () => ({ token: "oauth-token" }),
     });
     expect(result).toEqual({
@@ -214,7 +213,6 @@ describe("OpenAI provider usage", () => {
       config: {},
       env: {},
       provider: "openai",
-      resolveApiKeyFromConfigAndStore: () => "sk-proj-inference",
       resolveApiKeyCandidatesFromConfigAndStore: resolveCandidates,
       resolveOAuthToken: async () => null,
     });

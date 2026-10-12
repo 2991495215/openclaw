@@ -23,7 +23,7 @@ import {
   getSessionEntry,
   listSessionEntries,
   patchSessionEntry,
-  readSessionUpdatedAt,
+  readSessionUpdatedAtAsync,
   resolveSessionStoreBackupPaths,
   updateSessionStoreEntry,
   upsertSessionEntry,
@@ -116,7 +116,7 @@ describe("session-store-runtime", () => {
       sessionId: "session-1",
       updatedAt: 10,
     });
-    expect(readSessionUpdatedAt({ sessionKey, storePath })).toEqual(expect.any(Number));
+    expect(await readSessionUpdatedAtAsync({ sessionKey, storePath })).toEqual(expect.any(Number));
     expect(listSessionEntries({ storePath })).toEqual([
       {
         sessionKey,

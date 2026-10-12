@@ -1750,7 +1750,7 @@ describe("main-session-restart-recovery", () => {
     vi.mocked(callGateway).mockImplementationOnce(async ({ method, params }) => {
       expect(method).toBe("agent");
       dispatchedRunId = String((params as { idempotencyKey?: unknown }).idempotencyKey);
-      const sessionManager = SessionManager.open(
+      const sessionManager = await SessionManager.openAsync(
         { agentId: "main", sessionId: "main-session", sessionKey, storePath },
         sessionsDir,
       );
@@ -1775,7 +1775,7 @@ describe("main-session-restart-recovery", () => {
           idempotencyKey: `${dispatchedRunId}:user`,
           timestamp: Date.now(),
         };
-        sessionManager.appendMessage(recoveryMessage);
+        await sessionManager.appendMessageAsync(recoveryMessage);
       } catch (error) {
         dispatchError = error;
         throw error;

@@ -8,7 +8,7 @@ export const SQLITE_RUNTIME_COMPAT_RECORDS = [
     introduced: "2026-09-09",
     deprecated: "2026-10-09",
     warningStarts: "2026-10-09",
-    removalGate: "next-plugin-sdk-major",
+    removalGate: "after-stable-deprecation",
     replacement:
       "Use openOpenClawAgentSqliteWorkerStoreV2 with required live authority and serializable domain commands. Worker backends use sqlite-worker-runtime primitives; explicit readOnly inspection and offline Doctor maintenance retain their native contracts. Native callbacks are not serialized or moved by adding await. Released calls retain their signatures and synchronous transaction ordering through the deprecation period and are removed in a later release.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#replace-native-sqlite-runtime-writes",
@@ -32,7 +32,6 @@ export const SQLITE_RUNTIME_COMPAT_RECORDS = [
       "TypeScript @deprecated annotations and one shared warning per plugin identity and capability family on actual legacy use; unscoped consumers share a bounded SDK warning",
     ],
     tests: [
-      "src/plugin-sdk/sqlite-runtime.legacy-compat.test.ts",
       "src/plugin-sdk/sqlite-runtime.preparation-compat.test.ts",
       "src/state/openclaw-agent-worker-store.test.ts",
     ],

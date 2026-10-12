@@ -27,7 +27,6 @@ import {
 } from "./session-binding-runtime.js";
 import {
   deleteSessionEntry,
-  getConversationSession,
   getConversationSessionAsync,
   getSessionEntry,
   normalizeSessionDeliveryState,
@@ -119,7 +118,7 @@ describe("current conversation session binding", () => {
     },
   );
 
-  it("reads conversation changes inside their owning transaction and respects rollback", async () => {
+  it("reads committed conversation changes after rollback without host data SQL", async () => {
     const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
     const scope = { ...databaseOptions, sessionKey: "agent:main:reef:group:room" };
     const replacementScope = { ...scope, sessionKey: `${scope.sessionKey}:thread:first` };
@@ -147,14 +146,10 @@ describe("current conversation session binding", () => {
           chatType: "group",
           delivery,
         });
-        expect(getConversationSession(address)).toEqual({
-          sessionKey: replacementScope.sessionKey,
-          sessionId: "replacement",
-        });
         throw rollback;
       }, databaseOptions),
     ).toThrow(rollback);
-    expect(getConversationSession(address)).toEqual({
+    expect(await getConversationSessionAsync(address)).toEqual({
       sessionKey: scope.sessionKey,
       sessionId: "original",
     });
@@ -259,7 +254,7 @@ describe("current conversation session binding", () => {
 
     fs.unlinkSync(aliasDirectory);
     fs.symlinkSync(secondDirectory, aliasDirectory, linkType);
-    expect(getConversationSession(address)).toEqual({
+    expect(await getConversationSessionAsync(address)).toEqual({
       sessionKey: conversationKey,
       sessionId: "foreign-1",
     });
@@ -299,7 +294,7 @@ describe("current conversation session binding", () => {
     expect(getSessionEntry(scope)?.displayName).toBe("Original title");
   });
 
-  it.each(["opaque", "prepared", "composed"] as const)(
+  it.each(["prepared", "composed"] as const)(
     "rejects a %s title guard when another session takes its conversation before commit",
     async (guardKind) => {
       const scope = { agentId: "main", storePath, sessionKey: "agent:main:reef:group:room" };
@@ -320,20 +315,16 @@ describe("current conversation session binding", () => {
         ...scope,
         entry: { sessionId: "original", updatedAt: 100, chatType: "group", delivery },
       });
-      const current =
-        guardKind !== "opaque"
-          ? await captureSessionEntryCurrentCheckAsync({
-              ...scope,
-              matchGeneration: false,
-              alternatives: [{ conversations: [{ ...address, sessionKey: scope.sessionKey }] }],
-              errorMessage: "Conversation owner changed before title commit",
-            })
-          : undefined;
+      const current = await captureSessionEntryCurrentCheckAsync({
+        ...scope,
+        matchGeneration: false,
+        alternatives: [{ conversations: [{ ...address, sessionKey: scope.sessionKey }] }],
+        errorMessage: "Conversation owner changed before title commit",
+      });
       const assertCurrent =
-        current &&
-        (guardKind === "composed"
+        guardKind === "composed"
           ? composeSessionEntryCommitGuards([current.source])
-          : current.source);
+          : current.source;
       if (current) {
         const hostSql = observeHostDataSql();
         try {
@@ -364,15 +355,9 @@ describe("current conversation session binding", () => {
       const rename = patchSessionEntry({
         ...scope,
         preserveActivity: true,
-        assertCommitAllowed:
-          assertCurrent ??
-          (() => {
-            if (getConversationSession(address)?.sessionKey !== scope.sessionKey) {
-              throw new Error("Conversation owner changed before title commit");
-            }
-          }),
-        update: () => {
-          expect(getConversationSession(address)?.sessionKey).toBe(scope.sessionKey);
+        assertCommitAllowed: assertCurrent,
+        update: async () => {
+          expect((await getConversationSessionAsync(address))?.sessionKey).toBe(scope.sessionKey);
           // Another row can take the address while the SDK awaits this callback's result.
           queueMicrotask(() => replaceSessionEntrySync(replacementScope, replacement));
           return { displayName: "Late title for the original owner" };
@@ -380,7 +365,7 @@ describe("current conversation session binding", () => {
       });
       await expect(rename).rejects.toThrow("Conversation owner changed before title commit");
       expect(getSessionEntry(scope)).toEqual(original);
-      expect(getConversationSession(address)).toEqual({
+      expect(await getConversationSessionAsync(address)).toEqual({
         sessionKey: replacementScope.sessionKey,
         sessionId: replacement.sessionId,
       });
@@ -419,8 +404,11 @@ describe("current conversation session binding", () => {
         },
       });
     }
-    expect(getConversationSession(address)).toEqual({ sessionKey: threadKey, sessionId: "thread" });
+    expect(await getConversationSessionAsync(address)).toEqual({
+      sessionKey: threadKey,
+      sessionId: "thread",
+    });
     await deleteSessionEntry({ agentId: "main", sessionKey: threadKey, storePath });
-    expect(getConversationSession(address)).toBeUndefined();
+    expect(await getConversationSessionAsync(address)).toBeUndefined();
   });
 });

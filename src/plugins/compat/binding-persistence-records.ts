@@ -8,9 +8,9 @@ export const BINDING_PERSISTENCE_COMPAT_RECORDS = [
     introduced: "2026-09-08",
     deprecated: "2026-10-09",
     warningStarts: "2026-10-09",
-    removalGate: "next-plugin-sdk-major",
+    removalGate: "after-stable-deprecation",
     replacement:
-      "Use createAccountScopedConversationBindingManagerV2, registerSessionBindingAdapterV2, and awaited service list/resolve/touch methods. V2 adapters supply a coherent inspection snapshot with its current-source assertion. Legacy synchronous operations preserve completion and expiry semantics until removed in the next Plugin SDK major.",
+      "Use createAccountScopedConversationBindingManagerV2, registerSessionBindingAdapterV2, and awaited service list/resolve/touch methods. V2 adapters supply a coherent inspection snapshot with its current-source assertion. Legacy synchronous operations preserve completion and expiry semantics until removed in a later normal release after stable deprecation and a compatibility period.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-plugin-state-and-conversation-bindings",
     surfaces: [
       "createAccountScopedConversationBindingManager",
@@ -40,9 +40,9 @@ export const BINDING_PERSISTENCE_COMPAT_RECORDS = [
     introduced: "2026-09-08",
     deprecated: "2026-10-09",
     warningStarts: "2026-10-09",
-    removalGate: "next-plugin-sdk-major",
+    removalGate: "after-stable-deprecation",
     replacement:
-      "Use createNativeSessionBindingLifecycleV2 and resolveNativeSessionBindingWithAuthorityV2 with the worker-backed binding store. Implement AgentHarness.resolveSessionRuntimeOwnershipAsync for preparation. Exact synchronous final-authority checks retain their native adapter until complete publication and the next Plugin SDK major.",
+      "Use createNativeSessionBindingLifecycleV2 and resolveNativeSessionBindingWithAuthorityV2 with the worker-backed binding store. Implement AgentHarness.resolveSessionRuntimeOwnershipAsync for preparation. Exact synchronous final-authority checks retain their native adapter until complete publication and removal after stable deprecation and a compatibility period.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-plugin-state-and-conversation-bindings",
     surfaces: [
       "createNativeSessionBindingLifecycle",
@@ -68,9 +68,9 @@ export const BINDING_PERSISTENCE_COMPAT_RECORDS = [
     introduced: "2026-09-08",
     deprecated: "2026-10-10",
     warningStarts: "2026-10-10",
-    removalGate: "next-plugin-sdk-major",
+    removalGate: "after-stable-deprecation",
     replacement:
-      "Await approvalEvents.publishRequestedAsync. The legacy publisher retains synchronous delivery counts for synchronous subscribers and refuses async eligibility before delivery; removed in the next Plugin SDK major.",
+      "Await approvalEvents.publishRequestedAsync. The legacy publisher retains synchronous delivery counts for synchronous subscribers and refuses async eligibility before delivery; removed in a later normal release after stable deprecation and a compatibility period.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-gateway-approval-publication",
     surfaces: ["GatewayRequestHandlerOptions.context.approvalEvents.publishRequested"],
     diagnostics: ["TypeScript @deprecated annotation and the shared capability-family warning"],

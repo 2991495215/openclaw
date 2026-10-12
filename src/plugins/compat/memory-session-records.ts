@@ -8,9 +8,9 @@ export const MEMORY_SESSION_COMPAT_RECORDS = [
     introduced: "2026-08-09",
     deprecated: "2026-10-01",
     warningStarts: "2026-10-01",
-    removalGate: "next-plugin-sdk-major",
+    removalGate: "after-stable-deprecation",
     replacement:
-      "Await loadArchivedSessionsAsync and resolveMemorySessionTargetsAsync from memory-core-host-engine-sessions. Synchronous readers retain their existing signatures and results until the next Plugin SDK major.",
+      "Await loadArchivedSessionsAsync and resolveMemorySessionTargetsAsync from memory-core-host-engine-sessions. Synchronous readers retain their existing signatures and results until removal after stable deprecation and a compatibility period.",
     docsPath: "/plugins/sdk-migration/compatibility-policy#memory-session-inventory-readers",
     surfaces: ["loadArchivedSessions", "resolveMemorySessionTargets"],
     diagnostics: [
@@ -22,7 +22,7 @@ export const MEMORY_SESSION_COMPAT_RECORDS = [
       "extensions/memory-core/src/memory-forget.sources.test.ts",
     ],
     releaseNote:
-      "Memory archive discovery and forget target selection can be awaited through worker-backed SDK readers; synchronous readers remain compatible until the next Plugin SDK major.",
+      "Memory archive discovery and forget target selection can be awaited through worker-backed SDK readers; synchronous readers remain compatible until removal after stable deprecation and a compatibility period.",
   },
   {
     code: "memory-session-sync-metadata",
@@ -31,9 +31,9 @@ export const MEMORY_SESSION_COMPAT_RECORDS = [
     introduced: "2026-08-26",
     deprecated: "2026-10-11",
     warningStarts: "2026-10-11",
-    removalGate: "next-plugin-sdk-major",
+    removalGate: "after-stable-deprecation",
     replacement:
-      "Await loadMemorySessionMetadataAsync and loadMemorySessionMetadataBatchAsync from memory-core-host-engine-sessions. Bundled ingestion uses the history worker; the synchronous metadata reader retains its signature until the next Plugin SDK major.",
+      "Await loadMemorySessionMetadataAsync and loadMemorySessionMetadataBatchAsync from memory-core-host-engine-sessions. Bundled ingestion uses the history worker; the synchronous metadata reader retains its signature until removal after stable deprecation and a compatibility period.",
     docsPath: "/plugins/sdk-migration/compatibility-policy#memory-session-inventory-readers",
     surfaces: ["loadMemorySessionMetadata"],
     diagnostics: [

@@ -10,7 +10,6 @@ import {
   acknowledgeSessionStateNotices,
   handleSessionStateSessionDeleted,
   handleSessionStateSessionReset,
-  listAmbientGroupWatchTargets,
   listSessionStateEventsSince,
   recordSessionStateEventAsync,
   registerSessionStateWatch,
@@ -117,7 +116,6 @@ describe("session state watch ownership", () => {
       await recordSessionStateEventAsync(eventInput({ sessionKey: "global", agentId }), database);
     }
     expect(readRetained()).toEqual(retained);
-    expect(listAmbientGroupWatchTargets(watcher, database)).toEqual(new Set());
     const ambient = prepareAmbientGroupWatchTargetsRead(watcher, database);
     try {
       expect(await ambient.read()).toEqual([]);

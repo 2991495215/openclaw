@@ -126,7 +126,7 @@ export type ProviderPreparedRuntimeAuth = {
  *
  * The helper methods cover the common OpenClaw auth resolution paths:
  *
- * - `resolveApiKeyFromConfigAndStore`: env/config/plain token/api_key profiles
+ * - `resolveApiKeyCandidatesFromConfigAndStore`: awaited env/config/token/API-key candidates
  * - `resolveOAuthToken`: oauth/token profiles resolved through the auth store,
  *   optionally for an explicit provider override
  *
@@ -141,11 +141,6 @@ export type ProviderResolveUsageAuthContext = {
   workspaceDir?: string;
   env: NodeJS.ProcessEnv;
   provider: string;
-  /** @deprecated Await resolveApiKeyCandidatesFromConfigAndStore instead. Removed at the next Plugin SDK major. */
-  resolveApiKeyFromConfigAndStore: (params?: {
-    providerIds?: string[];
-    envDirect?: Array<string | undefined>;
-  }) => string | undefined;
   /** Ordered API-key/token candidates, including resolved SecretRefs, for credential classification. */
   resolveApiKeyCandidatesFromConfigAndStore?: (params?: {
     providerIds?: string[];

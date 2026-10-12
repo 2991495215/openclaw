@@ -529,7 +529,7 @@ describe("memory manager reindex recovery", () => {
       await expect(sync).rejects.toThrow(/^Agent database execution admission is closed$/);
       // Readmission waits until the revoked write and its native owner settle.
       await closeOpenClawAgentDatabasesAsync();
-      const reopenedDb = sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" }).db;
+      const reopenedDb = openOpenClawAgentDatabase({ agentId: "main" }).db;
       expect(reopenedDb.prepare("SELECT hash FROM memory_embedding_cache").all()).toEqual([]);
     } finally {
       reservation?.release();

@@ -23,6 +23,7 @@ const {
     resolveKey: vi.fn(
       async (_params: {
         profileId: string;
+        store: AuthProfileStore;
       }): Promise<{ apiKey: string; provider: string } | null> => null,
     ),
   };
@@ -36,7 +37,8 @@ vi.mock("../agents/auth-profiles.js", () => ({
   ensureAuthProfileStoreWithoutExternalProfilesAsync: () => loadLocalStore(),
   hasAnyAuthProfileStoreSourceAsync: () => hasSource(),
   listProfilesForProvider: () => [],
-  resolveApiKeyForProfile: (params: { profileId: string }) => resolveKey(params),
+  resolveApiKeyForProfile: (params: { profileId: string; store: AuthProfileStore }) =>
+    resolveKey(params),
   resolveAuthProfileOrder: (params: { provider: string }) => order(params),
 }));
 vi.mock("../plugins/provider-runtime.js", async () => ({
@@ -124,7 +126,7 @@ describe("provider usage auth boundary", () => {
     ]);
   });
 
-  it("keeps the supplied store when direct credentials admit a legacy usage hook", async () => {
+  it("keeps the supplied store for async plugin credential resolution", async () => {
     const profileId = "anthropic:scoped";
     const store: AuthProfileStore = {
       version: 1,
@@ -140,8 +142,14 @@ describe("provider usage auth boundary", () => {
       },
     });
     order.mockImplementation(({ provider }) => (provider === "anthropic" ? [profileId] : []));
+    resolveKey.mockImplementationOnce(async ({ store: candidateStore }) => ({
+      apiKey: candidateStore === store ? "scoped-key" : "ambient-key",
+      provider: "anthropic",
+    }));
     resolvePlugin.mockImplementationOnce(async ({ context }) => {
-      const token = context.resolveApiKeyFromConfigAndStore({ providerIds: ["anthropic"] });
+      const token = (
+        await context.resolveApiKeyCandidatesFromConfigAndStore?.({ providerIds: ["anthropic"] })
+      )?.[0];
       return token ? { token } : undefined;
     });
 

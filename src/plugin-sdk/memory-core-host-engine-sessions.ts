@@ -1,28 +1,15 @@
 /** Private-local SDK subpath for memory session transcript helpers. */
-import { isMainThread } from "node:worker_threads";
 import {
   buildSessionEntry as buildSessionEntryFromHost,
   listSessionTranscriptCorpusEntriesForAgent as listSessionTranscriptCorpusEntriesFromHost,
   readSessionResetRecallCutoff as readSessionResetRecallCutoffFromHost,
 } from "../../packages/memory-host-sdk/src/engine-sessions.js";
-import { assertBoundIncognitoMemorySyncAccess } from "../../packages/memory-host-sdk/src/host/openclaw-runtime-session.js";
-import {
-  listSessionTranscriptArchivesReadOnly,
-  listSessionTranscriptInstances,
-} from "../config/sessions/session-accessor.js";
 import { getSessionActorStorageBinding } from "../config/sessions/session-actor-storage-binding.js";
 import { listSessionTranscriptInstancesInWorker } from "../config/sessions/session-history.js";
 import { captureIncognitoSessionSource } from "../config/sessions/session-incognito-binding.js";
-import {
-  projectSessionMetadata,
-  readMemorySessionTargets,
-} from "../config/sessions/session-memory-targets.js";
-import type {
-  MemorySessionSelectors,
-  MemorySessionTarget,
-} from "../config/sessions/session-memory-targets.types.js";
+import { projectSessionMetadata } from "../config/sessions/session-memory-targets.js";
+import type { MemorySessionTarget } from "../config/sessions/session-memory-targets.types.js";
 import { resolveMemorySessionTargetsInWorker } from "../config/sessions/session-transcript-inventory-runtime.js";
-import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 
 export type {
@@ -30,18 +17,6 @@ export type {
   MemorySessionTarget,
 } from "../config/sessions/session-memory-targets.types.js";
 
-/** @deprecated Use loadArchivedSessionsAsync; removed at the next Plugin SDK major. */
-export function loadArchivedSessions(
-  params: Parameters<typeof listSessionTranscriptArchivesReadOnly>[0],
-) {
-  warnPluginSdkDeprecation({
-    family: "memory-session-sync-inventory",
-    method: "loadArchivedSessions",
-    replacement: "loadArchivedSessionsAsync",
-  });
-  assertBoundIncognitoMemorySyncAccess(params, "loadArchivedSessions", "loadArchivedSessionsAsync");
-  return listSessionTranscriptArchivesReadOnly(params);
-}
 export {
   listSessionTranscriptArchivesInWorker as loadArchivedSessionsAsync,
   resolveMemorySessionTargetsInWorker as resolveMemorySessionTargetsAsync,
@@ -81,39 +56,16 @@ export type {
   SessionTranscriptCorpusEntry,
 } from "../../packages/memory-host-sdk/src/engine-sessions.js";
 
-/** @deprecated Use loadMemorySessionMetadataAsync; removed at the next Plugin SDK major. */
-export function loadMemorySessionMetadata(params: {
+type MemorySessionMetadataParams = {
   agentId: string;
   sessionId: string;
   sessionKey?: string;
   storePath?: string;
-}): MemorySessionTarget | undefined {
-  if (isMainThread) {
-    warnPluginSdkDeprecation({
-      family: "memory-session",
-      method: "loadMemorySessionMetadata",
-      replacement: "loadMemorySessionMetadataAsync",
-    });
-  }
-  assertBoundIncognitoMemorySyncAccess(
-    params,
-    "loadMemorySessionMetadata",
-    "loadMemorySessionMetadataAsync",
-  );
-  const instance = listSessionTranscriptInstances(params, {
-    includeAllWindows: true,
-    sessionId: params.sessionId,
-  }).find(
-    (candidate) =>
-      candidate.agentId === normalizeAgentId(params.agentId) &&
-      (!params.sessionKey || candidate.sessionKey === params.sessionKey),
-  );
-  return instance ? projectSessionMetadata(instance) : undefined;
-}
+};
 
 /** Read the selected transcript's recorded source metadata through its owner. */
 export async function loadMemorySessionMetadataAsync(
-  params: Parameters<typeof loadMemorySessionMetadata>[0],
+  params: MemorySessionMetadataParams,
 ): Promise<MemorySessionTarget | undefined> {
   return (await loadMemorySessionMetadataBatchAsync({ ...params, sessions: [params] }))[0];
 }
@@ -153,19 +105,4 @@ export async function loadMemorySessionMetadataBatchAsync(params: {
       (selectors.get(entry.sessionId)?.has(undefined) ||
         selectors.get(entry.sessionId)?.has(entry.sessionKey)),
   );
-}
-
-/** @deprecated Use resolveMemorySessionTargetsAsync; removed at the next Plugin SDK major. */
-export function resolveMemorySessionTargets(params: MemorySessionSelectors): MemorySessionTarget[] {
-  warnPluginSdkDeprecation({
-    family: "memory-session-sync-inventory",
-    method: "resolveMemorySessionTargets",
-    replacement: "resolveMemorySessionTargetsAsync",
-  });
-  assertBoundIncognitoMemorySyncAccess(
-    params,
-    "resolveMemorySessionTargets",
-    "resolveMemorySessionTargetsAsync",
-  );
-  return readMemorySessionTargets(params);
 }

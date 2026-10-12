@@ -28,7 +28,7 @@ function hasPreparedLookupParams(params: ProviderEnvVarLookupParams): params is 
 }
 
 // v2026.9.4 accepted snapshots before these prepared facts existed. Keep this
-// adaptation at the SDK boundary until an approved SDK-breaking release.
+// adaptation at the SDK boundary until removal after stable deprecation and a compatibility period in a later normal release.
 function prepareLookupParams(params?: ProviderEnvVarLookupParams): CoreLookupParams | undefined {
   if (!params || hasPreparedLookupParams(params)) {
     return params;

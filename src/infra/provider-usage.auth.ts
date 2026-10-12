@@ -1,7 +1,6 @@
 import { normalizeUniqueStringEntries } from "@openclaw/normalization-core/string-normalization";
 import {
   dedupeProfileIds,
-  ensureAuthProfileStore,
   ensureAuthProfileStoreAsync,
   ensureAuthProfileStoreWithoutExternalProfilesAsync,
   hasAnyAuthProfileStoreSourceAsync,
@@ -23,7 +22,6 @@ import {
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
 import { resolveProviderUsageAuthWithPlugin } from "../plugins/provider-runtime.js";
 import type { ProviderUsageAuthToken } from "../plugins/provider-runtime.types.js";
-import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { resolveProviderAuthEnvVarCandidatesCore } from "../secrets/provider-env-vars.js";
 import { normalizeSecretInput } from "../utils/normalize-secret-input.js";
 import { isOAuthOnlyUsageProvider } from "./provider-usage.shared.js";
@@ -158,38 +156,6 @@ function prepareProviderApiKeyCandidates(params: ProviderApiKeyCandidatesParams)
     resolveAuthProfileOrder({ cfg: params.state.cfg, store, provider }),
   );
   return { candidates, store, profileIds };
-}
-
-function resolveLegacyProviderApiKeyCandidatesFromConfigAndStore(
-  params: ProviderApiKeyCandidatesParams,
-): string[] {
-  warnPluginSdkDeprecation({
-    family: "provider-usage-auth",
-    method: "resolveApiKeyFromConfigAndStore",
-    replacement: "resolveApiKeyCandidatesFromConfigAndStore",
-  });
-  // Only the deprecated synchronous plugin callback loads credentials here.
-  if (params.state.allowAuthProfileStore && !params.state.store) {
-    params.state.store = ensureAuthProfileStore(params.state.agentDir, {
-      allowKeychainPrompt: false,
-    });
-  }
-  const { candidates, store, profileIds } = prepareProviderApiKeyCandidates(params);
-  if (!store) {
-    return candidates;
-  }
-  const credentials = profileIds
-    .map((id) => store.profiles[id])
-    .filter((profile) => profile?.type === "api_key" || profile?.type === "token");
-  for (const credential of credentials) {
-    const value = normalizeSecretInput(
-      credential.type === "api_key" ? credential.key : credential.token,
-    );
-    if (value && !isNonSecretApiKeyMarker(value)) {
-      candidates.push(value);
-    }
-  }
-  return normalizeUniqueStringEntries(candidates);
 }
 
 async function resolveProviderApiKeyCandidatesFromConfigAndStore(
@@ -464,10 +430,6 @@ export async function resolveProviderAuths(params: {
         allowAuthProfileStore,
       };
       if (allowAuthProfileStore) {
-        // Legacy callbacks are synchronous, so capture the caller-owned store before invocation.
-        if (state.getStore) {
-          await resolveUsageAuthStore(state);
-        }
         const pluginAuth = await resolveProviderUsageAuthWithPlugin({
           provider,
           config: state.cfg,
@@ -480,12 +442,6 @@ export async function resolveProviderAuths(params: {
             provider,
             // Provider-owned hooks may route API keys to a different billing endpoint
             // even when generic fallback for this usage provider remains OAuth-only.
-            resolveApiKeyFromConfigAndStore: (options) =>
-              resolveLegacyProviderApiKeyCandidatesFromConfigAndStore({
-                state,
-                providerIds: options?.providerIds ?? [provider],
-                envDirect: options?.envDirect,
-              })[0],
             resolveApiKeyCandidatesFromConfigAndStore: (options) =>
               resolveProviderApiKeyCandidatesFromConfigAndStore({
                 state,
