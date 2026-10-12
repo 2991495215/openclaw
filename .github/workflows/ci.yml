@@ -637,16 +637,9 @@ jobs:
             bun --revision
           else
             files=(
-              src/gateway/server-methods/sessions-create-thinking-claim.test.ts
-              extensions/googlechat/src/googlechat-session-target-case.transport.test.ts
-              src/auto-reply/reply/restart-recovery-claim.test.ts
-              extensions/codex/src/command-rpc.test.ts
-              extensions/codex/src/command-plugins-runtime.test.ts
-              extensions/codex/src/app-server/request-diagnostics.test.ts
-              extensions/codex/src/app-server/transcript-mirror.admission.test.ts
-              extensions/memory-core/src/memory/manager.reindex-recovery.test.ts
-              src/state/openclaw-state-db-cron-delivery-migration.test.ts
-              ui/src/components/app-sidebar.catalog-events.test.ts
+              src/gateway/server-methods/session-creator-preparation.test.ts
+              src/gateway/session-sharing.test.ts
+              src/gateway/talk/handlers/client-create-authority.test.ts
             )
           fi
           failed=0
