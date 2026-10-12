@@ -368,7 +368,12 @@ export function waitForCodexAppServerClientExit(client: CodexAppServerClient): P
 /** Acquire the recorded owner atomically, or join its exit before a replacement writes. */
 export async function retainSharedCodexAppServerClientByInstanceId(
   clientId: string | undefined,
-  options?: { signal?: AbortSignal; createAbortError?: (signal: AbortSignal) => Error },
+  options?: {
+    signal?: AbortSignal;
+    createAbortError?: (signal: AbortSignal) => Error;
+    /** Cancellation must reach its parent even when native cleanup is still pending. */
+    rejectIfClosing?: boolean;
+  },
 ) {
   const id = clientId?.trim();
   if (!id) {
@@ -381,6 +386,9 @@ export async function retainSharedCodexAppServerClientByInstanceId(
     }
     const entry = state.entriesByClient.get(client);
     if (entry?.client !== client || entry.closeError || client.getCloseError()) {
+      if (options?.rejectIfClosing) {
+        throw new Error("Codex app-server client is closing");
+      }
       // Cancellation ends only this waiter; discovery still fences later writers.
       await racePromiseWithAbortSignal(
         waitForCodexAppServerClientExit(client),
