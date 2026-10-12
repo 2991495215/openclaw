@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      verify_usage:
+        description: Verify the frozen actor usage-cache invalidation regression
+        required: false
+        default: false
+        type: boolean
       base_sha:
         description: Full predecessor commit SHA
         required: true
@@ -230,5 +235,50 @@ jobs:
         with:
           name: upgrade-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
           path: .artifacts/upgrade-diagnostic*
+          if-no-files-found: warn
+          retention-days: 14
+  usage-regression:
+    if: ${{ inputs.verify_usage }}
+    name: Frozen actor usage-cache regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.base_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .ci-harness
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.ci-harness/.github/actions/setup-node-env
+        with:
+          node-version: "24.21.0"
+          semantic-checks: "true"
+          cache-mode: off
+          install-bun: "false"
+          dependency-cache: "false"
+          frozen-lockfile: "true"
+      - name: Verify the frozen usage-cache write scopes
+        env:
+          OPENCLAW_LOCAL_CHECK: "0"
+          OPENCLAW_VITEST_RUNTIME: node
+          CANDIDATE_SHA: ${{ inputs.base_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          mkdir -p .artifacts
+          node --input-type=module -e 'console.log(JSON.stringify({ candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, runtime: "node", test: "src/config/sessions/session-actor-replica.test.ts", filter: "keeps actor facts after usage cache writes and refresh lock release" }, null, 2))' > .artifacts/usage-regression-provenance.json
+          pnpm test src/config/sessions/session-actor-replica.test.ts --maxWorkers=1 -t 'keeps actor facts after usage cache writes and refresh lock release' --reporter=verbose 2>&1 | tee .artifacts/usage-regression.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: ${{ always() }}
+        with:
+          name: usage-regression-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/usage-regression*
           if-no-files-found: warn
           retention-days: 14
