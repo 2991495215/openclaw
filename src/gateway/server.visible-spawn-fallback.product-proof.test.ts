@@ -396,25 +396,38 @@ describe("sessions_spawn model fallback through the Gateway", () => {
           });
           await gateway.server.startupSettled;
           const { client } = gateway;
+          const identifyRpc =
+            (stage: string) =>
+            (error: unknown): never => {
+              console.warn(
+                "[spawn-fallback-diag]",
+                JSON.stringify({ scenario: scenario.name, stage }),
+              );
+              throw error;
+            };
           const parentKey = `agent:main:proof-${randomUUID()}`;
-          const accepted = await client.request<{ runId: string; status: string }>(
-            "chat.send",
-            {
-              sessionKey: parentKey,
-              message: "Spawn one worker now.",
-              deliver: false,
-              idempotencyKey: randomUUID(),
-            },
-            { expectFinal: false },
-          );
+          const accepted = await client
+            .request<{ runId: string; status: string }>(
+              "chat.send",
+              {
+                sessionKey: parentKey,
+                message: "Spawn one worker now.",
+                deliver: false,
+                idempotencyKey: randomUUID(),
+              },
+              { expectFinal: false },
+            )
+            .catch(identifyRpc("chat.send:parent"));
           expect(accepted.status).toBe("started");
-          const wait = (runId: string) =>
-            client.request<{ status: string }>(
-              "agent.wait",
-              { runId, timeoutMs: 240_000 },
-              { timeoutMs: 245_000 },
-            );
-          const parentTerminal = await wait(accepted.runId);
+          const wait = (stage: string, runId: string) =>
+            client
+              .request<{ status: string }>(
+                "agent.wait",
+                { runId, timeoutMs: 240_000 },
+                { timeoutMs: 245_000 },
+              )
+              .catch(identifyRpc(`agent.wait:${stage}`));
+          const parentTerminal = await wait("parent", accepted.runId);
           expect(
             parentTerminal.status,
             JSON.stringify({ parentTerminal, requests: provider.requests }),
@@ -434,15 +447,17 @@ describe("sessions_spawn model fallback through the Gateway", () => {
           if (!spawn) {
             throw new Error("Parent did not receive the sessions_spawn result");
           }
-          let terminal = await wait(spawn.runId);
+          let terminal = await wait("child", spawn.runId);
           let requestOffset = 0;
           let historyOffset = 0;
           if (scenario.directAgent) {
             expect(terminal.status).toBe("ok");
-            const initialHistory = await client.request<History>("chat.history", {
-              sessionKey: spawn.childSessionKey,
-              limit: 100,
-            });
+            const initialHistory = await client
+              .request<History>("chat.history", {
+                sessionKey: spawn.childSessionKey,
+                limit: 100,
+              })
+              .catch(identifyRpc("chat.history:initial-child"));
             const initialReplies = initialHistory.messages.filter(
               (message) => message.role === "assistant",
             );
@@ -471,21 +486,23 @@ describe("sessions_spawn model fallback through the Gateway", () => {
                 publishedIdle.resolve();
               }
             };
-            await client.request("sessions.subscribe", {});
-            const followup = await client.request<{ runId: string; status: string }>(
-              "agent",
-              {
-                sessionKey: spawn.childSessionKey,
-                message: `Return exactly ${SUCCESS}. ${WORKER}`,
-                deliver: false,
-                idempotencyKey: followupRunId,
-                ...(scenario.directModel ? { model: scenario.directModel } : {}),
-              },
-              { expectFinal: false },
-            );
+            await client.request("sessions.subscribe", {}).catch(identifyRpc("sessions.subscribe"));
+            const followup = await client
+              .request<{ runId: string; status: string }>(
+                "agent",
+                {
+                  sessionKey: spawn.childSessionKey,
+                  message: `Return exactly ${SUCCESS}. ${WORKER}`,
+                  deliver: false,
+                  idempotencyKey: followupRunId,
+                  ...(scenario.directModel ? { model: scenario.directModel } : {}),
+                },
+                { expectFinal: false },
+              )
+              .catch(identifyRpc("agent:followup"));
             expect(followup.status).toBe("accepted");
             expect(followup.runId).toBe(followupRunId);
-            terminal = await wait(followup.runId);
+            terminal = await wait("followup", followup.runId);
             await withTestTimeout(
               publishedIdle.promise,
               8_000,
@@ -495,19 +512,23 @@ describe("sessions_spawn model fallback through the Gateway", () => {
           expect(spawn.childSessionKey).toMatch(
             scenario.visible === false ? /^agent:main:subagent:/ : /^agent:main:dashboard:/,
           );
-          const { sessions } = await client.request<SessionsListResult>("sessions.list", {
-            agentId: "main",
-            limit: 100,
-          });
+          const { sessions } = await client
+            .request<SessionsListResult>("sessions.list", {
+              agentId: "main",
+              limit: 100,
+            })
+            .catch(identifyRpc("sessions.list"));
           const child = sessions.find((entry) => entry.key === spawn.childSessionKey);
           expect(child).toMatchObject({ hasActiveRun: false });
           if (scenario.visible !== false) {
             expect(child).toMatchObject({ parentSessionKey: parentKey });
           }
-          const history = await client.request<History>("chat.history", {
-            sessionKey: spawn.childSessionKey,
-            limit: 100,
-          });
+          const history = await client
+            .request<History>("chat.history", {
+              sessionKey: spawn.childSessionKey,
+              limit: 100,
+            })
+            .catch(identifyRpc("chat.history:settled-child"));
           const replies = history.messages
             .slice(historyOffset)
             .filter((message) => message.role === "assistant");

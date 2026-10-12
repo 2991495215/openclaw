@@ -109,6 +109,14 @@ function bindValidationLifetime(
   });
   const unregister = registerNodeSqliteDisposeCallback(database.db, (reason) => {
     if (reason === "replace") {
+      console.warn(
+        "[session-reader-diag]",
+        JSON.stringify({
+          site: "database-dispose-replace",
+          receiptId: validation.receiptId,
+          valid: Atomics.load(new Int32Array(validation.valid), 0),
+        }),
+      );
       Atomics.store(new Int32Array(validation.valid), 0, 0);
     }
     validationBindings.delete(database.db);
@@ -574,6 +582,18 @@ export function adoptOpenClawAgentDatabaseValidation(
   validation: OpenClawAgentDatabaseValidation,
 ): boolean {
   if (!matchesValidation(database, validation)) {
+    const physical = findOpenClawAgentDatabaseIdentity(database);
+    console.warn(
+      "[session-reader-diag]",
+      JSON.stringify({
+        site: "reader-adoption-rejected",
+        receiptId: validation.receiptId,
+        agentMatches: validation.agentId === database.agentId,
+        identityMatches: validation.identity === physical?.identity,
+        birthtimeMatches: validation.birthtime === physical?.birthtime,
+        valid: Atomics.load(new Int32Array(validation.valid), 0),
+      }),
+    );
     return false;
   }
   // A concurrent first opener can return another healthy receipt. Keep the
@@ -703,6 +723,14 @@ export function invalidateOpenClawAgentDatabaseValidation(
     const entry = validatedPaths.get(candidate);
     const validation = entry?.validation;
     if (validation) {
+      console.warn(
+        "[session-reader-diag]",
+        JSON.stringify({
+          site: "explicit-validation-invalidation",
+          receiptId: validation.receiptId,
+          valid: Atomics.load(new Int32Array(validation.valid), 0),
+        }),
+      );
       Atomics.store(new Int32Array(validation.valid), 0, 0);
     }
     // Replace even an empty/revoked entry so an in-flight handoff cannot revive it.
