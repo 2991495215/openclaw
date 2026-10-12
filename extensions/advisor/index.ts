@@ -1,43 +1,37 @@
 import { definePluginEntry, type PluginServiceSchedulerV1 } from "openclaw/plugin-sdk/plugin-entry";
 import { createAdvisorController, type AdvisorSchedule } from "./src/controller.js";
 import {
-  buildReviewMessage,
   DELIVERY_PREFIX,
   parseReviewOutput,
-  REVIEW_SYSTEM_PROMPT,
+  REVIEW_MESSAGE,
   REVIEW_TIMEOUT_MS,
 } from "./src/review.js";
 
-const DEFAULT_SCHEDULE: AdvisorSchedule = { everyTurns: 10, everyMinutes: 20 };
+const DEFAULT_SCHEDULE: AdvisorSchedule = { everyToolCalls: 10, everyMinutes: 20 };
 const ADVICE_TTL_MS = 24 * 60 * 60 * 1000;
-// Heartbeat, cron, memory-flush and overflow runs are not user-directed work.
-const REVIEWED_TRIGGERS = new Set([undefined, "user", "manual"]);
 
 function resolveSchedule(config: Record<string, unknown> | undefined): AdvisorSchedule {
   const read = (key: keyof AdvisorSchedule) => {
     const value = config?.[key];
     return typeof value === "number" ? value : DEFAULT_SCHEDULE[key];
   };
-  return { everyTurns: read("everyTurns"), everyMinutes: read("everyMinutes") };
+  return { everyToolCalls: read("everyToolCalls"), everyMinutes: read("everyMinutes") };
 }
 
 export default definePluginEntry({
   id: "advisor",
   name: "Advisor",
   description:
-    "Experimental: periodically reviews a conversation's recent agent work and gives the agent one short correction on its next turn.",
+    "Experimental: reviews ongoing agent work on the session's own model and offers one short correction.",
   register(api) {
     const schedule = resolveSchedule(api.pluginConfig);
-    // Absent means the agent's own model. The host enforces subagent.allowModelOverride.
-    const model = typeof api.pluginConfig?.model === "string" ? api.pluginConfig.model : undefined;
-    if (schedule.everyTurns === 0 && schedule.everyMinutes === 0) {
+    if (schedule.everyToolCalls === 0 && schedule.everyMinutes === 0) {
       api.logger.warn(
-        "advisor: both everyTurns and everyMinutes are 0, so no reviews will run. Set either to a positive value.",
+        "advisor: both everyToolCalls and everyMinutes are 0, so no reviews will run. Set either to a positive value.",
       );
       return;
     }
-    // Reviews must not inherit the finished turn's authority, which closes with the turn.
-    // The service scheduler runs them under the plugin's own lifetime instead.
+    // Background reviews belong to the plugin service, not the triggering tool or turn.
     let scheduler: PluginServiceSchedulerV1 | undefined;
     const controller = createAdvisorController({
       schedule,
@@ -49,26 +43,43 @@ export default definePluginEntry({
         scheduler.schedule({ id: `review:${sessionKey}`, delayMs: 0, run });
         return true;
       },
-      review: async ({ agentId, evidence, previousAdvice, signal }) => {
-        const result = await api.runtime.subagent.complete({
-          agentId,
-          message: buildReviewMessage({ evidence, previousAdvice }),
-          extraSystemPrompt: REVIEW_SYSTEM_PROMPT,
+      review: async ({ sessionKey, signal }) => {
+        const result = await api.runtime.subagent.forkSession({
+          sessionKey,
+          message: REVIEW_MESSAGE,
           timeoutMs: REVIEW_TIMEOUT_MS,
-          ...(model ? { model } : {}),
           signal: scheduler ? AbortSignal.any([signal, scheduler.signal]) : signal,
         });
+        api.logger.info(
+          `advisor: review usage for session ${sessionKey}: input=${result.usage?.inputTokens ?? "unknown"} cacheRead=${result.usage?.cacheReadTokens ?? "unknown"} output=${result.usage?.outputTokens ?? "unknown"}`,
+        );
         return parseReviewOutput(result.text);
       },
-      deliver: async ({ agentId, sessionKey, finding, reviewId }) => {
-        const result = await api.session.workflow.enqueueNextTurnInjection({
+      deliver: async ({ agentId, sessionKey, finding, reviewId, signal }) => {
+        const text = `${DELIVERY_PREFIX}\n\n${finding}`;
+        const idempotencyKey = `advisor:${reviewId}`;
+        const result = await api.session.workflow.steerActiveRun({
+          sessionKey,
+          text,
+          idempotencyKey,
+        });
+        if (result.steered) {
+          api.logger.info(`advisor: steered active run for session ${sessionKey}`);
+          return;
+        }
+        if (signal.aborted || !scheduler || scheduler.signal.aborted) {
+          return;
+        }
+        const fallback = await api.session.workflow.enqueueNextTurnInjection({
           sessionKey,
           agentId,
-          text: `${DELIVERY_PREFIX}\n\n${finding}`,
-          idempotencyKey: `advisor:${reviewId}`,
+          text,
+          idempotencyKey,
           ttlMs: ADVICE_TTL_MS,
         });
-        return result.enqueued;
+        api.logger.info(
+          `advisor: ${fallback.enqueued ? "queued correction for next turn" : "next-turn correction rejected"} for session ${sessionKey} (steering unavailable: ${result.reason})`,
+        );
       },
     });
 
@@ -84,18 +95,39 @@ export default definePluginEntry({
       },
     });
 
+    api.on("llm_input", (_event, ctx) => {
+      if (
+        ctx.sessionKey &&
+        ctx.runId &&
+        (ctx.trigger === undefined || ctx.trigger === "user" || ctx.trigger === "manual")
+      ) {
+        controller.runStarted({ sessionKey: ctx.sessionKey, runId: ctx.runId });
+      }
+    });
+    api.on("after_tool_call", (_event, ctx) => {
+      if (ctx.sessionKey && ctx.agentId && ctx.runId) {
+        controller.toolCompleted({
+          sessionKey: ctx.sessionKey,
+          agentId: ctx.agentId,
+          runId: ctx.runId,
+        });
+      }
+    });
     api.on("agent_end", (event, ctx) => {
-      if (!ctx.sessionKey || !ctx.agentId || !REVIEWED_TRIGGERS.has(ctx.trigger)) {
+      if (
+        !ctx.sessionKey ||
+        !ctx.agentId ||
+        (ctx.trigger !== undefined && ctx.trigger !== "user" && ctx.trigger !== "manual")
+      ) {
         return;
       }
       controller.turnEnded({
         sessionKey: ctx.sessionKey,
         agentId: ctx.agentId,
+        runId: ctx.runId,
         durationMs: event.durationMs,
-        messages: event.messages,
       });
     });
-
     api.registerRuntimeLifecycle({
       id: "advisor",
       description: "Cancels in-flight advisor reviews when sessions or the plugin go away.",

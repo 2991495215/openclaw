@@ -229,13 +229,14 @@ record; existing logging and trace-correlation controls apply.
 
 ## Advisor
 
-Advisor is an experimental bundled plugin that is off by default. Every
-few turns, or after enough minutes of agent run time, an advisor model reads the
-conversation's recent agent work and looks for the most costly avoidable problem:
-work drifting beyond what you asked, an earlier correction being ignored,
-repeated or stalled tool calls, or claims that the tool results do not support.
-When it finds one, the agent receives one short correction as hidden context on
-its next turn. When it finds nothing, nothing happens.
+Advisor is an experimental bundled plugin that is off by default. During
+user-directed work, it reviews a fork of the conversation on the session's own
+model and looks for the most costly avoidable problem: work drifting beyond
+what you asked, an earlier correction being ignored, repeated or stalled tool
+calls, or claims that the tool results do not support. When it finds one, it
+steers the active run with one short correction. If the run cannot accept
+steering, the correction becomes hidden context on the next turn. When it finds
+nothing, nothing happens.
 
 Turn it on in **Settings → Agents & Tools → Labs → Advisor**. Its **Configure**
 button opens the plugin's settings page (**Settings → Plugins → Advisor**), where
@@ -247,24 +248,19 @@ you set the options below. Or use config:
     entries: {
       advisor: {
         enabled: true,
-        config: { everyTurns: 10, everyMinutes: 20, model: "openai/gpt-6.1-sol" },
-        // Lets the background advisor use only this model.
-        subagent: { allowModelOverride: true, allowedModels: ["openai/gpt-6.1-sol"] },
+        config: { everyToolCalls: 10, everyMinutes: 20 },
       },
     },
   },
 }
 ```
 
-- `everyTurns` (default `10`): review after this many completed agent turns in a
-  conversation.
-- `everyMinutes` (default `20`): review after this many minutes of accumulated
-  agent run time in a conversation. Long tool-heavy turns reach this first.
-- `model` (optional): the `provider/model` that runs reviews. Leave it unset to
-  use the agent's own model. A different model also needs the plugin's
-  `subagent.allowModelOverride` permission; limit it to that one model with
-  `subagent.allowedModels`. Without the permission, reviews fail and the
-  Gateway log names the setting to change.
+- `everyToolCalls` (default `10`, range `0`–`1000`): review after this many
+  completed tool calls in a conversation, including during a run.
+- `everyMinutes` (default `20`, range `0`–`1440`): review after this many minutes
+  of accumulated agent run time, checked after tool calls and when a run ends.
+
+Reviews always use the session's own model; there is no separate model setting.
 
 A review starts when either trigger is reached, and both counters restart after
 each review. Set a trigger to `0` to turn it off. With both at `0`, no reviews
@@ -272,18 +268,24 @@ run. Changes apply without restarting the Gateway.
 
 Behavior and limits:
 
-- Reviews run in the background after a turn ends. They never delay or stop a
-  turn, ask for approval, or grant the agent new permissions.
-- Only user-directed turns count. Heartbeat, cron, memory-flush, and overflow
-  runs are ignored.
+- Reviews run in the background without delaying the triggering hook. They
+  never ask for approval or grant the agent new permissions.
+- Only user-directed runs count. Heartbeat, cron, memory-flush, overflow, and
+  side-question runs are ignored.
 - Each conversation has at most one review in flight. A failed review is logged
-  and the next review waits a full interval.
-- The correction arrives on the conversation's next turn and expires after
-  24 hours. It is labeled as advice that the agent must check before acting.
-- Each review is one extra model call with the advisor model (the agent's own
-  model unless you choose one) and the agent's credentials. It sends a bounded excerpt of the conversation to that provider:
-  recent user requests, assistant replies, and tool calls with short result
-  previews.
+  and the next review waits a full interval. Session reset, plugin disable, and
+  service stop cancel pending reviews.
+- A correction first attempts active-run steering. If steering is unavailable,
+  it is queued for the next turn and expires after 24 hours. It is labeled as
+  advice that the agent must check before acting.
+- Each review is an extra model call using the session's context, model, and
+  credentials. The fork cannot execute tools, persist conversation messages, or
+  send replies. On Codex, it preserves the session's prompt and tool definitions
+  for prompt-cache reuse.
+- Advisor needs conversation access and prompt injection permission through
+  `plugins.entries.advisor.hooks`, which trusted plugins have by default.
+- Gateway info logs record each review's input, cache-read, and output tokens,
+  plus whether its correction was steered or queued.
 - Counters live in memory, so they restart when the Gateway restarts.
 
 ## Local model lean mode

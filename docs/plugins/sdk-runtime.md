@@ -81,6 +81,28 @@ Every `api.runtime` namespace and the page that documents it.
 | `api.runtime.state`              | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-state)     |
 | `api.runtime.channel`            | [Channel helpers](/plugins/sdk-runtime/channel#api-runtime-channel)             |
 
+### Read-only session forks
+
+Use `api.runtime.subagent.forkSession({ sessionKey, message, signal?, timeoutMs? })`
+for background inference against an existing session. It returns
+`{ text, usage? }`; usage uses the completion fields `inputTokens`, `outputTokens`,
+`cacheReadTokens`, `cacheWriteTokens`, `totalTokens`, and `costUsd`.
+The timeout defaults to 30 seconds.
+
+The fork uses the session's model and harness, with no model override. Codex
+inherits the conversation and tool definitions in an ephemeral thread, but denies
+every tool call at dispatch. The native hook relay must be enabled and available;
+otherwise the request fails closed. The built-in runtime uses simplified context
+without tools, so it does not promise Codex's prompt-cache parity. CLI backends
+must explicitly declare tool-free side-question support.
+
+Conversation access is required through
+`plugins.entries.<id>.hooks.allowConversationAccess` (enabled by default only for
+bundled plugins). Requests share the plugin background-work owner and are
+cancelled when its runtime is retired. A fork does not write a transcript, deliver
+an answer, fire agent-turn lifecycle hooks, or consume queued injections or
+steering. Missing session context and unsupported harnesses produce errors.
+
 ## Storing runtime references
 
 Synchronous storage compatibility calls retain their synchronous return contract.

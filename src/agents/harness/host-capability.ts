@@ -92,6 +92,7 @@ export function createAgentHarnessHostCapabilities(params: {
   pluginId: string;
   requiredNodeCommands?: readonly string[];
   nativeModelPolicySupport?: "exact";
+  toolCalls?: "deny";
 }): {
   capabilities: AgentHarnessHostCapabilities;
   close: () => void;
@@ -329,6 +330,13 @@ export function createAgentHarnessHostCapabilities(params: {
     }: Parameters<AgentHarnessHostCapabilities["runBeforeToolCall"]>[0],
   ) => {
     assertCurrent();
+    if (params.toolCalls === "deny") {
+      return {
+        blocked: true as const,
+        kind: "veto" as const,
+        reason: "Tool calls are denied for this side question.",
+      };
+    }
     const hostApprovalMode = approvalMode === "defer" ? "defer" : "request";
     const actionHookContext = hookContextForOperation(nativeOperation);
     const result = await runBeforeToolCallHook({

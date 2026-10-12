@@ -6,6 +6,7 @@ import {
   formatErrorMessage,
   resolveSandboxContext,
   type AgentHarnessSideQuestionParamsV2,
+  type NativeHookRelayEvent,
   type AgentHarnessSideQuestionResult,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { resolveAgentWorkspaceDir } from "openclaw/plugin-sdk/agent-runtime";
@@ -66,6 +67,7 @@ import { CodexEphemeralTurn } from "./ephemeral-turn.js";
 import { CodexNativeToolLifecycleProjector } from "./event-projector-native-tool-lifecycle.js";
 import { prepareCodexNativeExecutionPolicyForRun } from "./native-execution-policy.js";
 import {
+  assertCodexNativeHookRelayAllowed,
   buildCodexNativeHookRelayConfig,
   buildCodexNativeHookRelayDisabledConfig,
   resolveCodexNativeHookRelayEvents,
@@ -139,6 +141,10 @@ import { buildCodexUserInput } from "./user-input.js";
 import { resolveCodexWebSearchPlan, type CodexNativeWebSearchSupport } from "./web-search.js";
 
 const SIDE_QUESTION_COMPLETION_TIMEOUT_MS = 600_000;
+const DENIED_DYNAMIC_TOOL_RESPONSE: JsonValue = {
+  success: false,
+  contentItems: [{ type: "inputText", text: "Tool calls are denied for this side question." }],
+};
 
 class CodexSideQuestionTimeoutError extends Error {
   override name = "TimeoutError";
@@ -157,6 +163,10 @@ export async function runCodexAppServerSideQuestion(
     config: params.cfg,
   });
   const hostCapabilities = params.hostCapabilities;
+  const denyToolCalls = params.toolCalls === "deny";
+  if (denyToolCalls && (!options.nativeHookRelay || options.nativeHookRelay.enabled === false)) {
+    throw new Error("Session fork tool denial requires the Codex native hook relay to be enabled.");
+  }
   const { binding, authority } = await resolveCodexSessionBinding({
     bindingStore: options.bindingStore,
     identity: bindingIdentity,
@@ -581,6 +591,9 @@ export async function runCodexAppServerSideQuestion(
       if (!call || call.threadId !== childThreadId || call.turnId !== turnId) {
         return undefined;
       }
+      if (denyToolCalls) {
+        return DENIED_DYNAMIC_TOOL_RESPONSE;
+      }
       const timeoutMs = resolveDynamicToolCallTimeoutMs({
         call,
         config: params.cfg,
@@ -620,10 +633,20 @@ export async function runCodexAppServerSideQuestion(
     };
 
     const serviceTier = binding.serviceTier ?? appServer.serviceTier;
-    const nativeHookRelayEvents = resolveCodexNativeHookRelayEvents({
-      configuredEvents: options.nativeHookRelay?.events,
-      appServer,
-    });
+    const nativeHookRelayEvents: readonly NativeHookRelayEvent[] = denyToolCalls
+      ? ["pre_tool_use"]
+      : resolveCodexNativeHookRelayEvents({
+          configuredEvents: options.nativeHookRelay?.events,
+          appServer,
+        });
+    if (denyToolCalls) {
+      await assertCodexNativeHookRelayAllowed(
+        client,
+        runAbortController.signal,
+        appServer.requestTimeoutMs,
+      );
+      assertCurrent();
+    }
     if (options.nativeHookRelay && options.nativeHookRelay.enabled !== false) {
       const channelId = buildAgentHookContextChannelFields({
         sessionKey: params.sessionKey,
@@ -643,6 +666,7 @@ export async function runCodexAppServerSideQuestion(
         ...(channelId ? { channelId } : {}),
         allowedEvents: nativeHookRelayEvents,
         preToolUseLoopDetection: appServer.loopDetectionPreToolUseRelay,
+        requirePreToolUse: denyToolCalls,
         ttlMs: resolveCodexNativeHookRelayTtlMs({
           explicitTtlMs: options.nativeHookRelay.ttlMs,
           attemptTimeoutMs: SIDE_QUESTION_COMPLETION_TIMEOUT_MS,
@@ -770,7 +794,7 @@ export async function runCodexAppServerSideQuestion(
                   ...(sandboxEnvironment || appServer.networkProxy ? {} : { sandbox }),
                   ...(serviceTier ? { serviceTier } : {}),
                   config: threadConfig,
-                  developerInstructions: SIDE_DEVELOPER_INSTRUCTIONS,
+                  ...(denyToolCalls ? {} : { developerInstructions: SIDE_DEVELOPER_INSTRUCTIONS }),
                   ephemeral: true,
                   // Paginated ephemeral forks require metadata-only responses; history stays native.
                   excludeTurns: true,
@@ -813,19 +837,21 @@ export async function runCodexAppServerSideQuestion(
                 );
               }
               const scoped = requestOptions();
-              await refreshCodexThreadPolicy({
-                client: forkClient,
-                threadId: childThreadId,
-                developerInstructions: SIDE_DEVELOPER_INSTRUCTIONS,
-                ...scoped,
-                withCurrent: authority.withCurrent,
-                signal: runAbortController.signal,
-                assertCurrent: () => {
-                  assertCurrent();
-                  runAbortController.signal.throwIfAborted();
-                  scoped.assertCurrent();
-                },
-              });
+              if (!denyToolCalls) {
+                await refreshCodexThreadPolicy({
+                  client: forkClient,
+                  threadId: childThreadId,
+                  developerInstructions: SIDE_DEVELOPER_INSTRUCTIONS,
+                  ...scoped,
+                  withCurrent: authority.withCurrent,
+                  signal: runAbortController.signal,
+                  assertCurrent: () => {
+                    assertCurrent();
+                    runAbortController.signal.throwIfAborted();
+                    scoped.assertCurrent();
+                  },
+                });
+              }
             } catch (error) {
               policyWriteUncertain =
                 error instanceof CodexThreadPolicyHandoffError && error.outcome === "unknown";

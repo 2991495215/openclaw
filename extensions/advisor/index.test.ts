@@ -9,35 +9,11 @@ import {
   createTestPluginApi,
   createTestPluginServiceScheduler,
 } from "openclaw/plugin-sdk/plugin-test-api";
-import { describe, expect, it, vi } from "vitest";
+import { createPluginRuntimeMock } from "openclaw/plugin-sdk/plugin-test-runtime";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "./index.js";
 
-type AgentEndHandler = (
-  event: { messages: unknown[]; success: boolean; durationMs?: number },
-  ctx: { sessionKey?: string; agentId?: string; trigger?: string },
-) => void;
-
-const conversation = [
-  { role: "user", content: "Fix the typo in the README heading. Nothing else." },
-  {
-    role: "assistant",
-    content: [
-      { type: "text", text: "Fixed the typo. Now rewriting the CI pipeline as well." },
-      { type: "toolCall", id: "call-1", name: "edit", arguments: { path: ".github/ci.yml" } },
-    ],
-  },
-  { role: "toolResult", toolCallId: "call-1", content: [{ type: "text", text: "ok" }] },
-];
-
-type PendingReview = {
-  resolve: (text: string) => void;
-  reject: (error: Error) => void;
-  signal?: AbortSignal;
-  message: string;
-  result: Promise<{ text: string }>;
-};
-
-/** Resolves on the next call of a notifier; tests await these signals instead of delays. */
+/** Waits for observable scheduler work rather than sleeping or polling. */
 function createSignal<T>() {
   let waiters: ((value: T) => void)[] = [];
   return {
@@ -56,24 +32,34 @@ function createSignal<T>() {
   };
 }
 
+type PendingReview = {
+  resolve: (text: string) => void;
+  reject: (error: Error) => void;
+  signal?: AbortSignal;
+  result: Promise<{ text: string }>;
+};
+
+// The plugin registers these through the typed `api.on`; tests only replay them.
+type CapturedHook = (event: Record<string, unknown>, ctx: Record<string, unknown>) => unknown;
+
 function setup(pluginConfig: Record<string, unknown>) {
-  const handlers: AgentEndHandler[] = [];
+  const handlers: Partial<Record<"llm_input" | "after_tool_call" | "agent_end", CapturedHook>> = {};
   const services: OpenClawPluginServiceV2[] = [];
   const lifecycles: Parameters<OpenClawPluginApi["registerRuntimeLifecycle"]>[0][] = [];
-  const reviews: PendingReview[] = [];
   const started = createSignal<PendingReview>();
   const finished = createSignal<void>();
-  const complete = vi.fn((params: { message: string; signal?: AbortSignal }) => {
+  const forkSession = vi.fn<OpenClawPluginApi["runtime"]["subagent"]["forkSession"]>((params) => {
     const { promise, resolve, reject } = Promise.withResolvers<string>();
     params.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
     const review = {
       resolve,
       reject,
       signal: params.signal,
-      message: params.message,
-      result: promise.then((text) => ({ text })),
+      result: promise.then((text) => ({
+        text,
+        usage: { inputTokens: 100, cacheReadTokens: 80, outputTokens: 10 },
+      })),
     };
-    reviews.push(review);
     started.notify(review);
     return review.result;
   });
@@ -82,161 +68,206 @@ function setup(pluginConfig: Record<string, unknown>) {
     id: "queued",
     sessionKey: injection.sessionKey,
   }));
-  // Every settled review logs exactly once.
+  const steer = vi.fn<OpenClawPluginApi["session"]["workflow"]["steerActiveRun"]>(async () => ({
+    steered: true,
+    runId: "run-1",
+  }));
+  const info = vi.fn((message: string) => {
+    if (!message.includes("review usage")) {
+      finished.notify();
+    }
+  });
   const warn = vi.fn(() => finished.notify());
   const api = createTestPluginApi({
     id: "advisor",
     pluginConfig,
-    logger: { info: vi.fn(() => finished.notify()), warn, error: vi.fn(), debug: vi.fn() },
-    runtime: { subagent: { complete } } as unknown as OpenClawPluginApi["runtime"],
+    logger: { info, warn, error: vi.fn(), debug: vi.fn() },
+    runtime: createPluginRuntimeMock({ subagent: { forkSession } }),
     enqueueNextTurnInjection: enqueue,
+    steerActiveRun: steer,
     registerRuntimeLifecycle: (lifecycle) => lifecycles.push(lifecycle),
-    registerService: (service: Parameters<OpenClawPluginApi["registerService"]>[0]) => {
+    registerService: (service) => {
       if (service.apiVersion === 2) {
         services.push(service);
       }
     },
-    on: ((name: string, handler: AgentEndHandler) => {
-      if (name === "agent_end") {
-        handlers.push(handler);
-      }
-    }) as OpenClawPluginApi["on"],
+    on: (name, handler) => {
+      Object.assign(handlers, { [name]: handler });
+    },
   });
   plugin.register(api);
 
   const clock = createGatewaySchedulerClock();
   const scheduler = createTestPluginServiceScheduler(createTestGatewayScheduler(clock.clock));
-  const startService = () =>
-    services[0]!.start({ scheduler } as unknown as OpenClawPluginServiceContextV2);
-  const endTurn = (ctx: Parameters<AgentEndHandler>[1] = {}, durationMs = 1_000) => {
-    for (const handler of handlers) {
-      handler(
-        { messages: conversation, success: true, durationMs },
-        { sessionKey: "agent:main:main", agentId: "main", trigger: "user", ...ctx },
-      );
-    }
+  const serviceContext: OpenClawPluginServiceContextV2 = {
+    config: {},
+    stateDir: "/tmp/advisor-test",
+    logger: api.logger,
+    scheduler,
   };
-  /** Dispatches scheduled background work and resolves when the next review reaches the model. */
-  const dispatchReview = () => {
-    const review = started.next();
-    void clock.wake();
-    return review;
+  const context = {
+    sessionKey: "agent:main:main",
+    agentId: "main",
+    runId: "run-1",
+    trigger: "user",
   };
   return {
-    complete,
+    forkSession,
     enqueue,
-    reviews,
-    endTurn,
-    dispatchReview,
-    finished: finished.next,
-    startService,
-    services,
-    lifecycles,
+    steer,
+    info,
     warn,
     handlers,
-    scheduler,
+    services,
+    lifecycles,
+    finished: finished.next,
+    startService: () => services[0]!.start(serviceContext),
+    stopService: () => services[0]!.stop?.(serviceContext),
+    startRun: (overrides: Partial<typeof context> = {}) =>
+      handlers.llm_input?.(
+        {
+          runId: overrides.runId ?? context.runId,
+          sessionId: "session-1",
+          provider: "openai",
+          model: "example",
+          prompt: "Fix the README typo",
+          historyMessages: [],
+          imagesCount: 0,
+        },
+        { ...context, ...overrides },
+      ),
+    toolCompleted: (overrides: Partial<typeof context> = {}) =>
+      handlers.after_tool_call?.(
+        { toolName: "exec", params: {} },
+        { ...context, ...overrides, toolName: "exec" },
+      ),
+    endRun: (durationMs = 1_000, overrides: Partial<typeof context> = {}) =>
+      handlers.agent_end?.(
+        { messages: [], success: true, durationMs },
+        { ...context, ...overrides },
+      ),
+    dispatchReview: () => {
+      const review = started.next();
+      void clock.wake();
+      return review;
+    },
   };
 }
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("advisor", () => {
-  it("reviews after the configured turns, outside the turn, and queues one correction", async () => {
-    const run = setup({ everyTurns: 2, everyMinutes: 0 });
+  it.each([true, false])(
+    "reviews tool calls mid-run and delivers with active steering=%s",
+    async (active) => {
+      const run = setup({ everyToolCalls: 2, everyMinutes: 0 });
+      if (!active) {
+        run.steer.mockResolvedValue({ steered: false, reason: "not streaming" });
+      }
+      await run.startService();
+      await run.startRun();
+      await run.toolCompleted();
+      expect(run.forkSession).not.toHaveBeenCalled();
+      await run.toolCompleted();
+      // Hooks only schedule; the service owns model work outside the tool's lifetime.
+      expect(run.forkSession).not.toHaveBeenCalled();
+      const review = await run.dispatchReview();
+      expect(run.forkSession).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          sessionKey: "agent:main:main",
+          message: expect.stringContaining("Reply with exactly NO_CHANGE"),
+        }),
+      );
+      expect(run.forkSession.mock.calls[0]?.[0]).not.toHaveProperty("model");
+      // A third completed tool does not start a second concurrent review.
+      await run.toolCompleted();
+      expect(run.forkSession).toHaveBeenCalledOnce();
+      const done = run.finished();
+      review.resolve("Stop editing CI; the user asked only for the README typo.");
+      await done;
+      expect(run.steer).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          sessionKey: "agent:main:main",
+          text: expect.stringContaining("Stop editing CI"),
+        }),
+      );
+      if (active) {
+        expect(run.enqueue).not.toHaveBeenCalled();
+      } else {
+        expect(run.enqueue).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            sessionKey: "agent:main:main",
+            agentId: "main",
+            ttlMs: 24 * 60 * 60 * 1000,
+            idempotencyKey: run.steer.mock.calls[0]?.[0].idempotencyKey,
+            text: run.steer.mock.calls[0]?.[0].text,
+          }),
+        );
+      }
+      expect(run.info).toHaveBeenCalledWith(
+        expect.stringContaining("input=100 cacheRead=80 output=10"),
+      );
+      expect(run.info).toHaveBeenCalledWith(
+        expect.stringContaining(active ? "steered active run" : "queued correction for next turn"),
+      );
+      await run.stopService();
+    },
+  );
+
+  it("accumulates elapsed run time without counting it twice and does nothing on NO_CHANGE", async () => {
+    let now = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const run = setup({ everyToolCalls: 0, everyMinutes: 1 });
     await run.startService();
-    run.endTurn();
-    run.endTurn();
-    // The turn's own hook never calls the model; the service scheduler does.
-    expect(run.complete).not.toHaveBeenCalled();
+    await run.startRun();
+    now = 30_000;
+    await run.toolCompleted();
+    await run.endRun(40_000);
+    expect(run.forkSession).not.toHaveBeenCalled();
+    now = 50_000;
+    await run.startRun({ runId: "run-2" });
+    now = 69_000;
+    await run.toolCompleted({ runId: "run-2" });
+    expect(run.forkSession).not.toHaveBeenCalled();
+    await run.endRun(20_000, { runId: "run-2" });
     const review = await run.dispatchReview();
-    // Without a configured advisor model the host uses the agent's own model.
-    expect(run.complete.mock.calls[0]?.[0]).not.toHaveProperty("model");
-    const evidence = JSON.parse(review.message);
-    expect(evidence.requests[0].text).toContain("Fix the typo");
-    expect(evidence.toolCalls[0]).toMatchObject({ tool: "edit", result: { text: "ok" } });
-
-    const done = run.finished();
-    review.resolve("Stop editing CI; the user asked only for the README typo.");
-    await done;
-    expect(run.enqueue).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        sessionKey: "agent:main:main",
-        agentId: "main",
-        text: expect.stringContaining("Stop editing CI"),
-        ttlMs: 24 * 60 * 60 * 1000,
-      }),
-    );
-
-    // The interval restarts after a review, and the next review sees the earlier advice.
-    run.endTurn();
-    run.endTurn();
-    const next = await run.dispatchReview();
-    expect(JSON.parse(next.message).previousAdvice).toContain("Stop editing CI");
-  });
-
-  it("triggers on accumulated run minutes, uses the configured advisor model, and stays silent on NO_CHANGE", async () => {
-    const run = setup({ everyTurns: 0, everyMinutes: 1, model: "example/reviewer" });
-    await run.startService();
-    run.endTurn({}, 40_000);
-    run.endTurn({}, 25_000);
-    const review = await run.dispatchReview();
-    expect(run.complete).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ model: "example/reviewer" }),
-    );
     const done = run.finished();
     review.resolve("NO_CHANGE");
     await done;
+    expect(run.steer).not.toHaveBeenCalled();
     expect(run.enqueue).not.toHaveBeenCalled();
+    await run.stopService();
   });
 
-  it("keeps one review per conversation in flight and waits a full interval after a failure", async () => {
-    const run = setup({ everyTurns: 1, everyMinutes: 0 });
+  it("ignores non-user runs and cancels on reset, disable, and service stop", async () => {
+    const run = setup({ everyToolCalls: 1, everyMinutes: 0 });
     await run.startService();
-    run.endTurn();
-    const first = await run.dispatchReview();
-    run.endTurn();
-    expect(run.complete).toHaveBeenCalledOnce();
-
-    const done = run.finished();
-    first.reject(new Error("provider unavailable"));
-    await done;
-    expect(run.warn).toHaveBeenCalledOnce();
-    expect(run.enqueue).not.toHaveBeenCalled();
-    // The failed review reset the interval; the next completed turn is due again.
-    run.endTurn();
-    await run.dispatchReview();
-    expect(run.complete).toHaveBeenCalledTimes(2);
-  });
-
-  it("ignores background runs and cancels reviews when the session is reset or the service stops", async () => {
-    const run = setup({ everyTurns: 1, everyMinutes: 0 });
-    run.endTurn();
-    expect(run.complete).not.toHaveBeenCalled();
-    await run.startService();
-    for (const trigger of ["heartbeat", "cron", "memory", "overflow"]) {
-      run.endTurn({ trigger });
+    for (const trigger of ["heartbeat", "cron", "memory", "overflow", "side_question", "btw"]) {
+      await run.startRun({ trigger });
+      await run.toolCompleted();
+      await run.endRun(120_000, { trigger });
     }
-    run.endTurn({ sessionKey: undefined });
-
-    run.endTurn();
-    const review = await run.dispatchReview();
-    await run.lifecycles[0]!.cleanup?.({ reason: "reset", sessionKey: "agent:main:main" });
-    expect(review.signal?.aborted).toBe(true);
-    await expect(review.result).rejects.toThrow("aborted");
-
-    run.endTurn({ sessionKey: "agent:main:other" });
-    const other = await run.dispatchReview();
-    await run.services[0]!.stop?.({
-      scheduler: run.scheduler,
-    } as unknown as OpenClawPluginServiceContextV2);
-    expect(other.signal?.aborted).toBe(true);
-    await expect(other.result).rejects.toThrow("aborted");
-    expect(run.complete).toHaveBeenCalledTimes(2);
+    expect(run.forkSession).not.toHaveBeenCalled();
+    for (const cancel of [
+      () => run.lifecycles[0]!.cleanup?.({ reason: "reset", sessionKey: "agent:main:main" }),
+      () => run.lifecycles[0]!.dispose?.(),
+      () => run.stopService(),
+    ]) {
+      await run.startRun();
+      await run.toolCompleted();
+      const review = await run.dispatchReview();
+      await cancel();
+      expect(review.signal?.aborted).toBe(true);
+      await expect(review.result).rejects.toThrow("aborted");
+    }
+    expect(run.steer).not.toHaveBeenCalled();
     expect(run.enqueue).not.toHaveBeenCalled();
     expect(run.warn).not.toHaveBeenCalled();
   });
 
   it("registers nothing when both triggers are off", () => {
-    const run = setup({ everyTurns: 0, everyMinutes: 0 });
-    expect(run.handlers).toHaveLength(0);
+    const run = setup({ everyToolCalls: 0, everyMinutes: 0 });
+    expect(run.handlers).toEqual({});
     expect(run.services).toHaveLength(0);
     expect(run.warn).toHaveBeenCalledOnce();
   });

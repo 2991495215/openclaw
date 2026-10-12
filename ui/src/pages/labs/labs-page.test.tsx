@@ -251,7 +251,7 @@ describe("LabsPage", () => {
     {
       label: "Advisor",
       sourceConfig: {
-        plugins: { entries: { advisor: { enabled: true, config: { everyTurns: 3 } } } },
+        plugins: { entries: { advisor: { enabled: true, config: { everyToolCalls: 3 } } } },
       },
       expectedPatch: { plugins: { entries: { advisor: { enabled: null } } } },
       note: "labs: update advisor",

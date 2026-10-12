@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../test/helpers/promise.js";
+import type { runBtwSideQuestion } from "../agents/btw.js";
 import { FailoverError } from "../agents/failover-error.js";
 import type { runIsolatedCompletion } from "../agents/isolated-completion.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
@@ -32,6 +33,12 @@ import {
 } from "./server-plugin-subagent-runtime.js";
 
 const isolated = vi.hoisted(() => vi.fn<typeof runIsolatedCompletion>());
+const sideQuestion = vi.hoisted(() => vi.fn<typeof runBtwSideQuestion>());
+const forkSessionLookup = vi.hoisted(() => vi.fn());
+vi.mock("../agents/btw.js", () => ({ runBtwSideQuestion: sideQuestion }));
+vi.mock("./session-utils-store-worker.js", () => ({
+  loadGatewaySessionEntryReadOnlyInWorker: forkSessionLookup,
+}));
 const normalizeProviderModelIdWithRuntime = vi.hoisted(() =>
   vi.fn<(params: { provider: string; context: { modelId: string } }) => string | undefined>(
     () => undefined,
@@ -101,6 +108,12 @@ function blockBackgroundSlots(count: number) {
 beforeEach(() => {
   resetCommandQueueStateForTest();
   normalizeProviderModelIdWithRuntime.mockReset().mockImplementation(() => undefined);
+  sideQuestion.mockReset();
+  forkSessionLookup.mockReset().mockResolvedValue({
+    entry: { sessionId: "parent-session", updatedAt: 1 },
+    canonicalKey: "agent:research:main",
+    storePath: "/tmp/session-fork.sqlite",
+  });
   isolated.mockReset().mockImplementation(async (params) => ({
     text: `${params.agentId}:${params.provider}/${params.model}`,
     provider: params.provider,
@@ -126,6 +139,47 @@ afterEach(() => {
   resetCommandQueueStateForTest();
   resetConfigRuntimeState();
   vi.restoreAllMocks();
+});
+
+describe("plugin session forks", () => {
+  const fork = () =>
+    withPluginRuntimePluginScope({ pluginId: PLUGIN_ID }, () =>
+      createRuntime().forkSession({
+        sessionKey: "agent:research:main",
+        message: "Review the current work",
+      }),
+    );
+
+  it("requires explicit conversation access for an external plugin", async () => {
+    await expect(fork()).rejects.toThrow(
+      `plugins.entries.${PLUGIN_ID}.hooks.allowConversationAccess`,
+    );
+    expect(sideQuestion).not.toHaveBeenCalled();
+    expect(forkSessionLookup).not.toHaveBeenCalled();
+  });
+
+  it("uses the session side-question owner and returns billed cache usage", async () => {
+    config.plugins = { entries: { [PLUGIN_ID]: { hooks: { allowConversationAccess: true } } } };
+    sideQuestion.mockImplementation(async (params) => {
+      expect(params).toMatchObject({
+        agentId: "research",
+        provider: "test-provider",
+        model: "research-model",
+        sessionKey: "agent:research:main",
+        sessionEntry: { sessionId: "parent-session" },
+        toolCalls: "deny",
+        isNewSession: false,
+      });
+      expect(params.opts).not.toHaveProperty("onBlockReply");
+      params.onUsage?.({ input: 6, output: 4, cacheRead: 20, total: 30 });
+      return { text: "Looks correct." };
+    });
+    await expect(fork()).resolves.toEqual({
+      text: "Looks correct.",
+      usage: { inputTokens: 6, outputTokens: 4, cacheReadTokens: 20, totalTokens: 30 },
+    });
+    expect(isolated).not.toHaveBeenCalled();
+  });
 });
 
 describe("plugin background completions", () => {

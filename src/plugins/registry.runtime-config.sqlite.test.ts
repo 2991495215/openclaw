@@ -18,6 +18,7 @@ describe("plugin registry SQLite session ownership", () => {
       };
       const subagent = {
         complete: vi.fn(async () => ({ text: "completed" })),
+        forkSession: vi.fn(async () => ({ text: "completed" })),
         run: vi.fn(async () => ({ runId: "workboard-run" })),
         waitForRun: vi.fn(async () => ({ status: "ok" as const })),
         getSessionMessages: vi.fn(async () => ({ messages: [] })),

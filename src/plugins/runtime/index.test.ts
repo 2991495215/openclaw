@@ -42,6 +42,7 @@ import { createPluginRuntime } from "./index.js";
 function createGatewaySubagentRuntime() {
   return {
     complete: vi.fn(),
+    forkSession: vi.fn(),
     run: vi.fn(),
     waitForRun: vi.fn(),
     getSessionMessages: vi.fn(),

@@ -1,38 +1,32 @@
 import { randomUUID } from "node:crypto";
-import { buildReviewEvidence, type ReviewEvidence } from "./evidence.js";
 
 export type AdvisorSchedule = {
-  /** Completed agent turns between reviews; 0 turns this trigger off. */
-  everyTurns: number;
+  /** Completed tool calls between reviews; 0 turns this trigger off. */
+  everyToolCalls: number;
   /** Minutes of accumulated agent run time between reviews; 0 turns this trigger off. */
   everyMinutes: number;
 };
 
 type AdvisorDeps = {
   schedule: AdvisorSchedule;
-  /** Resolves to the finding, or null when the reviewer found nothing to correct. */
-  review: (input: {
-    agentId: string;
-    evidence: ReviewEvidence;
-    previousAdvice?: string;
-    signal: AbortSignal;
-  }) => Promise<string | null>;
+  review: (input: { sessionKey: string; signal: AbortSignal }) => Promise<string | null>;
   deliver: (input: {
     agentId: string;
     sessionKey: string;
     finding: string;
     reviewId: string;
-  }) => Promise<boolean>;
+    signal: AbortSignal;
+  }) => Promise<void>;
   logger: { info: (message: string) => void; warn: (message: string) => void };
-  /** Starts work outside the finished turn; false when no background owner is running. */
+  /** Runs reviews under the plugin service's lifetime, not the triggering hook's. */
   runInBackground: (sessionKey: string, run: () => Promise<void>) => boolean;
 };
 
 type SessionState = {
-  turns: number;
+  toolCalls: number;
   activeMs: number;
+  run?: { id: string; startedAt: number; accountedMs: number };
   inFlight?: AbortController;
-  previousAdvice?: string;
 };
 
 const MAX_TRACKED_SESSIONS = 1000;
@@ -42,13 +36,12 @@ export function createAdvisorController(deps: AdvisorDeps) {
   const everyMs = deps.schedule.everyMinutes * 60_000;
 
   function stateFor(sessionKey: string): SessionState {
-    const state = sessions.get(sessionKey) ?? { turns: 0, activeMs: 0 };
-    // Reinsert so eviction drops the least recently active session first.
+    const state = sessions.get(sessionKey) ?? { toolCalls: 0, activeMs: 0 };
     sessions.delete(sessionKey);
     sessions.set(sessionKey, state);
     if (sessions.size > MAX_TRACKED_SESSIONS) {
       for (const [key, candidate] of sessions) {
-        if (!candidate.inFlight) {
+        if (!candidate.inFlight && !candidate.run) {
           sessions.delete(key);
           break;
         }
@@ -57,33 +50,29 @@ export function createAdvisorController(deps: AdvisorDeps) {
     return state;
   }
 
-  function isDue(state: SessionState): boolean {
-    return (
-      (deps.schedule.everyTurns > 0 && state.turns >= deps.schedule.everyTurns) ||
-      (everyMs > 0 && state.activeMs >= everyMs)
-    );
+  function accountTime(state: SessionState, elapsedMs: number) {
+    if (!state.run) {
+      state.activeMs += Math.max(0, elapsedMs);
+      return;
+    }
+    const elapsed = Math.max(state.run.accountedMs, elapsedMs);
+    state.activeMs += elapsed - state.run.accountedMs;
+    state.run.accountedMs = elapsed;
   }
 
   function resetInterval(state: SessionState) {
-    state.turns = 0;
+    state.toolCalls = 0;
     state.activeMs = 0;
   }
 
-  async function runReview(params: {
-    sessionKey: string;
-    agentId: string;
-    state: SessionState;
-    evidence: ReviewEvidence;
-    controller: AbortController;
-  }): Promise<void> {
-    const { sessionKey, agentId, state, controller } = params;
+  async function runReview(
+    sessionKey: string,
+    agentId: string,
+    state: SessionState,
+    controller: AbortController,
+  ): Promise<void> {
     try {
-      const finding = await deps.review({
-        agentId,
-        evidence: params.evidence,
-        previousAdvice: state.previousAdvice,
-        signal: controller.signal,
-      });
+      const finding = await deps.review({ sessionKey, signal: controller.signal });
       if (controller.signal.aborted) {
         return;
       }
@@ -92,18 +81,18 @@ export function createAdvisorController(deps: AdvisorDeps) {
         deps.logger.info(`advisor: no correction for session ${sessionKey}`);
         return;
       }
-      state.previousAdvice = finding;
-      const queued = await deps.deliver({ agentId, sessionKey, finding, reviewId: randomUUID() });
-      deps.logger.info(
-        queued
-          ? `advisor: queued a correction for the next turn of session ${sessionKey}`
-          : `advisor: the host did not queue the correction for session ${sessionKey}`,
-      );
+      await deps.deliver({
+        agentId,
+        sessionKey,
+        finding,
+        reviewId: randomUUID(),
+        signal: controller.signal,
+      });
     } catch (error) {
       if (controller.signal.aborted) {
         return;
       }
-      // A failed review waits a full interval: persistent provider errors must not cost a call per turn.
+      // Provider failures wait a full interval instead of retrying after every tool call.
       resetInterval(state);
       deps.logger.warn(
         `advisor: review failed for session ${sessionKey}: ${error instanceof Error ? error.message : String(error)}`,
@@ -115,38 +104,52 @@ export function createAdvisorController(deps: AdvisorDeps) {
     }
   }
 
+  function reviewIfDue(sessionKey: string, agentId: string, state: SessionState) {
+    const due =
+      (deps.schedule.everyToolCalls > 0 && state.toolCalls >= deps.schedule.everyToolCalls) ||
+      (everyMs > 0 && state.activeMs >= everyMs);
+    if (!due || state.inFlight) {
+      return;
+    }
+    const controller = new AbortController();
+    state.inFlight = controller;
+    if (
+      !deps.runInBackground(sessionKey, () => runReview(sessionKey, agentId, state, controller))
+    ) {
+      state.inFlight = undefined;
+    }
+  }
+
   return {
-    /** Records one finished turn and starts a background review when a trigger is due. */
+    runStarted(params: { sessionKey: string; runId: string }): void {
+      const state = stateFor(params.sessionKey);
+      if (state.run?.id !== params.runId) {
+        state.run = { id: params.runId, startedAt: Date.now(), accountedMs: 0 };
+      }
+    },
+    toolCompleted(params: { sessionKey: string; agentId: string; runId: string }): void {
+      const state = sessions.get(params.sessionKey);
+      // Tool hooks have no trigger field; only runs admitted by the agent hook count.
+      if (state?.run?.id !== params.runId) {
+        return;
+      }
+      state.toolCalls += 1;
+      accountTime(state, Date.now() - state.run.startedAt);
+      reviewIfDue(params.sessionKey, params.agentId, state);
+    },
     turnEnded(params: {
       sessionKey: string;
       agentId: string;
+      runId?: string;
       durationMs?: number;
-      messages: readonly unknown[];
     }): void {
       const state = stateFor(params.sessionKey);
-      state.turns += 1;
-      state.activeMs += Math.max(0, params.durationMs ?? 0);
-      if (!isDue(state) || state.inFlight) {
+      if (state.run && params.runId && state.run.id !== params.runId) {
         return;
       }
-      const evidence = buildReviewEvidence(params.messages);
-      if (evidence.requests.length === 0) {
-        return;
-      }
-      const controller = new AbortController();
-      state.inFlight = controller;
-      const started = deps.runInBackground(params.sessionKey, () =>
-        runReview({
-          sessionKey: params.sessionKey,
-          agentId: params.agentId,
-          state,
-          evidence,
-          controller,
-        }),
-      );
-      if (!started) {
-        state.inFlight = undefined;
-      }
+      accountTime(state, params.durationMs ?? (state.run ? Date.now() - state.run.startedAt : 0));
+      state.run = undefined;
+      reviewIfDue(params.sessionKey, params.agentId, state);
     },
     /** Drops one session's state, or all state, and cancels the matching reviews. */
     forget(sessionKey?: string) {

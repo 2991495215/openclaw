@@ -1,12 +1,13 @@
 # Advisor (plugin)
 
-Experimental and off by default. Every few turns, or after enough minutes of
-agent run time, an advisor model reads a conversation's recent agent work. When
-it finds avoidable work, such as drifting beyond the request or repeated tool
-calls, the agent receives one short correction on its next turn.
+Experimental and off by default. During user-directed work, Advisor reviews a
+fork of the conversation on the session's own model. When it finds avoidable
+work, such as drifting beyond the request or repeated tool calls, it steers the
+active run with one short correction. If the run cannot accept steering, the
+correction becomes hidden context on the next turn and expires after 24 hours.
 
 Enable it in **Settings → Agents & Tools → Labs → Advisor**. Its **Configure**
-button opens the plugin's settings page for the options below. Or use config:
+button opens the plugin's settings page. Or use config:
 
 ```json
 {
@@ -14,27 +15,24 @@ button opens the plugin's settings page for the options below. Or use config:
     "entries": {
       "advisor": {
         "enabled": true,
-        "config": { "everyTurns": 10, "everyMinutes": 20 }
+        "config": { "everyToolCalls": 10, "everyMinutes": 20 }
       }
     }
   }
 }
 ```
 
-To review with a different model, also set `config.model` and allow the plugin
-to use that model only:
+`everyToolCalls` counts completed tool calls. `everyMinutes` counts accumulated
+agent run time, checked after tool calls and when a run ends. Either trigger
+starts a review; `0` disables a trigger. Both counters restart after a review.
+Heartbeat, cron, memory-flush, overflow, and side-question runs do not count.
 
-```json
-{
-  "plugins": {
-    "entries": {
-      "advisor": {
-        "config": { "model": "openai/gpt-6.1-sol" },
-        "subagent": { "allowModelOverride": true, "allowedModels": ["openai/gpt-6.1-sol"] }
-      }
-    }
-  }
-}
-```
+Reviews keep the session's model and context; there is no separate model setting.
+The fork cannot execute tools, persist conversation messages, or send replies.
+The plugin needs conversation access and prompt injection permission through
+`plugins.entries.advisor.hooks` (the normal trusted-plugin defaults). At most one
+review runs per session. Resetting the session, disabling the plugin, or stopping
+its service cancels pending reviews. Gateway info logs record review token usage
+(input, cache reads, and output) and whether advice was steered or queued.
 
 Docs: https://docs.openclaw.ai/concepts/experimental-features#advisor

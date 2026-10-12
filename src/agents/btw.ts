@@ -40,6 +40,7 @@ import {
   readBtwTranscriptMessages,
   resolveBtwSessionTranscriptPath,
 } from "./btw-transcript.js";
+import { resolveCliBackendConfig } from "./cli-backends.js";
 import { executePreparedCliRun } from "./cli-runner/execute.runtime.js";
 import { prepareCliRunContext } from "./cli-runner/prepare.runtime.js";
 import { collectTextContentBlocks } from "./content-blocks.js";
@@ -459,6 +460,9 @@ type RunBtwSideQuestionParams = {
   provider: string;
   model: string;
   question: string;
+  toolCalls?: "deny";
+  /** Background consumers collect usage without recording a user-facing reply. */
+  onUsage?: (usage: NormalizedUsage | undefined) => void;
   images?: ImageContent[];
   sessionEntry: StoredSessionEntry;
   sessionStore?: Record<string, StoredSessionEntry>;
@@ -521,7 +525,16 @@ async function runCliBtwSideQuestion(params: {
   messageProvider?: string;
   currentChannelId?: string;
   authorityRunId: string;
+  onUsage?: (usage: NormalizedUsage | undefined) => void;
 }): Promise<ReplyPayload> {
+  if (
+    resolveCliBackendConfig(params.cliProvider, params.cfg, { agentId: params.sessionAgentId })
+      ?.sideQuestionToolMode !== "disabled"
+  ) {
+    throw new Error(
+      `CLI backend "${params.cliProvider}" cannot deny side-question tool calls; it must declare sideQuestionToolMode: "disabled".`,
+    );
+  }
   const timeoutMs = resolveAgentTimeoutMs({
     cfg: params.cfg,
     overrideSeconds: params.opts?.timeoutOverrideSeconds,
@@ -572,6 +585,7 @@ async function runCliBtwSideQuestion(params: {
     if (!text) {
       throw new Error(`/btw side question via ${params.cliProvider} produced no answer.`);
     }
+    params.onUsage?.(normalizeUsage(output.usage));
     return { text };
   } finally {
     try {
@@ -729,6 +743,10 @@ export async function runBtwSideQuestion(
       return runtimeSelection;
     };
     const recordBtwUsage = (runtimeModel: Model, usage?: NormalizedUsage) => {
+      params.onUsage?.(usage);
+      if (params.onUsage) {
+        return;
+      }
       if (!hasBillableUsage(usage)) {
         return;
       }
@@ -926,6 +944,7 @@ export async function runBtwSideQuestion(
           },
           pluginId: resolveAgentHarnessOwnerPluginId(selectedHarness),
           nativeModelPolicySupport: selectedHarness.nativeModelPolicySupport,
+          toolCalls: params.toolCalls,
         });
         const sideParams = {
           ...hostAttempt,
@@ -1062,6 +1081,7 @@ export async function runBtwSideQuestion(
     if (cliProvider) {
       return runCliBtwSideQuestion({
         cfg: params.cfg,
+        onUsage: params.onUsage,
         model: params.model,
         question: params.question,
         imageCount: params.images?.length ?? 0,
@@ -1250,6 +1270,9 @@ export async function runBtwSideQuestion(
       (payloadObj) => {
         // BTW is intentionally tool-less. Some OpenAI-compatible providers reject
         // the empty tools arrays injected for generic tool-history replay.
+        if (Array.isArray(payloadObj.tools) && payloadObj.tools.length > 0) {
+          throw new Error("The built-in side-question runtime must not send tools.");
+        }
         if (Array.isArray(payloadObj.tools) && payloadObj.tools.length === 0) {
           delete payloadObj.tools;
         }

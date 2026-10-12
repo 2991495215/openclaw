@@ -38,6 +38,7 @@ function registry() {
   const runtime = createPluginRuntime({
     subagent: {
       complete: async () => ({ text: "" }),
+      forkSession: async () => ({ text: "" }),
       run: subagentRun,
       waitForRun: async () => ({ status: "ok" }),
       getSessionMessages: async () => ({ messages: [] }),
