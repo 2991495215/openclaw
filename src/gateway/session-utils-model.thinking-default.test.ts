@@ -12,6 +12,7 @@ import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/con
 import type { SessionEntry } from "../config/sessions.js";
 import type { ModelDefinitionConfig } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { resolveProviderPolicySurface } from "../plugins/provider-public-artifacts.js";
 import {
@@ -35,6 +36,8 @@ import {
 } from "./session-utils-model.js";
 import { buildSessionListRowMetadataContext } from "./session-utils-projection.js";
 import { buildGatewaySessionRow } from "./session-utils-row.js";
+
+const projectionMetadata = createPluginMetadataSnapshotFixture();
 
 it("keeps runtime capacity reads separate from cached API capability donors", () => {
   const context = buildSessionListRowMetadataContext({ now: 1 });
@@ -82,17 +85,19 @@ describe("Gateway stored thinking levels", () => {
       const modelCatalog: (ModelCatalogEntry & ThinkingCatalogPolicyCarrier)[] | undefined = catalog
         ? [{ ...modelEntry, ...catalog }]
         : undefined;
-      return buildGatewaySessionRow({
-        cfg,
-        agentId: "main",
-        lightweightListRow: true,
-        rowContext: buildSessionListRowMetadataContext({ now: 1 }),
-        storePath: "",
-        store: {},
-        key: "agent:main:main",
-        entry,
-        modelCatalog,
-      });
+      return withPluginMetadataSnapshotScope(projectionMetadata, () =>
+        buildGatewaySessionRow({
+          cfg,
+          agentId: "main",
+          lightweightListRow: true,
+          rowContext: buildSessionListRowMetadataContext({ now: 1 }),
+          storePath: "",
+          store: {},
+          key: "agent:main:main",
+          entry,
+          modelCatalog,
+        }),
+      );
     };
 
     const stored: SessionEntry = { sessionId: "stored", updatedAt: 1, thinkingLevel: "ultra" };
@@ -116,15 +121,17 @@ describe("Gateway stored thinking levels", () => {
     expect(nativeUltra.thinkingLevel).toBe("ultra");
     expect(nativeUltra.thinkingLevels).toContainEqual({ id: "ultra", label: "ultra" });
     expect(
-      projectSessionPatchResult({
-        cfg,
-        targetAgentId: "main",
-        canonicalKey: "agent:main:main",
-        entry: stored,
-        storePath: "/tmp/agents/main/sessions/sessions.json",
-        preparedAcpMeta: null,
-        modelCatalog: [{ ...modelEntry, reasoning: false }],
-      }),
+      withPluginMetadataSnapshotScope(projectionMetadata, () =>
+        projectSessionPatchResult({
+          cfg,
+          targetAgentId: "main",
+          canonicalKey: "agent:main:main",
+          entry: stored,
+          storePath: "/tmp/agents/main/sessions/sessions.json",
+          preparedAcpMeta: null,
+          modelCatalog: [{ ...modelEntry, reasoning: false }],
+        }),
+      ),
     ).toMatchObject({
       entry: { thinkingLevel: "ultra" },
       resolved: { thinkingLevel: "off" },
@@ -358,10 +365,12 @@ describe("resolveGatewaySessionThinkingProjectionInternal", () => {
         resolveGatewayModelThinkingProfile(params).thinkingLevels.map(({ label }) => label),
       ).toEqual(scenario.levels);
       expect(
-        resolveGatewaySessionThinkingProjectionInternal({
-          ...params,
-          entry: { sessionId: "catalog-route", updatedAt: 1 },
-        }).thinkingOptions,
+        withPluginMetadataSnapshotScope(projectionMetadata, () =>
+          resolveGatewaySessionThinkingProjectionInternal({
+            ...params,
+            entry: { sessionId: "catalog-route", updatedAt: 1 },
+          }),
+        ).thinkingOptions,
       ).toEqual(scenario.levels);
     } finally {
       profile.mockRestore();
@@ -410,18 +419,20 @@ describe("resolveGatewaySessionThinkingProjectionInternal", () => {
           },
         },
       };
-      const projection = resolveGatewaySessionThinkingProjectionInternal({
-        cfg,
-        agentId: "main",
-        provider: "openai",
-        model: "gpt-5.6-sol",
-        sessionKey: "agent:main:main",
-        entry: {
-          sessionId: "runtime-projection",
-          updatedAt: 1,
-          agentHarnessId: transportOverride ? "codex" : "openclaw",
-        },
-      });
+      const projection = withPluginMetadataSnapshotScope(projectionMetadata, () =>
+        resolveGatewaySessionThinkingProjectionInternal({
+          cfg,
+          agentId: "main",
+          provider: "openai",
+          model: "gpt-5.6-sol",
+          sessionKey: "agent:main:main",
+          entry: {
+            sessionId: "runtime-projection",
+            updatedAt: 1,
+            agentHarnessId: transportOverride ? "codex" : "openclaw",
+          },
+        }),
+      );
       expect(projection.agentRuntime).toEqual({
         id: transportOverride ? "openclaw" : "codex",
         source: "model",
@@ -439,21 +450,23 @@ describe("resolveGatewaySessionThinkingProjectionInternal", () => {
       },
     };
 
-    const projection = resolveGatewaySessionThinkingProjectionInternal({
-      cfg,
-      agentId: "ops",
-      provider: "openai",
-      model: "gpt-5.6-sol",
-      sessionKey: "global",
-      preparedAcpMeta: {
-        backend: "acpx",
-        agent: "ops",
-        runtimeSessionName: "global",
-        mode: "persistent",
-        state: "idle",
-        lastActivityAt: 1,
-      },
-    });
+    const projection = withPluginMetadataSnapshotScope(projectionMetadata, () =>
+      resolveGatewaySessionThinkingProjectionInternal({
+        cfg,
+        agentId: "ops",
+        provider: "openai",
+        model: "gpt-5.6-sol",
+        sessionKey: "global",
+        preparedAcpMeta: {
+          backend: "acpx",
+          agent: "ops",
+          runtimeSessionName: "global",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: 1,
+        },
+      }),
+    );
 
     expect(projection.agentRuntime).toEqual({ id: "acpx", source: "session-key" });
   });
@@ -523,7 +536,11 @@ describe("Gateway model identity", () => {
         } satisfies Parameters<typeof buildGatewaySessionRow>[0];
         visits = 0;
         for (let index = 0; index < 32; index++) {
-          expect(buildGatewaySessionRow(params)).toMatchObject({
+          expect(
+            withPluginMetadataSnapshotScope(projectionMetadata, () =>
+              buildGatewaySessionRow(params),
+            ),
+          ).toMatchObject({
             modelProvider: "custom",
             model: selected,
             contextTokens: selected === "selected" ? 80_000 : 128_000,
@@ -535,7 +552,9 @@ describe("Gateway model identity", () => {
           model.contextTokens = 96_000;
         }
         entry.modelOverride = "selected";
-        expect(buildGatewaySessionRow(params)).toMatchObject({
+        expect(
+          withPluginMetadataSnapshotScope(projectionMetadata, () => buildGatewaySessionRow(params)),
+        ).toMatchObject({
           model: "selected",
           contextTokens: 96_000,
         });
@@ -656,28 +675,32 @@ describe("Gateway model identity", () => {
       const store = { [key]: entry };
       const expected = { modelProvider: fixture.expectedProvider, model: "shared-model" };
       for (const lightweightListRow of [false, true]) {
-        const row = buildGatewaySessionRow({
-          cfg,
-          agentId: "main",
-          storePath: stateDir,
-          store,
-          key,
-          entry,
-          lightweightListRow,
-          skipTranscriptUsageFallback: true,
-        });
+        const row = withPluginMetadataSnapshotScope(projectionMetadata, () =>
+          buildGatewaySessionRow({
+            cfg,
+            agentId: "main",
+            storePath: stateDir,
+            store,
+            key,
+            entry,
+            lightweightListRow,
+            skipTranscriptUsageFallback: true,
+          }),
+        );
         expect(row).toMatchObject(expected);
         expect(row.agentRuntime?.id).toBe("openclaw");
       }
       expect(
-        projectSessionPatchResult({
-          cfg,
-          canonicalKey: key,
-          entry,
-          preparedAcpMeta: null,
-          targetAgentId: "main",
-          storePath: stateDir,
-        }).resolved,
+        withPluginMetadataSnapshotScope(projectionMetadata, () =>
+          projectSessionPatchResult({
+            cfg,
+            canonicalKey: key,
+            entry,
+            preparedAcpMeta: null,
+            targetAgentId: "main",
+            storePath: stateDir,
+          }),
+        ).resolved,
       ).toMatchObject({ ...expected, agentRuntime: { id: "openclaw" } });
       const listed = await listSessionFixture({
         cfg,
@@ -690,7 +713,11 @@ describe("Gateway model identity", () => {
         ...cfg,
         agents: { ...cfg.agents, defaults: { ...cfg.agents?.defaults, model: selected } },
       };
-      expect(getSessionDefaults(defaultConfig, [], { agentId: "main" })).toMatchObject(expected);
+      expect(
+        withPluginMetadataSnapshotScope(projectionMetadata, () =>
+          getSessionDefaults(defaultConfig, [], { agentId: "main" }),
+        ),
+      ).toMatchObject(expected);
     });
   });
 });

@@ -26,6 +26,16 @@ vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => {
       });
       return snapshot;
     },
+    resolvePluginMetadataSnapshotAsync: async (
+      params: Parameters<typeof actual.resolvePluginMetadataSnapshotAsync>[0],
+    ) => {
+      snapshot ??= await actual.resolvePluginMetadataSnapshotAsync({
+        ...params,
+        pluginIds: ["codex", "discord", "openclaw-mem0"],
+        pluginIdScope: undefined,
+      });
+      return snapshot;
+    },
   };
 });
 

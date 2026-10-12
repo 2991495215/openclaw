@@ -44,7 +44,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../../talk/provider-resolver.js", () => ({
   resolveConfiguredRealtimeVoiceProviderAsync: mocks.resolveConfiguredRealtimeVoiceProviderAsync,
 }));
-vi.mock("../../../talk/provider-registry.js", () => ({ listRealtimeVoiceProviders: () => [] }));
+vi.mock("../../../talk/provider-registry.js", () => ({
+  listRealtimeVoiceProvidersAsync: () => [],
+}));
 vi.mock("../../../agents/realtime-bootstrap-context.js", () => ({
   resolveRealtimeVoiceAgentContextInstructions: mocks.bootstrap,
 }));
@@ -57,8 +59,8 @@ vi.mock("../transcription-relay.js", async (importOriginal) => ({
   createTalkTranscriptionRelaySession: mocks.createTranscription,
 }));
 vi.mock("../../../realtime-transcription/provider-registry.js", () => ({
-  listRealtimeTranscriptionProviders: mocks.transcriptionProviders,
-  getRealtimeTranscriptionProvider: () => undefined,
+  listRealtimeTranscriptionProvidersAsync: mocks.transcriptionProviders,
+  getRealtimeTranscriptionProviderAsync: () => undefined,
 }));
 
 const createParams = {

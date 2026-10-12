@@ -81,11 +81,12 @@ it("keeps host config/state/system/model policy ownership across broad runtime l
       });
       const provider = api.runtime.modelAuth.resolveProviderIdForAuth(" Fixture ", { metadataSnapshot: { plugins: [] } });
       const system = api.runtime.system;
-      system.enqueueSystemEvent("registration", { sessionKey: "prepared-runtime-system" });
-      system.requestHeartbeat({ source: "other", intent: "immediate", reason: "registration", coalesceMs: 0 });
       const asyncStore = api.runtime.state.openKeyedStore({ namespace: "registration", maxEntries: 2 });
       fs.writeFileSync(${JSON.stringify(observed)}, JSON.stringify({ entries, selection, runtimePolicy, provider, config: api.runtime.config.current() }));
-      api.registerCli(({ program }) => program.command("state-proof").action(async () => {
+      api.registerCli(({ program }) => {
+      system.enqueueSystemEvent("registration", { sessionKey: "prepared-runtime-system" });
+      system.requestHeartbeat({ source: "other", intent: "immediate", reason: "registration", coalesceMs: 0 });
+      program.command("state-proof").action(async () => {
         const runtime = runtimeStore.getRuntime();
         sync.register("before", { value: "retained" });
         const chunks = runtime.channel.text.chunkText("channel runtime works", 100);
@@ -94,7 +95,8 @@ it("keeps host config/state/system/model policy ownership across broad runtime l
         runtime.system.requestHeartbeat({ source: "other", intent: "immediate", reason: "materialized", coalesceMs: 0 });
         const row = await asyncStore.lookup("before");
         fs.writeFileSync(${JSON.stringify(observed)}, JSON.stringify({ chunks, version, row }));
-      }), { commands: ["state-proof"] });
+      });
+      }, { commands: ["state-proof"] });
     } };`;
   const plugin = writePlugin({
     id: "state-cli",
@@ -198,12 +200,6 @@ it("keeps host config/state/system/model policy ownership across broad runtime l
         const system = runtime.system;
         expect(system.requestHeartbeat).toBe(requestHeartbeat);
         expect(system.runCommandWithTimeout).toBe(runCommandWithTimeout);
-        expect(drainSystemEvents("agent:main:prepared-runtime-system")).toEqual(["registration"]);
-        await vi.waitFor(() =>
-          expect(heartbeat).toHaveBeenCalledWith(
-            expect.objectContaining({ reason: "registration" }),
-          ),
-        );
         const command = await system.runCommandWithTimeout(
           [process.execPath, "-e", 'process.stdout.write("system-ready")'],
           { timeoutMs: 1_000, killProcessTree: true },
@@ -250,6 +246,12 @@ it("keeps host config/state/system/model policy ownership across broad runtime l
           logger: { info() {}, warn() {}, error() {} },
         });
         expect(resolveRuntime).not.toHaveBeenCalled();
+        expect(drainSystemEvents("agent:main:prepared-runtime-system")).toEqual(["registration"]);
+        await vi.waitFor(() =>
+          expect(heartbeat).toHaveBeenCalledWith(
+            expect.objectContaining({ reason: "registration" }),
+          ),
+        );
         fullRuntime = await import("./runtime/index.js");
         await program.parseAsync(["state-proof"], { from: "user" });
         expect(JSON.parse(fs.readFileSync(observed, "utf8"))).toEqual({

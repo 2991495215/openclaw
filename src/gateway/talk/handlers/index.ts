@@ -32,7 +32,7 @@ import type {
 import type { OpenClawConfig, TtsConfig, TtsProviderConfigMap } from "../../../config/types.js";
 import { resolveProviderRawConfig } from "../../../plugin-sdk/provider-selection-runtime.js";
 import type { RealtimeVoicePublicClientHints } from "../../../plugins/provider-policy-surface.js";
-import { canonicalizeRealtimeTranscriptionProviderId } from "../../../realtime-transcription/provider-registry.js";
+import { canonicalizeRealtimeTranscriptionProviderIdAsync } from "../../../realtime-transcription/provider-registry.js";
 import {
   assertSecretOwnerAvailable,
   isSecretOwnerAvailable,
@@ -45,9 +45,9 @@ import {
   type InternalRealtimeVoiceProviderCapabilities,
 } from "../../../talk/provider-internal.js";
 import {
-  canonicalizeRealtimeVoiceProviderId,
-  getRealtimeVoiceProvider,
-  listRealtimeVoiceProviders,
+  canonicalizeRealtimeVoiceProviderIdAsync,
+  getRealtimeVoiceProviderAsync,
+  listRealtimeVoiceProvidersAsync,
 } from "../../../talk/provider-registry.js";
 import {
   isRealtimeVoiceProviderConfiguredAsync,
@@ -238,7 +238,7 @@ async function buildTalkCatalog(config: OpenClawConfig, params: TalkCatalogParam
     );
     const transcriptionConfig = await buildTalkTranscriptionConfig(config);
     const transcriptionSelection = await resolveCatalogProviderSelection(
-      canonicalizeRealtimeTranscriptionProviderId(transcriptionConfig.provider, config),
+      await canonicalizeRealtimeTranscriptionProviderIdAsync(transcriptionConfig.provider, config),
       async () =>
         (
           await resolveConfiguredRealtimeTranscriptionProvider({
@@ -275,7 +275,7 @@ async function buildTalkCatalog(config: OpenClawConfig, params: TalkCatalogParam
       ? { providerConfigOverrides: { model: realtimeModel } }
       : {};
     const realtimeSelection = await resolveCatalogProviderSelection(
-      canonicalizeRealtimeVoiceProviderId(realtimeConfig.provider, config),
+      await canonicalizeRealtimeVoiceProviderIdAsync(realtimeConfig.provider, config),
       async () => {
         assertSecretOwnerAvailable("capability", "talk:realtime");
         return (
@@ -291,6 +291,11 @@ async function buildTalkCatalog(config: OpenClawConfig, params: TalkCatalogParam
     );
     const activeRealtimeProvider = realtimeSelection.activeProvider;
     const speechAvailable = isSecretOwnerAvailable("capability", "talk:speech");
+    const transcriptionProviders = await listTalkTranscriptionProviders(config, [
+      transcriptionConfig.provider,
+      ...Object.keys(transcriptionConfig.providers),
+    ]);
+    const realtimeProviders = await listRealtimeVoiceProvidersAsync(config, realtimeProviderIds);
 
     return {
       modes: ["realtime", "stt-tts", "transcription"],
@@ -348,10 +353,7 @@ async function buildTalkCatalog(config: OpenClawConfig, params: TalkCatalogParam
         ready: transcriptionSelection.ready,
         ...(activeTranscriptionProvider ? { activeProvider: activeTranscriptionProvider } : {}),
         providers: await Promise.all(
-          listTalkTranscriptionProviders(config, [
-            transcriptionConfig.provider,
-            ...Object.keys(transcriptionConfig.providers),
-          ]).map(async (provider) => {
+          transcriptionProviders.map(async (provider) => {
             const rawConfig = getVoiceProviderConfig({
               providerConfigs: transcriptionConfig.providers,
               provider,
@@ -399,7 +401,7 @@ async function buildTalkCatalog(config: OpenClawConfig, params: TalkCatalogParam
         ready: realtimeSelection.ready,
         ...(activeRealtimeProvider ? { activeProvider: activeRealtimeProvider } : {}),
         providers: await Promise.all(
-          listRealtimeVoiceProviders(config, realtimeProviderIds).map(async (provider) => {
+          realtimeProviders.map(async (provider) => {
             const available = isSecretOwnerAvailable("capability", "talk:realtime");
             const rawConfig = resolveProviderRawConfig({
               providerConfigs: realtimeConfig.providers ?? {},
@@ -551,7 +553,7 @@ async function resolveTalkResponseFromConfig(params: {
   // Resolve provider selection from materialized config, but project provider-owned fields from
   // source config so SecretRefs stay redacted. The requested provider also avoids re-resolving them.
   const runtimeRealtime = await buildTalkRealtimeConfig(params.runtimeConfig);
-  const effectiveProvider = canonicalizeRealtimeVoiceProviderId(
+  const effectiveProvider = await canonicalizeRealtimeVoiceProviderIdAsync(
     runtimeRealtime.provider,
     params.runtimeConfig,
   );
@@ -559,7 +561,8 @@ async function resolveTalkResponseFromConfig(params: {
   const sourceProviders: Record<string, TalkProviderConfig> = {};
   for (const [providerId, providerConfig] of Object.entries(sourceRealtime.providers)) {
     const canonicalProviderId =
-      canonicalizeRealtimeVoiceProviderId(providerId, params.runtimeConfig) ?? providerId;
+      (await canonicalizeRealtimeVoiceProviderIdAsync(providerId, params.runtimeConfig)) ??
+      providerId;
     sourceProviders[canonicalProviderId] = {
       ...sourceProviders[canonicalProviderId],
       ...providerConfig,
@@ -590,19 +593,24 @@ async function resolveTalkResponseFromConfig(params: {
   if (realtime) {
     const providers = realtime.providers
       ? Object.fromEntries(
-          Object.entries(realtime.providers).map(([providerId, config]) => [
-            providerId,
-            projectInternalRealtimeVoicePublicConfig({
-              provider: getRealtimeVoiceProvider(providerId, params.runtimeConfig),
+          await Promise.all(
+            Object.entries(realtime.providers).map(async ([providerId, config]) => [
               providerId,
-              providerConfig: config,
-              config,
-            }),
-          ]),
+              projectInternalRealtimeVoicePublicConfig({
+                provider: await getRealtimeVoiceProviderAsync(providerId, params.runtimeConfig),
+                providerId,
+                providerConfig: config,
+                config,
+              }),
+            ]),
+          ),
         )
       : undefined;
     const providerConfig = realtime.providers?.[effectiveProvider ?? ""] ?? {};
-    const realtimeProvider = getRealtimeVoiceProvider(effectiveProvider, params.runtimeConfig);
+    const realtimeProvider = await getRealtimeVoiceProviderAsync(
+      effectiveProvider,
+      params.runtimeConfig,
+    );
     const projection = projectInternalRealtimeVoicePublicProjection({
       ...(realtimeProvider ? { provider: realtimeProvider } : {}),
       providerId: effectiveProvider,

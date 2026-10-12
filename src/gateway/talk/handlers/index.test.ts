@@ -187,18 +187,19 @@ vi.mock("../../../tts/tts.js", () => ({
 vi.mock("../../../tts/tts-synthesis.js", () => ({ synthesizeTalkSpeech: mocks.synthesizeSpeech }));
 
 vi.mock("../../../talk/provider-registry.js", () => ({
-  canonicalizeRealtimeVoiceProviderId: mocks.canonicalizeRealtimeVoiceProviderId,
-  getRealtimeVoiceProvider: (providerId: string | undefined) =>
+  canonicalizeRealtimeVoiceProviderIdAsync: mocks.canonicalizeRealtimeVoiceProviderId,
+  getRealtimeVoiceProviderAsync: (providerId: string | undefined) =>
     mocks
       .listRealtimeVoiceProviders()
       .find((provider: { id: string }) => provider.id === providerId),
-  listRealtimeVoiceProviders: mocks.listRealtimeVoiceProviders,
+  listRealtimeVoiceProvidersAsync: mocks.listRealtimeVoiceProviders,
 }));
 
 vi.mock("../../../realtime-transcription/provider-registry.js", () => ({
-  canonicalizeRealtimeTranscriptionProviderId: mocks.canonicalizeRealtimeTranscriptionProviderId,
-  getRealtimeTranscriptionProvider: mocks.getRealtimeTranscriptionProvider,
-  listRealtimeTranscriptionProviders: mocks.listRealtimeTranscriptionProviders,
+  canonicalizeRealtimeTranscriptionProviderIdAsync:
+    mocks.canonicalizeRealtimeTranscriptionProviderId,
+  getRealtimeTranscriptionProviderAsync: mocks.getRealtimeTranscriptionProvider,
+  listRealtimeTranscriptionProvidersAsync: mocks.listRealtimeTranscriptionProviders,
 }));
 
 // mock-isolation: Keep provider registration and credential state outside handler tests.

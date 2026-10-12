@@ -25,6 +25,7 @@ import type { PluginMetadataSnapshot } from "../../../plugins/plugin-metadata-sn
 import { createLazyPromise } from "../../../shared/lazy-runtime.js";
 import { prepareSystemAgentRunAdmission } from "../../admitted-run-context.js";
 import type { EmbeddedContextFile } from "../../embedded-agent-helpers/context-file.js";
+import { attachModelProviderRequestRouteFacts } from "../../provider-request-config.js";
 import type { Agent, AgentMessage, StreamFn } from "../../runtime/index.js";
 import { agentSessionSetContextReplacementHook } from "../../sessions/agent-session-compaction.js";
 import {
@@ -1034,13 +1035,16 @@ export function createContextEngineBootstrapAndAssemble() {
   };
 }
 
-const testModel = {
-  api: "openai-completions",
-  provider: "openai",
-  compat: {},
-  contextWindow: 8192,
-  input: ["text"],
-} as unknown as Model;
+const testModel = attachModelProviderRequestRouteFacts(
+  {
+    api: "openai-completions",
+    provider: "openai",
+    compat: {},
+    contextWindow: 8192,
+    input: ["text"],
+  } as unknown as Model,
+  emptyPluginMetadataSnapshot.owners,
+);
 
 const testAuthStorage = {
   getApiKey: async () => undefined,

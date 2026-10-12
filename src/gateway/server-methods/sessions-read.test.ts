@@ -5,6 +5,7 @@ import { GATEWAY_CLIENT_CAPS } from "../../../packages/gateway-protocol/src/clie
 import type { AgentsListResult } from "../../../packages/gateway-protocol/src/index.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import * as runtimeMetadata from "../../agents/agent-runtime-metadata.js";
+import { preparePluginAutoEnableTestDiscovery } from "../../config/plugin-auto-enable.test-helpers.js";
 import {
   resolveSessionStorePathCore as resolveStorePath,
   SESSION_TOTAL_TOKENS_VERSION,
@@ -113,6 +114,7 @@ async function setAgentsConfig(agentsConfig: Record<string, unknown> | undefined
   const { clearConfigCache, clearRuntimeConfigSnapshot } = await getGatewayConfigModule();
   clearRuntimeConfigSnapshot();
   clearConfigCache();
+  preparePluginAutoEnableTestDiscovery();
 }
 
 test("agents.list includes system rows only when negotiated", async () => {

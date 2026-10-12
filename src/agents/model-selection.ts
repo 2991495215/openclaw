@@ -135,8 +135,15 @@ export async function canonicalizeCaseOnlyCatalogModelRef(params: {
   if (slash <= 0 || slash === split.model.length - 1 || split.model === split.model.toLowerCase()) {
     return rawModel;
   }
+  const { resolvePluginMetadataSnapshotAsync } =
+    await import("../plugins/plugin-metadata-snapshot.js");
+  const manifestPlugins = await resolvePluginMetadataSnapshotAsync({
+    config: params.cfg,
+    allowWorkspaceScopedCurrent: true,
+  });
   const resolved = resolveModelRefFromString({
     cfg: params.cfg,
+    manifestPlugins,
     raw: split.model,
     defaultProvider: params.defaultProvider,
     aliasIndex: params.aliasIndex,
@@ -146,10 +153,11 @@ export async function canonicalizeCaseOnlyCatalogModelRef(params: {
   if (!resolved) {
     return rawModel;
   }
-  const entry = findModelInCatalog(
-    await params.loadCatalog(),
-    resolved.ref.provider,
-    resolved.ref.model,
+  const catalog = await params.loadCatalog();
+  const { withPluginMetadataSnapshotScope } =
+    await import("../plugins/current-plugin-metadata-snapshot.js");
+  const entry = withPluginMetadataSnapshotScope(manifestPlugins, () =>
+    findModelInCatalog(catalog, resolved.ref.provider, resolved.ref.model),
   );
   return entry ? appendAuthProfileSuffix(`${entry.provider}/${entry.id}`, split.profile) : rawModel;
 }

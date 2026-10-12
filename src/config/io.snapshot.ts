@@ -335,7 +335,7 @@ async function readConfigSnapshotWithPreparation(
       const collect = () =>
         context.options.pluginValidation === "core-only"
           ? findLegacyConfigIssues(effectiveConfigRaw, effectiveParsed)
-          : collectInvalidConfigLegacyIssues(effectiveConfigRaw, effectiveParsed);
+          : collectInvalidConfigLegacyIssues(effectiveConfigRaw, effectiveParsed, deps.env);
       const legacyIssues = await deps.measure("config.snapshot.read.legacy-issues", () =>
         availableSnapshot
           ? withPluginMetadataSnapshotScope(availableSnapshot, collect, {

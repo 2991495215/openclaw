@@ -101,6 +101,7 @@ type ModelSelectionPreparation =
 /** Prepare runtime and capabilities for the selected route before any session mutation. */
 export async function prepareModelSelectionRuntime(params: {
   cfg: OpenClawConfig;
+  metadataSnapshot?: PluginMetadataSnapshot | null;
   agentId: string;
   workspaceDir?: string;
   provider: string;
@@ -130,13 +131,15 @@ export async function prepareModelSelectionRuntime(params: {
       }
     : params.sessionEntry;
   const metadataSnapshot =
-    params.cfg.plugins?.enabled === false
-      ? null
-      : await resolvePluginMetadataSnapshotAsync({
-          config: params.cfg,
-          workspaceDir: params.workspaceDir,
-          allowWorkspaceScopedCurrent: true,
-        });
+    params.metadataSnapshot !== undefined
+      ? params.metadataSnapshot
+      : params.cfg.plugins?.enabled === false
+        ? null
+        : await resolvePluginMetadataSnapshotAsync({
+            config: params.cfg,
+            workspaceDir: params.workspaceDir,
+            allowWorkspaceScopedCurrent: true,
+          });
   let runtime = resolveModelRuntimeDirective({ ...params, metadataSnapshot });
   if (runtime.kind === "invalid") {
     return { status: "rejected", reason: "invalid-runtime", message: runtime.errorText };

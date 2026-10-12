@@ -16,6 +16,7 @@ import { prepareBundledDiscoveryMode } from "./bundled-discovery-state.js";
 import { normalizePluginsConfig, type NormalizedPluginsConfig } from "./config-state.js";
 import { getCurrentPluginMetadataSnapshot } from "./current-plugin-metadata-snapshot.js";
 import { extractPluginInstallRecordsFromInstalledPluginIndex } from "./installed-plugin-index-install-records.js";
+import { getCachedPluginRegistry } from "./loader-cache.js";
 import { resolvePluginRegistrationConfigKey } from "./loader-registration-config.js";
 import type { PluginLoadOptions } from "./loader-types.js";
 import { resolvePluginControlPlaneFingerprint } from "./plugin-control-plane-context.js";
@@ -571,23 +572,24 @@ export function createProviderRegistryResolver(dependencies: {
     }
     const projectedPluginIds = prepared.selection.projectedPluginIds ?? loadOptions.onlyPluginIds;
     const selection = prepared.selection;
-    return {
-      kind: "load",
-      options: loadOptions,
-      select: (registry) =>
-        captureProviderRegistrySelection(
-          registry,
-          selection,
-          params.mode !== "setup" && projectedPluginIds
-            ? sortUniqueStrings([
-                ...projectedPluginIds,
-                ...(selection.unownedProviderRefs.length > 0
-                  ? prepareRegistry(registry, selection).aliasOwners
-                  : []),
-              ])
-            : undefined,
-        ),
-    };
+    const select = (registry: PluginRegistry) =>
+      captureProviderRegistrySelection(
+        registry,
+        selection,
+        params.mode !== "setup" && projectedPluginIds
+          ? sortUniqueStrings([
+              ...projectedPluginIds,
+              ...(selection.unownedProviderRefs.length > 0
+                ? prepareRegistry(registry, selection).aliasOwners
+                : []),
+            ])
+          : undefined,
+      );
+    const cached =
+      loadOptions.activate === false ? getCachedPluginRegistry(loadOptions) : undefined;
+    return cached
+      ? { kind: "selected", selection: select(cached) }
+      : { kind: "load", options: loadOptions, select };
   }
 
   /** @deprecated Prepare providers with resolvePluginProviderRegistryCoreAsync before reading. */

@@ -377,3 +377,17 @@ shared-owner snapshot; it resolves cold ownership through the database worker.
 The synchronous `replaceRuntimeAuthProfileStoreSnapshots` remains deprecated until
 the next Plugin SDK major and retains native cold-owner admission for compatibility.
 Entries with explicit database paths or agent directories remain in-memory publications.
+
+### Realtime transcription provider discovery
+
+Use `getRealtimeTranscriptionProviderAsync` and
+`listRealtimeTranscriptionProvidersAsync` from
+`openclaw/plugin-sdk/realtime-transcription`. They prepare metadata and load
+provider registrations asynchronously. Returned provider callbacks remain owned
+by the calling SDK resource host until it closes. Bundled Talk, meeting, and
+voice-call consumers use these replacements.
+
+`getRealtimeTranscriptionProvider` and `listRealtimeTranscriptionProviders` are
+deprecated, emit a bounded warning, and require prepared provider registrations.
+They remain available through the current Plugin SDK major and will be removed
+in the next major.

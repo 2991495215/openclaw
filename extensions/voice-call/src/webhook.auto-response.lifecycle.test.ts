@@ -38,8 +38,8 @@ vi.mock("./realtime-transcription.runtime.js", () => {
     },
   };
   return {
-    getRealtimeTranscriptionProvider: () => provider,
-    listRealtimeTranscriptionProviders: () => [provider],
+    getRealtimeTranscriptionProviderAsync: () => provider,
+    listRealtimeTranscriptionProvidersAsync: () => [provider],
   };
 });
 

@@ -55,6 +55,7 @@ import { createAgentPatchedSessionModelFallback } from "../config/sessions/sessi
 import { normalizeSessionToolOverrides } from "../config/sessions/session-tool-overrides.js";
 import { projectCanonicalSessionEntryShape } from "../config/sessions/store-entry-shape.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import {
   isSubagentSessionKey,
@@ -141,14 +142,19 @@ export function prepareSessionsPatchEntry(
   },
 ): SessionPatchPreparation {
   const projection = projectSessionPatchSteps(params);
-  const first = projection.next();
+  const metadataSnapshot = params.runtimeMetadataSnapshot;
+  const first = metadataSnapshot
+    ? withPluginMetadataSnapshotScope(metadataSnapshot, () => projection.next())
+    : projection.next();
   if (first.done) {
     return { kind: "complete", result: first.value };
   }
   return {
     kind: "model-catalog",
     finish: (catalog) => {
-      const completed = projection.next(catalog);
+      const completed = metadataSnapshot
+        ? withPluginMetadataSnapshotScope(metadataSnapshot, () => projection.next(catalog))
+        : projection.next(catalog);
       if (!completed.done) {
         throw new Error("Session patch preparation requested the catalog more than once");
       }

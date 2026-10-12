@@ -1,5 +1,6 @@
 // Doctor legacy config issue finder that combines core, channel, and plugin rules.
 import { collectChannelLegacyConfigRules } from "../../../channels/plugins/legacy-config.js";
+import { isConfigReadFailure } from "../../../config/io.invalid-config.js";
 import { findLegacyConfigIssues } from "../../../config/legacy.js";
 import type { LegacyConfigRule } from "../../../config/legacy.shared.js";
 import type {
@@ -19,15 +20,16 @@ import { findLegacySystemAgentOwnerIssue } from "./legacy-config-migrations.runt
 function collectPluginLegacyConfigRules(
   raw: unknown,
   touchedPaths?: ReadonlyArray<ReadonlyArray<string>>,
+  env?: NodeJS.ProcessEnv,
 ): LegacyConfigRule[] {
   const channelIds = new Set(listDoctorConfiguredChannelIds(raw, { configEntryPolicy: "raw" }));
-  const pluginIds = collectDoctorConfigRepairPluginIds(raw, touchedPaths).filter(
+  const pluginIds = collectDoctorConfigRepairPluginIds(raw, touchedPaths, env).filter(
     (pluginId) => !channelIds.has(pluginId),
   );
   if (pluginIds.length === 0) {
     return [];
   }
-  return listPluginDoctorLegacyConfigRules({ config: raw as OpenClawConfig, pluginIds });
+  return listPluginDoctorLegacyConfigRules({ config: raw as OpenClawConfig, pluginIds, env });
 }
 
 /** Find legacy config issues using core rules plus relevant channel/plugin doctor contracts. */
@@ -35,10 +37,11 @@ export function findDoctorLegacyConfigIssues(
   raw: unknown,
   sourceRaw?: unknown,
   touchedPaths?: ReadonlyArray<ReadonlyArray<string>>,
+  env?: NodeJS.ProcessEnv,
 ): LegacyConfigIssue[] {
   return findLegacyConfigIssues(raw, sourceRaw, [
-    ...collectChannelLegacyConfigRules(raw, touchedPaths),
-    ...collectPluginLegacyConfigRules(raw, touchedPaths),
+    ...collectChannelLegacyConfigRules(raw, touchedPaths, undefined, env),
+    ...collectPluginLegacyConfigRules(raw, touchedPaths, env),
   ]);
 }
 
@@ -46,7 +49,7 @@ export function addDoctorLegacyIssues(
   snapshot: ConfigFileSnapshot,
   pluginMetadataSnapshot?: PluginMetadataSnapshot,
 ): ConfigFileSnapshot {
-  if (!snapshot.exists) {
+  if (!snapshot.exists || isConfigReadFailure(snapshot)) {
     return snapshot;
   }
   const resolvedRaw = snapshot.sourceConfig ?? snapshot.config ?? {};

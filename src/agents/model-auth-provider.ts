@@ -7,6 +7,11 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
+  getCurrentPluginMetadataSnapshot,
+  withPluginMetadataSnapshotScope,
+} from "../plugins/current-plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
+import {
   buildProviderMissingAuthMessageWithPlugin,
   resolveProviderDeprecatedAuthProfileIds,
   shouldDeferProviderSyntheticProfileAuthWithPlugin,
@@ -217,6 +222,29 @@ export async function resolveApiKeyForProviderCore(input: {
   /** Keep SecretRef-backed model credentials opaque until a sentinel-aware transport boundary. */
   secretSentinels?: boolean;
 }): Promise<ResolvedProviderAuth> {
+  input.signal?.throwIfAborted();
+  const context = { config: input.cfg, workspaceDir: input.workspaceDir };
+  if (
+    getCurrentPluginMetadataSnapshot({
+      ...context,
+      allowWorkspaceScopedSnapshot: true,
+      allowSynchronousPolicyRead: false,
+      requireDefaultDiscoveryContext: !input.cfg,
+    })
+  ) {
+    return resolvePreparedApiKeyForProvider(input);
+  }
+  const snapshot = await resolvePluginMetadataSnapshotAsync(context);
+  return withPluginMetadataSnapshotScope(
+    snapshot,
+    () => resolvePreparedApiKeyForProvider(input),
+    context,
+  );
+}
+
+async function resolvePreparedApiKeyForProvider(
+  input: Parameters<typeof resolveApiKeyForProviderCore>[0],
+): Promise<ResolvedProviderAuth> {
   input.signal?.throwIfAborted();
   const modelAuthConfig = resolveModelProviderAuthConfig({
     provider: input.provider,

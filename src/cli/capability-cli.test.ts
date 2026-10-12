@@ -195,7 +195,7 @@ const mocks = vi.hoisted(() => ({
     { id: "openai", defaultModel: "text-embedding-3-small", transport: "remote" },
   ]),
   listEmbeddingProviders: vi.fn(() => []),
-  buildMediaUnderstandingRegistry: vi.fn(() => new Map()),
+  mediaUnderstandingRegistry: vi.fn(() => new Map()),
   inspectLocalAudioSelection: vi.fn<() => Promise<LocalAudioSelection>>(async () => ({
     candidates: [],
     entries: [],
@@ -370,8 +370,25 @@ vi.mock("../media-understanding/runtime.js", () => ({
 }));
 
 vi.mock("../media-understanding/provider-registry.js", () => ({
-  buildMediaUnderstandingRegistry: mocks.buildMediaUnderstandingRegistry,
+  acquireMediaUnderstandingRegistry: async () => ({
+    registry: mocks.mediaUnderstandingRegistry(),
+    release: async () => {},
+  }),
 }));
+
+// mock-isolation: Provider execution is mocked; retain only fixture construction and async metadata.
+vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => {
+  const { rebasePluginMetadataSnapshotManifestRegistry } =
+    await importOriginal<typeof import("../plugins/plugin-metadata-snapshot.js")>();
+  return {
+    rebasePluginMetadataSnapshotManifestRegistry,
+    resolvePluginMetadataSnapshotAsync: async () => {
+      const { createPluginMetadataSnapshotFixture } =
+        await import("../plugins/plugin-metadata.test-support.js");
+      return createPluginMetadataSnapshotFixture();
+    },
+  };
+});
 
 vi.mock("../media-understanding/local-audio.js", () => ({
   inspectLocalAudioSelection: mocks.inspectLocalAudioSelection,
@@ -2114,7 +2131,7 @@ describe("capability cli", () => {
     mocks.listRuntimeVideoGenerationProviders.mockReturnValueOnce([
       { id: "runway", label: "Runway", defaultModel: "gen4", models: [] },
     ] as never);
-    mocks.buildMediaUnderstandingRegistry.mockReturnValueOnce(
+    mocks.mediaUnderstandingRegistry.mockReturnValueOnce(
       new Map([
         [
           "google",
@@ -2151,7 +2168,7 @@ describe("capability cli", () => {
 
   it("distinguishes the local STT fallback winner from global provider selection", async () => {
     vi.stubEnv("DEEPGRAM_API_KEY", "deepgram-test-key");
-    mocks.buildMediaUnderstandingRegistry.mockReturnValueOnce(
+    mocks.mediaUnderstandingRegistry.mockReturnValueOnce(
       new Map([
         [
           "deepgram",

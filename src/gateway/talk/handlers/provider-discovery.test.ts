@@ -6,7 +6,7 @@ import {
   resetPluginLoaderTestStateForTest,
 } from "../../../plugins/loader.test-fixtures.js";
 import { createVoiceProviderFixture } from "../../../talk/provider-discovery.test-fixtures.js";
-import { listRealtimeVoiceProviders } from "../../../talk/provider-registry.js";
+import { listRealtimeVoiceProvidersAsync } from "../../../talk/provider-registry.js";
 import { withEnvAsync } from "../../../test-utils/env.js";
 import { callGatewayHandler } from "../../server-methods/skills.test-helpers.js";
 import { talkHandlers } from "./index.js";
@@ -44,7 +44,7 @@ describe("Talk catalog provider discovery", () => {
           },
         },
       });
-      expect(listRealtimeVoiceProviders(cfg).map((provider) => provider.id)).toEqual([
+      expect((await listRealtimeVoiceProvidersAsync(cfg)).map((provider) => provider.id)).toEqual([
         "active-voice",
         "configured-voice",
       ]);

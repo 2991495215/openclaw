@@ -557,6 +557,7 @@ async function runWithModelFallbackInternal<T>(
           continue;
         }
         const nextRuntime = resolveModelFallbackCandidateAgentRuntime({
+          metadataSnapshot: candidateHarnessAuth.metadataSnapshot,
           cfg: params.cfg,
           agentId: params.agentId,
           sessionKey: params.sessionKey,

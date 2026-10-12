@@ -53,12 +53,6 @@ export async function prepareSessionPatchRuntimeMetadata(params: {
   if (params.runtimeMetadataSnapshot !== undefined) {
     return params.runtimeMetadataSnapshot;
   }
-  if (!params.patch.agentRuntime && !params.existingEntry?.agentRuntimeOverride) {
-    return undefined;
-  }
-  if (params.cfg.plugins?.enabled === false) {
-    return null;
-  }
   return resolvePluginMetadataSnapshotAsync({
     config: params.cfg,
     allowWorkspaceScopedCurrent: true,

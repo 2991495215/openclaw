@@ -9,10 +9,10 @@ import {
   clearBundledDiscoveryModeMemo,
   prepareBundledDiscoveryMode,
 } from "./bundled-discovery-state.js";
-import { resolvePluginDocumentExtractors } from "./document-extractors.runtime.js";
+import { resolvePluginDocumentExtractorsAsync } from "./document-extractors.runtime.js";
 import { createPluginCache, withPluginCache } from "./plugin-cache.js";
 import { createPluginManifestRecordFixture } from "./plugin-metadata.test-support.js";
-import { resolvePluginWebContentExtractors } from "./web-content-extractors.runtime.js";
+import { resolvePluginWebContentExtractorsAsync } from "./web-content-extractors.runtime.js";
 import {
   resolvePluginWebFetchProvidersAsync,
   resolveRuntimeWebFetchProvidersAsync,
@@ -134,6 +134,8 @@ describe("public artifact environment ownership", () => {
       useProcessEnvironment(fixture);
       await using cache = createPluginCache();
       await withPluginCache(cache, async () => {
+        const activateDiscovery = await prepareBundledDiscoveryMode(fixture.env);
+        activateDiscovery();
         expect(
           resolveBundledWebSearchProvidersFromPublicArtifacts({
             ...resolution(fixture),
@@ -161,12 +163,12 @@ describe("public artifact environment ownership", () => {
     {
       name: "document extractors",
       artifact: "document-extractor.js",
-      resolve: resolvePluginDocumentExtractors,
+      resolve: resolvePluginDocumentExtractorsAsync,
     },
     {
       name: "web content extractors",
       artifact: "web-content-extractor.js",
-      resolve: resolvePluginWebContentExtractors,
+      resolve: resolvePluginWebContentExtractorsAsync,
     },
   ])("loads and reuses each caller's artifact for $name", async ({ resolve, artifact }) => {
     const ambient = environment("ambient");

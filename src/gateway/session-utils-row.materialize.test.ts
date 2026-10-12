@@ -13,6 +13,8 @@ import {
 } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { clearAgentRunContext, registerAgentRunContext } from "../infra/agent-run-registry.js";
+import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
+import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 import { withStateDirEnv } from "../test-helpers/state-dir-env.js";
@@ -34,6 +36,7 @@ import type { WorkerSessionPlacementRecord } from "./worker-environments/placeme
 
 // Frozen from 7b47d7a65a17e7a49d943795a5b112ae4adcfe3c; updated only for additive Ultra choices.
 // SHA256 pins JSON.stringify wire bytes, including serialized property order.
+const projectionMetadata = createPluginMetadataSnapshotFixture();
 const START = Date.UTC(2026, 8, 15);
 const TIMES = [START + 29_999, START + 30_000, START + 7_200_001] as const;
 const GOLDEN_HASHES: Record<string, string | readonly [string, string, string]> = {
@@ -509,13 +512,17 @@ test("preserves complete base rows across time and caller presentation fixtures"
         includeDerivedTitles: fixture.transcript,
         includeLastMessage: fixture.transcript,
       };
-      const { inputs, presentation } = readSessionRowInputs(rowParams);
+      const { inputs, presentation } = withPluginMetadataSnapshotScope(projectionMetadata, () =>
+        readSessionRowInputs(rowParams),
+      );
       const clock = vi.spyOn(Date, "now").mockImplementation(() => {
         throw new Error("Materialization must not read the clock");
       });
       let materialized: ReturnType<typeof materializeSessionRow>;
       try {
-        materialized = materializeSessionRow(inputs);
+        materialized = withPluginMetadataSnapshotScope(projectionMetadata, () =>
+          materializeSessionRow(inputs),
+        );
       } finally {
         clock.mockRestore();
       }
@@ -575,7 +582,9 @@ test("preserves complete base rows across time and caller presentation fixtures"
         expect(actualHash, `${fixture.name} at ${TIMES[index]}\n${json}`).toBe(expectedHash);
       });
       if (fixture.transcript) {
-        const lightweight = buildGatewaySessionRow({ ...rowParams, lightweightListRow: true });
+        const lightweight = withPluginMetadataSnapshotScope(projectionMetadata, () =>
+          buildGatewaySessionRow({ ...rowParams, lightweightListRow: true }),
+        );
         expect(lightweight).toMatchObject({
           snapshotAt: TIMES[0],
           updatedAt: fixture.entry?.updatedAt,

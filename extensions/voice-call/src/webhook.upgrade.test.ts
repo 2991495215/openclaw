@@ -16,8 +16,8 @@ import { VoiceCallWebhookServer } from "./webhook.js";
 import { RealtimeCallHandler } from "./webhook/realtime-handler.js";
 
 vi.mock("./realtime-transcription.runtime.js", () => ({
-  getRealtimeTranscriptionProvider: () => undefined,
-  listRealtimeTranscriptionProviders: () => [
+  getRealtimeTranscriptionProviderAsync: () => undefined,
+  listRealtimeTranscriptionProvidersAsync: () => [
     {
       id: "fixture",
       label: "Fixture",

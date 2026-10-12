@@ -7,7 +7,7 @@ const { resolvePluginWebContentExtractorsMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../plugins/web-content-extractors.runtime.js", () => ({
-  resolvePluginWebContentExtractors: resolvePluginWebContentExtractorsMock,
+  resolvePluginWebContentExtractorsAsync: resolvePluginWebContentExtractorsMock,
 }));
 
 import { extractReadableContent } from "./content-extractors.runtime.js";

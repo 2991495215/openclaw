@@ -21,6 +21,7 @@ import { prepareModelCatalogPublication } from "../src/agents/prepared-model-run
 import type { ModelProviderConfig } from "../src/config/types.models.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
 import { createTestPluginApi } from "../src/plugin-sdk/plugin-test-api.js";
+import { preparePluginMetadataMachineStateAsync } from "../src/plugins/installed-plugin-index-record-state.js";
 import type { ProviderCatalogOutcome } from "../src/plugins/provider-catalog.types.js";
 import * as providerDiscovery from "../src/plugins/provider-discovery.js";
 import * as providerRuntime from "../src/plugins/provider-runtime.runtime.js";
@@ -115,6 +116,7 @@ describe("Provider model discovery auth preparation", () => {
 
   beforeEach(async () => {
     state = await createOpenClawTestState({ prefix: "catalog-auth-order-", agentEnv: "main" });
+    await preparePluginMetadataMachineStateAsync({ env: {} });
     agentDir = state.agentDir();
     discovery.providers = [buildOpenAIProvider()];
     // These fixtures supply refreshable providers and mock their refresh operation.
@@ -918,6 +920,7 @@ describe("provider catalog late-result finalization", () => {
 
   beforeEach(async () => {
     state = await createOpenClawTestState({ prefix: "catalog-late-result-", agentEnv: "main" });
+    await preparePluginMetadataMachineStateAsync({ env: {} });
     store = {
       version: 1,
       profiles: {

@@ -11,6 +11,8 @@ import type { OpenClawConfig } from "../config/config.js";
 import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions.js";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
+import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
+import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 import { closeRetainedOpenClawStateReadConnections } from "../state/openclaw-state-db-read-connection.js";
@@ -37,6 +39,8 @@ vi.mock("../infra/worker-task-server.js", async (importOriginal) => ({
   },
 }));
 import "../state/openclaw-state-read.worker.js";
+
+const projectionMetadata = createPluginMetadataSnapshotFixture();
 
 test("retains ACP batch bounds while clean lists and canonical metadata updates reuse resident facts", async () => {
   await withStateDirEnv("openclaw-perf-acp-", async ({ stateDir }) => {
@@ -230,7 +234,9 @@ test("retains ACP batch bounds while clean lists and canonical metadata updates 
         [markerKey]: markerEntry,
         ...runtimeEntries,
       });
-      projection = await createSessionRowProjection({ cfg });
+      projection = await withPluginMetadataSnapshotScope(projectionMetadata, () =>
+        createSessionRowProjection({ cfg }),
+      );
       await projection.ensureMaterialized();
       acpSelects.counts.metadata = 0;
       const rows = vi.spyOn(rowProjection, "readSessionRowInputs");

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelDefinitionConfig } from "../../config/types.models.js";
 import { preparePluginMetadataMachineStateAsync } from "../../plugins/installed-plugin-index-record-state.js";
 import type { PluginManifestRecord } from "../../plugins/manifest-registry.types.js";
+import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
 import { createManifestRecord } from "./model.static-catalog.test-helpers.js";
 
 const mistralLookup = { provider: "mistral", modelId: "mistral-medium-3-5" };
@@ -235,7 +236,7 @@ function staticProvider(id: string) {
 describe("resolveBundledProviderStaticCatalogModel", () => {
   it("keeps successful provider context rows when another static catalog fails", async () => {
     providerMocks.resolveBundledProviderCompatPluginIds.mockReturnValue(["google", "minimax"]);
-    manifestMocks.loadPluginManifestRegistryCore.mockReturnValue({
+    const manifestRegistry = {
       plugins: [
         createManifestRecord("google", {
           providerDiscoverySource: "/fixtures/google/provider-discovery.ts",
@@ -244,7 +245,8 @@ describe("resolveBundledProviderStaticCatalogModel", () => {
           providerDiscoverySource: "/fixtures/minimax/provider-discovery.ts",
         }),
       ],
-    });
+    };
+    manifestMocks.loadPluginManifestRegistryCore.mockReturnValue(manifestRegistry);
     providerMocks.resolveRuntimePluginDiscoveryProviders.mockImplementation(
       async ({ onlyPluginIds }: { onlyPluginIds: string[] }) =>
         onlyPluginIds[0] === "google"
@@ -271,9 +273,11 @@ describe("resolveBundledProviderStaticCatalogModel", () => {
       },
     });
 
-    await expect(loadBundledProviderStaticCatalogContextModels()).resolves.toEqual([
-      expect.objectContaining({ provider: "google", contextWindow: 1_048_576 }),
-    ]);
+    await expect(
+      loadBundledProviderStaticCatalogContextModels({
+        metadataSnapshot: createPluginMetadataSnapshotFixture(manifestRegistry),
+      }),
+    ).resolves.toEqual([expect.objectContaining({ provider: "google", contextWindow: 1_048_576 })]);
   });
 
   it("does not load bundled provider static catalogs when owner policy blocks the plugin", async () => {
@@ -305,7 +309,11 @@ describe("resolveBundledProviderStaticCatalogModel", () => {
       },
     });
 
-    const resolveModel = createBundledProviderStaticCatalogContextResolver();
+    const resolveModel = createBundledProviderStaticCatalogContextResolver({
+      metadataSnapshot: createPluginMetadataSnapshotFixture({
+        plugins: [createManifestRecord("google")],
+      }),
+    });
     await expect(
       resolveModel({ provider: "google", modelId: "gemini-3.1-pro-preview" }),
     ).resolves.toEqual({ contextWindow: 1_048_576 });
