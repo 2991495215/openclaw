@@ -6,6 +6,7 @@ import { createEmbeddedAgentRunnerOpenAiConfig } from "../../agents/test-helpers
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { toErrorObject } from "../../infra/errors.js";
 import { readTranscriptMessages } from "../../sessions/user-turn-transcript.test-support.js";
+import { readModelFallbackNotice } from "../../shared/model-fallback-notice.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { runCronIsolatedAgentTurn } from "./run.js";
 
@@ -171,8 +172,23 @@ it("continues one cron user turn when the primary times out after provider dispa
       storePath: path.join(state.agentDir(), "openclaw-agent.sqlite"),
     });
     expect(messages.filter((message) => message.role === "user")).toHaveLength(1);
-    expect(
-      messages.filter((message) => message.role === "assistant" && message.stopReason === "stop"),
-    ).toHaveLength(1);
+    const notices = messages.map(readModelFallbackNotice).filter((notice) => notice !== undefined);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      kind: "model-fallback",
+      fromModel: "mock-openai/primary",
+      toModel: "mock-openai/backup",
+    });
+    const replies = messages.filter(
+      (message) =>
+        message.role === "assistant" &&
+        message.stopReason === "stop" &&
+        !readModelFallbackNotice(message),
+    );
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      model: "backup",
+      content: [{ type: "text", text: "Fallback report" }],
+    });
   });
 });
