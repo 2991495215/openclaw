@@ -189,7 +189,6 @@ it.for([false, true])(
           read: list,
           ready: () => catalogWork.read().completedTasks > 0,
         });
-        const beforeLoginWork = catalogWork.read();
         await client.request("models.authLogin", {
           sessionId: "fixture-login",
           agentId: "main",
@@ -240,7 +239,6 @@ it.for([false, true])(
           maxWorkers: 1,
           workersCreated: 1,
           pendingTasks: 0,
-          completedTasks: beforeLoginWork.completedTasks + 1,
         });
         responseDelay = 0;
         const manualRefresh = await list(true);

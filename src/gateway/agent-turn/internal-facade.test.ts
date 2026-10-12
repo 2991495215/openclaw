@@ -2,11 +2,6 @@ import { setImmediate as nextTurn } from "node:timers/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import {
-  assertOwnedTranscriptWriteCommit,
-  SessionTranscriptWriterClaimReboundError,
-  withOwnedSessionTranscriptWrites,
-} from "../../config/sessions/transcript-write-context.js";
-import {
   resetAgentEventsForTest,
   rotateAgentEventLifecycleGeneration,
 } from "../../infra/agent-events.js";
@@ -232,45 +227,6 @@ describe("createInternalAgentTurnFacade", () => {
       }));
       vi.resetModules();
     }
-  });
-
-  it("starts an independent turn without borrowing its caller's transcript writer", async () => {
-    const parent = {
-      agentId: "main",
-      sessionId: "parent-id",
-      sessionKey: "agent:main:parent",
-      storePath: "/tmp/parent-sessions",
-    };
-    const child = { ...parent, sessionId: "child-id", sessionKey: "agent:main:child" };
-    const assertParent = vi.fn();
-    startTurn.mockImplementation(async ({ io }) => {
-      await Promise.resolve();
-      assertOwnedTranscriptWriteCommit(child);
-      io.emitAcceptance([true, { runId: "child-run", status: "accepted" }, undefined]);
-    });
-
-    await withOwnedSessionTranscriptWrites(
-      {
-        sessionTarget: parent,
-        assertCommitAllowed: assertParent,
-        withTranscriptWrite: async (write) => await write(),
-      },
-      async () => {
-        await expect(
-          createFacade().dispatchRaw({
-            message: "child task",
-            sessionKey: child.sessionKey,
-            idempotencyKey: "child-run",
-          }),
-        ).resolves.toMatchObject({ ok: true, payload: { status: "accepted" } });
-        expect(assertParent).not.toHaveBeenCalled();
-        expect(() => assertOwnedTranscriptWriteCommit(child)).toThrow(
-          SessionTranscriptWriterClaimReboundError,
-        );
-        assertOwnedTranscriptWriteCommit(parent);
-        expect(assertParent).toHaveBeenCalledOnce();
-      },
-    );
   });
 
   it.each(["dispatch", "wait"] as const)(

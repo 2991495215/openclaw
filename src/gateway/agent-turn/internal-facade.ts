@@ -4,7 +4,6 @@ import {
   validateAgentParams,
   validateAgentWaitParams,
 } from "../../../packages/gateway-protocol/src/index.js";
-import { runWithoutOwnedSessionTranscriptWrites } from "../../config/sessions/transcript-write-context.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { createDeferredCore, type Deferred } from "../../shared/deferred.js";
 import { abortChatRunById, type ChatAbortControllerEntry } from "../chat-abort.js";
@@ -206,7 +205,7 @@ export function createInternalAgentTurnFacade(
           ? { emitExecutionStarted: dispatchOptions.onExecutionStarted }
           : {}),
       };
-      const execute = async () => {
+      const operation = context.trackExecution(async () => {
         preparationOwnedByExecution = true;
         try {
           return await runWithGatewayRequestEnvelope(
@@ -267,11 +266,7 @@ export function createInternalAgentTurnFacade(
         } finally {
           entry?.release();
         }
-      };
-      // A separately admitted turn cannot borrow its launching tool's transcript writer.
-      const operation = context.trackExecution(() =>
-        runWithoutOwnedSessionTranscriptWrites(execute),
-      );
+      });
       void operation.then(
         () => {
           if (!acceptance) {
