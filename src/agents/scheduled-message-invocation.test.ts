@@ -12,7 +12,8 @@ import { createOpenClawTools } from "./openclaw-tools.js";
 describe("scheduled message invocation admission", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    (await prepareClawInstallSchemaVersions()).publish();
+    // Synchronous tool assembly consumes the runtime owner’s prepared consent facts.
+    (await prepareClawInstallSchemaVersions({ artifactPreservingReadOnly: false })).publish();
   });
   afterEach(() => clearRuntimeConfigSnapshot());
 

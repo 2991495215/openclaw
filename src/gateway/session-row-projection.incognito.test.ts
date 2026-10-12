@@ -109,6 +109,7 @@ it("fences archived incognito rows across resets and physical database replaceme
         touchSessionEntry: false,
       },
     );
+    const viewer = identifiedClient("incognito-observer");
     const projection = await createSessionRowProjection({ cfg, getModelCatalog: async () => [] });
     try {
       const original = projection.capture(query)!;
@@ -135,7 +136,6 @@ it("fences archived incognito rows across resets and physical database replaceme
       sessionChanges.emit({ all: true, scope: "catalog" });
       await projection.ensureMaterialized();
       expect(projection.selectEntries()).toEqual([]);
-      const viewer = identifiedClient("incognito-observer");
       const presentation = prepareProjectedSessionPresentation(projection, viewer);
       expect(presentation.authorizeDescription(query)?.message).toContain("not found");
       expect(
