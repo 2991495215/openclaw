@@ -159,7 +159,7 @@ export function updateOwnersForScopedRefresh(
   retiredPublications.forEach(releasePreparedPluginPublication);
 }
 
-/** A cold refresh rebuilds the full owner set until plugin metadata is available. */
+/** Resolve the refresh scope from published metadata and its prepared policy facts. */
 export function resolveInitialRefreshAgentIds(
   config: OpenClawConfig | (() => OpenClawConfig | Promise<OpenClawConfig>),
   options: PreparedModelRuntimeRefreshOptions,
@@ -173,7 +173,6 @@ export function resolveInitialRefreshAgentIds(
     getCurrentPluginMetadataSnapshot({
       config,
       allowWorkspaceScopedSnapshot: true,
-      allowSynchronousPolicyRead: false,
     });
   return metadata
     ? withPluginMetadataSnapshotScope(
