@@ -31,6 +31,7 @@ import {
   settlePluginInstallTransactions,
   type PluginInstallTransaction,
 } from "../plugins/install-transaction.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import {
   loadInstalledPluginIndexInstallRecords,
   withoutPluginInstallRecords,
@@ -257,6 +258,7 @@ async function runPluginUpdateCommandUnlocked(
     sourceCfg,
     pluginInstallRecords,
   );
+  await preparePluginMetadataMachineStateAsync({});
   const installedPluginIndex = loadInstalledPluginIndex({
     config: cfgWithPluginInstallRecords,
     installRecords: pluginInstallRecords,
@@ -485,12 +487,14 @@ async function runPluginUpdateCommandUnlocked(
     if (pluginSelection.pluginIds.length > 0 && pluginResult.changed && !params.opts.dryRun) {
       const nextInstallRecords = pluginResult.config.plugins?.installs ?? {};
       // The installer may restore or replace bytes at a previously observed path.
-      const afterIndex = withPluginCache(createPluginCache(), () =>
-        loadInstalledPluginIndex({
+      await using afterCache = createPluginCache();
+      const afterIndex = await withPluginCache(afterCache, async () => {
+        await preparePluginMetadataMachineStateAsync({});
+        return loadInstalledPluginIndex({
           config: pluginResult.config,
           installRecords: nextInstallRecords,
-        }),
-      );
+        });
+      });
       const reconciled = reconcilePluginPackageUpdateConfig({
         config: pluginResult.config,
         beforeIndex: installedPluginIndex,

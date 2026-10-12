@@ -370,6 +370,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/secrets/store/secret-store-metadata.worker.test.ts",
   "src/secrets/store/secret-store.redaction.test.ts",
   "src/secrets/store/secret-store.test.ts",
+  "src/secrets/apply.test.ts",
   "src/secrets/audit.test.ts",
   "src/secrets/resolve-store.test.ts",
   "src/agents/bash-tools.exec.store-env.test.ts",

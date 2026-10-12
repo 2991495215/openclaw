@@ -7,6 +7,7 @@ import * as modelCatalogDecisions from "../agents/model-catalog-decisions.js";
 import * as openaiRoutes from "../agents/openai-model-routes.js";
 import { bindPreparedModelRuntimeAuth } from "../agents/prepared-model-runtime-auth.js";
 import type { PreparedModelRuntimeSnapshot } from "../agents/prepared-model-runtime.types.js";
+import { preparePluginAutoEnableTestDiscovery } from "../config/plugin-auto-enable.test-helpers.js";
 import type { SessionEntry } from "../config/sessions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
@@ -93,6 +94,7 @@ function statusAuth(
 
 describe("status model authentication and endpoint", () => {
   beforeEach(() => {
+    preparePluginAutoEnableTestDiscovery();
     // These fixtures model an absent host credential, even on credentialed devboxes.
     vi.stubEnv("OPENAI_API_KEY", undefined);
     vi.spyOn(openaiRoutes, "resolveOpenAIModelRoutes").mockReturnValue(dualRoutes);
@@ -135,7 +137,10 @@ describe("status model authentication and endpoint", () => {
             },
           };
       if (!override) {
-        vi.spyOn(authProfiles, "loadAuthProfileStoreWithoutExternalProfiles").mockReturnValue({
+        vi.spyOn(
+          authProfiles,
+          "loadAuthProfileStoreWithoutExternalProfilesAsync",
+        ).mockResolvedValue({
           version: 1,
           profiles,
         });
@@ -193,7 +198,7 @@ describe("status model authentication and endpoint", () => {
             preparedPersonalCatalog: { links: [], profiles: {}, isCurrent: () => true },
           }),
       );
-      vi.spyOn(authProfiles, "loadAuthProfileStoreWithoutExternalProfiles").mockReturnValue({
+      vi.spyOn(authProfiles, "loadAuthProfileStoreWithoutExternalProfilesAsync").mockResolvedValue({
         version: 1,
         profiles,
       });

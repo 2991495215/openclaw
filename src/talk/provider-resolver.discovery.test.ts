@@ -1,21 +1,21 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { loadPluginRegistryHandleAsync } from "../plugins/loader.js";
 import {
   cleanupPluginLoaderFixturesForTest,
-  loadOpenClawPluginsForTest,
   resetPluginLoaderTestStateForTest,
 } from "../plugins/loader.test-fixtures.js";
-import { withEnv } from "../test-utils/env.js";
+import { withEnvAsync } from "../test-utils/env.js";
 import { createVoiceProviderFixture } from "./provider-discovery.test-fixtures.js";
-import { listRealtimeVoiceProviders } from "./provider-registry.js";
-import { resolveConfiguredRealtimeVoiceProvider } from "./provider-resolver.js";
+import { listRealtimeVoiceProvidersAsync } from "./provider-registry.js";
+import { resolveConfiguredRealtimeVoiceProviderAsync } from "./provider-resolver.js";
 
 function withVoiceProviders(
-  run: (cfg: OpenClawConfig) => void,
+  run: (cfg: OpenClawConfig) => Promise<void>,
   policy: OpenClawConfig["plugins"] = {},
 ) {
   const { cfg, env } = createVoiceProviderFixture(policy);
-  return withEnv(env, () => run(cfg));
+  return withEnvAsync(env, () => run(cfg));
 }
 
 afterEach(resetPluginLoaderTestStateForTest);
@@ -24,9 +24,9 @@ afterAll(cleanupPluginLoaderFixturesForTest);
 describe("realtime voice provider discovery", () => {
   it.each(["configured-voice-alias"])(
     "discovers %s config ahead of a configured active provider",
-    (configKey) => {
-      withVoiceProviders((cfg) => {
-        const registry = loadOpenClawPluginsForTest({
+    async (configKey) => {
+      await withVoiceProviders(async (cfg) => {
+        const registry = await loadPluginRegistryHandleAsync({
           config: cfg,
           onlyPluginIds: ["active-voice"],
         });
@@ -34,7 +34,7 @@ describe("realtime voice provider discovery", () => {
           "active-voice",
         ]);
 
-        const result = resolveConfiguredRealtimeVoiceProvider({
+        const result = await resolveConfiguredRealtimeVoiceProviderAsync({
           cfg,
           providerConfigs: {
             "active-voice": { ready: true },
@@ -45,7 +45,7 @@ describe("realtime voice provider discovery", () => {
         expect(result.provider.id).toBe("configured-voice");
         expect(result.providerConfig).toEqual({ ready: true, resolved: true });
         // Per-call discovery must not broaden catalogs or replace active objects.
-        expect(listRealtimeVoiceProviders(cfg)).toEqual(
+        expect(await listRealtimeVoiceProvidersAsync(cfg)).toEqual(
           registry.realtimeVoiceProviders.map((entry) => entry.provider),
         );
       });
@@ -56,9 +56,9 @@ describe("realtime voice provider discovery", () => {
     { configKey: "configured-voice-alias", configuredProviderId: "configured-voice-alias" },
   ])(
     "selects cold $configKey config with explicit selection $configuredProviderId",
-    ({ configuredProviderId, configKey }) => {
-      withVoiceProviders((cfg) => {
-        const result = resolveConfiguredRealtimeVoiceProvider({
+    async ({ configuredProviderId, configKey }) => {
+      await withVoiceProviders(async (cfg) => {
+        const result = await resolveConfiguredRealtimeVoiceProviderAsync({
           cfg,
           configuredProviderId,
           providerConfigs: { [configKey]: { ready: true } },
@@ -72,10 +72,10 @@ describe("realtime voice provider discovery", () => {
     { label: "disabled", policy: { entries: { "configured-voice": { enabled: false } } } },
     { label: "denied", policy: { deny: ["configured-voice"] } },
     { label: "not allowed", policy: { allow: ["active-voice"] } },
-  ])("does not auto-select a $label configured owner", ({ policy }) => {
-    withVoiceProviders((cfg) => {
-      loadOpenClawPluginsForTest({ config: cfg, onlyPluginIds: ["active-voice"] });
-      const result = resolveConfiguredRealtimeVoiceProvider({
+  ])("does not auto-select a $label configured owner", async ({ policy }) => {
+    await withVoiceProviders(async (cfg) => {
+      await loadPluginRegistryHandleAsync({ config: cfg, onlyPluginIds: ["active-voice"] });
+      const result = await resolveConfiguredRealtimeVoiceProviderAsync({
         cfg,
         providerConfigs: {
           "active-voice": { ready: true },
@@ -86,24 +86,27 @@ describe("realtime voice provider discovery", () => {
     }, policy);
   });
 
-  it("does not discover configured owners when plugins are globally disabled", () => {
-    withVoiceProviders(
-      (cfg) => {
-        expect(() =>
-          resolveConfiguredRealtimeVoiceProvider({
+  it("does not discover configured owners when plugins are globally disabled", async () => {
+    await withVoiceProviders(
+      async (cfg) => {
+        await expect(
+          resolveConfiguredRealtimeVoiceProviderAsync({
             cfg,
             providerConfigs: { "configured-voice": { ready: true } },
           }),
-        ).toThrow("No realtime voice provider registered");
+        ).rejects.toThrow("No realtime voice provider registered");
       },
       { enabled: false },
     );
   });
 
-  it("keeps a caller-supplied provider list authoritative", () => {
-    withVoiceProviders((cfg) => {
-      const registry = loadOpenClawPluginsForTest({ config: cfg, onlyPluginIds: ["active-voice"] });
-      const result = resolveConfiguredRealtimeVoiceProvider({
+  it("keeps a caller-supplied provider list authoritative", async () => {
+    await withVoiceProviders(async (cfg) => {
+      const registry = await loadPluginRegistryHandleAsync({
+        config: cfg,
+        onlyPluginIds: ["active-voice"],
+      });
+      const result = await resolveConfiguredRealtimeVoiceProviderAsync({
         cfg,
         providers: registry.realtimeVoiceProviders.map((entry) => entry.provider),
         providerConfigs: {

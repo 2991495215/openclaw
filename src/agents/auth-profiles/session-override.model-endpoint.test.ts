@@ -4,7 +4,7 @@ import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/ses
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { OpenClawSchema } from "../../config/zod-schema.js";
-import { resolvePluginProviderRegistryCoreAsync } from "../../plugins/providers.runtime.js";
+import { resolvePluginProvidersCoreAsync } from "../../plugins/providers.runtime.js";
 import { applyModelOverrideWithAuthProfileCompatibilityAsync } from "../../sessions/auth-profile-preservation.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import {
@@ -115,7 +115,7 @@ it.each([
           agentId,
         );
         // This fixture supplies its own empty stores instead of a prepared runtime.
-        await resolvePluginProviderRegistryCoreAsync({
+        await resolvePluginProvidersCoreAsync({
           config: cfg,
           workspaceDir: state.workspaceDir,
           providerRefs: ["arcee"],

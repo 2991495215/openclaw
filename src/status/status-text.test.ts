@@ -5,6 +5,7 @@ import {
   seedSubagentRunForReadTest,
   resetSubagentRegistryForTests,
 } from "../agents/subagents/registry/subagent-registry.test-helpers.js";
+import { preparePluginAutoEnableTestDiscovery } from "../config/plugin-auto-enable.test-helpers.js";
 import { formatSqliteSessionFileMarker } from "../config/sessions/legacy-sqlite-marker.js";
 import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
 import { appendSessionCostLine } from "./status-runtime-lines.js";
@@ -30,6 +31,8 @@ vi.mock("../infra/provider-usage.js", async (importOriginal) => {
     loadProviderUsageSummary: mocks.loadProviderUsageSummary,
   };
 });
+
+beforeEach(() => preparePluginAutoEnableTestDiscovery());
 
 type StatusTextParams = Parameters<typeof buildStatusText>[0];
 

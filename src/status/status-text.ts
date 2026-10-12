@@ -41,6 +41,7 @@ import {
   loadProviderUsageSummary,
   resolveUsageProviderId,
 } from "../infra/provider-usage.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { resolveActiveProviderThinkingProfile } from "../plugins/provider-thinking-active.js";
 import { normalizeAccountId } from "../routing/account-id.js";
 import { resolveNormalizedAccountEntry } from "../routing/account-lookup.js";
@@ -200,6 +201,7 @@ export async function buildStatusText(params: BuildStatusTextParams): Promise<st
 export async function buildStatusReplyParts(
   params: BuildStatusTextParams,
 ): Promise<StatusMessageParts> {
+  await preparePluginMetadataMachineStateAsync({});
   const {
     cfg,
     sessionEntry,

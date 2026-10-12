@@ -229,8 +229,9 @@ describe("runtime command secrets", () => {
             },
           },
           talk: {
+            provider: "openai",
             providers: {
-              acme: {
+              openai: {
                 apiKey: { source: "exec", provider: "command", id: "talk/key" },
               },
             },
@@ -249,7 +250,7 @@ describe("runtime command secrets", () => {
         });
 
         expect(resolved.assignments).toMatchObject([
-          { path: "talk.providers.acme.apiKey", value: "gateway-exec-key" },
+          { path: "talk.providers.openai.apiKey", value: "gateway-exec-key" },
         ]);
       } finally {
         await fs.rm(root, { recursive: true, force: true });

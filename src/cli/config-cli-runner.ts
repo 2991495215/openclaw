@@ -19,6 +19,7 @@ import { buildGatewayReloadPlan } from "../gateway/config-reload-plan.js";
 import { resolveGatewayReloadSettings } from "../gateway/config-reload-settings.js";
 import { danger, info } from "../globals.js";
 import { formatErrorMessage } from "../infra/errors.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { ExitError, writeRuntimeJson } from "../runtime.js";
 import { dedupeByKey } from "../shared/dedupe-by-key.js";
@@ -284,6 +285,7 @@ export async function runConfigOperations(params: {
   }
   // Mutate resolved config so runtime defaults never leak into the authored file.
   const next = structuredClone(snapshot.resolved) as Record<string, unknown>;
+  await preparePluginMetadataMachineStateAsync({});
   const currentConfig = normalizeConfigMutationModelRefs(snapshot.resolved);
   const mutationSchema = await readBestEffortRuntimeConfigSchema().catch(() => undefined);
   const roster = new ConfigMutationAgentRoster(next, snapshot.sourceConfigBeforeMigrations);

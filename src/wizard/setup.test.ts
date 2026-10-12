@@ -57,7 +57,7 @@ const resolveProviderPluginChoice = vi.hoisted(() =>
 const resolvePluginProviders = vi.hoisted(() =>
   vi.fn<
     typeof import("../plugins/provider-auth-choice.runtime.js").resolveAuthChoicePluginProviders
-  >(() => []),
+  >(async () => []),
 );
 const warnIfModelConfigLooksOff = vi.hoisted(() => vi.fn(async () => {}));
 
@@ -482,7 +482,7 @@ describe("runSetupWizard", () => {
     probeGatewayReachable.mockReset().mockResolvedValue({ ok: false });
     resolveProviderOnboardAuthFlags.mockReset().mockReturnValue([]);
     resolveProviderPluginChoice.mockReset().mockReturnValue(null);
-    resolvePluginProviders.mockReset().mockReturnValue([]);
+    resolvePluginProviders.mockReset().mockResolvedValue([]);
     promptDefaultModel.mockReset().mockResolvedValue({});
     warnIfModelConfigLooksOff.mockReset().mockResolvedValue(undefined);
     buildPluginCompatibilitySnapshotNotices.mockReset().mockReturnValue([]);
@@ -920,7 +920,7 @@ describe("runSetupWizard", () => {
   });
 
   it("infers an API-key flag while preserving an existing default model", async () => {
-    resolvePluginProviders.mockReturnValueOnce([
+    resolvePluginProviders.mockResolvedValueOnce([
       { id: "", label: "Empty", auth: [] },
       { id: "demo-provider", label: "Demo", auth: [], wizard: { setup: {} } },
     ]);

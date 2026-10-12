@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createDoctorPluginMetadataSnapshotScope } from "../commands/doctor/shared/plugin-metadata-snapshot-scope.js";
 import { captureRuntimeConfig } from "../config/runtime-source-projection.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { createPluginCache, getPluginCache, withPluginCache } from "../plugins/plugin-cache.js";
 import { clearPluginMetadataLifecycleCaches } from "../plugins/plugin-metadata-lifecycle.js";
 import { loadPluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
@@ -178,6 +179,7 @@ it.each([
         );
         await using cache = createPluginCache();
         await withPluginCache(cache, async () => {
+          await preparePluginMetadataMachineStateAsync({ env: state.env });
           const baseSnapshot = loadPluginMetadataSnapshot({ config: cfg, env: state.env });
           const scope = createDoctorPluginMetadataSnapshotScope({
             getBaseSnapshot: () => baseSnapshot,

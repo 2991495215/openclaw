@@ -65,8 +65,8 @@ describe("normalizeApiKeyTokenProviderAuthChoice", () => {
     vi.restoreAllMocks();
   });
 
-  it("maps token provider auth through plugin token methods", () => {
-    resolvePluginProviders.mockReturnValue([
+  it("awaits token provider discovery before selecting its auth method", async () => {
+    resolvePluginProviders.mockResolvedValue([
       createProvider({
         id: "anthropic",
         auth: [{ id: "setup-token", kind: "token", choiceId: "setup-token" }],
@@ -74,15 +74,15 @@ describe("normalizeApiKeyTokenProviderAuthChoice", () => {
     ]);
 
     expect(
-      normalizeApiKeyTokenProviderAuthChoice({
+      await normalizeApiKeyTokenProviderAuthChoice({
         authChoice: "token",
         tokenProvider: " anthropic ",
       }),
     ).toBe("setup-token");
   });
 
-  it("maps apiKey provider auth through plugin api key methods and aliases", () => {
-    resolvePluginProviders.mockReturnValue([
+  it("maps apiKey provider auth through plugin api key methods and aliases", async () => {
+    resolvePluginProviders.mockResolvedValue([
       createProvider({
         id: "google",
         aliases: ["gemini"],
@@ -91,15 +91,15 @@ describe("normalizeApiKeyTokenProviderAuthChoice", () => {
     ]);
 
     expect(
-      normalizeApiKeyTokenProviderAuthChoice({
+      await normalizeApiKeyTokenProviderAuthChoice({
         authChoice: "apiKey",
         tokenProvider: " GeMiNi ",
       }),
     ).toBe("gemini-api-key");
   });
 
-  it("leaves the auth choice unchanged when no matching provider method exists", () => {
-    resolvePluginProviders.mockReturnValue([
+  it("leaves the auth choice unchanged when no matching provider method exists", async () => {
+    resolvePluginProviders.mockResolvedValue([
       createProvider({
         id: "openai",
         auth: [{ id: "api-key", kind: "api_key", choiceId: "openai-api-key" }],
@@ -107,7 +107,7 @@ describe("normalizeApiKeyTokenProviderAuthChoice", () => {
     ]);
 
     expect(
-      normalizeApiKeyTokenProviderAuthChoice({
+      await normalizeApiKeyTokenProviderAuthChoice({
         authChoice: "token",
         tokenProvider: "openai",
       }),
@@ -126,7 +126,7 @@ describe("normalizeApiKeyTokenProviderAuthChoice", () => {
         id: "workspace-provider",
         auth: [{ id: "workspace-auth", kind: choice.kind, choiceId: "workspace-provider-auth" }],
       });
-      resolvePluginProviders.mockImplementation((params) =>
+      resolvePluginProviders.mockImplementation(async (params) =>
         params?.workspaceDir === workspaceDir ? [provider] : [],
       );
       prepareAuthChoiceLoadedPluginProvider.mockImplementation(async (params, consume) =>

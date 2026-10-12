@@ -11,7 +11,7 @@ type ResolveProviderPluginChoice =
   typeof import("../../plugins/provider-auth-choice.runtime.js").resolveProviderPluginChoice;
 type RunProviderModelSelectedHook =
   typeof import("../../plugins/provider-auth-choice.runtime.js").runProviderModelSelectedHook;
-const resolvePluginProvidersMock = vi.hoisted(() => vi.fn<ResolvePluginProviders>(() => []));
+const resolvePluginProvidersMock = vi.hoisted(() => vi.fn<ResolvePluginProviders>(async () => []));
 const resolvePluginSetupProviderMock = vi.hoisted(() => vi.fn(() => undefined));
 const resolveProviderPluginChoiceMock = vi.hoisted(() => vi.fn<ResolveProviderPluginChoice>());
 const runProviderModelSelectedHookMock = vi.hoisted(() =>
@@ -30,7 +30,7 @@ vi.mock("../../plugins/provider-auth-choice.runtime.js", () => ({
 describe("provider auth-choice contract", () => {
   beforeEach(() => {
     resolvePluginProvidersMock.mockReset();
-    resolvePluginProvidersMock.mockReturnValue([]);
+    resolvePluginProvidersMock.mockResolvedValue([]);
     resolveProviderPluginChoiceMock.mockReset();
     resolveProviderPluginChoiceMock.mockImplementation(({ providers, choice }) => {
       const provider = providers.find((entry) =>
@@ -52,7 +52,7 @@ describe("provider auth-choice contract", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     resolvePluginProvidersMock.mockReset();
-    resolvePluginProvidersMock.mockReturnValue([]);
+    resolvePluginProvidersMock.mockResolvedValue([]);
     resolveProviderPluginChoiceMock.mockReset();
     resolveProviderPluginChoiceMock.mockReturnValue(null);
     runProviderModelSelectedHookMock.mockReset();
@@ -65,7 +65,7 @@ describe("provider auth-choice contract", () => {
       label: "Demo OAuth Provider",
       auth: [{ id: "oauth", label: "OAuth", kind: "oauth", run: runAuthMethodMock }],
     } satisfies ProviderPlugin;
-    resolvePluginProvidersMock.mockReturnValue([provider]);
+    resolvePluginProvidersMock.mockResolvedValue([provider]);
     await expect(
       resolvePreferredProviderForAuthChoice({
         choice: buildProviderPluginMethodChoice(provider.id, "oauth"),

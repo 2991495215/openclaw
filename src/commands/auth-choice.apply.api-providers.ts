@@ -6,13 +6,13 @@ import type { ApplyAuthChoiceParams } from "./auth-choice.apply.types.js";
 import type { AuthChoice } from "./onboard-types.js";
 
 /** Translate generic api-key/token choices to provider-specific auth choices when possible. */
-export function normalizeApiKeyTokenProviderAuthChoice(params: {
+export async function normalizeApiKeyTokenProviderAuthChoice(params: {
   authChoice: AuthChoice;
   tokenProvider?: string;
   config?: ApplyAuthChoiceParams["config"];
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
-}): AuthChoice {
+}): Promise<AuthChoice> {
   const normalizedTokenProvider = normalizeOptionalLowercaseString(params.tokenProvider);
   if (!normalizedTokenProvider) {
     return params.authChoice;
@@ -27,7 +27,7 @@ export function normalizeApiKeyTokenProviderAuthChoice(params: {
     return params.authChoice;
   }
   const provider = resolveProviderMatch(
-    resolveAuthChoicePluginProviders({
+    await resolveAuthChoicePluginProviders({
       config: params.config,
       workspaceDir: params.workspaceDir,
       env: params.env,

@@ -6,6 +6,7 @@ import { buildOpenAIRealtimeVoiceProvider } from "../extensions/openai/api.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
 import { withLocalGatewayRequestScope } from "../src/gateway/local-request-context.js";
 import { talkHandlers } from "../src/gateway/talk/handlers/index.js";
+import { useProviderCatalogMetadata } from "../src/plugin-sdk/test-helpers/provider-catalog.js";
 import { prepareBundledDiscoveryMode } from "../src/plugins/bundled-discovery-state.js";
 import { getPluginRuntimeGatewayRequestScope } from "../src/plugins/runtime/gateway-request-scope.js";
 import type { RealtimeVoiceProviderPlugin } from "../src/plugins/types.js";
@@ -21,23 +22,30 @@ const mocks = vi.hoisted(() => ({
   createSession: vi.fn(),
 }));
 
-vi.mock("../src/talk/provider-registry.js", () => ({
-  canonicalizeRealtimeVoiceProviderId: (id: string | undefined) => {
-    const normalized = id?.trim().toLowerCase();
-    return (
+vi.mock("../src/talk/provider-registry.js", () => {
+  const registry = {
+    canonicalizeRealtimeVoiceProviderId: (id: string | undefined) => {
+      const normalized = id?.trim().toLowerCase();
+      return (
+        mocks.providers.find(
+          (provider) => provider.id === normalized || provider.aliases?.includes(normalized ?? ""),
+        )?.id ?? normalized
+      );
+    },
+    getRealtimeVoiceProvider: (id: string) =>
       mocks.providers.find(
-        (provider) => provider.id === normalized || provider.aliases?.includes(normalized ?? ""),
-      )?.id ?? normalized
-    );
-  },
-  getRealtimeVoiceProvider: (id: string) =>
-    mocks.providers.find(
-      (provider) =>
-        provider.id === id.trim().toLowerCase() ||
-        provider.aliases?.includes(id.trim().toLowerCase()),
-    ),
-  listRealtimeVoiceProviders: () => mocks.providers,
-}));
+        (provider) =>
+          provider.id === id.trim().toLowerCase() ||
+          provider.aliases?.includes(id.trim().toLowerCase()),
+      ),
+    listRealtimeVoiceProviders: () => mocks.providers,
+  };
+  return {
+    ...registry,
+    getRealtimeVoiceProviderAsync: async (id: string) => registry.getRealtimeVoiceProvider(id),
+    listRealtimeVoiceProvidersAsync: async () => registry.listRealtimeVoiceProviders(),
+  };
+});
 // mock-isolation: Browser Talk fixtures use an empty speech registry without runtime discovery.
 vi.mock("../src/tts/provider-registry.js", () => {
   const registry = {
@@ -126,6 +134,7 @@ vi.mock("../ui/src/pages/chat/talk/transport.runtime.js", () => ({
   }),
 }));
 
+useProviderCatalogMetadata(new URL("../extensions/openai/", import.meta.url));
 useRealtimeTalkMicrophoneFixture();
 beforeEach(() => {
   mocks.providerRequests.length = 0;

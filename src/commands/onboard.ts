@@ -325,7 +325,7 @@ async function validateResetAuthChoice(params: {
   } else {
     const runtimeProvider = providerAuthChoice
       ? resolveProviderMatch(
-          (
+          await (
             await import("../plugins/provider-auth-choice.runtime.js")
           ).resolveAuthChoicePluginProviders({
             config: params.baseConfig,
