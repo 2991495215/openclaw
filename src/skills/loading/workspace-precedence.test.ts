@@ -22,6 +22,7 @@ const buildWorkspaceSkillsPrompt = async (
 
 vi.mock("./plugin-skills.js", () => ({
   resolvePluginSkillRoots: () => [],
+  resolvePluginSkillRootsFromMetadata: () => [],
 }));
 
 const fixtureSuite = createFixtureSuite("openclaw-skills-prompt-suite-");

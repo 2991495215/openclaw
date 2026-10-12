@@ -7,7 +7,6 @@ export const MODEL_REF_COMPAT_RECORD = {
   introduced: "2026-07-01",
   deprecated: "2026-10-12",
   warningStarts: "2026-10-12",
-  removalGate: "next-plugin-sdk-major",
   replacement:
     "Await parseModelRefAsync from agent-runtime for one lookup, or await prepareModelRefResolver and reuse its synchronous parsing methods and manifestPlugins. Bundled plugins may use the private model-ref-parse seam. Released parseModelRef and resolveModelRefFromString exports preserve cold manifest discovery until a later release after stable deprecation and migration of published plugin readers.",
   docsPath: "/plugins/sdk-migration/compatibility-policy#model-reference-parsing",

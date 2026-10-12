@@ -33,7 +33,8 @@ vi.mock("../../utils/message-channel.js", () => ({
     typeof value === "string" ? value.trim().toLowerCase() : undefined,
 }));
 
-vi.mock("./channel-resolution.js", () => ({
+vi.mock("./channel-resolution.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./channel-resolution.js")>()),
   normalizeDeliverableOutboundChannel: (value?: string | null) => {
     const normalized = typeof value === "string" ? value.trim().toLowerCase() : undefined;
     return normalized && deliverableChannelIds.includes(normalized) ? normalized : undefined;

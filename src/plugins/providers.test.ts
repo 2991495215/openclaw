@@ -396,24 +396,6 @@ describe("resolvePluginProviders", () => {
     expect(runtimeLoader).not.toHaveBeenCalled();
   });
 
-  it("resolves external auth hook plugin ids from manifest contracts without runtime loading", () => {
-    setManifestPlugins([
-      manifest("external-auth-owner", {
-        providers: ["demo"],
-        contracts: { externalAuthProviders: ["demo"] },
-      }),
-      manifest("regular-provider", { providers: ["regular"] }),
-    ]);
-
-    expect(
-      owners.resolveExternalAuthProfileProviderPluginIds({
-        config: {},
-        env: {},
-      }),
-    ).toEqual(["external-auth-owner"]);
-    expect(runtimeLoader).not.toHaveBeenCalled();
-  });
-
   it("treats explicit empty provider scopes as scoped-empty in provider helpers", () => {
     expect(
       owners.resolveEnabledProviderPluginIds({

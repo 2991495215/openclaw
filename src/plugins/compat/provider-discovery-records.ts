@@ -6,7 +6,6 @@ const DISCOVERY_MIGRATION = {
   introduced: "2026-10-01",
   deprecated: "2026-10-12",
   warningStarts: "2026-10-12",
-  removalGate: "next-plugin-sdk-major",
 } as const;
 
 export const PROVIDER_DISCOVERY_COMPAT_RECORDS = [

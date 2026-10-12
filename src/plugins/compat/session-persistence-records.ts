@@ -16,7 +16,8 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   TRANSCRIPT_STATS_COMPAT_RECORD,
   {
     code: "session-catalog-identity-sync-reads",
-    ...DEPRECATED_SESSION_COMPAT,
+    status: "deprecated",
+    owner: "sdk",
     introduced: "2026-09-12",
     deprecated: "2026-10-11",
     warningStarts: "2026-10-11",

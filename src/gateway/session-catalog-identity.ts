@@ -158,7 +158,7 @@ function projectSourceActor(
   };
 }
 
-/** @deprecated Use prepareSessionCatalogSourceActorProjector. Removed at the next Plugin SDK major. */
+/** @deprecated Use prepareSessionCatalogSourceActorProjector. Removed in a later release after stable deprecation. */
 export function createSessionCatalogSourceActorProjector(
   params: CatalogSourceIdentity & { actors: readonly (StoredSessionActor | undefined)[] },
 ): (actor: StoredSessionActor | undefined) => SessionCreatedActor | undefined {
@@ -280,7 +280,7 @@ export async function prepareSessionCatalogGitHubLinker(params: {
   };
 }
 
-/** @deprecated Use prepareSessionCatalogGitHubLinker. Removed at the next Plugin SDK major. */
+/** @deprecated Use prepareSessionCatalogGitHubLinker. Removed in a later release after stable deprecation. */
 export function createSessionCatalogGitHubLinker() {
   warnPluginSdkDeprecation({
     family: "session-catalog-identity",

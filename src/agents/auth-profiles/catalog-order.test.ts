@@ -18,7 +18,8 @@ vi.mock("../provider-auth-aliases.js", () => ({
   },
 }));
 
-vi.mock("../model-auth-env-vars.js", () => ({
+vi.mock("../model-auth-env-vars.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../model-auth-env-vars.js")>()),
   listKnownProviderEnvApiKeyNames: () => [],
   resolveProviderEnvAuthLookupMaps: () => ({
     aliasMap: { "proof-alias": "openai" },

@@ -7,7 +7,6 @@ export const MODEL_SESSION_AUTH_PROFILE_COMPAT_RECORD = {
   introduced: "2026-04-27",
   deprecated: "2026-10-11",
   warningStarts: "2026-10-11",
-  removalGate: "next-plugin-sdk-major",
   replacement:
     "Await applyModelOverrideWithAuthProfileCompatibilityAsync from openclaw/plugin-sdk/model-session-runtime. The synchronous helper retains its return value and immediate mutation until a later release after stable deprecation.",
   docsPath: "/plugins/sdk-runtime/agent#model-selection-with-a-pinned-account",

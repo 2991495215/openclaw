@@ -154,7 +154,8 @@ vi.mock("../plugins/plugin-registry.js", () => ({
   loadPluginRegistrySnapshot: pluginRegistryMocks.loadPluginRegistrySnapshot,
 }));
 
-vi.mock("../plugins/plugin-metadata-snapshot.js", () => ({
+vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../plugins/plugin-metadata-snapshot.js")>()),
   loadPluginMetadataSnapshot: pluginRegistryMocks.loadPluginMetadataSnapshot,
   resolvePluginMetadataSnapshotAsync: async (params: unknown) =>
     pluginRegistryMocks.loadPluginMetadataSnapshot(params),

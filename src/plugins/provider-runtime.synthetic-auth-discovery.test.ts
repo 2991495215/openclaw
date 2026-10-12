@@ -86,7 +86,6 @@ const resolveProviderOwnerIds = vi.hoisted(() =>
 
 vi.mock("./providers.js", () => ({
   resolveCatalogHookProviderPluginIds: vi.fn(() => []),
-  resolveExternalAuthProfileProviderPluginIds: vi.fn(() => []),
   resolveOwningPluginIdsForProvider: resolveProviderOwnerIds,
   resolveOwningPluginIdsForProviderRef: resolveProviderOwnerIds,
 }));

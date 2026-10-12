@@ -270,7 +270,7 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +10: shared database-engine contracts and operations after the SQLite export cutover.
       // +1: replaceRuntimeAuthProfileStoreSnapshotsAsync replaces synchronous snapshot publication.
       // +2: prepared runtime config readers; +1: sanitizeEnvVarsAsync.
-      3725,
+      3724,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -303,7 +303,7 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +5: shared database-engine host and worker operations.
       // +1: the same async auth-profile snapshot publication replacement.
       // +2: prepared runtime config readers; +1: sanitizeEnvVarsAsync.
-      2177,
+      2176,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -324,7 +324,7 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: their retained, prepared-only synchronous counterparts.
       // +1: released snapshot publication remains during its approved async replacement.
       // +3: runtime config, secret-read and display compatibility; +1: sandbox sanitizer.
-      199,
+      198,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

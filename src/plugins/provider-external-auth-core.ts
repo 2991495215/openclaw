@@ -37,11 +37,6 @@ export function createProviderExternalAuthResolver(
     const { manifestRegistry } = currentMetadataSnapshot;
     // A lifecycle-owned manifest is authoritative: no external-auth contracts means
     // no provider registry discovery or runtime activation is needed for this overlay.
-    if (
-      !manifestRegistry.plugins.some((plugin) => plugin.contracts?.externalAuthProviders?.length)
-    ) {
-      return [];
-    }
     const externalAuthPluginIds = manifestRegistry.plugins
       .filter((plugin) => (plugin.contracts?.externalAuthProviders?.length ?? 0) > 0)
       .map((plugin) => plugin.id)

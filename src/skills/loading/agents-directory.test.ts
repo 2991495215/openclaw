@@ -14,6 +14,7 @@ import { buildSkillSnapshot } from "./workspace-skill-prompt.js";
 
 vi.mock("./plugin-skills.js", () => ({
   resolvePluginSkillRoots: () => [],
+  resolvePluginSkillRootsFromMetadata: () => [],
 }));
 
 const tempDirs = createTempDirTracker();

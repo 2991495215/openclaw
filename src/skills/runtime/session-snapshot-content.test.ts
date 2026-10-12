@@ -14,7 +14,10 @@ import {
 } from "./refresh-state.js";
 import { resolveReusableWorkspaceSkillSnapshot } from "./session-snapshot.js";
 
-vi.mock("../loading/plugin-skills.js", () => ({ resolvePluginSkillRoots: () => [] }));
+vi.mock("../loading/plugin-skills.js", () => ({
+  resolvePluginSkillRoots: () => [],
+  resolvePluginSkillRootsFromMetadata: () => [],
+}));
 vi.mock("../loading/bundled-dir.js", () => ({ resolveBundledSkillsDir: () => undefined }));
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);

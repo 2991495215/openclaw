@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { expect, it } from "vitest";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
+import { loadPinnedRuntimeConfigAsync } from "../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -33,6 +34,7 @@ it.each([
         entries: { main: {}, research: {} },
       },
     };
+    await loadPinnedRuntimeConfigAsync(async () => ({ config: cfg }));
     const skillsSnapshot = {
       prompt: "Saved plugin skill instructions",
       skills: [{ name: "plugin-fixture" }],
