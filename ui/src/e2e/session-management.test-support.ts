@@ -141,7 +141,23 @@ export async function activateSelfRemovingControl(control: Locator): Promise<voi
       !hitTarget ||
       (hitTarget !== target && !target.contains(hitTarget))
     ) {
-      throw new Error("Self-removing control must be visible and enabled before activation");
+      throw new Error(
+        `Self-removing control must be visible and enabled before activation: ${JSON.stringify({
+          connected: target.isConnected,
+          display: style.display,
+          visibility: style.visibility,
+          disabled: target.disabled === true,
+          ariaDisabled: target.getAttribute("aria-disabled") === "true",
+          bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+          root: root instanceof ShadowRoot ? "shadow" : "document",
+          target: { tag: target.localName, classes: [...target.classList] },
+          hitTarget: hitTarget
+            ? { tag: hitTarget.localName, classes: [...hitTarget.classList] }
+            : null,
+          hitContained: hitTarget !== null && (hitTarget === target || target.contains(hitTarget)),
+        })}`,
+      );
     }
     target.click();
   });
