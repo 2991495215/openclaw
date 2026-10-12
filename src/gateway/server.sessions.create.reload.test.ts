@@ -16,11 +16,17 @@ test.each([
   { role: "operator", scopes: ["operator.write", "operator.read"] },
 ])(
   "sessions.create retains its first message across unrelated agent changes for $role",
-  async ({ scopes }) => {
+  async ({ role, scopes }) => {
+    const startedAt = Date.now();
+    const trace = (stage: string, change = "fixture") =>
+      console.error(`[create-reload:${role}:${change}] ${Date.now() - startedAt}ms ${stage}`);
+    trace("store.begin");
     const { storePath } = await createSessionStoreDir();
     testState.agentsConfig = { ownership: "explicit", entries: { main: {}, other: {} } };
     testState.agentConfig = { systemAgent: { agentId: "main" }, sessionStore: { agentId: "main" } };
+    trace("client.begin");
     const { ws } = await openClient({ scopes });
+    trace("client.ready");
     const config = await getGatewayConfigModule();
     const originalConfig = config.getRuntimeConfig();
     const prepareSession = chatSession.prepareChatSendSession;
@@ -34,21 +40,36 @@ test.each([
         const resume = createDeferred();
         const dispatched = createDeferred();
         prepare.mockImplementationOnce(async (options) => {
+          trace("session.prepare.begin", change);
           const session = await prepareSession(options);
+          trace("session.prepare.done", change);
           initial.resolve();
           await resume.promise;
+          trace("session.prepare.resumed", change);
           return session;
         });
         dispatchInboundMessageMock.mockImplementationOnce(async ({ replyOptions }) => {
+          trace("dispatch.begin", change);
           await replyOptions?.userTurnTranscriptRecorder?.persistApproved();
+          trace("dispatch.persisted", change);
           dispatched.resolve();
           return { queuedFinal: false, counts: { block: 0, final: 0, tool: 0 } };
         });
+        trace("rpc.sessions.create.begin", change);
         const request = rpcReq<{ key: string; runStarted: boolean }>(ws, "sessions.create", {
           agentId: "main",
           key,
           message,
-        });
+        }).then(
+          (response) => {
+            trace(`rpc.sessions.create.response:${response.ok}`, change);
+            return response;
+          },
+          (error: unknown) => {
+            trace("rpc.sessions.create.rejected", change);
+            throw error;
+          },
+        );
         try {
           await awaitGateBeforeSettlement(
             initial.promise,
@@ -65,7 +86,9 @@ test.each([
             delete entries.unrelated;
           }
           // Publish after chat has captured its routing facts, before initial input admission.
+          trace("config.publish.begin", change);
           config.setRuntimeConfigSnapshot({ ...current, agents: { ...current.agents, entries } });
+          trace("config.publish.done", change);
           resume.resolve();
           const created = await request;
           expect(created, JSON.stringify(created)).toMatchObject({
@@ -73,25 +96,31 @@ test.each([
             payload: { key, runStarted: true },
           });
           await dispatched.promise;
+          trace("rpc.chat.history.begin", change);
           const history = await rpcReq<{ messages: Array<{ role: string; content: unknown }> }>(
             ws,
             "chat.history",
             { sessionKey: key },
           );
+          trace(`rpc.chat.history.response:${history.ok}`, change);
           expect(history.ok, JSON.stringify(history)).toBe(true);
           expect(
             JSON.stringify(history.payload?.messages.find((item) => item.role === "user")),
           ).toContain(message);
         } finally {
+          trace("cleanup.begin", change);
           resume.resolve();
           await request;
           await getSessionWorkAdmissionRelease({ scope: storePath, identities: [key] });
+          trace("cleanup.done", change);
         }
       }
     } finally {
+      trace("cleanup.config.begin");
       prepare.mockRestore();
       config.setRuntimeConfigSnapshot(originalConfig);
       ws.terminate();
+      trace("cleanup.config.done");
     }
   },
 );
