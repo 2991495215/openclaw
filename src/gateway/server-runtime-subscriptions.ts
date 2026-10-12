@@ -42,8 +42,8 @@ import {
   onInternalSessionTranscriptUpdate,
   type InternalSessionTranscriptUpdate,
 } from "../sessions/transcript-events.js";
-import { runOutsideAsyncWorkScope } from "../shared/async-work-scope.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import {
   createLazyPromiseLoader,
   createLazyRuntimeModule,
@@ -659,22 +659,25 @@ export function startGatewayEventSubscriptions(params: GatewayEventSubscriptionP
     // projection until this committed row has crossed its async publication path.
     const agentHandler = agentEventHandlerLoader.peek();
     const publication = createDeferredCore();
-    const dispatch = runOutsideAsyncWorkScope(() =>
-      dispatchEventHandler<InternalSessionTranscriptUpdate>({
-        loadHandler: agentHandler
-          ? () =>
-              agentHandler
-                .then(
-                  (handler) => handler.retireTranscript(evt, publication.promise),
-                  () => undefined,
-                )
-                .then(getTranscriptUpdateHandler)
-          : getTranscriptUpdateHandler,
-        event: evt,
-        log: params.log,
-        failureMessage: "Transcript update dispatch failed",
-        context: { sessionKey: evt.sessionKey },
-      }),
+    // Committed publication retains Gateway work, not the producer's actor handle.
+    const dispatch = runWithRetainedGatewayRootWork(() =>
+      runInDetachedAsyncContext(() =>
+        dispatchEventHandler<InternalSessionTranscriptUpdate>({
+          loadHandler: agentHandler
+            ? () =>
+                agentHandler
+                  .then(
+                    (handler) => handler.retireTranscript(evt, publication.promise),
+                    () => undefined,
+                  )
+                  .then(getTranscriptUpdateHandler)
+            : getTranscriptUpdateHandler,
+          event: evt,
+          log: params.log,
+          failureMessage: "Transcript update dispatch failed",
+          context: { sessionKey: evt.sessionKey },
+        }),
+      ),
     );
     agentEventDispatches.add(dispatch);
     void dispatch.then(() => {
