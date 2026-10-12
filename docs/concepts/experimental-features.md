@@ -255,10 +255,11 @@ you set the options below. Or use config:
 }
 ```
 
-- `everyToolCalls` (default `10`, range `0`–`1000`): review after this many
-  completed tool calls in a conversation, including during a run.
+- `everyToolCalls` (default `10`, range `0`–`1000`): review after this many tool
+  calls start in a conversation, including during a run and including commands
+  still running in the background.
 - `everyMinutes` (default `20`, range `0`–`1440`): review after this many minutes
-  of accumulated agent run time, checked after tool calls and when a run ends.
+  of accumulated agent run time, checked as tools start and when a run ends.
 
 Reviews always use the session's own model; there is no separate model setting.
 

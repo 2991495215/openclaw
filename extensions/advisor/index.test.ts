@@ -43,7 +43,8 @@ type PendingReview = {
 type CapturedHook = (event: Record<string, unknown>, ctx: Record<string, unknown>) => unknown;
 
 function setup(pluginConfig: Record<string, unknown>) {
-  const handlers: Partial<Record<"llm_input" | "after_tool_call" | "agent_end", CapturedHook>> = {};
+  const handlers: Partial<Record<"llm_input" | "agent_end", CapturedHook>> = {};
+  let toolEvents: Parameters<OpenClawPluginApi["registerAgentEventSubscription"]>[0] | undefined;
   const services: OpenClawPluginServiceV2[] = [];
   const lifecycles: Parameters<OpenClawPluginApi["registerRuntimeLifecycle"]>[0][] = [];
   const started = createSignal<PendingReview>();
@@ -94,6 +95,9 @@ function setup(pluginConfig: Record<string, unknown>) {
     on: (name, handler) => {
       Object.assign(handlers, { [name]: handler });
     },
+    registerAgentEventSubscription: (subscription) => {
+      toolEvents = subscription;
+    },
   });
   plugin.register(api);
 
@@ -136,10 +140,17 @@ function setup(pluginConfig: Record<string, unknown>) {
         },
         { ...context, ...overrides },
       ),
-    toolCompleted: (overrides: Partial<typeof context> = {}) =>
-      handlers.after_tool_call?.(
-        { toolName: "exec", params: {} },
-        { ...context, ...overrides, toolName: "exec" },
+    toolStarted: (overrides: Partial<typeof context> = {}) =>
+      toolEvents?.handle(
+        {
+          runId: overrides.runId ?? context.runId,
+          sessionKey: overrides.sessionKey ?? context.sessionKey,
+          seq: 1,
+          ts: Date.now(),
+          stream: "tool",
+          data: { phase: "start", name: "exec" },
+        },
+        { getRunContext: () => undefined, setRunContext: () => {}, clearRunContext: () => {} },
       ),
     endRun: (durationMs = 1_000, overrides: Partial<typeof context> = {}) =>
       handlers.agent_end?.(
@@ -166,9 +177,9 @@ describe("advisor", () => {
       }
       await run.startService();
       await run.startRun();
-      await run.toolCompleted();
+      await run.toolStarted();
       expect(run.forkSession).not.toHaveBeenCalled();
-      await run.toolCompleted();
+      await run.toolStarted();
       // Hooks only schedule; the service owns model work outside the tool's lifetime.
       expect(run.forkSession).not.toHaveBeenCalled();
       const review = await run.dispatchReview();
@@ -180,7 +191,7 @@ describe("advisor", () => {
       );
       expect(run.forkSession.mock.calls[0]?.[0]).not.toHaveProperty("model");
       // A third completed tool does not start a second concurrent review.
-      await run.toolCompleted();
+      await run.toolStarted();
       expect(run.forkSession).toHaveBeenCalledOnce();
       const done = run.finished();
       review.resolve("Stop editing CI; the user asked only for the README typo.");
@@ -221,13 +232,13 @@ describe("advisor", () => {
     await run.startService();
     await run.startRun();
     now = 30_000;
-    await run.toolCompleted();
+    await run.toolStarted();
     await run.endRun(40_000);
     expect(run.forkSession).not.toHaveBeenCalled();
     now = 50_000;
     await run.startRun({ runId: "run-2" });
     now = 69_000;
-    await run.toolCompleted({ runId: "run-2" });
+    await run.toolStarted({ runId: "run-2" });
     expect(run.forkSession).not.toHaveBeenCalled();
     await run.endRun(20_000, { runId: "run-2" });
     const review = await run.dispatchReview();
@@ -244,7 +255,7 @@ describe("advisor", () => {
     await run.startService();
     for (const trigger of ["heartbeat", "cron", "memory", "overflow", "side_question", "btw"]) {
       await run.startRun({ trigger });
-      await run.toolCompleted();
+      await run.toolStarted();
       await run.endRun(120_000, { trigger });
     }
     expect(run.forkSession).not.toHaveBeenCalled();
@@ -254,7 +265,7 @@ describe("advisor", () => {
       () => run.stopService(),
     ]) {
       await run.startRun();
-      await run.toolCompleted();
+      await run.toolStarted();
       const review = await run.dispatchReview();
       await cancel();
       expect(review.signal?.aborted).toBe(true);

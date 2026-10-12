@@ -98,20 +98,28 @@ export default definePluginEntry({
     api.on("llm_input", (_event, ctx) => {
       if (
         ctx.sessionKey &&
+        ctx.agentId &&
         ctx.runId &&
         (ctx.trigger === undefined || ctx.trigger === "user" || ctx.trigger === "manual")
       ) {
-        controller.runStarted({ sessionKey: ctx.sessionKey, runId: ctx.runId });
-      }
-    });
-    api.on("after_tool_call", (_event, ctx) => {
-      if (ctx.sessionKey && ctx.agentId && ctx.runId) {
-        controller.toolCompleted({
+        controller.runStarted({
           sessionKey: ctx.sessionKey,
           agentId: ctx.agentId,
           runId: ctx.runId,
         });
       }
+    });
+    // Tool starts, not after_tool_call: Codex fires post-tool hooks only for calls that finish
+    // inside the turn, so stalled or backgrounded commands (the waste worth catching) never count.
+    api.agent.events.registerAgentEventSubscription({
+      id: "advisor-tool-starts",
+      description: "Counts tool calls started in admitted runs for the review trigger.",
+      streams: ["tool"],
+      handle: (event) => {
+        if (event.sessionKey && event.runId && event.data.phase === "start") {
+          controller.toolStarted({ sessionKey: event.sessionKey, runId: event.runId });
+        }
+      },
     });
     api.on("agent_end", (event, ctx) => {
       if (

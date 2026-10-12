@@ -22,8 +22,9 @@ button opens the plugin's settings page. Or use config:
 }
 ```
 
-`everyToolCalls` counts completed tool calls. `everyMinutes` counts accumulated
-agent run time, checked after tool calls and when a run ends. Either trigger
+`everyToolCalls` counts tool calls as they start, including commands that are
+still running in the background. `everyMinutes` counts accumulated agent run
+time, checked as tools start and when a run ends. Either trigger
 starts a review; `0` disables a trigger. Both counters restart after a review.
 Heartbeat, cron, memory-flush, overflow, and side-question runs do not count.
 

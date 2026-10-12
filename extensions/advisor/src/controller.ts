@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 export type AdvisorSchedule = {
-  /** Completed tool calls between reviews; 0 turns this trigger off. */
+  /** Tool calls started between reviews, including ones still running; 0 turns this trigger off. */
   everyToolCalls: number;
   /** Minutes of accumulated agent run time between reviews; 0 turns this trigger off. */
   everyMinutes: number;
@@ -25,7 +25,7 @@ type AdvisorDeps = {
 type SessionState = {
   toolCalls: number;
   activeMs: number;
-  run?: { id: string; startedAt: number; accountedMs: number };
+  run?: { id: string; agentId: string; startedAt: number; accountedMs: number };
   inFlight?: AbortController;
 };
 
@@ -121,21 +121,26 @@ export function createAdvisorController(deps: AdvisorDeps) {
   }
 
   return {
-    runStarted(params: { sessionKey: string; runId: string }): void {
+    runStarted(params: { sessionKey: string; agentId: string; runId: string }): void {
       const state = stateFor(params.sessionKey);
       if (state.run?.id !== params.runId) {
-        state.run = { id: params.runId, startedAt: Date.now(), accountedMs: 0 };
+        state.run = {
+          id: params.runId,
+          agentId: params.agentId,
+          startedAt: Date.now(),
+          accountedMs: 0,
+        };
       }
     },
-    toolCompleted(params: { sessionKey: string; agentId: string; runId: string }): void {
+    toolStarted(params: { sessionKey: string; runId: string }): void {
       const state = sessions.get(params.sessionKey);
-      // Tool hooks have no trigger field; only runs admitted by the agent hook count.
+      // Tool events carry no trigger; only runs admitted at llm_input count.
       if (state?.run?.id !== params.runId) {
         return;
       }
       state.toolCalls += 1;
       accountTime(state, Date.now() - state.run.startedAt);
-      reviewIfDue(params.sessionKey, params.agentId, state);
+      reviewIfDue(params.sessionKey, state.run.agentId, state);
     },
     turnEnded(params: {
       sessionKey: string;

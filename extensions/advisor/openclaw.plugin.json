@@ -38,7 +38,7 @@
   "uiHints": {
     "everyToolCalls": {
       "label": "Review every N tool calls",
-      "help": "Review after this many completed tool calls in a conversation, including during a run. 0 turns this trigger off."
+      "help": "Review after this many tool calls start in a conversation, including during a run and commands still running in the background. 0 turns this trigger off."
     },
     "everyMinutes": {
       "label": "Review every N minutes",
