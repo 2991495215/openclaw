@@ -658,11 +658,11 @@ it("finishes a foreground session write while pruning a cold existing usage stor
     const dispatchReady = createDeferredCore();
     const releaseDispatch = createDeferredCore();
     const writerEntered = createDeferredCore();
-    const run = costRefreshLane.pool.run;
+    const run = costRefreshLane.pool.run.bind(costRefreshLane.pool);
     vi.spyOn(costRefreshLane.pool, "run").mockImplementation(async (input, options) => {
       dispatchReady.resolve();
       await releaseDispatch.promise;
-      return run.call(costRefreshLane.pool, input, options);
+      return run(input, options);
     });
     const admit = writerAdmission.runOpenClawAgentWorkerWrite;
     vi.spyOn(writerAdmission, "runOpenClawAgentWorkerWrite").mockImplementation(
