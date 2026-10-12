@@ -225,6 +225,8 @@ it.each(cases)(
       OPENCLAW_SKIP_CANVAS_HOST: "1",
       OPENCLAW_SKIP_BROWSER_CONTROL_SERVER: "1",
       OPENCLAW_SKIP_PROVIDERS: "0",
+      // HOLD / neverLand: identify the cleanup owner without changing its settlement.
+      OPENCLAW_TEST_CODEX_RECOVERY_CLEANUP_TRACE: shutdown ? "1" : "0",
       OPENCLAW_DISABLE_BUNDLED_PLUGINS: "0",
       OPENCLAW_BUNDLED_PLUGINS_DIR: path.join(process.cwd(), "dist/extensions"),
       OPENCLAW_DEV_SOURCE_ROOT: sdkHost,

@@ -13,6 +13,7 @@ import {
   createPluginRuntimeCapabilityLease,
   type PluginRuntimeCapabilityLease,
 } from "./capability-lease.js";
+import { tracePluginCleanupPhase } from "./cleanup-phase-diagnostic.js";
 import { createPluginServiceGatewayEvents } from "./gateway-events.js";
 import { withPluginHttpRouteRegistry } from "./http-registry.js";
 import { pluginInstanceInvocation } from "./plugin-instance-invocation.js";
@@ -241,6 +242,8 @@ async function startPreparedPluginServices({
     deadline?: number,
     beforeStop?: Promise<unknown>,
   ) => {
+    const traceStop = (phase: string) => tracePluginCleanupPhase(phase, entry.pluginId, entry.id);
+    traceStop("service.stop.requested");
     entry.stopRequested = true;
     entry.scheduling.scheduler.beginClose();
     entry.stopNodeInvocations?.();
@@ -274,13 +277,18 @@ async function startPreparedPluginServices({
     };
     try {
       const invokeStop = () => {
+        traceStop("service.startup.settled");
         const record = entry.registry.plugins.find((candidate) => candidate.id === entry.pluginId);
         const stopRegistry = record
           ? getPluginRecordRegistry(entry.registry, record)
           : entry.registry;
+        traceStop("service.scheduler.close.begin");
         const scheduled = entry.scheduling.close();
-        const cleanup = () =>
-          withPluginHttpRouteRegistry(stopRegistry, () => entry.stop?.(), entry.lease);
+        traceStop(scheduled ? "service.scheduler.retained" : "service.scheduler.idle");
+        const cleanup = () => {
+          traceStop("service.hook.begin");
+          return withPluginHttpRouteRegistry(stopRegistry, () => entry.stop?.(), entry.lease);
+        };
         // Cleanup releases transports needed by scheduled callbacks, so invoke it before joining.
         // The scheduler records callback failures; its join only observes physical settlement.
         // An idle scope must preserve the hook's raw result for zero-budget deadlines.
@@ -289,7 +297,10 @@ async function startPreparedPluginServices({
               try {
                 return await cleanup();
               } finally {
+                traceStop("service.hook.settled");
+                traceStop("service.scheduler.await");
                 await scheduled;
+                traceStop("service.scheduler.settled");
               }
             })
           : cleanup();
@@ -299,6 +310,7 @@ async function startPreparedPluginServices({
           try {
             // A caller can stop waiting, but raw startup must finish before the one final cleanup.
             const ready = beforeStop ? beforeStop.then(() => entry.startup) : entry.startup;
+            traceStop(ready ? "service.startup.await" : "service.startup.idle");
             const stop = () => (ready ? ready.then(invokeStop) : Promise.resolve(invokeStop()));
             // A timed-out start loses execution authority now, but still owns its final stop.
             const stopping = entry.startupConsumer
@@ -332,9 +344,11 @@ async function startPreparedPluginServices({
         deadline,
         entry.startup ? "plugin service startup settlement" : "plugin service stop",
       );
+      traceStop("service.stop.settled");
       await entry.cleanupReporting;
       entry.cleanupErrors.forEach(recordFailure);
     } catch (err) {
+      traceStop("service.stop.failed");
       // Only this issued callback can record its rejection; host admission stays exceptional.
       if (entry.cleanupErrors.includes(err)) {
         await entry.cleanupReporting;

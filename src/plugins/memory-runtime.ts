@@ -3,6 +3,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import type { MemorySearchManager } from "../memory-host-sdk/host/types.js";
+import { tracePluginCleanupPhase } from "./cleanup-phase-diagnostic.js";
 import { normalizePluginsConfig } from "./config-state.js";
 import { withPluginHostCleanupTimeout } from "./host-hook-cleanup-timeout.js";
 import { loadPluginRegistryHandle } from "./loader.js";
@@ -530,14 +531,22 @@ export function prepareMemoryRuntimeReload(
         [...prepared.map(({ runtime }) => runtime), ...retiringEmbeddingProviders],
         () =>
           Promise.allSettled(
-            prepared.map(({ runtime, handle }) =>
+            prepared.map(({ runtime, handle }, index) =>
               Promise.resolve().then(() =>
                 runPluginCleanup(runtime, async () => {
+                  const pluginId = previousRegistry.memoryCapabilities.find(
+                    ({ capability }) =>
+                      capability.runtime === runtime || capability.providerRuntime === runtime,
+                  )?.pluginId;
+                  tracePluginCleanupPhase(`memory.handle.${index}.drain.begin`, pluginId);
                   // Admission stays outside this catch; only admitted teardown reports faults.
                   try {
                     return await handle.drain();
                   } catch (error) {
+                    tracePluginCleanupPhase(`memory.handle.${index}.drain.failed`, pluginId);
                     return { errors: [error] };
+                  } finally {
+                    tracePluginCleanupPhase(`memory.handle.${index}.drain.settled`, pluginId);
                   }
                 }),
               ),

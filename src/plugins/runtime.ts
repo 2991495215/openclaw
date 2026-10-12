@@ -13,6 +13,7 @@ import {
   resolveGlobalSingleton,
 } from "../shared/global-singleton.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
+import { tracePluginCleanupPhase } from "./cleanup-phase-diagnostic.js";
 import {
   isPluginCommandExecutionActiveHere,
   waitForPluginCommandExecutions,
@@ -418,20 +419,33 @@ export function createPluginRegistryOwner(registry: PluginRegistry, workspaceDir
     const closing: RegistryOwnerClose = {
       preparation: Promise.resolve().then(async () => {
         const previous = owner.activeRegistry;
+        tracePluginCleanupPhase("memory.prepare.begin");
         try {
           if (
             !previous.memoryCapabilities.some(
               ({ capability }) => capability.runtime || capability.providerRuntime,
             )
           ) {
+            tracePluginCleanupPhase("memory.prepare.empty");
             return [];
           }
+          for (const { pluginId, capability } of previous.memoryCapabilities) {
+            if (capability.runtime || capability.providerRuntime) {
+              tracePluginCleanupPhase("memory.prepare.selected", pluginId);
+            }
+          }
+          tracePluginCleanupPhase("memory.module.load.begin");
           const { prepareMemoryRuntimeReload } = await loadMemoryRuntime();
+          tracePluginCleanupPhase("memory.module.load.settled");
           const memory = prepareMemoryRuntimeReload(previous, createEmptyPluginRegistry());
+          tracePluginCleanupPhase("memory.prepare.close.begin");
           const { errors } = await memory.close();
+          tracePluginCleanupPhase("memory.prepare.close.settled");
           memory.commit();
+          tracePluginCleanupPhase("memory.prepare.settled");
           return errors;
         } catch (error) {
+          tracePluginCleanupPhase("memory.prepare.failed");
           closing.failure = new PluginRuntimeCloseRetainedError(error);
           throw closing.failure;
         }
