@@ -754,7 +754,7 @@ it.each([
         assert(written);
         expect(written.sessionId).toBe(entry.sessionId);
         if (name === "replacement") {
-          expect(written).toEqual(entry);
+          expect(written).toEqual({ ...entry, delivery: { kind: "none" } });
         } else {
           expect(written.updatedAt).toBeGreaterThanOrEqual(writeStartedAt);
           expect(written.updatedAt).toBeLessThanOrEqual(writeFinishedAt);
