@@ -16,6 +16,7 @@ import {
 import {
   listSecretStoreEntries,
   readSecretStoreValue,
+  SecretStoreValidationError,
   writeSecretStoreEntry,
 } from "../../secrets/store/secret-store.js";
 import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
@@ -70,10 +71,26 @@ describe("secret store mutation lifecycle", () => {
         updatedBy: "test",
       });
       const reloadSecrets = vi.fn(async () => ({ warningCount: 0 }));
+      const storeWriteService = createSecretStoreWriteService({ reloadSecrets });
+      const write = storeWriteService.write;
+      vi.spyOn(storeWriteService, "write").mockImplementation(async (input) => {
+        try {
+          return await write(input);
+        } catch (error) {
+          console.warn("secrets sentinel typed diagnosis:", {
+            name: error instanceof Error ? error.name : typeof error,
+            message: error instanceof Error ? error.message : "non-Error throw",
+            constructor: error instanceof Error ? error.constructor.name : undefined,
+            validationError: error instanceof SecretStoreValidationError,
+          });
+          throw error;
+        }
+      });
       const handlers = createSecretsHandlers({
         reloadSecrets,
         resolveSecrets,
-        storeWriteService: createSecretStoreWriteService({ reloadSecrets }),
+        storeWriteService,
+        log: { warn: (message) => console.warn("secrets sentinel diagnosis:", message) },
       });
 
       expect(

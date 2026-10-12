@@ -5,6 +5,7 @@ import { withGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller
 import { createGatewayTool } from "../../agents/tools/gateway-tool.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { getUpdateRun, listUpdateRuns } from "../../infra/update-run-ledger.js";
+import { createPluginCache, withPluginCache } from "../../plugins/plugin-cache.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { resolveGatewayScopedTools } from "../tool-resolution.js";
 import { summarizeUpdateRunResponse } from "../update-run-summary.js";
@@ -54,41 +55,10 @@ vi.mock("../server-plugin-in-process-dispatch.js", () => ({
   },
 }));
 
-// Prepare the tool surface before case deadlines; execution resolves the current Gateway context.
-const promptUpdateCases = await Promise.all(
-  (
-    [
-      { channel: "slack", supervisor: "launchd" },
-      { channel: "discord", supervisor: null },
-    ] as const
-  ).map(async ({ channel, supervisor }) => {
-    const config: OpenClawConfig = {
-      plugins: { enabled: false },
-      tools: { profile: "coding" },
-      commands: { ownerAllowFrom: [`${channel}:owner`] },
-    };
-    const { tools } = await resolveGatewayScopedTools({
-      cfg: config,
-      sessionKey: `agent:main:${channel}:dm:owner`,
-      messageProvider: channel,
-      accountId: "primary",
-      agentTo: "owner",
-      senderIsOwner: true,
-      channelContext: { sender: { id: "owner" } },
-      surface: "loopback",
-    });
-    return {
-      channel,
-      supervisor,
-      config,
-      toolNames: tools.map((candidate) => candidate.name),
-      tool: expectDefined(
-        tools.find((candidate) => candidate.name === "gateway"),
-        "Gateway-scoped update tool",
-      ),
-    };
-  }),
-);
+const promptUpdateCases = [
+  { channel: "slack", supervisor: "launchd" },
+  { channel: "discord", supervisor: null },
+] as const;
 
 describe("update.run current owner authority", () => {
   let config: OpenClawConfig;
@@ -161,103 +131,127 @@ describe("update.run current owner authority", () => {
 
   it.each(promptUpdateCases)(
     "matches the prompt update path for $channel with supervisor $supervisor",
-    async ({ channel, supervisor, config: promptConfig, toolNames, tool }) => {
-      config = promptConfig;
-      detectRespawnSupervisorMock.mockReturnValue(supervisor);
-      mockGlobalInstallSurface();
-      const prompt = buildAgentSystemPrompt({
-        workspaceDir: "/tmp/openclaw",
-        toolNames,
-        runtimeInfo: { channel },
-      });
-      const guidance = expectDefined(
-        prompt.split("\n").find((line) => line.startsWith("For the Gateway hosting this session:")),
-        "hosting Gateway guidance",
-      );
-      const action = expectDefined(
-        guidance.match(/Update OpenClaw: `gateway` action ([\w.]+)/u)?.[1],
-        "prompt-advertised update action",
-      );
-      const result = await tool.execute("update", {
-        action,
-        requesterSenderId: "model-supplied-sender",
-      });
-
-      expect(result.details).toMatchObject({ ok: true, handoff: { status: "started" } });
-      expect(startManagedServiceUpdateHandoffMock).toHaveBeenCalledOnce();
-      expect(transferManagedServiceUpdateHandoffMock).toHaveBeenCalledOnce();
-      expect(scheduleGatewayRestartMock).not.toHaveBeenCalled();
-      const handoff = expectDefined(
-        startManagedServiceUpdateHandoffMock.mock.calls[0]?.[0],
-        "prepared update handoff",
-      );
-      expect(handoff).toMatchObject({
-        supervisor,
-        requester: {
-          channel,
+    async ({ channel, supervisor }) => {
+      await using cache = createPluginCache();
+      await withPluginCache(cache, async () => {
+        config = {
+          plugins: { enabled: false },
+          tools: { profile: "coding" },
+          commands: { ownerAllowFrom: [`${channel}:owner`] },
+        };
+        const { tools } = await resolveGatewayScopedTools({
+          cfg: config,
+          sessionKey: `agent:main:${channel}:dm:owner`,
+          messageProvider: channel,
           accountId: "primary",
-          senderId: "owner",
-          authorizationSource: "configured-owner",
-        },
-      });
-      expect(listUpdateRuns()).toEqual([
-        expect.objectContaining({
-          origin: expect.objectContaining({
-            requester: {
-              channel,
-              accountId: "primary",
-              senderId: "owner",
-              authorizationSource: "configured-owner",
-            },
-          }),
-        }),
-      ]);
-      expect(transferManagedServiceUpdateHandoffMock).toHaveBeenCalledExactlyOnceWith({
-        kind: "managed-update-handoff",
-        handoffId: handoff.handoffId,
-        installRoot: handoff.root,
-      });
-      expect(sentinelState.capturedPayload?.stats).toMatchObject({
-        runId: handoff.runId,
-        handoffId: handoff.handoffId,
-      });
-      if (!supervisor) {
-        expect(readGatewayOwnerLeaseMock).toHaveBeenCalledWith({ current: true });
-        const owner = expectDefined(
-          readGatewayOwnerLeaseMock.mock.results.at(-1)?.value,
-          "current foreground Gateway owner",
-        );
-        expect(owner).toMatchObject({ mode: "foreground", state: "live", pid: process.pid });
-        expect(owner.startedAt).not.toBeNull();
-        expect(handoff).toMatchObject({
-          argv1: "/tmp/openclaw-global/dist/index.js",
-          foregroundOrigin: {
-            owner: owner.owner,
-            pid: owner.pid,
-            host: owner.host,
-            startedAt: owner.startedAt,
-            port: owner.port,
-          },
-          meta: { completionOwner: "gateway-restart" },
+          agentTo: "owner",
+          senderIsOwner: true,
+          channelContext: { sender: { id: "owner" } },
+          surface: "loopback",
         });
-      }
-      await expectDefined(handoff.beforePark, "prepared update parking callback")();
-      if (supervisor) {
-        expect(scheduleGatewayRestartMock).not.toHaveBeenCalled();
-      } else {
-        expect(scheduleGatewayRestartMock).toHaveBeenCalledExactlyOnceWith(
-          expect.objectContaining({
-            reason: "update.run",
-            successorOwner: transferManagedServiceUpdateHandoffMock.mock.calls[0]?.[0],
-          }),
+        const toolNames = tools.map((candidate) => candidate.name);
+        const tool = expectDefined(
+          tools.find((candidate) => candidate.name === "gateway"),
+          "Gateway-scoped update tool",
         );
-      }
-      expect(guidance).toContain("only on an explicit owner request");
-      expect(guidance).toContain("relay the tool's exact recovery instructions");
-      expect(guidance).toContain("operator to run outside the Gateway service");
-      expect(guidance).toContain(
-        "Never run openclaw update, npm install -g openclaw, swap installations, or stop/restart the gateway service via exec or detached jobs.",
-      );
+        detectRespawnSupervisorMock.mockReturnValue(supervisor);
+        mockGlobalInstallSurface();
+        const prompt = buildAgentSystemPrompt({
+          workspaceDir: "/tmp/openclaw",
+          toolNames,
+          runtimeInfo: { channel },
+        });
+        const guidance = expectDefined(
+          prompt
+            .split("\n")
+            .find((line) => line.startsWith("For the Gateway hosting this session:")),
+          "hosting Gateway guidance",
+        );
+        const action = expectDefined(
+          guidance.match(/Update OpenClaw: `gateway` action ([\w.]+)/u)?.[1],
+          "prompt-advertised update action",
+        );
+        const result = await tool.execute("update", {
+          action,
+          requesterSenderId: "model-supplied-sender",
+        });
+
+        expect(result.details).toMatchObject({ ok: true, handoff: { status: "started" } });
+        expect(startManagedServiceUpdateHandoffMock).toHaveBeenCalledOnce();
+        expect(transferManagedServiceUpdateHandoffMock).toHaveBeenCalledOnce();
+        expect(scheduleGatewayRestartMock).not.toHaveBeenCalled();
+        const handoff = expectDefined(
+          startManagedServiceUpdateHandoffMock.mock.calls[0]?.[0],
+          "prepared update handoff",
+        );
+        expect(handoff).toMatchObject({
+          supervisor,
+          requester: {
+            channel,
+            accountId: "primary",
+            senderId: "owner",
+            authorizationSource: "configured-owner",
+          },
+        });
+        expect(listUpdateRuns()).toEqual([
+          expect.objectContaining({
+            origin: expect.objectContaining({
+              requester: {
+                channel,
+                accountId: "primary",
+                senderId: "owner",
+                authorizationSource: "configured-owner",
+              },
+            }),
+          }),
+        ]);
+        expect(transferManagedServiceUpdateHandoffMock).toHaveBeenCalledExactlyOnceWith({
+          kind: "managed-update-handoff",
+          handoffId: handoff.handoffId,
+          installRoot: handoff.root,
+        });
+        expect(sentinelState.capturedPayload?.stats).toMatchObject({
+          runId: handoff.runId,
+          handoffId: handoff.handoffId,
+        });
+        if (!supervisor) {
+          expect(readGatewayOwnerLeaseMock).toHaveBeenCalledWith({ current: true });
+          const owner = expectDefined(
+            readGatewayOwnerLeaseMock.mock.results.at(-1)?.value,
+            "current foreground Gateway owner",
+          );
+          expect(owner).toMatchObject({ mode: "foreground", state: "live", pid: process.pid });
+          expect(owner.startedAt).not.toBeNull();
+          expect(handoff).toMatchObject({
+            argv1: "/tmp/openclaw-global/dist/index.js",
+            foregroundOrigin: {
+              owner: owner.owner,
+              pid: owner.pid,
+              host: owner.host,
+              startedAt: owner.startedAt,
+              port: owner.port,
+            },
+            meta: { completionOwner: "gateway-restart" },
+          });
+        }
+        await expectDefined(handoff.beforePark, "prepared update parking callback")();
+        if (supervisor) {
+          expect(scheduleGatewayRestartMock).not.toHaveBeenCalled();
+        } else {
+          expect(scheduleGatewayRestartMock).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              reason: "update.run",
+              successorOwner: transferManagedServiceUpdateHandoffMock.mock.calls[0]?.[0],
+            }),
+          );
+        }
+        expect(guidance).toContain("only on an explicit owner request");
+        expect(guidance).toContain("relay the tool's exact recovery instructions");
+        expect(guidance).toContain("operator to run outside the Gateway service");
+        expect(guidance).toContain(
+          "Never run openclaw update, npm install -g openclaw, swap installations, or stop/restart the gateway service via exec or detached jobs.",
+        );
+      });
     },
   );
 

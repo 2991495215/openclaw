@@ -53,6 +53,7 @@ import {
   loadAuthProfileStoreForRuntimeAsync,
   resolvePersistedAuthProfileOwnerAgentDirAsync,
 } from "./store-runtime.js";
+import { resolveRuntimeAuthProfileAgentDir } from "./store.js";
 import type { AuthProfileCredential, AuthProfileStore, OAuthCredential } from "./types.js";
 
 const OAUTH_PROVIDER_IDS = new Set<string>(getOAuthProviders().map((provider) => provider.id));
@@ -311,12 +312,14 @@ function resolveRuntimeAuthProfile(params: {
 export async function resolveApiKeyForProfile(
   params: ResolveApiKeyForProfileParams,
 ): Promise<ResolveApiKeyForProfileResult | null> {
+  // Credential and degraded-owner lookups must share the store read's bounded auth scope.
+  const scopedParams = { ...params, agentDir: resolveRuntimeAuthProfileAgentDir(params.agentDir) };
   params.signal?.throwIfAborted();
   const resolved = isUserModelAuthProfileId(params.profileId)
     ? ((await withPersonalAuthProfileStore(params.profileId, (owner) =>
-        resolveApiKeyForProfileOwned(params, owner),
+        resolveApiKeyForProfileOwned(scopedParams, owner),
       )) ?? null)
-    : await resolveApiKeyForProfileOwned(params);
+    : await resolveApiKeyForProfileOwned(scopedParams);
   params.signal?.throwIfAborted();
   return resolved;
 }

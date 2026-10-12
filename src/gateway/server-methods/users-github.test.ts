@@ -82,9 +82,7 @@ function user(email: string, scopes = ["operator.read"]): GatewayClient {
   clients.add(client);
   return client;
 }
-function owner(client = alice): string {
-  return client.authenticatedUserProfile!.profileId;
-}
+const owner = (client = alice): string => client.authenticatedUserProfile!.profileId;
 async function rpc(client: GatewayClient, method: string, params: Record<string, unknown> = {}) {
   const respond = vi.fn();
   await handleGatewayRequest({
@@ -686,9 +684,14 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
 
   it("does not let an older start overwrite a newer start or disconnected generation", async () => {
     const old = createDeferredCore<Awaited<ReturnType<typeof network.start>>>();
-    network.start.mockReturnValueOnce(old.promise);
+    const started = createDeferredCore();
+    network.start.mockImplementationOnce(() => {
+      started.resolve();
+      return old.promise;
+    });
     const pending = rpc(alice, "users.github.authorize.start");
-    await vi.waitFor(() => expect(network.start).toHaveBeenCalledOnce());
+    await started.promise;
+    expect(network.start).toHaveBeenCalledOnce();
     await rpc(alice, "users.github.disconnect");
     const newer = await start();
     old.resolve({

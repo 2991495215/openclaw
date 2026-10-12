@@ -364,6 +364,14 @@ it("publishes Daybreak restrictions through the real model catalog projection", 
     routeResolverFactory: routeResolverFactory(dualRoutes),
   });
   const models = result.read().models;
+  console.warn(
+    "model policy projection diagnosis:",
+    models.map(({ agentRuntime, supportsFastMode, serviceTiers }) => ({
+      agentRuntime,
+      supportsFastMode,
+      serviceTiers,
+    })),
+  );
   expect(models.find((row) => row.id === ids[0])).toMatchObject({
     available: true,
     supportsFastMode: true,

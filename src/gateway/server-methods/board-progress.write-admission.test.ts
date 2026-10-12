@@ -41,6 +41,7 @@ const cases = methods.flatMap((method) =>
     cold: false,
   })),
 );
+const stateOptions = { scenario: "minimal", prepareProfileCatalog: true } as const;
 
 describe("board and progress-card database write admission", () => {
   it.each([
@@ -66,7 +67,7 @@ describe("board and progress-card database write admission", () => {
   ])(
     "queues registered $method behind a native reservation ($change, cold=$cold)",
     async ({ method, change, cold }) => {
-      await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      await withOpenClawTestState(stateOptions, async () => {
         let cfg: OpenClawConfig = {
           ...rolePolicyConfig(),
           agents: { ownership: "explicit", entries: { main: {}, work: {} } },

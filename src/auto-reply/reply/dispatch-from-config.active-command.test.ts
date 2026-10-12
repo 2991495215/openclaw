@@ -1,6 +1,10 @@
 // Exercises control-command reachability without relaxing ordinary reply admission.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { createDeferred, raceWithTimeoutResult } from "../../../test/helpers/promise.js";
+import {
+  awaitGateBeforeSettlement,
+  createDeferred,
+  raceWithTimeoutResult,
+} from "../../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { markCommandReplyForDelivery } from "../reply-payload.js";
 import type { MsgContext } from "../templating.js";
@@ -187,8 +191,10 @@ describe("dispatch active command admission", () => {
     async (controlName, controlBody) => {
       const sessionKey = "agent:main:login-ticket";
       const releaseLogin = createDeferred();
-      const loginEntered = vi.fn();
-      const controlEntered = vi.fn();
+      const loginReady = createDeferred();
+      const controlReady = createDeferred();
+      const loginEntered = vi.fn(() => loginReady.resolve());
+      const controlEntered = vi.fn(() => controlReady.resolve());
       const shellEntered = vi.fn();
       const dispatchCommand = (
         body: string,
@@ -213,7 +219,12 @@ describe("dispatch active command admission", () => {
       });
       const pending = [login];
       try {
-        await vi.waitFor(() => expect(loginEntered).toHaveBeenCalledOnce());
+        await awaitGateBeforeSettlement(
+          loginReady.promise,
+          login,
+          "Login dispatch settled before entering its pending command",
+        );
+        expect(loginEntered).toHaveBeenCalledOnce();
         const shell = dispatchCommand("/bash echo ready", "bash", async () => {
           shellEntered();
           return markCommandReplyForDelivery({ text: "Shell command completed." });
@@ -225,7 +236,12 @@ describe("dispatch active command admission", () => {
         });
         pending.push(control);
 
-        await vi.waitFor(() => expect(controlEntered).toHaveBeenCalledOnce());
+        await awaitGateBeforeSettlement(
+          controlReady.promise,
+          control,
+          "Control dispatch settled before entering its command",
+        );
+        expect(controlEntered).toHaveBeenCalledOnce();
         expect(shellEntered).not.toHaveBeenCalled();
         expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
         releaseLogin.resolve();

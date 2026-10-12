@@ -10,6 +10,7 @@ import * as sessions from "../../config/sessions/session-accessor.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { withExecRequestTurn } from "../../infra/exec-request-context.js";
 import { beginSessionWorkAdmission } from "../../sessions/session-lifecycle-admission.js";
+import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { registerChatAbortController } from "../chat-abort.js";
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "../server-methods.js";
@@ -80,6 +81,7 @@ async function exerciseAdmittedStop(
   }
   const cfg = { ...getRuntimeConfig(), ...rolePolicyConfig() };
   setRuntimeConfigSnapshot(cfg);
+  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
   const target = await seedAdmittedSession(runId, client.authenticatedUserProfile!.profileId);
   const context = createDirectChatContext({ getRuntimeConfig: () => cfg });
   const controller = new AbortController();
@@ -213,6 +215,7 @@ it.each(["forbidden", "allowed"] as const)(
     client.connect.scopes = ["operator.sessions.write"];
     const cfg = { ...getRuntimeConfig(), ...rolePolicyConfig() };
     setRuntimeConfigSnapshot(cfg);
+    using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
     const runId = "shared-admitted-run";
     const target = await seedAdmittedSession(runId, owner.authenticatedUserProfile!.profileId);
     const before = sessions.loadSessionEntry(target);
@@ -270,6 +273,7 @@ it.each(["before signal", "after signal"] as const)(
     client.connect.scopes = ["operator.sessions.write"];
     const cfg = { ...getRuntimeConfig(), ...rolePolicyConfig() };
     setRuntimeConfigSnapshot(cfg);
+    using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
     const runId = "revoked-admitted-run";
     const target = await seedAdmittedSession(runId, client.authenticatedUserProfile!.profileId);
     const before = sessions.loadSessionEntry(target);
@@ -346,6 +350,7 @@ it("chat.abort fences the second admitted interruption after the first revokes a
   client.connect.scopes = ["operator.sessions.write"];
   const cfg = { ...getRuntimeConfig(), ...rolePolicyConfig() };
   setRuntimeConfigSnapshot(cfg);
+  using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
   const firstRunId = "first-admitted-run";
   const target = await seedAdmittedSession(firstRunId, client.authenticatedUserProfile!.profileId);
   const before = sessions.loadSessionEntry(target);
