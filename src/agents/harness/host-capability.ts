@@ -65,6 +65,7 @@ import {
   resolveAgentQuestionAnswerAuthority,
   withAgentQuestionAnswerAuthority,
 } from "./host-private-capabilities.js";
+import { buildHarnessHostRequester } from "./host-requester.js";
 import { bindHostSkillCatalog, prepareHostSkillLibraryResources } from "./host-skills.js";
 import { cloneHostSnapshot as cloneSnapshot } from "./host-snapshot.js";
 import {
@@ -92,6 +93,7 @@ export function createAgentHarnessHostCapabilities(params: {
   pluginId: string;
   requiredNodeCommands?: readonly string[];
   nativeModelPolicySupport?: "exact";
+  toolCalls?: "deny";
 }): {
   capabilities: AgentHarnessHostCapabilities;
   close: () => void;
@@ -179,17 +181,7 @@ export function createAgentHarnessHostCapabilities(params: {
       coreTtsToolResults.add(result);
     }
   };
-  const requester = {
-    ...((attempt.messageChannel ?? attempt.messageProvider)
-      ? { channel: attempt.messageChannel ?? attempt.messageProvider ?? undefined }
-      : {}),
-    ...(attempt.agentAccountId ? { accountId: attempt.agentAccountId } : {}),
-    ...(attempt.senderId ? { senderId: attempt.senderId } : {}),
-    ...(attempt.senderIsOwner !== undefined ? { senderIsOwner: attempt.senderIsOwner } : {}),
-    ...(attempt.memberRoleIds?.length
-      ? { roleIds: Object.freeze([...attempt.memberRoleIds]) }
-      : {}),
-  };
+  const requester = buildHarnessHostRequester(attempt);
   const config = attempt.config ? cloneSnapshot(attempt.config) : undefined;
   const hostSandboxEnabled = attempt.sandbox?.enabled === true;
   const requiredWorkspace = captureRequiredWorkspaceToolFloor(attempt, params.pluginId, config);
@@ -331,6 +323,13 @@ export function createAgentHarnessHostCapabilities(params: {
     }: Parameters<AgentHarnessHostCapabilities["runBeforeToolCall"]>[0],
   ) => {
     assertCurrent();
+    if (params.toolCalls === "deny") {
+      return {
+        blocked: true as const,
+        kind: "veto" as const,
+        reason: "Tool calls are denied for this side question.",
+      };
+    }
     if (workspaceReadiness.beforeToolCall) {
       await workspaceReadiness.beforeToolCall(request, assertCurrent);
     }

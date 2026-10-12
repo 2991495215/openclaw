@@ -69,6 +69,26 @@ export function createCodexInferenceContext(assertClientCurrent: () => void) {
       params.signal.addEventListener("abort", registration.release, { once: true });
       return { generation: registration.generation, release: registration.release };
     },
+    /** Authorized root forks copy the admitted prefix without borrowing the parent's lifetime. */
+    fork(params: {
+      sourceThreadId: string;
+      threadId: string;
+      signal: AbortSignal;
+      assertCurrent: () => void;
+    }) {
+      assertOpen();
+      const source = roots.get(params.sourceThreadId);
+      if (!source) {
+        throw new Error("Cache-parity fork has no active parent inference context.");
+      }
+      source.assertCurrent();
+      return this.register({
+        threadId: params.threadId,
+        text: source.text,
+        signal: params.signal,
+        assertCurrent: params.assertCurrent,
+      });
+    },
     /** Caller must authenticate its private transport before parsing any model request. */
     // Host-held OAuth may fund only admitted generations; native background work has no such grant.
     prepare(body: JsonObject, preparedMetadata?: CodexInferenceMetadata, requireAdmission = false) {

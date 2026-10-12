@@ -42,6 +42,7 @@ export const databaseWorkerExtensionTestFiles = [
   "extensions/codex/src/app-server/auth-requirement-matrix.test.ts",
   "extensions/codex/src/app-server/attempt-startup-computer-use.test.ts",
   "extensions/codex/src/app-server/side-question.app-consent.test.ts",
+  "extensions/codex/src/app-server/run-attempt.session-fork.test.ts",
   "extensions/codex/src/app-server/compact.cancellation.test.ts",
   "extensions/codex/src/app-server/compact.test.ts",
   "extensions/codex/src/app-server/thread-lifecycle.adoption.test.ts",

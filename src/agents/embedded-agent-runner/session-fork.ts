@@ -1,0 +1,292 @@
+import { independentResponsesRequest } from "@openclaw/ai/internal/openai";
+import { registerSessionResourceCleanup } from "@openclaw/ai/internal/runtime";
+import { isCredentialFieldName } from "@openclaw/ai/internal/shared";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import type { Model } from "../../llm/types.js";
+import { collectTextContentBlocks } from "../content-blocks.js";
+import type { StreamFn } from "../runtime/index.js";
+import { normalizeUsage, type NormalizedUsage } from "../usage.js";
+import {
+  createUsageAccumulator,
+  mergeUsageIntoAccumulator,
+  toNormalizedUsage,
+} from "./usage-accumulator.js";
+
+type StreamOptions = NonNullable<Parameters<StreamFn>[2]>;
+export type EmbeddedSessionForkIdentity = { sessionId: string; runId: string };
+type Snapshot = EmbeddedSessionForkIdentity & {
+  model: Model;
+  context: Parameters<StreamFn>[1];
+  options: StreamOptions;
+  streamFn: StreamFn;
+  payload: Record<string, unknown>;
+  expires: number;
+  bytes: number;
+  expiryTimer: NodeJS.Timeout;
+};
+
+const snapshots = new Map<string, Snapshot>();
+const TTL_MS = 90 * 60 * 1000;
+const MAX_ENTRIES = 1000;
+const captures = new Map<string, object>();
+const MAX_BYTES = 64 * 1024 * 1024;
+let retainedBytes = 0;
+
+export function clearEmbeddedSessionForkSnapshot(sessionId?: string): void {
+  if (sessionId === undefined) {
+    for (const snapshot of snapshots.values()) {
+      clearTimeout(snapshot.expiryTimer);
+    }
+    snapshots.clear();
+    captures.clear();
+    retainedBytes = 0;
+    return;
+  }
+  captures.delete(sessionId);
+  const previous = snapshots.get(sessionId);
+  if (previous) {
+    clearTimeout(previous.expiryTimer);
+    retainedBytes -= previous.bytes;
+    snapshots.delete(sessionId);
+  }
+}
+registerSessionResourceCleanup(clearEmbeddedSessionForkSnapshot);
+
+function prune() {
+  const now = Date.now();
+  for (const [id, snapshot] of snapshots) {
+    if (snapshot.expires <= now || snapshots.size > MAX_ENTRIES || retainedBytes > MAX_BYTES) {
+      clearEmbeddedSessionForkSnapshot(id);
+    }
+  }
+}
+
+function safeHeaders(headers: Record<string, string> | undefined) {
+  return (
+    headers &&
+    Object.fromEntries(Object.entries(headers).filter(([key]) => !isCredentialFieldName(key)))
+  );
+}
+
+/** Installed below host context transforms and above the actual provider transport. */
+export function wrapStreamFnWithSessionFork(
+  streamFn: StreamFn,
+  identity: EmbeddedSessionForkIdentity,
+): StreamFn {
+  return (model, context, options) => {
+    // A transport without a payload boundary must not leave the previous turn replayable.
+    clearEmbeddedSessionForkSnapshot(identity.sessionId);
+    if (!captures.has(identity.sessionId) && captures.size >= MAX_ENTRIES) {
+      const oldest = captures.keys().next().value;
+      if (oldest !== undefined) {
+        clearEmbeddedSessionForkSnapshot(oldest);
+      }
+    }
+    const capture = {};
+    captures.set(identity.sessionId, capture);
+    const {
+      apiKey: _apiKey,
+      signal: _signal,
+      onPayload,
+      onResponse: _onResponse,
+      onActiveResponse: _onActiveResponse,
+      headers,
+      ...requestOptions
+    } = options ?? {};
+    // Clone before the stream starts: an agent may append a partial assistant while it runs.
+    const savedContext = structuredClone({
+      systemPrompt: context.systemPrompt,
+      messages: context.messages,
+      // AgentTool objects also carry executors. Retain only the transport's Tool contract.
+      tools: context.tools?.map(({ name, description, parameters, async }) => ({
+        name,
+        description,
+        parameters,
+        ...(async === false ? { async } : {}),
+      })),
+    });
+    const savedModel = structuredClone({ ...model, headers: safeHeaders(model.headers) });
+    const savedOptions = { ...requestOptions, headers: safeHeaders(headers), onPayload };
+    // Internal symbol carriers belong to the parent run, not the independent request.
+    for (const key of Object.getOwnPropertySymbols(savedOptions)) {
+      Reflect.deleteProperty(savedOptions, key);
+    }
+    for (const key of Object.keys(savedOptions)) {
+      if (key !== "onPayload" && typeof Reflect.get(savedOptions, key) === "function") {
+        Reflect.deleteProperty(savedOptions, key);
+      }
+    }
+    return streamFn(model, context, {
+      ...options,
+      onPayload: async (payload, payloadModel) => {
+        const replacement = await onPayload?.(payload, payloadModel);
+        const finalPayload = replacement === undefined ? payload : replacement;
+        if (isRecord(finalPayload) && captures.get(identity.sessionId) === capture) {
+          const savedPayload = structuredClone(finalPayload);
+          const bytes = Buffer.byteLength(
+            JSON.stringify({
+              context: savedContext,
+              model: savedModel,
+              options: savedOptions,
+              payload: savedPayload,
+            }),
+          );
+          const previous = snapshots.get(identity.sessionId);
+          if (previous) {
+            clearTimeout(previous.expiryTimer);
+            retainedBytes -= previous.bytes;
+            snapshots.delete(identity.sessionId);
+          }
+          if (bytes <= MAX_BYTES) {
+            snapshots.set(identity.sessionId, {
+              ...identity,
+              model: savedModel,
+              context: savedContext,
+              options: savedOptions,
+              payload: savedPayload,
+              streamFn,
+              bytes,
+              expires: Date.now() + TTL_MS,
+              expiryTimer: setTimeout(
+                () => clearEmbeddedSessionForkSnapshot(identity.sessionId),
+                TTL_MS,
+              ).unref(),
+            });
+            retainedBytes += bytes;
+          } else {
+            captures.delete(identity.sessionId);
+          }
+          prune();
+        }
+        return finalPayload;
+      },
+    });
+  };
+}
+
+export const EMBEDDED_FORK_REQUIRES_PARENT =
+  "Cache-parity session fork requires a parent turn prepared by this OpenClaw runtime. Send a normal message first.";
+
+function stripNewCacheMarkers(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stripNewCacheMarkers);
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== "cache_control")
+      .map(([key, child]) => [key, stripNewCacheMarkers(child)]),
+  );
+}
+
+/** Reuse the prepared transport and its hook chain, never the agent or its tool executor. */
+export async function runEmbeddedSessionFork(params: {
+  sessionId: string;
+  question: string;
+  model: Model;
+  apiKey?: string;
+  signal?: AbortSignal;
+  assertCurrent: () => void;
+  onUsage?: (usage: NormalizedUsage | undefined) => void;
+}): Promise<string> {
+  prune();
+  const snapshot = snapshots.get(params.sessionId);
+  if (!snapshot) {
+    throw new Error(EMBEDDED_FORK_REQUIRES_PARENT);
+  }
+  if (
+    snapshot.model.provider !== params.model.provider ||
+    snapshot.model.id !== params.model.id ||
+    snapshot.model.api !== params.model.api ||
+    snapshot.model.baseUrl !== params.model.baseUrl
+  ) {
+    throw new Error(
+      "Cache-parity session fork requires the parent's prepared model. Send a normal message first.",
+    );
+  }
+  const context = structuredClone(snapshot.context);
+  context.messages.push({ role: "user", content: params.question, timestamp: Date.now() });
+  const model = { ...snapshot.model, headers: params.model.headers };
+  const usage = createUsageAccumulator();
+  for (let iteration = 0; iteration < 3; iteration++) {
+    params.assertCurrent();
+    params.signal?.throwIfAborted();
+    const options: StreamOptions = {
+      ...snapshot.options,
+      apiKey: params.apiKey,
+      signal: params.signal,
+      // Background reviews cannot advertise an asynchronous tool execution capability.
+      asyncToolExecution: false,
+      onPayload: async (payload, payloadModel) => {
+        const replacement = await snapshot.options.onPayload?.(payload, payloadModel);
+        params.assertCurrent();
+        const finalPayload = replacement === undefined ? payload : replacement;
+        if (!isRecord(finalPayload)) {
+          throw new Error("Cache-parity session fork requires an object provider request.");
+        }
+        const key = Array.isArray(snapshot.payload.input) ? "input" : "messages";
+        const prefix = snapshot.payload[key];
+        const messages = finalPayload[key];
+        if (
+          !Array.isArray(prefix) ||
+          !Array.isArray(messages) ||
+          messages.length <= prefix.length
+        ) {
+          throw new Error(
+            "Cache-parity session fork could not preserve the parent request prefix.",
+          );
+        }
+        // Freeze the actual post-hook prefix, including Anthropic breakpoints. Recomputing
+        // them after appending a user message would move the final breakpoint.
+        const replay = {
+          ...structuredClone(snapshot.payload),
+          [key]: [
+            ...structuredClone(prefix),
+            ...messages.slice(prefix.length).map(stripNewCacheMarkers),
+          ],
+        };
+        delete replay.previous_response_id;
+        return replay;
+      },
+    };
+    independentResponsesRequest.set(options);
+    const stream = await snapshot.streamFn(model, context, options);
+    params.assertCurrent();
+    const result = await stream.result();
+    params.assertCurrent();
+    mergeUsageIntoAccumulator(usage, normalizeUsage(result.usage));
+    params.onUsage?.(toNormalizedUsage(usage));
+    if (result.stopReason === "error" || result.stopReason === "aborted") {
+      throw new Error(result.errorMessage || "Cache-parity session fork failed.");
+    }
+    const calls = result.content.filter((block) => block.type === "toolCall");
+    if (calls.length === 0) {
+      const text = collectTextContentBlocks(result.content).join("").trim();
+      if (!text) {
+        throw new Error("No cache-parity session fork response generated.");
+      }
+      return text;
+    }
+    context.messages.push(result);
+    for (const call of calls) {
+      context.messages.push({
+        role: "toolResult",
+        toolCallId: call.id,
+        toolName: call.name,
+        content: [
+          {
+            type: "text",
+            text: "Tool execution denied for this side question. Answer without calling tools.",
+          },
+        ],
+        isError: true,
+        timestamp: Date.now(),
+      });
+    }
+  }
+  throw new Error(
+    "Cache-parity session fork kept requesting tools after three attempts. Ask a question that can be answered without tools.",
+  );
+}

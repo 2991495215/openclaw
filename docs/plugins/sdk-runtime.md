@@ -81,6 +81,39 @@ Every `api.runtime` namespace and the page that documents it.
 | `api.runtime.state`              | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-state)     |
 | `api.runtime.channel`            | [Channel helpers](/plugins/sdk-runtime/channel#api-runtime-channel)             |
 
+### Read-only session forks
+
+Use `api.runtime.subagent.forkSession({ sessionKey, message, signal?, timeoutMs? })`
+for background inference against an existing session. It returns
+`{ text, usage? }`; usage uses the completion fields `inputTokens`, `outputTokens`,
+`cacheReadTokens`, `cacheWriteTokens`, `totalTokens`, and `costUsd`.
+The timeout defaults to 30 seconds.
+
+The fork uses the session's model and harness, with no model override. Codex
+inherits the conversation and tool definitions in an ephemeral thread, but denies
+every tool call at dispatch. It reuses the live parent's recorded native settings
+and admitted inference instructions rather than rebuilding the prompt. The fork
+keeps the parent's cache routing but has its own thread, session, and model
+authority for the background request's lifetime. Start a normal parent turn in
+the current runtime before requesting a fork. The native hook relay must be
+enabled and available; otherwise the request fails closed.
+The built-in `openclaw` runtime replays the parent's recorded provider request
+with one appended user message, preserving its system prompt, tools, reasoning
+settings, and prompt-cache affinity for OpenAI and Anthropic. Tool calls are
+denied without execution, with at most two additional inference attempts.
+Snapshots stay in bounded process memory until expiry or session cleanup.
+After a restart or without a prepared parent turn, the request fails closed:
+"Cache-parity session fork requires a parent turn prepared by this OpenClaw
+runtime. Send a normal message first." Ordinary `/btw` keeps its lightweight,
+tool-free context. CLI backends must explicitly declare tool-free side-question support.
+
+Conversation access is required through
+`plugins.entries.<id>.hooks.allowConversationAccess` (enabled by default only for
+bundled plugins). Requests share the plugin background-work owner and are
+cancelled when its runtime is retired. A fork does not write a transcript, deliver
+an answer, fire agent-turn lifecycle hooks, or consume queued injections or
+steering. Missing session context and unsupported harnesses produce errors.
+
 ## Storing runtime references
 
 Synchronous storage compatibility calls retain their synchronous return contract.
