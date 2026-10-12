@@ -5,7 +5,6 @@ import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { assertOperatorModelAllowed } from "../agents/admitted-run-context.js";
 import { resolveAgentDir, resolveSessionAgentIdsStrict } from "../agents/agent-scope.js";
-import { runBtwSideQuestion } from "../agents/btw.js";
 import { splitTrailingAuthProfile } from "../agents/model-ref-profile.js";
 import type { ModelRef } from "../agents/model-ref-shared.js";
 import type { AgentWaitResult } from "../agents/run-wait.types.js";
@@ -272,6 +271,11 @@ export function createGatewaySubagentRuntime(
             const timeoutMs = resolveTimerTimeoutMs(params.timeoutMs, 30_000);
             const runSignal = AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]);
             const sessionEntry = target.entry;
+            // Lazy: a static import pulls the agent runtime into the Gateway startup chunk
+            // and the build rejects it (INEFFECTIVE_DYNAMIC_IMPORT on subagent-registry).
+            const { runBtwSideQuestion } = await import("../agents/btw.js");
+            assertCurrent();
+            signal.throwIfAborted();
             let usage: LlmCompleteUsage | undefined;
             const result = await execution.run(() =>
               runBtwSideQuestion({
