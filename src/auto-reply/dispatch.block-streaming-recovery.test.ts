@@ -1,6 +1,10 @@
 import { createServer } from "node:http";
 import { expect, it } from "vitest";
-import { createDeferred, withTestTimeout } from "../../test/helpers/promise.js";
+import {
+  awaitGateBeforeSettlement,
+  createDeferred,
+  withinTest,
+} from "../../test/helpers/promise.js";
 import {
   getSessionMcpRuntimeManagerForTesting,
   setSessionMcpRuntimeScheduler,
@@ -41,7 +45,7 @@ it.each([
   "fallback-direct-rejected",
 ] as const)(
   "dispatchInboundMessageWithBufferedDispatcher settles %s streamed blocks before final suppression",
-  async (scenario) => {
+  async (scenario, { signal }) => {
     const timesOut = scenario === "timeout-media";
     const fallback = scenario.startsWith("fallback-");
     const fallbackDirect = scenario.startsWith("fallback-direct-");
@@ -419,7 +423,14 @@ it.each([
           | ReturnType<typeof dispatchInboundMessageWithBufferedDispatcher>
           | undefined;
         try {
-          await withTestTimeout(blockStarted.promise, 10000, "first transport start");
+          await withinTest(
+            awaitGateBeforeSettlement(
+              blockStarted.promise,
+              dispatch,
+              "dispatch settled before the first transport started",
+            ),
+            signal,
+          );
           otherDispatch = dispatchInboundMessageWithBufferedDispatcher({
             ...dispatchParams,
             ctx: {
@@ -430,11 +441,7 @@ it.each([
             },
             dispatcherOptions: { deliver: async () => ({ visibleReplySent: true }) },
           });
-          const other = await withTestTimeout(
-            otherDispatch,
-            10000,
-            "other conversation during held transport",
-          );
+          const other = await withinTest(otherDispatch, signal);
           expect(other.settledReceipt?.anyVisibleDelivered).toBe(true);
           expect(other.settledReceipt?.counts.block.delivered).toBe(3);
           expect(other.settledReceipt?.counts.final.delivered).toBe(0);
