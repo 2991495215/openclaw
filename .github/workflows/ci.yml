@@ -478,7 +478,7 @@ jobs:
           retention-days: 14
   copilot-baseline:
     if: ${{ inputs.diagnose_copilot }}
-    name: Frozen Copilot attempt baseline
+    name: Frozen inherited-failure baseline
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -501,7 +501,7 @@ jobs:
           install-bun: "false"
           dependency-cache: "false"
           frozen-lockfile: "true"
-      - name: Run Copilot attempt tests on the immutable baseline
+      - name: Run unresolved failures on the immutable baseline
         env:
           OPENCLAW_LOCAL_CHECK: "0"
           OPENCLAW_VITEST_RUNTIME: node
@@ -513,8 +513,8 @@ jobs:
           [[ "$BASELINE_SHA" =~ ^[a-f0-9]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$BASELINE_SHA"
           mkdir -p .artifacts
-          node --input-type=module -e 'console.log(JSON.stringify({ baseline: process.env.BASELINE_SHA, candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, test: "extensions/copilot/src/attempt.test.ts" }, null, 2))' > .artifacts/copilot-baseline-provenance.json
-          pnpm test extensions/copilot/src/attempt.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/copilot-baseline.log
+          node --input-type=module -e 'console.log(JSON.stringify({ baseline: process.env.BASELINE_SHA, candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA }, null, 2))' > .artifacts/copilot-baseline-provenance.json
+          pnpm test extensions/copilot/src/attempt-active-run.test.ts extensions/copilot/src/attempt-transcript-journal.test.ts src/state/openclaw-agent-db.integrity-lease.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/copilot-baseline.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: ${{ always() }}
         with:
@@ -635,6 +635,9 @@ jobs:
               src/auto-reply/reply/restart-recovery-claim.test.ts
               extensions/codex/src/command-rpc.test.ts
               extensions/codex/src/command-plugins-runtime.test.ts
+              extensions/codex/src/app-server/request-diagnostics.test.ts
+              extensions/codex/src/app-server/transcript-mirror.admission.test.ts
+              extensions/memory-core/src/memory/manager.reindex-recovery.test.ts
             )
           fi
           pnpm test "${files[@]}" --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/fixture-regressions.log
