@@ -47,7 +47,7 @@ export const captureOpenClawAgentDatabaseExecution = createAgentDatabaseExecutio
   captureFileAgentDatabaseExecution,
 );
 
-/** Explicit preparation joins the file owner's already-captured creation target. */
+/** Explicit preparation captures a missing target or joins the owner's creation target. */
 export function captureOpenClawAgentDatabasePreparationExecution(
   options: OpenClawAgentDatabaseOptions,
   expectedIdentity?: AgentDatabaseExecutionCaptureConstraints["expectedIdentity"],
@@ -152,7 +152,7 @@ function captureFileAgentDatabaseExecution(
         pathname,
         expectedCreationIdentity,
         expectedCreationIdentity.key.startsWith("path:") && existing?.kind === "file"
-          ? existing.creationIdentity
+          ? (existing.creationIdentity ?? identity)
           : identity,
         constraints.expectedIdentity,
       );
@@ -165,7 +165,9 @@ function captureFileAgentDatabaseExecution(
           pathname,
           identity,
           initialIdentity: constraints.expectedIdentity,
-          expectedCreationIdentity,
+          expectedCreationIdentity:
+            expectedCreationIdentity ??
+            (inheritCreationIdentity && identity.key.startsWith("path:") ? identity : undefined),
           requestedPath: constraints.requestedPath,
         },
         executionState,

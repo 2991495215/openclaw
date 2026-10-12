@@ -11,6 +11,8 @@ import {
   upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
 import { createDeferredCore } from "../../shared/deferred.js";
+import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
+import { ensureUserProfilesSchema } from "../../state/user-profiles-schema.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import { roleClient, rolePolicyConfig } from "../session-sharing.test-utils.js";
@@ -74,6 +76,8 @@ describe("registered chat read scope", () => {
         }
         await state.writeConfig(cfg);
         setRuntimeConfigSnapshot(cfg);
+        ensureUserProfilesSchema({});
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
         const owner = roleClient("write", "synthetic-owner");
         const client =
           testCase.actor === "owner"
@@ -152,6 +156,8 @@ describe("registered chat read scope", () => {
   it("traverses a full hidden page and keeps raw custody counts separate from execution", async () => {
     await withOpenClawTestState(profileState, async () => {
       await captureRuntimeConfigAsyncReader()();
+      ensureUserProfilesSchema({});
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
       const client = roleClient("write", "pagination-owner");
       const scope = {
         agentId: "main",
@@ -253,6 +259,8 @@ describe("registered chat read scope", () => {
         const cfg = rolePolicyConfig();
         await state.writeConfig(cfg);
         setRuntimeConfigSnapshot(cfg);
+        ensureUserProfilesSchema({});
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
         const owner = roleClient("write", "async-owner");
         const client = roleClient("view", "async-reader");
         const scope = {

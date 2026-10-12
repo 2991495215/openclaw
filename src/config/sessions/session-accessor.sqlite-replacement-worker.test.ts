@@ -46,6 +46,7 @@ import {
   readExactSessionEntryRow,
   writeSessionEntry,
 } from "./session-accessor.sqlite-entry-store.js";
+import { replaceSessionEntry } from "./session-accessor.sqlite-entry.js";
 import {
   applySessionEntryCanonicalReplacements,
   applySessionEntryExactReplacements,
@@ -453,6 +454,30 @@ it("creates a missing durable replacement database entirely through its worker o
   });
 });
 
+it("joins an original absent-target reservation when replacing the first session entry", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    const storePath = state.statePath("reserved-replacement.sqlite");
+    const options = { agentId: "main", path: storePath };
+    const creator = captureOpenClawAgentDatabaseExecution(options, {
+      expectedCreationIdentity: readDatabasePathIdentitySync(storePath),
+    });
+    const sessionKey = "agent:main:reserved-replacement";
+    try {
+      await replaceSessionEntry(
+        { agentId: "main", storePath, sessionKey },
+        { sessionId: "reserved-replacement", updatedAt: 1 },
+      );
+      const database = openOpenClawAgentDatabase(options);
+      expect(readExactSessionEntryRow(database, sessionKey)?.entry.sessionId).toBe(
+        "reserved-replacement",
+      );
+      expect(creator.fileIdentity).toMatchObject({ kind: "file" });
+    } finally {
+      await creator.release();
+    }
+  });
+});
+
 it("joins postcommit follow-up on close without granting a successor authority", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     const database = openOpenClawAgentDatabase({ agentId: "main" });
@@ -748,15 +773,13 @@ it.each([
       expect(followup).not.toHaveBeenCalled();
       expect(committedLifecycle).toHaveBeenCalledTimes(missingReceipt ? 0 : 1);
       expect(observed).toEqual([
-        missingReceipt || nativeUnknown
-          ? undefined
-          : { visibility: "read-only", membership: ["member"] },
+        missingReceipt ? undefined : { visibility: "read-only", membership: ["member"] },
       ]);
       expect(sharing.readCurrent()?.entry?.visibility).toBe(
-        missingReceipt || nativeUnknown ? undefined : "read-only",
+        missingReceipt ? undefined : "read-only",
       );
       expect(preparedPublications).toHaveLength(1);
-      if (missingReceipt || nativeUnknown) {
+      if (missingReceipt) {
         expect(preparedPublications[0]).toBeUndefined();
       } else {
         expect(preparedPublications[0]?.entry).toMatchObject({

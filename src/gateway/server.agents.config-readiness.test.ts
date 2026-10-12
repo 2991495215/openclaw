@@ -39,6 +39,7 @@ it("publishes agent mutations before acknowledging immediate session and roster 
 }) => {
   const agentId = "readiness-agent";
   let phase = "fixture setup";
+  let teardownPhase: string | undefined;
   const overlappingPhases: Record<number, string> = {};
   const publicationEntered = createDeferred();
   const releasePublication = createDeferred();
@@ -79,7 +80,9 @@ it("publishes agent mutations before acknowledging immediate session and roster 
       }
     });
   onTestFinished(() => {
-    process.stderr.write(`[config-readiness] ${JSON.stringify({ phase, overlappingPhases })}\n`);
+    process.stderr.write(
+      `[config-readiness] ${JSON.stringify({ phase, overlappingPhases, teardownPhase })}\n`,
+    );
     releasePublication.resolve();
     reloaderSpy.mockRestore();
     revivalSpy.mockRestore();
@@ -223,19 +226,22 @@ it("publishes agent mutations before acknowledging immediate session and roster 
           }
           phase = "awaiting CLI creation completion";
           await expect(creation).resolves.toMatchObject({ agentId });
-          phase = "agent CRUD";
+          phase = "agent CRUD: agents.list after creation";
           await expect(client.request("agents.list", {})).resolves.toMatchObject({
             agents: expect.arrayContaining([expect.objectContaining({ id: agentId })]),
           });
+          phase = "agent CRUD: first sessions.create";
           const createdSession = await withinTest(firstSession, signal);
           if (!createdSession.ok) {
             throw createdSession.error;
           }
           expect(createdSession.value).toMatchObject({ key });
+          phase = "agent CRUD: sessions.list after creation";
           await expect(client.request("sessions.list", { agentId })).resolves.toMatchObject({
             sessions: expect.arrayContaining([expect.objectContaining({ key })]),
           });
 
+          phase = "agent CRUD: agents.update";
           await expect(
             client.request("agents.update", {
               agentId,
@@ -243,6 +249,7 @@ it("publishes agent mutations before acknowledging immediate session and roster 
               model: "openai/gpt-4.1",
             }),
           ).resolves.toMatchObject({ ok: true, agentId });
+          phase = "agent CRUD: agents.list after update";
           await expect(client.request("agents.list", {})).resolves.toMatchObject({
             agents: expect.arrayContaining([
               expect.objectContaining({ id: agentId, name: "Ready Immediately" }),
@@ -251,14 +258,17 @@ it("publishes agent mutations before acknowledging immediate session and roster 
           expect(
             resolveAgentModelPrimaryValue(getRuntimeConfig().agents?.entries?.[agentId]?.model),
           ).toBe("openai/gpt-4.1");
+          phase = "agent CRUD: sessions.create after update";
           await expect(
             client.request("sessions.create", { agentId, key: `agent:${agentId}:after-update` }),
           ).resolves.toMatchObject({ key: `agent:${agentId}:after-update` });
 
+          phase = "agent CRUD: agents.delete";
           await expect(
             client.request("agents.delete", { agentId, deleteFiles: false }),
           ).resolves.toMatchObject({ ok: true, agentId });
           for (const incognito of [false, true]) {
+            phase = `agent CRUD: sessions.create after delete (incognito=${incognito})`;
             await expect(
               client.request("sessions.create", {
                 agentId,
@@ -340,7 +350,9 @@ it("publishes agent mutations before acknowledging immediate session and roster 
               signal,
             );
           } finally {
+            teardownPhase = "disconnect peer";
             await disconnectGatewayClient(peer);
+            teardownPhase = undefined;
           }
 
           phase = "injected reload failures";
@@ -405,7 +417,9 @@ it("publishes agent mutations before acknowledging immediate session and roster 
           } finally {
             unsubscribe();
             scheduleSpy.mockRestore();
+            teardownPhase = "stop injected scheduler";
             await scheduler.stop();
+            teardownPhase = undefined;
           }
 
           phase = "disabled reload";
@@ -429,14 +443,36 @@ it("publishes agent mutations before acknowledging immediate session and roster 
           expect(getRuntimeConfig().agents?.entries?.["saved-only"]).toBeUndefined();
           expect(recoveryRestart).not.toHaveBeenCalled();
           phase = "completed";
+        } catch (error) {
+          process.stderr.write(
+            `[config-readiness-failure] ${JSON.stringify({
+              phase,
+              name: error instanceof Error ? error.name : typeof error,
+              frames:
+                error instanceof Error
+                  ? (error.stack ?? "")
+                      .split("\n")
+                      .slice(1, 6)
+                      .map((frame) => frame.split(/[\\/]/).at(-1) ?? "")
+                  : [],
+            })}\n`,
+          );
+          throw error;
         } finally {
+          teardownPhase = "disconnect client";
           await disconnectGatewayClient(client);
+          teardownPhase = undefined;
         }
       } finally {
+        teardownPhase = "close Gateway";
         await server.close();
+        teardownPhase = "release Gateway lock";
         await owner.release();
+        teardownPhase = "release port claim";
         await claim.release();
+        teardownPhase = "state fixture cleanup";
       }
     },
   );
+  teardownPhase = "completed";
 });

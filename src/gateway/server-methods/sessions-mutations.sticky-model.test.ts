@@ -14,6 +14,7 @@ import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metada
 import { createDeferredCore } from "../../shared/deferred.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
 import * as userModelAccounts from "../../state/user-model-accounts.js";
+import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import {
   createOpenClawTestState,
@@ -89,6 +90,7 @@ let openClawTestState: OpenClawTestState;
 let accountOwnerId: string;
 let otherPersonId: string;
 let personalAuthProfileId: string;
+let profileCatalog: Awaited<ReturnType<typeof prepareUserProfileCatalog>> | undefined;
 
 const modelCatalog: ModelCatalogEntry[] = [
   { provider: "anthropic", id: "claude-opus-4-6", name: "Claude Opus" },
@@ -204,6 +206,7 @@ beforeAll(async () => {
     },
     assertCurrent: () => {},
   }).authProfileId;
+  profileCatalog = await prepareUserProfileCatalog();
   // Persisted runtime pins need installed owners even when a patch changes only permissions.
   pluginMetadata.snapshot = createPluginMetadataSnapshotFixture({
     plugins: [
@@ -239,6 +242,7 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
+  profileCatalog?.release();
   closeOpenClawAgentDatabasesForTest();
   await openClawTestState.cleanup();
 });
