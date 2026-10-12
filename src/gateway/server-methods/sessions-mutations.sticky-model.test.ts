@@ -478,7 +478,7 @@ describe("sessions.patch personal model-account ownership", () => {
       const connections = new Set([caller]);
       const requestContext = context(connections);
       const catalog = createDeferredCore<ReturnType<typeof catalogSnapshot>>();
-      const catalogRequested = createDeferredCore<void>();
+      const catalogRequested = createDeferredCore();
       requestContext.loadGatewayModelCatalogSnapshot.mockImplementationOnce(() => {
         catalogRequested.resolve();
         return catalog.promise;

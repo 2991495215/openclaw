@@ -555,6 +555,7 @@ describe("runCliAgent before_agent_reply seam", () => {
   });
 
   it("lets before_agent_reply claim cron runs before the CLI subprocess is invoked", async () => {
+    await preparePluginMetadataMachineStateAsync({});
     const logInfoSpy = vi.spyOn(cliBackendLog, "info").mockImplementation(() => undefined);
     hasHooksMock.mockImplementation((hookName) => hookName === "before_agent_reply");
     replyMock.mockResolvedValue({
