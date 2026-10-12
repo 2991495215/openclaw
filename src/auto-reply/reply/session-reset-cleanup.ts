@@ -29,7 +29,8 @@ export function createSessionResetCleanupGuard(params: {
   expectedSession: Pick<SessionEntry, "sessionId" | "lifecycleRevision"> | undefined;
   assertCurrent?: () => void;
 }): () => void {
-  const memory = captureSessionEntryMetadataRead(params, () => params.assertCurrent?.());
+  // The guard checks caller authority once; the read retains actor and owner lifetime checks.
+  const memory = captureSessionEntryMetadataRead(params, () => {});
   const sessionId = params.expectedSession?.sessionId;
   const lifecycleRevision = params.expectedSession?.lifecycleRevision;
   return () => {

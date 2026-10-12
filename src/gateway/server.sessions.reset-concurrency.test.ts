@@ -8,6 +8,7 @@ import type { CliDeps } from "../cli/deps.types.js";
 import {
   loadSessionEntry,
   loadTranscriptEvents,
+  replaceSessionEntry,
   replaceSessionEntrySync,
 } from "../config/sessions/session-accessor.js";
 import { LegacyPluginSdkResourceHost } from "../plugins/legacy-sdk-resource-host.js";
@@ -74,15 +75,16 @@ test.each(["normal", "incognito", "replacement"])(
     const { storePath } = await createSessionStoreDir();
     const sessionKey = `agent:main:dashboard:${mode === "incognito" ? "incognito-" : ""}closing-reset`;
     const sessionId = "closing-reset";
-    await writeSessionStore({
-      entries: {
-        [sessionKey]: sessionStoreEntry(sessionId, {
-          incognito: mode === "incognito" ? true : undefined,
-          lifecycleRevision: "original",
-          totalTokens: 99,
-        }),
-      },
+    const initialEntry = sessionStoreEntry(sessionId, {
+      incognito: mode === "incognito" ? true : undefined,
+      lifecycleRevision: "original",
+      totalTokens: 99,
     });
+    if (mode === "incognito") {
+      await replaceSessionEntry({ agentId: "main", sessionKey, storePath }, initialEntry);
+    } else {
+      await writeSessionStore({ entries: { [sessionKey]: initialEntry } });
+    }
     let current = true;
     let cleaned = false;
     registerAgentHarness({
@@ -144,14 +146,15 @@ test.each([false, true])(
   async (incognito) => {
     const { storePath } = await createSessionStoreDir();
     const sessionKey = `agent:main:dashboard:${incognito ? "incognito-" : ""}early-reset`;
-    await writeSessionStore({
-      entries: {
-        [sessionKey]: sessionStoreEntry("early-reset", {
-          incognito: incognito ? true : undefined,
-          totalTokens: 99,
-        }),
-      },
+    const initialEntry = sessionStoreEntry("early-reset", {
+      incognito: incognito ? true : undefined,
+      totalTokens: 99,
     });
+    if (incognito) {
+      await replaceSessionEntry({ agentId: "main", sessionKey, storePath }, initialEntry);
+    } else {
+      await writeSessionStore({ entries: { [sessionKey]: initialEntry } });
+    }
     const before = loadSessionEntry({ sessionKey, storePath });
     let current = true;
     sessionHookMocks.triggerInternalHook.mockImplementationOnce(async () => {

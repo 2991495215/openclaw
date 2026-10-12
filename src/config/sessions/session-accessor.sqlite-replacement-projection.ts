@@ -20,6 +20,7 @@ import type {
 } from "./session-accessor.sqlite-contract.js";
 import type { SessionCreationSnapshot } from "./session-accessor.sqlite-creation-read.js";
 import {
+  captureNativeSessionWorkerDeletion,
   hasPreparedNativeSessionDeletion,
   runSqliteSessionDeletionTransaction as runOpenClawAgentWriteTransaction,
 } from "./session-accessor.sqlite-deletion.js";
@@ -461,8 +462,10 @@ async function applySqliteSessionEntryReplacementProjection<T, TReplacement>(
       return {
         deletedEntries: deletedOwners,
         commit: async (assertSourceCurrent) => {
-          // Native companions and process-held stores retain their synchronous transaction view.
-          const workerCommit = useWorker && !hasPreparedNativeSessionDeletion();
+          const nativeDeletion = captureNativeSessionWorkerDeletion(deletedOwners);
+          // Only opaque companions require the parent's synchronous transaction view.
+          const workerCommit =
+            useWorker && (!hasPreparedNativeSessionDeletion() || Boolean(nativeDeletion));
           const preparedPreservation =
             params.skipMaintenance === false
               ? await prepareSessionMaintenancePreservation(params.storePath, {
@@ -568,6 +571,7 @@ async function applySqliteSessionEntryReplacementProjection<T, TReplacement>(
                   : undefined,
               },
               params.retainedExecution,
+              nativeDeletion,
             );
             return { maintenancePlans: committed.maintenancePlans, result: operation.result };
           } finally {

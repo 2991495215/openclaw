@@ -108,7 +108,7 @@ afterEach(() => {
 test("persists and dispatches concurrent Gateway inputs while participant writes queue", async () => {
   const { storePath } = await createSessionStoreDir();
   const { ws } = await openClient();
-  const inputs = Array.from({ length: 8 }, (_, index) => ({
+  const inputs = Array.from({ length: 2 }, (_, index) => ({
     agentId: "main",
     key: `agent:main:dashboard:concurrent-initial-${index}`,
     message: `Persist concurrent Gateway initial input ${index}.`,

@@ -204,7 +204,7 @@ async function selectedSession(options: SkillLibraryRequestOwner, sessionKey: st
     },
   );
   const assertRouting = captureSessionMutationRouting(sourceCfg);
-  const resolve = (): SessionSharingTarget => {
+  const resolve = (authorize = true): SessionSharingTarget => {
     const cfg = options.context.getRuntimeConfig();
     assertRouting(cfg);
     const target = actorFacts
@@ -213,13 +213,15 @@ async function selectedSession(options: SkillLibraryRequestOwner, sessionKey: st
     if (!target) {
       throw new SkillLibraryError("NOT_FOUND", "Session not found.");
     }
-    const error = authorizeSessionSharingTarget({ cfg, client: options.client, target });
-    if (error) {
-      throw new SessionMutationAuthorizationChangedError(error);
+    if (authorize) {
+      const error = authorizeSessionSharingTarget({ cfg, client: options.client, target });
+      if (error) {
+        throw new SessionMutationAuthorizationChangedError(error);
+      }
     }
     return target;
   };
-  const target = resolve();
+  const target = resolve(Boolean(actorFacts || isIncognitoSessionKey(sessionKey)));
   try {
     const currentTarget = () => {
       const current = resolve();
@@ -374,6 +376,7 @@ export const skillsLibraryHandlers: GatewayRequestHandlers = {
             selection.skillId === params.skillId && selection.revision === params.revision,
         );
         if (!pin) {
+          session.assertCurrent();
           throw new SkillLibraryError(
             "FORBIDDEN",
             "Session reads require an exact selected skillId and revision.",

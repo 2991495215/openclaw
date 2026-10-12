@@ -346,6 +346,12 @@ src/agents/worktrees/repository-paths.ts
 src/agents/worktrees/run-end-lifecycle.ts
 src/agents/sandbox/registry-lifecycle.ts
 src/agents/sandbox/registry-publication.ts
+src/config/zod-schema.database.ts
+src/infra/postgres-sync/connection.ts
+src/infra/postgres-sync/protocol.ts
+src/infra/postgres-sync/query-compiler.ts
+src/infra/postgres-sync/transaction.ts
+src/infra/sql-connection.ts
 src/sessions/communication-admission.ts
 src/sessions/communication-policy.ts
 src/config/sessions/session-actor-command.ts
@@ -1666,6 +1672,7 @@ src/state/agent-deletion-discovery.ts
 src/state/agent-deletion-journal-history.ts
 src/state/agent-deletion-journal-recovery.kernel.ts
 src/state/agent-deletion-journal-recovery.ts
+src/state/agent-deletion-journal-status.ts
 src/state/agent-deletion-journal.read.ts
 src/state/agent-deletion-journal.ts
 src/state/agent-provenance.kernel.ts
@@ -2283,5 +2290,10 @@ src/config/sessions/session-manual-compact-entry.ts
 src/config/sessions/session-manual-compact-selection.ts
 src/config/sessions/store-maintenance-plan.ts
 src/config/sessions/store-maintenance-preserve-snapshot.ts
+src/config/sessions/session-accessor.sqlite-reclamation-publication.ts
+src/config/sessions/session-entry-patch.ts
+src/config/sessions/session-lifecycle-worker-publication.ts
+src/config/sessions/session-native-binding.ts
+src/plugin-state/plugin-state-publication.ts
 src/config/sessions/transcript-recent-text.ts
 src/config/sessions/transcript-recent-window.ts

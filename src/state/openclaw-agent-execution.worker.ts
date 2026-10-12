@@ -603,7 +603,8 @@ function openAgentDatabaseBackend(
           ? command.input
           : command.type === "session.messageCut.commit"
             ? command.input.nativeBindings
-            : command.type === "session.agentPurge.commit" ||
+            : command.type === "session.entries.replace" ||
+                command.type === "session.agentPurge.commit" ||
                 command.type === "session.maintenance.finalize"
               ? command.input.nativeBindings
               : undefined;
@@ -611,6 +612,9 @@ function openAgentDatabaseBackend(
         return Promise.all([
           preparing,
           prepareAgentNativeBindingOperation(nativeBindings, input.environment),
+          command.type === "session.entries.replace" && command.input.initializeTranscript
+            ? prepareAgentTranscript()
+            : undefined,
         ]).then(() => {});
       }
       if (
