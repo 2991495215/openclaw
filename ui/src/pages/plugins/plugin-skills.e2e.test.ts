@@ -346,6 +346,9 @@ describeControlUiE2e("Plugin skill bundle routes", () => {
             await captureScreenshot(page, `skill-bundle-${width}.png`, "viewport");
           }
         }
+        // A hovered file-path hint consumes Escape before the dialog does.
+        await modal.locator(".heading").hover();
+        await expect.poll(() => modal.locator("openclaw-tooltip[open]").count()).toBe(0);
         try {
           await page.keyboard.press("Escape");
           await expect.poll(() => modal.count()).toBe(0);
