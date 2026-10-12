@@ -239,7 +239,7 @@ test("sessions.recover denies a narrow continuation into a linked foreign succes
     id: "linked-recovery-explicit-member",
     key: sourceKey,
   });
-  expect(granted).toMatchObject({
+  expect(granted, JSON.stringify(granted)).toMatchObject({
     ok: true,
     payload: {
       key: successorKey,
@@ -279,7 +279,7 @@ test("sessions.recover retains source revocation for its accepted own successor"
     hasCurrentClientAuthority: requestAuthority.isCurrent,
   });
 
-  expect(recovered).toMatchObject({
+  expect(recovered, JSON.stringify(recovered)).toMatchObject({
     ok: true,
     payload: { key: expect.any(String), continuation: { status: "started" } },
   });
