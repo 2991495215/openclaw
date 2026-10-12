@@ -361,12 +361,7 @@ export class BrowserPanelInputController {
       return;
     }
     event.preventDefault();
-    this.runAfterClick(async (client, targetId) => {
-      await pressBrowserKey(client, { targetId, key });
-      if (key === "Enter" || key === " ") {
-        await this.host.annotations.refresh();
-      }
-    });
+    this.runAfterClick((client, targetId) => pressBrowserKey(client, { targetId, key }));
   }
 
   handleViewportPaste(event: ClipboardEvent): void {
@@ -397,17 +392,24 @@ export class BrowserPanelInputController {
     }
     const epoch = this.host.operations.epoch;
     const generation = this.inputGeneration;
+    const current = () =>
+      this.host.operations.isLive(epoch, client) &&
+      this.host.activeTargetId === targetId &&
+      this.host.view?.targetId === targetId &&
+      this.host.mode === "interact" &&
+      this.inputGeneration === generation;
     const run = (): Promise<boolean> | undefined => {
-      if (
-        !this.host.operations.isLive(epoch, client) ||
-        this.host.activeTargetId !== targetId ||
-        this.host.view?.targetId !== targetId ||
-        this.host.mode !== "interact" ||
-        this.inputGeneration !== generation
-      ) {
+      if (!current()) {
         return undefined;
       }
-      return this.host.runAction((actionClient) => action(actionClient, targetId));
+      return this.host.runAction(async (actionClient) => {
+        await action(actionClient, targetId);
+        // Any completed page input can enter annotation mode. Never let an old
+        // completion probe whichever tab or session replaced its captured owner.
+        if (current()) {
+          await this.host.annotations.refresh();
+        }
+      });
     };
     const click = this.pendingClick;
     const afterClick = () =>

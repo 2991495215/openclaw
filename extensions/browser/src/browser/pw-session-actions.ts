@@ -43,7 +43,6 @@ import {
   cachedByCdpUrl,
   connectingByCdpUrl,
   pageStates,
-  retainedClosingByCdpUrl,
   type BrowserObservedState,
 } from "./pw-session-contracts.js";
 import {
@@ -128,11 +127,7 @@ export async function closePlaywrightBrowserConnection(opts?: { cdpUrl?: string 
     return;
   }
 
-  const cdpUrls = new Set([
-    ...cachedByCdpUrl.keys(),
-    ...connectingByCdpUrl.keys(),
-    ...retainedClosingByCdpUrl.keys(),
-  ]);
+  const cdpUrls = new Set([...cachedByCdpUrl.keys(), ...connectingByCdpUrl.keys()]);
   clearBlockedTargetsForCdpUrl();
   clearBlockedPageRefsForCdpUrl();
   const results = await Promise.allSettled(

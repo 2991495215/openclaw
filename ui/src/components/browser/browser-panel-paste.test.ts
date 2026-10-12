@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
+import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { createStorageMock } from "../../test-helpers/storage.ts";
 import {
   createBrowserClient,
   createView,
   flushBrowserResponses,
+  type BrowserRequestEnvelope,
 } from "./browser-panel-controller-test-support.ts";
 import type { BrowserPanelController } from "./browser-panel-controller.ts";
 import "./browser-panel.ts";
@@ -49,6 +51,15 @@ function setStageSize(panel: HTMLElementTagNameMap["openclaw-browser-panel"], si
   );
 }
 
+const inactiveAnnotations = {
+  documentId: "form-document",
+  active: false,
+  surfaceCount: 0,
+  selection: null,
+  controls: [],
+  controlsHeading: "",
+};
+
 describe("Browser panel text and touch input", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -64,14 +75,16 @@ describe("Browser panel text and touch input", () => {
   });
 
   async function mount() {
-    const { client, request } = createBrowserClient(async () => ({ ok: true }));
+    const { client, request } = createBrowserClient(async (envelope) =>
+      envelope.path === "/annotations" ? inactiveAnnotations : { ok: true },
+    );
     const panel = document.createElement("openclaw-browser-panel");
     panel.available = true;
     panel.embedded = true;
     panel.presented = true;
     panel.refreshOnPresentation = false;
     panel.client = client;
-    document.body.append(panel);
+    mountSolid(() => panel);
     await panel.updateComplete;
     const controller = (panel as unknown as { browserPanelController: BrowserPanelController })
       .browserPanelController;
@@ -122,10 +135,10 @@ describe("Browser panel text and touch input", () => {
   );
 
   it("offers an empty editable input surface while typing stays remote", async () => {
-    const { panel, request, input } = await mount();
+    const { request, input } = await mount();
     expect(input).not.toBeNull();
     input.focus();
-    expect(panel.shadowRoot?.activeElement).toBe(input);
+    expect(document.activeElement).toBe(input);
     const key = new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true });
     input.dispatchEvent(key);
     expect(key.defaultPrevented).toBe(true);
@@ -155,12 +168,15 @@ describe("Browser panel text and touch input", () => {
         new KeyboardEvent("keydown", { key: "Unidentified", keyCode: 229, bubbles: true }),
       );
       input.dispatchEvent(textInput("beforeinput", inputType!, data));
-      await flushBrowserResponses();
+      await vi.advanceTimersByTimeAsync(0);
     }
     expect(request.mock.calls.map(([, params]) => params)).toMatchObject([
       { body: { kind: "insertText", targetId: "form-tab", text: "hello 🦞" } },
+      { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
       { body: { kind: "press", targetId: "form-tab", key: "Backspace" } },
+      { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
       { body: { kind: "press", targetId: "form-tab", key: "Enter" } },
+      { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
     ]);
     expect(input.value).toBe("");
   });
@@ -173,7 +189,10 @@ describe("Browser panel text and touch input", () => {
     input.dispatchEvent(textInput("input", "insertReplacementText", "the"));
     await flushBrowserResponses();
     await panel.updateComplete;
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls.map(([, params]) => params)).toMatchObject([
+      { body: { kind: "insertText", targetId: "form-tab", text: "teh" } },
+      { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
+    ]);
     expect(input.value).toBe("");
     expect(input.getAttribute("autocorrect")).toBe("off");
     expect(panel.renderRoot.querySelector('[role="status"]')?.textContent).toContain(
@@ -252,12 +271,10 @@ describe("Browser panel text and touch input", () => {
       await flushBrowserResponses();
       expect(input.value).toBe("");
       if (outcome === "committed") {
-        expect(request).toHaveBeenCalledExactlyOnceWith(
-          "browser.request",
-          expect.objectContaining({
-            body: { kind: "insertText", text: "日本語", targetId: "form-tab" },
-          }),
-        );
+        expect(request.mock.calls.map(([, params]) => params)).toMatchObject([
+          { body: { kind: "insertText", text: "日本語", targetId: "form-tab" } },
+          { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
+        ]);
       } else {
         expect(request).not.toHaveBeenCalled();
       }
@@ -279,7 +296,9 @@ describe("Browser panel text and touch input", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(request.mock.calls.map(([, params]) => params)).toMatchObject([
       { body: { kind: "insertText", text: "hello" } },
+      { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
       { body: { kind: "press", key: "Backspace" } },
+      { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
     ]);
   });
 
@@ -315,6 +334,7 @@ describe("Browser panel text and touch input", () => {
           { body: { kind: "clickCoords" } },
           { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
           { body: { kind: "insertText", text: "for the clicked field" } },
+          { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
           { body: { kind: "clickCoords" } },
           { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
         ]);
@@ -328,10 +348,20 @@ describe("Browser panel text and touch input", () => {
       const { panel, request, input } = await mount();
       const precedingText = createDeferred<unknown>();
       const firstClick = createDeferred<unknown>();
-      if (pendingText) {
-        request.mockImplementationOnce(async () => precedingText.promise);
-      }
-      request.mockImplementationOnce(async () => firstClick.promise);
+      let clicks = 0;
+      request.mockImplementation(async (_method, params) => {
+        const envelope = params as BrowserRequestEnvelope;
+        if (envelope.path === "/annotations") {
+          return inactiveAnnotations;
+        }
+        if (pendingText && envelope.body?.kind === "insertText") {
+          return precedingText.promise;
+        }
+        if (envelope.body?.kind === "clickCoords" && clicks++ === 0) {
+          return firstClick.promise;
+        }
+        return { ok: true };
+      });
       setStageSize(panel);
       if (pendingText) {
         input.dispatchEvent(paste("previous field"));
@@ -344,16 +374,30 @@ describe("Browser panel text and touch input", () => {
       expect(request).toHaveBeenCalledTimes(1);
       precedingText.resolve({ ok: true });
       await vi.advanceTimersByTimeAsync(0);
-      expect(request).toHaveBeenCalledTimes(pendingText ? 2 : 1);
+      expect(request.mock.calls.map(([, params]) => params)).toMatchObject([
+        ...(pendingText
+          ? [
+              { body: { kind: "insertText", text: "previous field" } },
+              { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
+            ]
+          : []),
+        { body: { kind: "clickCoords" } },
+      ]);
       firstClick.resolve({ ok: true });
       await vi.advanceTimersByTimeAsync(0);
       expect(request.mock.calls.map(([, params]) => params)).toMatchObject([
-        ...(pendingText ? [{ body: { kind: "insertText", text: "previous field" } }] : []),
+        ...(pendingText
+          ? [
+              { body: { kind: "insertText", text: "previous field" } },
+              { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
+            ]
+          : []),
         { body: { kind: "clickCoords" } },
         { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
         { body: { kind: "clickCoords" } },
         { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
         { body: { kind: "press", key: "a" } },
+        { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
       ]);
     },
   );
@@ -377,6 +421,7 @@ describe("Browser panel text and touch input", () => {
       { body: { kind: "clickCoords" } },
       { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
       { body: { kind: "insertText", text: "correct field" } },
+      { path: "/annotations", body: { action: "state", targetId: "form-tab" } },
     ]);
   });
 
