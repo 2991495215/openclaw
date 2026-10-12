@@ -19,9 +19,10 @@ import {
   useProviderToolSchemaRuntimeForTest,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
 import type { ModelCompatConfig } from "openclaw/plugin-sdk/provider-model-types";
+import { captureRuntimeConfigAsyncReader } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { patchSessionEntry, upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import { useSessionStoreTempDirs } from "openclaw/plugin-sdk/sqlite-runtime-testing";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as clientCleanup from "./attempt-client-cleanup.js";
 import {
   recordCodexThreadForkSettings,
@@ -134,6 +135,10 @@ function codexHookCommand(config: unknown, key: string) {
     .at(0)
     ?.hooks?.at(0);
 }
+
+beforeAll(async () => {
+  await captureRuntimeConfigAsyncReader()();
+});
 
 useProviderToolSchemaRuntimeForTest(["openai", "codex", "lmstudio"]);
 

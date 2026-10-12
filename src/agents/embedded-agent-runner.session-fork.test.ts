@@ -4,6 +4,7 @@ import { configureAiTransportHost, getAiTransportHost } from "@openclaw/ai";
 import { cleanupSessionResources } from "@openclaw/ai/internal/runtime";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { captureRuntimeConfigAsyncReader } from "../config/io.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
@@ -18,7 +19,6 @@ import { prepareSystemAgentRunAdmission } from "./admitted-run-context.js";
 import { readBtwTranscriptMessages, resolveBtwSessionTranscriptPath } from "./btw-transcript.js";
 import { runBtwSideQuestion } from "./btw.js";
 import { runEmbeddedAgent } from "./embedded-agent-runner.js";
-import { EMBEDDED_FORK_REQUIRES_PARENT } from "./embedded-agent-runner/session-fork.js";
 import * as sessionPlacementAdmission from "./session-placement-admission.js";
 
 type Api = "openai-completions" | "openai-responses" | "anthropic-messages";
@@ -232,6 +232,7 @@ describe("embedded cache-parity session fork", () => {
           tools: { allow: ["fork_probe"], toolSearch: false },
         };
         await state.writeConfig(config);
+        await captureRuntimeConfigAsyncReader()();
         await loadAndActivateRootPluginRegistry({
           config,
           workspaceDir: state.workspaceDir,
@@ -284,7 +285,7 @@ describe("embedded cache-parity session fork", () => {
             opts: { onBlockReply, abortSignal },
           });
         try {
-          await expect(fork()).rejects.toThrow(EMBEDDED_FORK_REQUIRES_PARENT);
+          await expect(fork()).rejects.toThrow("requires a parent turn");
           expect(payloads).toHaveLength(0);
           const admission = prepareSystemAgentRunAdmission(
             config,
@@ -383,7 +384,6 @@ describe("embedded cache-parity session fork", () => {
           const messageKey = api === "openai-responses" ? "input" : "messages";
           const originalMessages = original[messageKey];
           const replayMessages = replay[messageKey];
-          expect(Array.isArray(originalMessages)).toBe(true);
           if (!Array.isArray(originalMessages) || !Array.isArray(replayMessages)) {
             throw new Error("Missing captured messages");
           }
@@ -418,10 +418,10 @@ describe("embedded cache-parity session fork", () => {
           beforeProviderResponse = () => pluginAbort.abort(new Error("plugin runtime retired"));
           await expect(fork(pluginAbort.signal)).rejects.toThrow();
           beforeProviderResponse = () => cleanupSessionResources(sessionId);
-          await expect(fork()).rejects.toThrow(EMBEDDED_FORK_REQUIRES_PARENT);
+          await expect(fork()).rejects.toThrow("requires a parent turn");
           beforeProviderResponse = undefined;
           const beforeReset = payloads.length;
-          await expect(fork()).rejects.toThrow(EMBEDDED_FORK_REQUIRES_PARENT);
+          await expect(fork()).rejects.toThrow("requires a parent turn");
           expect(payloads).toHaveLength(beforeReset);
         } finally {
           configureAiTransportHost(host);

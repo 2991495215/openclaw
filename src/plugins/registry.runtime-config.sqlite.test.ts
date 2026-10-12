@@ -1,5 +1,6 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { captureRuntimeConfigAsyncReader } from "../config/io.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { withTempHome } from "../plugin-sdk/test-env.js";
@@ -16,6 +17,7 @@ describe("plugin registry SQLite session ownership", () => {
       const config: OpenClawConfig = {
         agents: { entries: { researcher: {} } },
       };
+      await captureRuntimeConfigAsyncReader()();
       const subagent = {
         complete: vi.fn(async () => ({ text: "completed" })),
         forkSession: vi.fn(async () => ({ text: "completed" })),

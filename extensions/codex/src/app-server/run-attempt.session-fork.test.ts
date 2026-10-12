@@ -1,6 +1,10 @@
 import type { AgentHarnessSideQuestionParamsV2 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { createAdmittedHostCapabilityTestFixture } from "openclaw/plugin-sdk/plugin-test-runtime";
-import { describe, expect, it, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { CodexAppServerClient } from "./client.js";
 import { createCodexInferenceModelBinding } from "./inference-dispatch.js";
 import { codexNativeSubagentMonitorRuntime } from "./native-subagent-monitor.js";
@@ -18,6 +22,7 @@ import { testCodexAppServerBindingStore } from "./session-binding.test-helpers.j
 import { runCodexAppServerSideQuestion } from "./side-question.js";
 
 setupRunAttemptTestHooks();
+afterAll(clearRuntimeConfigSnapshot);
 
 describe("active parent session fork", () => {
   it("uses the recorded parent client and settings across differing acquisition keys", async () => {
@@ -73,8 +78,9 @@ describe("active parent session fork", () => {
       { persistedThreads: [] },
     );
     const params = createTestParams();
+    setRuntimeConfigSnapshot(params.config ?? {});
     const parent = runCodexAppServerAttempt(params);
-    await harness.waitForMethod("turn/start");
+    await parent.waitForTurnAccepted();
     const binding = testCodexAppServerBindingStore.read(
       sessionBindingIdentity({
         sessionId: params.sessionId,

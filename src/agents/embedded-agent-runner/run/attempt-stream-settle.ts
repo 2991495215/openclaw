@@ -452,7 +452,6 @@ export async function prepareEmbeddedAttemptTransport(input: {
   });
   const sessionFork = {
     sessionId: attempt.sessionId,
-    runId: attempt.runId,
     agentId: input.sessionAgentId,
   };
   const directProviderStreamFn = providerStreamFn

@@ -23,7 +23,7 @@ type TurnSettings = Pick<
   | "collaborationMode"
 >;
 
-export type CodexThreadForkSettings = {
+type CodexThreadForkSettings = {
   thread: CodexThreadForkParams;
   turn?: TurnSettings;
 };
@@ -59,26 +59,19 @@ export function recordCodexThreadForkSettings(
   if (!settings || settings.has(threadId)) {
     return;
   }
-  const permissions = typeof params.permissions === "string" ? params.permissions : undefined;
   const thread: CodexThreadForkParams = {
     threadId,
-    ...(params.model !== undefined ? { model: params.model } : {}),
-    ...(params.modelProvider !== undefined ? { modelProvider: params.modelProvider } : {}),
-    ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
-    ...(params.runtimeWorkspaceRoots !== undefined
-      ? { runtimeWorkspaceRoots: params.runtimeWorkspaceRoots }
-      : {}),
-    ...(params.approvalPolicy !== undefined ? { approvalPolicy: params.approvalPolicy } : {}),
-    ...(params.approvalsReviewer !== undefined
-      ? { approvalsReviewer: params.approvalsReviewer }
-      : {}),
-    ...(params.sandbox !== undefined ? { sandbox: params.sandbox } : {}),
-    ...(permissions !== undefined ? { permissions } : {}),
-    ...(params.serviceTier !== undefined ? { serviceTier: params.serviceTier } : {}),
-    ...(params.config !== undefined ? { config: params.config } : {}),
-    ...(params.developerInstructions !== undefined
-      ? { developerInstructions: params.developerInstructions }
-      : {}),
+    model: params.model,
+    modelProvider: params.modelProvider,
+    cwd: params.cwd,
+    runtimeWorkspaceRoots: params.runtimeWorkspaceRoots,
+    approvalPolicy: params.approvalPolicy,
+    approvalsReviewer: params.approvalsReviewer,
+    sandbox: params.sandbox,
+    permissions: typeof params.permissions === "string" ? params.permissions : undefined,
+    serviceTier: params.serviceTier,
+    config: params.config,
+    developerInstructions: params.developerInstructions,
   };
   // Native history already owns base instructions and immutable dynamic declarations.
   settings.set(threadId, { thread });
@@ -90,33 +83,19 @@ export function recordCodexTurnForkSettings(
 ): void {
   const settings = clients.get(client)?.get(params.threadId);
   if (settings) {
-    const {
-      additionalContext,
-      cwd,
-      runtimeWorkspaceRoots,
-      model,
-      approvalPolicy,
-      approvalsReviewer,
-      sandboxPolicy,
-      serviceTier,
-      effort,
-      personality,
-      environments,
-      collaborationMode,
-    } = params;
     settings.turn = {
-      additionalContext,
-      cwd,
-      runtimeWorkspaceRoots,
-      model,
-      approvalPolicy,
-      approvalsReviewer,
-      sandboxPolicy,
-      serviceTier,
-      effort,
-      personality,
-      environments,
-      collaborationMode,
+      additionalContext: params.additionalContext,
+      cwd: params.cwd,
+      runtimeWorkspaceRoots: params.runtimeWorkspaceRoots,
+      model: params.model,
+      approvalPolicy: params.approvalPolicy,
+      approvalsReviewer: params.approvalsReviewer,
+      sandboxPolicy: params.sandboxPolicy,
+      serviceTier: params.serviceTier,
+      effort: params.effort,
+      personality: params.personality,
+      environments: params.environments,
+      collaborationMode: params.collaborationMode,
     };
   }
 }

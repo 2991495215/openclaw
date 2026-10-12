@@ -26,10 +26,7 @@ import {
   requireCodexSupervisionModelSelection,
   resolveCodexBindingAppServerConnection,
 } from "./binding-connection.js";
-import {
-  requireCodexThreadForkSettings,
-  type CodexThreadForkSettings,
-} from "./client-fork-settings.js";
+import { requireCodexThreadForkSettings } from "./client-fork-settings.js";
 import {
   isCodexAppServerApprovalRequest,
   isCodexAppServerIndeterminateRequestCancellationError,
@@ -414,11 +411,7 @@ export async function runCodexAppServerSideQuestion(
   let nativeHookRelay: ReturnType<typeof registerNativeHookRelayForBundledRuntime> | undefined;
   const activeDynamicToolCalls = new Set<Promise<unknown>>();
   let primaryFailure: { error: unknown } | undefined;
-  let forkSettings:
-    | (CodexThreadForkSettings & { turn: NonNullable<CodexThreadForkSettings["turn"]> })
-    | undefined;
-  let forkInferenceGeneration: string | undefined;
-  let releaseForkInferenceContext: (() => void) | undefined;
+  let forkInferenceContext: { generation: string; release: () => void } | undefined;
   let forkModelRegistration: ParentRegistrationHandle | undefined;
   const releaseSandboxEnvironment = async () => {
     if (!sandboxEnvironment) {
@@ -531,9 +524,9 @@ export async function runCodexAppServerSideQuestion(
   }
 
   try {
-    if (denyToolCalls) {
-      forkSettings = requireCodexThreadForkSettings(client, binding.threadId);
-    }
+    const forkSettings = denyToolCalls
+      ? requireCodexThreadForkSettings(client, binding.threadId)
+      : undefined;
     assertCurrent();
     const autoApproveMcpTools = shouldAutoApproveCodexAppServerApprovals(appServer);
     const projectedMcpServers = loadCodexBundleMcpApprovalConfig({
@@ -827,7 +820,6 @@ export async function runCodexAppServerSideQuestion(
                 forkSettings
                   ? {
                       ...forkSettings.thread,
-                      threadId: binding.threadId,
                       ...(forkConfig ? { config: forkConfig } : {}),
                       ephemeral: true,
                       excludeTurns: true,
@@ -873,14 +865,12 @@ export async function runCodexAppServerSideQuestion(
             if (forkSettings) {
               const inference = getCodexInferenceThread(forkClient, binding.threadId);
               if (inference) {
-                const registration = inference.context.fork({
+                forkInferenceContext = inference.context.fork({
                   sourceThreadId: binding.threadId,
                   threadId: childThreadId,
                   signal: runAbortController.signal,
                   assertCurrent,
                 });
-                forkInferenceGeneration = registration.generation;
-                releaseForkInferenceContext = registration.release;
               }
               // The prefix generation is not model authority. Admit this distinct
               // root thread under the side run before its first native request.
@@ -973,10 +963,10 @@ export async function runCodexAppServerSideQuestion(
                 ...forkSettings.turn,
                 threadId: sideThreadId,
                 input: buildCodexUserInput(params.question.trim(), params.images),
-                ...(forkInferenceGeneration
+                ...(forkInferenceContext
                   ? {
                       responsesapiClientMetadata: {
-                        [CODEX_INFERENCE_GENERATION_KEY]: forkInferenceGeneration,
+                        [CODEX_INFERENCE_GENERATION_KEY]: forkInferenceContext.generation,
                       },
                     }
                   : {}),
@@ -1124,7 +1114,7 @@ export async function runCodexAppServerSideQuestion(
           }
         },
         () => collector?.route.release(),
-        () => releaseForkInferenceContext?.(),
+        () => forkInferenceContext?.release(),
         () => forkModelRegistration?.unregister(),
         () => nativeToolLifecycleProjector?.finalizeActive(nativeToolRunWasAbortedBeforeCleanup),
         () =>

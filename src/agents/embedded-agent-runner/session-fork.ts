@@ -13,7 +13,7 @@ import {
 } from "./usage-accumulator.js";
 
 type StreamOptions = NonNullable<Parameters<StreamFn>[2]>;
-export type EmbeddedSessionForkIdentity = { sessionId: string; runId: string; agentId: string };
+export type EmbeddedSessionForkIdentity = { sessionId: string; agentId: string };
 type SessionForkAuthority = { active: boolean; capture: object };
 type Snapshot = EmbeddedSessionForkIdentity & {
   model: Model;
@@ -44,17 +44,11 @@ function forgetSnapshot(sessionId: string): void {
   }
 }
 
-export function clearEmbeddedSessionForkSnapshot(sessionId?: string): void {
+function clearEmbeddedSessionForkSnapshot(sessionId?: string): void {
   if (sessionId === undefined) {
-    for (const authority of captures.values()) {
-      authority.active = false;
+    for (const id of captures.keys()) {
+      clearEmbeddedSessionForkSnapshot(id);
     }
-    for (const snapshot of snapshots.values()) {
-      clearTimeout(snapshot.expiryTimer);
-    }
-    snapshots.clear();
-    captures.clear();
-    retainedBytes = 0;
     return;
   }
   const authority = captures.get(sessionId);
@@ -69,7 +63,7 @@ registerSessionResourceCleanup(clearEmbeddedSessionForkSnapshot);
 function prune() {
   const now = Date.now();
   for (const [id, snapshot] of snapshots) {
-    if (snapshot.expires <= now || snapshots.size > MAX_ENTRIES || retainedBytes > MAX_BYTES) {
+    if (snapshot.expires <= now || retainedBytes > MAX_BYTES) {
       clearEmbeddedSessionForkSnapshot(id);
     }
   }
@@ -147,12 +141,7 @@ export function wrapStreamFnWithSessionFork(
               payload: savedPayload,
             }),
           );
-          const previous = snapshots.get(identity.sessionId);
-          if (previous) {
-            clearTimeout(previous.expiryTimer);
-            retainedBytes -= previous.bytes;
-            snapshots.delete(identity.sessionId);
-          }
+          forgetSnapshot(identity.sessionId);
           if (bytes <= MAX_BYTES) {
             snapshots.set(identity.sessionId, {
               ...identity,
@@ -181,7 +170,7 @@ export function wrapStreamFnWithSessionFork(
   };
 }
 
-export const EMBEDDED_FORK_REQUIRES_PARENT =
+const EMBEDDED_FORK_REQUIRES_PARENT =
   "Cache-parity session fork requires a parent turn prepared by this OpenClaw runtime. Send a normal message first.";
 
 function stripNewCacheMarkers(value: unknown): unknown {
@@ -266,13 +255,10 @@ export async function runEmbeddedSessionFork(params: {
         }
         // Freeze the actual post-hook prefix, including Anthropic breakpoints. Recomputing
         // them after appending a user message would move the final breakpoint.
-        const replay = {
-          ...structuredClone(snapshot.payload),
-          [key]: [
-            ...structuredClone(prefix),
-            ...messages.slice(prefix.length).map(stripNewCacheMarkers),
-          ],
-        };
+        const replay = structuredClone({
+          ...snapshot.payload,
+          [key]: [...prefix, ...messages.slice(prefix.length).map(stripNewCacheMarkers)],
+        });
         delete replay.previous_response_id;
         return replay;
       },

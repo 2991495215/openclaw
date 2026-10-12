@@ -118,6 +118,7 @@ export function createAgentHarnessHostCapabilities(params: {
   // Full must not cover other commands merely because the same plugin owns them.
   const requiredNodeCommands = new Set(params.requiredNodeCommands);
   const nativeModelPolicySupported = params.nativeModelPolicySupport === "exact";
+  const denyToolCalls = params.toolCalls === "deny";
   const operationalRunInstance = attempt.admittedRunContext.operationalRunInstance;
   const delegatedAuthority = getAdmittedRunDelegatedAuthority(attempt.admittedRunContext);
   const requesterProfileId = readAdmittedRunOperatorAuthority(
@@ -323,7 +324,7 @@ export function createAgentHarnessHostCapabilities(params: {
     }: Parameters<AgentHarnessHostCapabilities["runBeforeToolCall"]>[0],
   ) => {
     assertCurrent();
-    if (params.toolCalls === "deny") {
+    if (denyToolCalls) {
       return {
         blocked: true as const,
         kind: "veto" as const,

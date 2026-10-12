@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { captureRuntimeConfigAsyncReader } from "../config/io.js";
 import { formatSqliteSessionFileMarker } from "../config/sessions/legacy-sqlite-marker.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -301,6 +302,7 @@ describe("plugin registry runtime session ownership", () => {
   });
 
   it("limits locked harness session mutation and execution to the harness owner", async () => {
+    await captureRuntimeConfigAsyncReader()();
     const key = {
       reserved: "agent:main:harness:codex:thread-1",
       ordinary: "agent:main:ordinary",

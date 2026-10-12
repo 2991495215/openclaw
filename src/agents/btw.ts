@@ -465,28 +465,26 @@ export async function runBtwSideQuestion(
     const imageLimits = resolveImageSanitizationLimits(params.cfg);
     let messages: Message[] = [];
     const inFlightPrompt = activeRunSnapshot?.inFlightPrompt;
-    if (
-      !cacheParityFork &&
-      Array.isArray(activeRunSnapshot?.messages) &&
-      activeRunSnapshot.messages.length > 0
-    ) {
-      messages = await toSimpleContextMessages({
-        messages: activeRunSnapshot.messages,
-        imageLimits,
-      });
-    }
-    if (!cacheParityFork && messages.length === 0) {
-      messages = await toSimpleContextMessages({
-        messages: await readBtwTranscriptMessages({
-          agentId: sessionAgentId,
-          sessionFile,
-          sessionId,
-          sessionKey: params.sessionKey,
-          storePath: params.storePath,
-          snapshotLeafId: activeRunSnapshot?.transcriptLeafId,
-        }),
-        imageLimits,
-      });
+    if (!cacheParityFork) {
+      if (Array.isArray(activeRunSnapshot?.messages) && activeRunSnapshot.messages.length > 0) {
+        messages = await toSimpleContextMessages({
+          messages: activeRunSnapshot.messages,
+          imageLimits,
+        });
+      }
+      if (messages.length === 0) {
+        messages = await toSimpleContextMessages({
+          messages: await readBtwTranscriptMessages({
+            agentId: sessionAgentId,
+            sessionFile,
+            sessionId,
+            sessionKey: params.sessionKey,
+            storePath: params.storePath,
+            snapshotLeafId: activeRunSnapshot?.transcriptLeafId,
+          }),
+          imageLimits,
+        });
+      }
     }
     params.opts?.abortSignal?.throwIfAborted();
     if (!cacheParityFork && messages.length === 0 && !inFlightPrompt?.trim()) {
