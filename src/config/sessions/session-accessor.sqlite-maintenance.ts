@@ -13,10 +13,7 @@ import {
   runSqliteTranscriptArchiveWorkerOperation,
 } from "./session-accessor.sqlite-archive.js";
 import type { SessionLifecycleArchivedTranscript } from "./session-accessor.sqlite-contract.js";
-import {
-  hasPreparedNativeSessionDeletion,
-  withSqliteSessionDeletions,
-} from "./session-accessor.sqlite-deletion.js";
+import { withSqliteSessionDeletions } from "./session-accessor.sqlite-deletion.js";
 import { collectSessionStateIdsForEntry } from "./session-accessor.sqlite-lifecycle-state.js";
 import type {
   SessionEntryMaintenancePlan,
@@ -101,7 +98,6 @@ export async function refreshSqliteSessionPlannerStatisticsBestEffort(
     : runSqliteSessionReclamation({
         diagnostics: { kind: "maintenance-statistics" },
         assertCommitAllowed: assertCurrent,
-        forceInProcess: false,
         plan: createSessionMaintenanceStatisticsOperation(toDatabaseOptions(scope)),
       });
   const completion = refresh
@@ -576,7 +572,6 @@ export async function finalizeSessionEntryMaintenancePlansAfterWriterReleaseBest
             : runSqliteSessionReclamation({
                 diagnostics: { kind: "maintenance-finalize" },
                 assertCommitAllowed,
-                forceInProcess: hasPreparedNativeSessionDeletion(),
                 plan,
               });
         },

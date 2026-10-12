@@ -90,7 +90,6 @@ describe("session sharing store", () => {
       expect(isOpenClawAgentDatabaseOpen(resolveOpenClawAgentSqlitePath(scope))).toBe(false);
       await expect(
         reclamation.runSqliteSessionReclamation({
-          forceInProcess: false,
           plan: createSessionMaintenanceFinalizationOperation({
             agentId: scope.agentId,
             databaseOptions: scope,

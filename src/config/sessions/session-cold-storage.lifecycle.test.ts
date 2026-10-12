@@ -66,6 +66,11 @@ import { waitForSessionTranscriptIndexReconcile } from "./session-transcript-rec
 import { createManualCompactRecords } from "./transcript-message.test-support.js";
 import type { SessionEntry } from "./types.js";
 
+// mock-isolation: Explicit cold archival owns this suite; automatic age retention is tested separately.
+vi.mock("./session-accessor.sqlite-maintenance-kick.js", () => ({
+  kickSessionEntryMaintenanceAfterWrite: () => {},
+}));
+
 const tempDirs = createTempDirTracker();
 const stores: string[] = [];
 let seedStorePath: string | undefined;

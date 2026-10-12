@@ -242,7 +242,6 @@ export async function applySessionEntryLifecycleMutation(
                   );
                 }
                 const result = await runSqliteSessionReclamation({
-                  forceInProcess: false,
                   assertCommitAllowed: () => {
                     assertCurrent();
                     assertPreservationCurrent();

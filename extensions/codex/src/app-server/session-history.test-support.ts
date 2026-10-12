@@ -59,7 +59,7 @@ export function setupSessionHistoryFixtures() {
     tempDirs.push(dir);
     const env = params.incognito ? { OPENCLAW_STATE_DIR: dir } : undefined;
     const storePath = params.incognito
-      ? path.join(dir, "agents", "main", "sessions", "incognito-openclaw-agent.sqlite")
+      ? path.join(dir, "agents", "main", "agent", "incognito-openclaw-agent.sqlite")
       : path.join(dir, "openclaw-agent.sqlite");
     const sessionId = params.incognito
       ? `codex-sqlite-${path.basename(dir)}`

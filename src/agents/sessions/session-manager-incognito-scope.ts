@@ -20,9 +20,11 @@ import {
   captureOwnedTranscriptWriteAssertion,
   getOwnedSessionTranscriptActor,
 } from "../../config/sessions/transcript-write-context.js";
+import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { IncognitoSessionSyncAccessError } from "../../state/incognito-session-error.js";
 import type { OpenClawAgentDatabaseOptions } from "../../state/openclaw-agent-db.js";
+import { resolveExplicitIncognitoAgentSqliteTarget } from "../../state/openclaw-agent-db.paths.js";
 import { warnSessionPersistenceDeprecation } from "./session-persistence-deprecation.js";
 
 export type SessionManagerMemoryBinding = Readonly<{
@@ -71,6 +73,12 @@ function selectedActor(target: SessionTranscriptRuntimeTarget) {
   const injected = getSessionActorStorageBinding(target);
   if (injected) {
     return injected;
+  }
+  if (
+    !isIncognitoSessionKey(target.sessionKey) &&
+    !resolveExplicitIncognitoAgentSqliteTarget(target.storePath, { agentId: target.agentId })
+  ) {
+    return undefined;
   }
   const owned = getOwnedSessionTranscriptActor(target);
   if (owned?.actor.target.database.kind !== "memory" || !owned.actor.storage) {

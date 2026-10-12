@@ -12,10 +12,7 @@ import type {
   SqliteSessionArtifactPreparationDiagnostics,
   SqliteSessionReclamationDiagnostics,
 } from "./session-accessor.sqlite-contract.js";
-import {
-  hasPreparedNativeSessionDeletion,
-  withSqliteSessionDeletions,
-} from "./session-accessor.sqlite-deletion.js";
+import { withSqliteSessionDeletions } from "./session-accessor.sqlite-deletion.js";
 import { prepareSessionLifecycleArtifactCleanup } from "./session-accessor.sqlite-lifecycle-artifacts.js";
 import { refreshSqliteSessionPlannerStatisticsBestEffort } from "./session-accessor.sqlite-maintenance.js";
 import { runSqliteSessionReclamation } from "./session-accessor.sqlite-reclamation-run.js";
@@ -259,7 +256,6 @@ export async function cleanupSessionLifecycleArtifactsCore(
           const reclaimed = await runSqliteSessionReclamation({
             diagnostics,
             assertCommitAllowed,
-            forceInProcess: hasPreparedNativeSessionDeletion(),
             plan,
           });
           if (reclaimed.kind !== plan.kind) {

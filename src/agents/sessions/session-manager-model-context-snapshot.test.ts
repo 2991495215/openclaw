@@ -50,6 +50,7 @@ import {
   sessionManagerPrepareCurrentTurnReplay,
   sessionManagerReadInitialContext,
 } from "./session-manager-current-turn.js";
+import { readCommittedSessionManagerReload } from "./session-manager-reload.js";
 import { SessionManager } from "./session-manager.js";
 
 const memoryOwners: Array<{ agentId: string; path: string }> = [];
@@ -112,6 +113,37 @@ async function withSelectedTranscriptReader<T>(
     }
   }
 }
+
+it("reloads a durable sibling transcript under the parent writer without borrowing its actor", async () => {
+  await withOpenClawTestState({ label: "sibling-transcript-reload" }, async (state) => {
+    const parent = {
+      agentId: "main",
+      sessionId: "parent",
+      sessionKey: "agent:main:parent",
+      storePath: state.statePath("transcript.sqlite"),
+    };
+    const sibling = { ...parent, sessionId: "sibling", sessionKey: "agent:main:sibling" };
+    const updatedAt = Date.now();
+    await upsertSessionEntryCore(parent, { sessionId: parent.sessionId, updatedAt });
+    await upsertSessionEntryCore(sibling, { sessionId: sibling.sessionId, updatedAt });
+    const manager = await SessionManager.openAsync(sibling);
+    const message = makeUserMessage("sibling transcript", 1);
+    const entryId = await manager.appendMessageAsync(message);
+
+    await withSelectedTranscriptReader(
+      parent,
+      async () => {
+        const reloaded = await readCommittedSessionManagerReload(sibling, undefined);
+        expect(reloaded.kind).toBe("full");
+        expect(reloaded.snapshot.events).toEqual([
+          expect.objectContaining({ type: "session", id: sibling.sessionId }),
+          expect.objectContaining({ type: "message", id: entryId, message }),
+        ]);
+      },
+      true,
+    );
+  });
+});
 
 it.each(["bounded", "anchors"] as const)(
   "reads current actor entry facts through %s history after writes and replacement",

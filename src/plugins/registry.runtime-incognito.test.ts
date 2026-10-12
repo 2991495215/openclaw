@@ -1,6 +1,6 @@
 import "../test-utils/prepare-compiled-subprocesses.js";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement } from "../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
@@ -21,6 +21,7 @@ import { createPluginRuntime } from "./runtime/index.js";
 const dirs = useAutoCleanupTempDirTracker(afterAll);
 const authority = { assertCurrent() {}, authorize() {} };
 const lifetime = { assertCurrent() {}, assertReadable() {} };
+let stateDir: string;
 let storePath: string;
 
 async function withMemorySession<T>(sessionKey: string, run: () => T | Promise<T>): Promise<T> {
@@ -57,12 +58,15 @@ async function createMemoryEntry(input: { sessionKey: string; entry: InternalSes
 }
 
 beforeAll(() => {
-  const stateDir = path.join(dirs.make("plugin-incognito-"), "state");
-  vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+  stateDir = path.join(dirs.make("plugin-incognito-"), "state");
   storePath = resolveIncognitoOpenClawAgentSqlitePath({
     agentId: "main",
     env: { OPENCLAW_STATE_DIR: stateDir },
   });
+});
+
+beforeEach(() => {
+  vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
 });
 
 afterAll(() => {
