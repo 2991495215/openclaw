@@ -804,7 +804,7 @@ export async function createQuotaResetFixture(
   const { saveAuthProfileStoreWithPreparedOwner } = createAuthProfileStoreRuntime(
     createExternalAuthRuntime(
       () => [],
-      async () => [],
+      async () => () => [],
     ),
   );
   // Quota recovery uses shared auth, including the external saved-block writer.

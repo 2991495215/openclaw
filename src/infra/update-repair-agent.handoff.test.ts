@@ -51,7 +51,7 @@ it("settles the real repair handoff without closing a parent lease before Doctor
     const auth = createAuthProfileStoreRuntime(
       createExternalAuthRuntime(
         () => [],
-        async () => [],
+        async () => () => [],
       ),
     );
     const seed = createOpenClawDatabaseMaintenanceScope();

@@ -55,6 +55,7 @@ function createRuntime(
 ) {
   return createAuthProfileStoreRuntime({
     listRuntimeExternalAuthProfiles: () => [],
+    prepareRuntimeExternalAuthProfiles: async () => () => [],
     overlayExternalAuthProfiles,
     overlayExternalAuthProfilesAsync: async (store, options) =>
       overlayExternalAuthProfiles(store, options),
@@ -78,6 +79,7 @@ it.each(["ensure", "runtime"] as const)(
     }));
     const runtime = createAuthProfileStoreRuntime({
       listRuntimeExternalAuthProfiles: () => [],
+      prepareRuntimeExternalAuthProfiles: async () => () => [],
       overlayExternalAuthProfiles: syncOverlay,
       overlayExternalAuthProfilesAsync: asyncOverlay,
     });

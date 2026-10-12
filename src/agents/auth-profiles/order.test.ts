@@ -47,6 +47,7 @@ vi.mock("./external-auth.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./external-auth.js")>()),
   createExternalAuthRuntime: () => ({
     listRuntimeExternalAuthProfiles: () => [],
+    prepareRuntimeExternalAuthProfiles: async () => () => [],
     overlayExternalAuthProfiles: <T>(store: T) => store,
     overlayExternalAuthProfilesAsync: async <T>(store: T) => store,
   }),

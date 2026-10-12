@@ -108,7 +108,7 @@ describe("post-failure repair execution", () => {
         const auth = createAuthProfileStoreRuntime(
           createExternalAuthRuntime(
             () => [],
-            async () => [],
+            async () => () => [],
           ),
         );
         const profileId = "fixture:subscription";

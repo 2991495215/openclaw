@@ -45,6 +45,7 @@ it("waits for shared facts and reads fresh credentials for each bounded scope", 
     .mockResolvedValueOnce(rows("fixture-new"));
   const runtime = createAuthProfileStoreRuntime({
     listRuntimeExternalAuthProfiles: () => [],
+    prepareRuntimeExternalAuthProfiles: async () => () => [],
     overlayExternalAuthProfiles: (store) => store,
     overlayExternalAuthProfilesAsync: async (store) => store,
   });

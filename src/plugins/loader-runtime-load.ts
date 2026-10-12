@@ -49,7 +49,7 @@ const externalProfiles = Object.freeze(createProviderExternalAuthResolver(provid
 const externalAuth = Object.freeze(
   createExternalAuthRuntime(
     externalProfiles.resolveExternalAuthProfilesWithPlugins,
-    externalProfiles.resolveExternalAuthProfilesWithPluginsAsync,
+    externalProfiles.prepareExternalAuthProfilesWithPlugins,
   ),
 );
 const authStore = Object.freeze(createAuthProfileStoreRuntime(externalAuth));

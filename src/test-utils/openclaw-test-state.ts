@@ -353,7 +353,7 @@ export async function createOpenClawTestState(
         const { saveAuthProfileStore } = createAuthProfileStoreRuntime(
           createExternalAuthRuntime(
             () => [],
-            async () => [],
+            async () => () => [],
           ),
         );
         withEnv(env, () =>

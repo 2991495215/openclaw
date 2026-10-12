@@ -24,7 +24,7 @@ vi.mock("../agents/auth-profiles/store-runtime.js", async () => {
   return createAuthProfileStoreRuntime(
     createExternalAuthRuntime(
       () => [],
-      async () => [],
+      async () => () => [],
     ),
   );
 });

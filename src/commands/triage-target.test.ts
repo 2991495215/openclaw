@@ -467,7 +467,7 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                 const auth = createAuthProfileStoreRuntime(
                   createExternalAuthRuntime(
                     () => [],
-                    async () => [],
+                    async () => () => [],
                   ),
                 );
                 if (automatic) {

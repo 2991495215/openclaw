@@ -111,7 +111,7 @@ it.each([
   const runtime = createAuthProfileStoreRuntime(
     createExternalAuthRuntime(
       () => [],
-      async () => [],
+      async () => () => [],
     ),
   );
   const options = {
@@ -238,7 +238,7 @@ it.each(["explicit empty ids", "authoritative empty", "no overlay", "published o
     }
     const external = vi.fn(() => []);
     const runtime = createAuthProfileStoreRuntime(
-      createExternalAuthRuntime(external, async () => external()),
+      createExternalAuthRuntime(external, async () => external),
     );
     const context = captureOpenClawStateWorkerContext({ env });
     const result = await runtime.prepareAuthProfileStoreForModelRuntime(

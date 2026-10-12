@@ -54,8 +54,10 @@ export type ProviderExternalAuthProfileResolver = (params: {
   context: ProviderResolveExternalAuthProfilesContext;
 }) => ProviderExternalAuthProfile[];
 
-export type ProviderExternalAuthProfileAsyncResolver = (
-  params: Parameters<ProviderExternalAuthProfileResolver>[0] & {
+export type ProviderExternalAuthProfileResolverPreparation = (
+  params: Omit<Parameters<ProviderExternalAuthProfileResolver>[0], "context"> & {
     pluginMetadataSnapshot: PluginMetadataSnapshot;
   },
-) => Promise<ProviderExternalAuthProfile[]>;
+) => Promise<
+  (context: ProviderResolveExternalAuthProfilesContext) => ProviderExternalAuthProfile[]
+>;

@@ -779,6 +779,7 @@ export function createAuthProfileStoreRuntime(
 ) {
   const {
     listRuntimeExternalAuthProfiles,
+    prepareRuntimeExternalAuthProfiles,
     overlayExternalAuthProfiles,
     overlayExternalAuthProfilesAsync,
   } = externalAuth;
@@ -865,7 +866,7 @@ export function createAuthProfileStoreRuntime(
   }
 
   const updateAuthProfileStoreWithLock = createAuthProfileStoreUpdater(
-    listRuntimeExternalAuthProfiles,
+    prepareRuntimeExternalAuthProfiles,
     {
       applyScopedAuthReadThrough,
       getScopedAuthProfileEnv,
@@ -873,13 +874,15 @@ export function createAuthProfileStoreRuntime(
       resolveRuntimeAuthProfileAgentDir,
       isEnvOnlyAuthProfileRuntime,
       load: loadAuthProfileStoreForAgent,
-      save(store, agentDir, options, database, owner) {
+      save(store, agentDir, options, database, owner, preparedExternalProfiles) {
         const publication = saveAuthProfileStoreInTransaction(
           store,
           agentDir,
           options,
           database,
           owner,
+          false,
+          preparedExternalProfiles,
         );
         deferRuntimeSnapshotsAfterCommit(database, publication);
       },
@@ -1440,6 +1443,7 @@ export function createAuthProfileStoreRuntime(
     database: AuthProfileDatabase,
     owner: AuthProfileStoreOwner | PreparedAuthProfileStoreOwner,
     publishFromSuppliedStore = false,
+    preparedExternalProfiles = listRuntimeExternalAuthProfiles,
   ): RuntimeSnapshotPublication {
     // Shared-state rows are global: never scope their persistence or runtime snapshots to an
     // agent, or shared credentials are published and cached as agent-local state.
@@ -1463,7 +1467,7 @@ export function createAuthProfileStoreRuntime(
     const buildLocalStore = (saveOptions = options) =>
       buildLocalAuthProfileStoreForSave({
         getScopedSharedAuthStore,
-        listRuntimeExternalAuthProfiles,
+        listRuntimeExternalAuthProfiles: preparedExternalProfiles,
         owner,
         store,
         agentDir: persistenceAgentDir,

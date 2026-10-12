@@ -4,10 +4,11 @@
  * and decides which runtime profiles may be persisted back to the store.
  */
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { getCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata-snapshot.js";
 import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import type {
-  ProviderExternalAuthProfileAsyncResolver,
+  ProviderExternalAuthProfileResolverPreparation,
   ProviderExternalAuthProfile,
   ProviderExternalAuthProfileResolver,
 } from "../../plugins/provider-external-auth.types.js";
@@ -149,7 +150,7 @@ export function syncPersistedExternalCliAuthProfiles(
 // Only external-profile-dependent operations are bound; module state stays above.
 export function createExternalAuthRuntime(
   resolveExternalAuthProfilesWithPlugins: ProviderExternalAuthProfileResolver,
-  resolveExternalAuthProfilesWithPluginsAsync: ProviderExternalAuthProfileAsyncResolver,
+  prepareExternalAuthProfilesWithPlugins: ProviderExternalAuthProfileResolverPreparation,
 ) {
   type ResolveParams = {
     store: AuthProfileStore;
@@ -295,33 +296,72 @@ export function createExternalAuthRuntime(
     );
   }
 
+  async function prepareExternalAuthResolution(
+    options?: { env?: NodeJS.ProcessEnv } & ExternalCliOverlayOptions,
+  ) {
+    const pluginMetadataSnapshot =
+      options?.pluginMetadataSnapshot ??
+      getCurrentPluginMetadataSnapshot({
+        config: options?.config,
+        env: options?.env,
+        requireDefaultDiscoveryContext: !options?.config,
+        allowWorkspaceScopedSnapshot: true,
+        allowSynchronousPolicyRead: false,
+      }) ??
+      (await resolvePluginMetadataSnapshotAsync({
+        config: options?.config ?? {},
+        env: options?.env,
+      }));
+    const lookup = {
+      config: options?.config,
+      env: options?.env ?? process.env,
+      workspaceDir: pluginMetadataSnapshot.workspaceDir,
+      pluginMetadataSnapshot,
+    };
+    const testResolver = resolveExternalAuthProfilesForRuntime;
+    const resolveProfiles = testResolver
+      ? (context: Parameters<ProviderExternalAuthProfileResolver>[0]["context"]) =>
+          testResolver({ ...lookup, context })
+      : await prepareExternalAuthProfilesWithPlugins(lookup);
+    return (params: ResolveParams) => {
+      const prepared = {
+        ...params,
+        env: params.env ?? lookup.env,
+        externalCli: { ...options, ...params.externalCli, pluginMetadataSnapshot },
+      };
+      return resolveExternalAuthProfiles(
+        prepared,
+        resolveProfiles(resolverParams(prepared).context),
+      );
+    };
+  }
+
+  /** Capture plugin callbacks before a write; evaluate them against its current store. */
+  async function prepareRuntimeExternalAuthProfiles(
+    options?: { env?: NodeJS.ProcessEnv } & ExternalCliOverlayOptions,
+  ): Promise<typeof listRuntimeExternalAuthProfiles> {
+    const resolve = await prepareExternalAuthResolution(options);
+    return (params) => Array.from(resolve(params).profiles.values());
+  }
+
   async function overlayExternalAuthProfilesAsync(
     store: AuthProfileStore,
     params?: { agentDir?: string; env?: NodeJS.ProcessEnv } & ExternalCliOverlayOptions,
   ): Promise<AuthProfileStore> {
-    const pluginMetadataSnapshot =
-      params?.pluginMetadataSnapshot ??
-      (await resolvePluginMetadataSnapshotAsync({
-        config: params?.config ?? {},
-        env: params?.env,
-      }));
-    const options = { ...params, pluginMetadataSnapshot };
-    const { base, scoped } = prepareOverlay(store, options);
+    const resolve = await prepareExternalAuthResolution(params);
+    const { base, scoped } = prepareOverlay(store, params);
     const request = {
       store: base,
-      agentDir: options.agentDir,
-      env: options.env,
-      externalCli: options,
+      agentDir: params?.agentDir,
+      env: params?.env,
+      externalCli: params,
     };
-    const lookup = { ...resolverParams(request), pluginMetadataSnapshot };
-    const profiles = resolveExternalAuthProfilesForRuntime
-      ? resolveExternalAuthProfilesForRuntime(lookup)
-      : await resolveExternalAuthProfilesWithPluginsAsync(lookup);
-    return finishOverlay(base, scoped, resolveExternalAuthProfiles(request, profiles));
+    return finishOverlay(base, scoped, resolve(request));
   }
 
   return {
     listRuntimeExternalAuthProfiles,
+    prepareRuntimeExternalAuthProfiles,
     overlayExternalAuthProfiles,
     overlayExternalAuthProfilesAsync,
   };

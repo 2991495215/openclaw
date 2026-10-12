@@ -186,6 +186,7 @@ export async function resolveModelAsync(
       modelId: normalizedRef.model,
       modelRegistry,
       cfg,
+      pluginMetadataSnapshot: preparedMetadataSnapshot,
       agentDir: resolvedAgentDir,
       ...(options?.agentRuntimeId ? { agentRuntimeId: options.agentRuntimeId } : {}),
       manifestAlias: normalizedRef.manifestAlias,

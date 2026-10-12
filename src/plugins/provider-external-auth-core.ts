@@ -3,7 +3,7 @@ import { getCurrentPluginMetadataSnapshot } from "./current-plugin-metadata-snap
 import type {
   ProviderExternalAuthProfile,
   ProviderExternalAuthProfileResolver,
-  ProviderExternalAuthProfileAsyncResolver,
+  ProviderExternalAuthProfileResolverPreparation,
 } from "./provider-external-auth.types.js";
 import type { createProviderHookRuntime } from "./provider-hook-runtime-core.js";
 import { resolveExternalAuthProfileProviderPluginIds } from "./providers.js";
@@ -65,9 +65,9 @@ export function createProviderExternalAuthResolver(
     return matches;
   }
 
-  async function resolveExternalAuthProfilesWithPluginsAsync(
-    params: Parameters<ProviderExternalAuthProfileAsyncResolver>[0],
-  ): Promise<ProviderExternalAuthProfile[]> {
+  async function prepareExternalAuthProfilesWithPlugins(
+    params: Parameters<ProviderExternalAuthProfileResolverPreparation>[0],
+  ): ReturnType<ProviderExternalAuthProfileResolverPreparation> {
     const snapshot = params.pluginMetadataSnapshot;
     const workspaceDir = params.workspaceDir ?? snapshot.workspaceDir;
     const env = params.env ?? process.env;
@@ -76,7 +76,7 @@ export function createProviderExternalAuthResolver(
       .map((plugin) => plugin.id)
       .toSorted((left, right) => left.localeCompare(right));
     if (onlyPluginIds.length === 0) {
-      return [];
+      return () => [];
     }
     const plugins = await resolveProviderPluginsForHooksAsync({
       ...params,
@@ -85,8 +85,9 @@ export function createProviderExternalAuthResolver(
       onlyPluginIds,
       pluginMetadataSnapshot: snapshot,
     });
-    return plugins.flatMap((plugin) => plugin.resolveExternalAuthProfiles?.(params.context) ?? []);
+    return (context) =>
+      plugins.flatMap((plugin) => plugin.resolveExternalAuthProfiles?.(context) ?? []);
   }
 
-  return { resolveExternalAuthProfilesWithPlugins, resolveExternalAuthProfilesWithPluginsAsync };
+  return { resolveExternalAuthProfilesWithPlugins, prepareExternalAuthProfilesWithPlugins };
 }
