@@ -43,3 +43,26 @@ export function loadPluginMetadataSnapshotRuntime(
     loadRequiredSnapshotReaders().loadPluginMetadataSnapshot;
   return reader(params);
 }
+
+/** Explicit legacy SDK compatibility; ordinary runtime owners prepare asynchronously. */
+export function loadLegacyPluginMetadataSnapshotRuntime(
+  params: Parameters<
+    typeof import("./plugin-metadata-readers.runtime.js").loadLegacyPluginMetadataSnapshot
+  >[0],
+) {
+  const current = getCurrentPluginMetadataSnapshotRequiredRuntime({
+    config: params.config,
+    env: params.env,
+    workspaceDir: params.workspaceDir,
+    allowWorkspaceScopedSnapshot: true,
+    allowSynchronousPolicyRead: false,
+    ...(params.config === undefined ? { requireDefaultDiscoveryContext: true } : {}),
+  });
+  if (current) {
+    return current;
+  }
+  const reader =
+    snapshotReaderSlot.loadLegacyPluginMetadataSnapshot ??
+    loadRequiredSnapshotReaders().loadLegacyPluginMetadataSnapshot;
+  return reader(params);
+}

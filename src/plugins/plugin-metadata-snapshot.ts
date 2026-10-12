@@ -13,7 +13,10 @@ import {
 } from "./current-plugin-metadata-snapshot.js";
 import { hashJson } from "./installed-plugin-index-hash.js";
 import { resolveInstalledPluginIndexPolicyHash } from "./installed-plugin-index-policy.js";
-import { preparePersistedInstalledPluginIndexCacheEntry } from "./installed-plugin-index-record-state.js";
+import {
+  preparePersistedInstalledPluginIndexCacheEntry,
+  preparePluginMetadataMachineState,
+} from "./installed-plugin-index-record-state.js";
 import type { InstalledPluginIndex } from "./installed-plugin-index.js";
 import { loadBundledPluginManifestRegistry } from "./manifest-registry-build.js";
 import {
@@ -617,6 +620,14 @@ function selectPluginMetadataSnapshot(
   return { kind: "load", adoptCurrent: false };
 }
 
+/** Released synchronous SDK readers alone retain cold native metadata preparation. */
+export function loadLegacyPluginMetadataSnapshot(
+  params: ResolvePluginMetadataSnapshotParams,
+): PluginMetadataSnapshot {
+  preparePluginMetadataMachineState({ env: params.env, stateDir: params.stateDir });
+  return resolvePluginMetadataSnapshot(params);
+}
+
 export function resolvePluginMetadataSnapshot(
   params: ResolvePluginMetadataSnapshotParams,
 ): PluginMetadataSnapshot {
@@ -732,4 +743,5 @@ export function buildPluginMetadataSnapshot(
 registerPluginMetadataSnapshotReaders({
   resolvePluginMetadataSnapshot,
   loadPluginMetadataSnapshot,
+  loadLegacyPluginMetadataSnapshot,
 });

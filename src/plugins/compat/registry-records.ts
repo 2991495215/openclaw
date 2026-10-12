@@ -11,6 +11,7 @@ import { MEDIA_LEGACY_PROJECTION_COMPAT_RECORD } from "./media-legacy-projection
 import { MEMORY_SESSION_COMPAT_RECORDS } from "./memory-session-records.js";
 import { MENTION_INBOX_COMPAT_RECORD } from "./mention-inbox-record.js";
 import { MODEL_ACCOUNT_CONNECT_COMPAT_RECORD } from "./model-account-connect-record.js";
+import { MODEL_REF_COMPAT_RECORD } from "./model-ref-record.js";
 import { MODEL_SESSION_AUTH_PROFILE_COMPAT_RECORD } from "./model-session-auth-profile-record.js";
 import { NATIVE_EXEC_APPROVAL_COMPAT_RECORD } from "./native-exec-approval-record.js";
 import { PLUGIN_SDK_REMOVED_EXPORT_RECORDS } from "./plugin-sdk-removed-export-records.js";
@@ -48,6 +49,7 @@ export const PLUGIN_COMPAT_RECORDS = [
   CRON_STORE_PATH_COMPAT_RECORD,
   MENTION_INBOX_COMPAT_RECORD,
   MODEL_ACCOUNT_CONNECT_COMPAT_RECORD,
+  MODEL_REF_COMPAT_RECORD,
   MODEL_SESSION_AUTH_PROFILE_COMPAT_RECORD,
   MEDIA_DISCOVERY_COMPAT_RECORD,
   WORKSPACE_MUTATION_GUARD_COMPAT_RECORD,

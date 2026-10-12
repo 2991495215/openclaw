@@ -830,6 +830,25 @@ displays either the date or named gate, counts local code/doc references, lists
 references, and summarizes the private memory-host SDK bridge. Those reader
 references are triage signals, not published-artifact proof.
 
+### Model-reference parsing
+
+The `model-ref-sync-discovery` record deprecates the synchronous `parseModelRef`
+exports from `model-ref-parse`, `provider-model-shared`, and `agent-runtime`, plus
+`resolveModelRefFromString` from `agent-runtime`. Their argument and return
+shapes, custom manifest aliases, and cold discovery remain supported for
+installed plugins. Actual legacy use emits one `DEP_PLUGIN_SDK` warning per
+plugin and capability family per process. Removal requires the next Plugin SDK
+major, migration of published readers, and explicit breaking-release approval.
+
+Await `parseModelRefAsync` from `openclaw/plugin-sdk/model-ref-parse` for one
+lookup. For repeated parsing, await `prepareModelRefResolver` once and use its
+`parseModelRef` or `resolveModelRefFromString` method. Its `manifestPlugins`
+property carries the same source into other model helpers. Prepared resolvers
+keep the selected manifest policies even after a plugin metadata reload;
+recreate the resolver when adopting the new generation. This accepted lifetime
+avoids synchronous discovery or per-lookup freshness checks. Credentials and
+execution authority remain the responsibility of their existing effect owners.
+
 ### TTS preference resolution
 
 Await `resolveTtsPrefsPathAsync(config)` from

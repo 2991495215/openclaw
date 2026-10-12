@@ -120,6 +120,21 @@ database worker. The synchronous `loadCombinedSessionStoreForGateway` retains it
 return value and emits a bounded deprecation warning; it remains supported until
 the next Plugin SDK major.
 
+### Model-reference parsing
+
+Await `parseModelRefAsync(raw, defaultProvider, options)` from
+`openclaw/plugin-sdk/model-ref-parse` for a single model reference. For repeated
+lookups, await `prepareModelRefResolver({ config, env, workspaceDir })` once and
+use its synchronous `parseModelRef` and `resolveModelRefFromString` methods.
+The resolver also exposes `manifestPlugins` for model helpers that accept
+prepared metadata. Custom provider aliases use that selected snapshot until you
+prepare another resolver; parsing never polls for a newer plugin generation.
+
+The existing `parseModelRef` exports and `agent-runtime`'s
+`resolveModelRefFromString` retain cold synchronous discovery for installed
+plugins. They emit a bounded deprecation warning and remain supported until the
+next Plugin SDK major and explicit approval of a breaking release.
+
 ### Session reset freshness
 
 Channel runtime consumers should await

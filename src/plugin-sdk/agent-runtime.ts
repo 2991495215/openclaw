@@ -86,10 +86,10 @@ export async function loadModelCatalog(params: LoadModelCatalogCompatibilityPara
 export {
   buildModelAliasIndex,
   findNormalizedProviderValue,
-  parseModelRef,
   resolveAllowedModelRef,
-  resolveModelRefFromString,
 } from "../agents/model-selection.js";
+export { parseModelRefLegacy as parseModelRef } from "../agents/model-ref-sdk.js";
+export { resolveModelRefFromStringLegacy as resolveModelRefFromString } from "../agents/model-ref-sdk-resolve.js";
 
 // Preserve the v2026.7.1-2 callback contract at the SDK boundary; internal
 // owners use loadRuntimeCatalog. Remove only at an approved SDK-breaking boundary.

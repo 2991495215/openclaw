@@ -157,7 +157,7 @@ export type {
   UnifiedModelCatalogSource,
 } from "@openclaw/model-catalog-core/model-catalog-types";
 export { isCloudModelRef } from "@openclaw/model-catalog-core/model-catalog-refs";
-export { parseModelRef } from "../agents/model-selection-normalize.js";
+export { parseModelRefLegacy as parseModelRef } from "../agents/model-ref-sdk.js";
 export type {
   BedrockDiscoveryConfig,
   ModelCompatConfig,
