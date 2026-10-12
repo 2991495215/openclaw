@@ -1,4 +1,4 @@
-import { getRuntimeConfig } from "../../config/config.js";
+import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../config/config.js";
 import {
   resolveConfigWidePluginMetadataSnapshot,
   resolveConfigWidePluginMetadataSnapshotAsync,
@@ -37,7 +37,7 @@ export async function resolvePluginRuntimeLoadContextAsync(
   options?: PluginRuntimeLoadContextOptions,
 ): Promise<PluginRuntimeLoadContext> {
   const env = options?.env ?? process.env;
-  const config = options?.config ?? getRuntimeConfig();
+  const config = options?.config ?? (await captureRuntimeConfigAsyncReader()());
   await prepareBundledDiscoveryMode(env);
   if (options?.metadataSnapshot || options?.manifestRegistry) {
     return resolvePluginRuntimeLoadContext({ ...options, config, env });

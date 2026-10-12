@@ -15,7 +15,6 @@ import {
   readTranscriptEventId,
   readTranscriptEventMessage,
 } from "../../config/sessions/session-accessor.sqlite-read.js";
-import * as transcriptMessageAppend from "../../config/sessions/session-accessor.sqlite-transcript-message-append.js";
 import { withOwnedSessionTranscriptWrites } from "../../config/sessions/transcript-write-context.js";
 import * as sessionTranscript from "../../config/sessions/transcript.js";
 import { persistInternalSourceReply } from "../../gateway/internal-source-reply-persistence.js";
@@ -25,6 +24,10 @@ import {
   resolveManagedOutgoingMediaArtifactDownload,
 } from "../../gateway/managed-image-attachments.js";
 import { listManagedImageRecordEntries } from "../../gateway/managed-image-record-store.js";
+import * as workerAdmission from "../../infra/sqlite-worker-operation-admission.js";
+import { createSqliteWorkerTransferCollector } from "../../infra/sqlite-worker-transfer.js";
+import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
+import { withPluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
 import {
   onSessionTranscriptUpdate,
   type SessionTranscriptUpdate,
@@ -47,26 +50,37 @@ const INTERNAL_SOURCE_CATALOG = {
   getChannel: () => undefined,
 } as const;
 
+function withInternalSourceMetadata(tool: ReturnType<typeof createMessageTool>) {
+  const generation = { metadataSnapshot: createPluginMetadataSnapshotFixture() };
+  return {
+    ...tool,
+    execute: (...args: Parameters<typeof tool.execute>) =>
+      withPluginRuntimeGenerationScope(generation, () => tool.execute(...args)),
+  };
+}
+
 function createCurrentSourceMessageTool(
   params: NonNullable<Parameters<typeof createMessageTool>[0]> = {},
 ) {
-  return createMessageTool({
-    config: { agents: { entries: { main: {} } } },
-    preparedMessageToolCatalog: INTERNAL_SOURCE_CATALOG,
-    currentChannelProvider: "webchat",
-    sourceReplyDeliveryMode: "automatic",
-    agentSessionKey: "agent:main:webchat:dm:dashboard",
-    runId: "webchat-run",
-    sandboxRoot: params.sandboxFsBridge ? params.workspaceDir : undefined,
-    getScopedChannelsCommandSecretTargets: () => ({ targetIds: new Set<string>() }),
-    resolveCommandSecretRefsViaGateway: async ({ config }) => ({
-      resolvedConfig: config,
-      diagnostics: [],
-      targetStatesByPath: {},
-      hadUnresolvedTargets: false,
+  return withInternalSourceMetadata(
+    createMessageTool({
+      config: { agents: { entries: { main: {} } } },
+      preparedMessageToolCatalog: INTERNAL_SOURCE_CATALOG,
+      currentChannelProvider: "webchat",
+      sourceReplyDeliveryMode: "automatic",
+      agentSessionKey: "agent:main:webchat:dm:dashboard",
+      runId: "webchat-run",
+      sandboxRoot: params.sandboxFsBridge ? params.workspaceDir : undefined,
+      getScopedChannelsCommandSecretTargets: () => ({ targetIds: new Set<string>() }),
+      resolveCommandSecretRefsViaGateway: async ({ config }) => ({
+        resolvedConfig: config,
+        diagnostics: [],
+        targetStatesByPath: {},
+        hadUnresolvedTargets: false,
+      }),
+      ...params,
     }),
-    ...params,
-  });
+  );
 }
 
 const TINY_PNG_BASE64 =
@@ -95,30 +109,66 @@ describe("WebChat message tool internal source reply", () => {
           async (owner) => {
             const message = "must never become a committed assistant message";
             let commitRequests = 0;
-            const append = transcriptMessageAppend.appendTranscriptMessageInTransaction;
+            const createAdmission = workerAdmission.createSqliteWorkerOperationAdmission;
             const admission = vi
-              .spyOn(transcriptMessageAppend, "appendTranscriptMessageInTransaction")
-              .mockImplementation((database, resolved, options, preparedMessage, projection) => {
-                if (
-                  resolved.sessionKey === sessionKey &&
-                  resolved.sessionId === sessionId &&
-                  isRecord(options.message) &&
-                  options.message.role === "assistant" &&
-                  readAssistantDisplayContent(options.message).some(
-                    (block) => block.type === "text" && block.text === message,
-                  )
-                ) {
-                  commitRequests += 1;
-                  owner.closeAdmission();
-                }
-                return append(database, resolved, options, preparedMessage, projection);
+              .spyOn(workerAdmission, "createSqliteWorkerOperationAdmission")
+              .mockImplementation((admit, attachment) => {
+                let appendsReply = false;
+                const transfer = createSqliteWorkerTransferCollector("patch", (candidate) => {
+                  if (
+                    !isRecord(candidate) ||
+                    candidate.kind !== "session-turn" ||
+                    !isRecord(candidate.result) ||
+                    !Array.isArray(candidate.result.appendedMessages)
+                  ) {
+                    return;
+                  }
+                  appendsReply = candidate.result.appendedMessages.some((append) => {
+                    if (
+                      !isRecord(append) ||
+                      !isRecord(append.anchor) ||
+                      !isRecord(append.message)
+                    ) {
+                      return false;
+                    }
+                    return (
+                      append.appended === true &&
+                      append.anchor.sessionKey === sessionKey &&
+                      append.anchor.sessionId === sessionId &&
+                      append.message.role === "assistant" &&
+                      readAssistantDisplayContent(append.message).some(
+                        (block) => block.type === "text" && block.text === message,
+                      )
+                    );
+                  });
+                });
+                return createAdmission((request, grant) => {
+                  const publication = isRecord(request.facts)
+                    ? request.facts.publication
+                    : undefined;
+                  if (
+                    isRecord(publication) &&
+                    (publication.kind === "session-entry-patch-transfer" ||
+                      publication.kind === "session-entry-patch-committed") &&
+                    publication.transfer
+                  ) {
+                    transfer.accept(publication.transfer);
+                  }
+                  if (request.stage === "commit" && appendsReply) {
+                    commitRequests += 1;
+                    owner.closeAdmission();
+                  }
+                  admit(request, grant);
+                }, attachment);
               });
             try {
-              const tool = owner.createTool({
-                preparedMessageToolCatalog: INTERNAL_SOURCE_CATALOG,
-                currentChannelProvider: "webchat",
-                sourceReplyDeliveryMode: "automatic",
-              });
+              const tool = withInternalSourceMetadata(
+                owner.createTool({
+                  preparedMessageToolCatalog: INTERNAL_SOURCE_CATALOG,
+                  currentChannelProvider: "webchat",
+                  sourceReplyDeliveryMode: "automatic",
+                }),
+              );
               const outcome = await tool
                 .execute("cron-source-commit", { action: "send", message })
                 .then(
@@ -178,11 +228,13 @@ describe("WebChat message tool internal source reply", () => {
                 }),
               );
             try {
-              const tool = owner.createTool({
-                preparedMessageToolCatalog: INTERNAL_SOURCE_CATALOG,
-                currentChannelProvider: "webchat",
-                sourceReplyDeliveryMode: "automatic",
-              });
+              const tool = withInternalSourceMetadata(
+                owner.createTool({
+                  preparedMessageToolCatalog: INTERNAL_SOURCE_CATALOG,
+                  currentChannelProvider: "webchat",
+                  sourceReplyDeliveryMode: "automatic",
+                }),
+              );
               const args = {
                 action: "send",
                 message: "Remote media from a scheduled current-source reply.",

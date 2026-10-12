@@ -7,6 +7,7 @@ import type { SetupChannelsOptions } from "../channels/plugins/setup-wizard-type
 import type { ChannelPlugin } from "../channels/plugins/types.public.js";
 import { committedConfigFiles as hostedConfigFiles } from "../commands/committed-config.test-support.js";
 import { withCommandPluginMetadata } from "../commands/config-validation.js";
+import { prepareBundledDiscoveryMode } from "../plugins/bundled-discovery-state.js";
 import { getCurrentPluginMetadataSnapshot } from "../plugins/current-plugin-metadata-snapshot.js";
 import {
   bindPluginMetadataSnapshotCache,
@@ -762,10 +763,14 @@ describe("hosted channel post-write hooks", () => {
       "signal",
     );
     const baseConfig = fixture.config;
+    await prepareBundledDiscoveryMode(fixture.env);
     const metadataSnapshot = fixture.readMetadata();
     const resolveMetadata = vi
-      .spyOn(pluginMetadata, "resolvePluginMetadataSnapshot")
-      .mockImplementation(({ config, workspaceDir }) => fixture.readMetadata(config, workspaceDir));
+      .spyOn(pluginMetadata, "resolvePluginMetadataSnapshotAsync")
+      .mockImplementation(async ({ config, workspaceDir }) => {
+        await prepareBundledDiscoveryMode(fixture.env);
+        return fixture.readMetadata(config, workspaceDir);
+      });
     const readAccount: ChannelPlugin["config"]["resolveAccount"] = (config, accountId) =>
       resolveChannelAccountEntry(
         config.channels?.signal?.accounts,

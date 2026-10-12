@@ -60,9 +60,10 @@ export async function compactNativeCliSession(params: {
   runControlOperation?: (run: () => Promise<void>) => Promise<void>;
 }): Promise<EmbeddedAgentCompactResult | undefined> {
   const runtime = normalizeOptionalAgentRuntimeId(params.runtime);
-  if (!runtime || params.compactParams.trigger !== "manual") {
+  if (!runtime || runtime === "openclaw" || params.compactParams.trigger !== "manual") {
     return undefined;
   }
+  await resolvePluginMetadataSnapshotAsync({ config: params.compactParams.config });
   const backend = resolveCliBackendConfig(runtime, params.compactParams.config, {
     agentId: params.compactParams.agentId,
   });

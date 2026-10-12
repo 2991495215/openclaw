@@ -29,9 +29,6 @@ async function readPluginMetadataState(
     if (!result) {
       return [];
     }
-    if (!result.ok || result.type !== "plugins.metadata.read") {
-      throw new Error(result.ok ? "Unexpected plugin metadata reply" : result.message);
-    }
     return result.rows;
   } catch (error) {
     if (isStateDatabaseReadAdmissionInvalidatedError(error)) {
