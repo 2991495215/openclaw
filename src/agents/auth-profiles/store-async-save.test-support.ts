@@ -96,7 +96,13 @@ for (const scope of ["shared", "local"] as const) {
         scope === "local"
           ? loadPersistedAuthProfileStore(agentDir)
           : loadPersistedSharedAuthProfileStore(state.env);
-      assert.deepEqual(persisted, { version: 1, profiles: { [profileId]: apiKey("after") } });
+      assert.deepEqual(persisted, {
+        version: 1,
+        profiles: { [profileId]: apiKey("after") },
+        order: undefined,
+        lastGood: undefined,
+        usageStats: undefined,
+      });
       const current = await loadAuthProfileStoreWithoutExternalProfilesAsync(agentDir);
       assert.deepEqual(current.profiles[profileId], apiKey("after"));
       assert.equal(current.profiles.obsolete, undefined);

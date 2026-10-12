@@ -17,6 +17,7 @@ import { setGatewayPluginMetadataSnapshot } from "./current-plugin-metadata-snap
 import { getGatewayPluginMetadataSnapshot } from "./current-plugin-metadata-state.js";
 import { resolvePluginInstallDir } from "./install-paths.js";
 import { persistPluginInstall } from "./install-persistence.js";
+import { preparePluginMetadataMachineStateAsync } from "./installed-plugin-index-record-state.js";
 import { writePersistedInstalledPluginIndex } from "./installed-plugin-index-store-write.js";
 import { readPersistedInstalledPluginIndex } from "./installed-plugin-index-store.js";
 import { loadInstalledPluginIndex } from "./installed-plugin-index.js";
@@ -104,6 +105,7 @@ it("refreshes foreign install facts and requires live authority before publishin
   vi.stubEnv("OPENCLAW_STATE_DIR", path.join(root, "state"));
   vi.stubEnv("OPENCLAW_DISABLE_BUNDLED_PLUGINS", "1");
   const config: OpenClawConfig = { plugins: { load: { paths: [loadPath] } } };
+  await preparePluginMetadataMachineStateAsync({});
   await writePersistedInstalledPluginIndex(
     loadInstalledPluginIndex({ config, env: process.env, candidates: [], installRecords: {} }),
   );
@@ -204,6 +206,7 @@ it("removes an npm-pack plugin from management inventory without replacing Gatew
       config = next;
     },
   );
+  await preparePluginMetadataMachineStateAsync({});
   await writePersistedInstalledPluginIndex(
     loadInstalledPluginIndex({
       config,
@@ -358,6 +361,7 @@ it("preserves env references across management capability consent", async () => 
   const actual = await vi.importActual<typeof import("../config/config.js")>("../config/config.js");
   configIo.read.mockImplementation(actual.readConfigFileSnapshotForWrite);
   configIo.write.mockImplementation(actual.replaceConfigFile);
+  await preparePluginMetadataMachineStateAsync({});
   await writePersistedInstalledPluginIndex(
     loadInstalledPluginIndex({
       config,
@@ -401,6 +405,7 @@ it.each(["config-write", "none"] as const)(
     vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
     vi.stubEnv("OPENCLAW_DISABLE_BUNDLED_PLUGINS", "1");
     let config: OpenClawConfig = {};
+    await preparePluginMetadataMachineStateAsync({});
     await writePersistedInstalledPluginIndex(
       loadInstalledPluginIndex({ config, candidates: [], installRecords: {} }),
     );
@@ -509,6 +514,7 @@ it("persists management disable before a cold context-engine runtime turn", asyn
   const actual = await vi.importActual<typeof import("../config/config.js")>("../config/config.js");
   configIo.read.mockImplementation(actual.readConfigFileSnapshotForWrite);
   configIo.write.mockImplementation(actual.replaceConfigFile);
+  await preparePluginMetadataMachineStateAsync({});
   await writePersistedInstalledPluginIndex(
     loadInstalledPluginIndex({
       config,

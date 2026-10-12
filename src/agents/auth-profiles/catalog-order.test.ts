@@ -22,7 +22,7 @@ vi.mock("../model-auth-env-vars.js", () => ({
   listKnownProviderEnvApiKeyNames: () => [],
   resolveProviderEnvAuthLookupMaps: () => ({
     aliasMap: { "proof-alias": "openai" },
-    envCandidateMap: { openai: ["OPENAI_API_KEY"] },
+    envCandidateMap: { openai: ["OPENAI_API_KEY"], "minimax-portal": [] },
     authEvidenceMap: {},
   }),
 }));

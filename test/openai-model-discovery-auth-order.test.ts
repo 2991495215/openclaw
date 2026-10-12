@@ -38,11 +38,30 @@ const discovery = vi.hoisted(() => ({
   providers: new Array<ProviderPlugin>(),
 }));
 
-vi.mock("../src/plugins/provider-discovery.runtime.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/plugins/provider-discovery.runtime.js")>()),
-  resolvePluginDiscoveryProvidersRuntime: () => discovery.providers,
-  resolvePluginDiscoveryProvidersRuntimeAsync: async () => discovery.providers,
-}));
+vi.mock("../src/plugins/provider-discovery.runtime.js", async (importOriginal) => {
+  const { resolvePluginMetadataSnapshotAsync } =
+    await import("../src/plugins/plugin-metadata-snapshot.js");
+  return {
+    ...(await importOriginal<typeof import("../src/plugins/provider-discovery.runtime.js")>()),
+    resolvePluginDiscoveryProvidersRuntime: () => discovery.providers,
+    resolvePluginDiscoveryProvidersRuntimeAsync: async (
+      params: Parameters<
+        typeof import("../src/plugins/provider-discovery.runtime.js").resolvePluginDiscoveryProvidersRuntimeAsync
+      >[0],
+    ) => {
+      // Preserve the async loader's metadata preparation for downstream auth callbacks.
+      if (!params.pluginMetadataSnapshot) {
+        await resolvePluginMetadataSnapshotAsync({
+          config: params.config ?? {},
+          env: params.env ?? process.env,
+          ...(params.workspaceDir ? { workspaceDir: params.workspaceDir } : {}),
+          allowWorkspaceScopedCurrent: true,
+        });
+      }
+      return discovery.providers;
+    },
+  };
+});
 
 vi.mock("../src/plugins/provider-hook-runtime.js", async (importOriginal) => {
   const { createProviderHookRuntime } =

@@ -8,7 +8,7 @@ import {
   retirePluginCache,
   withPluginCache,
 } from "../plugins/plugin-cache.js";
-import { loadPluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import { disposePluginRegistryInstances } from "../plugins/runtime.js";
@@ -104,7 +104,11 @@ describe("prepared catalog parent metadata ownership", () => {
     const registry = built ? createEmptyPluginRegistry() : undefined;
     try {
       await withPluginCache(cache, async () => {
-        const metadata = loadPluginMetadataSnapshot({ config, env, allowCurrent: false });
+        const metadata = await resolvePluginMetadataSnapshotAsync({
+          config,
+          env,
+          allowCurrent: false,
+        });
         if (registry) {
           prepareOwnedPluginLoadContext(input, env, registry, metadata, true);
         }
@@ -159,8 +163,8 @@ describe("prepared catalog parent metadata ownership", () => {
     const fixture = await createCatalogFixture(makeTempDir, 0);
     const { agentDir, config, env, workspaceDir } = fixture;
     const cache = createPluginCache();
-    const metadata = withPluginCache(cache, () =>
-      loadPluginMetadataSnapshot({ config, env, workspaceDir, allowCurrent: false }),
+    const metadata = await withPluginCache(cache, () =>
+      resolvePluginMetadataSnapshotAsync({ config, env, workspaceDir, allowCurrent: false }),
     );
     const input = {
       agentId: "main",

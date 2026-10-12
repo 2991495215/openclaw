@@ -28,6 +28,7 @@ afterEach(async () => {
 vi.mock("../../plugins/provider-external-auth-core.js", () => ({
   createProviderExternalAuthResolver: () => ({
     resolveExternalAuthProfilesWithPlugins: () => [],
+    prepareExternalAuthProfilesWithPlugins: async () => () => [],
   }),
 }));
 

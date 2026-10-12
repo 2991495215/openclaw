@@ -62,6 +62,7 @@ vi.mock("../agent-model-discovery.js", () => ({
 vi.mock("../../plugins/provider-external-auth-core.js", () => ({
   createProviderExternalAuthResolver: () => ({
     resolveExternalAuthProfilesWithPlugins: () => [],
+    prepareExternalAuthProfilesWithPlugins: async () => () => [],
   }),
 }));
 

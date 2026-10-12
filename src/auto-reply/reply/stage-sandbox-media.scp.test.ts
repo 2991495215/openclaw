@@ -15,6 +15,7 @@ import * as globals from "../../globals.js";
 import * as mediaRoots from "../../media/channel-inbound-roots.js";
 import * as mediaReference from "../../media/media-reference.js";
 import { getMediaDir } from "../../media/store.js";
+import { prepareBundledDiscoveryMode } from "../../plugins/bundled-discovery-state.js";
 import { setCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata.test-support.js";
 import { resolveInstalledPluginIndexPolicyHash } from "../../plugins/installed-plugin-index-policy.js";
 import { clearPluginMetadataLifecycleCaches } from "../../plugins/plugin-metadata-lifecycle.js";
@@ -158,7 +159,10 @@ async function withEmptyBundledPlugins(
       OPENCLAW_TEST_TRUST_BUNDLED_PLUGINS_DIR: "1",
       OPENCLAW_DISABLE_BUNDLED_PLUGINS: undefined,
     },
-    run,
+    async () => {
+      await prepareBundledDiscoveryMode();
+      await run();
+    },
   );
 }
 

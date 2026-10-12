@@ -115,6 +115,7 @@ vi.mock("./model-auth-env-vars.js", () => {
 vi.mock("../plugins/provider-external-auth-core.js", () => ({
   createProviderExternalAuthResolver: () => ({
     resolveExternalAuthProfilesWithPlugins: () => [],
+    prepareExternalAuthProfilesWithPlugins: async () => () => [],
   }),
 }));
 

@@ -7,10 +7,11 @@ import { createHookRunner } from "../../../plugins/hooks.js";
 import { matchesTranscriptEvent } from "../../../sessions/transcript-visible-record.js";
 import { prepareSystemAgentRunAdmission } from "../../admitted-run-context.js";
 import { buildAgentRunTerminalReplySnapshot } from "../../agent-run-terminal-reply.js";
+import { attachPreparedProviderModelFixture } from "../../provider-request.test-support.js";
 import {
   createTestSession,
   registerAgentSessionLoopTestLifecycle,
-  testModel,
+  testModel as rawTestModel,
 } from "../../sessions/agent-session-loop-correctness.test-support.js";
 import {
   createSubagentRunRecord,
@@ -28,6 +29,8 @@ import type { SubagentRunRecord } from "../../subagents/registry/subagent-regist
 import { prepareEmbeddedAttemptPromptAssembly } from "./attempt-prompt-build.js";
 import { forgetPromptBuildDrainCacheForRun } from "./attempt-prompt-helpers.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
+
+const testModel = attachPreparedProviderModelFixture(rawTestModel);
 
 vi.mock("../../../plugins/host-hook-state.js", () => ({
   drainPluginNextTurnInjectionContext: vi.fn(async () => ({ queuedInjections: [] })),

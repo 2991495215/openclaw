@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import { parseWorkerLaunchDescriptor } from "../worker/launch-descriptor.js";
 import { assertNativeInferenceAssignment } from "../worker/native-inference-startup.js";
 import { nodeWorkerLaunchSecrets } from "./node-worker-child-secrets.js";
@@ -60,6 +61,10 @@ function descriptor(workspace: string, modelId = "model-1") {
 }
 
 describe("node worker inference config projection", () => {
+  beforeEach(async () => {
+    await preparePluginMetadataMachineStateAsync({});
+  });
+
   it("uses the canonical custom-provider API default", () => {
     const workspace = tempDirs.make("node-native-default-api-");
     const defaulted = config([model("model-1")]);

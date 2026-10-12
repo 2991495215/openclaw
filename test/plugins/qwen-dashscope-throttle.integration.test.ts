@@ -9,6 +9,7 @@ import { isProfileInCooldown } from "../../src/agents/auth-profiles/usage-state.
 import { handleEmbeddedAssistantFailure } from "../../src/agents/embedded-agent-runner/run/assistant-failure.js";
 import { createEmbeddedRunFailoverRetryController } from "../../src/agents/embedded-agent-runner/run/failover-retry-controller.js";
 import { resolveEmbeddedRunAttemptTerminalState } from "../../src/agents/embedded-agent-runner/run/terminal-outcome.js";
+import { prepareModelProviderRequestRouteFacts } from "../../src/agents/provider-request-config.js";
 import { makeEmbeddedRunnerAttempt } from "../../src/agents/test-helpers/embedded-agent-runner-e2e-fixtures.js";
 import { createPluginMetadataSnapshot } from "../../src/config/plugin-auto-enable.test-helpers.js";
 import { resolveProviderRuntimePluginHandle } from "../../src/plugins/provider-hook-runtime.js";
@@ -119,11 +120,11 @@ async function runTransportError(params: {
       messages: [{ role: "user", content: "hello", timestamp: 1 }],
     };
     const assistant = await streamOpenAICompletions(
-      {
+      await prepareModelProviderRequestRouteFacts({
         ...model,
         provider: params.provider,
         baseUrl: `http://127.0.0.1:${address.port}/compatible-mode/v1`,
-      },
+      }),
       context,
       { apiKey: "synthetic-test-key" },
     ).result();

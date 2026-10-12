@@ -8,8 +8,10 @@ import { upsertSessionEntryCore } from "../../../config/sessions/session-accesso
 import { CODEX_APP_SERVER_CONTEXT_ENGINE_HOST } from "../../../context-engine/host-compat.js";
 import { readLocalWorkspaceProjection } from "../../../gateway/worker-environments/local-workspace-store.test-support.js";
 import { getAgentEventLifecycleGeneration } from "../../../infra/agent-events.js";
+import { createPluginMetadataSnapshotFixture } from "../../../plugins/plugin-metadata.test-support.js";
 import { createEmptyPluginRegistry } from "../../../plugins/registry-empty.js";
 import { setActivePluginRegistry } from "../../../plugins/runtime.js";
+import { withPluginRuntimeGenerationScope } from "../../../plugins/runtime/generation-scope.js";
 import { buildSkillSnapshot } from "../../../skills/loading/workspace-skill-prompt.js";
 import { withOpenClawTestState } from "../../../test-utils/openclaw-test-state.js";
 import {
@@ -621,7 +623,10 @@ it.each(dispatchCases)(
                 },
               }))
           : undefined;
-      const pending = prepareAndDispatchEmbeddedRunAttempt(input);
+      const pending = withPluginRuntimeGenerationScope(
+        { metadataSnapshot: createPluginMetadataSnapshotFixture() },
+        () => prepareAndDispatchEmbeddedRunAttempt(input),
+      );
       void pending.catch(() => {});
       try {
         if (diffBaseline) {

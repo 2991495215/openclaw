@@ -65,6 +65,7 @@ const preparedSnapshotState = vi.hoisted(() => ({
 vi.mock("../../plugins/provider-external-auth-core.js", () => ({
   createProviderExternalAuthResolver: () => ({
     resolveExternalAuthProfilesWithPlugins: () => [],
+    prepareExternalAuthProfilesWithPlugins: async () => () => [],
   }),
 }));
 
