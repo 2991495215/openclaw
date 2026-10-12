@@ -4,6 +4,7 @@ export function gatewayWorkerLifetimeFixtureFiles(repoRoot: string): Record<stri
   const source = (name: string) => JSON.stringify(path.join(repoRoot, "src", name));
   const imports = `import { appendFileSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { inspect } from "node:util";
 import { afterAll, expect, it } from "vitest";
 import { openOpenClawStateDatabase, closeOpenClawStateDatabase } from ${source("state/openclaw-state-db.ts")};
 import { prepareClawInstallSchemaVersions, readCachedClawInstallSchemaVersions, registerClawInstallSchemaVersionSnapshotListener } from ${source("claws/provenance-runtime-read.ts")};
@@ -24,7 +25,7 @@ resolveGlobalSingleton(cleanupKey, () => ({}), async () => {
     Reflect.deleteProperty(globalThis, cleanupKey);
   }
 });
-const options = { env: { OPENCLAW_STATE_DIR: path.join(root, "producer-state") } };
+const options = { env: { OPENCLAW_STATE_DIR: path.join(root, "producer-state") }, artifactPreservingReadOnly: false };
 let database: ReturnType<typeof openOpenClawStateDatabase>;
 registerClawInstallSchemaVersionSnapshotListener(() => {
   appendFileSync(log, "A:" + readCachedClawInstallSchemaVersions(options).kind + "\\n");
@@ -34,7 +35,7 @@ it("keeps live provenance notifications through afterAll", async () => {
   (await prepareClawInstallSchemaVersions(options)).publish();
   expect(database.db.isOpen).toBe(true);
   (await prepareClawInstallSchemaVersions(options)).publish();
-  expect(lines()).toContain("A:ready");
+  expect(lines(), inspect(readCachedClawInstallSchemaVersions(options))).toContain("A:ready");
 });
 afterAll(() => {
   expect(database.db.isOpen, "fixture must reach runner drain with an open database").toBe(true);
@@ -43,7 +44,7 @@ afterAll(() => {
 });
 `,
     "b-observer.test.ts": `${imports}
-const options = { env: { OPENCLAW_STATE_DIR: path.join(root, "observer-state") } };
+const options = { env: { OPENCLAW_STATE_DIR: path.join(root, "observer-state") }, artifactPreservingReadOnly: false };
 registerClawInstallSchemaVersionSnapshotListener(() => {
   appendFileSync(log, "B:" + readCachedClawInstallSchemaVersions(options).kind + "\\n");
 });

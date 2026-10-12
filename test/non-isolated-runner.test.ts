@@ -905,7 +905,7 @@ async function verifyGatewayWorkerLifetimes(signal: AbortSignal) {
     await fs.writeFile(
       path.join(root, "vitest.config.ts"),
       `
-import gateway from ${JSON.stringify(path.join(repoRoot, "test/vitest/vitest.gateway-core.config.ts"))};
+import gateway from ${JSON.stringify(path.join(repoRoot, "test/vitest/vitest.gateway-database-workers.config.ts"))};
 import { defineConfig } from "vitest/config";
 import { BaseSequencer } from "vitest/node";
 class AlphabeticalSequencer extends BaseSequencer {
@@ -913,18 +913,17 @@ class AlphabeticalSequencer extends BaseSequencer {
     return [...files].sort((a, b) => a.moduleId.localeCompare(b.moduleId));
   }
 }
-// Use the actual Gateway execution policy, with fixture-only membership and no
+// Use the Gateway database-worker policy, with fixture-only membership and no
 // ordinary setup hooks that could close A's database before runner cleanup.
 export default defineConfig({
+  ...gateway,
   cacheDir: ${JSON.stringify(path.join(root, ".vite"))},
-  resolve: gateway.resolve,
   test: {
+    ...gateway.test,
+    root: ${JSON.stringify(root)},
+    dir: ${JSON.stringify(root)},
+    setupFiles: [],
     name: "gateway-worker-lifetimes",
-    pool: gateway.test.pool,
-    isolate: gateway.test.isolate,
-    runner: gateway.test.runner,
-    maxWorkers: gateway.test.maxWorkers,
-    fileParallelism: gateway.test.fileParallelism,
     include: ["a-producer.test.ts", "b-observer.test.ts"],
     sequence: { sequencer: AlphabeticalSequencer },
   },
@@ -981,7 +980,7 @@ export default defineConfig({
         namePrefix: "",
         root: canonicalRoot,
         config: `${canonicalRoot}/vitest.config.ts`,
-        pool: "threads",
+        pool: "forks",
       },
     ]);
     const report: JsonTestResults = JSON.parse(await fs.readFile(reportPath, "utf8"));

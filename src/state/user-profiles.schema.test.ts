@@ -25,10 +25,14 @@ import {
   readUserProfileEmailBindings,
 } from "./user-profile-identity.read.js";
 import { getUserProfileListItem } from "./user-profile-list-item.test-support.js";
-import { readResidentUserProfileIdentity, prepareUserProfileCatalog } from "./user-profile-list.js";
+import {
+  getUserProfileDisplay,
+  readResidentUserProfileIdentity,
+  prepareUserProfileCatalog,
+} from "./user-profile-list.js";
 import { setUserProfileRole } from "./user-profile-writes.worker.js";
 import { ensureUserProfileRoleSchema, ensureUserProfilesSchema } from "./user-profiles-schema.js";
-import { ensureProfileForEmail, getUserProfileDisplay } from "./user-profiles.js";
+import { ensureProfileForEmail } from "./user-profiles.js";
 
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) => {
   afterEach(() => {
