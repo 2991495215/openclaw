@@ -1,5 +1,4 @@
 import {
-  getMemoryEmbeddingProvider,
   getMemoryEmbeddingProviderAsync,
   type MemoryEmbeddingProvider,
   type MemoryEmbeddingProviderAdapter,
@@ -41,11 +40,11 @@ function formatProviderError(adapter: MemoryEmbeddingProviderAdapter, err: unkno
   return adapter.formatSetupError?.(err) ?? formatErrorMessage(err);
 }
 
-function getAdapter(
+async function getAdapter(
   id: string,
   config?: MemoryEmbeddingProviderCreateOptions["config"],
-): MemoryEmbeddingProviderAdapter {
-  const adapter = getMemoryEmbeddingProvider(id, config);
+): Promise<MemoryEmbeddingProviderAdapter> {
+  const adapter = await getMemoryEmbeddingProviderAsync(id, config);
   if (adapter) {
     return adapter;
   }
@@ -72,12 +71,12 @@ function resolveAdapterCreateOptions(
   };
 }
 
-export function resolveEmbeddingProviderFallbackModel(
+export async function resolveEmbeddingProviderFallbackModel(
   providerId: string,
   fallbackSourceModel: string,
   config?: MemoryEmbeddingProviderCreateOptions["config"],
-): string {
-  const adapter = getMemoryEmbeddingProvider(providerId, config);
+): Promise<string> {
+  const adapter = await getMemoryEmbeddingProviderAsync(providerId, config);
   return adapter?.defaultModel ?? fallbackSourceModel;
 }
 
@@ -92,22 +91,24 @@ export function resolveEmbeddingProviderFallbackRemote(
   return Object.keys(sharedRemote).length > 0 ? sharedRemote : undefined;
 }
 
-export function resolveEmbeddingProviderAdapterTransport(
+export async function resolveEmbeddingProviderAdapterTransport(
   providerId: string,
   config?: MemoryEmbeddingProviderCreateOptions["config"],
-): MemoryEmbeddingProviderAdapter["transport"] {
+): Promise<MemoryEmbeddingProviderAdapter["transport"]> {
   try {
-    return getAdapter(providerId, config).transport;
+    return (await getAdapter(providerId, config)).transport;
   } catch {
     return undefined;
   }
 }
 
-export function resolveEmbeddingProviderIndexIdentity(options: CreateEmbeddingProviderOptions) {
+export async function resolveEmbeddingProviderIndexIdentity(
+  options: CreateEmbeddingProviderOptions,
+) {
   const provider =
     options.provider === "auto" ? DEFAULT_MEMORY_EMBEDDING_PROVIDER : options.provider;
   try {
-    const adapter = getAdapter(provider, options.config);
+    const adapter = await getAdapter(provider, options.config);
     const createOptions = resolveAdapterCreateOptions(adapter, { ...options, provider });
     const identity = adapter.resolveIndexIdentity?.(createOptions);
     return {
