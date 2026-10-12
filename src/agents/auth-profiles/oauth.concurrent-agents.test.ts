@@ -11,6 +11,7 @@ import {
   closeOpenClawAgentDatabasesForTest,
 } from "../../state/openclaw-agent-db.js";
 import { captureEnv } from "../../test-utils/env.js";
+import * as candidateStores from "./candidate-stores.js";
 import { AUTH_STORE_VERSION, MINIMAX_CLI_PROFILE_ID } from "./constants.js";
 import "./oauth-external-auth-passthrough.test-support.js";
 import { getOAuthProviderRuntimeMocks } from "./oauth-common-mocks.test-support.js";
@@ -22,6 +23,7 @@ import {
   isPendingOAuthRefreshFence,
 } from "./oauth-refresh-marker.js";
 import { failOAuthRefreshPeerClaims, fenceOAuthRefreshPeers } from "./oauth-refresh-peers.js";
+import * as oauthStore from "./oauth-store.js";
 import {
   OAUTH_AGENT_ENV_KEYS,
   createOAuthMainAgentDir,
@@ -121,10 +123,49 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
   it("gives one copied refresh generation one durable main-store owner", async () => {
     const work = new AsyncWorkScope();
     const { promise: finishRefreshGate, resolve: finishRefresh } = createDeferredCore();
+    const trace = async <T>(
+      phase: "owner-update" | "peer-discovery" | "peer-update",
+      ordinal: number,
+      operation: () => Promise<T>,
+    ): Promise<T> => {
+      console.error(`[oauth-claim-stage] ${phase}-${ordinal}-start ${Date.now()}ms`);
+      try {
+        return await operation();
+      } finally {
+        console.error(`[oauth-claim-stage] ${phase}-${ordinal}-end ${Date.now()}ms`);
+      }
+    };
+    const updateOwner = oauthStore.updateOAuthStore;
+    const discoverPeers = candidateStores.listCandidateAuthProfileStores;
+    const updatePeer = candidateStores.fenceCandidateAuthProfileStore;
+    let ownerOrdinal = 0;
+    let discoveryOrdinal = 0;
+    let peerOrdinal = 0;
+    const ownerSpy = vi
+      .spyOn(oauthStore, "updateOAuthStore")
+      .mockImplementation((params) =>
+        trace("owner-update", ++ownerOrdinal, () => updateOwner(params)),
+      );
+    const discoverySpy = vi
+      .spyOn(candidateStores, "listCandidateAuthProfileStores")
+      .mockImplementation((params) =>
+        trace("peer-discovery", ++discoveryOrdinal, () => discoverPeers(params)),
+      );
+    const peerSpy = vi
+      .spyOn(candidateStores, "fenceCandidateAuthProfileStore")
+      .mockImplementation((params) =>
+        trace("peer-update", ++peerOrdinal, () => updatePeer(params)),
+      );
     // Vitest can time out the observer before the accepted refresh finishes.
     settleCaseWork = async () => {
       finishRefresh();
-      await work.drain();
+      try {
+        await work.drain();
+      } finally {
+        ownerSpy.mockRestore();
+        discoverySpy.mockRestore();
+        peerSpy.mockRestore();
+      }
     };
     await work.track(async () => {
       const freshExpiry = Date.now() + 60 * 60 * 1000;
@@ -168,6 +209,7 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
       const { promise: started, resolve: markStarted } = createDeferredCore();
       refreshProviderOAuthCredentialWithPluginMock.mockImplementation(async () => {
         callCount += 1;
+        console.error(`[oauth-claim-stage] provider-entered ${Date.now()}ms`);
         markStarted();
         await finishRefreshGate;
         return {
@@ -180,7 +222,16 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
         } as never;
       });
 
-      const first = resolveFrom(subAgents[0]);
+      const firstAgentDir = subAgents[0];
+      assert.ok(firstAgentDir, "expected a seeded agent directory");
+      console.error(`[oauth-claim-stage] store-load-start ${Date.now()}ms`);
+      const firstStore = ensureAuthProfileStore(firstAgentDir);
+      console.error(`[oauth-claim-stage] store-load-finished ${Date.now()}ms`);
+      const first = resolveApiKeyForProfileInTest(resolveApiKeyForProfile, {
+        store: firstStore,
+        profileId,
+        agentDir: firstAgentDir,
+      });
       await Promise.race([started, first]);
       expect(
         resolvePersistedAuthProfileOwnerAgentDir({
