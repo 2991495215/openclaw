@@ -9,7 +9,10 @@ import {
   releaseSessionSourceAuthorities,
   type SessionSourceTransactionGrant,
 } from "../config/sessions/session-source-authority.js";
-import { captureSessionStoreReadCandidate } from "../config/sessions/session-store-read-candidates.js";
+import {
+  assertSessionStoreReadCandidate,
+  captureSessionStoreReadCandidate,
+} from "../config/sessions/session-store-read-candidates.js";
 import {
   captureSessionStoreReadCandidates,
   createSessionStoreRegistryMutationFilter,
@@ -20,7 +23,6 @@ import { readDatabasePathIdentitySync } from "../infra/sqlite-worker-identity.js
 import { captureOpenClawAgentReadOnlyAdmission } from "../state/openclaw-agent-db-readonly-open.js";
 import { retainOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly.js";
 import { prepareOpenClawAgentDatabaseRegistrySnapshotRead } from "../state/openclaw-agent-db-registry-listing.js";
-import { matchesAgentDatabaseReadCandidatePath } from "../state/openclaw-agent-db-resources.js";
 import { authorizeGatewaySessionCreation } from "./operator-role-policy.js";
 import { SessionMutationAuthorizationChangedError } from "./session-mutation-authorization-error.js";
 import {
@@ -293,16 +295,12 @@ export async function prepareSessionSharingWorkerGrant(params: {
         const identity = readDatabasePathIdentitySync(candidate.path);
         return { candidate, identity: identity.key, birthtime: identity.birthtime };
       });
-      if (
-        locators.length &&
-        !locators.some((locator) =>
-          matchesAgentDatabaseReadCandidatePath(
-            { ...locator, path: locator.physicalPath },
-            source.path,
-          ),
-        )
-      ) {
-        throw changed(expected.sessionKey);
+      if (locators.length) {
+        try {
+          assertSessionStoreReadCandidate(source.path, locators);
+        } catch {
+          throw changed(expected.sessionKey);
+        }
       }
       const registry = prepareOpenClawAgentDatabaseRegistrySnapshotRead(
         {},

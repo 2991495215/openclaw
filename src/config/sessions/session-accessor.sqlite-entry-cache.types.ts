@@ -75,6 +75,7 @@ export function projectSessionSharingEntry(entry: InternalSessionEntry) {
     spawnDepth: entry.spawnDepth,
     parentSessionKey: entry.parentSessionKey,
     sessionStartedAt: entry.sessionStartedAt,
+    deviceFolder: entry.deviceFolder ? { ...entry.deviceFolder } : undefined,
     permissionMode: entry.permissionMode,
     toolOverrides: entry.toolOverrides ? structuredClone(entry.toolOverrides) : undefined,
   };
