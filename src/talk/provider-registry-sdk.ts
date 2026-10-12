@@ -55,7 +55,7 @@ function loadLegacyVoiceEntries(load: VoiceLoad): PluginRegistry["realtimeVoiceP
   );
 }
 
-/** @deprecated Await listRealtimeVoiceProvidersAsync; removed in the next Plugin SDK major. */
+/** @deprecated Await listRealtimeVoiceProvidersAsync; removed in a later release after stable deprecation. */
 export function listRealtimeVoiceProvidersLegacy(
   cfg?: OpenClawConfig,
   additionalProviderIds?: readonly string[],
@@ -78,7 +78,7 @@ export function listRealtimeVoiceProvidersLegacy(
   return [...buildCapabilityProviderIndex(providers, "canonical").values()];
 }
 
-/** @deprecated Await getRealtimeVoiceProviderAsync; removed in the next Plugin SDK major. */
+/** @deprecated Await getRealtimeVoiceProviderAsync; removed in a later release after stable deprecation. */
 export function getRealtimeVoiceProviderLegacy(
   providerId: string | undefined,
   cfg?: OpenClawConfig,
@@ -105,7 +105,7 @@ export function getRealtimeVoiceProviderLegacy(
   return provider;
 }
 
-/** @deprecated Await canonicalizeRealtimeVoiceProviderIdAsync; removed in the next Plugin SDK major. */
+/** @deprecated Await canonicalizeRealtimeVoiceProviderIdAsync; removed in a later release after stable deprecation. */
 export function canonicalizeRealtimeVoiceProviderIdLegacy(
   providerId: string | undefined,
   cfg?: OpenClawConfig,
@@ -117,7 +117,7 @@ export function canonicalizeRealtimeVoiceProviderIdLegacy(
     : undefined;
 }
 
-/** @deprecated Await resolveConfiguredRealtimeVoiceProviderAsync; removed in the next Plugin SDK major. */
+/** @deprecated Await resolveConfiguredRealtimeVoiceProviderAsync; removed in a later release after stable deprecation. */
 export function resolveConfiguredRealtimeVoiceProviderLegacy(
   params: ResolveConfiguredRealtimeVoiceProviderParams,
 ): ResolvedRealtimeVoiceProvider {

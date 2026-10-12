@@ -497,8 +497,10 @@ describe("sessions.patch personal model-account ownership", () => {
       try {
         await Promise.race([
           catalogRequested.promise,
-          pending.then(() => {
-            throw new Error("Session patch completed before requesting the model catalog");
+          pending.then((response) => {
+            throw new Error(
+              `Session patch completed before requesting the model catalog: ${JSON.stringify(response)}`,
+            );
           }),
         ]);
         expect(requestContext.loadGatewayModelCatalogSnapshot).toHaveBeenCalledOnce();

@@ -65,7 +65,7 @@ export async function parseModelRefAsync(
   return resolver.parseModelRef(raw, defaultProvider, options);
 }
 
-/** @deprecated Await parseModelRefAsync or prepareModelRefResolver; removed in the next Plugin SDK major. */
+/** @deprecated Await parseModelRefAsync or prepareModelRefResolver; removed in a later release after stable deprecation. */
 export function parseModelRefLegacy(
   raw: string,
   defaultProvider: string,

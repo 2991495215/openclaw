@@ -11,6 +11,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions.js";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
+import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
@@ -57,6 +58,7 @@ test("retains ACP batch bounds while clean lists and canonical metadata updates 
     } as OpenClawConfig;
     resetConfigRuntimeState();
     setRuntimeConfigSnapshot(cfg);
+    await resolvePluginMetadataSnapshotAsync({ config: cfg });
 
     const stateKey = "agent:default:webchat:dm:state";
     const missingKey = "agent:default:webchat:dm:missing";

@@ -229,11 +229,16 @@ export async function loadSelectedProviderAccountCatalog(params: {
   if (!credential) {
     return [];
   }
-  const [{ runProviderCatalogWithTimeout }, { createProviderAuthResolver }] = await Promise.all([
+  const [
+    { runProviderCatalogWithTimeout },
+    { createProviderAuthResolver },
+    { preparePluginMetadataMachineStateAsync },
+  ] = await Promise.all([
     import("./models-config.providers.implicit.js"),
     import("./models-config.providers.secrets.js"),
+    import("../plugins/installed-plugin-index-record-state.js"),
   ]);
-  await withCurrentReadAuthority(authority, () => {});
+  await withCurrentReadAuthority(authority, () => preparePluginMetadataMachineStateAsync({}));
   const selectedStore = { ...authStore, profiles: { [profileId]: credential } };
   const selectedConfig = {
     ...params.config,

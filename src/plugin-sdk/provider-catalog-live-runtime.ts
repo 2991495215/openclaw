@@ -12,6 +12,7 @@ import {
   getCachedLiveProviderModelRows,
   getCachedUpstreamProviderCatalog,
   liveModelCatalogAuthCacheKey,
+  prepareLiveModelCatalogAuth,
   type FetchLiveProviderModelIdsParams,
   type FetchLiveProviderModelRowsParams,
   type LiveModelCatalogFetchGuard,
@@ -202,18 +203,19 @@ export async function buildLiveModelProviderConfig<T extends ModelDefinitionConf
     ...(params.apiKey ? { apiKey: params.apiKey } : {}),
     models: [...params.models],
   };
-  const cacheKeyParts =
-    params.discoveryMode === "strict"
-      ? [
-          params.providerId,
-          "model-rows",
-          params.endpoint,
-          liveModelCatalogAuthCacheKey(params),
-          "strict",
-          params.cacheKeyParts,
-        ]
-      : params.cacheKeyParts;
   try {
+    await prepareLiveModelCatalogAuth(params);
+    const cacheKeyParts =
+      params.discoveryMode === "strict"
+        ? [
+            params.providerId,
+            "model-rows",
+            params.endpoint,
+            liveModelCatalogAuthCacheKey(params),
+            "strict",
+            params.cacheKeyParts,
+          ]
+        : params.cacheKeyParts;
     // The authenticated listing owns model existence; static rows only enrich
     // listed ids, so unfamiliar chat models appear without a release.
     const models = await projectCachedLiveModelRows<ModelDefinitionConfig>({

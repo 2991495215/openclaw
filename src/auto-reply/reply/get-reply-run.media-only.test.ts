@@ -289,6 +289,7 @@ vi.mock("../../config/sessions/ambient-transcript-watermark.js", () => ({
 
 vi.mock("../../globals.js", () => ({
   logVerbose: vi.fn(),
+  warn: vi.fn(),
 }));
 
 vi.mock("../../process/command-queue.js", () => ({

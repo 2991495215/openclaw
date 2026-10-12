@@ -19,7 +19,7 @@ export const {
   saveAuthProfileStoreIfPersistenceSnapshotMatchesAsync,
 } = nativePluginBindings.authStore;
 
-/** @deprecated Use saveAuthProfileStoreAsync. Removed at the next Plugin SDK major. */
+/** @deprecated Use saveAuthProfileStoreAsync; removed in a later release after stable deprecation. */
 export const saveAuthProfileStore = nativePluginBindings.authStore.saveAuthProfileStore;
 
 /** @deprecated Use loadAuthProfileStoreForRuntimeAsync. Removed at the next Plugin SDK major. */

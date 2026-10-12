@@ -4,7 +4,7 @@ import { getActivePluginRegistryWorkspaceDirFromStateCore } from "../plugins/run
 import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { resolveModelRefFromString as resolveModelRefFromStringCore } from "./model-selection-shared.js";
 
-/** @deprecated Await prepareModelRefResolver and use its resolver; removed in the next Plugin SDK major. */
+/** @deprecated Await prepareModelRefResolver and use its resolver; removed in a later release after stable deprecation. */
 export function resolveModelRefFromStringLegacy(
   params: Parameters<typeof resolveModelRefFromStringCore>[0],
 ): ReturnType<typeof resolveModelRefFromStringCore> {

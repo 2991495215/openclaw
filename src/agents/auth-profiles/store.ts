@@ -1596,7 +1596,7 @@ export function createAuthProfileStoreRuntime(
     };
   }
 
-  /** @deprecated Use saveAuthProfileStoreAsync. Removed at the next Plugin SDK major. */
+  /** @deprecated Use saveAuthProfileStoreAsync; removed in a later release after stable deprecation. */
   function saveAuthProfileStore(
     store: AuthProfileStore,
     agentDir?: string,

@@ -25,14 +25,14 @@ function prepareLegacyOwners(owners: PluginMetadataSnapshotOwnerMaps | undefined
   );
 }
 
-/** @deprecated Await prepareModelProviderRequestRouteFacts; removed in the next Plugin SDK major. */
+/** @deprecated Await prepareModelProviderRequestRouteFacts; removed in a later release after stable deprecation. */
 export function resolveProviderEndpointLegacy(
   ...[baseUrl, owners]: Parameters<typeof resolveEndpoint>
 ) {
   return resolveEndpoint(baseUrl, prepareLegacyOwners(owners, "resolveProviderEndpoint"));
 }
 
-/** @deprecated Await prepareModelProviderRequestRouteFacts; removed in the next Plugin SDK major. */
+/** @deprecated Await prepareModelProviderRequestRouteFacts; removed in a later release after stable deprecation. */
 export function resolveProviderRequestPolicyLegacy(
   ...[input, env]: Parameters<typeof resolvePolicy>
 ) {
@@ -48,7 +48,7 @@ export function resolveProviderRequestPolicyLegacy(
   );
 }
 
-/** @deprecated Await prepareModelProviderRequestRouteFacts; removed in the next Plugin SDK major. */
+/** @deprecated Await prepareModelProviderRequestRouteFacts; removed in a later release after stable deprecation. */
 export function resolveProviderRequestCapabilitiesLegacy(
   ...[input, env]: Parameters<typeof resolveCapabilities>
 ) {

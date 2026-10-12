@@ -15,6 +15,8 @@ vi.mock("../agents/embedded-agent.js", () => ({
 vi.mock("../agents/prepared-model-catalog.js", async () => {
   const { resolveAgentDir, resolveAgentWorkspaceDir, resolveDefaultAgentId } =
     await vi.importActual<typeof import("../agents/agent-scope.js")>("../agents/agent-scope.js");
+  const { createPluginMetadataSnapshotFixture } =
+    await import("../plugins/plugin-metadata.test-support.js");
   return {
     readPreparedModelCatalog,
     loadPreparedModelCatalogSnapshot: vi.fn(async (params) => ({
@@ -41,6 +43,7 @@ vi.mock("../agents/prepared-model-catalog.js", async () => {
           agentDir: params.agentDir ?? resolveAgentDir(config, agentId),
           workspaceDir: params.workspaceDir ?? resolveAgentWorkspaceDir(config, agentId),
           config,
+          metadataSnapshot: createPluginMetadataSnapshotFixture(),
           modelCatalog: {
             entries: (await readPreparedModelCatalog(params)) ?? [],
             routeVariants: [],
