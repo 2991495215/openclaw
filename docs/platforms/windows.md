@@ -15,11 +15,14 @@ app-owned WSL Gateway. Terminal users can use the PowerShell installer or WSL2.
 
 ## Recommended desktop app: OpenClaw
 
-Download the **Windows x64 NSIS installer** named
-`OpenClaw-<version>-windows-x86_64.exe` from the
-[OpenClaw releases page](https://github.com/openclaw/openclaw/releases).
-Run it, then launch **OpenClaw** from the Start menu. Windows uses WebView2 to
-show the Control UI; the installer provisions WebView2 when necessary.
+Windows desktop publication is not enabled yet. Regular OpenClaw releases do not
+publish a Windows Tauri installer or updater feed. Maintainer signing rehearsals
+produce temporary Actions artifacts for qualification, not public downloads.
+Windows Hub and the native CLI below remain available.
+
+For an explicitly provided qualification installer, run it and launch **OpenClaw**
+from the Start menu. Windows uses WebView2 to show the Control UI; the installer
+provisions WebView2 when necessary.
 
 ### First launch and local Gateway
 
@@ -38,12 +41,11 @@ bundled runtime's admission policy. Remote connections continue to work.
 
 Use connection settings when you already have a Gateway. Enter its URL and token
 or password, or choose an SSH connection. The app opens that Gateway's Control UI.
-The desktop updater verifies Tauri signatures independently of Windows
-Authenticode. Published installers must also have a valid, timestamped OpenClaw
-Foundation Authenticode signature. The release owner verifies the signature
-before publishing or reusing an installer; unsigned installers cannot be
-published. This installer signature is separate from the bundled Bun runtime's
-signature and does not sign the enclosed app executable or uninstaller.
+Windows desktop update checks and installer activation remain disabled while
+publication is off. Replacing the app manually preserves the existing Gateway
+and runtime until explicit adoption. Signing rehearsals verify the installer’s
+Foundation Authenticode signature and the bundled Bun’s separate signature;
+they do not sign the enclosed app executable or uninstaller.
 
 ### Bundled runtime adoption
 

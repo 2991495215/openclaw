@@ -103,21 +103,22 @@ for installation, app handoff, shortcuts, and troubleshooting.
 
 ## Windows
 
-Windows x64 NSIS installers ship beside Linux bundles in regular OpenClaw
-releases. The Windows updater uses the `windows-stable` channel and verifies
-Tauri updater signatures. The release workflow requires a timestamped OpenClaw
-Foundation Authenticode signature on each NSIS installer before signing its
-updater bytes. Only the protected main workflow can use the `release-signing`
-environment; a missing or failed signer cannot publish an unsigned installer.
-No credentials are needed for non-publishing builds.
+Windows desktop publication and the Windows updater are disabled by the checked-in
+`release-policy.json`. Regular Linux releases do not publish Windows installers,
+Windows updater metadata, or a Windows update channel. Existing local Gateway
+installations keep their service and runtime when the app is replaced.
 
-Release retries verify the existing public installer's Authenticode signature
-without re-signing or replacing it. The publication owner accepts only the exact
-installer hash verified by the Windows signing job, including reused assets.
+The existing desktop release workflow has a **Windows rehearsal** operation for
+maintainers. It builds native x64 and ARM64 NSIS installers from the exact
+protected-main workflow commit, verifies the packaged Bun against the signed
+shared pin, and applies the Foundation installer signature in a fresh
+`release-signing` job. The rehearsal retains Actions artifacts for three days;
+it cannot create releases, tags, public assets, or updater feeds. It does not
+turn on Windows publication or the Windows updater.
 
 The installer signature does not sign the enclosed app executable or NSIS
-uninstaller. The bundled Windows Bun executable retains its separately verified
-Foundation signature and pinned hash.
+uninstaller. Bundled Bun retains its separate Foundation signature and pinned
+hash. No signing credentials enter a source build.
 
 Local setup seeds the private Windows Bun runtime, installs the CLI with its
 package manager, and delegates service installation and health checks to
@@ -496,7 +497,7 @@ Switching an existing Gateway's runtime leaves its CLI launcher unchanged.
 
 ## Updates
 
-The companion checks the latest GitHub release shortly after launch and from **Check for Updates** in the tray menu. AppImage installs download and verify the signed update in place, then wait for **Restart to update**. Package-managed installs such as `.deb` stay owned by the system package manager and link to the release download page instead of replacing installed files. Windows uses the regular `windows-stable` channel, downloads the update first, and runs its installer only after **Restart to update**. The macOS test build uses the separate opt-in desktop-test channel and self-updates like the AppImage build.
+The companion checks the latest GitHub release shortly after launch and from **Check for Updates** in the tray menu. AppImage installs download and verify the signed update in place, then wait for **Restart to update**. Package-managed installs such as `.deb` stay owned by the system package manager and link to the release download page instead of replacing installed files. Windows update checks and installer activation remain disabled while Windows publication is off. The macOS test build uses the separate opt-in desktop-test channel and self-updates like the AppImage build.
 
 If the Windows installer cannot launch, the companion stays open, reports the error, and keeps the downloaded update available for another **Restart to update** attempt.
 

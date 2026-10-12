@@ -437,7 +437,14 @@ jobs:
 
       - name: Build Windows installer without publishing
         working-directory: apps/linux/src-tauri
-        run: pnpm dlx @tauri-apps/cli@2.11.4 build --target ${{ matrix.target }} --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        shell: pwsh
+        run: |
+          $version = (Get-Content ../../../package.json -Raw | ConvertFrom-Json).version
+          if ([string]::IsNullOrWhiteSpace($version)) { throw 'Missing package version for the Windows proof installer' }
+          $config = Join-Path $env:RUNNER_TEMP 'windows-desktop-proof.json'
+          @{ version = $version; bundle = @{ createUpdaterArtifacts = $false } } | ConvertTo-Json -Compress | Set-Content -LiteralPath $config -Encoding utf8
+          pnpm dlx @tauri-apps/cli@2.11.4 build --target ${{ matrix.target }} --bundles nsis --config $config
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify staged signed Windows runtime
         shell: pwsh

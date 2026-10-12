@@ -130,6 +130,32 @@ other writers, revalidate release/source/inventory and immutable bytes, and
 read back both endpoints. Version/hash inputs or current Gateway `latest` alone
 cannot establish forward order. Stop on ambiguous history.
 
+## Windows desktop rehearsal
+
+`apps/linux/release-policy.json` keeps Windows desktop publication disabled.
+Ordinary Linux release requests do not build or publish Windows installers,
+create Windows updater metadata, or update the Windows channel. The compiled
+Windows app consumes the same policy and does not check or activate updates.
+Windows Hub remains a separate publication owner.
+
+After the rehearsal implementation lands, an explicitly authorized maintainer
+can run the existing release owner from protected main:
+
+```bash
+gh workflow run linux-app-release.yml --repo openclaw/openclaw --ref main \
+  -f operation=windows-rehearsal
+```
+
+This operation accepts no source override: both native architectures build the
+exact workflow commit and package the admitted signed Bun pin. A fresh x64
+signing job for each architecture extracts and verifies the packaged Bun before
+Azure OIDC login, signs only the final NSIS installer through `release-signing`,
+and verifies its Foundation signature and timestamp. Signed installers and
+verification receipts are Actions artifacts retained for three days. The
+rehearsal graph cannot reach a release, tag, asset, feed, or GitHub App writer;
+it does not enable publication. Do not dispatch it from a PR branch or relax the
+environment policy to obtain qualification evidence.
+
 ## Windows Hub
 
 The optional parent inputs `windows_node_tag` and
