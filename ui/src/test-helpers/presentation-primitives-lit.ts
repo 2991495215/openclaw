@@ -8,7 +8,7 @@ import { renderKbd, renderKeyboardShortcut } from "../components/kbd.ts";
 import { renderAgentStartupState, renderLazyViewError } from "../components/lazy-view-error.ts";
 import { renderConnectingSplash } from "../components/loading-skeleton.ts";
 import { renderLoadingState } from "../components/loading-state.ts";
-import { renderPanelEmptyState } from "../components/panel-empty-state.ts";
+import "../components/solid/panel-empty-state.tsx";
 import { renderPanelIconButton } from "../components/panel-icon-button.ts";
 import {
   renderPanelLoadingSkeleton,
@@ -226,12 +226,12 @@ function feedback() {
   return [
     card(
       "Empty with action",
-      renderPanelEmptyState({
-        icon: icons.folder,
-        heading: "No files",
-        description: "Add a file to begin working in this panel.",
-        action: button("Add file", "add-file"),
-      }),
+      html`<openclaw-panel-empty-state
+        .heading=${"No files"}
+        .description=${"Add a file to begin working in this panel."}
+      >
+        ${icons.folder}<span slot="action">${button("Add file", "add-file")}</span>
+      </openclaw-panel-empty-state>`,
       "empty",
     ),
     card(
