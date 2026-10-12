@@ -21,7 +21,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
     deprecated: "2026-10-11",
     warningStarts: "2026-10-11",
     replacement:
-      "Await prepareSessionCatalogSourceActorProjector with the page's actors, or prepareSessionCatalogGitHubLinker with the page's participants and owner references, before synchronous projection. The released createSessionCatalogSourceActorProjector and createSessionCatalogGitHubLinker retain their synchronous signatures and behavior until the next Plugin SDK major and explicit breaking-release approval.",
+      "Await prepareSessionCatalogSourceActorProjector with the page's actors, or prepareSessionCatalogGitHubLinker with the page's participants and owner references, before synchronous projection. The released createSessionCatalogSourceActorProjector and createSessionCatalogGitHubLinker retain their synchronous signatures and behavior until a later release after stable deprecation.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#prepare-session-catalog-identities",
     surfaces: [
       "openclaw/plugin-sdk/session-transcript-runtime createSessionCatalogSourceActorProjector",
@@ -36,7 +36,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
       "src/plugins/compat/registry.test.ts",
     ],
     releaseNote:
-      "Bundled session catalogs prepare identity facts through the existing database worker before projecting each page. Legacy synchronous SDK factories remain compatible through the next Plugin SDK major; attribution, permissions, stored data, and update behavior are unchanged.",
+      "Bundled session catalogs prepare identity facts through the existing database worker before projecting each page. Legacy synchronous SDK factories remain compatible through a later release after stable deprecation; attribution, permissions, stored data, and update behavior are unchanged.",
   },
   {
     code: "session-store-sync-listing",

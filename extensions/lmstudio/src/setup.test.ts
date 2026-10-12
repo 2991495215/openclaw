@@ -1141,7 +1141,7 @@ describe("lmstudio setup", () => {
       },
     );
 
-    expect(discoverLmstudioModelsMock).toHaveBeenCalledWith({
+    expect(discoverLmstudioModelsMock.mock.calls[0]?.[0]).toMatchObject({
       baseUrl: "http://localhost:1234/v1",
       apiKey: "secretref-lmstudio-key",
       headers: {
@@ -1211,7 +1211,7 @@ describe("lmstudio setup", () => {
       { discoveryApiKey, env: {} },
     );
 
-    expect(discoverLmstudioModelsMock).toHaveBeenCalledWith({
+    expect(discoverLmstudioModelsMock.mock.calls[0]?.[0]).toMatchObject({
       baseUrl: "http://localhost:1234/v1",
       apiKey: expectedApiKey,
       headers,
@@ -1247,7 +1247,7 @@ describe("lmstudio setup", () => {
 
     const result = await discoverLmstudioProvider(buildDiscoveryContext());
 
-    expect(discoverLmstudioModelsMock).toHaveBeenCalledWith({
+    expect(discoverLmstudioModelsMock.mock.calls[0]?.[0]).toMatchObject({
       baseUrl: "http://localhost:1234/v1",
       apiKey: "",
       quiet: true,

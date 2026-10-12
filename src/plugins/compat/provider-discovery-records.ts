@@ -14,7 +14,7 @@ export const PROVIDER_DISCOVERY_COMPAT_RECORDS = [
     ...DISCOVERY_MIGRATION,
     code: "provider-http-sync-policy",
     replacement:
-      "Await prepareModelProviderRequestRouteFacts and pass its providerMetadataOwners to endpoint and request policy helpers. Synchronous SDK helpers retain cold native metadata discovery until the next Plugin SDK major.",
+      "Await prepareModelProviderRequestRouteFacts and pass its providerMetadataOwners to endpoint and request policy helpers. Synchronous SDK helpers retain cold native metadata discovery until a later release after stable deprecation.",
     docsPath: "/plugins/sdk-migration#bundled-provider-request-policy",
     surfaces: [
       "openclaw/plugin-sdk/provider-http resolveProviderEndpoint",
@@ -39,7 +39,7 @@ export const PROVIDER_DISCOVERY_COMPAT_RECORDS = [
     ...DISCOVERY_MIGRATION,
     code: "realtime-voice-registry-sync",
     replacement:
-      "Await getRealtimeVoiceProviderAsync, listRealtimeVoiceProvidersAsync, canonicalizeRealtimeVoiceProviderIdAsync, or resolveConfiguredRealtimeVoiceProviderAsync. Synchronous SDK counterparts retain cold native discovery until the next Plugin SDK major.",
+      "Await getRealtimeVoiceProviderAsync, listRealtimeVoiceProvidersAsync, canonicalizeRealtimeVoiceProviderIdAsync, or resolveConfiguredRealtimeVoiceProviderAsync. Synchronous SDK counterparts retain cold native discovery until a later release after stable deprecation.",
     docsPath: "/plugins/sdk-migration#realtime-voice-provider-discovery",
     surfaces: [
       "openclaw/plugin-sdk/realtime-voice getRealtimeVoiceProvider",

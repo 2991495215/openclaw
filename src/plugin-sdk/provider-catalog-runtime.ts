@@ -14,7 +14,7 @@ export { isPluginProvidersLoadInFlight } from "../plugins/providers.runtime.js";
 
 /**
  * @deprecated Await resolvePluginProvidersAsync; this requires an already loaded registry
- * and will be removed in the next Plugin SDK major.
+ * and will be removed in a later release after stable deprecation.
  */
 export function resolvePluginProviders(params: Parameters<typeof resolvePluginProvidersCore>[0]) {
   warnPluginSdkDeprecation({

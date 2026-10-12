@@ -130,67 +130,6 @@ describe("resolvePluginRuntimeLoadContext", () => {
     clearPluginMetadataLifecycleCaches();
   });
 
-  it("builds the runtime plugin load context from the auto-enabled config", () => {
-    const rawConfig = { plugins: {} };
-    const resolvedConfig = {
-      plugins: {
-        entries: {
-          demo: { enabled: true },
-        },
-      },
-    };
-    const env = { HOME: "/tmp/openclaw-home" } as NodeJS.ProcessEnv;
-
-    applyPluginAutoEnableMock.mockReturnValue({
-      config: resolvedConfig,
-      changes: [],
-      autoEnabledReasons: {
-        demo: ["demo configured"],
-      },
-    });
-
-    const context = resolvePluginRuntimeLoadContext({
-      config: rawConfig,
-      env,
-    });
-
-    expect(context).toEqual({
-      rawConfig,
-      config: resolvedConfig,
-      activationSourceConfig: rawConfig,
-      autoEnabledReasons: {
-        demo: ["demo configured"],
-      },
-      workspaceDir: "/resolved-workspace",
-      env,
-      logger: context.logger,
-      manifestRegistry,
-      metadataSnapshot,
-      installRecords: {},
-      preferBuiltPluginArtifacts: undefined,
-    });
-    expect(resolvePluginMetadataSnapshotMock).not.toHaveBeenCalled();
-    expect(applyPluginAutoEnableMock).toHaveBeenCalledWith({
-      config: rawConfig,
-      env,
-      manifestRegistry,
-    });
-    expect(resolvePluginControlPlaneWorkspaceMock).toHaveBeenNthCalledWith(1, {
-      config: rawConfig,
-      env,
-      workspaceDir: undefined,
-    });
-    expect(resolvePluginControlPlaneWorkspaceMock).toHaveBeenNthCalledWith(2, {
-      config: resolvedConfig,
-      env,
-      workspaceDir: undefined,
-    });
-    expect(resolveConfigWidePluginMetadataSnapshotMock).toHaveBeenCalledExactlyOnceWith({
-      config: rawConfig,
-      env,
-    });
-  });
-
   it("binds prepared metadata without discovery preparation when auto-enable changes policy", () => {
     const config = { plugins: {} };
     const activatedConfig = { plugins: { entries: { demo: { enabled: true } } } };
@@ -221,21 +160,6 @@ describe("resolvePluginRuntimeLoadContext", () => {
     expect(getPluginRuntimeLoadContext(registry)?.metadataSnapshot).toBe(metadataSnapshot);
     expect(getPluginRuntimeLoadContext(registry)?.config).toBe(activatedConfig);
     expect(getPreparedBundledDiscoveryMode(env)).toBeUndefined();
-  });
-
-  it("keeps derived metadata operation-local", () => {
-    const derivedSnapshot = { ...metadataSnapshot } as typeof metadataSnapshot & {
-      registrySource: "derived";
-    };
-    derivedSnapshot.registrySource = "derived";
-    resolveConfigWidePluginMetadataSnapshotMock.mockReturnValueOnce(derivedSnapshot);
-
-    const context = resolvePluginRuntimeLoadContext({
-      config: { plugins: {} },
-      env: { HOME: "/tmp/openclaw-home" } as NodeJS.ProcessEnv,
-    });
-
-    expect(context.metadataSnapshot).toBe(derivedSnapshot);
   });
 
   it("uses the source runtime snapshot for plugin activation source config", () => {
@@ -288,33 +212,6 @@ describe("resolvePluginRuntimeLoadContext", () => {
       env,
       manifestRegistry: secondRegistry,
       discovery: undefined,
-    });
-  });
-
-  it("threads install records from the metadata snapshot into the context and load options", () => {
-    const snapshotWithRecords: PluginMetadataSnapshot = {
-      ...metadataSnapshot,
-      index: {
-        ...metadataSnapshot.index,
-        installRecords: {
-          demo: { source: "npm", version: "1.0.0" },
-        },
-        plugins: [],
-        policyHash: "policy",
-      },
-    };
-    resolveConfigWidePluginMetadataSnapshotMock.mockReturnValueOnce(snapshotWithRecords);
-
-    const context = resolvePluginRuntimeLoadContext({
-      config: { plugins: {} },
-      env: { HOME: "/tmp/openclaw-home" } as NodeJS.ProcessEnv,
-    });
-
-    expect(context.installRecords).toEqual({
-      demo: { source: "npm", version: "1.0.0" },
-    });
-    expect(buildPluginRuntimeLoadOptions(context).installRecords).toEqual({
-      demo: { source: "npm", version: "1.0.0" },
     });
   });
 

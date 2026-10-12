@@ -9,7 +9,7 @@ export const MEDIA_DISCOVERY_COMPAT_RECORD = {
   warningStarts: "2026-10-11",
   removalGate: "next-plugin-sdk-major",
   replacement:
-    "Await resolveAutoMediaKeyProvidersAsync and resolveDefaultMediaModelAsync from openclaw/plugin-sdk/media-runtime. The synchronous methods retain their signatures and return values until the next Plugin SDK major and explicit breaking-release approval.",
+    "Await resolveAutoMediaKeyProvidersAsync and resolveDefaultMediaModelAsync from openclaw/plugin-sdk/media-runtime. The synchronous methods retain their signatures and return values until a later release after stable deprecation.",
   docsPath: "/plugins/sdk-migration/compatibility-policy#media-discovery",
   surfaces: [
     "openclaw/plugin-sdk/media-runtime resolveAutoMediaKeyProviders",

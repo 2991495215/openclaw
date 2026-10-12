@@ -149,8 +149,8 @@ plugins use the typed public exports from `agent-runtime`.
 
 The existing `parseModelRef` exports and `agent-runtime`'s
 `resolveModelRefFromString` retain cold synchronous discovery for installed
-plugins. They emit a bounded deprecation warning and remain supported until the
-next Plugin SDK major and explicit approval of a breaking release.
+plugins. They emit a bounded deprecation warning and remain supported until a
+later release after stable deprecation.
 
 ### Provider discovery
 
@@ -162,7 +162,7 @@ Borrowed callbacks remain owned by the calling SDK host until that host closes.
 The synchronous `resolvePluginProviders` export is deprecated and emits a bounded
 warning. It requires an already prepared and loaded provider registry; cold
 discovery must use the async replacement. The synchronous export remains available
-until the next Plugin SDK major.
+until a later release after stable deprecation.
 
 ### Bundled provider request policy
 
@@ -186,7 +186,8 @@ Google's plugin-local `api.ts` and `runtime-api.ts` expose
 request metadata. It prepares the provider policy before building the HTTP
 request. The synchronous `resolveGoogleGenerativeAiHttpRequestConfig` requires
 prepared metadata, emits a bounded deprecation warning, and remains available
-until the next Plugin SDK major. Bundled callers use the async replacement.
+until a later release after stable deprecation. Bundled callers use the async
+replacement.
 The local-only `provider-http` seam exposes `warnPluginSdkDeprecation` so these
 plugin-local compatibility exports share the existing warning budget.
 
@@ -200,9 +201,9 @@ registrations asynchronously. Returned provider callbacks remain owned by the
 calling SDK resource host until it closes.
 
 The synchronous counterparts emit a bounded deprecation warning and retain
-their cold native discovery behavior through the current Plugin SDK major.
-They will be removed in the next major. Prepared Gateway consumers use the
-internal registry directly; the native compatibility path belongs only to the
+their cold native discovery behavior through the stable deprecation window.
+Removal follows in a later release after stable deprecation. Prepared Gateway
+consumers use the internal registry directly; the native compatibility path belongs only to the
 deprecated SDK exports.
 
 ### Speech provider discovery
@@ -218,7 +219,8 @@ From `openclaw/plugin-sdk/tts-runtime`, await
 `getResolvedSpeechProviderConfigAsync`, `resolveTtsProviderOrderAsync`, and
 `setTtsProviderAsync`. Their synchronous counterparts, along with the synchronous
 speech registry helpers, are deprecated and require a prepared registry. They
-emit a bounded warning and remain available until the next Plugin SDK major.
+emit a bounded warning and remain available until a later release after stable
+deprecation.
 Synchronous directive parsing remains available with an explicit `providers`
 inventory; `runtime.tts.prepareTtsRequest` prepares discovery and preserves the
 provider resources needed by directive results.
@@ -389,5 +391,5 @@ voice-call consumers use these replacements.
 
 `getRealtimeTranscriptionProvider` and `listRealtimeTranscriptionProviders` are
 deprecated, emit a bounded warning, and require prepared provider registrations.
-They remain available through the current Plugin SDK major and will be removed
-in the next major.
+They remain available through the stable deprecation window and will be removed
+in a later release after stable deprecation.

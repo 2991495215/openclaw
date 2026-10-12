@@ -38,7 +38,7 @@ export {
 } from "../sessions/model-overrides.js";
 export { applyModelOverrideWithAuthProfileCompatibilityAsync };
 
-/** @deprecated Await applyModelOverrideWithAuthProfileCompatibilityAsync; removed in the next Plugin SDK major. */
+/** @deprecated Await applyModelOverrideWithAuthProfileCompatibilityAsync; removed in a later release after stable deprecation. */
 export function applyModelOverrideWithAuthProfileCompatibility(
   params: Parameters<typeof applyModelOverrideWithAuthProfileCompatibilityAsync>[0],
 ): { updated: boolean } {

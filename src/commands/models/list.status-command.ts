@@ -78,11 +78,12 @@ import { dedupeByKey } from "../../shared/dedupe-by-key.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import { resolveUserPath, shortenHomePath } from "../../utils.js";
 import { listUnavailableAuthProfiles } from "./auth-unavailability.js";
+import { readModelCatalogWarnings } from "./catalog-warnings.js";
 import {
   formatProviderAuthProfileCounts,
   resolveProviderAuthOverview,
 } from "./list.auth-overview.js";
-import { isRich } from "./list.format.js";
+import { groupByProvider, isRich } from "./list.format.js";
 import type { AuthProbeSummary } from "./list.probe.js";
 import type { ProviderAuthOverview } from "./list.types.js";
 import { loadModelsConfig } from "./load-config.js";
@@ -93,11 +94,6 @@ import {
   formatMs,
   resolveModelsTargetAgent,
 } from "./shared.js";
-
-function resolveEnvAgentDirOverride(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  const override = env.OPENCLAW_AGENT_DIR?.trim() || env.PI_CODING_AGENT_DIR?.trim();
-  return override ? resolveUserPath(override, env) : undefined;
-}
 
 const listProbeRuntimeLoader = createLazyImportLoader(() => import("./list.probe.js"));
 
@@ -129,16 +125,6 @@ type StatusProviderUse = Omit<StatusProviderUseRef, "routeScope"> & {
 function resolveStatusProviderUseIncompatibility(usage: StatusProviderUse) {
   const routeResolution = usage.evaluation.routeResolution;
   return routeResolution?.kind === "incompatible" ? routeResolution : usage.runtimeIncompatibility;
-}
-
-function groupByProvider<T extends { provider: string }>(entries: readonly T[]): Map<string, T[]> {
-  const groups = new Map<string, T[]>();
-  for (const entry of entries) {
-    const group = groups.get(entry.provider) ?? [];
-    group.push(entry);
-    groups.set(entry.provider, group);
-  }
-  return groups;
 }
 
 type StatusRuntimeAuthStatus = "usable" | "missing" | "indeterminate";
@@ -262,9 +248,14 @@ export async function modelsStatusCommand(
     skipPluginValidation: opts.probe !== true,
   });
   prepareBundledDiscoveryModeNative();
+  for (const warning of await readModelCatalogWarnings(cfg, opts.agent?.trim())) {
+    runtime.error(`${warning.message} ${warning.fixHint}`);
+  }
   const explicitAgentId = opts.agent?.trim();
+  const envAgentDir =
+    process.env.OPENCLAW_AGENT_DIR?.trim() || process.env.PI_CODING_AGENT_DIR?.trim();
   const { agentId: workspaceAgentId, agentDir } = resolveModelsTargetAgent(cfg, opts.agent, {
-    agentDirOverride: explicitAgentId ? undefined : resolveEnvAgentDirOverride(),
+    agentDirOverride: !explicitAgentId && envAgentDir ? resolveUserPath(envAgentDir) : undefined,
     kind: "read",
   });
   // Only an explicit --agent narrows the reported model/fallback overrides; an inferred
@@ -806,8 +797,6 @@ export async function modelsStatusCommand(
       const authProfileHealthById = new Map(
         authHealth.profiles.map((profile) => [profile.profileId, profile]),
       );
-      const resolveProviderAuthHealthId = (provider: string): string =>
-        resolveProviderIdForAuth(provider, envLookupParams);
       const resolveRuntimeAuthRouteEffective = (
         provider: string,
         evaluation?: ModelAuthAvailabilityEvaluation,
@@ -826,13 +815,16 @@ export async function modelsStatusCommand(
           };
         }
         const candidates = Array.from(
-          new Set([normalizeProviderId(provider), resolveProviderAuthHealthId(provider)]),
+          new Set([
+            normalizeProviderId(provider),
+            resolveProviderIdForAuth(provider, envLookupParams),
+          ]),
         );
         const profileId = evaluation.selectedProfileId;
         if (profileId) {
           const credentialProvider = store.profiles[profileId]?.provider ?? provider;
           const source = providerAuthMap.get(
-            resolveProviderAuthHealthId(credentialProvider),
+            resolveProviderIdForAuth(credentialProvider, envLookupParams),
           )?.effective;
           return source && source.kind !== "missing"
             ? source

@@ -918,8 +918,8 @@ exports from `model-ref-parse`, `provider-model-shared`, and `agent-runtime`, pl
 `resolveModelRefFromString` from `agent-runtime`. Their argument and return
 shapes, custom manifest aliases, and cold discovery remain supported for
 installed plugins. Actual legacy use emits one `DEP_PLUGIN_SDK` warning per
-plugin and capability family per process. Removal requires the next Plugin SDK
-major, migration of published readers, and explicit breaking-release approval.
+plugin and capability family per process. Removal follows in a later release
+after stable deprecation and migration of published readers.
 
 Await `parseModelRefAsync` from `openclaw/plugin-sdk/agent-runtime` for one
 lookup. For repeated parsing, await `prepareModelRefResolver` once and use its
@@ -1049,6 +1049,6 @@ prepared registry directly.
 
 The synchronous names retain their signatures and return values, prepare native
 discovery only for compatibility, and emit one bounded `DEP_PLUGIN_SDK` warning
-per plugin and capability family. They are scheduled for removal in the next
-Plugin SDK major. Core media execution prepares discovery asynchronously before
+per plugin and capability family. Removal follows in a later release after
+stable deprecation. Core media execution prepares discovery asynchronously before
 deriving image, document, or transcription defaults.
