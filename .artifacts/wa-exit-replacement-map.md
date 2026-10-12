@@ -1,6 +1,6 @@
 # Web Awesome exit replacement map
 
-Updated after the coordinator split on 2026-10-11. This is a coordination artifact, not a statement that the unlanded replacements are on main.
+Updated on 2026-10-12 after the coordinator split. This is a coordination artifact, not a statement that the unlanded replacements are on main.
 
 ## Ownership
 
@@ -23,7 +23,8 @@ PRIM-B is still a prerequisite. The latest inspected API is `285afec0b35db0bfd63
 | Secrets row actions | `Menu`; existing secret action owner | W-WA-EXIT, prepared |
 | Provider picker / group defaults dialog | `Menu`; searchable provider rows, exact trigger IDs | W-WA-EXIT, prepared |
 | Pet dismiss menu | `Menu`, loaded only when opened | W-WA-EXIT, prepared |
-| Plugin settings actions and tab panels | `Menu` / `TabPanel` | W-WA-EXIT, prepared |
+| Plugin settings actions | `Menu` | W-WA-EXIT, prepared |
+| Plugins discovery/settings and Skill workshop standalone panels | Native `div[role=tabpanel]`; existing IDs, labels and keyboard focusability | W-WA-EXIT, [#169901](https://github.com/openclaw/openclaw/pull/169901), awaiting CI failure attribution |
 | Plugin install progress popup | `Popover`; preserve hover/pin intent and shared Escape ownership | W-WA-EXIT, prepared; needs two existing overlay options exposed by W-WA-EXIT-2 |
 | Meetings reader tabs | `Tabs`; manual activation, existing panel IDs | W-WA-EXIT, prepared |
 | Systems sidebar filter/sort | `Menu`; ordered headings and radio entries | W-WA-EXIT, prepared; requires `MenuEntry` content rows from W-WA-EXIT-2 |
@@ -33,7 +34,7 @@ PRIM-B is still a prerequisite. The latest inspected API is `285afec0b35db0bfd63
 | Board tabs/widget menus | `Tabs` / `Menu`; preserve data-board-tab-id | W-WA-EXIT-2, draft handed off; legacy widget helper still called by active chat header lane |
 | Browser/Terminal active tab panels | Native `div[role=tabpanel]`; preserve IDs/classes/events | W-WA-EXIT-2, prepared draft handed off |
 | Sidebar menus / select-picker / multi-select / agent pickers | Owned Menu/Popover/picker primitives; retain current active-lane contracts | W-WA-EXIT-2 coordinates with assigned sidebar/picker lanes |
-| Config form / language picker | Owned select/menu primitives | Active config lane |
+| Config form / language picker | Owned select/menu primitives | Active config lane; [#169046](https://github.com/openclaw/openclaw/pull/169046) deletes `pages/config/language-select.ts` |
 | Chat / new-session menus, pickers, previews | Owned primitives in each rendering consumer | Active chat/new-session lanes |
 | `hub-tabs`, `panel-tab-strip`, modal, tooltip, native-link-menu | PRIM-B owners | PRIM-B; do not duplicate |
 
@@ -50,6 +51,8 @@ The page drafts consume these narrow extensions. Their prepared patches live on 
 
 Do not restore removed reactive projection scaffolding: adopt only a thin projection with its first production caller. The current drafts retain their existing domain owners.
 
+The final Menu contract must preserve an explicit root `triggerAttributes.id` and the root caller's `data-value`; nested item IDs remain authoritative for nested triggers. The inspected W-WA-EXIT-2 draft preserves root `data-value` but still lacks the stable ID. The frozen nested-menu composition supports the ID but overwrites the root value with `undefined`. Owner handoff: `/tmp/w-wa-exit-menu-contract-handoff.md`. Resolve this in the primitive owner before final page proof.
+
 ## Prepared consumer patches and proof locations
 
 - W-WA-EXIT production branch: `solid2/w-wa-exit`; first page batch is still uncommitted. Recovery patch: `/tmp/w-wa-exit-first-current-main.patch`.
@@ -62,7 +65,7 @@ Initial first-batch tests, typecheck, focused E2E, native overlay suites, and sc
 
 ## Theme and final removal
 
-PRIM-B already defines the five previously implicit values in `base.css`:
+The five previously implicit values and the stylesheet consumer cutover landed in [#169696](https://github.com/openclaw/openclaw/pull/169696), merge `0890636ae1678f639dfb08138e3f8c38b3b25d9a`:
 
 | Owned token | Value |
 | --- | --- |
@@ -72,9 +75,9 @@ PRIM-B already defines the five previously implicit values in `base.css`:
 | `--control-ui-focus-ring` | `solid 0.1875rem var(--ring)` |
 | `--control-ui-focus-ring-offset` | `0.0625rem` |
 
-Remaining consumers of old tokens are in `styles/select-picker.css`, `styles/sidebar-menus.css`, `styles/chat/composer.css`, and the old tooltip implementation. W-WA-EXIT owns the stylesheet cutover and coordinates with active lane changes; PRIM-B replaces tooltip.
+The landed stylesheet cutover covers `styles/select-picker.css`, `styles/sidebar-menus.css`, and `styles/chat/composer.css`. PRIM-B replaces the old tooltip implementation. Theme proof matched eight computed-style profiles and twelve screenshot pairs; startup JS gzip fell from 410,332 to 410,315 B.
 
-The last completed main AST inventory counted **215 WA tags**. The partial test composition counted **162**, before the session-menu and Board follow-ups. These are source snapshots, not a zero-usage claim.
+The latest retained main AST inventory, pinned to `28df9fe159fc`, counted **202 WA tags**. The partial test composition counted **162**, before the session-menu and Board follow-ups. These are source snapshots, not a zero-usage claim.
 
 Only after all consumers are gone: remove Web Awesome from `ui/package.json` and regenerate the lockfile; remove its workspace patch entry, patch file/README/checker references; theme import; `wa-light` / `wa-dark` bootstrap toggles; WA token bridges/selectors/types/registrations; PostCSS workaround and its tests/config references. Regenerate the boot manifest through its owner. Final proof includes themed/RTL/large-text/forced-color/reduced-motion styles, Chromium/WebKit overlay contracts, UI build and startup measurement.
 
