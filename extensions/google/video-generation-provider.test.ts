@@ -2,8 +2,11 @@
 import type { Video } from "@google/genai";
 import { mockPinnedHostnameResolution } from "openclaw/plugin-sdk/test-env";
 import { oversizedJsonResponse } from "openclaw/plugin-sdk/test-fixtures";
+import { useProviderCatalogMetadata } from "openclaw/plugin-sdk/test-helpers/provider-catalog";
 import type { VideoGenerationRequest } from "openclaw/plugin-sdk/video-generation";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+useProviderCatalogMetadata(new URL(".", import.meta.url));
 
 const { createGoogleGenAIMock, downloadMock, generateVideosMock, getVideosOperationMock } =
   vi.hoisted(() => {

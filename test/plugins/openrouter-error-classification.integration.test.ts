@@ -10,6 +10,7 @@ import {
   resolveFailoverStatus,
   resolveModelFallbackError,
 } from "../../src/agents/failover-error.js";
+import { prepareModelProviderRequestRouteFacts } from "../../src/agents/provider-request-config.js";
 import { sleepWithAbort } from "../../src/infra/backoff.js";
 import { prepareBundledDiscoveryMode } from "../../src/plugins/bundled-discovery-state.js";
 import { loadBundledPluginFacade } from "../../src/test-utils/bundled-plugin-public-surface.js";
@@ -88,7 +89,10 @@ async function runAgainstOpenRouterError(params: {
   try {
     const address = server.address() as AddressInfo;
     const result = await streamOpenAICompletions(
-      { ...model, baseUrl: `http://127.0.0.1:${address.port}/api/v1` },
+      await prepareModelProviderRequestRouteFacts({
+        ...model,
+        baseUrl: `http://127.0.0.1:${address.port}/api/v1`,
+      }),
       params.context,
       { apiKey: ["test", "key"].join("-") },
     ).result();
@@ -121,7 +125,10 @@ async function runAgainstOpenRouterStream(event: Record<string, unknown>) {
   try {
     const address = server.address() as AddressInfo;
     return await streamOpenAICompletions(
-      { ...model, baseUrl: `http://127.0.0.1:${address.port}/api/v1` },
+      await prepareModelProviderRequestRouteFacts({
+        ...model,
+        baseUrl: `http://127.0.0.1:${address.port}/api/v1`,
+      }),
       { messages: [{ role: "user", content: "hello", timestamp: 1 }] },
       { apiKey: ["test", "key"].join("-") },
     ).result();

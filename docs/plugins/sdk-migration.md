@@ -180,6 +180,15 @@ they do not perform cold native discovery. These local seams are not public
 third-party SDK contracts. Metadata preparation does not grant credential or
 execution authority.
 
+Google's plugin-local `api.ts` and `runtime-api.ts` expose
+`resolveGoogleGenerativeAiHttpRequestConfigAsync` for callers that need cold
+request metadata. It prepares the provider policy before building the HTTP
+request. The synchronous `resolveGoogleGenerativeAiHttpRequestConfig` requires
+prepared metadata, emits a bounded deprecation warning, and remains available
+until the next Plugin SDK major. Bundled callers use the async replacement.
+The local-only `provider-http` seam exposes `warnPluginSdkDeprecation` so these
+plugin-local compatibility exports share the existing warning budget.
+
 ### Speech provider discovery
 
 Use `getSpeechProviderAsync` from `openclaw/plugin-sdk/speech` or

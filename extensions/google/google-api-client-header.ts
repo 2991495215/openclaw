@@ -1,4 +1,6 @@
 import {
+  getModelProviderRequestRouteFacts,
+  prepareModelProviderRequestRouteFacts,
   resolveProviderRequestHeaders,
   type ProviderRequestCapability,
   type ProviderRequestTransport,
@@ -10,6 +12,9 @@ export function resolveGoogleApiClientHeaders(params?: {
   baseUrl?: string;
   capability?: ProviderRequestCapability;
   transport?: ProviderRequestTransport;
+  providerMetadataOwners?: Parameters<
+    typeof resolveProviderRequestHeaders
+  >[0]["providerMetadataOwners"];
 }): Record<string, string> {
   return (
     resolveProviderRequestHeaders({
@@ -18,6 +23,27 @@ export function resolveGoogleApiClientHeaders(params?: {
       baseUrl: params?.baseUrl ?? DEFAULT_GOOGLE_API_BASE_URL,
       capability: params?.capability ?? "other",
       transport: params?.transport ?? "http",
+      providerMetadataOwners: params?.providerMetadataOwners,
     }) ?? {}
   );
+}
+
+export async function prepareGoogleApiClientMetadata(
+  params: Parameters<typeof resolveGoogleApiClientHeaders>[0] = {},
+) {
+  const model = await prepareModelProviderRequestRouteFacts({
+    provider: "google",
+    api: params.api ?? "google-generative-ai",
+    baseUrl: params.baseUrl ?? DEFAULT_GOOGLE_API_BASE_URL,
+  });
+  return getModelProviderRequestRouteFacts(model)?.providerMetadataOwners;
+}
+
+export async function resolveGoogleApiClientHeadersAsync(
+  params?: Parameters<typeof resolveGoogleApiClientHeaders>[0],
+): Promise<Record<string, string>> {
+  return resolveGoogleApiClientHeaders({
+    ...params,
+    providerMetadataOwners: await prepareGoogleApiClientMetadata(params),
+  });
 }
