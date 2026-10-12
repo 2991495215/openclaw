@@ -119,10 +119,15 @@ afterEach(async () => {
 
 describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", () => {
   it("gives one copied refresh generation one durable main-store owner", async () => {
+    const traceStarted = performance.now();
+    const trace = (stage: string) =>
+      console.error(`[oauth-stage] ${stage} ${Math.round(performance.now() - traceStarted)}ms`);
+    trace("body-start");
     const work = new AsyncWorkScope();
     const { promise: finishRefreshGate, resolve: finishRefresh } = createDeferredCore();
     // Vitest can time out the observer before the accepted refresh finishes.
     settleCaseWork = async () => {
+      trace("cleanup-start");
       finishRefresh();
       await work.drain();
     };
@@ -157,17 +162,20 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
           return dir;
         }),
       );
+      trace("subagents-seeded");
       const mainStore = createExpiredOauthStore({ profileId, provider, accountId: "acct-a" });
       const mainCredential = mainStore.profiles[profileId];
       if (mainCredential?.type === "oauth") {
         mainCredential.access = "main-drifted-access";
       }
       saveAuthProfileStore(mainStore, mainAgentDir);
+      trace("main-seeded");
 
       let callCount = 0;
       const { promise: started, resolve: markStarted } = createDeferredCore();
       refreshProviderOAuthCredentialWithPluginMock.mockImplementation(async () => {
         callCount += 1;
+        trace("provider-entered");
         markStarted();
         await finishRefreshGate;
         return {
@@ -180,8 +188,10 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
         } as never;
       });
 
+      trace("resolve-triggered");
       const first = resolveFrom(subAgents[0]);
       await Promise.race([started, first]);
+      trace("provider-wait-finished");
       expect(
         resolvePersistedAuthProfileOwnerAgentDir({
           agentDir: subAgents[1],
@@ -191,13 +201,16 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
       await expect(
         resolvePersistedAuthProfileOwnerAgentDirAsync({ agentDir: subAgents[1], profileId }),
       ).resolves.toBeUndefined();
+      trace("owner-sub1-read");
       await expect(
         resolvePersistedAuthProfileOwnerAgentDirAsync({ agentDir: subAgents[2], profileId }),
       ).resolves.toBe(subAgents[2]);
+      trace("owner-sub2-read");
       // A portable copy is not fenced, but its matching refresh generation still reads main.
       await expect(
         resolvePersistedAuthProfileOwnerAgentDirAsync({ agentDir: subAgents[3], profileId }),
       ).resolves.toBeUndefined();
+      trace("owner-sub3-read");
       expect(callCount).toBe(1);
       for (const agentDir of subAgents.slice(0, 2)) {
         const fenced = read(agentDir);
@@ -224,6 +237,7 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
         }),
       );
       expect(callCount).toBe(1);
+      trace("refresh-settled");
       for (const [index, agentDir] of subAgents.slice(0, 2).entries()) {
         const persisted = loadPersistedAuthProfileStore(agentDir);
         expect(persisted?.profiles[profileId]).toBeUndefined();
@@ -243,16 +257,21 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
         profileIds: [profileId],
         agentDir: mainAgentDir,
       });
+      trace("main-removed");
       await expect(resolveFrom(subAgents[1])).resolves.toBeNull();
+      trace("missing-resolved");
       clearRuntimeAuthProfileStoreSnapshots();
       await expect(resolveFrom(subAgents[1])).resolves.toBeNull();
+      trace("missing-reloaded");
       expect(callCount).toBe(1);
       await expect(resolveFrom(subAgents[2])).resolves.toEqual(
         expect.objectContaining({ apiKey: "independent-access" }),
       );
+      trace("independent-resolved");
       await expect(resolveFrom(subAgents[3])).resolves.toEqual(
         expect.objectContaining({ apiKey: "portable-access" }),
       );
+      trace("body-finished");
     });
   }, 10_000);
 
