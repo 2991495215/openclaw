@@ -7,8 +7,9 @@ import {
 } from "openclaw/plugin-sdk/agent-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { upsertAuthProfile, upsertAuthProfileAsync } from "openclaw/plugin-sdk/provider-auth";
+import { useSessionStoreTempDirs } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { withTempDir } from "openclaw/plugin-sdk/test-env";
-import { afterEach, describe, expect, it as baseIt, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it as baseIt, vi } from "vitest";
 import {
   applyCodexAppServerAuthProfile as applyAuth,
   bridgeCodexAppServerStartOptions as bridgeStart,
@@ -33,8 +34,10 @@ import type { resolveMacOSDesktopCodexAppPathCandidates } from "./desktop-app-pa
 import { createClientHarness } from "./test-support.js";
 import { resolveCodexAppServerSpawnEnv } from "./transport-stdio.js";
 
+const agentDirs = useSessionStoreTempDirs(afterAll, "openclaw-codex-");
+
 function it(name: string, run: (context: { agentDir: string }) => Promise<void>) {
-  baseIt(name, () => withTempDir("openclaw-codex-", (agentDir) => run({ agentDir })));
+  baseIt(name, () => run({ agentDir: agentDirs.make() }));
 }
 
 const oauth = vi.hoisted(() => ({

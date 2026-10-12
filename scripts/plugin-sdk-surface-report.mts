@@ -248,7 +248,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: approved PreparedAgentRunStart contract.
       // +1: deprecated createSessionHeaderLink retained from shipped 2026.10.1.
       // +10: shared database-engine contracts and operations after the SQLite export cutover.
-      3710,
+      // +1: approved async auth-snapshot publication with retained sync compatibility.
+      3711,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -276,7 +277,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: the same transcript read replacement pairs.
       // +1: the same deprecated createSessionHeaderLink.
       // +5: shared database-engine host and worker operations.
-      2165,
+      // +1: approved async auth-snapshot publication with retained sync compatibility.
+      2166,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
