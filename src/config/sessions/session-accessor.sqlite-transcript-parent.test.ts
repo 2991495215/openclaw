@@ -3,10 +3,8 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { trackSqliteStatementExecutions } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { requireNodeSqlite } from "../../infra/node-sqlite.js";
 import { runSqliteImmediateTransactionSync } from "../../infra/sqlite-transaction.js";
-import {
-  openOpenClawAgentDatabase,
-  runOpenClawAgentWriteTransaction,
-} from "../../state/openclaw-agent-db.js";
+import { withOpenClawAgentDatabaseWrite } from "../../state/openclaw-agent-db-write.js";
+import { runOpenClawAgentWriteTransaction } from "../../state/openclaw-agent-db.js";
 import { runOpenClawAgentWriteAdmission } from "../../state/openclaw-agent-write-admission.js";
 import { useSessionStoreTempDirs } from "../../test-utils/session-state-cleanup.js";
 import {
@@ -37,16 +35,14 @@ async function createTranscript(events: TranscriptEvent[]) {
     agentId: scope.agentId,
     path: resolveSessionTranscriptDatabasePath(scope),
   };
-  await runOpenClawAgentWriteAdmission(databaseOptions, () =>
+  const database = await withOpenClawAgentDatabaseWrite(databaseOptions, (opened) => {
     replaceTranscriptEventsSync(scope, [
       { type: "session", version: 3, id: scope.sessionId },
       ...events,
-    ]),
-  );
-  return {
-    scope,
-    database: openOpenClawAgentDatabase(databaseOptions),
-  };
+    ]);
+    return opened;
+  });
+  return { scope, database };
 }
 
 function message(id: string, parentId: string | null): TranscriptEvent {
