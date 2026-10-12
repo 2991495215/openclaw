@@ -37,8 +37,7 @@ export function applyMemorySessionEntryCleanup(
       [...(params.upserts ?? [])].length ||
       params.allowCanonicalRepair ||
       params.afterUpsertsInTransaction ||
-      params.afterFreshUpsertsInTransaction ||
-      params.descendantRunBasis
+      params.afterFreshUpsertsInTransaction
     ) {
       throw new Error("Memory bulk cleanup does not support SQLite repair or upsert callbacks");
     }

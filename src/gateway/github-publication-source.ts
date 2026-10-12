@@ -120,7 +120,7 @@ function readMemorySourceFacts(
   const snapshot = captured.owner
     ? captured.owner.readSession(sessionKey, captured.authority)
     : captured.binding?.actor.storage?.readCurrent(
-        { type: "session.members.read", input: { sessionKey } },
+        { type: "session.members.read", input: {} },
         captured.authority,
       );
   const entry = snapshot?.entry;
@@ -150,7 +150,7 @@ async function prepareMemoryPublicationSource(
   const expected = await runOpenClawStateWorkerOperation(
     context,
     (scope) => scope.execute({ type: "githubPublication.sourceFacts", input: { source } }),
-    { signal: params.signal, assertCurrent: params.assertCurrent },
+    { signal: params.signal, assertCurrent: () => params.assertCurrent() },
   );
   const pending = new Set<Promise<unknown>>();
   let released = false;

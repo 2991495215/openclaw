@@ -1,5 +1,6 @@
 import fsSync from "node:fs";
 import path from "node:path";
+import { isMainThread } from "node:worker_threads";
 import { safeStatSync } from "@openclaw/fs-safe/path";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeAgentId } from "./config-utils.js";
@@ -31,13 +32,16 @@ import {
   materializeSessionArchiveForRead,
   parseUsageCountedSessionIdFromFileName,
   prepareSessionEntryInWorker,
+  readSessionEntrySnapshotInWorker,
   readRestoredSessionTranscript,
+  readTranscriptStatsAsync,
   readTranscriptStatsSync,
   readTranscriptExportSnapshotReadOnlySync,
   resolveSessionTranscriptsDirForAgent,
   SessionTranscriptColdError,
   stripInboundMetadata,
   stripInternalRuntimeContext,
+  warnPluginSdkDeprecation,
 } from "./openclaw-runtime-session.js";
 import { retryTransientMemoryRead } from "./read-retry.js";
 import {
@@ -66,7 +70,10 @@ export {
   type SessionTranscriptCorpusEntry,
   type SessionTranscriptCorpusOptions,
 } from "./session-transcript-corpus.js";
-export { readTranscriptStatsBatchReadOnlySync } from "./openclaw-runtime-session.js";
+export {
+  readTranscriptStatsBatchReadOnlyAsync,
+  readTranscriptStatsBatchReadOnlySync,
+} from "./openclaw-runtime-session.js";
 
 const SESSION_ENTRY_PARSE_YIELD_LINES = 250;
 const DIRECT_CRON_PROMPT_RE = /^\[cron:[^\]]+\]\s*/;
@@ -480,6 +487,7 @@ function sqliteSessionFileState(
   };
 }
 
+/** @deprecated Await statSessionEntry. Removed at the next Plugin SDK major; prepared statistics do not read SQLite. */
 export function statSessionEntrySync(
   absPath: string,
   opts: BuildSessionEntryOptions = {},
@@ -488,10 +496,17 @@ export function statSessionEntrySync(
   const sqliteIdentity = resolveBuildSessionSqliteIdentity(absPath, opts);
   if (sqliteIdentity) {
     if (!transcriptStats) {
+      if (isMainThread) {
+        warnPluginSdkDeprecation({
+          family: "session-store",
+          method: "statSessionEntrySync",
+          replacement: "statSessionEntry",
+        });
+      }
       assertBoundIncognitoMemorySyncAccess(
         sqliteIdentity,
         "statSessionEntrySync",
-        "buildSessionEntry",
+        "statSessionEntry",
       );
     }
     const stats = transcriptStats ?? readTranscriptStatsSync(sqliteIdentity);
@@ -506,6 +521,20 @@ export function statSessionEntrySync(
         size: stat.size,
       }
     : null;
+}
+
+/** Read transcript metadata through its worker without loading transcript bodies. */
+export async function statSessionEntry(
+  absPath: string,
+  opts: BuildSessionEntryOptions = {},
+  transcriptStats?: ReturnType<typeof readTranscriptStatsSync>,
+): Promise<SessionFileState | null> {
+  const identity = resolveBuildSessionSqliteIdentity(absPath, opts);
+  if (!identity) {
+    return statSessionEntrySync(absPath, opts);
+  }
+  const stats = transcriptStats ?? (await readTranscriptStatsAsync(identity));
+  return sqliteSessionFileState(absPath, identity, stats, opts.updatedAtMs);
 }
 
 async function yieldSessionEntryParseIfNeeded(
@@ -529,8 +558,23 @@ export async function buildSessionEntry(
     return incognito.memoryEntry(absPath, opts);
   }
   const prepare = async () => {
-    if (identity && !opts.onTranscriptMessage && opts.parseYieldEveryLines === undefined) {
-      const options = { ...opts, ...identity };
+    if (identity) {
+      const { onTranscriptMessage, parseYieldEveryLines, ...options } = { ...opts, ...identity };
+      if (onTranscriptMessage || parseYieldEveryLines !== undefined) {
+        const snapshot = await readSessionEntrySnapshotInWorker(
+          absPath,
+          options,
+          Boolean(onTranscriptMessage),
+        );
+        return snapshot
+          ? buildSessionEntryFromSource(
+              absPath,
+              opts,
+              (text) => redactSensitiveText(text, { mode: "tools" }),
+              snapshot,
+            )
+          : null;
+      }
       for (let attempt = 0; attempt < 2; attempt++) {
         const redaction = captureSensitiveTextRedactionSnapshot();
         const prepared = await prepareSessionEntryInWorker(absPath, options, redaction);

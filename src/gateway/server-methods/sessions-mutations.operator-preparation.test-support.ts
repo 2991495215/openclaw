@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -460,6 +461,7 @@ export function registerSessionOperatorPreparationTests(fixture: {
         const header = vi.spyOn(transcriptHeader, "ensureTranscriptHeader");
         const prepareFork = sessionFork.prepareSessionForkFromParent;
         const revoked = new Error("original creation source ended before entry commit");
+        const runOutsideCreation = AsyncLocalStorage.snapshot();
         let childSessionId: string | undefined;
         let parentReplacement: ReturnType<typeof loadSessionEntry>;
         const assertNoForkState = async (sessionKey: string, sessionId: string) => {
@@ -491,17 +493,17 @@ export function registerSessionOperatorPreparationTests(fixture: {
                   if (ending === "source-and-retry") {
                     source.abort(revoked);
                   } else if (ending === "parent-replaced") {
-                    await upsertSessionEntryCore(
-                      { agentId: "main", sessionKey: parentKey },
-                      {
-                        ...parentEntry,
-                        sessionId: `${parentId}-replacement`,
-                        updatedAt: 2,
-                      },
-                    );
-                    parentReplacement = loadSessionEntry({
-                      agentId: "main",
-                      sessionKey: parentKey,
+                    // The competing parent writer must not borrow the child's actor binding.
+                    parentReplacement = await runOutsideCreation(async () => {
+                      await upsertSessionEntryCore(
+                        { agentId: "main", sessionKey: parentKey },
+                        {
+                          ...parentEntry,
+                          sessionId: `${parentId}-replacement`,
+                          updatedAt: 2,
+                        },
+                      );
+                      return loadSessionEntry({ agentId: "main", sessionKey: parentKey });
                     });
                   }
                 }
@@ -617,6 +619,10 @@ export function registerSessionOperatorPreparationTests(fixture: {
               ).toEqual(expect.arrayContaining([expect.objectContaining({ type: "session" })]));
             }
             if (ending === "parent-replaced") {
+              expect(parentReplacement).toMatchObject({
+                sessionId: `${parentId}-replacement`,
+                updatedAt: 2,
+              });
               expect(loadSessionEntry({ agentId: "main", sessionKey: parentKey })).toEqual(
                 parentReplacement,
               );

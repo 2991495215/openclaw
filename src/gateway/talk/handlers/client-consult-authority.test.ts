@@ -639,7 +639,7 @@ describe("voice consult registration authority", () => {
       ]);
       expect(existsSync(targetPath)).toBe(false);
       let nativeAuthorityObserved = false;
-      let preparedAuthorityObserved = false;
+      let workerAuthorityObserved = false;
       const schemaSql: string[] = [];
       sqlReads?.restore();
       sqlReads = undefined;
@@ -666,19 +666,17 @@ describe("voice consult registration authority", () => {
                 expect(inWorkerGrant).toBe(false);
               }
               assertSource();
+              workerAuthorityObserved ||= inWorkerGrant;
               nativeAuthorityObserved ||=
                 getOpenClawAgentDatabaseIfOpen(target)?.db.isTransaction === true;
             },
             {
-              preparedCheck: (assertSource) => {
-                preparedAuthorityObserved ||= inWorkerGrant;
-                assertSource();
-              },
+              preparedCheck: (assertSource) => assertSource(),
             },
           ),
         });
         expect(schemaSql).toEqual([]);
-        expect(preparedAuthorityObserved).toBe(true);
+        expect(workerAuthorityObserved).toBe(kind === "incognito");
         expect(nativeAuthorityObserved).toBe(kind === "foreign");
         expect(
           clientVoiceSessionTesting.readRecord(target.agentId, "cold-native-voice"),

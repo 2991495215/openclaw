@@ -126,14 +126,13 @@ function findCanonicalSessionEntryMatch(
   scope: Omit<SessionAccessScope, "sessionKey">,
   canonicalKey: string,
   candidateKeys: readonly string[],
-  options: { readOnly?: boolean; projection?: "worktree" } = {},
+  options: { readOnly?: boolean } = {},
 ): (SessionEntrySummary & { readSource?: CapturedSessionEntryReadSource }) | undefined {
   let readSource: CapturedSessionEntryReadSource | undefined;
   const entries = loadExactSessionEntryCandidates({
     ...scope,
     sessionKeys: candidateKeys,
     readOnly: options.readOnly !== false,
-    projection: options.projection,
     onReadSource: (source) => {
       readSource = source;
     },
@@ -298,13 +297,12 @@ export function resolveSessionEntryAccessTarget(
 ): QualifiedSessionEntryAccessTarget;
 export function resolveSessionEntryAccessTarget(
   scope: LogicalSessionAccessScope,
-  options?: { projection?: "worktree" },
 ): ResolvedSessionEntryAccessTarget;
 export function resolveSessionEntryAccessTarget(
   scope: LogicalSessionAccessScope,
-  options?: { keyFormat?: "agent-qualified"; projection?: "worktree" },
+  options?: { keyFormat?: "agent-qualified" },
 ): ResolvedSessionEntryAccessTarget | QualifiedSessionEntryAccessTarget {
-  const target = resolveSessionEntryStoreTarget(scope, options?.projection);
+  const target = resolveSessionEntryStoreTarget(scope);
   if (options?.keyFormat === "agent-qualified") {
     return projectQualifiedSessionEntryTarget(scope, target);
   }
@@ -388,7 +386,6 @@ export function resolveSessionEntryCandidateTarget(
 
 function resolveSessionEntryStoreTarget(
   scope: LogicalSessionAccessScope,
-  projection?: "worktree",
 ): ResolvedSessionEntryStoreTarget & { readSource?: CapturedSessionEntryReadSource } {
   const requestedKey = scope.sessionKey.trim();
   const { agentId, canonicalKey } = resolveSessionStoreIdentity({
@@ -407,7 +404,7 @@ function resolveSessionEntryStoreTarget(
     return {
       agentId: memory.agentId,
       canonicalKey,
-      entry: memory.read(canonicalKey, projection === "worktree" ? "list" : undefined),
+      entry: memory.read(canonicalKey),
       requestedKey,
       storeKey: canonicalKey,
       storePath: memory.path,
@@ -434,7 +431,7 @@ function resolveSessionEntryStoreTarget(
       },
       canonicalKey,
       scanTargets,
-      { readOnly: true, projection },
+      { readOnly: true },
     );
     if (match && selectedMatch) {
       throw canonicalSessionKeyMigrationRequiredError(

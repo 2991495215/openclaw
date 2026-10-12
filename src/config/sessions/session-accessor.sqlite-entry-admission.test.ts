@@ -249,7 +249,7 @@ it.each([
   expect(parentChecks()).toBe(0);
 });
 
-it.each(["worker", "incognito"] as const)(
+it.each(["worker", "legacy callback", "incognito"] as const)(
   "admits %s updater invocation through its owner",
   async (mode) => {
     const f = mode === "incognito" ? await memoryFixture() : fixture();
@@ -264,10 +264,10 @@ it.each(["worker", "incognito"] as const)(
         },
         {
           skipMaintenance: true,
+          assertCommitAllowed: mode === "legacy callback" ? () => {} : undefined,
         },
       ),
     );
-    expect(called).toBe(false);
     await expect(operation).resolves.toMatchObject({ label: mode });
     expect(called).toBe(true);
     expect(native).not.toHaveBeenCalled();

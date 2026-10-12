@@ -27,7 +27,6 @@ import type {
 } from "./session-entry-patch.types.js";
 import { assertCapturedSessionEntryReadSource } from "./session-entry-read-source.js";
 import type { CapturedSessionEntryReadSource } from "./session-entry-read-source.types.js";
-import type { SessionSourceAssertion } from "./session-source-authority.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
 export type SqliteSessionEntryPatchOptions = SessionEntryPatchOptions & {
@@ -83,13 +82,7 @@ export function captureSessionEntryPatchSource(params: SqliteSessionEntrySnapsho
   const targetIdentity = readDatabasePathIdentitySync(databasePath);
   resolved.path = databasePath;
   databaseOptions.path = databasePath;
-  const commitGuard: SessionSourceAssertion | undefined = options.assertCommitAllowed;
-  // Released opaque storage callbacks retain native atomicity. Host-only guards
-  // participate in the existing worker admission instead of selecting a second writer.
-  const useWorker =
-    isMainThread &&
-    !commitGuard?.nativeSource &&
-    supportsOpenClawAgentDatabaseExecution(databaseOptions);
+  const useWorker = isMainThread && supportsOpenClawAgentDatabaseExecution(databaseOptions);
   const ensure = options.workerGuard?.ensureIdentitySource;
   if (
     ensure &&
