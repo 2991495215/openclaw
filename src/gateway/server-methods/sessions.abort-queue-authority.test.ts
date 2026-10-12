@@ -20,6 +20,7 @@ import {
   getQueueSize,
 } from "../../process/command-queue.js";
 import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
+import { ensureUserProfilesSchema } from "../../state/user-profiles-schema.js";
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import {
@@ -33,6 +34,7 @@ import { sessionAbortHandlers } from "./sessions-abort.js";
 useChatAbortRegistryFixture();
 let releaseProfileCatalog: (() => void) | undefined;
 beforeEach(async () => {
+  ensureUserProfilesSchema({});
   releaseProfileCatalog = (await prepareUserProfileCatalog()).release;
 });
 const key = "agent:main:queued-stop";

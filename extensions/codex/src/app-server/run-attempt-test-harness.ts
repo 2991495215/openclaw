@@ -25,6 +25,10 @@ import {
   preparePluginTestRuntimeMetadata,
   setActivePluginRegistry,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { drainSessionDiskBudgetWorkers } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/temp-path";
 import { afterAll, afterEach, beforeEach, expect, vi } from "vitest";
@@ -697,6 +701,7 @@ export function setupRunAttemptTestHooks(
       vi.stubEnv("HOME", nativeSkillTestHome);
       vi.stubEnv("CODEX_HOME", "");
     }
+    setRuntimeConfigSnapshot({});
     await context.codexAttemptRuntime.start();
     await preparePluginTestRuntimeMetadata();
     // createParams models an ordinary durable session; seeded native bindings
@@ -726,6 +731,7 @@ export function setupRunAttemptTestHooks(
     await context.codexAttemptRuntime.stop();
     // A run beyond the drain deadline still needs the original database revocation fence.
     await cleanupRunSessionOwnersForTest({ closeDatabases: !drained });
+    clearRuntimeConfigSnapshot();
     resetCodexAppServerClientFactoryForTest();
     setManagedCodexPluginRoot(undefined);
     clearRuntimeAuthProfileStoreSnapshots();
