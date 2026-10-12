@@ -17,7 +17,7 @@ import {
   resolveGatewaySessionStoreTargetWithStoreAsync,
 } from "../session-utils.js";
 import {
-  resolveWorkerPlacementSessionRuntimeCapabilities,
+  type resolveWorkerPlacementSessionRuntimeCapabilities,
   resolveWorkerPlacementSessionRuntimeCapabilitiesAsync,
 } from "../worker-environments/placement-session-runtime.js";
 import {
@@ -29,7 +29,7 @@ import type { GatewayRequestContext, RespondFn } from "./types.js";
 
 export { sessionLog } from "../session-log.js";
 
-export async function prepareSessionWorkerPlacementPatchError(
+export async function prepareSessionWorkerPlacementPatchCheck(
   params: Parameters<typeof resolveSessionWorkerPlacementPatchError>[0],
 ) {
   const placement = await readSessionWorkerPlacementAsync({
@@ -51,10 +51,10 @@ export async function prepareSessionWorkerPlacementPatchError(
           sessionKey: params.sessionKey,
         })
       : undefined;
-  return resolveSessionWorkerPlacementPatchError(params, { placement, runtime });
+  return () => resolveSessionWorkerPlacementPatchError(params, { runtime });
 }
 
-export function resolveSessionWorkerPlacementPatchError(
+function resolveSessionWorkerPlacementPatchError(
   params: {
     agentId: string;
     cfg: OpenClawConfig;
@@ -66,17 +66,14 @@ export function resolveSessionWorkerPlacementPatchError(
     validateModelRuntime: boolean;
   },
   prepared?: {
-    placement: Awaited<ReturnType<typeof readSessionWorkerPlacementAsync>>;
     runtime?: ReturnType<typeof resolveWorkerPlacementSessionRuntimeCapabilities>;
   },
 ): string | undefined {
-  const placement = prepared
-    ? prepared.placement
-    : params.entry?.sessionId
-      ? params.context.workerSessionPlacementService
-          ?.getMany([params.entry.sessionId])
-          .get(params.entry.sessionId)
-      : undefined;
+  const placement = params.entry?.sessionId
+    ? params.context.workerSessionPlacementService
+        ?.getMany([params.entry.sessionId])
+        .get(params.entry.sessionId)
+    : undefined;
   if (!placement || placement.state === "local") {
     return undefined;
   }

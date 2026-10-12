@@ -216,14 +216,21 @@ export function createIncognitoComputeWorker(
       }
       const input = command.input;
       keys = [input.sessionKey];
-      const executeProjection = (
+      function executeProjection(inner: {
+        type: "finalize";
+        input: TranscriptProjectionRebuildOperations["finalize"]["input"];
+      }): TranscriptProjectionRebuildOperations["finalize"]["output"];
+      function executeProjection(
         inner: SqliteWorkerCommand<TranscriptProjectionRebuildOperations>,
-      ) => {
+      ): TranscriptProjectionRebuildOperations[keyof TranscriptProjectionRebuildOperations]["output"];
+      function executeProjection(
+        inner: SqliteWorkerCommand<TranscriptProjectionRebuildOperations>,
+      ) {
         if (!projection) {
           throw new Error("Incognito projection domain was not prepared");
         }
         return projection.execute(inner);
-      };
+      }
       try {
         // Exact source cleanup remains possible after its session was deleted.
         if (command.type === "session.compute.source.release") {
@@ -363,7 +370,12 @@ export function createIncognitoComputeWorker(
               if (held.claimId !== request.claimId) {
                 throw new Error("Incognito projection claim belongs to another source");
               }
-              return executeProjection({ type: "finalize", input: request });
+              const finalized = executeProjection({ type: "finalize", input: request });
+              if (finalized.finalized) {
+                // The committed projection now belongs to the session, not this source's cleanup.
+                held.claimId = undefined;
+              }
+              return finalized;
             }
             case "session.compute.projection.deleteChunk":
             case "session.compute.projection.appendChunk": {

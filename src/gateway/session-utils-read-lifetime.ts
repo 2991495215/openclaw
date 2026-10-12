@@ -245,11 +245,10 @@ export async function retainGatewaySessionEntryReadOnly(
       },
     };
   }
-  if (
-    isIncognitoSessionKey(resolveSessionStoreIdentity({ cfg, sessionKey, agentId }).canonicalKey)
-  ) {
+  const { canonicalKey } = resolveSessionStoreIdentity({ cfg, sessionKey, agentId });
+  if (isIncognitoSessionKey(canonicalKey)) {
     return retainNativeIncognitoSessionEntryReadOnly(
-      sessionKey,
+      canonicalKey,
       agentId,
       allowMetadataChanges,
       cfg,

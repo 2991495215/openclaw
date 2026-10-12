@@ -198,7 +198,7 @@ it("keeps MCP file and upload authority on the original actor when a same-ID act
     }),
   } as unknown as SessionMcpRuntime;
   let viewId: string | undefined;
-  const sql = observeHostDataSql();
+  let sql = observeHostDataSql();
   try {
     const file = await withIncognitoSessionBinding({ actor }, () =>
       prepareMcpAppHostFile(options, { sessionKey: key, agentId: "main", path: "example.txt" }),
@@ -265,8 +265,11 @@ it("keeps MCP file and upload authority on the original actor when a same-ID act
     }
     await rejected;
     await closing;
+    expect(sql.queries).toEqual([]);
+    sql.restore();
     actor = await openIncognitoTestActor(env, authority);
     await actor.sessions.create(authority, { sessionKey: key, entry });
+    sql = observeHostDataSql();
     await expect(readMcpAppHostFile(options, view, { uri: file.resourceUri })).rejects.toThrow(
       /Incognito|incognito/,
     );

@@ -26,6 +26,7 @@ import {
 } from "../../config/sessions/session-source-authority.js";
 import { resolvePluginSessionOwnershipError } from "../session-plugin-ownership.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
+import { resolveSessionMutationAuthorizationAsync } from "../session-sharing-authorization-async.js";
 import {
   captureIncognitoSessionMutationFacts,
   captureSessionActorMutationFacts,
@@ -37,7 +38,6 @@ import {
 } from "../session-sharing-preparation.js";
 import { prepareSessionSharingSource } from "../session-sharing-source.js";
 import {
-  resolveSessionMutationAuthorization,
   resolveSessionSharingTargetAsync,
   SessionMutationAuthorizationChangedError,
 } from "../session-sharing.js";
@@ -51,18 +51,25 @@ async function handleSessionGoalMutation(
   options: GatewayRequestHandlerOptions,
   request: SessionsGoalUpdateParams | (SessionsGoalClearParams & { action: "clear" }),
 ): Promise<void> {
-  const { client, context, respond } = options;
+  const { client, context, respond, sessionMutationAuthorization } = options;
   const method = request.action === "clear" ? "sessions.goal.clear" : "sessions.goal.update";
   let durableFacts: Awaited<ReturnType<typeof prepareSessionMutationFacts>> | undefined;
   try {
-    const authorization = options.sessionMutationAuthorization
-      ? { authorization: options.sessionMutationAuthorization, error: null }
-      : resolveSessionMutationAuthorization({
+    const authorization = sessionMutationAuthorization
+      ? { authorization: sessionMutationAuthorization, error: null }
+      : await resolveSessionMutationAuthorizationAsync({
           client,
           method,
           requestParams: request,
           context,
         });
+    using _ = {
+      [Symbol.dispose]: () => {
+        if (!sessionMutationAuthorization) {
+          authorization.authorization?.release?.();
+        }
+      },
+    };
     if (authorization.error) {
       respond(false, undefined, authorization.error);
       return;

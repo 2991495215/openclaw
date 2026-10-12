@@ -12,12 +12,12 @@ import {
 } from "../../sessions/provider-review.js";
 import { isOperatorUiClient } from "../../utils/message-channel.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
+import { resolveSessionMutationAuthorizationAsync } from "../session-sharing-authorization-async.js";
 import {
-  resolveSessionMutationAuthorization,
   resolveSessionSharingTargetAsync,
   SessionMutationAuthorizationChangedError,
 } from "../session-sharing.js";
-import type { GatewayRequestHandlers } from "./types.js";
+import type { GatewayRequestHandlers, SessionMutationAuthorization } from "./types.js";
 import { defineValidatedGatewayHandler } from "./validation.js";
 
 export const sessionProviderReviewHandlers: GatewayRequestHandlers = {
@@ -40,6 +40,7 @@ export const sessionProviderReviewHandlers: GatewayRequestHandlers = {
         return;
       }
       let acknowledgment: ProviderReviewAcknowledgment | undefined;
+      let ownedAuthorization: SessionMutationAuthorization | undefined;
       let handedOff = false;
       try {
         if (isIncognitoSessionKey(params.sessionKey)) {
@@ -47,7 +48,7 @@ export const sessionProviderReviewHandlers: GatewayRequestHandlers = {
         }
         const authorization = options.sessionMutationAuthorization
           ? { authorization: options.sessionMutationAuthorization, error: null }
-          : resolveSessionMutationAuthorization({
+          : await resolveSessionMutationAuthorizationAsync({
               client,
               method: "sessions.providerReview.continue",
               requestParams: params,
@@ -56,6 +57,9 @@ export const sessionProviderReviewHandlers: GatewayRequestHandlers = {
         if (authorization.error) {
           respond(false, undefined, authorization.error);
           return;
+        }
+        if (!options.sessionMutationAuthorization) {
+          ownedAuthorization = authorization.authorization;
         }
         const cfg = context.getRuntimeConfig();
         const requested = resolveRequestedSessionAgentId(cfg, params.sessionKey, params.agentId);
@@ -137,6 +141,7 @@ export const sessionProviderReviewHandlers: GatewayRequestHandlers = {
           );
         }
       } finally {
+        ownedAuthorization?.release?.();
         if (acknowledgment && !handedOff) {
           retireProviderReviewAcknowledgment(acknowledgment);
         }

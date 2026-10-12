@@ -672,6 +672,7 @@ describe("agent RPC real delegated-authority effects", () => {
         io,
       });
       lifecycle.reserve(f.sessionKey, "main");
+      const sessionEntry = (await loadSessionEntryAsync(f.sessionKey, { agentId: "main" })).entry;
       const admission = createAgentAdmissionController({
         runId: f.runId,
         lifecycleGeneration: getAgentEventLifecycleGeneration(),
@@ -684,6 +685,7 @@ describe("agent RPC real delegated-authority effects", () => {
         getResolvedSessionId: () => f.sessionId,
         getResolvedSessionAgentId: () => "main",
         getAgentId: () => "main",
+        getSessionEntry: () => sessionEntry,
         getSessionPersisted: () => true,
         getSupersededSessionId: () => undefined,
         setAdmittedSessionId: vi.fn(),

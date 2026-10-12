@@ -41,7 +41,7 @@ import {
 } from "../message-action-turn-capability.js";
 import { createChatRunState } from "../server-chat-state.js";
 import { handleGatewayRequest } from "../server-methods.js";
-import { resolveSessionMutationAuthorization } from "../session-sharing.js";
+import { resolveSessionMutationAuthorizationAsync } from "../session-sharing-authorization-async.js";
 import * as chatDispatch from "./chat-send-agent-dispatch.js";
 import { handleDirectExternalChatSend } from "./chat-send-external-entry.js";
 import { handleChatSend } from "./chat-send-handler.js";
@@ -181,6 +181,7 @@ it.each(admissionScenarios)(
       let reply: ReturnType<typeof createReplyOperation> | undefined;
       let successor: ReturnType<typeof registerChatAbortController> | undefined;
       let options: DispatchOptions | undefined;
+      let releaseAuthorization: (() => void) | undefined;
       try {
         const respond = vi.fn();
         const params = {
@@ -189,12 +190,13 @@ it.each(admissionScenarios)(
           message: "Keep this user turn in its session",
           idempotencyKey: runId,
         };
-        const authorization = resolveSessionMutationAuthorization({
+        const authorization = await resolveSessionMutationAuthorizationAsync({
           client,
           context,
           method: "chat.send",
           requestParams: params,
         });
+        releaseAuthorization = authorization.authorization?.release;
         expect(authorization.error).toBeNull();
         const sendChat = directDashboard ? handleDirectExternalChatSend : handleChatSend;
         const request = {
@@ -379,6 +381,7 @@ it.each(admissionScenarios)(
           owned.admission.cleanupAdmittedRun();
           clearAgentRunContext(runId, owned.admission.lifecycleGeneration);
         }
+        releaseAuthorization?.();
         holdDispatch.mockRestore();
         observeDispatch.mockRestore();
         clone.mockRestore();
@@ -451,6 +454,7 @@ it.each(
         finished: ReturnType<typeof createDeferred<void>>;
         owned?: Parameters<typeof chatDispatch.startChatDispatch>[0];
         options?: DispatchOptions;
+        releaseAuthorization?: () => void;
       };
       const sources = new Map<string, Source>();
       const observeDispatch = vi.spyOn(chatDispatch, "startChatDispatch");
@@ -482,12 +486,13 @@ it.each(
         };
         sources.set(runId, source);
         const params = { sessionKey, message, idempotencyKey: runId };
-        const authorization = resolveSessionMutationAuthorization({
+        const authorization = await resolveSessionMutationAuthorizationAsync({
           client,
           context,
           method: "chat.send",
           requestParams: params,
         });
+        source.releaseAuthorization = authorization.authorization?.release;
         expect(authorization.error).toBeNull();
         const respond = vi.fn();
         await handleDirectExternalChatSend({
@@ -724,6 +729,7 @@ it.each(
         );
         for (const [runId, source] of sources) {
           source.owned?.admission.cleanupAdmittedRun();
+          source.releaseAuthorization?.();
           if (source.owned) {
             clearAgentRunContext(runId, source.owned.admission.lifecycleGeneration);
           }

@@ -20,6 +20,7 @@ import { normalizeAgentId } from "../../routing/session-key.js";
 import { authorizeGatewaySessionCreation, hasOperatorBoundary } from "../operator-role-policy.js";
 import { buildDashboardSessionKey } from "../session-create-key.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
+import { resolveSessionMutationAuthorizationAsync } from "../session-sharing-authorization-async.js";
 import type {
   PreparedSessionMutationFacts,
   SessionSharingTarget,
@@ -31,7 +32,6 @@ import {
 import {
   authorizeSessionSharingTarget,
   createSessionListEntryFilter,
-  resolveSessionMutationAuthorization,
   resolveSessionSharingTargetAsync,
 } from "../session-sharing.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "../session-utils-store-worker.js";
@@ -60,6 +60,7 @@ import type {
   GatewayRequestHandlerOptions,
   GatewayRequestHandlers,
   RespondFn,
+  SessionMutationAuthorization,
 } from "./types.js";
 import { defineValidatedGatewayHandler } from "./validation.js";
 
@@ -139,8 +140,9 @@ async function sendSuggestedTaskPrompt(
     idempotencyKey: `task-suggestion:${params.taskId}`,
   };
   let sessionMutationAuthorization = params.options.sessionMutationAuthorization;
+  let sourceAuthorization: SessionMutationAuthorization | undefined;
   if (params.source) {
-    const authorization = resolveSessionMutationAuthorization({
+    const authorization = await resolveSessionMutationAuthorizationAsync({
       client: params.options.client,
       context: params.options.context,
       method: "chat.send",
@@ -155,6 +157,7 @@ async function sendSuggestedTaskPrompt(
     if (authorization.error) {
       return authorization.error;
     }
+    sourceAuthorization = authorization.authorization;
     sessionMutationAuthorization = withSessionMutationCommitGuard(
       authorization.authorization,
       params.options.sessionMutationCommitGuard,
@@ -162,19 +165,23 @@ async function sendSuggestedTaskPrompt(
       sessionMutationAuthorization?.assertAdmittedInputCurrent,
     );
   }
-  const response = await captureSuggestedTaskResponse(
-    "chat.send",
-    "failed to deliver suggested task",
-    (respond) =>
-      handleChatSend({
-        ...params.options,
-        req: { ...params.options.req, method: "chat.send", params: chatParams },
-        params: chatParams,
-        sessionMutationAuthorization,
-        respond,
-      }),
-  );
-  return response.ok ? undefined : response.error;
+  try {
+    const response = await captureSuggestedTaskResponse(
+      "chat.send",
+      "failed to deliver suggested task",
+      (respond) =>
+        handleChatSend({
+          ...params.options,
+          req: { ...params.options.req, method: "chat.send", params: chatParams },
+          params: chatParams,
+          sessionMutationAuthorization,
+          respond,
+        }),
+    );
+    return response.ok ? undefined : response.error;
+  } finally {
+    sourceAuthorization?.release?.();
+  }
 }
 
 async function createSuggestedTaskSession(

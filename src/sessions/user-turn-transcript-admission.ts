@@ -97,7 +97,7 @@ export function inheritUserTurnPromptReactionSource(
   bindUserTurnPromptReactionSource(recorder, {
     ...latest,
     prepare: async () => {
-      await Promise.all(inherited.map((source) => source.prepare?.()));
+      await Promise.all(inherited.flatMap((source) => (source.prepare ? [source.prepare()] : [])));
     },
     assertCurrent: () => inherited.forEach((source) => source.assertCurrent()),
   });

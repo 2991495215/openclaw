@@ -115,7 +115,7 @@ export function createSessionSharingReceiptRead({
     // request's acknowledged COMMIT may promote its original absent/idless target.
     let pendingCreated:
       | {
-          source: CapturedSessionEntryReadSource;
+          source: CapturedSessionEntryReadSource & { databaseIdentity: string };
           retained: ReturnType<typeof retainPreparedSessionSharingFacts>;
         }
       | undefined;
@@ -136,7 +136,7 @@ export function createSessionSharingReceiptRead({
       ) {
         return false;
       }
-      const source: CapturedSessionEntryReadSource = {
+      const source: CapturedSessionEntryReadSource & { databaseIdentity: string } = {
         agentId: selected.agentId,
         path: published.source.filename,
         databaseIdentity: published.source.identity,

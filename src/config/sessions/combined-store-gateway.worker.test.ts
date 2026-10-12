@@ -260,12 +260,10 @@ it("prepares foreign lineage without host SQL after main-alias changes", async (
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     const parents = ["agent:main:main", "agent:main:home", "agent:main:global"];
     for (const [index, parent] of [...parents, "global"].entries()) {
-      if (index !== 1) {
-        replaceSessionEntrySync(
-          { agentId: "main", sessionKey: parent },
-          { sessionId: `parent-${index}`, updatedAt: 1 },
-        );
-      }
+      replaceSessionEntrySync(
+        { agentId: "main", sessionKey: parent },
+        { sessionId: `parent-${index}`, updatedAt: 1 },
+      );
       if (index < parents.length) {
         replaceSessionEntrySync(
           { agentId: "work", sessionKey: `agent:work:child-${index}` },
@@ -291,18 +289,15 @@ it("prepares foreign lineage without host SQL after main-alias changes", async (
           expect(result.store).toEqual(expected.store);
           for (const [index, parent] of parents.entries()) {
             const key = `agent:work:child-${index}`;
-            const selectedParent = index === 1 && scope === "global" ? "global" : parent;
             expect(result.store[key]).toMatchObject({
-              parentSessionKey: selectedParent,
-              spawnedBy: selectedParent,
+              parentSessionKey: parent,
+              spawnedBy: parent,
             });
-            expect(result.targetsBySessionKey.get(key)?.readSourceEntry(parent)?.sessionId).toBe(
-              index === 1 ? (scope === "global" ? "parent-3" : undefined) : `parent-${index}`,
-            );
+            expect(result.targetsBySessionKey.get(key)?.readSourceEntry(parent)).toMatchObject({
+              sessionId: `parent-${index}`,
+            });
             if (!options.agentId) {
-              expect(result.store[parent]?.sessionId).toBe(
-                index === 1 ? undefined : `parent-${index}`,
-              );
+              expect(result.store[parent]?.sessionId).toBe(`parent-${index}`);
             }
           }
           expect(observed.queries).toEqual([]);

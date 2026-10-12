@@ -8,7 +8,7 @@ import {
   resetPluginRuntimeStateForTest,
   setActivePluginRegistry,
 } from "../../plugins/runtime.js";
-import { resolveSessionWorkerPlacementPatchError } from "../server-methods/sessions-shared.js";
+import { prepareSessionWorkerPlacementPatchCheck } from "../server-methods/sessions-shared.js";
 import {
   projectWorkerPlacementAgentRuntime,
   resolveDefaultWorkerPlacementExecutionMode,
@@ -517,7 +517,7 @@ describe("resolveWorkerPlacementSessionRuntimeCapabilities", () => {
     });
   });
 
-  it("sessions.patch boundary: rejects an incompatible model change for an active worker-turn placement", () => {
+  it("sessions.patch boundary: rejects an incompatible model change for an active worker-turn placement", async () => {
     // An active worker-turn placement must reject a model whose effective
     // runtime is a CLI harness with no cloud placement support. The harness
     // claims the provider via autoSelection so resolveAutoAgentHarnessId
@@ -557,7 +557,7 @@ describe("resolveWorkerPlacementSessionRuntimeCapabilities", () => {
         getMany: () => new Map([[sessionId, placement]]),
       },
     };
-    const error = resolveSessionWorkerPlacementPatchError({
+    const validate = await prepareSessionWorkerPlacementPatchCheck({
       agentId: "main",
       cfg: {} as never,
       context: context as never,
@@ -572,10 +572,10 @@ describe("resolveWorkerPlacementSessionRuntimeCapabilities", () => {
       sessionKey: "agent:main:s6",
       validateModelRuntime: true,
     });
-    expect(error).toContain("cannot select a runtime without cloud placement support");
+    expect(validate()).toContain("cannot select a runtime without cloud placement support");
   });
 
-  it("sessions.patch boundary: allows an unclaimed auto model with openclaw fallback for an active worker-turn placement", () => {
+  it("sessions.patch boundary: allows an unclaimed auto model with openclaw fallback for an active worker-turn placement", async () => {
     // An "auto" model with no registered supporting harness falls back to the
     // built-in openclaw runtime, which supports worker-turn placement. The
     // guard must not reject it — this is the compatibility regression fixed
@@ -601,12 +601,13 @@ describe("resolveWorkerPlacementSessionRuntimeCapabilities", () => {
       createdAtMs: 0,
       updatedAtMs: 0,
     };
+    let executionMode: "worker-turn" | "remote-exec" = "worker-turn";
     const context = {
       workerSessionPlacementService: {
-        getMany: () => new Map([[sessionId, placement]]),
+        getMany: () => new Map([[sessionId, { ...placement, executionMode }]]),
       },
     };
-    const error = resolveSessionWorkerPlacementPatchError({
+    const validate = await prepareSessionWorkerPlacementPatchCheck({
       agentId: "main",
       cfg: {} as never,
       context: context as never,
@@ -621,6 +622,8 @@ describe("resolveWorkerPlacementSessionRuntimeCapabilities", () => {
       sessionKey: "agent:main:s8",
       validateModelRuntime: true,
     });
-    expect(error).toBeUndefined();
+    expect(validate()).toBeUndefined();
+    executionMode = "remote-exec";
+    expect(validate()).toContain("cannot change cloud placement execution mode");
   });
 });

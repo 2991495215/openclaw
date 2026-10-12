@@ -49,8 +49,7 @@ import {
 import { resolveSessionPatchTargetError } from "./sessions-patch-expectations.js";
 import {
   resolveProtectedSessionVisibilityError,
-  resolveSessionWorkerPlacementPatchError,
-  prepareSessionWorkerPlacementPatchError,
+  prepareSessionWorkerPlacementPatchCheck,
   sessionLog,
 } from "./sessions-shared.js";
 import type { GatewayRequestContext } from "./types.js";
@@ -244,19 +243,6 @@ async function prepareSessionPatchArchiveFromSource(
     if (protectedError) {
       return err(protectedError);
     }
-    const placementError = resolveSessionWorkerPlacementPatchError({
-      agentId: freshResolved.agentId,
-      cfg,
-      context: params.context,
-      entry: fresh.entry,
-      key: target.key,
-      patch: target.fullPatch,
-      sessionKey: freshCanonicalKey,
-      validateModelRuntime: false,
-    });
-    if (placementError) {
-      return err(errorShape(ErrorCodes.INVALID_REQUEST, placementError));
-    }
     return ok({ freshResolved, fresh, freshCanonicalKey });
   };
   const resolved = resolveCurrent();
@@ -265,17 +251,6 @@ async function prepareSessionPatchArchiveFromSource(
   }
   const { freshResolved, fresh, freshCanonicalKey } = resolved.value;
   const planningEntry = actor ? freshResolved.store[freshCanonicalKey] : fresh.entry;
-  const assertCurrent = () => {
-    params.personalModelSelection?.assertCurrent();
-    const authorizationError = params.commitGuard();
-    if (authorizationError) {
-      throw new SessionMutationAuthorizationChangedError(authorizationError);
-    }
-    const current = resolveCurrent();
-    if (!current.ok) {
-      throw new SessionMutationAuthorizationChangedError(current.error);
-    }
-  };
   const freshCandidateKeys = new Set(fresh.target.storeKeys);
   const preview = await projectSessionsPatchEntry({
     cfg,
@@ -294,7 +269,7 @@ async function prepareSessionPatchArchiveFromSource(
   if (!preview.ok) {
     return err(preview.error);
   }
-  const previewPlacementError = await prepareSessionWorkerPlacementPatchError({
+  const validatePlacement = await prepareSessionWorkerPlacementPatchCheck({
     agentId: freshResolved.agentId,
     cfg,
     context: params.context,
@@ -304,9 +279,23 @@ async function prepareSessionPatchArchiveFromSource(
     sessionKey: freshCanonicalKey,
     validateModelRuntime: true,
   });
-  if (previewPlacementError) {
-    return err(errorShape(ErrorCodes.INVALID_REQUEST, previewPlacementError));
-  }
+  const assertCurrent = () => {
+    params.personalModelSelection?.assertCurrent();
+    const authorizationError = params.commitGuard();
+    if (authorizationError) {
+      throw new SessionMutationAuthorizationChangedError(authorizationError);
+    }
+    const placementError = validatePlacement();
+    if (placementError) {
+      throw new SessionMutationAuthorizationChangedError(
+        errorShape(ErrorCodes.INVALID_REQUEST, placementError),
+      );
+    }
+    const current = resolveCurrent();
+    if (!current.ok) {
+      throw new SessionMutationAuthorizationChangedError(current.error);
+    }
+  };
   try {
     const drain = await prepareSessionLifecycleDrain({
       action: "archive",

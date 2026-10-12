@@ -36,6 +36,7 @@ import { projectSkillLibraryList, type SkillLibraryAuthority } from "../../skill
 import { SkillLibraryError } from "../../skills/skill-library-error.js";
 import { resolvePluginSessionOwnershipError } from "../session-plugin-ownership.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
+import { resolveSessionMutationAuthorizationAsync } from "../session-sharing-authorization-async.js";
 import {
   captureIncognitoSessionMutationFacts,
   captureSessionActorMutationFacts,
@@ -48,7 +49,6 @@ import {
 import { prepareSessionSharingSource } from "../session-sharing-source.js";
 import {
   authorizeSessionSharingTarget,
-  resolveSessionMutationAuthorization,
   SessionMutationAuthorizationChangedError,
 } from "../session-sharing.js";
 import { captureGatewayClientUploadCommitGuard } from "../upload-policy.js";
@@ -95,12 +95,13 @@ export async function activateLibrarySelection(
   params: SkillsLibraryActivateParams,
 ) {
   const { client, context } = options;
-  const authorization = resolveSessionMutationAuthorization({
+  const authorization = await resolveSessionMutationAuthorizationAsync({
     client,
     context,
     method: "skills.library.activate",
     requestParams: params,
   });
+  using _ = { [Symbol.dispose]: () => authorization.authorization?.release?.() };
   if (authorization.error) {
     throw new SessionMutationAuthorizationChangedError(authorization.error);
   }

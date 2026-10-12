@@ -13,8 +13,8 @@ import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { progressCardStore } from "../progress-card-store.js";
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "../server-methods.js";
+import { resolveSessionMutationAuthorizationAsync } from "../session-sharing-authorization-async.js";
 import {
-  resolveSessionMutationAuthorization,
   resolveSessionSharingTargetAsync,
   SessionMutationAuthorizationChangedError,
 } from "../session-sharing.js";
@@ -358,12 +358,13 @@ describe("progress card request authorization", () => {
             ? { idempotencyKey: "revoked-refresh" }
             : {}),
         };
-        const oracle = resolveSessionMutationAuthorization({
+        const oracle = await resolveSessionMutationAuthorizationAsync({
           client,
           method: testCase.method,
           requestParams: params,
           context,
         });
+        using _ = { [Symbol.dispose]: () => oracle.authorization?.release?.() };
         expect(oracle.error).toBeNull();
         const authorization = oracle.authorization;
         if (!authorization) {

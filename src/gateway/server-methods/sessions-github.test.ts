@@ -17,7 +17,6 @@ import { createSyntheticPluginRuntimeClient } from "../server-plugin-runtime-cli
 import { createOperatorWsClient } from "../server/ws-connection/authenticated-request-dispatch.test-support.js";
 import { prepareGatewayConnectOperatorAccess } from "../server/ws-connection/connect-operator-access.js";
 import { SessionMutationAuthorizationChangedError } from "../session-sharing.js";
-import { loadGatewaySessionEntryReadOnlyAsync } from "../session-utils-store.js";
 import { sessionsGitHubHandlers } from "./sessions-github.js";
 import type {
   GatewayClient,
@@ -35,10 +34,17 @@ vi.mock("../../agents/tools/gateway-caller-context.js", async (importOriginal) =
   ...(await importOriginal<typeof import("../../agents/tools/gateway-caller-context.js")>()),
   getGatewayToolCallerIdentity: mocks.caller,
 }));
-vi.mock("../session-utils.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../session-utils.js")>()),
-  loadGatewaySessionEntryReadOnlyAsync: mocks.loadSession,
+vi.mock("../session-utils-store-worker.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../session-utils-store-worker.js")>()),
+  loadGatewaySessionEntryReadOnlyInWorker: mocks.loadSession,
 }));
+
+async function useRealSessionReads() {
+  const { loadGatewaySessionEntryReadOnlyInWorker } = await vi.importActual<
+    typeof import("../session-utils-store-worker.js")
+  >("../session-utils-store-worker.js");
+  mocks.loadSession.mockImplementation(loadGatewaySessionEntryReadOnlyInWorker);
+}
 
 const expectedSystemRequester = {
   version: 2,
@@ -244,7 +250,7 @@ describe("sessions.github.publish", () => {
           prepareGatewayConnectOperatorAccess(client);
         }
         mocks.caller.mockReturnValue(undefined);
-        mocks.loadSession.mockImplementation(loadGatewaySessionEntryReadOnlyAsync);
+        await useRealSessionReads();
 
         const respond = await invoke(
           { sessionKey: "main", idempotencyKey: "operator-publication-1" },
@@ -313,7 +319,7 @@ describe("sessions.github.publish", () => {
           );
         }
         mocks.caller.mockReturnValue(undefined);
-        mocks.loadSession.mockImplementation(loadGatewaySessionEntryReadOnlyAsync);
+        await useRealSessionReads();
         const respond = await invoke({
           sessionKey,
           idempotencyKey: "global-publication",

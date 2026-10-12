@@ -37,10 +37,7 @@ import { isSessionStatusModelPatchOrigin } from "../session-model-patch-origin.j
 import { SessionMutationAuthorizationChangedError } from "../session-sharing.js";
 import type { SessionWorkerPlacementContext } from "../worker-environments/session-placement-lifecycle.js";
 import { resolveGatewayModelSelectionPolicy } from "./session-model-selection-policy.js";
-import {
-  prepareSessionWorkerPlacementPatchError,
-  resolveSessionWorkerPlacementPatchError,
-} from "./sessions-shared.js";
+import { prepareSessionWorkerPlacementPatchCheck } from "./sessions-shared.js";
 
 export function persistSessionPatchModelSelection(params: {
   callerScopes: readonly string[];
@@ -388,7 +385,7 @@ export async function prepareSessionPatchRuntimeSelection(params: {
     patch: params.patch,
     validateModelRuntime: true,
   };
-  const validate = (preparedPlacement?: { error: string | undefined }) => {
+  const validateSelection = () => {
     try {
       assertRequiredWorkerSelection(params.cfg, {
         agentRuntime: params.entry.agentRuntimeOverride,
@@ -401,20 +398,21 @@ export async function prepareSessionPatchRuntimeSelection(params: {
     if (policyError) {
       return policyError;
     }
-    const message =
-      validateRuntime?.() ??
-      (preparedPlacement
-        ? preparedPlacement.error
-        : placementParams
-          ? resolveSessionWorkerPlacementPatchError(placementParams)
-          : undefined);
+    const message = validateRuntime?.();
     return message ? errorShape(ErrorCodes.INVALID_REQUEST, message) : undefined;
   };
-  const error = validate({
-    error: placementParams
-      ? await prepareSessionWorkerPlacementPatchError(placementParams)
-      : undefined,
-  });
+  const validatePlacement = placementParams
+    ? await prepareSessionWorkerPlacementPatchCheck(placementParams)
+    : undefined;
+  const validate = () => {
+    const selectionError = validateSelection();
+    if (selectionError) {
+      return selectionError;
+    }
+    const message = validatePlacement?.();
+    return message ? errorShape(ErrorCodes.INVALID_REQUEST, message) : undefined;
+  };
+  const error = validateSelection();
   return error
     ? { ok: false, error }
     : {

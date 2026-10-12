@@ -606,12 +606,12 @@ export function createMentionInbox(params: MentionInboxOptions): MentionInbox {
     async mentionable(client, input, publish) {
       let preparationFailure: Result<never, ErrorShape> | undefined;
       try {
-        if ("sessionKey" in input) {
-          await prepareTarget(input.sessionKey, input.agentId);
-        }
         // A committed profile change can invalidate preparation before this continuation runs.
         while (policy.needsDirectoryPreparation()) {
           await policy.prepareDirectory();
+        }
+        if ("sessionKey" in input) {
+          await prepareTarget(input.sessionKey, input.agentId);
         }
       } catch {
         preparationFailure = mentionInboxUnavailable(log);

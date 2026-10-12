@@ -60,12 +60,24 @@ vi.mock("../session-plugin-ownership.js", () => ({
 vi.mock("../session-request-agent.js", () => ({
   resolveRequestedSessionAgentId: () => ({ ok: true, agentId: "main" }),
 }));
-vi.mock("../session-sharing.js", () => ({
-  resolveSessionMutationAuthorization: () => ({
-    authorization: { assertCurrent: edge.current },
+// mock-isolation: Event custody uses synthetic authorization while native and worker access stay forbidden.
+vi.mock("../session-sharing-authorization-async.js", () => ({
+  resolveSessionMutationAuthorizationAsync: async () => ({
+    authorization: { assertCurrent: edge.current, release: () => {} },
     error: null,
   }),
-  resolveSessionSharingTarget: () => edge.target,
+}));
+// mock-isolation: The committed Goal fixture supplies its source facts without opening session storage.
+vi.mock("../session-sharing-preparation.js", () => ({
+  captureSessionMutationRouting: () => edge.current,
+  prepareSessionMutationFacts: async () => ({
+    readCurrent: () => ({ target: edge.target }),
+    release: () => {},
+  }),
+}));
+// mock-isolation: Event custody controls target identity independently of native session discovery.
+vi.mock("../session-sharing.js", () => ({
+  resolveSessionSharingTargetAsync: async () => edge.target,
   SessionMutationAuthorizationChangedError: class extends Error {},
 }));
 vi.mock("./gateway-client-identity.js", () => ({

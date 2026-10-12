@@ -199,6 +199,8 @@ export function createAgentTurnService(
       let cfgForAgent: OpenClawConfig | undefined;
       let resolvedSessionKey = requestedSessionKey;
       let resolvedSessionAgentId: string | undefined;
+      // Admission follows prepared facts until the writer publishes the committed replacement.
+      let admissionSessionEntry: SessionEntry | undefined;
       const admissionController = createAgentAdmissionController({
         assertAdmissionCurrent,
         runId,
@@ -217,6 +219,7 @@ export function createAgentTurnService(
         getResolvedSessionId: () => session.resolvedSessionId,
         getResolvedSessionAgentId: () => resolvedSessionAgentId,
         getAgentId: () => agentId,
+        getSessionEntry: () => admissionSessionEntry,
         getSessionPersisted: () => session.sessionPersistedBeforeGatewayAdmission,
         getSupersededSessionId: () => session.supersededSessionId,
         setAdmittedSessionId: (sessionId) => {
@@ -291,6 +294,7 @@ export function createAgentTurnService(
           touchInteraction,
         } = preparedSession;
         cfgForAgent = cfgLocal;
+        admissionSessionEntry = entry;
         // Authorize the canonical session the run will actually target — covering
         // keyless requests whose default/effective session is resolved only here —
         // before any run side effects (admission, dispatch).
@@ -376,12 +380,14 @@ export function createAgentTurnService(
           return;
         }
         const persistedSession = await persistAgentSessionPhase({
-          onSessionCommitted: (committedEntry) =>
+          onSessionCommitted: (committedEntry) => {
+            admissionSessionEntry = committedEntry;
             dedupeLifecycle.bindSessionTarget({
               sessionKey: canonicalSessionKey,
               agentId: sessionAgentId,
               sessionId: committedEntry.sessionId,
-            }),
+            });
+          },
           assertAdmissionCurrent: assertRequestCurrent,
           request,
           cfg: cfgLocal,

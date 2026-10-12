@@ -12,6 +12,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { runSqliteImmediateTransactionSync } from "../infra/sqlite-transaction.js";
 import { sessionChanges } from "../sessions/session-row-changes.js";
 import {
+  closeOpenClawAgentDatabasesAsync,
   closeOpenClawAgentDatabasesForTest,
   openOpenClawAgentDatabase,
 } from "../state/openclaw-agent-db.js";
@@ -409,7 +410,7 @@ describe("session resolution metadata", () => {
   });
 
   it.each(["malformed", "mismatched-window"])(
-    "preserves warm and cold storage-reader outcomes for %s rows",
+    "omits invalid warm rows and rejects cold stores with %s rows",
     async (kind) => {
       await withOpenClawTestState({ label: "resolve-corruption" }, async () => {
         const siblingKey = "agent:main:sibling";
@@ -454,10 +455,9 @@ describe("session resolution metadata", () => {
             )
             .run("different", scope.sessionKey);
         }
-        expect((await read(scope.sessionKey))?.sessionId).toBe(
-          kind === "mismatched-window" ? entry.sessionId : undefined,
-        );
+        expect(await read(scope.sessionKey)).toBeUndefined();
         expect((await read(siblingKey))?.sessionId).toBe("sibling");
+        await closeOpenClawAgentDatabasesAsync();
         closeOpenClawAgentDatabasesForTest();
         for (const key of [scope.sessionKey, siblingKey]) {
           await expect(read(key)).rejects.toThrow(

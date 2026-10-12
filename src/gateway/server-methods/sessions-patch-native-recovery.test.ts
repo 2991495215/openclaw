@@ -28,7 +28,7 @@ vi.mock("../../auto-reply/reply/model-runtime-normalization.js", () => ({
   prepareModelSelectionRuntime: preparation.prepare,
 }));
 vi.mock("./sessions-shared.js", () => ({
-  resolveSessionWorkerPlacementPatchError: () => undefined,
+  prepareSessionWorkerPlacementPatchCheck: async () => () => undefined,
 }));
 
 beforeEach(() => {

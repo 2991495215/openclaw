@@ -67,7 +67,6 @@ export function createMentionTargetCache(params: {
   }
 
   async function prepareTargets(): Promise<void> {
-    pruneTargets();
     for (const item of params.readItems()) {
       const { sessionKey, agentId } = item.message.content;
       await prepareTarget(sessionKey, agentId);

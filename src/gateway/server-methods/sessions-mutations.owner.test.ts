@@ -27,9 +27,9 @@ import {
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { dispatchGatewayMethodInProcess } from "../server-plugins.js";
 import { isSessionPermissionChangePending } from "../session-permission-change.js";
+import { resolveSessionMutationAuthorizationAsync } from "../session-sharing-authorization-async.js";
 import {
   createSessionListEntryFilter,
-  resolveSessionMutationAuthorization,
   resolveSessionSharingRole,
   resolveSessionSharingTargetAsync,
 } from "../session-sharing.js";
@@ -63,12 +63,13 @@ async function invoke(params: {
   authorizationOverride?: SessionMutationAuthorization;
 }) {
   const requestContext = context(params.cfg);
-  const authorization = resolveSessionMutationAuthorization({
+  const authorization = await resolveSessionMutationAuthorizationAsync({
     client: params.client,
     method: "sessions.assignOwner",
     requestParams: params.request,
     context: requestContext,
   });
+  using _ = { [Symbol.dispose]: () => authorization.authorization?.release?.() };
   const responses: Parameters<RespondFn>[] = [];
   if (!authorization.error) {
     await sessionMutationHandlers["sessions.assignOwner"]?.({
@@ -590,12 +591,13 @@ describe("sessions.patch", () => {
       const requestContext = context(cfg);
       const patch = async (pinned: boolean) => {
         const request = { key: sessionKey, pinned };
-        const authorization = resolveSessionMutationAuthorization({
+        const authorization = await resolveSessionMutationAuthorizationAsync({
           client: requestClient,
           method: "sessions.patch",
           requestParams: request,
           context: requestContext,
         });
+        using _ = { [Symbol.dispose]: () => authorization.authorization?.release?.() };
         expect(authorization.error).toBeNull();
         const respond = vi.fn();
         await sessionMutationHandlers["sessions.patch"]?.({

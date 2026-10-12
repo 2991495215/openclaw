@@ -17,6 +17,7 @@ import { resolveControlUiSessionPrTarget } from "./control-ui-session-pr-read.js
 import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
 import { loadControlUiSessionPullRequests } from "./control-ui-session-prs.js";
 import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
+import { prepareSessionMutationFacts } from "./session-sharing-preparation.js";
 import { resolveSessionStoreKey } from "./session-store-key.js";
 import { loadGatewaySessionEntryReadOnlyAsync } from "./session-utils-store.js";
 
@@ -90,19 +91,37 @@ export async function loadTestSessionPullRequests(
   if (!target) {
     return { pullRequests: [], rateLimited: false };
   }
-  return withControlUiSessionPrSource(target.readSource, (assertSourceCurrent, sourceIdentity) =>
-    loadControlUiSessionPullRequests(params, {
-      ...deps,
-      read: {
-        target,
-        sourceIdentity,
-        assertCurrent: () => {
-          // This direct-loader fixture retains the source; production projections own target authority.
-          assertSourceCurrent();
-        },
-      },
-    }),
-  );
+  const facts = await prepareSessionMutationFacts({
+    cfg: getRuntimeConfig(),
+    sessionKey: params.sessionKey,
+    agentId: requested.agentId,
+  });
+  try {
+    const original = facts.readCurrent(getRuntimeConfig()).target.entry;
+    return await withControlUiSessionPrSource(
+      target.readSource,
+      (assertSourceCurrent, sourceIdentity) =>
+        loadControlUiSessionPullRequests(params, {
+          ...deps,
+          read: {
+            target,
+            sourceIdentity,
+            assertCurrent: () => {
+              assertSourceCurrent();
+              const current = facts.readCurrent(getRuntimeConfig()).target.entry;
+              if (
+                current.sessionId !== original.sessionId ||
+                current.lifecycleRevision !== original.lifecycleRevision
+              ) {
+                throw new Error("Session pull-request target changed");
+              }
+            },
+          },
+        }),
+    );
+  } finally {
+    facts.release();
+  }
 }
 
 async function prepareTestSessionPrTarget(params: { sessionKey: string; agentId?: string }) {

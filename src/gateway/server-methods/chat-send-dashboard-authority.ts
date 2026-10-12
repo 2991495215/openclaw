@@ -113,7 +113,10 @@ export function createChatSendDashboardAuthority(params: {
           preparedTargetRead: (_target, cfg) => {
             const facts = read.readCurrent(cfg);
             return {
-              target: facts.target,
+              // Chat admission keeps the configured locator; readSource carries physical identity.
+              target: facts.target
+                ? { ...facts.target, storePath: read.storageTarget.storePath }
+                : null,
               storageTarget: read.storageTarget,
               members: [...facts.membership],
             };

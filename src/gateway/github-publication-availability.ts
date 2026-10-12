@@ -161,7 +161,7 @@ function readGitHubPublicationSession(
 }
 
 /** Effect guards consume the existing actor replica; eviction requires fresh preparation. */
-export function captureGitHubPublicationSessionRead(
+function captureGitHubPublicationSessionRead(
   loaded: PublicationSessionRead & {
     readSource?: { agentId: string; path: string };
     legacyKey?: string;

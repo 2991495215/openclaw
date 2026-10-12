@@ -20,7 +20,6 @@ vi.mock("../github-publication-availability.js", async (importOriginal) => ({
     initial: mocks.readSession(),
     current: mocks.readSession,
   }),
-  captureGitHubPublicationSessionRead: () => mocks.readSession,
 }));
 vi.mock("../../agents/tools/gateway-caller-context.js", () => ({
   getGatewayToolCallerIdentity: () => undefined,

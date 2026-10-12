@@ -311,6 +311,7 @@ it.each(["success", "failed-write"])(
       context,
       io: { emitAcceptance: vi.fn(), emitFinal: vi.fn() },
     };
+    let admissionSessionEntry: Awaited<ReturnType<typeof replaceSessionEntry>>;
     const admission = createAgentAdmissionController({
       ...admissionParams,
       dedupeLifecycle: createAgentDedupeLifecycle({
@@ -323,6 +324,7 @@ it.each(["success", "failed-write"])(
       getResolvedSessionId: () => sessionId,
       getResolvedSessionAgentId: () => "main",
       getAgentId: () => "main",
+      getSessionEntry: () => admissionSessionEntry ?? undefined,
       getSessionPersisted: () => true,
       getSupersededSessionId: () => undefined,
       setAdmittedSessionId: (admittedSessionId) => expect(admittedSessionId).toBe(sessionId),
@@ -370,7 +372,7 @@ it.each(["success", "failed-write"])(
       return respond.mock.calls[0]?.[1];
     };
     try {
-      await replaceSessionEntry(target, {
+      admissionSessionEntry = await replaceSessionEntry(target, {
         sessionId,
         spawnedBy: "agent:main:main",
         updatedAt: 1_000,

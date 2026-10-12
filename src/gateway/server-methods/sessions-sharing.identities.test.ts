@@ -31,10 +31,10 @@ import {
   getSessionRowProjection,
 } from "../session-row-projection-access.js";
 import { createSessionRowProjection } from "../session-row-projection.js";
+import { resolveSessionMutationAuthorizationAsync } from "../session-sharing-authorization-async.js";
 import { SessionMutationFactsUnavailableError } from "../session-sharing-preparation.js";
 import {
   authorizeResolvedSessionMutation,
-  resolveSessionMutationAuthorization,
   resolveSessionSharingTargetAsync,
 } from "../session-sharing.js";
 import { createWorkerSessionPlacementStore } from "../worker-environments/placement-store.js";
@@ -651,46 +651,63 @@ describe("session sharing board ticket authority", () => {
       const unscopedTicket = issueTicket();
       const memberClient = identifiedClient("outsider@example.com");
 
+      const authorizations: Awaited<ReturnType<typeof resolveSessionMutationAuthorizationAsync>>[] =
+        [];
+      using _ = {
+        [Symbol.dispose]: () => {
+          for (const result of authorizations) {
+            result.authorization?.release?.();
+          }
+        },
+      };
+      const authorize = async (
+        request: Parameters<typeof resolveSessionMutationAuthorizationAsync>[0],
+      ) => {
+        const result = await resolveSessionMutationAuthorizationAsync(request);
+        authorizations.push(result);
+        return result.error;
+      };
+
       expect(
-        resolveSessionMutationAuthorization({
+        await authorize({
           client: memberClient,
           method: "board.action",
           requestParams: { ticket, agentId: "work" },
           context: gatewayA,
-        }).error,
+        }),
       ).toMatchObject({ details: { code: "SESSION_PARTICIPATION_REQUIRED" } });
       expect(
-        resolveSessionMutationAuthorization({
+        await authorize({
           client: identifiedClient("owner@example.com"),
           method: "board.action",
           requestParams: { ticket, agentId: "work" },
           context: gatewayA,
-        }).error,
+        }),
       ).toBeNull();
       expect(
-        resolveSessionMutationAuthorization({
+        await authorize({
           client: identifiedClient("owner@example.com"),
           method: "board.action",
           requestParams: { ticket, agentId: "work" },
           context: gatewayB,
-        }).error,
+        }),
       ).toMatchObject({ details: { code: "SESSION_MUTATION_TARGET_REQUIRED" } });
       gatewayAActive = false;
       expect(
-        resolveSessionMutationAuthorization({
+        await authorize({
           client: identifiedClient("owner@example.com"),
           method: "board.event",
           requestParams: { ticket, agentId: "work" },
           context: gatewayA,
-        }).error,
+        }),
       ).toMatchObject({ details: { code: "SESSION_MUTATION_TARGET_REQUIRED" } });
       expect(
-        resolveSessionMutationAuthorization({
+        await authorize({
           client: memberClient,
           method: "board.action",
           requestParams: { ticket: unscopedTicket, agentId: "work" },
           context: gatewayA,
-        }).error,
+        }),
       ).toMatchObject({ details: { code: "SESSION_MUTATION_TARGET_REQUIRED" } });
     });
   });

@@ -37,7 +37,7 @@ import type { ChatSendInternalOptions } from "../../server-methods/chat-send-opt
 import type { GatewayRequestHandlerOptions } from "../../server-methods/types.js";
 import { createGatewayRequestContext } from "../../server-request-context.js";
 import { makeContextParams } from "../../server-request-context.test-support.js";
-import { resolveSessionMutationAuthorization } from "../../session-sharing.js";
+import { resolveSessionMutationAuthorizationAsync } from "../../session-sharing.js";
 import { createIdleRelayProvider } from "../relay/index.test-support.js";
 import { closeRelaySession, registerTalkRealtimeRelayAgentRun } from "../relay/operations.js";
 import { createTalkRealtimeRelaySession } from "../relay/session-create.js";
@@ -93,9 +93,24 @@ let inWorkerGrant = false;
 let workerGrantReads: string[] = [];
 let sqlReads: ReturnType<typeof observeSqliteReadSql> | undefined;
 
+const authorizationReleases = new Set<() => void>();
+async function prepareAuthorization(
+  params: Parameters<typeof resolveSessionMutationAuthorizationAsync>[0],
+) {
+  const prepared = await resolveSessionMutationAuthorizationAsync(params);
+  if (prepared.authorization?.release) {
+    authorizationReleases.add(prepared.authorization.release);
+  }
+  return prepared;
+}
+
 describe("voice consult registration authority", () => {
   const tempDirs = useAutoCleanupTempDirTracker((remove) =>
     afterEach(async () => {
+      for (const release of authorizationReleases) {
+        release();
+      }
+      authorizationReleases.clear();
       clientVoiceSessionTesting.reset();
       try {
         await cleanupSessionStateForTest({ stateDir: tempDir });
@@ -193,7 +208,7 @@ describe("voice consult registration authority", () => {
           name: "openclaw_agent_consult",
           args: { question: "Report fixture status" },
         };
-        const authorized = resolveSessionMutationAuthorization({
+        const authorized = await prepareAuthorization({
           method: "talk.client.toolCall",
           requestParams: params,
           context,
@@ -307,7 +322,7 @@ describe("voice consult registration authority", () => {
         name: "openclaw_agent_consult",
         args: { question: "Report fixture status" },
       };
-      const authorized = resolveSessionMutationAuthorization({
+      const authorized = await prepareAuthorization({
         method: "talk.client.toolCall",
         requestParams: params,
         context,
@@ -386,7 +401,7 @@ describe("voice consult registration authority", () => {
         name: "openclaw_agent_consult",
         args: { question: "Report the fixture status" },
       };
-      const authorized = resolveSessionMutationAuthorization({
+      const authorized = await prepareAuthorization({
         method: "talk.client.toolCall",
         requestParams: params,
         context,
@@ -469,7 +484,7 @@ describe("voice consult registration authority", () => {
         name: "openclaw_agent_consult",
         args: { question: "Report the fixture status" },
       };
-      const authorized = resolveSessionMutationAuthorization({
+      const authorized = await prepareAuthorization({
         method: "talk.client.toolCall",
         requestParams: params,
         context,
@@ -568,7 +583,7 @@ describe("voice consult registration authority", () => {
       { agentId: "main", sessionKey },
       { sessionId: "native-voice-source", updatedAt: 1, incognito: true },
     );
-    const authorization = resolveSessionMutationAuthorization({
+    const authorization = await prepareAuthorization({
       method: "talk.client.create",
       requestParams: { sessionKey },
       context: { getRuntimeConfig: () => ({}) } as GatewayRequestHandlerOptions["context"],
@@ -634,7 +649,7 @@ describe("voice consult registration authority", () => {
           { sessionId: "cold-native-source", updatedAt: 1, incognito: true },
         );
       }
-      const authorized = resolveSessionMutationAuthorization({
+      const authorized = await prepareAuthorization({
         method: "talk.client.create",
         requestParams: { sessionKey: sourceKey },
         context: { getRuntimeConfig: () => ({}) } as GatewayRequestHandlerOptions["context"],

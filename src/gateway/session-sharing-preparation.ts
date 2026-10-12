@@ -15,6 +15,7 @@ import { readCommittedIncognitoSessionSharing } from "../config/sessions/session
 import { readSessionEntriesFromStoreInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type { CapturedSessionEntryReadSource } from "../config/sessions/session-entry-read-source.types.js";
 import { captureIncognitoSessionBinding } from "../config/sessions/session-incognito-binding.js";
+import { resolveUnsuffixedSqliteTargetFromSessionStorePath } from "../config/sessions/session-sqlite-target-paths.js";
 import {
   captureSessionStoreReadCandidate,
   type SessionStoreReadCandidate,
@@ -209,6 +210,10 @@ export async function prepareSessionMutationFacts(
           return;
         }
         if (isOpenClawAgentDatabaseRegistryChange(change) && assertRegistryPublication) {
+          // Selected reads retain their physical sources; registrations affect the next selection.
+          if (facts) {
+            return;
+          }
           try {
             assertRegistryPublication();
           } catch {
@@ -601,6 +606,7 @@ export async function prepareSessionMutationFacts(
       const match = findCanonicalStoreMatch(selected.store, selected.storeKeys);
       const sharing = members.get(selected.storePath);
       selectedPaths.add(path.resolve(selected.storePath));
+      selectedPaths.add(resolveUnsuffixedSqliteTargetFromSessionStorePath(selected.storePath).path);
       if (sharing) {
         selectedPaths.add(path.resolve(sharing.source.path));
         // New and existing rows retain the captured aliases of the same physical store.
@@ -646,7 +652,6 @@ export async function prepareSessionMutationFacts(
       };
       acknowledgesCreatedIdentity = preparedRead.acknowledgesIdentityMutation;
       assertSource = () => {
-        inventoryRead.assertRegistryCurrent();
         assertPaths();
         for (const source of preparedSources) {
           assertExistingDatabaseIdentity(source.path, source.identity, source.birthtime);

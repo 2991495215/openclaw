@@ -5,6 +5,7 @@ import { expectDefined } from "@openclaw/normalization-core/expect";
 import { expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../../test/helpers/promise.js";
 import { getRuntimeConfig } from "../../../config/config.js";
+import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
 import { createAgentAdmissionController } from "../../../gateway/agent-turn/agent-admission-controller.js";
 import { createAgentDedupeLifecycle } from "../../../gateway/agent-turn/agent-dedupe-lifecycle.js";
 import { runWithChatAbortExecution } from "../../../gateway/chat-abort-lifecycle-internal.js";
@@ -295,6 +296,7 @@ it("joins an execution registered while its accepted Stop awaits kill-claim pers
       resolveGatewayContext,
       assertAllowed: () => {},
     });
+    const sessionEntry = loadSessionEntry({ storePath, sessionKey });
     const nativeAdmission = createAgentAdmissionController({
       runId,
       lifecycleGeneration,
@@ -308,6 +310,7 @@ it("joins an execution registered while its accepted Stop awaits kill-claim pers
       getResolvedSessionId: () => sessionId,
       getResolvedSessionAgentId: () => "main",
       getAgentId: () => "main",
+      getSessionEntry: () => sessionEntry,
       getSessionPersisted: () => true,
       getSupersededSessionId: () => undefined,
       setAdmittedSessionId: (value) => expect(value).toBe(sessionId),

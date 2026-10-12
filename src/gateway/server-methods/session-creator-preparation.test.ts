@@ -183,7 +183,10 @@ function eventClients(profileId: string) {
       close: vi.fn(),
       terminate: vi.fn(),
     };
-    const client = { ...identifiedClient(profileId), connId, socket } as unknown as GatewayWsClient;
+    const client = Object.assign(identifiedClient(profileId), {
+      connId,
+      socket,
+    }) as unknown as GatewayWsClient;
     return { client, socket };
   });
 }
@@ -248,7 +251,9 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
   it("shares aliases through event visibility and suggestion roles without retaining them across events", async () => {
     await withCreatorRows(async ({ stateDir, callerId, keys }) => {
       using _ = { [Symbol.dispose]: (await profileAliases.prepareUserProfileCatalog()).release };
-      const client = { ...identifiedClient(callerId), connId: "fixture" } as GatewayWsClient;
+      const client = Object.assign(identifiedClient(callerId), {
+        connId: "fixture",
+      }) as GatewayWsClient;
       const projection = await prepareEventProjection();
       const receive = () =>
         canReceiveSessionEvent({
@@ -275,7 +280,9 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
       const sessionKey = keys[0]!;
       await upsertSessionEntryCore({ agentId: "main", sessionKey }, { visibility: "draft" });
       linkEmail("creator@preparation.test", callerId);
-      const client = { ...identifiedClient(callerId), connId: "fixture" } as GatewayWsClient;
+      const client = Object.assign(identifiedClient(callerId), {
+        connId: "fixture",
+      }) as GatewayWsClient;
       const receive = () =>
         canReceivePreparedSessionEvent({ cfg: {}, client, sessionKeys: [sessionKey] });
       expect(await receive()).toBe(true);
@@ -289,6 +296,7 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
       await cleanupSessionStateForTest({ stateDir });
       const reopened = openOpenClawStateDatabase({ path: pathname }).db;
       reopened.prepare("DELETE FROM user_profiles WHERE id = ?").run(creatorId);
+      profileAliases.publishUserProfilesChange(reopened, creatorId);
       expect(await receive()).toBe(false);
     });
   });
@@ -414,7 +422,10 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
       );
       addSessionMember(scope, { identityId: callerId, addedBy: "fixture" });
       const recipients = eventClients(callerId);
-      let cfg: OpenClawConfig = {};
+      const initialConfig: OpenClawConfig = {
+        session: { store: path.join(stateDir, "agents", "main", "sessions", "sessions.json") },
+      };
+      let cfg = initialConfig;
       const projection = await prepareEventProjection(() => cfg);
       const decisions: Array<[string, boolean]> = [];
       const { broadcast } = createGatewayBroadcaster({
@@ -452,7 +463,7 @@ describe("creator preparation at synchronous fan-out boundaries", () => {
       ]);
       expect(recipients[0]!.socket.send).toHaveBeenCalledOnce();
       expect(recipients[1]!.socket.send).not.toHaveBeenCalled();
-      cfg = {};
+      cfg = initialConfig;
       sessionChanges.emit({ all: true, scope: "config" });
       await projection.prepareMembership();
       emit();
