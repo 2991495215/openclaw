@@ -294,7 +294,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.head_sha }}
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -687,6 +687,10 @@ jobs:
             runtime: node
           - group: native-and-merge-node
             runtime: node
+          - group: creation-mention-node
+            runtime: node
+          - group: patch-recovery-node
+            runtime: node
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -734,12 +738,27 @@ jobs:
               files=(
                 src/gateway/session-sharing.memory.test.ts
                 src/gateway/session-sharing.incognito.test.ts
+                src/gateway/session-sharing-store-cache.test.ts
+                src/gateway/session-sharing-creation-receipts.test.ts
               )
               ;;
             fixture-imports-node)
               files=(
                 src/agents/embedded-agent-runner/skill-runtime.library-read.test.ts
                 src/auto-reply/reply/agent-runner-result-accounting.fallback.test.ts
+              )
+              ;;
+            creation-mention-node)
+              files=(
+                src/gateway/session-create-preparation.test.ts
+                src/gateway/mention-directory.test.ts
+                src/plugin-sdk/gateway-mention-inbox-compat.test.ts
+              )
+              ;;
+            patch-recovery-node)
+              files=(
+                src/gateway/server-methods.session-patch-orchestration.test.ts
+                src/gateway/server-methods/sessions-patch-native-recovery.test.ts
               )
               ;;
             native-and-merge-node)
