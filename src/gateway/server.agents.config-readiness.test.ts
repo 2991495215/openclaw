@@ -16,6 +16,7 @@ import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
 import { acquireGatewayLock } from "../infra/gateway-lock.js";
 import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
+import { redactSensitiveText } from "../logging/redact.js";
 import * as pluginLifecycleLease from "../plugins/plugin-lifecycle-lease.js";
 import { OpenClawStateLeaseAcquisitionError } from "../state/openclaw-state-lease-error.js";
 import {
@@ -25,6 +26,7 @@ import {
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { acquireTestPortBlock } from "../test-utils/port-claims.js";
 import * as configReload from "./config-reload.js";
+import { gatewayKernelLogs } from "./server-kernel.js";
 import * as agentDatabases from "./server-reload-agent-databases.js";
 import { startGatewayServer } from "./server.js";
 import { connectGatewayClient, disconnectGatewayClient } from "./test-helpers.e2e.js";
@@ -36,6 +38,18 @@ const cliEntrypoint = resolveRuntimeWorkerArgv(
 it("publishes agent mutations before acknowledging immediate session and roster requests", async ({
   signal,
 }) => {
+  const reloadDiagnosticSpies = (["warn", "error"] as const).map((level) => {
+    const original = gatewayKernelLogs.logReload[level].bind(gatewayKernelLogs.logReload);
+    return vi.spyOn(gatewayKernelLogs.logReload, level).mockImplementation((message, meta) => {
+      console.warn("CONFIG_READINESS_RELOAD", level, redactSensitiveText(message));
+      original(message, meta);
+    });
+  });
+  onTestFinished(() => {
+    for (const spy of reloadDiagnosticSpies) {
+      spy.mockRestore();
+    }
+  });
   const agentId = "readiness-agent";
   const publicationEntered = createDeferred();
   const releasePublication = createDeferred();
