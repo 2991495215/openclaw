@@ -147,6 +147,24 @@ suite.define(() => {
         });
         const page = await context.newPage();
         const wire = observeBackgroundWorkRpc(page, signal);
+        // HOLD/neverLand: temporary diagnostics for the red-main timeout investigation.
+        signal.addEventListener(
+          "abort",
+          () => {
+            if (proof.complete === true) {
+              return;
+            }
+            console.error(
+              "[background-work] interrupted",
+              JSON.stringify({
+                stage: proof.stage,
+                gates: provider.diagnostics(),
+                rpc: wire.diagnostics(),
+              }),
+            );
+          },
+          { once: true },
+        );
         proof.stage = "create parent and pair browser";
         await runCli([
           "gateway",
@@ -193,6 +211,7 @@ suite.define(() => {
           await provider.wait(gate, signal);
         }
         await composer.fill(fixture.draft);
+        proof.stage = "persist parent draft";
         await waitForCommittedComposerDraft(
           page,
           "chat:v3:" + fixture.key + "\u0000agent:main",
@@ -215,11 +234,13 @@ suite.define(() => {
         await openChatSidePanelType(page, "Subagents");
         const subagents = parent.locator("openclaw-chat-subagents-panel");
         const childOpen = subagents.getByRole("button", { name: fixture.childLabel, exact: true });
+        proof.stage = "render child roster row";
         await childOpen.waitFor();
         const childKey = await childOpen
           .locator("xpath=ancestor::*[@data-session-key]")
           .getAttribute("data-session-key");
         expect(childKey).toMatch(/^agent:main:subagent:/);
+        proof.stage = "observe child roster response";
         const roster = payloadOf(
           await wire.waitFor(
             (rpc) =>
@@ -236,10 +257,14 @@ suite.define(() => {
           activeRunIds: childRow.activeRunIds ?? null,
           listStopRendered: (await subagents.locator(".chat-subagents__stop").count()) > 0,
         };
+        proof.stage = "capture child roster";
         await capture(page, "desktop-subagents-list", childOpen);
+        proof.stage = "open child detail";
         await childOpen.click();
         const detail = subagents.locator(".chat-subagent-detail");
+        proof.stage = "render child task";
         await detail.getByText(fixture.childTask, { exact: false }).waitFor();
+        proof.stage = "observe child in-flight history response";
         const history = payloadOf(
           await wire.waitFor(
             (rpc) =>
@@ -252,17 +277,21 @@ suite.define(() => {
         proof.childHistory = { runId: run.runId, sessionAbortable: run.sessionAbortable ?? false };
         expect(run.runId).toBeTruthy();
         expect(run.runId).not.toBe(parentRunId);
+        proof.stage = "render child streaming progress";
         provider.writeChildProgress();
         await detail.getByText(fixture.childText, { exact: true }).waitFor();
         const childStop = detail.getByRole("button", { name: "Stop generating", exact: true });
+        proof.stage = "render child Stop";
         await childStop.waitFor();
         expect(await detail.locator("textarea").count()).toBe(0);
         await assertParent();
+        proof.stage = "capture child transcript";
         await capture(page, "desktop-subagent-transcript", childStop);
 
         proof.stage = "independent process list and retained output";
         await openChatSidePanelType(page, "Processes");
         const processes = parent.locator("openclaw-chat-processes-panel");
+        proof.stage = "observe process list response";
         const processList = payloadOf(
           await wire.waitFor(
             (rpc) =>
@@ -277,13 +306,16 @@ suite.define(() => {
         const processRow = processList.processes[0]!;
         expect(processRow).toMatchObject({ status: "running", canStop: true, truncated: false });
         const processOpen = processes.getByRole("button", { name: processRow.name, exact: true });
+        proof.stage = "open process output";
         await processOpen.click();
+        proof.stage = "render process output";
         await processes.getByRole("heading", { name: "Recent output", exact: true }).waitFor();
         expect(await processes.locator("pre").textContent()).toContain(fixture.output);
         const processStop = processes.getByRole("button", {
           name: "Stop " + processRow.name,
           exact: true,
         });
+        proof.stage = "capture process output";
         await capture(page, "desktop-process-output", processStop);
         await assertParent();
         const switchTab = async (label: string) => {
@@ -305,7 +337,9 @@ suite.define(() => {
         await childStop.waitFor();
         await capture(page, "mobile-subagent-transcript", childStop);
         const beforeChildStop = wire.completed.length;
+        proof.stage = "click child Stop";
         await childStop.click();
+        proof.stage = "observe child Stop response";
         const stoppedChild = await wire.waitFor(
           (rpc) => ["chat.abort", "sessions.abort"].includes(rpc.request.method),
           beforeChildStop,
@@ -338,7 +372,9 @@ suite.define(() => {
             runIds: expect.arrayContaining([run.runId]),
           });
         }
+        proof.stage = "settle child provider cancellation";
         await provider.wait(provider.childClosed, signal);
+        proof.stage = "hide child Stop";
         await childStop.waitFor({ state: "hidden" });
         expect(provider.processIsOpen(), "child Stop must not stop parent exec").toBe(true);
         await assertParent();
@@ -348,7 +384,9 @@ suite.define(() => {
           response: childReply,
           providerConnectionClosed: true,
         };
+        proof.stage = "return to child roster";
         await detail.getByRole("button", { name: "Back to Subagents", exact: true }).click();
+        proof.stage = "render finished child";
         await subagents
           .locator(".chat-subagents__finished")
           .getByRole("button", { name: fixture.childLabel, exact: true })
@@ -359,7 +397,9 @@ suite.define(() => {
         await processStop.waitFor();
         await capture(page, "mobile-process-output", processStop);
         const beforeProcessStop = wire.completed.length;
+        proof.stage = "click process Stop";
         await processStop.click();
+        proof.stage = "observe process Stop response";
         const stoppedProcess = await wire.waitFor(
           (rpc) => rpc.request.method === "sessions.processes.stop",
           beforeProcessStop,
@@ -379,7 +419,9 @@ suite.define(() => {
         expect(payloadOf(stoppedProcess) as SessionsProcessesStopResult).toEqual({
           requested: true,
         });
+        proof.stage = "settle process cancellation";
         await provider.wait(provider.processClosed, signal);
+        proof.stage = "observe terminal process response";
         const terminal = (
           payloadOf(
             await wire.waitFor(
@@ -400,10 +442,14 @@ suite.define(() => {
         });
         expect(terminal.endedAt).toEqual(expect.any(Number));
         expect(terminal.tail).toContain(fixture.output);
+        proof.stage = "render stopped process";
         await processes.getByText("Stopped", { exact: true }).waitFor();
+        proof.stage = "hide process Stop";
         await processStop.waitFor({ state: "hidden" });
+        proof.stage = "return to process list";
         await processes.getByRole("button", { name: "Back to Processes", exact: true }).click();
         const finishedToggle = processes.getByRole("button", { name: "Finished (1)", exact: true });
+        proof.stage = "render finished process";
         await finishedToggle.waitFor();
         expect(await finishedToggle.getAttribute("aria-expanded")).toBe("false");
         expect(await processOpen.count()).toBe(0);
@@ -426,9 +472,12 @@ suite.define(() => {
         proof.stage = "reload parent with independent panels and durable draft";
         await page.setViewportSize({ width: 1440, height: 1000 });
         await page.reload();
+        proof.stage = "connect reloaded Gateway";
         await waitForControlUiGatewayReady(page);
+        proof.stage = "render reloaded composer";
         await composer.waitFor();
         await assertParent();
+        proof.stage = "render reloaded finished process";
         await finishedToggle.waitFor();
         expect(await finishedToggle.getAttribute("aria-expanded")).toBe("false");
         expect(await processOpen.count()).toBe(0);
@@ -442,7 +491,9 @@ suite.define(() => {
           processes.getByRole("button", { name: "Back to Processes", exact: true }),
         );
         await switchTab("Subagents");
+        proof.stage = "open reloaded child detail";
         await childOpen.click();
+        proof.stage = "render retained child progress";
         await detail.getByText(fixture.childText, { exact: true }).waitFor();
         await assertParent();
         proof.draftPreservedAfterReload = true;
