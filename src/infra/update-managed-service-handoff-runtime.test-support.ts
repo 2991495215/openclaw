@@ -75,7 +75,53 @@ export async function prepareManagedServiceRuntimeFixture(params: {
     await fs.appendFile(
       recoveryModulePath,
       `
+      // HOLD diagnostic: never land. Observe custody without changing its admission or release.
+      const handoffOwnerTrace = { acquisitions: [], snapshots: [] };
+      const handoffOwnerIds = new Map();
+      const handoffOwners = globalThis[Symbol.for("openclaw.gatewayStateOwners")];
+      function handoffOwnerFacts(key, owner) {
+        if (!handoffOwnerIds.has(key)) handoffOwnerIds.set(key, handoffOwnerIds.size + 1);
+        return {
+          id: handoffOwnerIds.get(key),
+          kind: owner.kind === "schema" ? "schema" : owner.kind === "process" ? "process" : "other",
+          role: ["sqlite-maintenance", "gateway", "agent-embedded"].includes(owner.payload?.role)
+            ? owner.payload.role : "other",
+          accepting: owner.accepting === true,
+          locks: owner.locks instanceof Set ? owner.locks.size : null,
+        };
+      }
+      function snapshotHandoffOwners(stage) {
+        try {
+          if (handoffOwnerTrace.snapshots.length < 12) {
+            handoffOwnerTrace.snapshots.push({
+              stage,
+              available: handoffOwners instanceof Map,
+              owners: handoffOwners instanceof Map
+                ? [...handoffOwners].slice(0, 8).map(([key, owner]) => handoffOwnerFacts(key, owner)) : [],
+            });
+          }
+        } catch { /* Observation must not change the fixture verdict. */ }
+        return handoffOwnerTrace;
+      }
+      if (handoffOwners instanceof Map) {
+        const originalSet = handoffOwners.set;
+        handoffOwners.set = function(key, owner) {
+          const result = originalSet.call(this, key, owner);
+          try {
+            if (handoffOwnerTrace.acquisitions.length < 8) {
+              const stack = new Error().stack?.split("\\n").slice(2, 14).map((frame) => {
+                const location = frame.match(/(?:^|[\\\\/(])([\\w.-]+\\.(?:[cm]?[jt]s|[jt]sx):\\d+:\\d+)\\)?$/)?.[1];
+                const callable = frame.match(/^\\s*at ([\\w.$<>]+) \\(/)?.[1];
+                return location ? (callable ? callable + " (" + location + ")" : location) : "<unavailable>";
+              }).join("\\n").slice(0, 2048);
+              handoffOwnerTrace.acquisitions.push({ ...handoffOwnerFacts(key, owner), stack });
+            }
+          } catch { /* Observation must not change the acquired owner. */ }
+          return result;
+        };
+      }
       export async function isManagedUpdateRequesterOwner(requester) {
+        snapshotHandoffOwners("before-requester");
         const state = ${managedServiceStateUpdateScript(statePath, "state.ownerChecked = true;")};
         ${
           options.cancelAtActivation === "requester"
@@ -87,7 +133,11 @@ export async function prepareManagedServiceRuntimeFixture(params: {
         }
         return true;`
             : `const runtime = await import(${JSON.stringify(new URL("../../dist/cli/daemon-cli.js", import.meta.url).href)});
-        return runtime.isManagedUpdateRequesterOwner(requester);`
+        try {
+          return await runtime.isManagedUpdateRequesterOwner(requester);
+        } finally {
+          snapshotHandoffOwners("after-requester");
+        }`
         }
       }
     `,
@@ -219,6 +269,7 @@ export async function prepareManagedServiceBoundaryFiles({
       state.healthProbeCount = (state.healthProbeCount || 0) + 1;
       state.expectedVersion = expectedVersion;
       state.expectedBuildId = expectedBuildId;
+      ${options?.requester && !options.requester.authorizationSource?.startsWith("profile:") ? 'state.handoffOwnerTrace = snapshotHandoffOwners("recovery");' : ""}
       `,
       )};
       ${options?.updaterNotification === "consumed" ? consumeNotification : ""}

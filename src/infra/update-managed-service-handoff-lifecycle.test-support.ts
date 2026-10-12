@@ -701,7 +701,10 @@ export function registerManagedHandoffOwnerTests(
           restored: true,
           healthProbed: true,
         });
-        expect(sentinel, log).toMatchObject({
+        expect(
+          sentinel,
+          JSON.stringify({ log, handoffOwnerTrace: state.handoffOwnerTrace }),
+        ).toMatchObject({
           payload: {
             status: "error",
             stats: {
