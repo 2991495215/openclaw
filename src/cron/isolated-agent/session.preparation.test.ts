@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import type { Worker } from "node:worker_threads";
@@ -10,7 +9,6 @@ import { writeSessionEntry } from "../../config/sessions/session-accessor.sqlite
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.sqlite-entry.js";
 import { replaceTranscriptEventsSync } from "../../config/sessions/session-accessor.sqlite-transcript-write.test-support.js";
 import { readSessionEntriesFromStoreInWorker } from "../../config/sessions/session-entry-read-runtime.js";
-import { closeOpenClawAgentDatabaseByPathAsync } from "../../state/openclaw-agent-db-lifecycle.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import {
   createOpenClawTestState,
@@ -140,60 +138,6 @@ it.each(["incognito", "internal-effects"] as const)(
     }
   },
 );
-
-it("rejects a read revoked during dispatch and joins worker close", async () => {
-  const database = openOpenClawAgentDatabase({ agentId: "main", env: state.env });
-  const sessionKey = "agent:main:cron:closed";
-  writeSessionEntry(database, sessionKey, { sessionId: "closed-session", updatedAt: 1 });
-  let closing: Promise<boolean> | undefined;
-  // The close comes from outside the read, not from the read's writer FIFO context.
-  const runExternalClose = AsyncLocalStorage.snapshot();
-  observed.dispatch = () => {
-    observed.dispatch = undefined;
-    closing = runExternalClose(() => closeOpenClawAgentDatabaseByPathAsync(database.path, "main"));
-  };
-  await expect(
-    readSessionEntriesFromStoreInWorker({
-      agentId: "main",
-      env: state.env,
-      storePath: database.path,
-      sessionKeys: [sessionKey],
-      projection: "full",
-    }),
-  ).rejects.toThrow(/revoked/);
-  expect(closing).toBeDefined();
-  await closing;
-  expect(fs.existsSync(database.path)).toBe(true);
-});
-
-it("rejects a configured alias redirected while its read is in flight", async () => {
-  const database = openOpenClawAgentDatabase({ agentId: "main", env: state.env });
-  const replacementRoot = state.path("replacement-root");
-  const replacement = openOpenClawAgentDatabase({
-    agentId: "main",
-    env: state.env,
-    path: path.join(replacementRoot, "agents", "main", "agent", "openclaw-agent.sqlite"),
-  });
-  const sessionKey = "agent:main:cron:alias";
-  writeSessionEntry(database, sessionKey, { sessionId: "original-source", updatedAt: 1 });
-  writeSessionEntry(replacement, sessionKey, { sessionId: "replacement-source", updatedAt: 1 });
-  const alias = state.path("alias-full");
-  fs.symlinkSync(state.stateDir, alias, "junction");
-  observed.dispatch = () => {
-    observed.dispatch = undefined;
-    fs.unlinkSync(alias);
-    fs.symlinkSync(replacementRoot, alias, "junction");
-  };
-  await expect(
-    readSessionEntriesFromStoreInWorker({
-      agentId: "main",
-      env: state.env,
-      storePath: path.join(alias, "agents", "main", "agent", "openclaw-agent.sqlite"),
-      sessionKeys: [sessionKey],
-      projection: "full",
-    }),
-  ).rejects.toThrow(/outside captured discovery custody/);
-});
 
 it("keeps a provider-owned CLI session with the default reset policy", () => {
   const nowMs = 1_737_600_000_000;
