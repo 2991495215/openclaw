@@ -33,6 +33,22 @@ function prepare(
   });
 }
 
+function createClockedStateStore<T>(
+  options: Parameters<typeof createPluginStateSyncKeyedStoreForTests>[1],
+): PluginStateKeyedStore<T> {
+  // Native workers have a real clock; retention fixtures need SQLite and media on one fake clock.
+  const store = createPluginStateSyncKeyedStoreForTests<T>("fixture-plugin", options);
+  return {
+    register: async (...args) => store.register(...args),
+    registerIfAbsent: async (...args) => store.registerIfAbsent(...args),
+    lookup: async (...args) => store.lookup(...args),
+    consume: async (...args) => store.consume(...args),
+    delete: async (key) => store.delete(key),
+    entries: async () => store.entries(),
+    clear: async () => store.clear(),
+  };
+}
+
 beforeAll(async () => {
   const webMedia = await import("./web-media.js");
   vi.spyOn(webMedia, "loadWebMedia").mockImplementation(loadWebMediaMock);
@@ -240,14 +256,14 @@ describe("createHostedOutboundMediaStore", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);
     loadWebMediaMock.mockResolvedValueOnce(imageMedia());
-    const metadataStore = createPluginStateKeyedStoreForTests<HostedOutboundMediaMetaRecord>(
-      "fixture-plugin",
-      { namespace: "ttl-media", maxEntries: 10 },
-    );
-    const chunkStore = createPluginStateKeyedStoreForTests<HostedOutboundMediaChunkRecord>(
-      "fixture-plugin",
-      { namespace: "ttl-media-chunks", maxEntries: 100 },
-    );
+    const metadataStore = createClockedStateStore<HostedOutboundMediaMetaRecord>({
+      namespace: "ttl-media",
+      maxEntries: 10,
+    });
+    const chunkStore = createClockedStateStore<HostedOutboundMediaChunkRecord>({
+      namespace: "ttl-media-chunks",
+      maxEntries: 100,
+    });
     const store = createHostedOutboundMediaStore({
       metadataStore,
       chunkStore,
@@ -280,27 +296,10 @@ describe("createHostedOutboundMediaStore", () => {
       { namespace: "ttl-media-chunks", ttlMs: 100 },
       { namespace: "ttl-media-chunks", ttlMs: 100 },
     ]);
-    // Keep physical expiry independent of the parent test's logical media clock.
-    executeSqliteQuerySync(
-      db,
-      sql
-        .updateTable("plugin_state_entries")
-        .set({ expires_at: vi.getRealSystemTime() + 86_400_000 })
-        .where("plugin_id", "=", "fixture-plugin")
-        .where("namespace", "in", ["ttl-media", "ttl-media-chunks"]),
-    );
     expect(await metadataStore.entries()).toHaveLength(1);
     expect(await chunkStore.entries()).toHaveLength(3);
 
     vi.setSystemTime(1101);
-    executeSqliteQuerySync(
-      db,
-      sql
-        .updateTable("plugin_state_entries")
-        .set({ expires_at: 1 })
-        .where("plugin_id", "=", "fixture-plugin")
-        .where("namespace", "=", "ttl-media-chunks"),
-    );
     expect(await metadataStore.entries()).toHaveLength(1);
     expect(await chunkStore.entries()).toEqual([]);
     await store.cleanupExpired(1101);
@@ -634,22 +633,6 @@ describe("hosted outbound media retention and aggregate capacity", () => {
   // Keep backing expiry independent of the logical URL/grace window.
   const PHYSICAL_TTL_MS = 120_000;
   const LOGICAL_TTL_MS = 100;
-
-  function createClockedStateStore<T>(
-    options: Parameters<typeof createPluginStateSyncKeyedStoreForTests>[1],
-  ): PluginStateKeyedStore<T> {
-    // Native workers have a real clock; retention fixtures need SQLite and media on one fake clock.
-    const store = createPluginStateSyncKeyedStoreForTests<T>("fixture-plugin", options);
-    return {
-      register: async (...args) => store.register(...args),
-      registerIfAbsent: async (...args) => store.registerIfAbsent(...args),
-      lookup: async (...args) => store.lookup(...args),
-      consume: async (...args) => store.consume(...args),
-      delete: async (key) => store.delete(key),
-      entries: async () => store.entries(),
-      clear: async () => store.clear(),
-    };
-  }
 
   beforeEach(() => {
     vi.useFakeTimers();
