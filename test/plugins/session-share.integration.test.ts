@@ -17,6 +17,7 @@ import {
   replaceSessionEntry,
   upsertSessionEntryCore,
 } from "../../src/config/sessions/session-accessor.js";
+import { AgentsSchema } from "../../src/config/zod-schema.agents.js";
 import { createDeferredCore } from "../../src/shared/deferred.js";
 import {
   closeOpenClawAgentDatabasesAsync,
@@ -181,7 +182,8 @@ describe("session-share node commands", () => {
   it("keeps global source agents distinct through catalog links and transcript reads", async () => {
     await withCatalogFixture(async (receiver) => {
       const source = commandFixture();
-      source.config.agents = { entries: { research: {}, ops: {} } };
+      source.config.agents = { ownership: "explicit", entries: { research: {}, ops: {} } };
+      AgentsSchema.parse(source.config.agents);
       receiver.setConfig({
         agents: { entries: { receiver: {} } },
         plugins: {
