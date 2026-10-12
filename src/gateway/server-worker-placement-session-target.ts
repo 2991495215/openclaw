@@ -3,11 +3,10 @@ import { captureWorktreeRunEndContext } from "../agents/worktrees/run-end-lifecy
 import type { managedWorktrees } from "../agents/worktrees/service.js";
 import type { ManagedWorktreeRecord } from "../agents/worktrees/types.js";
 import { getRuntimeConfig } from "../config/config.js";
-import { createSessionEntryRevisionGuard } from "../config/sessions/session-accessor.sqlite-entry-revision.js";
-import { createSessionTranscriptOwnerPredicate } from "../config/sessions/session-accessor.sqlite-transcript-write-guard.js";
+import { retainPreparedSessionEntryPredicate } from "../config/sessions/session-accessor.sqlite-entry-cache-publication-state.js";
 import { getSessionActorStorageBinding } from "../config/sessions/session-actor-storage-binding.js";
 import { readRetainedSessionEntryFacts } from "../config/sessions/session-entry-read-facts.js";
-import { readSessionEntriesFromStoreInWorker } from "../config/sessions/session-entry-read-runtime.js";
+import { withSessionEntriesFromStoreInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import { captureSessionEntryMetadataRead } from "../config/sessions/session-entry-source-authority.js";
 import { captureIncognitoSessionBinding } from "../config/sessions/session-incognito-binding.js";
 import { captureSessionTranscriptTargetBinding } from "../config/sessions/transcript-target-binding.js";
@@ -18,12 +17,9 @@ import {
   readSqliteDatabaseScopedWriteTokenForPath,
   sqliteSessionIdWriteScope,
 } from "../infra/sqlite-database-admission.js";
+import { assertExistingDatabaseIdentity } from "../infra/sqlite-worker-identity.js";
 import { runExclusiveSessionLifecycleMutation } from "../sessions/session-lifecycle-admission.js";
-import { createDeferredCore } from "../shared/deferred.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
-import { isOpenClawAgentDatabasePathCurrent } from "../state/openclaw-agent-db-identity.js";
-import { retainOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly.js";
-import { registerOpenClawAgentDatabaseAsyncResource } from "../state/openclaw-agent-db-resources.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import { captureSessionMutationRouting } from "./session-sharing-preparation.js";
 import type * as sessionUtils from "./session-utils.js";
@@ -196,80 +192,68 @@ export function createWorkerWorkspaceRecoveryPreparer(options: {
       ...captureSessionTranscriptTargetBinding({ ...identity, storePath: target.readSource.path }),
       defaultAgentId: target.readSource.agentId,
     };
-    const retained = retainOpenClawAgentDatabaseReadOnly(target.readSource);
-    if (!retained.found) {
-      throw new WorkerDispatchTargetChangedError("Workspace recovery session store is unavailable");
-    }
-    let released = false;
-    const completion = createDeferredCore();
-    const controller = new AbortController();
-    let unregister = () => {};
-    const assertSourceCurrent = () => {
-      controller.signal.throwIfAborted();
-      assertOwnerCurrent();
-      if (
-        released ||
-        !retained.claim.isCurrent() ||
-        !isOpenClawAgentDatabasePathCurrent(retained.database)
-      ) {
-        throw new WorkerDispatchTargetChangedError("Workspace recovery session source changed");
-      }
-    };
+    let retained: ReturnType<typeof retainPreparedSessionEntryPredicate> | undefined;
+    let assertPhysicalSource: (() => void) | undefined;
+    const matchesOwner = (current: InternalSessionEntry | undefined) =>
+      current?.sessionId === identity.sessionId &&
+      current.lifecycleRevision === entry.lifecycleRevision &&
+      current.activeWriterRunId === entry.activeWriterRunId;
     try {
-      unregister = registerOpenClawAgentDatabaseAsyncResource({
-        agentId: retained.database.agentId,
-        path: retained.database.path,
-        revoke: () =>
-          controller.abort(new WorkerDispatchTargetChangedError("Workspace recovery was revoked")),
-        close: () => completion.promise,
-      });
-      const prepared = await readSessionEntriesFromStoreInWorker({
-        agentId: target.readSource.agentId,
-        storePath: target.readSource.path,
-        env: binding.env,
-        sessionKeys: [identity.sessionKey],
-        snapshotFields: [],
-      });
-      assertSourceCurrent();
-      const preparedEntry = prepared.entries.find(
-        (candidate) => candidate.sessionKey === identity.sessionKey,
-      )?.entry;
-      if (
-        preparedEntry?.sessionId !== identity.sessionId ||
-        preparedEntry.lifecycleRevision !== entry.lifecycleRevision
-      ) {
-        throw new WorkerDispatchTargetChangedError("Workspace recovery session generation changed");
-      }
-      const transcriptTarget = {
-        ...binding,
-        expectedLifecycleRevision: preparedEntry.lifecycleRevision,
-        expectedWriterRunId: preparedEntry.activeWriterRunId,
-      };
-      const assertCurrent = createSessionEntryRevisionGuard(
-        retained.database.db,
-        assertSourceCurrent,
-        createSessionTranscriptOwnerPredicate(retained.database, {
-          sessionKey: identity.sessionKey,
-          sessionId: identity.sessionId,
-          lifecycleRevision: preparedEntry.lifecycleRevision,
-          activeWriterRunId: preparedEntry.activeWriterRunId,
-        }),
-      );
-      assertCurrent();
-      resolved.assertCurrent(options.getConfig());
-      // A new recovery owns the current target; callbacks cannot select a later route.
-      return await withSessionTranscriptWriteAssertion(transcriptTarget, assertCurrent, () =>
-        run({
-          workspace,
-          assertCurrent,
-          ...createWorkerWorkspaceConflictTranscriptHandlers(transcriptTarget, assertCurrent),
-        }),
+      return await withSessionEntriesFromStoreInWorker(
+        {
+          agentId: target.readSource.agentId,
+          storePath: target.readSource.path,
+          env: binding.env,
+          sessionKeys: [identity.sessionKey],
+          snapshotFields: [],
+        },
+        async (prepared) => {
+          const preparedEntry = prepared.result.entries.find(
+            (candidate) => candidate.sessionKey === identity.sessionKey,
+          )?.entry;
+          if (!matchesOwner(preparedEntry)) {
+            throw new WorkerDispatchTargetChangedError("Workspace recovery session owner changed");
+          }
+          const transcriptTarget = {
+            ...binding,
+            expectedLifecycleRevision: entry.lifecycleRevision,
+            expectedWriterRunId: entry.activeWriterRunId,
+          };
+          const assertCurrent = () => {
+            assertOwnerCurrent();
+            prepared.assertCurrent();
+            assertPhysicalSource?.();
+            if (!retained?.isCurrent()) {
+              throw new WorkerDispatchTargetChangedError(
+                "Workspace recovery session owner changed",
+              );
+            }
+          };
+          assertCurrent();
+          resolved.assertCurrent(options.getConfig());
+          // Keep the original source; the entry writer's receipts revoke changed owners.
+          return await withSessionTranscriptWriteAssertion(transcriptTarget, assertCurrent, () =>
+            run({
+              workspace,
+              assertCurrent,
+              ...createWorkerWorkspaceConflictTranscriptHandlers(transcriptTarget, assertCurrent),
+            }),
+          );
+        },
+        false,
+        (database, source) => {
+          assertPhysicalSource = () =>
+            assertExistingDatabaseIdentity(database.path, source.key, source.birthtime);
+          retained = retainPreparedSessionEntryPredicate({
+            databaseIdentity: source.key,
+            sessionKey: identity.sessionKey,
+            entry,
+            matches: (_before, current) => matchesOwner(current),
+          });
+        },
       );
     } finally {
-      released = true;
-      unregister();
-      retained.claim.release();
-      completion.resolve();
+      retained?.release();
     }
   };
 }
