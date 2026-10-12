@@ -13,7 +13,8 @@ import {
 } from "./usage-accumulator.js";
 
 type StreamOptions = NonNullable<Parameters<StreamFn>[2]>;
-export type EmbeddedSessionForkIdentity = { sessionId: string; runId: string };
+export type EmbeddedSessionForkIdentity = { sessionId: string; runId: string; agentId: string };
+type SessionForkAuthority = { active: boolean; capture: object };
 type Snapshot = EmbeddedSessionForkIdentity & {
   model: Model;
   context: Parameters<StreamFn>[1];
@@ -23,17 +24,31 @@ type Snapshot = EmbeddedSessionForkIdentity & {
   expires: number;
   bytes: number;
   expiryTimer: NodeJS.Timeout;
+  authority: SessionForkAuthority;
 };
 
 const snapshots = new Map<string, Snapshot>();
 const TTL_MS = 90 * 60 * 1000;
 const MAX_ENTRIES = 1000;
-const captures = new Map<string, object>();
+// Parent calls replace request data, not the session authority held by an in-flight fork.
+const captures = new Map<string, SessionForkAuthority>();
 const MAX_BYTES = 64 * 1024 * 1024;
 let retainedBytes = 0;
 
+function forgetSnapshot(sessionId: string): void {
+  const previous = snapshots.get(sessionId);
+  if (previous) {
+    clearTimeout(previous.expiryTimer);
+    retainedBytes -= previous.bytes;
+    snapshots.delete(sessionId);
+  }
+}
+
 export function clearEmbeddedSessionForkSnapshot(sessionId?: string): void {
   if (sessionId === undefined) {
+    for (const authority of captures.values()) {
+      authority.active = false;
+    }
     for (const snapshot of snapshots.values()) {
       clearTimeout(snapshot.expiryTimer);
     }
@@ -42,13 +57,12 @@ export function clearEmbeddedSessionForkSnapshot(sessionId?: string): void {
     retainedBytes = 0;
     return;
   }
-  captures.delete(sessionId);
-  const previous = snapshots.get(sessionId);
-  if (previous) {
-    clearTimeout(previous.expiryTimer);
-    retainedBytes -= previous.bytes;
-    snapshots.delete(sessionId);
+  const authority = captures.get(sessionId);
+  if (authority) {
+    authority.active = false;
   }
+  captures.delete(sessionId);
+  forgetSnapshot(sessionId);
 }
 registerSessionResourceCleanup(clearEmbeddedSessionForkSnapshot);
 
@@ -75,7 +89,7 @@ export function wrapStreamFnWithSessionFork(
 ): StreamFn {
   return (model, context, options) => {
     // A transport without a payload boundary must not leave the previous turn replayable.
-    clearEmbeddedSessionForkSnapshot(identity.sessionId);
+    forgetSnapshot(identity.sessionId);
     if (!captures.has(identity.sessionId) && captures.size >= MAX_ENTRIES) {
       const oldest = captures.keys().next().value;
       if (oldest !== undefined) {
@@ -83,7 +97,9 @@ export function wrapStreamFnWithSessionFork(
       }
     }
     const capture = {};
-    captures.set(identity.sessionId, capture);
+    const authority = captures.get(identity.sessionId) ?? { active: true, capture };
+    authority.capture = capture;
+    captures.set(identity.sessionId, authority);
     const {
       apiKey: _apiKey,
       signal: _signal,
@@ -121,7 +137,7 @@ export function wrapStreamFnWithSessionFork(
       onPayload: async (payload, payloadModel) => {
         const replacement = await onPayload?.(payload, payloadModel);
         const finalPayload = replacement === undefined ? payload : replacement;
-        if (isRecord(finalPayload) && captures.get(identity.sessionId) === capture) {
+        if (isRecord(finalPayload) && authority.active && authority.capture === capture) {
           const savedPayload = structuredClone(finalPayload);
           const bytes = Buffer.byteLength(
             JSON.stringify({
@@ -145,6 +161,7 @@ export function wrapStreamFnWithSessionFork(
               options: savedOptions,
               payload: savedPayload,
               streamFn,
+              authority,
               bytes,
               expires: Date.now() + TTL_MS,
               expiryTimer: setTimeout(
@@ -154,7 +171,7 @@ export function wrapStreamFnWithSessionFork(
             });
             retainedBytes += bytes;
           } else {
-            captures.delete(identity.sessionId);
+            clearEmbeddedSessionForkSnapshot(identity.sessionId);
           }
           prune();
         }
@@ -184,6 +201,7 @@ function stripNewCacheMarkers(value: unknown): unknown {
 /** Reuse the prepared transport and its hook chain, never the agent or its tool executor. */
 export async function runEmbeddedSessionFork(params: {
   sessionId: string;
+  agentId: string;
   question: string;
   model: Model;
   apiKey?: string;
@@ -196,7 +214,16 @@ export async function runEmbeddedSessionFork(params: {
   if (!snapshot) {
     throw new Error(EMBEDDED_FORK_REQUIRES_PARENT);
   }
+  const assertCurrent = () => {
+    params.assertCurrent();
+    params.signal?.throwIfAborted();
+    if (!snapshot.authority.active || snapshot.expires <= Date.now()) {
+      throw new Error(EMBEDDED_FORK_REQUIRES_PARENT);
+    }
+  };
+  assertCurrent();
   if (
+    snapshot.agentId !== params.agentId ||
     snapshot.model.provider !== params.model.provider ||
     snapshot.model.id !== params.model.id ||
     snapshot.model.api !== params.model.api ||
@@ -211,8 +238,7 @@ export async function runEmbeddedSessionFork(params: {
   const model = { ...snapshot.model, headers: params.model.headers };
   const usage = createUsageAccumulator();
   for (let iteration = 0; iteration < 3; iteration++) {
-    params.assertCurrent();
-    params.signal?.throwIfAborted();
+    assertCurrent();
     const options: StreamOptions = {
       ...snapshot.options,
       apiKey: params.apiKey,
@@ -221,7 +247,7 @@ export async function runEmbeddedSessionFork(params: {
       asyncToolExecution: false,
       onPayload: async (payload, payloadModel) => {
         const replacement = await snapshot.options.onPayload?.(payload, payloadModel);
-        params.assertCurrent();
+        assertCurrent();
         const finalPayload = replacement === undefined ? payload : replacement;
         if (!isRecord(finalPayload)) {
           throw new Error("Cache-parity session fork requires an object provider request.");
@@ -253,9 +279,9 @@ export async function runEmbeddedSessionFork(params: {
     };
     independentResponsesRequest.set(options);
     const stream = await snapshot.streamFn(model, context, options);
-    params.assertCurrent();
+    assertCurrent();
     const result = await stream.result();
-    params.assertCurrent();
+    assertCurrent();
     mergeUsageIntoAccumulator(usage, normalizeUsage(result.usage));
     params.onUsage?.(toNormalizedUsage(usage));
     if (result.stopReason === "error" || result.stopReason === "aborted") {

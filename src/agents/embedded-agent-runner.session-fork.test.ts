@@ -6,15 +6,20 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
+import { stagePlacementWorkspaceJournalWorkerPublication } from "../gateway/worker-environments/placement-turn-authority.js";
 import { loadAndActivateRootPluginRegistry } from "../plugins/loader.js";
 import { clearActivePluginRegistry } from "../plugins/runtime.js";
 import { createUserTurnTranscriptRecorder } from "../sessions/user-turn-transcript.js";
+import { requireOpenClawStateDatabaseIdentity } from "../state/openclaw-state-db-cache.js";
+import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { prepareSystemAgentRunAdmission } from "./admitted-run-context.js";
 import { readBtwTranscriptMessages, resolveBtwSessionTranscriptPath } from "./btw-transcript.js";
 import { runBtwSideQuestion } from "./btw.js";
 import { runEmbeddedAgent } from "./embedded-agent-runner.js";
 import { EMBEDDED_FORK_REQUIRES_PARENT } from "./embedded-agent-runner/session-fork.js";
+import * as sessionPlacementAdmission from "./session-placement-admission.js";
 
 type Api = "openai-completions" | "openai-responses" | "anthropic-messages";
 function response(api: Api, model: string, tool: boolean): Response {
@@ -160,7 +165,7 @@ describe("embedded cache-parity session fork", () => {
     { api: "openai-responses" as const, provider: "openai", model: "gpt-5.5" },
     { api: "anthropic-messages" as const, provider: "anthropic", model: "claude-sonnet-4-6" },
   ])(
-    "replays real $api attempt bytes, denies tools and releases on reset",
+    "replays real $api bytes during pending placement publications and revokes on reset",
     { timeout: 120_000 },
     async ({ api, provider, model }) => {
       await withOpenClawTestState({ label: `session-fork-${provider}` }, async (state) => {
@@ -244,6 +249,7 @@ describe("embedded cache-parity session fork", () => {
         const host = getAiTransportHost();
         const payloads: Array<Record<string, unknown>> = [];
         let toolsRemaining = 0;
+        let beforeProviderResponse: (() => void) | undefined;
         configureAiTransportHost({
           ...host,
           buildModelFetch: () => async (input, init) => {
@@ -254,12 +260,13 @@ describe("embedded cache-parity session fork", () => {
             payloads.push(payload);
             const tool = toolsRemaining > 0;
             toolsRemaining--;
+            beforeProviderResponse?.();
             return response(api, model, tool);
           },
         });
         const onUsage = vi.fn();
         const onBlockReply = vi.fn();
-        const fork = () =>
+        const fork = (abortSignal?: AbortSignal) =>
           runBtwSideQuestion({
             cfg: config,
             agentId: "main",
@@ -274,7 +281,7 @@ describe("embedded cache-parity session fork", () => {
             storePath: target.storePath,
             isNewSession: false,
             resolvedReasoningLevel: "off",
-            opts: { onBlockReply },
+            opts: { onBlockReply, abortSignal },
           });
         try {
           await expect(fork()).rejects.toThrow(EMBEDDED_FORK_REQUIRES_PARENT);
@@ -345,7 +352,33 @@ describe("embedded cache-parity session fork", () => {
               storePath: target.storePath,
             });
           const parentTranscript = await readTranscript();
-          await expect(fork()).resolves.toEqual({ text: "Review answer" });
+          const database = openOpenClawStateDatabase();
+          const placements = createWorkerSessionPlacementStore({ database });
+          const placement = await placements.prepareSessionPlacement(sessionId);
+          const prepareSandbox = vi
+            .spyOn(sessionPlacementAdmission, "prepareSessionPlacementSandbox")
+            .mockResolvedValue({
+              sandbox: null,
+              assertCurrent: () => {
+                placement.current();
+              },
+              [Symbol.dispose]: () => placement.release(),
+            });
+          const publication = stagePlacementWorkspaceJournalWorkerPublication(
+            requireOpenClawStateDatabaseIdentity({ db: database.db }),
+            sessionId,
+            true,
+          );
+          try {
+            expect(() => placement.current()).toThrow("placement authority changed");
+            await expect(fork()).resolves.toEqual({ text: "Review answer" });
+            expect(prepareSandbox).not.toHaveBeenCalled();
+            expect(() => placement.current()).toThrow("placement authority changed");
+          } finally {
+            publication.rollback();
+            placement.release();
+            prepareSandbox.mockRestore();
+          }
           const replay = payloads[1]!;
           const messageKey = api === "openai-responses" ? "input" : "messages";
           const originalMessages = original[messageKey];
@@ -381,7 +414,12 @@ describe("embedded cache-parity session fork", () => {
           await expect(fork()).rejects.toThrow("after three attempts");
           expect(payloads.length - beforeDenied).toBe(3);
           expect(await readTranscript()).toEqual(parentTranscript);
-          cleanupSessionResources(sessionId);
+          const pluginAbort = new AbortController();
+          beforeProviderResponse = () => pluginAbort.abort(new Error("plugin runtime retired"));
+          await expect(fork(pluginAbort.signal)).rejects.toThrow();
+          beforeProviderResponse = () => cleanupSessionResources(sessionId);
+          await expect(fork()).rejects.toThrow(EMBEDDED_FORK_REQUIRES_PARENT);
+          beforeProviderResponse = undefined;
           const beforeReset = payloads.length;
           await expect(fork()).rejects.toThrow(EMBEDDED_FORK_REQUIRES_PARENT);
           expect(payloads).toHaveLength(beforeReset);

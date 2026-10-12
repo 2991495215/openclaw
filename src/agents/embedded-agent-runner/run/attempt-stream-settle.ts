@@ -450,7 +450,11 @@ export async function prepareEmbeddedAttemptTransport(input: {
     workspaceDir: input.workspaceDir,
     auth,
   });
-  const sessionFork = { sessionId: attempt.sessionId, runId: attempt.runId };
+  const sessionFork = {
+    sessionId: attempt.sessionId,
+    runId: attempt.runId,
+    agentId: input.sessionAgentId,
+  };
   const directProviderStreamFn = providerStreamFn
     ? wrapStreamFnWithMessageTransform(
         wrapStreamFnWithSessionFork(providerStreamFn, sessionFork),

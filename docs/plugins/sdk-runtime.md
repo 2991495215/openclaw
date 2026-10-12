@@ -102,6 +102,9 @@ with one appended user message, preserving its system prompt, tools, reasoning
 settings, and prompt-cache affinity for OpenAI and Anthropic. Tool calls are
 denied without execution, with at most two additional inference attempts.
 Snapshots stay in bounded process memory until expiry or session cleanup.
+Read-only forks do not acquire workspace placement authority, so a parent's
+pending placement publication does not block them. Session reset or deletion
+revokes even an in-flight fork before its answer can be returned.
 After a restart or without a prepared parent turn, the request fails closed:
 "Cache-parity session fork requires a parent turn prepared by this OpenClaw
 runtime. Send a normal message first." Ordinary `/btw` keeps its lightweight,

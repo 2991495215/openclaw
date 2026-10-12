@@ -9,7 +9,10 @@ import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../infra/diagn
 import type { Message, Model } from "../llm/types.js";
 import { prepareProviderRuntimeAuth } from "../plugins/provider-runtime.js";
 import { isModelSelectionLocked } from "../sessions/model-overrides.js";
-import { prepareSystemAgentRunAdmission } from "./admitted-run-context.js";
+import {
+  prepareSystemAgentRunAdmission,
+  resolveAdmittedRunActiveAssertion,
+} from "./admitted-run-context.js";
 import { resolveAgentWorkspaceDir } from "./agent-scope.js";
 import {
   prepareBtwRuntimeAuth,
@@ -636,33 +639,30 @@ export async function runBtwSideQuestion(
     }
     runtimeModel = applySecretRefHeaderSentinels(runtimeModel, params.cfg);
     if (params.toolCalls === "deny") {
-      using placement = await prepareSessionPlacementSandbox({
-        agentId: sessionAgentId,
-        config: params.cfg,
-        sessionId,
-        sessionKey: params.sessionKey,
-        workspaceDir,
-      });
       const admission = prepareSystemAgentRunAdmission(
         params.cfg,
         params.authorityRunId,
         sessionAgentId,
         "btw.session-fork",
-        () => placement.assertCurrent(),
       );
       try {
-        await admission.admit("plugin-harness");
-        placement.assertCurrent();
+        const admitted = await admission.admit("plugin-harness");
+        const assertCurrent = resolveAdmittedRunActiveAssertion(admitted, params.opts?.abortSignal);
+        if (!assertCurrent) {
+          throw new Error("Session fork admission is no longer active.");
+        }
+        assertCurrent();
         const text = await runEmbeddedSessionFork({
           sessionId,
+          agentId: sessionAgentId,
           question: params.question,
           model: runtimeModel,
           apiKey,
           signal: params.opts?.abortSignal,
-          assertCurrent: () => placement.assertCurrent(),
+          assertCurrent,
           onUsage: params.onUsage,
         });
-        placement.assertCurrent();
+        assertCurrent();
         return { text };
       } finally {
         admission.close();
