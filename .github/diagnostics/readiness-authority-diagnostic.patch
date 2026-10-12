@@ -1,0 +1,83 @@
+diff --git a/src/gateway/server.agents.config-readiness.test.ts b/src/gateway/server.agents.config-readiness.test.ts
+index 0672f4cc48607..b9bbb4bec2de1 100644
+--- a/src/gateway/server.agents.config-readiness.test.ts
++++ b/src/gateway/server.agents.config-readiness.test.ts
+@@ -27,8 +27,11 @@ import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+ import { acquireTestPortBlock } from "../test-utils/port-claims.js";
+ import * as configReload from "./config-reload.js";
+ import { gatewayKernelLogs } from "./server-kernel.js";
++import * as requestAuthorization from "./server-methods/request-authorization.js";
+ import * as agentDatabases from "./server-reload-agent-databases.js";
+ import { startGatewayServer } from "./server.js";
++import * as sessionCreateDiagnostics from "./session-create-diagnostics.js";
++import * as sessionStoreWorker from "./session-utils-store-worker.js";
+ import { connectGatewayClient, disconnectGatewayClient } from "./test-helpers.e2e.js";
+
+ const cliEntrypoint = resolveRuntimeWorkerArgv(
+@@ -51,6 +54,48 @@ it("publishes agent mutations before acknowledging immediate session and roster
+   let reloadScheduler: GatewayScheduler | undefined;
+   const reloadFailures: string[] = [];
+   const cronWarnings: unknown[][] = [];
++  const createStages: string[] = [];
++  const markCreateStage = (stage: string) => {
++    createStages.push(stage);
++    console.error("readiness create stage", stage);
++  };
++  const diagnosticsSpy = vi
++    .spyOn(sessionCreateDiagnostics, "startSessionCreateDiagnostics")
++    .mockImplementation(() => {
++      markCreateStage("handler preflight");
++      return {
++        mark: markCreateStage,
++        [Symbol.dispose]() {
++          markCreateStage("handler disposed");
++        },
++      };
++    });
++  const loadEntry = sessionStoreWorker.loadGatewaySessionEntryReadOnlyInWorker;
++  const authorize = requestAuthorization.authorizeGatewayRequestPreDispatch;
++  const authorizationSpy = vi
++    .spyOn(requestAuthorization, "authorizeGatewayRequestPreDispatch")
++    .mockImplementation(async (...args) => {
++      if (args[0].method === "sessions.create") {
++        markCreateStage("pre-dispatch authorization start");
++      }
++      try {
++        return await authorize(...args);
++      } finally {
++        if (args[0].method === "sessions.create") {
++          markCreateStage("pre-dispatch authorization end");
++        }
++      }
++    });
++  const loadEntrySpy = vi
++    .spyOn(sessionStoreWorker, "loadGatewaySessionEntryReadOnlyInWorker")
++    .mockImplementation(async (...args) => {
++      markCreateStage(`entry read start: ${args[0].key}`);
++      try {
++        return await loadEntry(...args);
++      } finally {
++        markCreateStage(`entry read end: ${args[0].key}`);
++      }
++    });
+   const toPinoLikeLogger = logging.toPinoLikeLogger;
+   const cronLoggerSpy = vi.spyOn(logging, "toPinoLikeLogger").mockImplementation((...args) => {
+     const logger = toPinoLikeLogger(...args);
+@@ -83,6 +128,7 @@ it("publishes agent mutations before acknowledging immediate session and roster
+         overlapPhases,
+         reloadFailures,
+         cronWarnings,
++        createStages,
+       }),
+     );
+   });
+@@ -162,6 +208,9 @@ it("publishes agent mutations before acknowledging immediate session and roster
+     reloadInfo.mockRestore();
+     reloadError.mockRestore();
+     cronLoggerSpy.mockRestore();
++    diagnosticsSpy.mockRestore();
++    loadEntrySpy.mockRestore();
++    authorizationSpy.mockRestore();
+   });
+   await withOpenClawTestState(
+     {
