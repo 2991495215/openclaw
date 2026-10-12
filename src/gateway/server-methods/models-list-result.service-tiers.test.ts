@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  resolveFastModeSupport,
+  resolveServiceTiers,
+} from "../../../extensions/openai/provider-policy-api.js";
 import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
 import type { AgentHarness } from "../../agents/harness/types.js";
 import {
@@ -334,7 +338,20 @@ describe("models.list account service tiers", () => {
 
 it("publishes Daybreak restrictions through the real model catalog projection", async () => {
   const ids = ["gpt-daybreak-blue-latest", "gpt-daybreak-red-latest"];
+  const pluginRegistry = createEmptyPluginRegistry();
+  pluginRegistry.providers.push({
+    pluginId: "openai",
+    source: "test",
+    provider: {
+      id: "openai",
+      label: "OpenAI",
+      auth: [],
+      resolveFastModeSupport,
+      resolveServiceTiers,
+    },
+  });
   const context = createModelsListTestContext({
+    pluginRegistry,
     cfg: {
       agents: {
         defaults: {
@@ -364,14 +381,6 @@ it("publishes Daybreak restrictions through the real model catalog projection", 
     routeResolverFactory: routeResolverFactory(dualRoutes),
   });
   const models = result.read().models;
-  console.warn(
-    "model policy projection diagnosis:",
-    models.map(({ agentRuntime, supportsFastMode, serviceTiers }) => ({
-      agentRuntime,
-      supportsFastMode,
-      serviceTiers,
-    })),
-  );
   expect(models.find((row) => row.id === ids[0])).toMatchObject({
     available: true,
     supportsFastMode: true,

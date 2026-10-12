@@ -15,10 +15,7 @@ import {
   type PersistedAuthProfileStores,
 } from "./ownership.js";
 import { buildPersistedAuthProfileSecretsStore } from "./persisted.js";
-import {
-  removePersonalAuthProfileReferences,
-  setRuntimeExternalCliProfileIds,
-} from "./runtime-external-profile-references.js";
+import { removePersonalAuthProfileReferences } from "./runtime-external-profile-references.js";
 import { pruneAuthProfileStoreReferences } from "./runtime-snapshot-owner.js";
 import { getRuntimeAuthProfileStoreSnapshotAtDatabasePath } from "./runtime-snapshots.js";
 import type {
@@ -174,7 +171,6 @@ export function buildLocalAuthProfileStoreForSave(params: {
   if (params.options?.filterExternalAuthProfiles !== false) {
     localStore.runtimeExternalProfileIds = undefined;
     localStore.runtimeExternalProfileIdsAuthoritative = undefined;
-    setRuntimeExternalCliProfileIds(localStore, []);
   }
   return localStore;
 }

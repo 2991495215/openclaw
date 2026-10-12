@@ -196,8 +196,8 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   "security-runtime": 1,
   // +2: approved released upstream-link writes retained during worker migration.
   "session-catalog": 2,
-  // +1: readTranscriptStatsSync remains while plugins adopt readTranscriptStatsAsync.
-  "session-store-runtime": 8,
+  // +2: released synchronous transcript event/stat reads during the worker cutover.
+  "session-store-runtime": 9,
   // +2: shipped Slack and Discord setup helpers retained through their package migration window.
   "setup-runtime": 2,
   "reply-history": 6,
@@ -255,10 +255,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // Auth, media-discovery, and model-session compat records retain their synchronous pairs.
       // +1: deprecated createSessionHeaderLink retained from shipped 2026.10.1.
       // +5: parseModelRefAsync, prepareModelRefResolver, and their three preparation/resolver types.
-      // +2: approved readTranscriptStatsAsync and PreparedAgentRunStart replacements;
-      // the released synchronous stats reader and onAgentRunStart callback remain compatible.
+      // +2: approved async transcript event/stat read replacements.
+      // +1: approved PreparedAgentRunStart contract.
       // +2: resolvePluginProvidersAsync and resolveMemorySearchConfigAsync on existing public subpaths.
-      3710,
+      3711,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -286,9 +286,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +4: the same auth-save, media-discovery, and model-session replacement functions.
       // +1: the same deprecated createSessionHeaderLink.
       // +2: the same async model-reference parser and prepared resolver factory.
-      // +1: readTranscriptStatsAsync replaces the retained synchronous stats reader.
+      // +2: the same transcript read replacement pairs.
       // +2: the same provider and memory async discovery replacements.
-      2167,
+      2168,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -305,9 +305,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // and applyModelOverrideWithAuthProfileCompatibility retain their shipped contracts.
       // +1: createSessionHeaderLink from shipped 2026.10.1 until plugin-sdk-session-header-link expires.
       // +2: model-ref-sync-discovery retains parseModelRef and resolveModelRefFromString.
-      // +1: readTranscriptStatsSync remains until the next Plugin SDK major.
+      // +2: retained synchronous transcript event/stat reads until the next SDK major.
       // +2: their retained, prepared-only synchronous counterparts.
-      193,
+      194,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

@@ -33,6 +33,7 @@ it("keeps live provenance notifications through afterAll", () => {
   database = openOpenClawStateDatabase(options);
   initializeCachedClawInstallSchemaVersions(options);
   expect(database.db.isOpen).toBe(true);
+  initializeCachedClawInstallSchemaVersions(options);
   expect(lines()).toContain("A:ready");
 });
 afterAll(() => {
@@ -57,6 +58,7 @@ it("drains the prior file and retires its provenance generation", () => {
     const database = openOpenClawStateDatabase(options);
     initializeCachedClawInstallSchemaVersions(options);
     expect(database.db.isOpen).toBe(true);
+    initializeCachedClawInstallSchemaVersions(options);
     closeOpenClawStateDatabase();
     expect(database.db.isOpen).toBe(false);
     const observed = lines().slice(before);
