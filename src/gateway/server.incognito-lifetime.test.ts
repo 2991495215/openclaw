@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { inspect } from "node:util";
 import { afterEach, expect, it, vi } from "vitest";
 import { replyRunRegistry } from "../auto-reply/reply/reply-run-registry.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
@@ -40,19 +41,50 @@ const DAY_MS = 24 * 60 * 60_000;
 const config = { agents: { entries: { main: {} } } };
 const ordinary = { agentId: "main", sessionKey: "agent:main:dashboard:ordinary" };
 const originalDelete = deletion.deleteGatewaySession;
+let remainingDiagnostics = 40;
+
+// HOLD: expose the existing expiry boundary until the failing cleanup is identified.
+function traceIncognitoLifetime(step: string, detail?: unknown) {
+  if (remainingDiagnostics-- <= 0) {
+    return;
+  }
+  console.error(
+    "[redmain-hold:incognito-lifetime]",
+    expect.getState().currentTestName,
+    step,
+    inspect(detail, {
+      depth: 4,
+      maxArrayLength: 8,
+      maxStringLength: 1_200,
+      customInspect: false,
+    }).slice(0, 6_000),
+  );
+}
+
+async function deleteWithDiagnostics(params: Parameters<typeof originalDelete>[0]) {
+  traceIncognitoLifetime("delete-entered");
+  try {
+    const result = await originalDelete(params);
+    traceIncognitoLifetime("delete-settled", result);
+    return result;
+  } catch (error) {
+    traceIncognitoLifetime("delete-rejected", error);
+    throw error;
+  }
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 function observeSessionDeletion() {
-  const settled = createDeferredCore();
-  const deletes = vi.spyOn(deletion, "deleteGatewaySession").mockImplementation(async (params) => {
-    try {
-      return await originalDelete(params);
-    } finally {
-      settled.resolve();
-    }
+  const settled = createDeferredCore<Awaited<ReturnType<typeof originalDelete>>>();
+  // The scheduler can catch the deletion error before the test joins this observer.
+  void settled.promise.catch(() => {});
+  const deletes = vi.spyOn(deletion, "deleteGatewaySession").mockImplementation((params) => {
+    const operation = deleteWithDiagnostics(params);
+    void operation.then(settled.resolve, settled.reject);
+    return operation;
   });
   return { deletes, deleted: settled.promise };
 }
@@ -68,6 +100,8 @@ async function withLifetime(
   }) => Promise<void>,
   creationStamp: "provided" | "omitted" | "legacy" = "provided",
 ) {
+  remainingDiagnostics = 40;
+  traceIncognitoLifetime("fixture-start", creationStamp);
   await withOpenClawTestState({ label: "incognito-lifetime" }, async (state) => {
     await state.writeConfig(config);
     setRuntimeConfigSnapshot(config);
@@ -78,12 +112,15 @@ async function withLifetime(
       sessionId: "ordinary",
       updatedAt: Date.now() - DAY_MS,
     });
+    traceIncognitoLifetime("ordinary-ready");
     const owner = createGatewaySidecarStopOwner();
     const context = createDirectChatContext({
       getRuntimeConfig: () => config,
       getSessionEventSubscriberConnIds: () => new Set(["observer"]),
     });
-    const logWarning = vi.fn<(message: string) => void>();
+    const logWarning = vi.fn<(message: string) => void>((message) =>
+      traceIncognitoLifetime("cleanup-warning", message),
+    );
     await attachInitialGatewayLifetimeSidecars({
       scheduler,
       chatMetadataLifecycle: { attachContext: vi.fn(async () => {}) } as never,
@@ -93,6 +130,7 @@ async function withLifetime(
       logWarning,
       publishSidecars: owner.publish,
     });
+    traceIncognitoLifetime("sidecars-ready");
     const scope = {
       agentId: "main",
       sessionKey: "agent:main:dashboard:incognito-lifetime",
@@ -120,39 +158,43 @@ async function withLifetime(
           .run(scope.sessionKey);
         expect(loadSessionEntryReadOnly(scope)?.createdAt).toBeUndefined();
       }
+      traceIncognitoLifetime("fixture-ready");
       await run({ owner, context, logWarning, scope, stateDir: state.stateDir, time });
+      traceIncognitoLifetime("fixture-run-settled");
     } finally {
+      traceIncognitoLifetime("fixture-stop-entered");
       await owner.stop();
       await scheduler.stop();
+      traceIncognitoLifetime("fixture-stop-settled");
     }
   });
+  traceIncognitoLifetime("fixture-cleaned");
 }
 
 it("expires Incognito at creation plus 24 hours, cancels work, and deletes without an archive", async () => {
   await withLifetime(async ({ context, logWarning, scope, time }) => {
-    const deleted = createDeferredCore<Awaited<ReturnType<typeof originalDelete>>>();
-    const deletes = vi.spyOn(deletion, "deleteGatewaySession").mockImplementation((params) => {
-      const operation = originalDelete(params);
-      void operation.then(deleted.resolve, deleted.reject);
-      return operation;
-    });
+    const { deletes, deleted } = observeSessionDeletion();
     await appendTranscriptMessage(scope, {
       eventId: "private-input",
       message: { role: "user", content: "Ephemeral conversation", timestamp: Date.now() },
     });
     await time.advanceBy(23 * 60 * 60_000);
     await patchSessionEntryCore(scope, () => ({ label: "Recent activity", updatedAt: Date.now() }));
+    traceIncognitoLifetime("reset-entered");
     await resetSessionEntryLifecycle({
       ...scope,
       target: { canonicalKey: scope.sessionKey, storeKeys: [scope.sessionKey] },
       buildNextEntry: ({ currentEntry }) => ({ ...currentEntry!, lifecycleRevision: "rewound" }),
     });
+    traceIncognitoLifetime("reset-settled");
     await time.advanceBy(60 * 60_000 - 1);
     expect(loadSessionEntryReadOnly(scope)).toBeDefined();
     const active = replyRunRegistry.begin({ ...scope, resetTriggered: false });
     try {
+      traceIncognitoLifetime("expiry-entered");
       await time.advanceBy(1);
-      const result = await deleted.promise;
+      traceIncognitoLifetime("expiry-settled");
+      const result = await deleted;
       expect(result, JSON.stringify(result)).toMatchObject({
         ok: true,
         result: { deleted: true, archived: [] },
@@ -200,8 +242,10 @@ it("does not replace its deadline or delete another Gateway's Incognito publicat
       expect(deletes).not.toHaveBeenCalled();
       expect(logWarning).not.toHaveBeenCalled();
       expect(loadSessionEntryReadOnly(foreign)?.sessionId).toBe("foreign-incognito");
+      traceIncognitoLifetime("expiry-entered");
       await time.advanceBy(DAY_MS - 1);
-      await deleted;
+      traceIncognitoLifetime("expiry-settled");
+      await expect(deleted).resolves.toMatchObject({ ok: true, result: { deleted: true } });
       expect(deletes).toHaveBeenCalledOnce();
       expect(loadSessionEntryReadOnly(scope)).toBeUndefined();
       expect(loadSessionEntryReadOnly(foreign)?.sessionId).toBe("foreign-incognito");
@@ -238,11 +282,15 @@ it.each(["omitted", "legacy"] as const)(
         publishSidecars: sibling.publish,
       });
       try {
+        traceIncognitoLifetime("creator-stop-entered");
         await owner.stop();
+        traceIncognitoLifetime("creator-stop-settled");
         expect(loadSessionEntryReadOnly(scope)?.sessionId).toBe(scope.sessionId);
+        traceIncognitoLifetime("expiry-entered");
         await time.advanceBy(1);
         await siblingTime.advanceBy(1);
-        await deleted;
+        traceIncognitoLifetime("expiry-settled");
+        await expect(deleted).resolves.toMatchObject({ ok: true, result: { deleted: true } });
         expect(deletes).toHaveBeenCalledOnce();
         expect(loadSessionEntryReadOnly(scope)).toBeUndefined();
         expect(logWarning).not.toHaveBeenCalled();
@@ -267,7 +315,7 @@ it.each(["session replacement", "database replacement", "Gateway stop"] as const
           entered.resolve();
           await release.promise;
           try {
-            return await originalDelete(params);
+            return await deleteWithDiagnostics(params);
           } finally {
             finished.resolve();
           }
@@ -324,19 +372,26 @@ it.each(["provided", "legacy"] as const)(
   async (creationStamp) => {
     await withLifetime(async ({ scope, context, logWarning, time }) => {
       const retrying = createDeferredCore();
-      logWarning.mockImplementation(() => retrying.resolve());
+      logWarning.mockImplementation((message) => {
+        traceIncognitoLifetime("cleanup-warning", message);
+        retrying.resolve();
+      });
       const deleted = createDeferredCore<Awaited<ReturnType<typeof originalDelete>>>();
+      void deleted.promise.catch(() => {});
       const deletes = vi
         .spyOn(deletion, "deleteGatewaySession")
         .mockImplementationOnce(async () => {
+          traceIncognitoLifetime("delete-injected-retry");
           return { ok: false, error: { code: "UNAVAILABLE", message: "Cleanup still draining" } };
         })
         .mockImplementation((params) => {
-          const operation = originalDelete(params);
+          const operation = deleteWithDiagnostics(params);
           void operation.then(deleted.resolve, deleted.reject);
           return operation;
         });
+      traceIncognitoLifetime("expiry-entered");
       await time.advanceBy(DAY_MS);
+      traceIncognitoLifetime("expiry-settled");
       await retrying.promise;
       expect(logWarning).toHaveBeenCalledOnce();
       expect(loadSessionEntryReadOnly(scope)).toBeDefined();
@@ -344,6 +399,7 @@ it.each(["provided", "legacy"] as const)(
         resolveSessionWorkStartError(ordinary.sessionKey, loadSessionEntryReadOnly(ordinary)),
       ).toBeUndefined();
       const respond = vi.fn();
+      traceIncognitoLifetime("expired-send-entered");
       await handleChatSend({
         params: {
           sessionKey: scope.sessionKey,
@@ -356,6 +412,7 @@ it.each(["provided", "legacy"] as const)(
         client: null,
         isWebchatConnect: () => false,
       });
+      traceIncognitoLifetime("expired-send-settled");
       expect(respond).toHaveBeenCalledWith(
         false,
         undefined,
@@ -366,7 +423,9 @@ it.each(["provided", "legacy"] as const)(
       );
       expect(await loadTranscriptEvents(scope)).toEqual([]);
       expect(context.chatAbortControllers.size).toBe(0);
+      traceIncognitoLifetime("retry-entered");
       await time.advanceBy(60_000);
+      traceIncognitoLifetime("retry-settled");
       await expect(deleted.promise).resolves.toMatchObject({ ok: true, result: { deleted: true } });
       expect(deletes).toHaveBeenCalledTimes(2);
       expect(loadSessionEntryReadOnly(scope)).toBeUndefined();
