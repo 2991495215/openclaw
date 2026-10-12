@@ -4,6 +4,7 @@ import {
   isSessionEntryDataSql,
   observeHostDataSql,
 } from "../../test/helpers/sqlite-statement-execution-counter.js";
+import { captureRuntimeConfigAsyncReader } from "../config/io.runtime.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import { getSessionActorStorageBinding } from "../config/sessions/session-actor-storage-binding.js";
 import { prepareSessionSourceAuthority } from "../config/sessions/session-source-authority.js";
@@ -34,6 +35,7 @@ it.each(["reset", "delete"] as const)(
   async (operation) => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       await state.writeConfig(cfg);
+      await captureRuntimeConfigAsyncReader()();
       const sql = observeHostDataSql();
       try {
         expect(getSessionActorStorageBinding({})).toBeUndefined();

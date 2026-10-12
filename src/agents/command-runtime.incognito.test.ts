@@ -10,6 +10,10 @@ import {
   isDispatchFinalReplySessionWriterAuthorized,
 } from "../auto-reply/reply/session-writer-delivery-authority.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
+import {
   patchSessionEntryCore,
   replaceSessionEntry,
 } from "../config/sessions/session-accessor.sqlite-entry.js";
@@ -47,6 +51,7 @@ function openOwner(prefix: string) {
   });
 }
 beforeEach(() => {
+  setRuntimeConfigSnapshot({});
   sql = observeHostDataSql();
 });
 afterEach(() => {
@@ -54,6 +59,7 @@ afterEach(() => {
     expect(sql.queries).toEqual([]);
   } finally {
     sql.restore();
+    clearRuntimeConfigSnapshot();
     vi.unstubAllEnvs();
   }
 });

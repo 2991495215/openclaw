@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
+import { setRuntimeConfigSnapshot } from "../../../config/runtime-snapshot.js";
 import { createTestGatewayScheduler } from "../../../test-utils/gateway-scheduler-clock.js";
 import {
   withOpenClawTestState,
@@ -27,6 +28,8 @@ async function createSettlementFixture(state: OpenClawTestState) {
   const { claimAgentSessionWriter } = await import("./session-bootstrap.js");
   const { createEmbeddedRunSessionPromptState } = await import("./session-prompt-state.js");
   const { settleEmbeddedRun } = await import("./run-settlement.js");
+  const config = {};
+  setRuntimeConfigSnapshot(config);
   const target = {
     agentId: "main",
     sessionId: randomUUID(),
@@ -39,7 +42,12 @@ async function createSettlementFixture(state: OpenClawTestState) {
     updatedAt: 1,
   });
   const runId = randomUUID();
-  const admission = prepareSystemAgentRunAdmission({}, runId, target.agentId, "settlement-test");
+  const admission = prepareSystemAgentRunAdmission(
+    config,
+    runId,
+    target.agentId,
+    "settlement-test",
+  );
   const controller = new AbortController();
   const unsubscriptions: Array<() => void> = [];
   const close = () => {
