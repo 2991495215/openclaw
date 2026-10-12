@@ -528,7 +528,7 @@ test.each(["accepted", "revoked", "replacement"] as const)(
 );
 
 test.each(["ready", "cleared-selection"] as const)(
-  "sessions.patch restores dirty work only after catalog preparation (%s)",
+  "sessions.patch restores dirty work with a %s model selection",
   async (catalogMode) => {
     const fixture = await createArchiveWorktreeFixture();
     const { key, sessionId, storePath, worktree, workspace, cleanupWorktrees } = fixture;
@@ -590,31 +590,36 @@ test.each(["ready", "cleared-selection"] as const)(
     await expect(loadSeededTranscriptEvents(fixture.transcriptScope)).resolves.toEqual(transcript);
 
     if (catalogMode === "cleared-selection") {
-      await patchSessionEntryCore({ storePath, sessionKey: key }, () => ({ thinkingLevel: "off" }));
+      await patchSessionEntryCore({ storePath, sessionKey: key }, () => ({
+        providerOverride: "anthropic",
+        modelOverride: "claude-sonnet-4-6",
+        thinkingLevel: "off",
+      }));
     }
     const restore = vi.spyOn(ManagedWorktreeService.prototype, "restore");
     const restored = patch(false);
     try {
-      await Promise.race([catalogEntered.promise, restored]);
-      expect(loadGatewayModelCatalog).toHaveBeenCalledOnce();
-      expect(restore).not.toHaveBeenCalled();
-      expect(loadSessionEntry({ storePath, sessionKey: key })?.archivedAt).toEqual(
-        expect.any(Number),
-      );
-      await expect(fs.access(worktree.path)).rejects.toThrow();
-      if (catalogMode === "cleared-selection") {
-        await patchSessionEntryCore({ storePath, sessionKey: key }, () => ({
-          thinkingLevel: undefined,
-          contextWindow: undefined,
-        }));
+      if (catalogMode === "ready") {
+        await Promise.race([catalogEntered.promise, restored]);
+        expect(loadGatewayModelCatalog).toHaveBeenCalledOnce();
+        expect(restore).not.toHaveBeenCalled();
+        expect(loadSessionEntry({ storePath, sessionKey: key })?.archivedAt).toEqual(
+          expect.any(Number),
+        );
+        await expect(fs.access(worktree.path)).rejects.toThrow();
       }
       catalogRelease.resolve();
       expect(await restored).toMatchObject({ ok: true });
       expect(restore).toHaveBeenCalledOnce();
-      expect(loadGatewayModelCatalog).toHaveBeenCalledOnce();
-      expect(loadSessionEntry({ storePath, sessionKey: key })?.thinkingLevel).toBe(
-        catalogMode === "cleared-selection" ? undefined : "off",
-      );
+      const entry = loadSessionEntry({ storePath, sessionKey: key });
+      expect(entry?.thinkingLevel).toBe("off");
+      if (catalogMode === "cleared-selection") {
+        expect(loadGatewayModelCatalog).not.toHaveBeenCalled();
+        expect(entry?.providerOverride).toBeUndefined();
+        expect(entry?.modelOverride).toBeUndefined();
+      } else {
+        expect(loadGatewayModelCatalog).toHaveBeenCalledOnce();
+      }
     } finally {
       catalogRelease.resolve();
       await Promise.allSettled([restored]);
