@@ -33,7 +33,7 @@ on:
         default: false
         type: boolean
       diagnose_copilot:
-        description: Diagnose the frozen session creation baseline and candidate
+        description: Diagnose the frozen actor row baseline
         required: false
         default: false
         type: boolean
@@ -490,7 +490,7 @@ jobs:
           retention-days: 14
   worktree-selection:
     if: ${{ inputs.diagnose_copilot }}
-    name: Frozen scheduled message invocation (${{ matrix.role }})
+    name: Frozen actor row baseline (${{ matrix.role }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -500,8 +500,6 @@ jobs:
         include:
           - role: base
             commit: ${{ inputs.base_sha }}
-          - role: head
-            commit: ${{ inputs.head_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -522,7 +520,7 @@ jobs:
           install-bun: "false"
           dependency-cache: "false"
           frozen-lockfile: "true"
-      - name: Diagnose frozen scheduled message invocation
+      - name: Diagnose frozen actor row publication
         env:
           OPENCLAW_LOCAL_CHECK: "0"
           OPENCLAW_VITEST_RUNTIME: node
@@ -533,13 +531,13 @@ jobs:
           [[ "$PROOF_SHA" =~ ^[a-f0-9]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$PROOF_SHA"
           mkdir -p .artifacts
-          node --input-type=module -e 'console.log(JSON.stringify({ commit: process.env.PROOF_SHA, workflow: process.env.WORKFLOW_SHA }, null, 2))' > .artifacts/session-create-provenance.json
-          pnpm test src/agents/scheduled-message-invocation.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/session-create.log
+          node --input-type=module -e 'console.log(JSON.stringify({ commit: process.env.PROOF_SHA, workflow: process.env.WORKFLOW_SHA }, null, 2))' > .artifacts/actor-row-baseline-provenance.json
+          pnpm test src/gateway/session-row-projection.actor.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee .artifacts/actor-row-baseline.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: ${{ always() }}
         with:
-          name: session-create-${{ matrix.role }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .artifacts/session-create*
+          name: actor-row-baseline-${{ matrix.role }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/actor-row-baseline*
           if-no-files-found: warn
           retention-days: 14
   final-regressions:
