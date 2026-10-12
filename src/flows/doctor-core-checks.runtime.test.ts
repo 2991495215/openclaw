@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
   resolveNodeRuntimeInfo:
     vi.fn<typeof import("../daemon/runtime-paths.js").resolveNodeRuntimeInfo>(),
   resolveGatewayService: vi.fn(() => ({ label: "openclaw-gateway" })),
-  resolvePluginProvidersCore: vi.fn((): Array<Record<string, unknown>> => []),
+  resolvePluginProvidersCoreAsync: vi.fn(async (): Promise<Array<Record<string, unknown>>> => []),
   resolveDefaultModelForAgent: vi.fn(() => ({ provider: "openai", model: "gpt-5.5" })),
 }));
 
@@ -85,7 +85,7 @@ vi.mock("../plugins/provider-runtime.js", () => ({
 }));
 
 vi.mock("../plugins/providers.runtime.js", () => ({
-  resolvePluginProvidersCore: mocks.resolvePluginProvidersCore,
+  resolvePluginProvidersCoreAsync: mocks.resolvePluginProvidersCoreAsync,
 }));
 
 const { collectGatewayDaemonFindings, collectProviderCatalogProjectionFindings } =
@@ -149,7 +149,7 @@ describe("doctor runtime tool schema checks", () => {
     mocks.normalizeProviderToolSchemasWithPlugin
       .mockReset()
       .mockImplementation(({ context }) => context.tools);
-    mocks.resolvePluginProvidersCore.mockReset().mockReturnValue([]);
+    mocks.resolvePluginProvidersCoreAsync.mockReset().mockResolvedValue([]);
     mocks.resolveDefaultModelForAgent.mockClear();
   });
 
@@ -874,7 +874,7 @@ describe("doctor gateway runtime checks", () => {
 });
 
 function mockProviderCatalog(staticCatalog: Record<string, unknown>) {
-  mocks.resolvePluginProvidersCore.mockReturnValueOnce([
+  mocks.resolvePluginProvidersCoreAsync.mockResolvedValueOnce([
     { id: "mockplugin", pluginId: "mockplugin", label: "Mock", auth: [], staticCatalog },
   ]);
 }
@@ -897,7 +897,7 @@ function expectCatalogFinding(
 
 describe("doctor provider catalog projection checks", () => {
   beforeEach(() => {
-    mocks.resolvePluginProvidersCore.mockReset().mockReturnValue([]);
+    mocks.resolvePluginProvidersCoreAsync.mockReset().mockResolvedValue([]);
   });
 
   it.each([
