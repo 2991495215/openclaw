@@ -8896,7 +8896,6 @@
 ["src/plugins/provider-setup-availability.test.ts","../logging/subsystem.js","b9b085d4c45a9f9d6570df8f60be48fc2b50435e52bf003a8b637e39e7fbb1f4",1]
 ["src/plugins/provider-setup-availability.test.ts","./enable.js","44084cc33975af0f9fbab8a56765919273398fed6f838fd818d289c08ca527aa",1]
 ["src/plugins/provider-setup-availability.test.ts","./provider-auth-choices.js","0ac1311c54be1a913e55a270ad11f7c09f9ed4a877589555bda1ed94dbf8bb74",1]
-["src/plugins/provider-setup-availability.test.ts","./providers.runtime.js","ee3d30427865569e80847bd48f4c3d031dfa156ccd5a0aabccdfaed0c7b9dac2",1]
 ["src/plugins/provider-wizard.test.ts","./providers.runtime.js","5ec76655914d8df647a41cfec225e61cbf8ab42573b58a8d62d29db6f0929265",1]
 ["src/plugins/providers.test.ts","../config/plugin-auto-enable.js","06723fad465a731dfb19701a552470486a98018ad1d7b25e8cff3aef9a95fc79",1]
 ["src/plugins/providers.test.ts","./current-plugin-metadata-snapshot.js","cfa562b0734aa0c60f80fd722aa820d460f7cdfbba9ef06044b352107498b202",1]

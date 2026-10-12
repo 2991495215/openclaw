@@ -58,7 +58,7 @@ describe("terminal model catalog availability", () => {
           },
           plugins: { enabled: false },
         };
-        await preparePluginMetadataMachineStateAsync({ config });
+        await preparePluginMetadataMachineStateAsync({});
         const context = createModelsListTestContext({
           cfg: config,
           agentDir: state.agentDir(),
