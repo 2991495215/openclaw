@@ -81,7 +81,7 @@ it("charges qualified-account translation to the same identity allowance", async
     reason: "windows-task-inspection-failed",
     timeoutMs: 0,
   });
-  expect(native.identity.mock.calls.map(([, , options]) => options?.timeout)).toEqual([80, 50]);
+  expect(native.identity.mock.calls.map((call) => call[2]?.timeout)).toEqual([80, 50]);
   expect(layout.readScheduledTaskCommand).not.toHaveBeenCalled();
 });
 
