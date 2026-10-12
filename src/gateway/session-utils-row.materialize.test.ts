@@ -13,10 +13,10 @@ import {
 } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { clearAgentRunContext, registerAgentRunContext } from "../infra/agent-run-registry.js";
-import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
+import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import { withStateDirEnv } from "../test-helpers/state-dir-env.js";
 import { projectSessionActivitySummary } from "./session-activity-summary-state.js";
 import { readRecentSessionUsageFromTranscriptAsync } from "./session-transcript-usage.js";
@@ -512,16 +512,18 @@ test("preserves complete base rows across time and caller presentation fixtures"
         includeDerivedTitles: fixture.transcript,
         includeLastMessage: fixture.transcript,
       };
-      const { inputs, presentation } = withPluginMetadataSnapshotScope(projectionMetadata, () =>
-        readSessionRowInputs(rowParams),
+      const { inputs, presentation } = withPluginRuntimeGenerationScope(
+        { metadataSnapshot: projectionMetadata },
+        () => readSessionRowInputs(rowParams),
       );
       const clock = vi.spyOn(Date, "now").mockImplementation(() => {
         throw new Error("Materialization must not read the clock");
       });
       let materialized: ReturnType<typeof materializeSessionRow>;
       try {
-        materialized = withPluginMetadataSnapshotScope(projectionMetadata, () =>
-          materializeSessionRow(inputs),
+        materialized = withPluginRuntimeGenerationScope(
+          { metadataSnapshot: projectionMetadata },
+          () => materializeSessionRow(inputs),
         );
       } finally {
         clock.mockRestore();
@@ -582,8 +584,9 @@ test("preserves complete base rows across time and caller presentation fixtures"
         expect(actualHash, `${fixture.name} at ${TIMES[index]}\n${json}`).toBe(expectedHash);
       });
       if (fixture.transcript) {
-        const lightweight = withPluginMetadataSnapshotScope(projectionMetadata, () =>
-          buildGatewaySessionRow({ ...rowParams, lightweightListRow: true }),
+        const lightweight = withPluginRuntimeGenerationScope(
+          { metadataSnapshot: projectionMetadata },
+          () => buildGatewaySessionRow({ ...rowParams, lightweightListRow: true }),
         );
         expect(lightweight).toMatchObject({
           snapshotAt: TIMES[0],

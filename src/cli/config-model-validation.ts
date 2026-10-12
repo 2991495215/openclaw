@@ -28,8 +28,10 @@ import {
   resolveConfigEnvVars,
 } from "../config/env-substitution.js";
 import { applyImplicitAgentRosterDefaults } from "../config/implicit-agent-roster.js";
+import { resolveConfigWidePluginMetadataSnapshotAsync } from "../config/io.plugin-metadata.js";
 import type { OpenClawConfigWithLegacyRoster } from "../config/legacy.roster.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { dedupeByKey } from "../shared/dedupe-by-key.js";
 import { formatConcreteConfigPath } from "../shared/dot-path.js";
@@ -476,8 +478,7 @@ function materializeValidationRoster(config: OpenClawConfig): OpenClawConfig {
     : (applyImplicitAgentRosterDefaults(config) as OpenClawConfig);
 }
 
-/** Checks authored mutations before admission, preserving legacy roster alias paths. */
-export async function checkTouchedTextModelRefs(params: {
+type CheckTouchedTextModelRefsParams = {
   config: OpenClawConfigWithLegacyRoster;
   previousConfig?: OpenClawConfigWithLegacyRoster;
   touchedPaths: readonly (readonly string[])[];
@@ -486,7 +487,10 @@ export async function checkTouchedTextModelRefs(params: {
   resolveModelRef?: ConfigModelRefResolver;
   createModelRefResolver?: () => Promise<ConfigModelRefResolver>;
   redactDependencyValues?: boolean;
-}) {
+};
+
+/** Checks authored mutations before admission, preserving legacy roster alias paths. */
+export async function checkTouchedTextModelRefs(params: CheckTouchedTextModelRefsParams) {
   const touchedPaths = params.touchedPaths;
   const modelDependenciesTouched = touchedPaths.some(
     (path) =>
@@ -507,6 +511,21 @@ export async function checkTouchedTextModelRefs(params: {
     return { refsChecked: 0, refsTotal: 0, errors: [] };
   }
   const config = materializeValidationRoster(params.config);
+  const env = params.env ?? process.env;
+  const metadata = await resolveConfigWidePluginMetadataSnapshotAsync({ config, env });
+  return withPluginMetadataSnapshotScope(
+    metadata,
+    () => checkPreparedTextModelRefs(params, config, modelDependenciesTouched),
+    { config, env },
+  );
+}
+
+async function checkPreparedTextModelRefs(
+  params: CheckTouchedTextModelRefsParams,
+  config: OpenClawConfig,
+  modelDependenciesTouched: boolean,
+) {
+  const touchedPaths = params.touchedPaths;
   const previousConfig = params.previousConfig
     ? materializeValidationRoster(params.previousConfig)
     : undefined;

@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../../talk/provider-resolver.js", () => ({
   resolveConfiguredRealtimeVoiceProviderAsync: mocks.resolveConfiguredRealtimeVoiceProviderAsync,
 }));
+// mock-isolation: Target ownership tests use an empty voice registry; provider resolution is mocked separately.
 vi.mock("../../../talk/provider-registry.js", () => ({
   listRealtimeVoiceProvidersAsync: () => [],
 }));
@@ -58,6 +59,7 @@ vi.mock("../transcription-relay.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../transcription-relay.js")>()),
   createTalkTranscriptionRelaySession: mocks.createTranscription,
 }));
+// mock-isolation: Target ownership tests supply transcription fixtures without plugin discovery.
 vi.mock("../../../realtime-transcription/provider-registry.js", () => ({
   listRealtimeTranscriptionProvidersAsync: mocks.transcriptionProviders,
   getRealtimeTranscriptionProviderAsync: () => undefined,

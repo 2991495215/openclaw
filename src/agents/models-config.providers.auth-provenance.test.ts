@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import "../test-utils/prepare-compiled-subprocesses.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { preparePluginMetadataMachineStateAsync } from "../plugins/installed-plugin-index-record-state.js";
 import type { ProviderPlugin } from "../plugins/types.js";
 import { NON_ENV_SECRETREF_MARKER } from "../secrets/provider-credential-values.js";
 import { withEnvAsync } from "../test-utils/env.js";
@@ -69,10 +70,14 @@ async function loadProviderAuthModules() {
   createProviderAuthResolver = secretsModule.createProviderAuthResolver;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.doUnmock("../plugins/manifest-registry.js");
   vi.doUnmock("../secrets/provider-env-vars.js");
   mockedResolveProviderSyntheticAuthWithPlugin.mockReset().mockReturnValue(undefined);
+  await Promise.all([
+    preparePluginMetadataMachineStateAsync({}),
+    preparePluginMetadataMachineStateAsync({ env: {} }),
+  ]);
 });
 
 beforeAll(loadProviderAuthModules);
@@ -89,6 +94,10 @@ describe("models-config provider auth provenance", () => {
     refSource: "store" | "env",
   ) {
     prepareSharedAuthStoreOwnershipForNative();
+    await Promise.all([
+      preparePluginMetadataMachineStateAsync({}),
+      preparePluginMetadataMachineStateAsync({ env: {} }),
+    ]);
     const { resolveImplicitProviders } = await import("./models-config.providers.implicit.js");
     const { planOpenClawModelsJson } = await import("./models-config.plan.js");
     const { clearRuntimeAuthProfileStoreSnapshots, setRuntimeAuthProfileStoreSnapshot } =

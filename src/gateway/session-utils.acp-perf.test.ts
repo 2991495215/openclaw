@@ -11,10 +11,10 @@ import type { OpenClawConfig } from "../config/config.js";
 import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions.js";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
-import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
+import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import { closeRetainedOpenClawStateReadConnections } from "../state/openclaw-state-db-read-connection.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import type {
@@ -234,8 +234,9 @@ test("retains ACP batch bounds while clean lists and canonical metadata updates 
         [markerKey]: markerEntry,
         ...runtimeEntries,
       });
-      projection = await withPluginMetadataSnapshotScope(projectionMetadata, () =>
-        createSessionRowProjection({ cfg }),
+      projection = await withPluginRuntimeGenerationScope(
+        { metadataSnapshot: projectionMetadata },
+        () => createSessionRowProjection({ cfg }),
       );
       await projection.ensureMaterialized();
       acpSelects.counts.metadata = 0;

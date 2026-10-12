@@ -186,6 +186,7 @@ vi.mock("../../../tts/tts.js", () => ({
 
 vi.mock("../../../tts/tts-synthesis.js", () => ({ synthesizeTalkSpeech: mocks.synthesizeSpeech }));
 
+// mock-isolation: Talk RPC cases supply fixture voice registrations without plugin discovery.
 vi.mock("../../../talk/provider-registry.js", () => ({
   canonicalizeRealtimeVoiceProviderIdAsync: mocks.canonicalizeRealtimeVoiceProviderId,
   getRealtimeVoiceProviderAsync: (providerId: string | undefined) =>
@@ -195,6 +196,7 @@ vi.mock("../../../talk/provider-registry.js", () => ({
   listRealtimeVoiceProvidersAsync: mocks.listRealtimeVoiceProviders,
 }));
 
+// mock-isolation: Talk RPC cases supply fixture transcription registrations without plugin discovery.
 vi.mock("../../../realtime-transcription/provider-registry.js", () => ({
   canonicalizeRealtimeTranscriptionProviderIdAsync:
     mocks.canonicalizeRealtimeTranscriptionProviderId,

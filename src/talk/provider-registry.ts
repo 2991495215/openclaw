@@ -73,18 +73,6 @@ export async function getRealtimeVoiceProviderAsync(
   return provider;
 }
 
-export function canonicalizeRealtimeVoiceProviderId(
-  providerId: string | undefined,
-  cfg?: OpenClawConfig,
-): RealtimeVoiceProviderId | undefined {
-  const normalized = normalizeRealtimeVoiceProviderId(providerId);
-  if (!normalized) {
-    return undefined;
-  }
-  // Unknown ids stay normalized so validation can report the same operator-facing value.
-  return getRealtimeVoiceProvider(normalized, cfg)?.id ?? normalized;
-}
-
 export async function canonicalizeRealtimeVoiceProviderIdAsync(
   providerId: string | undefined,
   cfg?: OpenClawConfig,

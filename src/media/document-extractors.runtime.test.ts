@@ -11,6 +11,7 @@ import { clearPluginMetadataLifecycleCaches } from "../plugins/plugin-metadata-l
 const { resolvePluginDocumentExtractorsAsyncMock } = vi.hoisted(() => ({
   resolvePluginDocumentExtractorsAsyncMock: vi.fn<typeof resolvePluginDocumentExtractorsAsync>(),
 }));
+// mock-isolation: Document dispatch tests supply extractor fixtures without loading plugin artifacts.
 vi.mock("../plugins/document-extractors.runtime.js", () => ({
   resolvePluginDocumentExtractorsAsync: resolvePluginDocumentExtractorsAsyncMock,
 }));

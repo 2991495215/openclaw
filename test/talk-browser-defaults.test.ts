@@ -62,10 +62,11 @@ vi.mock("../src/tts/provider-registry.js", () => {
       run(registry),
   };
 });
+// mock-isolation: Browser Talk fixtures use an empty transcription registry without runtime discovery.
 vi.mock("../src/realtime-transcription/provider-registry.js", () => ({
-  canonicalizeRealtimeTranscriptionProviderId: (id: string | undefined) => id,
-  getRealtimeTranscriptionProvider: () => undefined,
-  listRealtimeTranscriptionProviders: () => [],
+  canonicalizeRealtimeTranscriptionProviderIdAsync: async (id: string | undefined) => id,
+  getRealtimeTranscriptionProviderAsync: async () => undefined,
+  listRealtimeTranscriptionProvidersAsync: async () => [],
 }));
 vi.mock("openclaw/plugin-sdk/ssrf-runtime", async (importOriginal) => ({
   ...(await importOriginal<typeof import("openclaw/plugin-sdk/ssrf-runtime")>()),

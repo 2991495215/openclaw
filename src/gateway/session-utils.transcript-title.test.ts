@@ -12,10 +12,10 @@ import {
   type SessionTranscriptReadScope,
 } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
+import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
@@ -98,7 +98,7 @@ async function withTitleRows(
         queries,
         render: async (includeLastMessage = false) => {
           return Object.entries(store).map(([key, entry]) =>
-            withPluginMetadataSnapshotScope(projectionMetadata, () =>
+            withPluginRuntimeGenerationScope({ metadataSnapshot: projectionMetadata }, () =>
               buildGatewaySessionRow({
                 cfg,
                 agentId: "main",

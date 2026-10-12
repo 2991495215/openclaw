@@ -2,7 +2,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { extractMessagingToolSourceReplyPayload } from "../../agents/embedded-agent-messaging-extraction.js";
 import type { RunEmbeddedAgentInternalParams } from "../../agents/embedded-agent-runner/run/internal-params.js";
-import { createOpenClawTools } from "../../agents/openclaw-tools.js";
+import { createOpenClawToolsAsync } from "../../agents/openclaw-tools.js";
+import type { AnyAgentTool } from "../../agents/tools/common.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.sqlite-entry.js";
 import { withSessionTranscriptWriteAssertion } from "../../config/sessions/transcript-write-context.js";
 import {
@@ -45,22 +46,22 @@ describe.each(["cli", "embedded"] as const)("heartbeat %s source delivery", (run
         }),
       );
       const runAgent = isCli ? state.runCliAgentMock : state.runEmbeddedAgentMock;
-      let sourceReply:
-        | Awaited<ReturnType<ReturnType<typeof createOpenClawTools>[number]["execute"]>>
-        | undefined;
+      let sourceReply: Awaited<ReturnType<AnyAgentTool["execute"]>> | undefined;
       let sendError: unknown;
       runAgent.mockImplementationOnce(async (runParams: RunEmbeddedAgentInternalParams) => {
         // Exercise the actual runner policy and tool factory while the run owns delivery.
-        const message = createOpenClawTools({
-          config: runParams.config,
-          agentSessionKey: runParams.sessionKey,
-          workspaceDir: runParams.workspaceDir,
-          runId: runParams.runId,
-          agentChannel: runParams.messageProvider,
-          currentChannelId: runParams.currentChannelId,
-          requireExplicitMessageTarget: runParams.requireExplicitMessageTarget,
-          sourceReplyDeliveryMode: runParams.sourceReplyDeliveryMode,
-        }).find((tool) => tool.name === "message");
+        const message = (
+          await createOpenClawToolsAsync({
+            config: runParams.config,
+            agentSessionKey: runParams.sessionKey,
+            workspaceDir: runParams.workspaceDir,
+            runId: runParams.runId,
+            agentChannel: runParams.messageProvider,
+            currentChannelId: runParams.currentChannelId,
+            requireExplicitMessageTarget: runParams.requireExplicitMessageTarget,
+            sourceReplyDeliveryMode: runParams.sourceReplyDeliveryMode,
+          })
+        ).find((tool) => tool.name === "message");
         if (!message) {
           throw new Error("message tool was not created");
         }

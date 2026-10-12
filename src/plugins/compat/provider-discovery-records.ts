@@ -52,6 +52,24 @@ export const PROVIDER_DISCOVERY_COMPAT_RECORDS = [
   },
   {
     ...DISCOVERY_MIGRATION,
+    code: "realtime-transcription-registry-sync",
+    replacement:
+      "Await getRealtimeTranscriptionProviderAsync or listRealtimeTranscriptionProvidersAsync. Synchronous counterparts require already prepared and loaded transcription providers; they do not perform cold native discovery.",
+    docsPath: "/plugins/sdk-migration#realtime-transcription-provider-discovery",
+    surfaces: [
+      "openclaw/plugin-sdk/realtime-transcription getRealtimeTranscriptionProvider",
+      "openclaw/plugin-sdk/realtime-transcription listRealtimeTranscriptionProviders",
+    ],
+    diagnostics: [
+      "Bounded DEP_PLUGIN_SDK warning for synchronous realtime transcription discovery",
+    ],
+    tests: [
+      "extensions/voice-call/src/webhook.provider-discovery.test.ts",
+      "src/gateway/talk/handlers/index.test.ts",
+    ],
+  },
+  {
+    ...DISCOVERY_MIGRATION,
     code: "speech-registry-sync",
     replacement:
       "Await getSpeechProviderAsync, listSpeechProvidersAsync, canonicalizeSpeechProviderIdAsync, getResolvedSpeechProviderConfigAsync, resolveTtsProviderOrderAsync, and setTtsProviderAsync. Synchronous counterparts require an already prepared provider registry or an explicit prepared inventory; they do not perform cold native discovery.",

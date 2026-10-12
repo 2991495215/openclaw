@@ -160,7 +160,15 @@ function resetRuntimeAuthState() {
   setActiveDegradedSecretOwners([]);
 }
 
-beforeEach(resetRuntimeAuthState);
+beforeEach(async () => {
+  resetRuntimeAuthState();
+  const { preparePluginMetadataMachineStateAsync } =
+    await import("../plugins/installed-plugin-index-record-state.js");
+  await Promise.all([
+    preparePluginMetadataMachineStateAsync({}),
+    preparePluginMetadataMachineStateAsync({ env: {} }),
+  ]);
+});
 afterEach(resetRuntimeAuthState);
 
 function secretRef(source: SecretRef["source"], id: string, provider: string): SecretRef {

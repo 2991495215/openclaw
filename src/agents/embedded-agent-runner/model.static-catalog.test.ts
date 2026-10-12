@@ -311,7 +311,7 @@ describe("resolveBundledProviderStaticCatalogModel", () => {
 
     const resolveModel = createBundledProviderStaticCatalogContextResolver({
       metadataSnapshot: createPluginMetadataSnapshotFixture({
-        plugins: [createManifestRecord("google")],
+        plugins: [createManifestRecord("google", { providers: ["google"] })],
       }),
     });
     await expect(

@@ -384,6 +384,7 @@ export function applyPreparedRuntimeAuthToModel<
     api: model.api,
     baseUrl: preparedAuth.baseUrl ?? model.baseUrl,
     providerHeaders,
+    providerMetadataOwners: getModelProviderRequestRouteFacts(model)?.providerMetadataOwners,
     request: sanitizeRuntimeProviderRequestOverrides(preparedAuth.request),
     capability: "llm",
     transport: "stream",

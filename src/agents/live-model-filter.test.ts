@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { resetPluginLoaderTestStateForTest } from "../plugins/loader.test-fixtures.js";
-import { resolveProviderRuntimePluginAsync } from "../plugins/provider-hook-runtime.js";
 import {
   createColdPluginConfig,
   createColdPluginFixture,
@@ -43,18 +42,11 @@ describe("live model policy configuration", () => {
     const ref = { provider: fixture.providerId, id: "current-model", env };
 
     await withEnvAsync(env, async () => {
-      await resolveProviderRuntimePluginAsync({ provider: fixture.providerId, env });
-      expect(isHighSignalLiveModelRef(ref)).toBe(false);
-      await resolveProviderRuntimePluginAsync({ provider: fixture.providerId, config, env });
-      expect(isHighSignalLiveModelRef({ ...ref, config })).toBe(true);
-      expect(isHighSignalLiveModelRef({ ...ref, config, id: "retired-model" })).toBe(false);
+      expect(await isHighSignalLiveModelRef(ref)).toBe(false);
+      expect(await isHighSignalLiveModelRef({ ...ref, config })).toBe(true);
+      expect(await isHighSignalLiveModelRef({ ...ref, config, id: "retired-model" })).toBe(false);
       const disabledConfig = { ...config, plugins: { ...config.plugins, enabled: false } };
-      await resolveProviderRuntimePluginAsync({
-        provider: fixture.providerId,
-        config: disabledConfig,
-        env,
-      });
-      expect(isHighSignalLiveModelRef({ ...ref, config: disabledConfig })).toBe(false);
+      expect(await isHighSignalLiveModelRef({ ...ref, config: disabledConfig })).toBe(false);
     });
   });
 });

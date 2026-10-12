@@ -6,6 +6,7 @@ const { resolvePluginWebContentExtractorsMock } = vi.hoisted(() => ({
   resolvePluginWebContentExtractorsMock: vi.fn(),
 }));
 
+// mock-isolation: Web extraction fallback tests supply extractor fixtures without loading plugin artifacts.
 vi.mock("../plugins/web-content-extractors.runtime.js", () => ({
   resolvePluginWebContentExtractorsAsync: resolvePluginWebContentExtractorsMock,
 }));

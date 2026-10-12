@@ -635,54 +635,48 @@ export function prepareOpenClawAgentDatabaseRegistrySnapshotRead(
         preparedWitness.followRegistration(change);
       },
       async read(signal) {
-        for (;;) {
-          signal?.throwIfAborted();
-          assertAdmissionCurrent();
-          const witness = scopedWitness ?? captureWitness();
-          const { memo, assertCurrent, followRegistration } = witness;
-          // Install the witness before the first await, including a read that later rejects.
-          preparedWitness = witness;
-          assertCurrent();
-          let entries = options.fresh ? undefined : memo.entries;
-          if (!entries) {
-            const reply = await inCapturedScope(() =>
-              executeExistingOpenClawStateRead(
-                options,
-                { type: "agentDatabaseRegistry.read" },
-                { signal, current: options.fresh },
-              ),
-            );
-            if (reply && (!reply.ok || reply.type !== "agentDatabaseRegistry.read")) {
-              throw new Error("Unexpected agent database registry read result");
-            }
-            const result = reply?.result;
-            assertAdmissionCurrent();
-            // Only a newer owner publication warrants another read; scoped witnesses keep their fence.
-            if (!scopedWitness && memo.next) {
-              continue;
-            }
-            witness.acceptEntries(result?.status === "available" ? result.entries : []);
-            assertCurrent();
-            if (
-              result?.status === "unavailable" ||
-              (result === undefined && hasUnavailableMissingSqlitePath(options.path))
-            ) {
-              return { result: { status: "unavailable" }, assertCurrent, followRegistration };
-            }
-            entries = options.fresh
-              ? (result?.entries ?? [])
-              : (memo.entries ??= result?.entries ?? []);
+        signal?.throwIfAborted();
+        assertAdmissionCurrent();
+        const witness = scopedWitness ?? captureWitness();
+        const { memo, assertCurrent, followRegistration } = witness;
+        // Install the witness before the first await, including a read that later rejects.
+        preparedWitness = witness;
+        scopedWitness?.assertCurrent();
+        let entries = options.fresh ? undefined : memo.entries;
+        if (!entries) {
+          const reply = await inCapturedScope(() =>
+            executeExistingOpenClawStateRead(
+              options,
+              { type: "agentDatabaseRegistry.read" },
+              { signal, current: options.fresh },
+            ),
+          );
+          if (reply && (!reply.ok || reply.type !== "agentDatabaseRegistry.read")) {
+            throw new Error("Unexpected agent database registry read result");
           }
-          assertCurrent();
-          return {
-            result: {
-              status: "available",
-              entries: cloneRegisteredAgentDatabases(entries, options),
-            },
-            assertCurrent,
-            followRegistration,
-          };
+          const result = reply?.result;
+          assertAdmissionCurrent();
+          witness.acceptEntries(result?.status === "available" ? result.entries : []);
+          scopedWitness?.assertCurrent();
+          if (
+            result?.status === "unavailable" ||
+            (result === undefined && hasUnavailableMissingSqlitePath(options.path))
+          ) {
+            return { result: { status: "unavailable" }, assertCurrent, followRegistration };
+          }
+          entries = options.fresh
+            ? (result?.entries ?? [])
+            : (memo.entries ??= result?.entries ?? []);
         }
+        scopedWitness?.assertCurrent();
+        return {
+          result: {
+            status: "available",
+            entries: cloneRegisteredAgentDatabases(entries, options),
+          },
+          assertCurrent,
+          followRegistration,
+        };
       },
     };
   } catch (error) {

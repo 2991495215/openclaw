@@ -124,7 +124,6 @@ export async function preparePluginMetadataMachineStateAsync(
       : undefined,
   );
   activateDiscovery();
-  installed.assertCurrent();
   return () => {
     activateDiscovery();
     installed.assertCurrent();

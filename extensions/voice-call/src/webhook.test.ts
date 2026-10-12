@@ -49,6 +49,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+// mock-isolation: Webhook tests supply transcription providers without initializing plugin discovery or credentials.
 vi.mock("./realtime-transcription.runtime.js", () => ({
   getRealtimeTranscriptionProviderAsync: mocks.getRealtimeTranscriptionProviderAsync,
   listRealtimeTranscriptionProvidersAsync: mocks.listRealtimeTranscriptionProvidersAsync,

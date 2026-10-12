@@ -162,10 +162,12 @@ export function expectSystemAgentAuditRecord(
 export async function createSystemAgentVerifiedInferenceTestFixture(
   config: OpenClawConfig,
 ): Promise<SystemAgentVerifiedInferenceTestFixture> {
+  const pluginMetadata = await resolvePluginMetadataSnapshotAsync({ config, env: process.env });
   const routeAgentId = resolveAmbientOwnerAgentId(config);
   const selection = resolveSimpleCompletionSelectionForAgent({
     cfg: config,
     agentId: routeAgentId,
+    manifestPlugins: pluginMetadata,
   });
   const selectedProfileId = selection?.profileId;
   const cliExecutionProvider = selection
@@ -174,6 +176,7 @@ export async function createSystemAgentVerifiedInferenceTestFixture(
         cfg: config,
         agentId: routeAgentId,
         modelId: selection.modelId,
+        metadataSnapshot: pluginMetadata,
         ...(selectedProfileId ? { authProfileId: selectedProfileId } : {}),
       })
     : undefined;
@@ -191,6 +194,7 @@ export async function createSystemAgentVerifiedInferenceTestFixture(
   })) as never;
   const configuredRoute = await resolveSystemAgentConfiguredRouteFromConfig(config, undefined, {
     loadAuthProfileStoreForRuntime,
+    pluginMetadataPlugins: pluginMetadata.plugins,
   });
   if (!configuredRoute) {
     throw new Error("missing test route");

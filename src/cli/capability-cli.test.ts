@@ -369,6 +369,7 @@ vi.mock("../media-understanding/runtime.js", () => ({
   transcribeAudioFile: mocks.transcribeAudioFile,
 }));
 
+// mock-isolation: Capability output tests use an acquired fixture registry without loading media provider plugins.
 vi.mock("../media-understanding/provider-registry.js", () => ({
   acquireMediaUnderstandingRegistry: async () => ({
     registry: mocks.mediaUnderstandingRegistry(),

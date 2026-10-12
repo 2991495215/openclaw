@@ -2,17 +2,7 @@ import path from "node:path";
 import type { Model } from "openclaw/plugin-sdk/llm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
-
-const providerRuntimeMocks = vi.hoisted(() => ({
-  resolveProviderModernModelRef: vi.fn(),
-}));
-
-vi.mock("../plugins/provider-runtime.js", () => {
-  return {
-    resolveProviderModernModelRef: providerRuntimeMocks.resolveProviderModernModelRef,
-  };
-});
-
+import * as providerRuntime from "../plugins/provider-hook-runtime.js";
 import { normalizeModelCompat } from "../plugins/provider-model-compat.js";
 import { isModernModelRef } from "./test-helpers/live-model-dynamic-candidates.js";
 
@@ -61,23 +51,25 @@ beforeEach(async () => {
   // from partial dist output left by an earlier build in the same checkout.
   vi.stubEnv("OPENCLAW_BUNDLED_PLUGINS_DIR", path.join(process.cwd(), "extensions"));
   metadataSnapshot = await resolvePluginMetadataSnapshotAsync({});
-  providerRuntimeMocks.resolveProviderModernModelRef.mockReset();
-  providerRuntimeMocks.resolveProviderModernModelRef.mockReturnValue(undefined);
+  vi.spyOn(providerRuntime, "resolveProviderRuntimePluginAsync").mockResolvedValue(undefined);
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
 
 describe("isModernModelRef", () => {
-  it("matches plugin-advertised modern models only for exact provider ids", () => {
-    providerRuntimeMocks.resolveProviderModernModelRef.mockImplementation(
-      ({ provider, context }) =>
-        provider === "z.ai" && context.modelId === "glm-5" ? true : undefined,
-    );
+  it("matches plugin-advertised modern models only for exact provider ids", async () => {
+    vi.mocked(providerRuntime.resolveProviderRuntimePluginAsync).mockResolvedValue({
+      id: "z.ai",
+      label: "Modern model fixture",
+      auth: [],
+      isModernModelRef: ({ provider, modelId }) => provider === "z.ai" && modelId === "glm-5",
+    });
 
-    expect(isModernModelRef({ provider: "z.ai", id: "glm-5" })).toBe(true);
-    expect(isModernModelRef({ provider: "z-ai", id: "glm-5" })).toBe(false);
+    expect(await isModernModelRef({ provider: "z.ai", id: "glm-5" })).toBe(true);
+    expect(await isModernModelRef({ provider: "z-ai", id: "glm-5" })).toBe(false);
   });
 });
 
