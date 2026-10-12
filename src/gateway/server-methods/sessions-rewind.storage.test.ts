@@ -103,6 +103,10 @@ it.each(mutationMethods)(
             parentId: "alternate-user",
             targetId: "user-2",
           });
+          // Settle background writer admission before the test opens its raw storage snapshot.
+          await waitForSessionTranscriptIndexReconcile(
+            toDatabaseOptions(resolveSqliteScope(source)),
+          );
           initialized.resolve();
           await release.promise;
         },
@@ -113,7 +117,11 @@ it.each(mutationMethods)(
       );
       let mutation: ReturnType<typeof invokeMessageCut> | undefined;
       try {
-        await initialized.promise;
+        await awaitGateBeforeSettlement(
+          initialized.promise,
+          creation,
+          "session creation settled before its initializer was ready",
+        );
         const scope = expectDefined(source, "pending source");
         const before = await readMutationStorage(scope);
         mutation = invokeMessageCut(method, scope);
