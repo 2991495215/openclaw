@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import OpenClaw
 
+@Suite(.testWaitLimit)
 @MainActor
 struct VoiceOwnerLifecycleTests {
     enum PendingAdmission: CaseIterable, Sendable {
@@ -30,8 +31,8 @@ struct VoiceOwnerLifecycleTests {
             state.voicePushToTalkEnabled = true
             // A positive permission receipt establishes the scheduled Observation
             // route. Repeated down flags do not manufacture a fresh hold.
-            try await waitForVoiceOwner("observed preference enables PTT") { [log = fixture.log] in
-                await MainActor.run { hotkey._testUpdateModifierState(modifierFlags: .init(rawValue: 0x80040)) }
+            try await TestWait.state("observed preference enables PTT") { [log = fixture.log] in
+                hotkey._testUpdateModifierState(modifierFlags: .init(rawValue: 0x80040))
                 return log.count("ptt.permission.request") == 1
             }
             hotkey._testUpdateModifierState(modifierFlags: [])
@@ -40,7 +41,7 @@ struct VoiceOwnerLifecycleTests {
             state.voicePushToTalkEnabled = true
             menu.startVoiceObservation()
             hotkey._testUpdateModifierState(modifierFlags: .init(rawValue: 0x80040))
-            try await waitForVoiceOwner("fresh denied hold") { [log = fixture.log] in
+            try await fixture.log.changed.wait("fresh denied hold") { [log = fixture.log] in
                 log.count("ptt.permission.request") == 2
             }
             hotkey._testUpdateModifierState(modifierFlags: [])
@@ -103,18 +104,18 @@ struct VoiceOwnerLifecycleTests {
             }
             let on = fixture.requestTalk(true, state: state)
             let request = pending == .permission ? "talk.permission.request" : "bootstrap.request"
-            try await waitForVoiceOwner("runtime admission pending") { [log = fixture.log] in
+            try await fixture.log.changed.wait("runtime admission pending") { [log = fixture.log] in
                 log.count(request) == 1
             }
             await fixture.shutdown.hold()
             let hidden = fixture.log.count("talk.hidden")
             let off = fixture.requestTalk(false, state: state)
-            try await waitForVoiceOwner("shutdown entered before admission resolves") { [log = fixture.log] in
+            try await fixture.log.changed.wait("shutdown entered before admission resolves") { [log = fixture.log] in
                 log.count("shutdown.buffered.request") == 1
             }
             #expect(await state.voiceRuntime.talkRuntime.isEnabled == false)
             let repeatedOff = fixture.requestTalk(false, state: state)
-            try await waitForVoiceOwner("repeated Off entered its controller") { [log = fixture.log] in
+            try await fixture.log.changed.wait("repeated Off entered its controller") { [log = fixture.log] in
                 log.count("talk.hidden") == hidden + 2
             }
             state.voiceRuntime.hotkey._testUpdateModifierState(modifierFlags: .init(rawValue: 0x80040))
@@ -127,7 +128,7 @@ struct VoiceOwnerLifecycleTests {
             await repeatedOff.value
             state.voiceRuntime.hotkey._testUpdateModifierState(modifierFlags: [])
             state.voiceRuntime.hotkey._testUpdateModifierState(modifierFlags: .init(rawValue: 0x80040))
-            try await waitForVoiceOwner("PTT available after joined shutdown") { [log = fixture.log] in
+            try await fixture.log.changed.wait("PTT available after joined shutdown") { [log = fixture.log] in
                 log.count("ptt.permission.request") == 1
             }
             state.voiceRuntime.hotkey._testUpdateModifierState(modifierFlags: [])
@@ -142,11 +143,11 @@ struct VoiceOwnerLifecycleTests {
             #expect(fixture.log.count("capture.start:1") == 1)
             await fixture.shutdown.hold()
             let off = fixture.requestTalk(false, state: state)
-            try await waitForVoiceOwner("old shutdown suspended") { [log = fixture.log] in
+            try await fixture.log.changed.wait("old shutdown suspended") { [log = fixture.log] in
                 log.count("shutdown.buffered.request") == 1
             }
             let replacement = fixture.requestTalk(true, state: state)
-            try await waitForVoiceOwner("replacement entered its controller") { [log = fixture.log] in
+            try await fixture.log.changed.wait("replacement entered its controller") { [log = fixture.log] in
                 log.count("talk.present") == 2
             }
             #expect(await state.voiceRuntime.talkRuntime.isEnabled == false)
@@ -176,13 +177,13 @@ struct VoiceOwnerLifecycleTests {
         try await withVoiceOwnerFixture { fixture, state, _ in
             await fixture.create.hold()
             let on = fixture.requestTalk(true, state: state)
-            try await waitForVoiceOwner("relay create pending") { [log = fixture.log] in
+            try await fixture.log.changed.wait("relay create pending") { [log = fixture.log] in
                 log.count("relay.created:relay-1") == 1
             }
             await fixture.requestTalk(false, state: state).value
             await fixture.create.releaseAll()
             await on.value
-            try await waitForVoiceOwner("late relay close") { [log = fixture.log] in
+            try await fixture.log.changed.wait("late relay close") { [log = fixture.log] in
                 log.count("relay.closed:relay-1") == 1
             }
             #expect(fixture.log.count("capture.start:1") == 0)
@@ -196,7 +197,7 @@ struct VoiceOwnerLifecycleTests {
             await fixture.appPermission.hold()
             await fixture.talkPermission.hold()
             let on = fixture.requestTalk(true, state: state)
-            try await waitForVoiceOwner("distinct owner permission requests") { [log = fixture.log] in
+            try await fixture.log.changed.wait("distinct owner permission requests") { [log = fixture.log] in
                 log.count("app.permission.request") == 1 && log.count("talk.permission.request") == 1
             }
             await fixture.requestTalk(false, state: state).value
@@ -244,7 +245,7 @@ struct VoiceOwnerLifecycleTests {
             voice.overlay.updateText("edited owned transcript")
             #expect(voice.sessions.snapshot().text == "edited owned transcript")
             voice.overlay.requestSend(token: token)
-            try await waitForVoiceOwner("owned forward and send dismissal") { [log = fixture.log] in
+            try await fixture.log.changed.wait("owned forward and send dismissal") { [log = fixture.log] in
                 log.count("forward:edited owned transcript") == 1 && log.count("overlay.request:\(token)") == 1
             }
             #expect(voice.sessions.snapshot().token == token)

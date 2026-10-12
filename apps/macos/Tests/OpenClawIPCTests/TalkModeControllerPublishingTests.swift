@@ -1,7 +1,7 @@
 import Testing
 @testable import OpenClaw
 
-@Suite(.serialized)
+@Suite(.serialized, .testWaitLimit)
 @MainActor
 struct TalkModeControllerPublishingTests {
     @Test func `preview phase and pause updates retain local presentation state`() async throws {
