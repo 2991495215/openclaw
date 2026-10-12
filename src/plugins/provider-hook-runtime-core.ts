@@ -324,6 +324,7 @@ export function createProviderHookRuntime(
     resolveProviderPluginsForHooksAsync,
     resolveProviderRuntimePlugin,
     resolveProviderRuntimePluginAsync,
+    resolveProviderRuntimePluginHandleAsync,
     resolveLoadedProviderRuntimePlugin,
     resolveProviderHookPlugin,
     resolveProviderRuntimePluginHandle: resolveProviderRuntimePluginLookup,

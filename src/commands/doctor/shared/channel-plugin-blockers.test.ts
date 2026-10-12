@@ -58,7 +58,10 @@ describe("channel plugin blockers", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     clearPluginMetadataLifecycleCaches();
-    await preparePluginMetadataMachineStateAsync({});
+    await Promise.all([
+      preparePluginMetadataMachineStateAsync({}),
+      preparePluginMetadataMachineStateAsync({ env: {} }),
+    ]);
   });
 
   it("reports external channel plugins that are installed but not explicitly enabled", () => {

@@ -21,7 +21,11 @@ import {
 } from "../plugins/provider-thinking-catalog.js";
 import type { ProviderThinkingRegistry } from "../plugins/provider-thinking.types.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
-import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
+import {
+  requireActivePluginRegistry,
+  resetPluginRuntimeStateForTest,
+  setActivePluginRegistry,
+} from "../plugins/runtime.js";
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import { applyModelOverrideToSessionEntry } from "../sessions/model-overrides.js";
 import { withStateDirEnv } from "../test-helpers/state-dir-env.js";
@@ -364,11 +368,16 @@ describe("resolveGatewaySessionThinkingProjectionInternal", () => {
         resolveGatewayModelThinkingProfile(params).thinkingLevels.map(({ label }) => label),
       ).toEqual(scenario.levels);
       expect(
-        withPluginRuntimeGenerationScope({ metadataSnapshot: projectionMetadata }, () =>
-          resolveGatewaySessionThinkingProjectionInternal({
-            ...params,
-            entry: { sessionId: "catalog-route", updatedAt: 1 },
-          }),
+        withPluginRuntimeGenerationScope(
+          {
+            metadataSnapshot: projectionMetadata,
+            pluginRegistry: requireActivePluginRegistry(),
+          },
+          () =>
+            resolveGatewaySessionThinkingProjectionInternal({
+              ...params,
+              entry: { sessionId: "catalog-route", updatedAt: 1 },
+            }),
         ).thinkingOptions,
       ).toEqual(scenario.levels);
     } finally {
@@ -419,7 +428,10 @@ describe("resolveGatewaySessionThinkingProjectionInternal", () => {
         },
       };
       const projection = withPluginRuntimeGenerationScope(
-        { metadataSnapshot: projectionMetadata },
+        {
+          metadataSnapshot: projectionMetadata,
+          pluginRegistry: requireActivePluginRegistry(),
+        },
         () =>
           resolveGatewaySessionThinkingProjectionInternal({
             cfg,
