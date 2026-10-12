@@ -43,6 +43,7 @@ const ENV_KEYS = [
   "OPENCLAW_BUNDLED_PLUGINS_DIR",
   "OPENCLAW_DISABLE_BUNDLED_PLUGINS",
   "OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE",
+  "OPENCLAW_REDMAIN_AGENT_SCHEMA_TRACE",
 ] as const;
 
 const RUN_ID = "run-gw-prompt-recent";
@@ -118,6 +119,7 @@ describe("Completed child results on a real parent-agent turn", () => {
         OPENCLAW_BUNDLED_PLUGINS_DIR: bundledPluginsDir,
         OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1",
         OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE: "1",
+        OPENCLAW_REDMAIN_AGENT_SCHEMA_TRACE: "1",
       })) {
         setTestEnvValue(key, value);
       }

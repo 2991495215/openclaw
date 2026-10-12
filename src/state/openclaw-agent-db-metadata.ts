@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { normalizeNullableString } from "@openclaw/normalization-core/string-coerce";
 import {
@@ -6,7 +7,10 @@ import {
   type SqliteDatabaseAdmissionKey,
 } from "../infra/sqlite-database-admission.js";
 import { schemaAdmission } from "../infra/sqlite-schema-admission.js";
-import { getAdmittedSqliteSchemaFacts } from "../infra/sqlite-schema-facts.js";
+import {
+  getAdmittedSqliteSchemaFacts,
+  type SqliteSchemaFacts,
+} from "../infra/sqlite-schema-facts.js";
 import { classifySqliteTableReadError, tableExists } from "./openclaw-state-db-schema-helpers.js";
 
 export type ExistingAgentSchemaMeta = {
@@ -56,6 +60,32 @@ export function publishAgentSchemaMetadata(
 
 type AgentSchemaMetaWithAppVersion = ExistingAgentSchemaMeta & { appVersion: string | null };
 
+function traceMissingAgentMetadata(
+  db: DatabaseSync,
+  schema: SqliteSchemaFacts | undefined,
+  missing: "table" | "primary-row",
+): void {
+  if (process.env.OPENCLAW_REDMAIN_AGENT_SCHEMA_TRACE !== "1") {
+    return;
+  }
+  const basename = path.basename(db.location() ?? "");
+  console.warn(
+    "[agent-schema-missing-diag]",
+    JSON.stringify({
+      missing,
+      physicalFileRole:
+        basename === "openclaw-agent.sqlite"
+          ? "agent-name"
+          : basename === "openclaw.sqlite"
+            ? "shared-state-name"
+            : "other",
+      admittedUserVersion: schema?.userVersion,
+      admittedCatalog: !schema ? "unknown" : schema.tables.size === 0 ? "empty" : "nonempty",
+      admittedSessionNodes: schema?.tables.has("session_nodes"),
+    }),
+  );
+}
+
 /** Read ownership metadata without loading runtime schema or migration owners. */
 export function readExistingAgentSchemaMeta(
   db: DatabaseSync,
@@ -86,6 +116,7 @@ export function readExistingAgentSchemaMeta(
     return admitted;
   }
   if (!tableExists(db, "schema_meta")) {
+    traceMissingAgentMetadata(db, schema, "table");
     return null;
   }
   // Unknown DDL can recreate the same table without its row; catalog text cannot carry this proof.
@@ -107,6 +138,7 @@ export function readExistingAgentSchemaMeta(
     );
   }
   if (!row) {
+    traceMissingAgentMetadata(db, schema, "primary-row");
     return null;
   }
   const metadata = {
