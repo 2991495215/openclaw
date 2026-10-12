@@ -1,10 +1,10 @@
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import { sortUniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import type { JSX } from "@solidjs/web";
-import { For, createMemo } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import { Icon } from "../../components/solid/icon.tsx";
+import { Popover, type PopoverHandle } from "../../components/solid/popover.tsx";
 import { SettingsToggle, SettingsStatus } from "../../components/solid/settings-ui.tsx";
-import { syncPopoverExpanded, syncPopoverLabel } from "../../components/web-awesome-popover.ts";
 import { registerActivityEnglish } from "../../i18n/locales/en-activity.ts";
 import { formatDurationCompact } from "../../lib/format-duration.ts";
 import { createMsFormatter } from "../../lib/format.ts";
@@ -102,9 +102,12 @@ function StatusFilter(props: { activity: ActivityProps; status: ActivityStatus }
 }
 
 function ToolFilter(props: { activity: ActivityProps; toolNames: string[] }) {
+  const [anchor, setAnchor] = createSignal<HTMLButtonElement>();
+  let popover: PopoverHandle | undefined;
   return (
     <>
       <button
+        ref={setAnchor}
         id="activity-live-filter-trigger"
         type="button"
         class={[
@@ -114,43 +117,52 @@ function ToolFilter(props: { activity: ActivityProps; toolNames: string[] }) {
         title={t("activity.filters")}
         aria-label={t("activity.filters")}
         aria-haspopup="dialog"
+        aria-controls="activity-live-filter-popover"
         aria-expanded="false"
+        onClick={() => popover?.overlay.request(!popover.overlay.open)}
       >
         <Icon name="listFilter" />
       </button>
-      <wa-popover
-        ref={syncPopoverLabel}
-        class="activity-live-filter-popover"
-        for="activity-live-filter-trigger"
-        aria-label={t("activity.filters")}
-        placement="bottom-end"
-        without-arrow
-        onWa-show={syncPopoverExpanded}
-        onWa-hide={syncPopoverExpanded}
-      >
-        <div class="activity-live-filter-popover__panel">
-          <label class="field">
-            <span>{t("activity.toolFilter")}</span>
-            <select
-              class="settings-select"
-              aria-label={t("activity.toolFilter")}
-              value={props.activity.toolFilter}
-              onChange={(event) => props.activity.onToolFilterChange(event.currentTarget.value)}
-            >
-              <option value="" selected={props.activity.toolFilter === ""}>
-                {t("activity.allTools")}
-              </option>
-              <For each={props.toolNames}>
-                {(name) => (
-                  <option value={name} selected={name === props.activity.toolFilter}>
-                    {name}
+      <Show when={anchor()}>
+        {(trigger) => (
+          <Popover
+            id="activity-live-filter-popover"
+            ref={(handle) => {
+              popover = handle;
+            }}
+            anchor={trigger()}
+            label={t("activity.filters")}
+            class="activity-live-filter-popover"
+            placement="bottom-end"
+            onOpenChange={(open) => {
+              if (open) popover?.overlay.surface.focus({ preventScroll: true });
+            }}
+          >
+            <div class="activity-live-filter-popover__panel">
+              <label class="field">
+                <span>{t("activity.toolFilter")}</span>
+                <select
+                  class="settings-select"
+                  aria-label={t("activity.toolFilter")}
+                  value={props.activity.toolFilter}
+                  onChange={(event) => props.activity.onToolFilterChange(event.currentTarget.value)}
+                >
+                  <option value="" selected={props.activity.toolFilter === ""}>
+                    {t("activity.allTools")}
                   </option>
-                )}
-              </For>
-            </select>
-          </label>
-        </div>
-      </wa-popover>
+                  <For each={props.toolNames}>
+                    {(name) => (
+                      <option value={name} selected={name === props.activity.toolFilter}>
+                        {name}
+                      </option>
+                    )}
+                  </For>
+                </select>
+              </label>
+            </div>
+          </Popover>
+        )}
+      </Show>
     </>
   );
 }

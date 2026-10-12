@@ -221,9 +221,13 @@ describe("renderActivity", () => {
     expect(
       toolbar?.querySelector(".activity-live-autofollow input.settings-toggle__input"),
     ).not.toBeNull();
-    const filterTrigger = toolbar?.querySelector("#activity-live-filter-trigger");
+    const filterTrigger = toolbar?.querySelector<HTMLButtonElement>(
+      "#activity-live-filter-trigger",
+    );
     expect(filterTrigger?.getAttribute("aria-haspopup")).toBe("dialog");
     expect(filterTrigger?.getAttribute("aria-expanded")).toBe("false");
+    filterTrigger?.click();
+    expect(document.activeElement).toBe(container.querySelector(".activity-live-filter-popover"));
 
     const search = toolbar?.querySelector<HTMLInputElement>('input[type="search"]');
     if (!search) {
