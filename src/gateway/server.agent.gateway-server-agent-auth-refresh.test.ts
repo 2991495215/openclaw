@@ -161,6 +161,56 @@ describe("gateway agent auth refresh dispatch", () => {
         `[auth-refresh-trace] ${Math.round(performance.now() - traceStarted)}ms ${phase}\n`,
       );
     };
+    const tracePending = <T>(phase: string, pending: Promise<T>) => {
+      void pending.then(
+        () => trace(`${phase} resolved`),
+        () => trace(`${phase} rejected`),
+      );
+      return pending;
+    };
+    const runtimeOwner = await import("../agents/prepared-model-runtime.owner.js");
+    const runtimeFacts = await import("../agents/prepared-model-runtime.facts.js");
+    const publishOwnerBatch = runtimeOwner.publishPreparedModelRuntimeOwnerBatch;
+    const prepareWorkspaceBuildGroup = runtimeFacts.prepareWorkspaceBuildGroup;
+    const prepareConfiguredRuntimeFactsBatch = runtimeFacts.prepareConfiguredRuntimeFactsBatch;
+    let publicationCount = 0;
+    let workspaceCount = 0;
+    let configuredFactsCount = 0;
+    const publicationSpy = vi
+      .spyOn(runtimeOwner, "publishPreparedModelRuntimeOwnerBatch")
+      .mockImplementation((...args) => {
+        const phase = `owner batch ${++publicationCount}`;
+        trace(`${phase} entered`);
+        return tracePending(phase, publishOwnerBatch(...args));
+      });
+    const workspaceSpy = vi
+      .spyOn(runtimeFacts, "prepareWorkspaceBuildGroup")
+      .mockImplementation((inputs, catalogMode, options, ...args) => {
+        const phase = `workspace ${++workspaceCount}`;
+        trace(`${phase} entered`);
+        return tracePending(
+          phase,
+          prepareWorkspaceBuildGroup(
+            inputs,
+            catalogMode,
+            {
+              ...options,
+              onStage: (stage) => {
+                trace(`${phase} stage ${stage.split(";")[0]}`);
+                options?.onStage?.(stage);
+              },
+            },
+            ...args,
+          ),
+        );
+      });
+    const configuredFactsSpy = vi
+      .spyOn(runtimeFacts, "prepareConfiguredRuntimeFactsBatch")
+      .mockImplementation((...args) => {
+        const phase = `configured facts ${++configuredFactsCount}`;
+        trace(`${phase} entered`);
+        return tracePending(phase, prepareConfiguredRuntimeFactsBatch(...args));
+      });
     const dispatchEntered = createDeferred();
     const releaseDispatch = createDeferred();
     const handlerHelpers = await import("./agent-turn/agent-handler-helpers.js");
@@ -280,6 +330,9 @@ describe("gateway agent auth refresh dispatch", () => {
       unregister();
       yieldSpy.mockRestore();
       acquireSpy.mockRestore();
+      publicationSpy.mockRestore();
+      workspaceSpy.mockRestore();
+      configuredFactsSpy.mockRestore();
       agentCommandMock.mockImplementation(originalCommand!);
     }
   });
