@@ -185,6 +185,18 @@ export function registerUserModelAuthProfileSecrets(credential: AuthProfileCrede
   }
 }
 
+export function encodeUserModelAuthProfile(profile: UserModelAuthProfile): string {
+  return JSON.stringify(profileSchema.parse({ version: 1, ...profile }));
+}
+
+export function normalizeUserModelAuthProfile(profile: UserModelAuthProfile): UserModelAuthProfile {
+  const { credential, usageStats } = parseRecord(
+    encodeUserModelAuthProfile(profile),
+    profileSchema,
+  );
+  return { credential, usageStats };
+}
+
 function writeProfile(
   db: DatabaseSync,
   owner: string,
