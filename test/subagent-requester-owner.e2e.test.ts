@@ -11,6 +11,8 @@ import {
   writeSubagentSessionEntry,
 } from "../src/agents/subagents/registry/subagent-registry.persistence.test-support.js";
 import type { SubagentRunRecord } from "../src/agents/subagents/registry/subagent-registry.types.js";
+import { captureRuntimeConfigAsyncReader } from "../src/config/io.runtime.js";
+import { setRuntimeConfigSnapshot } from "../src/config/runtime-snapshot.js";
 import { loadSessionEntry } from "../src/config/sessions/session-accessor.js";
 import { getSessionKysely } from "../src/config/sessions/session-accessor.sqlite-scope.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
@@ -87,6 +89,7 @@ describe("REQUESTER-OWNER requester agent id survives completion dispatch", () =
       });
       instances.push(instance);
       instance.state.applyEnv();
+      await captureRuntimeConfigAsyncReader()();
       await instance.startGateway();
       const sessionKey = `agent:${REQUESTER_AGENT_ID}:${REQUESTER_KEY}`;
       const statusRunId = "busy-parent-status";
@@ -285,6 +288,7 @@ describe("REQUESTER-OWNER requester agent id survives completion dispatch", () =
       });
       instances.push(instance);
       instance.state.applyEnv();
+      const cfg = await captureRuntimeConfigAsyncReader()();
       const sessionId = "private-yield-requester-session";
       const sessionKey = `agent:${REQUESTER_AGENT_ID}:${REQUESTER_KEY}`;
       await writeSubagentSessionEntry({
@@ -332,6 +336,7 @@ describe("REQUESTER-OWNER requester agent id survives completion dispatch", () =
         );
         void parent.catch(() => {});
         instance.state.applyEnv();
+        setRuntimeConfigSnapshot(cfg);
         await vi.waitFor(
           () => {
             const runs = [...loadSubagentRegistryFromSqlite().values()];
@@ -415,6 +420,7 @@ describe("REQUESTER-OWNER requester agent id survives completion dispatch", () =
       instances.push(instance);
 
       instance.state.applyEnv();
+      const cfg = await captureRuntimeConfigAsyncReader()();
       try {
         await writeSubagentSessionEntry({
           stateDir: instance.stateDir,
@@ -451,6 +457,7 @@ describe("REQUESTER-OWNER requester agent id survives completion dispatch", () =
         );
         expect(await parent).toMatchObject({ status: "ok" });
         instance.state.applyEnv();
+        setRuntimeConfigSnapshot(cfg);
         await vi.waitFor(
           () => {
             const runs = [...loadSubagentRegistryFromSqlite().values()];
@@ -480,6 +487,7 @@ describe("REQUESTER-OWNER requester agent id survives completion dispatch", () =
 
       const logs = instance.logs();
       instance.state.applyEnv();
+      setRuntimeConfigSnapshot(cfg);
       try {
         const runs = [...loadSubagentRegistryFromSqlite().values()];
         expect(runs, logs).toHaveLength(1);
@@ -511,6 +519,7 @@ describe("REQUESTER-OWNER requester agent id survives completion dispatch", () =
       instances.push(instance);
 
       instance.state.applyEnv();
+      const cfg = await captureRuntimeConfigAsyncReader()();
       const registry =
         await import("../src/agents/subagents/registry/subagent-registry.test-helpers.js");
       await runQaGatewayFixture(
@@ -590,6 +599,7 @@ describe("REQUESTER-OWNER requester agent id survives completion dispatch", () =
         });
         try {
           instance.state.applyEnv();
+          setRuntimeConfigSnapshot(cfg);
           await vi.waitFor(
             () => {
               const run = loadSubagentRegistryFromSqlite().get(RESTORED_RUN_ID);
@@ -629,6 +639,7 @@ describe("REQUESTER-OWNER requester agent id survives completion dispatch", () =
       const logs = instance.logs();
       expect(logs).not.toContain(ANNOUNCE_FAILURE_MARKER);
       instance.state.applyEnv();
+      setRuntimeConfigSnapshot(cfg);
       try {
         const run = loadSubagentRegistryFromSqlite().get(RESTORED_RUN_ID);
         expect(run?.requesterAgentId, logs).toBe(REQUESTER_AGENT_ID);

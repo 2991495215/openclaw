@@ -4,6 +4,10 @@ import path from "node:path";
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { CURRENT_SESSION_VERSION } from "openclaw/plugin-sdk/agent-sessions";
 import type { AssistantMessage } from "openclaw/plugin-sdk/llm";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import { appendSessionTranscriptMessageByIdentity } from "openclaw/plugin-sdk/session-transcript-runtime";
 import { closeOpenClawAgentDatabasesAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
@@ -18,6 +22,7 @@ export function setupSessionHistoryFixtures() {
       await closeOpenClawAgentDatabasesAsync(dir);
       await fs.rm(dir, { recursive: true, force: true });
     }
+    clearRuntimeConfigSnapshot();
   });
 
   async function writeSession(records: unknown[]): Promise<string> {
@@ -66,6 +71,7 @@ export function setupSessionHistoryFixtures() {
       sessionKey,
       storePath,
     };
+    setRuntimeConfigSnapshot({});
     await upsertSessionEntry({
       ...scope,
       entry: {
