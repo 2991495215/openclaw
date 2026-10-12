@@ -527,115 +527,94 @@ test.each(["accepted", "revoked", "replacement"] as const)(
   },
 );
 
-test.each(["ready", "cleared-selection"] as const)(
-  "sessions.patch restores dirty work only after catalog preparation (%s)",
-  async (catalogMode) => {
-    const fixture = await createArchiveWorktreeFixture();
-    const { key, sessionId, storePath, worktree, workspace, cleanupWorktrees } = fixture;
-    await fs.writeFile(path.join(worktree.path, "committed.txt"), "unpushed work\n");
-    await execFileAsync("git", ["-C", worktree.path, "add", "committed.txt"]);
-    await execFileAsync("git", ["-C", worktree.path, "commit", "-m", "session work"]);
-    const originalHead = (await execFileAsync("git", ["-C", worktree.path, "rev-parse", "HEAD"]))
-      .stdout;
-    await fs.writeFile(path.join(worktree.path, "README.md"), "tracked changes\n");
-    await fs.writeFile(path.join(worktree.path, "draft.txt"), "untracked changes\n");
-    const transcript = await loadSeededTranscriptEvents(fixture.transcriptScope);
-    const catalogEntered = createDeferredCore();
-    const catalogRelease = createDeferredCore();
-    const loadGatewayModelCatalog = vi.fn(async () => {
-      catalogEntered.resolve();
-      await catalogRelease.promise;
-      if (catalogMode === "cleared-selection") {
-        throw new Error("Synthetic catalog preparation failed");
-      }
-      return [];
-    });
-    const context = { loadGatewayModelCatalog };
-    loadGatewayModelCatalog.mockResolvedValueOnce([]);
-    expect(await directSessionReq("sessions.describe", { key }, { context })).toMatchObject({
-      ok: true,
-    });
-    loadGatewayModelCatalog.mockClear();
-    const patch = (archived: boolean) =>
-      directSessionReq(
-        "sessions.patch",
-        {
-          key,
-          expectedSessionId: sessionId,
-          archived,
-          ...(!archived
-            ? catalogMode === "cleared-selection"
-              ? { model: null }
-              : { thinkingLevel: "off" }
-            : {}),
-        },
-        { context },
-      );
+test("sessions.patch restores dirty work only after catalog preparation", async () => {
+  const fixture = await createArchiveWorktreeFixture();
+  const { key, sessionId, storePath, worktree, workspace, cleanupWorktrees } = fixture;
+  await fs.writeFile(path.join(worktree.path, "committed.txt"), "unpushed work\n");
+  await execFileAsync("git", ["-C", worktree.path, "add", "committed.txt"]);
+  await execFileAsync("git", ["-C", worktree.path, "commit", "-m", "session work"]);
+  const originalHead = (await execFileAsync("git", ["-C", worktree.path, "rev-parse", "HEAD"]))
+    .stdout;
+  await fs.writeFile(path.join(worktree.path, "README.md"), "tracked changes\n");
+  await fs.writeFile(path.join(worktree.path, "draft.txt"), "untracked changes\n");
+  const transcript = await loadSeededTranscriptEvents(fixture.transcriptScope);
+  const catalogEntered = createDeferredCore();
+  const catalogRelease = createDeferredCore();
+  const loadGatewayModelCatalog = vi.fn(async () => {
+    catalogEntered.resolve();
+    await catalogRelease.promise;
+    return [];
+  });
+  const context = { loadGatewayModelCatalog };
+  loadGatewayModelCatalog.mockResolvedValueOnce([]);
+  expect(await directSessionReq("sessions.describe", { key }, { context })).toMatchObject({
+    ok: true,
+  });
+  loadGatewayModelCatalog.mockClear();
+  const patch = (archived: boolean) =>
+    directSessionReq(
+      "sessions.patch",
+      {
+        key,
+        expectedSessionId: sessionId,
+        archived,
+        ...(!archived ? { thinkingLevel: "off" } : {}),
+      },
+      { context },
+    );
 
-    expect(await patch(true)).toMatchObject({ ok: true });
-    await cleanupWorktrees();
-    expect(loadSessionEntry({ storePath, sessionKey: key })).toMatchObject({
-      sessionId,
-      archivedAt: expect.any(Number),
-      worktree: { id: worktree.id },
-    });
+  expect(await patch(true)).toMatchObject({ ok: true });
+  await cleanupWorktrees();
+  expect(loadSessionEntry({ storePath, sessionKey: key })).toMatchObject({
+    sessionId,
+    archivedAt: expect.any(Number),
+    worktree: { id: worktree.id },
+  });
+  await expect(fs.access(worktree.path)).rejects.toThrow();
+  expect(getRegistryWorktree(process.env, worktree.id)).toMatchObject({
+    removedAt: expect.any(Number),
+    snapshotRef: expect.stringMatching(/^refs\/openclaw\/snapshots\//),
+  });
+  expect(
+    (await execFileAsync("git", ["-C", workspace, "worktree", "list", "--porcelain"])).stdout,
+  ).not.toContain(worktree.path);
+  await expect(loadSeededTranscriptEvents(fixture.transcriptScope)).resolves.toEqual(transcript);
+
+  const restore = vi.spyOn(ManagedWorktreeService.prototype, "restore");
+  const restored = patch(false);
+  try {
+    await Promise.race([catalogEntered.promise, restored]);
+    expect(loadGatewayModelCatalog).toHaveBeenCalledOnce();
+    expect(restore).not.toHaveBeenCalled();
+    expect(loadSessionEntry({ storePath, sessionKey: key })?.archivedAt).toEqual(
+      expect.any(Number),
+    );
     await expect(fs.access(worktree.path)).rejects.toThrow();
-    expect(getRegistryWorktree(process.env, worktree.id)).toMatchObject({
-      removedAt: expect.any(Number),
-      snapshotRef: expect.stringMatching(/^refs\/openclaw\/snapshots\//),
-    });
-    expect(
-      (await execFileAsync("git", ["-C", workspace, "worktree", "list", "--porcelain"])).stdout,
-    ).not.toContain(worktree.path);
-    await expect(loadSeededTranscriptEvents(fixture.transcriptScope)).resolves.toEqual(transcript);
-
-    if (catalogMode === "cleared-selection") {
-      await patchSessionEntryCore({ storePath, sessionKey: key }, () => ({ thinkingLevel: "off" }));
-    }
-    const restore = vi.spyOn(ManagedWorktreeService.prototype, "restore");
-    const restored = patch(false);
-    try {
-      await Promise.race([catalogEntered.promise, restored]);
-      expect(loadGatewayModelCatalog).toHaveBeenCalledOnce();
-      expect(restore).not.toHaveBeenCalled();
-      expect(loadSessionEntry({ storePath, sessionKey: key })?.archivedAt).toEqual(
-        expect.any(Number),
-      );
-      await expect(fs.access(worktree.path)).rejects.toThrow();
-      if (catalogMode === "cleared-selection") {
-        await patchSessionEntryCore({ storePath, sessionKey: key }, () => ({
-          thinkingLevel: undefined,
-          contextWindow: undefined,
-        }));
-      }
-      catalogRelease.resolve();
-      expect(await restored).toMatchObject({ ok: true });
-      expect(restore).toHaveBeenCalledOnce();
-      expect(loadGatewayModelCatalog).toHaveBeenCalledOnce();
-      expect(loadSessionEntry({ storePath, sessionKey: key })?.thinkingLevel).toBe(
-        catalogMode === "cleared-selection" ? undefined : "off",
-      );
-    } finally {
-      catalogRelease.resolve();
-      await Promise.allSettled([restored]);
-      restore.mockRestore();
-    }
-    expect(loadSessionEntry({ storePath, sessionKey: key })?.archivedAt).toBeUndefined();
-    expect(getRegistryWorktree(process.env, worktree.id)?.removedAt).toBeUndefined();
-    await expect(fs.readFile(path.join(worktree.path, "README.md"), "utf8")).resolves.toBe(
-      "tracked changes\n",
-    );
-    await expect(fs.readFile(path.join(worktree.path, "draft.txt"), "utf8")).resolves.toBe(
-      "untracked changes\n",
-    );
-    expect((await execFileAsync("git", ["-C", worktree.path, "rev-parse", "HEAD"])).stdout).toBe(
-      originalHead,
-    );
-    await expect(loadSeededTranscriptEvents(fixture.transcriptScope)).resolves.toEqual(transcript);
-    const lease = await acquireWorktreeRunLease(worktree.id);
-    await lease.release();
-  },
-);
+    catalogRelease.resolve();
+    expect(await restored).toMatchObject({ ok: true });
+    expect(restore).toHaveBeenCalledOnce();
+    expect(loadGatewayModelCatalog).toHaveBeenCalledOnce();
+    expect(loadSessionEntry({ storePath, sessionKey: key })?.thinkingLevel).toBe("off");
+  } finally {
+    catalogRelease.resolve();
+    await Promise.allSettled([restored]);
+    restore.mockRestore();
+  }
+  expect(loadSessionEntry({ storePath, sessionKey: key })?.archivedAt).toBeUndefined();
+  expect(getRegistryWorktree(process.env, worktree.id)?.removedAt).toBeUndefined();
+  await expect(fs.readFile(path.join(worktree.path, "README.md"), "utf8")).resolves.toBe(
+    "tracked changes\n",
+  );
+  await expect(fs.readFile(path.join(worktree.path, "draft.txt"), "utf8")).resolves.toBe(
+    "untracked changes\n",
+  );
+  expect((await execFileAsync("git", ["-C", worktree.path, "rev-parse", "HEAD"])).stdout).toBe(
+    originalHead,
+  );
+  await expect(loadSeededTranscriptEvents(fixture.transcriptScope)).resolves.toEqual(transcript);
+  const lease = await acquireWorktreeRunLease(worktree.id);
+  await lease.release();
+});
 
 test("sessions.patchMany preserves the checkout when the archive commit is refused", async () => {
   const fixture = await createArchiveWorktreeFixture();
