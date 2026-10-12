@@ -14,6 +14,7 @@ import type { PluginWebSearchProviderEntry } from "../plugins/web-provider-types
 vi.mock("../plugins/installed-plugin-index-record-state.js", () => ({
   preparePluginMetadataMachineStateAsync: async () => () => {},
   getPersistedInstalledPluginIndexCacheEntry: () => ({ state: { status: "missing" } }),
+  inspectPersistedInstalledPluginIndexInstallRecordsSync: () => ({ status: "missing" }),
 }));
 
 // mock-isolation: Use fixed discovery policy without opening machine state for provider fixtures.
