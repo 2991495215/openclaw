@@ -60,18 +60,29 @@ function observedCpuSamples(profile: Profiler.Profile) {
 }
 
 it("measures 100 composed catalog lists against real session and plugin stores", async () => {
+  const startedAt = Date.now();
+  const tracePhase = (phase: string) => {
+    const at = Date.now();
+    console.error("[catalog-perf-phase]", { phase, at, elapsedMs: at - startedAt });
+  };
+  tracePhase("test-start");
   await withOpenClawTestState(
     { layout: "state-only", prefix: "composed-catalog-" },
     async (state) => {
       const counters = createCatalogIoCounters();
       let fixture: Awaited<ReturnType<typeof createComposedCatalogFixture>> | undefined;
       try {
+        tracePhase("fixture-start");
         counters.begin();
         fixture = await createComposedCatalogFixture(state, counters);
+        tracePhase("fixture-ready");
         // Start lazy hydration; a cold host may report loading before the completion marker.
         await fixture.requestList();
+        tracePhase("hydration-requested");
         const catalogNamespace = await counters.catalogPersisted;
+        tracePhase("catalog-persisted");
         const first = await fixture.setupList();
+        tracePhase("first-list-ready");
         expect(first.sessions.length).toBeGreaterThan(0);
         const sourceHomeId = first.sessions[0]?.sourceHomeId;
         if (!sourceHomeId) {
@@ -83,6 +94,7 @@ it("measures 100 composed catalog lists against real session and plugin stores",
           page = await fixture.setupList({ cursors: { [page.hostId]: page.nextCursor } });
           visibleCount += page.sessions.length;
         }
+        tracePhase("pagination-ready");
         expect(visibleCount).toBe(3_000);
         const snapshot = fixture.api.runtime.state.openKeyedStore<{
           version: number;
@@ -101,6 +113,7 @@ it("measures 100 composed catalog lists against real session and plugin stores",
         expect(setupIo.fileReadCalls).toBeGreaterThan(0);
         expect(setupIo.pluginStateWorkerReadOperations).toBeGreaterThan(0);
 
+        tracePhase("adoptions-start");
         for (const thread of first.sessions.slice(0, 3)) {
           const adopted = await fixture.continueSession(
             first.hostId,
@@ -108,10 +121,13 @@ it("measures 100 composed catalog lists against real session and plugin stores",
             sourceHomeId,
           );
           expect(adopted).toMatchObject({ sessionKey: expect.any(String) });
+          tracePhase("adoption-ready");
         }
+        tracePhase("materialization-start");
         do {
           await fixture.projection.ensureMaterialized();
         } while (fixture.projection.needsMaterialization);
+        tracePhase("warmup-start");
         const head = await fixture.setupList();
         expect(head.sessions.filter((session) => session.sessionKey)).toHaveLength(3);
         const search = await fixture.setupList({ search: "Project 7", limitPerHost: 32 });
@@ -140,8 +156,10 @@ it("measures 100 composed catalog lists against real session and plugin stores",
         do {
           await fixture.projection.ensureMaterialized();
         } while (fixture.projection.needsMaterialization);
+        tracePhase("warmup-ready");
         const cpuReferenceP50Ms = measureHostCpuReference();
         expect(fixture.setupMaintenance).toEqual({ completed: 3 });
+        tracePhase("measurement-start");
         counters.begin();
         const durations: number[] = [];
         const workPerList = [];
@@ -174,6 +192,7 @@ it("measures 100 composed catalog lists against real session and plugin stores",
         }
         const cpu = process.threadCpuUsage(cpuStart);
         const io = counters.end();
+        tracePhase("measurement-ready");
         for (const [index, result] of measuredResponses.entries()) {
           expect(result).toEqual(warmResponses[index % variants.length]);
         }
@@ -182,6 +201,7 @@ it("measures 100 composed catalog lists against real session and plugin stores",
 
         const inspector = new InspectorSession();
         expect(fixture.setupMaintenance).toEqual({ completed: 3 });
+        tracePhase("profiling-start");
         inspector.connect();
         let sampledAllocationBytes: number;
         let cpuSamples: ReturnType<typeof observedCpuSamples>;
@@ -204,6 +224,7 @@ it("measures 100 composed catalog lists against real session and plugin stores",
         } finally {
           inspector.disconnect();
         }
+        tracePhase("profiling-ready");
         console.info(
           "composed resident catalog measurements",
           JSON.stringify({
@@ -257,10 +278,12 @@ it("measures 100 composed catalog lists against real session and plugin stores",
         // composition CPU growth leaves exact SQL budgets green.
         expect(durations[49]).toBeLessThan(cpuReferenceP50Ms * 20);
       } finally {
+        tracePhase("cleanup-start");
         try {
           await fixture?.close();
         } finally {
           counters.close();
+          tracePhase("cleanup-ready");
         }
       }
     },
