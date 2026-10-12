@@ -12,7 +12,7 @@ import {
   sessionModelOverrideChangesApplied,
 } from "../../config/sessions/session-snapshot-merge.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { applyModelOverrideWithAuthProfileCompatibility } from "../../sessions/auth-profile-preservation.js";
+import { applyModelOverrideWithAuthProfileCompatibilityAsync } from "../../sessions/auth-profile-preservation.js";
 import { ModelSelectionLockedError } from "../../sessions/model-overrides.js";
 import type { TemplateContext } from "../templating.js";
 import { isKnownModelSelectionProvider } from "./model-runtime-normalization.js";
@@ -153,7 +153,7 @@ export async function applyResetModelOverride(params: {
   }
   const initialSessionEntry = { ...sessionEntry };
   const nextSessionEntry = { ...sessionEntry };
-  applyModelOverrideWithAuthProfileCompatibility({
+  await applyModelOverrideWithAuthProfileCompatibilityAsync({
     cfg: params.cfg,
     agentDir,
     entry: nextSessionEntry,

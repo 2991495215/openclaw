@@ -14,6 +14,7 @@ import {
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
 } from "../agents/agent-scope.js";
+import { prepareAuthProfileProvider } from "../agents/auth-profiles/store.js";
 import {
   requiresAgentHarnessPluginSelection,
   resolveAgentHarnessOwnerPluginIds,
@@ -118,6 +119,7 @@ type SessionPatchProjectionParams = {
   preparedModelSelection?: ModelRef;
   /** Creation snapshots selected models, including the configured default. */
   pinModelSelection?: boolean;
+  preparedAuthProfileProvider?: { provider: string | undefined };
 };
 
 type SessionPatchProjectionResult =
@@ -133,7 +135,9 @@ type SessionPatchPreparation =
 
 /** Stop at the first actual catalog use without committing or acquiring runtime effects. */
 export function prepareSessionsPatchEntry(
-  params: SessionPatchProjectionParams,
+  params: SessionPatchProjectionParams & {
+    preparedAuthProfileProvider: { provider: string | undefined };
+  },
 ): SessionPatchPreparation {
   const projection = projectSessionPatchSteps(params);
   const first = projection.next();
@@ -152,12 +156,35 @@ export function prepareSessionsPatchEntry(
   };
 }
 
+export async function prepareSessionPatchAuthProfileProvider(
+  params: SessionPatchProjectionParams,
+): Promise<{ provider: string | undefined }> {
+  if (params.preparedAuthProfileProvider) {
+    return params.preparedAuthProfileProvider;
+  }
+  const profileId = params.existingEntry?.authProfileOverride?.trim();
+  return profileId && "model" in params.patch
+    ? prepareAuthProfileProvider({
+        agentDir: resolveAgentDir(
+          params.cfg,
+          params.agentId ??
+            parseAgentSessionKey(params.storeKey)?.agentId ??
+            resolveDefaultAgentId(params.cfg),
+        ),
+        profileId,
+      })
+    : { provider: undefined };
+}
+
 export async function projectSessionsPatchEntry(
   params: SessionPatchProjectionParams & {
     loadGatewayModelCatalogSnapshot?: () => Promise<ModelCatalogSnapshot>;
   },
 ): Promise<SessionPatchProjectionResult> {
-  const preparation = prepareSessionsPatchEntry(params);
+  const preparation = prepareSessionsPatchEntry({
+    ...params,
+    preparedAuthProfileProvider: await prepareSessionPatchAuthProfileProvider(params),
+  });
   if (preparation.kind === "complete") {
     return preparation.result;
   }
@@ -626,6 +653,7 @@ function* projectSessionPatchSteps(
         entry: next,
         currentProvider: next.providerOverride ?? next.modelProvider ?? resolvedDefault.provider,
         selection,
+        recordedProvider: params.preparedAuthProfileProvider ?? { provider: undefined },
         explicitDefaultSelection: selection.isDefault,
         profileOverride: selection.profile,
         ...(params.providerAuthMetadataSnapshot

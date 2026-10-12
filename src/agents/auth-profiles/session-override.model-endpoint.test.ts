@@ -4,7 +4,7 @@ import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/ses
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { OpenClawSchema } from "../../config/zod-schema.js";
-import { applyModelOverrideWithAuthProfileCompatibility } from "../../sessions/auth-profile-preservation.js";
+import { applyModelOverrideWithAuthProfileCompatibilityAsync } from "../../sessions/auth-profile-preservation.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import {
   createEmptyAgentDiscoveryStores,
@@ -159,7 +159,7 @@ it.each([
           authProfileOverrideSource: expectedSource,
         });
         if (source === "user" && pin === "arcee:work") {
-          applyModelOverrideWithAuthProfileCompatibility({
+          await applyModelOverrideWithAuthProfileCompatibilityAsync({
             cfg,
             agentDir: state.agentDir(agentId),
             entry: sessionEntry,

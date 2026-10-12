@@ -47,7 +47,7 @@ import { readSessionWorkerPlacementAsync } from "../gateway/worker-environments/
 import { formatErrorMessage } from "../infra/errors.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
-import { applyModelOverrideWithAuthProfileCompatibility } from "../sessions/auth-profile-preservation.js";
+import { applyModelOverrideWithAuthProfileCompatibilityAsync } from "../sessions/auth-profile-preservation.js";
 import {
   isModelSelectionLocked,
   MODEL_SELECTION_LOCKED_MESSAGE,
@@ -277,7 +277,7 @@ export async function applySessionModelSelectionInternal(
   const thinkingCatalog = prepared.catalog;
   const selectedCatalogEntry = findSelectedCatalogEntry({ catalog: thinkingCatalog, ...request });
   const nextEntry = { ...startingEntry };
-  const modelChange = applyModelOverrideWithAuthProfileCompatibility({
+  const modelChange = await applyModelOverrideWithAuthProfileCompatibilityAsync({
     cfg: params.cfg,
     agentDir: resolveAgentDir(params.cfg, params.agentId),
     entry: nextEntry,

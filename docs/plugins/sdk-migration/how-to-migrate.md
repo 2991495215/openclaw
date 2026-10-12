@@ -532,9 +532,11 @@ invoke the supplied assertion after preparation and before the final sharing rea
 replacement at the same path, even when session IDs were reused.
 
 The released synchronous `createSessionCatalogSourceActorProjector` and
-`createSessionCatalogGitHubLinker` signatures remain available for existing plugins;
-bundled Session Share uses the awaited helpers. Schemas, stored data, retention,
-permissions, and update behavior are unchanged.
+`createSessionCatalogGitHubLinker` factories are deprecated in favor of the
+corresponding `prepare` helpers above. Their synchronous signatures and behavior
+remain available until the next Plugin SDK major; legacy use warns once per plugin
+and catalog-identity family. Bundled Session Share uses the awaited helpers.
+Schemas, stored data, retention, permissions, and update behavior are unchanged.
 
 ## Await session upstream links
 

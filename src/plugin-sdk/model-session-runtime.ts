@@ -1,11 +1,18 @@
-/**
- * Runtime SDK subpath for model overrides and agent concurrency session helpers.
- */
+/** Runtime SDK subpath for model overrides and agent concurrency session helpers. */
+import {
+  findPersistedAuthProfileCredential,
+  getRuntimeAuthProfileStoreSnapshot,
+} from "../agents/auth-profiles/store.js";
 import {
   applySessionModelSelectionInternal,
   type ApplySessionModelSelectionParams,
   type ApplySessionModelSelectionResult,
 } from "../model-picker/apply-session-model-selection.js";
+import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
+import {
+  applyModelOverrideWithAuthProfileCompatibility as applyPreparedModelOverride,
+  applyModelOverrideWithAuthProfileCompatibilityAsync,
+} from "../sessions/auth-profile-preservation.js";
 
 export { resolveChannelModelOverride } from "../channels/model-overrides.js";
 export { resolveAgentMaxConcurrent } from "../config/agent-limits.js";
@@ -29,4 +36,26 @@ export {
   MODEL_SELECTION_LOCKED_MESSAGE,
   ModelSelectionLockedError,
 } from "../sessions/model-overrides.js";
-export { applyModelOverrideWithAuthProfileCompatibility } from "../sessions/auth-profile-preservation.js";
+export { applyModelOverrideWithAuthProfileCompatibilityAsync };
+
+/** @deprecated Await applyModelOverrideWithAuthProfileCompatibilityAsync; removed in the next Plugin SDK major. */
+export function applyModelOverrideWithAuthProfileCompatibility(
+  params: Parameters<typeof applyModelOverrideWithAuthProfileCompatibilityAsync>[0],
+): { updated: boolean } {
+  warnPluginSdkDeprecation({
+    family: "model-session",
+    method: "applyModelOverrideWithAuthProfileCompatibility",
+    replacement: "applyModelOverrideWithAuthProfileCompatibilityAsync",
+  });
+  const profileId = params.entry.authProfileOverride?.trim();
+  const recordedProvider =
+    params.recordedProvider ??
+    (profileId && !params.profileOverride
+      ? {
+          provider:
+            getRuntimeAuthProfileStoreSnapshot(params.agentDir)?.profiles[profileId]?.provider ??
+            findPersistedAuthProfileCredential({ agentDir: params.agentDir, profileId })?.provider,
+        }
+      : { provider: undefined });
+  return applyPreparedModelOverride({ ...params, recordedProvider });
+}

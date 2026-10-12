@@ -13,6 +13,30 @@ const DEPRECATED_SESSION_COMPAT = {
 export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   REPLY_TOOL_AUTHORITY_COMPAT_RECORD,
   {
+    code: "session-catalog-identity-sync-reads",
+    ...DEPRECATED_SESSION_COMPAT,
+    introduced: "2026-09-12",
+    deprecated: "2026-10-11",
+    warningStarts: "2026-10-11",
+    replacement:
+      "Await prepareSessionCatalogSourceActorProjector with the page's actors, or prepareSessionCatalogGitHubLinker with the page's participants and owner references, before synchronous projection. The released createSessionCatalogSourceActorProjector and createSessionCatalogGitHubLinker retain their synchronous signatures and behavior until the next Plugin SDK major and explicit breaking-release approval.",
+    docsPath: "/plugins/sdk-migration/how-to-migrate#prepare-session-catalog-identities",
+    surfaces: [
+      "openclaw/plugin-sdk/session-transcript-runtime createSessionCatalogSourceActorProjector",
+      "openclaw/plugin-sdk/session-transcript-runtime createSessionCatalogGitHubLinker",
+    ],
+    diagnostics: [
+      "TypeScript @deprecated annotations and one shared DEP_PLUGIN_SDK warning per plugin and session-catalog-identity family per process on legacy use",
+    ],
+    tests: [
+      "src/gateway/session-catalog-identity.test.ts",
+      "src/plugin-sdk/session-transcript-runtime.test.ts",
+      "src/plugins/compat/registry.test.ts",
+    ],
+    releaseNote:
+      "Bundled session catalogs prepare identity facts through the existing database worker before projecting each page. Legacy synchronous SDK factories remain compatible through the next Plugin SDK major; attribution, permissions, stored data, and update behavior are unchanged.",
+  },
+  {
     code: "session-store-sync-listing",
     ...DEPRECATED_SESSION_COMPAT,
     introduced: "2026-09-08",
