@@ -15,12 +15,15 @@ const worker = vi.hoisted(() => ({
   }),
 }));
 
+// mock-isolation: Hold the worker response pending to observe the consent publication boundary.
 vi.mock("../state/openclaw-state-worker-store.js", () => ({
   runOpenClawStateWorkerOperation: worker.read,
 }));
+// mock-isolation: Synthetic admission keeps this publication test independent of host database state.
 vi.mock("../state/openclaw-state-worker-context.js", () => ({
   captureOpenClawStateWorkerContext: () => ({ admission: { assertCurrent() {} } }),
 }));
+// mock-isolation: Trap every synchronous read so consent registration cannot silently use SQLite.
 vi.mock("../state/openclaw-state-db-readonly.js", () => ({
   isArtifactPreservingStateRead: () => false,
   withExistingOpenClawStateDatabaseReadOnly: worker.mainRead,
