@@ -458,6 +458,7 @@ describe("session resolution metadata", () => {
         expect(await read(scope.sessionKey)).toBeUndefined();
         expect((await read(siblingKey))?.sessionId).toBe("sibling");
         await closeOpenClawAgentDatabasesAsync();
+
         closeOpenClawAgentDatabasesForTest();
         for (const key of [scope.sessionKey, siblingKey]) {
           await expect(read(key)).rejects.toThrow(
