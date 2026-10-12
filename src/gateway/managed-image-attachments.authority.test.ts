@@ -46,7 +46,7 @@ vi.mock("./http-utils.js", () => ({
   resolveSharedSecretHttpOperatorScopes: resolveSharedSecretHttpOperatorScopesMock,
   resolveOpenAiCompatibleHttpSenderIsOwner: resolveOpenAiCompatibleHttpSenderIsOwnerMock,
 }));
-vi.mock("./session-utils.js", () => ({ loadGatewaySessionEntryReadOnly: vi.fn() }));
+vi.mock("./session-utils.js", () => ({ loadGatewaySessionEntryReadOnlyAsync: vi.fn() }));
 vi.mock("./session-transcript-readers.js", () => ({
   readSessionMessagesMatchingIdAsync: readSessionMessagesMock,
   readSessionMessagesWithSourceAsync: vi.fn(),

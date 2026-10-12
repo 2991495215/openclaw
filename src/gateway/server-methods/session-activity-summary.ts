@@ -98,18 +98,55 @@ export const sessionActivitySummaryHandlers: GatewayRequestHandlers = {
             respond(false, undefined, error);
             return;
           }
-          targets.push({ key: target.canonicalKey, agentId: target.agentId });
+          targets.push({
+            key: target.canonicalKey,
+            agentId: target.agentId,
+            sessionId: target.entry.sessionId,
+            facts: read.facts,
+          });
         }
-        respond(true, {
-          sessions: targets.map((target) => ({
+        const sessions = await Promise.all(
+          targets.map(async (target) => ({
             key: target.key,
             agentId: target.agentId,
             activitySummary: {
-              ...(target.unavailable ? { state: "unavailable" as const } : service.ensure(target)),
+              ...(target.unavailable
+                ? { state: "unavailable" as const }
+                : await service.ensure({
+                    key: target.key,
+                    agentId: target.agentId,
+                    sessionId: target.sessionId,
+                  })),
               canEnsure: true,
             },
           })),
-        });
+        );
+        const currentCfg = context.getRuntimeConfig();
+        const currentSharing = prepareSessionSharing({ client, cfg: currentCfg });
+        for (const requested of targets) {
+          if (requested.unavailable) {
+            continue;
+          }
+          const target = requested.facts?.readCurrent(currentCfg).target;
+          const error =
+            target && target.entry.sessionId === requested.sessionId
+              ? authorizeSessionSharingTarget({ cfg: currentCfg, client, target })
+              : errorShape(ErrorCodes.INVALID_REQUEST, "Session is unavailable.");
+          if (
+            error ||
+            (target &&
+              hasOperatorBoundary(client, currentCfg) &&
+              currentSharing.entryFilter?.(target.canonicalKey, target.entry) === false)
+          ) {
+            respond(
+              false,
+              undefined,
+              error ?? errorShape(ErrorCodes.INVALID_REQUEST, "Session is unavailable."),
+            );
+            return;
+          }
+        }
+        respond(true, { sessions });
       } finally {
         for (const read of reads) {
           read.facts?.release();

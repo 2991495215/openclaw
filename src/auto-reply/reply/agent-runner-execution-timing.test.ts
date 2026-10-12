@@ -14,7 +14,7 @@ import {
   type FallbackRunnerParams,
 } from "./agent-runner-execution.test-support.js";
 
-vi.mock("../../gateway/session-utils.js", () => ({ loadSessionEntry: vi.fn() }));
+vi.mock("../../gateway/session-utils.js", () => ({ loadSessionEntryAsync: vi.fn() }));
 
 const state = await setupAgentRunnerExecutionTestState();
 

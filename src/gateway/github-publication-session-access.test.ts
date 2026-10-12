@@ -9,7 +9,7 @@ import {
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { setRuntimeConfigSnapshot } from "../config/config.js";
+import { getRuntimeConfig, setRuntimeConfigSnapshot } from "../config/config.js";
 import { addSessionMember } from "../config/sessions/session-sharing-store.js";
 import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
 import {
@@ -102,9 +102,17 @@ describe("registered session GitHub publication access", () => {
         );
         expect(inserted).toBe(true);
       }
-      const { loadGatewaySessionEntryReadOnly } =
-        await vi.importActual<typeof import("./session-utils.js")>("./session-utils.js");
-      mocks.loadSession.mockImplementation(loadGatewaySessionEntryReadOnly);
+      const { loadGatewaySessionEntryReadOnlyInWorker } = await vi.importActual<
+        typeof import("./session-utils-store-worker.js")
+      >("./session-utils-store-worker.js");
+      mocks.loadSession.mockImplementation((key: string, options?: { agentId?: string }) =>
+        loadGatewaySessionEntryReadOnlyInWorker({
+          cfg: getRuntimeConfig(),
+          key,
+          ...options,
+          readOnly: true,
+        }),
+      );
       const request = vi.spyOn(f.coordinator, "requestForSessionV2");
       const head = await workspace.git("rev-parse", "HEAD");
       const index = await fs.readFile(path.join(workspace.cwd, ".git/index"));

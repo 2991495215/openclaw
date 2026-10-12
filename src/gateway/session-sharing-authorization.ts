@@ -8,21 +8,32 @@ import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { toAgentStoreSessionKey } from "../routing/session-key.js";
-import type { SessionOperatorScope } from "../shared/session-method-scopes-base.js";
+import {
+  resolveSessionMethodScope,
+  type SessionOperatorScope,
+} from "../shared/session-method-scopes-base.js";
 import { resolveGatewayOperatorRoleActor } from "./operator-role-policy.js";
-import { authenticatedProfileUnavailableError } from "./server-methods/gateway-client-identity.js";
+import {
+  authenticatedProfileUnavailableError,
+  isGatewayClientProfilePending,
+} from "./server-methods/gateway-client-identity.js";
 import { isSyntheticGatewayCaller } from "./server-methods/gateway-personal-caller.js";
 import type {
   GatewayClient,
   GatewayRequestContext,
   SessionMutationAuthorization,
 } from "./server-methods/types.js";
-import { isSessionArchiveMutation } from "./session-method-policy.js";
+import {
+  isAgentRunStartMethod,
+  isSessionArchiveMutation,
+  isSessionProfileDependentMethod,
+} from "./session-method-policy.js";
 import { SessionMutationAuthorizationChangedError } from "./session-mutation-authorization-error.js";
 import type { SessionRowReadView } from "./session-row-prepared-read.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
 import {
   authorizeOwnSessionMutation,
+  isGatewayAdmin,
   type SessionSharingTarget,
 } from "./session-sharing-policy.js";
 import type {
@@ -98,10 +109,31 @@ export function prepareSessionMutationAuthorizationRequest(
       ),
     };
   }
+  const authorizesAgentRun = isAgentRunStartMethod(params.method, params.requestParams);
+  const authorizesRead =
+    resolveSessionMethodScope(params.method, params.requestParams) === "operator.sessions.read";
+  // Progress writes bind to the current conversation so delayed work cannot revive a reset card.
+  const bindsProgressLifecycle =
+    params.method === "progressCard.put" || params.method === "progressCard.refresh";
+  const adminBypass = isGatewayAdmin(params.client) && !authorizesAgentRun;
+  if (
+    !adminBypass &&
+    isGatewayClientProfilePending(params.client) &&
+    isSessionProfileDependentMethod(params.method)
+  ) {
+    return { ok: false as const, error: authenticatedProfileUnavailableError() };
+  }
   return {
     ok: true as const,
     params,
-    requiresCommunicationAuthority,
+    authorizesAgentRun,
+    authorizesRead,
+    adminBypass,
+    bypassTargetAuthorization:
+      adminBypass &&
+      !requiresCommunicationAuthority &&
+      !bindsProgressLifecycle &&
+      !params.expectedTarget,
     targetOwnership: {
       requireOwner:
         requiresCommunicationAuthority ||

@@ -508,14 +508,21 @@ describe("shared worktree receipt observation", () => {
     expect(await coordinator.latestShared(session)).toBeNull();
     expect(await coordinator.sharedStatus(session, "absent")).toBeUndefined();
     expect(schema()).toEqual(before);
-    const { loadGatewaySessionEntryReadOnly } =
-      await vi.importActual<typeof import("./session-utils.js")>("./session-utils.js");
+    const { loadGatewaySessionEntryReadOnlyInWorker } = await vi.importActual<
+      typeof import("./session-utils-store-worker.js")
+    >("./session-utils-store-worker.js");
     const cfg = getRuntimeConfig();
+    const loaded = await loadGatewaySessionEntryReadOnlyInWorker({
+      cfg,
+      key: SESSION_KEY,
+      agentId: "main",
+      readOnly: true,
+    });
     setRuntimeConfigSnapshot({
       ...cfg,
       session: {
         ...cfg.session,
-        store: loadGatewaySessionEntryReadOnly(SESSION_KEY, { agentId: "main" }).storePath,
+        store: loaded.storePath,
       },
     });
     const missingRoot = path.join(root, "never-opened");

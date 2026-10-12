@@ -4,10 +4,8 @@ import { listSubagentSessionListRunsForControllers } from "../agents/subagents/r
 import { readResolvedSessionEntriesInWorker } from "../config/sessions/session-accessor.entry.js";
 import { readExactSessionEntryRow } from "../config/sessions/session-accessor.sqlite-entry-read.js";
 import { loadExactSessionEntryCandidates } from "../config/sessions/session-accessor.sqlite-exact-read.js";
-import {
-  readSessionEntrySummariesInWorker,
-  withSessionEntriesFromStoresInWorker,
-} from "../config/sessions/session-entry-read-runtime.js";
+import { listSessionChildEntriesReadOnly } from "../config/sessions/session-entry-children-read.js";
+import { withSessionEntriesFromStoresInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type {
   PreparedSessionEntryWorkerRead,
   SessionEntryWorkerRead,
@@ -116,11 +114,16 @@ async function includeDirectChildEntriesInWorker(
   }
   try {
     const parentKeys = new Set([target.canonicalKey, ...target.storeKeys]);
-    const children = await readSessionEntrySummariesInWorker({
-      agentId: target.readSource?.agentId ?? target.agentId,
-      storePath: target.readSource?.path ?? target.storePath,
-      env: params.env,
-    });
+    const children = await listSessionChildEntriesReadOnly(
+      {
+        agentId: target.readSource?.agentId ?? target.agentId,
+        storePath: target.readSource?.path ?? target.storePath,
+        env: params.env,
+        projection: "list",
+        sessionKey: target.canonicalKey,
+      },
+      [...parentKeys],
+    );
     for (const { sessionKey, entry } of children) {
       if (
         !parentKeys.has(sessionKey) &&
@@ -493,6 +496,7 @@ async function prepareGatewaySessionStoreReadInWorker(
 export async function loadGatewaySessionEntryReadOnlyInWorker(
   params: Parameters<typeof resolveGatewaySessionStoreTargetInWorker>[0] & {
     excludeInternalEffects?: boolean;
+    includeStoreChildEntries?: boolean;
   },
 ) {
   const { excludeInternalEffects, ...lookup } = params;

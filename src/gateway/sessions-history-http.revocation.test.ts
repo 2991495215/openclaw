@@ -103,7 +103,7 @@ vi.mock("./http-utils.js", () => ({
 vi.mock("./session-sharing.js", () => ({
   createSessionListEntryFilter: ({ client }: { client: unknown }) =>
     client ? () => fixture.visible : undefined,
-  resolveSessionSharingTarget: () => ({
+  resolveSessionSharingTargetAsync: async () => ({
     canonicalKey: "agent:main",
     agentId: "main",
     entry: {

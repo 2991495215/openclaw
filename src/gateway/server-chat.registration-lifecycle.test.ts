@@ -20,7 +20,7 @@ vi.mock("../infra/heartbeat-visibility.js", () => ({
   })),
 }));
 vi.mock("./session-utils.js", () => {
-  const loadSessionEntry = vi.fn(() => ({
+  const loadSessionEntryAsync = vi.fn(async () => ({
     cfg: {},
     agentId: "main",
     storePath: "/tmp/sessions.json",
@@ -30,7 +30,7 @@ vi.mock("./session-utils.js", () => {
     storeKeys: ["session-1"],
     legacyKey: undefined,
   }));
-  return { loadSessionEntry, loadGatewaySessionEntryReadOnly: loadSessionEntry };
+  return { loadSessionEntryAsync, loadGatewaySessionEntryReadOnlyAsync: loadSessionEntryAsync };
 });
 
 const persistGatewaySessionLifecycleEventMock = vi.fn();

@@ -11,7 +11,7 @@ import { createAgentEventTestHarness } from "./server-chat.agent-events.test-har
 
 // mock-isolation: Native lifecycle projection must not read an operator's session store.
 vi.mock("./session-utils.js", () => {
-  const loadSessionEntry = vi.fn(() => ({
+  const loadSessionEntryAsync = vi.fn(async () => ({
     cfg: {},
     storePath: "/tmp/native-provider-error-sessions.json",
     store: {},
@@ -19,7 +19,7 @@ vi.mock("./session-utils.js", () => {
     canonicalKey: "session-native-provider-error",
     storeKeys: ["session-native-provider-error"],
   }));
-  return { loadSessionEntry, loadGatewaySessionEntryReadOnly: loadSessionEntry };
+  return { loadSessionEntryAsync, loadGatewaySessionEntryReadOnlyAsync: loadSessionEntryAsync };
 });
 
 afterEach(() => vi.useRealTimers());

@@ -1,4 +1,3 @@
-import { isAgentRunStartMethod } from "./session-method-policy.js";
 import {
   resolveRequestedSessionAgentId,
   resolveRequestedSessionAgentInput,
@@ -20,7 +19,7 @@ import {
   resolveSessionMutationTargets,
   resolveTalkSessionTargetInput,
 } from "./session-sharing-target-input.js";
-import { isGatewayAdmin, resolveSessionMutationAuthorization } from "./session-sharing.js";
+import { resolveSessionMutationAuthorization } from "./session-sharing.js";
 import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import { prepareTalkSessionTarget } from "./talk/session-target.js";
 
@@ -46,14 +45,7 @@ export async function resolveSessionMutationAuthorizationAsync(
   if (!preparation.ok) {
     return { error: preparation.error };
   }
-  if (
-    isGatewayAdmin(params.client) &&
-    !isAgentRunStartMethod(params.method, params.requestParams) &&
-    !preparation.requiresCommunicationAuthority &&
-    params.method !== "progressCard.put" &&
-    params.method !== "progressCard.refresh" &&
-    !params.expectedTarget
-  ) {
+  if (preparation.bypassTargetAuthorization) {
     return resolveSessionMutationAuthorization(params);
   }
   const cfg = params.context.getRuntimeConfig();

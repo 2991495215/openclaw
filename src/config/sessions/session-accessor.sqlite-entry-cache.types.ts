@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db-contract.js";
 import type { SessionEntryMaintenanceAgeChange } from "./session-accessor.sqlite-maintenance-age.js";
+import type { SessionActorHotState } from "./session-actor-state.types.js";
 import type { SessionMembershipFact } from "./session-membership-facts.types.js";
 import type { SessionTranscriptWatermark } from "./session-transcript-context-version.types.js";
 import type { InternalSessionEntry, SessionEntry } from "./types.js";
@@ -127,6 +128,7 @@ export type PreparedSessionEntryChanges = {
   source: SessionEntryPublicationSource;
   entries: ReadonlyMap<string, SessionEntry>;
   fullEntries?: ReadonlyMap<string, SessionEntry>;
+  actorPostimages?: ReadonlyMap<string, SessionActorHotState>;
   sharing?: ReadonlyMap<string, SessionSharingEntry>;
   projection?: ReadonlyMap<string, SessionEntryProjectionFacts>;
 };
@@ -145,6 +147,8 @@ export type SessionEntryReplacementPublication = {
   current: Map<string, SessionEntry>;
   /** Full snapshots belong to bounded entry readers, not resident display rows. */
   fullEntries?: ReadonlyMap<string, SessionEntry>;
+  /** Closed entry patches preserve the resident actor's unchanged custody and transcript facts. */
+  actorPostimages?: ReadonlyMap<string, SessionActorHotState>;
   /** Canonical metadata is committed, but these entries lack a valid display projection. */
   unavailableParticipantKeys?: readonly string[];
   ageChanges: SessionEntryMaintenanceAgeChange[];
@@ -209,6 +213,7 @@ export type SessionEntryPublicationRecord = {
         | {
             entry?: SessionEntry;
             fullEntry?: SessionEntry;
+            actorPostimage?: SessionActorHotState;
             sharing?: SessionSharingEntry;
             projection?: SessionEntryProjectionFacts;
           }
