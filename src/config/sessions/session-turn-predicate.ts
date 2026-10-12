@@ -56,6 +56,7 @@ export function prepareSessionTurnRouting(
     projection: "list",
     resolveExistingTargets: createExistingAgentSessionStoreTargetResolver(predicate.config, {
       env,
+      isSameDatabasePath: isSameOpenClawAgentDatabasePath,
     }),
     readStore(read) {
       if (!current) {
