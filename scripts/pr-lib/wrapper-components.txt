@@ -315,6 +315,8 @@ src/agents/worktrees/capacity.ts
 src/agents/worktrees/capacity.worker.ts
 src/agents/worktrees/checkout-apfs.ts
 src/agents/worktrees/checkout-git-config.ts
+src/agents/worktrees/checkout-inputs.ts
+src/agents/worktrees/checkout-materialize.ts
 src/agents/worktrees/checkout-policy-key.ts
 src/agents/worktrees/checkout.ts
 src/agents/worktrees/errors.ts
@@ -1322,6 +1324,7 @@ src/plugins/compat/session-transcript-view-record.ts
 src/plugins/compat/skill-command-discovery-record.ts
 src/plugins/compat/skill-proposal-hooks-record.ts
 src/plugins/compat/tts-preferences-record.ts
+src/plugins/compat/transcript-stats-record.ts
 src/plugins/compat/watched-sessions.ts
 src/plugins/compat/web-search-provider-list-record.ts
 src/plugins/compat/workspace-mutation-guard.ts
