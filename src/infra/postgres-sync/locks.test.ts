@@ -84,6 +84,7 @@ function launch(options: {
 describe.skipIf(!connection)("PostgreSQL transaction lock ordering", () => {
   const admin = new Client({ connectionString: connection });
   const workers: ReturnType<typeof launch>[] = [];
+  const anchors: ReturnType<typeof openNodeSqliteDatabase>[] = [];
   const schemas: string[] = [];
   beforeAll(async () => {
     await admin.connect();
@@ -98,6 +99,9 @@ describe.skipIf(!connection)("PostgreSQL transaction lock ordering", () => {
       }
     }
     await Promise.all(closing.map((worker) => worker.exited));
+    for (const anchor of anchors.splice(0)) {
+      anchor.close();
+    }
     for (const schema of schemas.splice(0)) {
       await admin.query(`DROP SCHEMA "${schema}" CASCADE`);
     }
@@ -111,7 +115,9 @@ describe.skipIf(!connection)("PostgreSQL transaction lock ordering", () => {
     const schema = `openclaw_lock_test_${storeId.replaceAll("-", "")}`;
     schemas.push(schema);
     const databasePath = path.join(tempDirs.make("postgres-locks-"), "anchor.sqlite");
-    using anchor = openNodeSqliteDatabase(databasePath);
+    const anchor = openNodeSqliteDatabase(databasePath);
+    // Exported admission facts must remain live until the borrowing workers settle.
+    anchors.push(anchor);
     anchor.exec("CREATE TABLE anchor (id TEXT)");
     await admin.query(`CREATE SCHEMA "${schema}"; CREATE TABLE "${schema}".events (id TEXT)`);
     return {
@@ -177,7 +183,9 @@ describe.skipIf(!connection)("PostgreSQL transaction lock ordering", () => {
     first.release(1);
     const firstCommit = await first.events.done.promise;
     expect(freeDuringAdmission).toBe(true);
+    expect(secondCommit.before).toBeDefined();
     expect(secondCommit.after).not.toBe(secondCommit.before);
+    expect(firstCommit.before).toBeDefined();
     expect(firstCommit.after).not.toBe(firstCommit.before);
     expect(
       (await admin.query(`SELECT count(*)::int AS count FROM "${identity.schema}".events`)).rows,
