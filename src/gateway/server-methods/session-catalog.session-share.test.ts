@@ -8,7 +8,6 @@ import { expect, it, vi } from "vitest";
 import { loadBundledPluginFacade } from "../../test-utils/bundled-plugin-public-surface.js";
 import {
   bindPluginRegistryRuntime,
-  call as callCatalog,
   hoisted,
   resetSessionCatalogTestState,
   startCall,
@@ -94,13 +93,24 @@ it.each([
     bindPluginRegistryRuntime(hoisted.activeRegistry as PluginRegistry, runtime);
     const client = { connId: "same-viewer", connect: { scopes: ["operator.admin"] } };
     const request = { catalogId: "openclaw" };
+    const read = async () => {
+      const pending = startCall("sessions.catalog.list", request, config, client);
+      await vi.advanceTimersByTimeAsync(2);
+      await pending.completion;
+      return pending.respond;
+    };
     try {
-      const warm = await callCatalog("sessions.catalog.list", request, config, client);
+      const warm = await read();
       expect(warm.mock.calls[0]?.[1]?.catalogs[0]?.hosts[0]?.sessions).toEqual([
         expect.objectContaining(row),
       ]);
       sourceAuthorized = false;
-      const refresh = startCall("sessions.catalog.list", request, config, client);
+      const refresh = startCall(
+        "sessions.catalog.list",
+        { ...request, progressId: "refresh", allowPartialResults: true },
+        config,
+        client,
+      );
       await vi.advanceTimersByTimeAsync(1_000);
       await refresh.completion;
       const result = refresh.respond.mock.calls[0]?.[1]?.catalogs[0];
@@ -122,13 +132,12 @@ it.each([
       release?.();
       await vi.advanceTimersByTimeAsync(0);
       sourceAuthorized = true;
-      const restored = await callCatalog("sessions.catalog.list", request, config, client);
+      const restored = await read();
       expect(restored.mock.calls[0]?.[1]?.catalogs[0]?.hosts[0]?.sessions).toEqual([
         expect.objectContaining(row),
       ]);
     } finally {
       release?.();
-      await vi.runAllTimersAsync();
       scheduler.beginClose();
       try {
         await service?.stop?.(context);

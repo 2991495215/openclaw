@@ -145,9 +145,11 @@ export function createSessionShareNodeCommands(
     }
     // Inventory stays worker-owned. The selected cohort gets current canonical
     // person membership before pagination, then is checked again at disclosure.
-    const selected = new Set(sharedEntries(api, sessions).map(({ agentId, storePath, sessionKey, entry }) =>
-      JSON.stringify([agentId, storePath, sessionKey, entry.sessionId]),
-    ));
+    const selected = new Set(
+      sharedEntries(api, sessions).map(({ agentId, storePath, sessionKey, entry }) =>
+        JSON.stringify([agentId, storePath, sessionKey, entry.sessionId]),
+      ),
+    );
     return sessions.filter(({ agentId, storePath, sessionKey, entry }) =>
       selected.has(JSON.stringify([agentId, storePath, sessionKey, entry.sessionId])),
     );
@@ -297,7 +299,8 @@ export function createSessionShareNodeCommands(
           messages: parameterMessages,
         });
         const session = (await readSharedEntries()).find(
-          ({ agentId, sessionKey }) => sessionShareThreadId(agentId, sessionKey) === params.threadId,
+          ({ agentId, sessionKey }) =>
+            sessionShareThreadId(agentId, sessionKey) === params.threadId,
         );
         if (!session) {
           throw new Error(

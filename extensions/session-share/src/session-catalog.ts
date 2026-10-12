@@ -479,10 +479,15 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
       const linkParticipant = binding.linkGitHubIdentities ? linker?.linkParticipant : undefined;
       const host: SessionCatalogHost = {
         ...common,
-        sessions: selected.map((session) => ({
-          ...bindSession(session, hostId, owner, linkParticipant),
-          originalUrl: sessionShareOriginalUrl(binding.controlUiOrigin, session.threadId, binding.controlUiBasePath),
-        })),
+        sessions: selected.map((session) =>
+          Object.assign({}, bindSession(session, hostId, owner, linkParticipant), {
+            originalUrl: sessionShareOriginalUrl(
+              binding.controlUiOrigin,
+              session.threadId,
+              binding.controlUiBasePath,
+            ),
+          }),
+        ),
         ...(offset + limit < sessions.length
           ? { nextCursor: sessionCatalogPaging.encodeCursor(offset + limit) }
           : {}),
@@ -501,8 +506,8 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
       try {
         await Promise.race([
           entry.pending,
-          new Promise<never>((_resolve, reject) => {
-            abort = () => reject(signal?.reason);
+          new Promise<void>((resolve) => {
+            abort = resolve;
             signal?.addEventListener("abort", abort, { once: true });
           }),
         ]);

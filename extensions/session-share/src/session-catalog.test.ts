@@ -97,8 +97,21 @@ async function catalogFixture() {
     catalog,
     list,
     invoke,
+    read: async (query: Parameters<typeof catalog.list>[0] = {}) => {
+      const page = catalog.list(query);
+      void page.catch(() => {});
+      await vi.advanceTimersByTimeAsync(2);
+      return page;
+    },
+    begin: (query: Parameters<typeof catalog.list>[0] = {}) =>
+      catalog.list({
+        allowPartialResults: true,
+        onHost: () => {},
+        waitUntil: () => {},
+        ...query,
+      }),
     hydrate: async () => {
-      await catalog.list({});
+      await fixture.begin();
       await vi.advanceTimersByTimeAsync(2);
     },
     stop: async () => {
@@ -127,16 +140,16 @@ describe("session-share receiver catalog", () => {
   it("surfaces discovery failure without exposing node-runtime details", async () => {
     const fixture = await catalogFixture();
     try {
-      await expect(fixture.catalog.list({})).resolves.toHaveLength(1);
+      await expect(fixture.read({})).resolves.toHaveLength(1);
       fixture.list.mockRejectedValueOnce(new Error("private node address and runtime details"));
       const onHost = vi.fn();
-      await expect(fixture.catalog.list({ onHost })).rejects.toThrow(
+      await expect(fixture.read({ onHost })).rejects.toThrow(
         "Cannot discover OpenClaw session sources. Refresh the catalog to retry.",
       );
       expect(onHost).not.toHaveBeenCalled();
       fixture.invoke.mockResolvedValue({ sessions: [] });
-      await expect(fixture.catalog.list({})).resolves.toMatchObject([{ sessions: [] }]);
-      expect(fixture.list).toHaveBeenCalledTimes(3);
+      await expect(fixture.read({})).resolves.toMatchObject([{ sessions: [] }]);
+      expect((await fixture.read({}))[0]?.sessions).toEqual([]);
     } finally {
       await fixture.stop();
     }
@@ -157,7 +170,7 @@ describe("session-share receiver catalog", () => {
                   commands: mode === "ineligible" ? [commands[0]!] : commands,
                 },
               ];
-        const hosts = await fixture.catalog.list({
+        const hosts = await fixture.read({
           listNodes: async () => ({ nodes }),
           ...(mode === "filtered" ? { hostIds: ["node:other"] } : {}),
         });
@@ -254,11 +267,11 @@ describe("session-share receiver catalog", () => {
       ).toBe(true);
       configure(controlUiBasePath);
       const prefix = controlUiBasePath.replace(/\/$/, "");
-      expect((await fixture.catalog.list({}))[0]?.sessions.map((row) => row.originalUrl)).toEqual(
+      expect((await fixture.read({}))[0]?.sessions.map((row) => row.originalUrl)).toEqual(
         sessions.map(([, path]) => `https://team.example.com${prefix}${path}`),
       );
       configure();
-      expect((await fixture.catalog.list({}))[0]?.sessions.map((row) => row.originalUrl)).toEqual(
+      expect((await fixture.read({}))[0]?.sessions.map((row) => row.originalUrl)).toEqual(
         sessions.map(([, path]) => `https://team.example.com${path}`),
       );
     },
@@ -288,7 +301,7 @@ describe("session-share receiver catalog", () => {
         },
       },
     });
-    const row = (await fixture.catalog.list({}))[0]?.sessions[0];
+    const row = (await fixture.read({}))[0]?.sessions[0];
     expect(row?.threadId).toBe(nativeSession.threadId);
     expect(row?.originalUrl).toBeUndefined();
   });
@@ -305,7 +318,7 @@ describe("session-share receiver catalog", () => {
   ])("builds source-owned links for %s and withdraws them on reload", async (threadId, path) => {
     const fixture = await catalogFixture();
     fixture.invoke.mockResolvedValue({ sessions: [{ ...nativeSession, threadId }] });
-    expect((await fixture.catalog.list({}))[0]?.sessions[0]?.originalUrl).toBeUndefined();
+    expect((await fixture.read({}))[0]?.sessions[0]?.originalUrl).toBeUndefined();
     fixture.configure({
       plugins: {
         entries: {
@@ -317,11 +330,11 @@ describe("session-share receiver catalog", () => {
         },
       },
     });
-    const row = (await fixture.catalog.list({}))[0]?.sessions[0];
+    const row = (await fixture.read({}))[0]?.sessions[0];
     expect(row?.originalUrl).toBe(path ? `https://team.example.com${path}` : undefined);
     expect(row?.canContinue).toBe(false);
     fixture.configure({});
-    expect((await fixture.catalog.list({}))[0]?.sessions[0]?.originalUrl).toBeUndefined();
+    expect((await fixture.read({}))[0]?.sessions[0]?.originalUrl).toBeUndefined();
   });
 
   it.each([
@@ -353,7 +366,7 @@ describe("session-share receiver catalog", () => {
           },
         },
       });
-      const row = (await fixture.catalog.list({}))[0]?.sessions[0];
+      const row = (await fixture.read({}))[0]?.sessions[0];
       expect(row?.threadId).toBe(nativeSession.threadId);
       expect(row?.originalUrl).toBeUndefined();
     },
@@ -364,7 +377,7 @@ describe("session-share receiver catalog", () => {
     fixture.invoke.mockResolvedValue({
       sessions: [{ ...nativeSession, originalUrl: "https://evil.example" }],
     });
-    const host = (await fixture.catalog.list({}))[0];
+    const host = (await fixture.read({}))[0];
     expect(host?.sessions).toEqual([]);
     expect(host?.error?.code).toBe("NODE_INVOKE_FAILED");
   });
@@ -374,7 +387,7 @@ describe("session-share receiver catalog", () => {
     fixture.invoke.mockResolvedValue({
       sessions: [{ ...nativeSession, controlUiBasePath: "/untrusted" }],
     });
-    const host = (await fixture.catalog.list({}))[0];
+    const host = (await fixture.read({}))[0];
     expect(host?.sessions).toEqual([]);
     expect(host?.error?.code).toBe("NODE_INVOKE_FAILED");
   });
@@ -403,27 +416,27 @@ describe("session-share receiver catalog", () => {
     try {
       await vi.advanceTimersByTimeAsync(30_005);
       expect(fixture.invoke).not.toHaveBeenCalled();
-      await fixture.catalog.list({ hostIds: ["node:node-39"] });
+      await fixture.begin({ hostIds: ["node:node-39"] });
       await vi.advanceTimersByTimeAsync(2);
       expect(fixture.invoke.mock.calls.map(([request]) => request.nodeId)).toEqual(["node-39"]);
-      await fixture.catalog.list({});
+      await fixture.begin({});
       await vi.advanceTimersByTimeAsync(2);
       expect(fixture.invoke).toHaveBeenCalledTimes(4);
       expect(peak).toBe(4);
-      const waiting = await fixture.catalog.list({ hostIds: ["node:node-38"] });
+      const waiting = await fixture.begin({ hostIds: ["node:node-38"] });
       expect(waiting[0]?.error?.code).toBe("CATALOG_LOADING");
       gate.resolve({ sessions: [nativeSession] });
       await vi.advanceTimersByTimeAsync(2);
       expect(fixture.invoke).toHaveBeenCalledTimes(32);
       expect(peak).toBe(4);
-      await fixture.catalog.list({ hostIds: ["node:node-38"] });
+      await fixture.begin({ hostIds: ["node:node-38"] });
       await vi.advanceTimersByTimeAsync(2);
-      expect((await fixture.catalog.list({ hostIds: ["node:node-38"] }))[0]?.sessions).toEqual([
+      expect((await fixture.read({ hostIds: ["node:node-38"] }))[0]?.sessions).toEqual([
         nativeSession,
       ]);
-      expect(fixture.invoke).toHaveBeenCalledTimes(33);
+      expect(fixture.invoke).toHaveBeenCalledTimes(34);
       await vi.advanceTimersByTimeAsync(30_010);
-      const refreshed = fixture.invoke.mock.calls.slice(33).map(([request]) => request.nodeId);
+      const refreshed = fixture.invoke.mock.calls.slice(34).map(([request]) => request.nodeId);
       expect(refreshed).toHaveLength(32);
       expect(refreshed).not.toContain("node-39");
       expect(refreshed).toContain("node-38");
@@ -435,7 +448,7 @@ describe("session-share receiver catalog", () => {
   it("restarts after retiring queued refreshes before dispatch", async () => {
     const fixture = await catalogFixture();
     const publications: Promise<void>[] = [];
-    await fixture.catalog.list({
+    await fixture.begin({
       allowPartialResults: true,
       onHost: () => {},
       waitUntil: (work) => publications.push(work),
@@ -443,11 +456,11 @@ describe("session-share receiver catalog", () => {
     await fixture.restart();
     await Promise.all(publications);
     await fixture.hydrate();
-    expect((await fixture.catalog.list({}))[0]?.sessions).toEqual([nativeSession]);
-    expect(fixture.invoke).toHaveBeenCalledTimes(1);
+    expect((await fixture.read({}))[0]?.sessions).toEqual([nativeSession]);
+    expect(fixture.invoke).toHaveBeenCalledTimes(2);
   });
 
-  it("serves searches and pages from one complete node snapshot until refresh", async () => {
+  it("serves searches and pages from fresh complete node snapshots", async () => {
     const fixture = await catalogFixture();
     const rows = Array.from({ length: 101 }, (_, index) => ({
       ...nativeSession,
@@ -463,24 +476,20 @@ describe("session-share receiver catalog", () => {
             nextCursor: sessionCatalogPaging.encodeCursor(100),
           };
     });
-    expect((await fixture.catalog.list({}))[0]?.error?.code).toBe("CATALOG_LOADING");
+    expect((await fixture.begin())[0]).toMatchObject({ pending: true, sessions: [] });
     await vi.advanceTimersByTimeAsync(2);
-    const first = (await fixture.catalog.list({ limitPerHost: 100 }))[0]!;
+    const first = (await fixture.read({ limitPerHost: 100 }))[0]!;
     expect(first.sessions).toEqual(rows.slice(0, 100));
     expect(
-      (await fixture.catalog.list({ cursors: { "node:alpha": first.nextCursor! } }))[0]?.sessions,
+      (await fixture.read({ cursors: { "node:alpha": first.nextCursor! } }))[0]?.sessions,
     ).toEqual(rows.slice(100));
-    expect((await fixture.catalog.list({ search: "SHARED 100" }))[0]?.sessions).toEqual(
-      rows.slice(100),
-    );
-    expect((await fixture.catalog.list({ search: "MAIN:100" }))[0]?.sessions).toEqual(
-      rows.slice(100),
-    );
-    expect(fixture.invoke).toHaveBeenCalledTimes(2);
+    expect((await fixture.read({ search: "SHARED 100" }))[0]?.sessions).toEqual(rows.slice(100));
+    expect((await fixture.read({ search: "MAIN:100" }))[0]?.sessions).toEqual(rows.slice(100));
+    expect(fixture.invoke).toHaveBeenCalledTimes(10);
     fixture.invoke.mockResolvedValue({ sessions: [] });
     await vi.advanceTimersByTimeAsync(30_000);
-    expect((await fixture.catalog.list({}))[0]?.sessions).toEqual([]);
-    expect(fixture.invoke).toHaveBeenCalledTimes(3);
+    expect((await fixture.read({}))[0]?.sessions).toEqual([]);
+    expect(fixture.invoke).toHaveBeenCalledTimes(12);
   });
 
   it("finishes a multi-page snapshot when slow successful pages exceed one invocation budget", async () => {
@@ -502,14 +511,16 @@ describe("session-share receiver catalog", () => {
           : {}),
       };
     });
-    await fixture.catalog.list({});
+    await fixture.begin();
     await vi.advanceTimersByTimeAsync(35_005);
-    const hosts = await fixture.catalog.list({
+    const reading = fixture.read({
       cursors: { "node:alpha": sessionCatalogPaging.encodeCursor(600) },
     });
+    await vi.advanceTimersByTimeAsync(35_005);
+    const hosts = await reading;
     expect(hosts[0]?.sessions).toEqual(rows.slice(600));
     expect(hosts[0]?.error).toBeUndefined();
-    expect(fixture.invoke).toHaveBeenCalledTimes(7);
+    expect(fixture.invoke).toHaveBeenCalledTimes(14);
   });
 
   it.each(["rows", "bytes"])(
@@ -533,37 +544,34 @@ describe("session-share receiver catalog", () => {
         };
       });
       await fixture.hydrate();
-      const host = (await fixture.catalog.list({}))[0];
+      const host = (await fixture.read({}))[0];
       expect(host?.error?.code).toBe("CATALOG_TOO_LARGE");
       expect(host?.sessions).toEqual([]);
       expect(host?.error?.message).toContain("Reduce the shared groups");
     },
   );
 
-  it("backs off failed refreshes and expires snapshots despite a backward wall-clock adjustment", async () => {
+  it("backs off background failures without replaying an earlier source grant", async () => {
     const fixture = await catalogFixture();
-    await fixture.hydrate();
+    expect((await fixture.read())[0]?.sessions).toEqual([nativeSession]);
     fixture.invoke.mockRejectedValue(new Error("offline"));
-    await vi.advanceTimersByTimeAsync(30_005);
-    expect((await fixture.catalog.list({}))[0]?.sessions).toEqual([nativeSession]);
+    expect((await fixture.read())[0]).toMatchObject({
+      sessions: [],
+      error: { code: "NODE_INVOKE_FAILED" },
+    });
     expect(fixture.invoke).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(30_005);
+    expect(fixture.invoke).toHaveBeenCalledTimes(3);
     const wallNow = Date.now();
     vi.setSystemTime(wallNow - 86_400_000);
-    for (let index = 0; index < 10; index++) {
-      expect((await fixture.catalog.list({}))[0]).toMatchObject({
-        sessions: [],
-        error: { code: "NODE_INVOKE_FAILED" },
-      });
-    }
-    vi.setSystemTime(wallNow);
-    expect(fixture.invoke).toHaveBeenCalledTimes(3);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(fixture.invoke).toHaveBeenCalledTimes(3);
-    fixture.invoke.mockResolvedValue({ sessions: [] });
     await vi.advanceTimersByTimeAsync(30_005);
-    expect((await fixture.catalog.list({}))[0]?.error).toBeUndefined();
     expect(fixture.invoke).toHaveBeenCalledTimes(4);
+    vi.setSystemTime(wallNow);
+    fixture.invoke.mockResolvedValue({ sessions: [] });
+    expect((await fixture.read())[0]).toMatchObject({ sessions: [] });
+    expect(fixture.invoke).toHaveBeenCalledTimes(5);
   });
 
   it.each(["config", "connection", "disconnect"])(
@@ -576,7 +584,7 @@ describe("session-share receiver catalog", () => {
       await vi.advanceTimersByTimeAsync(30_000);
       const publications: Promise<void>[] = [];
       const onHost = vi.fn();
-      await fixture.catalog.list({
+      await fixture.read({
         allowPartialResults: true,
         onHost,
         waitUntil: (work) => publications.push(work),
@@ -590,14 +598,14 @@ describe("session-share receiver catalog", () => {
           ],
         });
       }
-      const hosts = await fixture.catalog.list({});
+      const hosts = await fixture.begin();
       expect(hosts[0]?.sessions).toEqual([]);
       gate.resolve({ sessions: [{ ...nativeSession, name: "Retired publication" }] });
       await Promise.all(publications);
       expect(onHost).not.toHaveBeenCalled();
       if (revision !== "disconnect") {
         await vi.advanceTimersByTimeAsync(2);
-        expect((await fixture.catalog.list({}))[0]?.sessions).toEqual([nativeSession]);
+        expect((await fixture.read({}))[0]?.sessions).toEqual([nativeSession]);
       } else {
         expect(hosts[0]?.error?.code).toBe("NODE_OFFLINE");
       }
@@ -608,14 +616,14 @@ describe("session-share receiver catalog", () => {
     "does not redisplay a warm page while its source is %s",
     async (outcome) => {
       const fixture = await catalogFixture();
-      await fixture.catalog.list({});
+      await fixture.read({});
       const gate = createDeferred<unknown>();
       fixture.invoke.mockImplementation(() => gate.promise);
       const onHost = vi.fn();
       const publications: Promise<void>[] = [];
       vi.useFakeTimers();
       try {
-        const pending = fixture.catalog.list({
+        const pending = fixture.read({
           allowPartialResults: true,
           onHost,
           waitUntil: (work) => publications.push(work),
@@ -638,29 +646,42 @@ describe("session-share receiver catalog", () => {
     },
   );
 
-  it("keeps background refresh owned by the service after a viewer cancels", async () => {
-    const fixture = await catalogFixture();
-    const gate = createDeferred<unknown>();
-    fixture.invoke.mockImplementation(() => gate.promise);
-    const controller = new AbortController();
-    const onHost = vi.fn();
-    const publications: Promise<void>[] = [];
-    await fixture.catalog.list({
-      signal: controller.signal,
-      allowPartialResults: true,
-      onHost,
-      waitUntil: (work) => publications.push(work),
-    });
-    onHost.mockClear();
-    await vi.advanceTimersByTimeAsync(2);
-    controller.abort();
-    expect(fixture.invoke.mock.calls[0]?.[0].signal?.aborted).toBe(false);
-    gate.resolve({ sessions: [nativeSession] });
-    await Promise.all(publications);
-    expect(onHost).not.toHaveBeenCalled();
-    expect((await fixture.catalog.list({}))[0]?.sessions).toEqual([nativeSession]);
-    expect(fixture.invoke).toHaveBeenCalledTimes(1);
-  });
+  it.each([true, false])(
+    "keeps service work alive after a viewer cancels (progressive=%s)",
+    async (partial) => {
+      const fixture = await catalogFixture();
+      const gate = createDeferred<unknown>();
+      fixture.invoke.mockImplementation(() => gate.promise);
+      const controller = new AbortController();
+      const reason = new Error("viewer retired");
+      const onHost = vi.fn();
+      const publications: Promise<void>[] = [];
+      const listing = fixture.catalog
+        .list({
+          signal: controller.signal,
+          allowPartialResults: partial,
+          onHost,
+          waitUntil: (work) => publications.push(work),
+        })
+        .then(
+          (hosts) => ({ hosts }),
+          (error: unknown) => ({ error }),
+        );
+      await vi.advanceTimersByTimeAsync(2);
+      onHost.mockClear();
+      controller.abort(reason);
+      if (!partial) {
+        expect(await listing).toEqual({ error: reason });
+      } else {
+        expect(await listing).toMatchObject({ hosts: [{ sessions: [], pending: true }] });
+      }
+      expect(fixture.invoke.mock.calls[0]?.[0].signal?.aborted).toBe(false);
+      gate.resolve({ sessions: [nativeSession] });
+      await Promise.all(publications);
+      expect(onHost).not.toHaveBeenCalled();
+      expect((await fixture.read({}))[0]?.sessions).toEqual([nativeSession]);
+    },
+  );
 
   it("cancels and joins active node work when the service retires", async () => {
     const fixture = await catalogFixture();
@@ -672,7 +693,7 @@ describe("session-share receiver catalog", () => {
     });
     const publications: Promise<void>[] = [];
     const onHost = vi.fn();
-    await fixture.catalog.list({
+    await fixture.read({
       allowPartialResults: true,
       onHost,
       waitUntil: (work) => publications.push(work),
@@ -689,7 +710,7 @@ describe("session-share receiver catalog", () => {
     release.resolve({ sessions: [nativeSession] });
     await stopping;
     expect(onHost).not.toHaveBeenCalled();
-    expect((await fixture.catalog.list({}))[0]?.sessions).toEqual([]);
+    expect((await fixture.read({}))[0]?.sessions).toEqual([]);
   });
 
   it.each([1, 2])("stops a %s-host publication when its catalog owner retires", async (count) => {
@@ -702,7 +723,7 @@ describe("session-share receiver catalog", () => {
     const controller = new AbortController();
     const reason = new Error("catalog owner retired");
     const onHost = vi.fn(() => controller.abort(reason));
-    await expect(fixture.catalog.list({ signal: controller.signal, onHost })).rejects.toBe(reason);
+    await expect(fixture.read({ signal: controller.signal, onHost })).rejects.toBe(reason);
     expect(onHost).toHaveBeenCalledTimes(1);
   });
 
@@ -710,7 +731,7 @@ describe("session-share receiver catalog", () => {
     const fixture = await catalogFixture();
     const gate = createDeferred<Awaited<ReturnType<PluginRuntime["nodes"]["list"]>>>();
     const controller = new AbortController();
-    const listing = fixture.catalog.list({
+    const listing = fixture.read({
       signal: controller.signal,
       listNodes: () => gate.promise,
     });
@@ -752,7 +773,7 @@ describe("session-share receiver catalog", () => {
         }),
       );
       await vi.advanceTimersByTimeAsync(1);
-      expect((await fixture.catalog.list({}))[0]).toMatchObject({
+      expect((await fixture.read({}))[0]).toMatchObject({
         sessions: [],
         error: { code: "NODE_INVOKE_FAILED" },
       });
@@ -793,7 +814,7 @@ describe("session-share receiver catalog", () => {
       });
 
       await fixture.hydrate();
-      expect((await fixture.catalog.list({}))[0]?.sessions).toEqual([nativeSession]);
+      expect((await fixture.read({}))[0]?.sessions).toEqual([nativeSession]);
       expect(diagnostics.warn).toHaveBeenCalledTimes(mode === "sink throws" ? 1 : 0);
     },
   );
@@ -822,7 +843,7 @@ describe("session-share receiver catalog", () => {
       ),
     }));
     await fixture.hydrate();
-    const hosts = await fixture.catalog.list({});
+    const hosts = await fixture.read({});
     const pages = await Promise.all(
       hosts.map(({ hostId }) => fixture.catalog.read({ hostId, threadId: nativeSession.threadId })),
     );
@@ -850,8 +871,7 @@ describe("session-share receiver catalog", () => {
       }
       return { sessions: [nativeSession] };
     });
-    await fixture.hydrate();
-    const hosts = await fixture.catalog.list({});
+    const hosts = await fixture.read({});
     expect(hosts.map((host) => host.hostId)).toEqual(["node:alpha", "node:offline", "node:broken"]);
     expect(hosts[0]?.sessions).toEqual([nativeSession]);
     expect(hosts[1]?.error?.code).toBe("NODE_OFFLINE");
@@ -887,7 +907,7 @@ describe("session-share receiver catalog", () => {
       payloadJSON: JSON.stringify({ sessions: [{ ...nativeSession, ...patch }] }),
     });
     await fixture.hydrate();
-    const hosts = await fixture.catalog.list({});
+    const hosts = await fixture.read({});
     expect(hosts[0]).toMatchObject({ sessions: [], error: { code: "NODE_INVOKE_FAILED" } });
   });
 

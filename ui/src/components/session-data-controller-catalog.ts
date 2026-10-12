@@ -17,10 +17,10 @@ import {
 } from "../lib/sessions/catalog-key.ts";
 import { normalizeAgentId } from "../lib/sessions/session-key.ts";
 import {
-  refreshSessionCatalogsLive,
   SessionCatalogLiveState,
   sessionCatalogListClient,
 } from "./app-sidebar-session-catalog-live.ts";
+import { refreshSessionCatalogsLive } from "./app-sidebar-session-catalog-refresh.ts";
 import {
   excludeSessionCatalogRows,
   mergeSessionCatalogPage,
@@ -38,6 +38,7 @@ import type {
 } from "./app-sidebar-session-types.ts";
 import {
   completePanelRefresh,
+  createPanelRefreshStatus,
   failPanelRefresh,
   type PanelRefreshStatus,
 } from "./panel-refresh-status.ts";
@@ -77,6 +78,16 @@ export interface SessionCatalogDataOwner {
   requestSessionDataUpdate(): void;
   refreshSessionCatalogs(): Promise<void>;
   sessionCatalogIdsWithoutVisibleRows(): readonly string[];
+}
+
+/** Reset connection-owned rows and expansion intent after retiring active work. */
+export function resetSessionCatalogConnectionData(owner: SessionCatalogDataOwner): void {
+  owner.sessionCatalogRevision += 1;
+  owner.sessionCatalogs = [];
+  owner.sessionCatalogRefreshStatus = createPanelRefreshStatus();
+  owner.sessionCatalogLive.windows.clear();
+  owner.sessionCatalogRevisions.clear();
+  owner.requestSessionDataUpdate();
 }
 
 /** A completed list RPC can still leave pending hosts or hidden discovery pages. */

@@ -37,6 +37,7 @@ import {
   refreshSessionCatalogs as refreshSessionCatalogData,
   resolveSessionCatalogAgentId,
   scheduleSessionCatalogRefresh,
+  resetSessionCatalogConnectionData,
   type SessionCatalogDataOwner,
   type SessionDataControllerHost,
   updateSessionCatalogData,
@@ -260,12 +261,7 @@ export class SessionDataController implements ReactiveController, SessionCatalog
 
   resetSessionCatalogConnection(): void {
     this.retireSessionCatalogData();
-    this.sessionCatalogRevision += 1;
-    this.sessionCatalogs = [];
-    this.sessionCatalogRefreshStatus = createPanelRefreshStatus();
-    this.sessionCatalogLive.windows.clear();
-    this.sessionCatalogRevisions.clear();
-    this.requestSessionDataUpdate();
+    resetSessionCatalogConnectionData(this);
   }
 
   synchronizeSessionScope(): void {

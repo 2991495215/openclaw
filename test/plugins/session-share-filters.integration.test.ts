@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import { validateJsonSchemaValue } from "openclaw/plugin-sdk/json-schema-runtime";
 import { appendSessionTranscriptMessageByIdentity } from "openclaw/plugin-sdk/session-transcript-runtime";
+import * as transcriptRuntime from "openclaw/plugin-sdk/session-transcript-runtime";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assignSessionOwner,
   replaceSessionEntry,
@@ -10,9 +11,12 @@ import {
 import { recordSessionParticipant } from "../../src/config/sessions/session-accessor.sqlite-participants.native.js";
 import type { InternalSessionEntry as SessionEntry } from "../../src/config/sessions/types.js";
 import { createPluginRuntime } from "../../src/plugins/runtime/index.js";
+import { createDeferredCore } from "../../src/shared/deferred.js";
 import { linkEmail } from "../../src/state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../../src/state/user-profiles.js";
 import { commandFixture } from "./session-share.test-support.js";
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("session-share source publication filters", () => {
   it("requires groups, narrows to canonical owners or participants, and preserves exclusions", async () => {
@@ -167,17 +171,42 @@ describe("session-share source publication filters", () => {
       expect((await fixture.read(scope.sessionKey)).items).toMatchObject([
         { type: "userMessage", text: "Shared question" },
       ]);
-      const configRead = fixture.read(scope.sessionKey);
-      fixture.select({ involvingProfileId: person.id });
-      await expect(configRead).rejects.toThrow("no longer shared");
-      fixture.select({ groups: ["Team"], involvingProfileId: person.id });
-      const membershipRead = fixture.read(scope.sessionKey);
-      const other = ensureProfileForEmail("replacement@example.test");
-      assignSessionOwner(scope, {
-        owner: { type: "human", id: other.id },
-        assignedBy: { type: "human", id: person.id },
-      });
-      await expect(membershipRead).rejects.toThrow("no longer shared");
+      for (const change of ["config", "membership"]) {
+        const entered = createDeferredCore();
+        const release = createDeferredCore();
+        const readPage = transcriptRuntime.readSessionTranscriptCatalogPage;
+        const held = vi
+          .spyOn(transcriptRuntime, "readSessionTranscriptCatalogPage")
+          .mockImplementationOnce(async (...args) => {
+            const page = await readPage(...args);
+            entered.resolve();
+            await release.promise;
+            return page;
+          });
+        const pending = fixture.read(scope.sessionKey);
+        try {
+          await Promise.race([
+            entered.promise,
+            pending.then(() => {
+              throw new Error("Transcript was not held");
+            }),
+          ]);
+          if (change === "config") {
+            fixture.select({ involvingProfileId: person.id });
+          } else {
+            const other = ensureProfileForEmail("replacement@example.test");
+            assignSessionOwner(scope, {
+              owner: { type: "human", id: other.id },
+              assignedBy: { type: "human", id: person.id },
+            });
+          }
+        } finally {
+          release.resolve();
+        }
+        await expect(pending).rejects.toThrow("no longer shared");
+        held.mockRestore();
+        fixture.select({ groups: ["Team"], involvingProfileId: person.id });
+      }
       expect((await fixture.list()).sessions).toEqual([]);
       await expect(fixture.read(scope.sessionKey)).rejects.toThrow("not shared");
     });

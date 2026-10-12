@@ -7,7 +7,6 @@ import { createTestPluginServiceScheduler } from "openclaw/plugin-sdk/plugin-tes
 import { createPluginRuntimeMock } from "openclaw/plugin-sdk/plugin-test-runtime";
 import {
   sessionCatalogPaging,
-  type SessionCatalogProvider,
   type SessionCatalogSession,
 } from "openclaw/plugin-sdk/session-catalog";
 import { resolveStorePath } from "openclaw/plugin-sdk/session-store-runtime";
@@ -18,7 +17,6 @@ import {
   replaceSessionEntry,
   upsertSessionEntryCore,
 } from "../../src/config/sessions/session-accessor.js";
-import { createPluginRuntime } from "../../src/plugins/runtime/index.js";
 import { createDeferredCore } from "../../src/shared/deferred.js";
 import {
   closeOpenClawAgentDatabasesAsync,
@@ -84,6 +82,12 @@ function catalogFixture(stateDir: string) {
     catalog,
     list,
     invoke,
+    read: async (query: Parameters<typeof catalog.list>[0] = {}) => {
+      const page = catalog.list(query);
+      void page.catch(() => {});
+      await vi.advanceTimersByTimeAsync(2);
+      return page;
+    },
     hydrate: async () => {
       const publications: Promise<void>[] = [];
       await catalog.list({
@@ -203,7 +207,7 @@ describe("session-share node commands", () => {
         {
           agentId: "research",
           sessionKey: "agent:research:shared",
-          path: "/chat/research/shared",
+          path: "/chat/research/~key/shared",
         },
       ];
       for (const [index, { agentId, sessionKey }] of cases.entries()) {
@@ -219,7 +223,7 @@ describe("session-share node commands", () => {
           message: { role: "user", content: `Message from ${scope.sessionId}` },
         });
       }
-      const rows = (await receiver.catalog.list({}))[0]?.sessions ?? [];
+      const rows = (await receiver.read({}))[0]?.sessions ?? [];
       expect(rows).toHaveLength(cases.length);
       expect(new Set(rows.map(({ threadId }) => threadId)).size).toBe(cases.length);
       for (const [index, { path }] of cases.entries()) {
@@ -308,12 +312,12 @@ describe("session-share node commands", () => {
         hashes,
       });
       await receiver.hydrate();
-      const first = await receiver.catalog.list({ limitPerHost: 1 });
+      const first = await receiver.read({ limitPerHost: 1 });
       expect(first[0]?.sessions).toMatchObject([
         { threadId: "agent:main:named", name: "Named session" },
       ]);
       expect(first[0]?.nextCursor).toBeDefined();
-      const second = await receiver.catalog.list({
+      const second = await receiver.read({
         limitPerHost: 2,
         cursors: { "node:alpha": first[0]!.nextCursor! },
       });
@@ -321,7 +325,7 @@ describe("session-share node commands", () => {
         { threadId: "agent:main:derived-0", name: "Derived title 0" },
         { threadId: "agent:main:derived-1", name: "Derived title 1" },
       ]);
-      const last = await receiver.catalog.list({
+      const last = await receiver.read({
         limitPerHost: 2,
         cursors: { "node:alpha": second[0]!.nextCursor! },
       });
@@ -330,12 +334,13 @@ describe("session-share node commands", () => {
       ]);
       expect(last[0]?.nextCursor).toBeUndefined();
       for (const search of ["Derived title 2", "MAIN:DERIVED-2"]) {
-        const found = await receiver.catalog.list({ search, limitPerHost: 1 });
+        const found = await receiver.read({ search, limitPerHost: 1 });
         expect(found[0]?.sessions).toMatchObject([
           { threadId: "agent:main:derived-2", name: "Derived title 2" },
         ]);
       }
-      expect(receiver.invoke).toHaveBeenCalledTimes(1);
+      // Every list/search/page reauthorizes the source; inventory reuse remains source-owned.
+      expect(receiver.invoke).toHaveBeenCalledTimes(6);
       db.prepare("UPDATE transcript_events SET event_json = ? WHERE session_id = ?").run(
         "invalid-json",
         "derived-0",
@@ -895,7 +900,7 @@ describe("session-share receiver identity integration", () => {
           return result;
         },
       );
-      const pending = fixture.catalog.list({
+      const pending = fixture.read({
         onHost: (host) => {
           if (host.hostId === "node:alpha") {
             expect(host.sessions[0]?.threadId).toBe(nativeSession.threadId);
@@ -913,7 +918,7 @@ describe("session-share receiver identity integration", () => {
         fixture.list.mockResolvedValue({
           nodes: [{ nodeId: "beta", connected: true, commands }],
         });
-        await fixture.catalog.list({ hostIds: [] });
+        await fixture.read({ hostIds: [] });
       } finally {
         release.resolve();
       }
@@ -982,7 +987,7 @@ describe("session-share receiver identity integration", () => {
         },
       };
       await fixture.hydrate();
-      expect((await fixture.catalog.list({}))[0]?.sessions).toEqual([
+      expect((await fixture.read({}))[0]?.sessions).toEqual([
         namespacedHuman,
         agent,
         namespacedUnmatched,
@@ -999,7 +1004,7 @@ describe("session-share receiver identity integration", () => {
           },
         });
         await fixture.hydrate();
-        const rows = (await fixture.catalog.list({}))[0]!.sessions;
+        const rows = (await fixture.read({}))[0]!.sessions;
         expect(rows[0]).toEqual(namespacedHuman);
         expect(rows[1]?.createdActor).toMatchObject({
           type: "human",
@@ -1018,7 +1023,7 @@ describe("session-share receiver identity integration", () => {
       });
       await fixture.hydrate();
       identityReads.mockClear();
-      const linked = (await fixture.catalog.list({}))[0]!.sessions;
+      const linked = (await fixture.read({}))[0]!.sessions;
       expect.soft(fullIdentityScans()).toBe(0);
       expect(linked[0]?.createdActor).toMatchObject({
         type: "human",
