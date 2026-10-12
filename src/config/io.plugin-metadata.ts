@@ -152,11 +152,10 @@ export async function resolveConfigWidePluginMetadataSnapshotAsync(
         return existing;
       }
       if (captured.installRecords === undefined) {
-        const installed = await preparePersistedInstalledPluginIndexCacheEntry({
+        await preparePersistedInstalledPluginIndexCacheEntry({
           env: captured.env,
           stateDir: captured.stateDir,
         });
-        installed.assertCurrent();
       }
       activateDiscovery();
       // Parsing, recovery, trust checks and persisted/derived selection retain one owner.

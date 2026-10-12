@@ -678,11 +678,10 @@ export async function resolvePluginMetadataSnapshotAsync(
         captured.installRecords === undefined &&
         captured.preferPersisted !== false
       ) {
-        const installed = await preparePersistedInstalledPluginIndexCacheEntry({
+        await preparePersistedInstalledPluginIndexCacheEntry({
           env: captured.env,
           stateDir: captured.stateDir,
         });
-        installed.assertCurrent();
       }
       activateDiscovery();
       return resolvePluginMetadataSnapshot(captured);
