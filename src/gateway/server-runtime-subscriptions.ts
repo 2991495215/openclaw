@@ -1,4 +1,3 @@
-// Gateway event subscription wiring for agent, heartbeat, transcript, and lifecycle broadcasts.
 import { isAgentLifecycleYieldedWaiting } from "../agents/agent-lifecycle-parent-state.js";
 import { isDefinitiveRunLifecycle } from "../agents/agent-run-terminal-outcome.js";
 import {
@@ -42,6 +41,7 @@ import {
   onInternalSessionTranscriptUpdate,
   type InternalSessionTranscriptUpdate,
 } from "../sessions/transcript-events.js";
+import { runOutsideAsyncWorkScope } from "../shared/async-work-scope.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import {
@@ -300,10 +300,10 @@ export function startGatewayEventSubscriptions(params: GatewayEventSubscriptionP
     return tracked;
   };
   const getSessionKeyModule = createLazyRuntimeModule(() => import("./server-session-key.js"));
+  // Lazy-load heavy chat modules only after the first agent event reaches the gateway.
   const agentEventHandlerLoader = createLazyPromiseLoader(
-    () => {
-      // Lazy-load heavy chat modules only after the first agent event reaches the gateway.
-      return Promise.all([import("./server-chat.js"), getSessionKeyModule()]).then(
+    () =>
+      Promise.all([import("./server-chat.js"), getSessionKeyModule()]).then(
         ([{ createAgentEventHandler }, { resolveSessionForRun }]) =>
           createAgentEventHandler({
             broadcast: params.broadcast,
@@ -385,20 +385,17 @@ export function startGatewayEventSubscriptions(params: GatewayEventSubscriptionP
                 ),
               }),
           }),
-      );
-    },
+      ),
     { cacheRejections: true },
   );
-  const getSessionEventsModule = createLazyRuntimeModule(
-    () => import("./server-session-events.js"),
-  );
+  const getSessionEvents = createLazyRuntimeModule(() => import("./server-session-events.js"));
 
   const getTranscriptUpdateHandler = createLazyRuntimeSurface(
-    getSessionEventsModule,
+    getSessionEvents,
     ({ createTranscriptUpdateBroadcastHandler }) => createTranscriptUpdateBroadcastHandler(params),
   );
   const getLifecycleEventHandler = createLazyRuntimeSurface(
-    getSessionEventsModule,
+    getSessionEvents,
     ({ createLifecycleEventBroadcastHandler }) => createLifecycleEventBroadcastHandler(params),
   );
 
@@ -721,12 +718,6 @@ export function startGatewayEventSubscriptions(params: GatewayEventSubscriptionP
   const unsubscribeSuspension = onGatewaySuspendAdmissionChange((phase) => {
     params.broadcast("gateway.suspension", { phase });
   });
-  const lifecycleUnsub = () => {
-    unsubscribeSessionIdentity();
-    unsubscribeSuspension();
-    unsubscribeProfileChanges();
-    unsubscribeLifecycle();
-  };
 
   return {
     channelAdmissionAudit,
@@ -737,6 +728,11 @@ export function startGatewayEventSubscriptions(params: GatewayEventSubscriptionP
     agentUnsub,
     heartbeatUnsub,
     transcriptUnsub,
-    lifecycleUnsub,
+    lifecycleUnsub() {
+      unsubscribeSessionIdentity();
+      unsubscribeSuspension();
+      unsubscribeProfileChanges();
+      unsubscribeLifecycle();
+    },
   };
 }
