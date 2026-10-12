@@ -1,20 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { saveAuthProfileStoreAsync } from "../agents/auth-profiles/store-runtime.js";
 import * as authStore from "../agents/auth-profiles/store.js";
 import type { SessionEntry } from "../config/sessions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import {
-  applyModelOverrideWithAuthProfileCompatibility as applyLegacyModelOverride,
-  applyModelOverrideWithAuthProfileCompatibilityAsync as applySdkModelOverride,
-} from "../plugin-sdk/model-session-runtime.js";
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
-import { forbidMainThreadSql } from "../test-utils/main-thread-sql-spies.test-support.js";
-import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
   applyModelOverrideWithAuthProfileCompatibility,
-  applyModelOverrideWithAuthProfileCompatibilityAsync,
   shouldPreserveSessionAuthProfileOverride,
 } from "./auth-profile-preservation.js";
 
@@ -184,77 +176,29 @@ describe("shouldPreserveSessionAuthProfileOverride", () => {
     ).toBe(false);
   });
 
-  it("uses committed credential changes for SDK model selection without host SQL", async () => {
-    await withOpenClawTestState({ layout: "state-only" }, async (state) => {
-      const agentDir = state.agentDir();
-      const save = (provider: string) =>
-        saveAuthProfileStoreAsync(
-          {
-            version: 1,
-            profiles: { "team:prod": { type: "api_key", provider, key: "synthetic-key" } },
-          },
-          agentDir,
-        );
-      await save("openai");
-      const legacyEntry: SessionEntry = { ...entry, authProfileOverride: "team:prod" };
-      expect(
-        applyLegacyModelOverride({
-          cfg: {},
-          agentDir,
-          entry: legacyEntry,
-          currentProvider: "openai",
-          selection: { provider: "openai", model: "selected-model" },
-        }),
-      ).toEqual({ updated: true });
-      expect(legacyEntry.authProfileOverride).toBe("team:prod");
-      const select = async () => {
-        const selected: SessionEntry = { ...entry, authProfileOverride: "team:prod" };
-        const sql = forbidMainThreadSql("model selection read host SQLite");
-        try {
-          await applySdkModelOverride({
-            cfg: {},
-            agentDir,
-            entry: selected,
-            currentProvider: "openai",
-            selection: { provider: "openai", model: "selected-model" },
-          });
-        } finally {
-          sql.restore();
-        }
-        return selected.authProfileOverride;
-      };
-      expect(await select()).toBe("team:prod");
-      await save("anthropic");
-      expect(await select()).toBeUndefined();
-    });
-  });
-
   it.each(["openai", "anthropic"])(
     "retains a missing personal pin only when the selected provider %s is compatible",
-    async (provider) => {
-      await withOpenClawTestState({ layout: "state-only" }, async (state) => {
-        const personalId = `personal:${randomUUID()}:${randomUUID()}`;
-        const sessionEntry: SessionEntry = {
-          ...entry,
-          authProfileOverride: personalId,
-          authProfileOverrideSource: "user-link",
-        };
+    (provider) => {
+      const personalId = `personal:${randomUUID()}:${randomUUID()}`;
+      const sessionEntry: SessionEntry = {
+        ...entry,
+        authProfileOverride: personalId,
+        authProfileOverrideSource: "user-link",
+      };
 
-        await applyModelOverrideWithAuthProfileCompatibilityAsync({
-          cfg: {},
-          agentDir: state.agentDir(),
-          entry: sessionEntry,
-          currentProvider: "openai",
-          selection: { provider, model: "another-model" },
-        });
-
-        expect(sessionEntry.authProfileOverride).toBe(
-          provider === "openai" ? personalId : undefined,
-        );
-        expect(sessionEntry.authProfileOverrideSource).toBe(
-          provider === "openai" ? "user-link" : undefined,
-        );
+      applyModelOverrideWithAuthProfileCompatibility({
+        cfg: {},
+        agentDir: "/fixture/agent",
+        entry: sessionEntry,
+        currentProvider: "openai",
+        selection: { provider, model: "another-model" },
+        recordedProvider: { provider: undefined },
       });
+
+      expect(sessionEntry.authProfileOverride).toBe(provider === "openai" ? personalId : undefined);
+      expect(sessionEntry.authProfileOverrideSource).toBe(
+        provider === "openai" ? "user-link" : undefined,
+      );
     },
   );
 

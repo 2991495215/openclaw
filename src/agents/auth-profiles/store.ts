@@ -14,7 +14,6 @@ import { readUserModelAuthProfile } from "../../state/user-model-accounts.js";
 import { isRecord, resolveUserPath } from "../../utils.js";
 import { cloneAuthProfileStore } from "./clone.js";
 import { AUTH_STORE_VERSION, authProfilesLog } from "./constants.js";
-import { normalizeAuthProfileSecretRefs } from "./credential-normalize.js";
 import {
   copyCanonicalAuthProfileCredentialObservations,
   observeCanonicalAuthProfileCredentials,
@@ -110,6 +109,8 @@ import { prepareAuthProfileStoreMutation } from "./store-mutation.js";
 import { createAuthProfileStoreReadRuntime } from "./store-read.js";
 import {
   buildLocalAuthProfileStoreForSave,
+  createAuthProfileStoreSaver,
+  prepareLegacyAuthProfileSave,
   type SaveAuthProfileStoreOptions,
 } from "./store-save.js";
 import { createAuthProfileStoreUpdater } from "./store-update.js";
@@ -1553,15 +1554,8 @@ export function createAuthProfileStoreRuntime(
     options?: SaveAuthProfileStoreOptions,
     database?: AuthProfileDatabase,
   ): void {
-    warnPluginSdkDeprecation({
-      family: "auth-profiles",
-      method: "saveAuthProfileStore",
-      replacement: "saveAuthProfileStoreAsync",
-    });
     // Reject lossy SDK inputs before opening the write owner; normalize its detached copy later.
-    for (const credential of Object.values(store.profiles)) {
-      normalizeAuthProfileSecretRefs(credential);
-    }
+    prepareLegacyAuthProfileSave(store);
     const effectiveAgentDir = resolveRuntimeAuthProfileAgentDir(agentDir);
     if (database) {
       // Retain a prepared transaction owner, or use a shared connection's canonical identity.
@@ -1588,34 +1582,6 @@ export function createAuthProfileStoreRuntime(
       },
       { sharedStoreWrite: options?.sharedStoreWrite, env: getScopedAuthProfileEnv() },
     );
-  }
-
-  /** Replace the selected owner's store and publish its committed runtime state. */
-  async function saveAuthProfileStoreAsync(
-    store: AuthProfileStore,
-    agentDir?: string,
-    options?: SaveAuthProfileStoreOptions,
-  ): Promise<void> {
-    for (const credential of Object.values(store.profiles)) {
-      normalizeAuthProfileSecretRefs(credential);
-    }
-    const replacement = cloneAuthProfileStore(store);
-    const updated = await updateAuthProfileStoreWithLock({
-      agentDir,
-      sharedStoreWrite: options?.sharedStoreWrite,
-      saveOptions: options,
-      updater(current) {
-        // A whole-store save must clear omitted state and runtime metadata too.
-        for (const key of Object.keys(current)) {
-          Reflect.deleteProperty(current, key);
-        }
-        Object.assign(current, replacement);
-        return true;
-      },
-    });
-    if (!updated) {
-      throw new Error("Failed to save auth profile store; retry when its writer is available.");
-    }
   }
 
   /** Core transaction callers carry the owner already selected before opening SQLite. */
@@ -1727,7 +1693,7 @@ export function createAuthProfileStoreRuntime(
     ensureAuthProfileStoreForLocalUpdate,
     ensureAuthProfileStoreForLocalUpdateAsync,
     saveAuthProfileStore,
-    saveAuthProfileStoreAsync,
+    saveAuthProfileStoreAsync: createAuthProfileStoreSaver(updateAuthProfileStoreWithLock),
     saveAuthProfileStoreWithPreparedOwner,
     saveAuthProfileStoreIfPersistenceSnapshotMatches,
     findPersistedAuthProfileCredential,
