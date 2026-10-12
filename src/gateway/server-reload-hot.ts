@@ -160,9 +160,7 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
         env: publication?.runtimeEnv ?? process.env,
         // Without this a cron hot reload silently drops scheduler gateway
         // context, so scheduled runs regress to contextless after any reload.
-        ...(params.resolveGatewayContext
-          ? { resolveGatewayContext: params.resolveGatewayContext }
-          : {}),
+        resolveGatewayContext: params.resolveGatewayContext,
         resolvePluginRegistry: params.getPluginRegistry,
       });
       if (
@@ -493,9 +491,7 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
           {
             retainDebtAcrossConfigChanges: true,
             debtConfig: publication?.sourceConfig ?? nextConfig,
-            ...(publication?.prepareRestartRuntimeConfig
-              ? { prepareRuntimeConfig: publication.prepareRestartRuntimeConfig }
-              : {}),
+            prepareRuntimeConfig: publication?.prepareRestartRuntimeConfig,
           },
         );
         settleRecoveryRestart(restartTransaction, surface);
