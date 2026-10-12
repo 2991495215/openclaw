@@ -11,7 +11,7 @@ export const AgentDatabaseSchemaAdmissionChangedError = resolveGlobalSingleton(
   Symbol.for("openclaw.agentDatabaseSchemaAdmissionChangedError"),
   () =>
     class SchemaAdmissionChangedError extends Error {
-      constructor() {
+      constructor(readonly reason: string) {
         super("Agent schema admission changed before publication; retry the operation");
       }
     },

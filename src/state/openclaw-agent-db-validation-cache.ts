@@ -317,7 +317,7 @@ export function captureOpenClawAgentDatabaseValidationTransfer(
 function captureValidationTransfer(
   database: Pick<ValidationDatabase, "agentId" | "path">,
   schemaRequired: boolean,
-): (identity: string, received: unknown) => "accepted" | "stale" | "invalid" {
+): (identity: string, received: unknown) => "accepted" | "invalid" | { staleReason: string } {
   const pathname = resolveDatabasePathKey(database.path);
   const existing = validatedPaths.get(pathname);
   const captured: ValidationEntry =
@@ -365,25 +365,27 @@ function captureValidationTransfer(
       currentSchemaCell !== capturedSchemaCell &&
       Atomics.load(new Int32Array(currentSchemaCell), 0) !== 1
     ) {
-      return "stale";
+      return { staleReason: "newer-schema-revoked" };
     }
-    if (
-      (schemaRequired && schemaValid !== 1) ||
-      validatedPaths.get(pathname) !== captured ||
+    const staleReason =
+      (schemaRequired && schemaValid !== 1 && "received-schema-revoked") ||
+      (validatedPaths.get(pathname) !== captured && "path-capture-replaced") ||
       (capturedValidation &&
         wasValid === 1 &&
-        Atomics.load(new Int32Array(capturedValidation.valid), 0) !== 1) ||
+        Atomics.load(new Int32Array(capturedValidation.valid), 0) !== 1 &&
+        "captured-receipt-revoked") ||
       (captured.validation !== capturedValidation &&
         captured.validation &&
         (captured.validation.identity !== identity ||
-          Atomics.load(new Int32Array(captured.validation.valid), 0) !== 1)) ||
-      Atomics.load(new Int32Array(received.valid), 0) !== 1
-    ) {
+          Atomics.load(new Int32Array(captured.validation.valid), 0) !== 1) &&
+        "captured-receipt-replaced") ||
+      (Atomics.load(new Int32Array(received.valid), 0) !== 1 && "received-receipt-revoked");
+    if (staleReason) {
       if (schemaRequired && validatedPaths.get(pathname)?.revoked) {
         // A refused opener may already have shared its receipt with another worker.
         Atomics.store(new Int32Array(received.valid), 0, 0);
       }
-      return "stale";
+      return { staleReason };
     }
     if (
       captured.integrityVerified &&
@@ -454,8 +456,16 @@ export function captureOpenClawAgentDatabaseAdmissionPublication(
       throw new AgentDatabaseSchemaAdmissionInvalidError();
     }
     const schema = getOpenClawAgentDatabaseValidationForTransfer(database)?.schema;
-    if (result === "stale" || !schema || Atomics.load(new Int32Array(schema.valid), 0) !== 1) {
-      throw new AgentDatabaseSchemaAdmissionChangedError();
+    const staleReason =
+      result !== "accepted"
+        ? result.staleReason
+        : !schema
+          ? "published-schema-missing"
+          : Atomics.load(new Int32Array(schema.valid), 0) !== 1
+            ? "published-schema-revoked"
+            : undefined;
+    if (staleReason) {
+      throw new AgentDatabaseSchemaAdmissionChangedError(staleReason);
     }
   };
 }

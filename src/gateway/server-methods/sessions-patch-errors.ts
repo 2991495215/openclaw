@@ -5,8 +5,9 @@ import {
 } from "../../../packages/gateway-protocol/src/index.js";
 import { SessionWorktreeLifecycleError } from "../../agents/worktrees/errors.js";
 import { SESSION_LIFECYCLE_CHANGED_ERROR_REASON } from "../../config/sessions/lifecycle.js";
-import { formatErrorMessage } from "../../infra/errors.js";
+import { formatErrorMessage, formatUncaughtError } from "../../infra/errors.js";
 import { AgentDeletionPendingError } from "../../sessions/session-agent-work-admission.js";
+import { AgentDatabaseSchemaAdmissionChangedError } from "../../state/agent-database-admission-error.js";
 import { ModelAccountConnectAuthorityError } from "../model-account-connect-errors.js";
 import { SessionMutationAuthorizationChangedError } from "../session-sharing.js";
 import { SessionModelCatalogUnavailableError } from "./session-model-catalog-wait.js";
@@ -30,7 +31,11 @@ export function unexpectedPatchError(key: string, error: unknown): ErrorShape {
       ? sessionChangedError(key)
       : errorShape(ErrorCodes.UNAVAILABLE, error.message, { retryable: true });
   }
-  sessionLog.warn(`sessions.patch: target failed for ${key}: ${formatErrorMessage(error)}`);
+  const detail =
+    error instanceof AgentDatabaseSchemaAdmissionChangedError
+      ? `admissionReason=${error.reason}; ${formatUncaughtError(error)}`
+      : formatErrorMessage(error);
+  sessionLog.warn(`sessions.patch: target failed for ${key}: ${detail}`);
   const message = "Session patch failed unexpectedly. Retry the request.";
   return errorShape(ErrorCodes.UNAVAILABLE, message, { retryable: true });
 }
