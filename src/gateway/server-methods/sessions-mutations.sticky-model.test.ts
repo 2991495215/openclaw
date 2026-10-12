@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { awaitGateBeforeSettlement, withinTest } from "../../../test/helpers/promise.js";
 import type { ModelCatalogEntry } from "../../agents/model-catalog.js";
 import { clearFollowupQueue, getFollowupQueue } from "../../auto-reply/reply/queue/state.js";
 import {
@@ -461,7 +462,7 @@ describe("sessions.patch personal model-account ownership", () => {
 
   it.each(["invalidated", "disconnected", "role revoked"] as const)(
     "rejects a personal selection %s while the model catalog is loading",
-    async (loss) => {
+    async (loss, { signal }) => {
       const sessionKey = `agent:main:dm:personal-selection-lost-${loss.replaceAll(" ", "-")}`;
       await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
@@ -478,7 +479,11 @@ describe("sessions.patch personal model-account ownership", () => {
       const connections = new Set([caller]);
       const requestContext = context(connections);
       const catalog = createDeferredCore<ReturnType<typeof catalogSnapshot>>();
-      requestContext.loadGatewayModelCatalogSnapshot.mockReturnValueOnce(catalog.promise);
+      const catalogEntered = createDeferredCore();
+      requestContext.loadGatewayModelCatalogSnapshot.mockImplementationOnce(() => {
+        catalogEntered.resolve();
+        return catalog.promise;
+      });
       const readCredential = vi.spyOn(userModelAccounts, "readUserModelAuthProfile");
       const pending = patchSession(
         {
@@ -491,9 +496,15 @@ describe("sessions.patch personal model-account ownership", () => {
         caller,
       );
       try {
-        await vi.waitFor(() =>
-          expect(requestContext.loadGatewayModelCatalogSnapshot).toHaveBeenCalledOnce(),
+        await withinTest(
+          awaitGateBeforeSettlement(
+            catalogEntered.promise,
+            pending,
+            "sessions.patch settled before loading the model catalog",
+          ),
+          signal,
         );
+        expect(requestContext.loadGatewayModelCatalogSnapshot).toHaveBeenCalledOnce();
         if (loss === "invalidated") {
           caller.invalidated = true;
         } else if (loss === "disconnected") {
