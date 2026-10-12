@@ -18,7 +18,6 @@ import {
   readPackageActivationStatus,
   runPackageActivationRecovery,
   settlePendingPackageActivation,
-  settleRemountedPackageActivation,
 } from "./package-update-activation.js";
 
 async function main() {
@@ -64,7 +63,12 @@ async function main() {
         "Invoked helper is not the recorded package recovery object. Preserve the journal and use the original helper for unfinished recovery.",
       );
     }
-    const settled = await settleRemountedPackageActivation(anchor, operationId);
+    const settled = await settlePendingPackageActivation(
+      record.descriptor.authority.installKey,
+      undefined,
+      undefined,
+      { operationId },
+    );
     if (fs.existsSync(resolvePackageActivationJournalPath(anchor))) {
       throw new Error(
         `${settled?.warning ?? "Settlement remains active."} Preserve the journal and retry this recovery command before updating with the older CLI.`,
