@@ -5,7 +5,10 @@ import { readResolvedSessionEntriesInWorker } from "../config/sessions/session-a
 import { readExactSessionEntryRow } from "../config/sessions/session-accessor.sqlite-entry-read.js";
 import { loadExactSessionEntryCandidates } from "../config/sessions/session-accessor.sqlite-exact-read.js";
 import { listSessionChildEntriesReadOnly } from "../config/sessions/session-entry-children-read.js";
-import { withSessionEntriesFromStoresInWorker } from "../config/sessions/session-entry-read-runtime.js";
+import {
+  withSessionEntriesFromStoresInWorker,
+  withSessionStoreReaderInWorker,
+} from "../config/sessions/session-entry-read-runtime.js";
 import type {
   PreparedSessionEntryWorkerRead,
   SessionEntryWorkerRead,
@@ -216,18 +219,57 @@ async function prepareGatewaySessionStoreReadInWorker(
       });
     }
     const lookup = {
+      ...params,
       cfg: inventory.config,
       key: params.key,
       agentId,
       env: inventory.env,
       targetDiscoveryCache,
+      exactRead: retainPlan ? true : params.exactRead,
       projection: params.projection,
       preserveQualifiedAddress: params.preserveQualifiedAddress,
     };
     const prepareReads = async <T>(reads: readonly GatewaySessionStoreRead[], select: () => T) => {
       assertCurrent();
+      const pending = reads.filter((read) => read.result === undefined);
+      // The public store-returning API retains its full-store default. Authority plans
+      // and explicit exact reads keep the bounded row operation below.
+      if (pending.some((read) => read.options.exactKeys === undefined)) {
+        const readNext = async (index: number): Promise<T> => {
+          const read = pending[index];
+          if (!read) {
+            return select();
+          }
+          return withSessionStoreReaderInWorker(
+            { agentId: read.agentId ?? agentId, storePath: read.storePath, env: inventory.env },
+            async ({ reader, database, continuation, assertCurrent: assertSourceCurrent }) => {
+              const result = await reader.readEntries(
+                {
+                  agentId: database.agentId,
+                  storePath: database.path,
+                  env: database.env,
+                  projection: read.options.projection === "list" ? "list" : "full",
+                  sessionKeys: read.options.exactKeys,
+                },
+                continuation,
+              );
+              assertSourceCurrent();
+              read.result = ok(
+                Object.fromEntries(
+                  result.entries.map(({ sessionKey, entry }) => [sessionKey, entry]),
+                ),
+              );
+              read.readSource = { agentId: database.agentId, path: database.path };
+              read.capturedReadSource = result.source;
+              return readNext(index + 1);
+            },
+            { dataOnly: true },
+          );
+        };
+        return readNext(0);
+      }
       return await withSessionEntriesFromStoresInWorker(
-        reads.map((read) => ({
+        pending.map((read) => ({
           agentId: read.agentId ?? agentId,
           storePath: read.storePath,
           sessionKeys: read.options.exactKeys!,
@@ -238,7 +280,7 @@ async function prepareGatewaySessionStoreReadInWorker(
         })),
         (loaded) => {
           assertCurrent();
-          for (const [index, read] of reads.entries()) {
+          for (const [index, read] of pending.entries()) {
             const preparedRead = loaded[index]!;
             read.result = ok(
               Object.fromEntries(

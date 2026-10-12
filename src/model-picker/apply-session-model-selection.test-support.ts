@@ -48,6 +48,18 @@ export function createModelSelectionMocks() {
         workerSessionPlacementService: {
           getMany: placementMocks.getMany,
           getManyAsync: async (sessionIds: readonly string[]) => placementMocks.getMany(sessionIds),
+          prepareRuntimeRefresh: async (sessionId: string) => {
+            const placement = placementMocks.getMany([sessionId]).get(sessionId);
+            return {
+              placement,
+              assertCurrent: () => {
+                if (placementMocks.getMany([sessionId]).get(sessionId) !== placement) {
+                  throw new Error("Session placement changed");
+                }
+              },
+              release: () => {},
+            };
+          },
         },
       }),
     }),

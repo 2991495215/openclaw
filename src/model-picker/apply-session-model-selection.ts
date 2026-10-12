@@ -40,7 +40,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { triggerSessionPatchHook } from "../gateway/session-patch-hooks.js";
 import { resolveSessionWorkerPlacementContext } from "../gateway/session-worker-placement-context.js";
 import { resolveWorkerPlacementSessionRuntimeCapabilitiesAsync } from "../gateway/worker-environments/placement-session-runtime.js";
-import { readSessionWorkerPlacementAsync } from "../gateway/worker-environments/session-placement-lifecycle.js";
+import type { readSessionWorkerPlacementAsync } from "../gateway/worker-environments/session-placement-lifecycle.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
@@ -312,10 +312,19 @@ export async function applySessionModelSelectionInternal(
       };
     }
   }
-  const placement = await readSessionWorkerPlacementAsync({
-    context: resolveSessionWorkerPlacementContext(),
-    sessionId: nextEntry.sessionId,
-  });
+  const placementService = resolveSessionWorkerPlacementContext().workerSessionPlacementService;
+  if (nextEntry.sessionId && placementService && !placementService.prepareRuntimeRefresh) {
+    return {
+      status: "rejected",
+      reason: "invalid-runtime",
+      message: "Session runtime is unavailable; retry model selection.",
+    };
+  }
+  const placementAuthority = nextEntry.sessionId
+    ? await placementService?.prepareRuntimeRefresh?.(nextEntry.sessionId)
+    : undefined;
+  using _placementRelease = { [Symbol.dispose]: () => placementAuthority?.release() };
+  const placement = placementAuthority?.placement;
   const placementRuntime =
     placement && placement.state !== "local"
       ? await resolveWorkerPlacementSessionRuntimeCapabilitiesAsync({
@@ -325,26 +334,32 @@ export async function applySessionModelSelectionInternal(
           entry: nextEntry,
         })
       : undefined;
-  const placementError = resolveActivePlacementModelSelectionError(
-    {
-      cfg: params.cfg,
-      agentId: params.agentId,
-      sessionKey: params.sessionKey,
-      entry: nextEntry,
-    },
-    {
-      placement,
-      runtime: placementRuntime,
-    },
-  );
-  if (placementError) {
-    return { status: "rejected", reason: "invalid-runtime", message: placementError };
-  }
   // An explicit selection retains the existing persistence and conflict semantics even when idempotent.
   nextEntry.updatedAt = Date.now();
   let persistedEntry: SessionEntry;
-  const validateCommit = () =>
-    params.validateAuthProfileSelection?.() ?? prepared.validateRuntimeSelection?.();
+  let placementError: string | undefined;
+  const validateCommit = () => {
+    try {
+      placementAuthority?.assertCurrent();
+    } catch {
+      placementError = "Session placement changed; retry model selection.";
+      return placementError;
+    }
+    placementError = resolveActivePlacementModelSelectionError(
+      {
+        cfg: params.cfg,
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+        entry: nextEntry,
+      },
+      { placement, runtime: placementRuntime },
+    );
+    return (
+      params.validateAuthProfileSelection?.() ??
+      prepared.validateRuntimeSelection?.() ??
+      placementError
+    );
+  };
   if (params.storePath) {
     const persistence = await persistReplySessionEntry({
       storePath: params.storePath,
@@ -370,7 +385,11 @@ export async function applySessionModelSelectionInternal(
       return { status: "rejected", reason: "locked", message: MODEL_SELECTION_LOCKED_MESSAGE };
     }
     if (persistence.status === "commit-rejected") {
-      return { status: "rejected", reason: "not-allowed", message: persistence.error };
+      return {
+        status: "rejected",
+        reason: placementError ? "invalid-runtime" : "not-allowed",
+        message: persistence.error,
+      };
     }
     if (
       persistence.status !== "current" ||
@@ -391,7 +410,11 @@ export async function applySessionModelSelectionInternal(
   } else {
     const commitError = validateOperatorSelection() ?? validateCommit();
     if (commitError) {
-      return { status: "rejected", reason: "not-allowed", message: commitError };
+      return {
+        status: "rejected",
+        reason: placementError ? "invalid-runtime" : "not-allowed",
+        message: commitError,
+      };
     }
     // Both metadata and placement preparation can yield. Fence the in-memory
     // write here, where persisted sessions enforce their lock and identity.

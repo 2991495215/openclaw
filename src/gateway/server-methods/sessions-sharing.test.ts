@@ -36,9 +36,9 @@ import {
   resolveSessionMutationAuthorization,
   resolveSessionSharingTargetAsync,
   SessionMutationAuthorizationChangedError,
-  canReceiveSessionEvent,
   createSessionListEntryFilter,
 } from "../session-sharing.js";
+import { canReceivePreparedSessionEvent } from "../session-sharing.test-utils.js";
 import { createControlUiHandlers } from "./control-ui.js";
 import { flushPendingSessionsChangedEvents } from "./session-change-event.js";
 import { initializeSessionReadContext } from "./sessions-read-cache.test-support.js";
@@ -689,7 +689,7 @@ describe("session sharing handlers", () => {
         ["sessions.reclaim", { key: sessionKey }],
         ["exec.approval.resolve", { id: "approval-1" }],
       ];
-      const expectAccess = (allowed: boolean) => {
+      const expectAccess = async (allowed: boolean) => {
         for (const [method, requestParams] of mutations) {
           const error = resolveSessionMutationAuthorization({
             client: memberClient,
@@ -712,7 +712,7 @@ describe("session sharing handlers", () => {
         const listed = createSessionListEntryFilter({ client: memberClient })?.(sessionKey, entry);
         expect(listed ?? true).toBe(allowed);
         expect(
-          canReceiveSessionEvent({
+          await canReceivePreparedSessionEvent({
             cfg: {},
             client: memberClient as never,
             sessionKeys: [sessionKey],
@@ -721,7 +721,7 @@ describe("session sharing handlers", () => {
         ).toBe(allowed);
       };
 
-      expectAccess(true);
+      await expectAccess(true);
       const captured = resolveSessionMutationAuthorization({
         client: memberClient,
         method: "sessions.dispatch",
@@ -730,14 +730,14 @@ describe("session sharing handlers", () => {
       });
       expect(captured.error).toBeNull();
       await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({ visibility: "draft" }));
-      expectAccess(false);
+      await expectAccess(false);
       expect(() => captured.authorization?.assertCurrent()).toThrow(
         SessionMutationAuthorizationChangedError,
       );
       await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({
         visibility: "shared",
       }));
-      expectAccess(true);
+      await expectAccess(true);
     });
   });
 
@@ -856,7 +856,7 @@ describe("session sharing handlers", () => {
       }));
       const viewerClient = identifiedClient("viewer") as never;
       expect(
-        canReceiveSessionEvent({
+        await canReceivePreparedSessionEvent({
           cfg: {},
           client: viewerClient,
           sessionKeys: ["main"],
@@ -865,7 +865,7 @@ describe("session sharing handlers", () => {
       ).toBe(true);
       await patchSessionEntryCore({ agentId: "main", sessionKey }, () => ({ visibility: "draft" }));
       expect(
-        canReceiveSessionEvent({
+        await canReceivePreparedSessionEvent({
           cfg: {},
           client: viewerClient,
           sessionKeys: ["main"],

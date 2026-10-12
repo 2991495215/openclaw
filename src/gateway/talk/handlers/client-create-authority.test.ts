@@ -55,7 +55,7 @@ import {
 import type { GatewayRequestHandlerOptions } from "../../server-methods/types.js";
 import { SharedGatewaySessionGenerationState } from "../../server-shared-auth-generation.js";
 import { SessionMutationAuthorizationChangedError } from "../../session-mutation-authorization-error.js";
-import { resolveSessionMutationAuthorization } from "../../session-sharing.js";
+import { resolveSessionMutationAuthorizationAsync } from "../../session-sharing-authorization-async.js";
 import { roleClient, rolePolicyConfig } from "../../session-sharing.test-utils.js";
 import { closeTalkClientGatewayControlSession } from "../client-gateway-control.js";
 import { cleanupTalkConnection, prepareTalkConnectionClose } from "../session-registry.js";
@@ -104,7 +104,7 @@ function configureDelegatedBrowserProvider(
   return fixture;
 }
 async function invokeCreate(options: GatewayRequestHandlerOptions) {
-  const admission = resolveSessionMutationAuthorization({
+  const admission = await resolveSessionMutationAuthorizationAsync({
     method: "talk.client.create",
     requestParams: options.params,
     context: options.context,
@@ -114,7 +114,11 @@ async function invokeCreate(options: GatewayRequestHandlerOptions) {
     options.respond(false, undefined, admission.error);
     return;
   }
-  await createTalkClient({ ...options, sessionMutationAuthorization: admission.authorization });
+  try {
+    await createTalkClient({ ...options, sessionMutationAuthorization: admission.authorization });
+  } finally {
+    admission.authorization?.release?.();
+  }
 }
 async function invokeClose(params: Record<string, unknown>) {
   const respond = vi.fn();
@@ -258,8 +262,9 @@ describe("voice creation authority", () => {
         agents: { entries: { main: {}, source: {} } },
       };
       const client = roleClient("write", "cross-store-voice");
-      const prepare = (scope: typeof local, method = "sessions.patch") => {
-        const result = resolveSessionMutationAuthorization({
+      const authorities: Array<{ release?: () => void }> = [];
+      const prepare = async (scope: typeof local, method = "sessions.patch") => {
+        const result = await resolveSessionMutationAuthorizationAsync({
           method,
           requestParams:
             method === "talk.client.create"
@@ -269,6 +274,7 @@ describe("voice creation authority", () => {
           client,
         });
         expect(result.error).toBeNull();
+        authorities.push(result.authorization!);
         return result.authorization!;
       };
       openOpenClawAgentDatabase(local);
@@ -279,12 +285,9 @@ describe("voice creation authority", () => {
       const localReads = trackSqliteStatementExecutions(localReader.database.db, ["data"], (sql) =>
         isSessionEntryDataSql(sql) || /\bcache_entries\b/i.test(sql) ? "data" : null,
       );
-      const foreignAuthority = prepare(foreign).assertCurrent;
-      const localAuthority = mixed ? prepare(local).assertCurrent : undefined;
-      const transactionAuthority = grant ? prepare(local, "talk.client.create") : undefined;
-      if (mixed) {
-        expect(localReads.counts.data).toBeGreaterThan(0);
-      }
+      const foreignAuthority = (await prepare(foreign)).assertCurrent;
+      const localAuthority = mixed ? (await prepare(local)).assertCurrent : undefined;
+      const transactionAuthority = grant ? await prepare(local, "talk.client.create") : undefined;
       let grantLocalReads = 0;
       let revokedSource = false;
       let inGrant = false;
@@ -410,6 +413,9 @@ describe("voice creation authority", () => {
         openSpy.mockRestore();
         localReads.restore();
         localReader.claim.release();
+        for (const authority of authorities) {
+          authority.release?.();
+        }
       }
     },
   );
@@ -713,20 +719,24 @@ describe("voice creation authority", () => {
             required: undefined,
           });
           bindWebSocketRequestMutationAuthority(options, client, generation.reader);
-          const admitted = resolveSessionMutationAuthorization({
+          const admitted = await resolveSessionMutationAuthorizationAsync({
             method: options.req.method,
             requestParams: options.params,
             context: options.context,
             client,
           });
           expect(admitted.error).toBeNull();
-          await createTalkClient(
-            bindGatewayRequestHandlerMutationAuthority(
-              options,
-              { ...options, sessionMutationAuthorization: admitted.authorization },
-              undefined,
-            ),
-          );
+          try {
+            await createTalkClient(
+              bindGatewayRequestHandlerMutationAuthority(
+                options,
+                { ...options, sessionMutationAuthorization: admitted.authorization },
+                undefined,
+              ),
+            );
+          } finally {
+            admitted.authorization?.release?.();
+          }
         } else {
           await invokeCreate(options);
         }

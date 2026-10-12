@@ -13,7 +13,6 @@ import {
 import type { ExecElevatedDefaults } from "../../agents/bash-tools.exec-types.js";
 import { runAgentHarnessBeforeMessageWriteHook } from "../../agents/harness/hook-helpers.js";
 import type { SessionEntry } from "../../config/sessions.js";
-import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { deleteMediaBuffer } from "../../media/store.js";
 import {
@@ -277,23 +276,18 @@ export async function prepareAgentRunUserTurn(params: {
         ...(media.length > 0 ? { media } : {}),
         ...(slots.length > 0 ? { mediaImageLayout: { slots } } : {}),
       };
-      const loaded = await loadSessionEntryAsync(params.resolvedSessionKey!, {
-        agentId: params.activeSessionAgentId,
-        clone: false,
-      });
       recorder = createUserTurnTranscriptRecorder({
         trackInputCompletion: params.privateCompletion,
         pendingInputReplaySourceSessionKeys: settleWakeReplay?.sourceSessionKeys,
         input,
-        target: () => {
+        target: async () => {
           params.assertCurrent();
-          const latestEntry = readRetainedSessionEntryFacts(
-            {
-              agentId: loaded.readSource?.agentId ?? loaded.agentId,
-              path: loaded.readSource?.path ?? loaded.storePath,
-            },
-            { sessionKeys: [loaded.canonicalKey] },
-          )?.entries.find((row) => row.sessionKey === loaded.canonicalKey)?.entry;
+          const loaded = await loadSessionEntryAsync(params.resolvedSessionKey!, {
+            agentId: params.activeSessionAgentId,
+            clone: false,
+          });
+          params.assertCurrent();
+          const latestEntry = loaded.entry;
           const loadedSessionId = latestEntry?.sessionId?.trim();
           // Session creation is persisted before this phase. No matching entry
           // means the admitted lifecycle instance changed and must fail closed.

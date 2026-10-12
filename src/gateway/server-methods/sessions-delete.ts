@@ -19,7 +19,6 @@ import {
   getSessionActorStorageBinding,
   type SessionActorStorageBinding,
 } from "../../config/sessions/session-actor-storage-binding.js";
-import { readRetainedSessionEntryFacts } from "../../config/sessions/session-entry-read-facts.js";
 import {
   captureIncognitoSessionOperation,
   captureIncognitoSessionSource,
@@ -267,7 +266,7 @@ async function deleteGatewaySessionInScope(
       actorEntry.snapshot.assertCurrent();
     }
   };
-  const assertCurrent = () => {
+  const readCurrent = async () => {
     assertGenerationCurrent();
     if (memory) {
       const entry = readMemoryEntry();
@@ -275,19 +274,21 @@ async function deleteGatewaySessionInScope(
       if (error) {
         throw new SessionDeletionError(error);
       }
-      return { ...target, entry, legacyKey: undefined };
+      return { ...target, target, entry, legacyKey: undefined };
     }
-    actorEntry?.snapshot.assertCurrent();
+    await refreshActorEntry();
     const current = actorEntry
-      ? { ...target, entry: actorEntry.entry, legacyKey: undefined }
+      ? { ...target, target, entry: actorEntry.entry, legacyKey: undefined }
       : {
-          ...target,
-          entry: readRetainedSessionEntryFacts(
-            { agentId: target.agentId, path: target.storePath },
-            { sessionKeys: [target.canonicalKey] },
-          )?.entries.find((row) => row.sessionKey === target.canonicalKey)?.entry,
+          ...(await loadAccessorSessionEntryForGatewayTarget({
+            key,
+            cfg,
+            agentId: requestedAgentId,
+          })),
           legacyKey: undefined,
         };
+    assertGenerationCurrent();
+    actorEntry?.snapshot.assertCurrent();
     if (
       current.storePath !== storePath ||
       current.canonicalKey !== target.canonicalKey ||
@@ -313,16 +314,16 @@ async function deleteGatewaySessionInScope(
   let worktreePreserved: PreservedSessionWorktree | undefined;
   const deleteCurrent = async () => {
     try {
-      const current = assertCurrent();
       try {
         drain = await prepareSessionLifecycleDrain({
           action: "delete",
-          authorize: binding || memory ? assertGenerationCurrent : assertCurrent,
-          beforeCancel: () => {
+          authorize: assertGenerationCurrent,
+          beforeCancel: async () => {
+            const current = await readCurrent();
             // Compare before cancellation writes its own terminal metadata.
             if (
               p.expectedSessionUpdatedAt !== undefined &&
-              assertCurrent().entry?.updatedAt !== p.expectedSessionUpdatedAt
+              current.entry?.updatedAt !== p.expectedSessionUpdatedAt
             ) {
               throw new SessionDeletionError(sessionChangedError());
             }
@@ -330,7 +331,7 @@ async function deleteGatewaySessionInScope(
           context,
           storePath,
           sessionKeys: Array.from(new Set([key, target.canonicalKey, ...target.storeKeys])),
-          sessionId: current.entry?.sessionId,
+          sessionId: initialDeleteEntry?.sessionId,
           sessionKey: target.canonicalKey,
           agentId: target.agentId,
           defaultAgentId: compatibilityDefaultAgentId,
@@ -339,7 +340,7 @@ async function deleteGatewaySessionInScope(
           ),
         });
       } catch (error) {
-        assertCurrent();
+        assertGenerationCurrent();
         if (error instanceof SessionDeletionError) {
           throw error;
         }
@@ -354,7 +355,6 @@ async function deleteGatewaySessionInScope(
           ),
         );
       }
-      await refreshActorEntry();
       // Reclaim may wait for an earlier placement operation that needs this mutex.
       return await runExclusiveSessionLifecycleMutation("delete", {
         scope: storePath,
@@ -362,16 +362,20 @@ async function deleteGatewaySessionInScope(
         prepare: async () => drain?.handoffToMutation(),
         finalize: async () => drain?.release(),
         run: async () => {
-          const { entry, legacyKey, canonicalKey } = assertCurrent();
           const retirement = await prepareSessionWorkerPlacementRetirement({
             context,
-            sessionId: entry?.sessionId,
+            sessionId: initialDeleteEntry?.sessionId,
           });
+          const { entry, legacyKey, canonicalKey } = await readCurrent();
+          // Durable rows are read at phase boundaries; the deletion worker compares the
+          // exact post-cleanup row before commit. Cache residency is not row authority.
           const commitGuard = () => {
-            if (binding) {
-              assertExternalCurrent();
-            } else {
-              assertCurrent();
+            assertGenerationCurrent();
+            if (memory) {
+              const error = resolveEntryError(readMemoryEntry());
+              if (error) {
+                throw new SessionDeletionError(error);
+              }
             }
             retirement.assertCurrent();
             if (drain?.hasAuthoritativeWork()) {
@@ -391,28 +395,12 @@ async function deleteGatewaySessionInScope(
             legacyKey,
             canonicalKey,
             reason: "session-delete",
-            assertCurrent:
-              binding || memory
-                ? () => {
-                    assertGenerationCurrent();
-                    commitGuard();
-                  }
-                : commitGuard,
+            assertCurrent: commitGuard,
           });
           if (mutationCleanupError) {
             throw new SessionDeletionError(mutationCleanupError);
           }
-          await refreshActorEntry();
-          assertCurrent();
-          const postCleanupTarget = memory
-            ? { entry: readMemoryEntry(), target }
-            : actorEntry
-              ? { entry: actorEntry.entry, target }
-              : await loadAccessorSessionEntryForGatewayTarget({
-                  key,
-                  cfg,
-                  agentId: requestedAgentId,
-                });
+          const postCleanupTarget = await readCurrent();
           const postCleanupEntry = postCleanupTarget.entry;
           const deletedWorktreeId = normalizeOptionalString(postCleanupEntry?.worktree?.id);
           commitGuard();

@@ -414,9 +414,7 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
         prepared?: { target: SessionSharingTarget | null; members: readonly string[] },
         currentTalkTarget?: PreparedTalkSessionTarget,
       ) => {
-        const currentPrepared =
-          prepared ??
-          (!expected?.created ? params.preparedTargetRead?.(targetRef, currentCfg) : undefined);
+        const currentPrepared = prepared ?? params.preparedTargetRead?.(targetRef, currentCfg);
         if (!currentPrepared && expected?.absentTarget && !expected.created) {
           const currentRoute = consuming.sharing
             ? consuming.sharing.storageTarget

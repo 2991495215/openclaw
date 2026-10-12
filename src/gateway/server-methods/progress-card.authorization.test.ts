@@ -15,7 +15,7 @@ import { createDirectChatContext } from "../server-chat.agent-events.test-helper
 import { handleGatewayRequest } from "../server-methods.js";
 import {
   resolveSessionMutationAuthorization,
-  resolveSessionSharingTarget,
+  resolveSessionSharingTargetAsync,
   SessionMutationAuthorizationChangedError,
 } from "../session-sharing.js";
 import { roleClient, rolePolicyConfig } from "../session-sharing.test-utils.js";
@@ -399,7 +399,7 @@ describe("progress card request authorization", () => {
           ]);
           expect(respond).not.toHaveBeenCalled();
           if (testCase.replace) {
-            const resolved = resolveSessionSharingTarget({ cfg, ...target });
+            const resolved = await resolveSessionSharingTargetAsync({ cfg, ...target });
             if (!resolved) {
               throw new Error("expected the admitted persisted session");
             }
@@ -583,7 +583,7 @@ it.each(
           );
         }),
       ]);
-      const resolved = resolveSessionSharingTarget({ cfg, ...target })!;
+      const resolved = (await resolveSessionSharingTargetAsync({ cfg, ...target }))!;
       await resetSessionEntryLifecycle({
         agentId: resolved.agentId,
         storePath: resolved.storePath,

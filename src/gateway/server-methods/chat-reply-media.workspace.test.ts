@@ -12,7 +12,7 @@ import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../../test-utils/openclaw-test-state.js";
-import { loadSessionEntry } from "../session-utils.js";
+import { loadSessionEntryAsync } from "../session-utils.js";
 import { createWorkerSessionPlacementStore } from "../worker-environments/placement-store.js";
 import { buildAssistantReplyContent } from "./chat-assistant-content.js";
 import {
@@ -87,7 +87,7 @@ describe("WebChat reply media workspace ownership", () => {
       sessionKey: TEST_SESSION_KEY,
       sessionId: "changing-media-policy",
       agentId: "main",
-      storePath: loadSessionEntry(TEST_SESSION_KEY, { agentId: "main" }).storePath,
+      storePath: (await loadSessionEntryAsync(TEST_SESSION_KEY, { agentId: "main" })).storePath,
     };
     const entry: SessionEntry = {
       sessionId: target.sessionId,

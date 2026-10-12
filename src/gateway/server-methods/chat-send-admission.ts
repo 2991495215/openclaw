@@ -698,6 +698,7 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
       withInputCommitPublication: retainedWork.withInputCommitPublication,
       acquireInputActor: () => retainedWork.acquireInputActor(),
       setPendingInputCleanup: retainedWork.setPendingInputCleanup,
+      addCleanup: retainedWork.addCleanup,
       assertClientUploadAllowed: uploadAdmission.assertClientUploadAllowed,
       assertWorkAdmissionCurrent: () => {
         const queued = context.chatQueuedTurns.get(clientRunId);

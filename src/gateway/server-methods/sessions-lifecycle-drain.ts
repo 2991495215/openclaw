@@ -64,7 +64,7 @@ type SessionLifecycleParams = {
   action: "archive" | "delete";
   timeoutMs?: number | null;
   authorize?: () => void;
-  beforeCancel?: () => void;
+  beforeCancel?: () => void | Promise<void>;
   context: GatewayRequestContext;
   storePath: string;
   sessionKeys: string[];
@@ -168,7 +168,10 @@ export async function prepareSessionLifecycleDrain(
         // Settle preceding mutations before selecting owners, but never await their
         // cancellation completion here: it may need placement and lifecycle recovery.
         params.authorize?.();
-        params.beforeCancel?.();
+        if (params.beforeCancel) {
+          await params.beforeCancel();
+          params.authorize?.();
+        }
         const workerStop = prepareSessionWorkerPlacementStop(params);
         params.authorize?.();
         releaseAdmissions = closeSessionWorkAdmissions({

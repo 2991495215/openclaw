@@ -596,6 +596,7 @@ async function handleChatSendWithOptions(
       },
       cronCreatorAuthority,
       assertDashboardReadCurrent,
+      prepareDashboardRead: dashboardAuthority.prepareRead,
       externalAuthorityAdmission,
       injection: {
         beginCapturedMessageInjection,

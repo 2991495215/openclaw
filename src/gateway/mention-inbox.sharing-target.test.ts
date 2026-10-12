@@ -158,6 +158,7 @@ it("refreshes 50 connected mention views without rereading unchanged session tar
         "Design review",
       );
       f.broadcast.mockClear();
+      // This spy counts host SQL; invalidated targets are now prepared in the worker.
       let exactRowReads = 0;
       // oxlint-disable-next-line typescript/unbound-method -- apply preserves the intercepted statement receiver.
       const originalGet = StatementSync.prototype.get;
@@ -196,7 +197,7 @@ it("refreshes 50 connected mention views without rereading unchanged session tar
       await f.setSession({ visibility: "draft" });
       exactRowReads = 0;
       await emit();
-      expect(exactRowReads).toBe(1);
+      expect(exactRowReads).toBe(0);
       expect(f.broadcast).toHaveBeenCalledTimes(50);
       expect((await readMentionInbox(f.inbox, f.bobClient)).items).toEqual([]);
 
@@ -204,7 +205,7 @@ it("refreshes 50 connected mention views without rereading unchanged session tar
       exactRowReads = 0;
       f.broadcast.mockClear();
       await emit(SESSION_KEY);
-      expect(exactRowReads).toBe(1);
+      expect(exactRowReads).toBe(0);
       expect(f.broadcast).toHaveBeenCalledTimes(50);
       expect((await readMentionInbox(f.inbox, f.bobClient)).items[0]?.sessionTitle).toBe(
         "Renamed conversation",
@@ -224,7 +225,7 @@ it("refreshes 50 connected mention views without rereading unchanged session tar
       exactRowReads = 0;
       f.broadcast.mockClear();
       await f.inbox.invalidateAsync();
-      expect(exactRowReads).toBe(1);
+      expect(exactRowReads).toBe(0);
       expect(f.broadcast).toHaveBeenCalledTimes(49);
       expect((await readMentionInbox(f.inbox, f.bobClient)).items[0]?.sessionTitle).toBe(
         "Alternate conversation",

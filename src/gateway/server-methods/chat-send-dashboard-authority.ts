@@ -2,6 +2,8 @@ import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { bindUserTurnPromptReactionSource } from "../../sessions/user-turn-transcript-admission.js";
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.types.js";
 import { createCurrentPromptReaction } from "../current-prompt-reaction.js";
+import { getSessionRowProjection } from "../session-row-projection-access.js";
+import { prepareSessionSharingRead } from "../session-sharing-target-read.js";
 import {
   resolveSessionMutationAuthorization,
   SessionMutationAuthorizationChangedError,
@@ -15,7 +17,11 @@ import type { GatewayRequestHandlerOptions, SessionMutationAuthorization } from 
 export function createChatSendDashboardAuthority(params: {
   admission: Pick<
     AdmittedChatSend,
-    "activeRunAbort" | "sessionBinding" | "lifecycleGeneration" | "assertWorkAdmissionCurrent"
+    | "activeRunAbort"
+    | "sessionBinding"
+    | "lifecycleGeneration"
+    | "assertWorkAdmissionCurrent"
+    | "addCleanup"
   >;
   session: Pick<PreparedChatSendSession, "agentId" | "storePath">;
   client: GatewayRequestHandlerOptions["client"];
@@ -38,6 +44,15 @@ export function createChatSendDashboardAuthority(params: {
   const { runId, sessionKey } = externalAdmissionParams;
   const eligible = externalAuthorityAdmission?.allowsDashboardReads(externalAdmissionParams);
   let sessionAuthorization: SessionMutationAuthorization | undefined;
+  let sessionRead: Awaited<ReturnType<typeof prepareSessionSharingRead>> | undefined;
+  let preparation: Promise<void> | undefined;
+  admission.addCleanup(() => {
+    try {
+      sessionAuthorization?.release?.();
+    } finally {
+      sessionRead?.release();
+    }
+  });
   const assertSourceCurrent =
     eligible && externalAuthorityAdmission
       ? () => {
@@ -64,31 +79,62 @@ export function createChatSendDashboardAuthority(params: {
             throw new Error("Dashboard message read admission is no longer active.");
           }
           if (!sessionAuthorization) {
-            // Fresh-session preparation may create its SID. Capture it once, never a successor.
-            const resolved = resolveSessionMutationAuthorization({
-              client,
-              context,
-              method: "chat.send",
-              requestParams: { agentId: session.agentId, sessionKey },
-              expectedTarget: {
-                agentId: session.agentId,
-                sessionKey,
-                storePath: session.storePath,
-                sessionId: admission.sessionBinding.sessionId,
-              },
-            });
-            if (resolved.error) {
-              throw new SessionMutationAuthorizationChangedError(resolved.error);
-            }
-            if (!resolved.authorization) {
-              throw new Error("Dashboard session authorization is unavailable.");
-            }
-            sessionAuthorization = resolved.authorization;
+            throw new Error("Dashboard session authority was not prepared.");
           }
           sessionAuthorization.assertCurrent();
         }
       : undefined;
+  const prepareRead = () => {
+    if (!assertSourceCurrent) {
+      return Promise.resolve();
+    }
+    // Reply initialization may create the SID before its read capability is minted.
+    return (preparation ??= (async () => {
+      const read = await prepareSessionSharingRead({
+        cfg: context.getRuntimeConfig(),
+        agentId: session.agentId,
+        sessionKey,
+        projection: getSessionRowProjection(context),
+      });
+      sessionRead = read;
+      try {
+        admission.assertWorkAdmissionCurrent();
+        const resolved = resolveSessionMutationAuthorization({
+          client,
+          context,
+          method: "chat.send",
+          requestParams: { agentId: session.agentId, sessionKey },
+          expectedTarget: {
+            agentId: session.agentId,
+            sessionKey,
+            storePath: session.storePath,
+            sessionId: admission.sessionBinding.sessionId,
+          },
+          preparedTargetRead: (_target, cfg) => {
+            const facts = read.readCurrent(cfg);
+            return {
+              target: facts.target,
+              storageTarget: read.storageTarget,
+              members: [...facts.membership],
+            };
+          },
+        });
+        if (resolved.error) {
+          throw new SessionMutationAuthorizationChangedError(resolved.error);
+        }
+        if (!resolved.authorization) {
+          throw new Error("Dashboard session authorization is unavailable.");
+        }
+        sessionAuthorization = resolved.authorization;
+        assertSourceCurrent();
+      } catch (error) {
+        read.release();
+        throw error;
+      }
+    })());
+  };
   return {
+    prepareRead,
     assertReadCurrent: assertSourceCurrent
       ? () => {
           admission.assertWorkAdmissionCurrent();
@@ -102,6 +148,7 @@ export function createChatSendDashboardAuthority(params: {
       bindUserTurnPromptReactionSource(recorder, {
         agentId: session.agentId,
         sessionKey,
+        prepare: prepareRead,
         assertCurrent: assertSourceCurrent,
         createReaction: (sourceRecorder) =>
           createCurrentPromptReaction({

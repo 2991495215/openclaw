@@ -12,7 +12,7 @@ import {
 } from "../../test-utils/openclaw-test-state.js";
 import { cleanupSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
 import { listManagedImageRecordEntries } from "../managed-image-record-store.js";
-import { loadSessionEntry } from "../session-utils.js";
+import { loadSessionEntryAsync } from "../session-utils.js";
 import {
   captureWebchatReplyMediaScope,
   prepareWebchatReplyMediaForDisplay,
@@ -64,7 +64,7 @@ it.each([
       sessionKey: SESSION_KEY,
       sessionId: "cross-phase-media-authority",
       agentId: "main",
-      storePath: loadSessionEntry(SESSION_KEY, { agentId: "main" }).storePath,
+      storePath: (await loadSessionEntryAsync(SESSION_KEY, { agentId: "main" })).storePath,
     };
     const entry: SessionEntry = {
       sessionId: target.sessionId,

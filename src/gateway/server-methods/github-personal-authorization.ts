@@ -7,10 +7,7 @@ import { prepareUserProfileRolePolicyAuthority } from "../../state/user-channel-
 import { captureResidentUserProfileAccess } from "../../state/user-profile-list.js";
 import type { PersonalGitHubAction, PersonalGitHubActionV2 } from "../github-personal-oauth.js";
 import type { PersonalGitHubSessionActionV2 } from "../github-personal-publication.js";
-import {
-  captureGitHubPublicationSessionRead,
-  prepareGitHubPublicationSession,
-} from "../github-publication-availability.js";
+import { prepareGitHubPublicationSession } from "../github-publication-availability.js";
 import { GitHubPublicationSessionChangedError } from "../github-publication-failure.js";
 import { prepareGitHubPublicationRequesterV2 } from "../github-publication-requester.js";
 import { hasCurrentGatewayOperatorAccess } from "../operator-access-policy.js";
@@ -20,11 +17,12 @@ import {
   resolveOperatorRolePolicyForAssignment,
 } from "../operator-role-policy.js";
 import type { SessionMutationTarget } from "../session-mutation-authorization-error.js";
+import { prepareSessionMutationFacts } from "../session-sharing-preparation.js";
 import {
   createSessionListEntryFilter,
   resolveSessionMutationAuthorization,
 } from "../session-sharing.js";
-import { loadGatewaySessionEntryReadOnlyInWorker } from "../session-utils-store-worker.js";
+import { resolveSessionStoreIdentity } from "../session-store-key.js";
 import { isGatewayClientProfilePending } from "./gateway-client-identity.js";
 import {
   isIneligiblePersonalGatewayCaller,
@@ -301,19 +299,27 @@ function preparePersonalGitHubAction(
 function bindPersonalGitHubSessionAction(
   options: Request,
   action: PersonalGitHubAction,
-  initial: Awaited<ReturnType<typeof loadGatewaySessionEntryReadOnlyInWorker>>,
+  prepared: Awaited<ReturnType<typeof prepareSessionMutationFacts>>,
 ) {
-  if (!initial.entry?.sessionId) {
+  const readFacts = () => {
+    try {
+      return prepared.readCurrent(options.context.getRuntimeConfig());
+    } catch {
+      throw new GitHubPublicationSessionChangedError();
+    }
+  };
+  const initial = readFacts().target;
+  if (!initial?.entry.sessionId) {
     throw new Error("GitHub publication session was not found.");
   }
   const sessionId = initial.entry.sessionId;
   const lifecycleRevision = initial.entry.lifecycleRevision ?? null;
-  const readCurrent = captureGitHubPublicationSessionRead(initial);
   const assertCurrent = () => {
     action.assertCurrent();
-    const current = readCurrent();
+    const facts = readFacts();
+    const current = facts.target;
     if (
-      current.entry?.sessionId !== sessionId ||
+      current?.entry.sessionId !== sessionId ||
       (current.entry.lifecycleRevision ?? null) !== lifecycleRevision ||
       current.entry.archivedAt !== undefined ||
       current.canonicalKey !== initial.canonicalKey
@@ -327,6 +333,11 @@ function bindPersonalGitHubSessionAction(
       method: "sessions.github.publish",
       requestParams: { sessionKey: initial.canonicalKey, agentId: initial.agentId },
       context: options.context,
+      preparedTargetRead: () => ({
+        target: current,
+        storageTarget: prepared.storageTarget,
+        members: [...facts.membership],
+      }),
     });
     if (error) {
       throw new Error(error.message);
@@ -349,33 +360,38 @@ export async function preparePersonalGitHubSessionActionV2(
   target: SessionMutationTarget,
 ): Promise<{ action: PersonalGitHubSessionActionV2; release: () => void }> {
   const personal = await preparePersonalGitHubActionV2(options, "operator.write");
-  const initial = await loadGatewaySessionEntryReadOnlyInWorker({
-    cfg: options.context.getRuntimeConfig(),
-    key: target.sessionKey,
-    agentId: target.agentId,
-    assertActive: personal.assertCurrent,
-  });
-  const action = bindPersonalGitHubSessionAction(options, personal, initial);
-  const admitted = await prepareGitHubPublicationRequesterV2(options, action);
+  const cfg = options.context.getRuntimeConfig();
+  const { agentId } = resolveSessionStoreIdentity({ cfg, ...target });
+  const prepared = await prepareSessionMutationFacts({ cfg, ...target, agentId });
   try {
-    action.assertCurrent();
-    return {
-      action: {
-        ...action,
-        version: 2,
-        signal: admitted.requester.signal,
-        prepareSource: (selector) => {
-          action.assertCurrent();
-          return admitted.requester.prepareSource({
-            ...selector,
-            personalOwnerProfileId: action.owner,
-          });
+    const action = bindPersonalGitHubSessionAction(options, personal, prepared);
+    const admitted = await prepareGitHubPublicationRequesterV2(options, action);
+    try {
+      action.assertCurrent();
+      return {
+        action: {
+          ...action,
+          version: 2,
+          signal: admitted.requester.signal,
+          prepareSource: (selector) => {
+            action.assertCurrent();
+            return admitted.requester.prepareSource({
+              ...selector,
+              personalOwnerProfileId: action.owner,
+            });
+          },
         },
-      },
-      release: admitted.release,
-    };
+        release: () => {
+          admitted.release();
+          prepared.release();
+        },
+      };
+    } catch (error) {
+      admitted.release();
+      throw error;
+    }
   } catch (error) {
-    admitted.release();
+    prepared.release();
     throw error;
   }
 }

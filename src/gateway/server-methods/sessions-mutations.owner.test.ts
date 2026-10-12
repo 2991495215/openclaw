@@ -31,7 +31,7 @@ import {
   createSessionListEntryFilter,
   resolveSessionMutationAuthorization,
   resolveSessionSharingRole,
-  resolveSessionSharingTarget,
+  resolveSessionSharingTargetAsync,
 } from "../session-sharing.js";
 import { flushPendingSessionsChangedEvents } from "./session-change-event.js";
 import { sessionMutationHandlers } from "./sessions-mutations.js";
@@ -650,7 +650,7 @@ describe("sessions.assignOwner", () => {
         const cfg = {
           agents: { ownership: "explicit", entries: { main: {}, research: {} } },
         } as OpenClawConfig;
-        const target = resolveSessionSharingTarget({ cfg, sessionKey, agentId: "main" });
+        const target = await resolveSessionSharingTargetAsync({ cfg, sessionKey, agentId: "main" });
         if (!target) {
           throw new Error("expected lifecycle assignment target");
         }
@@ -856,7 +856,7 @@ describe("sessions.assignOwner", () => {
           loadSessionEntry({ agentId: "main", env: state.env, sessionKey })?.owner?.actor,
         ).toEqual({ type: "human", id: durableOwner.id });
 
-        const target = resolveSessionSharingTarget({ cfg, sessionKey, agentId: "main" });
+        const target = await resolveSessionSharingTargetAsync({ cfg, sessionKey, agentId: "main" });
         if (!target) {
           throw new Error("expected assigned session target");
         }

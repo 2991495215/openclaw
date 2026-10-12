@@ -288,6 +288,7 @@ export async function resolveGatewaySessionStoreTargetWithStoreAsync(
   return resolveGatewaySessionStoreTargetInWorker({
     ...params,
     projection: params.projection ?? "full",
+    exactRead: params.exactRead ?? false,
     readOnly: params.readOnly ?? false,
   });
 }
@@ -574,7 +575,7 @@ export async function prepareGatewaySessionStoreTargetReadPlan(
   const normalized = {
     ...params,
     key: normalizeOptionalString(params.key) ?? "",
-    exactRead: true,
+    exactRead: params.exactRead ?? true,
     readOnly: true,
     projection: params.projection ?? ("list" as const),
   };

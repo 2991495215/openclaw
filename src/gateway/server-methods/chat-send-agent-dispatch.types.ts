@@ -28,6 +28,7 @@ export type StartChatDispatchParams = {
   skillLibrary: { owner: SkillLibraryRequestOwner; isHumanTurn: boolean; sessionKey: string };
   cronCreatorAuthority: ReturnType<ChatSendExternalAuthorityAdmission["resolve"]>;
   assertDashboardReadCurrent?: () => void;
+  prepareDashboardRead?: () => Promise<void>;
   externalAuthorityAdmission: ChatSendExternalAuthorityAdmission | undefined;
   injection: {
     beginCapturedMessageInjection: () => Promise<ReplyMessageInjectionAttempt | undefined>;

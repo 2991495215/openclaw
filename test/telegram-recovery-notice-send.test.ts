@@ -10,6 +10,7 @@ import {
 } from "../src/agents/main-session-recovery/main-session-restart-recovery-delivery.js";
 import type { ChannelHeartbeatAdapter } from "../src/channels/plugins/types.adapters.js";
 import { replaceSessionEntry } from "../src/config/sessions/session-accessor.js";
+import { readSessionEntryReadOnlyInWorker } from "../src/config/sessions/session-entry-read-runtime.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
 import { createGatewayInstanceRuntime } from "../src/gateway/server-instance-runtime.js";
 import type { GatewayRecoveryRuntime } from "../src/gateway/server-instance-runtime.types.js";
@@ -113,8 +114,9 @@ describe("recovery notice final transport fence", () => {
       getOrCreateAccountThrottler(botToken, createImmediateSerialThrottler);
       let currentCfg = cfg;
       const sessionKey = "agent:main:telegram:direct:123";
-      const storePath = path.join(state.stateDir, "sessions.json");
+      const storePath = path.join(state.stateDir, "openclaw-agent.sqlite");
       const scope = {
+        agentId: "main",
         storePath,
         sessionKey,
         sessionId: "notice-session",
@@ -131,6 +133,7 @@ describe("recovery notice final transport fence", () => {
           restartRecoveryDeliveryContext: scope.deliveryContext,
         },
       );
+      await readSessionEntryReadOnlyInWorker(scope);
       const snapshot = captureActivePluginRegistrySnapshot();
       stageActivePluginRegistry(
         createTestRegistry([{ pluginId: "telegram", source: "test", plugin: telegramPlugin }]),
@@ -314,7 +317,8 @@ describe("recovery typing final transport fence", () => {
       getOrCreateAccountThrottler(botToken, createImmediateSerialThrottler);
       let currentCfg = cfg;
       const scope = {
-        storePath: path.join(state.stateDir, "sessions.json"),
+        agentId: "main",
+        storePath: path.join(state.stateDir, "openclaw-agent.sqlite"),
         sessionKey: "agent:main:telegram:group:-100123:topic:99",
         sessionId: "typing-session",
         recoveryRunId: "typing-run",
@@ -330,6 +334,7 @@ describe("recovery typing final transport fence", () => {
           restartRecoveryDeliveryContext: scope.deliveryContext,
         },
       );
+      await readSessionEntryReadOnlyInWorker(scope);
       const originalTyping = telegramPlugin.heartbeat?.sendTyping;
       if (!originalTyping) {
         throw new Error("Missing original Telegram typing hook");

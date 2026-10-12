@@ -2,7 +2,10 @@ import {
   resolveRequestedSessionAgentId,
   resolveRequestedSessionAgentInput,
 } from "./session-request-agent.js";
-import { prepareSessionMutationAuthorizationRequest } from "./session-sharing-authorization.js";
+import {
+  prepareSessionMutationAuthorizationRequest,
+  sessionMutationTargetChanged,
+} from "./session-sharing-authorization.js";
 import {
   withSessionSharingTarget,
   type PreparedSessionMutationFacts,
@@ -10,6 +13,7 @@ import {
 import {
   captureSessionMutationRouting,
   prepareSessionMutationFacts,
+  SessionMutationFactsUnavailableError,
   type SessionFactsRead,
 } from "./session-sharing-preparation.js";
 import { prepareSessionSharingProfiles } from "./session-sharing-read.js";
@@ -118,18 +122,30 @@ export async function resolveSessionMutationAuthorizationAsync(
           if (!read) {
             return undefined;
           }
-          const facts = read.readCurrent(current);
-          return {
-            target: facts.target,
-            storageTarget: read.storageTarget,
-            members: [...facts.membership],
-          };
+          try {
+            const facts = read.readCurrent(current);
+            return {
+              target: facts.target,
+              storageTarget: read.storageTarget,
+              members: [...facts.membership],
+            };
+          } catch (error) {
+            if (error instanceof SessionMutationFactsUnavailableError) {
+              throw sessionMutationTargetChanged(params.method, target.sessionKey);
+            }
+            throw error;
+          }
         },
       });
       if (!result.authorization || result.error) {
         release();
         return result;
       }
+      const previousRecordCreated = result.authorization.recordCreatedSession;
+      result.authorization.recordCreatedSession = (created) => {
+        previousRecordCreated?.(created);
+        reads.get(identity(created))?.recordCreated?.(created);
+      };
       const previousRelease = result.authorization.release;
       result.authorization.release = () => {
         previousRelease?.();

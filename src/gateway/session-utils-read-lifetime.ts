@@ -7,6 +7,10 @@ import { getSessionActorStorageBinding } from "../config/sessions/session-actor-
 import { assertCapturedSessionEntryReadSource } from "../config/sessions/session-entry-read-source.js";
 import { attachSessionEntrySnapshots } from "../config/sessions/session-entry-snapshot-values.js";
 import { captureIncognitoSessionSource } from "../config/sessions/session-incognito-binding.js";
+import {
+  captureSessionStoreReadCandidate,
+  isSessionStoreReadCandidateCurrent,
+} from "../config/sessions/session-store-read-candidates.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isIncognitoSessionKey } from "../routing/session-key.js";
@@ -280,6 +284,7 @@ export async function retainGatewaySessionEntryReadOnly(
       projection: "list",
     });
     const source = selected.capturedReadSource;
+    const selectedPath = captureSessionStoreReadCandidate(selected.storePath);
     if (source && typeof source.databaseIdentity === "string") {
       predicate = retainPreparedSessionEntryPredicate({
         databaseIdentity: `file:${source.databaseIdentity}`,
@@ -310,6 +315,9 @@ export async function retainGatewaySessionEntryReadOnly(
           return false;
         }
         try {
+          if (!isSessionStoreReadCandidateCurrent(selectedPath)) {
+            return false;
+          }
           assertRoutingCurrent(getRuntimeConfig());
           if (source) {
             assertCapturedSessionEntryReadSource(source);
