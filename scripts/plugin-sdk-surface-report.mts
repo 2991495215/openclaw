@@ -288,7 +288,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +7: retained synchronous session, command-menu, model-override, TTS-path, and list exports.
       // +2: retained synchronous transcript event/stat reads until the next SDK major.
       // +1: createSessionHeaderLink from shipped 2026.10.1 until plugin-sdk-session-header-link expires.
-      186,
+      // +1: released snapshot publication remains during its approved async replacement.
+      187,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

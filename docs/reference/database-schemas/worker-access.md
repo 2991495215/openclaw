@@ -82,6 +82,17 @@ cache refreshes. Row receipts do not grant permission, and a missing receipt is
 not proof of absence. Outside processes use the Gateway or exclusive offline
 ownership; ordinary readers do not poll for foreign commits.
 
+## Bundled worker schema extensions
+
+The local-only `openclaw/plugin-sdk/sqlite-worker-runtime` surface is for bundled
+worker backends; it is not part of the typed public Plugin SDK. Its
+`stageOpenClawAgentDatabaseSchemaExtension` helper stages known derived-table DDL
+inside a managed transaction. Use it only when the operation preserves agent
+ownership metadata and canonical agent tables, indexes, and triggers. The
+committed receipt preserves those contracts; unclassified DDL and migrations
+still require their normal schema admission. Private databases without agent
+admission are unaffected.
+
 ## Session and ancillary worker operations
 
 Parent forks use the existing session-entry worker for both transcript copying
