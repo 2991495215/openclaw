@@ -38,6 +38,8 @@ it("publishes agent mutations before acknowledging immediate session and roster 
   signal,
 }) => {
   const agentId = "readiness-agent";
+  let phase = "fixture setup";
+  const overlappingPhases: Record<number, string> = {};
   const publicationEntered = createDeferred();
   const releasePublication = createDeferred();
   const creationBookkeepingCompleted = createDeferred();
@@ -77,6 +79,7 @@ it("publishes agent mutations before acknowledging immediate session and roster 
       }
     });
   onTestFinished(() => {
+    process.stderr.write(`[config-readiness] ${JSON.stringify({ phase, overlappingPhases })}\n`);
     releasePublication.resolve();
     reloaderSpy.mockRestore();
     revivalSpy.mockRestore();
@@ -109,13 +112,16 @@ it("publishes agent mutations before acknowledging immediate session and roster 
         },
         plugins: { slots: { memory: "none" } },
       });
+      phase = "acquiring port";
       const claim = await acquireTestPortBlock({ offsets: [0, 1, 2, 3, 4] });
+      phase = "acquiring Gateway lock";
       const owner = await acquireGatewayLock({
         env: state.env,
         port: claim.port,
         allowInTests: true,
       });
       assert.isNotNull(owner);
+      phase = "starting Gateway";
       const server = await startGatewayServer(claim.port, {
         gatewayStateOwner: owner,
         bind: "loopback",
@@ -124,7 +130,9 @@ it("publishes agent mutations before acknowledging immediate session and roster 
         hotReloadRecovery: recoveryRestart,
       });
       try {
+        phase = "settling Gateway startup";
         await server.startupSettled;
+        phase = "connecting client";
         const client = await connectGatewayClient({
           url: `ws://127.0.0.1:${claim.port}`,
           token,
@@ -146,6 +154,7 @@ it("publishes agent mutations before acknowledging immediate session and roster 
           await expect(fs.stat(path.join(state.home, "workspace-retired"))).rejects.toMatchObject({
             code: "ENOENT",
           });
+          phase = "launching CLI creation";
           const creation = runCliProcessChild({
             nodeArgs: [
               ...cliEntrypoint,
@@ -182,6 +191,7 @@ it("publishes agent mutations before acknowledging immediate session and roster 
               (error: unknown) => ({ ok: false as const, error }),
             );
           try {
+            phase = "awaiting held publication and creation bookkeeping";
             await withinTest(
               Promise.race([
                 Promise.all([publicationEntered.promise, creationBookkeepingCompleted.promise]),
@@ -211,7 +221,9 @@ it("publishes agent mutations before acknowledging immediate session and roster 
           } finally {
             releasePublication.resolve();
           }
+          phase = "awaiting CLI creation completion";
           await expect(creation).resolves.toMatchObject({ agentId });
+          phase = "agent CRUD";
           await expect(client.request("agents.list", {})).resolves.toMatchObject({
             agents: expect.arrayContaining([expect.objectContaining({ id: agentId })]),
           });
@@ -257,30 +269,35 @@ it("publishes agent mutations before acknowledging immediate session and roster 
           }
           expect(getRuntimeConfig().agents?.entries?.[agentId]).toBeUndefined();
 
+          phase = "connecting concurrent operator";
           const peer = await connectGatewayClient({
             url: `ws://127.0.0.1:${claim.port}`,
             token,
             scopes: ["operator.admin", "operator.read", "operator.write"],
           });
           try {
+            phase = "concurrent mutations";
             await withinTest(
               Promise.all(
                 [client, peer].map(async (operator, index) => {
                   const otherOperator = index === 0 ? peer : client;
                   for (let round = 0; round < 4; round += 1) {
                     const overlapAgentId = `overlap-${index}-${round}`;
+                    overlappingPhases[index] = `${overlapAgentId}: create`;
                     await expect(
                       operator.request("agents.create", {
                         name: overlapAgentId,
                         workspace: path.join(state.home, overlapAgentId),
                       }),
                     ).resolves.toMatchObject({ agentId: overlapAgentId });
+                    overlappingPhases[index] = `${overlapAgentId}: session`;
                     await expect(
                       operator.request("sessions.create", {
                         agentId: "main",
                         key: `agent:main:${overlapAgentId}`,
                       }),
                     ).resolves.toMatchObject({ key: `agent:main:${overlapAgentId}` });
+                    overlappingPhases[index] = `${overlapAgentId}: delete`;
                     const deletion = { agentId: overlapAgentId, deleteFiles: false };
                     if (round === 0) {
                       const results = await Promise.allSettled([
@@ -326,6 +343,7 @@ it("publishes agent mutations before acknowledging immediate session and roster 
             await disconnectGatewayClient(peer);
           }
 
+          phase = "injected reload failures";
           assert.isDefined(reloadScheduler);
           const clock = createGatewaySchedulerClock();
           const scheduler = createTestGatewayScheduler(clock.clock);
@@ -390,6 +408,7 @@ it("publishes agent mutations before acknowledging immediate session and roster 
             await scheduler.stop();
           }
 
+          phase = "disabled reload";
           const saved = (await readConfigFileSnapshot()).sourceConfig;
           await state.writeConfig({
             ...saved,
@@ -409,6 +428,7 @@ it("publishes agent mutations before acknowledging immediate session and roster 
           ).toBeDefined();
           expect(getRuntimeConfig().agents?.entries?.["saved-only"]).toBeUndefined();
           expect(recoveryRestart).not.toHaveBeenCalled();
+          phase = "completed";
         } finally {
           await disconnectGatewayClient(client);
         }
