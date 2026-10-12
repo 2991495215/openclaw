@@ -1,6 +1,10 @@
 import { createServer } from "node:http";
 import { expect, it } from "vitest";
-import { createDeferred, withTestTimeout } from "../../test/helpers/promise.js";
+import {
+  awaitGateBeforeSettlement,
+  createDeferred,
+  withinTest,
+} from "../../test/helpers/promise.js";
 import {
   getSessionMcpRuntimeManagerForTesting,
   setSessionMcpRuntimeScheduler,
@@ -11,7 +15,6 @@ import {
   applyGatewayLaneConcurrency,
   resolveGatewayLaneConcurrency,
 } from "../gateway/server-lanes.js";
-import { withDiagnosticsTimelineObserver } from "../infra/diagnostics-timeline.js";
 import {
   OutboundDeliveryError,
   PlatformMessageNotDispatchedError,
@@ -26,7 +29,7 @@ const finalMediaUrl = "https://example.test/final.png";
 const mediaCaption = "Here is the generated image.";
 const fallbackText = "The backup produced a second answer.";
 
-it.each([
+it.for([
   "rejected",
   "deferred-rejection",
   "mixed",
@@ -42,7 +45,7 @@ it.each([
   "fallback-direct-rejected",
 ] as const)(
   "dispatchInboundMessageWithBufferedDispatcher settles %s streamed blocks before final suppression",
-  async (scenario) => {
+  async (scenario, { signal }) => {
     const timesOut = scenario === "timeout-media";
     const fallback = scenario.startsWith("fallback-");
     const fallbackDirect = scenario.startsWith("fallback-direct-");
@@ -64,13 +67,11 @@ it.each([
     });
     const scheduler = createTestGatewayScheduler();
     const requests: Array<{ method?: string; url?: string; model?: string }> = [];
-    let firstProviderRequestAt: number | undefined;
     const toolRequestBodies: string[] = [];
     const attempted: Array<{ kind: string; text: string | undefined; mediaUrls?: string[] }> = [];
     const delivered: Array<{ kind: string; text: string | undefined; mediaUrls?: string[] }> = [];
     const fallbackEvents: string[] = [];
     const server = createServer((request, response) => {
-      firstProviderRequestAt ??= performance.now();
       const requestRecord: { method?: string; url?: string; model?: string } = {
         method: request.method,
         url: request.url,
@@ -342,41 +343,11 @@ it.each([
         },
         cfg,
       };
-      const dispatchStartedAt = performance.now();
-      let firstBlockStartedAt: number | undefined;
-      let terminalOutcome: "completed" | "failed" | undefined;
-      type DispatchResult = Awaited<
-        ReturnType<typeof dispatchInboundMessageWithBufferedDispatcher>
-      >;
-      let dispatchOutcome:
-        | { status: "pending" }
-        | { status: "resolved"; settledReceipt: DispatchResult["settledReceipt"] }
-        | { status: "rejected"; error: string } = { status: "pending" };
-      const activeSpans = new Set<{ name: string; startedAt: number }>();
-      const completedSpans: Array<{ name: string; durationMs: number }> = [];
-      const observeSpan: Parameters<typeof withDiagnosticsTimelineObserver>[0] = (
-        name,
-        attributes,
-      ) => {
-        const span = {
-          name:
-            name === "agent.prepare" && typeof attributes?.stage === "string"
-              ? `${name}:${attributes.stage}`
-              : name,
-          startedAt: performance.now(),
-        };
-        activeSpans.add(span);
-        return () => {
-          activeSpans.delete(span);
-          completedSpans.push({ name: span.name, durationMs: performance.now() - span.startedAt });
-        };
-      };
-      const dispatchRequest: Parameters<typeof dispatchInboundMessageWithBufferedDispatcher>[0] = {
+      const dispatch = dispatchInboundMessageWithBufferedDispatcher({
         ...dispatchParams,
         replyOptions: {
           blockReplyTimeoutMs: timesOut ? 50 : undefined,
-          onAgentRunTerminalOutcome: (outcome) => {
-            terminalOutcome = outcome;
+          onAgentRunTerminalOutcome: () => {
             if (timesOut) {
               releaseBlock.resolve();
             }
@@ -414,7 +385,6 @@ it.each([
                 throw new Error("transport response lost after send");
               }
               if (scenario === "concurrent" && blocks === 1) {
-                firstBlockStartedAt = performance.now();
                 blockStarted.resolve();
                 await releaseBlock.promise;
               }
@@ -447,58 +417,16 @@ it.each([
             return { visibleReplySent: true };
           },
         },
-      };
-      const startDispatch = () => dispatchInboundMessageWithBufferedDispatcher(dispatchRequest);
-      const dispatch = (
-        scenario === "concurrent"
-          ? withDiagnosticsTimelineObserver(observeSpan, startDispatch)
-          : startDispatch()
-      ).then(
-        (result) => {
-          dispatchOutcome = { status: "resolved", settledReceipt: result.settledReceipt };
-          return result;
-        },
-        (error: unknown) => {
-          dispatchOutcome = {
-            status: "rejected",
-            error: error instanceof Error ? error.message : String(error),
-          };
-          throw error;
-        },
-      );
+      });
       if (scenario === "concurrent") {
-        const logDispatchState = (phase: string) => {
-          const now = performance.now();
-          console.error(
-            `streamed-block concurrency diagnostic (${phase}): ${JSON.stringify({
-              elapsedMs: now - dispatchStartedAt,
-              activeSpans: [...activeSpans].map(({ name, startedAt }) => ({
-                name,
-                elapsedMs: now - startedAt,
-              })),
-              slowestCompletedSpans: completedSpans
-                .toSorted((left, right) => right.durationMs - left.durationMs)
-                .slice(0, 10),
-              firstProviderRequestMs:
-                firstProviderRequestAt === undefined
-                  ? null
-                  : firstProviderRequestAt - dispatchStartedAt,
-              firstBlockStartedMs:
-                firstBlockStartedAt === undefined ? null : firstBlockStartedAt - dispatchStartedAt,
-              requests,
-              attempted,
-              delivered,
-              terminalOutcome,
-              dispatchOutcome,
-            })}`,
-          );
-        };
-        let failed = false;
         let otherDispatch:
           | ReturnType<typeof dispatchInboundMessageWithBufferedDispatcher>
           | undefined;
         try {
-          await withTestTimeout(blockStarted.promise, 10000, "first transport start");
+          await withinTest(
+            awaitGateBeforeSettlement(blockStarted.promise, dispatch, "first transport start"),
+            signal,
+          );
           otherDispatch = dispatchInboundMessageWithBufferedDispatcher({
             ...dispatchParams,
             ctx: {
@@ -509,29 +437,15 @@ it.each([
             },
             dispatcherOptions: { deliver: async () => ({ visibleReplySent: true }) },
           });
-          const other = await withTestTimeout(
-            otherDispatch,
-            10000,
-            "other conversation during held transport",
-          );
+          const other = await withinTest(otherDispatch, signal);
           expect(other.settledReceipt?.anyVisibleDelivered).toBe(true);
           expect(other.settledReceipt?.counts.block.delivered).toBe(3);
           expect(other.settledReceipt?.counts.final.delivered).toBe(0);
           expect(delivered).toEqual([]);
-        } catch (error) {
-          failed = true;
-          logDispatchState("before cleanup");
-          throw error;
         } finally {
           releaseBlock.resolve();
-          try {
-            await dispatch;
-            await otherDispatch;
-          } finally {
-            if (failed) {
-              logDispatchState("after cleanup");
-            }
-          }
+          await dispatch;
+          await otherDispatch;
         }
       }
       if (scenario === "direct-no-delivery") {
