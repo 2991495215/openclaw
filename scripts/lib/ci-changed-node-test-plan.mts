@@ -275,8 +275,8 @@ export function hasControlUiPerformanceAffectingChange(
   return hasImportGraphImpactOnTargets(
     sources,
     (file) =>
-      (!isTestOnlyPath(file) &&
-        (getChangedPathFacts(file).surface === "ui" || isPluginControlUiPath(file))) ||
+      (!isTestOnlyPath(file) && isControlUiSourcePath(file)) ||
+      file === "ui/vite.config.ts" ||
       /^scripts\/check-control-ui-(?:performance(?:-base)?|precompressed-assets)\.mts$/u.test(file),
     options.cwd ?? process.cwd(),
     { tooling: true, resolveAliases: true, runtimeOnly: true },
