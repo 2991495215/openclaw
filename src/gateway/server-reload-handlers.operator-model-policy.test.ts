@@ -27,6 +27,7 @@ import {
 import { resetGatewayWorkAdmission } from "../process/gateway-work-admission.js";
 import { createEmptyRuntimeWebToolsMetadata } from "../secrets/runtime-fast-path.js";
 import { clearSecretsRuntimeSnapshot } from "../secrets/runtime.js";
+import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import {
   createGatewaySchedulerClock,
@@ -88,6 +89,7 @@ it("commits model-only role changes without retiring permitted models or origina
   await withOpenClawTestState(profileState, async () => {
     const clock = createGatewaySchedulerClock(Date.now());
     const profile = ensureProfileForEmail("reload-model-reader@example.test");
+    using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
     const roleName = "reader.modelPolicy.allow";
     const initialConfig: OpenClawConfig = {
       agents: {

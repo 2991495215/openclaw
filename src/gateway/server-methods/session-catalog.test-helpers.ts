@@ -53,6 +53,7 @@ vi.mock("../../sessions/session-upstream-links.js", () => ({
 vi.mock("../../plugins/session-conversation-binding.js", () => ({
   bindPluginSessionConversation: conversationBindingMocks.bindPluginSessionConversation,
 }));
+// mock-isolation: Control the synthetic catalog's sharing policy without opening profile storage.
 vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../state/user-profile-list.js")>()),
   hasMultipleResidentSessionSharingIdentities: hoisted.hasMultipleSessionSharingIdentities,

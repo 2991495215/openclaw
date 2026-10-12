@@ -166,6 +166,7 @@ describe("user profile role schema", () => {
 
       expect(readResidentUserProfileIdentity(profile.id, options)?.role).toBe("maintainer");
       expect(readResidentUserProfileIdentity("older-profile", options)?.role).toBeNull();
+      expect(getUserProfileListItem("older-profile", options)).not.toHaveProperty("role");
       expect(getUserProfileListItem(profile.id, options)).toMatchObject({
         displayName: "Older Reader",
         role: "maintainer",
@@ -183,8 +184,9 @@ describe("user profile role schema", () => {
       const profile = ensureProfileForEmail("rollback@example.test", options);
       const assertRestored = () => {
         expect(tableHasColumn(database, "user_profiles", "role")).toBe(false);
-        expect(getUserProfileListItem(profile.id, options).id).toBe(profile.id);
-        expect(getUserProfileListItem(profile.id, options)).not.toHaveProperty("role");
+        const stored = getUserProfileListItem(profile.id, options);
+        expect(stored.id).toBe(profile.id);
+        expect(stored).not.toHaveProperty("role");
         expect(readUserProfileSnapshotSync(options).profiles[0]).not.toHaveProperty("role");
       };
       const rollBackRole = () =>

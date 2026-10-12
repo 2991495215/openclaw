@@ -105,10 +105,10 @@ it.each(["failed delivery", "self downgrade"] as const)(
       const target = ensureProfileForEmail("reader@example.test");
       setUserProfileRole(target.id, "administrator");
       const changed = scenario === "self downgrade" ? requester : target;
+      release = (await prepareUserProfileCatalog()).release;
       expect(resolveOperatorRolePolicyForProfile(changed.id, roleConfig())?.scopes).toEqual([
         "operator.admin",
       ]);
-      release = (await prepareUserProfileCatalog()).release;
       const clientClose = vi.fn();
       const targetClose = vi.fn();
       const client = profileClient(requester.id, "role-requester", clientClose);

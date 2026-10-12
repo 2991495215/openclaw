@@ -16,6 +16,7 @@ import {
   openOpenClawAgentDatabase,
 } from "../../state/openclaw-agent-db.js";
 import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
+import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
@@ -161,72 +162,70 @@ it.each([
 ] as const)(
   "refuses a new $kind target without creating a consent row",
   async ({ kind, reason }) => {
-    await withOpenClawTestState(
-      { label: "chat-native-mandatory", prepareProfileCatalog: true },
-      async (state) => {
-        const config = nativeConfig(state.workspaceDir);
-        const profile = ensureProfileForEmail("native-creator@example.test");
-        const client = nativeClient(
-          kind === "non-admin" ? ["operator.write"] : undefined,
-          profile.id,
-        );
-        if (kind === "creator sandbox") {
-          config.gateway = {
-            roles: {
-              default: "restricted",
-              definitions: {
-                restricted: {
-                  agents: "*",
-                  scopes: ["operator.admin"],
-                  sessions: { others: "write" },
-                  sandbox: "required",
-                },
+    await withOpenClawTestState({ label: "chat-native-mandatory" }, async (state) => {
+      const config = nativeConfig(state.workspaceDir);
+      const profile = ensureProfileForEmail("native-creator@example.test");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+      const client = nativeClient(
+        kind === "non-admin" ? ["operator.write"] : undefined,
+        profile.id,
+      );
+      if (kind === "creator sandbox") {
+        config.gateway = {
+          roles: {
+            default: "restricted",
+            definitions: {
+              restricted: {
+                agents: "*",
+                scopes: ["operator.admin"],
+                sessions: { others: "write" },
+                sandbox: "required",
               },
             },
-          };
-        } else if (kind === "execution sandbox" || kind === "remote execution") {
-          config.tools = {
-            ...config.tools,
-            exec: { host: kind === "execution sandbox" ? "sandbox" : "node" },
-          };
-        }
-        await state.writeConfig(config);
-        const native = await registerNative(state, config, "owner-agent.mjs");
-        const respond = vi.fn<RespondFn>();
-        const context = createDirectChatContext({ getRuntimeConfig: () => config });
-        const sessionKey = "agent:main:main";
-        try {
-          await expectDefined(
-            coreGatewayHandlers["chat.send"],
-            "registered chat.send",
-          )({
-            req: { type: "req", id: "restricted-first-send", method: "chat.send" },
-            params: {
-              sessionKey,
-              agentId: "main",
-              message: "This message must remain unsent.",
-              idempotencyKey: "restricted-native-run",
-            },
-            respond,
-            context,
-            client,
-            isWebchatConnect: () => true,
-          });
-          expect(respond).toHaveBeenCalledWith(
-            false,
-            undefined,
-            expect.objectContaining({
-              details: expect.objectContaining({ code: "AGENT_RUNTIME_RESTRICTED", reason }),
-            }),
-          );
-          expect(respond.mock.calls[0]?.[2]?.details).not.toHaveProperty("recovery");
-          expect(listSessionEntries({ agentId: "main", readOnly: true })).toEqual([]);
-          expect(context.chatAbortControllers.size).toBe(0);
-        } finally {
-          await native.service.stop?.(native.context);
-        }
-      },
-    );
+          },
+        };
+      } else if (kind === "execution sandbox" || kind === "remote execution") {
+        config.tools = {
+          ...config.tools,
+          exec: { host: kind === "execution sandbox" ? "sandbox" : "node" },
+        };
+      }
+      await state.writeConfig(config);
+      const native = await registerNative(state, config, "owner-agent.mjs");
+      const respond = vi.fn<RespondFn>();
+      const context = createDirectChatContext({ getRuntimeConfig: () => config });
+      const sessionKey = "agent:main:main";
+      try {
+        await expectDefined(
+          coreGatewayHandlers["chat.send"],
+          "registered chat.send",
+        )({
+          req: { type: "req", id: "restricted-first-send", method: "chat.send" },
+          params: {
+            sessionKey,
+            agentId: "main",
+            message: "This message must remain unsent.",
+            idempotencyKey: "restricted-native-run",
+          },
+          respond,
+          context,
+          client,
+          isWebchatConnect: () => true,
+        });
+        expect(respond).toHaveBeenCalledWith(
+          false,
+          undefined,
+          expect.objectContaining({
+            details: expect.objectContaining({ code: "AGENT_RUNTIME_RESTRICTED", reason }),
+          }),
+        );
+        expect(respond.mock.calls[0]?.[2]?.details).not.toHaveProperty("recovery");
+        expect(listSessionEntries({ agentId: "main", readOnly: true })).toEqual([]);
+        expect(context.chatAbortControllers.size).toBe(0);
+      } finally {
+        await native.service.stop?.(native.context);
+      }
+    });
   },
 );
 

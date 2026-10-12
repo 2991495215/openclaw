@@ -14,15 +14,17 @@ import {
   getCanonicalUserPreferences,
   setCanonicalUserPreferences,
 } from "../../state/user-preferences.js";
-import { readResidentUserProfileId } from "../../state/user-profile-list.js";
 import { pushHandlers } from "./push.js";
 import type { GatewayClient } from "./types.js";
 
-const { findBoundWebPushSubscriptionByEndpoint, snapshotScope } = vi.hoisted(() => ({
-  findBoundWebPushSubscriptionByEndpoint:
-    vi.fn<(params: { endpoint: string }) => Promise<BoundWebPushSubscription | null>>(),
-  snapshotScope: { active: false },
-}));
+const { findBoundWebPushSubscriptionByEndpoint, resolveProfileId, snapshotScope } = vi.hoisted(
+  () => ({
+    findBoundWebPushSubscriptionByEndpoint:
+      vi.fn<(params: { endpoint: string }) => Promise<BoundWebPushSubscription | null>>(),
+    resolveProfileId: vi.fn<(profileId: string) => string | undefined>(),
+    snapshotScope: { active: false },
+  }),
+);
 
 vi.mock("../../infra/push-apns.js", () => ({
   clearApnsRegistrationIfCurrent: vi.fn(),
@@ -59,20 +61,19 @@ vi.mock("../../state/user-preferences.js", () => ({
   getCanonicalUserPreferences: vi.fn(async () => ({ profileId: "profile-owner", entries: {} })),
   setCanonicalUserPreferences: vi.fn(),
 }));
-vi.mock("../../state/user-channel-identity-operations.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../state/user-channel-identity-operations.js")>()),
+// mock-isolation: Drive identity revocation through synthetic authority without opening profile storage.
+vi.mock("../../state/user-channel-identity-operations.js", () => ({
   prepareUserProfileSelectionAuthority: vi.fn(async (id: string) => {
-    const profileId = readResidentUserProfileId(id);
+    const profileId = resolveProfileId(id);
     return profileId
-      ? { profileId, isCurrent: () => readResidentUserProfileId(id) === profileId }
+      ? { profileId, isCurrent: () => resolveProfileId(id) === profileId }
       : undefined;
   }),
 }));
-vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../state/user-profile-list.js")>()),
-  readResidentUserProfileId: vi.fn(),
+// mock-isolation: Resolve synthetic push recipients without opening a shared-state worker.
+vi.mock("../../state/user-profile-list.js", () => ({
   prepareUserProfileCatalog: async () => ({
-    readCurrentIdentity: (id: string) => ({ profileId: readResidentUserProfileId(id) }),
+    readCurrentIdentity: (id: string) => ({ profileId: resolveProfileId(id) }),
     release: vi.fn(),
   }),
 }));
@@ -184,7 +185,7 @@ function createInvocation(method: WriteMethod, scope: "user" | "device" = "devic
 beforeEach(() => {
   vi.resetAllMocks();
   snapshotScope.active = false;
-  vi.mocked(readResidentUserProfileId).mockImplementation((id) => id);
+  resolveProfileId.mockImplementation((id) => id);
   vi.mocked(findBoundWebPushSubscriptionByEndpoint).mockResolvedValue(subscription());
   vi.mocked(registerWebPushSubscription).mockResolvedValue(subscription());
   vi.mocked(setWebPushSubscriptionPreferences).mockResolvedValue(true);
@@ -194,9 +195,9 @@ beforeEach(() => {
     return { ok: true, value: { profileId: "profile-owner" } };
   });
   vi.mocked(prepareUserProfileSelectionAuthority).mockImplementation(async (id) => {
-    const profileId = readResidentUserProfileId(id);
+    const profileId = resolveProfileId(id);
     return profileId
-      ? { profileId, isCurrent: () => readResidentUserProfileId(id) === profileId }
+      ? { profileId, isCurrent: () => resolveProfileId(id) === profileId }
       : undefined;
   });
 });
@@ -453,7 +454,7 @@ describe("Web Push request authority across asynchronous storage", () => {
   ] as const)("%s preserves %s ownership", async (method, owner) => {
     const invocation = createInvocation(method);
     if (owner === "merged alias") {
-      vi.mocked(readResidentUserProfileId).mockImplementation((id) =>
+      resolveProfileId.mockImplementation((id) =>
         id === "retired-profile" ? "profile-owner" : id,
       );
       expectDefined(invocation.client.authenticatedUserProfile, "bound profile").profileId =

@@ -10,7 +10,7 @@ import {
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveUserChannelIdentity } from "../state/user-channel-identities.js";
 import {
-  readResidentUserProfileId,
+  prepareUserProfileCatalog,
   readResidentUserProfileIdentity,
 } from "../state/user-profile-list.js";
 import { setUserProfileRole } from "../state/user-profile-writes.worker.js";
@@ -61,7 +61,7 @@ async function dispatch(
 it.each(["person", "shared owner"] as const)(
   "serves profile administration for %s through registered Gateway methods without main-thread SQL",
   async (kind) => {
-    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+    await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const admin =
         kind === "shared owner"
           ? ensureGatewayOwnerProfile(null)
@@ -71,6 +71,7 @@ it.each(["person", "shared owner"] as const)(
       if (kind === "person") {
         setUserProfileRole(admin.id, "admin");
       }
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
       const cfg: OpenClawConfig = {
         gateway: {
           roles: {
@@ -123,7 +124,7 @@ it.each(["person", "shared owner"] as const)(
       }
       expect(resolveUserChannelIdentity(identity)).toBeUndefined();
       expect(readResidentUserProfileIdentity(person.id)?.role).toBe("admin");
-      expect(readResidentUserProfileId(secondary.id)).toBe(person.id);
+      expect(readResidentUserProfileIdentity(secondary.id)?.profileId).toBe(person.id);
     });
   },
 );

@@ -31,6 +31,7 @@ import {
 } from "../../sessions/session-participant-input.js";
 import { buildPersistedUserTurnMessage } from "../../sessions/user-turn-transcript.js";
 import { runOpenClawAgentWriteAdmission } from "../../state/openclaw-agent-write-admission.js";
+import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { ensureGatewayOwnerProfile, ensureProfileForEmail } from "../../state/user-profiles.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import * as chatAttachments from "../chat-attachments.js";
@@ -117,204 +118,195 @@ describe("prepareChatSendUserTurn", () => {
   it.each(["profile", "synthetic", "profileless", "profileless-ui", "system"] as const)(
     "records only accepted authenticated external input after retargeting: %s",
     async (kind) => {
-      await withOpenClawTestState(
-        { scenario: "minimal", prepareProfileCatalog: true },
-        async (state) => {
-          const profile = ensureProfileForEmail("accepted@example.test", { env: state.env });
-          const creator = ensureProfileForEmail("session-creator@example.test", { env: state.env });
-          const { controller } = createUserTurnInputController();
-          const clientInfo = createClientInfo(
-            kind === "profileless-ui"
-              ? { id: GATEWAY_CLIENT_IDS.CONTROL_UI, mode: GATEWAY_CLIENT_MODES.WEBCHAT }
-              : {},
-          );
-          const prepared = prepareChatSendUserTurn({
-            request: {
-              inboundMessage: "hello",
-              clientInfo,
-              suppressCommandInterpretation: false,
-              systemInputProvenance:
-                kind === "system" ? { kind: "internal_system", sourceTool: "fixture" } : undefined,
-              systemProvenanceReceipt: undefined,
+      await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+        const profile = ensureProfileForEmail("accepted@example.test", { env: state.env });
+        const creator = ensureProfileForEmail("session-creator@example.test", { env: state.env });
+        const { controller } = createUserTurnInputController();
+        const clientInfo = createClientInfo(
+          kind === "profileless-ui"
+            ? { id: GATEWAY_CLIENT_IDS.CONTROL_UI, mode: GATEWAY_CLIENT_MODES.WEBCHAT }
+            : {},
+        );
+        const prepared = prepareChatSendUserTurn({
+          request: {
+            inboundMessage: "hello",
+            clientInfo,
+            suppressCommandInterpretation: false,
+            systemInputProvenance:
+              kind === "system" ? { kind: "internal_system", sourceTool: "fixture" } : undefined,
+            systemProvenanceReceipt: undefined,
+          },
+          session: { agentId: "main", clientRunId: "accepted", sessionKey: "agent:main:original" },
+          admission: {
+            originatingRoute: { originatingChannel: "webchat", explicitDeliverRoute: false },
+          },
+          attachments: createAttachments(),
+          client: {
+            ...(!kind.startsWith("profileless")
+              ? {
+                  authenticatedUserProfile: {
+                    profileId: profile.id,
+                    displayName: profile.displayName,
+                    hasAvatar: false,
+                    updatedAt: profile.updatedAt,
+                  },
+                }
+              : {}),
+            internal: kind === "synthetic" ? { syntheticClient: true } : undefined,
+            connect: {
+              minProtocol: 1,
+              maxProtocol: 1,
+              client: clientInfo,
+              scopes: ["operator.write"],
             },
-            session: {
-              agentId: "main",
-              clientRunId: "accepted",
-              sessionKey: "agent:main:original",
-            },
-            admission: {
-              originatingRoute: { originatingChannel: "webchat", explicitDeliverRoute: false },
-            },
-            attachments: createAttachments(),
-            client: {
-              ...(!kind.startsWith("profileless")
-                ? {
-                    authenticatedUserProfile: {
-                      profileId: profile.id,
-                      displayName: profile.displayName,
-                      hasAvatar: false,
-                      updatedAt: profile.updatedAt,
-                    },
-                  }
-                : {}),
-              internal: kind === "synthetic" ? { syntheticClient: true } : undefined,
-              connect: {
-                minProtocol: 1,
-                maxProtocol: 1,
-                client: clientInfo,
-                scopes: ["operator.write"],
-              },
-            },
-            logGateway: createSubsystemLogger("test/participant"),
-            userTurn: controller,
-          });
-          const scope = { agentId: "main", env: state.env, sessionKey: "agent:main:retargeted" };
-          await upsertSessionEntryCore(scope, {
-            sessionId: "retargeted",
-            updatedAt: 2,
-            createdActor: { type: "human", source: "profile", id: creator.id },
-          });
-          const target = {
-            agentId: "main",
-            sessionKey: scope.sessionKey,
-            storePath: state.statePath("agents", "main", "agent", "openclaw-agent.sqlite"),
-          };
-          // Ingress decides turn eligibility; the persisted destination selects its personal file.
-          const workspaceDir = state.statePath("bootstrap-workspace");
-          const creatorDir = path.join(workspaceDir, "users", creator.id);
-          const senderDir = path.join(workspaceDir, "users", profile.id);
-          await fs.mkdir(creatorDir, { recursive: true });
-          await fs.mkdir(senderDir, { recursive: true });
-          await fs.writeFile(path.join(workspaceDir, "USER.md"), "Shared preferences");
-          await fs.writeFile(path.join(creatorDir, "USER.md"), "Session creator preferences");
-          await fs.writeFile(path.join(senderDir, "USER.md"), "Current sender preferences");
-          // Neither authenticated participants nor profile-looking sender labels select an overlay.
-          prepared.ctx.SenderId = profile.id;
-          prepared.ctx.SenderName = profile.id;
-          const entry = loadSessionEntryReadOnly(scope);
-          const bootstrap = await resolveBootstrapContextForRun({
-            workspaceDir,
-            sessionKey: scope.sessionKey,
-            bootstrapUserProfileId: isSessionPersonalBootstrapTurn({ ...prepared.ctx })
-              ? sessionPersonalProfileId(entry)
-              : undefined,
-          });
-          const contents = bootstrap.contextFiles.map((file) => file.content).join("\n");
-          expect(contents).toContain("Shared preferences");
-          expect(contents).not.toContain("Current sender preferences");
-          expect(contents.includes("Session creator preferences")).toBe(
-            kind === "profile" || kind === "profileless",
-          );
-          prepareChannelParticipantObservation(prepared.ctx);
-          recordAcceptedSessionParticipantInput({ ...prepared.ctx }, target);
-          recordAcceptedSessionParticipantInput(prepared.ctx, target);
-          await new Promise<void>((resolve) => {
-            queueMicrotask(resolve);
-          });
-          await runOpenClawAgentWriteAdmission(
-            { agentId: target.agentId, path: target.storePath, env: state.env },
-            () => undefined,
-          );
-          expect(listSessionParticipantsReadOnly(scope).get(scope.sessionKey)).toEqual(
-            kind === "profile"
+          },
+          logGateway: createSubsystemLogger("test/participant"),
+          userTurn: controller,
+        });
+        const scope = { agentId: "main", env: state.env, sessionKey: "agent:main:retargeted" };
+        await upsertSessionEntryCore(scope, {
+          sessionId: "retargeted",
+          updatedAt: 2,
+          createdActor: { type: "human", source: "profile", id: creator.id },
+        });
+        const target = {
+          agentId: "main",
+          sessionKey: scope.sessionKey,
+          storePath: state.statePath("agents", "main", "agent", "openclaw-agent.sqlite"),
+        };
+        // Ingress decides turn eligibility; the persisted destination selects its personal file.
+        const workspaceDir = state.statePath("bootstrap-workspace");
+        const creatorDir = path.join(workspaceDir, "users", creator.id);
+        const senderDir = path.join(workspaceDir, "users", profile.id);
+        await fs.mkdir(creatorDir, { recursive: true });
+        await fs.mkdir(senderDir, { recursive: true });
+        await fs.writeFile(path.join(workspaceDir, "USER.md"), "Shared preferences");
+        await fs.writeFile(path.join(creatorDir, "USER.md"), "Session creator preferences");
+        await fs.writeFile(path.join(senderDir, "USER.md"), "Current sender preferences");
+        // Neither authenticated participants nor profile-looking sender labels select an overlay.
+        prepared.ctx.SenderId = profile.id;
+        prepared.ctx.SenderName = profile.id;
+        const entry = loadSessionEntryReadOnly(scope);
+        const bootstrap = await resolveBootstrapContextForRun({
+          workspaceDir,
+          sessionKey: scope.sessionKey,
+          bootstrapUserProfileId: isSessionPersonalBootstrapTurn({ ...prepared.ctx })
+            ? sessionPersonalProfileId(entry)
+            : undefined,
+        });
+        const contents = bootstrap.contextFiles.map((file) => file.content).join("\n");
+        expect(contents).toContain("Shared preferences");
+        expect(contents).not.toContain("Current sender preferences");
+        expect(contents.includes("Session creator preferences")).toBe(
+          kind === "profile" || kind === "profileless",
+        );
+        prepareChannelParticipantObservation(prepared.ctx);
+        recordAcceptedSessionParticipantInput({ ...prepared.ctx }, target);
+        recordAcceptedSessionParticipantInput(prepared.ctx, target);
+        await new Promise<void>((resolve) => {
+          queueMicrotask(resolve);
+        });
+        await runOpenClawAgentWriteAdmission(
+          { agentId: target.agentId, path: target.storePath, env: state.env },
+          () => undefined,
+        );
+        expect(listSessionParticipantsReadOnly(scope).get(scope.sessionKey)).toEqual(
+          kind === "profile"
+            ? [
+                {
+                  identity: { type: "profile", id: profile.id },
+                  contributionCount: 1,
+                  firstPromptedAt: 1,
+                  lastPromptedAt: 1,
+                },
+              ]
+            : kind === "profileless"
               ? [
                   {
-                    identity: { type: "profile", id: profile.id },
+                    identity: {
+                      type: "observation",
+                      pluginId: null,
+                      accountId: null,
+                      senderKind: "unknown",
+                      id: clientInfo.id,
+                    },
                     contributionCount: 1,
                     firstPromptedAt: 1,
                     lastPromptedAt: 1,
                   },
                 ]
-              : kind === "profileless"
-                ? [
-                    {
-                      identity: {
-                        type: "observation",
-                        pluginId: null,
-                        accountId: null,
-                        senderKind: "unknown",
-                        id: clientInfo.id,
-                      },
-                      contributionCount: 1,
-                      firstPromptedAt: 1,
-                      lastPromptedAt: 1,
-                    },
-                  ]
-                : undefined,
-          );
-          expect(
-            listSessionParticipantsReadOnly({ ...scope, sessionKey: "agent:main:original" }).size,
-          ).toBe(0);
-        },
-      );
+              : undefined,
+        );
+        expect(
+          listSessionParticipantsReadOnly({ ...scope, sessionKey: "agent:main:original" }).size,
+        ).toBe(0);
+      });
     },
   );
 
   it.each([false, true])(
     "preserves sandbox policy for attributed chat (system actor: %s)",
     async (systemActor) => {
-      await withOpenClawTestState(
-        { scenario: "minimal", prepareProfileCatalog: true },
-        async () => {
-          const profile = systemActor
-            ? ensureGatewayOwnerProfile("Gateway Owner")
-            : ensureProfileForEmail("chat-sandbox-creator@example.com");
-          const { controller } = createUserTurnInputController();
-          const prepared = prepareChatSendUserTurn({
-            request: {
-              inboundMessage: "hello",
-              clientInfo: createClientInfo(),
-              suppressCommandInterpretation: false,
-              systemInputProvenance: undefined,
-              systemProvenanceReceipt: undefined,
-            },
-            session: {
-              agentId: "main",
-              clientRunId: "run-1",
-              sessionKey: "agent:main:dashboard:guest-chat",
-              cfg: {
-                gateway: {
-                  roles: {
-                    default: "guest",
-                    definitions: {
-                      guest: {
-                        sessions: { others: "view" },
-                        agents: "*",
-                        scopes: ["operator.write"],
-                        sandbox: "required",
-                      },
+      await withOpenClawTestState({ scenario: "minimal" }, async () => {
+        const profile = systemActor
+          ? ensureGatewayOwnerProfile("Gateway Owner")
+          : ensureProfileForEmail("chat-sandbox-creator@example.com");
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+        const { controller } = createUserTurnInputController();
+        const prepared = prepareChatSendUserTurn({
+          request: {
+            inboundMessage: "hello",
+            clientInfo: createClientInfo(),
+            suppressCommandInterpretation: false,
+            systemInputProvenance: undefined,
+            systemProvenanceReceipt: undefined,
+          },
+          session: {
+            agentId: "main",
+            clientRunId: "run-1",
+            sessionKey: "agent:main:dashboard:guest-chat",
+            cfg: {
+              gateway: {
+                roles: {
+                  default: "guest",
+                  definitions: {
+                    guest: {
+                      sessions: { others: "view" },
+                      agents: "*",
+                      scopes: ["operator.write"],
+                      sandbox: "required",
                     },
                   },
                 },
               },
             },
-            admission: {
-              originatingRoute: { originatingChannel: "webchat", explicitDeliverRoute: false },
+          },
+          admission: {
+            originatingRoute: { originatingChannel: "webchat", explicitDeliverRoute: false },
+          },
+          attachments: createAttachments(),
+          client: {
+            ...(systemActor ? { internal: { operatorRoleActor: { kind: "system" } } } : {}),
+            authenticatedUserProfile: {
+              profileId: profile.id,
+              displayName: profile.displayName,
+              hasAvatar: false,
+              updatedAt: profile.updatedAt,
             },
-            attachments: createAttachments(),
-            client: {
-              ...(systemActor ? { internal: { operatorRoleActor: { kind: "system" } } } : {}),
-              authenticatedUserProfile: {
-                profileId: profile.id,
-                displayName: profile.displayName,
-                hasAvatar: false,
-                updatedAt: profile.updatedAt,
-              },
-              connect: { scopes: ["operator.write"] },
-            } as never,
-            logGateway: { warn: vi.fn() } as never,
-            userTurn: controller,
-          });
+            connect: { scopes: ["operator.write"] },
+          } as never,
+          logGateway: { warn: vi.fn() } as never,
+          userTurn: controller,
+        });
 
-          await prepared.prepareSessionCreation();
-          expect(prepared.ctx.SessionCreation).toEqual({
-            via: "operator",
-            actor: { type: "human", source: "profile", id: profile.id },
-            ...(systemActor ? {} : { sandbox: "required" }),
-            skillLibrarySelections: [],
-          });
-        },
-      );
+        await prepared.prepareSessionCreation();
+        expect(prepared.ctx.SessionCreation).toEqual({
+          via: "operator",
+          actor: { type: "human", source: "profile", id: profile.id },
+          ...(systemActor ? {} : { sandbox: "required" }),
+          skillLibrarySelections: [],
+        });
+      });
     },
   );
 

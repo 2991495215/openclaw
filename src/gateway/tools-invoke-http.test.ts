@@ -12,6 +12,7 @@ import type { OpenClawToolsOptions } from "../agents/openclaw-tools.types.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
+import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { ensureGatewayOwnerProfile, ensureProfileForEmail } from "../state/user-profiles.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { TerminalSessionManager } from "./terminal/session-manager.js";
@@ -481,6 +482,7 @@ describe("POST /tools/invoke", () => {
     const profileState = { label: "tools-invoke-operator-role", prepareProfileCatalog: true };
     await withOpenClawTestState(profileState, async () => {
       const profile = ensureProfileForEmail("operator@example.test");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
       cfg = {
         agents: { entries: { main: { tools: { allow: ["sessions_spawn"] } } } },
         gateway: {
@@ -585,6 +587,7 @@ describe("POST /tools/invoke", () => {
     await withOpenClawTestState(profileState, async () => {
       const owner = ensureProfileForEmail("owner@example.test");
       const guest = ensureProfileForEmail("guest@example.test");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
       const foreignKey = "agent:main:foreign";
       const entry = {
         sessionId: "foreign-session",
@@ -645,6 +648,7 @@ describe("POST /tools/invoke", () => {
     await withOpenClawTestState(profileState, async () => {
       const owner = ensureProfileForEmail("owner@example.test");
       ensureProfileForEmail("guest@example.test");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
       const sessionKey = "agent:main:foreign-primary";
       const entry = {
         sessionId: "foreign-primary-session",

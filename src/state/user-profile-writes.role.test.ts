@@ -8,6 +8,7 @@ import {
   openOpenClawStateDatabase,
 } from "./openclaw-state-db.js";
 import { onUserProfilesChanged } from "./user-profile-events.js";
+import { getUserProfileListItem } from "./user-profile-list-item.test-support.js";
 import { readResidentUserProfileIdentity, prepareUserProfileCatalog } from "./user-profile-list.js";
 import { setCanonicalUserProfileRole } from "./user-profile-writes.js";
 import { setUserProfileRole } from "./user-profile-writes.worker.js";
@@ -106,6 +107,7 @@ it.each(["ordered", "reversed", "recovery first", "native successor", "native AB
           });
         }
       }
+      expect(getUserProfileListItem(profile.id).role ?? null).toBe(expected);
       expect(readResidentUserProfileIdentity(profile.id)?.role).toBe(expected);
     } finally {
       for (const gate of gates) {
@@ -158,6 +160,7 @@ it.each(["delivered", "lost during close"] as const)(
       expect(observed).toEqual(["guest"]);
       vi.restoreAllMocks();
       expect(readResidentUserProfileIdentity(profile.id)?.role).toBe("guest");
+      expect(getUserProfileListItem(profile.id).role).toBe("guest");
     } finally {
       vi.restoreAllMocks();
       await Promise.allSettled([closing]);

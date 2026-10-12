@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, it, type Mock } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import type { GatewayRequestContext, GatewayRequestHandlerOptions, RespondFn } from "./types.js";
@@ -31,42 +32,40 @@ export function registerMetadataCallerCases(
   ] as const)(
     "rejects a personal draft preview from %s before projecting credentials",
     async (caller) => {
-      await withOpenClawTestState(
-        { layout: "state-only", prepareProfileCatalog: true },
-        async () => {
-          const { owner, client, authProfileId, readChatMetadata, request } =
-            createPersonalMetadataFixture();
-          client.connect.scopes = ["operator.admin"];
-          let requestedProfile = authProfileId;
-          if (caller === "foreign admin") {
-            const other = ensureProfileForEmail("metadata-other@example.test");
-            client.authenticatedUserProfile = {
-              profileId: other.id,
-              displayName: other.displayName,
-              hasAvatar: false,
-              updatedAt: other.updatedAt,
-            };
-          } else if (caller === "unidentified admin") {
-            delete client.authenticatedUserProfile;
-          } else if (caller === "synthetic owner") {
-            client.internal = { syntheticClient: true };
-          } else if (caller === "forged locator") {
-            requestedProfile = `personal:${owner.id}:${randomUUID()}`;
-          }
+      await withOpenClawTestState({ layout: "state-only" }, async () => {
+        const { owner, client, authProfileId, readChatMetadata, request } =
+          createPersonalMetadataFixture();
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+        client.connect.scopes = ["operator.admin"];
+        let requestedProfile = authProfileId;
+        if (caller === "foreign admin") {
+          const other = ensureProfileForEmail("metadata-other@example.test");
+          client.authenticatedUserProfile = {
+            profileId: other.id,
+            displayName: other.displayName,
+            hasAvatar: false,
+            updatedAt: other.updatedAt,
+          };
+        } else if (caller === "unidentified admin") {
+          delete client.authenticatedUserProfile;
+        } else if (caller === "synthetic owner") {
+          client.internal = { syntheticClient: true };
+        } else if (caller === "forged locator") {
+          requestedProfile = `personal:${owner.id}:${randomUUID()}`;
+        }
 
-          const respond = await request(
-            { agentId: "main", authProfileId: requestedProfile },
-            caller === "anonymous" ? { client: null } : {},
-          );
+        const respond = await request(
+          { agentId: "main", authProfileId: requestedProfile },
+          caller === "anonymous" ? { client: null } : {},
+        );
 
-          expect(respond).toHaveBeenCalledWith(
-            false,
-            undefined,
-            expect.objectContaining({ code: "FORBIDDEN" }),
-          );
-          expect(readChatMetadata).not.toHaveBeenCalled();
-        },
-      );
+        expect(respond).toHaveBeenCalledWith(
+          false,
+          undefined,
+          expect.objectContaining({ code: "FORBIDDEN" }),
+        );
+        expect(readChatMetadata).not.toHaveBeenCalled();
+      });
     },
   );
 }
@@ -77,42 +76,40 @@ export function registerMetadataRevocationCases(
   it.each(["disconnect", "role loss", "abort"] as const)(
     "rejects a personal draft preview after %s during the metadata read",
     async (loss) => {
-      await withOpenClawTestState(
-        { layout: "state-only", prepareProfileCatalog: true },
-        async () => {
-          const { client, clients, authProfileId, config, metadata, readChatMetadata, request } =
-            createPersonalMetadataFixture();
-          const entered = createDeferred();
-          const release = createDeferred();
-          const abort = new AbortController();
-          readChatMetadata.mockImplementationOnce(async () => {
-            entered.resolve();
-            await release.promise;
-            return metadata;
-          });
-          const pending = request({ agentId: "main", authProfileId }, { signal: abort.signal });
-          try {
-            await Promise.race([entered.promise, pending]);
-            expect(readChatMetadata).toHaveBeenCalledOnce();
-            if (loss === "disconnect") {
-              clients.delete(client);
-            } else if (loss === "role loss") {
-              config.gateway.roles.definitions.reader.scopes = [];
-            } else {
-              abort.abort();
-            }
-          } finally {
-            release.resolve();
-            await pending;
+      await withOpenClawTestState({ layout: "state-only" }, async () => {
+        const { client, clients, authProfileId, config, metadata, readChatMetadata, request } =
+          createPersonalMetadataFixture();
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
+        const entered = createDeferred();
+        const release = createDeferred();
+        const abort = new AbortController();
+        readChatMetadata.mockImplementationOnce(async () => {
+          entered.resolve();
+          await release.promise;
+          return metadata;
+        });
+        const pending = request({ agentId: "main", authProfileId }, { signal: abort.signal });
+        try {
+          await Promise.race([entered.promise, pending]);
+          expect(readChatMetadata).toHaveBeenCalledOnce();
+          if (loss === "disconnect") {
+            clients.delete(client);
+          } else if (loss === "role loss") {
+            config.gateway.roles.definitions.reader.scopes = [];
+          } else {
+            abort.abort();
           }
-          const respond = await pending;
-          expect(respond).toHaveBeenCalledWith(
-            false,
-            undefined,
-            expect.objectContaining({ code: "FORBIDDEN" }),
-          );
-        },
-      );
+        } finally {
+          release.resolve();
+          await pending;
+        }
+        const respond = await pending;
+        expect(respond).toHaveBeenCalledWith(
+          false,
+          undefined,
+          expect.objectContaining({ code: "FORBIDDEN" }),
+        );
+      });
     },
   );
 }

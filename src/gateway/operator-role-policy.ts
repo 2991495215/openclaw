@@ -13,10 +13,9 @@ import { notifyListeners, registerListener } from "../shared/listeners.js";
 import { roleScopesAllow } from "../shared/operator-scope-compat.js";
 import { profileCatalogPath } from "../state/user-profile-identity.read.js";
 import {
-  readResidentUserProfileIdentity,
+  captureResidentUserProfileAccess,
   readResidentUserProfileRevision,
 } from "../state/user-profile-list.js";
-import { UserProfileNotFoundError } from "../state/user-profiles-schema.js";
 import { bumpGatewayAccessRevision } from "./gateway-access-revision.js";
 import type { GatewayClient, GatewayOperatorRoleActor } from "./server-methods/shared-types.js";
 
@@ -42,7 +41,7 @@ type GatewaySessionAgentAuthorization = {
   | { actor?: never; profileId?: never; client: GatewayClient | null | undefined }
 );
 
-/** Announces a committed assignment change after the profile owner updates its catalog. */
+/** Publishes a committed assignment change to retained authorization consumers. */
 export function invalidateOperatorRolePolicy(profileId: string): void {
   assignmentRevision += 1;
   bumpGatewayAccessRevision();
@@ -109,21 +108,23 @@ export function resolveOperatorRolePolicyForProfile(
   if (!cfg.gateway?.roles || profileId === GATEWAY_OWNER_PROFILE_ID) {
     return undefined;
   }
-  const profile = profileId && !assignment ? readResidentUserProfileIdentity(profileId) : undefined;
-  if (profileId && !assignment && !profile) {
-    throw new UserProfileNotFoundError(profileId);
-  }
+  const profile =
+    profileId && !assignment
+      ? captureResidentUserProfileAccess(profileId).assertCurrent()
+      : undefined;
   return resolveOperatorRolePolicyForAssignment(
     profileId,
     assignment ? assignment.role : (profile?.role ?? null),
     cfg,
-    profileId && cfg.gateway.roles.assignments?.byGithubLogin
-      ? (readResidentUserProfileRevision(profileId, profileCatalogPath({}))?.githubLogin ?? null)
-      : null,
+    profile
+      ? (profile.githubLogin ?? null)
+      : profileId && cfg.gateway.roles.assignments?.byGithubLogin
+        ? (readResidentUserProfileRevision(profileId, profileCatalogPath({}))?.githubLogin ?? null)
+        : null,
   );
 }
 
-/** Transaction owners supply the authoritative row directly. */
+/** Transaction and prepared-profile owners supply the current assignment. */
 export function resolveOperatorRolePolicyForAssignment(
   profileId: string | undefined,
   assignedRole: string | null,
@@ -141,6 +142,9 @@ export function resolveOperatorRolePolicyForAssignment(
   if (assignedRole && selection.roleSource !== "assigned") {
     const reportKey = `${profileId}:${assignedRole}`;
     if (!reportedUnknownAssignments.has(reportKey)) {
+      if (reportedUnknownAssignments.size >= 1_024) {
+        reportedUnknownAssignments.clear();
+      }
       reportedUnknownAssignments.add(reportKey);
       operatorRoleLog.warn(
         `User profile ${profileId} references unknown Gateway role "${assignedRole}"; ${

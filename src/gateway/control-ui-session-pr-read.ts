@@ -3,6 +3,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GitCheckoutContext } from "../infra/git-read-operations.js";
 import { isIncognitoSessionKey } from "../routing/session-key.js";
 import { roleScopesAllow } from "../shared/operator-scope-compat.js";
+import { readUserProfileAliasRevision } from "../state/user-profile-events.js";
 import { readResidentUserProfileId } from "../state/user-profile-list.js";
 import { parseGitHubRemoteUrl } from "./github-remote.js";
 import { hasCurrentGatewayOperatorAccess } from "./operator-access-policy.js";
@@ -181,6 +182,7 @@ export async function prepareControlUiSessionPrRead(params: {
   if (!projection) {
     return undefined;
   }
+  let aliasRevision = -1;
   const captureCurrent = () => {
     try {
       const currentActor = resolveGatewayOperatorRoleActor(client);
@@ -201,8 +203,12 @@ export async function prepareControlUiSessionPrRead(params: {
       ) {
         return undefined;
       }
-      if (actorProfile && readResidentUserProfileId(actorProfile) !== actorProfile) {
-        return undefined;
+      const currentAliasRevision = readUserProfileAliasRevision();
+      if (currentAliasRevision !== aliasRevision) {
+        if (actorProfile && readResidentUserProfileId(actorProfile) !== actorProfile) {
+          return undefined;
+        }
+        aliasRevision = currentAliasRevision;
       }
       const cfg = getRuntimeConfig();
       if (
