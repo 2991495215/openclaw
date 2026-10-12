@@ -123,17 +123,30 @@ the next Plugin SDK major.
 ### Model-reference parsing
 
 Await `parseModelRefAsync(raw, defaultProvider, options)` from
-`openclaw/plugin-sdk/model-ref-parse` for a single model reference. For repeated
+`openclaw/plugin-sdk/agent-runtime` for a single model reference. For repeated
 lookups, await `prepareModelRefResolver({ config, env, workspaceDir })` once and
 use its synchronous `parseModelRef` and `resolveModelRefFromString` methods.
 The resolver also exposes `manifestPlugins` for model helpers that accept
 prepared metadata. Custom provider aliases use that selected snapshot until you
 prepare another resolver; parsing never polls for a newer plugin generation.
+Bundled plugins may use the narrow private `model-ref-parse` seam; third-party
+plugins use the typed public exports from `agent-runtime`.
 
 The existing `parseModelRef` exports and `agent-runtime`'s
 `resolveModelRefFromString` retain cold synchronous discovery for installed
 plugins. They emit a bounded deprecation warning and remain supported until the
 next Plugin SDK major and explicit approval of a breaking release.
+
+### Exec approval reads
+
+Await `loadExecApprovalsReadOnlyAsync` or `readExecApprovalsSnapshotAsync` from
+`openclaw/plugin-sdk/exec-approvals-runtime`. Both use the existing shared-state
+read worker. The synchronous `loadExecApprovals` and `readExecApprovalsSnapshot`
+exports retain their signatures for the current Plugin SDK major, emit a bounded
+deprecation warning, and are scheduled for removal in the next major. Bundled
+runtime callers use the awaited reads. The execution owner still checks current
+approval policy immediately before command execution using committed in-process
+policy publications; that final check does not query SQLite.
 
 ### Session reset freshness
 

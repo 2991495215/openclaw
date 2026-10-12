@@ -21,6 +21,7 @@ import { seedSkillLibrarySelection } from "../../skills/library/selection.js";
 import { mutateSkillLibrary, saveSkillLibrary } from "../../skills/library/service.js";
 import type { SkillLibraryAuthority } from "../../skills/library/store.js";
 import * as stateReads from "../../state/openclaw-state-db-readonly.js";
+import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import {
   cleanupSessionStateForTest,
@@ -356,6 +357,7 @@ describe("read-only session skill library projection", () => {
     vi.stubEnv("OPENCLAW_STATE_DIR", root);
     const alice = ensureProfileForEmail("alice@example.test");
     const bob = ensureProfileForEmail("bob@example.test");
+    using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
     const cfg = { agents: { entries: { main: { workspace: path.join(root, "workspace") } } } };
     const actor = (profileId: string): SkillLibraryAuthority => ({
       profileId,

@@ -9,7 +9,7 @@ export const MODEL_REF_COMPAT_RECORD = {
   warningStarts: "2026-10-12",
   removalGate: "next-plugin-sdk-major",
   replacement:
-    "Await parseModelRefAsync from model-ref-parse for one lookup, or await prepareModelRefResolver and reuse its synchronous parsing methods and manifestPlugins. Released parseModelRef and resolveModelRefFromString exports preserve cold manifest discovery until published plugin readers migrate and a breaking Plugin SDK release is explicitly approved.",
+    "Await parseModelRefAsync from agent-runtime for one lookup, or await prepareModelRefResolver and reuse its synchronous parsing methods and manifestPlugins. Bundled plugins may use the private model-ref-parse seam. Released parseModelRef and resolveModelRefFromString exports preserve cold manifest discovery until published plugin readers migrate and a breaking Plugin SDK release is explicitly approved.",
   docsPath: "/plugins/sdk-migration/compatibility-policy#model-reference-parsing",
   surfaces: [
     "openclaw/plugin-sdk/model-ref-parse parseModelRef",

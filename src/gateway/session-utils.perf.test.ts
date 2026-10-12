@@ -13,6 +13,7 @@ import type { SessionEntry } from "../config/sessions.js";
 import * as entryCache from "../config/sessions/session-accessor.sqlite-entry-cache.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
+import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { withStateDirEnv } from "../test-helpers/state-dir-env.js";
 import type { GatewayClient } from "./server-methods/types.js";
@@ -498,6 +499,7 @@ describe("session list resolver cache", () => {
       const storePath = path.join(stateDir, "sessions.json");
       const store: Record<string, SessionEntry> = {};
       const ownerId = scenario.owned ? ensureProfileForEmail("owner@example.com").id : undefined;
+      const profiles = await prepareUserProfileCatalog();
       for (let index = 0; index < scenario.count; index += 1) {
         const sessionId = `title-batch-${index}`;
         const sessionKey = `agent:main:${sessionId}`;
@@ -599,6 +601,7 @@ describe("session list resolver cache", () => {
       } finally {
         projection?.dispose();
         titleSpy.mockRestore();
+        profiles.release();
       }
     });
   });

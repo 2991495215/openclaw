@@ -91,6 +91,15 @@ offsets for `isInsideCode`. Regions returned by `findCodeRegions` additionally
 include parser-owned `block` metadata; callers supplying their own ranges do not
 need to provide it.
 
+### Session header link helper
+
+`createSessionHeaderLink` from `openclaw/plugin-sdk/control-ui` shipped in
+OpenClaw 2026.10.1 and is deprecated. Session conversation links were retired,
+so hosts no longer pass `props.session` to `session-header` accessories. The
+helper still mounts, but its link never renders. Plugins built against
+2026.10.1 keep loading. Render a custom accessory instead. The
+`plugin-sdk-session-header-link` record allows removal after 2027-01-12.
+
 ### Harness tool construction
 
 Harnesses should await `params.hostCapabilities.createToolSurfaceAsync(options,
@@ -133,15 +142,13 @@ migration.
 
 The Gateway context exposed by `GatewayRequestHandlerOptions` from `core` and
 `gateway-runtime`, and by `getPluginRuntimeGatewayRequestScope()` from
-`plugin-runtime`, retains these synchronous contracts shipped in OpenClaw
+`plugin-runtime`, retains these synchronous placement contracts shipped in OpenClaw
 2026.9.7:
 
 - `workerSessionPlacementService.listPendingWorkspaceResults(sessionId?)`
   returns the pending result array.
 - `workerSessionPlacementService.getWorkspaceResultReconcilingSessionIds(sessionIds)`
   returns a `ReadonlySet<string>`.
-- `githubPublicationService.deferOrphanedRequests()` returns `void` after
-  orphaned requests have been deferred.
 
 Migrate to the corresponding `Async`-suffixed methods and await their results.
 The placement readers use the SQLite worker. Internal callers use the awaited
@@ -149,6 +156,11 @@ methods; the synchronous adapters remain solely for released plugin contracts.
 TypeScript marks those adapters deprecated. They retain their result shapes and
 completion timing until the next Plugin SDK major and an explicitly approved
 breaking release. No schema, retained data, or update migration changes.
+
+`githubPublicationService.deferOrphanedRequests()` retains its `void` signature
+but now fails at invocation; use `await deferOrphanedRequestsAsync()` to defer
+orphaned requests. Other deprecated publication methods likewise retain their
+signatures only for migration discovery and fail with replacement guidance.
 
 GitHub publication's opaque requester and synchronous lifecycle methods, plus
 personal OAuth `cancelAuthorization` and `disconnect`, share the
@@ -840,7 +852,7 @@ installed plugins. Actual legacy use emits one `DEP_PLUGIN_SDK` warning per
 plugin and capability family per process. Removal requires the next Plugin SDK
 major, migration of published readers, and explicit breaking-release approval.
 
-Await `parseModelRefAsync` from `openclaw/plugin-sdk/model-ref-parse` for one
+Await `parseModelRefAsync` from `openclaw/plugin-sdk/agent-runtime` for one
 lookup. For repeated parsing, await `prepareModelRefResolver` once and use its
 `parseModelRef` or `resolveModelRefFromString` method. Its `manifestPlugins`
 property carries the same source into other model helpers. Prepared resolvers
@@ -848,6 +860,8 @@ keep the selected manifest policies even after a plugin metadata reload;
 recreate the resolver when adopting the new generation. This accepted lifetime
 avoids synchronous discovery or per-lookup freshness checks. Credentials and
 execution authority remain the responsibility of their existing effect owners.
+Bundled plugins may use the narrow private `model-ref-parse` seam; third-party
+plugins use the typed public exports from `agent-runtime`.
 
 ### TTS preference resolution
 

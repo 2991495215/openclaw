@@ -163,7 +163,8 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   "reply-payload": 2,
   // +7: released auth-store and TTS methods retain synchronous compatibility.
   // +1: auth-profile-sync-operations retains saveAuthProfileStore during async migration.
-  "agent-runtime": 12,
+  // +2: model-ref-sync-discovery retains parseModelRef and resolveModelRefFromString.
+  "agent-runtime": 14,
   // model-session-sync-auth-profile retains the synchronous model override helper.
   "model-session-runtime": 1,
   "memory-host-core": 2,
@@ -206,6 +207,8 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   "command-auth-native": 3,
   "native-command-registry": 1,
   "skill-commands-runtime": 2,
+  // +1: createSessionHeaderLink from shipped 2026.10.1 until plugin-sdk-session-header-link expires.
+  "control-ui": 1,
 } satisfies Record<string, number>);
 
 export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env) {
@@ -246,7 +249,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +4: saveAuthProfileStoreAsync, resolveAutoMediaKeyProvidersAsync,
       // resolveDefaultMediaModelAsync, and applyModelOverrideWithAuthProfileCompatibilityAsync.
       // Auth, media-discovery, and model-session compat records retain their synchronous pairs.
-      3700,
+      // +1: deprecated createSessionHeaderLink retained from shipped 2026.10.1.
+      // +5: parseModelRefAsync, prepareModelRefResolver, and their three preparation/resolver types.
+      3706,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -272,7 +277,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: stripReplyPayloadResponsePrefix preserves durable text while assembling previews.
       // +1: the same bounded stale-read cache factory on collection-runtime.
       // +4: the same auth-save, media-discovery, and model-session replacement functions.
-      2161,
+      // +1: the same deprecated createSessionHeaderLink.
+      // +2: the same async model-reference parser and prepared resolver factory.
+      2164,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -287,7 +294,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +7: retained synchronous session, command-menu, model-override, TTS-path, and list exports.
       // +4: saveAuthProfileStore, resolveAutoMediaKeyProviders, resolveDefaultMediaModel,
       // and applyModelOverrideWithAuthProfileCompatibility retain their shipped contracts.
-      187,
+      // +1: createSessionHeaderLink from shipped 2026.10.1 until plugin-sdk-session-header-link expires.
+      // +2: model-ref-sync-discovery retains parseModelRef and resolveModelRefFromString.
+      190,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(
