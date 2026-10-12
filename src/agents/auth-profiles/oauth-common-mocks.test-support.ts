@@ -38,7 +38,10 @@ vi.mock("../../plugins/provider-runtime.runtime.js", () => ({
       ? { status: "available", credential, apiKey: credential.access }
       : { status: "unhandled" };
   },
-  resolveProviderOAuthRefreshCapabilityWithPlugin: async () => ({ status: "unhandled" }),
+  resolveProviderOAuthRefreshCapabilityWithPlugin: async () => {
+    console.error(`[oauth-claim-stage] capability-entered ${Date.now()}ms`);
+    return { status: "unhandled" };
+  },
 }));
 
 vi.mock("./doctor.js", () => ({

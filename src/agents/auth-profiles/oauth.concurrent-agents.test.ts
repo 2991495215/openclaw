@@ -164,6 +164,7 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
       const { promise: started, resolve: markStarted } = createDeferredCore();
       refreshProviderOAuthCredentialWithPluginMock.mockImplementation(async () => {
         callCount += 1;
+        console.error(`[oauth-claim-stage] provider-entered ${Date.now()}ms`);
         markStarted();
         await finishRefreshGate;
         return {
@@ -176,7 +177,16 @@ describe("resolveApiKeyForProfile cross-agent refresh coordination (#26322)", ()
         } as never;
       });
 
-      const first = resolveFrom(subAgents[0]);
+      const firstAgentDir = subAgents[0];
+      assert.ok(firstAgentDir, "expected a seeded agent directory");
+      console.error(`[oauth-claim-stage] store-load-start ${Date.now()}ms`);
+      const firstStore = ensureAuthProfileStore(firstAgentDir);
+      console.error(`[oauth-claim-stage] store-load-finished ${Date.now()}ms`);
+      const first = resolveApiKeyForProfileInTest(resolveApiKeyForProfile, {
+        store: firstStore,
+        profileId,
+        agentDir: firstAgentDir,
+      });
       await Promise.race([started, first]);
       expect(
         resolvePersistedAuthProfileOwnerAgentDir({
