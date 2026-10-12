@@ -615,11 +615,11 @@ jobs:
       max-parallel: 4
       matrix:
         include:
-          - group: codex-compact-tools-node
+          - group: sharing-grants-node
             runtime: node
-          - group: codex-run-attempt-node
+          - group: sharing-siblings-node
             runtime: node
-          - group: gateway-node
+          - group: fixture-imports-node
             runtime: node
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -657,32 +657,23 @@ jobs:
           mkdir -p .artifacts
           node --input-type=module -e 'console.log(JSON.stringify({ candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, runtime: process.env.OPENCLAW_VITEST_RUNTIME }, null, 2))' > .artifacts/fixture-provenance.json
           case "$PROOF_GROUP" in
-            codex-compact-tools-node)
+            sharing-grants-node)
               files=(
-                extensions/codex/src/app-server/compact.test.ts
-                extensions/codex/src/app-server/compact.cancellation.test.ts
-                extensions/codex/src/app-server/compact.client-ownership.test.ts
-                extensions/codex/src/app-server/dynamic-tool-build.test.ts
-                extensions/codex/src/app-server/dynamic-tool-build.sandbox.test.ts
-                extensions/codex/src/app-server/dynamic-tool-build.web-search.test.ts
-                extensions/codex/src/app-server/dynamic-tool-skills.test.ts
-              )
-              ;;
-            codex-run-attempt-node)
-              files=(
-                extensions/codex/src/app-server/run-attempt.test.ts
-                extensions/codex/src/app-server/run-attempt.protocol-validation.test.ts
-                extensions/codex/src/app-server/run-attempt.native-config.test.ts
-                extensions/codex/src/app-server/side-question.test.ts
-              )
-              ;;
-            gateway-node)
-              files=(
-                src/gateway/agent-turn/agent-wait-dedupe.test.ts
-                src/gateway/server-methods/cron.runs.test.ts
-                src/gateway/session-list-serialization.test.ts
                 src/gateway/session-sharing-committed-read.test.ts
-                src/gateway/sessions-resolve-projection.test.ts
+                src/gateway/session-sharing.worker.test.ts
+                src/gateway/session-sharing.prepared.test.ts
+              )
+              ;;
+            sharing-siblings-node)
+              files=(
+                src/gateway/session-sharing.memory.test.ts
+                src/gateway/session-sharing.incognito.test.ts
+              )
+              ;;
+            fixture-imports-node)
+              files=(
+                src/agents/embedded-agent-runner/skill-runtime.library-read.test.ts
+                src/auto-reply/reply/agent-runner-result-accounting.fallback.test.ts
               )
               ;;
           esac
