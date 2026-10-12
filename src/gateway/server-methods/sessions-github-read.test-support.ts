@@ -130,7 +130,7 @@ function createFixture(
       preparePersonalStatus,
       sharedStatus,
       latestShared,
-      personalStatus,
+      personalStatusAsync: personalStatus,
       personalPending,
       requestForSessionV2: requestForSession,
     },

@@ -11,7 +11,7 @@ import {
   isCronStateWorkerCommand,
   prepareCronStateWorkerCommand,
 } from "../cron/store/dispatch.worker.js";
-import { readPendingRepositoryGitHubPublicationInDatabase } from "../gateway/github-repository-publication.kernel.js";
+import { readPendingRepositoryGitHubPublicationInDatabase } from "../gateway/github-repository-publication-read.worker.js";
 import { mutateSessionGroupCatalogInDatabase } from "../gateway/session-group-catalog.kernel.js";
 import {
   deferSqliteWorkerCommitReceipt,
