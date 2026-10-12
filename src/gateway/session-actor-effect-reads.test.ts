@@ -9,7 +9,7 @@ import {
 import type { SessionEntry } from "../config/sessions/types.js";
 import { resolveApprovalRequestChannelAccountId } from "../infra/approval-request-account-binding.js";
 import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
-import { readGitHubPublicationSession } from "./github-publication-availability.js";
+import { prepareGitHubPublicationSession } from "./github-publication-availability.js";
 import { withSessionFileRoot } from "./server-methods/sessions-files.js";
 
 vi.mock("node:sqlite", async (importOriginal) => ({
@@ -125,7 +125,7 @@ it("checks current metadata at the effect without sending memory predicates to S
     expect(() => prepared.assertCurrent()).not.toThrow();
     await patch({ spawnedCwd: "/synthetic/replacement" });
     expect(() => prepared.assertCurrent()).toThrow("Workspace authority changed");
-    expect(readGitHubPublicationSession(sessionKey).entry?.spawnedCwd).toBe(
+    expect((await prepareGitHubPublicationSession(sessionKey)).initial.entry?.spawnedCwd).toBe(
       "/synthetic/replacement",
     );
   });

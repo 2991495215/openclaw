@@ -162,7 +162,7 @@ it("retains detached planning data and rejects effects after the selected actor 
 
 it("rechecks metadata only at response and honors the caller's allowed metadata changes", async () => {
   const { actor, binding, owner } = await fixture();
-  const read = runWithSessionActorStorage(binding, () =>
+  const read = await runWithSessionActorStorage(binding, () =>
     retainGatewaySessionEntryReadOnly(
       sessionKey,
       "main",

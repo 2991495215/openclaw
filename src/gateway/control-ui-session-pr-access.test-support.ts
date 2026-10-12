@@ -154,6 +154,11 @@ export async function createFixture(
   context.getRuntimeConfig = getRuntimeConfig;
   context.controlUiSessionPullRequests = subscriptions;
   await initializeSessionReadContext(context);
+  const projection = getSessionRowProjection(context);
+  if (!projection) {
+    throw new Error("Missing fixture session projection");
+  }
+  const detachProjection = connections.attachSessionRowProjection(projection);
   return {
     ...reader,
     clock,
@@ -221,6 +226,7 @@ export async function createFixture(
       await subscriptions.stop();
       await scheduler.stop();
       connections.clients.clear();
+      detachProjection();
       await disposeSessionReadContexts();
     },
     async removeSessions() {

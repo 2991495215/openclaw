@@ -599,17 +599,20 @@ describe("sessions.patch", () => {
           requestParams: request,
           context: requestContext,
         });
-        using _ = { [Symbol.dispose]: () => authorization.authorization?.release?.() };
-        expect(authorization.error).toBeNull();
-        const respond = vi.fn();
-        await sessionMutationHandlers["sessions.patch"]?.({
-          params: request,
-          client: requestClient,
-          context: requestContext,
-          sessionMutationAuthorization: authorization.authorization,
-          respond,
-        } as never);
-        expect(respond).toHaveBeenCalledWith(true, expect.any(Object), undefined);
+        try {
+          expect(authorization.error).toBeNull();
+          const respond = vi.fn();
+          await sessionMutationHandlers["sessions.patch"]?.({
+            params: request,
+            client: requestClient,
+            context: requestContext,
+            sessionMutationAuthorization: authorization.authorization,
+            respond,
+          } as never);
+          expect(respond).toHaveBeenCalledWith(true, expect.any(Object), undefined);
+        } finally {
+          authorization.authorization?.release?.();
+        }
       };
 
       await patch(true);

@@ -4,7 +4,6 @@ import { ok } from "@openclaw/normalization-core/result";
 import { readSqliteDatabaseWriteTokenForPath } from "../../infra/sqlite-database-admission.js";
 import { readDatabasePathIdentitySync } from "../../infra/sqlite-worker-identity.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
-import { captureOpenClawAgentDatabaseReadValidation } from "../../state/openclaw-agent-db-validation-cache.js";
 import type { AgentDatabaseGenerationClaim } from "../../state/openclaw-agent-execution-admission-contract.js";
 import { resolveSqliteSessionKey } from "./session-accessor.sqlite-scope-helpers.js";
 import type { SessionEntryReadScope } from "./session-accessor.types.js";
@@ -159,10 +158,6 @@ export function readRetainedSessionEntryFacts(
   if (!before) {
     return undefined;
   }
-  const validation = captureOpenClawAgentDatabaseReadValidation(database);
-  if (!validation || Atomics.load(new Int32Array(validation.validation.canonicalReady), 0) !== 1) {
-    return undefined;
-  }
   nativeOwner?.assertCurrent();
   const projection = request.snapshotFields ?? "full";
   const entries: SessionEntryCohortResult["entries"] = [];
@@ -232,7 +227,6 @@ export function readRetainedSessionEntryFacts(
       return undefined;
     }
   }
-  validation.assertCurrent();
   nativeOwner?.assertCurrent();
   if (
     !source ||

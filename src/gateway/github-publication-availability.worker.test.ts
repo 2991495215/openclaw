@@ -64,6 +64,13 @@ vi.mock("../config/sessions/session-entry-read-facts.js", async (original) => {
       }
       return {
         kind: "session-exact-entries",
+        source: sessionReadSource,
+        databaseIdentity: {
+          identity: sessionReadSource.databaseIdentity,
+          incarnation: "synthetic",
+          filename: sessionStorePath,
+          canonicalPath: sessionStorePath,
+        },
         entries: [{ sessionKey: session.sessionKey, entry: mocks.session().entry }],
         lifecycleTimestamps: {},
       };
@@ -104,6 +111,11 @@ vi.mock("../secrets/runtime-state.js", () => ({
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const sessionStorePath = "/publication-availability/sessions.sqlite";
 const session = { sessionKey: "agent:main:publication", sessionId: "session", agentId: "main" };
+const sessionReadSource = {
+  agentId: session.agentId,
+  path: sessionStorePath,
+  databaseIdentity: "synthetic-publication-availability",
+};
 const worktree: ManagedWorktreeRecord = {
   id: "publication-worktree",
   name: "publication",
@@ -125,7 +137,7 @@ beforeEach(async () => {
     canonicalKey: session.sessionKey,
     agentId: session.agentId,
     storePath: sessionStorePath,
-    readSource: { agentId: session.agentId, path: sessionStorePath },
+    readSource: sessionReadSource,
     entry: {
       sessionId: session.sessionId,
       lifecycleRevision: "lifecycle",
@@ -163,7 +175,7 @@ it("rejects an unbound session without dispatching a worktree read", async () =>
     canonicalKey: session.sessionKey,
     agentId: session.agentId,
     storePath: sessionStorePath,
-    readSource: { agentId: session.agentId, path: sessionStorePath },
+    readSource: sessionReadSource,
     entry: { sessionId: session.sessionId, lifecycleRevision: "lifecycle" },
   });
   expect(await prepareGitHubPublicationAvailability(session)).toBe(false);

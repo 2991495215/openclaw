@@ -130,7 +130,7 @@ export function observeTalkVoiceChangeRequest(
     typeof createDelegatedBrowserProviderFixture
   >["context"]["broadcastToConnIds"],
 ) {
-  const requested = createDeferred<void>();
+  const requested = createDeferred();
   broadcast.mockImplementation((event) => {
     if (event === "talk.voice.change") {
       requested.resolve();

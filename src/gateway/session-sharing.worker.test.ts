@@ -7,7 +7,10 @@ import { prepareQualifiedSessionEntryTarget } from "../config/sessions/session-a
 import { replaceSessionEntrySync } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { addSessionMember, removeSessionMember } from "../config/sessions/session-sharing-store.js";
 import { removeSessionMember as removeSessionMemberSync } from "../config/sessions/session-sharing-store.native.js";
-import { targetDiscoveryLane } from "../config/sessions/session-transcript-worker-resources.js";
+import {
+  projectionLane,
+  targetDiscoveryLane,
+} from "../config/sessions/session-transcript-worker-resources.js";
 import { sessionChanges } from "../sessions/session-row-changes.js";
 import { readOpenClawAgentDatabaseIdentity } from "../state/openclaw-agent-db-identity.js";
 import { closeOpenClawAgentDatabasesAsync } from "../state/openclaw-agent-db-lifecycle.js";
@@ -235,9 +238,9 @@ it("allows unrelated config reloads while worker authorization reads are pending
         id: client.authenticatedUserProfile!.profileId,
       },
     });
-    const read = targetDiscoveryLane.pool.run.bind(targetDiscoveryLane.pool);
+    const read = projectionLane.pool.run.bind(projectionLane.pool);
     let reloads = 0;
-    const spy = vi.spyOn(targetDiscoveryLane.pool, "run").mockImplementation(async (...args) => {
+    const spy = vi.spyOn(projectionLane.pool, "run").mockImplementation(async (...args) => {
       const reply = await read(...args);
       if (
         reply.ok &&
@@ -262,10 +265,10 @@ it("allows unrelated config reloads while worker authorization reads are pending
       expect(result.error).toBeNull();
       expect(reloads).toBeGreaterThan(0);
       const initialReloads = reloads;
-      invalidateSessionReadFacts(scope);
+      cfg = { ...cfg, logging: { level: "warn" } };
       const effect = vi.fn(() => result.authorization!.assertCurrent());
       await result.authorization!.withCurrent!(effect);
-      expect(reloads).toBeGreaterThan(initialReloads);
+      expect(reloads).toBe(initialReloads);
       expect(effect).toHaveBeenCalledOnce();
     } finally {
       spy.mockRestore();

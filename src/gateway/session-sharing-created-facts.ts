@@ -206,7 +206,7 @@ export function createSessionSharingReceiptRead({
       }
       if (created.readSource) {
         // Shared stores may have a different physical owner than the session's logical agent.
-        pending.source.agentId = created.readSource.agentId;
+        pending.source = { ...pending.source, agentId: created.readSource.agentId };
         const prepared = preparedSources.find((source) => source.path === pending.source.path);
         if (prepared) {
           prepared.agentId = created.readSource.agentId;

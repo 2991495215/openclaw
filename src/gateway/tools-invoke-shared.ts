@@ -537,12 +537,13 @@ async function invokeGatewayToolWithSignal(
         return await tool.execute?.(toolCallId, hookResult.params, params.signal);
       },
     );
+    const executedAction = asOptionalRecord(hookResult.params)?.action;
     const delivery =
       toolName === "message" &&
       resolveToolSource(tool) === "core" &&
-      (isMessageToolSendActionName(hookResult.params.action) ||
-        hookResult.params.action === "poll" ||
-        hookResult.params.action === "broadcast")
+      (isMessageToolSendActionName(executedAction) ||
+        executedAction === "poll" ||
+        executedAction === "broadcast")
         ? readEmbeddedMessageDeliveryFact(
             asOptionalRecord(asOptionalRecord(result)?.details)?.messageDelivery,
           )

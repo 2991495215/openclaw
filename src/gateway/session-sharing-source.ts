@@ -50,6 +50,7 @@ import {
   type SessionSharingTarget,
 } from "./session-sharing-policy.js";
 import { captureSessionMutationRouting } from "./session-sharing-preparation.js";
+import type { createSessionSharingConsumption } from "./session-sharing-read.js";
 import { captureSessionSharingStore } from "./session-sharing-source-store.js";
 import type {
   SessionMutationTarget,
@@ -583,11 +584,13 @@ export function captureSessionSharingTalkAuthority({
   input,
   target,
   authorizesAgentRun,
+  preparedPolicy,
 }: {
   request: SessionMutationAuthorizationParams;
   input: ReturnType<typeof resolveTalkSessionTargetInput>;
   target: PreparedTalkSessionTarget | undefined;
   authorizesAgentRun: boolean;
+  preparedPolicy: ReturnType<typeof createSessionSharingConsumption>["policy"];
 }) {
   return (cfg: OpenClawConfig): PreparedTalkSessionTarget | undefined => {
     if (!input || !target) {
@@ -616,15 +619,16 @@ export function captureSessionSharingTalkAuthority({
     ) {
       throw sessionMutationTargetChanged(request.method, target.sessionKey);
     }
-    const error =
-      authorizesAgentRun &&
-      authorizeGatewaySessionCreation({
-        cfg: request.context.getCommittedRuntimeConfig?.() ?? cfg,
-        client: request.client,
-        agentId: current.agentId,
-      });
-    if (error) {
-      throw new SessionMutationAuthorizationChangedError(error);
+    if (authorizesAgentRun) {
+      const policyConfig = request.context.getCommittedRuntimeConfig?.() ?? cfg;
+      const policy = preparedPolicy(policyConfig);
+      const error = authorizeGatewaySessionCreation(
+        { cfg: policyConfig, client: request.client, agentId: current.agentId },
+        policy ? { policy: policy.policy } : undefined,
+      );
+      if (error) {
+        throw new SessionMutationAuthorizationChangedError(error);
+      }
     }
     return current;
   };

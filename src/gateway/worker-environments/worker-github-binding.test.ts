@@ -52,7 +52,7 @@ vi.mock("../session-utils-store-worker.js", async (importOriginal) => ({
   ) => ({
     ...mocks.session(params.key, { agentId: params.agentId }),
     storePath: sessionStorePath,
-    readSource: { agentId: session.agentId, path: sessionStorePath },
+    readSource: sessionReadSource,
   }),
 }));
 vi.mock("../../config/sessions/session-entry-read-facts.js", async (original) => {
@@ -70,6 +70,13 @@ vi.mock("../../config/sessions/session-entry-read-facts.js", async (original) =>
       }
       return {
         kind: "session-exact-entries",
+        source: sessionReadSource,
+        databaseIdentity: {
+          identity: sessionReadSource.databaseIdentity,
+          incarnation: "synthetic",
+          filename: sessionStorePath,
+          canonicalPath: sessionStorePath,
+        },
         entries: [{ sessionKey: session.sessionKey, entry: mocks.session().entry }],
         lifecycleTimestamps: {},
       };
@@ -91,6 +98,11 @@ const profileId = "ghp_11111111111111111111111111111111";
 const token = "synthetic-worker-github-binding-token";
 const sessionStorePath = "/worker-github-binding/sessions.sqlite";
 const session = { sessionId: "worker-session", sessionKey: "agent:main:worker", agentId: "main" };
+const sessionReadSource = {
+  agentId: session.agentId,
+  path: sessionStorePath,
+  databaseIdentity: "synthetic-worker-github-binding",
+};
 const worktree = {
   id: "worker-worktree",
   path: "/repo/worktree",

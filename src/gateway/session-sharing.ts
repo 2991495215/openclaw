@@ -320,11 +320,12 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
     return { error: null };
   }
   if (talkSessionTarget && authorizesAgentRun) {
-    const error = authorizeGatewaySessionCreation({
-      cfg: getCfg(),
-      client: params.client,
-      agentId: talkSessionTarget.agentId,
-    });
+    const cfg = getPolicyConfig();
+    const policy = preparedPolicy(cfg);
+    const error = authorizeGatewaySessionCreation(
+      { cfg, client: params.client, agentId: talkSessionTarget.agentId },
+      policy ? { policy: policy.policy } : undefined,
+    );
     if (error) {
       return { error };
     }
@@ -406,6 +407,7 @@ export function resolveSessionMutationAuthorization(request: SessionMutationAuth
         input: talkInput,
         target: talkSessionTarget,
         authorizesAgentRun,
+        preparedPolicy,
       });
       const assertTargetCurrent = (
         targetRef: SessionMutationTarget,

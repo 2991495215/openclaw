@@ -5,7 +5,7 @@ import { runWithSessionActorStorage } from "../config/sessions/session-actor-sto
 import { readSessionCreateTarget } from "./session-create-target.js";
 import { deleteIncognitoSessionForReset } from "./session-reset-incognito.js";
 import { resolveGatewaySessionStoreTargetInWorker } from "./session-utils-store-worker.js";
-import { loadGatewaySessionEntryReadOnly } from "./session-utils-store.js";
+import { loadGatewaySessionEntryReadOnlyAsync } from "./session-utils-store.js";
 
 vi.mock("node:sqlite", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:sqlite")>()),
@@ -62,9 +62,10 @@ it("reads committed actor changes through Gateway target and creation preparatio
       },
       authority,
     );
-    expect(loadGatewaySessionEntryReadOnly(key, { agentId: "main" }, cfg).entry?.displayName).toBe(
-      "Current title",
-    );
+    expect(
+      (await loadGatewaySessionEntryReadOnlyAsync(key, { agentId: "main" }, cfg)).entry
+        ?.displayName,
+    ).toBe("Current title");
     expect(
       await readSessionCreateTarget({ cfg, commandSource: "test" }, target, "original", [key]),
     ).toMatchObject({ ok: true, value: { displayName: "Current title" } });
