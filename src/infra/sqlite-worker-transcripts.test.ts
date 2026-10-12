@@ -4,7 +4,6 @@ import { DatabaseSync, StatementSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
 import { TRANSCRIPTS_RESULT_MAX_BYTES } from "../../packages/gateway-protocol/src/schema/transcripts.js";
 import { createDeferred } from "../../test/helpers/promise.js";
-import { readPluginMetadataStateRow } from "../plugins/plugin-metadata-state-worker.js";
 import {
   closeOpenClawStateDatabaseAsync,
   closeOpenClawStateDatabaseForTest,
@@ -157,7 +156,12 @@ it("keeps cold transcript reads on the canonical worker and preserves store crea
     expect(await store.listSessionEntries()).toEqual([]);
     expect(await store.readLatestEntry()).toBeUndefined();
     expect(await store.readSession("missing")).toBeUndefined();
-    expect(await readPluginMetadataStateRow("installed-index", { env }, true)).toBeUndefined();
+    expect(
+      await executeOpenClawStateWorker(captureOpenClawStateWorkerContext({ env }), {
+        type: "claws.install-schema-versions",
+        input: { artifactPreservingReadOnly: true },
+      }),
+    ).toEqual([]);
   });
   expect(existsSync(databasePath)).toBe(true);
   expect(existsSync(exportRoot)).toBe(false);
