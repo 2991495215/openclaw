@@ -314,6 +314,7 @@ export function createSessionActorWorker(
               command: command.input,
               before: before.hot,
               after: working.hot,
+              payloads: working.transcript.payloads,
               applied,
             });
             if (

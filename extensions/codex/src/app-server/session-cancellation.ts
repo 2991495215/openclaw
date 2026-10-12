@@ -24,7 +24,7 @@ export async function withCodexSessionDescendantCancellation<T>(
     return run(async () => ({ killed: 0, cancelledRequesters: [] }));
   }
   const lease = await retainSharedCodexAppServerClientByInstanceId(binding.clientId, {
-    rejectIfClosing: true,
+    waitForExit: false,
   });
   const assertCurrent = () => {
     params.assertCurrent();

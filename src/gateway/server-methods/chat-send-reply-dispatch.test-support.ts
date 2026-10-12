@@ -22,6 +22,33 @@ import * as sessionStoreReaders from "../session-utils-store-worker.js";
 import { loadSessionEntry } from "../session-utils.js";
 import { createChatSendReplyDispatch } from "./chat-send-reply-dispatch.js";
 
+function createReplyDispatchSession(clientRunId: string) {
+  return {
+    agentId: "main",
+    backingSessionId: undefined,
+    cfg: {},
+    clientRunId,
+    sessionKey: "agent:main:main",
+    sessionLoadOptions: { agentId: "main" },
+  };
+}
+
+export function createReplyDispatch(
+  clientRunId: string,
+  overrides: Partial<Parameters<typeof createChatSendReplyDispatch>[0]> = {},
+) {
+  return createChatSendReplyDispatch({
+    getRuntimeConfig,
+    accountId: undefined,
+    isAgentRunStarted: () => true,
+    isRunCurrent: () => true,
+    logGateway: { ...createSubsystemLogger("test/chat-send-reply-dispatch"), warn: vi.fn() },
+    session: createReplyDispatchSession(clientRunId),
+    userTurnRecorder: { markBlocked: vi.fn(), getAdmissionReceipt: () => undefined },
+    ...overrides,
+  });
+}
+
 export async function createReplyTranscriptFixture(
   sessionKey = "agent:main:receipt",
   retainSource = false,

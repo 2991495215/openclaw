@@ -371,8 +371,7 @@ export async function retainSharedCodexAppServerClientByInstanceId(
   options?: {
     signal?: AbortSignal;
     createAbortError?: (signal: AbortSignal) => Error;
-    /** Cancellation must reach its parent even when native cleanup is still pending. */
-    rejectIfClosing?: boolean;
+    waitForExit?: boolean;
   },
 ) {
   const id = clientId?.trim();
@@ -386,8 +385,10 @@ export async function retainSharedCodexAppServerClientByInstanceId(
     }
     const entry = state.entriesByClient.get(client);
     if (entry?.client !== client || entry.closeError || client.getCloseError()) {
-      if (options?.rejectIfClosing) {
-        throw new Error("Codex app-server client is closing");
+      // Stop must reach the parent while the transport owner finishes shutdown.
+      // Replacement writers keep joining physical exit before acquiring ownership.
+      if (options?.waitForExit === false && client.getCloseError()) {
+        return undefined;
       }
       // Cancellation ends only this waiter; discovery still fences later writers.
       await racePromiseWithAbortSignal(

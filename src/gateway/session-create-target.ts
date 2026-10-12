@@ -5,7 +5,10 @@ import type { ErrorShape } from "../../packages/gateway-protocol/src/index.js";
 import { isEmbeddedAgentRunActive } from "../agents/embedded-agent-runner/runs.js";
 import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.sqlite-entry.js";
-import { withSessionEntriesFromStoresInWorker } from "../config/sessions/session-entry-read-runtime.js";
+import {
+  readSessionEntriesFromStoreInWorker,
+  withSessionEntriesFromStoresInWorker,
+} from "../config/sessions/session-entry-read-runtime.js";
 import { sessionEntryCommitGuardOptions } from "../config/sessions/session-source-authority.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import { isIncognitoSessionKey, parseAgentSessionKey } from "../routing/session-key.js";
@@ -207,26 +210,16 @@ export async function readSessionCreateTarget(
         .entry,
     );
   }
-  const result = await withSessionEntriesFromStoresInWorker(
-    [
-      {
-        agentId: target.agentId,
-        storePath: target.storePath,
-        sessionKeys: target.storeKeys,
-        projection: "exact",
-      },
-    ],
-    ([read]) => {
-      read!.assertCurrent();
-      const store = Object.fromEntries(
-        read!.result.entries.map(({ sessionKey, entry }) => [sessionKey, entry]),
-      );
-      return validate(findCanonicalStoreMatch(store, target.storeKeys)?.entry);
-    },
-    { ordered: true },
+  const read = await readSessionEntriesFromStoreInWorker({
+    agentId: target.agentId,
+    storePath: target.storePath,
+    sessionKeys: target.storeKeys,
+    projection: "exact",
+  });
+  const store = Object.fromEntries(
+    read.entries.map(({ sessionKey, entry }) => [sessionKey, entry]),
   );
-  assertCurrent();
-  return result;
+  return validate(findCanonicalStoreMatch(store, target.storeKeys)?.entry);
 }
 
 export async function finalizeSessionCreateTarget(

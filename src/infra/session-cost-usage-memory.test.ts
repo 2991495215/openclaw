@@ -9,9 +9,9 @@ import {
 import { resolveMemorySessionTargetsInWorker } from "../config/sessions/session-transcript-inventory-runtime.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
-import { readTranscriptRecords } from "./session-cost-usage-collection.js";
 import { runSessionActorUsage } from "./session-cost-usage-memory.js";
 import { resolveUsageCostPricingFingerprint } from "./session-cost-usage-pricing-context.js";
+import { loadSessionLogs, loadSessionUsageTimeSeries } from "./session-cost-usage-reporting.js";
 import { prepareUsageCostWorker, runUsageCostWorker } from "./session-cost-usage-worker-runtime.js";
 
 vi.mock("node:sqlite", async (importOriginal) => ({
@@ -131,13 +131,14 @@ describe("actor memory usage", () => {
         kind: "inventory",
         files: [{ sessionId }],
       });
-      const messages: Record<string, unknown>[] = [];
-      for await (const record of readTranscriptRecords(sessionFile)) {
-        if (record.type === "message") {
-          messages.push(record);
-        }
-      }
-      expect(messages).toMatchObject([{ message: { usage: { input: 5 } } }]);
+      const params = { agentId: "main", sessionId, sessionFile, config: {} };
+      await expect(loadSessionUsageTimeSeries(params)).resolves.toMatchObject({
+        sessionId,
+        points: [{ input: 5, output: 2, totalTokens: 7, cost: 0.03 }],
+      });
+      await expect(loadSessionLogs(params)).resolves.toMatchObject([
+        { role: "assistant", content: "answer", tokens: 7, cost: 0.03 },
+      ]);
     }
     const refresh = () =>
       runSessionActorUsage(

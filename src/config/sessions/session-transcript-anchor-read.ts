@@ -6,6 +6,11 @@ import { getOpenClawAgentDatabaseIfOpen } from "../../state/openclaw-agent-db.js
 import { runOpenClawAgentWriteAdmission } from "../../state/openclaw-agent-write-admission.js";
 import type { SessionTranscriptReadScope } from "./session-accessor.sqlite-contract.js";
 import { toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
+import {
+  readSessionActorTranscriptAnchorsFromReplica,
+  readSessionActorTranscriptReplica,
+} from "./session-actor-replica.js";
+import { readSessionActorTranscriptAnchors } from "./session-actor-transcript-anchors.js";
 import { captureSessionActorTranscriptRead } from "./session-actor-transcript-read.js";
 import type { SessionTranscriptAnchorSelection } from "./session-transcript-anchor-read.kernel.js";
 import type { SessionTranscriptAnchorFacts } from "./session-transcript-anchor-read.types.js";
@@ -19,6 +24,7 @@ import { captureSessionTranscriptStorageEnvironment } from "./transcript-target-
 import {
   getOwnedSessionTranscriptReader,
   readOwnedSessionTranscriptEntry,
+  readOwnedSessionTranscriptState,
 } from "./transcript-write-context.js";
 
 type AnchorScope = SessionTranscriptReadScope & { sessionKey: string };
@@ -54,6 +60,31 @@ export async function readSessionTranscriptAnchorsAsync(
     memory.assertCurrent();
     consume(facts);
     return facts;
+  }
+  signal?.throwIfAborted();
+  const hot = readOwnedSessionTranscriptState(scope);
+  if (scope.storePath) {
+    const target = {
+      agentId: scope.agentId ?? resolveAgentIdFromSessionKey(scope.sessionKey),
+      path: scope.storePath,
+      sessionId: scope.sessionId,
+    };
+    const facts =
+      (hot &&
+        readSessionActorTranscriptAnchors(
+          hot,
+          target,
+          selection,
+          readSessionActorTranscriptReplica(hot)?.tail,
+        )) ??
+      readSessionActorTranscriptAnchorsFromReplica(
+        { ...target, sessionKey: scope.sessionKey },
+        selection,
+      );
+    if (facts) {
+      consume(structuredClone(facts));
+      return structuredClone(facts);
+    }
   }
   const selected =
     selection.afterSeq === undefined &&

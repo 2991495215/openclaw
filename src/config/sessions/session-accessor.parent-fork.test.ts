@@ -18,7 +18,7 @@ import {
   replaceSessionEntrySync,
 } from "./session-accessor.js";
 import { resolveSqliteStoreScope, toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
-import { replaceTranscriptEvents } from "./session-accessor.sqlite-transcript-write.test-support.js";
+import { withTranscriptWriteSequence } from "./session-accessor.sqlite-transcript-write.js";
 
 const forkableClaudeCliBackend = {
   id: "claude-cli",
@@ -42,14 +42,14 @@ async function seedParentTranscript(params: {
   parentSessionId: string;
   events: Record<string, unknown>[];
 }): Promise<void> {
-  await replaceTranscriptEvents(
+  await withTranscriptWriteSequence(
     {
       agentId: "main",
       sessionId: params.parentSessionId,
       sessionKey: "agent:main:main",
       storePath: params.storePath,
     },
-    params.events,
+    (transcript) => transcript.replaceEvents(params.events),
   );
 }
 
