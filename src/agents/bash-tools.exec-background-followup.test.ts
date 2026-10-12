@@ -12,6 +12,8 @@ import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import * as sessionReads from "../config/sessions/session-entry-read-runtime.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resetSystemEventsForTest } from "../infra/system-events.js";
+import { sessionChanges } from "../sessions/session-row-changes.js";
+import { resolveOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import {
   createOpenClawTestState,
@@ -195,6 +197,13 @@ test("reports manual collection after real destination capture fails, then recov
 }) => {
   const sessionKey = "agent:main:exec-capture-failure";
   await seedOrigin(sessionKey);
+  // Force a cold destination read so the transport fault cannot be bypassed by writer receipts.
+  sessionChanges.invalidate({
+    agentId: "main",
+    sessionKey,
+    storePath: resolveOpenClawAgentSqlitePath({ agentId: "main" }),
+    factsInvalidated: true,
+  });
   let faults = 0;
   const failRead = (value: unknown) => {
     if (
