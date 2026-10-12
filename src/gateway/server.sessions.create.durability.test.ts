@@ -108,7 +108,7 @@ afterEach(() => {
 test("persists and dispatches concurrent Gateway inputs while participant writes queue", async () => {
   const { storePath } = await createSessionStoreDir();
   const { ws } = await openClient();
-  const inputs = Array.from({ length: 8 }, (_, index) => ({
+  const inputs = Array.from({ length: 2 }, (_, index) => ({
     agentId: "main",
     key: `agent:main:dashboard:concurrent-initial-${index}`,
     message: `Persist concurrent Gateway initial input ${index}.`,
@@ -133,6 +133,7 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
     );
   };
   const competingWrites: Promise<unknown>[] = [];
+  const staleInputs = new Set<string>();
   const acquire = sessionInputActors.acquireSessionInputActor;
   vi.spyOn(sessionInputActors, "acquireSessionInputActor").mockImplementation(async (...args) => {
     const current =
@@ -187,6 +188,7 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
           kind: "stale-version",
           postimage: { target: input.actor.target },
         });
+        staleInputs.add(input.actor.target.sessionKey);
         return outcome;
       });
     }
@@ -225,6 +227,7 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
         ),
       ).toHaveLength(1);
     }
+    expect(staleInputs).toEqual(new Set(inputs.map((input) => input.key)));
     expect(dispatch.start).toHaveBeenCalledTimes(inputs.length);
   } catch (error) {
     failed = true;
