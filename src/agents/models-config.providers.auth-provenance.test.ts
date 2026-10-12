@@ -37,9 +37,10 @@ vi.mock("../plugins/provider-runtime.js", () => ({
   resolveProviderSyntheticAuthWithPlugin: vi.fn(),
 }));
 
+// mock-isolation: Provenance fixtures use a fixed alias owner instead of installed plugin metadata.
 vi.mock("./provider-auth-aliases.js", () => ({
   resolveProviderAuthAliasMap: () => ({ "proof-alias": "openai" }),
-  resolveProviderIdForAuth: (provider: string) => {
+  resolvePreparedProviderIdForAuth: (provider: string) => {
     const normalized = provider.trim().toLowerCase();
     return normalized === "proof-alias" ? "openai" : normalized;
   },

@@ -277,6 +277,7 @@ vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => ({
   isPluginMetadataSnapshotCompatible: () => true,
   resolvePluginMetadataSnapshot: () => emptyPluginMetadataSnapshot,
 }));
+// mock-isolation: Session status uses fixture thinking facts without loading provider policy runtimes.
 vi.mock("../plugins/provider-thinking.js", () => ({
   prepareModelCatalogThinkingPolicies: () => undefined,
   resolveProviderBinaryThinking: () => undefined,

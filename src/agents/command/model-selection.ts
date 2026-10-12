@@ -61,7 +61,7 @@ import {
 import { createModelVisibilityPolicy } from "../model-visibility-policy.js";
 import { listOpenAIAuthProfileProvidersForAgentRuntime } from "../openai-routing.js";
 import { resolveOperatorModelDefault } from "../operator-model-policy.js";
-import { resolveProviderIdForAuth } from "../provider-auth-aliases.js";
+import { resolvePreparedProviderIdForAuth as resolveProviderIdForAuth } from "../provider-auth-aliases.js";
 import { resolveSessionRuntimeOverrideForProvider } from "../session-runtime-compat.js";
 import {
   normalizeThinkingCatalogProviders,

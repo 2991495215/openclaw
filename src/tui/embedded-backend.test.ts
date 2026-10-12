@@ -2685,6 +2685,8 @@ describe("EmbeddedTuiBackend", () => {
           canonicalKey: "global",
           cfg: expect.anything(),
           entry,
+          metadataSnapshot:
+            projectSessionsPatchEntryMock.mock.calls.at(-1)?.[0].runtimeMetadataSnapshot,
           preparedAcpMeta: null,
           storePath: target.storePath,
           targetAgentId: owner,

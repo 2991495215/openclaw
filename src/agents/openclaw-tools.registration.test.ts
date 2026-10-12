@@ -24,6 +24,7 @@ import {
 import { getGatewayToolCallerIdentity } from "./tools/gateway-caller-context.js";
 import * as inProcessGateway from "./tools/in-process-gateway.js";
 
+// mock-isolation: Core tool registration must not depend on installed plugin registries.
 vi.mock("./openclaw-plugin-tools.js", () => ({
   resolveOpenClawPluginToolsForOptions: () => [],
   resolveOpenClawPluginToolsForOptionsAsync: async () => [],

@@ -47,6 +47,7 @@ vi.mock("../plugins/setup-registry.js", () => ({
   resolvePluginSetupProviderCore: () => undefined,
   resolvePluginSetupRegistry: () => ({ providers: [] }),
 }));
+// mock-isolation: Auth callbacks use synthetic providers while retaining metadata preparation.
 vi.mock("../plugins/providers.runtime.js", async () => {
   const { resolvePluginMetadataSnapshotAsync } =
     await import("../plugins/plugin-metadata-snapshot.js");

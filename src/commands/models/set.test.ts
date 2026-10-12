@@ -38,7 +38,7 @@ vi.mock("../../config/logging.js", () => ({
   logConfigUpdated: (...args: unknown[]) => mocks.logConfigUpdated(...args),
 }));
 
-// Real provider activation is covered by model-selection.runtime.test.ts.
+// mock-isolation: Real provider activation is covered by model-selection.runtime.test.ts.
 vi.mock("./model-selection.runtime.js", () => ({
   withModelCommandProviderRuntime: async (
     params: { runtimeConfig: OpenClawConfig },

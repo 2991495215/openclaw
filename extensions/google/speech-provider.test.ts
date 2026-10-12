@@ -23,7 +23,9 @@ beforeAll(async () => {
   const http = await vi.importActual<typeof import("openclaw/plugin-sdk/provider-http")>(
     "openclaw/plugin-sdk/provider-http",
   );
-  resolveProviderHttpRequestConfigMock.mockImplementation(http.resolveProviderHttpRequestConfig);
+  resolveProviderHttpRequestConfigMock.mockImplementation(
+    http.resolveProviderHttpRequestConfigAsync,
+  );
   ({ buildGoogleSpeechProvider } = await import("./speech-provider.js"));
 });
 installProviderHttpMockCleanup();

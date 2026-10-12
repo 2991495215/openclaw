@@ -419,6 +419,7 @@ vi.mock("./models-config.providers.implicit.js", () => ({
     preparedModelRuntimeMocks.prepareStaticCatalog(...args),
 }));
 
+// mock-isolation: Runtime preparation acquires only the fixture registry, never the host registry.
 vi.mock("./runtime-plugins.js", () => ({
   acquireAgentRuntimePluginRegistry: async (...args: unknown[]) => {
     const registry = await preparedModelRuntimeMocks.loadAgentRuntimePluginRegistryHandle(...args);

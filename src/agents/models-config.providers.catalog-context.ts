@@ -25,7 +25,7 @@ import { buildOAuthRefreshFailureLoginCommand } from "./auth-profiles/oauth-refr
 import type { AuthProfileStore } from "./auth-profiles/types.js";
 import type { ProviderConfig } from "./models-config.providers.secret-helpers.js";
 import { PreparedModelRuntimePublicationSupersededError } from "./prepared-model-runtime.errors.js";
-import { resolveProviderIdForAuth } from "./provider-auth-aliases.js";
+import { resolvePreparedProviderIdForAuth as resolveProviderIdForAuth } from "./provider-auth-aliases.js";
 
 const log = createSubsystemLogger("agents/model-providers");
 

@@ -5,7 +5,7 @@ import {
 import { prepareAuthProfileProvider } from "../agents/auth-profiles.runtime.js";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import { resolveModelProviderAuthConfig } from "../agents/model-auth-provider-route.js";
-import { resolveProviderIdForAuth } from "../agents/provider-auth-aliases.js";
+import { resolvePreparedProviderIdForAuth as resolveProviderIdForAuth } from "../agents/provider-auth-aliases.js";
 import type { SessionEntry } from "../config/sessions.js";
 import { resolveCollapsedSessionAuthPinSource } from "../config/sessions/auth-profile-override-provenance.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";

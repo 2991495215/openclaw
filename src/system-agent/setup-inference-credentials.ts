@@ -4,7 +4,7 @@ import { resolveAmbientOwnerAgentId } from "../agents/agent-scope-config.js";
 import { resolveAgentEffectiveModelPrimary } from "../agents/agent-scope.js";
 import { loadAuthProfileStoreWithoutExternalProfilesAsync } from "../agents/auth-profiles/store-runtime.js";
 import { resolveModelRuntimePolicy } from "../agents/model-runtime-policy.js";
-import { resolveProviderIdForAuth } from "../agents/provider-auth-aliases.js";
+import { resolvePreparedProviderIdForAuth as resolveProviderIdForAuth } from "../agents/provider-auth-aliases.js";
 import { applyMergePatch } from "../config/merge-patch.js";
 import { normalizeAgentModelRefForConfig } from "../config/model-input.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";

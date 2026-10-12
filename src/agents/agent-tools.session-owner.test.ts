@@ -5,6 +5,7 @@ import "./test-helpers/fast-coding-tools.js";
 import * as inProcessGateway from "./tools/in-process-gateway.js";
 import { withSessionToolTestCaller } from "./tools/sessions-tool.test-helpers.js";
 
+// mock-isolation: Exercise session ownership without loading real plugin tools.
 vi.mock("./openclaw-plugin-tools.js", () => ({
   resolveOpenClawPluginToolsForOptionsAsync: async () => [],
 }));

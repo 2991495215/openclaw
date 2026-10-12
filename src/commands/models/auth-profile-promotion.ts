@@ -1,5 +1,5 @@
 import { promoteAuthProfileInOrder } from "../../agents/auth-profiles/profiles.js";
-import { resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
+import { resolvePreparedProviderIdForAuth as resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolvePluginMetadataSnapshotAsync } from "../../plugins/plugin-metadata-snapshot.js";
 import { ProviderCredentialsSavedError } from "../../shared/provider-auth-result.js";

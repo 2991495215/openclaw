@@ -67,7 +67,10 @@ import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot
 import { resolveAuthProfileOrderWithMetadata } from "./auth-profiles/order.js";
 import type { AuthProfileStore } from "./auth-profiles/types.js";
 import { createProviderAuthResolver } from "./models-config.providers.secrets.js";
-import { resolveProviderAuthAliasMap, resolveProviderIdForAuth } from "./provider-auth-aliases.js";
+import {
+  resolveProviderAuthAliasMap,
+  resolvePreparedProviderIdForAuth as resolveProviderIdForAuth,
+} from "./provider-auth-aliases.js";
 
 function createPluginManifestRecord(
   plugin: Partial<PluginManifestRecord> & Pick<PluginManifestRecord, "id" | "origin">,

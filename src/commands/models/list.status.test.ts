@@ -227,9 +227,10 @@ vi.mock("../../agents/model-auth-env-vars.js", () => ({
   resolveProviderEnvAuthLookupMaps: mocks.resolveProviderEnvAuthLookupMaps,
   listKnownProviderEnvApiKeyNames: mocks.listKnownProviderEnvApiKeyNames,
 }));
+// mock-isolation: Status tests control credential realms without discovering host providers.
 vi.mock("../../agents/provider-auth-aliases.js", () => ({
   resolveProviderAuthAliasMap: vi.fn(() => ({ "codex-cli": "openai" })),
-  resolveProviderIdForAuth: vi.fn((provider: string) =>
+  resolvePreparedProviderIdForAuth: vi.fn((provider: string) =>
     provider === "codex-cli" ? "openai" : provider,
   ),
 }));

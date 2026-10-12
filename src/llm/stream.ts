@@ -69,7 +69,20 @@ async function prepareTransportModel<TApi extends Api>(model: Model<TApi>): Prom
   await ensureTransportRuntimeHost();
   const { prepareModelProviderRequestRouteFacts } =
     await import("../agents/provider-request-config.js");
-  return await prepareModelProviderRequestRouteFacts(model);
+  const preparedModel = await prepareModelProviderRequestRouteFacts(model);
+  const {
+    attachModelProviderRuntimePluginHandle,
+    getModelProviderRuntimePluginHandle,
+    resolveProviderRuntimePluginHandleAsync,
+  } = await import("../plugins/provider-hook-runtime.js");
+  if (getModelProviderRuntimePluginHandle(preparedModel)) {
+    return preparedModel;
+  }
+  const runtimeHandle = await resolveProviderRuntimePluginHandleAsync({
+    provider: preparedModel.provider,
+    modelId: preparedModel.id,
+  });
+  return attachModelProviderRuntimePluginHandle(preparedModel, runtimeHandle);
 }
 
 function resolveRuntime(model: Model) {

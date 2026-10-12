@@ -7,6 +7,7 @@ import type { WizardMultiSelectParams, WizardPrompter } from "./prompts.js";
 import { setupPluginConfig } from "./setup.plugin-config.js";
 
 const loadPluginManifestRegistryCore = vi.fn();
+// mock-isolation: Plugin prompts use fixture schemas without reading the installed plugin inventory.
 vi.mock("../plugins/plugin-metadata-snapshot.js", () => ({
   resolvePluginMetadataSnapshotAsync: async () => loadPluginManifestRegistryCore(),
 }));

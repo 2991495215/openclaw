@@ -20,6 +20,7 @@ vi.mock("./manifest-registry.js", () => ({
   loadPluginManifestRegistryCore: () => ({ diagnostics: [], plugins: mocks.plugins }),
 }));
 
+// mock-isolation: Bundle contributions use the fixture registry without reading installed plugin state.
 vi.mock("./plugin-registry-contributions.js", () => ({
   loadPluginManifestRegistryForPluginRegistry: () => {
     mocks.loadRegistry();

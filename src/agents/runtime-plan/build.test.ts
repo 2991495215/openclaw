@@ -15,7 +15,7 @@ const resolveProviderIdForAuth = vi.hoisted(() => vi.fn((provider: string) => pr
 
 vi.mock("../provider-auth-aliases.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../provider-auth-aliases.js")>()),
-  resolveProviderIdForAuth,
+  resolvePreparedProviderIdForAuth: resolveProviderIdForAuth,
 }));
 
 vi.mock("../../plugins/provider-hook-runtime.js", () => ({

@@ -10,6 +10,7 @@ import { applyNodesToolWorkspaceGuard } from "./openclaw-tools.registration.js";
 import { createHostSandboxFsBridge } from "./test-helpers/host-sandbox-fs-bridge.js";
 import { loadMediaToolReferences } from "./tools/media-tool-shared.js";
 
+// mock-isolation: Workspace media guards use core tools without activating installed plugins.
 vi.mock("./openclaw-plugin-tools.js", () => ({
   resolveOpenClawPluginToolsForOptionsAsync: async () => [],
 }));

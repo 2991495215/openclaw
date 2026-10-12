@@ -23,7 +23,8 @@ vi.mock("../../agents/auth-profiles.js", () => ({
   resolveAuthStatePathForDisplay: (agentDir: string) => `${agentDir}/auth-profiles.json`,
 }));
 
-vi.mock("./load-config.js", () => ({
+vi.mock("./load-config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./load-config.js")>()),
   loadModelsConfig: async (...args: unknown[]) => {
     const config = await mocks.loadModelsConfig(...args);
     await resolvePluginMetadataSnapshotAsync({ config, env: process.env });

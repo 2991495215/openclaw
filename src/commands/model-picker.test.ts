@@ -19,6 +19,7 @@ const loadModelCatalog = vi.hoisted(() => vi.fn());
 const modelCatalogRouteVariants = vi.hoisted(() => ({
   value: undefined as readonly ModelCatalogEntry[] | undefined,
 }));
+// mock-isolation: Picker catalogs come from fixed rows, without discovery or provider activation.
 vi.mock("../agents/prepared-model-catalog.js", () => ({
   loadProviderScopedThinkingCatalog: vi.fn(async () => []),
   loadPreparedModelCatalogSnapshot: async (params: LoadPreparedModelCatalogParams) => {

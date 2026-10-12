@@ -262,7 +262,8 @@ export async function projectInferenceRoute(
       ),
     );
   }
-  const { resolveProviderIdForAuth } = await import("../agents/provider-auth-aliases.js");
+  const { resolvePreparedProviderIdForAuth: resolveProviderIdForAuth } =
+    await import("../agents/provider-auth-aliases.js");
   const routeAgentId = resolveAmbientOwnerAgentId(config, requestedAgentId);
   const route = await resolveSystemAgentConfiguredRouteFromConfig(config, routeAgentId, deps);
   const list = listAgentEntries(config);

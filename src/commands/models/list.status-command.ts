@@ -54,7 +54,7 @@ import { createModelVisibilityPolicy } from "../../agents/model-visibility-polic
 import { resolveModelCatalogIdentityKey } from "../../agents/openai-model-routes.js";
 import { OPENAI_PROVIDER_ID } from "../../agents/openai-routing.js";
 import { loadPreparedModelCatalogSnapshot } from "../../agents/prepared-model-catalog.js";
-import { resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
+import { resolvePreparedProviderIdForAuth as resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
 import { readUtilityModelSetting } from "../../agents/utility-model-setting.js";
 import { resolveUtilityModelRefForAgent } from "../../agents/utility-model.js";
 import { requestExitAfterOneShotOutput } from "../../cli/one-shot-exit.js";

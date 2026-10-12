@@ -51,7 +51,7 @@ import { getApiKeyForModelCore, type ResolvedProviderAuth } from "../agents/mode
 import { normalizeProviderId } from "../agents/model-selection.js";
 import { resolveBuiltInModelSuppressionFromManifest } from "../agents/model-suppression.js";
 import { ensureOpenClawModelsJson } from "../agents/models-config.js";
-import { resolveProviderIdForAuth } from "../agents/provider-auth-aliases.js";
+import { resolvePreparedProviderIdForAuth as resolveProviderIdForAuth } from "../agents/provider-auth-aliases.js";
 import {
   appendLiveModelCandidates,
   applyLiveProviderPluginDiscoveryCompat,

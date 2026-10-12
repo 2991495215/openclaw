@@ -96,8 +96,8 @@ describe("legacy migration with invalid plugin config", () => {
         },
       },
       session: { typingMode: "thinking" },
-    } satisfies OpenClawConfig;
-    const result = withDoctorPluginMetadataForTest(raw, () =>
+    };
+    const result = withDoctorPluginMetadataForTest({ agents: raw.agents }, () =>
       migrateLegacyConfig(raw, { sourceConfigBeforeMigrations: raw }),
     );
 

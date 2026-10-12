@@ -52,6 +52,7 @@ vi.mock("../gateway/session-list-read-result.js", () => ({
   },
 }));
 
+// mock-isolation: Session-context fixtures must not acquire real plugin tools or registry state.
 vi.mock("./openclaw-plugin-tools.js", () => ({
   resolveOpenClawPluginToolsForOptionsAsync: async () => [],
 }));

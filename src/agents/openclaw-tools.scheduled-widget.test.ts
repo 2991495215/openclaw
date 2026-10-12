@@ -5,6 +5,7 @@ import { createOpenClawCodingToolsAsync } from "./agent-tools.js";
 import { resolveEmbeddedAttemptToolConstructionPlan } from "./embedded-agent-runner/run/attempt-tool-construction-plan.js";
 import { createOpenClawToolsAsync } from "./openclaw-tools.js";
 
+// mock-isolation: Scheduled widget assembly excludes installed plugin activation.
 vi.mock("./openclaw-plugin-tools.js", () => ({
   resolveOpenClawPluginToolsForOptionsAsync: async () => [],
 }));

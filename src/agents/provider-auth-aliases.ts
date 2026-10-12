@@ -14,6 +14,7 @@ import {
   normalizePluginConfigId,
 } from "../plugins/plugin-config-trust.js";
 import { buildPluginMetadataProviderAuthAliases } from "../plugins/plugin-metadata-provider-facts.js";
+import { loadLegacyPluginMetadataSnapshotRuntime } from "../plugins/plugin-metadata-snapshot-required.js";
 import {
   loadPluginMetadataSnapshot,
   resolvePluginMetadataSnapshotAsync,
@@ -22,6 +23,7 @@ import type {
   PluginMetadataSnapshot,
   PluginProviderAuthAliasCandidate,
 } from "../plugins/plugin-metadata-snapshot.types.js";
+import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 
 /** Inputs that control plugin metadata and trust scope for auth alias lookup. */
 export type ProviderAuthAliasLookupParams = {
@@ -133,7 +135,7 @@ export function couldResolveProviderIdForAuth(
   target: string,
   params?: ProviderAuthAliasLookupParams,
 ): boolean {
-  if (resolveProviderIdForAuth(provider, params) === target) {
+  if (resolvePreparedProviderIdForAuth(provider, params) === target) {
     return true;
   }
   const normalized = normalizeProviderId(provider);
@@ -185,7 +187,7 @@ export function resolveProviderAuthAliasMap(
 }
 
 /** Resolve the provider ID that should be used for credential lookup. */
-export function resolveProviderIdForAuth(
+export function resolvePreparedProviderIdForAuth(
   provider: string,
   params?: ProviderAuthAliasLookupParams,
 ): string {
@@ -217,5 +219,34 @@ export async function resolveProviderIdForAuthAsync(
       workspaceDir: params?.workspaceDir,
       allowWorkspaceScopedCurrent: true,
     }));
-  return resolveProviderIdForAuth(provider, { ...params, metadataSnapshot });
+  return resolvePreparedProviderIdForAuth(provider, { ...params, metadataSnapshot });
+}
+
+/** @deprecated Await resolveProviderIdForAuthAsync; removed in a later release after stable deprecation. */
+export function resolveProviderIdForAuth(
+  provider: string,
+  params?: ProviderAuthAliasLookupParams,
+): string {
+  if (!provider.trim()) {
+    return resolvePreparedProviderIdForAuth(provider, params);
+  }
+  const metadataSnapshot = getPreparedProviderAuthAliasSnapshot(params);
+  if (metadataSnapshot) {
+    return resolvePreparedProviderIdForAuth(provider, { ...params, metadataSnapshot });
+  }
+  warnPluginSdkDeprecation({
+    family: "provider-auth-aliases-sync",
+    method: "resolveProviderIdForAuth",
+    replacement: "resolveProviderIdForAuthAsync",
+    compatibility: "The synchronous helper retains cold native metadata discovery.",
+  });
+  return resolvePreparedProviderIdForAuth(provider, {
+    ...params,
+    metadataSnapshot: loadLegacyPluginMetadataSnapshotRuntime({
+      config: params?.config,
+      env: params?.env ?? process.env,
+      workspaceDir: params?.workspaceDir,
+      allowWorkspaceScopedCurrent: true,
+    }),
+  });
 }

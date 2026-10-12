@@ -22,7 +22,7 @@ import {
 import { resolveLegacyInheritedAuthDir } from "./legacy-inherited-auth-dir.js";
 import { resolveModelRuntimePolicy } from "./model-runtime-policy.js";
 import {
-  resolveProviderIdForAuth,
+  resolvePreparedProviderIdForAuth as resolveProviderIdForAuth,
   type ProviderAuthAliasLookupParams,
 } from "./provider-auth-aliases.js";
 

@@ -49,6 +49,7 @@ vi.mock("../plugins/provider-runtime.js", async () => ({
   resolveProviderUsageAuthWithPlugin: resolvePlugin,
 }));
 
+// mock-isolation: Credential precedence uses fixed environment metadata, not installed providers.
 vi.mock("../secrets/provider-env-vars.js", () => ({
   listKnownProviderAuthEnvVarNamesCore: () => [
     "ANTHROPIC_API_KEY",

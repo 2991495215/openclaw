@@ -21,6 +21,7 @@ vi.mock("../plugins/provider-wizard.js", () => ({
   resolveProviderPluginChoiceCore,
 }));
 
+// mock-isolation: Provider preference reads the fixture roster without activating installed providers.
 vi.mock("../plugins/providers.runtime.js", () => ({
   resolvePluginProvidersCoreAsync: resolvePluginProvidersCore,
 }));

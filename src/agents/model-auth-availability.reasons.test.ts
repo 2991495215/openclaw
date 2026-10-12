@@ -9,6 +9,7 @@ import {
 } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { useProviderCatalogMetadata } from "../plugin-sdk/test-helpers/provider-catalog.js";
+import { useBundledProviderPolicyArtifactsForTest } from "../plugin-sdk/test-helpers/provider-policy-artifacts.test-support.js";
 import { createApiKeyCredential } from "./auth-profiles/credential-fixtures.test-support.js";
 import { createModelAuthAvailabilityResolver } from "./model-auth-availability.js";
 import {
@@ -23,6 +24,8 @@ useProviderCatalogMetadata(
   new URL("../../extensions/openai/", import.meta.url),
   new URL("../../extensions/anthropic/", import.meta.url),
 );
+
+useBundledProviderPolicyArtifactsForTest(["openai", "anthropic"]);
 
 describe("model auth unavailability reasons", () => {
   it.each([

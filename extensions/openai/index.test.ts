@@ -4,6 +4,7 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
   createCapturedPluginRegistration,
   requireRegisteredProvider,
+  useProviderCatalogMetadata,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
 import * as providerAuth from "openclaw/plugin-sdk/provider-auth-runtime";
 import {

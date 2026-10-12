@@ -73,7 +73,12 @@ export function createProviderHookRuntime(
       model,
       runtimeHandle.plugin?.reconcileLocalService,
     );
-    return { ...preparedModel, [MODEL_PROVIDER_RUNTIME_PLUGIN_HANDLE_SYMBOL]: runtimeHandle };
+    const descriptors = Object.getOwnPropertyDescriptors(preparedModel);
+    Reflect.deleteProperty(descriptors, MODEL_PROVIDER_RUNTIME_PLUGIN_HANDLE_SYMBOL);
+    return Object.defineProperties(
+      { ...preparedModel, [MODEL_PROVIDER_RUNTIME_PLUGIN_HANDLE_SYMBOL]: runtimeHandle },
+      descriptors,
+    );
   }
 
   /** Reads the provider plugin handle attached to a prepared attempt model. */

@@ -54,6 +54,7 @@ vi.mock("../flows/model-picker.js", async (importOriginal) => {
   };
 });
 
+// mock-isolation: Prompt tests select fixture providers without activating host auth plugins.
 vi.mock("../plugins/providers.runtime.js", () => ({
   resolvePluginProvidersCoreAsync: mocks.resolvePluginProvidersCore,
 }));

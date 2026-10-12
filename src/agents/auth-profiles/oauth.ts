@@ -25,7 +25,7 @@ import {
 } from "../../secrets/runtime-degraded-state.js";
 import { isUserModelAuthProfileId } from "../../state/user-model-account-id.js";
 import { normalizeOptionalSecretInput } from "../../utils/normalize-secret-input.js";
-import { resolveProviderIdForAuth } from "../provider-auth-aliases.js";
+import { resolvePreparedProviderIdForAuth as resolveProviderIdForAuth } from "../provider-auth-aliases.js";
 import { authProfilesLog, CLAUDE_CLI_PROFILE_ID } from "./constants.js";
 import {
   evaluateStoredCredentialEligibility,

@@ -106,8 +106,9 @@ vi.mock("../model-visibility-policy.js", () => ({
 vi.mock("../openai-routing.js", () => ({
   listOpenAIAuthProfileProvidersForAgentRuntime: ({ provider }: { provider: string }) => [provider],
 }));
+// mock-isolation: Model selection uses fixed provider IDs without discovering plugin aliases.
 vi.mock("../provider-auth-aliases.js", () => ({
-  resolveProviderIdForAuth: (provider: string) => provider,
+  resolvePreparedProviderIdForAuth: (provider: string) => provider,
 }));
 vi.mock("../session-runtime-compat.js", () => ({
   resolveSessionRuntimeOverrideForProvider: () => undefined,

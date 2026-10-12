@@ -4,6 +4,7 @@ import { applyToolAvailabilityDescriptions } from "./agent-tools.deferred-follow
 import { createOpenClawCodingToolsAsync } from "./agent-tools.js";
 import { createOpenClawToolsAsync } from "./openclaw-tools.js";
 
+// mock-isolation: Swarm tool assembly excludes real plugin registration and activation.
 vi.mock("./openclaw-plugin-tools.js", () => ({
   resolveOpenClawPluginToolsForOptions: () => [],
   resolveOpenClawPluginToolsForOptionsAsync: async () => [],

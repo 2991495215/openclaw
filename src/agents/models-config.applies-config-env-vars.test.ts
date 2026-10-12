@@ -20,9 +20,10 @@ const providerRuntimeMocks = vi.hoisted(() => ({
   >(() => undefined),
 }));
 
+// mock-isolation: Config environment tests exclude plugin discovery from provider normalization.
 vi.mock("./provider-auth-aliases.js", () => ({
   resolveProviderAuthAliasMap: () => Object.create(null) as Record<string, string>,
-  resolveProviderIdForAuth: (providerId: string) => providerId.trim().toLowerCase(),
+  resolvePreparedProviderIdForAuth: (providerId: string) => providerId.trim().toLowerCase(),
 }));
 vi.mock("../plugins/provider-external-auth-core.js", () => ({
   createProviderExternalAuthResolver: () => ({ resolveExternalAuthProfilesWithPlugins: () => [] }),

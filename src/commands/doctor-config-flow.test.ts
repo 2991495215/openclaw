@@ -169,6 +169,7 @@ vi.mock("./doctor/shared/preview-warnings.js", () => ({
   }),
 }));
 
+// mock-isolation: Doctor preflight reads the synthetic snapshot instead of operator config and storage.
 vi.mock("./doctor-config-preflight.js", async () => {
   const { hashConfigRaw } = await import("../config/io.read-helpers.js");
   const { findDoctorLegacyConfigIssues } = await import("./doctor/shared/legacy-config-issues.js");
