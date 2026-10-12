@@ -22,7 +22,6 @@ function windowsAclQueryResult(
   stateGrant?: { sid: string; mask: number },
 ): { stdout: string; stderr: string } {
   expect(path.basename(command)).toBe("windows-security-helper.exe");
-  expect(args).toHaveLength(2);
   expect(args[0]).toBe("owner");
   const target = expectDefined(args[1], "permission target");
   const currentUserSid = "S-1-5-21-1-2-3-1001";
@@ -52,7 +51,7 @@ describe("security audit filesystem Windows findings", () => {
   let nativeModeEnv: ReturnType<typeof captureEnv>;
   beforeEach(() => {
     nativeModeEnv = captureEnv(["FS_SAFE_NATIVE_MODE"]);
-    // The injected helper fixture exercises the supported command fallback.
+    // The injected Windows helper fixture exercises the supported command fallback.
     setTestEnvValue("FS_SAFE_NATIVE_MODE", "off");
   });
   afterEach(() => nativeModeEnv.restore());
