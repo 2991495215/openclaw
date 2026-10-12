@@ -783,6 +783,7 @@ jobs:
               ;;
             typed-fixtures-node)
               files=(
+                src/state/openclaw-agent-write-admission.test.ts
                 src/gateway/server-methods/github-personal-authorization.test.ts
                 src/gateway/server-worker-placement-startup.test.ts
                 src/agents/main-session-recovery/main-session-restart-recovery.test.ts
