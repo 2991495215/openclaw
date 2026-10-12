@@ -2,6 +2,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { requireNodeSqlite } from "../infra/node-sqlite.js";
 import { assertSqliteSchemaContains } from "../infra/sqlite-schema-contract.js";
 import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
@@ -90,10 +91,17 @@ describe("Gateway config revision tokens", () => {
     await closeStateDatabaseForTest();
     await expect(loadGatewayConfigRevisionProjector(options)).rejects.toThrow();
     await closeStateDatabaseForTest();
-    expect(
-      openOpenClawStateDatabase(options)
-        .db.prepare("SELECT length(hmac_key) AS size FROM config_revision_keys WHERE id = 1")
-        .get(),
-    ).toEqual({ size: 31 });
+    // Inspect preserved corrupt bytes without readmitting the database.
+    const { DatabaseSync } = requireNodeSqlite();
+    const inspection = new DatabaseSync(options.path, { readOnly: true });
+    try {
+      expect(
+        inspection
+          .prepare("SELECT length(hmac_key) AS size FROM config_revision_keys WHERE id = 1")
+          .get(),
+      ).toEqual({ size: 31 });
+    } finally {
+      inspection.close();
+    }
   });
 });
