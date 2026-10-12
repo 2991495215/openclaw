@@ -13,6 +13,7 @@ import {
   registerConfigWriteListener,
 } from "../config/config.js";
 import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
+import * as heartbeatMonitor from "../cron/heartbeat-monitor.js";
 import { acquireGatewayLock } from "../infra/gateway-lock.js";
 import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
@@ -38,6 +39,23 @@ const cliEntrypoint = resolveRuntimeWorkerArgv(
 it("publishes agent mutations before acknowledging immediate session and roster requests", async ({
   signal,
 }) => {
+  const reconcileHeartbeatMonitorJobs = heartbeatMonitor.reconcileHeartbeatMonitorJobs;
+  const heartbeatDiagnosticSpy = vi
+    .spyOn(heartbeatMonitor, "reconcileHeartbeatMonitorJobs")
+    .mockImplementation((options) =>
+      reconcileHeartbeatMonitorJobs({
+        ...options,
+        logger: {
+          warn(fields, message) {
+            console.warn(
+              "CONFIG_READINESS_CRON",
+              redactSensitiveText(JSON.stringify({ message, fields })),
+            );
+            options.logger.warn(fields, message);
+          },
+        },
+      }),
+    );
   const reloadDiagnosticSpies = (["warn", "error"] as const).map((level) => {
     const original = gatewayKernelLogs.logReload[level].bind(gatewayKernelLogs.logReload);
     return vi.spyOn(gatewayKernelLogs.logReload, level).mockImplementation((message, meta) => {
@@ -46,6 +64,7 @@ it("publishes agent mutations before acknowledging immediate session and roster 
     });
   });
   onTestFinished(() => {
+    heartbeatDiagnosticSpy.mockRestore();
     for (const spy of reloadDiagnosticSpies) {
       spy.mockRestore();
     }
