@@ -6,7 +6,7 @@ import { createRequire, syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import nodeProcess from "node:process";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { assert, expect, it, onTestFinished, vi } from "vitest";
+import { assert, expect, it, onTestFailed, onTestFinished, vi } from "vitest";
 import { writeOpenAiResponsesText } from "../../test/helpers/openai-responses-sse.js";
 import { createDeferred, withTestTimeout } from "../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
@@ -16,6 +16,7 @@ import {
 } from "../config/runtime-snapshot.js";
 import { createPluginStateKeyedStore } from "../plugin-state/plugin-state-store.js";
 import { captureEnv } from "../test-utils/env.js";
+import { formatGatewayPendingCloseSteps } from "./restart-trace.js";
 import { disconnectGatewayClient, startGatewayWithClient } from "./test-helpers.e2e.js";
 
 type ProviderRequest = {
@@ -72,6 +73,14 @@ it.each(cases)(
   "chat.send $name",
   { timeout: 180_000 },
   async ({ failFirst, activeSibling, idleSibling, shutdown }) => {
+    // HOLD / neverLand: Vitest reports hook timeouts through the same failure callback.
+    let closePhase = "not-started";
+    onTestFailed(() => {
+      console.error("[codex-recovery-close]", {
+        closePhase,
+        pendingCloseSteps: formatGatewayPendingCloseSteps(),
+      });
+    });
     const dirs = useAutoCleanupTempDirTracker(onTestFinished);
     const root = await fs.realpath(dirs.make("gateway-native-recovery-"));
     const workspace = path.join(root, "workspace");
@@ -346,9 +355,12 @@ it.each(cases)(
       undefined;
     onTestFinished(async () => {
       releaseSibling.resolve();
+      closePhase = "client-disconnect";
       await disconnectGatewayClient(gateway.client);
+      closePhase = "gateway-close";
       await gateway.server.close();
       nativeConfig?.clearRuntimeConfigSnapshot();
+      closePhase = "finished";
     });
     const runtimeConfig = getRuntimeConfigSnapshot();
     assert(runtimeConfig, "Gateway must publish its prepared runtime config before a turn");
