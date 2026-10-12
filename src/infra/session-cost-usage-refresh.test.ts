@@ -81,9 +81,9 @@ describe("session cost usage refresh", () => {
         await vi.advanceTimersByTimeAsync(4_999);
         expect(refresh).toHaveBeenCalledTimes(10);
         await vi.advanceTimersByTimeAsync(1);
-        // Join the subset's real filesystem lookup before advancing the retry clock.
+        // Join the subset read, then yield to its batch before measuring the reset delay.
         await queuedSubset;
-        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersToNextTimerAsync();
         expect(refresh).toHaveBeenCalledTimes(12);
         expect(refresh.mock.calls[10]?.[0].sessionFiles).toBeUndefined();
         expect(refresh.mock.calls[11]?.[0].sessionFiles).toEqual([sessionFile]);

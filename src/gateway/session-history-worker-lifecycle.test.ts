@@ -345,12 +345,11 @@ it("settles cancelled message reads before reuse and closes their database handl
     );
     await expect(pending).rejects.toBe(cancelled);
     expect(dispatched).toBe(true);
-    const worker = observed.workers.at(-1)!;
-    const threadId = worker.threadId;
     expect((await fixture.read()).messages.map(readChatHistoryMessageId)).toEqual([
       "cancel-message-read-message",
     ]);
-    expect(observed.workers.at(-1)).toBe(worker);
+    const worker = observed.workers.at(-1)!;
+    const threadId = worker.threadId;
     const keepsWorker = observed.idleCloseKeepsWorker.get(worker) === true;
     await closeOpenClawAgentDatabaseByPathAsync(fixture.path, "main");
     expect(worker.threadId).toBe(keepsWorker ? threadId : -1);

@@ -385,8 +385,9 @@ finishing publisher can yield to a recorded parent without losing a valid title
 update. `source.assertScopeCurrent()` checks only host lifetime and physical source
 custody; it does not replace an awaited effect check. The deprecated
 `captureSessionEntryCurrentCheck` keeps its released durable synchronous callbacks,
-warns on use, and is scheduled for removal at the next Plugin SDK major. Incognito
-callers use the awaited actor operations and memory-held authority.
+and warns on use. Removal follows deprecation in a stable release, after callers
+have had time to migrate. Incognito callers use the awaited actor operations and
+memory-held authority.
 
 History readers can borrow existing physical and canonical admission without an
 open host reader. The receiving scope checks its actual file and the live receipt;
