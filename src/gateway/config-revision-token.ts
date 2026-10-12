@@ -38,9 +38,7 @@ function projectRevision(key: Uint8Array, domain: string, hash: string): string 
   return `hmac-sha256:v1:${digest}`;
 }
 
-export function createGatewayConfigRevisionProjector(
-  key: Uint8Array,
-): GatewayConfigRevisionProjector {
+function createGatewayConfigRevisionProjector(key: Uint8Array): GatewayConfigRevisionProjector {
   if (key.byteLength !== CONFIG_REVISION_KEY_BYTES) {
     throw new Error("config revision key must be 32 bytes");
   }

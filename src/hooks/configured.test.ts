@@ -4,7 +4,8 @@ import { resolveInternalHookSelection } from "./configured.js";
 
 const readHookInstallsMock = vi.hoisted(() => vi.fn());
 
-vi.mock("./installs.js", () => ({
+vi.mock("./installs.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./installs.js")>()),
   readHookInstallsAsync: readHookInstallsMock,
 }));
 
