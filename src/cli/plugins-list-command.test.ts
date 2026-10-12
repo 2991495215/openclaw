@@ -34,7 +34,8 @@ function mockPluginListSnapshot(
   vi.doMock("../config/config.js", () => ({
     getRuntimeConfig: () => config,
   }));
-  vi.doMock("../plugins/installed-plugin-index-record-state.js", () => ({
+  vi.doMock("../plugins/installed-plugin-index-record-state.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../plugins/installed-plugin-index-record-state.js")>()),
     preparePluginMetadataMachineStateAsync: vi.fn().mockResolvedValue(undefined),
   }));
   vi.doMock("../plugins/status-snapshot.js", () => ({

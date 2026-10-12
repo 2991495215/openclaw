@@ -69,10 +69,12 @@ vi.mock("../../config/plugin-auto-enable.js", () => ({
     mocks.applyPluginAutoEnable(...args),
 }));
 
+// mock-isolation: Loader scope uses fixture readiness without publishing process discovery facts.
 vi.mock("../bundled-discovery-state.js", () => ({
   prepareBundledDiscoveryMode: async () => () => {},
 }));
 
+// mock-isolation: Loader scope supplies metadata without installed-plugin discovery or state reads.
 vi.mock("../../config/io.plugin-metadata.js", () => ({
   resolveConfigWidePluginMetadataSnapshotAsync: async (
     ...args: Parameters<typeof mocks.resolvePluginMetadataSnapshot>

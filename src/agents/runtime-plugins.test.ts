@@ -28,10 +28,12 @@ vi.mock("../plugins/widget-presenters.js", () => ({
   adoptRuntimeWidgetPresenterRegistrations: hoisted.adoptRuntimeWidgetPresenterRegistrations,
 }));
 
+// mock-isolation: Prepared-runtime fixtures own discovery readiness without publishing process facts.
 vi.mock("../plugins/bundled-discovery-state.js", () => ({
   prepareBundledDiscoveryMode: async () => () => {},
 }));
 
+// mock-isolation: Prepared-runtime fixtures supply metadata without opening discovery state.
 vi.mock("../config/io.plugin-metadata.js", () => ({
   resolveConfigWidePluginMetadataSnapshotAsync: async (...args: unknown[]) =>
     hoisted.loadPluginMetadataSnapshot(...args),

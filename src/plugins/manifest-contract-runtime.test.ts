@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const loadPluginMetadataSnapshot = vi.hoisted(() => vi.fn());
 
-vi.mock("./plugin-metadata-snapshot.js", () => ({
+vi.mock("./plugin-metadata-snapshot.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./plugin-metadata-snapshot.js")>()),
   resolvePluginMetadataSnapshotAsync: (...args: unknown[]) => loadPluginMetadataSnapshot(...args),
 }));
 

@@ -3,7 +3,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.js";
 import type { PluginWebFetchProviderEntry } from "../plugins/types.js";
-vi.mock("../plugins/bundled-discovery-state.js", () => ({
+vi.mock("../plugins/bundled-discovery-state.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../plugins/bundled-discovery-state.js")>()),
   prepareBundledDiscoveryMode: async () => () => {},
 }));
 import type { RuntimeWebFetchMetadata } from "../secrets/runtime-web-tools.types.js";

@@ -19,12 +19,15 @@ const providerRegistry = new Map<string, MediaUnderstandingProvider>([
   ],
 ]);
 
+// mock-isolation: Compatibility cases control readiness without the process discovery cache.
 vi.mock("../plugins/bundled-discovery-state.js", () => ({
   prepareBundledDiscoveryMode: state.prepare,
 }));
+// mock-isolation: Legacy SDK preparation must not open the real native machine-state owner.
 vi.mock("../plugins/bundled-discovery-state.native.js", () => ({
   prepareBundledDiscoveryModeNative: state.prepareNative,
 }));
+// mock-isolation: The readiness gate returns only the fixture registry, without manifest discovery.
 vi.mock("../media-understanding/manifest-metadata.js", () => ({
   buildMediaUnderstandingManifestMetadataRegistry: () => {
     if (!state.prepared) {

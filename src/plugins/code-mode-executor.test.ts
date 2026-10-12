@@ -8,7 +8,8 @@ import { migrateLegacyConfig } from "../commands/doctor/shared/legacy-config-mig
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 
 const loadManifestMetadataSnapshot = vi.hoisted(() => vi.fn());
-vi.mock("./plugin-metadata-snapshot.js", () => ({
+vi.mock("./plugin-metadata-snapshot.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./plugin-metadata-snapshot.js")>()),
   resolvePluginMetadataSnapshotAsync: (...args: unknown[]) => loadManifestMetadataSnapshot(...args),
 }));
 

@@ -53,9 +53,6 @@ vi.mock("../../sessions/session-upstream-links.js", () => ({
 vi.mock("../../plugins/session-conversation-binding.js", () => ({
   bindPluginSessionConversation: conversationBindingMocks.bindPluginSessionConversation,
 }));
-vi.mock("../../state/user-profiles.js", () => ({
-  hasMultipleSessionSharingIdentities: hoisted.hasMultipleSessionSharingIdentities,
-}));
 vi.mock("../../state/user-profile-list.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../state/user-profile-list.js")>()),
   hasMultipleResidentSessionSharingIdentities: hoisted.hasMultipleSessionSharingIdentities,
