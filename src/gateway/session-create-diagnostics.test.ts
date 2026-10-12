@@ -45,6 +45,6 @@ test("creation failures retain phase totals without letting logging replace the 
   }).toThrow(failure);
   expect(log).toHaveBeenCalledExactlyOnceWith("slow session create", {
     elapsedMs: 1_240,
-    phaseDurationsMs: { preflight: 20, admission: 1_200, entry: 20 },
+    phaseDurationsMs: { handlerPreparation: 20, admission: 1_200, entry: 20 },
   });
 });

@@ -338,6 +338,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     if (!authority.ensureActive()) {
       return;
     }
+    diagnostics?.mark("handlerTarget");
     const existingTargetEntry = explicitlyRequestedKey
       ? (
           await loadGatewaySessionEntryReadOnlyInWorker({
@@ -347,6 +348,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
           })
         ).entry
       : undefined;
+    diagnostics?.mark("handlerPreparation");
     const workspaceReuseError = requiredWorkerWorkspaceReuseError(
       automaticEmptyWorkspace,
       existingTargetEntry,
@@ -638,7 +640,12 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
         await handleDirectExternalChatSend(sendOptions);
       },
     };
+    diagnostics?.mark("serviceAdmission");
     const created = await createGatewaySession(createParams).catch((error: unknown) => {
+      diagnostics?.failure(error, {
+        requestAborted: signal?.aborted === true,
+        connectionAborted: client?.connectionSignal?.aborted === true,
+      });
       if (error === catalogWait.unavailable) {
         respond(false, undefined, catalogWait.unavailable.error);
         return undefined;

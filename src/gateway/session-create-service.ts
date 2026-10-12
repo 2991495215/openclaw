@@ -140,6 +140,7 @@ async function createAdmittedGatewaySession(
   agentId: string,
 ): Promise<CreateGatewaySessionResult> {
   const { personalAccountDefaults, onPhase } = params;
+  onPhase?.("servicePreparation");
   let operatorAuthority: AdmittedRunOperatorAuthority | undefined;
   let assertPreparedTargetCurrent: (() => void) | undefined;
   let creationOperation: SessionEntryCreationOperation | undefined;
@@ -215,7 +216,9 @@ async function createAdmittedGatewaySession(
   if (params.initialEntry?.pluginOwnerId && !authorizedPluginCreation) {
     return invalidSessionRequest("trusted plugin session owner is not authorized");
   }
+  onPhase?.("serviceTarget");
   const explicitTarget = await readRequestedSessionCreateTarget(params, agentId, explicitTargetKey);
+  onPhase?.("servicePreparation");
   const initialTargetEntry = explicitTarget?.entry;
   if (
     explicitTargetKey &&

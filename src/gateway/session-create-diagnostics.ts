@@ -7,7 +7,11 @@ import { sessionLog } from "./server-methods/sessions-shared.js";
 
 export type SessionCreatePhase =
   | SessionEntryCreationPhase
-  | "preflight"
+  | "handlerPreparation"
+  | "handlerTarget"
+  | "serviceAdmission"
+  | "servicePreparation"
+  | "serviceTarget"
   | "admission"
   | "lifecycleAdmission"
   | "targetPreparation"
@@ -25,13 +29,30 @@ export function startSessionCreateDiagnostics() {
     return undefined;
   }
   const timing = createStageTimingTracker(() => performance.now());
-  let phase: SessionCreatePhase = "preflight";
+  let phase: SessionCreatePhase = "handlerPreparation";
   const mark = (next: SessionCreatePhase) => {
     timing.mark(phase);
     phase = next;
   };
   return {
     mark,
+    failure(error: unknown, signals: { requestAborted: boolean; connectionAborted: boolean }) {
+      try {
+        diagnosticsChannel.publish({
+          event: "service-rejection",
+          elapsedMs: timing.snapshot().totalMs,
+          phase,
+          errorName: error instanceof Error ? error.name : typeof error,
+          authorityFailure:
+            error instanceof Error &&
+            (error.message === "Gateway caller authority is no longer active." ||
+              error.message === "Gateway requester authority changed"),
+          ...signals,
+        });
+      } catch {
+        // Preserve the original rejection if its diagnostic sink fails.
+      }
+    },
     [Symbol.dispose]() {
       mark("handlerExit");
       const snapshot = timing.snapshot();
