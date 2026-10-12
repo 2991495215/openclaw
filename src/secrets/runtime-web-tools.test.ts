@@ -83,8 +83,8 @@ let restoreResolveSecretRefValuesSpy: (() => void) | undefined;
 
 vi.mock("./runtime-web-tools-fallback.runtime.js", () => ({
   runtimeWebToolsFallbackProviders: {
-    resolvePluginWebSearchProviders: resolvePluginWebSearchProvidersMock,
-    resolvePluginWebFetchProviders: resolvePluginWebFetchProvidersMock,
+    resolvePluginWebSearchProvidersAsync: resolvePluginWebSearchProvidersMock,
+    resolvePluginWebFetchProvidersAsync: resolvePluginWebFetchProvidersMock,
   },
 }));
 

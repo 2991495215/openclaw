@@ -27,7 +27,7 @@ vi.mock("../../agents/model-selection.js", () => ({
 vi.mock("../../flows/search-setup.js", () => ({ listSearchProviderOptions: mocks.options }));
 vi.mock("../../web-search/runtime.js", () => ({
   isWebSearchProviderConfigured: mocks.configured,
-  listConfiguredWebSearchProviders: mocks.available,
+  listConfiguredWebSearchProvidersAsync: mocks.available,
   resolveWebSearchProviderId: mocks.selection,
 }));
 // mock-isolation: Provider status uses fixed metadata without loading the discovery registry.

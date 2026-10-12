@@ -60,11 +60,16 @@ vi.mock("../../config/config.js", () => ({
     mocks.getRuntimeConfig as typeof import("../../config/config.js").getRuntimeConfig,
 }));
 
-vi.mock("../../tts/provider-registry.js", () => ({
-  canonicalizeSpeechProviderId: vi.fn(),
-  getSpeechProvider: mocks.getSpeechProvider,
-  listSpeechProviders: mocks.listSpeechProviders,
-}));
+vi.mock("../../tts/provider-registry.js", () => {
+  const registry = {
+    getSpeechProvider: mocks.getSpeechProvider,
+    listSpeechProviders: mocks.listSpeechProviders,
+  };
+  return {
+    withSpeechProviderRegistry: async (_cfg: unknown, run: (value: typeof registry) => unknown) =>
+      run(registry),
+  };
+});
 
 // mock-isolation: TTS RPCs supply preference settings without reading the host machine's SQLite preference path.
 vi.mock("../../tts/tts-preferences.js", () => ({

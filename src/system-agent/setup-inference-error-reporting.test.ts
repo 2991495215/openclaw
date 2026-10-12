@@ -102,7 +102,7 @@ async function observeScenario(scenario: Scenario, json: boolean) {
           if (!originalFingerprint) {
             throw new Error("fixture has no artifact fingerprint dependency");
           }
-          runtimeLoader.mockReset().mockImplementation(() => {
+          runtimeLoader.mockReset().mockImplementation(async () => {
             phases.push("runtime-load");
             if (scenario === "revalidate") {
               faultReached += 1;

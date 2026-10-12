@@ -187,11 +187,11 @@ describe("setup inference plugin ownership", () => {
             configSchema: { type: "object" },
           });
           await state.writeText("plugin/index.js", 'throw new Error("metadata must not execute");');
-          mocks.loadAgentRuntimePluginRegistryHandle.mockReturnValueOnce(
+          mocks.loadAgentRuntimePluginRegistryHandle.mockResolvedValueOnce(
             createEmptyPluginRegistry(),
           );
           await using generationCache = createPluginCache();
-          const generation = loadSetupInferencePluginGeneration({
+          const generation = await loadSetupInferencePluginGeneration({
             cache: generationCache,
             config,
             workspaceDir: state.workspaceDir,
@@ -230,7 +230,7 @@ describe("setup inference plugin ownership", () => {
         order.push("metadata");
         return metadataSnapshot;
       });
-      mocks.loadAgentRuntimePluginRegistryHandle.mockImplementationOnce(() => {
+      mocks.loadAgentRuntimePluginRegistryHandle.mockImplementationOnce(async () => {
         order.push("load");
         expect(getCurrentPluginMetadataSnapshot()).toBe(metadataSnapshot);
         return pluginRegistry;

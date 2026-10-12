@@ -48,7 +48,8 @@ vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => ({
 }));
 
 vi.mock("../plugins/loader.js", () => ({
-  loadPluginRegistryHandle: hoisted.loadPluginRegistryHandle,
+  loadPluginRegistryHandleAsync: async (...args: unknown[]) =>
+    hoisted.loadPluginRegistryHandle(...args),
 }));
 
 vi.mock("./harness/runtime-plugin-load-plan.js", () => ({
@@ -212,7 +213,7 @@ describe("agent runtime plugin registries", () => {
     { rotated: true, projected: true },
   ])(
     "validates captured SecretRefs (snapshot rotated: $rotated, policy projected: $projected)",
-    ({ rotated, projected }) => {
+    async ({ rotated, projected }) => {
       const source: OpenClawConfig = {
         plugins: {
           entries: {
@@ -281,7 +282,7 @@ describe("agent runtime plugin registries", () => {
         );
         return createEmptyPluginRegistry();
       });
-      loadAgentRuntimePluginRegistryHandle({ config: captured, workspaceDir: "/synthetic" });
+      await loadAgentRuntimePluginRegistryHandle({ config: captured, workspaceDir: "/synthetic" });
       expect(hoisted.loadPluginRegistryHandle).toHaveBeenCalledOnce();
       expect(source.plugins?.allow).toBeUndefined();
     },
@@ -294,7 +295,7 @@ describe("agent runtime plugin registries", () => {
     { purpose: "isolated-completion" as const, broader: true },
   ])(
     "keeps $purpose registries exact with broader reusable scope=$broader",
-    ({ purpose, broader }) => {
+    async ({ purpose, broader }) => {
       const reusableRegistry = createEmptyPluginRegistry();
       reusableRegistry.plugins.push(createPluginRecord({ id: "catalog-provider" }));
       if (broader) {
@@ -309,7 +310,7 @@ describe("agent runtime plugin registries", () => {
         pluginIds: ["catalog-provider"],
       });
 
-      const registry = loadAgentRuntimePluginRegistryHandle({
+      const registry = await loadAgentRuntimePluginRegistryHandle({
         config: {},
         basePluginIds: ["catalog-provider"],
         reusableRegistry,
@@ -381,7 +382,7 @@ describe("agent runtime plugin registries", () => {
         ).toBe(metadataSnapshot);
         expect(getCurrentPluginMetadataSnapshot(readParams)).toBeUndefined();
 
-        const inbound = withPluginRuntimeRegistryScope(activeRegistry, () =>
+        const inbound = await withPluginRuntimeRegistryScope(activeRegistry, () =>
           createPreparedInboundRegistryLoader()(
             { allowGatewaySubagentBinding: true, config, workspaceDir },
             metadataSnapshot,
@@ -403,7 +404,7 @@ describe("agent runtime plugin registries", () => {
     "stale metadata generation",
     "changed input config",
     "manifest mismatch",
-  ] as const)("refuses Gateway registry reuse for %s", (reason) => {
+  ] as const)("refuses Gateway registry reuse for %s", async (reason) => {
     const fixture = createGatewayRegistryFixture();
     const { activeRegistry, activationContext } = fixture;
     const input: Parameters<PreparedInboundRegistryLoader>[0] = {
@@ -435,7 +436,7 @@ describe("agent runtime plugin registries", () => {
         break;
     }
 
-    const inbound = withPluginRuntimeRegistryScope(activeRegistry, () =>
+    const inbound = await withPluginRuntimeRegistryScope(activeRegistry, () =>
       createPreparedInboundRegistryLoader()(input, fixture.metadataSnapshot),
     );
 
@@ -443,18 +444,22 @@ describe("agent runtime plugin registries", () => {
     expect(hoisted.loadPluginRegistryHandle).toHaveBeenCalledOnce();
   });
 
-  it("does not reuse a batch registry across metadata generations with identical config", () => {
+  it("does not reuse a batch registry across metadata generations with identical config", async () => {
     const input = { config: {}, workspaceDir: "/tmp/workspace" };
     const firstMetadata = createMetadataSnapshot(input.workspaceDir);
     const replacementMetadata = createMetadataSnapshot(input.workspaceDir);
     hoisted.loadPluginRegistryHandle.mockImplementation(() => createEmptyPluginRegistry());
     const load = createPreparedInboundRegistryLoader();
 
-    const first = load(input, firstMetadata as never);
-    expect(load(input, firstMetadata as never)).toBe(first);
-    const replacement = load(input, replacementMetadata as never);
+    const [first, concurrent] = await Promise.all([
+      load(input, firstMetadata as never),
+      load(input, firstMetadata as never),
+    ]);
+    expect(concurrent).toBe(first);
+    expect(await load(input, firstMetadata as never)).toBe(first);
+    const replacement = await load(input, replacementMetadata as never);
     expect(replacement).not.toBe(first);
-    expect(load(input, replacementMetadata as never)).toBe(replacement);
+    expect(await load(input, replacementMetadata as never)).toBe(replacement);
     expect(hoisted.loadPluginRegistryHandle).toHaveBeenCalledTimes(2);
   });
 
@@ -462,7 +467,7 @@ describe("agent runtime plugin registries", () => {
     const config = { plugins: { enabled: false } } satisfies OpenClawConfig;
     const cachedRegistry = createEmptyPluginRegistry();
     hoisted.loadPluginRegistryHandle.mockReturnValue(cachedRegistry);
-    const pluginRegistry = loadAgentRuntimePluginRegistryHandle({
+    const pluginRegistry = await loadAgentRuntimePluginRegistryHandle({
       config,
       workspaceDir: "/tmp/workspace",
       allowGatewaySubagentBinding: true,

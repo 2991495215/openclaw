@@ -29,12 +29,14 @@ export function useProviderToolSchemaRuntimeForTest(pluginIds: readonly string[]
       expect((await caches.retirePluginCache(cache)).failures).toEqual([]);
     };
     close = closeCache;
-    const prepared = caches.withPluginCache(cache, () => ({
-      metadataSnapshot: metadata.loadPluginMetadataSnapshot({ config }),
-      pluginRegistry: loader.loadOpenClawPlugins({
+    const prepared = await caches.withPluginCache(cache, async () => ({
+      metadataSnapshot: await metadata.resolvePluginMetadataSnapshotAsync({
+        config,
+        allowCurrent: false,
+      }),
+      pluginRegistry: await loader.loadPluginRegistryHandleAsync({
         config,
         onlyPluginIds: [...pluginIds],
-        activate: false,
         throwOnLoadError: true,
       }),
     }));

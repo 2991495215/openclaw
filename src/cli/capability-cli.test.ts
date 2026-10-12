@@ -342,7 +342,9 @@ vi.mock("../agents/auth-profiles/store-runtime.js", async (importOriginal) => ({
 }));
 
 vi.mock("../agents/memory-search.js", () => ({
-  resolveMemorySearchConfig: mocks.resolveMemorySearchConfig,
+  resolveMemorySearchConfigAsync: async (
+    ...args: Parameters<typeof mocks.resolveMemorySearchConfig>
+  ) => mocks.resolveMemorySearchConfig(...args),
 }));
 
 vi.mock("../commands/models/auth.js", () => ({
@@ -387,7 +389,7 @@ vi.mock("../plugins/memory-embedding-provider-runtime.js", () => ({
 }));
 
 vi.mock("../plugins/embedding-provider-runtime.js", () => ({
-  listEmbeddingProviders: mocks.listEmbeddingProviders,
+  listEmbeddingProvidersAsync: async () => mocks.listEmbeddingProviders(),
 }));
 
 vi.mock("../plugin-sdk/memory-core-bundled-runtime.js", () => ({
@@ -422,6 +424,17 @@ vi.mock("../tts/tts.js", () => ({
 vi.mock("../tts/provider-registry.js", () => ({
   canonicalizeSpeechProviderId: vi.fn((provider: string) => provider),
   listSpeechProviders: mocks.listSpeechProviders,
+  withSpeechProviderRegistry: async (
+    cfg: unknown,
+    run: (registry: {
+      canonicalizeSpeechProviderId: (provider: string | undefined) => string | undefined;
+      listSpeechProviders: () => unknown[];
+    }) => unknown,
+  ) =>
+    run({
+      canonicalizeSpeechProviderId: (provider) => provider,
+      listSpeechProviders: () => mocks.listSpeechProviders(),
+    }),
   normalizeSpeechProviderId: vi.fn(
     (provider: string | undefined) => provider?.trim().toLowerCase() || undefined,
   ),

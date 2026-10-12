@@ -90,7 +90,7 @@ vi.mock("../../runtime-plugins.js", async () => {
   return {
     loadAgentRuntimePluginRegistryHandle: vi.fn<
       typeof import("../../runtime-plugins.js").loadAgentRuntimePluginRegistryHandle
-    >(() => createEmptyPluginRegistry()),
+    >(async () => createEmptyPluginRegistry()),
   };
 });
 

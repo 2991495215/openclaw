@@ -5,7 +5,11 @@ const loaders = vi.hoisted(() => ({
   loadPluginRegistryHandle: vi.fn(),
   acquirePluginRegistryForInspection: vi.fn(),
 }));
-vi.mock("../plugins/loader.js", () => loaders);
+vi.mock("../plugins/loader.js", () => ({
+  ...loaders,
+  loadPluginRegistryHandleAsync: async (...args: unknown[]) =>
+    loaders.loadPluginRegistryHandle(...args),
+}));
 
 import {
   createPluginMetadataSnapshot,
@@ -188,7 +192,7 @@ describe("prepared channel runtime ownership", () => {
     { path: "selected", close: "donor" },
   ])("retains the live transport through $path until $close closes", async ({ path, close }) => {
     const { live, selected, input } = prepareOwners();
-    const registry = withPluginRuntimeRegistryScope(live.registry, () =>
+    const registry = await withPluginRuntimeRegistryScope(live.registry, () =>
       path === "inbound"
         ? loadPreparedInboundPluginRegistry(input, selected.metadataSnapshot)
         : loadAgentRuntimePluginRegistryHandle(input),
@@ -333,7 +337,7 @@ describe("prepared channel runtime ownership", () => {
         },
       );
       loaders.loadPluginRegistryHandle.mockReturnValue(selected.registry);
-      const registry = withPluginRuntimeGatewayRequestScope(
+      const registry = await withPluginRuntimeGatewayRequestScope(
         {
           isWebchatConnect: () => false,
           pluginRegistry: live.registry,

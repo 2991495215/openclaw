@@ -23,7 +23,8 @@ vi.mock("../../plugins/plugin-registry-contributions.js", () => ({
   resolveManifestContractOwnerPluginId: () => "parallel",
 }));
 vi.mock("../../plugins/web-search-providers.runtime.js", () => ({
-  resolvePluginWebSearchProviders: () => mocks.providers,
+  resolvePluginWebSearchProvidersAsync: async () => mocks.providers,
+  resolveRuntimeWebSearchProvidersAsync: async () => mocks.providers,
   resolveRuntimeWebSearchProviders: () => mocks.providers,
 }));
 vi.mock("openclaw/plugin-sdk/lazy-runtime", () => ({

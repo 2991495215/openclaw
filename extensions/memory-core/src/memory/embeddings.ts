@@ -1,5 +1,6 @@
 import {
   getMemoryEmbeddingProvider,
+  getMemoryEmbeddingProviderAsync,
   type MemoryEmbeddingProvider,
   type MemoryEmbeddingProviderAdapter,
   type MemoryEmbeddingProviderCreateOptions,
@@ -140,7 +141,14 @@ export async function createEmbeddingProvider(
 ): Promise<EmbeddingProviderResult> {
   const provider =
     options.provider === "auto" ? DEFAULT_MEMORY_EMBEDDING_PROVIDER : options.provider;
-  const primaryAdapter = getAdapter(provider, options.config);
+  const primaryAdapter = await getMemoryEmbeddingProviderAsync(provider, options.config);
+  if (!primaryAdapter) {
+    throw new Error(
+      provider === LOCAL_MEMORY_EMBEDDING_PROVIDER_ID
+        ? MISSING_LOCAL_MEMORY_EMBEDDING_PROVIDER_MESSAGE
+        : `Unknown memory embedding provider: ${provider}`,
+    );
+  }
   try {
     return await createWithAdapter(primaryAdapter, {
       ...options,
@@ -152,17 +160,24 @@ export async function createEmbeddingProvider(
     }
     let reason = formatProviderError(primaryAdapter, primaryErr);
     if (options.fallback && options.fallback !== "none" && options.fallback !== provider) {
-      const fallbackAdapter = getAdapter(options.fallback, options.config);
+      const fallbackAdapter = await getMemoryEmbeddingProviderAsync(
+        options.fallback,
+        options.config,
+      );
+      if (!fallbackAdapter) {
+        throw new Error(
+          options.fallback === LOCAL_MEMORY_EMBEDDING_PROVIDER_ID
+            ? MISSING_LOCAL_MEMORY_EMBEDDING_PROVIDER_MESSAGE
+            : `Unknown memory embedding provider: ${options.fallback}`,
+          { cause: primaryErr },
+        );
+      }
       try {
         const fallbackResult = await createWithAdapter(fallbackAdapter, {
           ...options,
           provider: options.fallback,
           // The configured model names the primary provider; the fallback serves its own.
-          model: resolveEmbeddingProviderFallbackModel(
-            options.fallback,
-            options.model,
-            options.config,
-          ),
+          model: fallbackAdapter.defaultModel ?? options.model,
           remote: resolveEmbeddingProviderFallbackRemote(options.remote),
         });
         return {

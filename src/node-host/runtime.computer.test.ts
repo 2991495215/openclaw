@@ -18,7 +18,7 @@ vi.mock("./mcp.js", () => ({
   startNodeHostMcpManager: vi.fn(async () => ({ descriptors: [], close: async () => {} })),
 }));
 vi.mock("../plugins/loader.js", () => ({
-  loadPluginRegistryHandle: () => getActivePluginRegistry(),
+  loadPluginRegistryHandleAsync: async () => getActivePluginRegistry(),
 }));
 
 afterEach(() => resetPluginRuntimeStateForTest());

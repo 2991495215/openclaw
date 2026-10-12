@@ -11,9 +11,17 @@ import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { resolveImplicitProviders } from "./models-config.providers.implicit.js";
 
 const fixture = vi.hoisted(() => ({ providers: new Array<ProviderPlugin>() }));
-vi.mock("../plugins/provider-discovery.runtime.js", () => ({
-  resolvePluginDiscoveryProvidersRuntime: () => fixture.providers,
-}));
+vi.mock("../plugins/provider-discovery.runtime.js", () => {
+  const runtime = {
+    resolvePluginDiscoveryProvidersRuntime: () => fixture.providers,
+  };
+  return {
+    ...runtime,
+    resolvePluginDiscoveryProvidersRuntimeAsync: async (
+      ...args: Parameters<typeof runtime.resolvePluginDiscoveryProvidersRuntime>
+    ) => runtime.resolvePluginDiscoveryProvidersRuntime(...args),
+  };
+});
 
 it("keeps canonical outcome authority when only its alias is selected", async () => {
   await withOpenClawTestState({ label: "implicit-catalog-outcomes" }, async (state) => {

@@ -286,9 +286,10 @@ vi.mock("../skills/discovery/status.js", () => ({
 vi.mock("../plugins/loader.js", () => ({
   isPluginRegistryLoadInFlight: () => false,
   loadOpenClawPlugins: () => createEmptyPluginRegistry(),
+  loadOpenClawPluginsAsync: async () => createEmptyPluginRegistry(),
   loadPluginRegistryHandle: () => createEmptyPluginRegistry(),
+  loadPluginRegistryHandleAsync: async () => createEmptyPluginRegistry(),
   resolveCompatibleRuntimePluginRegistry: () => null,
-  resolveRuntimePluginRegistry: () => null,
 }));
 
 vi.mock("../config/config.js", async () => {

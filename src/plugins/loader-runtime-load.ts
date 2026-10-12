@@ -6,7 +6,6 @@ import { resolveModelRuntimePolicy } from "../agents/model-runtime-policy.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection-config.js";
 import { resolveAllowedModelRefCore } from "../agents/model-selection-resolve.js";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
-import { resolveCompatibleRuntimePluginRegistry } from "./active-runtime-registry.js";
 import { createPluginCapabilityCatalogContext } from "./capability-catalog-context.js";
 import { preparePluginMetadataMachineStateAsync } from "./installed-plugin-index-record-state.js";
 import { isPluginRegistryLoadInFlight } from "./loader-cache.js";
@@ -39,22 +38,9 @@ import type { PluginRuntime } from "./runtime/types.js";
 
 // Construction only binds callbacks. No profile reads, plugin loads, or network work occur here.
 // Hoisted entry functions let cold auth discovery re-enter this same binding without a module cycle.
-export function resolveRuntimePluginRegistry(
-  options?: PluginLoadOptions,
-): PluginRegistry | undefined {
-  const activeRegistry = resolveCompatibleRuntimePluginRegistry(options);
-  if (activeRegistry) {
-    return activeRegistry;
-  }
-  // Runtime helpers must not recurse while this exact snapshot is registering.
-  return isPluginRegistryLoadInFlight(options)
-    ? undefined
-    : loadOpenClawPlugins({ ...options, activate: false });
-}
 const providerRegistry = Object.freeze(
   createProviderRegistryResolver({
-    loadOpenClawPlugins,
-    resolveRuntimePluginRegistry,
+    loadOpenClawPluginsAsync,
     isPluginRegistryLoadInFlight,
   }),
 );

@@ -16,9 +16,17 @@ import { prepareSharedAuthStoreOwnershipForNative } from "./auth-profiles/path-r
 import type { AuthProfileCredential, AuthProfileStore } from "./auth-profiles/types.js";
 
 const discovery = vi.hoisted(() => ({ providers: new Array<ProviderPlugin>() }));
-vi.mock("../plugins/provider-discovery.runtime.js", () => ({
-  resolvePluginDiscoveryProvidersRuntime: () => discovery.providers,
-}));
+vi.mock("../plugins/provider-discovery.runtime.js", () => {
+  const runtime = {
+    resolvePluginDiscoveryProvidersRuntime: () => discovery.providers,
+  };
+  return {
+    ...runtime,
+    resolvePluginDiscoveryProvidersRuntimeAsync: async (
+      ...args: Parameters<typeof runtime.resolvePluginDiscoveryProvidersRuntime>
+    ) => runtime.resolvePluginDiscoveryProvidersRuntime(...args),
+  };
+});
 
 vi.mock("../plugins/provider-runtime.js", () => ({
   normalizeProviderConfigWithPlugin: (params: { context?: { providerConfig?: object } }) =>

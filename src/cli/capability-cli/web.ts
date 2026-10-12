@@ -76,7 +76,7 @@ export function registerWebCapabilityCommands(capability: Command): void {
         const { resolveLocalCapabilityRuntimeConfig } = await import("./shared.js");
         const { runWebSearch } = await import("../../web-search/runtime.js");
         const rawConfig = getRuntimeConfig();
-        const scopedTargets = getCapabilityWebSearchCommandSecretTargets(rawConfig, {
+        const scopedTargets = await getCapabilityWebSearchCommandSecretTargets(rawConfig, {
           providerId: provider,
         });
         const cfg = await resolveLocalCapabilityRuntimeConfig({
@@ -114,7 +114,7 @@ export function registerWebCapabilityCommands(capability: Command): void {
         const { resolveLocalCapabilityRuntimeConfig } = await import("./shared.js");
         const { resolveWebFetchDefinition } = await import("../../web-fetch/runtime.js");
         const rawConfig = getRuntimeConfig();
-        const scopedTargets = getCapabilityWebFetchCommandSecretTargets(rawConfig, {
+        const scopedTargets = await getCapabilityWebFetchCommandSecretTargets(rawConfig, {
           providerId: provider,
         });
         const cfg = await resolveLocalCapabilityRuntimeConfig({

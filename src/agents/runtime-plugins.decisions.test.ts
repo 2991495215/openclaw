@@ -108,10 +108,10 @@ it("lets a separate credential-free plugin invoke the prepared Gateway decision 
     workspaceDir: state.workspaceDir,
     cache: false,
   });
-  let scoped: ReturnType<typeof loadAgentRuntimePluginRegistryHandle> | undefined;
+  let scoped: Awaited<ReturnType<typeof loadAgentRuntimePluginRegistryHandle>> | undefined;
   try {
     expect(root.plugins.find((plugin) => plugin.id === "fixture")?.status).toBe("loaded");
-    scoped = loadAgentRuntimePluginRegistryHandle({
+    scoped = await loadAgentRuntimePluginRegistryHandle({
       config: captureRuntimeConfig(runtime),
       workspaceDir: state.workspaceDir,
       allowGatewaySubagentBinding: true,

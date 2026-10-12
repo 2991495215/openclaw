@@ -248,7 +248,7 @@ export function installSpawnAuthorityFixture() {
     clearRuntimeConfigSnapshot();
     await resetSubagentRegistryForTests({ persist: false });
     vi.mocked(loadAgentRuntimePluginRegistryHandle).mockImplementation(
-      () => getActivePluginRegistry() ?? createTestRegistry([]),
+      async () => getActivePluginRegistry() ?? createTestRegistry([]),
     );
     vi.mocked(callGateway).mockImplementation(async (request) => {
       if (request.method !== "agent.wait") {

@@ -37,7 +37,7 @@ vi.mock("../../runtime-plugins.js", async () => {
   const { createEmptyPluginRegistry } = await import("../../../plugins/registry-empty.js");
   return {
     loadAgentRuntimePluginRegistryHandle: vi.fn<typeof loadAgentRuntimePluginRegistryHandle>(
-      () => getActivePluginRegistry() ?? createEmptyPluginRegistry(),
+      async () => getActivePluginRegistry() ?? createEmptyPluginRegistry(),
     ),
   };
 });

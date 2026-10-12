@@ -204,6 +204,9 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   // +7: released auth read/write/availability helpers during async migration.
   "provider-auth": 22,
   "models-provider-runtime": 1,
+  // Prepared-only compatibility while provider and memory callers adopt async discovery.
+  "provider-catalog-runtime": 1,
+  "memory-core-host-engine-foundation": 1,
   // Released synchronous command discovery remains while plugins adopt worker-backed preparation.
   "command-auth-native": 3,
   "native-command-registry": 1,
@@ -254,7 +257,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +5: parseModelRefAsync, prepareModelRefResolver, and their three preparation/resolver types.
       // +2: approved readTranscriptStatsAsync and PreparedAgentRunStart replacements;
       // the released synchronous stats reader and onAgentRunStart callback remain compatible.
-      3708,
+      // +2: resolvePluginProvidersAsync and resolveMemorySearchConfigAsync on existing public subpaths.
+      3710,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -283,7 +287,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: the same deprecated createSessionHeaderLink.
       // +2: the same async model-reference parser and prepared resolver factory.
       // +1: readTranscriptStatsAsync replaces the retained synchronous stats reader.
-      2165,
+      // +2: the same provider and memory async discovery replacements.
+      2167,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -301,7 +306,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: createSessionHeaderLink from shipped 2026.10.1 until plugin-sdk-session-header-link expires.
       // +2: model-ref-sync-discovery retains parseModelRef and resolveModelRefFromString.
       // +1: readTranscriptStatsSync remains until the next Plugin SDK major.
-      191,
+      // +2: their retained, prepared-only synchronous counterparts.
+      193,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

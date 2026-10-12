@@ -29,7 +29,7 @@ vi.mock("../../browser-lifecycle-cleanup.js", () => ({
 }));
 vi.mock("../../agents/runtime-plugins.js", async () => {
   const { createEmptyPluginRegistry } = await import("../../plugins/registry-empty.js");
-  return { loadAgentRuntimePluginRegistryHandle: createEmptyPluginRegistry };
+  return { loadAgentRuntimePluginRegistryHandle: async () => createEmptyPluginRegistry() };
 });
 vi.mock("../../context-engine/registry.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../context-engine/registry.js")>()),

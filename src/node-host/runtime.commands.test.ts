@@ -17,7 +17,7 @@ vi.mock("../infra/path-env.js", () => ({ ensureOpenClawCliOnPath: vi.fn() }));
 vi.mock("./mcp.js", () => ({ startNodeHostMcpManager: vi.fn() }));
 vi.mock("./skills.js", () => ({ scanNodeHostedSkills: vi.fn() }));
 vi.mock("../plugins/loader.js", () => ({
-  loadPluginRegistryHandle: () => getActivePluginRegistry(),
+  loadPluginRegistryHandleAsync: async () => getActivePluginRegistry(),
 }));
 
 const hiddenPrepare = vi.fn();

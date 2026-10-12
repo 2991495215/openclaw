@@ -255,7 +255,7 @@ it.each(["inbound", "selected", "inspection"] as const)(
         );
         const registry = await withPluginRuntimeRegistryScope(request, async () => {
           if (producer === "inbound") {
-            const loaded = loadPreparedInboundPluginRegistry(input, metadata);
+            const loaded = await loadPreparedInboundPluginRegistry(input, metadata);
             resources.retainRegistry(loaded);
             return loaded;
           }

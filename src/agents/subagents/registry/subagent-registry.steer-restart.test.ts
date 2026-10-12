@@ -179,7 +179,7 @@ vi.mock("../../../context-engine/registry.js", () => ({
 }));
 vi.mock("../../runtime-plugins.js", async () => {
   const { createEmptyPluginRegistry } = await import("../../../plugins/registry-empty.js");
-  return { loadAgentRuntimePluginRegistryHandle: vi.fn(() => createEmptyPluginRegistry()) };
+  return { loadAgentRuntimePluginRegistryHandle: vi.fn(async () => createEmptyPluginRegistry()) };
 });
 
 vi.mock("../../../plugins/hook-runner-global.js", () => ({

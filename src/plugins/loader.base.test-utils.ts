@@ -26,7 +26,6 @@ import {
   resolvePluginInteractiveRegistrationsMatch,
 } from "./interactive-registry.js";
 import { resolvePluginRegistryLoadCacheKey } from "./loader-cache.js";
-import { resolveRuntimePluginRegistry } from "./loader.js";
 import {
   loadOpenClawPluginsForTest,
   EMPTY_PLUGIN_SCHEMA,
@@ -1364,42 +1363,6 @@ describe("loadOpenClawPlugins", () => {
         expect(record?.error).toContain(cacheKey);
         expect(record?.error).not.toContain(pluginConfigSentinel);
         expect(record?.failurePhase).toBe("register");
-      },
-    },
-    {
-      label: "lets resolveRuntimePluginRegistry short-circuit during same snapshot load",
-      run: () => {
-        useNoBundledPlugins();
-        const pluginDir = makePluginLoaderTempDir();
-        const pluginFile = path.join(pluginDir, "runtime-registry-reentry.cjs");
-        const nestedOptions = {
-          cache: false,
-          activate: false,
-          workspaceDir: pluginDir,
-          config: {
-            plugins: {
-              load: { paths: [pluginFile] },
-              allow: ["runtime-registry-reentry"],
-            },
-          },
-        } satisfies Parameters<typeof loadOpenClawPluginsForTest>[0];
-        writePlugin({
-          id: "runtime-registry-reentry",
-          dir: pluginDir,
-          filename: "runtime-registry-reentry.cjs",
-          registration: `api.logger.info("resolve");`,
-        });
-
-        const resolve = vi.fn(() => resolveRuntimePluginRegistry(nestedOptions));
-        const registry = loadOpenClawPluginsForTest({
-          ...nestedOptions,
-          logger: { info: resolve, warn: vi.fn(), error: vi.fn() },
-        });
-
-        expect(resolve).toHaveBeenCalledExactlyOnceWith("resolve");
-        expect(resolve).toHaveReturnedWith(undefined);
-        const record = registry.plugins.find((entry) => entry.id === "runtime-registry-reentry");
-        expect(record?.status).toBe("loaded");
       },
     },
     {

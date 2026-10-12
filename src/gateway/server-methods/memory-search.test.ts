@@ -114,8 +114,8 @@ describe("memory.search gateway method", () => {
       layout: "state-only",
     });
     getActiveMemorySearchManagerCore.mockReset();
-    resolveActiveMemoryBackendConfig.mockReset().mockReturnValue({ backend: "builtin" });
-    isActiveMemoryProviderNative.mockReset().mockReturnValue(false);
+    resolveActiveMemoryBackendConfig.mockReset().mockResolvedValue({ backend: "builtin" });
+    isActiveMemoryProviderNative.mockReset().mockResolvedValue(false);
     resolveDefaultAgentId.mockClear();
   });
 

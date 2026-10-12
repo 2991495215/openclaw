@@ -18,10 +18,13 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
 import { clearAgentRunContext } from "../infra/agent-run-registry.js";
 import { formatErrorMessage } from "../infra/errors.js";
-import { loadInstalledPluginIndexInstallRecordsSync } from "../plugins/installed-plugin-index-record-reader.js";
+import { loadInstalledPluginIndexInstallRecords } from "../plugins/installed-plugin-index-record-reader.js";
 import { loadInstalledPluginIndex } from "../plugins/installed-plugin-index.js";
 import { createPluginCache, withPluginCache, type PluginCache } from "../plugins/plugin-cache.js";
-import { resolvePluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
+import {
+  resolvePluginMetadataSnapshot,
+  resolvePluginMetadataSnapshotAsync,
+} from "../plugins/plugin-metadata-snapshot.js";
 import { getPluginRegistryForContext } from "../plugins/runtime/gateway-request-scope.js";
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import { getPluginRuntimeLoadContext } from "../plugins/runtime/load-context.js";
@@ -248,7 +251,7 @@ export async function runSetupInferenceTurn(params: {
 }
 
 /** Setup owns fresh package facts without replacing the Gateway's startup generation. */
-export function loadSetupInferencePluginGeneration(params: {
+export async function loadSetupInferencePluginGeneration(params: {
   cache: PluginCache;
   config: OpenClawConfig;
   workspaceDir: string;
@@ -263,21 +266,23 @@ export function loadSetupInferencePluginGeneration(params: {
   )?.preferBuiltPluginArtifacts;
   // The install lease may have cached absence before writing the package.
   // This post-mutation owner must capture new facts without retiring that lease's cache.
-  return withPluginCache(params.cache, () => {
+  return withPluginCache(params.cache, async () => {
     const index = params.pendingPluginInstalls
       ? loadInstalledPluginIndex({
           config: params.config,
           workspaceDir: params.workspaceDir,
           env: process.env,
           installRecords: {
-            ...loadInstalledPluginIndexInstallRecordsSync(),
+            ...(await loadInstalledPluginIndexInstallRecords()),
             ...params.pendingPluginInstalls,
           },
         })
       : undefined;
     const generation = {
       config: params.config,
-      metadataSnapshot: (params.resolvePluginMetadataSnapshot ?? resolvePluginMetadataSnapshot)({
+      metadataSnapshot: await (
+        params.resolvePluginMetadataSnapshot ?? resolvePluginMetadataSnapshotAsync
+      )({
         config: params.config,
         env: process.env,
         workspaceDir: params.workspaceDir,
@@ -285,7 +290,7 @@ export function loadSetupInferencePluginGeneration(params: {
         ...(index ? { index } : {}),
       }),
     };
-    const pluginRegistry = withPluginRuntimeGenerationScope(generation, () =>
+    const pluginRegistry = await withPluginRuntimeGenerationScope(generation, () =>
       loadAgentRuntimePluginRegistryHandle({
         config: params.config,
         workspaceDir: params.workspaceDir,
@@ -294,9 +299,6 @@ export function loadSetupInferencePluginGeneration(params: {
         selections: [params.selection],
       }),
     );
-    if (!pluginRegistry) {
-      throw new Error(`Could not load the ${params.selection.runtime} runtime plugin.`);
-    }
     return { ...generation, pluginRegistry };
   });
 }
@@ -336,7 +338,7 @@ async function revalidateSetupInferenceOwner(params: {
       process.env,
     );
     await using cache = createPluginCache();
-    const generation = loadSetupInferencePluginGeneration({
+    const generation = await loadSetupInferencePluginGeneration({
       cache,
       config: params.route.runConfig,
       workspaceDir,

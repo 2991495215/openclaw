@@ -10,7 +10,7 @@ afterEach(() => {
 
 describe("plugin contract registry public artifacts", () => {
   it("uses provider public artifacts before falling back to the bundled runtime registry", async () => {
-    const loadBundledCapabilityRuntimeRegistry = vi.fn(() => {
+    const prepareBundledCapabilityRuntime = vi.fn(() => {
       throw new Error("provider contract public artifact should not hit bundled runtime registry");
     });
     const resolveBundledExplicitProviderContractsFromPublicArtifacts = vi.fn(() => [
@@ -49,7 +49,7 @@ describe("plugin contract registry public artifacts", () => {
     ]);
 
     vi.doMock("../bundled-capability-runtime.js", () => ({
-      loadBundledCapabilityRuntimeRegistry,
+      prepareBundledCapabilityRuntime,
     }));
     vi.doMock("../provider-contract-public-artifacts.js", () => ({
       resolveBundledExplicitProviderContractsFromPublicArtifacts,
@@ -61,11 +61,11 @@ describe("plugin contract registry public artifacts", () => {
       resolveProviderContractProvidersForPluginIds(["openai"]).map((provider) => provider.id),
     ).toEqual(["openai"]);
     expect(resolveBundledExplicitProviderContractsFromPublicArtifacts).toHaveBeenCalledTimes(1);
-    expect(loadBundledCapabilityRuntimeRegistry).not.toHaveBeenCalled();
+    expect(prepareBundledCapabilityRuntime).not.toHaveBeenCalled();
   });
 
   it("uses web search public artifacts before falling back to the bundled runtime registry", async () => {
-    const loadBundledCapabilityRuntimeRegistry = vi.fn(() => {
+    const prepareBundledCapabilityRuntime = vi.fn(() => {
       throw new Error(
         "web search contract public artifact should not hit bundled runtime registry",
       );
@@ -93,7 +93,7 @@ describe("plugin contract registry public artifacts", () => {
     ]);
 
     vi.doMock("../bundled-capability-runtime.js", () => ({
-      loadBundledCapabilityRuntimeRegistry,
+      prepareBundledCapabilityRuntime,
     }));
     vi.doMock("../web-provider-public-artifacts.explicit.js", () => ({
       resolveBundledExplicitWebSearchProvidersFromPublicArtifacts,
@@ -107,6 +107,6 @@ describe("plugin contract registry public artifacts", () => {
       ),
     ).toEqual(["gemini"]);
     expect(resolveBundledExplicitWebSearchProvidersFromPublicArtifacts).toHaveBeenCalledTimes(1);
-    expect(loadBundledCapabilityRuntimeRegistry).not.toHaveBeenCalled();
+    expect(prepareBundledCapabilityRuntime).not.toHaveBeenCalled();
   });
 });

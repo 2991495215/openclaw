@@ -97,7 +97,7 @@ vi.mock("../../runtime-plugins.js", async () => {
   return {
     loadAgentRuntimePluginRegistryHandle: vi.fn<
       typeof import("../../runtime-plugins.js").loadAgentRuntimePluginRegistryHandle
-    >(() => createEmptyPluginRegistry()),
+    >(async () => createEmptyPluginRegistry()),
   };
 });
 
@@ -743,7 +743,7 @@ describe("subagent registry archive behavior", () => {
 
   it("continues killed cleanup when ended hook loading fails", async () => {
     const now = Date.now();
-    vi.mocked(loadAgentRuntimePluginRegistryHandle).mockImplementation(() => {
+    vi.mocked(loadAgentRuntimePluginRegistryHandle).mockImplementation(async () => {
       throw new Error("plugin load failed");
     });
     await addCanonicalSubagentRunForTests({

@@ -5,16 +5,16 @@ import {
 } from "../config/plugin-auto-enable.test-helpers.js";
 import { captureRuntimeConfig } from "../config/runtime-source-projection.js";
 import { prepareBundledDiscoveryMode } from "../plugins/bundled-discovery-state.js";
-import { loadPluginRegistryHandle } from "../plugins/loader.js";
+import { loadPluginRegistryHandleAsync } from "../plugins/loader.js";
 import { clearPluginMetadataLifecycleCaches } from "../plugins/plugin-metadata-lifecycle.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { loadAgentRuntimePluginRegistryHandle } from "./runtime-plugins.js";
 
-vi.mock("../plugins/loader.js", () => ({ loadPluginRegistryHandle: vi.fn() }));
+vi.mock("../plugins/loader.js", () => ({ loadPluginRegistryHandleAsync: vi.fn() }));
 
 afterEach(() => {
   clearPluginMetadataLifecycleCaches();
-  vi.mocked(loadPluginRegistryHandle).mockReset();
+  vi.mocked(loadPluginRegistryHandleAsync).mockReset();
 });
 
 it("carries one captured fleet to every already-enabled runtime load and projects real policy changes", async () => {
@@ -37,9 +37,11 @@ it("carries one captured fleet to every already-enabled runtime load and project
       ["fleet-owner", "existing", "new-engine"].map((id) => ({ id, channels: [] })),
     ),
   });
-  const load = vi.mocked(loadPluginRegistryHandle).mockReturnValue(createEmptyPluginRegistry());
+  const load = vi
+    .mocked(loadPluginRegistryHandleAsync)
+    .mockResolvedValue(createEmptyPluginRegistry());
   for (let index = 0; index < 200; index += 1) {
-    loadAgentRuntimePluginRegistryHandle({
+    await loadAgentRuntimePluginRegistryHandle({
       config,
       workspaceDir: `/tmp/fleet-${index}`,
       metadataSnapshot,
@@ -62,7 +64,7 @@ it("carries one captured fleet to every already-enabled runtime load and project
       slots: { memory: "none", contextEngine: "new-engine" },
     },
   });
-  loadAgentRuntimePluginRegistryHandle({
+  await loadAgentRuntimePluginRegistryHandle({
     config: changed,
     workspaceDir: "/tmp/fleet-changed",
     metadataSnapshot,

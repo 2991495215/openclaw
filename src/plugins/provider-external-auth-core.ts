@@ -1,6 +1,5 @@
 /** Resolves external auth overlays through metadata and synchronous provider hooks. */
 import { getCurrentPluginMetadataSnapshot } from "./current-plugin-metadata-snapshot.js";
-import { resolvePluginMetadataSnapshot } from "./plugin-metadata-snapshot.js";
 import type {
   ProviderExternalAuthProfile,
   ProviderExternalAuthProfileResolver,
@@ -25,12 +24,15 @@ export function createProviderExternalAuthResolver(
       ...(params.config ? { config } : { requireDefaultDiscoveryContext: true }),
       ...(workspaceDir ? { workspaceDir } : { allowWorkspaceScopedSnapshot: true }),
     });
-    const { manifestRegistry } =
-      currentMetadataSnapshot ?? resolvePluginMetadataSnapshot({ config, workspaceDir, env });
+    if (!currentMetadataSnapshot) {
+      throw new Error(
+        "External auth metadata is not prepared; await provider runtime preparation before reading profiles.",
+      );
+    }
+    const { manifestRegistry } = currentMetadataSnapshot;
     // A lifecycle-owned manifest is authoritative: no external-auth contracts means
     // no provider registry discovery or runtime activation is needed for this overlay.
     if (
-      currentMetadataSnapshot &&
       !manifestRegistry.plugins.some((plugin) => plugin.contracts?.externalAuthProviders?.length)
     ) {
       return [];
@@ -50,6 +52,7 @@ export function createProviderExternalAuthResolver(
       workspaceDir,
       env,
       onlyPluginIds: externalAuthPluginIds,
+      pluginMetadataSnapshot: currentMetadataSnapshot,
     })) {
       matches.push(...(plugin.resolveExternalAuthProfiles?.(params.context) ?? []));
     }

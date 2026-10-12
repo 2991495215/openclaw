@@ -149,7 +149,7 @@ type LoadTriggerPluginRegistry = (input: {
   config: OpenClawConfig;
   workspaceDir: string;
   allowGatewaySubagentBinding: boolean;
-}) => PluginRegistry;
+}) => Promise<PluginRegistry>;
 
 type CronTriggerEvaluatorDeps = {
   config: OpenClawConfig;
@@ -206,7 +206,7 @@ async function prepareTriggerRuntime(
   });
   preparationSignal?.throwIfAborted();
   const workspaceDir = workspace.dir;
-  const pluginRegistry = loadPluginRegistry({
+  const pluginRegistry = await loadPluginRegistry({
     config,
     workspaceDir,
     allowGatewaySubagentBinding: true,

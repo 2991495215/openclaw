@@ -20,6 +20,7 @@ import {
   PLUGIN_SDK_SUBPATH_RECORDS,
 } from "./plugin-sdk-subpath-records.js";
 import { PROGRESS_RECEIPT_HANDOFF_COMPAT_RECORD } from "./progress-receipt-handoff-record.js";
+import { PROVIDER_DISCOVERY_COMPAT_RECORDS } from "./provider-discovery-records.js";
 import { SESSION_PERSISTENCE_COMPAT_RECORDS } from "./session-persistence-records.js";
 import { SESSION_TRANSCRIPT_VIEW_COMPAT_RECORD } from "./session-transcript-view-record.js";
 import { SKILL_COMMAND_DISCOVERY_COMPAT_RECORD } from "./skill-command-discovery-record.js";
@@ -44,6 +45,7 @@ export const PLUGIN_COMPAT_RECORDS = [
   ...PLUGIN_SDK_REMOVED_EXPORT_RECORDS,
   ...AGENT_HARNESS_COMPAT_RECORDS,
   AUTH_ASYNC_COMPAT_RECORD,
+  ...PROVIDER_DISCOVERY_COMPAT_RECORDS,
   ...BINDING_PERSISTENCE_COMPAT_RECORDS,
   CHANNEL_PAIRING_COMPAT_RECORD,
   CRON_STORE_PATH_COMPAT_RECORD,

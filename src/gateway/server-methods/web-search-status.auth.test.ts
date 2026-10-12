@@ -43,7 +43,7 @@ vi.mock("../../agents/model-selection.js", () => ({
 }));
 vi.mock("../../flows/search-setup.js", () => ({ listSearchProviderOptions: mocks.providers }));
 vi.mock("../../plugins/web-search-providers.runtime.js", () => ({
-  resolvePluginWebSearchProviders: mocks.providers,
+  resolvePluginWebSearchProvidersAsync: mocks.providers,
 }));
 // mock-isolation: Prepared-auth status uses fixed metadata without loading the discovery registry.
 vi.mock("../../config/io.plugin-metadata.js", () => ({

@@ -2,7 +2,7 @@ import { AsyncResource } from "node:async_hooks";
 import { setImmediate } from "node:timers/promises";
 import { queryObjects } from "node:v8";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadPluginRegistryHandle } from "./loader.js";
+import { loadPluginRegistryHandleAsync } from "./loader.js";
 import { resetPluginLoaderTestStateForTest } from "./loader.test-fixtures.js";
 import { PluginInstance } from "./plugin-instance.js";
 import { createEmptyPluginRegistry } from "./registry-empty.js";
@@ -116,8 +116,8 @@ describe("plugin registry retirement notifications", () => {
 
   it.each(["retire", "activate"] as const)(
     "notifies a scoped loader handle on %s without inventing an activation epoch",
-    (action) => {
-      const registry = loadPluginRegistryHandle({ onlyPluginIds: [] });
+    async (action) => {
+      const registry = await loadPluginRegistryHandleAsync({ onlyPluginIds: [] });
       const record = createPluginRecord({ id: "scoped-owner" });
       registry.plugins.push(record);
       expect(capturePluginRegistryLifecycleSignal(registry, undefined)).toBeUndefined();

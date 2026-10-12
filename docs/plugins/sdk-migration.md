@@ -137,6 +137,36 @@ The existing `parseModelRef` exports and `agent-runtime`'s
 plugins. They emit a bounded deprecation warning and remain supported until the
 next Plugin SDK major and explicit approval of a breaking release.
 
+### Provider discovery
+
+Await `resolvePluginProvidersAsync` from
+`openclaw/plugin-sdk/provider-catalog-runtime` when selecting provider callbacks.
+It prepares metadata and loads the selected provider registry asynchronously.
+Borrowed callbacks remain owned by the calling SDK host until that host closes.
+
+The synchronous `resolvePluginProviders` export is deprecated and emits a bounded
+warning. It requires an already prepared and loaded provider registry; cold
+discovery must use the async replacement. The synchronous export remains available
+until the next Plugin SDK major.
+
+### Speech provider discovery
+
+Use `getSpeechProviderAsync` from `openclaw/plugin-sdk/speech` or
+`openclaw/plugin-sdk/speech-core` when resolving a provider. The speech-core
+surface also exports `listSpeechProvidersAsync` and
+`canonicalizeSpeechProviderIdAsync`. Provider discovery prepares metadata and
+loads registrations asynchronously; returned callbacks stay with the calling
+SDK resource host until it closes.
+
+From `openclaw/plugin-sdk/tts-runtime`, await
+`getResolvedSpeechProviderConfigAsync`, `resolveTtsProviderOrderAsync`, and
+`setTtsProviderAsync`. Their synchronous counterparts, along with the synchronous
+speech registry helpers, are deprecated and require a prepared registry. They
+emit a bounded warning and remain available until the next Plugin SDK major.
+Synchronous directive parsing remains available with an explicit `providers`
+inventory; `runtime.tts.prepareTtsRequest` prepares discovery and preserves the
+provider resources needed by directive results.
+
 ### Exec approval reads
 
 Await `loadExecApprovalsReadOnlyAsync` or `readExecApprovalsSnapshotAsync` from

@@ -20,7 +20,7 @@ const { resolvePluginWebSearchProvidersMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
-  resolvePluginWebSearchProviders: resolvePluginWebSearchProvidersMock,
+  resolvePluginWebSearchProvidersAsync: resolvePluginWebSearchProvidersMock,
 }));
 
 vi.mock("../plugins/installed-plugin-index-records.js", () => ({

@@ -18,6 +18,19 @@ const mockEmbeddingRegistry = vi.hoisted(() => ({
   acquireLocalService: vi.fn(async () => undefined),
 }));
 
+function lookupFixtureEmbeddingAdapter(id: string, config?: OpenClawConfig) {
+  const memoryAdapter = mockEmbeddingRegistry.adapters.find((adapter) => adapter.id === id);
+  if (memoryAdapter) {
+    return memoryAdapter;
+  }
+  mockEmbeddingRegistry.genericLookupConfigs.push(config);
+  const genericAdapter = mockEmbeddingRegistry.genericAdapters.find((adapter) => adapter.id === id);
+  if (!genericAdapter) {
+    return undefined;
+  }
+  return genericAdapter;
+}
+
 vi.mock("openclaw/plugin-sdk/memory-core-host-engine-embeddings", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("openclaw/plugin-sdk/memory-core-host-engine-embeddings")
@@ -25,20 +38,9 @@ vi.mock("openclaw/plugin-sdk/memory-core-host-engine-embeddings", async (importO
   createLocalEmbeddingProvider: async () => {
     throw new Error("local embedding provider is not used by these tests");
   },
-  getMemoryEmbeddingProvider: (id: string, config?: OpenClawConfig) => {
-    const memoryAdapter = mockEmbeddingRegistry.adapters.find((adapter) => adapter.id === id);
-    if (memoryAdapter) {
-      return memoryAdapter;
-    }
-    mockEmbeddingRegistry.genericLookupConfigs.push(config);
-    const genericAdapter = mockEmbeddingRegistry.genericAdapters.find(
-      (adapter) => adapter.id === id,
-    );
-    if (!genericAdapter) {
-      return undefined;
-    }
-    return genericAdapter;
-  },
+  getMemoryEmbeddingProvider: lookupFixtureEmbeddingAdapter,
+  getMemoryEmbeddingProviderAsync: async (id: string, config?: OpenClawConfig) =>
+    lookupFixtureEmbeddingAdapter(id, config),
 }));
 
 const missingBedrockCredentialsError = new Error(

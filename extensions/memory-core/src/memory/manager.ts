@@ -2,7 +2,7 @@ import { formatErrorMessage, toErrorObject } from "openclaw/plugin-sdk/error-run
 import {
   createSubsystemLogger,
   resolveAgentWorkspaceDir,
-  resolveMemorySearchConfig,
+  resolveMemorySearchConfigAsync,
   resolveUserPath,
   type OpenClawConfig,
   type ResolvedMemorySearchConfig,
@@ -119,8 +119,8 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     return await managerRegistry.acquire(
       { agentId, purpose },
       {
-        prepare: () => {
-          const settings = source?.settings ?? resolveMemorySearchConfig(cfg, agentId);
+        prepare: async () => {
+          const settings = source?.settings ?? (await resolveMemorySearchConfigAsync(cfg, agentId));
           if (!settings) {
             return null;
           }

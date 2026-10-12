@@ -165,11 +165,17 @@ vi.mock("../../../state/user-preferences.js", async (importOriginal) => ({
   getCanonicalUserPreferences: mocks.getCanonicalUserPreferences,
 }));
 
-vi.mock("../../../tts/provider-registry.js", () => ({
-  canonicalizeSpeechProviderId: mocks.canonicalizeSpeechProviderId,
-  getSpeechProvider: mocks.getSpeechProvider,
-  listSpeechProviders: mocks.listSpeechProviders,
-}));
+vi.mock("../../../tts/provider-registry.js", () => {
+  const registry = {
+    canonicalizeSpeechProviderId: mocks.canonicalizeSpeechProviderId,
+    getSpeechProvider: mocks.getSpeechProvider,
+    listSpeechProviders: mocks.listSpeechProviders,
+  };
+  return {
+    withSpeechProviderRegistry: async (_cfg: unknown, run: (value: typeof registry) => unknown) =>
+      run(registry),
+  };
+});
 
 vi.mock("../../../tts/tts.js", () => ({
   getResolvedSpeechProviderConfig: mocks.getResolvedSpeechProviderConfig,

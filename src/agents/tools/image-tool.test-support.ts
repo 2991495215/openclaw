@@ -156,6 +156,25 @@ function setProviderDepsForTest(overrides?: Partial<ImageToolProviderDeps>): voi
           : original(params),
       );
     restoreSpies.push(() => spy.mockRestore());
+    const acquiredSpy = vi
+      .spyOn(registry, "acquireMediaUnderstandingRegistry")
+      .mockImplementation(async (params) => {
+        const { createMediaProviderAcquisition } =
+          await import("../../media-understanding/runner.test-mocks.js");
+        const provider = params.providerId
+          ? resolve({ providerId: params.providerId, cfg: params.cfg })
+          : undefined;
+        const providers = provider ? [provider] : [];
+        return {
+          ...createMediaProviderAcquisition(providers),
+          registry: registry.buildMediaUnderstandingRegistry(
+            params.overrides,
+            params.cfg,
+            providers,
+          ),
+        };
+      });
+    restoreSpies.push(() => acquiredSpy.mockRestore());
   }
   if (overrides.loadImageWebMediaRuntime) {
     const load = overrides.loadImageWebMediaRuntime;

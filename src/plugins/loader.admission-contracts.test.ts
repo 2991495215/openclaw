@@ -15,8 +15,8 @@ import { withEnvAsync } from "../test-utils/env.js";
 import { activatePluginRegistry } from "./loader-shared.js";
 import {
   loadOpenClawPluginCliRegistry,
-  loadOpenClawPlugins,
-  loadPluginRegistryHandle,
+  loadOpenClawPluginsAsync,
+  loadPluginRegistryHandleAsync,
 } from "./loader.js";
 import {
   cleanupPluginLoaderFixturesForTest,
@@ -92,7 +92,7 @@ module.exports = { id: "admission-contract", register() {} };`,
   expect(fs.existsSync(imported)).toBe(false);
 });
 
-it("keeps scoped forced setup selection with a setup entry", () => {
+it("keeps scoped forced setup selection with a setup entry", async () => {
   useNoBundledPlugins();
   const markers = makePluginLoaderTempDir();
   const fullMarker = path.join(markers, "full-imported");
@@ -131,7 +131,7 @@ module.exports = { plugin: channel };`,
       },
     },
   });
-  const registry = loadOpenClawPlugins({
+  const registry = await loadOpenClawPluginsAsync({
     config: { plugins: { allow: [plugin.id], load: { paths: [plugin.dir] } } },
     onlyPluginIds: [plugin.id],
     includeSetupOnlyChannelPlugins: true,
@@ -192,7 +192,7 @@ it("keeps system routing bound to the replacement lifecycle owner", async () => 
   };
   const previous = createEmptyPluginRegistry();
   setActivePluginRegistry(previous);
-  const registry = loadOpenClawPlugins({
+  const registry = await loadOpenClawPluginsAsync({
     config,
     cache: false,
     activate: false,
@@ -206,11 +206,14 @@ it("keeps system routing bound to the replacement lifecycle owner", async () => 
   const services = await withPluginRegistryPreparationScope(registry, start);
   try {
     const observed = await late.promise;
-    expect(observed).toEqual([
-      { phase: "registration", ok: false },
-      { phase: "service", ok: false },
-      { phase: "late", ok: false },
-    ]);
+    expect(observed).toHaveLength(3);
+    expect(observed).toEqual(
+      expect.arrayContaining([
+        { phase: "registration", ok: false },
+        { phase: "service", ok: false },
+        { phase: "late", ok: false },
+      ]),
+    );
     expect(drainSystemEvents(queueKey)).toEqual([]);
     expect(getActivePluginRegistry()).toBe(previous);
     activatePluginRegistry(registry, null, "gateway-bindable", undefined, previous);
@@ -250,9 +253,9 @@ it.each(["cached-discovery", "retained-discovery"] as const)(
     const options = { config, activate: false };
     const published = createEmptyPluginRegistry();
     setActivePluginRegistry(published);
-    const discovery = loadOpenClawPlugins(options);
+    const discovery = await loadOpenClawPluginsAsync(options);
     expect(discovery.contextEngines.has(plugin.id)).toBe(false);
-    const prepared = loadOpenClawPlugins({
+    const prepared = await loadOpenClawPluginsAsync({
       ...options,
       runtimeSideEffects: true,
       ...(mode === "retained-discovery" ? { previousRegistry: discovery } : {}),
@@ -271,9 +274,13 @@ it.each(["cached-discovery", "retained-discovery"] as const)(
         systemPromptAddition: "runtime-ready",
       });
       if (mode === "cached-discovery") {
-        expect(loadOpenClawPlugins(options)).toBe(discovery);
-        expect(loadOpenClawPlugins({ ...options, runtimeSideEffects: false })).toBe(discovery);
-        expect(loadOpenClawPlugins({ ...options, runtimeSideEffects: true })).toBe(prepared);
+        expect(await loadOpenClawPluginsAsync(options)).toBe(discovery);
+        expect(await loadOpenClawPluginsAsync({ ...options, runtimeSideEffects: false })).toBe(
+          discovery,
+        );
+        expect(await loadOpenClawPluginsAsync({ ...options, runtimeSideEffects: true })).toBe(
+          prepared,
+        );
       }
       expect(getActivePluginRegistry()).toBe(published);
     } finally {
@@ -291,7 +298,7 @@ describe("registry load modes", () => {
     clearRuntimeConfigSnapshot();
   });
 
-  it("keeps validation and full registry caches separate", () => {
+  it("keeps validation and full registry caches separate", async () => {
     useNoBundledPlugins();
     const plugin = writePlugin({
       id: "cached-load-mode",
@@ -306,17 +313,17 @@ describe("registry load modes", () => {
         },
       },
     };
-    const validation = loadPluginRegistryHandle({ ...options, mode: "validate" });
-    const full = loadPluginRegistryHandle(options);
+    const validation = await loadPluginRegistryHandleAsync({ ...options, mode: "validate" });
+    const full = await loadPluginRegistryHandleAsync(options);
 
     expect(full.providers.map(({ provider }) => provider.id)).toEqual(["mode-provider"]);
     expect(validation.plugins).toContainEqual(
       expect.objectContaining({ id: plugin.id, status: "loaded" }),
     );
     expect(validation.providers).toEqual([]);
-    expect(loadPluginRegistryHandle(options)).toBe(full);
-    expect(loadPluginRegistryHandle({ ...options, mode: "full" })).toBe(full);
-    expect(loadPluginRegistryHandle({ ...options, mode: "validate" })).toBe(validation);
+    expect(await loadPluginRegistryHandleAsync(options)).toBe(full);
+    expect(await loadPluginRegistryHandleAsync({ ...options, mode: "full" })).toBe(full);
+    expect(await loadPluginRegistryHandleAsync({ ...options, mode: "validate" })).toBe(validation);
   });
 });
 
@@ -373,7 +380,7 @@ describe("registration config snapshot", () => {
           OPENCLAW_BUNDLED_PLUGINS_DIR: undefined,
         },
         async () => {
-          const registry = loadOpenClawPlugins({
+          const registry = await loadOpenClawPluginsAsync({
             config: runtime,
             cache: false,
             activate: false,

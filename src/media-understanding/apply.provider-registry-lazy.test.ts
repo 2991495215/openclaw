@@ -34,6 +34,16 @@ vi.mock("../plugins/capability-provider-runtime.js", () => ({
   },
 }));
 
+vi.mock("../plugins/capability-provider-acquisition.js", async () => {
+  const { createMediaProviderAcquisition } = await import("./runner.test-mocks.js");
+  return {
+    acquirePluginCapabilityProviders: async (params: { key: string }) => {
+      resolvePluginCapabilityProvidersSpy(params);
+      return createMediaProviderAcquisition([]);
+    },
+  };
+});
+
 vi.mock("../agents/prepared-model-catalog.js", () => ({
   loadProviderScopedThinkingCatalog: vi.fn(async () => []),
   readPreparedModelCatalog: loadModelCatalog,

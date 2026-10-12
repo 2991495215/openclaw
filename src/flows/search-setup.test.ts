@@ -123,7 +123,7 @@ const mockCodexProvider = vi.hoisted(() => ({
 }));
 
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
-  resolvePluginWebSearchProviders: webSearchProviderMocks.resolvePluginWebSearchProviders,
+  resolvePluginWebSearchProvidersAsync: webSearchProviderMocks.resolvePluginWebSearchProviders,
 }));
 
 const ensureOnboardingPluginInstalled = vi.hoisted(() =>

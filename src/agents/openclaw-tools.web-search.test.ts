@@ -29,7 +29,9 @@ const { resolveProviders } = vi.hoisted(() => ({
 // mock-isolation: Only fixture providers participate in tool availability, not host credentials.
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProviders: resolveProviders,
+  resolvePluginWebSearchProvidersAsync: resolveProviders,
   resolveRuntimeWebSearchProviders: resolveProviders,
+  resolveRuntimeWebSearchProvidersAsync: resolveProviders,
 }));
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);

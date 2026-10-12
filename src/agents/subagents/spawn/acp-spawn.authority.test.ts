@@ -124,7 +124,7 @@ beforeEach(async () => {
   managerTesting.resetAcpSessionManagerForTests();
   await resetSubagentRegistryForTests({ persist: false });
   vi.mocked(loadAgentRuntimePluginRegistryHandle).mockImplementation(
-    () => getActivePluginRegistry() ?? createTestRegistry([]),
+    async () => getActivePluginRegistry() ?? createTestRegistry([]),
   );
 });
 

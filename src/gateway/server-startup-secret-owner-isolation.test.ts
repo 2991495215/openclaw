@@ -91,8 +91,8 @@ vi.mock("../secrets/runtime-web-tools-public-artifacts.runtime.js", () => ({
 
 vi.mock("../secrets/runtime-web-tools-fallback.runtime.js", () => ({
   runtimeWebToolsFallbackProviders: {
-    resolvePluginWebSearchProviders: () => webSearchProviders,
-    resolvePluginWebFetchProviders: () => [],
+    resolvePluginWebSearchProvidersAsync: async () => webSearchProviders,
+    resolvePluginWebFetchProvidersAsync: async () => [],
   },
 }));
 

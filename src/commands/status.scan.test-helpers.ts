@@ -82,7 +82,7 @@ function createStatusScanDepsRuntimeModuleMock(
     })),
     getMemorySearchManager: mocks.getMemorySearchManager,
     isMemoryProviderNative: vi.fn<StatusScanDepsRuntimeModuleMock["isMemoryProviderNative"]>(
-      () => false,
+      async () => false,
     ),
   };
 }
@@ -264,7 +264,8 @@ export async function loadStatusScanModuleForTest(
     resolveCommandConfigWithSecrets: mocks.resolveCommandSecretRefsViaGateway,
   }));
   vi.doMock("../agents/memory-search.js", () => ({
-    resolveMemorySearchConfig,
+    resolveMemorySearchConfigAsync: async (...args: unknown[]) =>
+      resolveMemorySearchConfig(...args),
   }));
 
   if (!options.fastJson) {

@@ -111,7 +111,7 @@ export function installEmbeddedRunnerBaseE2eMocks(options?: {
   }));
   vi.doMock("../runtime-plugins.js", () => ({
     loadAgentRuntimePluginRegistryHandle: vi.fn(
-      () => options?.pluginRegistry ?? createEmptyPluginRegistry(),
+      async () => options?.pluginRegistry ?? createEmptyPluginRegistry(),
     ),
   }));
   vi.doMock("../prepared-model-runtime.js", () => {

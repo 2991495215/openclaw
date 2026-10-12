@@ -45,7 +45,7 @@ vi.mock("../browser-lifecycle-cleanup.js", () => ({
 }));
 vi.mock("../agents/runtime-plugins.js", async () => {
   const { createEmptyPluginRegistry } = await import("../plugins/registry-empty.js");
-  return { loadAgentRuntimePluginRegistryHandle: createEmptyPluginRegistry };
+  return { loadAgentRuntimePluginRegistryHandle: async () => createEmptyPluginRegistry() };
 });
 vi.mock(
   "../agents/subagents/registry/subagent-registry-persistence.js",

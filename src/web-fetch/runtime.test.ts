@@ -3,6 +3,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.js";
 import type { PluginWebFetchProviderEntry } from "../plugins/types.js";
+// mock-isolation: Provider fixtures supply metadata without opening shared machine state.
+vi.mock("../plugins/installed-plugin-index-record-state.js", () => ({
+  preparePluginMetadataMachineStateAsync: async () => () => {},
+}));
+
 vi.mock("../plugins/bundled-discovery-state.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../plugins/bundled-discovery-state.js")>()),
   prepareBundledDiscoveryMode: async () => () => {},
@@ -41,7 +46,9 @@ vi.mock("../plugins/runtime.js", async (importOriginal) => {
 
 vi.mock("../plugins/web-fetch-providers.runtime.js", () => ({
   resolvePluginWebFetchProviders: resolvePluginWebFetchProvidersMock,
+  resolvePluginWebFetchProvidersAsync: resolvePluginWebFetchProvidersMock,
   resolveRuntimeWebFetchProviders: resolveRuntimeWebFetchProvidersMock,
+  resolveRuntimeWebFetchProvidersAsync: resolveRuntimeWebFetchProvidersMock,
 }));
 
 function getFirecrawlApiKey(config?: OpenClawConfig): unknown {

@@ -37,11 +37,16 @@ vi.mock("../../globals.js", () => ({
   logVerbose: vi.fn(),
 }));
 
-vi.mock("../../tts/provider-registry.js", () => ({
-  canonicalizeSpeechProviderId: vi.fn((provider: string) => provider),
-  getSpeechProvider: vi.fn(() => null),
-  listSpeechProviders: vi.fn(() => []),
-}));
+vi.mock("../../tts/provider-registry.js", () => {
+  const registry = {
+    getSpeechProvider: vi.fn(() => undefined),
+    listSpeechProviders: vi.fn(() => []),
+  };
+  return {
+    withSpeechProviderRegistry: async (_cfg: unknown, run: (value: typeof registry) => unknown) =>
+      run(registry),
+  };
+});
 
 vi.mock("../../tts/tts.js", () => ttsMocks);
 

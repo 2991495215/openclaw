@@ -615,7 +615,7 @@ describe("cold dynamic-model effective inventory", () => {
       expect(
         metadata.index.plugins.find((plugin) => plugin.pluginId === pluginId)?.syntheticAuthRefs,
       ).toEqual([provider]);
-      const rootRegistry = loadAgentRuntimePluginRegistryHandle({
+      const rootRegistry = await loadAgentRuntimePluginRegistryHandle({
         config: fixture.config,
         workspaceDir: input.workspaceDir,
         basePluginIds: [],

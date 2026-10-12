@@ -10,8 +10,8 @@ import type {
   WebFetchProviderToolDefinition,
 } from "../plugins/types.js";
 import {
-  resolvePluginWebFetchProviders,
-  resolveRuntimeWebFetchProviders,
+  resolvePluginWebFetchProvidersAsync,
+  resolveRuntimeWebFetchProvidersAsync,
 } from "../plugins/web-fetch-providers.runtime.js";
 import { getActiveRuntimeWebToolsMetadataFromState } from "../secrets/runtime-web-tools-state.js";
 import type { RuntimeWebFetchMetadata } from "../secrets/runtime-web-tools.types.js";
@@ -73,7 +73,7 @@ export async function listWebFetchProviders(params?: {
   config?: OpenClawConfig;
 }): Promise<PluginWebFetchProviderEntry[]> {
   await prepareBundledDiscoveryMode();
-  return resolvePluginWebFetchProviders({
+  return resolvePluginWebFetchProvidersAsync({
     config: params?.config,
   });
 }
@@ -106,9 +106,9 @@ function resolveAutoWebFetchProviderId(params: {
   return "";
 }
 
-function resolveWebFetchProvidersForOptions(
+async function resolveWebFetchProvidersForOptions(
   options?: ResolveWebFetchDefinitionParams,
-): PluginWebFetchProviderEntry[] {
+): Promise<PluginWebFetchProviderEntry[]> {
   const config = options?.config;
   const cacheKey = config
     ? JSON.stringify([
@@ -123,18 +123,18 @@ function resolveWebFetchProvidersForOptions(
     return cached.providers;
   }
   const providers = sortPluginEntriesForAutoDetect(
-    options?.sandboxed
-      ? resolvePluginWebFetchProviders({
+    await (options?.sandboxed
+      ? resolvePluginWebFetchProvidersAsync({
           config: options?.config,
           sandboxed: true,
         })
       : options?.preferRuntimeProviders
-        ? resolveRuntimeWebFetchProviders({
+        ? resolveRuntimeWebFetchProvidersAsync({
             config: options?.config,
           })
-        : resolvePluginWebFetchProviders({
+        : resolvePluginWebFetchProvidersAsync({
             config: options?.config,
-          }),
+          })),
   );
   if (config && providers.length > 0) {
     webFetchProviderCache.set(config, { cacheKey, configFingerprint, providers });
@@ -152,7 +152,7 @@ export async function resolveWebFetchDefinition(
   await prepareBundledDiscoveryMode();
   const runtimeWebFetch =
     options?.runtimeWebFetch ?? getActiveRuntimeWebToolsMetadataFromState()?.fetch;
-  const providers = resolveWebFetchProvidersForOptions(options);
+  const providers = await resolveWebFetchProvidersForOptions(options);
   if (providers.length === 0) {
     return null;
   }

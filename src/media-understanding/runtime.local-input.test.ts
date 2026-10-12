@@ -15,6 +15,7 @@ vi.mock("./runner.js", async () => {
 
 vi.mock("./provider-registry.js", () => ({
   buildMediaUnderstandingRegistry: vi.fn(),
+  acquireMediaUnderstandingRegistry: vi.fn(),
   getMediaUnderstandingProvider: vi.fn(),
   normalizeMediaProviderId: vi.fn(),
 }));

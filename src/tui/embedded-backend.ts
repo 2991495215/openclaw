@@ -448,7 +448,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
     const selected = await readEmbeddedHistorySession(opts);
     const { cfg, agentId: sessionAgentId, storePath, readSource, entry, canonicalKey } = selected;
     const sessionId = entry?.sessionId;
-    const runtimePluginsPrewarm = ensureEmbeddedHistoryRuntimePluginsLoaded({
+    const runtimePluginsPrewarm = await ensureEmbeddedHistoryRuntimePluginsLoaded({
       cfg,
       sessionAgentId,
     });

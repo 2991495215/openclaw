@@ -353,6 +353,7 @@ export function* loadOpenClawPluginsSteps(
         env: context.env,
         logger,
         manifestRegistry,
+        metadataSnapshot: context.metadataSnapshot,
         installRecords: context.installRecords,
         preferBuiltPluginArtifacts: options.preferBuiltPluginArtifacts,
       },

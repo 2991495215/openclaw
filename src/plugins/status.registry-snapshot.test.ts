@@ -14,7 +14,7 @@ import { refreshPluginRegistry } from "./plugin-registry-refresh.js";
 import {
   withPluginDiagnosticsReport,
   buildPluginRegistrySnapshotReport,
-  buildPluginSnapshotReport,
+  buildPluginSnapshotReportAsync,
 } from "./status.js";
 import {
   createColdPluginConfig,
@@ -82,7 +82,7 @@ describe("buildPluginRegistrySnapshotReport", () => {
     const { config, env, mainWorkspace, global } = createWorkspaceFixture();
     const scoped = loadPluginMetadataSnapshot({ config, env, workspaceDir: mainWorkspace });
     setCurrentPluginMetadataSnapshot(scoped, { config, env, workspaceDir: mainWorkspace });
-    const assertReport = (report: ReturnType<typeof buildPluginSnapshotReport>) => {
+    const assertReport = (report: Awaited<ReturnType<typeof buildPluginSnapshotReportAsync>>) => {
       expect(report.workspaceDir).toBeUndefined();
       expect(report.plugins.map((plugin) => plugin.id)).toEqual([global.pluginId]);
       expect(report.diagnostics).toContainEqual(
@@ -93,7 +93,7 @@ describe("buildPluginRegistrySnapshotReport", () => {
       );
     };
     assertReport(buildPluginRegistrySnapshotReport({ config, env }));
-    assertReport(buildPluginSnapshotReport({ config, env }));
+    assertReport(await buildPluginSnapshotReportAsync({ config, env }));
     await withPluginDiagnosticsReport({ config, env }, assertReport);
   });
 
@@ -180,8 +180,11 @@ describe("buildPluginRegistrySnapshotReport", () => {
       });
       await writePersistedInstalledPluginIndex(index, { stateDir });
 
-      for (const buildReport of [buildPluginRegistrySnapshotReport, buildPluginSnapshotReport]) {
-        const diagnostics = buildReport({ config, env }).diagnostics.filter(
+      for (const buildReport of [
+        buildPluginRegistrySnapshotReport,
+        buildPluginSnapshotReportAsync,
+      ]) {
+        const diagnostics = (await buildReport({ config, env })).diagnostics.filter(
           (diagnostic) =>
             diagnostic.pluginId === fixture.pluginId &&
             diagnostic.message.includes("requires capability consent"),

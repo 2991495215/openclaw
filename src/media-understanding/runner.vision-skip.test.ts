@@ -50,6 +50,19 @@ vi.mock("../plugins/capability-provider-runtime.js", async () => {
   };
 });
 
+vi.mock("../plugins/capability-provider-acquisition.js", async () => {
+  const { createMediaProviderAcquisition } = await import("./runner.test-mocks.js");
+  const runtime = await import("../plugins/runtime.js");
+  return {
+    acquirePluginCapabilityProviders: async () =>
+      createMediaProviderAcquisition(
+        runtime
+          .getActivePluginRegistry()
+          ?.mediaUnderstandingProviders.map((entry) => entry.provider) ?? [],
+      ),
+  };
+});
+
 vi.mock("../agents/prepared-model-catalog.js", () => ({
   loadProviderScopedThinkingCatalog: vi.fn(async () => []),
   readPreparedModelCatalog: loadModelCatalog,

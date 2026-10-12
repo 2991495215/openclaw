@@ -21,7 +21,7 @@ import { selectInstallMutationWriteOptions } from "./install-config-mutation.js"
 import { persistPluginInstall } from "./install-persistence.js";
 import { readPersistedInstalledPluginIndexInstallRecords } from "./installed-plugin-index-records.js";
 import { readPersistedInstalledPluginIndex } from "./installed-plugin-index-store.js";
-import { loadAndActivateRootPluginRegistry, loadPluginRegistryHandle } from "./loader.js";
+import { loadAndActivateRootPluginRegistry, loadPluginRegistryHandleAsync } from "./loader.js";
 import {
   cleanupPluginLoaderFixturesForTest,
   makePluginLoaderTempDir,
@@ -32,7 +32,7 @@ import {
 import { mutateManagedPluginEnabled } from "./management-mutations.js";
 import { withPluginLifecycleLease } from "./plugin-lifecycle-lease.js";
 import { clearPluginMetadataLifecycleCaches } from "./plugin-metadata-lifecycle.js";
-import { loadPluginMetadataSnapshot } from "./plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "./plugin-metadata-snapshot.js";
 import { createInspectionFixture } from "./registry-inspection.test-helpers.js";
 import {
   capturePluginRegistryLifecycleEpoch,
@@ -264,7 +264,11 @@ describe("plugin runtime inspection", () => {
             },
           });
           const bootConfig = { plugins: { enabled: false } };
-          const boot = loadPluginMetadataSnapshot({ config: bootConfig, env: process.env });
+          const boot = await resolvePluginMetadataSnapshotAsync({
+            allowCurrent: false,
+            config: bootConfig,
+            env: process.env,
+          });
           setGatewayPluginMetadataSnapshot(boot, { config: bootConfig, env: process.env });
           const activeRegistry = getActivePluginRegistry();
           const result = await mutateManagedPluginEnabled({
@@ -305,7 +309,7 @@ describe("plugin runtime inspection", () => {
       await withPluginLifecycleLease({}, async () => {
         const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite();
         // Warm the same empty operation inventory that precedes installer publication.
-        loadPluginMetadataSnapshot({ allowCurrent: false, config: snapshot.config });
+        await resolvePluginMetadataSnapshotAsync({ allowCurrent: false, config: snapshot.config });
         const pluginId = "first-slot-candidate";
         const pluginDir =
           testCase.source === "npm"
@@ -405,7 +409,7 @@ describe("plugin runtime inspection", () => {
         });
         const before = await withPluginLifecycleLease({}, async () => {
           const prepared = await readConfigFileSnapshotForWrite();
-          const retainedSnapshot = loadPluginMetadataSnapshot({
+          const retainedSnapshot = await resolvePluginMetadataSnapshotAsync({
             allowCurrent: false,
             config: prepared.snapshot.sourceConfig,
           });
@@ -453,7 +457,10 @@ describe("plugin runtime inspection", () => {
         await withPluginLifecycleLease({}, async () => {
           const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite();
           const previousConfig = fs.readFileSync(configPath, "utf8");
-          loadPluginMetadataSnapshot({ allowCurrent: false, config: snapshot.config });
+          await resolvePluginMetadataSnapshotAsync({
+            allowCurrent: false,
+            config: snapshot.config,
+          });
           const pluginId = "slot-authority-candidate";
           const pluginDir = path.join(
             stateDir,
@@ -588,7 +595,7 @@ it("keeps metadata getters live through awaited projection without retiring an i
       onlyPluginIds: [id],
     };
     const before = process.listenerCount(event);
-    const independent = loadPluginRegistryHandle({ ...params, cache: false });
+    const independent = await loadPluginRegistryHandleAsync({ ...params, cache: false });
     const entered = createDeferredCore();
     const release = createDeferredCore();
     let retained: Parameters<OpenClawPluginApi["registerService"]>[0] | undefined;

@@ -32,7 +32,7 @@ const { resolveExternalAuthProfilesWithPluginsMock, resolvePluginWebSearchProvid
   }));
 
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
-  resolvePluginWebSearchProviders: resolvePluginWebSearchProvidersMock,
+  resolvePluginWebSearchProvidersAsync: resolvePluginWebSearchProvidersMock,
 }));
 
 vi.mock("../plugins/provider-external-auth-core.js", () => ({

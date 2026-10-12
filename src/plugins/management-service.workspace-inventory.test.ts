@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { createContextEngineLogicalTurnLease } from "../agents/harness/context-engine-logical-turn.js";
-import { resolveConfigWidePluginMetadataSnapshot } from "../config/io.plugin-metadata.js";
+import { resolveConfigWidePluginMetadataSnapshotAsync } from "../config/io.plugin-metadata.js";
 import type { ConfigReplaceInput } from "../config/mutate.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { listContextEngineQuarantines } from "../context-engine/registry.js";
@@ -20,9 +20,9 @@ import { persistPluginInstall } from "./install-persistence.js";
 import { writePersistedInstalledPluginIndex } from "./installed-plugin-index-store-write.js";
 import { readPersistedInstalledPluginIndex } from "./installed-plugin-index-store.js";
 import { loadInstalledPluginIndex } from "./installed-plugin-index.js";
-import { loadPluginRegistryHandle } from "./loader.js";
+import { loadPluginRegistryHandleAsync } from "./loader.js";
 import { clearPluginMetadataLifecycleCaches } from "./plugin-metadata-lifecycle.js";
-import { loadPluginMetadataSnapshot } from "./plugin-metadata-snapshot.js";
+import { resolvePluginMetadataSnapshotAsync } from "./plugin-metadata-snapshot.js";
 import * as metadataWorker from "./plugin-metadata-state-worker.js";
 import { withPluginRuntimeRegistryScope } from "./runtime/gateway-request-scope.js";
 import { createColdPluginFixture } from "./test-helpers/cold-plugin-fixtures.js";
@@ -107,7 +107,7 @@ it("refreshes foreign install facts and requires live authority before publishin
   await writePersistedInstalledPluginIndex(
     loadInstalledPluginIndex({ config, env: process.env, candidates: [], installRecords: {} }),
   );
-  const boot = resolveConfigWidePluginMetadataSnapshot({
+  const boot = await resolveConfigWidePluginMetadataSnapshotAsync({
     config,
     env: process.env,
     allowCurrent: false,
@@ -211,7 +211,8 @@ it("removes an npm-pack plugin from management inventory without replacing Gatew
       installRecords: { [fixture.pluginId]: installRecord },
     }),
   );
-  const boot = loadPluginMetadataSnapshot({
+  const boot = await resolvePluginMetadataSnapshotAsync({
+    allowCurrent: false,
     config,
     env: process.env,
     preferPersisted: false,
@@ -273,7 +274,7 @@ it("toggles a listed secondary-workspace plugin without a system owner", async (
       config = next;
     },
   );
-  const boot = resolveConfigWidePluginMetadataSnapshot({
+  const boot = await resolveConfigWidePluginMetadataSnapshotAsync({
     config,
     env: process.env,
     allowCurrent: false,
@@ -403,7 +404,10 @@ it.each(["config-write", "none"] as const)(
     await writePersistedInstalledPluginIndex(
       loadInstalledPluginIndex({ config, candidates: [], installRecords: {} }),
     );
-    const boot = resolveConfigWidePluginMetadataSnapshot({ config, allowCurrent: false });
+    const boot = await resolveConfigWidePluginMetadataSnapshotAsync({
+      config,
+      allowCurrent: false,
+    });
     setGatewayPluginMetadataSnapshot(boot, { config });
     expect((await listManagedPlugins({ config })).plugins).toEqual([]);
 
@@ -522,7 +526,7 @@ it("persists management disable before a cold context-engine runtime turn", asyn
   expect(fresh.config.plugins?.entries?.[fixture.pluginId]?.enabled).toBe(false);
 
   // A fresh real loader has no disabled factory; subsequent turns are baseline, not failures.
-  const registry = loadPluginRegistryHandle({ config: fresh.config, cache: false });
+  const registry = await loadPluginRegistryHandleAsync({ config: fresh.config, cache: false });
   const warn = vi.fn();
   await withPluginRuntimeRegistryScope(registry, async () => {
     for (const runId of ["first", "second"]) {

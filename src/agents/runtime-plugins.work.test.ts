@@ -10,7 +10,7 @@ const loader = vi.hoisted(() => ({ acquire: vi.fn() }));
 
 vi.mock("../plugins/loader.js", () => ({
   acquirePluginRegistryForInspection: loader.acquire,
-  loadPluginRegistryHandle: vi.fn(),
+  loadPluginRegistryHandleAsync: vi.fn(),
 }));
 vi.mock("../plugins/runtime.js", () => ({
   getActivePluginRegistry: () => null,

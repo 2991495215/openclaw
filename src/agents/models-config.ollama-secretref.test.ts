@@ -21,9 +21,17 @@ import { planOpenClawModelsJson } from "./models-config.plan.js";
 import { encodePluginModelCatalogRelativePath } from "./plugin-model-catalog.js";
 
 const discovery = vi.hoisted(() => ({ providers: new Array<ProviderPlugin>() }));
-vi.mock("../plugins/provider-discovery.runtime.js", () => ({
-  resolvePluginDiscoveryProvidersRuntime: () => discovery.providers,
-}));
+vi.mock("../plugins/provider-discovery.runtime.js", () => {
+  const runtime = {
+    resolvePluginDiscoveryProvidersRuntime: () => discovery.providers,
+  };
+  return {
+    ...runtime,
+    resolvePluginDiscoveryProvidersRuntimeAsync: async (
+      ...args: Parameters<typeof runtime.resolvePluginDiscoveryProvidersRuntime>
+    ) => runtime.resolvePluginDiscoveryProvidersRuntime(...args),
+  };
+});
 
 describe("registered Ollama catalog", () => {
   const tempDirs = useAutoCleanupTempDirTracker(afterEach);

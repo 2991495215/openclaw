@@ -200,7 +200,7 @@ vi.mock("../agents/agent-scope.js", async (importOriginal) => ({
 }));
 
 vi.mock("../agents/runtime-plugins.js", () => ({
-  loadAgentRuntimePluginRegistryHandle: (...args: unknown[]) =>
+  loadAgentRuntimePluginRegistryHandle: async (...args: unknown[]) =>
     loadAgentRuntimePluginRegistryHandleMock(...args),
 }));
 
@@ -1426,7 +1426,7 @@ describe("EmbeddedTuiBackend", () => {
 
   it.each([false, true])("loads history despite runtime plugin failure=%s", async (fails) => {
     if (fails) {
-      loadAgentRuntimePluginRegistryHandleMock.mockImplementationOnce(() => {
+      loadAgentRuntimePluginRegistryHandleMock.mockImplementationOnce(async () => {
         throw new Error("runtime unavailable");
       });
     }

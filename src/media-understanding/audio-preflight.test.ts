@@ -13,6 +13,16 @@ vi.mock("./runner.js", async (importOriginal) => ({
   runCapability: (...args: unknown[]) => runCapabilityMock(...args),
 }));
 
+vi.mock("./provider-registry.js", async () => {
+  const { createMediaProviderAcquisition } = await import("./runner.test-mocks.js");
+  return {
+    acquireMediaUnderstandingRegistry: async () => ({
+      ...createMediaProviderAcquisition([]),
+      registry: new Map(),
+    }),
+  };
+});
+
 vi.mock("./echo-transcript.js", () => ({
   DEFAULT_ECHO_TRANSCRIPT_FORMAT: '📝 "{transcript}"',
   sendTranscriptEcho: (...args: unknown[]) => sendTranscriptEchoMock(...args),

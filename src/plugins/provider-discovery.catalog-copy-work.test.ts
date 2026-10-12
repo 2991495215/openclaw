@@ -27,9 +27,17 @@ const fixture = vi.hoisted(() => ({
   idReads: 0,
 }));
 
-vi.mock("./provider-discovery.runtime.js", () => ({
-  resolvePluginDiscoveryProvidersRuntime: () => fixture.providers,
-}));
+vi.mock("./provider-discovery.runtime.js", () => {
+  const runtime = {
+    resolvePluginDiscoveryProvidersRuntime: () => fixture.providers,
+  };
+  return {
+    ...runtime,
+    resolvePluginDiscoveryProvidersRuntimeAsync: async (
+      ...args: Parameters<typeof runtime.resolvePluginDiscoveryProvidersRuntime>
+    ) => runtime.resolvePluginDiscoveryProvidersRuntime(...args),
+  };
+});
 
 // Delegate the safe reader without retaining mock arguments for every copied field.
 vi.mock("../shared/safe-record.js", async (importOriginal) => {

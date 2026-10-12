@@ -406,10 +406,12 @@ async function collectPluginSecurityAuditFindings(
   const { getActivePluginRegistry } = await import("../plugins/runtime.js");
   let collectors = getActivePluginRegistry()?.securityAuditCollectors ?? [];
   if (collectors.length === 0) {
-    const { applyPluginAutoEnable } = await import("../config/plugin-auto-enable.js");
-    const autoEnabled = applyPluginAutoEnable({
+    const { resolvePluginRuntimeLoadContextAsync } =
+      await import("../plugins/runtime/load-context.resolve.js");
+    const autoEnabled = await resolvePluginRuntimeLoadContextAsync({
       config: context.sourceConfig,
       env: context.env,
+      workspaceDir: context.workspaceDir,
     });
     const requestedPluginIds = new Set(
       normalizeStringEntries([
@@ -438,14 +440,15 @@ async function collectPluginSecurityAuditFindings(
     if (requestedPluginIds.size === 0) {
       return [];
     }
-    const snapshot = (
-      await import("../plugins/runtime/metadata-registry-loader.js")
-    ).loadPluginMetadataRegistrySnapshot({
+    const { loadPluginMetadataRegistrySnapshotAsync } =
+      await import("../plugins/runtime/metadata-registry-loader.js");
+    const snapshot = await loadPluginMetadataRegistrySnapshotAsync({
       config: autoEnabled.config,
       activationSourceConfig: context.sourceConfig,
       env: context.env,
       workspaceDir: context.workspaceDir,
       onlyPluginIds: [...requestedPluginIds],
+      runtimeContext: autoEnabled,
     });
     collectors = snapshot.securityAuditCollectors ?? [];
   }

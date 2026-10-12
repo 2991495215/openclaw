@@ -36,6 +36,7 @@ const metadataSnapshotMock =
     typeof import("../plugins/plugin-metadata-snapshot.js").resolvePluginMetadataSnapshotAsync
   >();
 
+// mock-isolation: only harness catalog augmentation is used by this scoped fixture.
 vi.mock("./harness/model-catalog.js", () => ({
   augmentModelCatalogWithAgentHarness: (params: Parameters<typeof augmentCatalogMock>[0]) =>
     augmentCatalogMock(params),

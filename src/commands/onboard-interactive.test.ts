@@ -154,7 +154,7 @@ describe("runConversationalOnboarding", () => {
         },
       },
     });
-    mocks.loadAgentRuntimePluginRegistryHandle.mockReturnValue(registry);
+    mocks.loadAgentRuntimePluginRegistryHandle.mockResolvedValue(registry);
     mocks.verifySetupInference.mockResolvedValue({
       ok: true,
       modelRef: fixture.binding.execution.modelLabel,
@@ -250,7 +250,9 @@ describe("runConversationalOnboarding", () => {
       const { invalidate, launchConversation, registry } = await prepareConversation();
       if (kind === "missing harness") {
         rootRegistry.agentHarnesses.push(...registry.agentHarnesses);
-        mocks.loadAgentRuntimePluginRegistryHandle.mockReturnValueOnce(createEmptyPluginRegistry());
+        mocks.loadAgentRuntimePluginRegistryHandle.mockResolvedValueOnce(
+          createEmptyPluginRegistry(),
+        );
       } else {
         invalidate(kind);
       }

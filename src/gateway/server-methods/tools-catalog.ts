@@ -70,11 +70,11 @@ function buildCoreGroups(params: { cfg: OpenClawConfig; agentId: string }): Tool
   }));
 }
 
-function buildPluginGroups(params: {
+async function buildPluginGroups(params: {
   cfg: OpenClawConfig;
   agentId: string;
   existingToolNames: Set<string>;
-}): ToolCatalogGroup[] {
+}): Promise<ToolCatalogGroup[]> {
   const workspaceDir = resolveAgentWorkspaceDir(params.cfg, params.agentId);
   const agentDir = resolveAgentDir(params.cfg, params.agentId);
   const toolContext = {
@@ -83,7 +83,7 @@ function buildPluginGroups(params: {
     agentDir,
     agentId: params.agentId,
   };
-  const toolRegistry = ensureStandalonePluginToolRegistryLoaded({
+  const toolRegistry = await ensureStandalonePluginToolRegistryLoaded({
     context: toolContext,
     toolAllowlist: ["group:plugins"],
     allowGatewaySubagentBinding: true,
@@ -207,11 +207,11 @@ export const toolsCatalogHandlers: GatewayRequestHandlers = {
     const groups = buildCoreGroups({ cfg, agentId });
     if (params.includePlugins !== false) {
       groups.push(
-        ...buildPluginGroups({
+        ...(await buildPluginGroups({
           cfg,
           agentId,
           existingToolNames: new Set(groups.flatMap((group) => group.tools.map((tool) => tool.id))),
-        }),
+        })),
       );
     }
     respond(

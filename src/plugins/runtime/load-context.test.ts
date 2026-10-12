@@ -3,6 +3,7 @@ import { inspect } from "node:util";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { freezeJsonSnapshot } from "../../shared/immutable-data.js";
+import { getPreparedBundledDiscoveryMode } from "../bundled-discovery-state.js";
 import { createPluginCache, withPluginCache } from "../plugin-cache.js";
 import type { PluginMetadataSnapshot } from "../plugin-metadata-snapshot.types.js";
 import { createEmptyPluginRegistry } from "../registry-empty.js";
@@ -190,7 +191,7 @@ describe("resolvePluginRuntimeLoadContext", () => {
     });
   });
 
-  it("keeps prepared metadata when auto-enable changes the activation policy", () => {
+  it("binds prepared metadata without discovery preparation when auto-enable changes policy", () => {
     const config = { plugins: {} };
     const activatedConfig = { plugins: { entries: { demo: { enabled: true } } } };
     const env = { HOME: "/tmp/openclaw-home" } as NodeJS.ProcessEnv;
@@ -213,6 +214,13 @@ describe("resolvePluginRuntimeLoadContext", () => {
     expect(context.manifestRegistry).toBe(metadataSnapshot.manifestRegistry);
     expect(resolvePluginMetadataSnapshotMock).not.toHaveBeenCalled();
     expect(resolveConfigWidePluginMetadataSnapshotMock).not.toHaveBeenCalled();
+
+    expect(getPreparedBundledDiscoveryMode(env)).toBeUndefined();
+    const registry = createEmptyPluginRegistry();
+    setPluginRuntimeLoadContext(registry, context);
+    expect(getPluginRuntimeLoadContext(registry)?.metadataSnapshot).toBe(metadataSnapshot);
+    expect(getPluginRuntimeLoadContext(registry)?.config).toBe(activatedConfig);
+    expect(getPreparedBundledDiscoveryMode(env)).toBeUndefined();
   });
 
   it("keeps derived metadata operation-local", () => {

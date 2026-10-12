@@ -16,6 +16,11 @@ import {
 } from "../test-utils/web-provider-runtime.test-helpers.js";
 import { hasConfiguredWebSearchProvider, prepareWebSearchConfiguration } from "./runtime.js";
 
+// mock-isolation: Provider fixtures supply metadata without opening shared machine state.
+vi.mock("../plugins/installed-plugin-index-record-state.js", () => ({
+  preparePluginMetadataMachineStateAsync: async () => () => {},
+}));
+
 // mock-isolation: Use fixed discovery policy without opening machine state for provider fixtures.
 vi.mock("../plugins/bundled-discovery-state.js", () => ({
   prepareBundledDiscoveryMode: async () => () => {},
@@ -30,7 +35,9 @@ const { resolveRuntimeWebSearchProvidersMock } = vi.hoisted(() => ({
 // mock-isolation: Only local provider descriptors participate in this configuration-presence matrix.
 vi.mock("../plugins/web-search-providers.runtime.js", () => ({
   resolvePluginWebSearchProviders: resolveRuntimeWebSearchProvidersMock,
+  resolvePluginWebSearchProvidersAsync: resolveRuntimeWebSearchProvidersMock,
   resolveRuntimeWebSearchProviders: resolveRuntimeWebSearchProvidersMock,
+  resolveRuntimeWebSearchProvidersAsync: resolveRuntimeWebSearchProvidersMock,
 }));
 
 function createCustomSearchProvider(overrides: Partial<WebSearchTestProviderParams> = {}) {
