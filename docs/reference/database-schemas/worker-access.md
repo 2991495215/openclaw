@@ -65,15 +65,15 @@ ownership. Running contexts do not trigger queue drains; queued rows still do.
 
 Managed outgoing media cleanup uses the same retained session reader as media
 serving. Durable session discovery and entry reads execute in the existing
-read workers; bound incognito reads use their actor. Cleanup distinguishes an
+read workers; incognito reads use the memory actor. Cleanup distinguishes an
 unavailable or ambiguous store from a missing transcript reference and retains
 media when ownership cannot be read. It no longer keeps a separate native
 session selector or discovery cache. Stored media, retention policy, schemas,
 and update behavior are unchanged.
 
-Session accessor kernels remain mixed where released synchronous SDK methods,
-opaque transaction callbacks, or unbound process-held incognito readers still
-call them. A worker caller does not make the shared kernel worker-only. The
+Session accessor kernels remain mixed where released durable synchronous SDK
+methods or opaque transaction callbacks still call them. Incognito access uses
+the memory actor. A worker caller does not make the shared kernel worker-only. The
 inventory retains those calls as migration debt; raw-row removal guarded by
 Doctor's `expectedRawEntryJson` variant is an offline repair exception.
 
@@ -93,8 +93,8 @@ external opaque deletion callbacks retain a deprecated synchronous adapter.
 Replace them with `createNativeSessionBindingLifecycleV2` for stored bindings or
 `createNativeSessionCommitFinalizer` for commit-only effects. Shared lifecycle,
 maintenance, and artifact kernels remain conservatively classified as T1 while
-those adapters and native incognito callers exist. Native incognito is a separate
-owner cutover; it is not a fallback for failed durable work.
+those durable adapters exist. Incognito uses the memory actor and is never a
+fallback for failed durable work.
 
 Node-host configuration writes and one-use GitHub setup handoffs use the existing
 shared-state writer. Handoff consumption deletes and returns the matching live
@@ -123,9 +123,9 @@ contract's cutover; reclassifying them as worker code would hide real debt.
 Agent turn preparation carries its admitted session entry into native model setup;
 credential dispatch still reads current ownership at its effect boundary.
 Cancellation preparation retains the session-generation owner without opening a
-second writer merely to warm it up. Context-engine outbox SQL runs only in its
-existing worker (or the incognito actor), and recovery returns its pending result
-without another query. Outbox delivery retains the engine's existing idempotent
+second writer merely to warm it up. Durable context-engine outbox SQL runs only
+in its existing worker; incognito outbox operations use the memory actor. Recovery
+returns its pending result without another query. Outbox delivery retains the engine's existing idempotent
 logical-turn contract, so overlapping recovery can safely redeliver a turn.
 Auth workers read credential and runtime-state cells in one statement.
 
@@ -232,7 +232,7 @@ producers carry source predicates through preparation into that writer. The work
 rereads authoritative rows and owns entry normalization, conversation identity,
 and provenance in the synchronous transaction. Host grants retain live caller
 authority at transaction and commit; acknowledged publications and accepted-write
-settlement remain with the existing entry owner. Incognito routing is unchanged.
+settlement remain with the existing entry owner. Incognito uses the memory actor.
 Confirmed entry receipts publish exact membership and category facts instead of
 forcing a new membership read. Delivery rechecks synchronous listener writes;
 unknown outcomes, moved membership, and superseded metadata still invalidate.
@@ -325,8 +325,8 @@ context recovery, and ordered runtime candidate selection await the existing
 session history/discovery worker. Target selection returns logical and physical
 store facts together; durable reads do not run SQLite on the Gateway thread.
 Combined topology and row reads share the federation policy used by the native
-maintenance entrypoint. Bound incognito rows remain with their process-held actor;
-unbound incognito stores retain their existing process-local native owner.
+maintenance entrypoint. Bound and unbound incognito targets use the memory actor
+without opening a SQLite database or allocating a database worker.
 
 Ordinary discovery keeps one captured roster and listing through completion.
 Later registry, path, or row changes are observed on the next owner preparation;
@@ -421,13 +421,12 @@ has been removed; transaction owners retain their existing message lookup kernel
 The session S–Z inventory still includes shared native kernels. They must not be
 marked worker-only merely because their ordinary durable callers use workers:
 
-| Native owner                            | Shared kernels and remaining contract                                                                                                                                                                                                                                                                |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SessionManager and transcript SDK       | Suffix reads/writes, transcript state, identity, parent, store, cursors, snapshots, statistics, anchors, and message rewrite retain released synchronous methods and opaque callbacks.                                                                                                               |
-| Unbound incognito storage               | Reports, projection reconciliation, search, matching, cold storage, eviction, pending inputs, categories, reactions, and suggestions still accept process-held native databases. Actor-bound callers use the existing workers; retiring the native paths requires the incognito acquisition cutover. |
-| Synchronous completion and dispatch     | Turn append retains released callbacks. Chat-start acceptance and CLI history effect guards also retain native watermark reads.                                                                                                                                                                      |
-| Sharing and worktree authority          | Membership/source-disclosure and worktree-deletion guards retain their current native checks at the effect boundary.                                                                                                                                                                                 |
-| Store discovery and canonical admission | Native fixed-store topology, cleanup selection, and canonical-key admission remain mixed with worker readers. The pending-canonical-validation probe is startup/Doctor-only; runtime carries its captured source to the worker.                                                                      |
+| Native owner                            | Shared kernels and remaining contract                                                                                                                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SessionManager and transcript SDK       | Suffix reads/writes, transcript state, identity, parent, store, cursors, snapshots, statistics, anchors, and message rewrite retain released synchronous methods and opaque callbacks.                                          |
+| Synchronous completion and dispatch     | Turn append retains released callbacks. Chat-start acceptance and CLI history effect guards also retain native watermark reads.                                                                                                 |
+| Sharing and worktree authority          | Membership/source-disclosure and worktree-deletion guards retain their current native checks at the effect boundary.                                                                                                            |
+| Store discovery and canonical admission | Native fixed-store topology, cleanup selection, and canonical-key admission remain mixed with worker readers. The pending-canonical-validation probe is startup/Doctor-only; runtime carries its captured source to the worker. |
 
 These are explicit residuals, not additional synchronous exceptions. Their owner
 cutovers must preserve the released contracts and remove the superseded native
