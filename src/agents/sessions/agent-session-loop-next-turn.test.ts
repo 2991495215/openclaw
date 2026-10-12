@@ -343,7 +343,7 @@ describe("AgentSession queue and next-turn lifecycle correctness", () => {
       session[agentSessionSetPromptPreparation](async () => {
         session.agent.state.systemPrompt = permissionPrompt;
       });
-      const retryStarted = createDeferredCore<void>();
+      const retryStarted = createDeferredCore();
       session.subscribe((event) => {
         if (event.type === "auto_retry_start") {
           retryStarted.resolve();
