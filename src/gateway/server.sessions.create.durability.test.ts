@@ -113,11 +113,38 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
     key: `agent:main:dashboard:concurrent-initial-${index}`,
     message: `Persist concurrent Gateway initial input ${index}.`,
   }));
+  const progress = inputs.map((_, index) => ({
+    index,
+    acquiringActor: false,
+    acquiredActor: false,
+    recordingParticipant: false,
+    recordedParticipant: false,
+    acceptingInput: false,
+    initialAcceptSettled: false,
+    competingWriteSettled: false,
+    rpcResponded: false,
+    rpcRejected: false,
+  }));
+  let failed = false;
+  const reportProgress = (phase: "failure" | "cleanup-settled") => {
+    console.error(
+      "[session-create-durability]",
+      JSON.stringify({ phase, inputs: progress, dispatched: dispatch.start.mock.calls.length }),
+    );
+  };
   const competingWrites: Promise<unknown>[] = [];
   const acquire = sessionInputActors.acquireSessionInputActor;
   vi.spyOn(sessionInputActors, "acquireSessionInputActor").mockImplementation(async (...args) => {
+    const current =
+      progress[inputs.findIndex((input) => input.key === args[0].target.canonicalKey)];
+    if (current) {
+      current.acquiringActor = true;
+    }
     const input = await acquire(...args);
     if (input) {
+      if (current) {
+        current.acquiredActor = true;
+      }
       const accept = input.actor.acceptInput;
       vi.spyOn(input.actor, "acceptInput").mockImplementationOnce(async (...command) => {
         const recordParticipant = (promptedAt: number) =>
@@ -135,11 +162,27 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
               sessionAgentId: "main",
             },
           );
+        if (current) {
+          current.recordingParticipant = true;
+        }
         await recordParticipant(1);
+        if (current) {
+          current.recordedParticipant = true;
+          current.acceptingInput = true;
+        }
         const pending = accept(...command);
         // This independent writer must wait behind the complete admission, including its rebase.
-        competingWrites.push(runOutsideStoreWriterContext(() => recordParticipant(2)));
+        competingWrites.push(
+          runOutsideStoreWriterContext(() => recordParticipant(2)).finally(() => {
+            if (current) {
+              current.competingWriteSettled = true;
+            }
+          }),
+        );
         const outcome = await pending;
+        if (current) {
+          current.initialAcceptSettled = true;
+        }
         expect(outcome).toMatchObject({
           kind: "stale-version",
           postimage: { target: input.actor.target },
@@ -153,8 +196,17 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
   dashboardTitleScheduleMocks.schedule.mockImplementation(() => {});
   try {
     const created = await Promise.all(
-      inputs.map((params) =>
-        rpcReq<{ sessionId: string; runStarted: boolean }>(ws, "sessions.create", params),
+      inputs.map((params, index) =>
+        rpcReq<{ sessionId: string; runStarted: boolean }>(ws, "sessions.create", params).then(
+          (response) => {
+            progress[index]!.rpcResponded = true;
+            return response;
+          },
+          (error: unknown) => {
+            progress[index]!.rpcRejected = true;
+            throw error;
+          },
+        ),
       ),
     );
     for (const [index, response] of created.entries()) {
@@ -174,6 +226,10 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
       ).toHaveLength(1);
     }
     expect(dispatch.start).toHaveBeenCalledTimes(inputs.length);
+  } catch (error) {
+    failed = true;
+    reportProgress("failure");
+    throw error;
   } finally {
     await Promise.all(competingWrites);
     const released = getSessionWorkAdmissionRelease({
@@ -187,6 +243,9 @@ test("persists and dispatches concurrent Gateway inputs while participant writes
     }
     await released;
     ws.close();
+    if (failed) {
+      reportProgress("cleanup-settled");
+    }
   }
 });
 
