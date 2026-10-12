@@ -1,5 +1,6 @@
 import { afterEach, expect, expectTypeOf, it, vi } from "vitest";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/io.js";
 import { readExactSessionEntryRow } from "../config/sessions/session-accessor.sqlite-entry-store.js";
 import {
   replaceSessionEntry,
@@ -151,6 +152,7 @@ it("refuses legacy incognito callbacks while prepared unbound writes use the mem
       agentId: target.agentId,
       path: resolveIncognitoOpenClawAgentSqlitePath(target),
     };
+    setRuntimeConfigSnapshot({});
     const sql = observeHostDataSql();
     try {
       await replaceSessionEntry(target, { sessionId: target.sessionId, updatedAt: 1 });
@@ -194,6 +196,7 @@ it("refuses legacy incognito callbacks while prepared unbound writes use the mem
       expect(sql.queries).toEqual([]);
     } finally {
       sql.restore();
+      clearRuntimeConfigSnapshot();
       memorySessionActorOwners.closeDatabase(location);
     }
   });

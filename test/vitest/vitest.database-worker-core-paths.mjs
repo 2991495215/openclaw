@@ -55,7 +55,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/cli-runner/history-boundary.incognito.test.ts",
   "src/agents/sandbox/runtime-status.incognito.test.ts",
   "src/agents/harness/host-capability.node-authority.test.ts",
-  "src/state/openclaw-state-db-current-reader.test.ts",
   "src/state/openclaw-state-db-existing-write.test.ts",
   "src/cli/admin-state-owner.process.test.ts",
   "src/cli/claws-cli.state-owner.test.ts",

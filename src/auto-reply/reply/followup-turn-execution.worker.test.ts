@@ -133,7 +133,7 @@ it("qualifies unqualified visibility keys using the selected shared-store owner"
 });
 
 it("refreshes incognito visibility from its process-held session", async () => {
-  const key = "agent:main:incognito:visibility";
+  const key = "agent:main:dashboard:incognito-visibility";
   const { turn, entry, storePath } = await createStoredTurn({ key, incognito: true });
   await inspectVisibility(turn, async (isActive) => {
     expect(await isActive()).toBe(true);

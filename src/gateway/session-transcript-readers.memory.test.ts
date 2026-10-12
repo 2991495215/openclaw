@@ -319,7 +319,7 @@ describe("Gateway memory transcript readers", () => {
         role: "user",
         content: "Internal coordination",
         idempotencyKey: "coordination:user",
-        provenance: { kind: "inter_session", sourceTool: "subagent_announce" },
+        provenance: { kind: "inter_session", sourceTool: "sessions_send", sourceRole: "subagent" },
       }),
     );
     await appendMessage(

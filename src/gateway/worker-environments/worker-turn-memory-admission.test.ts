@@ -106,7 +106,7 @@ it.each([false, true])(
       ),
     );
     if (close) {
-      await expect(result).rejects.toThrow("closed");
+      await expect(result).rejects.toThrow("transcript identity is no longer current");
       expect(run).not.toHaveBeenCalled();
     } else {
       await expect(result).resolves.toBe("settled");

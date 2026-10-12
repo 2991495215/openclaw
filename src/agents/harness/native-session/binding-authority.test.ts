@@ -93,7 +93,7 @@ it("keeps the incognito source incarnation across a durable lineage wait", async
       memorySessionActorOwners.closeDatabase(memory);
       await replaceSessionEntry(scope, entry);
       proceed.resolve();
-      expect(await outcome).toMatchObject({ message: "Session currency incognito owner changed" });
+      expect(await outcome).toMatchObject({ message: "Incognito session actor owner is closed" });
       expect(consume).not.toHaveBeenCalled();
     } finally {
       proceed.resolve();

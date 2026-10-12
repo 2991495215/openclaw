@@ -320,6 +320,9 @@ export function executeSessionActorMemoryEntryCommand(
         consumePendingReset: true,
         routeContext: input.routeContext,
       });
+      for (const replacement of input.relatedReplacements ?? []) {
+        replace(replacement);
+      }
       return {
         archivedTranscripts: [],
         previousEntry,

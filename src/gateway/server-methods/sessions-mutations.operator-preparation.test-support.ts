@@ -406,10 +406,7 @@ export function registerSessionOperatorPreparationTests(fixture: {
         {
           storage,
           fork: false,
-          ending:
-            storage === "durable"
-              ? ("source-after-commit" as const)
-              : ("source-and-retry" as const),
+          ending: "source-after-commit" as const,
         },
         { storage, fork: true, ending: "source-and-retry" as const },
         { storage, fork: true, ending: "parent-replaced" as const },
@@ -467,6 +464,9 @@ export function registerSessionOperatorPreparationTests(fixture: {
         const assertNoForkState = (sessionKey: string, sessionId: string) => {
           expect(loadSessionEntry({ agentId: "main", sessionKey })).toBeUndefined();
           expect(loadTranscriptEventsSync({ agentId: "main", sessionKey, sessionId })).toEqual([]);
+          if (storage === "incognito") {
+            return;
+          }
           const database = openOpenClawAgentDatabase(
             toDatabaseOptions(resolveSqliteScope({ agentId: "main", sessionKey })),
           );
@@ -555,11 +555,7 @@ export function registerSessionOperatorPreparationTests(fixture: {
                           expect(transcript).toEqual(
                             expect.arrayContaining([expect.objectContaining({ type: "session" })]),
                           );
-                          if (storage === "durable") {
-                            expect(committedEntry).toMatchObject({ sessionId: childId });
-                          } else {
-                            expect(committedEntry).toBeUndefined();
-                          }
+                          expect(committedEntry).toMatchObject({ sessionId: childId });
                           childSessionId = childId;
                           if (ending === "source-and-retry" || ending === "source-after-commit") {
                             source.abort(revoked);

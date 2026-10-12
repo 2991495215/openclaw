@@ -297,6 +297,9 @@ it.each(["append", "persist"] as const)(
     } finally {
       unsubscribe();
     }
+    if (method === "persist") {
+      await manager.reloadPersistedTranscriptAsync();
+    }
     expect(manager.getEntries()).toMatchObject([
       { type: "custom", customType: "before-revocation" },
       { type: "custom", customType: "committed-once" },

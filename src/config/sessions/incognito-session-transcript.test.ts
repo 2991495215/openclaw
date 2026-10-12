@@ -107,6 +107,7 @@ describe("session creation scope", () => {
       expect(explicit.stateDir).not.toBe(ambient.stateDir);
 
       await withMemory(scope, async () => {
+        let followed = false;
         const created = await createSessionEntryWithTranscript(
           scope,
           ({ existingEntry, targetEntry, labelInUse }) => {
@@ -115,8 +116,20 @@ describe("session creation scope", () => {
             expect(labelInUse).toBe(false);
             return { ok: true, entry };
           },
-          { cwd: state.workspaceDir, label: "unused" },
+          {
+            cwd: state.workspaceDir,
+            label: "unused",
+            afterCommitted: async (_entry, source) => {
+              source.assertCurrent();
+              expect(loadSessionEntry(scope)).toMatchObject(entry);
+              await Promise.resolve();
+              source.assertCurrent();
+              expect(loadSessionEntry(scope)).toMatchObject(entry);
+              followed = true;
+            },
+          },
         );
+        expect(followed).toBe(true);
         expect(created).toMatchObject({
           ok: true,
           entry: { ...entry, label: "unused" },

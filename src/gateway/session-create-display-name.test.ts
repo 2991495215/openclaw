@@ -77,12 +77,15 @@ describe("session creation display titles", () => {
         const entered = createDeferredCore();
         const proceed = createDeferredCore();
         let phase = "";
+        let forkPrepared = false;
         const withCommit: PreparedGatewaySessionLifecycle["withCommit"] = async (run) => {
-          if (phase === "writerAdmission" || phase === "commit") {
+          if (phase === "writerAdmission" || phase === "commit" || (incognito && forkPrepared)) {
             entered.resolve();
             await proceed.promise;
           }
-          return run(() => {});
+          const result = await run(() => {});
+          forkPrepared = true;
+          return result;
         };
         const loser = createGatewaySession({
           ...common,

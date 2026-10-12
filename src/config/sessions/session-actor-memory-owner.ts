@@ -1,11 +1,15 @@
 import path from "node:path";
 import { normalizeAgentId } from "../../routing/session-key.js";
+import { resolveGlobalMap } from "../../shared/global-singleton.js";
 import { createMemorySessionActorOwner } from "./session-actor-memory.js";
 
 type MemoryOwnerOptions = { agentId: string; path: string };
 type MemoryOwner = ReturnType<typeof createMemorySessionActorOwner>;
 
-const owners = new Map<string, MemoryOwner>();
+// Source and bundled SDK graphs must address the same memory-only sessions.
+const owners = resolveGlobalMap<string, MemoryOwner>(
+  Symbol.for("openclaw.memorySessionActorOwners"),
+);
 
 function ownerLocation(options: MemoryOwnerOptions) {
   // Match the native incognito sentinel's lexical identity; there is no file to inspect.

@@ -118,6 +118,7 @@ export type SessionActorMemoryEntryWrites = {
     input: {
       expected: SessionEntry | undefined;
       nextEntry: SessionEntry;
+      relatedReplacements?: readonly SessionActorMemoryEntryReplacement[];
       routeContext?: ConversationRouteContext | null;
       resetBoundary?: SessionResetBoundaryWrite;
     };

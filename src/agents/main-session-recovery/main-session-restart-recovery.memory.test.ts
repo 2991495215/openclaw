@@ -67,7 +67,10 @@ describe("memory restart recovery adapters", () => {
     await upsertSessionEntryCore(scope, entry);
     const current = captureExpectedRestartRecoveryCurrent(target);
     expect(current()).toBe(true);
-    expect(await loadExpectedRestartRecoveryTarget(target)).toMatchObject(entry);
+    expect(await loadExpectedRestartRecoveryTarget(target)).toMatchObject({
+      ...entry,
+      updatedAt: expect.any(Number),
+    });
     await upsertSessionEntryCore(scope, { ...entry, restartRecoveryDeliveryRunId: "new-run" });
     expect(current()).toBe(false);
     expect(await loadExpectedRestartRecoveryTarget(target)).toBeUndefined();

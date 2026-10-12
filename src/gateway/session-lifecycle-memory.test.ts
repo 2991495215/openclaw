@@ -6,6 +6,11 @@ import { deleteIncognitoSessionForReset } from "./session-reset-incognito.js";
 import { resolveGatewaySessionStoreTargetInWorker } from "./session-utils-store-worker.js";
 import { loadGatewaySessionEntryReadOnly } from "./session-utils-store.js";
 
+// Durable publication receipts have their own owner; this suite isolates memory lifecycle.
+vi.mock("../state/github-personal-publication-lifecycle.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/github-personal-publication-lifecycle.js")>()),
+  preparePersonalGitHubSessionReceiptDeletion: async () => async () => {},
+}));
 vi.mock("node:sqlite", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:sqlite")>()),
   DatabaseSync: vi.fn(function () {

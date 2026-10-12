@@ -7,7 +7,6 @@ import {
   isSessionEntryDataSql,
   observeHostDataSql,
   observeSqliteReadSql,
-  trackSqliteStatementExecutions,
 } from "../../../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import {
@@ -19,12 +18,8 @@ import { composeSessionSourceAssertion } from "../../../config/sessions/session-
 import { readDatabasePathIdentitySync } from "../../../infra/sqlite-worker-identity.js";
 import * as operationAdmission from "../../../infra/sqlite-worker-operation-admission.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../../state/openclaw-agent-db-lifecycle.js";
-import { retainOpenClawAgentDatabaseReadOnly } from "../../../state/openclaw-agent-db-readonly.js";
 import { getOpenClawAgentDatabaseIfOpen } from "../../../state/openclaw-agent-db.js";
-import {
-  resolveIncognitoOpenClawAgentSqlitePath,
-  resolveOpenClawAgentSqlitePath,
-} from "../../../state/openclaw-agent-db.paths.js";
+import { resolveOpenClawAgentSqlitePath } from "../../../state/openclaw-agent-db.paths.js";
 import { runOpenClawAgentWriteAdmission } from "../../../state/openclaw-agent-write-admission.js";
 import * as voiceSessionReaders from "../../../talk/client-voice-session-read.js";
 import { readVoiceSessionRecord } from "../../../talk/client-voice-session-store.js";
@@ -562,9 +557,9 @@ describe("voice consult registration authority", () => {
     },
   );
 
-  it("checks a process-held source inside the durable native voice transaction", async () => {
+  it("checks a memory source at durable voice write admission without session SQL", async () => {
     const sessionKey = "agent:main:dashboard:incognito-native-voice";
-    replaceSessionEntrySync(
+    await replaceSessionEntry(
       { agentId: "main", sessionKey },
       { sessionId: "native-voice-source", updatedAt: 1, incognito: true },
     );
@@ -579,20 +574,9 @@ describe("voice consult registration authority", () => {
     if (!target) {
       throw new Error("Expected a prepared incognito Talk source");
     }
-    const source = retainOpenClawAgentDatabaseReadOnly({
-      agentId: "main",
-      path: resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main" }),
-    });
-    if (!source.found) {
-      throw new Error("Expected the process-held source to remain open");
-    }
     let nativeAuthorityObserved = false;
-    const reads = trackSqliteStatementExecutions(source.database.db, ["source"], (sql) => {
-      if (!isSessionEntryDataSql(sql)) {
-        return null;
-      }
-      return "source";
-    });
+    let workerAuthorityObserved = false;
+    const reads = observeHostDataSql();
     try {
       await voiceSessions.createOrResumeClientVoiceSession({
         agentId: "main",
@@ -605,21 +589,22 @@ describe("voice consult registration authority", () => {
             [authorization.authorization!.assertCurrent],
             (assertSource) => {
               assertSource();
+              workerAuthorityObserved ||= inWorkerGrant;
               nativeAuthorityObserved ||=
                 getOpenClawAgentDatabaseIfOpen({ agentId: "main" })?.db.isTransaction === true;
             },
           ),
         },
       });
-      expect(reads.counts.source).toBeGreaterThan(0);
-      expect(nativeAuthorityObserved).toBe(true);
+      expect(reads.queries.filter(isSessionEntryDataSql)).toEqual([]);
+      expect(workerAuthorityObserved).toBe(true);
+      expect(nativeAuthorityObserved).toBe(false);
       expect(clientVoiceSessionTesting.readRecord("main", "native-source-voice")).toMatchObject({
         sessionKey,
         status: "open",
       });
     } finally {
       reads.restore();
-      source.claim.release();
     }
   });
 
@@ -629,7 +614,7 @@ describe("voice consult registration authority", () => {
       const sourceKey =
         kind === "incognito" ? "agent:main:dashboard:incognito-cold-native" : scope.sessionKey;
       if (kind === "incognito") {
-        replaceSessionEntrySync(
+        await replaceSessionEntry(
           { agentId: "main", sessionKey: sourceKey },
           { sessionId: "cold-native-source", updatedAt: 1, incognito: true },
         );
@@ -641,16 +626,6 @@ describe("voice consult registration authority", () => {
         client: null,
       });
       expect(authorized.error).toBeNull();
-      const source =
-        kind === "incognito"
-          ? retainOpenClawAgentDatabaseReadOnly({
-              agentId: "main",
-              path: resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main" }),
-            })
-          : undefined;
-      if (source && !source.found) {
-        throw new Error("Expected the process-held source to remain open");
-      }
       const target = {
         agentId: `cold-native-${kind}`,
         sessionKey: `agent:cold-native-${kind}:main`,
@@ -700,7 +675,7 @@ describe("voice consult registration authority", () => {
         });
         expect(schemaSql).toEqual([]);
         expect(preparedAuthorityObserved).toBe(true);
-        expect(nativeAuthorityObserved).toBe(true);
+        expect(nativeAuthorityObserved).toBe(kind === "foreign");
         expect(
           clientVoiceSessionTesting.readRecord(target.agentId, "cold-native-voice"),
         ).toMatchObject({
@@ -709,7 +684,6 @@ describe("voice consult registration authority", () => {
         });
       } finally {
         sql.restore();
-        source?.claim.release();
       }
     },
   );

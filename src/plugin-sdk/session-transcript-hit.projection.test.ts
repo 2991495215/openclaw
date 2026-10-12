@@ -1,7 +1,13 @@
 import { expect, it } from "vitest";
-import { loadSessionEntry, replaceSessionEntrySync } from "../config/sessions/session-accessor.js";
+import {
+  loadSessionEntry,
+  replaceSessionEntry,
+  replaceSessionEntrySync,
+} from "../config/sessions/session-accessor.js";
+import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { loadCombinedSessionStoreForGateway } from "./session-transcript-hit.js";
 
@@ -22,7 +28,7 @@ it.each([
     expectedKeys: ["agent:main:visible", "agent:research:visible"],
   },
 ])("returns complete non-incognito entries for $name", async ({ options, expectedKeys }) => {
-  await withOpenClawTestState({ label: "plugin-transcript-projection" }, async () => {
+  await withOpenClawTestState({ label: "plugin-transcript-projection" }, async (state) => {
     const cfg: OpenClawConfig = {
       agents: {
         defaults: { sessionStore: { agentId: "main" } },
@@ -56,24 +62,34 @@ it.each([
       agentId: "main",
       sessionKey: "agent:main:dashboard:incognito-private",
     };
-    replaceSessionEntrySync(incognitoScope, {
-      sessionId: "private-session",
-      updatedAt: 9,
-      incognito: true,
-      skillsSnapshot: { prompt: "Private plugin instructions", skills: [] },
-      systemPromptReport,
-    });
-    expect(loadSessionEntry(incognitoScope)).toMatchObject({
-      sessionId: "private-session",
-      incognito: true,
-    });
+    try {
+      await replaceSessionEntry(incognitoScope, {
+        sessionId: "private-session",
+        updatedAt: 9,
+        incognito: true,
+        skillsSnapshot: { prompt: "Private plugin instructions", skills: [] },
+        systemPromptReport,
+      });
+      expect(loadSessionEntry(incognitoScope)).toMatchObject({
+        sessionId: "private-session",
+        incognito: true,
+      });
 
-    const { store } = loadCombinedSessionStoreForGateway(cfg, options);
+      const { store } = loadCombinedSessionStoreForGateway(cfg, options);
 
-    expect(Object.keys(store).toSorted()).toEqual(expectedKeys);
-    for (const entry of Object.values(store)) {
-      expect.soft(entry.skillsSnapshot).toEqual(skillsSnapshot);
-      expect.soft(entry.systemPromptReport).toEqual(systemPromptReport);
+      expect(Object.keys(store).toSorted()).toEqual(expectedKeys);
+      for (const entry of Object.values(store)) {
+        expect.soft(entry.skillsSnapshot).toEqual(skillsSnapshot);
+        expect.soft(entry.systemPromptReport).toEqual(systemPromptReport);
+      }
+    } finally {
+      memorySessionActorOwners.closeDatabase({
+        agentId: incognitoScope.agentId,
+        path: resolveIncognitoOpenClawAgentSqlitePath({
+          agentId: incognitoScope.agentId,
+          env: state.env,
+        }),
+      });
     }
   });
 });

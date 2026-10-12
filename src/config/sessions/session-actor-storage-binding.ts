@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { isIncognitoSessionKey, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
+import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import {
   resolveExplicitIncognitoAgentSqliteTarget,
   resolveIncognitoOpenClawAgentSqlitePath,
@@ -48,7 +49,10 @@ export type SessionActorStorageScope = {
   sessionActor?: SessionActorStorageBinding;
 };
 
-const currentBinding = new AsyncLocalStorage<SessionActorStorageBinding>();
+const currentBinding = resolveGlobalSingleton(
+  Symbol.for("openclaw.sessionActorStorageBinding"),
+  () => new AsyncLocalStorage<SessionActorStorageBinding>(),
+);
 
 export function runWithSessionActorStorage<T>(
   binding: SessionActorStorageBinding,

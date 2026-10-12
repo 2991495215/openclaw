@@ -617,6 +617,14 @@ describe("voice creation authority", () => {
       const createSpy = vi
         .spyOn(voiceSessions, "createOrResumeClientVoiceSession")
         .mockImplementation(async (params) => {
+          if (kind === "incognito" && revoked) {
+            await replaceSessionEntry(scope, {
+              sessionId: "reset-voice-source",
+              updatedAt: Date.now(),
+              incognito: true,
+            });
+            resetSource = true;
+          }
           if (kind !== "incognito") {
             const database = getOpenClawAgentDatabaseIfOpen({
               agentId: "main",
@@ -632,11 +640,10 @@ describe("voice creation authority", () => {
               ...params,
               assertCurrent: () => {
                 params.assertCurrent?.();
-                if (kind !== "same-store" && revoked && !resetSource) {
+                if (kind === "custom-store" && revoked && !resetSource) {
                   replaceSessionEntrySync(scope, {
                     sessionId: "reset-voice-source",
                     updatedAt: Date.now(),
-                    ...(kind === "incognito" ? { incognito: true } : {}),
                   });
                   resetSource = true;
                 }

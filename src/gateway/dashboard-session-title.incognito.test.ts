@@ -1,6 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../test/helpers/promise.js";
-import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
+import {
+  isSessionEntryDataSql,
+  observeHostDataSql,
+} from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import { readSessionActorStorageResult } from "../config/sessions/session-actor-storage-result.js";
@@ -73,7 +76,8 @@ it("titles an unbound memory session and commits without session SQL", async () 
     expect(target.owner.readSession(target.scope.sessionKey, authority)?.entry?.displayName).toBe(
       "Workspace planning",
     );
-    expect(sql.queries).toEqual([]);
+    // Metadata snapshot preparation may read global plugin policy, never session storage.
+    expect(sql.queries.filter(isSessionEntryDataSql)).toEqual([]);
   } finally {
     sql.restore();
   }

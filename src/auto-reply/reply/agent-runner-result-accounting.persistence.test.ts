@@ -145,6 +145,7 @@ it("keeps incognito accounting and final custody on the retained memory owner", 
   try {
     const fixture = await createAgentAccountingPersistenceFixture({
       storePath: nativePath,
+      incognito: true,
       root,
       fixtureId: ++fixtureSequence,
       registerOperation: (operation) => operations.push(operation),

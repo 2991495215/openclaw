@@ -42,14 +42,6 @@ function captureProgressCardTarget(
   const scope = captureGatewaySessionStoreScope(sessionKey, agentId);
   const assertCurrent = () => {
     assertCallerCurrent?.();
-    const current = captureGatewaySessionStoreScope(sessionKey, agentId);
-    if (
-      current.agentId !== scope.agentId ||
-      current.storePath !== scope.storePath ||
-      current.sessionKey !== scope.sessionKey
-    ) {
-      throw new Error("Progress-card session changed; retry");
-    }
   };
   return { scope, assertCurrent };
 }

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { parseAgentSessionKey, toAgentStoreSessionKey } from "../../routing/session-key.js";
+import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { isIncognitoSessionKey } from "../../shared/incognito-session-key.js";
 import type { ConversationReadQuery } from "./conversation-registry.types.js";
 import type {
@@ -53,7 +54,10 @@ function errorFacts(error: unknown) {
     : { name: "Error", message: "Session actor command failed" };
 }
 
-const actorOwners = new WeakMap<SessionActor, ReturnType<typeof createMemorySessionActorOwner>>();
+const actorOwners = resolveGlobalSingleton(
+  Symbol.for("openclaw.memorySessionActorHandles"),
+  () => new WeakMap<SessionActor, ReturnType<typeof createMemorySessionActorOwner>>(),
+);
 
 /** A selected handle retains its actual owner, including directly constructed owners. */
 export function readMemorySessionActorOwner(actor: SessionActor) {

@@ -375,7 +375,8 @@ it.each(cases)(
         siblingSessionKey = created.key;
       }
       const idle = await start("Remember IDLE_SIBLING_CONTEXT.", "idle-first", siblingSessionKey);
-      expect(await wait(idle.runId)).toMatchObject({ status: "ok" });
+      const idleResult = await wait(idle.runId);
+      expect(idleResult, idleResult.error).toMatchObject({ status: "ok" });
       idleThread = await ready(idle.runId);
     }
     const first = await start("Remember HISTORY_ALPHA.", "first");
