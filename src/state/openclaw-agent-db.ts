@@ -109,6 +109,7 @@ import {
   adoptOpenClawAgentDatabaseValidation,
   adoptOpenClawAgentDatabaseSchema,
   getOpenClawAgentDatabaseValidation,
+  hasOpenClawAgentDatabaseValidationSpelling,
   invalidateOpenClawAgentDatabaseValidation,
   publishOpenClawAgentDatabaseSchema,
 } from "./openclaw-agent-db-validation-cache.js";
@@ -519,7 +520,8 @@ function* openOpenClawAgentDatabaseSteps(
     registerAgentCreationClaimHandle(database, databaseOptions)?.registerClose(
       createAgentDatabaseScopeOwnedClose(database, "Agent creation claim"),
     );
-    if (!isValidatedReopen) {
+    // Physical proof does not register a newly used lexical alias.
+    if (!isValidatedReopen || !hasOpenClawAgentDatabaseValidationSpelling(pathname)) {
       assertCurrent(database);
       registerOpenClawAgentDatabase(
         { agentId, path: pathname, env: options.env, admittedDb: db },

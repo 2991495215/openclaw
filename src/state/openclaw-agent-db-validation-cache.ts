@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { registerNodeSqliteDisposeCallback } from "../infra/kysely-sync-cache-state.js";
@@ -31,14 +30,16 @@ import {
   assertCanonicalSessionValidationSchema,
 } from "./openclaw-agent-canonical-validation-schema.js";
 import { CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION } from "./openclaw-agent-db-contract.js";
-import {
-  findOpenClawAgentDatabaseIdentity,
-  readOpenClawAgentDatabaseIdentity,
-} from "./openclaw-agent-db-identity.js";
+import { findOpenClawAgentDatabaseIdentity } from "./openclaw-agent-db-identity.js";
 import {
   matchesAgentDatabaseReadCandidatePath,
   type OpenClawAgentDatabaseReadCandidateResource,
 } from "./openclaw-agent-db-resources.js";
+import {
+  createValidationReceipt,
+  hasValidationReceiptSpelling,
+  recordValidationReceiptSpelling as recordSpelling,
+} from "./openclaw-agent-db-validation-receipt.js";
 
 export type OpenClawAgentDatabaseValidation = {
   agentId: string;
@@ -251,6 +252,12 @@ export function getOpenClawAgentDatabaseValidation(
   return validation;
 }
 
+/** Registry rows keep lexical spellings; true when current proof was admitted under this one. */
+export function hasOpenClawAgentDatabaseValidationSpelling(pathname: string): boolean {
+  const validation = validatedPaths.get(databaseKey(pathname))?.validation;
+  return validation !== undefined && hasValidationReceiptSpelling(validation, pathname);
+}
+
 /** The receiving opener must adopt this proof against its own physical file identity. */
 export function getOpenClawAgentDatabaseValidationForTransfer(
   database: Pick<ValidationDatabase, "agentId" | "path">,
@@ -452,6 +459,7 @@ function captureValidationTransfer(
       }
     }
     validatedPaths.set(pathname, { validation, integrityVerified: true });
+    recordSpelling(validation, database.path);
     // A verified replacement is one physical receipt, including its already-admitted aliases.
     for (const alias of aliases) {
       validatedPaths.set(alias, { validation, integrityVerified: true });
@@ -607,6 +615,7 @@ export function adoptOpenClawAgentDatabaseValidation(
   }
   invalidateOpenClawAgentDatabaseValidation(database.path);
   validatedPaths.set(databaseKey(database.path), { validation, integrityVerified: true });
+  recordSpelling(validation, database.path);
   bindValidationLifetime(database, validation);
   return true;
 }
@@ -627,28 +636,6 @@ function isOpenClawAgentCanonicalStoreEmpty(database: { db: DatabaseSync }): boo
     EXISTS(SELECT 1 FROM session_canonical_validation_pending) AS populated`)
       .get()?.populated === 0
   );
-}
-
-function createValidationReceipt(
-  database: ValidationDatabase,
-  canonicalReady: boolean,
-): OpenClawAgentDatabaseValidation {
-  const { identity } = readOpenClawAgentDatabaseIdentity(database);
-  if (typeof identity !== "string") {
-    throw new Error("Only persistent agent databases retain integrity validation");
-  }
-  const validation = {
-    agentId: database.agentId,
-    identity,
-    receiptId: randomUUID(),
-    valid: new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT),
-    canonicalReady: new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT),
-  };
-  if (canonicalReady) {
-    Atomics.store(new Int32Array(validation.canonicalReady), 0, 1);
-  }
-  Atomics.store(new Int32Array(validation.valid), 0, 1);
-  return validation;
 }
 
 export function setOpenClawAgentDatabaseValidation(
@@ -684,6 +671,7 @@ export function setOpenClawAgentDatabaseValidation(
     invalidateOpenClawAgentDatabaseValidation(database.path);
     validatedPaths.set(databaseKey(database.path), { validation, integrityVerified: true });
   }
+  recordSpelling(validation, database.path);
   bindValidationLifetime(database, validation);
   publishOpenClawAgentDatabaseSchema(database);
   return validation;
