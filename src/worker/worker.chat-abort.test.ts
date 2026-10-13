@@ -265,7 +265,17 @@ describe("worker chat.abort settlement", () => {
           request: { sessionKey: SESSION_KEY, runId: RUN_ID },
           client: { connId: "fault-operator", connect: { scopes: ["operator.admin"] } },
         });
-        expect(respond).toHaveBeenCalledWith(true, { ok: true, aborted: true, runIds: [RUN_ID] });
+        try {
+          expect(respond).toHaveBeenCalledWith(true, { ok: true, aborted: true, runIds: [RUN_ID] });
+        } catch (error) {
+          if (queuedPreview) {
+            console.error(
+              "worker chat.abort transcript warnings",
+              vi.mocked(context.logGateway.warn).mock.calls,
+            );
+          }
+          throw error;
+        }
         phase = "waiting-outer-cancellation";
         await outerCancelled.promise;
         expect(owner.signal.aborted).toBe(true);
