@@ -26,7 +26,6 @@ import {
 } from "./sqlite-error-diagnostics.js";
 import {
   discardSqliteTransactionState,
-  prepareSqliteTransactionCommit,
   withSqlitePostCommitPublications,
 } from "./sqlite-post-commit.js";
 import {
@@ -376,7 +375,7 @@ function abortImmediateTransaction(
   // the commit owner runs, no transaction may instead mean a durable COMMIT
   // followed by a guard failure or rejected Promise: retain conservative fencing.
   if (!commitStarted && db.isOpen && !db.isTransaction) {
-    discardSqliteTransactionState(db, error, "rolled-back");
+    discardSqliteTransactionState(db, error);
     return;
   }
   try {
@@ -463,7 +462,6 @@ function settleSqliteTransactionSync<T>(
   const commit = () => {
     const startedAt = Date.now();
     try {
-      prepareSqliteTransactionCommit(db);
       execTimedTransactionStep({ db, options, sql: "COMMIT", step: "commit" });
     } finally {
       commitMs += Date.now() - startedAt;

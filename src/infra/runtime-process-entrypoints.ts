@@ -65,7 +65,6 @@ export const runtimeProcessEntrypoints = {
     "agents/harness/context-engine-turn-outbox.worker",
   ),
   sqliteStore: runtimeProcessEntrypoint("infra/sqlite-store.worker"),
-  sqliteWriterAdmission: runtimeProcessEntrypoint("infra/sqlite-writer-admission.worker"),
   agentSchemaInspection: runtimeProcessEntrypoint("state/openclaw-agent-schema-inspection.worker"),
   stateMigrationSnapshot: runtimeProcessEntrypoint("infra/state-migrations.snapshot.worker"),
   githubExec: runtimeProcessEntrypoint("agents/github-exec-launcher"),

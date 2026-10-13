@@ -4,11 +4,9 @@ import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { createSqliteLifecycleAggregateError } from "./sqlite-lifecycle-errors.js";
 
 type PendingTransactionState = {
-  /** Fence transferable readers immediately before the physical COMMIT. */
-  prepareCommit?: () => void;
   commit: () => void;
   prepareObservers?: () => void;
-  /** Retire facts on failed installation or unknown native outcome. Must not throw. */
+  /** Retire affected facts if installation fails after the durable COMMIT. Must not throw. */
   invalidate?: (error: unknown) => void;
   rollback: (error: unknown) => void;
 };
@@ -167,7 +165,6 @@ export function stageSqliteTransactionState(
   }
   state.stage();
   pending.push({
-    prepareCommit: state.prepareCommit,
     commit: state.commit,
     prepareObservers: state.prepareObservers,
     invalidate: state.invalidate,
@@ -176,26 +173,11 @@ export function stageSqliteTransactionState(
   return true;
 }
 
-/** Tentative native writes stay private until their owner's final commit guard succeeds. */
-export function prepareSqliteTransactionCommit(db: DatabaseSync): void {
-  for (const state of pendingTransactionState.get(db) ?? []) {
-    state.prepareCommit?.();
-  }
-}
-
-function rollbackTransactionState(
-  states: PendingTransactionState[],
-  error: unknown,
-  outcome: "rolled-back" | "unknown" = "rolled-back",
-): void {
+function rollbackTransactionState(states: PendingTransactionState[], error: unknown): void {
   const failures: unknown[] = [];
   for (const state of states.toReversed()) {
     try {
-      if (outcome === "unknown" && state.invalidate) {
-        state.invalidate(error);
-      } else {
-        state.rollback(error);
-      }
+      state.rollback(error);
     } catch (failure) {
       failures.push(failure);
     }
@@ -240,16 +222,12 @@ export function withSqliteCommittedPublications<T>(db: DatabaseSync, stage: () =
 }
 
 /** A lost transaction invalidates every savepoint's staged state and observers. */
-export function discardSqliteTransactionState(
-  db: DatabaseSync,
-  error: unknown,
-  outcome: "rolled-back" | "unknown" = "unknown",
-): void {
+export function discardSqliteTransactionState(db: DatabaseSync, error: unknown): void {
   pendingPublications.get(db)?.splice(0);
   const rolledBackState = pendingTransactionState.get(db)?.splice(0) ?? [];
   pendingPublications.delete(db);
   pendingTransactionState.delete(db);
-  rollbackTransactionState(rolledBackState, error, outcome);
+  rollbackTransactionState(rolledBackState, error);
 }
 
 /** Nested rollback restores staged state and discards observers; savepoints wait for outer commit. */
