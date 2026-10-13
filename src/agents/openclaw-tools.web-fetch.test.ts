@@ -18,6 +18,7 @@ async function assemble(webFetchTransport: WebFetchTransport, config: OpenClawCo
     },
     disableMessageTool: true,
     wrapBeforeToolCallHook: false,
+    authProfileStore: { version: 1, profiles: {} },
     webFetchTransport,
     toolConstructionPlan: {
       includeBaseCodingTools: false,
