@@ -35,6 +35,7 @@ import { agentCommandMock, rpcReq, testState } from "./test-helpers.js";
 const dispatch = vi.hoisted(() => ({ start: vi.fn<(params: StartChatDispatchParams) => void>() }));
 const turnBoundary = vi.hoisted(() => ({
   committing: false,
+  lastAcceptedInput: undefined as unknown,
   afterPrepare: undefined as (() => void) | undefined,
   afterCommit: undefined as (() => void) | undefined,
 }));
@@ -72,6 +73,9 @@ vi.mock("../state/openclaw-agent-execution.js", async (importOriginal) => {
                       turnBoundary.afterPrepare?.();
                     }
                     const result = await worker.execute(command, commandOptions);
+                    if (command.type === "session.actor.acceptInput") {
+                      turnBoundary.lastAcceptedInput = result;
+                    }
                     if (committing) {
                       turnBoundary.afterCommit?.();
                     }
@@ -100,6 +104,7 @@ const { createSessionStoreDir, openClient } = setupSessionCreateTestHarness(asyn
 
 afterEach(() => {
   turnBoundary.committing = false;
+  turnBoundary.lastAcceptedInput = undefined;
   turnBoundary.afterPrepare = undefined;
   turnBoundary.afterCommit = undefined;
   vi.restoreAllMocks();
@@ -548,7 +553,10 @@ test("retains idle chat input custody when its separate transcript commit is ref
     expect(entry.restartRecoveryDeliveryRunId).toBeUndefined();
     const scope = { ...target, sessionId: entry.sessionId };
     const pending = await listSessionPendingInputs(scope);
-    expect(pending).toMatchObject({ total: 1, items: [{ state: "interrupted" }] });
+    expect(
+      pending,
+      JSON.stringify({ sent, lastAcceptedInput: turnBoundary.lastAcceptedInput }),
+    ).toMatchObject({ total: 1, items: [{ state: "interrupted" }] });
     expect(JSON.stringify(pending.items)).toContain(message);
     expect(
       (await loadTranscriptEvents(scope)).filter((event) =>
