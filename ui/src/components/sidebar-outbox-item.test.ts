@@ -86,9 +86,5 @@ it.each([
     entries = [];
     link.click();
     expect(navigate).toHaveBeenCalledOnce();
-    entries = [entry];
-    harness.gateway.connectionRevision += 1;
-    link.click();
-    expect(navigate).toHaveBeenCalledOnce();
   },
 );

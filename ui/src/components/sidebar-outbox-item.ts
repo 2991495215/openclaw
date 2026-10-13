@@ -19,8 +19,6 @@ export function renderSidebarOutboxItem(params: {
   onNavigate: ApplicationContext["navigate"];
 }) {
   const { entry, context } = params;
-  const connectionRevision = context.gateway.connectionRevision;
-  const recoveryScope = context.gateway.snapshot.client?.recoveryScope;
   const row = findUiSessionRow(context, entry.sessionKey, entry.agentId);
   // The old tab/Gateway queue has no uniform human owner. Do not promote its
   // message text, attachment names, or diagnostic payloads into global previews.
@@ -89,10 +87,8 @@ export function renderSidebarOutboxItem(params: {
               return;
             }
             event.preventDefault();
-            // A retained DOM handler cannot navigate a retired Gateway or delivery row.
+            // The current scoped Inbox owns whether this delivery row can be reviewed.
             if (
-              context.gateway.connectionRevision !== connectionRevision ||
-              context.gateway.snapshot.client?.recoveryScope !== recoveryScope ||
               !context.sidebarAttention.entries.some(
                 (current) =>
                   current.type === "outbox" &&
