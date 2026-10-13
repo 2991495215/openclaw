@@ -16,6 +16,7 @@ import {
 } from "../config/runtime-snapshot.js";
 import { createPluginStateKeyedStore } from "../plugin-state/plugin-state-store.js";
 import { captureEnv } from "../test-utils/env.js";
+import { formatGatewayPendingCloseSteps } from "./restart-trace.js";
 import { disconnectGatewayClient, startGatewayWithClient } from "./test-helpers.e2e.js";
 
 type ProviderRequest = {
@@ -353,10 +354,18 @@ it.each(cases)(
     });
     let nativeConfig: typeof import("../plugin-sdk/runtime-config-snapshot.js") | undefined =
       undefined;
+    onTestFinished(() => {
+      console.warn(
+        `[recovery diagnostic] final pending close: ${formatGatewayPendingCloseSteps()}`,
+      );
+    });
     onTestFinished(async () => {
       releaseSibling.resolve();
+      console.warn("[recovery diagnostic] client disconnect starting");
       await disconnectGatewayClient(gateway.client);
+      console.warn("[recovery diagnostic] Gateway close starting");
       await gateway.server.close();
+      console.warn("[recovery diagnostic] Gateway close finished");
       nativeConfig?.clearRuntimeConfigSnapshot();
     });
     const runtimeConfig = getRuntimeConfigSnapshot();
@@ -536,6 +545,7 @@ it.each(cases)(
     const continued = await start("Continue with changed instructions.", "second");
     if (exitGate) {
       await withTestTimeout(exitGate.waiting, 10_000, "startup did not wait for physical exit");
+      console.warn("[recovery diagnostic] physical-exit waiter installed");
       expect(exitGate.child.exitCode).toBeNull();
       expect(exitGate.child.signalCode).toBeNull();
       expect(nativeProcesses.size).toBe(beforeRecoveryProcesses);
@@ -559,8 +569,10 @@ it.each(cases)(
           expect.arrayContaining([expect.stringContaining(SHUTDOWN_FAILURE_DETAIL)]),
         );
       }
+      console.warn("[recovery diagnostic] binding assertion completed; releasing physical exit");
       exitGate.release();
       await withTestTimeout(exitGate.exited, 10_000, "old native process did not exit");
+      console.warn("[recovery diagnostic] physical exit observed");
       if (shutdown !== "delayed") {
         await wait(continued.runId);
         expect(nativeProcesses.size).toBe(beforeRecoveryProcesses);
@@ -595,8 +607,70 @@ it.each(cases)(
       await continueIdleSibling(recovered.clientId);
     }
     expect(requests).toHaveLength(idleSibling ? 4 : 2);
+    console.warn("[recovery diagnostic] recovery assertions completed");
   },
 );
+
+function observeRecoveryFakeTimers(): () => void {
+  const schedule = globalThis.setTimeout;
+  const cancel = globalThis.clearTimeout;
+  const records: Array<{
+    ordinal: number;
+    callback: string;
+    delayMs: number;
+    locations: string[];
+    state: "pending" | "fired" | "cleared";
+  }> = [];
+  const pending = new Map<unknown, (typeof records)[number]>();
+  let scheduled = 0;
+  const scheduleSpy = vi
+    .spyOn(globalThis, "setTimeout")
+    .mockImplementation((callback, delay, ...args) => {
+      const ordinal = ++scheduled;
+      if (records.length >= 32) {
+        return schedule(callback, delay, ...args);
+      }
+      const record: (typeof records)[number] = {
+        ordinal,
+        callback: callback.name.replace(/[^\w.$<>]/gu, "_").slice(0, 80) || "anonymous",
+        delayMs: delay ?? 0,
+        locations: (new Error().stack ?? "")
+          .split("\n")
+          .slice(1)
+          .filter((line) => !line.includes("/node_modules/"))
+          .slice(0, 4)
+          .map((line) => line.slice(0, 240)),
+        state: "pending",
+      };
+      records.push(record);
+      const handle = schedule(
+        function (this: unknown, ...callbackArgs: unknown[]) {
+          record.state = "fired";
+          pending.delete(handle);
+          return Reflect.apply(callback, this, callbackArgs);
+        },
+        delay,
+        ...args,
+      );
+      pending.set(handle, record);
+      return handle;
+    });
+  const cancelSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation((handle) => {
+    const record = pending.get(handle);
+    if (record) {
+      record.state = "cleared";
+      pending.delete(handle);
+    }
+    return cancel(handle);
+  });
+  return () => {
+    console.warn(
+      `[recovery diagnostic] fake timer records: ${JSON.stringify({ scheduled, records })}`,
+    );
+    scheduleSpy.mockRestore();
+    cancelSpy.mockRestore();
+  };
+}
 
 /** Hold only the observed native child's exit; protocol, writer lock and run cancellation stay real. */
 function holdNativeExit(
@@ -622,11 +696,13 @@ function holdNativeExit(
     }
   };
   child.on("newListener", onListener);
+  let stopTimerDiagnostics = () => {};
   const end = vi.spyOn(stdin, "end").mockImplementation(() => {
     closing = true;
     // Hold the shutdown clock with the child: binding reads and chat.abort
     // must precede the exit deadline, even when the host is busy.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    stopTimerDiagnostics = observeRecoveryFakeTimers();
     return stdin;
   });
   const destroy = vi.spyOn(stdin, "destroy").mockImplementation(() => stdin);
@@ -697,6 +773,10 @@ function holdNativeExit(
         return;
       }
       released = true;
+      console.warn(
+        `[recovery diagnostic] releasing clock; fake timers: ${vi.isFakeTimers() ? vi.getTimerCount() : "none"}`,
+      );
+      stopTimerDiagnostics();
       vi.useRealTimers();
       child.off("newListener", onListener);
       restoreExitConfirmation();

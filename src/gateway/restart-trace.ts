@@ -163,6 +163,9 @@ async function measureGatewayTraceSpan<T>(
   const pending = closeStep ? { name, startedAt: before } : undefined;
   if (pending) {
     pendingCloseSteps.add(pending);
+    console.warn(
+      `[recovery diagnostic] close begin ${name}; pending: ${formatGatewayPendingCloseSteps()}`,
+    );
     markGatewayRestartTrace(`${name}.begin`);
   }
   try {
@@ -170,6 +173,9 @@ async function measureGatewayTraceSpan<T>(
   } finally {
     if (pending) {
       pendingCloseSteps.delete(pending);
+      console.warn(
+        `[recovery diagnostic] close end ${name}; pending: ${formatGatewayPendingCloseSteps()}`,
+      );
     }
     const now = nowMs();
     if (trace) {
