@@ -240,7 +240,51 @@ for (const stopMethod of ["button", "slash"] as const) {
             expect(provider.parentRequests()).toBe(3);
             await composer.fill(fixture.nextPrompt);
             await pane.getByRole("button", { name: "Send message", exact: true }).click();
-            await pane.getByRole("paragraph").filter({ hasText: fixture.nextReply }).waitFor();
+            try {
+              await pane.getByRole("paragraph").filter({ hasText: fixture.nextReply }).waitFor();
+            } catch (error) {
+              const diagnostic = await pane.evaluate((element, reply) => {
+                const describe = (node: Element) => ({
+                  tag: node.tagName,
+                  attributes: Object.fromEntries(
+                    Array.from(node.attributes, ({ name, value }) => [name, value]),
+                  ),
+                });
+                return {
+                  paragraphs: Array.from(element.querySelectorAll("p"))
+                    .filter((paragraph) => paragraph.textContent?.includes(reply))
+                    .map((paragraph) => {
+                      const ancestors = [];
+                      for (
+                        let parent = paragraph.parentElement;
+                        parent && parent !== element;
+                        parent = parent.parentElement
+                      ) {
+                        ancestors.push(describe(parent));
+                      }
+                      return { html: paragraph.outerHTML, ancestors };
+                    }),
+                  groups: Array.from(element.querySelectorAll(".chat-group")).map((group) => ({
+                    ...describe(group),
+                    text: group.textContent,
+                  })),
+                };
+              }, fixture.nextReply);
+              let serialized = JSON.stringify(diagnostic, null, 2);
+              for (const secret of [
+                instance.gatewayToken,
+                instance.hookToken,
+                instance.stateDir,
+                instance.homeDir,
+                "synthetic-background-fixture-key",
+              ]) {
+                if (secret) {
+                  serialized = serialized.replaceAll(secret, "[redacted]");
+                }
+              }
+              await fs.writeFile(path.join(artifactDir, "next-reply-diagnostic.json"), serialized);
+              throw error;
+            }
             await stop.waitFor({ state: "hidden" });
             expect(
               provider.parentRequests(),
