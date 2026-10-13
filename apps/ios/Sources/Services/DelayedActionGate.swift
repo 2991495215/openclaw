@@ -14,7 +14,7 @@ final class DelayedActionGate {
     @discardableResult
     func schedule(
         after duration: Duration,
-        action: @escaping @MainActor () async -> Void) -> Task<Void, Never>
+        action: @escaping @MainActor () -> Void) -> Task<Void, Never>
     {
         self.task?.cancel()
         let sleeper = self.sleeper
@@ -25,7 +25,7 @@ final class DelayedActionGate {
                 return
             }
             guard !Task.isCancelled else { return }
-            await action()
+            action()
         }
         self.task = task
         return task
