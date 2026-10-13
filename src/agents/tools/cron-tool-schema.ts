@@ -356,6 +356,8 @@ const cronToolSchemas = createCachedToolSchema({
       options?.triggersEnabled !== false,
       options?.management ?? null,
       options?.selfRemoveOnly === true,
+      options?.activeRun === true,
+      options?.pacingEnabled === true,
       Boolean(options?.agentSessionKey?.trim()),
     ]),
   build: buildCronToolSchema,
