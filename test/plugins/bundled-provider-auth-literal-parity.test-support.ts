@@ -2,6 +2,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Option } from "commander";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPluginRuntimeMock } from "../../src/plugin-sdk/plugin-test-runtime.js";
 import { listBundledPluginMetadata } from "../../src/plugins/bundled-plugin-metadata.js";
@@ -77,7 +78,12 @@ type PluginEntryModule = {
 function listParityCases(): ParityCase[] {
   return listBundledPluginMetadata({ includeChannelConfigs: false }).flatMap(({ manifest }) =>
     (manifest.providerAuthChoices ?? []).flatMap((choice) => {
-      if (!choice.optionKey?.trim() || !choice.cliFlag?.trim()) {
+      if (!choice.optionKey?.trim() || !choice.cliFlag?.trim() || !choice.cliOption?.trim()) {
+        return [];
+      }
+      const option = new Option(choice.cliOption);
+      // Boolean setup consent is not a credential and must never receive the key probe.
+      if (!option.required && !option.optional) {
         return [];
       }
       return [
@@ -210,6 +216,16 @@ export function defineBundledProviderAuthLiteralParityTests(shardIndex: number):
     it("discovers custom api-key-style provider auth choices", () => {
       expect(allParityCases.length).toBeGreaterThan(parityCases.length);
       expect(parityCases.length).toBeGreaterThan(0);
+      expect(allParityCases).not.toContainEqual(
+        expect.objectContaining({ pluginId: "llama-cpp", methodId: "local" }),
+      );
+      expect(allParityCases).toContainEqual(
+        expect.objectContaining({
+          pluginId: "llama-cpp",
+          methodId: "existing-server",
+          optionKey: "llamaServerApiKey",
+        }),
+      );
     });
 
     it.each(probes)(
