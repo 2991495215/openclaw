@@ -3,11 +3,8 @@ import { writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { runQaGatewayFixture, stopQaGatewayFixture } from "openclaw/plugin-sdk/test-env";
 import { expect, it } from "vitest";
-import {
-  runQaGatewayFixture,
-  stopQaGatewayFixture,
-} from "../../../test/helpers/qa-gateway-cleanup.ts";
 import { createControlUiE2eSuite } from "../../../ui/src/e2e/control-ui-e2e-suite.test-support.ts";
 import { controlUiSessionUrl } from "../../../ui/src/test-helpers/control-ui-e2e.ts";
 import { createQaCrablineTransportAdapter } from "./crabline-transport.ts";
