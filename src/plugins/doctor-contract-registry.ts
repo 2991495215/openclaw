@@ -13,6 +13,7 @@ import type { OpenClawConfig } from "../config/types.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { definePluginDoctorMigrationFromPlans } from "../plugin-sdk/doctor-migration-plan-adapter.js";
+import { withArtifactPreservingStateReads } from "../state/artifact-preserving-state-reads.js";
 import { areBundledPluginsDisabled } from "./bundled-dir.js";
 import { resolveBundledPluginScanDir } from "./bundled-plugin-scan.js";
 import { hasPluginConfigMigrationSource } from "./config-contract-matches.js";
@@ -40,6 +41,7 @@ import type { PluginManifestRegistry } from "./manifest-registry.types.js";
 import type { PluginManifestDoctorContract } from "./manifest-types.js";
 import { loadPluginManifestRegistryForPluginRegistry } from "./plugin-registry.js";
 import { getPluginSetupModuleLoader } from "./plugin-setup-module.js";
+import { withPluginSourceCaptureStorage } from "./plugin-source-capture-context.js";
 import { loadBundledPluginPublicArtifactModuleFromCandidatesSync } from "./public-surface-loader.js";
 
 export { collectRelevantDoctorPluginIds } from "./doctor-contract-relevance.js";
@@ -763,9 +765,17 @@ export function applyPluginDoctorCompatibilityMigrations(
 export async function preparePluginDoctorMigrationBackupResources(
   params: PluginDoctorMigrationResourceCollectionParams,
 ) {
-  const entries = loadPluginDoctorStateMigrationEntries(
-    resolvePluginDoctorStateMigrationRecords({ ...params, artifactPreservingReadOnly: true }),
+  return await withArtifactPreservingStateReads(() =>
+    withPluginSourceCaptureStorage(
+      { stateDir: params.stateDir, placement: "temporary" },
+      async () => {
+        const entries = loadPluginDoctorStateMigrationEntries(
+          resolvePluginDoctorStateMigrationRecords({ ...params, artifactPreservingReadOnly: true }),
+        );
+        const { preparePluginDoctorMigrationResources } =
+          await import("./doctor-migration-resources.js");
+        return await preparePluginDoctorMigrationResources(entries, params);
+      },
+    ),
   );
-  const { preparePluginDoctorMigrationResources } = await import("./doctor-migration-resources.js");
-  return await preparePluginDoctorMigrationResources(entries, params);
 }

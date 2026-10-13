@@ -265,6 +265,7 @@ export function createPluginNativeAdmission(
       sourceDirectory,
       boundary,
       managed,
+      copyOnly: state.captureStorage.placement === "temporary",
       previous,
       retainedRoot,
       managedRoots: [...state.managedRoots.keys()],
