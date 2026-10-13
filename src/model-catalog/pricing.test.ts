@@ -7,6 +7,7 @@ import type {
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { MODELS_JSON_STATE } from "../agents/models-config-state.js";
 import * as runtimeNormalization from "../agents/provider-model-normalization.runtime.js";
 import { resolveResponseUsageLine } from "../auto-reply/reply/agent-runner-usage-line.js";
 import {
@@ -31,7 +32,6 @@ import { createDeferredCore } from "../shared/deferred.js";
 import { buildStatusMessageParts, statusModelRefs } from "../status/status-message.test-support.js";
 import {
   estimateAggregateUsageCost,
-  resetUsageFormatCachesForTest,
   resolveModelCostConfig,
   resolveModelCostConfigFingerprint,
 } from "../utils/usage-format.js";
@@ -49,7 +49,7 @@ describe("hosted model pricing", () => {
 
   beforeEach(() => {
     clearRuntimeConfigSnapshot();
-    resetUsageFormatCachesForTest();
+    MODELS_JSON_STATE.costCache.clear();
     readStoredCatalog.mockReset().mockReturnValue({
       source_url: "https://catalog.openclaw.ai/models/v2/catalog.json",
       bundle_json: JSON.stringify({
@@ -113,7 +113,7 @@ describe("hosted model pricing", () => {
 
   afterEach(() => {
     clearRuntimeConfigSnapshot();
-    resetUsageFormatCachesForTest();
+    MODELS_JSON_STATE.costCache.clear();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -377,7 +377,7 @@ describe("hosted model pricing", () => {
       });
       vi.stubGlobal("fetch", fetch);
       for (const config of [runtime, structuredClone(runtime)]) {
-        resetUsageFormatCachesForTest();
+        MODELS_JSON_STATE.costCache.clear();
         const discoverySpies = allowPluginNormalization
           ? []
           : [
@@ -644,7 +644,7 @@ describe("OpenRouter routing shortcut estimates", () => {
   let hostedPricing: Record<string, RemoteModelCatalogPricing>;
 
   beforeEach(() => {
-    resetUsageFormatCachesForTest();
+    MODELS_JSON_STATE.costCache.clear();
     hostedPricing = {
       "openrouter/openai/gpt-catalog": { input: 1, output: 2 },
       "openai/gpt-catalog": { input: 4, output: 5 },
@@ -671,7 +671,7 @@ describe("OpenRouter routing shortcut estimates", () => {
   });
 
   afterEach(() => {
-    resetUsageFormatCachesForTest();
+    MODELS_JSON_STATE.costCache.clear();
     vi.restoreAllMocks();
     setRemoteModelCatalogOverlaySourcesForTest();
   });
@@ -777,7 +777,7 @@ describe("standalone v2 pricing", () => {
 
   beforeEach(() => {
     vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("openclaw-v2-standalone-"));
-    resetUsageFormatCachesForTest();
+    MODELS_JSON_STATE.costCache.clear();
     vi.spyOn(pluginMetadata, "resolvePluginMetadataSnapshot").mockReturnValue(
       createPluginMetadataSnapshotFixture({
         plugins: [
@@ -878,7 +878,7 @@ describe("standalone v2 pricing", () => {
   });
 
   afterEach(() => {
-    resetUsageFormatCachesForTest();
+    MODELS_JSON_STATE.costCache.clear();
     setRemoteModelCatalogOverlaySourcesForTest();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
@@ -919,7 +919,7 @@ describe("inline v2 pricing", () => {
 
   beforeEach(() => {
     vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("openclaw-v2-pricing-"));
-    resetUsageFormatCachesForTest();
+    MODELS_JSON_STATE.costCache.clear();
     pricing = { ...known, input: 0, output: 0, source: "models.dev" };
     vi.spyOn(pluginMetadata, "resolvePluginMetadataSnapshot").mockReturnValue(
       createPluginMetadataSnapshotFixture({
@@ -960,7 +960,7 @@ describe("inline v2 pricing", () => {
   });
 
   afterEach(() => {
-    resetUsageFormatCachesForTest();
+    MODELS_JSON_STATE.costCache.clear();
     setRemoteModelCatalogOverlaySourcesForTest();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
