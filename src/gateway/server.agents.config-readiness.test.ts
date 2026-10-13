@@ -3,7 +3,17 @@ import "../agents/prepared-model-runtime.js";
 import "./server-start.js";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterAll, assert, beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
+import {
+  afterAll,
+  assert,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  onTestFailed,
+  onTestFinished,
+  vi,
+} from "vitest";
 import type { MockInstance } from "vitest";
 import { GatewayClientRequestError } from "../../packages/gateway-client/src/request-error.js";
 import { createDeferred, withinTest } from "../../test/helpers/promise.js";
@@ -15,6 +25,7 @@ import {
   registerConfigWriteListener,
 } from "../config/config.js";
 import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
+import { formatErrorMessage } from "../infra/errors.js";
 import { acquireGatewayLock } from "../infra/gateway-lock.js";
 import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
@@ -44,6 +55,7 @@ describe("agent config readiness", () => {
   const releasePublication = createDeferred();
   const creationBookkeepingCompleted = createDeferred();
   let publicationHeld = false;
+  const reloadErrors: string[] = [];
   let reloadScheduler: GatewayScheduler | undefined;
   const token = "agent-config-readiness-token";
   const recoveryRestart = vi.fn(() => {
@@ -67,6 +79,16 @@ describe("agent config readiness", () => {
         reloadScheduler = options.scheduler;
         return startReloader({
           ...options,
+          log: {
+            ...options.log,
+            error: (message) => {
+              reloadErrors.push(formatErrorMessage(message));
+              if (reloadErrors.length > 20) {
+                reloadErrors.shift();
+              }
+              options.log.error(message);
+            },
+          },
           onHotReload: async (...args) => {
             if (!publicationHeld && args[1].agents?.entries?.[agentId]) {
               publicationHeld = true;
@@ -292,6 +314,10 @@ describe("agent config readiness", () => {
   });
 
   it("publishes overlapping mutations from two operators", async ({ signal }) => {
+    reloadErrors.length = 0;
+    onTestFailed(() => {
+      console.error("agent config readiness reload errors", JSON.stringify(reloadErrors));
+    });
     const peer = await connectGatewayClient({
       url: `ws://127.0.0.1:${claim.port}`,
       token,
