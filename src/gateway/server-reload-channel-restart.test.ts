@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, expect, it, vi } from "vitest";
-import { createDeferred, withTestTimeout } from "../../test/helpers/promise.js";
+import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
 import { readConfigFileSnapshot } from "../config/config.js";
 import { withPluginLifecycleLease } from "../plugins/plugin-lifecycle-lease.js";
@@ -13,7 +13,10 @@ import {
 } from "../plugins/runtime.js";
 import { resetGatewayWorkAdmission } from "../process/gateway-work-admission.js";
 import { createChannelTestPluginBase, createTestRegistry } from "../test-utils/channel-plugins.js";
-import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
+import {
+  createGatewaySchedulerClock,
+  createTestGatewayScheduler,
+} from "../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import type { ChannelKind } from "./config-reload-plan.js";
 import { startGatewayConfigReloader } from "./config-reload.js";
@@ -55,7 +58,9 @@ afterEach(async () => {
   resetGatewayWorkAdmission();
 });
 
-it("the config watcher restarts a channel that can save provider settings after reload closes", async () => {
+it("the config watcher restarts a channel that can save provider settings after reload closes", async ({
+  signal,
+}) => {
   await withOpenClawTestState({ label: "channel-reload-login" }, async (state) => {
     const initialConfig = {
       gateway: { reload: { mode: "hybrid" as const } },
@@ -125,9 +130,19 @@ it("the config watcher restarts a channel that can save provider settings after 
       warn: vi.fn(),
       error: vi.fn((message: string) => restarted.reject(new Error(message))),
     };
+    const reloadClock = createGatewaySchedulerClock(Date.now());
+    const reloadScheduled = createDeferred();
+    const scheduler = createTestGatewayScheduler({
+      ...reloadClock.clock,
+      arm: (run, delayMs) => {
+        const cancel = reloadClock.clock.arm(run, delayMs);
+        reloadScheduled.resolve();
+        return cancel;
+      },
+    });
     let assertReloadOwned: (() => void) | undefined;
     const reloader = startGatewayConfigReloader({
-      scheduler: createTestGatewayScheduler("fake-timers"),
+      scheduler,
       initialConfig,
       initialSnapshotRawHash: initial.hash,
       initialAuthoredConfig: initial.parsed,
@@ -160,22 +175,20 @@ it("the config watcher restarts a channel that can save provider settings after 
     });
     try {
       await reloader.ready;
-      await withTestTimeout(watcherReady.promise, 10_000, "config watcher did not start");
+      await withinTest(watcherReady.promise, signal);
       await state.writeConfig({ ...initialConfig, commands: { ownerAllowFrom: ["telegram:2"] } });
-      await withTestTimeout(
-        restarted.promise,
-        10_000,
-        "config watcher did not restart the channel",
-      );
-      await expect.poll(() => reloader.isReloading()).toBe(false);
+      await withinTest(reloadScheduled.promise, signal);
+      const reload = Promise.resolve(reloadClock.wake());
+      await withinTest(restarted.promise, signal);
+      // Account handoff precedes reload acceptance and lifecycle lease release.
+      await withinTest(reload, signal);
+      expect(reloader.isReloading()).toBe(false);
       assert(assertReloadOwned);
       expect(assertReloadOwned).toThrow(
         "plugin lifecycle lease core:plugin-lifecycle/global was lost",
       );
       login.resolve();
-      await expect(
-        withTestTimeout(savedResult, 10_000, "provider settings write did not settle"),
-      ).resolves.toBeUndefined();
+      await expect(withinTest(savedResult, signal)).resolves.toBeUndefined();
       const persisted = await readConfigFileSnapshot();
       expect(persisted.config.models?.providers?.["lease-fixture"]).toMatchObject({
         baseUrl: "https://fixture.invalid/v1",
@@ -185,6 +198,7 @@ it("the config watcher restarts a channel that can save provider settings after 
     } finally {
       login.resolve();
       await reloader.stop();
+      await scheduler.stop();
       await owner.stopChannel("telegram");
     }
   });
