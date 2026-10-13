@@ -11,8 +11,6 @@ export const gatewayPluginTestFiles = [
 
 // Native database consumers retain lifecycle cleanup within each forked process.
 export const gatewayDatabaseWorkerTestFiles = [
-  "src/gateway/worker-environments/device-folder-lifecycle.test.ts",
-  "src/gateway/worker-environments/node-worker-tunnel.device-folder.test.ts",
   "src/gateway/agent-runtime-identity-token.test.ts",
   "src/gateway/agent-turn/agent-run-media.test.ts",
   "src/gateway/agent-turn/agent-session-preparation.worker.test.ts",
@@ -335,6 +333,7 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/worker-environments/computer-transport.test.ts",
   "src/gateway/worker-environments/credential-broker.test.ts",
   "src/gateway/worker-environments/desktop-ssh-identity.test.ts",
+  "src/gateway/worker-environments/device-folder-lifecycle.test.ts",
   "src/gateway/worker-environments/device-placement-demand.test.ts",
   "src/gateway/worker-environments/environment-access-authority.test.ts",
   "src/gateway/worker-environments/environment-access.test.ts",
@@ -347,6 +346,7 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/worker-environments/local-workspace-template.test.ts",
   "src/gateway/worker-environments/node-desktop-carrier.test.ts",
   "src/gateway/worker-environments/node-enrollment.test.ts",
+  "src/gateway/worker-environments/node-worker-tunnel.device-folder.test.ts",
   "src/gateway/worker-environments/node-worker-workspace-publication.test.ts",
   "src/gateway/worker-environments/node-workspace-transfer-credential.test.ts",
   "src/gateway/worker-environments/node-workspace-transfer-retention.test.ts",

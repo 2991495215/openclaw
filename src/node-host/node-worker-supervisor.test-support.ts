@@ -337,6 +337,7 @@ export function testWorkerLaunchInput(
     gatewayNamespace: "gateway-1",
     expectedBundleHash: TEST_BUNDLE_HASH,
     placementGeneration: 4,
-    descriptor: testWorkerDescriptor(workspaceDir, prompt, launchId),
+    sessionKey: "session-1",
+    descriptor: testWorkerDescriptor(fs.realpathSync.native(workspaceDir), prompt, launchId),
   };
 }
