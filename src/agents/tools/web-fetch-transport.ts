@@ -1,6 +1,6 @@
 import type { SsrFPolicy } from "../../infra/net/ssrf.js";
 
-export type WebFetchAcquisitionRequest = {
+type WebFetchAcquisitionRequest = {
   /** Exact normalized HTTP(S) URL; still untrusted, model-selected input. */
   url: string;
   /** Correlation only, not proof of authority. */
