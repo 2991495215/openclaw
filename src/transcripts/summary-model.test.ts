@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describePendingFakeTimers } from "../../test/helpers/fake-timer-diagnostics.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { runWithAsyncWorkResources } from "../shared/async-work-resources.js";
 import type { TranscriptSessionDescriptor, TranscriptUtterance } from "./provider-types.js";
@@ -172,7 +173,7 @@ describe("model-backed transcript summaries", () => {
       held.resolve(completion(JSON.stringify(notes)));
       expect(await pending).toBeUndefined();
       expect(runIsolatedCompletion).toHaveBeenCalledOnce();
-      expect(vi.getTimerCount()).toBe(0);
+      expect(vi.getTimerCount(), describePendingFakeTimers()).toBe(0);
     } finally {
       held.resolve(completion(JSON.stringify(notes)));
       await pending;
