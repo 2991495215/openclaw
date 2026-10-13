@@ -26,7 +26,7 @@ import {
   enqueueSystemEventEntry,
   enqueueSystemEventWithReceipt,
   isSystemEventContextChanged,
-  peekDeliverableSystemEventEntries,
+  isSystemEventTurnOwned,
   peekSystemEventEntries,
   peekSystemEvents,
   resetSystemEventsForTest,
@@ -49,7 +49,9 @@ describe("delivery-owned system event selection", () => {
         claimSystemEventTurn(sessionKey, [first, second], cancelled),
         "batch owner",
       );
-      expect(peekDeliverableSystemEventEntries(sessionKey)).toEqual([]);
+      expect(peekSystemEventEntries(sessionKey)).toEqual([first, second]);
+      expect(isSystemEventTurnOwned(sessionKey, first)).toBe(true);
+      expect(isSystemEventTurnOwned(sessionKey, second)).toBe(true);
       consumeSelectedSystemEventEntries(sessionKey, [first]);
       const replacement = expectDefined(
         enqueueSystemEventEntry("Replacement", { sessionKey }),
@@ -57,9 +59,11 @@ describe("delivery-owned system event selection", () => {
       );
       expect(() => owner.start()).toThrow("cancelled before admission");
       expect(owner[action]()).toBe(true);
-      expect(peekDeliverableSystemEventEntries(sessionKey)).toEqual(
+      expect(peekSystemEventEntries(sessionKey)).toEqual(
         action === "cancel" ? [replacement] : [second, replacement],
       );
+      expect(isSystemEventTurnOwned(sessionKey, second)).toBe(false);
+      expect(isSystemEventTurnOwned(sessionKey, replacement)).toBe(false);
       expect(owner.cancel()).toBe(false);
       expect(cancelled).toHaveBeenCalledOnce();
     },
@@ -83,7 +87,8 @@ describe("delivery-owned system event selection", () => {
           () => {},
         ),
       ).toBeUndefined();
-      expect(peekDeliverableSystemEventEntries(sessionKey)).toContainEqual(first);
+      expect(peekSystemEventEntries(sessionKey)).toContainEqual(first);
+      expect(isSystemEventTurnOwned(sessionKey, first)).toBe(false);
     },
   );
 
@@ -112,9 +117,6 @@ describe("delivery-owned system event selection", () => {
       claimSystemEventTurn(sessionKey, [execOccurrence], execCancelled, "main"),
       "exec completion owner",
     );
-    expect(peekDeliverableSystemEventEntries(sessionKey).map(({ text }) => text)).toEqual([
-      "Passive notice",
-    ]);
     const prompt = await drainFormattedSystemEvents({
       cfg: {},
       agentId: "main",
@@ -172,7 +174,8 @@ describe("delivery-owned system event selection", () => {
       "first owner",
     );
     expect(first.release()).toBe(true);
-    expect(peekDeliverableSystemEventEntries(sessionKey)).toEqual([occurrence]);
+    expect(peekSystemEventEntries(sessionKey)).toEqual([occurrence]);
+    expect(isSystemEventTurnOwned(sessionKey, occurrence)).toBe(false);
     const successor = expectDefined(
       claimSystemEventTurn(sessionKey, [occurrence], cancelled),
       "new owner",
