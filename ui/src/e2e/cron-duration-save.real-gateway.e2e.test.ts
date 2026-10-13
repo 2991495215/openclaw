@@ -112,9 +112,12 @@ catalogSuite.define(() => {
     const frames: unknown[] = [];
     const catalogRequests = new Set<string>();
     const commands: unknown[] = [];
+    let phase = "initial";
+    let renderedPicker: unknown;
     let rejectCatalogReplies = false;
     const rejected = new Set<string>();
     const publish = async (id: string) => {
+      phase = id;
       const args = [
         "config",
         "set",
@@ -153,6 +156,7 @@ catalogSuite.define(() => {
               const catalogReply = typeof frame.id === "string" && catalogRequests.has(frame.id);
               if (
                 catalogReply ||
+                frame.event === "models.snapshot" ||
                 frame.event === "config.changed" ||
                 frame.event === "chat.metadata.changed"
               ) {
@@ -231,6 +235,28 @@ catalogSuite.define(() => {
             await page.screenshot({ path: path.join(catalogSuite.artifactDir, "recovered.png") });
           }
         },
+        async ({ page }) => {
+          try {
+            renderedPicker = await page.evaluate(() => {
+              const trigger = document.querySelector("#cron-payload-model-picker");
+              const picker = trigger?.closest("openclaw-select-picker");
+              return {
+                present: Boolean(picker),
+                trigger: trigger?.textContent?.trim() ?? null,
+                expanded: trigger?.getAttribute("aria-expanded") ?? null,
+                options: Array.from(picker?.querySelectorAll('[role="option"]') ?? []).map(
+                  (option) => ({
+                    value: option.getAttribute("data-value"),
+                    label: option.textContent?.trim() ?? null,
+                    selected: option.getAttribute("aria-selected"),
+                  }),
+                ),
+              };
+            });
+          } catch (error) {
+            renderedPicker = { captureError: String(error) };
+          }
+        },
       );
     } finally {
       const redact = (text: string) =>
@@ -239,7 +265,7 @@ catalogSuite.define(() => {
           .replaceAll(owner.hookToken, "[synthetic token]");
       await fs.writeFile(
         path.join(catalogSuite.artifactDir, "publication.json"),
-        redact(JSON.stringify({ frames, commands }, null, 2)),
+        redact(JSON.stringify({ phase, frames, commands, renderedPicker }, null, 2)),
       );
       await fs.writeFile(path.join(catalogSuite.artifactDir, "gateway.log"), redact(owner.logs()));
     }
