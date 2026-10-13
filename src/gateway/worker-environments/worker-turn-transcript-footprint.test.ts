@@ -49,6 +49,9 @@ async function seedBranchedHistory(persistCurrentInput: boolean): Promise<number
   const anchor = await manager.appendMessageAsync(
     makeAgentUserMessage({ content: "Starting the conversation.", timestamp: 1 }),
   );
+  if (!anchor) {
+    throw new Error("Expected the branch anchor fixture message ID");
+  }
   for (let index = 0; index < 64; index++) {
     const text = `${INACTIVE_MARKER}${index}`.padEnd(1024, ".");
     await manager.appendMessageAsync(

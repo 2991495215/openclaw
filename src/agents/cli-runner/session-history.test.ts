@@ -1,4 +1,5 @@
 import path from "node:path";
+import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { makeUserMessage } from "../../../test/helpers/user-message.js";
@@ -104,7 +105,10 @@ it("recovers SQLite-only compacted history across every CLI reader", async () =>
     };
     await upsertSessionEntryCore(target, { sessionId: target.sessionId, updatedAt: 1 });
     const manager = await SessionManager.openAsync(target, stateDir);
-    const kept = await manager.appendMessageAsync(makeUserMessage("CANONICAL_HISTORY", 1));
+    const kept = expectDefined(
+      await manager.appendMessageAsync(makeUserMessage("CANONICAL_HISTORY", 1)),
+      "canonical fixture message ID",
+    );
     await manager.appendCompactionAsync("CANONICAL_SUMMARY", kept, 1000);
     await manager.appendMessageAsync({ role: "user", content: "CANONICAL_TAIL", timestamp: 3 });
     manager.flushPendingPersistence();
@@ -198,6 +202,9 @@ describe("canonical CLI history", () => {
         content: "retained",
         timestamp: 2,
       });
+      if (!firstKept) {
+        throw new Error("Expected the retained fixture message ID");
+      }
       await appendNote("RETAINED_NOTE");
       if (boundary === "compaction") {
         await manager.appendCompactionAsync("summary", firstKept, 1000);
@@ -261,12 +268,14 @@ describe("canonical CLI history", () => {
       await durable.appendCompactionAsync("BORROWED_SUMMARY", "msg-0", 1000);
       await durable.appendMessageAsync({ role: "user", content: "BORROWED_TAIL", timestamp: 1 });
       const manager = SessionManager.inMemory();
-      const first = await manager.appendMessageAsync({
-        role: "user",
-        content: "OWNED_PREFIX",
-        timestamp: 11,
-      });
-      const retained = await manager.appendMessageAsync(makeUserMessage("OWNED_RETAINED", 12));
+      const first = expectDefined(
+        await manager.appendMessageAsync(makeUserMessage("OWNED_PREFIX", 11)),
+        "prefix fixture message ID",
+      );
+      const retained = expectDefined(
+        await manager.appendMessageAsync(makeUserMessage("OWNED_RETAINED", 12)),
+        "retained fixture message ID",
+      );
       if (shape === "compacted") {
         await manager.appendCompactionAsync("OWNED_SUMMARY", retained, 1000, { source: "owned" });
       }
@@ -345,6 +354,9 @@ describe("canonical CLI history", () => {
       content: "older large " + "x".repeat(5 * 1024 * 1024),
       timestamp: 1,
     });
+    if (!retained) {
+      throw new Error("Expected the retained fixture message ID");
+    }
     await manager.appendCompactionAsync("OWNED_SUMMARY", retained, 1000);
     for (let index = 0; index < 125; index++) {
       await manager.appendMessageAsync({
@@ -503,6 +515,9 @@ describe("canonical CLI history", () => {
         excludeFromContext: true,
         timestamp: 2,
       });
+      if (!firstKept) {
+        throw new Error("Expected the display fixture message ID");
+      }
       const retained = await manager.appendMessageAsync({
         role: "user",
         content: "retained",

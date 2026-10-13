@@ -13,7 +13,7 @@ import { shouldIgnoreStaleDiscordRouteBinding } from "./route-resolution.js";
 type DiscordConversationBindingRouteParams = {
   cfg: OpenClawConfig;
   resolveRoute: NonNullable<
-    Parameters<typeof resolveRuntimeConversationBindingRouteAsync>[0]["resolveRoute"]
+    Parameters<typeof inspectRuntimeConversationBindingRoute>[0]["resolveRoute"]
   >;
   accountId: string;
   runtimeConversationId: string;

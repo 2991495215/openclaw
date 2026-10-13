@@ -694,7 +694,10 @@ describe("hasCompletedBootstrapTurn", () => {
   });
 
   it("invalidates a completion marker after compaction", async () => {
-    const firstEntryId = await sessionManager.appendMessageAsync(makeUserMessage("hello", 1));
+    const firstEntryId = expectDefined(
+      await sessionManager.appendMessageAsync(makeUserMessage("hello", 1)),
+      "bootstrap fixture message ID",
+    );
     await sessionManager.appendCustomEntryAsync(FULL_BOOTSTRAP_COMPLETED_CUSTOM_TYPE, {
       timestamp: 2,
     });
@@ -704,7 +707,10 @@ describe("hasCompletedBootstrapTurn", () => {
   });
 
   it("accepts a newer full bootstrap marker after compaction", async () => {
-    const firstEntryId = await sessionManager.appendMessageAsync(makeUserMessage("hello", 1));
+    const firstEntryId = expectDefined(
+      await sessionManager.appendMessageAsync(makeUserMessage("hello", 1)),
+      "bootstrap fixture message ID",
+    );
     await sessionManager.appendCustomEntryAsync(FULL_BOOTSTRAP_COMPLETED_CUSTOM_TYPE, {
       timestamp: 2,
     });
@@ -733,7 +739,10 @@ describe("hasCompletedBootstrapTurn", () => {
   });
 
   it("ignores completion markers on an inactive transcript branch", async () => {
-    const firstEntryId = await sessionManager.appendMessageAsync(makeUserMessage("hello", 1));
+    const firstEntryId = expectDefined(
+      await sessionManager.appendMessageAsync(makeUserMessage("hello", 1)),
+      "bootstrap fixture message ID",
+    );
     await sessionManager.appendCustomEntryAsync(FULL_BOOTSTRAP_COMPLETED_CUSTOM_TYPE, {
       timestamp: 2,
     });

@@ -160,6 +160,7 @@ describe("readTranscriptState", () => {
           content: "continued",
           timestamp: Date.now(),
         }),
+        "continued fixture message ID",
       ),
     )!;
     await persistTranscriptStateMutation({
@@ -310,6 +311,7 @@ describe("readTranscriptState", () => {
           content: "continued",
           timestamp: Date.now(),
         }),
+        "continued fixture message ID",
       ),
     )!;
     expect(appended.parentId).toBe("active-entry");
@@ -507,6 +509,7 @@ describe("readTranscriptState", () => {
           content: "next question",
           timestamp: Date.now(),
         }),
+        "next fixture message ID",
       ),
     )!;
     expect(state.getBranch(nextUser.id).map((entry) => entry.id)).toEqual([
@@ -559,6 +562,7 @@ describe("readTranscriptState", () => {
           content: "continued",
           timestamp: Date.now(),
         }),
+        "continued fixture message ID",
       ),
     )!;
     await persistTranscriptStateMutation({
@@ -621,6 +625,7 @@ describe("readTranscriptState", () => {
           content: "continued",
           timestamp: Date.now(),
         }),
+        "continued fixture message ID",
       ),
     )!;
     await persistTranscriptStateMutation({

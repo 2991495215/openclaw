@@ -154,6 +154,9 @@ it.for([
         content: "Preserve this conversation.",
         timestamp: 1,
       });
+      if (!firstEntryId) {
+        throw new Error("Expected the original fixture message ID");
+      }
       const entryBefore = structuredClone(loadSessionEntryReadOnly(target));
       const transcriptBefore = loadTranscriptEventsSync(target);
       const entered = createDeferredCore();

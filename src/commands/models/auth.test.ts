@@ -88,6 +88,7 @@ vi.mock("../../secrets/store/secret-store.js", () => ({
   deleteSecretStoreEntry: mocks.deleteSecretStoreEntry,
 }));
 
+// mock-isolation: Auth command fixtures record profile mutations without changing durable credentials or order.
 vi.mock("../../agents/auth-profiles/profiles.js", () => ({
   promoteAuthProfileInOrder: mocks.promoteAuthProfileInOrder,
   removeProviderAuthProfilesWithLock: mocks.removeProviderAuthProfilesWithLock,

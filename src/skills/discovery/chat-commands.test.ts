@@ -115,11 +115,13 @@ vi.mock("../../auto-reply/commands-registry.data.js", () => ({
   getChatCommands: () => [],
 }));
 
-vi.mock("./command-specs.js", () => ({
+vi.mock("./command-specs.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./command-specs.js")>()),
   prepareWorkspaceSkillCommandSpecs,
 }));
 
-vi.mock("../runtime/remote-skills.js", () => ({
+vi.mock("../runtime/remote-skills.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../runtime/remote-skills.js")>()),
   prepareRemoteSkillConnections: async () => {},
 }));
 

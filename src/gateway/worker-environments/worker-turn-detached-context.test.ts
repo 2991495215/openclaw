@@ -282,12 +282,18 @@ describe("worker detached model-context branch parity", () => {
           timestamp: 3,
         }),
       );
+      if (!currentId || !previousLeafId) {
+        throw new Error("Expected the current and previous fixture message IDs");
+      }
       let sideId: string | undefined;
       if (sideAppend) {
         await manager.branchAsync(previousLeafId);
         sideId = await manager.appendMessageAsync(
           makeAgentUserMessage({ content: "inactive side input", timestamp: 4 }),
         );
+        if (!sideId) {
+          throw new Error("Expected the side branch fixture message ID");
+        }
         await manager.appendLeafControlAsync({
           targetId: currentId,
           appendParentId: sideId,

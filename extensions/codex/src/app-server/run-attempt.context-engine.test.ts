@@ -113,6 +113,9 @@ describe("runCodexAppServerAttempt context-engine lifecycle", () => {
     const retainedId = await sessionManager.appendMessageAsync(
       assistantMessage("ACK: existing context", Date.now()),
     );
+    if (!retainedId) {
+      throw new Error("Expected the retained fixture message ID");
+    }
     await sessionManager.appendCompactionAsync(summary, retainedId, 1_000);
     const contextEngine = createContextEngine();
     const harness = createStartedThreadHarness();

@@ -4434,6 +4434,9 @@ describe("prepareCliRunContext", () => {
         const sessionTarget = fixtureTarget;
         const durable = await SessionManager.openAsync(fixtureTarget, dir);
         const retained = await durable.appendMessageAsync(makeUserMessage("BORROWED_RETAINED", 1));
+        if (!retained) {
+          throw new Error("Expected the retained fixture message ID");
+        }
         await durable.appendCompactionAsync("BORROWED_SUMMARY", retained, 1000);
         await durable.appendMessageAsync({ role: "user", content: "BORROWED_TAIL", timestamp: 2 });
         durable.flushPendingPersistence();
@@ -4444,6 +4447,9 @@ describe("prepareCliRunContext", () => {
           const kept = await sessionManager.appendMessageAsync(
             makeUserMessage("OWNED_RETAINED", 1),
           );
+          if (!kept) {
+            throw new Error("Expected the retained fixture message ID");
+          }
           if (scenario === "compacted") {
             await sessionManager.appendCompactionAsync("OWNED_SUMMARY", kept, 1000);
           }
@@ -4725,6 +4731,9 @@ describe("prepareCliRunContext", () => {
       const firstKeptEntryId = await manager.appendMessageAsync(
         makeUserMessage("RESEED_RETAINED_PREFIX", 1),
       );
+      if (!firstKeptEntryId) {
+        throw new Error("Expected the reseed fixture message ID");
+      }
       await manager.appendCompactionAsync(
         `${testCase.marker} ${"x".repeat(testCase.padding)}`,
         firstKeptEntryId,

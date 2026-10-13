@@ -320,6 +320,9 @@ describe("runEmbeddedAttemptSettledPhase stream finalization", () => {
     const promptId = await sessionManager.appendMessageAsync(
       makeUserMessage("Original request", 1),
     );
+    if (!promptId) {
+      throw new Error("Expected the prompt fixture message ID");
+    }
     const rejectedId = await sessionManager.appendMessageAsync({
       role: "assistant",
       content: [{ type: "text", text: "Rejected first answer" }],

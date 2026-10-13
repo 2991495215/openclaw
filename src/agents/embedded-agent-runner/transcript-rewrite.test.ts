@@ -51,7 +51,9 @@ async function appendSessionMessages(
 ): Promise<string[]> {
   const entryIds: string[] = [];
   for (const message of messages) {
-    entryIds.push(await sessionManager.appendMessageAsync(message));
+    entryIds.push(
+      expectDefined(await sessionManager.appendMessageAsync(message), "fixture message ID"),
+    );
   }
   return entryIds;
 }
@@ -659,6 +661,9 @@ describe("rewriteTranscriptEntriesInSessionManager", () => {
       content: "first",
       timestamp: 1,
     });
+    if (!first) {
+      throw new Error("Expected the first fixture message ID");
+    }
     const tail = await manager.appendMessageAsync({
       role: "user",
       content: "old tail",
@@ -700,6 +705,9 @@ describe("rewriteTranscriptEntriesInSessionManager", () => {
         content: "second",
         timestamp: 2,
       });
+      if (!first || !second) {
+        throw new Error("Expected both fixture message IDs");
+      }
       const control = await manager.appendLeafControlAsync({
         targetId: first,
         appendParentId: second,
@@ -710,6 +718,9 @@ describe("rewriteTranscriptEntriesInSessionManager", () => {
         content: "tail",
         timestamp: 3,
       });
+      if (!tail) {
+        throw new Error("Expected the tail fixture message ID");
+      }
       await waitForSessionTranscriptProjection(target);
       if (bounded) {
         manager = await SessionManager.openBoundedAsync(target, { maxEvents: 1, maxBytes: 4096 });
@@ -759,6 +770,9 @@ describe("rewriteTranscriptEntriesInSessionManager", () => {
         content: "abandoned",
         timestamp: 2,
       });
+      if (!first || !abandoned) {
+        throw new Error("Expected the selected and abandoned fixture message IDs");
+      }
       await manager.appendLeafControlAsync({
         targetId: first,
         appendParentId: abandoned,
@@ -769,6 +783,9 @@ describe("rewriteTranscriptEntriesInSessionManager", () => {
         content: "current",
         timestamp: 3,
       });
+      if (!current) {
+        throw new Error("Expected the current fixture message ID");
+      }
       await waitForSessionTranscriptProjection(target);
       if (maxEvents !== undefined) {
         manager = await SessionManager.openBoundedAsync(target, { maxBytes: 4096, maxEvents });

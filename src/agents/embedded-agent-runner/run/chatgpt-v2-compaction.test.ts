@@ -368,8 +368,8 @@ describe("ChatGPT V2 at the embedded normal request boundary", () => {
 
   it("compacts a settled 90% window before a large tool result reaches the next boundary", async () => {
     const manager = SessionManager.inMemory();
-    manager.appendMessage({ role: "user", content: "remember copper", timestamp: 1 });
-    manager.appendMessage(
+    await manager.appendMessageAsync({ role: "user", content: "remember copper", timestamp: 1 });
+    await manager.appendMessageAsync(
       createAssistant(model, [{ type: "text", text: "settled history" }], "stop", 465_674),
     );
     const f = await fixture(manager, false, {
@@ -492,8 +492,8 @@ describe("ChatGPT V2 at the embedded normal request boundary", () => {
 
   it("continues normal requests after a soft V2 failure without retrying or client compaction", async () => {
     const manager = SessionManager.inMemory();
-    manager.appendMessage({ role: "user", content: "remember copper", timestamp: 1 });
-    manager.appendMessage(
+    await manager.appendMessageAsync({ role: "user", content: "remember copper", timestamp: 1 });
+    await manager.appendMessageAsync(
       createAssistant(model, [{ type: "text", text: "settled history" }], "stop", 465_674),
     );
     const f = await fixture(manager, false, {

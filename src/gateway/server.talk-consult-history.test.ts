@@ -15,6 +15,17 @@ import {
   type MockInstance,
 } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
+import {
+  spoken,
+  answer,
+  consultAnswer,
+  consultCommentary,
+  consultToolResult,
+  args,
+  syntheticMarkers,
+  expectNoGeneratedInput,
+  expectVisibleSpeechOnly,
+} from "../../test/helpers/talk-consult-history.js";
 import { extractText } from "../../ui/src/lib/chat/message-extract.ts";
 import { createHostWorkspaceWriteTool } from "../agents/agent-tools.read.js";
 import { createExecTool } from "../agents/bash-tools.js";
@@ -56,17 +67,6 @@ import { createDirectChatContext } from "./server-chat.agent-events.test-helpers
 import { handleGatewayRequest } from "./server-methods.js";
 import type { GatewayClient, GatewayRequestContext, RespondFn } from "./server-methods/types.js";
 import { createTranscriptUpdateBroadcastHandler } from "./server-session-events.js";
-import {
-  spoken,
-  answer,
-  consultAnswer,
-  consultCommentary,
-  consultToolResult,
-  args,
-  syntheticMarkers,
-  expectNoGeneratedInput,
-  expectVisibleSpeechOnly,
-} from "./server.talk-consult-history.test-support.js";
 import * as lifecycleState from "./session-lifecycle-state.js";
 import { createPreparedLifecycleWriteTracker } from "./session-lifecycle-state.test-support.js";
 import {

@@ -274,6 +274,7 @@ vi.mock("../skills/loading/workspace-skill-prompt.js", () => ({
   buildSkillSnapshot: vi.fn(() => undefined),
 }));
 
+// mock-isolation: Agent command fixtures supply skills without filesystem discovery or shared skill caches.
 vi.mock("../skills/loading/workspace-skill-loader.js", () => {
   return {
     prepareWorkspaceSkills: vi.fn<

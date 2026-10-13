@@ -24,6 +24,7 @@ vi.mock("../session-create-service.js", () => ({ createGatewaySession: mocks.cre
 vi.mock("../../sessions/session-state-events.js", () => ({
   recordSessionStateEventAsync: mocks.record,
 }));
+// mock-isolation: Import orchestration fixtures leave transcript persistence to the mocked creation service.
 vi.mock("../../plugin-sdk/session-transcript-runtime.js", () => ({
   withSessionTranscriptWrite: vi.fn(),
 }));

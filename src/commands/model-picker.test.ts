@@ -43,6 +43,7 @@ const loadScopedModelCatalog = vi.hoisted(() =>
   })),
 );
 
+// mock-isolation: Model-picker fixtures use empty profiles without host credential or Keychain discovery.
 vi.mock("../agents/auth-profiles.js", () => ({
   externalCliDiscoveryForProviderAuth: () => ({ mode: "scoped", allowKeychainPrompt: false }),
   ensureAuthProfileStore: vi.fn(() => ({ version: 1, profiles: {} })),

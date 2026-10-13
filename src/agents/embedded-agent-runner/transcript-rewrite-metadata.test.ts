@@ -7,6 +7,7 @@ it("preserves labels targeting asynchronously replayed model and thinking entrie
   const manager = SessionManager.inMemory();
   const first = expectDefined(
     await manager.appendMessageAsync({ role: "user", content: "original", timestamp: 1 }),
+    "original fixture message ID",
   );
   const modelEntryId = await manager.appendModelChange("openai", "test-model");
   await manager.appendLabelChangeAsync(modelEntryId, "model selection");

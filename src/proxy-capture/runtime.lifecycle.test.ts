@@ -23,11 +23,9 @@ import {
   readDebugProxyCaptureSessionEvents,
 } from "./store-readonly.js";
 import { acquireDebugProxyCaptureStoreAsync } from "./store.async.js";
-import { closeDebugProxyCaptureStore } from "./store.sqlite.js";
 
 const roots: string[] = [];
 afterEach(() => {
-  closeDebugProxyCaptureStore();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   resetSecretRedactionRegistryForTest();

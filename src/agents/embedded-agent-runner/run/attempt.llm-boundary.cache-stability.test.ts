@@ -410,10 +410,10 @@ describe("prompt-cache boundary regressions", () => {
         const first = await captureRequest(messages);
         const manager = SessionManager.inMemory();
         for (const message of messages) {
-          manager.appendMessage(message);
+          await manager.appendMessageAsync(message);
         }
-        manager.appendMessage(answer);
-        manager.appendMessage(user("Next run", TS + 60000));
+        await manager.appendMessageAsync(answer);
+        await manager.appendMessageAsync(user("Next run", TS + 60000));
         const policy: TranscriptPolicy = {
           sanitizeMode: "images-only",
           sanitizeToolCallIds: false,

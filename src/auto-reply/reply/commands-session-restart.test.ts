@@ -55,7 +55,8 @@ vi.mock("../../channels/plugins/index.js", () => ({
   normalizeChannelId: (value?: string | null) => value?.trim().toLowerCase() ?? null,
 }));
 
-vi.mock("../../channels/plugins/conversation-bindings.js", () => ({
+vi.mock("../../channels/plugins/conversation-bindings.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../channels/plugins/conversation-bindings.js")>()),
   setChannelConversationBindingIdleTimeoutBySessionKeyAsync: vi.fn(),
   setChannelConversationBindingMaxAgeBySessionKeyAsync: vi.fn(),
 }));

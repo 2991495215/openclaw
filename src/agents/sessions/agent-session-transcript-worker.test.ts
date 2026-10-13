@@ -252,7 +252,7 @@ it("commits streamed and custom messages off the host thread and adopts the comm
   });
 });
 
-it("preserves a newer native view and tool-result state when a worker receipt arrives late", async () => {
+it("preserves a newer view and tool-result state when a worker receipt arrives late", async () => {
   await withOpenClawTestState({ label: "session-delayed-receipt" }, async (state) => {
     const target = {
       agentId: "main",
@@ -291,16 +291,19 @@ it("preserves a newer native view and tool-result state when a worker receipt ar
       content: [{ type: "text" as const, text: "completed" }],
       timestamp: 2,
     });
-    const appendDelayed = async (message: ReturnType<typeof text>, newerWrite: () => void) => {
+    const appendDelayed = async (
+      message: ReturnType<typeof text>,
+      newerWrite: () => Promise<void>,
+    ) => {
       const original = metadataRuntime.withSessionMetadataWorker;
-      const delayed: typeof original = async (options, database, assertCurrent, operation) => {
-        const receipt = await original(options, database, assertCurrent, operation);
-        newerWrite();
+      const delayed: typeof original = async (...args) => {
+        const receipt = await original(...args);
+        await newerWrite();
         return receipt;
       };
       const spy = vi
         .spyOn(metadataRuntime, "withSessionMetadataWorker")
-        .mockImplementation(delayed);
+        .mockImplementationOnce(delayed);
       try {
         return expectDefined(
           await manager.appendMessageAsync(message),
@@ -313,7 +316,7 @@ it("preserves a newer native view and tool-result state when a worker receipt ar
     let newerId: string | undefined;
     const delayedId = await appendDelayed(text("worker reply"), async () => {
       newerId = expectDefined(
-        await manager.appendMessageAsync(text("newer native reply")),
+        await manager.appendMessageAsync(text("newer reply")),
         "Expected appended message",
       );
     });
@@ -323,7 +326,7 @@ it("preserves a newer native view and tool-result state when a worker receipt ar
 
     await appendDelayed(call(["finished", "reused", "cleared"]), async () => {
       await manager.appendMessageAsync(toolResult("finished"));
-      await manager.appendMessageAsync(text("native boundary clears old calls"));
+      await manager.appendMessageAsync(text("assistant boundary clears old calls"));
       await manager.appendMessageAsync(call(["reused"]));
       await manager.appendMessageAsync(toolResult("reused"));
       newerId = expectDefined(

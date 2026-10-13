@@ -133,7 +133,11 @@ describeTelegramDispatch("dispatchTelegramMessage delivery-transcript", () => {
             }),
             __openclaw: { runId },
           };
-          sourceMessageIds.push(await manager.appendMessageAsync(sourceAssistant));
+          const sourceMessageId = await manager.appendMessageAsync(sourceAssistant);
+          if (!sourceMessageId) {
+            throw new Error("Expected the source assistant fixture message ID");
+          }
+          sourceMessageIds.push(sourceMessageId);
           await manager.appendMessageAsync({
             role: "user",
             content: "Queued input",

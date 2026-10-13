@@ -227,6 +227,9 @@ describe("sessionTranscriptHasContent", () => {
   it("ignores abandoned assistants and clears history at reset boundaries", async () => {
     const manager = await SessionManager.openAsync(target, tmpDir);
     const root = await manager.appendMessageAsync({ role: "user", content: "root", timestamp: 1 });
+    if (!root) {
+      throw new Error("Expected the root fixture message ID");
+    }
     await manager.appendMessageAsync(assistantMessage());
     await manager.branchAsync(root);
     await manager.appendMessageAsync({ role: "user", content: "active branch", timestamp: 3 });

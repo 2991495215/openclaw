@@ -143,6 +143,9 @@ async function withPersistentTranscriptFixture(
       content: "original history ".repeat(20),
       timestamp: 1,
     });
+    if (!entryId) {
+      throw new Error("Expected the original fixture message ID");
+    }
     await run({
       entryId,
       request: {

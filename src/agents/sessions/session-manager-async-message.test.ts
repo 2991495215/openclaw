@@ -533,14 +533,15 @@ it("revalidates overtaken keyed replays while retaining fresh committed pending 
       controls,
     ) => {
       const receipt = await withWorker(options, database, assertCurrent, operation, controls);
-      // The retained synchronous SDK can publish before an awaited receipt is adopted.
       newerId = expectDefined(
         await manager.appendMessageAsync(user(nextKey)),
         "Expected appended message",
       );
       return receipt;
     };
-    const spy = vi.spyOn(metadataRuntime, "withSessionMetadataWorker").mockImplementation(delayed);
+    const spy = vi
+      .spyOn(metadataRuntime, "withSessionMetadataWorker")
+      .mockImplementationOnce(delayed);
     try {
       return await manager.appendMessageWithTranscriptAnchorAsync(message);
     } finally {
@@ -590,36 +591,28 @@ it("revalidates overtaken keyed replays while retaining fresh committed pending 
 
 it("fences local navigation changes at worker commit and receipt publication", async () => {
   const { target, manager } = await fixture(state, "navigation-during-append");
-  const seed = expectDefined(
-    await manager.appendMessageAsync(user("navigation-seed")),
-    "Expected seed",
-  );
+  await manager.appendMessageAsync(user("navigation-seed"));
   const tail = expectDefined(
     await manager.appendMessageAsync(user("navigation-tail")),
     "Expected tail",
   );
   const before = await loadTranscriptEvents(target);
-  for (const change of ["branch", "branch-back"] as const) {
-    await manager.branchAsync(tail);
-    const admission = probe.admission(workerAdmission, async (request, grant, admit) => {
-      if (request.stage === "commit") {
-        await manager.branchAsync(seed);
-        if (change === "branch-back") {
-          await manager.branchAsync(tail);
-        }
-      }
-      admit(request, grant);
-    });
-    try {
-      await expect(manager.appendMessageAsync(user(`refused-${change}`))).rejects.toThrow(
-        "Session transcript navigation changed before publication",
-      );
-      expect(manager.getLeafId()).toBe(change === "branch" ? seed : tail);
-      expect(await loadTranscriptEvents(target)).toEqual(before);
-    } finally {
-      admission.mockRestore();
+  const admission = probe.admission(workerAdmission, (request, grant, admit) => {
+    if (request.stage === "commit") {
+      manager.resetLeaf();
     }
+    admit(request, grant);
+  });
+  try {
+    await expect(manager.appendMessageAsync(user("refused-reset"))).rejects.toThrow(
+      "Session transcript navigation changed before publication",
+    );
+    expect(manager.getLeafId()).toBeNull();
+    expect(await loadTranscriptEvents(target)).toEqual(before);
+  } finally {
+    admission.mockRestore();
   }
+  await manager.branchAsync(tail);
 
   const withWorker = metadataRuntime.withSessionMetadataWorker;
   const delayed: typeof withWorker = async (

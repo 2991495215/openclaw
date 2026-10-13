@@ -68,6 +68,7 @@ async function mockAcpSessionMetaUpsert(params: AcpMetaUpsertInput) {
   return result;
 }
 
+// mock-isolation: Manager fixtures own mutable ACP metadata without opening a durable session store.
 vi.mock("../runtime/session-meta.js", () => ({
   listAcpSessionEntries: (params: unknown) => hoistedMocks.listAcpSessionEntriesMock(params),
   readAcpSessionEntryAsync: (params: unknown) => hoistedMocks.readAcpSessionEntryAsyncMock(params),

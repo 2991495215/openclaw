@@ -38,7 +38,8 @@ const deps = {
   safeJsonString: (value: unknown) => (value == null ? undefined : JSON.stringify(value)),
 };
 
-vi.mock("../state/openclaw-state-worker-context.js", () => ({
+vi.mock("../state/openclaw-state-worker-context.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/openclaw-state-worker-context.js")>()),
   captureOpenClawStateWorkerContext: () => ({
     admission: {
       coordinationKey: "synthetic",

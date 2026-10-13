@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { expectDefined } from "@openclaw/normalization-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
@@ -98,36 +99,45 @@ async function appendToolTurns(fixture: Fixture, first: number, count: number): 
   const ids: string[] = [];
   for (let turn = first; turn < first + count; turn += 1) {
     ids.push(
-      await manager.appendMessageAsync({
-        role: "user",
-        content: `ask ${turn}: ${FILLER}`,
-        timestamp: turn * 10 + 1,
-      }),
-      await manager.appendMessageAsync({
-        role: "assistant",
-        content: [{ type: "toolCall", id: `call-${turn}`, name: "read", arguments: {} }],
-        api: "openai-completions",
-        provider: "fixture",
-        model: "model",
-        usage: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: 0,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-        },
-        stopReason: "toolUse",
-        timestamp: turn * 10 + 2,
-      }),
-      await manager.appendMessageAsync({
-        role: "toolResult",
-        toolCallId: `call-${turn}`,
-        toolName: "read",
-        content: [{ type: "text", text: `result ${turn}: ${FILLER}` }],
-        isError: false,
-        timestamp: turn * 10 + 3,
-      }),
+      expectDefined(
+        await manager.appendMessageAsync({
+          role: "user",
+          content: `ask ${turn}: ${FILLER}`,
+          timestamp: turn * 10 + 1,
+        }),
+        "user fixture message ID",
+      ),
+      expectDefined(
+        await manager.appendMessageAsync({
+          role: "assistant",
+          content: [{ type: "toolCall", id: `call-${turn}`, name: "read", arguments: {} }],
+          api: "openai-completions",
+          provider: "fixture",
+          model: "model",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "toolUse",
+          timestamp: turn * 10 + 2,
+        }),
+        "assistant fixture message ID",
+      ),
+      expectDefined(
+        await manager.appendMessageAsync({
+          role: "toolResult",
+          toolCallId: `call-${turn}`,
+          toolName: "read",
+          content: [{ type: "text", text: `result ${turn}: ${FILLER}` }],
+          isError: false,
+          timestamp: turn * 10 + 3,
+        }),
+        "tool result fixture message ID",
+      ),
     );
   }
   return ids;

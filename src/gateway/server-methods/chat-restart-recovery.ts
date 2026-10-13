@@ -12,7 +12,7 @@ import {
 } from "../../config/sessions.js";
 import {
   resolvePreparedSessionEntryResetFreshness,
-  resolveNativeSessionEntryResetFreshness,
+  resolveSessionEntryResetFreshness,
 } from "../../config/sessions/entry-freshness.js";
 import type { SessionLifecycleTimestamps } from "../../config/sessions/lifecycle.types.js";
 import {
@@ -358,7 +358,7 @@ export function resolveRestartSafeChatAdmission(params: {
     let freshness: ReturnType<typeof resolvePreparedSessionEntryResetFreshness>;
     if (isIncognitoSessionKey(params.sessionKey)) {
       // Process-held incognito freshness retains its existing native owner.
-      freshness = resolveNativeSessionEntryResetFreshness(freshnessScope);
+      freshness = resolveSessionEntryResetFreshness(freshnessScope);
     } else {
       if (params.lifecycleTimestamps === undefined) {
         throw new Error("Restart-safe chat freshness was not prepared; retry.");

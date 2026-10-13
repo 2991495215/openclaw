@@ -156,21 +156,21 @@ describe("SessionManager branch replacement", () => {
     const sessionManager = await SessionManager.openAsync(scope, dir);
     const sourceTarget = sessionManager.getSessionTarget();
     expect(sourceTarget).toMatchObject(scope);
-    const observedBranches: unknown[] = [];
-    const stop = onSessionIdentityMutation(async (mutation) => {
+    const observedBranches: Array<Promise<unknown>> = [];
+    const stop = onSessionIdentityMutation((mutation) => {
       if (mutation.kind !== "replace" || !mutation.current.sessionKeys.includes(sessionKey)) {
         return;
       }
-      observedBranches.push({
+      const observedIdentity = {
         sessionId: sessionManager.getSessionId(),
         target: sessionManager.getSessionTarget(),
-        durableEntries: (
-          await SessionManager.openAsync({
-            ...scope,
-            sessionId: mutation.current.sessionId!,
-          })
-        ).getEntries(),
-      });
+      };
+      observedBranches.push(
+        SessionManager.openAsync({
+          ...scope,
+          sessionId: mutation.current.sessionId!,
+        }).then((manager) => ({ ...observedIdentity, durableEntries: manager.getEntries() })),
+      );
     });
     let branchedMarker: string | undefined;
     try {
@@ -182,7 +182,7 @@ describe("SessionManager branch replacement", () => {
 
     expect(branchedMarker).toBe(branchedSessionId);
     expect(branchedSessionId).not.toBe(sessionId);
-    expect(observedBranches).toEqual([
+    expect(await Promise.all(observedBranches)).toEqual([
       {
         sessionId: branchedSessionId,
         target: { ...sourceTarget, sessionId: branchedSessionId },
