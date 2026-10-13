@@ -166,14 +166,26 @@ export async function prepareCliSystemPrompt(
   });
 }
 
-export function prependCliSessionDriftUserContext(
+export function prependCliSessionResumeUserContext(
   context: RunCliAgentParams["currentInboundContext"],
   reusableCliSession: CliReusableSession,
+  preservedTurnsContext?: string,
 ): RunCliAgentParams["currentInboundContext"] {
-  if (reusableCliSession.mode !== "reuse-with-drift") {
+  const completionContext =
+    reusableCliSession.mode === "reuse" || reusableCliSession.mode === "reuse-with-drift"
+      ? preservedTurnsContext
+      : undefined;
+  const note = [
+    reusableCliSession.mode === "reuse-with-drift"
+      ? buildCliSessionDriftNote(reusableCliSession.drift.reasons)
+      : undefined,
+    completionContext,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n\n");
+  if (!note) {
     return context;
   }
-  const note = buildCliSessionDriftNote(reusableCliSession.drift.reasons);
   if (!context) {
     return { text: note };
   }

@@ -147,7 +147,7 @@ import { runWithCliPreparationSource } from "./prepare-source.js";
 import { resolveCliRuntimeToolPolicy } from "./prepare-tool-policy.js";
 import {
   composeCliPromptContext,
-  prependCliSessionDriftUserContext,
+  prependCliSessionResumeUserContext,
   prepareCliSystemPrompt,
   prepareCliTurnPromptContext,
 } from "./prompt-context.js";
@@ -1510,6 +1510,8 @@ async function prepareCliRunContextWithinReadFence(
             sessionTarget: params.sessionTarget,
             allowRawTranscriptReseed,
             rawTranscriptReseedReason,
+            nativeSessionId: reusableCliSessionId,
+            provider: params.provider,
           });
     const effectiveReplyGuidance =
       skipsTurnPreparation || params.isolatedCompletion
@@ -1522,6 +1524,7 @@ async function prepareCliRunContextWithinReadFence(
     const finalizedTranscriptPrompt =
       (params.finalizePromptForResolvedTools ||
         sessionPromptContext?.durableContext ||
+        sessionPromptContext?.preservedTurnsContext ||
         effectiveReplyGuidance) &&
       params.transcriptPrompt === undefined
         ? params.prompt
@@ -1574,9 +1577,11 @@ async function prepareCliRunContextWithinReadFence(
     }
     let historyPromptCurrentTurn = preparedPrompt;
     if (!skipsTurnPreparation) {
-      const currentInboundContext = prependCliSessionDriftUserContext(
+      // Missed exchanges are saved conversation text: native reuse alone cannot replay them.
+      const currentInboundContext = prependCliSessionResumeUserContext(
         params.currentInboundContext,
         reusableCliSession,
+        cliHistoryWriter ? sessionPromptContext?.preservedTurnsContext : undefined,
       );
       const renderCurrentPrompt = (prompt: string, preferResumableText = false) =>
         annotateInterSessionPromptText(
