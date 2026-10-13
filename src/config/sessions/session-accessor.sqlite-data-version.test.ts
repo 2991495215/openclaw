@@ -137,7 +137,7 @@ describe("exact session entry read lifetimes", () => {
     await closeOpenClawAgentDatabasesAsync(scope.env.OPENCLAW_STATE_DIR);
     parseSessionEntryCalls.mockClear();
 
-    const full = loadSessionEntry({ ...scope, projection: "full" });
+    const full = loadSessionEntry(scope);
     expect(full).toMatchObject(previousEntry);
     expect(full?.deviceFolder).toBeUndefined();
     const listed = listingEntries(scope).get(scope.sessionKey);
@@ -156,7 +156,7 @@ describe("exact session entry read lifetimes", () => {
 
     await upsertSessionEntryCore(scope, { ...full!, label: "Continued after upgrade" });
     await closeOpenClawAgentDatabasesAsync(scope.env.OPENCLAW_STATE_DIR);
-    const continued = loadSessionEntry({ ...scope, projection: "full" });
+    const continued = loadSessionEntry(scope);
     expect(continued).toMatchObject({
       sessionId: previousEntry.sessionId,
       label: "Continued after upgrade",

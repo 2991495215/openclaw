@@ -199,7 +199,7 @@ it.each([
                   }
                 : field === "category-generation"
                   ? { kind: "category", sessionId: "replacement", category: null }
-                  : { kind: "member", sessionId: "replacement", userId: "user", present: true },
+                  : { kind: "member", sessionId: "replacement", identityId: "user", present: true },
           });
         } else if (field === "transcript" || field === "unknown") {
           sessionChanges.emit({
