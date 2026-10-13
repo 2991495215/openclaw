@@ -883,6 +883,8 @@ const config = {
       ignoreBinaries: [
         "lsattr",
         "mint",
+        // Muse Docker setup installs this CLI separately from npm dependencies.
+        "muse",
         "ngrok",
         "open",
         "openclaw",
