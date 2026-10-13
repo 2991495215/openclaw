@@ -27,6 +27,7 @@ const readConfigFileSnapshotForWriteMock = vi.hoisted(() =>
   vi.fn<() => Promise<ConfigSnapshotForWrite>>(),
 );
 vi.mock("../config/io.js", () => ({
+  captureRuntimeConfigAsyncReader: () => async () => loadConfigMock(),
   getRuntimeConfig: loadConfigMock,
   loadConfig: loadConfigMock,
   readConfigFileSnapshotForWrite: readConfigFileSnapshotForWriteMock,
