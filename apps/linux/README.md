@@ -337,6 +337,9 @@ Existing configurations and saved remote connections keep their current startup
 behavior. If automatic setup fails, the app shows the error alongside the existing
 local and remote choices so you can retry or connect elsewhere. Windows uses
 the bundled Windows runtime, PowerShell installer, and CLI-owned service setup.
+After a setup failure, retry checks the current local Gateway before installing
+anything; a service that already started is reconnected without replacing it.
+The separate **Install OpenClaw** action remains available if the CLI needs repair.
 
 The manual setup screen explains what OpenClaw can do and asks where your
 assistant should live:

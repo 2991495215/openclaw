@@ -65,6 +65,7 @@ let discoveryPending = false;
 let discoverySignature = null;
 let firstRunBuild = null;
 let firstRunPhase = null;
+let localSetupFailed = false;
 let selectedConnection = "local";
 let remoteTransport = "direct";
 let remoteConnectionPending = false;
@@ -307,6 +308,7 @@ async function connect(action) {
         elements.channel.value = firstRunBuild.platform === "windows" ? "stable" : "dev";
       }
       if (snapshot.setupError) {
+        localSetupFailed = true;
         renderConnectionChoices(snapshot.setupError);
       } else {
         renderWelcome();
@@ -400,7 +402,7 @@ function syncRemoteAuthentication() {
 }
 
 async function continueLocalSetup() {
-  if (firstRunPhase === "unconfigured") {
+  if (firstRunPhase === "unconfigured" || localSetupFailed) {
     render({
       activity:
         firstRunBuild?.platform === "freebsd"
@@ -413,7 +415,7 @@ async function continueLocalSetup() {
     try {
       await invoke("bootstrap", { explicitLocal: true });
     } catch (error) {
-      renderRetry(friendlyError(error));
+      renderRetry(friendlyError(error), continueLocalSetup);
     }
     return;
   }
@@ -610,22 +612,28 @@ async function install() {
     elements.logStatus.textContent = "COMPLETE";
   } catch (error) {
     const message = friendlyError(error);
+    // Setup may have installed the service before dashboard readiness failed.
+    localSetupFailed = true;
     elements.logStatus.textContent = "FAILED";
     appendLog(message);
-    render({
-      description: message,
-      dot: "error",
-      eyebrow: "SETUP ISSUE",
-      showInstall: true,
-      title: "OpenClaw needs attention",
-    });
+    renderAction(
+      {
+        actionLabel: "Try again",
+        description: message,
+        dot: "error",
+        eyebrow: "SETUP ISSUE",
+        showInstall: true,
+        title: "OpenClaw needs attention",
+      },
+      continueLocalSetup,
+    );
   } finally {
     elements.installButton.disabled = false;
     elements.channel.disabled = false;
   }
 }
 
-function renderRetry(message) {
+function renderRetry(message, retry = connect) {
   show(elements.logWrap, false);
   renderAction(
     {
@@ -638,7 +646,7 @@ function renderRetry(message) {
       showInstall: true,
       title: "OpenClaw needs attention",
     },
-    connect,
+    retry,
   );
 }
 
