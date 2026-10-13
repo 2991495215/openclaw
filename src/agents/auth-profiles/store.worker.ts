@@ -11,6 +11,7 @@ import {
   withExistingOpenClawStateDatabaseReadOnly,
 } from "../../state/openclaw-state-db-readonly.js";
 import { runOpenClawStateWriteTransaction } from "../../state/openclaw-state-db.js";
+import { personalCredentialPublication } from "../../state/user-model-account-authority.js";
 import {
   encodeUserModelAuthProfile,
   readUserModelAuthProfile,
@@ -68,30 +69,36 @@ export const authProfileOperations = {
     const database = open();
     const options = { ...stateOptions(), database };
     let committed: UserModelAuthProfile | undefined;
-    updateUserModelAuthProfile(
-      input.profileId,
-      (profile) => {
-        if (!isDeepStrictEqual(profile, input.expected)) {
-          return false;
-        }
-        profile.credential = input.next.credential;
-        profile.usageStats = input.next.usageStats;
-        return true;
-      },
-      options,
-      (operation) => {
-        if (operation.stage === "transaction") {
-          requestSqliteWorkerOperationAdmission({ stage: operation.stage, facts: undefined });
-        } else {
-          committed = operation.profile;
-          if (encodeUserModelAuthProfile(committed) !== encodeUserModelAuthProfile(input.next)) {
-            throw new Error("Personal credential codec changed the prepared update");
+    personalCredentialPublication.capture(database.db, () =>
+      updateUserModelAuthProfile(
+        input.profileId,
+        (profile) => {
+          if (!isDeepStrictEqual(profile, input.expected)) {
+            return false;
           }
-          const digest = createHash("sha256").update(stableStringify(committed)).digest("hex");
-          requestSqliteWorkerOperationAdmission({ stage: operation.stage, facts: digest });
-          deferSqliteWorkerCommitReceipt(database.db, digest);
-        }
-      },
+          profile.credential = input.next.credential;
+          profile.usageStats = input.next.usageStats;
+          return true;
+        },
+        options,
+        (operation) => {
+          if (operation.stage === "transaction") {
+            requestSqliteWorkerOperationAdmission({ stage: operation.stage, facts: undefined });
+          } else {
+            committed = operation.profile;
+            if (encodeUserModelAuthProfile(committed) !== encodeUserModelAuthProfile(input.next)) {
+              throw new Error("Personal credential codec changed the prepared update");
+            }
+            const digest = createHash("sha256").update(stableStringify(committed)).digest("hex");
+            requestSqliteWorkerOperationAdmission({ stage: operation.stage, facts: digest });
+            deferSqliteWorkerCommitReceipt(database.db, {
+              digest,
+              personalCredentials: personalCredentialPublication.capture(database.db, () => {})
+                .receipt,
+            });
+          }
+        },
+      ),
     );
     return committed;
   },

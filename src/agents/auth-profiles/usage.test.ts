@@ -431,6 +431,7 @@ describe("markAuthProfileFailure — WHAM-aware Codex cooldowns", () => {
           profileId: "openai:default",
           profileType: "oauth",
           credential: refreshed,
+          readCurrentCredential: null,
         };
       });
       mockLockedUpdatesForStore(store);
@@ -516,6 +517,7 @@ describe("markAuthProfileFailure — WHAM-aware Codex cooldowns", () => {
           profileId: "openai:default",
           profileType: "oauth",
           credential: refreshed,
+          readCurrentCredential: null,
         };
       });
       mockLockedUpdatesForStore(store);
@@ -597,6 +599,7 @@ describe("markAuthProfileFailure — WHAM-aware Codex cooldowns", () => {
         profileId,
         profileType: "oauth",
         credential: refreshed,
+        readCurrentCredential: null,
       };
     });
     mockLockedUpdatesForStore(store);
