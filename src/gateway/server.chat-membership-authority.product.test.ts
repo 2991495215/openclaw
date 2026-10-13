@@ -69,6 +69,14 @@ it(
   "carries current caller, membership and global ownership through transcript persistence and agent dispatch",
   { timeout: 90_000 },
   async () => {
+    const diagnosticStarted = performance.now();
+    const phase = (operation: string) => {
+      console.info(
+        "MEMBERSHIP_AUTHORITY_PHASE",
+        JSON.stringify({ operation, elapsedMs: Math.round(performance.now() - diagnosticStarted) }),
+      );
+    };
+    phase("setup.state.start");
     const state = await createOpenClawTestState({
       label: "chat-membership-authority",
       env: {
@@ -84,6 +92,7 @@ it(
         OPENCLAW_GATEWAY_PASSWORD: undefined,
       },
     });
+    phase("setup.state.done");
     const requests: string[] = [];
     const providerErrors: unknown[] = [];
     let providerReply = "Authorized member reply.";
@@ -135,10 +144,12 @@ it(
     let administrator: Awaited<ReturnType<typeof connectGatewayClient>> | undefined;
     let backingClient: Awaited<ReturnType<typeof connectGatewayClient>> | undefined;
     try {
+      phase("setup.provider.start");
       await new Promise<void>((resolve, reject) => {
         providerServer.once("error", reject);
         providerServer.listen(0, "127.0.0.1", resolve);
       });
+      phase("setup.provider.done");
       const address = providerServer.address();
       if (!address || typeof address === "string") {
         throw new Error("fixture provider did not bind");
@@ -218,7 +229,9 @@ it(
           },
         },
       } satisfies OpenClawConfig;
+      phase("setup.port.start");
       const portClaim = await acquireTestPortBlock({ offsets: [0, 1, 2, 3, 4] });
+      phase("setup.gateway.start");
       gateway = await startGatewayWithClient({
         cfg,
         configPath: state.configPath,
@@ -236,11 +249,14 @@ it(
         tlsFingerprint: new X509Certificate(TEST_TLS_CERT_PEM).fingerprint256,
         scopes: ["operator.read", "operator.write"],
       });
+      phase("setup.gateway.connected");
       await gateway.server.startupSettled;
+      phase("setup.gateway.settled");
       // Keep both fixture agents resident while alternating owners; the runtime retains one idle executor.
       for (const agentId of ["main", "work"]) {
         agentExecutions.push(captureOpenClawAgentDatabaseExecution({ agentId, env: state.env }));
       }
+      phase("setup.administrator.start");
       administrator = await connectGatewayClient({
         url: `wss://127.0.0.1:${gateway.port}`,
         clientName: GATEWAY_CLIENT_NAMES.CONTROL_UI,
@@ -257,6 +273,7 @@ it(
           path: state.statePath("test-device-identities", "administrator.sqlite"),
         }),
       });
+      phase("setup.administrator.done");
       const self = await gateway.client.request<UsersSelfResult>("users.self", {});
       const memberProfileId = self.profile.id;
       const sessionKey = `agent:main:member-authority-${randomUUID()}`;
@@ -270,8 +287,10 @@ it(
         createdActor: { type: "human", source: "profile", id: owner.id },
       });
       await addSessionMember(scope, { identityId: memberProfileId, addedBy: owner.id });
+      phase("setup.done");
 
       const allowedMessage = "Persist and dispatch this authorized member turn.";
+      phase("authorized.turn.start");
       const accepted = await gateway.client.request<{ runId: string; status: string }>(
         "chat.send",
         {
@@ -282,11 +301,13 @@ it(
         },
       );
       expect(accepted.status).toBe("started");
+      phase("authorized.turn.wait.start");
       const acceptedTerminal = await gateway.client.request<{ status: string }>(
         "agent.wait",
         { runId: accepted.runId, timeoutMs: 30_000 },
         { timeoutMs: 35_000 },
       );
+      phase("authorized.turn.wait.done");
       const acceptedDiagnostic = redactSensitiveText(JSON.stringify(acceptedTerminal), {
         mode: "tools",
       }).slice(0, 4_000);
@@ -297,9 +318,11 @@ it(
       expect(requests).toHaveLength(1);
       expect(requests[0]).toContain(allowedMessage);
       expect(providerErrors).toEqual([]);
+      phase("authorized.turn.done");
 
       const transcriptBeforeDeniedTurn = structuredClone(await loadTranscriptEvents(scope));
       for (const change of ["membership revoked", "session replaced"] as const) {
+        phase(`revocation.${change}.start`);
         await addSessionMember(scope, { identityId: memberProfileId, addedBy: owner.id });
         const heldRead = holdSessionAuthorization(sessionKey);
         const denied = gateway.client.request("chat.send", {
@@ -309,12 +332,14 @@ it(
           idempotencyKey: randomUUID(),
         });
         try {
+          phase(`revocation.${change}.hold.wait`);
           await Promise.race([
             heldRead.entered,
             denied.then(() => {
               throw new Error("chat.send completed before its authorization was held");
             }),
           ]);
+          phase(`revocation.${change}.hold.entered`);
           expect(requests).toHaveLength(1);
           expect(await loadTranscriptEvents(scope)).toEqual(transcriptBeforeDeniedTurn);
           if (change === "membership revoked") {
@@ -327,8 +352,11 @@ it(
               createdActor: { type: "human", source: "profile", id: owner.id },
             });
           }
+          phase(`revocation.${change}.write.done`);
           heldRead.resume();
+          phase(`revocation.${change}.hold.released`);
           await expect(denied).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+          phase(`revocation.${change}.denied`);
         } finally {
           heldRead.resume();
           await Promise.allSettled([denied]);
@@ -343,7 +371,9 @@ it(
         }
         expect(requests).toHaveLength(1);
         expect(providerErrors).toEqual([]);
+        phase(`revocation.${change}.done`);
       }
+      phase("revocation.later.start");
       await removeSessionMember(scope, memberProfileId);
       await expect(
         gateway.client.request("chat.send", {
@@ -356,6 +386,7 @@ it(
       expect(await loadTranscriptEvents(scope)).toEqual(transcriptBeforeDeniedTurn);
       expect(requests).toHaveLength(1);
       expect(providerErrors).toEqual([]);
+      phase("revocation.later.done");
 
       // Reset through a separate administrator; member turns must retain their narrow scopes.
       // The public lifecycle owner clears prior turns and retains only the reset marker.
@@ -367,6 +398,7 @@ it(
         for (const withAttachment of [false, true]) {
           if (resetGlobalSessions) {
             for (const agentId of [first, second]) {
+              phase(`global.${first}.${withAttachment}.${agentId}.reset.start`);
               await expect(
                 administrator.request("sessions.reset", { key: "global", agentId }),
               ).resolves.toMatchObject({ ok: true });
@@ -382,6 +414,7 @@ it(
                   },
                 ],
               });
+              phase(`global.${first}.${withAttachment}.${agentId}.reset.done`);
             }
           }
           resetGlobalSessions = true;
@@ -393,6 +426,8 @@ it(
           const attachmentRefs = new Map<string, string>();
           for (const method of ["chat.send", "agent"] as const) {
             for (const agentId of [first, second]) {
+              const turn = `global.${first}.${withAttachment}.${method}.${agentId}`;
+              phase(`${turn}.start`);
               const otherAgentId = agentId === "main" ? "work" : "main";
               const message = `${markers[agentId]}_${method}: preserve this owner's global chat.`;
               providerReply = `${markers[agentId]}_${method}_REPLY`;
@@ -420,11 +455,13 @@ it(
                 },
               );
               expect(started.status).toBe(method === "chat.send" ? "started" : "accepted");
+              phase(`${turn}.wait.start`);
               const terminal = await gateway.client.request<{ status: string }>(
                 "agent.wait",
                 { runId: started.runId, timeoutMs: 30_000 },
                 { timeoutMs: 35_000 },
               );
+              phase(`${turn}.wait.done`);
               const terminalDiagnostic =
                 terminal.status === "ok"
                   ? undefined
@@ -513,11 +550,13 @@ it(
                 expect(JSON.stringify(otherHistory.messages)).not.toContain(attachmentRef);
               }
               expect(providerErrors).toEqual([]);
+              phase(`${turn}.done`);
             }
           }
         }
       }
 
+      phase("profile.replacement.start");
       const profileScope = {
         agentId: "main",
         sessionKey: `agent:main:profile-authority-${randomUUID()}`,
@@ -542,23 +581,28 @@ it(
         idempotencyKey: randomUUID(),
       });
       try {
+        phase("profile.replacement.hold.wait");
         await Promise.race([
           profileRead.entered,
           replaced.then(() => {
             throw new Error("Profile-bound chat completed before its authorization was held");
           }),
         ]);
+        phase("profile.replacement.hold.entered");
         linkEmail(proxyUser, replacement.id);
         await expect(
           gateway.client.request<UsersSelfResult>("users.self", {}),
         ).resolves.toMatchObject({
           profile: { id: replacement.id },
         });
+        phase("profile.replacement.write.done");
         profileRead.resume();
+        phase("profile.replacement.hold.released");
         await expect(replaced).rejects.toMatchObject({
           code: "FORBIDDEN",
           message: "Gateway requester authority changed",
         });
+        phase("profile.replacement.denied");
       } finally {
         profileRead.resume();
         await Promise.allSettled([replaced]);
@@ -568,9 +612,11 @@ it(
       expect(requests).toHaveLength(beforeProfileRequests);
       expect(await loadTranscriptEvents(profileScope)).toEqual(beforeProfileReplacement);
       expect(await listSessionPendingInputs(profileScope)).toEqual({ items: [], total: 0 });
+      phase("profile.replacement.done");
 
       // Keep both execution sources alive. Retiring either captured canonical
       // identity revokes authority; merging another profile into the sender does not.
+      phase("profile.backing.connect.start");
       backingClient = await connectGatewayClient({
         url: `wss://127.0.0.1:${gateway.port}`,
         clientName: GATEWAY_CLIENT_NAMES.CONTROL_UI,
@@ -587,6 +633,7 @@ it(
           path: state.statePath("test-device-identities", "backing.sqlite"),
         }),
       });
+      phase("profile.backing.connect.done");
       const backingSelf = await backingClient.request<UsersSelfResult>("users.self", {});
       expect(backingSelf.profile.id).not.toBe(replacement.id);
       await addSessionMember(profileScope, {
@@ -599,6 +646,7 @@ it(
       const steeringHold = holdProviderResponse(steeringMessage);
       const requestOffset = requests.length;
       providerReply = "Accepted profile input completed.";
+      phase("profile.backing.turn.start");
       const backing = await backingClient.request<{ runId: string; status: string }>("chat.send", {
         sessionKey: profileScope.sessionKey,
         message: backingMessage,
@@ -606,11 +654,13 @@ it(
         idempotencyKey: randomUUID(),
       });
       expect(backing.status).toBe("started");
+      phase("profile.backing.wait.start");
       const backingTerminal = administrator.request<{ status: string }>(
         "agent.wait",
         { runId: backing.runId, timeoutMs: 30_000 },
         { timeoutMs: 35_000 },
       );
+      phase("profile.backing.hold.wait");
       await Promise.race([
         backingHold.entered.promise,
         backingTerminal.then((result) => {
@@ -619,6 +669,8 @@ it(
           );
         }),
       ]);
+      phase("profile.backing.hold.entered");
+      phase("profile.steering.turn.start");
       const steering = await gateway.client.request<{ runId: string; status: string }>(
         "chat.send",
         {
@@ -630,6 +682,7 @@ it(
         },
       );
       expect(steering.status).toBe("started");
+      phase("profile.steering.turn.accepted");
       expect(requests).toHaveLength(requestOffset + 1);
       expect(await listSessionPendingInputs(profileScope)).toMatchObject({
         total: 1,
@@ -638,6 +691,7 @@ it(
       expect(JSON.stringify(await loadTranscriptEvents(profileScope))).not.toContain(
         steeringMessage,
       );
+      phase("profile.merge.start");
       linkEmail(aliasEmail, replacement.id);
       const mergedProfile = readUserProfileIdentity(aliasSource.id);
       expect(mergedProfile).toMatchObject({
@@ -649,26 +703,34 @@ it(
       ).resolves.toMatchObject({
         profile: { id: replacement.id },
       });
+      phase("profile.merge.done");
+      phase("profile.steering.wait.start");
       const steeringTerminal = administrator.request<{ status: string }>(
         "agent.wait",
         { runId: steering.runId, timeoutMs: 30_000 },
         { timeoutMs: 35_000 },
       );
       backingHold.resume.resolve();
+      phase("profile.backing.hold.released");
+      phase("profile.steering.hold.wait");
       await Promise.race([
         steeringHold.entered.promise,
         Promise.all([backingTerminal, steeringTerminal]).then((results) => {
           throw new Error(`Accepted steering lost its backing run: ${JSON.stringify(results)}`);
         }),
       ]);
+      phase("profile.steering.hold.entered");
       await expect(
         administrator.request("agent.wait", { runId: backing.runId, timeoutMs: 100 }),
       ).resolves.toMatchObject({ status: "timeout" });
       expect(requests).toHaveLength(requestOffset + 2);
       expect(requests[requestOffset + 1]).toContain(steeringMessage);
       steeringHold.resume.resolve();
+      phase("profile.steering.hold.released");
       await expect(backingTerminal).resolves.toMatchObject({ status: "ok" });
+      phase("profile.backing.wait.done");
       await expect(steeringTerminal).resolves.toMatchObject({ status: "ok" });
+      phase("profile.steering.wait.done");
       const settledMessages = (await loadTranscriptEvents(profileScope)).flatMap((event) => {
         const message = asOptionalRecord(asOptionalRecord(event)?.message);
         return message ? [message] : [];
@@ -688,7 +750,9 @@ it(
       ).toHaveLength(2);
       expect(await listSessionPendingInputs(profileScope)).toEqual({ items: [], total: 0 });
       expect(providerErrors).toEqual([]);
+      phase("profile.done");
     } finally {
+      phase("cleanup.start");
       for (const hold of providerHolds) {
         hold.resume.resolve();
       }
@@ -696,33 +760,48 @@ it(
         try {
           try {
             if (backingClient) {
+              phase("cleanup.backing.start");
               await disconnectGatewayClient(backingClient);
+              phase("cleanup.backing.done");
             }
           } finally {
             if (administrator) {
+              phase("cleanup.administrator.start");
               await disconnectGatewayClient(administrator);
+              phase("cleanup.administrator.done");
             }
           }
         } finally {
           if (gateway) {
             try {
+              phase("cleanup.member.start");
               await disconnectGatewayClient(gateway.client);
+              phase("cleanup.member.done");
             } finally {
               try {
+                phase("cleanup.executors.start");
                 await Promise.all(agentExecutions.map((execution) => execution.release()));
+                phase("cleanup.executors.done");
               } finally {
+                phase("cleanup.gateway.start");
                 await gateway.server.close({ reason: "membership authority proof complete" });
+                phase("cleanup.gateway.done");
               }
             }
           }
         }
       } finally {
+        phase("cleanup.provider.start");
         providerServer.closeAllConnections();
         await new Promise<void>((resolve) => {
           providerServer.close(() => resolve());
         });
+        phase("cleanup.provider.done");
+        phase("cleanup.state.start");
         await state.cleanup();
+        phase("cleanup.state.done");
       }
+      phase("cleanup.done");
     }
   },
 );
