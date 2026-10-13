@@ -1,79 +1,71 @@
 # Web Awesome exit replacement map
 
-Updated on 2026-10-12 against main `08c29ebe2a2f46b0e7c27861a8c9180d5db30e4c`. This is a coordination artifact. Landed work is linked explicitly; prepared patches, test compositions, and private focused cuts are not on main.
+Updated 2026-10-13. Source inspection is pinned to main `8999389dda5419cacccb2485648bacfed0130039`. This coordination note distinguishes landed replacements from open PRs and prepared candidates; it does not claim that Web Awesome is gone.
 
 ## Ownership
 
-- **W-WA-EXIT:** pages except `pages/chat/**` and `pages/new-session/**`; shared styles/theme; `types/`; `app/`; this map; existing `components/lobster-pet*` and `components/session-group-defaults-dialog*` work.
-- **W-WA-EXIT-2:** all other `components/**` and `lib/**` Web Awesome removal. Preserve active lane ownership while their ports are still in progress.
-- **Chat/new-session lanes:** their remaining WA sites. The composer, sidebar/rails/headers, config form, and picker lanes still own their active ports.
+- **W-WA-EXIT:** pages except `pages/chat/**` and `pages/new-session/**`; shared styles/theme, `types/`, `app/`, this map, and existing `components/lobster-pet*` / `components/session-group-defaults-dialog*` work.
+- **W-WA-EXIT-2:** other `components/**` and `lib/**` Web Awesome removal, coordinated with their active owners.
+- **Other active lanes:** chat/new-session, sidebar, config form, picker, and shared primitive ports retain their assigned files. Do not edit another lane's implementation to unblock a consumer.
 
-The native PRIM-B primitives landed in [#169128](https://github.com/openclaw/openclaw/pull/169128), merge `b68c44ca8f3ca9d0d4bccb7b620f867547e4cd55`; the remaining consumer work uses those owners rather than a separate prerequisite branch. The shared JSDOM Popover fixture is on main through [#169466](https://github.com/openclaw/openclaw/pull/169466), merge `14c397b921a5366423fd9eb2e7c17a72c08480be`. The missing W-WA-EXIT-2 API extensions are listed below and must not be confused with the landed base primitives.
+PRIM-B landed in [#169128](https://github.com/openclaw/openclaw/pull/169128), merge `b68c44ca8f3ca9d0d4bccb7b620f867547e4cd55`. The shared JSDOM Popover fixture landed in [#169466](https://github.com/openclaw/openclaw/pull/169466), merge `14c397b921a5366423fd9eb2e7c17a72c08480be`. Consumers use the landed owners; never merge an unlanded lane branch.
 
-## Sites and replacements
+## Landed W-WA-EXIT cuts
 
-| Existing site | Replacement / contract | Owner and state |
+| Surface | Replacement | PR / merge |
 | --- | --- | --- |
-| Activity tool/person filter popovers | `Popover`; existing filter owners and trigger IDs | W-WA-EXIT, prepared |
-| Cron job/run filters and row actions | `Popover` / `Menu`; existing controller actions | W-WA-EXIT, full batch prepared; focused JobsFilterPopover cut private, pending publication proof |
-| Devices row actions | `Menu`; disabled/danger state and action ordering | W-WA-EXIT, prepared |
-| Sessions advanced filters | `Popover`; native inputs, existing grouping/filter owner | W-WA-EXIT, prepared |
-| Usage export and query menus | `Menu`; existing export/query callbacks | W-WA-EXIT, prepared |
-| Worktrees tabs | `Tabs` / `TabPanel`; existing tab owner | W-WA-EXIT, public [#170446](https://github.com/openclaw/openclaw/pull/170446) open at `08114a52cd5c02d4767499bd89ce7fb9dc5f4348`; current successor private, pending proof/publication |
-| Secrets row actions | `Menu`; existing secret action owner | W-WA-EXIT, prepared |
-| Provider picker / group defaults dialog | `Menu`; searchable provider rows, exact trigger IDs | W-WA-EXIT, prepared |
-| Pet dismiss menu | `Menu`, loaded only when opened | W-WA-EXIT, prepared |
-| Plugin settings actions | `Menu` | W-WA-EXIT, prepared |
-| Plugins discovery/settings and Skill workshop standalone panels | Native `div[role=tabpanel]`; existing IDs, labels and keyboard focusability | W-WA-EXIT, landed [#169901](https://github.com/openclaw/openclaw/pull/169901), merge `92f2a8c273372c27f391c4ee44b59fbdf888171e` |
-| Plugin install progress popup | `Popover`; preserve hover/pin intent and shared Escape ownership | W-WA-EXIT, prepared; needs two existing overlay options exposed by W-WA-EXIT-2 |
-| Meetings reader tabs | `Tabs`; manual activation, existing panel IDs | W-WA-EXIT, public [#170314](https://github.com/openclaw/openclaw/pull/170314) open at `ef1f4e22c3609d6494df816f580ff1086b1bed30`; successor private, awaiting the landed Worktrees forced-color style fix |
-| Systems sidebar filter/sort | `Menu`; ordered headings and radio entries | W-WA-EXIT, prepared; requires `MenuEntry` content rows from W-WA-EXIT-2 |
-| Catalog session menu | `Menu`; action-before-close, external return focus | W-WA-EXIT-2, prepared draft handed off |
-| Shared session menu and communication options | `Menu`; embedded controls and nested menus | W-WA-EXIT-2, prepared draft handed off; legacy callers still need migration |
-| Mermaid actions | `Menu`; source/diagram, expand, title, 4 px gap | W-WA-EXIT-2, prepared draft handed off |
-| Board tabs/widget menus | `Tabs` / `Menu`; preserve data-board-tab-id | W-WA-EXIT-2, draft handed off; legacy widget helper still called by active chat header lane |
-| Browser/Terminal active tab panels | Native `div[role=tabpanel]`; preserve IDs/classes/events | W-WA-EXIT-2, prepared draft handed off |
-| Sidebar menus / select-picker / multi-select / agent pickers | Owned Menu/Popover/picker primitives; retain current active-lane contracts | W-WA-EXIT-2 coordinates with assigned sidebar/picker lanes |
-| Config form / language picker | Owned select/menu primitives | Config cut landed [#169046](https://github.com/openclaw/openclaw/pull/169046), merge `b8d31e961294ff7eaf4e1e4b399a3c2ff3eea3f1`, deleting `pages/config/language-select.ts`; language controls landed separately [#170237](https://github.com/openclaw/openclaw/pull/170237), merge `34617209ac59c6d336904d57a3112192b7d2c926` |
-| Chat / new-session menus, pickers, previews | Owned primitives in each rendering consumer | Active chat/new-session lanes |
-| `hub-tabs`, `panel-tab-strip`, modal, tooltip, native-link-menu | PRIM-B owners | PRIM-B; do not duplicate |
+| Activity tool/person filters | `Popover`, existing filter owners | [#170570](https://github.com/openclaw/openclaw/pull/170570), `6dbbb5925efd24e61d7b44637afc12f79eb0ace2` |
+| Plugin settings actions | `Menu`, existing reset/ask actions | [#170569](https://github.com/openclaw/openclaw/pull/170569), `bfb6a4b4be71d7a17176505659e25a10c68cd09a` |
+| Cron job/run filters | `Popover`, existing controller | [#170580](https://github.com/openclaw/openclaw/pull/170580), `1aeab0fc15c2b5e9431d8cde386ae21546af6010` |
+| Secrets row actions | `Menu` | [#170663](https://github.com/openclaw/openclaw/pull/170663), `08c2df68ea6d7ca5ed27aa8a5cc97ab2eb04adb6` |
+| Systems filter/sort | `Menu`, ordered headings and radio entries | [#170786](https://github.com/openclaw/openclaw/pull/170786), `7ae69497bec4d9c37f170f046a3cbbf954ff19a7` |
+| Pet dismiss menu | Lazy `Menu` | [#170568](https://github.com/openclaw/openclaw/pull/170568), `8b1315ac0cb1834b683186d7eab01f18d65b3d66` |
+| Worktrees tabs | `Tabs` / `TabPanel` | [#170446](https://github.com/openclaw/openclaw/pull/170446), `b9bb50052387b504987622b3072c5716d69225f1` |
+| Five implicit theme values | Owned Control UI tokens | [#169696](https://github.com/openclaw/openclaw/pull/169696), `0890636ae1678f639dfb08138e3f8c38b3b25d9a` |
+| Plugin and Skill workshop panels | Native `div[role=tabpanel]` | [#169901](https://github.com/openclaw/openclaw/pull/169901), `92f2a8c273372c27f391c4ee44b59fbdf888171e` |
+| Language controls | Owned select/menu controls | [#170237](https://github.com/openclaw/openclaw/pull/170237), `34617209ac59c6d336904d57a3112192b7d2c926` |
+| Unused stylesheet tokens | Owned selectors/tokens | [#170128](https://github.com/openclaw/openclaw/pull/170128), `335d12304b010b5447dd8cfb96565e8444fbe150` |
+| Devices row actions | `Menu` | [#170784](https://github.com/openclaw/openclaw/pull/170784), `8815aa67b132bad4a710ae7d58afd6b328ce55fa` |
+| Remaining Cron menus | `Menu` | [#170917](https://github.com/openclaw/openclaw/pull/170917), `fd9b49fb7628d490c98e50ac422b1128f7ae8412` |
+| Folder defaults controls | Owned controls | [#170566](https://github.com/openclaw/openclaw/pull/170566), `24a0c839f5ec86d569d2a16531e8e2bb95d77ff2` |
 
-## Remaining primitive API work for W-WA-EXIT-2
+## Open and prepared consumers
 
-At the inspected main pin, `MenuProps.triggerAttributes` is still absent. Checkbox/radio entries, `checked`, and per-item `closeOnSelect` are available. `MenuItem.content` is consumed only for nested-menu children: leaf items still render a label and optional details, so arbitrary leaf rich/content rows are absent. Root Menu children do not supply that leaf-row contract.
+| Surface | Replacement / retained contract | Current state |
+| --- | --- | --- |
+| Meetings reader tabs | `Tabs`, manual activation and existing panel IDs | [#170314](https://github.com/openclaw/openclaw/pull/170314), head `501dadc7846051d0ca0dbe53f81c5525250b8241`; exact-head CI running. Prior auto request was explicitly cancelled; use native replacement recovery after completed green proof. |
+| Usage query filters | `Menu`, existing query owner and callbacks | [#170567](https://github.com/openclaw/openclaw/pull/170567), head `fd66504f291217f808a585589ec17fcbe2e267dc`; blocked by sidebar browser test described below. No merge intent. |
+| Sessions advanced filters | `Popover`, native inputs and existing filter owner | [#170565](https://github.com/openclaw/openclaw/pull/170565); hosted CI passed, native checkout recovery remains blocked by a missing transition journal for two archive E2E files. No manual journal repair or new namespace. |
+| Provider picker | Searchable `Menu`, preserve selected-option focus | [#170785](https://github.com/openclaw/openclaw/pull/170785); selected Qwen incorrectly focuses Google on keyboard reopen. Needs shared Menu focus fix. |
+| Group mode menu | `Menu`, preserve exact trigger ID | Prepared; Folder prerequisite landed. Still needs typed explicit trigger ID. |
+| Usage export | `Menu`, existing export callbacks and busy state | Prepared; needs Usage filter cut and typed trigger `aria-busy`. |
+| Plugin install progress | `Popover`, preserve hover/pin intent and shared Escape owner | Prepared; needs outside-pointer/outside-focus options. Closing-phase guard and targeted E2E change are prepared, not proven on final owner API. |
+| Catalog / session menus / communication options | `Menu`, action-before-close, nested controls and return focus | W-WA-EXIT-2 and current session-menu owners. |
+| Mermaid / Board actions and tabs | `Menu` / `Tabs`, preserve selectors | W-WA-EXIT-2 and Board owner. |
+| Browser/Terminal panels | Native `div[role=tabpanel]`, preserve IDs/classes/events | W-WA-EXIT-2 with current viewport owners. |
+| Sidebar / shared pickers | Owned Menu/Popover/picker primitives | Sidebar and PRIM-C2 owners; active work must land on main first. |
+| Chat / new-session menus and previews | Owned primitives in each renderer | Active chat/new-session lanes. |
 
-`dismissOutsidePointer` and `dismissOutsideFocus` already belong to lower-level `OverlayOptions`, but neither Menu nor Popover exposes caller forwarding. Plugin install progress still needs Popover forwarding; full Cron and Usage menu cuts still need trigger metadata for titles and `aria-busy`. The focused JobsFilterPopover cut uses the existing external anchor and Popover handle, so it does not depend on these gaps.
+Usage's failed case is `app-sidebar-session-filter.browser.test.ts > sidebar session filter popover > keeps keyboard navigation, focus and surface inside the viewport at 390 px (rtl)`: the first Filter opening expects `[false,true]` and observed `[false,true,false,true]`. The same test passed on the latest inspected scheduled main run `38439503520` at `838c6ada7dc9d657098b552eb846d8e5f176b79e`; this is **not established as inherited**. Ownership routing is pending; do not weaken the assertion or use an inherited-failure exception without new proof. PRIM-C2 also changes this test for its new picker occlusion contract; that unlanded change is not proof of the current failure's cause.
 
-The page drafts consume these narrow extensions. Their prepared patches live on the shared host; copy/review them rather than starting another implementation.
+## Remaining shared primitive API work
 
-| Patch | Contract |
-| --- | --- |
-| `/tmp/w-wa-exit-native-api-b285afec.patch` | Menu item `title` and typed HTML/data attributes; constrained trigger attributes and stable trigger ID; live inherited CSS direction, including changes after mount; refresh placement when opening. Historical prepared patch; rebase and review against the landed primitive owner before use. |
-| `/tmp/session-menu-menu-entry.patch` | Ordered discriminated `MenuEntry` content rows; per-submenu open callback; nested metadata forwarding; deduplicate repeated close notifications on disposal. |
-| `/tmp/solid2-wa-exit-popover-dismiss-options.patch` | Forward existing `dismissOutsidePointer` / `dismissOutsideFocus` options through Popover. Defaults unchanged. Install progress sets both false while retaining shared Escape handling. |
-| Board draft's separate Tabs patch | Typed attributes before owned tab attributes, solely to retain existing `data-board-tab-id` selectors. |
+At the inspected main pin, Menu supports checkbox/radio entries, `checked`, `closeOnSelect`, ordered `MenuEntry` content rows, and constrained `triggerAttributes` (`title`, `style`, `tabindex`, `aria-hidden`, plus `data-*`). These are already available; do not reimplement them.
 
-Do not restore removed reactive projection scaffolding: adopt only a thin projection with its first production caller. The current drafts retain their existing domain owners.
+| Missing contract | Consumer | Required owner change |
+| --- | --- | --- |
+| Explicit root trigger ID | Group mode menu | Add a typed trigger-ID contract without overwriting root `data-value`; nested trigger IDs remain authoritative. |
+| Typed trigger `aria-busy` | Usage export | Extend the constrained trigger attribute type. |
+| Outside-pointer and outside-focus dismissal options | Plugin install progress | Forward existing `OverlayOptions.dismissOutsidePointer` / `dismissOutsideFocus` through Popover, preserving defaults and Escape behavior. |
+| Selected-item focus on keyboard reopen | Provider picker | Fix shared Menu navigation/focus ownership; no consumer DOM focus workaround. |
 
-The final Menu contract must preserve an explicit root `triggerAttributes.id` and the root caller's `data-value`; nested item IDs remain authoritative for nested triggers. The earlier W-WA-EXIT-2 draft preserved root `data-value` but lacked the stable ID; the frozen nested-menu composition supported the ID but overwrote the root value with `undefined`. These are historical draft defects, not descriptions of a landed trigger-attributes API. Owner handoff: `/tmp/w-wa-exit-menu-contract-handoff.md`. Resolve this in the primitive owner before final page proof.
+Pinned main blobs: Menu `e73cb12906d5237cdf65f79b4ba504e2a22b3b20`, Popover `b206bbecc4e8f30be9c557e9fefa3dac893a0cef`. Recheck main about every ten minutes. Read unlanded branches only; merge main once the needed contracts land. Historical draft patches do not override the current owner API or count as final proof.
 
-## Prepared consumer patches and proof locations
+## Theme and final package removal
 
-- W-WA-EXIT production branch: `solid2/w-wa-exit`; first page batch is still uncommitted. Recovery patch: `/tmp/w-wa-exit-first-current-main.patch`.
-- Page follow-ups: `/tmp/openclaw-wa-meetings.patch`, `/tmp/solid2-wa-exit-plugin-actions.patch`. Systems page changes are the `pages/systems/**` and matching styles hunks within `/tmp/openclaw-wa-exit-misc.patch`.
-- W-WA-EXIT-2 handoff: `/tmp/w-wa-exit-mermaid.patch`, `/tmp/openclaw-wa-viewports.patch`, Catalog hunks in `/tmp/openclaw-wa-exit-misc.patch`, and `/tmp/session-menu-wa-exit.patch`. The session-menu worker is preserving its final test migration and reporting remaining proof. Board worker is preserving its draft separately.
-- Shared native test helper: `/tmp/w-wa-exit-menu-helper.ts` (also staged as `ui/src/test-helpers/menu.ts` in the first worktree). It opens/selects real native controls rather than dispatching synthetic WA events. Coordinate one owner for this helper.
-- Historical test-only composition: `/tmp/openclaw-wa-exit-next`, based on main `112c4900cf36a`, with exact PRIM-B prerequisite files plus the proposed extensions. It preserves main's Solid rc.14 pins; only the three already-approved Zag dependency pins were added for proof. **Do not publish this composition or count it as a main merge.**
+The five formerly implicit values are already owned by Control UI:
 
-Initial first-batch tests, typecheck, focused E2E, native overlay suites, and screenshots were exercised on an earlier exact PRIM-B composition. The retained historical composition reported Mermaid's ten existing unit cases passing. Final page proof must use the actual landed primitives and exact current main input, with any required W-WA-EXIT-2 extensions integrated explicitly. Earlier composition proof does not establish current-main consumer readiness. Native-menu close/dispose regression and focused session-menu tests also have prepared proof; preserve the reported exact source identity.
-
-The focused Cron patch and readiness record remain at `/tmp/w-wa-exit-cron-popover-only.lqi8azi9/cron-jobs-popover-only.patch` and `/tmp/w-wa-exit-cron-popover-only.lqi8azi9/readiness.json`. Its private signed candidate includes main `e78a253059eb07d70ea3f7140e1c4e9b9fadc383`, changes only `pages/cron/view-jobs-filter.tsx` and `styles/cron.css`, and removes the caller's duplicate Popover visibility owner. It is unpublished; runtime/browser publication proof is still pending. The public Meetings and Worktrees PRs above are open, not landed; their successors remain private. Meetings waits for the Worktrees forced-color style fix to land before successor proof. The coordinator owns the remaining proof and publication.
-
-## Theme and final removal
-
-The five previously implicit values and the stylesheet consumer cutover landed in [#169696](https://github.com/openclaw/openclaw/pull/169696), merge `0890636ae1678f639dfb08138e3f8c38b3b25d9a`:
-
-| Owned token | Value |
+| Token | Value |
 | --- | --- |
 | `--control-ui-font-weight-normal` | `400` |
 | `--control-ui-font-weight-semibold` | `500` |
@@ -81,12 +73,8 @@ The five previously implicit values and the stylesheet consumer cutover landed i
 | `--control-ui-focus-ring` | `solid 0.1875rem var(--ring)` |
 | `--control-ui-focus-ring-offset` | `0.0625rem` |
 
-The landed stylesheet cutover covers `styles/select-picker.css`, `styles/sidebar-menus.css`, and `styles/chat/composer.css`. The landed PRIM-B owner replaces the old tooltip implementation. Theme proof matched eight computed-style profiles and twelve screenshot pairs; startup JS gzip fell from 410,332 to 410,315 B.
+The completed AST inventory at main `8999389dda5419cacccb2485648bacfed0130039` counts **150 production WA tags**: chat 86, components 41, new-session 5, plugins 1, Usage 8, model setup 2, Sessions 1, Board 4, and Meetings 2. This includes other active lanes and does not establish zero usage. The exit condition is zero remaining consumers on main.
 
-The remaining unused stylesheet-token cleanup landed in [#170128](https://github.com/openclaw/openclaw/pull/170128), merge `335d12304b010b5447dd8cfb96565e8444fbe150`. Its reported proof covers 32 captured frames; startup JS gzip changed from 411,170 to 411,158 B (−12 B). This is a separate measured input from the Theme proof above.
+Only then remove Web Awesome from `ui/package.json` and regenerate the lockfile; remove its 3,096-line patch, workspace patch entry, checker/README references, theme import, `wa-light`/`wa-dark` bootstrap and mock toggles, WA token bridges/selectors/types/registrations, and PostCSS workaround/test/config references. Preserve live custom-event ABIs such as AgentFilePreview `wa-show`/`wa-hide` until their callers are cut over. The pet scene's stale `wa-button` obstacle selector also belongs in the final sweep. Regenerate the boot manifest through its owner.
 
-The retained main AST inventory at exact pin `e78a253059eb07d70ea3f7140e1c4e9b9fadc383` counts **190 production WA tags** across `ui/src`, `extensions/workboard/browser`, and `extensions/x/src`; its artifact is `/tmp/w-wa-exit-main-e78-inventory.json`. Main has since advanced to the pin in this map's opening; no newer inventory was run for this static refresh. The historical partial test composition counted **162** before session-menu and Board follow-ups. Neither count establishes zero usage on main. **The exit condition is zero remaining WA consumers on main**, followed by the dependency and bootstrap removal below.
-
-Only after all consumers are gone: remove Web Awesome from `ui/package.json` and regenerate the lockfile; remove its workspace patch entry, patch file/README/checker references; theme import; `wa-light` / `wa-dark` bootstrap toggles; WA token bridges/selectors/types/registrations; PostCSS workaround and its tests/config references. Regenerate the boot manifest through its owner. Final proof includes themed/RTL/large-text/forced-color/reduced-motion styles, Chromium/WebKit overlay contracts, UI build and startup measurement.
-
-The current worker rules permit 450,000 B gzip startup JS and two startup CSS requests during migration. Preserve lazy boundaries, report both measurements, add `ci:full` before landing a run that changes overlays/focus, and attribute inherited reds by exact failing test name against the latest scheduled main run (or reproduce on the merge base).
+Current startup budget: **374,285 B gzip JS and one startup CSS request**. Keep lazy boundaries. Use `ci:full` for overlay/focus changes and let PR CI run broad proof. Local proof is types plus the few directly changed test files; no local E2E batteries, repeat suites, Testbox waiting, or parity runs. Visual changes still need a few inspected, synthetic before/after captures. Attribute red checks by exact test name against the latest scheduled main run. Never bypass native landing guards.
