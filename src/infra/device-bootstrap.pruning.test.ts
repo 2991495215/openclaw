@@ -85,6 +85,7 @@ describe("device setup completion pruning", () => {
       const recordedAtMs = Date.now();
       const clock = createGatewaySchedulerClock(recordedAtMs);
       let scheduler = createTestGatewayScheduler(clock.clock);
+      const dateNow = vi.spyOn(Date, "now").mockImplementation(clock.clock.now);
       const onError = vi.fn();
       const readRetainedSetupIds = () =>
         openOpenClawStateDatabase()
@@ -145,6 +146,7 @@ describe("device setup completion pruning", () => {
         expect(readRetainedSetupIds()).toEqual([]);
         expect(onError).not.toHaveBeenCalled();
       } finally {
+        dateNow.mockRestore();
         await scheduler.stop();
       }
     });
