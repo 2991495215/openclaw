@@ -41,6 +41,7 @@ import {
   releaseClaimIfOwned,
   requireActivePlacement,
   resolvePlacementIdentity,
+  recoverInterruptedWorkerTurn,
   resolveWorkerPlacementRuntimeOverride,
   waitForPendingWorkerResult,
   waitForInitialWorkerPlacement,
@@ -73,6 +74,7 @@ type WorkerTurnLauncherOptions = {
     identity: ReturnType<typeof resolvePlacementIdentity>,
   ) => Promise<WorkerSessionWorkspace>;
   reconcileActivePlacement: (environmentId: string) => Promise<void>;
+  isInterruptedTurn?: (placement: WorkerSessionPlacementRecord) => boolean;
   waitForAdmissionNode: (params: {
     placement: ActiveWorkerPlacement;
     signal: AbortSignal;
@@ -216,7 +218,6 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
           sessionKey: identity.sessionKey,
           agentId: identity.agentId,
         });
-      let routablePlacement: WorkerSessionPlacementRecord = current;
       let assertInitialSetupCurrent: (() => void) | undefined;
       // Every admission wait retains the caller's authority, not only initial setup.
       const initialSetupSource = createDynamicSessionSourceAssertion(
@@ -252,6 +253,12 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
         prepared.pendingResult &&
         (prepared.pendingResult.runId !== claim.runId || !current.turnClaim),
       );
+      let routablePlacement = await recoverInterruptedWorkerTurn({
+        ...options,
+        placement: current,
+        turn: inputTurn,
+        assertCurrent: assertAdmissionCurrent,
+      });
       for (;;) {
         if (routablePlacement.state === "local") {
           return await runLocalTurn();
