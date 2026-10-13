@@ -11910,6 +11910,7 @@ describe("ci workflow guards", () => {
       "ios-screenshot-shard",
       "ios-screenshot-evidence",
       "android",
+      "android-release-e2e",
       "android-screenshots",
       "android-access-native",
       "docker-seed-e2e",
