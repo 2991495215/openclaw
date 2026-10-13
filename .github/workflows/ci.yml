@@ -1,5 +1,6 @@
-name: Red-main renderer reveal proof
-run-name: Renderer reveal ${{ inputs.dispatch_id }}
+# Temporary focused proof workflow. Do not merge this workflow into main.
+name: Red-main Stop reply settlement proof
+run-name: Stop reply settlement ${{ inputs.dispatch_id }}
 
 on:
   workflow_dispatch:
@@ -13,99 +14,96 @@ permissions:
   contents: read
 
 concurrency:
-  group: redmain-renderer-reveal-proof
+  group: redmain-stop-reply-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  NODE_VERSION: "24.21.0"
 
 jobs:
-  renderer-reveal-proof:
-    name: Original renderer reveal cases
+  stop-reply:
+    name: Exact slash Stop settlement proof
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 40
     steps:
-      - name: Checkout reviewed candidate
+      - name: Checkout exact reviewed candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 5ed8e6c21f2dba67cb0f33d2562b08e099e5e059
+          ref: 5d9b09f86c713bb5e099863752ded563ee52f08f
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Record candidate and unchanged original tests
+      - name: Verify candidate identity
         shell: bash
         env:
+          EXPECTED_SHA: 5d9b09f86c713bb5e099863752ded563ee52f08f
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 5ed8e6c21f2dba67cb0f33d2562b08e099e5e059
-          proof_dir="$RUNNER_TEMP/renderer-reveal-proof"
-          mkdir -p "$proof_dir"
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          actual_sha="$(git rev-parse HEAD)"
+          test "$actual_sha" = "$EXPECTED_SHA"
+          mkdir -p .artifacts/stop-reply
           {
-            echo "Candidate: $(git rev-parse HEAD)"
+            echo "Candidate: $actual_sha"
             echo "Workflow: $WORKFLOW_SHA"
-            git ls-tree HEAD -- ui/src/pages/chat/components/chat-transcript-virtualizer-host.ts ui/src/e2e/chat-collapsed-reply-reveal.e2e.test.ts ui/src/e2e/chat-position-rail.e2e.test.ts ui/src/e2e/chat-reply-preview-recovery.e2e.test.ts
-          } | tee "$proof_dir/provenance.txt"
-          cat "$proof_dir/provenance.txt" >> "$GITHUB_STEP_SUMMARY"
+            git ls-tree HEAD -- ui/src/e2e/chat-stop-owned-exec.real-gateway.e2e.test.ts ui/src/e2e/background-work.real-gateway.test-support.ts
+          } | tee .artifacts/stop-reply/provenance.txt
+          cat .artifacts/stop-reply/provenance.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: Setup Node environment
         uses: ./.github/actions/setup-node-env
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          semantic-checks: "true"
+          node-version: "24.21.0"
           cache-mode: restore
           install-bun: "false"
           dependency-cache: "false"
           frozen-lockfile: "true"
-          vitest-fs-cache: "true"
-          vitest-worker-cache: "false"
-          node-compile-cache: "true"
 
-      - name: Setup Chromium
+      - name: Install Playwright Chromium
         uses: ./.github/actions/setup-playwright-chromium
         with:
           cache-mode: restore
+          compatibility-target: "false"
 
-      - name: Run unchanged original four reveal cases
-        id: original_cases
-        shell: bash
+      - name: Build runtime and Control UI artifacts for real-Gateway test
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
-          OPENCLAW_LOCAL_CHECK: "0"
-          OPENCLAW_VITEST_RUNTIME: node
-          OPENCLAW_CI_TEST_RUNTIME_POLICY: node
-          OPENCLAW_UI_E2E_SKIP_REAL_GATEWAY: "1"
-          OPENCLAW_VITEST_MAX_WORKERS: "1"
-          OPENCLAW_UI_E2E_DIAGNOSTIC_DIR: .artifacts/control-ui-e2e-timeouts/renderer-reveal-proof
+          OPENCLAW_BUILD_PRIVATE_QA: "1"
+          OPENCLAW_RUN_NODE_SKIP_DTS_BUILD: "1"
+        run: pnpm build
+
+      - name: Run exact failing slash Stop case
+        env:
+          OPENCLAW_UI_E2E_ARTIFACT_DIR: .artifacts/control-ui-e2e/real-gateway
+          OPENCLAW_UI_E2E_DIAGNOSTIC_DIR: .artifacts/control-ui-e2e-timeouts/stop-reply
+        shell: bash
         run: |
           set -euo pipefail
           node scripts/run-vitest.mjs run \
-            --config test/vitest/vitest.ui-e2e.config.ts \
+            --config test/vitest/vitest.ui-e2e-prebuilt.config.ts \
             --configLoader runner \
+            --reporter verbose \
             --maxWorkers 1 \
-            --reporter=verbose \
-            ui/src/e2e/chat-collapsed-reply-reveal.e2e.test.ts \
-            ui/src/e2e/chat-position-rail.e2e.test.ts \
-            ui/src/e2e/chat-reply-preview-recovery.e2e.test.ts \
-            -t 'reveals the deep earlier message in standalone work|tracks reader position and keyboard jumps|refreshes the page-carried original after reconnect and keeps source navigation working' \
-            2>&1 | tee "$RUNNER_TEMP/renderer-reveal-proof/original-case.log"
+            ui/src/e2e/chat-stop-owned-exec.real-gateway.e2e.test.ts \
+            -t 'Composer slash Stop' \
+            2>&1 | tee .artifacts/stop-reply/test.log
 
-      - name: Record outcome and verify unchanged sources
-        if: ${{ always() }}
+      - name: Verify unchanged candidate sources
+        if: always()
         shell: bash
-        env:
-          TEST_OUTCOME: ${{ steps.original_cases.outcome }}
         run: |
           set -euo pipefail
-          echo "Original renderer reveal cases: $TEST_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
-          git diff --exit-code -- ui/src/pages/chat/components/chat-transcript-virtualizer-host.ts ui/src/e2e/chat-collapsed-reply-reveal.e2e.test.ts ui/src/e2e/chat-position-rail.e2e.test.ts ui/src/e2e/chat-reply-preview-recovery.e2e.test.ts
+          test "$(git rev-parse HEAD)" = 5d9b09f86c713bb5e099863752ded563ee52f08f
+          git diff --exit-code -- ui/src/e2e/chat-stop-owned-exec.real-gateway.e2e.test.ts ui/src/e2e/background-work.real-gateway.test-support.ts
 
-      - name: Preserve proof logs
-        if: ${{ always() }}
+      - name: Preserve focused proof artifacts
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: redmain-renderer-reveal-proof-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/renderer-reveal-proof/
+          name: redmain-stop-reply-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .artifacts/stop-reply/
+            .artifacts/control-ui-e2e/real-gateway/chat-stop-owned-exec-slash-*/proof.json
+            .artifacts/control-ui-e2e-timeouts/stop-reply/failure-*/failure.public.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 7
