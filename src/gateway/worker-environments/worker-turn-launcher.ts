@@ -25,7 +25,6 @@ import type {
 } from "./placement-store.js";
 import { matchesWorkerPlacementTarget } from "./placement-target.js";
 import { ActiveTurnClaimError } from "./placement-turn-claims.js";
-import { findPendingWorkerWorkspaceResult } from "./placement-workspace-result.js";
 import { WorkerRuntimeRefreshPendingError } from "./provider-runtime-refresh.js";
 import type { WorkerPlacementRedispatch } from "./service-contract.js";
 import type { WorkerSessionWorkspace } from "./session-workspace.js";
@@ -49,10 +48,12 @@ import {
 } from "./worker-turn-admission.js";
 import {
   failHandedOffTurn,
+  prepareWorkerTurnFailure,
   WorkerTurnExecutionError,
   WorkerWorkspaceReconciliationError,
   type ActiveWorkerPlacement,
   type WorkerTurnEnvironmentService,
+  type WorkerTurnPartialIdentity,
 } from "./worker-turn-failure.js";
 import { createWorkerTurnRunOwner, type ActiveWorkerTurn } from "./worker-turn-run-owner.js";
 import { AcceptedWorkspacePublicationIndeterminateError } from "./workspace-accepted-publication.js";
@@ -85,6 +86,7 @@ type WorkerTurnLauncherOptions = {
   redispatchPlacement: WorkerPlacementRedispatch;
   prepareAcceptedWorkspacePublication?: (claim: WorkerSessionTurnClaim) => Promise<void>;
   publishAcceptedWorkspace?: (claim: WorkerSessionTurnClaim) => Promise<void>;
+  persistAbandonedPartial?: (claim: WorkerTurnPartialIdentity) => Promise<void>;
 };
 
 export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLauncherOptions) {
@@ -633,9 +635,10 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
               requireActivePlacement(reconciled);
             }
           }
-          const pendingWorkspaceResult = await findPendingWorkerWorkspaceResult(
+          const pendingWorkspaceResult = await prepareWorkerTurnFailure(
             options.placements,
-            turnClaim,
+            { ...identity, ...turnClaim },
+            handedOff && !remoteExec ? options.persistAbandonedPartial : undefined,
           );
           if (pendingWorkspaceResult) {
             if (turnClaim.owner.kind === "local") {
