@@ -166,6 +166,8 @@ async function convertAnthropicMessages(
     profile: "provider" | "transport";
     /** Emitted indexes of transient carriers that cannot anchor the cached prefix. */
     cacheBreakpointOptOutMessageIndexes?: Set<number>;
+    /** Stable content length when transient context shares a tool-result message. */
+    cacheBreakpointBlockLimits?: Map<number, number>;
   },
 ): Promise<AnthropicWireMessage[]> {
   const params: AnthropicWireMessage[] = [];
@@ -236,21 +238,41 @@ async function convertAnthropicMessages(
           continue;
         }
       }
-      appendMessage({
-        role: operatorMessage ? "system" : "user",
-        content: operatorMessage
-          ? typeof content === "string"
-            ? [{ type: "text", text: content }]
-            : content.filter((block) => block.type === "text")
-          : content,
-        ...(operatorMessage?.turnScoped ? { clear_at: "next_user_message" as const } : {}),
-      });
       const runtimeContextRetained =
         msg.runtimeContext !== undefined
           ? msg.runtimeContext.retained
           : msg.runtimeContextCarrierRetained;
-      if (hasRuntimeContextMarker(msg) && !(runtimeContextRetained ?? modelRetainsRuntimeContext)) {
-        options.cacheBreakpointOptOutMessageIndexes?.add(params.length - 1);
+      const transientRuntimeContext =
+        hasRuntimeContextMarker(msg) && !(runtimeContextRetained ?? modelRetainsRuntimeContext);
+      const previous = params.at(-1);
+      if (
+        !operatorMessage &&
+        transientRuntimeContext &&
+        previous?.role === "user" &&
+        Array.isArray(previous.content) &&
+        previous.content.some((block) => block.type === "tool_result")
+      ) {
+        const index = params.length - 1;
+        // Preserve the tool-result checkpoint before the first transient block.
+        if (!options.cacheBreakpointBlockLimits?.has(index)) {
+          options.cacheBreakpointBlockLimits?.set(index, previous.content.length);
+        }
+        previous.content.push(
+          ...(typeof content === "string" ? [{ type: "text" as const, text: content }] : content),
+        );
+      } else {
+        appendMessage({
+          role: operatorMessage ? "system" : "user",
+          content: operatorMessage
+            ? typeof content === "string"
+              ? [{ type: "text", text: content }]
+              : content.filter((block) => block.type === "text")
+            : content,
+          ...(operatorMessage?.turnScoped ? { clear_at: "next_user_message" as const } : {}),
+        });
+        if (transientRuntimeContext) {
+          options.cacheBreakpointOptOutMessageIndexes?.add(params.length - 1);
+        }
       }
       continue;
     }
@@ -522,6 +544,7 @@ export async function buildAnthropicRequest(
     sessionId: options?.sessionId,
   });
   const cacheBreakpointOptOutMessageIndexes = new Set<number>();
+  const cacheBreakpointBlockLimits = new Map<number, number>();
   const transformed = managed
     ? getAiTransportHost().transformTransportMessages(
         replayPlan.messages,
@@ -539,6 +562,7 @@ export async function buildAnthropicRequest(
     replayThinkingEnabled:
       requiresClaudeAdaptiveThinking(model) || options?.thinkingEnabled === true,
     cacheBreakpointOptOutMessageIndexes,
+    cacheBreakpointBlockLimits,
   });
   if (managed && messages.length === 0) {
     messages.push({ role: "user", content: "." });
@@ -572,6 +596,7 @@ export async function buildAnthropicRequest(
     cacheControl,
     supportsCacheControlOnTools,
     cacheBreakpointOptOutMessageIndexes,
+    cacheBreakpointBlockLimits,
   );
   return { params, toolProjection, replayedCompaction: replayPlan.compaction };
 }
