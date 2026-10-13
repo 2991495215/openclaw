@@ -13,10 +13,11 @@ import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import type {
   OpenAsyncKeyedStoreOptions,
   OpenKeyedStoreOptions,
+  PluginStateActionAuthority,
 } from "openclaw/plugin-sdk/plugin-state-runtime";
 import {
   addChannelAllowFromStoreEntry,
-  createPluginStateKeyedStoreForTests,
+  createPluginStateKeyedStoreV2ForTests,
 } from "openclaw/plugin-sdk/plugin-state-test-runtime";
 import { prepareSkillCommandsForAgents } from "openclaw/plugin-sdk/skill-commands-runtime";
 import { useAutoCleanupTempDirTracker } from "openclaw/plugin-sdk/test-env";
@@ -224,8 +225,11 @@ describe("registered native command routing through the message pipeline", () =>
         ...runtime,
         state: {
           ...runtime.state,
-          openKeyedStore: <T>(options: OpenAsyncKeyedStoreOptions) => {
-            const store = runtime.state.openKeyedStore<T>(options);
+          openKeyedStoreV2: <T>(
+            options: OpenAsyncKeyedStoreOptions,
+            authority?: PluginStateActionAuthority,
+          ) => {
+            const store = runtime.state.openKeyedStoreV2<T>(options, authority);
             if (options.namespace !== TELEGRAM_THREAD_BINDINGS_NAMESPACE) {
               return store;
             }
@@ -278,10 +282,14 @@ describe("registered native command routing through the message pipeline", () =>
           targetKind: "subagent",
           targetSessionKey: sessionKey,
         });
-        const store = createPluginStateKeyedStoreForTests<TelegramThreadBindingRecord>("telegram", {
-          namespace: TELEGRAM_THREAD_BINDINGS_NAMESPACE,
-          maxEntries: TELEGRAM_THREAD_BINDINGS_MAX_ENTRIES,
-        });
+        const store = createPluginStateKeyedStoreV2ForTests<TelegramThreadBindingRecord>(
+          "telegram",
+          {
+            namespace: TELEGRAM_THREAD_BINDINGS_NAMESPACE,
+            maxEntries: TELEGRAM_THREAD_BINDINGS_MAX_ENTRIES,
+          },
+          { assertCurrent() {} },
+        );
         const key = resolveStoredBindingKey(conversation);
         const initial = await store.lookup(key);
         if (!initial) {
