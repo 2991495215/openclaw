@@ -76,6 +76,17 @@ export async function resolveDeviceFolderWorkspaceAccess(
     }
   };
   try {
+    const placements = context?.workerSessionPlacementService;
+    const environments = context?.workerEnvironmentService;
+    placementRead = await placements?.prepareSessionPlacement?.(sessionId);
+    const placement = placementRead
+      ? placementRead.current()
+      : await readSessionWorkerPlacementAsync({ context: context ?? {}, sessionId });
+    if (placement?.state !== "active" || !placements || !environments) {
+      throw new DeviceFolderFilesUnavailableError(
+        "Start this session on its paired device to browse or edit its files.",
+      );
+    }
     if (!metadata && !isIncognitoSessionKey(loaded.canonicalKey)) {
       await withSessionEntryReadOnlyInWorker(
         scope,
@@ -107,18 +118,7 @@ export async function resolveDeviceFolderWorkspaceAccess(
         },
       );
     }
-    const placements = context?.workerSessionPlacementService;
-    const environments = context?.workerEnvironmentService;
-    placementRead = await placements?.prepareSessionPlacement?.(sessionId);
-    const placement = placementRead
-      ? placementRead.current()
-      : await readSessionWorkerPlacementAsync({ context: context ?? {}, sessionId });
     assertSession();
-    if (placement?.state !== "active" || !placements || !environments) {
-      throw new DeviceFolderFilesUnavailableError(
-        "Start this session on its paired device to browse or edit its files.",
-      );
-    }
     const assertCurrent = () => {
       assertSession();
       const current = placementRead

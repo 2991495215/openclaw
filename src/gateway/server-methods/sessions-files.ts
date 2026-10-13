@@ -235,6 +235,9 @@ async function loadSessionFiles(
   }
 > {
   const { storePath, entry, canonicalKey, agentId } = loaded;
+  if (entry?.deviceFolder) {
+    return { files: [], repository: await resolveDeviceFolderWorkspaceAccess(loaded, context) };
+  }
   const metadata = captureSessionEntryMetadataRead({
     storePath,
     sessionKey: canonicalKey,
@@ -285,9 +288,7 @@ async function loadSessionFiles(
     toTranscriptReadScope(target),
     `${agentId}\0${entry.sessionId}\0${target.storePath ?? ""}${sourceIdentity ? `\0${sourceIdentity}` : ""}`,
   );
-  const repository =
-    (await resolveRepositoryWorkspaceAccess(loaded, context)) ??
-    (await resolveDeviceFolderWorkspaceAccess(loaded, context));
+  const repository = await resolveRepositoryWorkspaceAccess(loaded, context);
   return {
     repository,
     root: loaded.root,
