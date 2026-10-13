@@ -1676,6 +1676,7 @@ src/state/openclaw-agent-db-session-provenance.ts
 src/state/openclaw-agent-db-terminal.ts
 src/state/openclaw-agent-db-transaction.ts
 src/state/openclaw-agent-db-validation-cache.ts
+src/state/openclaw-agent-db-validation-receipt.ts
 src/state/openclaw-agent-db.paths.ts
 src/state/openclaw-agent-db.ts
 src/state/openclaw-agent-db.wal.ts
