@@ -7,7 +7,6 @@ afterEach(() => {
   vi.doUnmock("../../../ui/src/e2e/control-ui-e2e-suite.test-support.ts");
   vi.doUnmock("./crabline-transport.ts");
   vi.doUnmock("./gateway-child.ts");
-  vi.doUnmock("./suite-runtime-agent-session.ts");
   vi.resetModules();
 });
 
@@ -22,8 +21,8 @@ it.each(["transport", "gateway-cleanup", "gateway-start", "restart-gateway-clean
     const bodies = new Map<string, () => Promise<void>>();
     const register = (name: string, _options: unknown, body: () => Promise<void>) =>
       bodies.set(name, body);
-    vi.doMock("vitest", () => ({
-      expect,
+    vi.doMock("vitest", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("vitest")>()),
       it: Object.assign(register, { skipIf: () => register }),
     }));
     vi.doMock("node:http", async (importOriginal) => {
@@ -38,18 +37,24 @@ it.each(["transport", "gateway-cleanup", "gateway-start", "restart-gateway-clean
         },
       };
     });
-    vi.doMock("../../../ui/src/e2e/control-ui-e2e-suite.test-support.ts", () => ({
-      createControlUiE2eSuite: () => ({
-        artifactDir: ".artifacts/automation-cleanup",
-        server: { baseUrl: "http://127.0.0.1:43210" },
-        define: (body: () => void) => body(),
+    vi.doMock(
+      "../../../ui/src/e2e/control-ui-e2e-suite.test-support.ts",
+      async (importOriginal) => ({
+        ...(await importOriginal<
+          typeof import("../../../ui/src/e2e/control-ui-e2e-suite.test-support.ts")
+        >()),
+        createControlUiE2eSuite: () => ({
+          artifactDir: ".artifacts/automation-cleanup",
+          server: { baseUrl: "http://127.0.0.1:43210" },
+          define: (body: () => void) => body(),
+        }),
       }),
-    }));
-    vi.doMock("./suite-runtime-agent-session.ts", () => ({}));
+    );
     const start = vi.fn(async () => {
       throw originalError;
     });
-    vi.doMock("./gateway-child.ts", () => ({
+    vi.doMock("./gateway-child.ts", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("./gateway-child.ts")>()),
       createQaGatewayChild: () => ({
         start,
         stop: async () => {
@@ -61,7 +66,8 @@ it.each(["transport", "gateway-cleanup", "gateway-start", "restart-gateway-clean
         },
       }),
     }));
-    vi.doMock("./crabline-transport.ts", () => ({
+    vi.doMock("./crabline-transport.ts", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("./crabline-transport.ts")>()),
       createQaCrablineTransportAdapter: async () => {
         expect(servers).toHaveLength(1);
         expect(servers[0]?.listening).toBe(true);
