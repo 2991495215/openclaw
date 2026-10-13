@@ -62,6 +62,14 @@ on:
         required: false
         default: false
         type: boolean
+      fixture_group:
+        description: Fixture matrix to verify (all or final)
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - final
       base_sha:
         description: Full predecessor commit SHA
         required: true
@@ -73,7 +81,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}-${{ inputs.diagnose_node_wire }}-${{ inputs.diagnose_copilot }}-${{ inputs.diagnose_final }}-${{ inputs.diagnose_protocol }}-${{ inputs.diagnose_fixtures }}-${{ inputs.diagnose_readiness }}-${{ inputs.diagnose_actor }}
+  group: plugin-sdk-api-report-${{ inputs.base_sha }}-${{ inputs.head_sha }}-${{ inputs.verify_sdk_static }}-${{ inputs.diagnose_doctor }}-${{ inputs.diagnose_node_wire }}-${{ inputs.diagnose_copilot }}-${{ inputs.diagnose_final }}-${{ inputs.diagnose_protocol }}-${{ inputs.diagnose_fixtures }}-${{ inputs.diagnose_readiness }}-${{ inputs.diagnose_actor }}-${{ inputs.fixture_group }}
   cancel-in-progress: false
 jobs:
   render:
@@ -677,29 +685,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        include:
-          - group: sharing-grants-node
-            runtime: node
-          - group: sharing-siblings-node
-            runtime: node
-          - group: fixture-imports-node
-            runtime: node
-          - group: native-and-merge-node
-            runtime: node
-          - group: creation-mention-node
-            runtime: node
-          - group: patch-recovery-node
-            runtime: node
-          - group: goal-history-node
-            runtime: node
-          - group: typed-fixtures-node
-            runtime: node
-          - group: sharing-routes-node
-            runtime: node
-          - group: session-utils-node
-            runtime: node
-          - group: publication-history-node
-            runtime: node
+        include: ${{ fromJSON(inputs.fixture_group == 'final' && '[{"group":"final-node","runtime":"node"}]' || '[{"group":"sharing-grants-node","runtime":"node"},{"group":"sharing-siblings-node","runtime":"node"},{"group":"fixture-imports-node","runtime":"node"},{"group":"native-and-merge-node","runtime":"node"},{"group":"creation-mention-node","runtime":"node"},{"group":"patch-recovery-node","runtime":"node"},{"group":"goal-history-node","runtime":"node"},{"group":"typed-fixtures-node","runtime":"node"},{"group":"sharing-routes-node","runtime":"node"},{"group":"session-utils-node","runtime":"node"},{"group":"publication-history-node","runtime":"node"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -736,6 +722,14 @@ jobs:
           mkdir -p .artifacts
           node --input-type=module -e 'console.log(JSON.stringify({ candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, runtime: process.env.OPENCLAW_VITEST_RUNTIME }, null, 2))' > .artifacts/fixture-provenance.json
           case "$PROOF_GROUP" in
+            final-node)
+              files=(
+                src/gateway/server.chat-membership-authority.product.test.ts
+                src/gateway/server.sessions-send.test.ts
+                src/gateway/server-close.incognito-compute.test.ts
+                src/config/sessions/startup-migration.registry-recovery.test.ts
+              )
+              ;;
             sharing-grants-node)
               files=(
                 src/gateway/session-sharing-committed-read.test.ts
