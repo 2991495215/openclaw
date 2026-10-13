@@ -365,6 +365,7 @@ test("slow writer failure separates waiting and execution", async () => {
       return logger;
     });
     const scope = { agentId: "main", env: state.env };
+    const entered = createDeferredCore();
     const release = createDeferredCore();
     const order: string[] = [];
     const diagnostics: SqliteSessionReclamationDiagnostics = {};
@@ -373,6 +374,7 @@ test("slow writer failure separates waiting and execution", async () => {
         scope,
         async () => {
           order.push("first:start");
+          entered.resolve();
           await release.promise;
           Object.assign(diagnostics, {
             kind: "history-eviction",
@@ -386,35 +388,40 @@ test("slow writer failure separates waiting and execution", async () => {
         diagnostics,
       ),
     );
-    expect(order).toEqual(["first:start"]);
-    clock = 100;
-    const failure = new Error("synthetic writer failure");
-    const second = owners.run("second", () =>
-      runExclusiveSqliteSessionWrite(
-        scope,
-        async () => {
-          order.push("second:start");
-          clock += 400;
-          throw failure;
-        },
-        "session.maintenance.plan",
-      ),
-    );
-    const settled = second.then(
-      (value) => ({ value }),
-      (error: unknown) => ({ error }),
-    );
-    const queuedSuccessor = owners.run("queued-successor", () =>
-      runExclusiveSqliteSessionWrite(
-        scope,
-        async () => {
-          order.push("queued-successor");
-          return "queued-successor";
-        },
-        "session.pending-input.stage",
-      ),
-    );
+    const writes: Promise<unknown>[] = [first];
     try {
+      // Cold admission can yield before the writer owns its FIFO section.
+      await Promise.race([entered.promise, first]);
+      expect(order).toEqual(["first:start"]);
+      clock = 100;
+      const failure = new Error("synthetic writer failure");
+      const second = owners.run("second", () =>
+        runExclusiveSqliteSessionWrite(
+          scope,
+          async () => {
+            order.push("second:start");
+            clock += 400;
+            throw failure;
+          },
+          "session.maintenance.plan",
+        ),
+      );
+      writes.push(second);
+      const settled = second.then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+      const queuedSuccessor = owners.run("queued-successor", () =>
+        runExclusiveSqliteSessionWrite(
+          scope,
+          async () => {
+            order.push("queued-successor");
+            return "queued-successor";
+          },
+          "session.pending-input.stage",
+        ),
+      );
+      writes.push(queuedSuccessor);
       expect(order).toEqual(["first:start"]);
       clock = 1_600;
       release.resolve();
@@ -498,7 +505,7 @@ test("slow writer failure separates waiting and execution", async () => {
       );
     } finally {
       release.resolve();
-      await Promise.allSettled([first, second, queuedSuccessor]);
+      await Promise.allSettled(writes);
       vi.restoreAllMocks();
     }
   });
