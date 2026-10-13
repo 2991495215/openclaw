@@ -21,6 +21,21 @@ import type { NodeWorkerWorkspaceBinding } from "./node-worker-workspace-actions
 import type { WorkerEnvironmentRecord } from "./store.js";
 import { WorkerTunnelOwnerDisconnectedError } from "./tunnel-contract.js";
 
+type NodeWorkerWorkspaceBindingIdentity = {
+  environmentId: string;
+  ownerEpoch: number;
+  sessionId: string;
+};
+
+export type NodeWorkerWorkspaceBindingResolver = ((
+  binding: NodeWorkerWorkspaceBindingIdentity,
+) => Promise<NodeWorkerWorkspaceBinding | undefined>) & {
+  /** Durable placement read for teardown; never resolves session or worktree state. */
+  durableDeviceFolder?: (
+    binding: NodeWorkerWorkspaceBindingIdentity,
+  ) => Promise<string | undefined>;
+};
+
 type NodeWorkerWorkspaceDrainRequest = {
   gatewayNamespace: string;
   environmentId: string;
@@ -107,11 +122,7 @@ export async function stopNodeWorkerWorkspaceEnvironment(
 /** A restarted Gateway recovers cleanup scope from the durable attachment, not bundle metadata. */
 export async function restoreNodeWorkerWorkspaceDrainOwner(
   record: WorkerEnvironmentRecord,
-  resolveBinding?: (binding: {
-    environmentId: string;
-    ownerEpoch: number;
-    sessionId: string;
-  }) => Promise<NodeWorkerWorkspaceBinding | undefined>,
+  resolver?: Pick<NodeWorkerWorkspaceBindingResolver, "durableDeviceFolder">,
 ) {
   if (record.attachedSessionIds.length > 1) {
     throw new Error("node worker environment teardown has an ambiguous session owner");
@@ -120,22 +131,19 @@ export async function restoreNodeWorkerWorkspaceDrainOwner(
   if (!sessionId || !record.nodeDeviceId) {
     return undefined;
   }
-  const binding = await resolveBinding?.({
+  // Teardown can run after session and worktree admission closes, so its scope comes from the
+  // durable placement only. The node validates the folder again before it acts.
+  const deviceFolder = await resolver?.durableDeviceFolder?.({
     environmentId: record.environmentId,
     ownerEpoch: record.ownerEpoch,
     sessionId,
   });
-  if (binding?.source.kind === "device-folder" && binding.source.deviceId !== record.nodeDeviceId) {
-    throw new Error("Device folder does not belong to this workspace runner");
-  }
   return {
     deviceId: record.nodeDeviceId,
     environmentId: record.environmentId,
     ownerEpoch: record.ownerEpoch,
     sessionId,
-    ...(binding?.source.kind === "device-folder"
-      ? { deviceFolder: binding.remoteWorkspaceDir }
-      : {}),
+    ...(deviceFolder === undefined ? {} : { deviceFolder }),
     executionMode:
       record.profileSnapshot.executionMode === "remote-exec"
         ? ("remote-exec" as const)

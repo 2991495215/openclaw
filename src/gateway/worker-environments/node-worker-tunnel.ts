@@ -43,6 +43,7 @@ import {
   drainNodeWorkerWorkspace,
   restoreNodeWorkerWorkspaceDrainOwner,
   stopNodeWorkerWorkspaceEnvironment,
+  type NodeWorkerWorkspaceBindingResolver,
 } from "./node-worker-workspace-drain.js";
 import type { NodeWorkspaceTransferService } from "./node-workspace-transfer-service.js";
 import type { WorkerSessionTurnClaim } from "./placement-record.js";
@@ -66,11 +67,7 @@ const RETRY_DELAY_MS = 100;
 const WORKSPACE_DIAGNOSTIC_MAX_CHARS = 500;
 const tunnelLog = createSubsystemLogger("gateway/worker-tunnel");
 
-export type NodeWorkerWorkspaceBindingResolver = (binding: {
-  environmentId: string;
-  ownerEpoch: number;
-  sessionId: string;
-}) => Promise<NodeWorkerWorkspaceBinding | undefined>;
+export type { NodeWorkerWorkspaceBindingResolver };
 
 type NodeWorkerTunnelManagerOptions = {
   gatewayDeviceId: string;

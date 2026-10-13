@@ -590,16 +590,21 @@ export function createWorkerPlacementNodeWorkspaceBindingResolver(options: {
   placements: Pick<WorkerSessionPlacementStore, "get" | "getAsync">;
   resolveWorkspace: (identity: WorkerSessionPlacementIdentity) => Promise<WorkerSessionWorkspace>;
 }) {
-  return async (binding: { environmentId: string; ownerEpoch: number; sessionId: string }) => {
+  type Binding = { environmentId: string; ownerEpoch: number; sessionId: string };
+  const readPlacement = async (binding: Binding) => {
     const placement = await options.placements.getAsync(binding.sessionId);
-    if (
-      !placement ||
-      (placement.state !== "active" &&
-        placement.state !== "draining" &&
-        placement.state !== "reconciling") ||
-      placement.environmentId !== binding.environmentId ||
-      placement.activeOwnerEpoch !== binding.ownerEpoch
-    ) {
+    return placement &&
+      (placement.state === "active" ||
+        placement.state === "draining" ||
+        placement.state === "reconciling") &&
+      placement.environmentId === binding.environmentId &&
+      placement.activeOwnerEpoch === binding.ownerEpoch
+      ? placement
+      : undefined;
+  };
+  const resolve = async (binding: Binding) => {
+    const placement = await readPlacement(binding);
+    if (!placement) {
       return undefined;
     }
     const workspace = await options.resolveWorkspace({
@@ -648,4 +653,12 @@ export function createWorkerPlacementNodeWorkspaceBindingResolver(options: {
       sessionKey: placement.sessionKey,
     };
   };
+  return Object.assign(resolve, {
+    async durableDeviceFolder(binding: Binding) {
+      const placement = await readPlacement(binding);
+      return placement?.workspaceBaseManifestRef === DEVICE_FOLDER_MANIFEST_REF
+        ? placement.remoteWorkspaceDir
+        : undefined;
+    },
+  });
 }

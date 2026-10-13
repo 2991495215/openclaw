@@ -124,10 +124,8 @@ export class NodeWorkerWorkspaceRuntime {
     return this.deviceFolders.validate(folder);
   }
 
-  private isDeviceFolder(workspaceDir: string): boolean {
-    return (
-      !isPathInside(this.root, workspaceDir) && !isPathInside(this.prepared.root, workspaceDir)
-    );
+  private isDeviceFolder(dir: string): boolean {
+    return !isPathInside(this.root, dir) && !isPathInside(this.prepared.root, dir);
   }
 
   async checkAdmission(): Promise<void> {
@@ -152,7 +150,8 @@ export class NodeWorkerWorkspaceRuntime {
     if (this.isDeviceFolder(request.workspaceDir)) {
       // Older worker-launch callers did not carry a bound session key. Preserve their
       // unmanaged workspace behavior without interpreting an arbitrary cwd as consent.
-      return request.sessionKey ? this.acquireDeviceFolder(request) : undefined;
+      const { sessionKey } = request;
+      return sessionKey ? this.acquireDeviceFolder({ ...request, sessionKey }) : undefined;
     }
     if (!(await this.prepared.store?.find(request.environmentId))) {
       if (isPathInside(this.prepared.root, request.workspaceDir)) {
