@@ -3,14 +3,21 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { readOpenClawAgentDatabaseIdentity } from "./openclaw-agent-db-identity.js";
-import type { OpenClawAgentDatabaseValidation } from "./openclaw-agent-db-validation-cache.js";
 
 type ReceiptDatabase = { db: DatabaseSync; path: string; agentId: string };
+// Structural subset of OpenClawAgentDatabaseValidation; this leaf must not import the cache.
+type ValidationReceipt = {
+  agentId: string;
+  identity: string;
+  receiptId: string;
+  valid: SharedArrayBuffer;
+  canonicalReady: SharedArrayBuffer;
+};
 
 export function createValidationReceipt(
   database: ReceiptDatabase,
   canonicalReady: boolean,
-): OpenClawAgentDatabaseValidation {
+): ValidationReceipt {
   const { identity } = readOpenClawAgentDatabaseIdentity(database);
   if (typeof identity !== "string") {
     throw new Error("Only persistent agent databases retain integrity validation");
