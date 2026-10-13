@@ -7,7 +7,7 @@ npm + ClawHub publication is the priority path. Native app publication
 failure is classified and fixed in parallel, not a reason to re-cut or re-run
 npm validation. Each native lane starts as soon as its own prerequisites
 exist, alongside npm publication rather than queued behind it: macOS from the
-tag and exact source; the Linux and Windows publishers from
+tag and exact source; the Linux and Windows Hub publishers from
 `finalize_github_release`, which they require.
 
 Apps are independent publication tasks. They do not block npm, Docker, GitHub
@@ -138,8 +138,8 @@ create Windows updater metadata, or update the Windows channel. The compiled
 Windows app consumes the same policy and does not check or activate updates.
 Windows Hub remains a separate publication owner.
 
-After the rehearsal implementation lands, an explicitly authorized maintainer
-can run the existing release owner from protected main:
+An explicitly authorized maintainer can run the existing release owner from
+protected main:
 
 ```bash
 gh workflow run linux-app-release.yml --repo openclaw/openclaw --ref main \

@@ -15,7 +15,7 @@ app-owned WSL Gateway. Terminal users can use the PowerShell installer or WSL2.
 
 ## Recommended desktop app: OpenClaw
 
-Windows desktop publication is not enabled yet. Regular OpenClaw releases do not
+Windows desktop publication is disabled. Regular OpenClaw releases do not
 publish a Windows Tauri installer or updater feed. Maintainer signing rehearsals
 produce temporary Actions artifacts for qualification, not public downloads.
 Windows Hub and the native CLI below remain available.
@@ -26,23 +26,29 @@ provisions WebView2 when necessary.
 
 ### First launch and local Gateway
 
-Choose local setup to install the matching OpenClaw CLI and start its Gateway.
+On a fresh install with no saved OpenClaw configuration or Gateway profiles,
+the app starts local setup automatically and opens the Control UI's onboarding.
+It installs the matching OpenClaw CLI and starts its Gateway.
 The app uses its private Bun runtime and package manager; system Node.js and npm
 are not required. Gateway installation, startup, status, and recovery remain
 owned by `openclaw gateway`, including Scheduled Task and Startup-folder support.
 Closing the window keeps the app in the tray; the local Gateway has its own
 service lifecycle.
 
+Existing configurations and saved connections keep their current startup
+behavior. If automatic setup fails, the app shows the error alongside local and
+remote setup choices so you can retry or connect elsewhere.
+
 **Local setup requires a signed Windows Bun runtime in the app's pinned release.**
-If an older app reports “This app does not include a signed Windows Gateway
-runtime,” update to an app release with the signed Windows runtime or connect
-to a remote Gateway. Installing system Node.js does not change the
+If the app reports “This app does not include a signed Windows Gateway
+runtime,” use a qualification build containing the signed Windows runtime or
+connect to a remote Gateway. Installing system Node.js does not change the
 bundled runtime's admission policy. Remote connections continue to work.
 
 Use connection settings when you already have a Gateway. Enter its URL and token
 or password, or choose an SSH connection. The app opens that Gateway's Control UI.
-Windows desktop update checks and installer activation remain disabled while
-publication is off. Replacing the app manually preserves the existing Gateway
+Windows desktop update checks and installer activation are disabled.
+Replacing the app manually preserves the existing Gateway
 and runtime until explicit adoption. Signing rehearsals verify the installer’s
 Foundation Authenticode signature and the bundled Bun’s separate signature;
 they do not sign the enclosed app executable or uninstaller.
@@ -114,8 +120,8 @@ cleanup rather than claiming success.
 
 ### Desktop app troubleshooting
 
-- **Signed runtime unavailable:** update the desktop app after a Windows-enabled
-  runtime release, or use a remote Gateway. Linux, macOS, and unsigned test
+- **Signed runtime unavailable:** use a qualification build containing the signed
+  Windows runtime, or connect to a remote Gateway. Linux, macOS, and unsigned test
   binaries are never substituted for a Windows release runtime.
 - **Download or installation failed:** check your internet connection and proxy,
   then retry local setup. The error panel retains the installer diagnostics.

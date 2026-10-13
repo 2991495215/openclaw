@@ -497,9 +497,7 @@ Switching an existing Gateway's runtime leaves its CLI launcher unchanged.
 
 ## Updates
 
-The companion checks the latest GitHub release shortly after launch and from **Check for Updates** in the tray menu. AppImage installs download and verify the signed update in place, then wait for **Restart to update**. Package-managed installs such as `.deb` stay owned by the system package manager and link to the release download page instead of replacing installed files. Windows update checks and installer activation remain disabled while Windows publication is off. The macOS test build uses the separate opt-in desktop-test channel and self-updates like the AppImage build.
-
-If the Windows installer cannot launch, the companion stays open, reports the error, and keeps the downloaded update available for another **Restart to update** attempt.
+The companion checks the latest GitHub release shortly after launch and from **Check for Updates** in the tray menu. AppImage installs download and verify the signed update in place, then wait for **Restart to update**. Package-managed installs such as `.deb` stay owned by the system package manager and link to the release download page instead of replacing installed files. Windows update checks and installer activation are disabled. The macOS test build uses the separate opt-in desktop-test channel and self-updates like the AppImage build.
 
 While a newer Gateway release waits for its Linux app, the latest release keeps
 the previous published Linux updater manifest. Its original version, signature,
@@ -672,7 +670,7 @@ validation does not publish a release.
 
 ## Releases
 
-Regular stable publication automatically requests Linux and Windows bundles after the
+Regular stable publication automatically requests Linux bundles after the
 GitHub release becomes visible. `OpenClaw Release Publish` and `OpenClaw Release
 Button` both use the same Linux release owner; the request can finish before
 the build, signing, and publication do. Their summaries report Linux as pending
