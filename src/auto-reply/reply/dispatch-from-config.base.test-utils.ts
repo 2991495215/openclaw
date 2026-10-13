@@ -1115,7 +1115,7 @@ describe("dispatchReplyFromConfig", () => {
     let finalizing = false;
     const replyResolver = vi.fn(async () => {
       // Admission uses its real scheduler; this test controls only final settlement.
-      vi.useFakeTimers();
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
       finalizing = true;
       return undefined;
     });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDeferred } from "../../../test/helpers/promise.js";
+import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
 import type { PreparedAgentCredentialModes } from "../../agents/agent-auth-credential-modes.js";
 import type { AuthProfileStore } from "../../agents/auth-profiles/types.js";
 import { testing as cliBackendsTesting } from "../../agents/cli-backends.test-support.js";
@@ -15,7 +15,6 @@ import * as preparedRuntime from "../../agents/prepared-model-runtime.js";
 import type { PreparedModelRuntimeSnapshot } from "../../agents/prepared-model-runtime.types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
-import type { ReplyPayload } from "../types.js";
 import { buildPreparedModelsProviderData } from "./commands-models-catalog.js";
 import { handleModelsCommand, resolveModelsCommandReply } from "./commands-models.js";
 import { buildCommandTestParams } from "./commands.test-harness.js";
@@ -90,7 +89,9 @@ afterEach(() => {
 });
 
 describe("/models browse catalog recovery", () => {
-  it("replies with known models while acquisition is held and includes newly published rows next time", async () => {
+  it("replies with known models while acquisition is held and includes newly published rows next time", async ({
+    signal,
+  }) => {
     const pendingCatalog: ModelCatalogSnapshot = {
       entries: [{ provider: "anthropic", id: "claude-opus-4-5", name: "Known model" }],
       routeVariants: [],
@@ -116,11 +117,13 @@ describe("/models browse catalog recovery", () => {
     catalogMocks.authModes = { anthropic: "api_key" };
     catalogMocks.readSnapshot.mockReturnValue(pendingCatalog);
     const acquisition = createDeferred<ModelCatalogSnapshot>();
+    const catalogLoaded = createDeferred();
     let completedCatalog: ModelCatalogSnapshot | undefined;
     catalogMocks.getPreparedOwner.mockReturnValue({
       readFullModelCatalog: () => completedCatalog,
       loadFullModelCatalog: async () => {
         completedCatalog = await acquisition.promise;
+        catalogLoaded.resolve();
         return completedCatalog;
       },
     });
@@ -135,26 +138,21 @@ describe("/models browse catalog recovery", () => {
     vi.mocked(preparedCatalog.loadPublishedPreparedModelCatalogOwnerSnapshot).mockRestore();
     vi.spyOn(preparedRuntime, "getPreparedModelRuntimeSnapshot").mockReturnValue(owner);
     vi.spyOn(preparedRuntime, "prepareModelRuntimeSnapshot").mockResolvedValue(owner);
-    vi.useFakeTimers();
+    const params = { cfg: staleCfg, agentId: "main", commandBodyNormalized: "/models anthropic" };
+    const first = resolveModelsCommandReply(params);
     try {
-      const params = { cfg: staleCfg, agentId: "main", commandBodyNormalized: "/models anthropic" };
-      let reply: ReplyPayload | null | undefined;
-      const first = resolveModelsCommandReply(params).then((result) => {
-        reply = result;
-      });
-      await vi.advanceTimersByTimeAsync(0);
+      const reply = await withinTest(first, signal);
       expect(reply?.text).toContain("- anthropic/claude-opus-4-5");
       expect(reply?.text).toContain("anthropic: checking models…");
       expect(reply?.text).not.toContain("claude-sonnet-4-6");
       acquisition.resolve(refreshedCatalog);
-      await first;
-      await vi.advanceTimersByTimeAsync(0);
+      await withinTest(catalogLoaded.promise, signal);
       const next = await resolveModelsCommandReply(params);
       expect(next?.text).toContain("- anthropic/claude-sonnet-4-6");
       expect(next?.text).not.toContain("checking models");
     } finally {
       acquisition.resolve(refreshedCatalog);
-      vi.useRealTimers();
+      await Promise.allSettled([first]);
     }
   });
 
