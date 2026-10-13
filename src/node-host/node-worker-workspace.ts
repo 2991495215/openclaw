@@ -150,7 +150,9 @@ export class NodeWorkerWorkspaceRuntime {
     request: Omit<NodeWorkerManagedWorkspaceRequest, "sessionKey"> & { sessionKey?: string },
   ): Promise<NodeWorkerWorkspaceAcquisition | undefined> {
     if (this.isDeviceFolder(request.workspaceDir)) {
-      return this.acquireDeviceFolder({ ...request, sessionKey: request.sessionKey ?? "" });
+      // Older worker-launch callers did not carry a bound session key. Preserve their
+      // unmanaged workspace behavior without interpreting an arbitrary cwd as consent.
+      return request.sessionKey ? this.acquireDeviceFolder(request) : undefined;
     }
     if (!(await this.prepared.store?.find(request.environmentId))) {
       if (isPathInside(this.prepared.root, request.workspaceDir)) {

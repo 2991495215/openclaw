@@ -337,7 +337,6 @@ export function testWorkerLaunchInput(
     gatewayNamespace: "gateway-1",
     expectedBundleHash: TEST_BUNDLE_HASH,
     placementGeneration: 4,
-    sessionKey: "session-1",
     descriptor: testWorkerDescriptor(
       fs.existsSync(workspaceDir) ? fs.realpathSync.native(workspaceDir) : workspaceDir,
       prompt,

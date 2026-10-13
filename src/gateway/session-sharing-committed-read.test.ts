@@ -49,6 +49,9 @@ function inWriterTransaction(db: DatabaseSync, check: () => void) {
 describe("committed session mutation authorization", () => {
   it("retains a worker grant through a configured directory alias", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      ensureUserProfilesSchema({});
+      const profileCatalog = await prepareUserProfileCatalog();
+      using _ = { [Symbol.dispose]: () => profileCatalog.release() };
       const directory = state.statePath("physical");
       const alias = state.statePath("selected");
       mkdirSync(directory);

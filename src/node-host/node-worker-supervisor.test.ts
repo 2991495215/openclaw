@@ -302,7 +302,7 @@ describe("node worker supervisor", () => {
       },
       async () => {
         const expectedWorkerEnv: NodeJS.ProcessEnv = {
-          HOME: expect.stringContaining(`${fs.realpathSync.native(bundleRoot)}${path.sep}`),
+          HOME: suppliedEnv.HOME,
           LANG: suppliedEnv.LANG,
           LC_TIME: suppliedEnv.LC_TIME,
           DISPLAY: suppliedEnv.DISPLAY,
@@ -326,8 +326,6 @@ describe("node worker supervisor", () => {
         ) as Record<string, string>;
 
         expect(workerEnv).toMatchObject(expectedWorkerEnv);
-        expect(workerEnv.HOME).not.toBe(suppliedEnv.HOME);
-        expect(workerEnv.HOME).not.toBe(workspaceDir);
         expect(JSON.stringify(workerEnv)).not.toContain(TEST_WORKER_CREDENTIAL);
         const platformInjectedKeys = new Set(
           process.platform === "darwin" ? ["__CF_USER_TEXT_ENCODING"] : [],

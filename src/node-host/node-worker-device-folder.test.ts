@@ -70,6 +70,19 @@ describe("device folder consent", () => {
     expect(() => runtime.validateDeviceFolder(home)).toThrow("private worker storage");
   });
 
+  it("does not reinterpret an unbound legacy worker cwd as a device folder", async () => {
+    const { folder, runtime } = fixture();
+    await expect(
+      runtime.acquirePreparedWorkspace({
+        workspaceDir: folder,
+        gatewayNamespace: identity.gatewayNamespace,
+        environmentId: identity.environmentId,
+        sessionId: identity.sessionId,
+        ownerEpoch: 1,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("disables device-folder validation with an explicit empty list", async () => {
     const { folder, root, env } = fixture();
     const runtime = new NodeWorkerWorkspaceRuntime({ root, env, folders: [] });

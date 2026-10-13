@@ -318,17 +318,21 @@ export class NodeWorkerChildLifecycle {
         ),
       );
     } catch (error) {
-      active.connectionFailure.errorText ??= sanitizeNodeWorkerDiagnostic(
-        error,
-        "node worker startup rejected",
-        scrubber.scrub,
-      );
-      // Only cancellation and shutdown override the child's observed exit.
       const stopState = this.options.isClosed()
         ? "interrupted"
         : params.signal?.aborted || active.turn?.cancelled
           ? "cancelled"
           : undefined;
+      // A child can close stdin between the start gate and descriptor delivery. Preserve its
+      // observed exit diagnostic; cancellation and shutdown likewise own their terminal reason.
+      if (!stopState && active.adapter.stdin?.writable !== false) {
+        active.connectionFailure.errorText ??= sanitizeNodeWorkerDiagnostic(
+          error,
+          "node worker startup rejected",
+          scrubber.scrub,
+        );
+      }
+      // Only cancellation and shutdown override the child's observed exit.
       await this.stopChild(active, stopState);
       return (await this.options.store.get(active.launchId)) ?? running;
     }
