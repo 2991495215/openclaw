@@ -1,6 +1,6 @@
 # Web Awesome exit replacement map
 
-Updated 2026-10-13 21:35 UTC. Statuses are snapshots, not live merge claims. The completed source inventory is pinned to main `48e525858e21d0cfea17c1c0a0d1e96aebc4392b`; the three open PR heads are recorded below. This coordination note distinguishes 20 landed W-WA-EXIT cuts from open consumers and the final package-removal tail; it does not claim that Web Awesome is gone.
+Updated 2026-10-13 21:35 UTC. Statuses are snapshots, not live merge claims. The completed source inventory is pinned to main `28c66ec624bb32e3c1c2ec0720a42e597fd00c13`; the two open PR heads are recorded below. This coordination note distinguishes 21 landed W-WA-EXIT cuts from open consumers and the final package-removal tail; it does not claim that Web Awesome is gone.
 
 ## Ownership
 
@@ -34,15 +34,15 @@ PRIM-B landed in [#169128](https://github.com/openclaw/openclaw/pull/169128), me
 | Shared menu/popover contracts | Stable root trigger ID, typed busy state, caller-selected Tab destination and pinned outside-dismissal policy | [#171269](https://github.com/openclaw/openclaw/pull/171269), `dab8518dfd4c42aef20d59a5c062e14398dd89e7` |
 | Retired select styling and pet obstacle selector | Remove stale vendor selectors after owned-control migration | [#171302](https://github.com/openclaw/openclaw/pull/171302), `55eb758f6992fe726231c1c6a85c13e7757a55fe` |
 | Group mode menu | `Menu`, exact root trigger ID and existing modal settlement | [#171343](https://github.com/openclaw/openclaw/pull/171343), `9f82f6501fae017ab3814c1f7674ed9a0638d935` |
+| Plugin install progress | `Popover`, hover/pin intent, shared Escape owner and closing-phase focus-return guard | [#171346](https://github.com/openclaw/openclaw/pull/171346), `cf28acc7d32251dcb215329028ad8059281368fb` |
 
 ## Active consumers
 
-The three remaining root consumer PRs are open at these recorded heads and build against the landed shared contracts. Provider/Export need attribution and repair of their CI failures; Install progress has green product CI but a pending combined gate after the publisher exhausted API retries. Native landing retries for Install progress must not push a new head.
+The two remaining root consumer PRs are open at these recorded heads and build against the landed shared contracts. Provider/Export need attribution and repair of their CI failures. Install progress completed native landing after its transient gate-publisher failure cleared; its merge is recorded above.
 
 | Surface | Replacement / retained contract | PR / recorded head |
 | --- | --- | --- |
 | Provider picker | Searchable `Menu`, selected-option focus and existing credential Tab flow; shared `tabFocusTarget` replaces local keyboard handling | [#170785](https://github.com/openclaw/openclaw/pull/170785), `7bb99b4f4dd6af6b9a1c1322f6247fc0c94b8e96` |
-| Plugin install progress | `Popover`, hover/pin intent, shared Escape owner and closing-phase focus-return guard | [#171346](https://github.com/openclaw/openclaw/pull/171346), `be4519cbf096a9a46164ab17a28240a59bba915a` |
 | Usage export | `Menu`, existing export callbacks and typed trigger busy state | [#171347](https://github.com/openclaw/openclaw/pull/171347), `092596505d2c6939c887337775bff8f95b52a626` |
 
 Other consumer ownership remains unchanged:
@@ -99,17 +99,17 @@ The five formerly implicit values are already owned by Control UI:
 | `--control-ui-focus-ring` | `solid 0.1875rem var(--ring)` |
 | `--control-ui-focus-ring-offset` | `0.0625rem` |
 
-The official `pnpm ui:solid:inventory --json --ref 48e525858e21d0cfea17c1c0a0d1e96aebc4392b` AST inventory counts **108 production WA tag sites in 39 files** (tests excluded). These counts cover rendered tags, not CSS selectors, imports, or live custom-event names. Every remaining file is listed below so the final sweep can find its owner and replacement without treating those other contracts as already removed.
+The official `pnpm ui:solid:inventory --json --ref 28c66ec624bb32e3c1c2ec0720a42e597fd00c13` AST inventory counts **107 production WA tag sites in 38 files** (tests excluded). These counts cover rendered tags, not CSS selectors, imports, or live custom-event names. Every remaining file is listed below so the final sweep can find its owner and replacement without treating those other contracts as already removed.
 
 | Owner | Tags | Files |
 | --- | ---: | ---: |
-| W-WA-EXIT root consumers | 7 | 3 |
+| W-WA-EXIT root consumers | 6 | 2 |
 | Chat | 61 | 19 |
 | Sidebar | 25 | 8 |
 | W-WA-EXIT-2/3 components | 10 | 5 |
 | New session | 5 | 4 |
 
-Main #171349 removed 17 chat sites in eight files after the previous 125-site snapshot. The root sites are covered by the three open PRs above. The other **101 tags in 36 files** remain external prerequisites even after those PRs land. Re-run the inventory at the final candidate; this is not a zero-usage claim. The replacement column names existing owners; each lane must preserve its surface's focus, selectors, styles and dismissal contract.
+Main #171349 removed 17 chat sites in eight files after the previous 125-site snapshot; #171346 then removed the remaining install-progress tag. The root sites are covered by the two open PRs above. The other **101 tags in 36 files** remain external prerequisites even after those PRs land. Re-run the inventory at the final candidate; this is not a zero-usage claim. The replacement column names existing owners; each lane must preserve its surface's focus, selectors, styles and dismissal contract.
 
 | File under `ui/src/` | Sites | Owner | Replacement |
 | --- | ---: | --- | --- |
@@ -150,7 +150,6 @@ Main #171349 removed 17 chat sites in eight files after the previous 125-site sn
 | `pages/new-session/palette-session-settings-view.tsx` | 1 | New session | `Popover` |
 | `pages/new-session/project-chip.tsx` | 1 | New session | `Popover` |
 | `pages/new-session/where-chip.tsx` | 1 | New session | `Popover` |
-| `pages/plugins/install-action.tsx` | 1 | W-WA-EXIT | `Popover` |
 | `pages/usage/view.tsx` | 4 | W-WA-EXIT | `Menu` |
 
 Once all consumers are gone, remove Web Awesome from `ui/package.json` and regenerate the lockfile; remove its 3,096-line patch, workspace patch entry, checker/README references, theme import, `wa-light`/`wa-dark` bootstrap and mock toggles, WA token bridges/selectors/types/registrations, and PostCSS workaround/test/config references. Retire vendor-only test/prebundle entries while preserving shared ownership tests. Regenerate the boot manifest through `pnpm ui:boot-manifest:gen`; do not hand-edit its vendor module entries. The full package-tail inspection was pinned to `8118777aeb0aa13640623fd9bd4c18aa0bd842ff`; #171302 subsequently removed the stale select styling and pet `wa-button` obstacle-selector alternative. Recheck remaining imports and selectors on the final candidate instead of replaying the old tail blindly.
