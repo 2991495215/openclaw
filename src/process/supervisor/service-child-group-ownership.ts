@@ -13,7 +13,7 @@ export type LinuxProcessGeneration = {
 };
 
 export type ProcessCommand = (
-  | { argv: string[]; serviceMarker?: string; uid?: number }
+  | { argv: string[]; executable?: string; serviceMarker?: string; uid?: number }
   | { argvUnavailable: true; uid: number }
 ) & { generation?: LinuxProcessGeneration };
 
@@ -201,6 +201,22 @@ export function isOwnedProcessGroupGone(pgid: number): boolean {
       return false;
     }
     throw error;
+  }
+}
+
+/** Stop in-group descendants without killing the anchor that observes their lineage. */
+export function killOwnedProcessGroupMembers(): void {
+  for (const { pid, pgid } of readProcessGroupMembers(1_000)) {
+    if (pid === process.pid || pgid !== process.pid) {
+      continue;
+    }
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch (error) {
+      if (extractErrorCode(error) !== "ESRCH") {
+        throw error;
+      }
+    }
   }
 }
 
