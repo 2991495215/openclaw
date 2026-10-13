@@ -1,3 +1,5 @@
+// Register credential mocks before loading modules that capture their dependencies.
+import "./worker-github-binding.test-support.js";
 import "../../test-utils/prepare-compiled-subprocesses.js";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -19,6 +21,7 @@ import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../config/runtime-snapshot.js";
+import { recordCommittedSessionMetadataPublication } from "../../config/sessions/session-accessor.sqlite-entry-cache-publication-state.js";
 import { patchSessionEntryCore } from "../../config/sessions/session-accessor.sqlite-entry.js";
 import { withIncognitoSessionBinding } from "../../config/sessions/session-incognito-binding.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -28,6 +31,7 @@ import {
   prepareGitHubPublicationFact,
   prepareWorkerGitHubBindingGrant,
 } from "./worker-github-binding.js";
+import { getWorkerGitHubBindingMocks } from "./worker-github-binding.test-support.js";
 
 async function prepareWorkerGitHubBinding(
   params: Parameters<typeof prepareGitHubPublicationFact>[0],
@@ -36,63 +40,7 @@ async function prepareWorkerGitHubBinding(
   return (await prepareGitHubPublicationFact(params))?.github;
 }
 
-const mocks = vi.hoisted(() => ({
-  snapshot: vi.fn(),
-  refresh: vi.fn(),
-  verify: vi.fn(),
-  worktree: vi.fn(),
-  worktreeRead: vi.fn(),
-  repository: vi.fn(),
-  repositoryWorkspace: vi.fn(),
-  session: vi.fn(),
-  admittedSessionRead: vi.fn(),
-  nativeToken: vi.fn(),
-  oauth: vi.fn(),
-}));
-
-vi.mock("../../agents/github-oauth-client.js", () => ({ verifyGitHubCredential: mocks.verify }));
-vi.mock("../github-oauth-lifecycle.js", () => ({
-  requestCurrentGitHubOAuthRefresh: mocks.refresh,
-}));
-vi.mock("../../secrets/runtime-state.js", () => ({
-  getActiveSecretsRuntimeConfigSnapshot: mocks.snapshot,
-}));
-vi.mock("../../agents/worktrees/service.js", () => ({
-  managedWorktrees: {
-    findLiveByOwner: mocks.worktree,
-    resolveRepositoryIdentity: mocks.repository,
-  },
-}));
-vi.mock("../../agents/worktrees/registry-read.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../agents/worktrees/registry-read.js")>()),
-  readLiveRegistryWorktreeByOwner: async (_context: unknown, kind: string, id: string) =>
-    mocks.worktreeRead(kind, id),
-}));
-vi.mock("../session-utils.js", () => ({ loadGatewaySessionEntryReadOnly: mocks.session }));
-vi.mock("../../config/sessions/session-entry-read-runtime.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../config/sessions/session-entry-read-runtime.js")>()),
-  readSessionEntriesFromStoreInWorker: mocks.admittedSessionRead,
-}));
-vi.mock("../session-utils-store-worker.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../session-utils-store-worker.js")>()),
-  loadGatewaySessionEntryReadOnlyInWorker: async (
-    params: Parameters<
-      typeof import("../session-utils-store-worker.js").loadGatewaySessionEntryReadOnlyInWorker
-    >[0],
-  ) => mocks.session(params.key, { agentId: params.agentId }),
-}));
-vi.mock("../../state/session-repository-workspaces.js", () => ({
-  getSessionRepositoryWorkspaceStore: () => ({
-    prepare: async () => ({
-      workspace: mocks.repositoryWorkspace(),
-      current: mocks.repositoryWorkspace,
-    }),
-  }),
-}));
-// mock-isolation: Grant tests control OAuth expiry without reading the persistent credential store.
-vi.mock("../../agents/github-oauth-records.js", () => ({ inspectGitHubOAuthRecord: mocks.oauth }));
-vi.mock("../../process/exec.js", () => ({ runCommandBuffered: mocks.nativeToken }));
-
+const mocks = getWorkerGitHubBindingMocks();
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const profileId = "ghp_11111111111111111111111111111111";
 const token = "synthetic-worker-github-binding-token";
@@ -135,6 +83,7 @@ describe("worker GitHub launch binding", () => {
   beforeEach(() => {
     vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("worker-github-binding-"));
     config = { tools: { github: { profileId, gitAuthor: { name: "Shared Bot" } } } };
+    setRuntimeConfigSnapshot(config);
     mocks.snapshot.mockReset().mockImplementation(() => ({ config, sourceConfig: config }));
     mocks.refresh.mockReset().mockResolvedValue(undefined);
     mocks.oauth.mockReset().mockReturnValue({ state: "missing" });
@@ -336,14 +285,17 @@ describe("worker GitHub launch binding", () => {
               ? { lifecycleRevision: "replacement" }
               : { activeWriterRunId: "replacement" }),
         };
-        // Only the admitted worker read changes; the synchronous projection remains stale.
-        mocks.admittedSessionRead.mockResolvedValue({
-          entries: [{ sessionKey: session.sessionKey, entry: replacement }],
-        });
+        // The committed owner receipt retires the prepared predicate without caller-thread SQL.
+        recordCommittedSessionMetadataPublication(
+          "worker-github-binding-fixture",
+          session.sessionKey,
+          undefined,
+          replacement,
+        );
         vi.setSystemTime(Date.now() + 60_001);
         await expect(grant!.refresh!()).rejects.toThrow();
         expect(grant!.signal?.aborted).toBe(true);
-        expect(mocks.admittedSessionRead).toHaveBeenLastCalledWith(
+        expect(mocks.admittedSessionRead).toHaveBeenCalledWith(
           expect.objectContaining({ storePath: "/synthetic/admitted.sqlite" }),
           expect.any(Function),
         );
@@ -353,7 +305,7 @@ describe("worker GitHub launch binding", () => {
     },
   );
 
-  it("rejects a rerouted session without lending the original grant to its replacement store", async () => {
+  it("retains the admitted physical store when routing changes until its own row retires", async () => {
     await installProfile();
     mocks.session.mockReturnValue({ ...mocks.session(), storePath: "/synthetic/admitted.sqlite" });
     const grant = await prepareWorkerGitHubBindingGrant({
@@ -365,6 +317,13 @@ describe("worker GitHub launch binding", () => {
         ...mocks.session(),
         storePath: "/synthetic/replacement.sqlite",
       });
+      expect(() => grant!.assertCurrent!()).not.toThrow();
+      recordCommittedSessionMetadataPublication(
+        "worker-github-binding-fixture",
+        session.sessionKey,
+        undefined,
+        { ...mocks.session().entry, sessionId: "replacement" },
+      );
       expect(() => grant!.assertCurrent!()).toThrow();
       expect(grant!.signal?.aborted).toBe(true);
     } finally {
@@ -407,8 +366,13 @@ describe("worker GitHub launch binding", () => {
       mocks.admittedSessionRead.mockClear();
       vi.setSystemTime(Date.now() + 60_001);
       expect(await grant!.refresh!()).toEqual(pending);
-      expect(mocks.admittedSessionRead).toHaveBeenCalled();
-      mocks.admittedSessionRead.mockResolvedValue({ entries: [] });
+      expect(mocks.admittedSessionRead).not.toHaveBeenCalled();
+      recordCommittedSessionMetadataPublication(
+        "worker-github-binding-fixture",
+        session.sessionKey,
+        undefined,
+        undefined,
+      );
       vi.setSystemTime(Date.now() + 60_001);
       await expect(grant!.refresh!()).rejects.toThrow();
       expect(grant!.signal?.aborted).toBe(true);
@@ -699,6 +663,12 @@ describe("worker GitHub launch binding", () => {
         agentId: "main",
         entry: { sessionId: "replacement-session" },
       });
+      recordCommittedSessionMetadataPublication(
+        "worker-github-binding-fixture",
+        session.sessionKey,
+        undefined,
+        mocks.session().entry,
+      );
       expect(() => grant?.assertCurrent?.()).toThrow();
       await expect(prepareWorkerGitHubBindingGrant(session)).rejects.toThrow();
     } finally {

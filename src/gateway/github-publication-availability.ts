@@ -30,6 +30,14 @@ import {
   type PreparedRepositoryWorkspace,
 } from "../state/session-repository-workspaces.js";
 import { requestCurrentGitHubOAuthRefresh } from "./github-oauth-lifecycle.js";
+import type {
+  ExpectedWorktree,
+  PreparedGitHubPublicationWorkspaceOwner,
+  PublicationSessionIdentity,
+  PublicationSessionRead,
+  PublicationWorkspaceOptions,
+} from "./github-publication-availability.contract.js";
+import { PUBLICATION_SESSION_FIELDS } from "./github-publication-availability.contract.js";
 import {
   GitHubPublicationWorkspaceChangedError,
   GitHubPublicationSessionChangedError,
@@ -42,6 +50,7 @@ import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
 import { loadGatewaySessionEntryReadOnly } from "./session-utils.js";
+export type { PublicationSessionIdentity } from "./github-publication-availability.contract.js";
 
 // Discovery only: publication resolves Git afresh. Registry/lifecycle guards retire facts early.
 const worktreeTargets = new LruCache<{ expiresAt: number; assertCurrent: () => void }>(256);
@@ -120,18 +129,6 @@ export function matchesCurrentGitHubPublicationIdentity(params: {
   });
 }
 
-export type PublicationSessionIdentity = {
-  sessionId: string;
-  sessionKey: string;
-  agentId: string;
-  lifecycleRevision?: string | null;
-};
-type ExpectedWorktree = { worktreeId: string; repositoryFingerprint: string; branch: string };
-type PublicationSessionRead = Pick<
-  ReturnType<typeof loadGatewaySessionEntryReadOnly>,
-  "agentId" | "canonicalKey" | "storePath" | "entry"
->;
-
 /** Native incognito and deprecated SDK callers retain their synchronous read contract. */
 export function readGitHubPublicationSession(
   sessionKey: string,
@@ -176,18 +173,7 @@ export async function prepareGitHubPublicationSession(
   } = {},
 ) {
   const fields = [
-    ...(options.fields ??
-      ([
-        "sessionId",
-        "lifecycleRevision",
-        "archivedAt",
-        "repositoryWorkspaceId",
-        "worktree",
-        "owner",
-        "createdActor",
-        "visibility",
-        "incognito",
-      ] as const)),
+    ...(options.fields ?? PUBLICATION_SESSION_FIELDS),
     ...(options.target?.expectedWriterRunId !== undefined ? (["activeWriterRunId"] as const) : []),
   ];
   let retained: ReturnType<typeof retainPreparedSessionEntryPredicate> | undefined;
@@ -445,18 +431,6 @@ type GitHubCredentialOnlyWorkspace = {
   kind: "none";
   loaded: PublicationSessionOwner;
 };
-type PublicationWorkspaceOptions = {
-  sessionTarget?: AgentRunSessionTarget;
-  assertCurrent?: () => void;
-};
-type PreparedGitHubPublicationWorkspaceOwner<T> = {
-  initial: T;
-  read: () => Promise<T>;
-  current: () => T;
-  currentRepository: () => ReturnType<typeof resolveGitHubPublicationWorkspaceOwner>;
-  release: () => void;
-};
-
 export function prepareGitHubPublicationWorkspaceOwner(
   params: PublicationSessionIdentity,
   options?: PublicationWorkspaceOptions,
@@ -557,14 +531,9 @@ export async function prepareGitHubPublicationWorkspaceOwner(
       return validate({ kind: "worktree" as const, ...worktreeWitness, ...owner });
     };
     const read = async () => {
-      const sessionOwner = currentSession();
-      if (workspaceId) {
-        return validate(resolveGitHubPublicationWorkspaceOwner(sessionOwner, prepared));
+      if (!workspaceId && currentSession().entry.worktree) {
+        worktreeWitness = await readWorktree();
       }
-      if (options.allowMissingWorkspace && !sessionOwner.entry.worktree) {
-        return validate({ kind: "none" as const, loaded: sessionOwner });
-      }
-      worktreeWitness = await readWorktree();
       return current();
     };
     return {

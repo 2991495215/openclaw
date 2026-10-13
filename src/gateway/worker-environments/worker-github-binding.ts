@@ -133,10 +133,10 @@ export async function prepareWorkerGitHubBindingGrant(params: {
     sessionTarget: params.sessionTarget,
     assertCurrent: assertRunCurrent,
   });
-  let transferredWorkspace = false;
-  using _workspaceLease = {
-    [Symbol.dispose]: () => {
-      if (!transferredWorkspace) {
+  using workspaceLease = {
+    transferred: false,
+    [Symbol.dispose]() {
+      if (!this.transferred) {
         preparedWorkspace.release();
       }
     },
@@ -287,7 +287,7 @@ export async function prepareWorkerGitHubBindingGrant(params: {
       onUserProfileEmailBindingChanged(changed),
     ],
   });
-  transferredWorkspace = true;
+  workspaceLease.transferred = true;
   return grant;
 }
 
