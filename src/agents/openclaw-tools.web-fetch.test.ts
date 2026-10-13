@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
+import { rm } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDeferred } from "../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import * as secretsState from "../secrets/runtime-state.js";
 import { createOpenClawCodingToolsAsync } from "./agent-tools.js";
 import type { OpenClawCodingToolsOptions } from "./agent-tools.options.js";
+import * as privateTempFiles from "./sessions/tools/private-temp-file.js";
 import type { WebFetchTransport } from "./tools/web-fetch-transport.js";
 
-afterEach(() => {
+const spillPaths = new Set<string>();
+
+afterEach(async () => {
   vi.restoreAllMocks();
+  await Promise.all([...spillPaths].map((path) => rm(path, { force: true })));
+  spillPaths.clear();
 });
 
 async function assemble(webFetchTransport: WebFetchTransport, config: OpenClawConfig = {}) {
@@ -43,6 +50,42 @@ function hostTransport(): WebFetchTransport {
   };
 }
 
+function detailsOf(result: { details?: unknown }): Record<string, unknown> {
+  assert(result.details && typeof result.details === "object" && !Array.isArray(result.details));
+  const details = result.details as Record<string, unknown>;
+  const spill = details.spill;
+  if (spill && typeof spill === "object" && !Array.isArray(spill)) {
+    const path = (spill as Record<string, unknown>).path;
+    if (typeof path === "string") {
+      spillPaths.add(path);
+    }
+  }
+  return details;
+}
+
+function delayedTextResponse(
+  text: string,
+  init: ResponseInit,
+  started: ReturnType<typeof createDeferred>,
+  pending: ReturnType<typeof createDeferred>,
+): Response {
+  const encoded = new TextEncoder().encode(text);
+  let sent = false;
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (sent) {
+        return;
+      }
+      sent = true;
+      started.resolve();
+      await pending.promise;
+      controller.enqueue(encoded);
+      controller.close();
+    },
+  });
+  return new Response(body, init);
+}
+
 describe("web_fetch transport through native coding-tool assembly", () => {
   it("binds one native tool and honors runtime disable/re-enable before cache reuse", async () => {
     const transport = hostTransport();
@@ -70,6 +113,219 @@ describe("web_fetch transport through native coding-tool assembly", () => {
     snapshot.mockRestore();
     expect((await tool.execute("enabled", args)).details).toMatchObject({ cached: true });
     expect(transport.acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the host transport for allowed acquisition without native fallback", async () => {
+    let dispatches = 0;
+    const release = vi.fn(async () => {});
+    const transport: WebFetchTransport = {
+      assertInvocationCurrent: vi.fn(() => {}),
+      acquire: vi.fn<WebFetchTransport["acquire"]>(async (request) => {
+        dispatches += 1;
+        return {
+          response: new Response("allowed host content", {
+            headers: { "content-type": "text/plain" },
+          }),
+          finalUrl: request.url,
+          release,
+        };
+      }),
+    };
+    const [tool] = (await assemble(transport)).filter((entry) => entry.name === "web_fetch");
+    assert(tool);
+
+    const result = detailsOf(
+      await tool.execute("allowed-acquisition", {
+        url: "https://example.com/assembly-allowed",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      finalUrl: "https://example.com/assembly-allowed",
+      extractor: "raw",
+      externalContent: { untrusted: true, source: "web_fetch", wrapped: true },
+      text: expect.stringContaining("allowed host content"),
+    });
+    expect(transport.acquire).toHaveBeenCalledTimes(1);
+    expect(dispatches).toBe(1);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects forbidden host destinations before dispatch without falling back", async () => {
+    let dispatches = 0;
+    const transport: WebFetchTransport = {
+      assertInvocationCurrent: vi.fn(() => {}),
+      acquire: vi.fn<WebFetchTransport["acquire"]>(async (request) => {
+        if (request.url.includes("forbidden.example")) {
+          throw new Error("host policy refused destination");
+        }
+        dispatches += 1;
+        return {
+          response: new Response("unexpected content"),
+          finalUrl: request.url,
+          release: async () => {},
+        };
+      }),
+    };
+    const [tool] = (await assemble(transport)).filter((entry) => entry.name === "web_fetch");
+    assert(tool);
+
+    await expect(
+      tool.execute("forbidden-destination", { url: "https://forbidden.example/private" }),
+    ).rejects.toThrow("host policy refused destination");
+    expect(transport.acquire).toHaveBeenCalledTimes(1);
+    expect(dispatches).toBe(0);
+  });
+
+  it("rejects revocation during awaited admission before dispatch", async () => {
+    const enteredAdmission = createDeferred();
+    const resumeAdmission = createDeferred();
+    let current = true;
+    let dispatches = 0;
+    const release = vi.fn(async () => {});
+    const transport: WebFetchTransport = {
+      assertInvocationCurrent: vi.fn(() => {
+        if (!current) {
+          throw new Error("invocation closed");
+        }
+      }),
+      acquire: vi.fn<WebFetchTransport["acquire"]>(async (request) => {
+        enteredAdmission.resolve();
+        await resumeAdmission.promise;
+        transport.assertInvocationCurrent();
+        dispatches += 1;
+        return {
+          response: new Response("stale content"),
+          finalUrl: request.url,
+          release,
+        };
+      }),
+    };
+    const [tool] = (await assemble(transport)).filter((entry) => entry.name === "web_fetch");
+    assert(tool);
+
+    const execution = tool.execute("revoked-admission", {
+      url: "https://example.com/revoked-admission",
+    });
+    await enteredAdmission.promise;
+    current = false;
+    resumeAdmission.resolve();
+
+    await expect(execution).rejects.toThrow("invocation closed");
+    expect(dispatches).toBe(0);
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it("rejects retained cached content after retirement without reacquiring", async () => {
+    let current = true;
+    const transport = hostTransport();
+    transport.assertInvocationCurrent = vi.fn(() => {
+      if (!current) {
+        throw new Error("invocation closed");
+      }
+    });
+    const [tool] = (await assemble(transport)).filter((entry) => entry.name === "web_fetch");
+    assert(tool);
+    const args = { url: "https://example.com/retired-cache" };
+
+    await tool.execute("seed-cache", args);
+    current = false;
+
+    await expect(tool.execute("retired-cache", args)).rejects.toThrow("invocation closed");
+    expect(transport.acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it("prevents spill creation when retirement happens during awaited content processing", async () => {
+    const bodyStarted = createDeferred();
+    const bodyPending = createDeferred();
+    let current = true;
+    const release = vi.fn(async () => {});
+    const text = "private acquired content ".repeat(300);
+    const transport: WebFetchTransport = {
+      assertInvocationCurrent: vi.fn(() => {
+        if (!current) {
+          throw new Error("invocation closed");
+        }
+      }),
+      acquire: vi.fn<WebFetchTransport["acquire"]>(async (request) => ({
+        response: delayedTextResponse(
+          text,
+          { headers: { "content-type": "text/plain" } },
+          bodyStarted,
+          bodyPending,
+        ),
+        finalUrl: request.url,
+        release,
+      })),
+    };
+    const realWrite = privateTempFiles.writePrivateTempFile;
+    const write = vi
+      .spyOn(privateTempFiles, "writePrivateTempFile")
+      .mockImplementation(
+        async (...args: Parameters<typeof privateTempFiles.writePrivateTempFile>) => {
+          const path = await realWrite(...args);
+          spillPaths.add(path);
+          return path;
+        },
+      );
+    const [tool] = (await assemble(transport)).filter((entry) => entry.name === "web_fetch");
+    assert(tool);
+
+    const execution = tool.execute("retired-before-spill", {
+      url: "https://example.com/retired-before-spill",
+      maxChars: 1_000,
+    });
+    await bodyStarted.promise;
+    current = false;
+    bodyPending.resolve();
+
+    await expect(execution).rejects.toThrow("invocation closed");
+    expect(write).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not expose HTTP error details after retirement during awaited error read", async () => {
+    const bodyStarted = createDeferred();
+    const bodyPending = createDeferred();
+    let current = true;
+    const release = vi.fn(async () => {});
+    const transport: WebFetchTransport = {
+      assertInvocationCurrent: vi.fn(() => {
+        if (!current) {
+          throw new Error("invocation closed");
+        }
+      }),
+      acquire: vi.fn<WebFetchTransport["acquire"]>(async (request) => ({
+        response: delayedTextResponse(
+          "private host error detail",
+          { status: 403, headers: { "content-type": "text/plain" } },
+          bodyStarted,
+          bodyPending,
+        ),
+        finalUrl: request.url,
+        release,
+      })),
+    };
+    const [tool] = (await assemble(transport)).filter((entry) => entry.name === "web_fetch");
+    assert(tool);
+
+    const execution = tool.execute("retired-error-detail", {
+      url: "https://example.com/retired-error-detail",
+    });
+    await bodyStarted.promise;
+    current = false;
+    bodyPending.resolve();
+
+    let error: unknown;
+    try {
+      await execution;
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe("invocation closed");
+    expect((error as Error).message).not.toContain("private host error detail");
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
   it.each([
