@@ -1,12 +1,12 @@
 # Web Awesome exit replacement map
 
-Updated 2026-10-13. Statuses are snapshots, not live merge claims. The completed source inventory is pinned to main `ae94b8626e3c2243c517d2f1fe84edeec1fa8b66`; the four active PR heads are recorded below. This coordination note distinguishes 19 landed W-WA-EXIT cuts from open consumers and the final package-removal tail; it does not claim that Web Awesome is gone.
+Updated 2026-10-13 21:35 UTC. Statuses are snapshots, not live merge claims. The completed source inventory is pinned to main `48e525858e21d0cfea17c1c0a0d1e96aebc4392b`; the three open PR heads are recorded below. This coordination note distinguishes 20 landed W-WA-EXIT cuts from open consumers and the final package-removal tail; it does not claim that Web Awesome is gone.
 
 ## Ownership
 
 - **W-WA-EXIT:** pages except `pages/chat/**` and `pages/new-session/**`; shared styles/theme, `types/`, `app/`, this map, and existing `components/lobster-pet*` / `components/session-group-defaults-dialog*` work.
 - **W-WA-EXIT-2:** other `components/**` and `lib/**` Web Awesome removal, coordinated with their active owners.
-- **Other active lanes:** chat/new-session, sidebar, config form, picker, and shared primitive ports retain their assigned files. Do not edit another lane's implementation to unblock a consumer.
+- **Other active lanes:** chat/new-session, sidebar, config form, picker, and shared primitive ports retain their assigned files. Do not edit another lane's implementation to unblock a consumer. Terminal fixtures are now in W-WA-EXIT scope for Provider/Export failure repairs; chat tests are in scope only when absent from the chat-pane branch diff. Fixture changes must follow causal CI evidence, not mask a regression.
 
 PRIM-B landed in [#169128](https://github.com/openclaw/openclaw/pull/169128), merge `b68c44ca8f3ca9d0d4bccb7b620f867547e4cd55`. The shared JSDOM Popover fixture landed in [#169466](https://github.com/openclaw/openclaw/pull/169466), merge `14c397b921a5366423fd9eb2e7c17a72c08480be`. Consumers use the landed owners; never merge an unlanded lane branch.
 
@@ -33,16 +33,16 @@ PRIM-B landed in [#169128](https://github.com/openclaw/openclaw/pull/169128), me
 | Usage query filters | `Menu`, existing query owner and callbacks | [#170567](https://github.com/openclaw/openclaw/pull/170567), `e2df637d6058537b4a289306e2b97708b990dd13` |
 | Shared menu/popover contracts | Stable root trigger ID, typed busy state, caller-selected Tab destination and pinned outside-dismissal policy | [#171269](https://github.com/openclaw/openclaw/pull/171269), `dab8518dfd4c42aef20d59a5c062e14398dd89e7` |
 | Retired select styling and pet obstacle selector | Remove stale vendor selectors after owned-control migration | [#171302](https://github.com/openclaw/openclaw/pull/171302), `55eb758f6992fe726231c1c6a85c13e7757a55fe` |
+| Group mode menu | `Menu`, exact root trigger ID and existing modal settlement | [#171343](https://github.com/openclaw/openclaw/pull/171343), `9f82f6501fae017ab3814c1f7674ed9a0638d935` |
 
 ## Active consumers
 
-All four root consumer PRs are open at these recorded heads and build against the landed shared contracts.
+The three remaining root consumer PRs are open at these recorded heads and build against the landed shared contracts. Provider/Export need attribution and repair of their CI failures; Install progress has green product CI but a pending combined gate after the publisher exhausted API retries. Native landing retries for Install progress must not push a new head.
 
 | Surface | Replacement / retained contract | PR / recorded head |
 | --- | --- | --- |
-| Provider picker | Searchable `Menu`, selected-option focus and existing credential Tab flow; shared `tabFocusTarget` replaces local keyboard handling | [#170785](https://github.com/openclaw/openclaw/pull/170785), `8a620d8564a8f5222cf28e9091a4b760df06abbf` |
-| Group mode menu | `Menu`, exact root trigger ID and existing modal settlement | [#171343](https://github.com/openclaw/openclaw/pull/171343), `41ec00b75ca432a8d430edca11cc9147b08e8d17` |
-| Plugin install progress | `Popover`, hover/pin intent, shared Escape owner and closing-phase focus-return guard | [#171346](https://github.com/openclaw/openclaw/pull/171346), `d66c37e0996265c1c6384d49117bba28b1fbcd9b` |
+| Provider picker | Searchable `Menu`, selected-option focus and existing credential Tab flow; shared `tabFocusTarget` replaces local keyboard handling | [#170785](https://github.com/openclaw/openclaw/pull/170785), `7bb99b4f4dd6af6b9a1c1322f6247fc0c94b8e96` |
+| Plugin install progress | `Popover`, hover/pin intent, shared Escape owner and closing-phase focus-return guard | [#171346](https://github.com/openclaw/openclaw/pull/171346), `be4519cbf096a9a46164ab17a28240a59bba915a` |
 | Usage export | `Menu`, existing export callbacks and typed trigger busy state | [#171347](https://github.com/openclaw/openclaw/pull/171347), `092596505d2c6939c887337775bff8f95b52a626` |
 
 Other consumer ownership remains unchanged:
@@ -76,7 +76,7 @@ Recheck actual main before integrating a prerequisite. Read unlanded branches on
 
 ## Preserved primary drafts
 
-The read-only dirty-path audit accounted for all 82 original paths against the 19 landed cuts and four active consumer PRs. Index blobs, working-file bytes and status records remained unchanged. Scope attribution is not exact-byte parity and grants no permission to discard historical drafts.
+The earlier read-only dirty-path audit accounted for all 82 original paths against the then-19 landed cuts and four active consumer PRs. Group mode has since landed; the classifications below preserve that audit snapshot. Index blobs, working-file bytes and status records remained unchanged. Scope attribution is not exact-byte parity and grants no permission to discard historical drafts.
 
 | Classification | Distinct paths |
 | --- | ---: |
@@ -99,17 +99,59 @@ The five formerly implicit values are already owned by Control UI:
 | `--control-ui-focus-ring` | `solid 0.1875rem var(--ring)` |
 | `--control-ui-focus-ring-offset` | `0.0625rem` |
 
-The official AST inventory at main `ae94b8626e3c2243c517d2f1fe84edeec1fa8b66` counts **127 production WA tags in 48 files** (tests excluded):
+The official `pnpm ui:solid:inventory --json --ref 48e525858e21d0cfea17c1c0a0d1e96aebc4392b` AST inventory counts **108 production WA tag sites in 39 files** (tests excluded). These counts cover rendered tags, not CSS selectors, imports, or live custom-event names. Every remaining file is listed below so the final sweep can find its owner and replacement without treating those other contracts as already removed.
 
 | Owner | Tags | Files |
 | --- | ---: | ---: |
-| W-WA-EXIT root consumers | 9 | 4 |
-| Chat | 78 | 27 |
+| W-WA-EXIT root consumers | 7 | 3 |
+| Chat | 61 | 19 |
 | Sidebar | 25 | 8 |
 | W-WA-EXIT-2/3 components | 10 | 5 |
 | New session | 5 | 4 |
 
-The root sites are `session-group-defaults-dialog.tsx` (2), `pages/model-setup/provider-picker.tsx` (2), `pages/plugins/install-action.tsx` (1), and `pages/usage/view.tsx` (4). The other **118 tags** remain external prerequisites even after the four root PRs land. Re-run the inventory at the final candidate; this is not a zero-usage claim.
+Main #171349 removed 17 chat sites in eight files after the previous 125-site snapshot. The root sites are covered by the three open PRs above. The other **101 tags in 36 files** remain external prerequisites even after those PRs land. Re-run the inventory at the final candidate; this is not a zero-usage claim. The replacement column names existing owners; each lane must preserve its surface's focus, selectors, styles and dismissal contract.
+
+| File under `ui/src/` | Sites | Owner | Replacement |
+| --- | ---: | --- | --- |
+| `components/app-sidebar-agent-menu.ts` | 3 | Sidebar | `Menu` |
+| `components/app-sidebar-identity-menu.ts` | 4 | Sidebar | `Menu` |
+| `components/app-sidebar-nav-menus.ts` | 3 | Sidebar | `Menu` |
+| `components/app-sidebar-session-menu-renderers.ts` | 5 | Sidebar | `Menu`; `SettingsToggle` or native checkbox |
+| `components/board/board-widget-cell-render.solid.tsx` | 4 | W-WA-EXIT-2/3 | `Menu` |
+| `components/new-session-link.ts` | 2 | W-WA-EXIT-2/3 | `Menu` |
+| `components/session-menu-compact.ts` | 2 | W-WA-EXIT-2/3 | `Menu` |
+| `components/session-menu-item.tsx` | 1 | W-WA-EXIT-2/3 | `Menu` |
+| `components/session-menu-solid.tsx` | 1 | W-WA-EXIT-2/3 | `Menu` |
+| `components/sidebar-agent-menu-switcher.ts` | 2 | Sidebar | `Menu` |
+| `components/sidebar-agent-roster.ts` | 4 | Sidebar | `Menu` |
+| `components/sidebar-reorder.ts` | 3 | Sidebar | `Menu` |
+| `components/sidebar-session-filter-popover.ts` | 1 | Sidebar | `Popover` |
+| `pages/chat/components/chat-composer-context.tsx` | 1 | Chat | `Popover` |
+| `pages/chat/components/chat-composer-controls.tsx` | 5 | Chat | `Menu` |
+| `pages/chat/components/chat-composer-emoji.tsx` | 1 | Chat | `Popover` |
+| `pages/chat/components/chat-composer-library-menu.tsx` | 4 | Chat | `Menu` |
+| `pages/chat/components/chat-composer-menu-rows.tsx` | 3 | Chat | `Menu`; `SettingsToggle` or native checkbox |
+| `pages/chat/components/chat-composer-plus-menu.tsx` | 8 | Chat | `Menu` |
+| `pages/chat/components/chat-composer-queue.tsx` | 2 | Chat | `Menu` |
+| `pages/chat/components/chat-effort-picker.tsx` | 1 | Chat | `Popover` |
+| `pages/chat/components/chat-header-panel-actions.tsx` | 1 | Chat | `Menu` |
+| `pages/chat/components/chat-header-session-menu.tsx` | 6 | Chat | `Menu` |
+| `pages/chat/components/chat-model-picker.tsx` | 1 | Chat | `Popover` |
+| `pages/chat/components/chat-pane-header.tsx` | 4 | Chat | `Menu` |
+| `pages/chat/components/chat-pane-placement.tsx` | 2 | Chat | `Menu` |
+| `pages/chat/components/chat-pane-versions-menu.tsx` | 3 | Chat | `Menu`; `Popover` |
+| `pages/chat/components/chat-permission-picker.tsx` | 3 | Chat | `Menu` |
+| `pages/chat/components/chat-quick-action.tsx` | 1 | Chat | `Menu` |
+| `pages/chat/components/chat-session-sharing.solid.tsx` | 6 | Chat | `Menu` |
+| `pages/chat/components/chat-tool-content.solid.tsx` | 3 | Chat | `Tabs` / `TabPanel` |
+| `pages/chat/components/session-diff-menus.tsx` | 6 | Chat | `Menu` |
+| `pages/model-setup/provider-picker.tsx` | 2 | W-WA-EXIT | `Menu` |
+| `pages/new-session/checkout-chip.tsx` | 2 | New session | `Popover` |
+| `pages/new-session/palette-session-settings-view.tsx` | 1 | New session | `Popover` |
+| `pages/new-session/project-chip.tsx` | 1 | New session | `Popover` |
+| `pages/new-session/where-chip.tsx` | 1 | New session | `Popover` |
+| `pages/plugins/install-action.tsx` | 1 | W-WA-EXIT | `Popover` |
+| `pages/usage/view.tsx` | 4 | W-WA-EXIT | `Menu` |
 
 Once all consumers are gone, remove Web Awesome from `ui/package.json` and regenerate the lockfile; remove its 3,096-line patch, workspace patch entry, checker/README references, theme import, `wa-light`/`wa-dark` bootstrap and mock toggles, WA token bridges/selectors/types/registrations, and PostCSS workaround/test/config references. Retire vendor-only test/prebundle entries while preserving shared ownership tests. Regenerate the boot manifest through `pnpm ui:boot-manifest:gen`; do not hand-edit its vendor module entries. The full package-tail inspection was pinned to `8118777aeb0aa13640623fd9bd4c18aa0bd842ff`; #171302 subsequently removed the stale select styling and pet `wa-button` obstacle-selector alternative. Recheck remaining imports and selectors on the final candidate instead of replaying the old tail blindly.
 
