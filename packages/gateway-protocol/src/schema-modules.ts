@@ -73,3 +73,10 @@ export * from "./schema/tools-catalog.js";
 export * from "./schema/transcripts.js";
 
 export * from "./schema/catalog.js";
+
+export {
+  SessionRowModeSchema,
+  SessionRowFieldSchema,
+  SessionRowFieldsSchema,
+  SessionRowProjectionSchema,
+} from "./session-row-fields.js";

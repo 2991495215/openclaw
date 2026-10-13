@@ -87,6 +87,12 @@ Every section heading from the previous single-page version keeps its anchor her
 - <a id="device-auth-migration-diagnostics" />[Device auth migration diagnostics](/gateway/protocol/auth#device-auth-migration-diagnostics)
 - <a id="tls-and-pinning" />[TLS and pinning](/gateway/protocol/auth#tls-and-pinning)
 
+## Session row projections
+
+Clients can select session row fields when the Gateway advertises
+`sessions.rowFields`. See [Selecting session row fields](/gateway/protocol/rpc-bootstrap-and-events#selecting-session-row-fields)
+for presets, coverage markers, and cache merge semantics.
+
 ## Related
 
 - [Building a Gateway client](/gateway/clients)

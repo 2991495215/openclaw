@@ -41,6 +41,42 @@ The row's own fields take precedence. Fields outside the sidebar projection are
 unrequested, not deletion receipts, just as with compact rows. Other clients can
 continue requesting compact or full rows without decoding shared facts.
 
+### Selecting session row fields
+
+Gateways advertise `sessions.rowFields` in `hello-ok.features.capabilities`. When that
+feature is present, `sessions.list`, `sessions.describe`, and list-window
+`sessions.subscribe` parameters accept `fields`, a non-empty array of unique
+names from `SESSION_ROW_FIELDS`. A client should request only the fields its view
+renders. If the feature is absent, use the corresponding `rowMode` preset.
+`SESSION_ROW_PRESETS` defines the existing `compact`, `dashboard`, and `sidebar`
+field lists. Calls without `fields` retain their existing response shape.
+
+The effective selection unions `fields`, any requested `rowMode` preset, and
+`key`, `kind`, `updatedAt`, `sessionId`, `lifecycleRevision`, `rowMode`, and
+`rowProjectionId`. Optional identity values can still be absent when unknown.
+For example, `{ fields: ["label", "unread"], limit: 60 }` requests labels and
+unread state without participant, transcript, placement, or model-detail work.
+
+Explicitly selecting `derivedTitle`, `lastMessagePreview`, or `activitySummary`
+requests that enrichment without its separate include flag, even when the flag
+is false. Fields included only through a `rowMode` preset still follow the
+existing include flags, so preset-only behavior is unchanged. A covered field
+can remain absent when no value is available.
+
+A response to a field-selection request includes one
+`rowProjection: { id, fields }` descriptor. Every projected row carries
+`rowMode: "fields"` and `rowProjectionId` matching that descriptor. The id is an
+opaque deterministic selection identity; clients must use the descriptor's field
+names rather than decode it. List-window subscriptions retain the selection and
+include the descriptor with their projected `sessions.changed` events.
+
+Expand response-local `sharedFacts` before merging rows. Only fields covered by
+the descriptor may overwrite cached values. An absent covered optional field can
+clear its cached value; a field outside the covered set is unknown and must not
+clear it. This keeps a narrow list update from erasing a previously fetched full
+session description. Reading an undeclared field from
+`ProjectedSessionRow<typeof VIEW_ROW_FIELDS>` is a TypeScript error.
+
 Control UI list requests use a bounded diagnostic `source`:
 `sidebar`, `dashboard`, `activity`, `sessions-page`, `chat-pane`, `agent-roster`,
 `command-palette`, or `skill-workshop`.
