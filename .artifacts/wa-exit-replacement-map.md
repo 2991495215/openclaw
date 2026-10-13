@@ -22,7 +22,7 @@ PRIM-B [#169128](https://github.com/openclaw/openclaw/pull/169128) and SHELL [#1
 | Activity tool/person filters | `Popover`; original trigger IDs and filter owners | Open [#170570](https://github.com/openclaw/openclaw/pull/170570) |
 | Sessions advanced filters | `Popover`; existing grouping/filter owner | Open [#170565](https://github.com/openclaw/openclaw/pull/170565) |
 | Usage query filters | `Menu`; existing query callbacks and checked state | Open [#170567](https://github.com/openclaw/openclaw/pull/170567) |
-| Usage export menu | `Menu`; existing export callbacks | Separate prepared cut; today’s API suffices, deferred while `usage.css` overlaps the query-filter PR |
+| Usage export menu | `Menu`; existing export callbacks and busy trigger state | Private static follow-up; requires the typed `aria-busy` trigger allowance below, with publication deferred until the query-filter PR lands |
 | Group-defaults folder picker | Native modal; save/abort/late-result ownership | Open [#170566](https://github.com/openclaw/openclaw/pull/170566); mode menu remains a separate cut |
 | Pet dismiss menu | Lazy `Menu`; existing dismiss actions and focus handoff | Landed [#170568](https://github.com/openclaw/openclaw/pull/170568), merge `8b1315ac0cb1834b683186d7eab01f18d65b3d66` |
 | Plugin settings actions | `Menu`; editor lifecycle and nested Escape | Open [#170569](https://github.com/openclaw/openclaw/pull/170569) |
@@ -46,12 +46,13 @@ Shared pickers/dialogs/toast remain with PRIM-C2 [#170387](https://github.com/op
 
 Main now supplies typed trigger attributes, item attributes, checkbox/radio entries, rich leaf content, and ordered `MenuEntry` content rows. Provider, Devices, Systems, and remaining Cron menus use these landed APIs. Leaf `content` preserves visual structure while `label` supplies typeahead text. Decorative content entries do not join keyboard navigation.
 
-Two presentation contracts remain with W-WA-EXIT-2:
+Three presentation contracts remain with W-WA-EXIT-2:
 
 | Needed API | Concrete contract |
 | --- | --- |
 | Explicit root Menu trigger ID | Group defaults must preserve `session-group-defaults-mode-trigger` and its selected `data-value`. Current `triggerAttributes` excludes `id`, and Menu writes `${identity.id}:trigger`; a wrapper ID is not equivalent. Keep nested trigger identity owned by the menu. |
 | `Popover.dismissOutsidePointer` / `dismissOutsideFocus` | The install-progress popup stays open while pinned after outside pointer/focus, but explicit Escape still dismisses it. Forward these existing overlay options through Popover, preserving defaults for other consumers. |
+| Busy Menu trigger attribute | Usage export must retain `aria-busy` on its actual trigger button while exporting. Include `"aria-busy"` in the existing `MenuProps.triggerAttributes` `Pick`; the trigger already spreads these attributes, so this allowance is type-only and requires no runtime change. |
 
 Owner handoff: `/tmp/w-wa-exit-menu-contract-handoff.md`. The retained `/tmp/solid2-wa-exit-popover-dismiss-options.patch` is a proposal for the W2 owner, not a branch to merge. Older Menu proposal files are historical: inspect the landed owner before adopting any hunk.
 
