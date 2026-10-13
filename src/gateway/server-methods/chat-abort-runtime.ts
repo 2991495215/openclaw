@@ -496,10 +496,6 @@ function prepareChatSessionAbort(
     // Hidden and preserved side runs must also block broad cleanup: authorization
     // alone must not let the callback abort work intentionally excluded above.
     abortAdditional();
-    params.assertCurrent?.();
-    if (commands.cancel()) {
-      result.aborted = true;
-    }
     for (const { runId, sessionKey, sessionId, agentId, entry } of authorizedRuns) {
       params.assertCurrent?.();
       if (
@@ -525,6 +521,11 @@ function prepareChatSessionAbort(
       if (res.aborted) {
         recordRun(runId);
       }
+    }
+    // Secondary cancellation must not retire reply abortability before its chat terminal.
+    params.assertCurrent?.();
+    if (commands.cancel()) {
+      result.aborted = true;
     }
     const endedAt = Date.now();
     const stopReason = params.stopReason ?? "rpc";
