@@ -27,6 +27,7 @@ const configIoMocks = vi.hoisted(() => ({
   readConfigFileSnapshotForWrite: vi.fn(),
 }));
 
+// mock-isolation: Worktree cases supply workspace config in memory without loading persisted config.
 vi.mock("../config/io.js", () => ({
   captureRuntimeConfigAsyncReader: () => async () => configIoMocks.loadConfig(),
   getRuntimeConfig: configIoMocks.loadConfig,
