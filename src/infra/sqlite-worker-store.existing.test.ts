@@ -166,7 +166,7 @@ describe("existing-only SQLite worker admission", () => {
       let closing: Promise<void> | undefined;
       setEnvironmentData(gateKey, gate.buffer);
       try {
-        maintenance.run(() => {
+        const acceptedOpening = maintenance.run(() => {
           opening = broker.open<FixtureOperations>({
             moduleUrl: pathToFileURL(modulePath),
             databasePath: file,
@@ -174,6 +174,7 @@ describe("existing-only SQLite worker admission", () => {
           });
           return accepted ? opening : undefined;
         });
+        opening = acceptedOpening ?? opening;
         assert(opening);
         await withinTest(
           awaitGateBeforeSettlement(
