@@ -1,4 +1,5 @@
 import { Type, type Static } from "typebox";
+import { SessionRowFieldsSchema, SessionRowModeSchema } from "../session-row-fields.js";
 import { closedObject } from "./closed-object.js";
 import { NonEmptyString, SessionLabelString } from "./primitives.js";
 
@@ -17,9 +18,9 @@ export const SessionsListParamsSchema = closedObject({
   /** Bounded caller attribution for response diagnostics; does not affect selection. */
   source: Type.Optional(Type.Enum(SESSION_LIST_SOURCES)),
   /** Compact omits capabilities; sidebar/dashboard retain their view and membership facts. */
-  rowMode: Type.Optional(
-    Type.Union([Type.Literal("compact"), Type.Literal("dashboard"), Type.Literal("sidebar")]),
-  ),
+  rowMode: Type.Optional(SessionRowModeSchema),
+  /** Explicit covered fields, unioned with rowMode and the required identity fields. */
+  fields: Type.Optional(SessionRowFieldsSchema),
   /** Maximum rows to return; omitted Gateway RPC calls use a bounded default. */
   limit: Type.Optional(Type.Integer({ minimum: 1 })),
   offset: Type.Optional(Type.Integer({ minimum: 0 })),

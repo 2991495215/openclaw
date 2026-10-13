@@ -1,6 +1,13 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
+import { SESSION_AGENT_ATTENTION_ICON_IDS } from "../session-agent-status.js";
 import { closedObject } from "./closed-object.js";
+import {
+  GatewayAgentRuntimeSchema,
+  GatewayContextWindowOptionSchema,
+  GatewayThinkingLevelOptionSchema,
+} from "./model-runtime-options.js";
+import { PluginJsonValueSchema } from "./plugins.js";
 import { NonEmptyString } from "./primitives.js";
 import { SessionClassificationSchema, SessionPeerKindSchema } from "./session-classification.js";
 import {
@@ -9,11 +16,14 @@ import {
   SessionParticipantSchema,
   SessionParticipantIdentitySchema,
 } from "./session-participant.js";
+import { SessionPlacementSchema, SessionPlacementMoveSchema } from "./session-placement.js";
 import { SessionActivitySummarySchema } from "./sessions-activity-summary.js";
 import {
   SessionCommunicationPolicySchema,
   EffectiveSessionCommunicationPolicySchema,
 } from "./sessions-communication.js";
+import { SessionGoalSchema } from "./sessions-goal.js";
+import { SessionObserverDigestSchema } from "./sessions-observer.js";
 import { SessionProviderReviewProjectionSchema } from "./sessions-provider-review.js";
 import { SessionSharingRoleSchema, SessionVisibilitySchema } from "./sessions-sharing-values.js";
 
@@ -109,8 +119,15 @@ export const SessionRowSchema = Type.Object(
     key: Type.String(),
     /** Fields outside the requested projection must not clear a client's full-row cache. */
     rowMode: Type.Optional(
-      Type.Union([Type.Literal("compact"), Type.Literal("dashboard"), Type.Literal("sidebar")]),
+      Type.Union([
+        Type.Literal("compact"),
+        Type.Literal("dashboard"),
+        Type.Literal("sidebar"),
+        Type.Literal("fields"),
+      ]),
     ),
+    /** Identifies the covered fields in the response or subscription rowProjection. */
+    rowProjectionId: Type.Optional(NonEmptyString),
     /** Response-local indexes into the list's sharedFacts; expand before merging rows. */
     sharedFacts: Type.Optional(Type.Array(Type.Integer({ minimum: 0 }))),
     sessionId: Type.Optional(Type.String()),
@@ -285,6 +302,177 @@ export const SessionRowSchema = Type.Object(
       ]),
     ),
     toolOverrides: Type.Optional(SessionToolOverridesSchema),
+    category: Type.Optional(Type.String()),
+    subject: Type.Optional(Type.String()),
+    groupChannel: Type.Optional(Type.String()),
+    space: Type.Optional(Type.String()),
+    origin: Type.Optional(
+      closedObject({
+        label: Type.Optional(Type.String()),
+        provider: Type.Optional(Type.String()),
+        surface: Type.Optional(Type.String()),
+        chatType: Type.Optional(
+          Type.Union([Type.Literal("direct"), Type.Literal("group"), Type.Literal("channel")]),
+        ),
+        from: Type.Optional(Type.String()),
+        to: Type.Optional(Type.String()),
+        nativeChannelId: Type.Optional(Type.String()),
+        nativeDirectUserId: Type.Optional(Type.String()),
+        accountId: Type.Optional(Type.String()),
+        threadId: Type.Optional(Type.Union([Type.String(), Type.Number()])),
+      }),
+    ),
+    agentStatus: Type.Optional(
+      closedObject({
+        note: Type.String(),
+        expiresAt: Type.Number(),
+        attention: Type.Optional(Type.Enum(SESSION_AGENT_ATTENTION_ICON_IDS)),
+      }),
+    ),
+    observerDigest: Type.Optional(
+      Type.Pick(SessionObserverDigestSchema, [
+        "agentId",
+        "runId",
+        "headline",
+        "health",
+        "updatedAt",
+        "revision",
+      ]),
+    ),
+    placement: Type.Optional(SessionPlacementSchema),
+    placementMove: Type.Optional(SessionPlacementMoveSchema),
+    systemSent: Type.Optional(Type.Boolean()),
+    abortedLastRun: Type.Optional(Type.Boolean()),
+    thinkingLevel: Type.Optional(Type.String()),
+    contextWindow: Type.Optional(Type.String()),
+    contextWindows: Type.Optional(Type.Array(GatewayContextWindowOptionSchema)),
+    contextWindowDefault: Type.Optional(Type.String()),
+    thinkingLevels: Type.Optional(Type.Array(GatewayThinkingLevelOptionSchema)),
+    thinkingOptions: Type.Optional(Type.Array(Type.String())),
+    thinkingDefault: Type.Optional(Type.String()),
+    fastMode: Type.Optional(
+      Type.Union([Type.Boolean(), Type.Literal("auto"), Type.Literal("ultrafast")]),
+    ),
+    effectiveFastMode: Type.Optional(
+      Type.Union([Type.Boolean(), Type.Literal("auto"), Type.Literal("ultrafast")]),
+    ),
+    effectiveFastModeSource: Type.Optional(
+      Type.Union([
+        Type.Literal("session"),
+        Type.Literal("agent"),
+        Type.Literal("config"),
+        Type.Literal("default"),
+      ]),
+    ),
+    fastAutoOnSeconds: Type.Optional(Type.Number()),
+    verboseLevel: Type.Optional(Type.String()),
+    traceLevel: Type.Optional(Type.String()),
+    reasoningLevel: Type.Optional(Type.String()),
+    elevatedLevel: Type.Optional(Type.String()),
+    sendPolicy: Type.Optional(Type.Union([Type.Literal("allow"), Type.Literal("deny")])),
+    goal: Type.Optional(SessionGoalSchema),
+    hasActiveRun: Type.Optional(Type.Boolean()),
+    activeRunIds: Type.Optional(Type.Array(Type.String())),
+    hasAutomation: Type.Optional(Type.Boolean()),
+    subagentRunState: Type.Optional(
+      Type.Union([Type.Literal("active"), Type.Literal("interrupted"), Type.Literal("historical")]),
+    ),
+    hasActiveSubagentRun: Type.Optional(Type.Boolean()),
+    startedAt: Type.Optional(Type.Number()),
+    endedAt: Type.Optional(Type.Number()),
+    runtimeMs: Type.Optional(Type.Number()),
+    responseUsage: Type.Optional(
+      Type.Union([
+        Type.Literal("on"),
+        Type.Literal("off"),
+        Type.Literal("tokens"),
+        Type.Literal("full"),
+      ]),
+    ),
+    effectiveResponseUsage: Type.Optional(
+      Type.Union([
+        Type.Literal("on"),
+        Type.Literal("off"),
+        Type.Literal("tokens"),
+        Type.Literal("full"),
+      ]),
+    ),
+    queueMode: Type.Optional(
+      Type.Union([
+        Type.Literal("steer"),
+        Type.Literal("followup"),
+        Type.Literal("collect"),
+        Type.Literal("interrupt"),
+      ]),
+    ),
+    effectiveQueueMode: Type.Optional(
+      Type.Union([
+        Type.Literal("steer"),
+        Type.Literal("followup"),
+        Type.Literal("collect"),
+        Type.Literal("interrupt"),
+      ]),
+    ),
+    modelSelectionLocked: Type.Optional(Type.Boolean()),
+    runtimeSelectionLocked: Type.Optional(Type.Boolean()),
+    agentRuntime: Type.Optional(GatewayAgentRuntimeSchema),
+    contextBudgetStatus: Type.Optional(
+      closedObject({
+        schemaVersion: Type.Literal(1),
+        source: Type.Literal("pre-prompt-estimate"),
+        updatedAt: Type.Number(),
+        provider: Type.String(),
+        model: Type.String(),
+        route: Type.Union([
+          Type.Literal("fits"),
+          Type.Literal("compact_only"),
+          Type.Literal("truncate_tool_results_only"),
+          Type.Literal("compact_then_truncate"),
+        ]),
+        shouldCompact: Type.Boolean(),
+        estimatedPromptTokens: Type.Number(),
+        contextTokenBudget: Type.Number(),
+        promptBudgetBeforeReserve: Type.Number(),
+        reserveTokens: Type.Number(),
+        effectiveReserveTokens: Type.Number(),
+        remainingPromptBudgetTokens: Type.Number(),
+        overflowTokens: Type.Number(),
+        toolResultReducibleChars: Type.Number(),
+        messageCount: Type.Number(),
+        unwindowedMessageCount: Type.Number(),
+        sessionId: Type.Optional(Type.String()),
+      }),
+    ),
+    deliveryContext: Type.Optional(
+      closedObject({
+        channel: Type.Optional(Type.String()),
+        to: Type.Optional(Type.String()),
+        accountId: Type.Optional(Type.String()),
+        threadId: Type.Optional(Type.Union([Type.String(), Type.Number()])),
+        deliveryIntent: Type.Optional(
+          closedObject({
+            id: Type.String(),
+            kind: Type.Literal("outbound_queue"),
+            queuePolicy: Type.Optional(
+              Type.Union([Type.Literal("required"), Type.Literal("best_effort")]),
+            ),
+          }),
+        ),
+      }),
+    ),
+    lastChannel: Type.Optional(Type.String()),
+    lastTo: Type.Optional(Type.String()),
+    lastAccountId: Type.Optional(Type.String()),
+    lastThreadId: Type.Optional(Type.Union([Type.String(), Type.Number()])),
+    pluginExtensions: Type.Optional(
+      Type.Array(
+        closedObject({
+          pluginId: Type.String(),
+          namespace: Type.String(),
+          value: PluginJsonValueSchema,
+        }),
+      ),
+    ),
   },
   { additionalProperties: true },
 );

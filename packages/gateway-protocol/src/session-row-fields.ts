@@ -1,7 +1,213 @@
-import type { SessionRow } from "./schema/sessions-row.js";
+import { Type } from "typebox";
+import { closedObject } from "./schema/closed-object.js";
+import { NonEmptyString } from "./schema/primitives.js";
+import type { SessionRowSchema, SessionRow } from "./schema/sessions-row.js";
+
+export type SessionRowField = keyof typeof SessionRowSchema.properties;
+
+/** Closed wire vocabulary; keep UI preset imports independent of the runtime row schema. */
+export const SESSION_ROW_FIELDS = [
+  "key",
+  "rowMode",
+  "rowProjectionId",
+  "sharedFacts",
+  "sessionId",
+  "lifecycleRevision",
+  "sessionModelRevision",
+  "incognito",
+  "kind",
+  "label",
+  "autoLabel",
+  "icon",
+  "color",
+  "channelAvatarUrl",
+  "boardFace",
+  "hasBoard",
+  "boardPresentation",
+  "displayName",
+  "derivedTitle",
+  "lastMessagePreview",
+  "channel",
+  "classification",
+  "agentId",
+  "accountId",
+  "peerKind",
+  "isMain",
+  "isBackground",
+  "isDock",
+  "chatType",
+  "activitySummary",
+  "updatedAt",
+  "snapshotAt",
+  "ancestorRevision",
+  "hiddenFromInvolvingMe",
+  "archived",
+  "archivedAt",
+  "archivedBy",
+  "archiveReason",
+  "pinned",
+  "sidebarRoot",
+  "pinnedAt",
+  "snoozedUntil",
+  "snoozedAt",
+  "unread",
+  "lastReadAt",
+  "markedUnreadAt",
+  "lastActivityAt",
+  "lastInteractionAt",
+  "status",
+  "lastRunError",
+  "providerReview",
+  "lastRunId",
+  "restartRecoveryStatus",
+  "activeLeafEntryId",
+  "spawnedBy",
+  "parentSessionKey",
+  "parentSessionId",
+  "controlOwnerSessionKey",
+  "childOwnerSessionKeys",
+  "childSessions",
+  "forkedFromParent",
+  "spawnDepth",
+  "subagentRole",
+  "subagentControlScope",
+  "swarmGroupId",
+  "swarm",
+  "worktree",
+  "repositoryWorkspaceId",
+  "repository",
+  "execNode",
+  "execCwd",
+  "spawnedWorkspaceDir",
+  "spawnedCwd",
+  "projectId",
+  "workspaceDir",
+  "permissionMode",
+  "communication",
+  "effectiveCommunication",
+  "sandboxMode",
+  "nativeRuntimeConsent",
+  "permissionModePending",
+  "sessionRoot",
+  "createdVia",
+  "createdSurface",
+  "createdActor",
+  "owner",
+  "participants",
+  "expandedParticipants",
+  "participantCount",
+  "visibility",
+  "sharingRole",
+  "sendDisabledReason",
+  "createdAt",
+  "forkSource",
+  "previousSessionId",
+  "inputTokens",
+  "outputTokens",
+  "totalTokens",
+  "totalTokensFresh",
+  "contextTokens",
+  "estimatedCostUsd",
+  "model",
+  "modelProvider",
+  "activeModel",
+  "activeModelProvider",
+  "modelOverrideSource",
+  "toolOverrides",
+  "category",
+  "subject",
+  "groupChannel",
+  "space",
+  "origin",
+  "agentStatus",
+  "observerDigest",
+  "placement",
+  "placementMove",
+  "systemSent",
+  "abortedLastRun",
+  "thinkingLevel",
+  "contextWindow",
+  "contextWindows",
+  "contextWindowDefault",
+  "thinkingLevels",
+  "thinkingOptions",
+  "thinkingDefault",
+  "fastMode",
+  "effectiveFastMode",
+  "effectiveFastModeSource",
+  "fastAutoOnSeconds",
+  "verboseLevel",
+  "traceLevel",
+  "reasoningLevel",
+  "elevatedLevel",
+  "sendPolicy",
+  "goal",
+  "hasActiveRun",
+  "activeRunIds",
+  "hasAutomation",
+  "subagentRunState",
+  "hasActiveSubagentRun",
+  "startedAt",
+  "endedAt",
+  "runtimeMs",
+  "responseUsage",
+  "effectiveResponseUsage",
+  "queueMode",
+  "effectiveQueueMode",
+  "modelSelectionLocked",
+  "runtimeSelectionLocked",
+  "agentRuntime",
+  "contextBudgetStatus",
+  "deliveryContext",
+  "lastChannel",
+  "lastTo",
+  "lastAccountId",
+  "lastThreadId",
+  "pluginExtensions",
+] as const satisfies readonly SessionRowField[];
+
+const sessionRowFieldsComplete: Exclude<
+  SessionRowField,
+  (typeof SESSION_ROW_FIELDS)[number]
+> extends never
+  ? true
+  : false = true;
+void sessionRowFieldsComplete;
+
+export const SESSION_ROW_BASE_FIELDS = [
+  "key",
+  "kind",
+  "updatedAt",
+  "sessionId",
+  "lifecycleRevision",
+  "rowMode",
+  "rowProjectionId",
+] as const satisfies readonly SessionRowField[];
+
+export const SessionRowModeSchema = Type.Union([
+  Type.Literal("compact"),
+  Type.Literal("dashboard"),
+  Type.Literal("sidebar"),
+]);
+export const SessionRowFieldSchema = Type.Enum(SESSION_ROW_FIELDS);
+export const SessionRowFieldsSchema = Type.Array(SessionRowFieldSchema, {
+  minItems: 1,
+  maxItems: SESSION_ROW_FIELDS.length,
+  uniqueItems: true,
+});
+export const SessionRowProjectionSchema = closedObject({
+  id: NonEmptyString,
+  fields: SessionRowFieldsSchema,
+});
+
+export type SessionRowProjection = { id: string; fields: SessionRowField[] };
+export type ProjectedSessionRow<Fields extends readonly SessionRowField[]> = Pick<
+  SessionRow,
+  Fields[number] | (typeof SESSION_ROW_BASE_FIELDS)[number]
+>;
 
 /** Compact list omissions are unknown detail facts, never deletion receipts. */
-export const SESSION_ROW_DETAIL_FIELDS = [
+const compactDetailFields: readonly SessionRowField[] = [
   "contextWindows",
   "contextWindowDefault",
   "thinkingLevels",
@@ -16,7 +222,7 @@ export const SESSION_ROW_DETAIL_FIELDS = [
 ] as const;
 
 /** Gallery presentation and the facts needed to reconcile its held membership. */
-export const SESSION_DASHBOARD_ROW_FIELDS: ReadonlySet<string> = new Set([
+const dashboardFields = [
   "key",
   "rowMode",
   "sessionId",
@@ -49,11 +255,11 @@ export const SESSION_DASHBOARD_ROW_FIELDS: ReadonlySet<string> = new Set([
   "worktree",
   "repository",
   "execNode",
-]);
+] as const satisfies readonly SessionRowField[];
 
 /** Sidebar rendering, actions, and the receipts used by its managed list window. */
-export const SESSION_SIDEBAR_ROW_FIELDS: ReadonlySet<string> = new Set([
-  ...SESSION_DASHBOARD_ROW_FIELDS,
+const sidebarFields = [
+  ...dashboardFields,
   "incognito",
   "icon",
   "color",
@@ -111,7 +317,42 @@ export const SESSION_SIDEBAR_ROW_FIELDS: ReadonlySet<string> = new Set([
   "subagentRole",
   "subagentControlScope",
   "swarmGroupId",
-]);
+] as const satisfies readonly SessionRowField[];
+
+export const SESSION_ROW_PRESETS = {
+  compact: SESSION_ROW_FIELDS.filter((field) => !compactDetailFields.includes(field)),
+  dashboard: dashboardFields,
+  sidebar: sidebarFields,
+} as const satisfies Record<string, readonly SessionRowField[]>;
+export type SessionRowMode = keyof typeof SESSION_ROW_PRESETS;
+
+export const SESSION_ROW_DETAIL_FIELDS = SESSION_ROW_FIELDS.filter(
+  (field) => !SESSION_ROW_PRESETS.compact.includes(field),
+);
+export const SESSION_DASHBOARD_ROW_FIELDS: ReadonlySet<string> = new Set(
+  SESSION_ROW_PRESETS.dashboard,
+);
+export const SESSION_SIDEBAR_ROW_FIELDS: ReadonlySet<string> = new Set(SESSION_ROW_PRESETS.sidebar);
+
+/** Preset-only calls retain their existing wire shape and do not need a descriptor. */
+export function resolveSessionRowProjection(params: {
+  rowMode?: SessionRowMode;
+  fields?: readonly SessionRowField[];
+}): SessionRowProjection | undefined {
+  if (!params.fields) {
+    return undefined;
+  }
+  const selected = new Set<SessionRowField>([
+    ...SESSION_ROW_BASE_FIELDS,
+    ...params.fields,
+    ...(params.rowMode ? SESSION_ROW_PRESETS[params.rowMode] : []),
+  ]);
+  const fields = SESSION_ROW_FIELDS.filter((field) => selected.has(field));
+  return {
+    id: `f1:${fields.map((field) => SESSION_ROW_FIELDS.indexOf(field).toString(36)).join(".")}`,
+    fields,
+  };
+}
 
 /** Response-local facts: no cross-request catalog or invalidation protocol. */
 export function shareSessionRowFacts<T extends SessionRow>(sessions: T[]) {
@@ -123,7 +364,7 @@ export function shareSessionRowFacts<T extends SessionRow>(sessions: T[]) {
       // Keep required fields and the projection marker readable without expanding the table.
       if (
         value === undefined ||
-        ["key", "kind", "updatedAt", "sessionId", "rowMode"].includes(field)
+        ["key", "kind", "updatedAt", "sessionId", "rowMode", "rowProjectionId"].includes(field)
       ) {
         continue;
       }

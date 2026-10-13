@@ -62,6 +62,11 @@
       "import": "./dist/restart-unavailable.mjs",
       "default": "./dist/restart-unavailable.mjs"
     },
+    "./session-row-fields": {
+      "types": "./dist/session-row-fields.d.mts",
+      "import": "./dist/session-row-fields.mjs",
+      "default": "./dist/session-row-fields.mjs"
+    },
     "./schema": {
       "types": "./dist/schema.d.mts",
       "import": "./dist/schema.mjs",
