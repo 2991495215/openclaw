@@ -70,6 +70,7 @@ describe("embedded run session lane", () => {
   afterEach(() => {
     clearRuntimeConfigSnapshot();
     resetCommandQueueStateForTest();
+    clearRuntimeConfigSnapshot();
   });
 
   it("passes available run identity through session admission", async () => {

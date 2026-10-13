@@ -30,7 +30,10 @@ import {
   readExistingAgentSchemaMeta,
 } from "./openclaw-agent-db-schema-read.js";
 import { revalidateAgentDatabaseTerminalOpen } from "./openclaw-agent-db-terminal.js";
-import { hasOpenClawAgentCanonicalValidation } from "./openclaw-agent-db-validation-cache.js";
+import {
+  adoptOpenClawAgentDatabaseSchema,
+  hasOpenClawAgentCanonicalValidation,
+} from "./openclaw-agent-db-validation-cache.js";
 import {
   isIncognitoOpenClawAgentSqlitePath,
   resolveOpenClawAgentSqlitePath,
@@ -199,10 +202,13 @@ export function openOpenClawAgentDatabaseReadOnly(
       ? db.location()
       : undefined;
     const database = { agentId, db, path: privatePath ?? pathname, close };
-    const hasSchema = runSqliteReadOperationSync(db, () => {
-      admitSqliteSchema(db);
-      return hasAdmittedAgentReadOnlySchema(database);
-    });
+    // The physical owner already checked ownership and canonical definitions.
+    const hasSchema =
+      adoptOpenClawAgentDatabaseSchema(database) ||
+      runSqliteReadOperationSync(db, () => {
+        admitSqliteSchema(db);
+        return hasAdmittedAgentReadOnlySchema(database);
+      });
     if (!hasSchema) {
       close();
       return { found: false, reason: "schema-missing" };
