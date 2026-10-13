@@ -78,6 +78,7 @@ on:
           - menu
           - singleflight
           - metadata
+          - dynamic-tools
       base_sha:
         description: Full predecessor commit SHA
         required: true
@@ -191,7 +192,7 @@ jobs:
           retention-days: 14
   main-dependencies:
     name: Main dependency attribution
-    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor && !inputs.diagnose_readiness && inputs.fixture_group != 'incognito' && inputs.fixture_group != 'worker-abort' && inputs.fixture_group != 'history' && inputs.fixture_group != 'menu' && inputs.fixture_group != 'singleflight' && inputs.fixture_group != 'metadata' }}
+    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor && !inputs.diagnose_readiness && inputs.fixture_group != 'incognito' && inputs.fixture_group != 'worker-abort' && inputs.fixture_group != 'history' && inputs.fixture_group != 'menu' && inputs.fixture_group != 'singleflight' && inputs.fixture_group != 'metadata' && inputs.fixture_group != 'dynamic-tools' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -693,7 +694,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        include: ${{ fromJSON(inputs.fixture_group == 'metadata' && '[{"group":"metadata-node","runtime":"node"}]' || inputs.fixture_group == 'singleflight' && '[{"group":"singleflight-node","runtime":"node"}]' || inputs.fixture_group == 'menu' && '[{"group":"menu-bun","runtime":"bun"}]' || inputs.fixture_group == 'history' && '[{"group":"history-node","runtime":"node"}]' || inputs.fixture_group == 'worker-abort' && '[{"group":"worker-abort-node","runtime":"node"}]' || inputs.fixture_group == 'remaining' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"},{"group":"durable-admission-node","runtime":"node"}]' || inputs.fixture_group == 'incognito' && '[{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'repairs' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"creation-spawn-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'final' && '[{"group":"final-node","runtime":"node"}]' || '[{"group":"sharing-grants-node","runtime":"node"},{"group":"sharing-siblings-node","runtime":"node"},{"group":"fixture-imports-node","runtime":"node"},{"group":"native-and-merge-node","runtime":"node"},{"group":"creation-mention-node","runtime":"node"},{"group":"patch-recovery-node","runtime":"node"},{"group":"goal-history-node","runtime":"node"},{"group":"typed-fixtures-node","runtime":"node"},{"group":"sharing-routes-node","runtime":"node"},{"group":"session-utils-node","runtime":"node"},{"group":"publication-history-node","runtime":"node"}]') }}
+        include: ${{ fromJSON(inputs.fixture_group == 'dynamic-tools' && '[{"group":"dynamic-tools-node","runtime":"node"}]' || inputs.fixture_group == 'metadata' && '[{"group":"metadata-node","runtime":"node"}]' || inputs.fixture_group == 'singleflight' && '[{"group":"singleflight-node","runtime":"node"}]' || inputs.fixture_group == 'menu' && '[{"group":"menu-bun","runtime":"bun"}]' || inputs.fixture_group == 'history' && '[{"group":"history-node","runtime":"node"}]' || inputs.fixture_group == 'worker-abort' && '[{"group":"worker-abort-node","runtime":"node"}]' || inputs.fixture_group == 'remaining' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"},{"group":"durable-admission-node","runtime":"node"}]' || inputs.fixture_group == 'incognito' && '[{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'repairs' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"creation-spawn-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'final' && '[{"group":"final-node","runtime":"node"}]' || '[{"group":"sharing-grants-node","runtime":"node"},{"group":"sharing-siblings-node","runtime":"node"},{"group":"fixture-imports-node","runtime":"node"},{"group":"native-and-merge-node","runtime":"node"},{"group":"creation-mention-node","runtime":"node"},{"group":"patch-recovery-node","runtime":"node"},{"group":"goal-history-node","runtime":"node"},{"group":"typed-fixtures-node","runtime":"node"},{"group":"sharing-routes-node","runtime":"node"},{"group":"session-utils-node","runtime":"node"},{"group":"publication-history-node","runtime":"node"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -733,7 +734,12 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           mkdir -p .artifacts
           node --input-type=module -e 'console.log(JSON.stringify({ candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, runtime: process.env.OPENCLAW_VITEST_RUNTIME }, null, 2))' > .artifacts/fixture-provenance.json
+          test_filter=()
           case "$PROOF_GROUP" in
+            dynamic-tools-node)
+              files=(extensions/codex/src/app-server/run-attempt.dynamic-tools.test.ts)
+              test_filter=(-t "retains a required command as one native pending call until terminal collection")
+              ;;
             metadata-node)
               files=(src/gateway/session-utils.metadata-perf.test.ts)
               ;;
@@ -862,7 +868,7 @@ jobs:
             if [[ "$file" == ui/* ]]; then
               (cd ui && bun --bun ../scripts/run-node-package-bin.mts vitest run --config vitest.config.ts "${file#ui/}" --maxWorkers=1 --reporter=verbose) 2>&1 | tee -a .artifacts/fixture-regressions.log || failed=1
             else
-              pnpm test "$file" --maxWorkers=1 --reporter=verbose 2>&1 | tee -a .artifacts/fixture-regressions.log || failed=1
+              pnpm test "$file" --maxWorkers=1 --reporter=verbose "${test_filter[@]}" 2>&1 | tee -a .artifacts/fixture-regressions.log || failed=1
             fi
           done
           exit "$failed"
