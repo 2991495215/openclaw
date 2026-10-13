@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement } from "../../../../test/helpers/promise.js";
 import { loadTranscriptEventsSync } from "../../../config/sessions/session-accessor.sqlite-read.js";
-import { SessionEntryChangedDuringReadError } from "../../../config/sessions/session-entry-read-errors.js";
 import * as transcriptReaders from "../../../config/sessions/session-transcript-execution-read.js";
 import { waitForSessionTranscriptProjection } from "../../../config/sessions/session-transcript-reconcile.js";
 import * as historyReaders from "../../../config/sessions/session-transcript-worker-readers.js";
@@ -197,14 +196,12 @@ describe("transcript replay cohorts", () => {
     );
   });
 
+  // Worker writes wait for replay consumption; closure and revocation can still invalidate it.
   it.each([
-    { phase: "legacy-final", change: "rewrite" },
     { phase: "legacy-final", change: "close" },
     { phase: "legacy-final", change: "revoke" },
-    { phase: "selected-initial", change: "rewrite" },
     { phase: "selected-initial", change: "close" },
     { phase: "selected-initial", change: "revoke" },
-    { phase: "selected-final", change: "rewrite" },
     { phase: "selected-final", change: "close" },
     { phase: "selected-final", change: "revoke" },
   ] as const)(
@@ -218,7 +215,6 @@ describe("transcript replay cohorts", () => {
           if (prepared) {
             expect(admit).toBeTypeOf("function");
           }
-          const original = await SessionManager.openAsync(fixture.target);
           const validated = createDeferredCore();
           const release = createDeferredCore();
           const createPreparedReads = transcriptReaders.createPreparedSessionTranscriptReads;
@@ -269,19 +265,13 @@ describe("transcript replay cohorts", () => {
               pending,
               "Replay validation was not reached",
             );
-            if (change === "rewrite") {
-              expect(await original.removeTrailingEntriesAsync(() => true)).toBeGreaterThan(0);
-            } else if (change === "close") {
+            if (change === "close") {
               closing = closeOpenClawAgentDatabaseByPathAsync(fixture.target.storePath!);
             } else {
               fixture.revoke();
             }
             release.resolve();
-            if (change === "rewrite" && phase !== "legacy-final") {
-              await expect(pending).rejects.toBeInstanceOf(SessionEntryChangedDuringReadError);
-            } else {
-              await expect(pending).rejects.toThrow(/replay|revoked|closed|current|admission/i);
-            }
+            await expect(pending).rejects.toThrow(/replay|revoked|closed|current|admission/i);
             expect(consume).not.toHaveBeenCalled();
           } finally {
             release.resolve();
