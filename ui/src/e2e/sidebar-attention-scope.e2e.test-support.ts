@@ -147,6 +147,29 @@ export async function runSidebarAttentionScopeFlow(params: SidebarAttentionScope
         : requestParams?.agentId === agentId;
     }).length;
 
+  const logSidebarState = async (stage: string) => {
+    const state = await page.evaluate(() => {
+      const sidebar = document.querySelector("openclaw-app-sidebar");
+      return {
+        tabs: Array.from(sidebar?.querySelectorAll('[role="tab"]') ?? [], (tab) => ({
+          value: tab.getAttribute("data-tab-value"),
+          selected: tab.getAttribute("aria-selected"),
+        })),
+        attentionKinds: Array.from(
+          sidebar?.querySelectorAll("[data-attention-kind]") ?? [],
+          (entry) => entry.getAttribute("data-attention-kind"),
+        ),
+        updateChildCounts: Array.from(
+          sidebar?.querySelectorAll(
+            'openclaw-sidebar-update-card[data-attention-kind="updateAvailable"]',
+          ) ?? [],
+          (card) => card.childElementCount,
+        ),
+      };
+    });
+    console.info("SIDEBAR_ATTENTION_STATE", JSON.stringify({ stage, ...state }));
+  };
+
   try {
     await page.goto(`${params.baseUrl}new`);
     await waitForControlUiRoute(page, { pathname: "/new", routeId: "new-session" });
@@ -361,15 +384,19 @@ export async function runSidebarAttentionScopeFlow(params: SidebarAttentionScope
     await sidebar.locator(".sidebar-issues-button").click();
     await expect.poll(() => sidebarUpdate.isVisible()).toBe(true);
     await expect.poll(() => approvalRow.count()).toBe(1);
+    await logSidebarState("after mobile open");
     await sidebar.getByRole("tab", { name: /Automations/ }).click();
+    await logSidebarState("after Automations click");
     await expect.poll(() => automationRows.getByText("Writer release digest").count()).toBe(1);
     await expect.poll(() => automationRows.getByText("Main release digest").count()).toBe(0);
     await holdProof(page, params.captureProof);
     await captureProof(params, page, "11-mobile-inbox-writer-agent.png");
 
     await sidebar.getByRole("button", { name: "Dismiss shown" }).click();
+    await logSidebarState("after Dismiss");
     await expect.poll(() => automationRows.count()).toBe(0);
     await sidebar.getByRole("tab", { name: /All/ }).click();
+    await logSidebarState("after All click");
     await expect.poll(() => approvalRow.count()).toBe(1);
     await expect.poll(() => sidebarUpdate.isVisible()).toBe(true);
     await holdProof(page, params.captureProof);
@@ -377,6 +404,7 @@ export async function runSidebarAttentionScopeFlow(params: SidebarAttentionScope
 
     expect(floatingKinds).toEqual([]);
   } catch (error) {
+    await logSidebarState("catch").catch(() => undefined);
     await captureControlUiE2eFailureDiagnostics(page, {
       error: error instanceof Error ? error : new Error(String(error)),
       label: "Control UI Inbox automation scope",
