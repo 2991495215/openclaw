@@ -269,6 +269,45 @@ function missingCodexUpdateResult(source: "npm" | "clawhub" | "fallback") {
 }
 
 describe("upgrade recovery result assertions", () => {
+  it.each([
+    { name: "reported advisory findings", exitCode: 1 },
+    { name: "incomplete advisory inspections", exitCode: null },
+  ])("accepts successful updates with $name", ({ exitCode }) => {
+    const result = runJsonAssertion(
+      "assert-successful-update-json",
+      {
+        status: "ok",
+        after: { version: "2026.10.3" },
+        steps: [
+          { name: "global update", exitCode: 0 },
+          {
+            name: "post-activation doctor inspections",
+            exitCode,
+            advisory: { kind: "recoverable-maintenance", message: "Run openclaw doctor." },
+          },
+        ],
+      },
+      "2026.10.3",
+    );
+    expect(result.status, result.stderr).toBe(0);
+  });
+
+  it.each([
+    { name: "global update", advisory: { kind: "recoverable-maintenance" } },
+    { name: "post-activation doctor inspections", advisory: undefined },
+  ])("rejects a failed $name without the inspection advisory contract", (step) => {
+    const result = runJsonAssertion(
+      "assert-successful-update-json",
+      {
+        status: "ok",
+        after: { version: "2026.10.3" },
+        steps: [{ ...step, exitCode: 1 }],
+      },
+      "2026.10.3",
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("successful update contained a failed core step");
+  });
   describe.each(["fallback"] as const)("missing Codex (%s)", (source) => {
     const scenarioEnv = {
       OPENCLAW_UPGRADE_SURVIVOR_SCENARIO: "missing-configured-plugin-migration",

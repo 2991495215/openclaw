@@ -1800,7 +1800,9 @@ function assertSuccessfulUpdateResult(result, expectedVersion) {
           step?.exitCode === 0 ||
           (step?.name === "openclaw doctor" &&
             step.exitCode === 86 &&
-            step.advisory?.kind === "package-post-install-doctor"),
+            step.advisory?.kind === "package-post-install-doctor") ||
+          (step?.name === "post-activation doctor inspections" &&
+            step.advisory?.kind === "recoverable-maintenance"),
       ),
     "successful update contained a failed core step",
   );
