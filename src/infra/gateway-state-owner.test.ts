@@ -99,12 +99,18 @@ describe("bounded Gateway state reads", () => {
         vi.advanceTimersByTime(999);
         expect(() => assertStateDatabaseReadAllowed(databasePath)).not.toThrow();
         vi.advanceTimersByTime(1);
-        expect(() => assertStateDatabaseReadAllowed(databasePath)).toThrow("could not be verified");
+        expect(() => assertStateDatabaseReadAllowed(databasePath)).toThrow(
+          kind === "owner"
+            ? "no longer current; lock removed/replaced; restart the Gateway"
+            : "was lost: owner lock was removed or replaced; restart the Gateway",
+        );
         expect(() =>
           kind === "owner"
             ? assertStateDatabaseAccessAllowed(databasePath)
             : gateway.assertCurrent(),
-        ).toThrow(kind === "owner" ? "could not be verified" : "no longer current");
+        ).toThrow(
+          kind === "owner" ? "lock removed/replaced; restart the Gateway" : "no longer current",
+        );
       } finally {
         await gateway.release();
       }
@@ -529,7 +535,7 @@ describe("Gateway state ownership", () => {
             expect(() => lease.assertCurrent()).toThrow("no longer current");
             if (kind === "owner") {
               expect(() => assertStateDatabaseAccessAllowed(databasePath)).toThrow(
-                "could not be verified",
+                "lock removed/replaced; restart the Gateway",
               );
             }
             expect(() => acquireStateDatabaseSchemaLease(databasePath)).toThrow(
