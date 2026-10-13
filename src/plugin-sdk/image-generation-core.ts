@@ -1,5 +1,6 @@
 export {
   buildNoCapabilityModelConfiguredMessage,
+  resolveCapabilityModelCandidates,
   resolveCapabilityModelCandidatesAsync,
   throwCapabilityGenerationFailure,
 } from "../media-generation/runtime-shared.js";

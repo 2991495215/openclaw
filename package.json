@@ -664,6 +664,10 @@
       "types": "./dist/plugin-sdk/inbound-reply-dispatch.d.ts",
       "default": "./dist/plugin-sdk/inbound-reply-dispatch.js"
     },
+    "./plugin-sdk/inbound-envelope": {
+      "types": "./dist/plugin-sdk/inbound-envelope.d.ts",
+      "default": "./dist/plugin-sdk/inbound-envelope.js"
+    },
     "./plugin-sdk/inbound-event-delivery": {
       "types": "./dist/plugin-sdk/inbound-event-delivery.d.ts",
       "default": "./dist/plugin-sdk/inbound-event-delivery.js"

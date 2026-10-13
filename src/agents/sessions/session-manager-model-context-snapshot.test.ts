@@ -22,7 +22,6 @@ import * as transcriptAnchors from "../../config/sessions/session-transcript-anc
 import type { SessionTranscriptAnchorFacts } from "../../config/sessions/session-transcript-anchor-read.types.js";
 import * as transcriptHydration from "../../config/sessions/session-transcript-hydration.js";
 import * as contextWorker from "../../config/sessions/session-transcript-read-worker-runtime.js";
-import { waitForSessionTranscriptProjection } from "../../config/sessions/session-transcript-reconcile.js";
 import { buildRestartRecoveryExpectedState } from "../../config/sessions/session-transcript-turn-state.js";
 import {
   getOwnedSessionTranscriptReader,
@@ -549,7 +548,6 @@ it.each([
   "unchanged",
   "default-selector",
   "mutable-message",
-  "native-append",
   "worker-append",
   "worker-reset",
   "worker-compaction",
@@ -603,9 +601,6 @@ it.each([
             throw new Error("Missing mutable assistant entry");
           }
           reply.message.content = [{ type: "text", text: "unpersisted replacement" }];
-        } else if (change === "native-append") {
-          await source.appendMessageAsync(makeUserMessage("native successor", 2));
-          expectedMessages.push({ role: "user", content: "native successor" });
         } else if (change === "worker-append") {
           await source.appendMessageAsync(makeUserMessage("worker successor", 2));
           expectedMessages.push({ role: "user", content: "worker successor" });
@@ -957,78 +952,3 @@ it("keeps one bounded context snapshot and observes a foreign rewrite on the nex
     });
   });
 });
-
-it.each(
-  [false, true].flatMap((incognito) =>
-    (["append", "rewrite"] as const).map((mutation) => ({ incognito, mutation })),
-  ),
-)(
-  "reads the completed-turn snapshot across later $mutation (incognito=$incognito)",
-  async ({ incognito, mutation }) => {
-    await withOpenClawTestState({ label: "completed-model-context" }, async (state) => {
-      const scope = {
-        agentId: "main",
-        sessionId: "completed-context",
-        sessionKey: incognito
-          ? "agent:main:dashboard:incognito-completed-context"
-          : "agent:main:completed-context",
-        storePath: path.join(state.agentDir("main"), "openclaw-agent.sqlite"),
-      };
-      await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
-      const source = await SessionManager.openAsync(scope);
-      await source.appendMessageAsync({
-        role: "user",
-        content: "completed question",
-        timestamp: 1,
-      });
-      await waitForSessionTranscriptProjection(scope);
-      const terminal = await source.appendMessageWithTranscriptAnchorAsync(
-        Object.assign(
-          makeAgentAssistantMessage({
-            content: [{ type: "text", text: "completed answer" }],
-          }),
-          { __openclaw: { upstreamUserText: "synthetic-private-native-payload" } },
-        ),
-      );
-      if (!terminal.anchor) {
-        throw new Error("Missing completed-turn anchor");
-      }
-      const expected = (await SessionManager.openModelContextAsync(scope)).buildSessionContext();
-      await source.appendMessageAsync({ role: "user", content: "later question", timestamp: 2 });
-      const mutate = async () => {
-        if (mutation === "rewrite") {
-          await source.removeTrailingEntriesAsync((entry) => entry.type === "message");
-        }
-        await source.appendMessageAsync({ role: "user", content: "newest question", timestamp: 3 });
-      };
-      const spy = incognito
-        ? undefined
-        : vi
-            .spyOn(contextWorker, "readSessionTranscriptModelContextInWorker")
-            .mockImplementationOnce(async (...args) => {
-              spy!.mockRestore();
-              const result = await contextWorker.readSessionTranscriptModelContextInWorker(...args);
-              await mutate();
-              return result;
-            });
-      try {
-        const pending = SessionManager.openModelContextAsync(scope, { through: terminal.anchor });
-        if (incognito) {
-          await mutate();
-        }
-        if (mutation === "rewrite") {
-          await expect(pending).rejects.toThrow(/transcript|anchor/i);
-        } else {
-          const context = (await pending).buildSessionContext();
-          expect(context).toEqual(expected);
-          expect(JSON.stringify(context)).not.toContain("synthetic-private-native-payload");
-          expect(source.buildSessionContext().messages.at(-1)).toMatchObject({
-            content: "newest question",
-          });
-        }
-      } finally {
-        spy?.mockRestore();
-      }
-    });
-  },
-);

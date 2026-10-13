@@ -730,6 +730,7 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
   }
 
   const replyDispatchTakeover = await runReplyDispatchHook(state, {
+    shouldSendToolSummaries,
     shouldSendToolSummariesAsync,
   });
   if (replyDispatchTakeover?.handled) {

@@ -22,6 +22,7 @@ type ReadSession = NonNullable<SessionObserverDeps["readSession"]>;
 
 export function createSessionObserverLifecycle(params: {
   getConfig: SessionObserverDeps["getConfig"];
+  readSession: ReadSession;
   refreshAfterReset: (
     sessionKey: string,
     agentId: string,

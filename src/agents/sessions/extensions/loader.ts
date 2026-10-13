@@ -7,6 +7,7 @@ import type {
   Extension,
   ExtensionAPI,
   ExtensionFactory,
+  ExtensionRuntime,
   ExtensionRuntimeV2,
   ExtensionShortcut,
   MessageRenderer,
@@ -18,7 +19,7 @@ type HandlerFn = NonNullable<ReturnType<Extension["handlers"]["get"]>>[number];
 
 /**
  * Create a runtime with throwing stubs for action methods.
- * Runner.bindCoreAsync() replaces these with real implementations.
+ * Runner.bindCore() replaces these with real implementations.
  */
 export function createExtensionRuntime(): ExtensionRuntimeV2 {
   const notInitialized = () => {
@@ -57,7 +58,7 @@ export function createExtensionRuntime(): ExtensionRuntimeV2 {
         message ??
         "This extension ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().";
     },
-    // Pre-bind: queue registrations so bindCoreAsync() can flush them once the
+    // Pre-bind: queue registrations so bindCore() can flush them once the
     // model registry is available. Binding replaces both with direct calls.
     registerProvider: (name, config, extensionPath = "<unknown>") => {
       runtime.pendingProviderRegistrations.push({ name, config, extensionPath });
@@ -79,7 +80,7 @@ export function createExtensionRuntime(): ExtensionRuntimeV2 {
  */
 function createExtensionAPI(
   extension: Extension,
-  runtime: ExtensionRuntimeV2,
+  runtime: ExtensionRuntime,
   cwd: string,
   eventBus: EventBus,
 ): ExtensionAPI {
@@ -87,7 +88,7 @@ function createExtensionAPI(
     runtime.assertActive();
     return runtime;
   };
-  const persist = async <T>(action: (owner: ExtensionRuntimeV2) => Promise<T>) => {
+  const persist = async <T>(action: (owner: ExtensionRuntime) => Promise<T>) => {
     const owner = activeRuntime();
     const pending = action(owner);
     const result = await pending;
@@ -164,10 +165,27 @@ function createExtensionAPI(
       activeRuntime().sendUserMessage(content, options);
     },
     appendEntryAsync: (customType, data) =>
-      persist((owner) => owner.appendEntryAsync(customType, data)),
-    setSessionNameAsync: (name) => persist((owner) => owner.setSessionNameAsync(name)),
+      persist((owner) => {
+        if (!owner.appendEntryAsync) {
+          throw new Error("Extension host must bind worker persistence with bindCoreAsync");
+        }
+        return owner.appendEntryAsync(customType, data);
+      }),
+    setSessionNameAsync: (name) =>
+      persist((owner) => {
+        if (!owner.setSessionNameAsync) {
+          throw new Error("Extension host must bind worker persistence with bindCoreAsync");
+        }
+        return owner.setSessionNameAsync(name);
+      }),
     getSessionName: () => activeRuntime().getSessionName(),
-    setLabelAsync: (entryId, label) => persist((owner) => owner.setLabelAsync(entryId, label)),
+    setLabelAsync: (entryId, label) =>
+      persist((owner) => {
+        if (!owner.setLabelAsync) {
+          throw new Error("Extension host must bind worker persistence with bindCoreAsync");
+        }
+        return owner.setLabelAsync(entryId, label);
+      }),
     exec(command: string, args: string[], options?: ExecOptions) {
       runtime.assertActive();
       return execCommand(command, args, options?.cwd ?? cwd, options);
@@ -196,7 +214,7 @@ export async function loadExtensionFromFactory(
   factory: ExtensionFactory,
   cwd: string,
   eventBus: EventBus,
-  runtime: ExtensionRuntimeV2,
+  runtime: ExtensionRuntime,
   extensionPath = "<inline>",
 ): Promise<Extension> {
   const source =

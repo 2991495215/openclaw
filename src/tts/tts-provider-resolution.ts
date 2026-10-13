@@ -5,6 +5,7 @@ import {
   normalizeOptionalString,
 } from "../../packages/normalization-core/src/string-coerce.js";
 import type { OpenClawConfig, ResolvedTtsPersona, TtsProvider } from "../config/types.js";
+import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import type { SpeechProviderPlugin } from "../plugins/types.js";
 import { compareSpeechProviderOrder } from "./provider-registry-core.js";
 import {
@@ -368,6 +369,25 @@ function resolvePreferredTtsProvider(
   return undefined;
 }
 
+export function resolveTtsProvider(
+  config: ResolvedTtsConfig,
+  prefsPath: string,
+  registry: TtsProviderRegistry = defaultProviderRegistry,
+  prefs = readPrefs(prefsPath),
+): TtsProvider {
+  const preferred = resolvePreferredTtsProvider(config, prefsPath, registry, prefs);
+  if (preferred) {
+    return preferred;
+  }
+  const effectiveCfg = config.sourceConfig;
+  for (const provider of sortSpeechProvidersForAutoSelection(effectiveCfg, undefined, registry)) {
+    if (isSpeechProviderConfigured(config, provider.id, effectiveCfg, registry)) {
+      return provider.id;
+    }
+  }
+  return config.provider;
+}
+
 export async function resolveTtsProviderAsync(
   config: ResolvedTtsConfig,
   prefsPath: string,
@@ -479,6 +499,20 @@ export function resolvePrimaryTtsProviderCandidate(
   });
 }
 
+/** @deprecated Use isTtsProviderConfiguredAsync. Removed after stable deprecation and a compatibility period. */
+export function isTtsProviderConfigured(
+  config: ResolvedTtsConfig,
+  provider: TtsProvider | SpeechProviderPlugin,
+  cfg?: OpenClawConfig,
+): boolean {
+  warnPluginSdkDeprecation({
+    family: "tts",
+    method: "isTtsProviderConfigured",
+    replacement: "isTtsProviderConfiguredAsync",
+  });
+  return isSpeechProviderConfigured(config, provider, cfg, defaultProviderRegistry);
+}
+
 function resolveSpeechProviderConfiguration(
   config: ResolvedTtsConfig,
   provider: TtsProvider | SpeechProviderPlugin,
@@ -506,6 +540,21 @@ function resolveSpeechProviderConfiguration(
       timeoutMs: resolveSpeechProviderTimeoutMs({ config, provider: resolvedProvider }),
     },
   };
+}
+
+function isSpeechProviderConfigured(
+  config: ResolvedTtsConfig,
+  provider: TtsProvider | SpeechProviderPlugin,
+  cfg: OpenClawConfig | undefined,
+  registry: TtsProviderRegistry,
+): boolean {
+  try {
+    const configured = resolveSpeechProviderConfiguration(config, provider, cfg, registry);
+    return configured?.provider.isConfigured(configured.context) ?? false;
+  } catch {
+    // A broken provider must not hide other usable providers in selection or status.
+    return false;
+  }
 }
 
 export async function isTtsProviderConfiguredAsync(

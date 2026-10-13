@@ -17,12 +17,11 @@ import {
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { resolveRuntimeWorkerUrl } from "openclaw/plugin-sdk/process-runtime";
 import { deleteSessionEntry, upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
-import { withSessionTranscriptWrite } from "openclaw/plugin-sdk/session-transcript-runtime";
+import { withSessionTranscriptWriteLock } from "openclaw/plugin-sdk/session-transcript-runtime";
 import * as sqliteRuntime from "openclaw/plugin-sdk/sqlite-runtime";
 import {
   closeOpenClawAgentDatabasesAsync,
   closeOpenClawAgentDatabasesForTest,
-  openOpenClawAgentDatabase,
 } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { seedMemoryForgetTombstones } from "../test-helpers.js";
@@ -56,7 +55,7 @@ describe("memory manager agent database lifecycle", () => {
   });
 
   it("isolates manager readers across settings replacement and keeps the shared writer alive", async () => {
-    const shared = openOpenClawAgentDatabase({ agentId: "main" });
+    const shared = sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" });
     const first = await fixture.getFreshManager(createConfig());
     const firstDb = managerDatabase(first);
     expect(firstDb.location()).toBe(shared.path);
@@ -84,7 +83,7 @@ describe("memory manager agent database lifecycle", () => {
   });
 
   it("rejects shared integrity failure before exposing a manager", async () => {
-    const shared = openOpenClawAgentDatabase({ agentId: "main" });
+    const shared = sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" });
     closeOpenClawAgentDatabasesForTest();
     const damaged = new DatabaseSync(shared.path);
     try {
@@ -102,7 +101,9 @@ describe("memory manager agent database lifecycle", () => {
     await fs.copyFile(shared.path, replacementPath);
     await fs.rename(replacementPath, shared.path);
 
-    expect(() => openOpenClawAgentDatabase({ agentId: "main" })).toThrow(/foreign_key_check/);
+    expect(() => sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" })).toThrow(
+      /foreign_key_check/,
+    );
     const result = await getMemorySearchManager({
       runInBackgroundContext: runInMemoryTestBackgroundContext,
       cfg: createConfig(),
@@ -161,7 +162,7 @@ describe("memory manager agent database lifecycle", () => {
     await closeOpenClawAgentDatabasesAsync();
     const replacement = await fixture.getFreshManager(createConfig());
     expect(replacement === first).toBe(false);
-    const shared = openOpenClawAgentDatabase({ agentId: "main" });
+    const shared = sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" });
     expect(managerDatabase(replacement).location()).toBe(shared.path);
     await first.close();
     await replacement.sync({ reason: "test", force: true });
@@ -184,7 +185,7 @@ describe("memory manager agent database lifecycle", () => {
     const entered = createDeferred<void>();
     const released = createDeferred<void>();
     const queued = createDeferred<void>();
-    const writer = withSessionTranscriptWrite(target, async () => {
+    const writer = withSessionTranscriptWriteLock(target, async () => {
       entered.resolve();
       await released.promise;
       closeOpenClawAgentDatabasesForTest();
@@ -233,7 +234,7 @@ describe("memory manager agent database lifecycle", () => {
   it("serves published hits while dirty maintenance setup meets a separate writer lock", async () => {
     const manager = await fixture.getFreshManager(createConfig());
     await manager.sync({ reason: "baseline", force: true });
-    const shared = openOpenClawAgentDatabase({ agentId: "main" });
+    const shared = sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" });
     const writer = new DatabaseSync(shared.path);
     writer.exec("BEGIN IMMEDIATE");
     try {
@@ -270,7 +271,7 @@ describe("memory manager agent database lifecycle", () => {
       (entry) => entry.sessionId === sessionId,
     );
     expect(archive?.artifactKind).toBe("archive-artifact");
-    const shared = openOpenClawAgentDatabase({ agentId: "main" });
+    const shared = sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" });
     const writer = new DatabaseSync(shared.path);
     const livePath = sessionPathForSessionIdentity("main", sessionId);
     let releaseWriter: NodeJS.Timeout | undefined;
@@ -324,7 +325,7 @@ describe("memory manager agent database lifecycle", () => {
       "cli",
     );
     await manager.sync({ reason: "baseline", force: true });
-    const shared = openOpenClawAgentDatabase({ agentId: "main" });
+    const shared = sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" });
     const sourcePath = sessionPathForFile(transcript);
     const readSource = shared.db.prepare(
       "SELECT hash FROM memory_index_sources WHERE path = ? AND source = 'sessions'",
@@ -415,7 +416,7 @@ describe("memory manager agent database lifecycle", () => {
       await manager.sync({ reason: "baseline", force: true });
       await fs.writeFile(imagePath, Buffer.from("changed png"));
       Reflect.set(manager, "dirty", true);
-      const shared = openOpenClawAgentDatabase({ agentId: "main" });
+      const shared = sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" });
       const readSource = shared.db.prepare(
         "SELECT hash FROM memory_index_sources WHERE path = ? AND source = 'memory'",
       );
@@ -497,7 +498,7 @@ describe("memory manager agent database lifecycle", () => {
     await manager.sync({ reason: "baseline", force: true });
     const reader = await fixture.getFreshManager(cfg, "cli");
     await reader.search("Alpha");
-    const shared = openOpenClawAgentDatabase({ agentId: "main" });
+    const shared = sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" });
     if (scenario === "deleted-memory") {
       await fs.unlink(changedPath);
       shared.db
@@ -628,7 +629,7 @@ describe("memory manager agent database lifecycle", () => {
       cacheEnabled: true,
       sources: ["memory"],
     });
-    const db = openOpenClawAgentDatabase({ agentId: "main" }).db;
+    const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: "main" }).db;
     const open = sqliteRuntime.openOpenClawAgentSqliteWorkerStoreV2;
     const interceptedPaths: Array<string | undefined> = [];
     let closeSettled: boolean;

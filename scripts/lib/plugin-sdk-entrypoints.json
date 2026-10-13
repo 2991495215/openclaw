@@ -54,6 +54,7 @@
   "reply-payload-testing",
   "agent-media-payload",
   "inbound-reply-dispatch",
+  "inbound-envelope",
   "inbound-event-delivery",
   "interactive-runtime",
   "outbound-media",

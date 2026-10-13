@@ -3,10 +3,12 @@ import type {
   SessionGitHubConfirmParams,
   SessionGitHubPublicationResult,
   SessionGitHubPublishParams,
+  SessionGitHubStatusResult,
 } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { preparePersonalGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import { acquireWorktreeRunLease } from "../agents/worktrees/run-lease.js";
 import { resolveSessionWorkStartError } from "../config/sessions/lifecycle.js";
+import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { readGitHubPublicationSessionLifecycleInWorker } from "../state/github-publication-session-lifecycles.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import {
@@ -41,7 +43,7 @@ import {
 import { prepareGitHubPublicationTarget } from "./github-publication-target.js";
 import type { WorkerSessionPlacementStore } from "./worker-environments/placement-store.js";
 
-/** @deprecated Use PersonalGitHubSessionActionV2; removed in the next Plugin SDK major. */
+/** @deprecated Use PersonalGitHubSessionActionV2; removed after stable deprecation and a compatibility period. */
 export type PersonalGitHubSessionAction = PersonalGitHubAction & {
   sessionId: string;
   sessionKey: string;
@@ -426,7 +428,6 @@ export function createPersonalGitHubPublicationCoordinator(
       });
     },
     async personalStatusAsync(
-      this: void,
       action: PersonalGitHubAction,
       session: SessionIdentity & { archivedAt?: number | null },
       requestId: string,
@@ -440,7 +441,6 @@ export function createPersonalGitHubPublicationCoordinator(
       return status(row, action, session);
     },
     async personalPending(
-      this: void,
       action: PersonalGitHubAction,
       session: SessionIdentity & { archivedAt?: number | null },
     ) {
@@ -493,8 +493,51 @@ export function createPersonalGitHubPublicationCoordinator(
     },
   };
   return {
-    personalStatusAsync: methods.personalStatusAsync,
-    personalPending: methods.personalPending,
+    ...methods,
+    /** @deprecated Await personalStatusAsync; removed after stable deprecation and a compatibility period. */
+    personalStatus(
+      _action: PersonalGitHubAction,
+      _session: SessionIdentity & { archivedAt?: number | null },
+      _requestId: string,
+    ): SessionGitHubStatusResult {
+      warnPluginSdkDeprecation({
+        family: "github-publication",
+        compatibility: "This method no longer performs publication work; use its replacement.",
+        method: "personalStatus",
+        replacement: "personalStatusAsync",
+      });
+      throw new Error("GitHub publication requires awaiting personalStatusAsync.");
+    },
+    /** @deprecated Use requestPersonalForSessionV2; removed after stable deprecation and a compatibility period. */
+    async requestPersonalForSession(
+      _input: SessionGitHubPublishParams,
+      _action: PersonalGitHubSessionAction,
+    ): Promise<SessionGitHubPublicationResult> {
+      warnPluginSdkDeprecation({
+        family: "github-publication",
+        compatibility: "This method no longer performs publication work; use its replacement.",
+        method: "requestPersonalForSession",
+        replacement: "requestPersonalForSessionV2",
+      });
+      throw new Error(
+        "GitHub publication requires requestPersonalForSessionV2 with a host-prepared V2 action.",
+      );
+    },
+    /** @deprecated Use confirmPersonalV2; removed after stable deprecation and a compatibility period. */
+    async confirmPersonal(
+      _input: SessionGitHubConfirmParams,
+      _action: PersonalGitHubSessionAction,
+    ): Promise<SessionGitHubPublicationResult> {
+      warnPluginSdkDeprecation({
+        family: "github-publication",
+        compatibility: "This method no longer performs publication work; use its replacement.",
+        method: "confirmPersonal",
+        replacement: "confirmPersonalV2",
+      });
+      throw new Error(
+        "GitHub publication requires confirmPersonalV2 with a host-prepared V2 action.",
+      );
+    },
     requestPersonalForSessionV2(
       input: SessionGitHubPublishParams,
       action: PersonalGitHubSessionActionV2,

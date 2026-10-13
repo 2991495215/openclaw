@@ -8,7 +8,10 @@ import {
   capturePluginStateNativeBindingFacts,
   type PluginStatePinnedEntry,
 } from "../../../plugin-state/plugin-state-native-binding-facts.js";
-import type { PluginStateKeyedStore } from "../../../plugin-state/plugin-state-store.js";
+import type {
+  PluginStateKeyedStore,
+  PluginStateSyncKeyedStore,
+} from "../../../plugin-state/plugin-state-store.js";
 import { capturePluginStateNativeBindingStore } from "../../../plugin-state/plugin-state-store.native-binding.js";
 import { warnPluginSdkDeprecation } from "../../../plugins/sdk-deprecation.js";
 import { sleep } from "../../../utils/sleep.js";
@@ -16,6 +19,40 @@ import {
   combineNativeSessionBindingAuthority,
   type NativeSessionBindingAuthority,
 } from "./binding-authority.js";
+
+/** Legacy adapter for released native binding stores. */
+export function createNativeSessionBindingLeases<TRecord extends NativeSessionBindingRecord>(
+  state: NativeSessionBindingStateStore<TRecord>,
+  options: NativeSessionBindingLeaseConfig<TRecord>,
+) {
+  if (!state.withCurrent) {
+    throw new Error(options.errors.atomicUpdatesRequired);
+  }
+  const leases = createNativeSessionBindingLeasesV2(
+    {
+      withCurrent: (authority) => state.withCurrent(authority),
+      assertLeaseCurrent(key, token) {
+        const raw = state.lookup(key);
+        const current = options.readRecord(raw);
+        if (raw !== undefined && !current) {
+          throw options.errors.invalidRow(key);
+        }
+        if (current?.lease?.token !== token || current.lease.expiresAt <= Date.now()) {
+          throw options.errors.lostLease(key);
+        }
+      },
+    },
+    options,
+  );
+  return {
+    ...leases,
+    captureLeaseAssertion(key: string) {
+      const assertCurrent = leases.captureLeaseAssertion(key);
+      assertCurrent();
+      return assertCurrent;
+    },
+  };
+}
 
 /** Worker-owned mutations publish the facts used by synchronous native effect guards. */
 export function createNativeSessionBindingLeasesV2<TRecord extends NativeSessionBindingRecord>(
@@ -388,6 +425,19 @@ type NativeSessionBindingLease = { token: string; expiresAt: number };
 
 export type NativeSessionBindingRecord = { lease?: NativeSessionBindingLease };
 
+/**
+ * @deprecated Use NativeSessionBindingStateStoreV2; removed after stable deprecation and a compatibility period.
+ */
+export type NativeSessionBindingStateStore<TRecord extends NativeSessionBindingRecord> = Pick<
+  PluginStateSyncKeyedStore<TRecord>,
+  "deleteIf" | "lookup" | "registerIfAbsent"
+> & {
+  withCurrent(authority: {
+    assertCurrent: () => void;
+    sessionEntryCurrent?: SessionEntryCurrentCheck | SessionEntriesCurrentCheck;
+  }): Pick<PluginStateKeyedStore<TRecord, 2>, "observe" | "compareAndApply">;
+};
+
 export type NativeSessionBindingStateStoreV2<TRecord extends NativeSessionBindingRecord> = Pick<
   PluginStateKeyedStore<TRecord, 2>,
   "lookup"
@@ -397,10 +447,7 @@ export type NativeSessionBindingStateStoreV2<TRecord extends NativeSessionBindin
    * until removal in a later stable release after deprecation ships.
    */
   assertLeaseCurrent?(key: string, token: string): void;
-  withCurrent(authority: {
-    assertCurrent: () => void;
-    sessionEntryCurrent?: SessionEntryCurrentCheck | SessionEntriesCurrentCheck;
-  }): Pick<PluginStateKeyedStore<TRecord, 2>, "observe" | "compareAndApply">;
+  withCurrent: NativeSessionBindingStateStore<TRecord>["withCurrent"];
 };
 
 export type NativeSessionBindingLeaseOptions<TRecord extends NativeSessionBindingRecord> = {

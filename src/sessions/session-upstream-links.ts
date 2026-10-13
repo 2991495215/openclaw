@@ -13,6 +13,7 @@ import {
 } from "../state/openclaw-state-worker-store.js";
 import {
   upsertSessionUpstreamLinkInDatabase,
+  deleteSessionUpstreamLinkInDatabase,
   type SessionUpstreamLink,
   type SessionUpstreamLinkInput,
 } from "./session-upstream-links.kernel.js";
@@ -22,7 +23,7 @@ export type { SessionUpstreamLink } from "./session-upstream-links.kernel.js";
 
 const log = createSubsystemLogger("sessions/upstream-links");
 
-/** @deprecated Use upsertSessionUpstreamLinkAsync. Removed at the next Plugin SDK major. */
+/** @deprecated Use upsertSessionUpstreamLinkAsync. Removed after stable deprecation and a compatibility period. */
 export function upsertSessionUpstreamLink(
   input: SessionUpstreamLinkInput,
   options: OpenClawStateDatabaseOptions & {
@@ -49,6 +50,36 @@ export function upsertSessionUpstreamLink(
     }
     log.warn(`failed to upsert session upstream link: ${String(error)}`);
     return false;
+  }
+}
+
+/** @deprecated Use deleteSessionUpstreamLinkAsync. Removed after stable deprecation and a compatibility period. */
+export function deleteSessionUpstreamLink(
+  sessionKey: string,
+  agentId: string,
+  options: OpenClawStateDatabaseOptions & {
+    expected?: SessionUpstreamLink;
+    assertCommitAllowed?: () => void;
+  } = {},
+): "deleted" | "absent" | "changed" | undefined {
+  warnPluginSdkDeprecation({
+    family: "session-upstream-links",
+    method: "session-catalog.deleteSessionUpstreamLink",
+    replacement: "await deleteSessionUpstreamLinkAsync",
+    code: "DEP_SESSION_PERSISTENCE",
+  });
+  try {
+    return runOpenClawStateWriteTransaction(({ db }) => {
+      options.assertCommitAllowed?.();
+      return deleteSessionUpstreamLinkInDatabase(db, sessionKey, agentId, options.expected);
+    }, options);
+  } catch (error) {
+    // Exact creation compensation must report an unverified cleanup, not claim success.
+    if (options.expected) {
+      throw error;
+    }
+    log.warn(`failed to delete session upstream link: ${String(error)}`);
+    return undefined;
   }
 }
 
@@ -115,7 +146,7 @@ export async function deleteSessionUpstreamLinkAsync(
     expected?: SessionUpstreamLink;
     assertCommitAllowed?: () => void;
   } = {},
-): Promise<"deleted" | "absent" | "changed" | undefined> {
+): Promise<ReturnType<typeof deleteSessionUpstreamLink>> {
   try {
     const context = captureOpenClawStateWorkerContext(options);
     const input = structuredClone({ sessionKey, agentId, expected: options.expected });

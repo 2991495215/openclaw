@@ -10,13 +10,19 @@ import type { AgentMessage } from "../../../packages/agent-core/src/types.js";
 import type { SessionTranscriptRuntimeTarget } from "../../config/sessions/session-accessor.js";
 import { prepareTranscriptRewriteSync } from "../../config/sessions/session-accessor.sqlite-branch-rewrite.js";
 import type { SessionTranscriptContextVersion } from "../../config/sessions/session-accessor.sqlite-contract.js";
-import type { SessionModelContextLimits } from "../../config/sessions/session-accessor.sqlite-model-context.js";
+import {
+  readSessionTranscriptContextMessages,
+  type SessionModelContextLimits,
+} from "../../config/sessions/session-accessor.sqlite-model-context.js";
 import { sanitizeTranscriptMessageForStorage } from "../../config/sessions/session-accessor.sqlite-transcript-store.js";
 import {
   assertCurrentSessionTranscriptHeader,
   findSessionTranscriptHeader,
 } from "../../config/sessions/session-entry-codec.js";
-import { resolveSessionTranscriptReadFence } from "../../config/sessions/session-transcript-read-fence.js";
+import {
+  resolveSessionTranscriptReadFence,
+  withSessionContextAdmission,
+} from "../../config/sessions/session-transcript-read-fence.js";
 import { startSessionTranscriptIndexReconcile } from "../../config/sessions/session-transcript-reconcile.js";
 import type { TranscriptEntryAnchor } from "../../config/sessions/transcript-entry-anchor.js";
 import { sameSessionTranscriptTargetBinding } from "../../config/sessions/transcript-target-binding.js";
@@ -39,6 +45,7 @@ import {
   sessionManagerReadInitialContext,
   sessionManagerReadTranscriptStart,
 } from "./session-manager-current-turn.js";
+import { prepareSessionManagerSync } from "./session-manager-incognito-scope.js";
 import {
   prepareSessionManagerHydration,
   readSessionManagerContextAsync,
@@ -553,6 +560,18 @@ export class SessionManager extends SessionManagerBranching {
       [...manager.byId].map(([id, entry]) => [id, entry.parentId]),
     );
     return manager;
+  }
+
+  /** @deprecated Await readSessionContextAsync. This method will be removed after stable deprecation and a compatibility period. */
+  static readSessionContext<T>(
+    target: SessionTranscriptRuntimeTarget,
+    read: (messages: Iterable<AgentMessage>, header: unknown) => T,
+    options: { admission?: UserTurnTranscriptAdmissionReceipt } = {},
+  ): T {
+    prepareSessionManagerSync("readSessionContext", target);
+    return withSessionContextAdmission(target, options.admission, () =>
+      readSessionTranscriptContextMessages(target, read),
+    );
   }
 
   /** Consume a full-fidelity snapshot while retaining its owner through the consumer. */

@@ -3,7 +3,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-  resolveConfiguredCapabilityProviderAsync,
+  resolveConfiguredCapabilityProvider,
   resolveProviderRawConfig,
   selectConfiguredOrAutoProvider,
   type AutoSelectableProvider,
@@ -45,8 +45,8 @@ describe("plugin-sdk provider-selection-runtime", () => {
     });
   });
 
-  it("reports a missing explicit provider", async () => {
-    const resolution = await resolveConfiguredCapabilityProviderAsync({
+  it("reports a missing explicit provider", () => {
+    const resolution = resolveConfiguredCapabilityProvider({
       configuredProviderId: "missing",
       cfg: {},
       cfgForResolve: {},
@@ -63,8 +63,8 @@ describe("plugin-sdk provider-selection-runtime", () => {
     });
   });
 
-  it("auto-selects the first configured provider by order", async () => {
-    const resolution = await resolveConfiguredCapabilityProviderAsync({
+  it("auto-selects the first configured provider by order", () => {
+    const resolution = resolveConfiguredCapabilityProvider({
       cfg: {},
       cfgForResolve: {},
       getConfiguredProvider: (providerId) => providers.find((entry) => entry.id === providerId),
@@ -84,9 +84,9 @@ describe("plugin-sdk provider-selection-runtime", () => {
     expect(resolution.providerConfig).toEqual({ providerId: "second" });
   });
 
-  it("retains the first unavailable provider when no auto candidate is available", async () => {
+  it("retains the first unavailable provider when no auto candidate is available", () => {
     const resolveProviderConfig = vi.fn();
-    const resolution = await resolveConfiguredCapabilityProviderAsync({
+    const resolution = resolveConfiguredCapabilityProvider({
       cfg: {},
       cfgForResolve: {},
       getConfiguredProvider: (providerId) => providers.find((entry) => entry.id === providerId),

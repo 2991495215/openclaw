@@ -15,10 +15,8 @@ import {
   appendSessionTranscriptMessageByIdentity,
   publishSessionTranscriptUpdateByIdentity,
 } from "openclaw/plugin-sdk/session-transcript-runtime";
-import {
-  observeHostDataSql,
-  openOpenClawAgentDatabase,
-} from "openclaw/plugin-sdk/sqlite-runtime-testing";
+import { openOpenClawAgentDatabase } from "openclaw/plugin-sdk/sqlite-runtime";
+import { observeHostDataSql } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { createOpenClawTestState, type OpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

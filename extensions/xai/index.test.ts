@@ -158,7 +158,7 @@ describe("xai provider plugin", () => {
       accountId: "acct",
       email: "user@example.com",
     }));
-    const apiKey = vi.fn(async () => []);
+    const apiKey = vi.fn();
 
     await expect(
       provider.resolveUsageAuth?.({
@@ -167,7 +167,8 @@ describe("xai provider plugin", () => {
         env: {},
         provider: "xai",
         resolveOAuthToken: oauth,
-        resolveApiKeyCandidatesFromConfigAndStore: apiKey,
+        resolveApiKeyFromConfigAndStore: apiKey,
+        resolveApiKeyCandidatesFromConfigAndStore: vi.fn(),
       }),
     ).resolves.toEqual({
       token: "oauth-token",
@@ -183,7 +184,8 @@ describe("xai provider plugin", () => {
         env: { XAI_API_KEY: "xai-api-key" },
         provider: "xai",
         resolveOAuthToken: vi.fn(async () => null),
-        resolveApiKeyCandidatesFromConfigAndStore: apiKey,
+        resolveApiKeyFromConfigAndStore: apiKey,
+        resolveApiKeyCandidatesFromConfigAndStore: vi.fn(),
       }),
     ).resolves.toEqual({ handled: true });
     expect(manifest.contracts).toMatchObject({ usageProviders: ["xai"] });

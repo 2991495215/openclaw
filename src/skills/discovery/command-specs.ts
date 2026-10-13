@@ -9,7 +9,8 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { loadEnabledClaudeBundleCommands } from "../../plugins/bundle-commands.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { resolveSkillTelemetrySource } from "../loading/source.js";
-import { prepareWorkspaceSkills } from "../loading/workspace-skill-loader.js";
+import { filterSkillEntries } from "../loading/workspace-skill-filter.js";
+import { loadVisibleSkills, prepareWorkspaceSkills } from "../loading/workspace-skill-loader.js";
 import { resolveSkillFileHost } from "../skill-file-host.js";
 import type {
   SkillEligibilityContext,
@@ -57,6 +58,7 @@ type WorkspaceSkillCommandOptions = {
   config?: OpenClawConfig;
   managedSkillsDir?: string;
   bundledSkillsDir?: string;
+  entries?: SkillEntry[];
   librarySelections?: SkillSnapshot["librarySelections"];
   agentId?: string;
   skillFilter?: string[];
@@ -85,10 +87,22 @@ function resolveCommandSkillLoadOptions(opts?: WorkspaceSkillCommandOptions) {
   };
 }
 
+/** Builds user-invocable slash command specs for synchronous SDK consumers. */
+export function buildWorkspaceSkillCommandSpecs(
+  workspaceDir: string,
+  opts?: WorkspaceSkillCommandOptions,
+): SkillCommandSpec[] {
+  const loadOptions = resolveCommandSkillLoadOptions(opts);
+  const eligible = opts?.entries
+    ? filterSkillEntries(opts.entries, loadOptions)
+    : loadVisibleSkills(workspaceDir, loadOptions);
+  return assembleWorkspaceSkillCommandSpecs(workspaceDir, eligible, opts);
+}
+
 /** Prepares eligibility once before sharing the synchronous command assembly. */
 export async function prepareWorkspaceSkillCommandSpecs(
   workspaceDir: string,
-  opts: Omit<WorkspaceSkillCommandOptions, "eligibility"> & {
+  opts: Omit<WorkspaceSkillCommandOptions, "entries" | "eligibility"> & {
     eligibility: SkillEligibilityContext;
   },
   assertCurrent?: () => void,
@@ -102,7 +116,7 @@ export async function prepareWorkspaceSkillCommandSpecs(
   return assembleWorkspaceSkillCommandSpecs(workspaceDir, eligible, opts);
 }
 
-export function assembleWorkspaceSkillCommandSpecs(
+function assembleWorkspaceSkillCommandSpecs(
   workspaceDir: string,
   eligible: SkillEntry[],
   opts?: WorkspaceSkillCommandOptions,

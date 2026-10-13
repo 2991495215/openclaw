@@ -12,7 +12,7 @@ import {
 } from "../../plugins/doctor-contract-module.js";
 import { sessionChanges } from "../../sessions/session-row-changes.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import { readAcpSessionEntry, upsertAcpSessionMeta } from "./session-meta.js";
+import { readAcpSessionEntryAsync, upsertAcpSessionMeta } from "./session-meta.js";
 
 it("inspects without creating state and conditionally updates only the proven current owner", async () => {
   await withOpenClawTestState({ label: "acp-doctor-owner" }, async ({ env, stateDir }) => {
@@ -75,13 +75,15 @@ it("inspects without creating state and conditionally updates only the proven cu
       unsubscribe();
     }
     expect(changes).toEqual([{ agentId: "work", sessionKey: "global" }]);
-    expect(readAcpSessionEntry({ cfg, env, agentId: "work", sessionKey: "global" })?.acp).toEqual({
+    expect(
+      (await readAcpSessionEntryAsync({ cfg, env, agentId: "work", sessionKey: "global" }))?.acp,
+    ).toEqual({
       ...claim.meta,
       runtimeSessionName: "owned-work",
       identity: { ...claim.meta.identity, acpxRecordId: "owned-record-work" },
     });
     expect(
-      readAcpSessionEntry({ cfg, env, agentId: "main", sessionKey: "global" })?.acp
+      (await readAcpSessionEntryAsync({ cfg, env, agentId: "main", sessionKey: "global" }))?.acp
         ?.runtimeSessionName,
     ).toBe("old-main");
     expect(() => repair.updateAcpSessionIdentity!(update)).toThrow("metadata changed");
@@ -216,12 +218,14 @@ it.each(["global", "shared-project"])(
       });
       expect(result.warnings).toEqual([]);
       expect(result.changes.length).toBeGreaterThan(0);
-      const migrated = readAcpSessionEntry({
-        cfg,
-        env: state.env,
-        agentId: "work",
-        sessionKey,
-      })?.acp;
+      const migrated = (
+        await readAcpSessionEntryAsync({
+          cfg,
+          env: state.env,
+          agentId: "work",
+          sessionKey,
+        })
+      )?.acp;
       if (explicit) {
         expect(migrated?.identity?.acpxRecordId).toBe("agent:work:shared-project");
       } else {

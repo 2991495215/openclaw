@@ -1,7 +1,11 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { TranscriptMessageAppendResult } from "../config/sessions/session-accessor.js";
 import type { SessionTranscriptContextVersion } from "../config/sessions/session-accessor.sqlite-contract.js";
-import { readSessionTranscriptContextMessages } from "../config/sessions/session-accessor.sqlite-model-context.js";
+import {
+  readSessionTranscriptContextMessages,
+  validateSessionTranscriptContextAdmission,
+  validateSessionTranscriptContextVersion,
+} from "../config/sessions/session-accessor.sqlite-model-context.js";
 import {
   resolveSqliteTranscriptReadScope,
   toDatabaseOptions,
@@ -40,7 +44,10 @@ import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { IncognitoSessionSyncAccessError } from "../state/incognito-session-error.js";
 import { resolveOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import type { AgentMessage } from "./agent-core.js";
-import type { InternalSessionTranscriptWriteLockParams } from "./session-transcript-lock-runtime.js";
+import type {
+  InternalSessionTranscriptWriteLockContext,
+  InternalSessionTranscriptWriteLockParams,
+} from "./session-transcript-lock-runtime.js";
 import type {
   SessionTranscriptTargetParams,
   SessionTranscriptWriteContext,
@@ -161,7 +168,23 @@ function assertCodexSessionSyncAccess(target: SessionTranscriptReadScope, method
   }
 }
 
-/** @deprecated Use createCodexSessionContextReader; synchronous compatibility is removed in a later normal release after stable deprecation and a compatibility period. */
+/** @deprecated Synchronous SDK compatibility until the next major; bundled readers retain worker validation. */
+export function validateCodexSessionTranscriptReadAdmission(
+  ...args: Parameters<typeof validateSessionTranscriptContextAdmission>
+): void {
+  assertCodexSessionSyncAccess(args[0], "validateCodexSessionTranscriptReadAdmission");
+  validateSessionTranscriptContextAdmission(...args);
+}
+
+/** @deprecated Synchronous SDK compatibility until the next major; bundled readers retain worker validation. */
+export function validateCodexSessionTranscriptContextVersion(
+  ...args: Parameters<typeof validateSessionTranscriptContextVersion>
+): void {
+  assertCodexSessionSyncAccess(args[0], "validateCodexSessionTranscriptContextVersion");
+  validateSessionTranscriptContextVersion(...args);
+}
+
+/** @deprecated Use createCodexSessionContextReader; synchronous compatibility is removed after stable deprecation and a compatibility period. */
 export function readCodexSessionContext<T>(
   target: SessionTranscriptRuntimeTarget,
   read: (
@@ -217,15 +240,37 @@ export async function readCodexSessionTranscriptEventsBeforeAdmission(
   );
 }
 
-export type CodexSessionTranscriptMirrorWriteContext = Omit<
-  SessionTranscriptWriteContext,
+export type CodexSessionTranscriptMirrorWriteLockContext = Omit<
+  InternalSessionTranscriptWriteLockContext,
   "readMessageFacts"
 > & {
+  appendMessageWithMessageSequence: <TMessage>(
+    options: Omit<LockedTranscriptMessageAppendOptions<TMessage>, "config">,
+  ) => Promise<{
+    lifecycleRevision?: string;
+    messageSeq?: number;
+    result: TranscriptMessageAppendResult<TMessage> | undefined;
+  }>;
   readMessageFacts: (params: { idempotencyKeys: readonly string[] }) => Promise<{
     anchorsByIdempotencyKey: Map<string, TranscriptEntryAnchor>;
     existingIdempotencyKeys: Set<string>;
     messagesByIdempotencyKey: Map<string, AgentMessage>;
   }>;
+};
+
+/** @deprecated Use withCodexSessionTranscriptMirrorWrite. Removed after stable deprecation and a compatibility period. */
+export async function withCodexSessionTranscriptMirrorWriteLock<T>(
+  params: InternalSessionTranscriptWriteLockParams,
+  run: (context: CodexSessionTranscriptMirrorWriteLockContext) => Promise<T> | T,
+): Promise<T> {
+  return withMirrorWrite(params, run, "lock");
+}
+
+export type CodexSessionTranscriptMirrorWriteContext = Omit<
+  SessionTranscriptWriteContext,
+  "readMessageFacts"
+> & {
+  readMessageFacts: CodexSessionTranscriptMirrorWriteLockContext["readMessageFacts"];
   appendMessageWithMessageSequence: <TMessage>(
     options: Omit<
       LockedTranscriptMessageAppendOptions<TMessage>,
@@ -252,34 +297,42 @@ export async function withCodexSessionTranscriptMirrorWrite<T>(
 ): Promise<T> {
   const { assertCurrent, ...scope } = params;
   return assertCurrent
-    ? withSessionTranscriptWriteAssertion(scope, assertCurrent, () => withMirrorWrite(scope, run))
-    : withMirrorWrite(scope, run);
+    ? withSessionTranscriptWriteAssertion(scope, assertCurrent, () =>
+        withMirrorWrite(scope, run, "sequence"),
+      )
+    : withMirrorWrite(scope, run, "sequence");
 }
 
 async function withMirrorWrite<T>(
   params: InternalSessionTranscriptWriteLockParams,
-  run: (context: CodexSessionTranscriptMirrorWriteContext) => Promise<T> | T,
+  run: (context: CodexSessionTranscriptMirrorWriteLockContext) => Promise<T> | T,
+  mode: "lock" | "sequence",
 ): Promise<T> {
   const { withProjectedSessionTranscriptWriteLock } =
     await import("./session-transcript-lock-runtime.js");
-  return await withProjectedSessionTranscriptWriteLock(params, run, (context, locked) => ({
-    ...context,
-    appendMessageWithMessageSequence: (options) =>
-      locked.appendMessageWithMessageSequence({
-        ...options,
-        ...(params.config !== undefined ? { config: params.config } : {}),
-      }),
-    readMessageFacts: async (factParams) => {
-      const facts = await locked.readMessageFacts(factParams);
-      const messagesByIdempotencyKey = new Map<string, AgentMessage>();
-      for (const [idempotencyKey, message] of facts.messagesByIdempotencyKey) {
-        if (isAgentMessageRecord(message)) {
-          messagesByIdempotencyKey.set(idempotencyKey, message);
+  return await withProjectedSessionTranscriptWriteLock(
+    params,
+    run,
+    (context, locked) => ({
+      ...context,
+      appendMessageWithMessageSequence: (options) =>
+        locked.appendMessageWithMessageSequence({
+          ...options,
+          ...(params.config !== undefined ? { config: params.config } : {}),
+        }),
+      readMessageFacts: async (factParams) => {
+        const facts = await locked.readMessageFacts(factParams);
+        const messagesByIdempotencyKey = new Map<string, AgentMessage>();
+        for (const [idempotencyKey, message] of facts.messagesByIdempotencyKey) {
+          if (isAgentMessageRecord(message)) {
+            messagesByIdempotencyKey.set(idempotencyKey, message);
+          }
         }
-      }
-      return { ...facts, messagesByIdempotencyKey };
-    },
-  }));
+        return { ...facts, messagesByIdempotencyKey };
+      },
+    }),
+    mode,
+  );
 }
 
 function isAgentMessageRecord(value: unknown): value is AgentMessage & Record<string, unknown> {

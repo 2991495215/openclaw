@@ -287,6 +287,8 @@ export async function preparePendingInputStore(
         })(),
       );
     },
+    // Released SDK completion retains immediate transaction semantics until the next major.
+    nativeMutation,
     mutate(
       input: PendingInputMutation,
       guard: (stage: "transaction" | "commit", facts?: PendingInputCustodyGrant) => void,

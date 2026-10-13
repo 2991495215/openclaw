@@ -6,10 +6,7 @@ import {
   inspectRuntimeConversationBindingRoute,
 } from "../channels/plugins/binding-routing.js";
 import { getLoadedChannelPlugin, normalizeChannelId } from "../channels/plugins/index.js";
-import type {
-  ChannelConversationRouteOwnerResolver,
-  ChannelMessagingAdapter,
-} from "../channels/plugins/types.core.js";
+import type { ChannelMessagingAdapter } from "../channels/plugins/types.core.js";
 import { listRouteBindings } from "../config/bindings.js";
 import { assertConversationAuthority } from "../config/sessions/conversation-authority.js";
 import type { ConversationAuthority } from "../config/sessions/conversation-authority.types.js";
@@ -28,6 +25,7 @@ import {
   prepareSessionBindingInspections,
 } from "../infra/outbound/session-binding-service.js";
 import { getGlobalPluginRegistry } from "../plugins/hook-runner-global.js";
+import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { normalizeAccountId } from "../routing/account-id.js";
 import { normalizeRouteBindingId } from "../routing/binding-scope.js";
 import { peerKindMatches } from "../routing/peer-kind-match.js";
@@ -56,7 +54,9 @@ function hasActivePluginClaimOwner(pluginId: string): boolean {
   );
 }
 
-type PluginRouteOwnerResolver = ChannelConversationRouteOwnerResolver;
+type PluginRouteOwnerResolver = NonNullable<
+  ChannelMessagingAdapter["resolveConversationRouteOwner"]
+>;
 function pluginRouteOwnerInput(
   config: OpenClawConfig,
   conversation: ConversationRouteCandidate,
@@ -80,11 +80,24 @@ function resolvePluginRouteOwner(
   conversation: ConversationRouteCandidate,
   preparedResolver?: PluginRouteOwnerResolver,
 ): RouteOwnerResolution | undefined {
-  if (!preparedResolver) {
+  const channelId = normalizeChannelId(conversation.channel);
+  const resolver =
+    preparedResolver ??
+    (channelId
+      ? getLoadedChannelPlugin(channelId)?.messaging?.resolveConversationRouteOwner
+      : undefined);
+  if (!resolver) {
     return undefined;
   }
+  if (!preparedResolver) {
+    warnPluginSdkDeprecation({
+      family: "conversation-route-ownership",
+      method: "ChannelMessagingAdapter.resolveConversationRouteOwner",
+      replacement: "ChannelMessagingAdapter.prepareConversationRouteOwnersAsync",
+    });
+  }
   try {
-    const owner = preparedResolver(pluginRouteOwnerInput(config, conversation));
+    const owner = resolver(pluginRouteOwnerInput(config, conversation));
     if (owner === undefined) {
       return undefined;
     }

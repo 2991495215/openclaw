@@ -1170,8 +1170,8 @@ export interface ExtensionRuntimeState {
   /**
    * Register or unregister a provider.
    *
-   * Before bindCoreAsync(): queues registrations / removes from queue.
-   * After bindCoreAsync(): calls ModelRegistry directly for immediate effect.
+   * Before bindCore(): queues registrations / removes from queue.
+   * After bindCore(): calls ModelRegistry directly for immediate effect.
    */
   registerProvider: (name: string, config: ProviderConfig, extensionPath?: string) => void;
   unregisterProvider: (name: string, extensionPath?: string) => void;
@@ -1181,14 +1181,11 @@ export interface ExtensionRuntimeState {
  * Action implementations for ExtensionAPI methods.
  * Provided to runner.initialize(), copied into the shared runtime.
  */
-export interface ExtensionActionsV2 extends Pick<
+export interface ExtensionActions extends Pick<
   ExtensionAPI,
   | "sendMessage"
   | "sendUserMessage"
-  | "appendEntryAsync"
-  | "setSessionNameAsync"
   | "getSessionName"
-  | "setLabelAsync"
   | "getActiveTools"
   | "getAllTools"
   | "setActiveTools"
@@ -1199,6 +1196,12 @@ export interface ExtensionActionsV2 extends Pick<
 > {
   refreshTools: RefreshToolsHandler;
 }
+
+/** Host actions with required worker-backed persistence capabilities. */
+export interface ExtensionActionsV2
+  extends
+    ExtensionActions,
+    Pick<ExtensionAPI, "appendEntryAsync" | "setSessionNameAsync" | "setLabelAsync"> {}
 
 /** Actions for the live extension context, supplied by each runtime mode. */
 export interface ExtensionContextActions extends Pick<
@@ -1225,6 +1228,15 @@ export interface ExtensionCommandContextActions extends Pick<
  * Full runtime = state + actions.
  * Created by loader with throwing action stubs, completed by runner.initialize().
  */
+export interface ExtensionRuntime
+  extends
+    ExtensionRuntimeState,
+    ExtensionActions,
+    Partial<
+      Pick<ExtensionActionsV2, "appendEntryAsync" | "setSessionNameAsync" | "setLabelAsync">
+    > {}
+
+/** Host runtime with required worker-backed persistence capabilities. */
 export interface ExtensionRuntimeV2 extends ExtensionRuntimeState, ExtensionActionsV2 {}
 
 /** Loaded extension with all registered items. */

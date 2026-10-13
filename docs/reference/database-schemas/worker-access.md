@@ -286,9 +286,11 @@ its current effect boundary. Transcript rewrites compare the loaded generation,
 sequence, and mutation timestamp once in their write transaction. Compaction uses its
 append receipt instead of rereading the appended rows or version. These paths preserve
 stored bytes, permissions, and update behavior. Durable SessionManager calls from the
-Gateway must use the asynchronous methods. The deprecated synchronous SDK methods retain
-compatibility until removal after stable deprecation and a compatibility period; bundled
-transcript archive and model-context readers use workers. Skill Workshop validates
+Gateway must use the asynchronous methods. The
+[SDK removal proposal](/plugins/sdk-migration/deprecated-sqlite) removes the
+synchronous persistence and hydration methods deprecated in stable `v2026.10.1`
+or earlier; newer context, statistics, and callback deprecations remain supported.
+Bundled transcript archive and model-context readers use workers. Skill Workshop validates
 source permissions, lifecycle, and the accepted anchor through the history worker. It
 reuses those facts until the Gateway's session-key or transcript write receipt changes.
 The final filesystem guard checks the retained receipt without SQL; a write during
@@ -321,9 +323,10 @@ transaction and uses admitted schema facts thereafter. Fresh usage summaries do
 not query refresh-lock state. These changes preserve schema versions, retention,
 stored data, and update compatibility.
 
-Remaining synchronous compatibility debt includes released conversation-binding
-and proxy-capture SDK callbacks and the public prepared-workspace acquisition
-guard. Unbound incognito usage/outcome storage
+Remaining synchronous compatibility debt includes retained conversation-binding
+adapters and newer binding lifecycle contracts. The SDK removal proposal retires
+the synchronous proxy-capture APIs and node workspace acquisition callback whose
+deprecations shipped in stable `v2026.9.7`. Unbound incognito usage/outcome storage
 still belongs to its native process-held database until the incognito actor
 cutover. Hidden GitHub credentials retain their synchronous credential-lifecycle
 owner and current effect checks. Moving these calls requires their owning
@@ -757,7 +760,7 @@ marked worker-only merely because their ordinary durable callers use workers:
 
 | Native owner                            | Shared kernels and remaining contract                                                                                                                                                                                                                                                                |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SessionManager and transcript SDK       | Suffix reads/writes, transcript state, identity, parent, store, cursors, snapshots, statistics, anchors, and message rewrite retain released synchronous methods and opaque callbacks.                                                                                                               |
+| SessionManager and transcript SDK       | The retained synchronous context reader, statistics, identity, parent, store, cursor, snapshot, and anchor APIs and opaque callbacks keep shared kernels reachable. The proposal removes the older persistence and hydration entrypoints.                                                            |
 | Unbound incognito storage               | Reports, projection reconciliation, search, matching, cold storage, eviction, pending inputs, categories, reactions, and suggestions still accept process-held native databases. Actor-bound callers use the existing workers; retiring the native paths requires the incognito acquisition cutover. |
 | Synchronous completion and dispatch     | Turn append retains released callbacks. Chat-start acceptance and CLI history effect guards also retain native watermark reads.                                                                                                                                                                      |
 | Sharing and worktree authority          | Membership/source-disclosure and worktree-deletion guards retain their current native checks at the effect boundary.                                                                                                                                                                                 |
@@ -776,14 +779,11 @@ plugin runtime binds session ownership and live plugin authority to preparation
 and commit. Released opaque transaction guards retain their explicit native
 adapter; no worker failure falls back to it.
 
-Bundled extension actions and provider replay use the existing awaited
-SessionManager methods and versioned types. A queued session-name write retains
-its original runtime and manager authority through admission and commit. The
-shared deprecation helper warns on actual legacy use once per plugin identity
-and capability family, including across plugin reloads. Unknown direct SDK
-consumers share a bounded family warning. Legacy synchronous calls commit and
-publish their facts before returning; async completion also includes fact
-installation.
+Extension actions and provider replay use the existing awaited SessionManager
+methods and V2 types. The SDK removal proposal retires their synchronous
+contracts, deprecated in stable `v2026.10.1`. A queued session-name write retains
+its original runtime and manager authority through admission and commit.
+Completion includes installation of committed facts before dependent publication.
 
 Correlated channel replies commit the replayable delivery first, then append the
 optional side audit event through the transcript worker. That transaction checks
@@ -1230,7 +1230,7 @@ permissions, and update behavior are unchanged.
 | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Entry creation, replacement, patch, reset, and deletion                                       | Existing entry publisher, worker replacement receipts, and lifecycle tombstones.                                                      |
 | Owner assignment, membership, category, and participant changes                               | Field postimages through the same entry owner; worker commit evidence is separate from reply delivery.                                |
-| SessionManager append, metadata, compaction, reset, leaf, branch, suffix, and rewrite methods | Shared transcript mutation kernels and committed context facts; synchronous methods preserve their current completion contract.       |
+| SessionManager append, metadata, compaction, reset, leaf, branch, suffix, and rewrite methods | Shared transcript mutation kernels and committed context facts; awaited methods install committed facts before resolving.             |
 | SDK entry and transcript adapters, including opaque callbacks                                 | The same native or worker producer selected before execution; a Promise signature alone does not make a native callback worker-owned. |
 | Cold transcript materialization and derived projection repair                                 | Existing content-preserving owners and exact context/anchor validation; presentation readiness is not mutation authority.             |
 | Alias moves, canonical repair, artifact-copy repair, and legacy ACP provenance                | Offline or repair custody and conservative invalidation; these paths do not certify complete runtime postimages.                      |
@@ -2530,13 +2530,12 @@ Maintainer decisions accepted for this staged migration:
   broker's finite worker capacity with durable actors; capacity exhaustion
   visibly refuses creation without evicting a live store.
 - Shared ACP metadata keeps its existing persistence and retention.
-- The separate SDK migration adds an awaited `*Async` twin for every
-  `SessionManager` persistence method, returning the committed result, and
-  migrates all bundled/internal callers. Synchronous methods receive `@deprecated`
-  JSDoc naming the async twin, an SDK compatibility record with removal after stable deprecation and a compatibility period, a docs migration note, and a once-per-method runtime
-  warning. After P7 activation, synchronous persistence targeting an incognito
-  session throws an actionable error naming the async replacement. Durable
-  targets keep working until removal in a later normal release.
+- SessionManager persistence uses the awaited `*Async` methods, returning the
+  committed result. The SDK removal proposal retires their synchronous
+  predecessors, deprecated in stable `v2026.10.1` or earlier. Newer context
+  readers and opaque callback contracts remain supported, with actor-bound
+  targets refusing unsupported synchronous access. API removal does not activate
+  the separate incognito worker cutover.
 
 ### Incognito session facts and authority (P2, inactive)
 
@@ -2747,20 +2746,18 @@ All synchronous kernels below must execute only inside the actor after activatio
 or refuse an actor-owned target with an error naming its awaited replacement.
 Retained durable SDK and offline kernels do not justify a native incognito fallback.
 
-| Surface                                                                                                                                                                                                                                                                            | Required cutover or retained contract                                                                                                                                                                                                                                                                |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SessionManager.open`, `openBounded`, `openDetachedBounded`, `openModelContext`, `setSessionTarget`, `reloadPersistedTranscript`, `prepareTranscriptRewrite`, `appendMessageToTranscript`                                                                                          | Deprecated SDK; reject actor-owned incognito before native access, naming the matching `Async` method.                                                                                                                                                                                               |
-| `appendMessage`, `appendMessageWithTranscriptAnchor`, `appendCompaction`, `appendResetBoundary`, `appendCustomEntry`, `appendSessionInfo`, `appendCustomMessageEntry`, `appendLeafControl`, `appendLabelChange`, `branch`, `branchWithSummary`, `persist`, `removeTrailingEntries` | The same SDK refusal must precede detached-view or tool-result-guard side effects. Durable compatibility lasts until removal after stable deprecation and a compatibility period.                                                                                                                    |
-| `SessionManager.readSessionContext`; `resolveCurrentTurnEntryId` with `includeOmittedCustomMessages: true`                                                                                                                                                                         | Add an awaited context reader and refuse native actor access. The omitted-message path uses stored anchors/events; ordinary loaded-view traversal stays synchronous.                                                                                                                                 |
-| `readAcpSessionEntry`, `readAcpSessionMeta`, ACP manager `resolveSession`                                                                                                                                                                                                          | Deprecated SDK readers must name `readAcpSessionEntryAsync`, `readAcpSessionMetaAsync`, and `resolveSessionAsync`. Preserve the refusal through `readSessionEntryFromStore` error handling.                                                                                                          |
-| `readCodexSessionContext` and synchronous context admission/version validation                                                                                                                                                                                                     | Retained SDK contract; inject the awaited `createCodexSessionContextReader` for actor paths and reject unsupported synchronous actor reads.                                                                                                                                                          |
-| Entry/discovery and authority facades                                                                                                                                                                                                                                              | Switch `session-entry-read-runtime`, `session-entry-current-runtime`, `session-accessor.entry`, `combined-store-gateway`, `session-placement-evidence`, `session-sharing-preparation`, `session-delivery-generation`, private-row materialization, and expiry topology to actor facts/commands.      |
-| Collaboration, reactions, heartbeat, progress-card reads                                                                                                                                                                                                                           | P3 commands exist; remove native incognito dispatch when activating their runtime facades.                                                                                                                                                                                                           |
-| Reports/outbox, deletion/reclamation/fork and SessionManager writes                                                                                                                                                                                                                | P4 commands retain their settlement owner. Finish the general SessionManager metadata, suffix/rewrite, and admission composition before routing every awaited twin to the actor.                                                                                                                     |
-| Hydration, context/history, title/preview, search/match, branches/stats/watermarks/receipts, usage/projection, Memory and Codex history                                                                                                                                            | P5 adapters exist; switch all runtime entry points together and remove native extraction/reverse-RPC branches.                                                                                                                                                                                       |
-| Pending-input source/history/store/withdrawal, message-tool run outcomes, cold-storage inspection, historical eviction, maintenance sizing and page reclamation                                                                                                                    | Audit and route these remaining native branches; a maintenance filename is not proof of an offline-only contract.                                                                                                                                                                                    |
-| `SqliteBoardStore.requireExistingSession`, native `write` and sentinel `consumeRead`                                                                                                                                                                                               | P7b prepares typed Board commands and captured actor bindings. Activation must supply those bindings and remove native admission, writes, and sentinel reads; grants consume transaction-local facts without same-actor RPC.                                                                         |
-| ACP projection and lifecycle consumers                                                                                                                                                                                                                                             | Supply awaited metadata to `readAcpMetaForDeletedAgentCheck` and `resolveGatewaySessionRuntimeProjection`; keep controller shared-row predicates separate from actor predicates. Discord and Telegram startup reconciliation must not treat a refused join as absent metadata or delete its binding. |
+| Surface                                                                                                                                                         | Required cutover or retained contract                                                                                                                                                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SessionManager.readSessionContext`; `resolveCurrentTurnEntryId` with `includeOmittedCustomMessages: true`                                                      | Add an awaited context reader and refuse native actor access. The omitted-message path uses stored anchors/events; ordinary loaded-view traversal stays synchronous.                                                                                                                                 |
+| Shared ACP metadata readers                                                                                                                                     | The proposal removes `readAcpSessionEntry` and manager `resolveSession`; use `readAcpSessionEntryAsync` and `resolveSessionAsync`. Retained shared metadata kernels keep their current owner, including error propagation through `readSessionEntryFromStore`.                                       |
+| `readCodexSessionContext` and synchronous context admission/version validation                                                                                  | Retained SDK contract; inject the awaited `createCodexSessionContextReader` for actor paths and reject unsupported synchronous actor reads.                                                                                                                                                          |
+| Entry/discovery and authority facades                                                                                                                           | Switch `session-entry-read-runtime`, `session-entry-current-runtime`, `session-accessor.entry`, `combined-store-gateway`, `session-placement-evidence`, `session-sharing-preparation`, `session-delivery-generation`, private-row materialization, and expiry topology to actor facts/commands.      |
+| Collaboration, reactions, heartbeat, progress-card reads                                                                                                        | P3 commands exist; remove native incognito dispatch when activating their runtime facades.                                                                                                                                                                                                           |
+| Reports/outbox, deletion/reclamation/fork and SessionManager writes                                                                                             | P4 commands retain their settlement owner. Finish the general SessionManager metadata, suffix/rewrite, and admission composition before routing every awaited twin to the actor.                                                                                                                     |
+| Hydration, context/history, title/preview, search/match, branches/stats/watermarks/receipts, usage/projection, Memory and Codex history                         | P5 adapters exist; switch all runtime entry points together and remove native extraction/reverse-RPC branches.                                                                                                                                                                                       |
+| Pending-input source/history/store/withdrawal, message-tool run outcomes, cold-storage inspection, historical eviction, maintenance sizing and page reclamation | Audit and route these remaining native branches; a maintenance filename is not proof of an offline-only contract.                                                                                                                                                                                    |
+| `SqliteBoardStore.requireExistingSession`, native `write` and sentinel `consumeRead`                                                                            | P7b prepares typed Board commands and captured actor bindings. Activation must supply those bindings and remove native admission, writes, and sentinel reads; grants consume transaction-local facts without same-actor RPC.                                                                         |
+| ACP projection and lifecycle consumers                                                                                                                          | Supply awaited metadata to `readAcpMetaForDeletedAgentCheck` and `resolveGatewaySessionRuntimeProjection`; keep controller shared-row predicates separate from actor predicates. Discord and Telegram startup reconciliation must not treat a refused join as absent metadata or delete its binding. |
 
 `readAcpSessionMetaForEntry` and `readAcpSessionMetaBatch` read shared metadata,
 not the actor database. Their synchronous SDK/runtime callers remain separate
@@ -2769,10 +2766,10 @@ retain their offline contracts. ACP resume enumeration currently selects durable
 configured stores; it must not discover actor sessions through that synchronous
 loop. Mixed ACP and maintenance files are not automatically worker-only.
 
-The legacy replay adapter's `appendCustomEntry` catch must propagate the typed
-incognito refusal. Extension append/name/label adapters and the tool-result guard
-must do the same. Detached SessionManager getters, `inMemory`, `fromEntries`, and
-ordinary current-turn traversal remain synchronous because they use loaded views.
+Awaited replay, extension append/name/label operations, and the tool-result guard
+must propagate typed incognito refusals. Their synchronous SDK predecessors are
+removed by the proposal. Detached SessionManager getters, `inMemory`, `fromEntries`,
+and ordinary current-turn traversal remain synchronous because they use loaded views.
 No synchronous bridge, fire-and-forget persistence, or fallback database is allowed.
 
 ### Incognito SessionManager composition (P7a, inactive)
@@ -3025,9 +3022,10 @@ or selects native storage after revocation. Production acquisition still
 supplies no binding; the final atomic activation must install it together with
 the remaining domain and history adapters.
 
-Synchronous SessionManager persistence and Codex context access refuse a bound
-actor before native SQL, detached-view changes, or tool-result hooks. Detached
-getters and unbound durable SDK compatibility retain their existing behavior.
+Retained synchronous SessionManager and Codex context access refuses a bound
+actor before native SQL, detached-view changes, or tool-result hooks. The proposal
+removes synchronous SessionManager persistence. Detached getters and retained
+unbound durable SDK compatibility keep their existing behavior.
 The binding retains actor lifetime through accepted work and cleanup. Registered
 worker errors retain their canonical identity for ephemeral actors too.
 
@@ -4657,8 +4655,9 @@ Watched-session prompt preparation reads ambient targets through the shared-stat
 reader and exact title entries through the session reader. It captures both stores
 before yielding, retains the session reader through disclosure revalidation, and
 rechecks the caller and watches after loading titles. Live turns, compaction, and
-bundled harnesses await the same preparation. The released synchronous SDK helper
-remains deprecated compatibility; the async path never falls back to host SQL.
+bundled harnesses await the same preparation. The SDK removal proposal retires
+`buildWatchedSessionsHarnessContext`, deprecated in stable `v2026.10.1`; the async
+path never falls back to host SQL.
 Sorted rows, the twenty-row cap, title truncation, prompt bytes, and update behavior
 are unchanged.
 
@@ -4682,11 +4681,10 @@ policy and the existing session-authority reads retain their current owners.
 Schemas, stored bytes, capacity, retention, and update behavior are unchanged.
 Mention storage SQL now lives only in `mention-inbox-store.worker.ts`. The
 synchronous `MentionInbox.list`, `dismiss`, `recordCommittedInput`, and
-`invalidate` signatures remain deprecated SDK members, but their native
-persistence implementation is retired. List and dismiss return migration-directed
-`UNAVAILABLE` results; recording and invalidation throw migration-directed errors.
-All bundled callers use the corresponding `Async` methods. No synchronous call
-queues an unobserved write. Removing the native writer also removes the host's
+`invalidate` signatures are removed by the proposal after deprecation in stable
+`v2026.10.1`. Their migration-only adapters are removed too. All callers use the
+corresponding `Async` methods, so recording completion is observed. The newer
+`validateRecipients` compatibility method remains deprecated. Removing the native writer also removes the host's
 native-revision arbitration: one FIFO applies acknowledged worker receipts,
 while the worker's revision CAS still reconciles other in-process Inbox owners.
 
@@ -4813,9 +4811,10 @@ execute through the shared-state worker. Bundled HTTP and WebSocket capture
 callers use asynchronous operations. Each accepted capture retains its original
 database admission through response-body finalization, and orderly CLI and Gateway
 shutdown join capture writes before closing the database. Read-only capture
-inspection preserves missing-state and source-artifact behavior. The shipped
-synchronous proxy-capture SDK remains a deprecated compatibility path; bundled
-callers use the worker APIs. Schemas, stored bytes, retention, and update behavior
+inspection preserves missing-state and source-artifact behavior. The proposal
+removes the synchronous proxy-capture SDK, deprecated in stable `v2026.9.7`;
+callers use the awaited worker APIs and retain their store lease until capture
+and finalization settle. Schemas, stored bytes, retention, and update behavior
 are unchanged.
 
 Per-turn restart admission, runtime selection, and initial placement routing read
@@ -5905,9 +5904,9 @@ transaction and revalidates them at admission and commit; the worker rereads the
 session incarnation and preserves mention source ordering. Acknowledged results
 invalidate session rows through their existing owner. The Inbox FIFO joins accepted
 involvement and Inbox persistence before shutdown closes either database owner. Unknown
-outcomes are never replayed. The deprecated synchronous MentionInbox SDK signatures
-remain deprecated until removal after stable deprecation and a compatibility period, but
-reject calls in favor of the awaited worker operations. Schemas, stored bytes,
+outcomes are never replayed. The proposal removes the four synchronous Mention
+Inbox persistence signatures deprecated in stable `v2026.10.1`; callers await
+the worker operations. The newer recipient-validation deprecation remains supported. Schemas, stored bytes,
 retention, permissions, and update behavior are unchanged.
 
 Sharing management retains the original session and physical source before
@@ -6216,9 +6215,9 @@ report selectors consume prepared facts on the host, and the worker compares the
 transcript version before appending. Only a definite version conflict repeats selection;
 uncertain writes are never replayed. Startup orphan repair retains its native
 transaction so session settlement and the report remain atomic. Bundled session callers
-await this owner before dependent publication. The shipped synchronous SessionManager
-methods remain named third-party compatibility adapters, deprecated for removal after
-stable deprecation and a compatibility period; each warns once per method per process.
+await this owner before dependent publication. The proposal removes the synchronous
+SessionManager persistence methods deprecated in stable `v2026.10.1` or earlier.
+The newer `readSessionContext` deprecation retains its compatibility contract.
 Incognito retains its process-local database owner until its separate worker cutover.
 Schemas, stored bytes, retention, and update behavior are unchanged. See the [SDK
 migration](/plugins/sdk-migration/how-to-migrate#await-session-transcript-persistence).
@@ -6394,10 +6393,11 @@ replaying it, and an acknowledged target mutation remains successful. Full-map
 registration preserves cross-account persistence and bounded eviction recency; activity
 retains its 15-second coalescing. Unavailable persistence retains the existing in-memory
 fallback, while revoked authority refuses publication. Stored records, namespace bounds,
-schema, and update behavior are unchanged. The public Discord SDK's synchronous list,
-touch, lifecycle setter, and unbind compatibility paths remain under the same owner,
-deprecated for removal after stable deprecation and a compatibility period. Bundled
-callers use the awaited variants. ACP startup session reads are a separate worker
+schema, and update behavior are unchanged. The public Discord SDK's synchronous
+list, touch, and unbind compatibility paths remain under the same owner. The proposal
+removes its idle-timeout and maximum-age setters, deprecated in stable `v2026.9.7`;
+callers use the awaited variants. Telegram's native setters follow the same removal;
+Matrix's later deprecation remains supported. ACP startup session reads are a separate worker
 migration.
 
 Shared and per-agent auth-profile success and failure bookkeeping use the existing
@@ -6566,9 +6566,11 @@ worker's metadata projection. Durable context consumers retain their captured
 snapshot when later transcript writes occur; owner and admission checks still
 apply before consumption.
 
-The native accessor kernels remain shared with released synchronous
-`SessionManager` methods, opaque transcript transaction callbacks, and
-process-held incognito. Bundled callers use the asynchronous replacements.
+The native accessor kernels remain shared with the retained synchronous
+`SessionManager.readSessionContext`, other newer SDK readers, opaque transcript
+transaction callbacks, and process-held incognito. The proposal removes the older
+synchronous persistence and hydration entrypoints. Bundled callers use the
+asynchronous replacements.
 Unbound harness deletion callbacks are deprecated in favor of the native binding
 lifecycle or commit-finalizer helpers; their native transaction behavior remains
 until removal after stable deprecation and a

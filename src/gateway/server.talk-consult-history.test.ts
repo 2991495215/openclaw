@@ -16,7 +16,6 @@ import {
 } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { extractText } from "../../ui/src/lib/chat/message-extract.ts";
-import { buildChatMarkdown } from "../../ui/src/pages/chat/export.ts";
 import { createHostWorkspaceWriteTool } from "../agents/agent-tools.read.js";
 import { createExecTool } from "../agents/bash-tools.js";
 import * as embeddedAgent from "../agents/embedded-agent.js";
@@ -57,6 +56,17 @@ import { createDirectChatContext } from "./server-chat.agent-events.test-helpers
 import { handleGatewayRequest } from "./server-methods.js";
 import type { GatewayClient, GatewayRequestContext, RespondFn } from "./server-methods/types.js";
 import { createTranscriptUpdateBroadcastHandler } from "./server-session-events.js";
+import {
+  spoken,
+  answer,
+  consultAnswer,
+  consultCommentary,
+  consultToolResult,
+  args,
+  syntheticMarkers,
+  expectNoGeneratedInput,
+  expectVisibleSpeechOnly,
+} from "./server.talk-consult-history.test-support.js";
 import * as lifecycleState from "./session-lifecycle-state.js";
 import { createPreparedLifecycleWriteTracker } from "./session-lifecycle-state.test-support.js";
 import {
@@ -85,17 +95,6 @@ let sessionKey = "agent:main:main";
 let canonicalKey = sessionKey;
 let sessionId: string;
 const connectionId = "talk-consult-history-ui";
-const spoken = "SPOKEN_133855: Keep the literal labels Context: and Spoken style: in my note.";
-const answer = "ANSWER_133855: Both labels are preserved.";
-const consultAnswer = "INTERNAL_FINAL_133855: The note contains both requested labels.";
-const consultCommentary = "COMMENTARY_133855: Checking the saved note.";
-const consultToolResult = "TOOL_RESULT_133855: Context: and Spoken style: are present.";
-const args = {
-  question: "GENERATED_QUESTION_133855: Check the note requested by the speaker.",
-  context: "GENERATED_CONTEXT_133855: The call already has a finalized human transcript.",
-  responseStyle: "GENERATED_STYLE_133855: Speak one short sentence.",
-};
-const syntheticMarkers = Object.values(args);
 const broadcast = vi.fn<GatewayBroadcastToConnIdsFn>();
 let harness: Awaited<ReturnType<typeof createGatewaySuiteHarness>>;
 let context: GatewayRequestContext;
@@ -293,43 +292,6 @@ function liveMessages() {
     const message = asOptionalRecord(payload)?.message;
     return event === "session.message" && message ? [message] : [];
   });
-}
-function expectNoGeneratedInput(messages: unknown[], surface: string) {
-  const markdown = buildChatMarkdown(messages, "Voice test assistant");
-  const serialized = JSON.stringify(messages);
-  expect
-    .soft(
-      syntheticMarkers.filter((marker) => serialized.includes(marker)),
-      surface,
-    )
-    .toEqual([]);
-  expect
-    .soft(
-      syntheticMarkers.filter((marker) => markdown?.includes(marker)),
-      `${surface} Markdown`,
-    )
-    .toEqual([]);
-}
-function expectVisibleSpeechOnly(messages: unknown[], surface: string, hasAnswer: boolean) {
-  const users = messages.filter((message) => asOptionalRecord(message)?.role === "user");
-  expect.soft(users.map(extractText), surface).toEqual([spoken]);
-  const markdown = buildChatMarkdown(messages, "Voice test assistant");
-  expect.soft(markdown, `${surface} Markdown`).toContain(spoken);
-  expect
-    .soft(markdown?.match(/^## Message(?: \(|$)/gm), `${surface} input headings`)
-    .toHaveLength(1);
-  expectNoGeneratedInput(messages, surface);
-  expect
-    .soft(
-      messages.map(extractText).filter((text) => text === answer),
-      `${surface} spoken answer`,
-    )
-    .toHaveLength(hasAnswer ? 1 : 0);
-  expect
-    .soft(markdown?.split(answer).length, `${surface} spoken answer in Markdown`)
-    .toBe(hasAnswer ? 2 : 1);
-  expect.soft(JSON.stringify(messages), `${surface} internal final`).not.toContain(consultAnswer);
-  expect.soft(markdown, `${surface} internal final in Markdown`).not.toContain(consultAnswer);
 }
 async function historyMessages() {
   const result = await rpc("chat.history", { sessionKey: canonicalKey, agentId });

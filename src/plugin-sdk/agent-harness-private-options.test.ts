@@ -1,7 +1,7 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { Type } from "typebox";
 import { describe, expect, expectTypeOf, it, onTestFinished, vi } from "vitest";
-import { createOpenClawCodingToolsAsync as createCoreCodingTools } from "../agents/agent-tools.js";
+import { createOpenClawCodingTools as createCoreCodingTools } from "../agents/agent-tools.js";
 import type { EmbeddedRunAttemptParams as CoreAttempt } from "../agents/embedded-agent-runner/run/types.js";
 import * as toolSurfaceCore from "../agents/harness/tool-surface-bridge.js";
 import type {
@@ -16,13 +16,14 @@ import {
   type AgentHarnessToolSurfaceRuntime,
   type AgentHarnessToolSurfaceRuntimeParams,
 } from "./agent-harness-tool-runtime.js";
-import { createOpenClawCodingToolsAsync } from "./agent-harness.js";
+import { createOpenClawCodingTools, createOpenClawCodingToolsAsync } from "./agent-harness.js";
 import type { createAgentHarnessHostCapabilitiesForTest } from "./plugin-test-runtime.js";
 
 type PrivateControls = "disableToolSearch" | "sessionReadScopeKey";
-type CodingToolsOptions = NonNullable<Parameters<typeof createOpenClawCodingToolsAsync>[0]>;
+type CodingToolsOptions = NonNullable<Parameters<typeof createOpenClawCodingTools>[0]>;
+type AsyncCodingToolsOptions = NonNullable<Parameters<typeof createOpenClawCodingToolsAsync>[0]>;
 type HostToolsOptions = Parameters<
-  NonNullable<AgentHarnessAttemptParamsV2["hostCapabilities"]["createToolSurfaceAsync"]>
+  NonNullable<AgentHarnessAttemptParamsV2["hostCapabilities"]["createToolSurface"]>
 >[0];
 type HostTestAttempt = Parameters<typeof createAgentHarnessHostCapabilitiesForTest>[0]["attempt"];
 
@@ -66,13 +67,14 @@ describe("agent harness private options", () => {
     expectTypeOf<CodingToolsOptions>().not.toHaveProperty("onProgressCardPlanSaved");
     expectTypeOf<CodingToolsOptions>().not.toHaveProperty("authProfileStoreSource");
     expectTypeOf<CodingToolsOptions>().not.toHaveProperty("onWebSearchConfiguration");
+    expectTypeOf<AsyncCodingToolsOptions>().not.toHaveProperty("onWebSearchConfiguration");
     expectTypeOf<CodingToolsOptions>().toMatchTypeOf<
       NonNullable<Parameters<typeof createCoreCodingTools>[0]>
     >();
   });
 
   it("keeps the public factory on the existing shared implementation", () => {
-    expect(createOpenClawCodingToolsAsync).toBe(createCoreCodingTools);
+    expect(createOpenClawCodingTools).toBe(createCoreCodingTools);
   });
 
   it("preserves explicitly allowed tools in an asynchronously prepared lean surface", async () => {

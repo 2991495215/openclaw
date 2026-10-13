@@ -512,13 +512,12 @@ before commit. See the [complete session migration table](/plugins/sdk-migration
 
 Use `await SessionManager.appendMessageToTranscriptAsync(...)` for static appends
 of ordinary, custom, or Bash execution messages. It resolves to the persisted
-message ID after the worker commits. `SessionManager.appendMessageToTranscript`
-retains its synchronous return contract for third-party plugins using the
-v2026.9.5 API, emits a deprecation warning once per process, and can still perform
-SQLite work on the calling thread. The `session-manager-sync-persistence` record
-requires stable deprecation and a compatibility period before removal in a later
-normal release. Bundled production paths use awaited
-operations.
+message ID after the worker commits. The
+[removal proposal](/plugins/sdk-migration/deprecated-sqlite) removes
+`SessionManager.appendMessageToTranscript`, deprecated in stable `v2026.9.7`,
+and the other synchronous persistence entrypoints deprecated in stable
+`v2026.10.1` or earlier. Bundled production paths use awaited operations.
+The newer `SessionManager.readSessionContext` deprecation remains supported.
 
 Core failed-image settlement uses the internal `appendSessionTranscriptNote`
 operation, which accepts a custom message and returns a promise for its persisted `messageId`, canonical
@@ -551,9 +550,10 @@ and symlink spelling are preserved.
 File-backed transcript writes execute through the canonical agent database
 worker. Queued extension actions retain their original runtime and session
 authority through transaction and commit admission. Runtime session hydration
-uses the existing read worker. Deprecated third-party synchronous adapters and
-incognito transcript persistence retain their native owners; the awaited API
-does not move incognito storage off-thread before its separate worker cutover.
+uses the existing read worker. Incognito transcript persistence retains its
+native owner; the awaited API does not move incognito storage off-thread before
+its separate worker cutover. Retained raw SQLite and opaque callback contracts
+also keep their documented compatibility owners.
 
 Committed metadata updates the bound session's model or thinking state alongside
 transcript-view adoption, before asynchronous cleanup. Settings setters retain

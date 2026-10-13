@@ -291,7 +291,7 @@ export function isSharedMainAuthProfileAgentDir(agentDir?: string): boolean {
   return resolveAgentAuthPath(effectiveAgentDir) === mainPath;
 }
 
-/** @deprecated Use findPersistedAuthProfileCredentialAsync. Removed at the next Plugin SDK major. */
+/** @deprecated Use findPersistedAuthProfileCredentialAsync. Removed after stable deprecation and a compatibility period. */
 export function findPersistedAuthProfileCredential(params: {
   agentDir?: string;
   profileId: string;
@@ -331,7 +331,7 @@ export function findPersistedAuthProfileCredential(params: {
 
 /**
  * Resolve which agent dir owns a persisted profile, accounting for inherited OAuth.
- * @deprecated Use resolvePersistedAuthProfileOwnerAgentDirAsync. Removed at the next Plugin SDK major.
+ * @deprecated Use resolvePersistedAuthProfileOwnerAgentDirAsync. Removed after stable deprecation and a compatibility period.
  */
 export function resolvePersistedAuthProfileOwnerAgentDir(params: {
   agentDir?: string;
@@ -1389,6 +1389,40 @@ export function createAuthProfileStoreRuntime(
     });
   }
 
+  /** @deprecated Use ensureAuthProfileStoreForLocalUpdateAsync. Removed after stable deprecation and a compatibility period. */
+  function ensureAuthProfileStoreForLocalUpdate(agentDir?: string): AuthProfileStore {
+    warnPluginSdkDeprecation({
+      family: "auth-profiles",
+      method: "ensureAuthProfileStoreForLocalUpdate",
+      replacement: "ensureAuthProfileStoreForLocalUpdateAsync",
+    });
+    if (isEnvOnlyAuthProfileRuntime()) {
+      return createEmptyAuthProfileStore();
+    }
+    const effectiveAgentDir = resolveRuntimeAuthProfileAgentDir(agentDir);
+    const options: LoadAuthProfileStoreOptions = { syncExternalCli: false };
+    const store = loadAuthProfileStoreForAgent(effectiveAgentDir, options);
+    const authPath = effectiveAgentDir
+      ? resolveAgentAuthPath(effectiveAgentDir)
+      : resolveSharedAuthPath();
+    const mainAgentDir = resolveRuntimeAuthProfileAgentDir();
+    const mainAuthPath = mainAgentDir
+      ? resolveAgentAuthPath(mainAgentDir)
+      : resolveSharedAuthPath();
+    if (!effectiveAgentDir || authPath === mainAuthPath) {
+      return store;
+    }
+
+    const mainStore = loadInheritedAuthProfileStore(
+      () => loadAuthProfileStoreForAgent(undefined, { readOnly: true, syncExternalCli: false }),
+      undefined,
+      getScopedAuthProfileEnv(),
+    );
+    return mainStore
+      ? mergeAuthProfileStores(mainStore, store, { preserveBaseRuntimeExternalProfiles: true })
+      : store;
+  }
+
   async function ensureAuthProfileStoreForLocalUpdateAsync(
     agentDir?: string,
   ): Promise<AuthProfileStore> {
@@ -1736,6 +1770,7 @@ export function createAuthProfileStoreRuntime(
     ensureAuthProfileStoreAsync,
     ensureAuthProfileStoreWithoutExternalProfiles,
     ensureAuthProfileStoreWithoutExternalProfilesAsync,
+    ensureAuthProfileStoreForLocalUpdate,
     ensureAuthProfileStoreForLocalUpdateAsync,
     saveAuthProfileStore,
     saveAuthProfileStoreWithPreparedOwner,

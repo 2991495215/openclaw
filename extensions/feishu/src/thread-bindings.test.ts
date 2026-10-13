@@ -64,7 +64,7 @@ describe("Feishu thread bindings", () => {
     });
 
     expect(binding.conversation.conversationId).toBe("oc_group_chat:topic:om_topic_root");
-    const resolved = getSessionBindingService().resolveByConversation({
+    const resolved = await getSessionBindingService().resolveByConversationAsync({
       channel: "feishu",
       accountId: "default",
       conversationId: "oc_group_chat:topic:om_topic_root",
@@ -128,11 +128,11 @@ describe("Feishu thread bindings", () => {
     now.mockReturnValue(expiresAt - 1);
     expect(manager.getByConversationId(conversation.conversationId)).toBeDefined();
     expect(manager.listBySessionKey(targetSessionKey)).toHaveLength(2);
-    expect(service.resolveByConversation(conversation)).not.toBeNull();
+    expect(await service.resolveByConversationAsync(conversation)).not.toBeNull();
     expect(service.listBySession(targetSessionKey)).toHaveLength(2);
 
     now.mockReturnValue(expiresAt);
-    expect(service.resolveByConversation(conversation)).toBeNull();
+    expect(await service.resolveByConversationAsync(conversation)).toBeNull();
     expect(manager.getByConversationId(conversation.conversationId)).toBeUndefined();
     expect(manager.listBySessionKey(targetSessionKey)).toEqual([]);
     expect(service.listBySession(targetSessionKey)).toEqual([]);
@@ -163,11 +163,13 @@ describe("Feishu thread bindings", () => {
     });
 
     now.mockReturnValue(startedAt + 30 * 60_000);
-    service.touch(binding.bindingId);
-    expect(service.resolveByConversation(conversation)?.expiresAt).toBe(startedAt + 60 * 60_000);
+    await service.touchAsync(binding.bindingId);
+    expect((await service.resolveByConversationAsync(conversation))?.expiresAt).toBe(
+      startedAt + 60 * 60_000,
+    );
 
     now.mockReturnValue(startedAt + 60 * 60_000);
-    expect(service.resolveByConversation(conversation)).toBeNull();
+    expect(await service.resolveByConversationAsync(conversation)).toBeNull();
     expect(service.listBySession(binding.targetSessionKey)).toEqual([]);
   });
 
@@ -191,10 +193,10 @@ describe("Feishu thread bindings", () => {
     expect(binding.expiresAt).toBe(expiresAt);
 
     now.mockReturnValue(expiresAt);
-    service.touch(binding.bindingId, expiresAt + 1);
+    await service.touchAsync(binding.bindingId, expiresAt + 1);
 
     expect(manager.getByConversationId(conversation.conversationId)).toBeUndefined();
-    expect(service.resolveByConversation(conversation)).toBeNull();
+    expect(await service.resolveByConversationAsync(conversation)).toBeNull();
   });
 
   it("keeps active bindings touchable and unbindable", async () => {
@@ -215,15 +217,15 @@ describe("Feishu thread bindings", () => {
     });
 
     now.mockReturnValue(startedAt + 1_000);
-    service.touch(binding.bindingId);
-    expect(service.resolveByConversation(conversation)?.metadata?.lastActivityAt).toBe(
+    await service.touchAsync(binding.bindingId);
+    expect((await service.resolveByConversationAsync(conversation))?.metadata?.lastActivityAt).toBe(
       startedAt + 1_000,
     );
 
     await expect(service.unbind({ bindingId: binding.bindingId, reason: "test" })).resolves.toEqual(
       [expect.objectContaining({ bindingId: binding.bindingId })],
     );
-    expect(service.resolveByConversation(conversation)).toBeNull();
+    expect(await service.resolveByConversationAsync(conversation)).toBeNull();
   });
 
   it("clears account-scoped bindings when the manager stops", async () => {
@@ -247,7 +249,7 @@ describe("Feishu thread bindings", () => {
     manager.stop();
 
     expect(
-      getSessionBindingService().resolveByConversation({
+      await getSessionBindingService().resolveByConversationAsync({
         channel: "feishu",
         accountId: "default",
         conversationId: "oc_group_chat:topic:om_topic_root",
@@ -271,7 +273,9 @@ describe("Feishu thread bindings", () => {
     expect(createFeishuThreadBindingManager({ cfg: baseCfg, accountId: "default" })).toBe(
       restarted,
     );
-    expect(getSessionBindingService().resolveByConversation(conversation)).toEqual(replacement);
+    expect(await getSessionBindingService().resolveByConversationAsync(conversation)).toEqual(
+      replacement,
+    );
   });
 
   it.each(["refresh", "session", "kind"] as const)(
@@ -316,7 +320,7 @@ describe("Feishu thread bindings", () => {
       });
 
       expect(
-        getSessionBindingService().resolveByConversation({
+        await getSessionBindingService().resolveByConversationAsync({
           channel: "feishu",
           accountId: "default",
           conversationId: "oc_group_chat:topic:om_topic_root:sender:ou_sender_1",

@@ -17,6 +17,7 @@ import type {
   TtsModelOverrideConfig,
   TtsProvider,
 } from "../config/types.js";
+import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { normalizeSpeechProviderId } from "./provider-registry-core.js";
 import type { SpeechProviderConfig } from "./provider-types.js";
 import { withSpeakerSelectionCompat } from "./speaker.js";
@@ -185,10 +186,18 @@ export function resolveTtsConfig(
   };
 }
 
-function resolveTtsPrefsPathFromSnapshot(
+/** @deprecated Use resolveTtsPrefsPathAsync. Removed after stable deprecation and a compatibility period. */
+export function resolveTtsPrefsPath(
   config: ResolvedTtsConfig,
   preparedTtsPreferences?: PreparedTtsPreferences,
 ): string {
+  if (!preparedTtsPreferences) {
+    warnPluginSdkDeprecation({
+      family: "tts",
+      method: "resolveTtsPrefsPath",
+      replacement: "resolveTtsPrefsPathAsync",
+    });
+  }
   return resolveTtsPrefsPathValue(
     config.prefsPath,
     preparedTtsPreferences
@@ -206,7 +215,7 @@ export async function resolveTtsPrefsPathAsync(
     (config.prefsPath?.trim() || process.env.OPENCLAW_TTS_PREFS?.trim()
       ? {}
       : await (await import("./tts-preferences.js")).prepareTtsPreferences());
-  return resolveTtsPrefsPathFromSnapshot(config, prepared);
+  return resolveTtsPrefsPath(config, prepared);
 }
 
 export function resolveTtsAutoMode(params: {
@@ -269,7 +278,7 @@ export function resolveTtsSettingsSnapshot(params: {
     channelId: params.channelId,
     accountId: params.accountId,
   });
-  const prefsPath = resolveTtsPrefsPathFromSnapshot(config, params.preparedTtsPreferences);
+  const prefsPath = resolveTtsPrefsPath(config, params.preparedTtsPreferences);
   const prefs = readTtsPrefs(prefsPath);
   const personaId = resolveTtsPersonaIdFromPrefs(config, prefs);
   const persona = personaId ? config.personas[personaId] : undefined;

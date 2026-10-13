@@ -16,10 +16,12 @@ export { CLAUDE_CLI_PROFILE_ID, CODEX_CLI_PROFILE_ID } from "../agents/auth-prof
 export {
   ensureAuthProfileStore,
   ensureAuthProfileStoreAsync,
+  ensureAuthProfileStoreForLocalUpdate,
   ensureAuthProfileStoreForLocalUpdateAsync,
 } from "../agents/auth-profiles/store-runtime.js";
 export {
   listProfilesForProvider,
+  upsertAuthProfile,
   upsertAuthProfileAsync,
 } from "../agents/auth-profiles/profiles.js";
 export {
@@ -57,6 +59,7 @@ export {
 export {
   applyAuthProfileConfig,
   buildApiKeyCredential,
+  upsertApiKeyProfile,
   upsertApiKeyProfileAsync,
   writeOAuthCredentials,
   type ApiKeyStorageOptions,

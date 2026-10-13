@@ -38,8 +38,14 @@ export type GatewayInstanceAgentDispatchOptions = {
 };
 
 export type GatewayApprovalEventPublisher = {
-  publishRequestedAsync: (kind: ChannelApprovalKind, request: unknown) => Promise<number>;
+  /** @deprecated Use publishRequestedAsync; removed after stable deprecation and a compatibility period. */
+  publishRequested: (kind: ChannelApprovalKind, request: unknown) => number;
+  publishRequestedAsync?: (kind: ChannelApprovalKind, request: unknown) => Promise<number>;
   publishResolved: (kind: ChannelApprovalKind, resolved: unknown) => void;
+};
+
+type GatewayApprovalEventPublisherV2 = GatewayApprovalEventPublisher & {
+  publishRequestedAsync: (kind: ChannelApprovalKind, request: unknown) => Promise<number>;
 };
 
 export type GatewayRecoverySessionMethod = "chat.history" | "chat.abort" | "sessions.delete";
@@ -101,7 +107,7 @@ export type GatewayRecoveryRuntime = {
 
 export type GatewayInstanceRuntime = {
   createAgentTurnFacade: InternalAgentTurnFacadeFactory;
-  approvalEvents: GatewayApprovalEventPublisher;
+  approvalEvents: GatewayApprovalEventPublisherV2;
   nativeApprovals: GatewayNativeApprovalRuntime;
   recovery: GatewayRecoveryRuntime;
   isAvailable: () => boolean;

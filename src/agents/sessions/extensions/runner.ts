@@ -26,6 +26,7 @@ import type {
   ContextEventResult,
   ContextUsage,
   Extension,
+  ExtensionActions,
   ExtensionActionsV2,
   ExtensionCommandContext,
   ExtensionCommandContextActions,
@@ -34,7 +35,7 @@ import type {
   ExtensionError,
   ExtensionEvent,
   ExtensionFlag,
-  ExtensionRuntimeV2,
+  ExtensionRuntime,
   ExtensionShortcut,
   ExtensionUIContext,
   InputEvent,
@@ -239,7 +240,7 @@ export class ExtensionRunner {
 
   constructor(
     private extensions: Extension[],
-    private runtime: ExtensionRuntimeV2,
+    private runtime: ExtensionRuntime,
     private cwd: string,
     private sessionManager: SessionManager,
     private modelRegistry: ModelRegistry,
@@ -250,6 +251,15 @@ export class ExtensionRunner {
   /** Bind host actions with worker-backed persistence. */
   bindCoreAsync(
     actions: ExtensionActionsV2,
+    contextActions: ExtensionContextActions,
+    providerActions?: Parameters<ExtensionRunner["bindCore"]>[2],
+  ): void {
+    this.bindCore(actions, contextActions, providerActions);
+    bindExtensionPersistenceActions(this.sessionManager, this.runtime, actions);
+  }
+
+  bindCore(
+    actions: ExtensionActions,
     contextActions: ExtensionContextActions,
     providerActions?: {
       registerProvider?: (name: string, config: ProviderConfig) => void;
@@ -266,7 +276,6 @@ export class ExtensionRunner {
     this.runtime.refreshTools = actions.refreshTools;
     this.runtime.getCommands = actions.getCommands;
     bindExtensionMetadataActions(this.sessionManager, this.runtime, actions);
-    bindExtensionPersistenceActions(this.sessionManager, this.runtime, actions);
     this.runtime.getThinkingLevel = actions.getThinkingLevel;
 
     this.getModel = contextActions.getModel;
@@ -503,7 +512,7 @@ export class ExtensionRunner {
 
   /**
    * Create an ExtensionContext for use in event handlers and tool execution.
-   * Context values are resolved at call time, so changes via bindCoreAsync/bindUI are reflected.
+   * Context values are resolved at call time, so changes via bindCore/bindUI are reflected.
    */
   createContext(): ExtensionContext {
     const requireActiveRunner = () => this.requireActive();

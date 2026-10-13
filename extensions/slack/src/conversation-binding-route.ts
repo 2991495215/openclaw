@@ -3,7 +3,6 @@ import type { ConversationBindingInspection } from "openclaw/plugin-sdk/conversa
 import {
   inspectRuntimeConversationBindingRoute,
   resolveConfiguredBindingRoute,
-  type resolveRuntimeConversationBindingRoute,
   resolveRuntimeConversationBindingRouteAsync,
   type RuntimeConversationBindingRouteResult,
 } from "openclaw/plugin-sdk/conversation-binding-runtime";
@@ -80,7 +79,7 @@ export function normalizeSlackRouteBindingConfig(cfg: OpenClawConfig): OpenClawC
 type SlackConversationBindingRouteParams = {
   cfg: OpenClawConfig;
   resolveRoute: NonNullable<
-    Parameters<typeof resolveRuntimeConversationBindingRoute>[0]["resolveRoute"]
+    Parameters<typeof resolveRuntimeConversationBindingRouteAsync>[0]["resolveRoute"]
   >;
   accountId: string;
   baseConversationId: string;
@@ -97,7 +96,7 @@ export function resolveSlackConversationBindingRoute(
 ) {
   const { resolveRoute } = params;
   const resolveRuntime = (
-    input: Parameters<typeof resolveRuntimeConversationBindingRoute>[0],
+    input: Parameters<typeof resolveRuntimeConversationBindingRouteAsync>[0],
     role: "base" | "thread",
   ) => inspectRuntimeConversationBindingRoute({ ...input, inspection: params.inspections[role] });
   let baseRuntimeRoute: RuntimeConversationBindingRouteResult | undefined;

@@ -2,6 +2,36 @@ import type { PluginCompatRecord } from "./types.js";
 
 export const BINDING_PERSISTENCE_COMPAT_RECORDS = [
   {
+    code: "conversation-binding-sync-service",
+    status: "removed",
+    owner: "channel",
+    introduced: "2026-09-20",
+    deprecated: "2026-09-20",
+    replacement:
+      "Await SessionBindingService.resolveByConversationAsync, SessionBindingService.touchAsync, resolveRuntimeConversationBindingRouteAsync, and the Async-suffixed channel and runtime lifecycle setters. Legacy adapter callbacks remain available through their retained registration and inspection contracts.",
+    docsPath: "/plugins/sdk-runtime/channel#awaited-conversation-binding-mutations",
+    surfaces: [
+      "SessionBindingService.resolveByConversation",
+      "SessionBindingService.touch",
+      "resolveRuntimeConversationBindingRoute",
+      "ChannelConversationBindingSupport.setIdleTimeoutBySessionKey",
+      "ChannelConversationBindingSupport.setMaxAgeBySessionKey",
+      "api.runtime.channel.threadBindings.setIdleTimeoutBySessionKey",
+      "api.runtime.channel.threadBindings.setMaxAgeBySessionKey",
+      "Discord.setThreadBindingIdleTimeoutBySessionKey",
+      "Discord.setThreadBindingMaxAgeBySessionKey",
+      "Telegram.setTelegramThreadBindingIdleTimeoutBySessionKey",
+      "Telegram.setTelegramThreadBindingMaxAgeBySessionKey",
+    ],
+    diagnostics: ["Removed exports and service methods fail during plugin build or load"],
+    tests: [
+      "src/infra/outbound/session-binding-service.test.ts",
+      "src/channels/plugins/binding-routing.test.ts",
+    ],
+    releaseNote:
+      "Removes synchronous service binding resolution, activity mutation, runtime routing, and generic lifecycle setters deprecated in stable v2026.9.6, plus Discord and Telegram lifecycle setters deprecated in stable v2026.9.7. Awaited replacements retain the existing storage format and ownership checks.",
+  },
+  {
     code: "conversation-binding-sync-persistence",
     status: "deprecated",
     owner: "sdk",
@@ -10,16 +40,13 @@ export const BINDING_PERSISTENCE_COMPAT_RECORDS = [
     warningStarts: "2026-10-09",
     removalGate: "after-stable-deprecation",
     replacement:
-      "Use createAccountScopedConversationBindingManagerV2, registerSessionBindingAdapterV2, and awaited service list/resolve/touch methods. V2 adapters supply a coherent inspection snapshot with its current-source assertion. Legacy synchronous operations preserve completion and expiry semantics until removed in a later normal release after stable deprecation and a compatibility period.",
+      "Use createAccountScopedConversationBindingManagerV2, registerSessionBindingAdapterV2, and awaited service list/resolve/touch methods. The synchronous service resolve/touch methods and runtime route resolver have been removed; legacy adapter callbacks remain for the retained registration and inspection contracts. V2 adapters supply a coherent inspection snapshot with its current-source assertion. Legacy synchronous operations preserve completion and expiry semantics until removed in a later normal release after stable deprecation and a compatibility period.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-plugin-state-and-conversation-bindings",
     surfaces: [
       "createAccountScopedConversationBindingManager",
       "registerSessionBindingAdapter",
       "SessionBindingService.listBySession",
-      "SessionBindingService.resolveByConversation",
-      "SessionBindingService.touch",
       "inspectSessionBindingByConversation",
-      "resolveRuntimeConversationBindingRoute",
     ],
     diagnostics: [
       "TypeScript @deprecated annotations and one shared runtime warning per plugin and capability family on legacy use",

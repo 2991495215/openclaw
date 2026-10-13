@@ -49,9 +49,7 @@ import {
   resolveStableChannelIngressPolicy,
 } from "../../channels/message-access/runtime.js";
 import {
-  setChannelConversationBindingIdleTimeoutBySessionKey,
   setChannelConversationBindingIdleTimeoutBySessionKeyAsync,
-  setChannelConversationBindingMaxAgeBySessionKey,
   setChannelConversationBindingMaxAgeBySessionKeyAsync,
 } from "../../channels/plugins/conversation-bindings.js";
 import { loadChannelOutboundAdapter } from "../../channels/plugins/outbound/load.js";
@@ -67,7 +65,10 @@ import {
 } from "../../config/group-policy.js";
 import { resolveMarkdownTableMode } from "../../config/markdown-tables.js";
 import { resolveSessionStorePathCore } from "../../config/sessions.js";
-import { resolveSessionEntryResetFreshnessAsync } from "../../config/sessions/entry-freshness.js";
+import {
+  resolveSessionEntryResetFreshness,
+  resolveSessionEntryResetFreshnessAsync,
+} from "../../config/sessions/entry-freshness.js";
 import { recordInboundSessionMeta } from "../../config/sessions/session-accessor.js";
 import { readSessionUpdatedAtInWorker } from "../../config/sessions/session-entry-read-runtime.js";
 import { getChannelActivity, recordChannelActivity } from "../../infra/channel-activity.js";
@@ -155,6 +156,7 @@ export function createRuntimeChannel(options?: {
   } satisfies PluginRuntime["channel"]["inbound"];
   const sessionRuntime = {
     resolveStorePath: resolveSessionStorePathCore,
+    readSessionUpdatedAt,
     readSessionUpdatedAtAsync: readSessionUpdatedAtInWorker,
     // Plugin runtime property names are a shipped contract; the implementations
     // route through the session accessor boundary.
@@ -162,6 +164,7 @@ export function createRuntimeChannel(options?: {
     recordInboundSession,
     updateLastRoute,
     updateLastRouteWithAuthority,
+    resolveEntryResetFreshness: resolveSessionEntryResetFreshness,
     resolveEntryResetFreshnessAsync: resolveSessionEntryResetFreshnessAsync,
   };
   const channelRuntime = {
@@ -258,8 +261,6 @@ export function createRuntimeChannel(options?: {
     threadBindings: {
       setIdleTimeoutBySessionKeyAsync: setChannelConversationBindingIdleTimeoutBySessionKeyAsync,
       setMaxAgeBySessionKeyAsync: setChannelConversationBindingMaxAgeBySessionKeyAsync,
-      setIdleTimeoutBySessionKey: setChannelConversationBindingIdleTimeoutBySessionKey,
-      setMaxAgeBySessionKey: setChannelConversationBindingMaxAgeBySessionKey,
     },
     runtimeContexts: createChannelRuntimeContextRegistry(),
   } satisfies PluginRuntime["channel"];

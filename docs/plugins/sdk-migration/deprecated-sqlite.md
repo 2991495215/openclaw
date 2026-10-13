@@ -1,148 +1,109 @@
 ---
-summary: "Draft migration for deprecated synchronous SQLite-backed plugin APIs"
+summary: "Draft removal of synchronous SQLite APIs deprecated in stable releases"
 read_when:
   - Replacing deprecated synchronous SQLite-backed plugin APIs
-  - Checking the proposed removal's release status and remaining blockers
+  - Checking the proposed removal's stable release history and remaining blockers
 ---
 
 # Deprecated SQLite API removal draft
 
-Prepare plugins for the proposed removal of deprecated synchronous SQLite APIs
-by using the awaited owner operations below. This is an unmerged proposal. No
-removal release or date has been announced.
+Use the awaited owner operations below to prepare plugins for the proposed removal
+of deprecated synchronous SQLite APIs. This is an unmerged proposal. No removal
+release or date has been announced; maintainers decide when the compatibility
+period has elapsed.
 
-OpenClaw deprecates an API, ships its replacement and deprecation in a stable
-release, and removes the deprecated API after a compatibility period in a later
-normal release. Beta releases do not establish a shipped compatibility contract.
-An API's introduction date and the date in a compatibility record do not prove
-that its deprecation shipped in a stable release.
+OpenClaw deprecates an API, ships the deprecation and replacement in a stable
+release, and removes it after a compatibility period in a later normal release.
+Beta releases do not establish this history. An API's introduction date or the
+creation date of a compatibility record does not establish its first stable
+deprecation.
 
-This proposal contains APIs that shipped in stable `v2026.10.2`. Many of their
-deprecations have not yet shipped in a stable release, so their removal must wait
-for that release and the compatibility period. APIs that never shipped in stable
-are handled separately and are not part of this migration.
+This draft includes only deprecations present in stable `v2026.10.2` or earlier.
+The audit checks the owning declaration and public export in stable tags. Newer
+deprecations stay available, even when their bundled callers have migrated.
 
-The proposed cutover removes deprecated synchronous entrypoints whose bundled
-callers already use their replacements. Shared native kernels remain where they
-serve workers, boot admission, offline maintenance, or a current bundled caller.
-An `Async` suffix means callers must await completion; it is not permission to
-run raw SQLite on the Gateway thread.
+## Proposed removals
 
-## Check stable deprecation status
+The release links establish deprecation history, not a removal deadline or approval.
+Methods listed together share an owner and migration; the pull request contains
+the complete API diff.
 
-The stable audit ends at `v2026.10.2`. The following first stable deprecation
-releases were verified from the owning declaration or compatibility record.
-They establish release history, not a removal deadline or approval.
+| Deprecated API                                                                                                                                                                                                                                                                                                                                    | Replacement                                                                                                                                   | First stable deprecation                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `readAcpSessionEntry`, `AcpSessionManager.resolveSession`                                                                                                                                                                                                                                                                                         | Await `readAcpSessionEntryAsync` and `resolveSessionAsync`.                                                                                   | [v2026.9.7](https://github.com/openclaw/openclaw/releases/tag/v2026.9.7)   |
+| `SessionBindingService.touch`, `resolveByConversation`, `resolveRuntimeConversationBindingRoute`                                                                                                                                                                                                                                                  | Await `touchAsync`, `resolveByConversationAsync`, and `resolveRuntimeConversationBindingRouteAsync`.                                          | [v2026.9.6](https://github.com/openclaw/openclaw/releases/tag/v2026.9.6)   |
+| `setIdleTimeoutBySessionKey` and `setMaxAgeBySessionKey` on `ChannelConversationBindingSupport` and `api.runtime.channel.threadBindings`                                                                                                                                                                                                          | Await the corresponding `Async` setter.                                                                                                       | [v2026.9.6](https://github.com/openclaw/openclaw/releases/tag/v2026.9.6)   |
+| Discord `setThreadBindingIdleTimeoutBySessionKey`, `setThreadBindingMaxAgeBySessionKey`; Telegram `setTelegramThreadBindingIdleTimeoutBySessionKey`, `setTelegramThreadBindingMaxAgeBySessionKey`                                                                                                                                                 | Await the corresponding `Async` setter.                                                                                                       | [v2026.9.7](https://github.com/openclaw/openclaw/releases/tag/v2026.9.7)   |
+| `OpenClawPluginNodeHostCommandContext.acquireManagedWorkspace`                                                                                                                                                                                                                                                                                    | Await `acquireManagedWorkspaceAsync`; release its lease in `finally`.                                                                         | [v2026.9.7](https://github.com/openclaw/openclaw/releases/tag/v2026.9.7)   |
+| `loadArchivedSessions`, `resolveMemorySessionTargets`                                                                                                                                                                                                                                                                                             | Await the corresponding `Async` reader from `memory-core-host-engine-sessions`.                                                               | [v2026.10.1](https://github.com/openclaw/openclaw/releases/tag/v2026.10.1) |
+| `buildWatchedSessionsHarnessContext`                                                                                                                                                                                                                                                                                                              | Await `prepareWatchedSessionsHarnessContext` with current host authority.                                                                     | [v2026.10.1](https://github.com/openclaw/openclaw/releases/tag/v2026.10.1) |
+| `captureNativeSessionGenerationAuthority`, `resolveNativeSessionBinding`, `reclaimNativeSessionGeneration`, `NativeSessionGenerationOperations`                                                                                                                                                                                                   | Use `prepareNativeSessionGenerationAuthority`, `resolveNativeSessionBindingWithAuthority`, and `reclaimNativeSessionGenerationWithAuthority`. | [v2026.10.1](https://github.com/openclaw/openclaw/releases/tag/v2026.10.1) |
+| `SessionManager.open`, `openBounded`, `openDetachedBounded`, `setSessionTarget`, `reloadPersistedTranscript`                                                                                                                                                                                                                                      | Await the corresponding `Async` method.                                                                                                       | [v2026.9.6](https://github.com/openclaw/openclaw/releases/tag/v2026.9.6)   |
+| `SessionManager.appendMessageToTranscript`                                                                                                                                                                                                                                                                                                        | Await `appendMessageToTranscriptAsync`.                                                                                                       | [v2026.9.7](https://github.com/openclaw/openclaw/releases/tag/v2026.9.7)   |
+| `SessionManager.appendMessage`, `appendMessageWithTranscriptAnchor`, `appendCompaction`, `appendResetBoundary`, `appendCustomEntry`, `appendSessionInfo`, `appendCustomMessageEntry`, `appendLeafControl`, `appendLabelChange`, `branch`, `branchWithSummary`, `removeTrailingEntries`, `persist`, `prepareTranscriptRewrite`, `openModelContext` | Await the corresponding `Async` method, including completion of a prepared rewrite commit.                                                    | [v2026.10.1](https://github.com/openclaw/openclaw/releases/tag/v2026.10.1) |
+| `ExtensionAPI.appendEntry`, `setSessionName`, `setLabel`; `AgentSession.setSessionName`                                                                                                                                                                                                                                                           | Await the `Async` methods; supply `ExtensionActionsV2` and `ExtensionRuntimeV2` through `bindCoreAsync`.                                      | [v2026.10.1](https://github.com/openclaw/openclaw/releases/tag/v2026.10.1) |
+| `ProviderPlugin.sanitizeReplayHistory`, `ProviderReplaySessionState.appendCustomEntry`                                                                                                                                                                                                                                                            | Use `sanitizeReplayHistoryAsync`, the V2 replay context, and `appendCustomEntryAsync`.                                                        | [v2026.10.1](https://github.com/openclaw/openclaw/releases/tag/v2026.10.1) |
+| `sanitizeGoogleGeminiReplayHistory`                                                                                                                                                                                                                                                                                                               | Use provider-local replay hooks; the awaited helper is `sanitizeGoogleGeminiReplayHistoryAsync`.                                              | [v2026.5.12](https://github.com/openclaw/openclaw/releases/tag/v2026.5.12) |
+| Mention Inbox `list`, `dismiss`, `recordCommittedInput`, `invalidate`                                                                                                                                                                                                                                                                             | Await the corresponding `Async` method.                                                                                                       | [v2026.10.1](https://github.com/openclaw/openclaw/releases/tag/v2026.10.1) |
+| GitHub publication `deferOrphanedRequests`                                                                                                                                                                                                                                                                                                        | Await `deferOrphanedRequestsAsync`.                                                                                                           | [v2026.10.1](https://github.com/openclaw/openclaw/releases/tag/v2026.10.1) |
+| Gateway placement `listPendingWorkspaceResults`, `getWorkspaceResultReconcilingSessionIds`                                                                                                                                                                                                                                                        | Await the corresponding `Async` method.                                                                                                       | [v2026.10.1](https://github.com/openclaw/openclaw/releases/tag/v2026.10.1) |
+| `ensureAgentWorkspace.beforePersistentApply`                                                                                                                                                                                                                                                                                                      | Prepare database inputs first; retain SQL-free `guard.assertHost` at the effect.                                                              | [v2026.10.1](https://github.com/openclaw/openclaw/releases/tag/v2026.10.1) |
+| `DebugProxyCaptureStore`, `getDebugProxyCaptureStore`, `acquireDebugProxyCaptureStore`, `closeDebugProxyCaptureStore`, `createDebugProxyCaptureReader`, `initializeDebugProxyCapture`, `captureHttpExchange`, `captureWsEvent`, `finalizeDebugProxyCapture`, `DebugProxyCaptureContext.captureWsEvent`                                            | Acquire `acquireDebugProxyCaptureStoreAsync`, await capture operations, and release the lease.                                                | [v2026.9.7](https://github.com/openclaw/openclaw/releases/tag/v2026.9.7)   |
 
-| Contract or family                                                                                                  | First stable deprecation                           |
-| ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `SessionBindingService.touch`, `SessionBindingAdapter.touch`                                                        | `v2026.9.6`                                        |
-| Conversation-binding synchronous mutation compatibility                                                             | `v2026.9.6`                                        |
-| Node managed-workspace synchronous acquisition                                                                      | `v2026.9.7`                                        |
-| Plugin-state synchronous keyed-store compatibility                                                                  | `v2026.9.5`; bundled consumers still block removal |
-| `loadArchivedSessions`, `resolveMemorySessionTargets`                                                               | `v2026.10.1`                                       |
-| `ensureAgentWorkspace.beforePersistentApply`                                                                        | `v2026.10.1`                                       |
-| Mention Inbox `list`, `dismiss`, `recordCommittedInput`, `invalidate`                                               | `v2026.10.1`                                       |
-| GitHub publication `deferOrphanedRequests`                                                                          | `v2026.10.1`                                       |
-| Native-session generation synchronous authority compatibility                                                       | `v2026.10.1`                                       |
-| SessionManager synchronous persistence compatibility                                                                | `v2026.10.1`                                       |
-| Extension-session synchronous persistence compatibility                                                             | `v2026.10.1`                                       |
-| Provider replay synchronous persistence compatibility                                                               | `v2026.10.1`                                       |
-| Gateway placement `listPendingWorkspaceResults`, `getWorkspaceResultReconcilingSessionIds`, `deferOrphanedRequests` | `v2026.10.1`                                       |
-| Watched-session synchronous harness context compatibility                                                           | `v2026.10.1`                                       |
+The original `ExtensionActions`, `ExtensionRuntime`, and `ExtensionRunner.bindCore`
+contracts remain for their retained capabilities; they did not ship a stable
+deprecation. Hosts exposing awaited persistence use the V2 contracts and
+`bindCoreAsync`.
 
-No stable deprecation was found by `v2026.10.2` for the other APIs in the migration
-map. This includes the original public SQLite names, single-item memory metadata,
-transcript statistics, authentication and provider-selection helpers, session
-context readers, opaque session mutations, transcript callbacks, approval
-callbacks, and the other GitHub publication and Gateway placement methods. Their
-current deprecation annotations must first ship in a stable release. The pull
-request's API inventory records individual names and distinguishes these pending
-deprecations from those already shipped.
+Await writes before publishing dependent state. Do not retry an asynchronous failure
+through a retired synchronous API. Move custom SQL into a registered worker backend;
+an opaque JavaScript transaction closure cannot cross the thread boundary.
 
-The `Legacy` suffixes recently used inside the SQLite compatibility module are
-implementation names. Most wrap older public names that did ship in stable;
-absence of the suffixed name from a stable tag does not make its public alias
-unshipped.
+## Deprecations that have not shipped in stable
 
-## Migrate proposed removed calls
+The following families remain available. Their first stable deprecation release is
+**TBD** at the `v2026.10.2` audit ceiling:
 
-| Deprecated contract                                                                                                  | Replacement                                                                                                                                              |
-| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `loadArchivedSessions`, `resolveMemorySessionTargets`                                                                | Await the corresponding `Async` reader from `memory-core-host-engine-sessions`.                                                                          |
-| `loadMemorySessionMetadata`                                                                                          | Await `loadMemorySessionMetadataAsync`; use `loadMemorySessionMetadataBatchAsync` for batching.                                                          |
-| `resolveConfiguredCapabilityProvider`, `resolveCapabilityModelCandidates`, `resolveConfiguredRealtimeVoiceProvider`  | Await the corresponding `Async` resolver.                                                                                                                |
-| `resolveStoredModelOverride`, `resolveCommandArgMenu`                                                                | Await the corresponding `Async` resolver.                                                                                                                |
-| Auth profile metadata/upsert/local-update helpers and model header/CLI eligibility helpers                           | Await the corresponding `Async` operation. Core credential authority continues to use its existing owner.                                                |
-| TTS provider, availability, explicit override, and preferences-path helpers                                          | Await the corresponding `Async` helper.                                                                                                                  |
-| `readChannelAllowFromStoreSync`                                                                                      | Await `readChannelAllowFromStore`.                                                                                                                       |
-| `resolveInboundSessionEnvelopeContext`                                                                               | Await `resolveInboundSessionEnvelopeContextAsync`.                                                                                                       |
-| `inbound-envelope` callback builders                                                                                 | Resolve the route, then await `createChannelInboundEnvelopeBuilderAsync` from `channel-inbound`. Use its prepared formatter for that message.            |
-| `resolveInboundDirectDmAccessWithRuntime`, `createPreCryptoDirectDmAuthorizer`, `dispatchInboundDirectDmWithRuntime` | Use the awaited direct-DM access and dispatch APIs.                                                                                                      |
-| `resolveDmGroupAccessWithLists`                                                                                      | Await `resolveDmGroupAccessWithListsAsync`.                                                                                                              |
-| `deleteSessionUpstreamLink`                                                                                          | Await `deleteSessionUpstreamLinkAsync`.                                                                                                                  |
-| Synchronous Codex transcript admission/version validators                                                            | Use `createCodexSessionContextReader` and its awaited reader operations.                                                                                 |
-| Deprecated SQLite database/callback wrappers                                                                         | Open `openOpenClawAgentSqliteWorkerStoreV2` with host authority and send serializable domain commands. Worker backends use `sqlite-worker-runtime`.      |
-| `loadCombinedSessionStoreForGateway`                                                                                 | Await `loadCombinedSessionStoreForGatewayAsync`. The result still excludes incognito entries.                                                            |
-| `getConversationSession`, `readAmbientTranscriptWatermark`, `readSessionUpdatedAt`, `readTranscriptStatsSync`        | Await the corresponding async reader, including `readTranscriptStatsAsync` for statistics.                                                               |
-| `listSkillCommandsForAgents`, `listSkillCommandsForWorkspace`                                                        | Await `prepareSkillCommandsForAgents` or `prepareSkillCommandsForWorkspace`.                                                                             |
-| `loadExecApprovals` from `exec-approvals-runtime`                                                                    | Await `loadExecApprovalsReadOnlyAsync`.                                                                                                                  |
-| `buildWatchedSessionsHarnessContext`                                                                                 | Await `prepareWatchedSessionsHarnessContext` with the current host authority.                                                                            |
-| `createOpenClawCodingTools`, `AgentHarnessHostCapabilities.createToolSurface`                                        | Await the corresponding `Async` factory.                                                                                                                 |
-| `OpenClawPluginNodeHostCommandContext.acquireManagedWorkspace`                                                       | Await `acquireManagedWorkspaceAsync` and release the lease in `finally`.                                                                                 |
-| `approvalEvents.publishRequested`                                                                                    | Await `approvalEvents.publishRequestedAsync`; asynchronous subscriber eligibility is required.                                                           |
-| Mention Inbox `list`, `dismiss`, `recordCommittedInput`, `invalidate`                                                | Await the corresponding `Async` method.                                                                                                                  |
-| Model-account `listLinks`, `link`, `unlink`, `list`, `select`, `status`, `cancel`                                    | Await the corresponding `Async` method.                                                                                                                  |
-| Session observer `handleEvent`, `getCompanionSnapshot`, `dispose`                                                    | Await the corresponding `Async` method.                                                                                                                  |
-| SessionManager synchronous persistence and context methods                                                           | Await the corresponding `Async` method, including completion of a returned rewrite commit.                                                               |
-| `ExtensionAPI.appendEntry`, `setSessionName`, `setLabel`; `AgentSession.setSessionName`                              | Await the corresponding `Async` method. Use `ExtensionActionsV2`, `ExtensionRuntimeV2`, and `bindCoreV2` when supplying extension capabilities.          |
-| GitHub publication legacy methods and requester callbacks                                                            | Use the V2 requester/action types and await the `V2` or `Async` operations.                                                                              |
-| Reply dispatch visibility booleans and `onVerboseProgressVisibility`                                                 | Await `shouldSendToolSummariesAsync`, `shouldSendFullToolDetailsAsync`, and `onVerboseProgressVisibilityAsync`.                                          |
-| Transcript write-lock helpers and transaction-local message preparation callbacks                                    | Use `withSessionTranscriptWrite` or `withCodexSessionTranscriptMirrorWrite`; supply `preparation.prepareMessage` and its source authority.               |
-| `ProviderPlugin.sanitizeReplayHistory`, `sanitizeGoogleGeminiReplayHistory`                                          | Use the `Async` hook/helper and the V2 replay context.                                                                                                   |
-| `ProviderReplaySessionState`, `ProviderSanitizeReplayHistoryContext`                                                 | Use the V2 types and await `appendCustomEntryAsync`.                                                                                                     |
-| Native proxy capture store/reader APIs and synchronous capture callbacks                                             | Use `acquireDebugProxyCaptureStoreAsync`, release its lease, and await the async reader, initialization, capture, and finalization operations.           |
-| Synchronous user-turn and pending-input completion receipts                                                          | Await `completeProcessingAsync` or `completeAsync`.                                                                                                      |
-| `ensureAgentWorkspace.beforePersistentApply`                                                                         | Prepare database inputs first; retain SQL-free host authority at the effect.                                                                             |
-| Opaque approval commit callbacks with transaction-local row visibility                                               | Use host-bound `api.runtime.gateway.request` approval methods. Final authority checks remain in force; callbacks cannot inspect uncommitted worker rows. |
+- Raw SQLite database, query, transaction, admission, and callback SDK helpers.
+  Recent `Legacy` implementation suffixes do not make the original public names
+  unshipped APIs.
+- Authentication profile writers and readers, provider/capability selection,
+  TTS helpers, model-account methods, and session-observer methods.
+- Single-session memory metadata, session context and transcript statistics,
+  transcript catalog titles, upstream-link mutations, and Codex transcript
+  admission/version validators, including `SessionManager.readSessionContext`.
+- Channel allowlists, inbound envelope builders, command/model-override resolution,
+  and skill-command discovery.
+- Transcript write-lock and preparation callbacks, approval publication and commit
+  callbacks, tool-surface factories, and `loadExecApprovals`.
+- Account-scoped conversation-binding factories, legacy adapter registration and
+  inspection, the newer native binding lifecycle/state-store APIs, `resolveNativeSessionBindingWithAuthority`, and Matrix native idle-timeout and
+  maximum-age setters.
+- Pending-input completion methods, reply-visibility callbacks, and GitHub
+  publication and Gateway placement methods other than the eligible methods above.
 
-Await writes before publishing dependent state. Do not catch an async failure and
-retry through a retired synchronous API. Move custom SQL into a registered
-worker backend; do not move an opaque JavaScript transaction closure across the
-thread boundary.
+An awaited replacement alone does not authorize removal of these contracts.
 
-## Remaining blockers
+## Eligible APIs whose consumers still block removal
 
-This proposal is not the complete elimination of main-thread SQLite. Several
-published contracts still have bundled consumers or share an owner that needs a
-separate migration:
+Plugin-state synchronous keyed stores and opaque `update` / `deleteIf` operations
+were deprecated in [v2026.9.5](https://github.com/openclaw/openclaw/releases/tag/v2026.9.5).
+They remain used by bundled Codex, ClickClack, Discord, Telegram, Matrix, Reef
+migration code, and shared cache owners. Several uses enforce current revocation
+or disclosure authority. Removing their exports alone would leave the native
+kernel reachable; those owner cutovers must precede removal.
 
-- Raw `openNodeSqliteDatabase`, `getNodeSqliteKysely`, `executeSqliteQuerySync`, and
-  `runSqliteImmediateTransactionSync` still serve bundled memory/database code.
-- Keyed-state legacy stores still serve Discord, Telegram, ClickClack, Codex,
-  Matrix, AgentsAPI, and retained Reef migration data.
-- Synchronous authentication helpers still serve provider plugins. Final
-  credential, approval, tool, command, external-effect, and cross-user authority
-  checks must remain current.
-- Session entry and ACP readers still serve bundled bindings and exact authority
-  checks. Codex's synchronous runtime-ownership hook remains in use.
-- The account binding service still consumes internal synchronous adapter
-  operations. Removing a public factory does not remove shared native kernels
-  that remain in use.
-- Core transcript preparation, workspace guards, session persistence, and
-  prepared callback types must not be deleted solely because an SDK wrapper was
-  retired.
-- `patchSessionEntry` and `updateSessionStoreEntry` retain core plugin-registry
-  consumers. Synchronous skill library selection remains reachable through
-  `loadWorkspaceSkills`.
-- Command authorization, conversation-binding inspection, and native channel
-  approval adapter factories retain bundled consumers. Migrating preparation
-  must preserve their final authority checks.
-- `sessionMutationCommitGuard` still serves core and bundled effect-authority
-  checks, so this proposal retains it. Approval SQL and opaque precommit callback
-  handling already run under the worker owner; removing this callback would not
-  save three native T1 call sites.
+`SessionBindingAdapter.resolveByConversation` and `touch` were deprecated in
+[v2026.9.6](https://github.com/openclaw/openclaw/releases/tag/v2026.9.6). They remain
+necessary for the retained legacy registration, account-scoped factory, and
+inspection contracts. The async service can still consume these legacy adapters.
+Removing the service wrappers does not make their shared record kernels worker-only.
 
-The proposal's pull request records exact callers, stable deprecation releases,
-API-diff results, and live versus compatibility T1 counts. Those static counts describe
-reachable call sites, not statements executed in a warmed turn.
+Shared session and ACP kernels also remain wherever workers, boot admission,
+offline maintenance, or retained runtime contracts need them. Final credential,
+approval, tool/command, external-effect, and cross-user disclosure authority checks
+remain current. This proposal changes no database schema, retained data, durability,
+or update format.
+
+The pull request records current T1 call-site counts, retained callers, and the SDK
+API diff. Static call-site counts do not measure statements executed in a warmed turn.

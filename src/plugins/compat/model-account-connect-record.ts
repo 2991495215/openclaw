@@ -25,6 +25,7 @@ export const MODEL_ACCOUNT_CONNECT_COMPAT_RECORD = {
     "TypeScript @deprecated annotations and one DEP_SESSION_PERSISTENCE warning per plugin and capability family per process; unscoped callers share one SDK-level family warning",
   ],
   tests: [
+    "src/plugins/compat/model-account-connect-deprecation.test.ts",
     "src/plugins/compat/registry.test.ts",
     "src/plugin-sdk/gateway-model-account-connect-compat.test.ts",
     "src/gateway/server-methods/users-auth-connect.test.ts",

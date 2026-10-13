@@ -56,8 +56,8 @@ vi.mock("../../channels/plugins/index.js", () => ({
 }));
 
 vi.mock("../../channels/plugins/conversation-bindings.js", () => ({
-  setChannelConversationBindingIdleTimeoutBySessionKey: vi.fn(),
-  setChannelConversationBindingMaxAgeBySessionKey: vi.fn(),
+  setChannelConversationBindingIdleTimeoutBySessionKeyAsync: vi.fn(),
+  setChannelConversationBindingMaxAgeBySessionKeyAsync: vi.fn(),
 }));
 
 vi.mock("../../infra/outbound/session-binding-service.js", () => ({

@@ -2,7 +2,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTestCtx } from "../auto-reply/reply/test-ctx.js";
 import type { FinalizedMsgContext } from "../auto-reply/templating.js";
-import { PluginInstance } from "../plugins/plugin-instance.js";
 
 const { bypassMock, dispatchMock } = vi.hoisted(() => ({
   bypassMock: vi.fn(),
@@ -15,7 +14,6 @@ vi.mock("../auto-reply/reply/dispatch-acp.runtime.js", () => ({
 }));
 
 import {
-  readAcpSessionEntry,
   registerAcpRuntimeBackend,
   resolveAcpSessionAvailability,
   testing,
@@ -38,8 +36,8 @@ const event = {
   shouldRouteToOriginating: false,
   originatingChannel: undefined,
   originatingTo: undefined,
-  shouldSendToolSummariesAsync: async () => true,
-  shouldSendFullToolDetailsAsync: async () => false,
+  shouldSendToolSummaries: true,
+  shouldSendFullToolDetails: false,
   sendPolicy: "allow" as const,
 };
 
@@ -155,7 +153,43 @@ describe("tryDispatchAcpReplyHook", () => {
     });
   });
 
-  it("passes live awaited visibility to ACP runtime", async () => {
+  it("passes a live tool-summary predicate through to ACP runtime", async () => {
+    bypassMock.mockResolvedValue(false);
+    dispatchMock.mockResolvedValue({
+      queuedFinal: false,
+      counts: { tool: 0, block: 0, final: 0 },
+    });
+    let shouldSendToolSummaries = true;
+    let fullToolDetails = false;
+    const eventWithGetter = {
+      ...event,
+      get shouldSendToolSummaries() {
+        return shouldSendToolSummaries;
+      },
+      get shouldSendFullToolDetails() {
+        return fullToolDetails;
+      },
+    };
+
+    await tryDispatchAcpReplyHook(eventWithGetter, ctx);
+
+    const [payload] = dispatchMock.mock.calls[0] ?? [];
+    const livePredicate = (payload as { shouldSendToolSummaries: () => Promise<boolean> })
+      .shouldSendToolSummaries;
+    expect(livePredicate).toBeTypeOf("function");
+    expect(await livePredicate()).toBe(true);
+
+    shouldSendToolSummaries = false;
+    expect(await livePredicate()).toBe(false);
+    fullToolDetails = true;
+    expect(
+      await (
+        payload as { shouldSendFullToolDetails: () => Promise<boolean> }
+      ).shouldSendFullToolDetails(),
+    ).toBe(false);
+  });
+
+  it("uses awaited visibility without touching deprecated event getters", async () => {
     bypassMock.mockResolvedValue(false);
     let summaries = false;
     dispatchMock.mockImplementationOnce(async (params) => {
@@ -168,6 +202,12 @@ describe("tryDispatchAcpReplyHook", () => {
     await tryDispatchAcpReplyHook(
       {
         ...event,
+        get shouldSendToolSummaries(): boolean {
+          throw new Error("deprecated synchronous read");
+        },
+        get shouldSendFullToolDetails(): boolean {
+          throw new Error("deprecated synchronous read");
+        },
         shouldSendToolSummariesAsync: async () => summaries,
         shouldSendFullToolDetailsAsync: async () => true,
       },
@@ -225,23 +265,4 @@ describe("resolveAcpSessionAvailability", () => {
       }),
     ).toMatchObject({ available: false, message: expect.stringContaining("dispatch is disabled") });
   });
-});
-
-it("warns once when a plugin uses the deprecated synchronous ACP reader", async () => {
-  const warning = vi.spyOn(process, "emitWarning").mockImplementation(() => {});
-  const plugin = new PluginInstance("acp-sync-reader-compat");
-  try {
-    plugin.run(() => {
-      expect(readAcpSessionEntry({ sessionKey: " " })).toBeNull();
-      expect(readAcpSessionEntry({ sessionKey: " " })).toBeNull();
-    });
-    expect(warning).toHaveBeenCalledTimes(1);
-    expect(warning).toHaveBeenCalledWith(expect.stringContaining("readAcpSessionEntryAsync"), {
-      code: "DEP_PLUGIN_SDK",
-      type: "DeprecationWarning",
-    });
-  } finally {
-    warning.mockRestore();
-    await plugin.dispose();
-  }
 });

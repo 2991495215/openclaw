@@ -73,13 +73,12 @@ bindings when that flag is set. Unbound legacy ACP metadata can still accompany
 that flag; it does not certify the session row. Source retirement and worker failures reject
 the read and must not be treated as an absent session.
 
-The synchronous `readAcpSessionEntry` and
-`getAcpSessionManager().resolveSession()` contracts shipped in `v2026.9.4`
-remain available for existing consumers of that compatibility export. They are
-deprecated for runtime use. Ordinary ACP manager and Gateway callers use
-`readAcpSessionEntryAsync` and `getAcpSessionManager().resolveSessionAsync()`.
-Discord and Telegram startup binding cleanup retain their existing synchronous
-reader until conditional deletion can validate metadata at the mutation owner.
+The [removal proposal](/plugins/sdk-migration/deprecated-sqlite) removes
+`readAcpSessionEntry` and `getAcpSessionManager().resolveSession()`, whose
+deprecations shipped in stable `v2026.9.7`. Use `readAcpSessionEntryAsync` and
+`getAcpSessionManager().resolveSessionAsync()`. Discord and Telegram startup
+binding cleanup retain an internal synchronous reader until conditional deletion
+can validate metadata at the mutation owner; it is not a public SDK fallback.
 Their inactive incognito composition accepts a prepared session reader whose
 current-source assertion reaches the binding transaction and commit grants.
 The preparation retains the original actor revision and ACP metadata publication
@@ -92,10 +91,9 @@ cleanup remains separate work.
 the local `openclaw/plugin-sdk/acp-runtime` facade, must propagate through cleanup and status
 probes. Use `rethrowIncognitoSessionError(error)` before treating other failures
 as an absent session or an uncertain probe; it also recognizes nested refusals.
-Removing the synchronous contracts
-requires deprecation shipped in stable, a compatibility period,
-and maintainer approval. Incognito reads retain
-their existing native in-memory owner until that owner's worker migration.
+The proposal remains a draft without an announced removal release. Incognito
+reads retain their existing native in-memory owner until that owner's worker
+migration.
 
 ### Session and command preparation
 

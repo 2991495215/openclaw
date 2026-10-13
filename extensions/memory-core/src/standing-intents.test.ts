@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   openNodeSqliteDatabase,
+  openOpenClawAgentDatabase,
   resolveOpenClawAgentSqlitePath,
   runSqliteImmediateTransactionSync,
 } from "openclaw/plugin-sdk/sqlite-runtime";
@@ -12,7 +13,6 @@ import {
   closeOpenClawStateDatabaseAsync,
   closeOpenClawStateDatabaseForTest,
   observeHostDataSql,
-  openOpenClawAgentDatabase,
 } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { matchStandingIntentsInDatabase } from "./standing-intents-kernel.js";

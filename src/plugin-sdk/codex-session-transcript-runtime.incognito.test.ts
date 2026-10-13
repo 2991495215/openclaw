@@ -17,6 +17,7 @@ import { captureOpenClawAgentDatabaseExecution } from "../state/openclaw-agent-e
 import {
   captureCodexSessionContextReader,
   readCodexSessionContext,
+  validateCodexSessionTranscriptContextVersion,
 } from "./codex-session-transcript-runtime.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterAll);
@@ -88,7 +89,9 @@ it("reads Codex context from the captured actor and rejects synchronous or retir
           expect(() => readCodexSessionContext(target, consume)).toThrow(
             "captureCodexSessionContextReader",
           );
-
+          expect(() => validateCodexSessionTranscriptContextVersion(target, undefined)).toThrow(
+            "captureCodexSessionContextReader",
+          );
           const context = await reader(target, (messages, header) => ({
             messages: Array.from(messages),
             header,

@@ -114,6 +114,7 @@ export async function executeFollowupTurn(params: {
     await resolveTurnCommentaryProgressOwner({
       commentaryPayloadsEnabled: sourceOpts?.commentaryPayloadsEnabled === true,
       options: sourceOpts,
+      resolveVerboseProgressVisibility: () => progressAllowed() && shouldEmitVerboseToolResult(),
       resolveVerboseProgressVisibilityAsync: async () => {
         turn.operation.abortSignal.throwIfAborted();
         turn.queued.operatorAuthority?.assertCurrent();

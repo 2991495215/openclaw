@@ -58,6 +58,7 @@ describe("Anthropic provider usage", () => {
       config: {},
       env: { ANTHROPIC_ADMIN_API_KEY: "sk-ant-admin-test" },
       provider: "anthropic",
+      resolveApiKeyFromConfigAndStore: () => undefined,
       resolveOAuthToken: async () => null,
     });
     if (!("token" in auth) || !auth.token) {
@@ -131,6 +132,7 @@ describe("Anthropic provider usage", () => {
         config: {},
         env: {},
         provider: "anthropic",
+        resolveApiKeyFromConfigAndStore: () => undefined,
         resolveApiKeyCandidatesFromConfigAndStore: async () => [key],
         resolveOAuthToken: async () => null,
       });
@@ -143,6 +145,7 @@ describe("Anthropic provider usage", () => {
       config: {},
       env: {},
       provider: "anthropic",
+      resolveApiKeyFromConfigAndStore: () => undefined,
       resolveApiKeyCandidatesFromConfigAndStore: async () => ["sk-ant-admin-profile"],
       resolveOAuthToken: async () => null,
     });
@@ -156,6 +159,7 @@ describe("Anthropic provider usage", () => {
       config: {},
       env: {},
       provider: "anthropic",
+      resolveApiKeyFromConfigAndStore: () => "sk-ant-api03-inference",
       resolveApiKeyCandidatesFromConfigAndStore: async () => [
         "sk-ant-api03-inference",
         "sk-ant-admin-billing",
@@ -173,6 +177,7 @@ describe("Anthropic provider usage", () => {
       config: {},
       env: {},
       provider: "anthropic",
+      resolveApiKeyFromConfigAndStore: () => undefined,
       resolveOAuthToken,
     });
     expect(result).toEqual({ handled: true });

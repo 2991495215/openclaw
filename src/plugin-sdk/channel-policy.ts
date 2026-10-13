@@ -70,6 +70,7 @@ export {
 export {
   DM_GROUP_ACCESS_REASON,
   readStoreAllowFromForDmPolicy,
+  resolveDmGroupAccessWithLists,
   resolveEffectiveAllowFromLists,
   resolveOpenDmAllowlistAccess,
 } from "./channel-access-compat.js";

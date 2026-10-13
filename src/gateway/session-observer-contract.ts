@@ -10,12 +10,18 @@ export type SessionObserverCompanionSnapshot = {
 };
 
 export type SessionObserverService = {
+  /** @deprecated Use handleEventAsync; retained for a compatibility period after stable deprecation. */
+  handleEvent: (event: SessionObserverEvent) => void;
   handleEventAsync: (event: SessionObserverEvent) => Promise<void>;
   setConnectionVisibility: (connId: string, visible: boolean) => void;
   removeConnection: (connId: string) => void;
+  /** @deprecated Use getCompanionSnapshotAsync; retained for a compatibility period after stable deprecation. */
+  getCompanionSnapshot: (sessionKey: string, agentId?: string) => SessionObserverCompanionSnapshot;
   getCompanionSnapshotAsync: (
     sessionKey: string,
     agentId?: string,
   ) => Promise<SessionObserverCompanionSnapshot>;
+  /** @deprecated Use disposeAsync to join accepted work before closing database workers. */
+  dispose: () => void;
   disposeAsync: () => Promise<void>;
 };

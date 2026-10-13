@@ -189,7 +189,6 @@ export type { GatewayRequestHandlerOptions } from "../gateway/server-methods/typ
 export type {
   ChannelOutboundSessionRoute,
   ChannelMessagingAdapter,
-  ChannelConversationRouteOwnerResolver,
 } from "../channels/plugins/types.core.js";
 
 export type {

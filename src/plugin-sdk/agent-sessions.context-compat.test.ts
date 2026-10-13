@@ -2,7 +2,10 @@ import { expectTypeOf, it } from "vitest";
 import type { AgentMessage } from "./agent-core.js";
 import type { SessionManager } from "./agent-sessions.js";
 
-it("exposes an awaited context consumer contract", () => {
+it("retains the synchronous context result and exposes an awaited consumer contract", () => {
+  expectTypeOf<
+    ReturnType<typeof SessionManager.readSessionContext<number>>
+  >().toEqualTypeOf<number>();
   expectTypeOf<ReturnType<typeof SessionManager.readSessionContextAsync<number>>>().toEqualTypeOf<
     Promise<number>
   >();

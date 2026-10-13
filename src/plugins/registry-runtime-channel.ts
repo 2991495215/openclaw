@@ -145,10 +145,12 @@ export function createScopedPluginChannelRuntime(
       ...channel.session,
       updateLastRoute: (params) =>
         invokeSelectedRuntime(() =>
-          channel.session.updateLastRouteWithAuthority({
-            ...params,
-            authority: { kind: "host", assertCurrent: assertRuntimeCurrent },
-          }),
+          params.assertCommitAllowed
+            ? channel.session.updateLastRoute(params)
+            : channel.session.updateLastRouteWithAuthority({
+                ...params,
+                authority: { kind: "host", assertCurrent: assertRuntimeCurrent },
+              }),
         ),
       updateLastRouteWithAuthority: (params) => {
         assertSessionEntryPatchAuthority(params.authority);
@@ -177,10 +179,6 @@ export function createScopedPluginChannelRuntime(
       loadAdapter: (...args) => invokeSelectedRuntime(() => channel.outbound.loadAdapter(...args)),
     },
     threadBindings: {
-      setIdleTimeoutBySessionKey: (...args) =>
-        invokeSelectedRuntime(() => channel.threadBindings.setIdleTimeoutBySessionKey(...args)),
-      setMaxAgeBySessionKey: (...args) =>
-        invokeSelectedRuntime(() => channel.threadBindings.setMaxAgeBySessionKey(...args)),
       setIdleTimeoutBySessionKeyAsync: (...args) =>
         invokeSelectedRuntime(() =>
           channel.threadBindings.setIdleTimeoutBySessionKeyAsync(...args),

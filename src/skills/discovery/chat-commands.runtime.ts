@@ -3,6 +3,8 @@ export {
   expandExplicitSkillReferences,
   prepareBundledSkillCommandForWorkspace,
   hasSkillReferenceCandidate,
+  listSkillCommandsForAgents,
+  listSkillCommandsForWorkspace,
   prepareSkillCommandsForWorkspace,
 } from "./chat-commands.js";
 export { resolveEffectiveAgentSkillFilter } from "./agent-filter.js";

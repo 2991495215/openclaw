@@ -1,4 +1,5 @@
 import type {
+  deleteSessionUpstreamLink,
   deleteSessionUpstreamLinkAsync,
   upsertSessionUpstreamLink,
   upsertSessionUpstreamLinkAsync,
@@ -42,7 +43,11 @@ it("retains v2026.9.8 upstream-link write signatures with awaited replacements",
   ) => "deleted" | "absent" | "changed" | undefined;
 
   expectTypeOf<typeof upsertSessionUpstreamLink>().toExtend<ReleasedUpsert>();
+  expectTypeOf<typeof deleteSessionUpstreamLink>().toExtend<ReleasedDelete>();
   expectTypeOf<ReturnType<typeof upsertSessionUpstreamLink>>().toEqualTypeOf<boolean>();
+  expectTypeOf<ReturnType<typeof deleteSessionUpstreamLink>>().toEqualTypeOf<
+    ReturnType<ReleasedDelete>
+  >();
   expectTypeOf<typeof upsertSessionUpstreamLinkAsync>().toExtend<
     (...args: Parameters<ReleasedUpsert>) => Promise<boolean>
   >();

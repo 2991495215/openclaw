@@ -2159,7 +2159,7 @@ describe("provider-runtime", () => {
             context: createDemoProviderContext({
               config: {} as never,
               env: process.env,
-              resolveApiKeyCandidatesFromConfigAndStore: async () => ["source-token"],
+              resolveApiKeyFromConfigAndStore: () => "source-token",
               resolveOAuthToken: async () => null,
             }),
           }),

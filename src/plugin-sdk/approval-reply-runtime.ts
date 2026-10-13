@@ -2,7 +2,7 @@
  * Runtime SDK subpath for building approval replies and exec approval presentations.
  */
 export {
-  // Shipped Plugin SDK compatibility alias; remove in a later normal release after stable deprecation and a compatibility period.
+  // Shipped Plugin SDK compatibility alias; remove in the next major release.
   buildApprovalButtonPresentation as buildApprovalPresentation,
   buildApprovalPresentationFromActionDescriptors,
   buildExecApprovalPresentation,

@@ -1903,9 +1903,9 @@ const reviewedOperations = new Map([
     [
       {
         tier: "W",
-        operations: ["deleteExecApprovalsConfigRow", "mintMcpToolGrantLocked"],
+        operations: ["deleteExecApprovalsConfigRow"],
         evidence:
-          "exec-approvals-mutation.worker.ts restores an absent policy row through the shared-state writer; operator-approval-store.transitions.worker.ts alone mints MCP grants.",
+          "exec-approvals-mutation.worker.ts restores an absent policy row through the shared-state writer.",
       },
     ],
   ],
@@ -2335,7 +2335,7 @@ const reviewedOperations = new Map([
         tier: "W",
         operations: ["connectUserModelAccount"],
         evidence:
-          "Personal sign-in persistence and account inventory/link/unlink execute only through user-profiles.worker.ts after deprecated Gateway SDK removal. Shared credential/OAuth kernels and the live account pin guard retain their independent classifications.",
+          "Personal sign-in persistence executes only through userProfiles.modelAccount.connect in user-profiles.worker.ts. Inventory/link/unlink kernels retain T1 for deprecated v2026.9.8 Gateway SDK methods; bundled callers use the Async replacements. Shared credential/OAuth kernels and the live account pin guard also retain T1.",
       },
       {
         tier: "T3",

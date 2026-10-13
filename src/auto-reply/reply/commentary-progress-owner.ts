@@ -2,13 +2,16 @@ import type { GetReplyOptions } from "../get-reply-options.types.js";
 
 type CommentaryProgressOwnerOptions = Pick<
   GetReplyOptions,
-  "onVerboseProgressVisibilityAsync" | "shouldDeliverCommentaryPayloads"
+  | "onVerboseProgressVisibility"
+  | "onVerboseProgressVisibilityAsync"
+  | "shouldDeliverCommentaryPayloads"
 >;
 
 /** Freezes and registers one commentary owner for the current agent turn. */
 export async function resolveTurnCommentaryProgressOwner(params: {
   commentaryPayloadsEnabled: boolean;
   options?: CommentaryProgressOwnerOptions;
+  resolveVerboseProgressVisibility: () => boolean;
   resolveVerboseProgressVisibilityAsync: () => Promise<boolean>;
 }): Promise<{
   commentaryPayloadsEnabled: boolean;
@@ -23,6 +26,13 @@ export async function resolveTurnCommentaryProgressOwner(params: {
       : undefined;
     await params.options.onVerboseProgressVisibilityAsync(
       frozen === undefined ? params.resolveVerboseProgressVisibilityAsync : async () => frozen,
+    );
+  } else if (params.options?.onVerboseProgressVisibility) {
+    const frozen = shouldDeliverCommentaryPayloads
+      ? params.resolveVerboseProgressVisibility()
+      : undefined;
+    params.options.onVerboseProgressVisibility(
+      frozen === undefined ? params.resolveVerboseProgressVisibility : () => frozen,
     );
   }
   const commentaryPayloadsEnabled =

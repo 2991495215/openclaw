@@ -12,6 +12,7 @@ export async function handleAcpDispatchTailAfterReset(
   // Route that tail through ACP now (same turn) instead of embedded dispatch.
   state.ctx.AcpDispatchTailAfterReset = false;
   const tailDispatchResult = await runReplyDispatchHook(state, {
+    shouldSendToolSummaries: state.shouldSendToolSummaries,
     shouldSendToolSummariesAsync: state.shouldSendToolSummariesAsync,
     isTailDispatch: true,
   });

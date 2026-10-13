@@ -21,6 +21,7 @@ import {
   listSessionPendingInputs,
   persistCompactionBoundaryWithSessionEntryAsync,
 } from "../config/sessions/session-accessor.js";
+import { loadTranscriptEventsSync } from "../config/sessions/session-accessor.sqlite-read.js";
 import { applyAssistantDeliveryDirectives } from "../config/sessions/transcript-assistant-delivery.js";
 import type { OpenClawConfig } from "../config/types.js";
 import { projectInFlightRunSnapshot } from "../gateway/chat-inflight-snapshot.js";
@@ -466,11 +467,9 @@ describe("guardSessionManager transcript updates", () => {
       idempotencyKey: "faithful-admission:user",
       timestamp: 1,
     };
-    const assertOriginalInputCommit = vi.fn(async () => {
+    const assertOriginalInputCommit = vi.fn(() => {
       expect(
-        (await SessionManager.openAsync(target, root))
-          .getBranch()
-          .filter((entry) => entry.type === "message"),
+        loadTranscriptEventsSync(target).filter((entry) => entry.type === "message"),
       ).toHaveLength(0);
     });
     const recorder = createUserTurnTranscriptRecorder({

@@ -7,7 +7,7 @@ import { createExtensionRuntime } from "./loader.js";
 import { ExtensionRunner } from "./runner.js";
 import type {
   Extension,
-  ExtensionActionsV2,
+  ExtensionActions,
   ExtensionContext,
   ExtensionContextActions,
 } from "./types.js";
@@ -415,7 +415,7 @@ describe("ExtensionRunner context construction", () => {
       getSystemPrompt: () => "system",
     });
 
-    runner.bindCoreAsync({} as ExtensionActionsV2, buildActions(firstGetModel, true));
+    runner.bindCore({} as ExtensionActions, buildActions(firstGetModel, true));
     const context = runner.createContext();
     const commandContext = runner.createCommandContext();
     expect(typeof Object.getOwnPropertyDescriptor(context, "ui")?.get).toBe("function");
@@ -423,7 +423,7 @@ describe("ExtensionRunner context construction", () => {
 
     const updatedUi = { ...runner.getUIContext() };
     runner.setUIContext(updatedUi);
-    runner.bindCoreAsync({} as ExtensionActionsV2, buildActions(secondGetModel, false));
+    runner.bindCore({} as ExtensionActions, buildActions(secondGetModel, false));
 
     expect(context.ui).toBe(updatedUi);
     expect(context.hasUI).toBe(true);

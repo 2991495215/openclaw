@@ -3,26 +3,23 @@ import type { PluginCompatRecord } from "./types.js";
 export const MEMORY_SESSION_COMPAT_RECORDS = [
   {
     code: "memory-session-sync-inventory",
-    status: "deprecated",
+    status: "removed",
     owner: "sdk",
     introduced: "2026-08-09",
     deprecated: "2026-10-01",
     warningStarts: "2026-10-01",
-    removalGate: "after-stable-deprecation",
     replacement:
-      "Await loadArchivedSessionsAsync and resolveMemorySessionTargetsAsync from memory-core-host-engine-sessions. Synchronous readers retain their existing signatures and results until removal after stable deprecation and a compatibility period.",
+      "Await loadArchivedSessionsAsync and resolveMemorySessionTargetsAsync from memory-core-host-engine-sessions.",
     docsPath: "/plugins/sdk-migration/compatibility-policy#memory-session-inventory-readers",
     surfaces: ["loadArchivedSessions", "resolveMemorySessionTargets"],
-    diagnostics: [
-      "TypeScript @deprecated annotations, migration documentation, and a runtime warning once per plugin and family",
-    ],
+    diagnostics: ["plugin compatibility registry and migration guide"],
     tests: [
       "src/plugin-sdk/memory-core-host-engine-sessions.test.ts",
       "src/plugins/compat/registry.test.ts",
       "extensions/memory-core/src/memory-forget.sources.test.ts",
     ],
     releaseNote:
-      "Memory archive discovery and forget target selection can be awaited through worker-backed SDK readers; synchronous readers remain compatible until removal after stable deprecation and a compatibility period.",
+      "Removes synchronous archive discovery and forget target selection first deprecated in stable v2026.10.1. The existing worker-backed readers retain their metadata results; stored data is unchanged.",
   },
   {
     code: "memory-session-sync-metadata",

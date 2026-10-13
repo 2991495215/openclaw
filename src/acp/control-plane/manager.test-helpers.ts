@@ -70,7 +70,6 @@ async function mockAcpSessionMetaUpsert(params: AcpMetaUpsertInput) {
 
 vi.mock("../runtime/session-meta.js", () => ({
   listAcpSessionEntries: (params: unknown) => hoistedMocks.listAcpSessionEntriesMock(params),
-  readAcpSessionEntry: (params: unknown) => hoistedMocks.readAcpSessionEntryMock(params),
   readAcpSessionEntryAsync: (params: unknown) => hoistedMocks.readAcpSessionEntryAsyncMock(params),
   prepareAcpSessionControlRead: async (
     params: Parameters<typeof import("../runtime/session-meta.js").prepareAcpSessionControlRead>[0],

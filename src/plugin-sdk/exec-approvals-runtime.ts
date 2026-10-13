@@ -1,8 +1,21 @@
 // Exec approval policy file helpers without the broad infra-runtime barrel.
-import { readExecApprovalsSnapshot as readExecApprovalsSnapshotSync } from "../infra/exec-approvals.js";
+import {
+  loadExecApprovals as loadExecApprovalsSync,
+  readExecApprovalsSnapshot as readExecApprovalsSnapshotSync,
+} from "../infra/exec-approvals.js";
 import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 
-/** @deprecated Await readExecApprovalsSnapshotAsync; removed in a later normal release after stable deprecation and a compatibility period. */
+/** @deprecated Await loadExecApprovalsReadOnlyAsync; removed after stable deprecation and a compatibility period. */
+function loadExecApprovalsDeprecated() {
+  warnPluginSdkDeprecation({
+    family: "exec-approvals-sync-read",
+    method: "loadExecApprovals",
+    replacement: "loadExecApprovalsReadOnlyAsync",
+  });
+  return loadExecApprovalsSync();
+}
+
+/** @deprecated Await readExecApprovalsSnapshotAsync; removed after stable deprecation and a compatibility period. */
 function readExecApprovalsSnapshotDeprecated() {
   warnPluginSdkDeprecation({
     family: "exec-approvals-sync-read",
@@ -12,7 +25,10 @@ function readExecApprovalsSnapshotDeprecated() {
   return readExecApprovalsSnapshotSync();
 }
 
-export { readExecApprovalsSnapshotDeprecated as readExecApprovalsSnapshot };
+export {
+  loadExecApprovalsDeprecated as loadExecApprovals,
+  readExecApprovalsSnapshotDeprecated as readExecApprovalsSnapshot,
+};
 
 export {
   loadExecApprovalsReadOnlyAsync,

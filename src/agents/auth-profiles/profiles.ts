@@ -5,6 +5,7 @@ import { normalizeStringEntries } from "@openclaw/normalization-core/string-norm
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolvePathViaExistingAncestorSync } from "../../infra/boundary-path.js";
 import { isSqliteLockError } from "../../infra/sqlite-error-diagnostics.js";
+import { warnPluginSdkDeprecation } from "../../plugins/sdk-deprecation.js";
 import { isUserModelAuthProfileId } from "../../state/user-model-account-id.js";
 import { removePersistedPluginModelCatalogCredentials } from "../plugin-model-catalog-credentials.js";
 import { resolveProviderIdForAuth } from "../provider-auth-aliases.js";
@@ -28,10 +29,12 @@ import { resolveSharedMainAuthAgentDir } from "./shared-main-dir.js";
 import { resolveAuthProfileDatabasePath, runAuthProfileWriteTransaction } from "./sqlite.js";
 import { logDroppedAuthProfileBookkeeping } from "./state-observation.js";
 import {
+  ensureAuthProfileStoreForLocalUpdate,
   ensureAuthProfileStoreForLocalUpdateAsync,
   loadAuthProfileStoreWithoutExternalProfiles,
   loadAuthProfileStoreWithoutExternalProfilesAsync,
   resolvePersistedAuthProfileOwnerAgentDirAsync,
+  saveAuthProfileStore,
   saveAuthProfileStoreIfPersistenceSnapshotMatches,
   updateAuthProfileStoreWithLock,
 } from "./store-runtime.js";
@@ -162,14 +165,31 @@ export async function promoteAuthProfileInOrder(params: {
   return updated === null ? err("lock-contention") : ok(updated);
 }
 
-type UpsertAuthProfileParams = {
+/** @deprecated Use upsertAuthProfileAsync. Removed after stable deprecation and a compatibility period. */
+export function upsertAuthProfile(params: {
   profileId: string;
   credential: AuthProfileCredential;
   agentDir?: string;
-};
+}): void {
+  warnPluginSdkDeprecation({
+    family: "auth-profiles",
+    method: "upsertAuthProfile",
+    replacement: "upsertAuthProfileAsync",
+  });
+  const credential = normalizeAuthProfileCredential(params.credential);
+  const store = ensureAuthProfileStoreForLocalUpdate(params.agentDir);
+  store.profiles[params.profileId] = credential;
+  saveAuthProfileStore(store, params.agentDir, {
+    filterExternalAuthProfiles: false,
+    sharedStoreWrite: true,
+    syncExternalCli: false,
+  });
+}
 
 /** Upsert the selected profile in the canonical writer without replacing neighboring profiles. */
-export async function upsertAuthProfileAsync(params: UpsertAuthProfileParams): Promise<void> {
+export async function upsertAuthProfileAsync(
+  params: Parameters<typeof upsertAuthProfile>[0],
+): Promise<void> {
   const credential = normalizeAuthProfileCredential(params.credential);
   const updated = await updateAuthProfileStoreWithLock({
     agentDir: params.agentDir,

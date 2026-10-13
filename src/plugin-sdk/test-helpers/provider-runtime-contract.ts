@@ -192,6 +192,7 @@ export function describeAnthropicProviderRuntimeContract(
           config: {} as never,
           env: {} as NodeJS.ProcessEnv,
           provider: "anthropic",
+          resolveApiKeyFromConfigAndStore: () => undefined,
           resolveOAuthToken: async () => ({
             token: "anthropic-oauth-token",
           }),
@@ -989,6 +990,7 @@ export function describeZAIProviderRuntimeContract(load: ProviderRuntimeContract
             ZAI_API_KEY: "env-zai-token",
           } as NodeJS.ProcessEnv,
           provider: "zai",
+          resolveApiKeyFromConfigAndStore: () => undefined,
           resolveApiKeyCandidatesFromConfigAndStore: async () => ["env-zai-token"],
           resolveOAuthToken: async () => null,
         }),

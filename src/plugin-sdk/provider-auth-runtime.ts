@@ -6,10 +6,14 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
-import { ensureAuthProfileStoreAsync } from "../agents/auth-profiles/store-runtime.js";
+import {
+  ensureAuthProfileStore,
+  ensureAuthProfileStoreAsync,
+} from "../agents/auth-profiles/store-runtime.js";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { startOAuthLoopbackCallbackServer } from "../infra/oauth-loopback-callback.js";
+import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { renderOAuthPage } from "../shared/oauth-page.js";
 
 export { resolveEnvApiKey } from "../agents/model-auth-env.js";
@@ -86,15 +90,27 @@ export type ProviderAuthProfileMetadata = {
   accountId?: string;
 };
 
-type ProviderAuthProfileMetadataParams = {
+/** @deprecated Use resolveProviderAuthProfileMetadataAsync. Removed after stable deprecation and a compatibility period. */
+export function resolveProviderAuthProfileMetadata(params: {
   provider: string;
   cfg?: OpenClawConfig;
   profileId?: string;
   agentDir?: string;
-};
+}): ProviderAuthProfileMetadata {
+  warnPluginSdkDeprecation({
+    family: "auth-profiles",
+    method: "resolveProviderAuthProfileMetadata",
+    replacement: "resolveProviderAuthProfileMetadataAsync",
+  });
+  const store = ensureAuthProfileStore(params.agentDir, {
+    config: params.cfg,
+    readOnly: true,
+  });
+  return selectProviderAuthProfileMetadata(params, store);
+}
 
 export async function resolveProviderAuthProfileMetadataAsync(
-  params: ProviderAuthProfileMetadataParams,
+  params: Parameters<typeof resolveProviderAuthProfileMetadata>[0],
 ): Promise<ProviderAuthProfileMetadata> {
   const store = await ensureAuthProfileStoreAsync(params.agentDir, {
     config: params.cfg,
@@ -104,7 +120,7 @@ export async function resolveProviderAuthProfileMetadataAsync(
 }
 
 function selectProviderAuthProfileMetadata(
-  params: ProviderAuthProfileMetadataParams,
+  params: Parameters<typeof resolveProviderAuthProfileMetadata>[0],
   store: AuthProfileStore,
 ): ProviderAuthProfileMetadata {
   const normalizedProvider = normalizeProviderId(params.provider);
