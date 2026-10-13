@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import path from "node:path";
 import { json } from "node:stream/consumers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   writeOpenAiResponsesSse,
   writeOpenAiResponsesText,
@@ -14,6 +14,7 @@ import { resetSubagentRegistryForTests } from "../agents/subagents/registry/suba
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resetHeartbeatEventsForTest } from "../infra/heartbeat-events.js";
 import { requestHeartbeatAndWait, setHeartbeatsEnabled } from "../infra/heartbeat-wake.js";
+import * as stateEventSweep from "../sessions/session-state-events.sweep.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { setTestEnvValue } from "../test-utils/env.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
@@ -145,6 +146,45 @@ describe("session notification store ownership through the Gateway", () => {
       const home = await setupGatewayTempHome({ prefix: "openclaw-heartbeat-store-" });
       let provider: Awaited<ReturnType<typeof startProvider>> | undefined;
       let gateway: Awaited<ReturnType<typeof startGatewayWithClient>> | undefined;
+      let stage = "provider-start";
+      let replacementRequestOffset: number | undefined;
+      let resumedStatus: string | undefined;
+      const sweeps: Array<{ stage: string; state: string }> = [];
+      const originalSweep = stateEventSweep.sweepSessionStateWatchNotices;
+      const sweepSpy = vi
+        .spyOn(stateEventSweep, "sweepSessionStateWatchNotices")
+        .mockImplementation(async (options) => {
+          sweeps.push({ stage, state: "started" });
+          try {
+            await originalSweep(options);
+            sweeps.push({ stage, state: "settled" });
+          } catch (error) {
+            sweeps.push({ stage, state: "rejected" });
+            throw error;
+          }
+        });
+      const reportTimeout = () => {
+        console.error(
+          "[heartbeat-store-diagnostic]",
+          JSON.stringify({
+            stage,
+            replacementRequestOffset,
+            resumedStatus,
+            sweeps,
+            requests: provider?.requests.map((request) => {
+              const input = JSON.stringify(request.input);
+              return {
+                model: request.model,
+                hasChildKey: Boolean(
+                  provider?.spawn && input.includes(provider.spawn.childSessionKey),
+                ),
+                hasReconcileMarker: input.includes("Reconcile before acting:"),
+              };
+            }),
+          }),
+        );
+      };
+      signal.addEventListener("abort", reportTimeout, { once: true });
       await runQaGatewayFixture(
         async () => {
           provider = await startProvider();
@@ -206,7 +246,9 @@ describe("session notification store ownership through the Gateway", () => {
               scopes: ["operator.admin"],
             });
           const configPath = await createGatewayConfigPath(home.tempHome);
+          stage = "initial-start";
           gateway = await start();
+          stage = "initial-startup-settled";
           await gateway.server.startupSettled;
           const parentKey = `agent:main:store-proof-${randomUUID()}`;
           const wait = (runId: string) =>
@@ -215,6 +257,7 @@ describe("session notification store ownership through the Gateway", () => {
               { runId, timeoutMs: 120_000 },
               { timeoutMs: 125_000 },
             );
+          stage = "parent-chat-admission";
           const accepted = await gateway.client.request<{ runId: string }>(
             "chat.send",
             {
@@ -225,6 +268,7 @@ describe("session notification store ownership through the Gateway", () => {
             },
             { expectFinal: false },
           );
+          stage = "parent-agent-wait";
           const parentResult = await wait(accepted.runId);
           expect(parentResult.status, JSON.stringify(parentResult)).toBe("ok");
           expect(provider.spawn?.status).toBe("accepted");
@@ -232,7 +276,9 @@ describe("session notification store ownership through the Gateway", () => {
           if (!child) {
             throw new Error("Parent did not receive sessions_spawn receipt");
           }
+          stage = "child-agent-wait";
           expect((await wait(child.runId)).status).toBe("ok");
+          stage = "initial-session-list";
           const before = await gateway.client.request<SessionsListResult>("sessions.list", {
             agentId: "main",
             limit: 100,
@@ -241,6 +287,7 @@ describe("session notification store ownership through the Gateway", () => {
             (entry) => entry.key === parentKey,
           )?.sessionId;
           expect(parentSessionId).toBeTypeOf("string");
+          stage = "child-followup-admission";
           const followup = await gateway.client.request<{ runId: string }>(
             "agent",
             {
@@ -251,6 +298,7 @@ describe("session notification store ownership through the Gateway", () => {
             },
             { expectFinal: false },
           );
+          stage = "child-followup-wait";
           const followupResult = await wait(followup.runId);
           expect(followupResult.status, JSON.stringify(followupResult)).toBe("ok");
 
@@ -275,14 +323,19 @@ describe("session notification store ownership through the Gateway", () => {
             expect(after.sessions.map((entry) => entry.key)).not.toContain(child.childSessionKey);
             expect(provider.requests.map((request) => request.model)).not.toContain("backup");
           } else {
+            stage = "replacement-disconnect";
             await disconnectGatewayClient(gateway.client);
+            stage = "replacement-close";
             await gateway.server.close({ reason: "same-store replacement" });
             gateway = undefined;
-            const replacementRequestOffset = provider.requests.length;
+            replacementRequestOffset = provider.requests.length;
             const replacementNotice = provider.armNoticeObservation();
+            stage = "replacement-start";
             gateway = await start();
+            stage = "replacement-startup-settled";
             await gateway.server.startupSettled;
             // Restart restores unread notices as context for the next ordinary turn.
+            stage = "resumed-chat-admission";
             const resumed = await gateway.client.request<{ runId: string }>(
               "chat.send",
               {
@@ -293,8 +346,11 @@ describe("session notification store ownership through the Gateway", () => {
               },
               { expectFinal: false },
             );
+            stage = "resumed-agent-wait";
             const resumedResult = await wait(resumed.runId);
+            resumedStatus = resumedResult.status;
             expect(resumedResult.status, JSON.stringify(resumedResult)).toBe("ok");
+            stage = "restored-notice";
             const notice = await withinTest(replacementNotice, signal);
             expect(provider.requests.indexOf(notice)).toBeGreaterThanOrEqual(
               replacementRequestOffset,
@@ -302,6 +358,7 @@ describe("session notification store ownership through the Gateway", () => {
             expect(notice.model).toBe("primary");
             expect(JSON.stringify(notice.input)).toContain(child.childSessionKey);
             expect(JSON.stringify(notice.input)).toContain(WORKER);
+            stage = "replacement-session-list";
             const after = await gateway.client.request<SessionsListResult>("sessions.list", {
               agentId: "main",
               limit: 100,
@@ -313,6 +370,7 @@ describe("session notification store ownership through the Gateway", () => {
           expect(provider.errors).toEqual([]);
         },
         async () => {
+          stage = "cleanup-heartbeat";
           if (!gateway) {
             return;
           }
@@ -325,7 +383,10 @@ describe("session notification store ownership through the Gateway", () => {
           });
         },
         () => gateway && disconnectGatewayClient(gateway.client),
-        () => gateway?.server.close({ reason: "heartbeat store proof complete" }),
+        () => {
+          stage = "cleanup-gateway-close";
+          return gateway?.server.close({ reason: "heartbeat store proof complete" });
+        },
         () => provider?.stop(),
         () => resetSubagentRegistryForTests({ persist: false }),
         () => removeGatewayTempHome(home.tempHome),
@@ -333,6 +394,8 @@ describe("session notification store ownership through the Gateway", () => {
         () => setHeartbeatsEnabled(true),
         resetHeartbeatEventsForTest,
         resetGatewayTestState,
+        () => sweepSpy.mockRestore(),
+        () => signal.removeEventListener("abort", reportTimeout),
       );
     },
   );
