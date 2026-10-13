@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import type { Locator } from "playwright";
 import { expect, it } from "vitest";
 import { GATEWAY_SERVER_CAPS } from "../../../packages/gateway-protocol/src/index.js";
@@ -445,15 +446,57 @@ suite.define(() => {
         expect(
           await summary.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
         ).toBe(true);
-        expect(
-          await summary.evaluate((element) => {
-            element.scrollTop = element.scrollHeight;
-            return (
-              element.scrollTop > 0 &&
-              element.scrollTop + element.clientHeight >= element.scrollHeight - 1
-            );
-          }),
-        ).toBe(true);
+        const scrollDiagnostic = await summary.evaluate((element) => {
+          const before = {
+            connected: element.isConnected,
+            scrollTop: element.scrollTop,
+            scrollHeight: element.scrollHeight,
+            clientHeight: element.clientHeight,
+            clientWidth: element.clientWidth,
+          };
+          element.scrollTop = element.scrollHeight;
+          const reachedBottom =
+            element.scrollTop > 0 &&
+            element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+          const current = document.querySelector(
+            ".task-suggestion:not([hidden]) .task-suggestion__summary",
+          );
+          const style = getComputedStyle(element);
+          return {
+            reachedBottom,
+            before,
+            after: {
+              connected: element.isConnected,
+              scrollTop: element.scrollTop,
+              scrollHeight: element.scrollHeight,
+              clientHeight: element.clientHeight,
+              clientWidth: element.clientWidth,
+            },
+            matchesCurrentNode: element === current,
+            currentTextLength: current?.textContent?.length,
+            measuredTextLength: element.textContent?.length,
+            currentTaskId: current?.closest(".task-suggestion")?.getAttribute("data-task-id"),
+            measuredTaskId: element.closest(".task-suggestion")?.getAttribute("data-task-id"),
+            style: {
+              overflowY: style.overflowY,
+              maxHeight: style.maxHeight,
+              lineHeight: style.lineHeight,
+              scrollBehavior: style.scrollBehavior,
+              fontFamily: style.fontFamily,
+              fontSize: style.fontSize,
+            },
+          };
+        });
+        console.info("task-summary-scroll-diagnostic", JSON.stringify(scrollDiagnostic));
+        await writeFile(
+          `${suite.artifactDir}/summary-scroll-${width}x${height}.json`,
+          JSON.stringify(scrollDiagnostic, null, 2),
+        );
+        await page.screenshot({
+          path: `${suite.artifactDir}/summary-scroll-${width}x${height}.png`,
+          animations: "disabled",
+        });
+        expect(scrollDiagnostic.reachedBottom).toBe(true);
 
         const card = tray.locator(".task-suggestion:visible");
         await card.getByText("Show instructions", { exact: true }).click();
