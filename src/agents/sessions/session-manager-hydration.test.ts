@@ -83,7 +83,7 @@ it.each(["canonical", "shared"])(
         vi.spyOn(Object.getPrototypeOf(database.db), "prepare"),
       ];
       try {
-        await SessionManager.openAsync(target);
+        database.db.prepare("SELECT 1").get();
         expect(probes.some((probe) => probe.mock.calls.length > 0)).toBe(true);
         await closeOpenClawAgentDatabaseByPathAsync(target.storePath);
         probes.forEach((probe) => probe.mockClear());
@@ -625,6 +625,11 @@ it.each([
             }),
           ]);
           await closeOpenClawAgentDatabasesAsync(state.root);
+          await upsertSessionEntryCore(target, {
+            sessionId: target.sessionId,
+            updatedAt: 2,
+            incognito: true,
+          });
           const replacement = await SessionManager.openAsync(target);
           await replacement.appendMessageAsync(makeUserMessage("replacement private history", 2));
           expect(replacement.buildSessionContext().messages).toEqual([

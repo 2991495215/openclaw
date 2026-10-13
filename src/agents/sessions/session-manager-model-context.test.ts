@@ -13,6 +13,7 @@ import {
   replaceTranscriptEvents,
   replaceTranscriptEventsSync,
 } from "../../config/sessions/session-accessor.sqlite-transcript-write.test-support.js";
+import * as transcriptAnchors from "../../config/sessions/session-transcript-anchor-read.js";
 import { runWithSessionTranscriptReadFence } from "../../config/sessions/session-transcript-read-fence.js";
 import * as contextWorker from "../../config/sessions/session-transcript-read-worker-runtime.js";
 import { waitForSessionTranscriptProjection } from "../../config/sessions/session-transcript-reconcile.js";
@@ -745,7 +746,13 @@ it.each(
         await mutationSource.appendMessageAsync({ role: "user", content: "after", timestamp: 2 });
       };
       const spy = incognito
-        ? undefined
+        ? vi
+            .spyOn(transcriptAnchors, "readSessionTranscriptAnchorsAsync")
+            .mockImplementationOnce(async (...args) => {
+              spy.mockRestore();
+              await mutate();
+              return transcriptAnchors.readSessionTranscriptAnchorsAsync(...args);
+            })
         : vi
             .spyOn(contextWorker, "readSessionTranscriptModelContextInWorker")
             .mockImplementationOnce(async (...args) => {
@@ -756,9 +763,6 @@ it.each(
             });
       try {
         const pending = SessionManager.openModelContextAsync(scope);
-        if (incognito) {
-          await mutate();
-        }
         if (mutation === "other-session" || mutation === "append") {
           expect((await pending).buildSessionContext()).toEqual(expected);
         } else {

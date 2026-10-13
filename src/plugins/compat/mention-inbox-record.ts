@@ -19,7 +19,7 @@ export const MENTION_INBOX_COMPAT_RECORD = {
   diagnostics: ["plugin compatibility registry and migration guide"],
   tests: [
     "src/plugins/compat/registry.test.ts",
-    "src/plugin-sdk/gateway-mention-inbox-compat.test.ts",
+    "src/gateway/mention-inbox.worker.test.ts",
     "src/gateway/mention-inbox.test.ts",
   ],
   releaseNote:

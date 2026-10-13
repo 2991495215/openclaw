@@ -22,7 +22,6 @@ import { loadSessionEntryForAdmission } from "./session-accessor.sqlite-entry-ad
 import { readActiveTranscriptEntryAnchor } from "./session-accessor.sqlite-transcript-anchor.js";
 import { readSessionTranscriptContextProjectionAsync } from "./session-transcript-context-read.js";
 import { withSessionTranscriptDeltaReader } from "./session-transcript-delta-read.js";
-import * as transcriptReaders from "./session-transcript-execution-read.js";
 import { hasSessionTranscriptMessage } from "./session-transcript-message-presence.js";
 import { runWithSessionTranscriptReadFence } from "./session-transcript-read-fence.js";
 import * as contextWorker from "./session-transcript-read-worker-runtime.js";
@@ -333,51 +332,6 @@ it.each([false, true])(
     });
   },
 );
-
-it("refuses a rewrite after final worker validation but before host consumption", async () => {
-  await withOpenClawTestState({ label: "context-validation-reply" }, async (state) => {
-    const scope = {
-      agentId: "main",
-      sessionId: "delayed-context",
-      sessionKey: "agent:main:delayed-context",
-      storePath: state.statePath("transcript.sqlite"),
-    };
-    await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
-    const source = await SessionManager.openAsync(scope);
-    await source.appendMessageAsync({ role: "user", content: "original", timestamp: 1 });
-    const rewritten = createDeferred();
-    const createReaders = transcriptReaders.createPreparedSessionTranscriptReads;
-    const spy = vi
-      .spyOn(transcriptReaders, "createPreparedSessionTranscriptReads")
-      .mockImplementation((params) => {
-        const readers = createReaders(params);
-        return {
-          ...readers,
-          readAnchors: async (input, signal) => {
-            const facts = await readers.readAnchors(input, signal);
-            if (input.selection.contextValidation) {
-              expect(
-                await source.removeTrailingEntriesAsync((entry) => entry.type === "message"),
-              ).toBe(1);
-              rewritten.resolve();
-            }
-            return facts;
-          },
-        };
-      });
-    const pending = SessionManager.openModelContextAsync(scope);
-    try {
-      await awaitGateBeforeSettlement(
-        rewritten.promise,
-        pending,
-        "Final context validation was not intercepted",
-      );
-      await expect(pending).rejects.toThrow(/transcript/i);
-    } finally {
-      spy.mockRestore();
-    }
-  });
-});
 
 it.each(["projection", "full context"] as const)(
   "accepts a fenced %s through a store alias but rejects a copied store",

@@ -168,7 +168,7 @@ describe("handlePendingApprovalRequestWithDelivery", () => {
       const fixture = await createDeliveryFixture(test, caller);
       const release = createDeferredCore<boolean>();
       const started: string[] = [];
-      const routesStarted = createDeferredCore<void>();
+      const routesStarted = createDeferredCore();
       let pendingRouteFinished = false;
       const route = async (name: "forward" | "push") => {
         started.push(name);
@@ -312,7 +312,7 @@ describe("handlePendingApprovalRequestWithDelivery", () => {
       const fixture = await createDeliveryFixture(test);
       const successfulResult = createDeferredCore<boolean>();
       const started: string[] = [];
-      const routesStarted = createDeferredCore<void>();
+      const routesStarted = createDeferredCore();
       const route = (name: "forward" | "push") => {
         started.push(name);
         if (started.length === 2) {

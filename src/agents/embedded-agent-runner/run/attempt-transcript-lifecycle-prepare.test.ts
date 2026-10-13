@@ -822,11 +822,14 @@ describe("admitted lazy session writer", () => {
         try {
           const failure = await appendInitial(kind, manager).catch((error: unknown) => error);
           if (kind === "message") {
-            expect(failure).toBe(callerError);
+            expect(failure).toMatchObject({
+              name: "SessionMessageCommittedError",
+              cause: callerError,
+            });
           } else {
             expect(failure).toBeInstanceOf(SessionMetadataCommittedError);
-            expect(isRecordedModelFallbackStop(failure)).toBe(true);
           }
+          expect(isRecordedModelFallbackStop(failure)).toBe(true);
           expect(observedFence).toEqual({
             expectedLifecycleRevision: undefined,
             expectedWriterRunId: runParams.runId,
@@ -837,16 +840,14 @@ describe("admitted lazy session writer", () => {
             activeWriterRunId: runParams.runId,
           });
           const events = loadTranscriptEventsSync(target);
-          if (kind === "message") {
-            expect(events).toEqual([]);
-          } else {
-            expect(events).toMatchObject([
-              { type: "session" },
-              kind === "model"
-                ? { type: "model_change", provider: "test-provider", modelId: "test-model" }
-                : { type: "thinking_level_change", thinkingLevel: "high" },
-            ]);
-          }
+          expect(events).toMatchObject([
+            { type: "session" },
+            kind === "message"
+              ? { type: "message", message: userMessage }
+              : { type: "model_change", provider: "test-provider", modelId: "test-model" },
+          ]);
+          await expect(manager.appendMessageAsync(userMessage)).rejects.toThrow();
+          expect(loadTranscriptEventsSync(target)).toEqual(events);
         } finally {
           unsubscribe();
         }

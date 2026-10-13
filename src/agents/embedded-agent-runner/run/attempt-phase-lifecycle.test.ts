@@ -570,10 +570,9 @@ describe("embedded attempt phase lifecycle state", () => {
           stopReason: "toolUse",
         }),
       );
-      const { entryId: toolResultEntryId } =
-        await sessionManager.appendMessageWithTranscriptAnchorAsync(
-          makeTextToolResult("call-1", "read", "Current verified result.", false, 3),
-        );
+      const toolResultEntryId = await sessionManager.appendMessageAsync(
+        makeTextToolResult("call-1", "read", "Current verified result.", false, 3),
+      );
       await sessionManager.appendMessageAsync(
         makeAgentAssistantMessage({ content: [{ type: "text", text: "Suppressed terminal." }] }),
       );

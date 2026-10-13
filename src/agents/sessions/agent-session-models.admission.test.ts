@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core/expect";
@@ -501,12 +502,13 @@ describe("model transitions after SQLite write admission", () => {
       await replacementManager.appendModelChange(nextModel.provider, nextModel.id);
       await replacementManager.appendThinkingLevelChange("high");
       const replacementEntries = await loadTranscriptEvents(replacement);
+      const runExternalRetarget = AsyncLocalStorage.snapshot();
       const append = sessionManager.appendModelChange.bind(sessionManager);
       const settled = vi
         .spyOn(sessionManager, "appendModelChange")
         .mockImplementation(async (provider, modelId) => {
           const id = await append(provider, modelId);
-          await sessionManager.setSessionTargetAsync(replacement);
+          await runExternalRetarget(() => sessionManager.setSessionTargetAsync(replacement));
           session.agent.state.model = nextModel;
           session.agent.state.thinkingLevel = "high";
           settingsManager.setDefaultModelAndProvider(nextModel.provider, nextModel.id);
@@ -600,6 +602,7 @@ describe("model transitions after SQLite write admission", () => {
       );
       const original = metadataRuntime.withSessionMetadataWorker;
       let invalidated = false;
+      const runExternalRetarget = AsyncLocalStorage.snapshot();
       const observeCommittedResult: typeof original = async (
         options,
         database,
@@ -615,7 +618,9 @@ describe("model transitions after SQLite write admission", () => {
                 if (changedOwner === "extension") {
                   extensionRuntime.invalidate("extension invalidated after metadata commit");
                 } else if (changedOwner === "manager") {
-                  await sessionManager.setSessionTargetAsync(replacement);
+                  await runExternalRetarget(() =>
+                    sessionManager.setSessionTargetAsync(replacement),
+                  );
                 }
               }
               return reply;
@@ -623,7 +628,7 @@ describe("model transitions after SQLite write admission", () => {
           }),
         );
         if (changedOwner === "manager-after-close") {
-          await sessionManager.setSessionTargetAsync(replacement);
+          await runExternalRetarget(() => sessionManager.setSessionTargetAsync(replacement));
         }
         return result;
       };
@@ -853,6 +858,7 @@ describe("model transitions after SQLite write admission", () => {
     await session.setModel(nextModel);
     const before = await loadTranscriptEvents(target);
     const replacement = { ...target, env: { OPENCLAW_STATE_DIR: secondRoot } };
+    const runExternalRetarget = AsyncLocalStorage.snapshot();
     const original = metadataRuntime.withSessionMetadataWorker;
     const observeCommittedResult: typeof original = async (
       options,
@@ -861,7 +867,7 @@ describe("model transitions after SQLite write admission", () => {
       operation,
     ) => {
       const result = await original(options, database, assertCurrent, operation);
-      await sessionManager.setSessionTargetAsync(replacement);
+      await runExternalRetarget(() => sessionManager.setSessionTargetAsync(replacement));
       return result;
     };
     const observer = vi

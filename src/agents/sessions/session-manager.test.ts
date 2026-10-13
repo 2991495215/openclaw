@@ -18,16 +18,15 @@ import {
   loadSessionEntry,
   loadTranscriptEvents,
   readTranscriptRawDelta,
-  resolveSessionTranscriptDatabasePath,
   upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
 import { replaceTranscriptEventsSync } from "../../config/sessions/session-accessor.sqlite-transcript-write.test-support.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { createNestedToolActivity } from "../../sessions/nested-tool-activity.js";
-import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { cleanupSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
 import { withMockedPlatform } from "../../test-utils/vitest-spies.js";
 import { createZeroUsageFixture } from "../test-helpers/usage-fixtures.js";
+import * as metadataRuntime from "./session-manager-metadata-runtime.js";
 import { buildSessionContext, CURRENT_SESSION_VERSION, SessionManager } from "./session-manager.js";
 
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
@@ -72,6 +71,7 @@ describe("SessionManager.open", () => {
   it("commits ordered metadata and custom messages with Windows environment semantics off-thread", async () => {
     const { dir, scope: target } = createScope("metadata-worker");
     target.storePath = path.join(dir, "agents", "main", "agent", "openclaw-agent.sqlite");
+    await upsertSessionEntryCore(target, { sessionId: target.sessionId, updatedAt: 1 });
     const manager = await SessionManager.openAsync(target, dir);
     const sql = observeHostDataSql();
     const cloneEnv = configEnv.cloneEnvWithPlatformSemantics;
@@ -654,26 +654,34 @@ describe("SessionManager stale-parent rebase", () => {
     const { target, manager, persist, events } = await setup();
     await persist("intermediate-assistant", rebaseAssistant("late"));
     const beforeBranch = manager.getBranch().map((entry) => entry.id);
-    const { db } = openOpenClawAgentDatabase({
-      agentId: target.agentId,
-      path: resolveSessionTranscriptDatabasePath(target),
-    });
-    const exec = db.exec.bind(db);
-    let injected = false;
-    const spy = vi.spyOn(db, "exec").mockImplementation((statement) => {
-      if (statement === "BEGIN IMMEDIATE" && !injected) {
-        injected = true;
-        expect(
-          appendTranscriptMessageSync(target, {
-            appendIntent: "active-branch",
-            eventId: "new-user",
-            message: makeUserMessage("new", 3),
-            now: 3,
-          }).ok,
-        ).toBe(true);
-      }
-      return exec(statement);
-    });
+    const withWorker = metadataRuntime.withSessionMetadataWorker;
+    let appends = 0;
+    const spy = vi
+      .spyOn(metadataRuntime, "withSessionMetadataWorker")
+      .mockImplementation((options, database, assertCurrent, operation, controls) =>
+        withWorker(
+          options,
+          database,
+          assertCurrent,
+          (worker) =>
+            operation({
+              execute: async (command, commandOptions) => {
+                if (command.type === "session.metadata.append" && ++appends === 2) {
+                  expect(
+                    appendTranscriptMessageSync(target, {
+                      appendIntent: "active-branch",
+                      eventId: "new-user",
+                      message: makeUserMessage("new", 3),
+                      now: 3,
+                    }).ok,
+                  ).toBe(true);
+                }
+                return await worker.execute(command, commandOptions);
+              },
+            }),
+          controls,
+        ),
+      );
     try {
       await expect(manager.appendMessageAsync(rebaseAssistant("stale reply", 4))).rejects.toThrow(
         "SQLite transcript changed while preparing rewrite",
@@ -681,6 +689,7 @@ describe("SessionManager stale-parent rebase", () => {
     } finally {
       spy.mockRestore();
     }
+    expect(appends).toBe(2);
     expect(manager.getBranch().map((entry) => entry.id)).toEqual(beforeBranch);
     expect(await events()).toMatchObject([
       { type: "session" },

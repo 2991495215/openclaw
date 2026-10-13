@@ -16,7 +16,6 @@ import {
 } from "../config/runtime-snapshot.js";
 import {
   appendTranscriptMessage,
-  appendTranscriptMessageSync,
   loadSessionEntry,
   listSessionPendingInputs,
   persistCompactionBoundaryWithSessionEntryAsync,
@@ -42,10 +41,7 @@ import {
   type InternalSessionTranscriptUpdate,
 } from "../sessions/transcript-events.js";
 import { createUserTurnTranscriptRecorder } from "../sessions/user-turn-transcript.js";
-import {
-  closeOpenClawAgentDatabasesAsync,
-  openOpenClawAgentDatabase,
-} from "../state/openclaw-agent-db.js";
+import { closeOpenClawAgentDatabasesAsync } from "../state/openclaw-agent-db.js";
 import { createAssistantErrorTranscript } from "./assistant-error-transcript.js";
 import { normalizeAssistantReplayContent } from "./embedded-agent-runner/replay-history.js";
 import { createSubscribedSessionHarness } from "./embedded-agent-subscribe.e2e-harness.js";
@@ -271,7 +267,7 @@ describe("guardSessionManager transcript updates", () => {
     }
   });
 
-  it("preserves source text when a concurrent append forces a retry", async () => {
+  it("preserves source text when a stale manager appends after a competing write", async () => {
     const config = { logging: { redactPatterns: [String.raw`/opaque\(([^)]+)\)/g`] } };
     const {
       root,
@@ -285,31 +281,16 @@ describe("guardSessionManager transcript updates", () => {
       content: [{ type: "text", text: "opaque(abcdefghijklmnopqrst)" }, toolCall],
       stopReason: "toolUse",
     });
-    const { db } = openOpenClawAgentDatabase({ agentId: target.agentId, path: target.storePath });
-    const exec = db.exec.bind(db);
-    let injected = false;
-    const execSpy = vi.spyOn(db, "exec").mockImplementation((statement) => {
-      if (statement === "BEGIN IMMEDIATE" && !injected) {
-        injected = true;
-        // Commit after validation but before the writer acquires its snapshot.
-        const concurrent = appendTranscriptMessageSync(target, {
-          eventId: "concurrent-assistant",
-          message: assistantText("Concurrent"),
-        });
-        expect(concurrent.ok).toBe(true);
-      }
-      return exec(statement);
+    const concurrent = await appendTranscriptMessage(target, {
+      eventId: "concurrent-assistant",
+      message: assistantText("Concurrent"),
     });
-    let entryId: string;
-    try {
-      entryId = expectDefined(
-        await manager.appendMessageAsync(emitted),
-        "persisted assistant entry",
-      );
-      expect(execSpy).toHaveBeenCalledWith("ROLLBACK");
-    } finally {
-      execSpy.mockRestore();
-    }
+    expect(concurrent.appended).toBe(true);
+    expect(manager.getLeafId()).toBe(baseId);
+    const entryId = expectDefined(
+      await manager.appendMessageAsync(emitted),
+      "persisted assistant entry",
+    );
     await closeOpenClawAgentDatabasesAsync(root);
     closeOpenClawAgentDatabasesForTest(root);
     const entries = (await SessionManager.openAsync(target)).getBranch();
