@@ -282,7 +282,19 @@ describe("session notification store ownership through the Gateway", () => {
             const replacementNotice = provider.armNoticeObservation();
             gateway = await start();
             await gateway.server.startupSettled;
-            // Await the actual delayed notification; replacement must not need another wake.
+            // Restart restores unread notices as context for the next ordinary turn.
+            const resumed = await gateway.client.request<{ runId: string }>(
+              "chat.send",
+              {
+                sessionKey: parentKey,
+                message: "Continue after the Gateway restart.",
+                deliver: false,
+                idempotencyKey: randomUUID(),
+              },
+              { expectFinal: false },
+            );
+            const resumedResult = await wait(resumed.runId);
+            expect(resumedResult.status, JSON.stringify(resumedResult)).toBe("ok");
             const notice = await withinTest(replacementNotice, signal);
             expect(provider.requests.indexOf(notice)).toBeGreaterThanOrEqual(
               replacementRequestOffset,
