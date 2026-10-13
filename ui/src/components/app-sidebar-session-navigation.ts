@@ -118,7 +118,7 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
       return null;
     }
     // Cache release and row projection read the same owner before the child renders.
-    const { result, cards } = rosterActivityStore(context).snapshot;
+    const { result, cards } = rosterActivityStore(context, "sidebar").snapshot;
     const agentIds = cards.map((card) => card.id);
     return this.rosterSourceMemo.read(
       () => [context, result, collapsedAgentIds, ...agentIds],
