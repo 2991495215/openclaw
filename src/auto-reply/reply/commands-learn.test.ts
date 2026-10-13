@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { testing as cliBackendsTesting } from "../../agents/cli-backends.test-support.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { withPluginMetadataSnapshotScope } from "../../plugins/current-plugin-metadata-snapshot.js";
+import { preparePluginMetadataMachineStateAsync } from "../../plugins/installed-plugin-index-record-state.js";
 import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
 import { DEFAULT_LEARN_REQUEST } from "../../skills/workshop/learn-prompt.js";
 import { WorkshopReviewNotFoundError } from "../../skills/workshop/review-undo.js";
@@ -89,6 +90,10 @@ function dispatchLearn(params: HandleCommandsParams) {
     { config: params.cfg, workspaceDir: params.workspaceDir },
   );
 }
+
+beforeEach(async () => {
+  await preparePluginMetadataMachineStateAsync({});
+});
 
 afterEach(() => cliBackendsTesting.resetDepsForTest());
 

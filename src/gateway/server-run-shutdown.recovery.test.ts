@@ -1,5 +1,5 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { commitMainSessionRecovery } from "../agents/main-session-recovery/main-session-recovery-store.js";
 import {
   markRestartAbortedMainSessions,
@@ -50,9 +50,12 @@ let storePath: string;
 
 beforeAll(async () => {
   state = await createOpenClawTestState({ label: "restart-drain-session-settlement" });
+  storePath = state.statePath("agents", "main", "sessions", "sessions.json");
+});
+
+beforeEach(async () => {
   await preparePluginTestRuntimeMetadata(cfg);
   setRuntimeConfigSnapshot(cfg, cfg);
-  storePath = state.statePath("agents", "main", "sessions", "sessions.json");
 });
 
 afterAll(async () => {
