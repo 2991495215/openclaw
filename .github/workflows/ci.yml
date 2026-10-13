@@ -75,6 +75,7 @@ on:
           - incognito
           - worker-abort
           - history
+          - menu
       base_sha:
         description: Full predecessor commit SHA
         required: true
@@ -188,7 +189,7 @@ jobs:
           retention-days: 14
   main-dependencies:
     name: Main dependency attribution
-    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor && !inputs.diagnose_readiness && inputs.fixture_group != 'incognito' && inputs.fixture_group != 'worker-abort' && inputs.fixture_group != 'history' }}
+    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor && !inputs.diagnose_readiness && inputs.fixture_group != 'incognito' && inputs.fixture_group != 'worker-abort' && inputs.fixture_group != 'history' && inputs.fixture_group != 'menu' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -690,7 +691,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        include: ${{ fromJSON(inputs.fixture_group == 'history' && '[{"group":"history-node","runtime":"node"}]' || inputs.fixture_group == 'worker-abort' && '[{"group":"worker-abort-node","runtime":"node"}]' || inputs.fixture_group == 'remaining' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"},{"group":"durable-admission-node","runtime":"node"}]' || inputs.fixture_group == 'incognito' && '[{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'repairs' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"creation-spawn-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'final' && '[{"group":"final-node","runtime":"node"}]' || '[{"group":"sharing-grants-node","runtime":"node"},{"group":"sharing-siblings-node","runtime":"node"},{"group":"fixture-imports-node","runtime":"node"},{"group":"native-and-merge-node","runtime":"node"},{"group":"creation-mention-node","runtime":"node"},{"group":"patch-recovery-node","runtime":"node"},{"group":"goal-history-node","runtime":"node"},{"group":"typed-fixtures-node","runtime":"node"},{"group":"sharing-routes-node","runtime":"node"},{"group":"session-utils-node","runtime":"node"},{"group":"publication-history-node","runtime":"node"}]') }}
+        include: ${{ fromJSON(inputs.fixture_group == 'menu' && '[{"group":"menu-bun","runtime":"bun"}]' || inputs.fixture_group == 'history' && '[{"group":"history-node","runtime":"node"}]' || inputs.fixture_group == 'worker-abort' && '[{"group":"worker-abort-node","runtime":"node"}]' || inputs.fixture_group == 'remaining' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"},{"group":"durable-admission-node","runtime":"node"}]' || inputs.fixture_group == 'incognito' && '[{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'repairs' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"creation-spawn-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'final' && '[{"group":"final-node","runtime":"node"}]' || '[{"group":"sharing-grants-node","runtime":"node"},{"group":"sharing-siblings-node","runtime":"node"},{"group":"fixture-imports-node","runtime":"node"},{"group":"native-and-merge-node","runtime":"node"},{"group":"creation-mention-node","runtime":"node"},{"group":"patch-recovery-node","runtime":"node"},{"group":"goal-history-node","runtime":"node"},{"group":"typed-fixtures-node","runtime":"node"},{"group":"sharing-routes-node","runtime":"node"},{"group":"session-utils-node","runtime":"node"},{"group":"publication-history-node","runtime":"node"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -713,6 +714,10 @@ jobs:
           frozen-lockfile: "true"
       - uses: ./.ci-harness/.github/actions/setup-test-bun
         if: ${{ matrix.runtime == 'bun' }}
+      - uses: ./.ci-harness/.github/actions/setup-playwright-chromium
+        if: ${{ inputs.fixture_group == 'menu' }}
+        with:
+          cache-mode: off
       - name: Verify the frozen fixture corrections
         env:
           OPENCLAW_LOCAL_CHECK: "0"
@@ -741,6 +746,9 @@ jobs:
               ;;
             durable-admission-node)
               files=(src/infra/session-cost-usage-cache.admission.test.ts)
+              ;;
+            menu-bun)
+              files=(ui/src/components/solid/menu-navigation.browser.test.tsx)
               ;;
             history-node)
               files=(src/gateway/sessions-history-http.test.ts)
@@ -843,7 +851,11 @@ jobs:
           fi
           failed=0
           for file in "${files[@]}"; do
-            pnpm test "$file" --maxWorkers=1 --reporter=verbose 2>&1 | tee -a .artifacts/fixture-regressions.log || failed=1
+            if [[ "$file" == ui/* ]]; then
+              (cd ui && bun --bun ../scripts/run-node-package-bin.mts vitest run --config vitest.config.ts "${file#ui/}" --maxWorkers=1 --reporter=verbose) 2>&1 | tee -a .artifacts/fixture-regressions.log || failed=1
+            else
+              pnpm test "$file" --maxWorkers=1 --reporter=verbose 2>&1 | tee -a .artifacts/fixture-regressions.log || failed=1
+            fi
           done
           exit "$failed"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
