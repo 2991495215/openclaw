@@ -193,7 +193,9 @@ export function PeopleControl(props: {
             class="activity-feed__people-popover"
             placement="bottom-end"
             onOpenChange={(open) => {
-              if (open) popover?.overlay.surface.focus({ preventScroll: true });
+              if (open) {
+                popover?.overlay.surface.focus({ preventScroll: true });
+              }
             }}
           >
             <div class="activity-feed__people-panel">

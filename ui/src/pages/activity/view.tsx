@@ -135,7 +135,9 @@ function ToolFilter(props: { activity: ActivityProps; toolNames: string[] }) {
             class="activity-live-filter-popover"
             placement="bottom-end"
             onOpenChange={(open) => {
-              if (open) popover?.overlay.surface.focus({ preventScroll: true });
+              if (open) {
+                popover?.overlay.surface.focus({ preventScroll: true });
+              }
             }}
           >
             <div class="activity-live-filter-popover__panel">
