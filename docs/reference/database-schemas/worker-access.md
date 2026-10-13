@@ -2440,6 +2440,10 @@ WAL work pauses so Doctor and update-recovery captures keep stable source bytes.
 Explicitly admitted maintenance remains available. The final maintenance client
 release resumes the same worker's normal ten-second checkpoint cadence; overlapping
 maintenance clients keep it paused until all release.
+When another process holds offline maintenance custody, the state owner check
+still refuses each scheduled pass. That refusal skips the pass without recording a
+checkpoint failure or warning; health keeps its last real observation and the next
+tick retries.
 
 Worker authority requests retain their unbounded live-owner wait unless the caller
 explicitly supplies a `deadlineMs` budget. Only cron's runtime mutation preparation
