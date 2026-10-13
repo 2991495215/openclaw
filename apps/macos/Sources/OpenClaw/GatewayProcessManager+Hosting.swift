@@ -136,6 +136,13 @@ extension GatewayProcessManager {
                 }
             case .versionUpdated:
                 self.nodeMigrationVersionUpdated = true
+            case .preservedNewerRuntime:
+                // Health satisfies runtime reconciliation, not outstanding core repair.
+                // PostUpdate still owns update repair before it settles that receipt.
+                self.nodeMigrationVersionUpdated = false
+                let receipt = PostAppUpdateReceiptStore.pendingSetupRecovery() ??
+                    PostAppUpdateReceiptStore.pending(currentVersion: targetVersion)
+                self.nodeMigrationCompleted = receipt?.coreUpdatePending != true
             case .migrated:
                 self.nodeMigrationVersionUpdated = false
                 self.nodeMigrationCompleted = true
