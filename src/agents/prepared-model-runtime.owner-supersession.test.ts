@@ -32,6 +32,58 @@ function holdNextCatalogWrite() {
 }
 
 describe("prepared model runtime owner selection", () => {
+  it("keeps reply dispatch active when a scoped refresh supersedes startup config hydration", async () => {
+    mocks.configuredAgentIds = ["main"];
+    const started = createDeferred();
+    const release = createDeferred();
+    const config = {};
+    const startup = refreshPreparedModelRuntimeSnapshots(
+      async () => {
+        started.resolve();
+        await release.promise;
+        return config;
+      },
+      {
+        gatewayLifecycle: true,
+        startup: true,
+        catalogMode: "static",
+        allowGatewaySubagentBinding: true,
+      },
+    );
+    let successor: Promise<void> | undefined;
+    try {
+      await started.promise;
+      successor = refreshPreparedModelRuntimeSnapshots(config, {
+        agentIds: new Set(["main"]),
+        catalogMode: "static",
+        allowGatewaySubagentBinding: true,
+      });
+      release.resolve();
+      await Promise.all([startup, successor]);
+      await expect(
+        loadPublishedGatewayReplyDispatchRuntime({ agentId: "main" }),
+      ).resolves.toMatchObject({ agentId: "main", config });
+    } finally {
+      release.resolve();
+      await Promise.allSettled([startup, successor]);
+    }
+  });
+
+  it("does not activate reply dispatch for an already cancelled startup publication", async () => {
+    mocks.configuredAgentIds = ["main"];
+    await refreshPreparedModelRuntimeSnapshots(
+      {},
+      {
+        gatewayLifecycle: true,
+        isPublicationCurrent: () => false,
+      },
+    );
+    await refreshPreparedModelRuntimeSnapshots({}, { catalogMode: "static" });
+    await expect(
+      loadPublishedGatewayReplyDispatchRuntime({ agentId: "main" }),
+    ).resolves.toBeUndefined();
+  });
+
   it("retires only the deleted agent's physical owners", async () => {
     mocks.configuredAgentIds = ["worker"];
     mocks.configuredAgentDirs.set("worker", fixture.state.agentDir("isolated-worker"));
