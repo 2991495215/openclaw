@@ -76,7 +76,7 @@ on:
           - worker-abort
           - history
           - menu
-          - authority
+          - singleflight
       base_sha:
         description: Full predecessor commit SHA
         required: true
@@ -190,7 +190,7 @@ jobs:
           retention-days: 14
   main-dependencies:
     name: Main dependency attribution
-    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor && !inputs.diagnose_readiness && inputs.fixture_group != 'incognito' && inputs.fixture_group != 'worker-abort' && inputs.fixture_group != 'history' && inputs.fixture_group != 'menu' && inputs.fixture_group != 'authority' }}
+    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor && !inputs.diagnose_readiness && inputs.fixture_group != 'incognito' && inputs.fixture_group != 'worker-abort' && inputs.fixture_group != 'history' && inputs.fixture_group != 'menu' && inputs.fixture_group != 'singleflight' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -692,7 +692,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        include: ${{ fromJSON(inputs.fixture_group == 'authority' && '[{"group":"operator-authority-node","runtime":"node"},{"group":"session-authority-node","runtime":"node"},{"group":"publication-authority-node","runtime":"node"},{"group":"dispatch-authority-node","runtime":"node"}]' || inputs.fixture_group == 'menu' && '[{"group":"menu-bun","runtime":"bun"}]' || inputs.fixture_group == 'history' && '[{"group":"history-node","runtime":"node"}]' || inputs.fixture_group == 'worker-abort' && '[{"group":"worker-abort-node","runtime":"node"}]' || inputs.fixture_group == 'remaining' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"},{"group":"durable-admission-node","runtime":"node"}]' || inputs.fixture_group == 'incognito' && '[{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'repairs' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"creation-spawn-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'final' && '[{"group":"final-node","runtime":"node"}]' || '[{"group":"sharing-grants-node","runtime":"node"},{"group":"sharing-siblings-node","runtime":"node"},{"group":"fixture-imports-node","runtime":"node"},{"group":"native-and-merge-node","runtime":"node"},{"group":"creation-mention-node","runtime":"node"},{"group":"patch-recovery-node","runtime":"node"},{"group":"goal-history-node","runtime":"node"},{"group":"typed-fixtures-node","runtime":"node"},{"group":"sharing-routes-node","runtime":"node"},{"group":"session-utils-node","runtime":"node"},{"group":"publication-history-node","runtime":"node"}]') }}
+        include: ${{ fromJSON(inputs.fixture_group == 'singleflight' && '[{"group":"singleflight-node","runtime":"node"}]' || inputs.fixture_group == 'menu' && '[{"group":"menu-bun","runtime":"bun"}]' || inputs.fixture_group == 'history' && '[{"group":"history-node","runtime":"node"}]' || inputs.fixture_group == 'worker-abort' && '[{"group":"worker-abort-node","runtime":"node"}]' || inputs.fixture_group == 'remaining' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"},{"group":"durable-admission-node","runtime":"node"}]' || inputs.fixture_group == 'incognito' && '[{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'repairs' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"creation-spawn-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'final' && '[{"group":"final-node","runtime":"node"}]' || '[{"group":"sharing-grants-node","runtime":"node"},{"group":"sharing-siblings-node","runtime":"node"},{"group":"fixture-imports-node","runtime":"node"},{"group":"native-and-merge-node","runtime":"node"},{"group":"creation-mention-node","runtime":"node"},{"group":"patch-recovery-node","runtime":"node"},{"group":"goal-history-node","runtime":"node"},{"group":"typed-fixtures-node","runtime":"node"},{"group":"sharing-routes-node","runtime":"node"},{"group":"session-utils-node","runtime":"node"},{"group":"publication-history-node","runtime":"node"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -733,32 +733,8 @@ jobs:
           mkdir -p .artifacts
           node --input-type=module -e 'console.log(JSON.stringify({ candidate: process.env.CANDIDATE_SHA, workflow: process.env.WORKFLOW_SHA, runtime: process.env.OPENCLAW_VITEST_RUNTIME }, null, 2))' > .artifacts/fixture-provenance.json
           case "$PROOF_GROUP" in
-            operator-authority-node)
-              files=(
-                src/cron/isolated-agent/run.manual-tool-authority.test.ts
-                src/gateway/server.chat-membership-authority.product.test.ts
-              )
-              ;;
-            session-authority-node)
-              files=(
-                src/gateway/server.sessions.create.accounts.test.ts
-                src/gateway/server.sessions.create.worktrees.test.ts
-                src/gateway/server.sessions.create.workspace-policy.test.ts
-              )
-              ;;
-            publication-authority-node)
-              files=(
-                src/gateway/github-repository-publication-restart.test.ts
-                src/gateway/github-publication.test.ts
-                test/model-account-catalog-authority.integration.test.ts
-              )
-              ;;
-            dispatch-authority-node)
-              files=(
-                src/gateway/openai-http.test.ts
-                src/gateway/server.placement-abandonment.test.ts
-                src/gateway/server.chat-cli-auth.test.ts
-              )
+            singleflight-node)
+              files=(src/gateway/github-publication.test.ts)
               ;;
             logical-entry-repair-node)
               files=(src/config/sessions/session-logical-entry-read.worker.test.ts)
