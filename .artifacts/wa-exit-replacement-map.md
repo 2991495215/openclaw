@@ -1,6 +1,6 @@
 # Web Awesome exit replacement map
 
-Updated 2026-10-13. Source inspection is pinned to main `8999389dda5419cacccb2485648bacfed0130039`. This coordination note distinguishes landed replacements from open PRs and prepared candidates; it does not claim that Web Awesome is gone.
+Updated 2026-10-13 18:18 UTC. Statuses are snapshots, not live merge claims. Source inspection is pinned to main `8999389dda5419cacccb2485648bacfed0130039`. This coordination note distinguishes landed replacements from open PRs and prepared candidates; it does not claim that Web Awesome is gone.
 
 ## Ownership
 
@@ -33,7 +33,7 @@ PRIM-B landed in [#169128](https://github.com/openclaw/openclaw/pull/169128), me
 
 | Surface | Replacement / retained contract | Current state |
 | --- | --- | --- |
-| Meetings reader tabs | `Tabs`, manual activation and existing panel IDs | [#170314](https://github.com/openclaw/openclaw/pull/170314), head `501dadc7846051d0ca0dbe53f81c5525250b8241`; exact-head CI running. Prior auto request was explicitly cancelled; use native replacement recovery after completed green proof. |
+| Meetings reader tabs | `Tabs`, manual activation and existing panel IDs | [#170314](https://github.com/openclaw/openclaw/pull/170314), head `501dadc7846051d0ca0dbe53f81c5525250b8241`; exact-head CI passed; completed-proof native recovery is in progress. Prior auto request was explicitly cancelled; use native replacement recovery after completed green proof. |
 | Usage query filters | `Menu`, existing query owner and callbacks | [#170567](https://github.com/openclaw/openclaw/pull/170567), head `fd66504f291217f808a585589ec17fcbe2e267dc`; blocked by sidebar browser test described below. No merge intent. |
 | Sessions advanced filters | `Popover`, native inputs and existing filter owner | [#170565](https://github.com/openclaw/openclaw/pull/170565); hosted CI passed, native checkout recovery remains blocked by a missing transition journal for two archive E2E files. No manual journal repair or new namespace. |
 | Provider picker | Searchable `Menu`, preserve selected-option focus | [#170785](https://github.com/openclaw/openclaw/pull/170785); selected Qwen incorrectly focuses Google on keyboard reopen. Needs shared Menu focus fix. |
@@ -46,7 +46,7 @@ PRIM-B landed in [#169128](https://github.com/openclaw/openclaw/pull/169128), me
 | Sidebar / shared pickers | Owned Menu/Popover/picker primitives | Sidebar and PRIM-C2 owners; active work must land on main first. |
 | Chat / new-session menus and previews | Owned primitives in each renderer | Active chat/new-session lanes. |
 
-Usage's failed case is `app-sidebar-session-filter.browser.test.ts > sidebar session filter popover > keeps keyboard navigation, focus and surface inside the viewport at 390 px (rtl)`: the first Filter opening expects `[false,true]` and observed `[false,true,false,true]`. The same test passed on the latest inspected scheduled main run `38439503520` at `838c6ada7dc9d657098b552eb846d8e5f176b79e`; this is **not established as inherited**. Ownership routing is pending; do not weaken the assertion or use an inherited-failure exception without new proof. PRIM-C2 also changes this test for its new picker occlusion contract; that unlanded change is not proof of the current failure's cause.
+Usage's failed case is `app-sidebar-session-filter.browser.test.ts > sidebar session filter popover > keeps keyboard navigation, focus and surface inside the viewport at 390 px (rtl)`: the first Filter opening expects `[false,true]` and observed `[false,true,false,true]`. The same test passed on the latest inspected scheduled main run `38439503520` at `838c6ada7dc9d657098b552eb846d8e5f176b79e`; this is **not established as inherited**. Two bounded local baseline attempts failed in test setup before reaching the occlusion assertion, so they provide no attribution evidence. Ownership routing is pending; do not weaken the assertion or use an inherited-failure exception without new proof. PRIM-C2 also changes this test for its new picker occlusion contract; that unlanded change is not proof of the current failure's cause.
 
 ## Remaining shared primitive API work
 
@@ -58,6 +58,8 @@ At the inspected main pin, Menu supports checkbox/radio entries, `checked`, `clo
 | Typed trigger `aria-busy` | Usage export | Extend the constrained trigger attribute type. |
 | Outside-pointer and outside-focus dismissal options | Plugin install progress | Forward existing `OverlayOptions.dismissOutsidePointer` / `dismissOutsideFocus` through Popover, preserving defaults and Escape behavior. |
 | Selected-item focus on keyboard reopen | Provider picker | Fix shared Menu navigation/focus ownership; no consumer DOM focus workaround. |
+
+Observed shared Menu defect: Provider picker [#170785](https://github.com/openclaw/openclaw/pull/170785), head `9f5823ce96cd8f809ba105b8fa2962a7754d1020`, loses selected-item focus after choosing `qwen-cn`, filling the synthetic credential, closing, and reopening with Enter. In menu phase `open`, `qwen-cn` retains `data-selected`, `data-initial-focus`, and `aria-checked="true"`, but the first `gemini-api-key` row owns `data-highlighted`, `tabindex="0"`, and `document.activeElement`. The same script and fixture pass on literal baseline `06001d846eefe470e7e9d04f10d4981355497ca8`. Pinned `@zag-js/menu@2.0.0-next.3` maps Enter/Space to `ARROW_DOWN`; controlled open queues a first-item highlight after native initial focus, then `useMenuMachine` follows `highlightedId` for keyboard focus. The shared adapter must align opening highlight with explicit initial focus while preserving Home/End navigation. Repair the owner on main; do not add a consumer retry or refocus workaround.
 
 Pinned main blobs: Menu `e73cb12906d5237cdf65f79b4ba504e2a22b3b20`, Popover `b206bbecc4e8f30be9c557e9fefa3dac893a0cef`. Recheck main about every ten minutes. Read unlanded branches only; merge main once the needed contracts land. Historical draft patches do not override the current owner API or count as final proof.
 
