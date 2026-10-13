@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, For, Show } from "solid-js";
 import type { SessionsListResult } from "../../api/types.ts";
 import { Icon } from "../../components/solid/icon.tsx";
 import { Popover, type PopoverHandle } from "../../components/solid/popover.tsx";
@@ -114,7 +114,7 @@ export function PeopleControl(props: {
   selectedPerson: PresenceViewer | null;
   totalSessions: number;
 }) {
-  const [anchor, setAnchor] = createSignal<HTMLButtonElement>();
+  let anchor!: HTMLButtonElement;
   let popover: PopoverHandle | undefined;
   const selectPerson = (personId: string | null) => {
     popover?.hide();
@@ -127,7 +127,9 @@ export function PeopleControl(props: {
   return (
     <div class="activity-feed__people-control">
       <button
-        ref={setAnchor}
+        ref={(node) => {
+          anchor = node;
+        }}
         id="activity-feed-people-trigger"
         type="button"
         class="btn btn--sm activity-feed__people-trigger"
@@ -181,59 +183,53 @@ export function PeopleControl(props: {
           <Icon name="x" />
         </button>
       ) : undefined}
-      <Show when={anchor()}>
-        {(trigger) => (
-          <Popover
-            id="activity-feed-people-popover"
-            ref={(handle) => {
-              popover = handle;
-            }}
-            anchor={trigger()}
-            label={t("activityFeed.peopleButtonLabel")}
-            class="activity-feed__people-popover"
-            placement="bottom-end"
-            onOpenChange={(open) => {
-              if (open) {
-                popover?.overlay.surface.focus({ preventScroll: true });
-              }
-            }}
-          >
-            <div class="activity-feed__people-panel">
-              <PersonRow
-                person={null}
-                view={props.view}
-                count={props.totalSessions}
-                onSelect={selectPerson}
-              />
-              <For each={resolved()} keyed={(person) => person.id}>
-                {(person) => (
-                  <PersonRow person={person()} view={props.view} onSelect={selectPerson} />
-                )}
-              </For>
-              {unresolved().length > 0 ? (
-                <>
-                  <div class="session-menu__separator" role="separator" />
-                  <div class="activity-feed__people-group-label">
-                    {t("activityFeed.unresolvedIdentities")}
-                  </div>
-                  <div data-activity-unresolved>
-                    <For each={unresolved()} keyed={(person) => person.id}>
-                      {(person) => (
-                        <PersonRow person={person()} view={props.view} onSelect={selectPerson} />
-                      )}
-                    </For>
-                  </div>
-                </>
-              ) : undefined}
-              {props.view.result?.peopleIncomplete ? (
-                <p class="activity-feed__footer" role="status">
-                  {t("activityFeed.partialHistory")}
-                </p>
-              ) : undefined}
-            </div>
-          </Popover>
-        )}
-      </Show>
+      <Popover
+        id="activity-feed-people-popover"
+        ref={(handle) => {
+          popover = handle;
+        }}
+        anchor={anchor}
+        label={t("activityFeed.peopleButtonLabel")}
+        class="activity-feed__people-popover"
+        placement="bottom-end"
+        onOpenChange={(open) => {
+          if (open) {
+            popover?.overlay.surface.focus({ preventScroll: true });
+          }
+        }}
+      >
+        <div class="activity-feed__people-panel">
+          <PersonRow
+            person={null}
+            view={props.view}
+            count={props.totalSessions}
+            onSelect={selectPerson}
+          />
+          <For each={resolved()} keyed={(person) => person.id}>
+            {(person) => <PersonRow person={person()} view={props.view} onSelect={selectPerson} />}
+          </For>
+          {unresolved().length > 0 ? (
+            <>
+              <div class="session-menu__separator" role="separator" />
+              <div class="activity-feed__people-group-label">
+                {t("activityFeed.unresolvedIdentities")}
+              </div>
+              <div data-activity-unresolved>
+                <For each={unresolved()} keyed={(person) => person.id}>
+                  {(person) => (
+                    <PersonRow person={person()} view={props.view} onSelect={selectPerson} />
+                  )}
+                </For>
+              </div>
+            </>
+          ) : undefined}
+          {props.view.result?.peopleIncomplete ? (
+            <p class="activity-feed__footer" role="status">
+              {t("activityFeed.partialHistory")}
+            </p>
+          ) : undefined}
+        </div>
+      </Popover>
     </div>
   );
 }

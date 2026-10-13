@@ -1,7 +1,7 @@
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import { sortUniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import type { JSX } from "@solidjs/web";
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, createMemo } from "solid-js";
 import { Icon } from "../../components/solid/icon.tsx";
 import { Popover, type PopoverHandle } from "../../components/solid/popover.tsx";
 import { SettingsToggle, SettingsStatus } from "../../components/solid/settings-ui.tsx";
@@ -102,12 +102,14 @@ function StatusFilter(props: { activity: ActivityProps; status: ActivityStatus }
 }
 
 function ToolFilter(props: { activity: ActivityProps; toolNames: string[] }) {
-  const [anchor, setAnchor] = createSignal<HTMLButtonElement>();
+  let anchor!: HTMLButtonElement;
   let popover: PopoverHandle | undefined;
   return (
     <>
       <button
-        ref={setAnchor}
+        ref={(node) => {
+          anchor = node;
+        }}
         id="activity-live-filter-trigger"
         type="button"
         class={[
@@ -123,48 +125,44 @@ function ToolFilter(props: { activity: ActivityProps; toolNames: string[] }) {
       >
         <Icon name="listFilter" />
       </button>
-      <Show when={anchor()}>
-        {(trigger) => (
-          <Popover
-            id="activity-live-filter-popover"
-            ref={(handle) => {
-              popover = handle;
-            }}
-            anchor={trigger()}
-            label={t("activity.filters")}
-            class="activity-live-filter-popover"
-            placement="bottom-end"
-            onOpenChange={(open) => {
-              if (open) {
-                popover?.overlay.surface.focus({ preventScroll: true });
-              }
-            }}
-          >
-            <div class="activity-live-filter-popover__panel">
-              <label class="field">
-                <span>{t("activity.toolFilter")}</span>
-                <select
-                  class="settings-select"
-                  aria-label={t("activity.toolFilter")}
-                  value={props.activity.toolFilter}
-                  onChange={(event) => props.activity.onToolFilterChange(event.currentTarget.value)}
-                >
-                  <option value="" selected={props.activity.toolFilter === ""}>
-                    {t("activity.allTools")}
+      <Popover
+        id="activity-live-filter-popover"
+        ref={(handle) => {
+          popover = handle;
+        }}
+        anchor={anchor}
+        label={t("activity.filters")}
+        class="activity-live-filter-popover"
+        placement="bottom-end"
+        onOpenChange={(open) => {
+          if (open) {
+            popover?.overlay.surface.focus({ preventScroll: true });
+          }
+        }}
+      >
+        <div class="activity-live-filter-popover__panel">
+          <label class="field">
+            <span>{t("activity.toolFilter")}</span>
+            <select
+              class="settings-select"
+              aria-label={t("activity.toolFilter")}
+              value={props.activity.toolFilter}
+              onChange={(event) => props.activity.onToolFilterChange(event.currentTarget.value)}
+            >
+              <option value="" selected={props.activity.toolFilter === ""}>
+                {t("activity.allTools")}
+              </option>
+              <For each={props.toolNames}>
+                {(name) => (
+                  <option value={name} selected={name === props.activity.toolFilter}>
+                    {name}
                   </option>
-                  <For each={props.toolNames}>
-                    {(name) => (
-                      <option value={name} selected={name === props.activity.toolFilter}>
-                        {name}
-                      </option>
-                    )}
-                  </For>
-                </select>
-              </label>
-            </div>
-          </Popover>
-        )}
-      </Show>
+                )}
+              </For>
+            </select>
+          </label>
+        </div>
+      </Popover>
     </>
   );
 }
