@@ -1,6 +1,6 @@
 # Web Awesome exit replacement map
 
-Updated 2026-10-13 18:18 UTC. Statuses are snapshots, not live merge claims. Source inspection is pinned to main `8999389dda5419cacccb2485648bacfed0130039`. This coordination note distinguishes landed replacements from open PRs and prepared candidates; it does not claim that Web Awesome is gone.
+Updated 2026-10-13 19:18 UTC. Statuses are snapshots, not live merge claims. Source inspection is pinned to main `c3a66fd8b894cce0af20e6232b7ed01143a9bf32`. This coordination note distinguishes landed replacements from open PRs and prepared candidates; it does not claim that Web Awesome is gone.
 
 ## Ownership
 
@@ -28,40 +28,41 @@ PRIM-B landed in [#169128](https://github.com/openclaw/openclaw/pull/169128), me
 | Devices row actions | `Menu` | [#170784](https://github.com/openclaw/openclaw/pull/170784), `8815aa67b132bad4a710ae7d58afd6b328ce55fa` |
 | Remaining Cron menus | `Menu` | [#170917](https://github.com/openclaw/openclaw/pull/170917), `fd9b49fb7628d490c98e50ac422b1128f7ae8412` |
 | Folder defaults controls | Owned controls | [#170566](https://github.com/openclaw/openclaw/pull/170566), `24a0c839f5ec86d569d2a16531e8e2bb95d77ff2` |
+| Meetings reader tabs | `Tabs`, manual activation and existing panel IDs | [#170314](https://github.com/openclaw/openclaw/pull/170314), `7ff7af1773a6c0107f36d52dcb0e44f6d2a200fd` |
+| Sessions advanced filters | `Popover`, native inputs and existing filter owner | [#170565](https://github.com/openclaw/openclaw/pull/170565), `71a4b8fb5d3889a645dc02bdafca675e0eda7d36` |
 
 ## Open and prepared consumers
 
 | Surface | Replacement / retained contract | Current state |
 | --- | --- | --- |
-| Meetings reader tabs | `Tabs`, manual activation and existing panel IDs | [#170314](https://github.com/openclaw/openclaw/pull/170314), head `501dadc7846051d0ca0dbe53f81c5525250b8241`; exact-head CI passed; completed-proof native recovery is in progress. Prior auto request was explicitly cancelled; use native replacement recovery after completed green proof. |
-| Usage query filters | `Menu`, existing query owner and callbacks | [#170567](https://github.com/openclaw/openclaw/pull/170567), head `fd66504f291217f808a585589ec17fcbe2e267dc`; blocked by sidebar browser test described below. No merge intent. |
-| Sessions advanced filters | `Popover`, native inputs and existing filter owner | [#170565](https://github.com/openclaw/openclaw/pull/170565); hosted CI passed, native checkout recovery remains blocked by a missing transition journal for two archive E2E files. No manual journal repair or new namespace. |
-| Provider picker | Searchable `Menu`, preserve selected-option focus | [#170785](https://github.com/openclaw/openclaw/pull/170785); selected Qwen incorrectly focuses Google on keyboard reopen. Needs shared Menu focus fix. |
-| Group mode menu | `Menu`, preserve exact trigger ID | Prepared; Folder prerequisite landed. Still needs typed explicit trigger ID. |
-| Usage export | `Menu`, existing export callbacks and busy state | Prepared; needs Usage filter cut and typed trigger `aria-busy`. |
-| Plugin install progress | `Popover`, preserve hover/pin intent and shared Escape owner | Prepared; needs outside-pointer/outside-focus options. Closing-phase guard and targeted E2E change are prepared, not proven on final owner API. |
+| Shared menu/popover contracts | Existing owners: stable root trigger ID, typed busy state, caller-selected Tab destination, pinned outside-dismissal policy | [#171269](https://github.com/openclaw/openclaw/pull/171269), head `6cd95533450c9eec8864aaf90d122e3c1c712cb3`; reviewed and in native preparation/CI. Not on main yet. W-WA-EXIT-3 and W-WA-EXIT-CHAT can consume it after landing. |
+| Usage query filters | `Menu`, existing query owner and callbacks | [#170567](https://github.com/openclaw/openclaw/pull/170567), head `39c32c4c54ab52ee61cacb0cc9f7e97c467aaecc`; final CI completed, native inherited-build-failure admission in progress. |
+| Provider picker | Searchable `Menu`, selected-option focus and existing credential Tab flow | [#170785](https://github.com/openclaw/openclaw/pull/170785); PRIM-C2 fixed shared selected-item reopening. Prepared cleanup replaces local keyboard handling with #171269's owned Tab destination. |
+| Group mode menu | `Menu`, preserve exact trigger ID and modal settlement | Prepared: production 2183→2154 LOC; waiting for #171269 on main. |
+| Usage export | `Menu`, existing export callbacks and busy state | Prepared: production 2659→2655 LOC; waiting for Usage and #171269 on main. |
+| Plugin install progress | `Popover`, preserve hover/pin intent and shared Escape owner | Prepared: production 402→417 LOC; waiting for #171269 on main. Retains the closing-phase guard against focus-return reopening. |
 | Catalog / session menus / communication options | `Menu`, action-before-close, nested controls and return focus | W-WA-EXIT-2 and current session-menu owners. |
 | Mermaid / Board actions and tabs | `Menu` / `Tabs`, preserve selectors | W-WA-EXIT-2 and Board owner. |
 | Browser/Terminal panels | Native `div[role=tabpanel]`, preserve IDs/classes/events | W-WA-EXIT-2 with current viewport owners. |
 | Sidebar / shared pickers | Owned Menu/Popover/picker primitives | Sidebar and PRIM-C2 owners; active work must land on main first. |
 | Chat / new-session menus and previews | Owned primitives in each renderer | Active chat/new-session lanes. |
 
-Usage's failed case is `app-sidebar-session-filter.browser.test.ts > sidebar session filter popover > keeps keyboard navigation, focus and surface inside the viewport at 390 px (rtl)`: the first Filter opening expects `[false,true]` and observed `[false,true,false,true]`. The same test passed on the latest inspected scheduled main run `38439503520` at `838c6ada7dc9d657098b552eb846d8e5f176b79e`; this is **not established as inherited**. Two bounded local baseline attempts failed in test setup before reaching the occlusion assertion, so they provide no attribution evidence. Ownership routing is pending; do not weaken the assertion or use an inherited-failure exception without new proof. PRIM-C2 also changes this test for its new picker occlusion contract; that unlanded change is not proof of the current failure's cause.
+Usage's original failed case was `app-sidebar-session-filter.browser.test.ts > sidebar session filter popover > keeps keyboard navigation, focus and surface inside the viewport at 390 px (rtl)`: the first Filter opening expected `[false,true]` and observed `[false,true,false,true]`. Its original cause remains unproven; it was not classified as inherited. PRIM-C2 then landed an explicit Owners-picker occlusion contract. After merging actual main, the updated exact RTL case passed locally, and all three UI-unit shards passed on Usage's final CI run `38450927143`. The remaining failures occur before tests in the core SQLite build and match scheduled main's diagnostic; the native evidence records them separately.
 
-## Remaining shared primitive API work
+## Shared primitive contracts
 
-At the inspected main pin, Menu supports checkbox/radio entries, `checked`, `closeOnSelect`, ordered `MenuEntry` content rows, and constrained `triggerAttributes` (`title`, `style`, `tabindex`, `aria-hidden`, plus `data-*`). These are already available; do not reimplement them.
+PRIM-C2 [#170387](https://github.com/openclaw/openclaw/pull/170387), merge `ecdc40dbcf9bfc4c083237fdfa69ea949088f27c`, now owns selected-item keyboard reopening. Its menu-machine implementation is preserved unchanged in #171269. Do not add consumer refocus or retry handlers.
 
-| Missing contract | Consumer | Required owner change |
+| Contract in #171269 | Consumer | Ownership |
 | --- | --- | --- |
-| Explicit root trigger ID | Group mode menu | Add a typed trigger-ID contract without overwriting root `data-value`; nested trigger IDs remain authoritative. |
-| Typed trigger `aria-busy` | Usage export | Extend the constrained trigger attribute type. |
-| Outside-pointer and outside-focus dismissal options | Plugin install progress | Forward existing `OverlayOptions.dismissOutsidePointer` / `dismissOutsideFocus` through Popover, preserving defaults and Escape behavior. |
-| Selected-item focus on keyboard reopen | Provider picker | Fix shared Menu navigation/focus ownership; no consumer DOM focus workaround. |
+| Explicit root `triggerAttributes.id` | Group mode | Passed into both Zag IDs and the rendered trigger; nested IDs remain owned. |
+| Typed trigger `aria-busy` | Usage export | Extends the constrained trigger attribute type. |
+| `tabFocusTarget(backward)` | Provider | The existing Menu handler dismisses and honors vetoes before focusing the supplied destination. |
+| `dismissOutsidePointer` / `dismissOutsideFocus` | Install progress | Popover forwards live options to the existing lifecycle owner; Escape stays with that owner. |
 
-Observed shared Menu defect: Provider picker [#170785](https://github.com/openclaw/openclaw/pull/170785), head `9f5823ce96cd8f809ba105b8fa2962a7754d1020`, loses selected-item focus after choosing `qwen-cn`, filling the synthetic credential, closing, and reopening with Enter. In menu phase `open`, `qwen-cn` retains `data-selected`, `data-initial-focus`, and `aria-checked="true"`, but the first `gemini-api-key` row owns `data-highlighted`, `tabindex="0"`, and `document.activeElement`. The same script and fixture pass on literal baseline `06001d846eefe470e7e9d04f10d4981355497ca8`. Pinned `@zag-js/menu@2.0.0-next.3` maps Enter/Space to `ARROW_DOWN`; controlled open queues a first-item highlight after native initial focus, then `useMenuMachine` follows `highlightedId` for keyboard focus. The shared adapter must align opening highlight with explicit initial focus while preserving Home/End navigation. Repair the owner on main; do not add a consumer retry or refocus workaround.
+#171269's Chromium menu file passed 16 cases. Its new pinned-popover case passed Chromium and WebKit. Four existing WebKit native-Tab/button-focus cases failed identically on untouched PRIM-C2 main; their exact names and evidence are recorded in the PR. Current CI skips WebKit, so do not claim CI WebKit coverage. The shared API has no second dismissal owner and adds no startup imports.
 
-Pinned main blobs: Menu `e73cb12906d5237cdf65f79b4ba504e2a22b3b20`, Popover `b206bbecc4e8f30be9c557e9fefa3dac893a0cef`. Recheck main about every ten minutes. Read unlanded branches only; merge main once the needed contracts land. Historical draft patches do not override the current owner API or count as final proof.
+Recheck actual main before integrating a prerequisite. Read unlanded branches only; merge `origin/main`, never a lane branch. Historical draft patches do not override the current owner API or count as final proof.
 
 ## Theme and final package removal
 
@@ -75,7 +76,7 @@ The five formerly implicit values are already owned by Control UI:
 | `--control-ui-focus-ring` | `solid 0.1875rem var(--ring)` |
 | `--control-ui-focus-ring-offset` | `0.0625rem` |
 
-The completed AST inventory at main `8999389dda5419cacccb2485648bacfed0130039` counts **150 production WA tags**: chat 86, components 41, new-session 5, plugins 1, Usage 8, model setup 2, Sessions 1, Board 4, and Meetings 2. This includes other active lanes and does not establish zero usage. The exit condition is zero remaining consumers on main.
+The completed AST inventory at main `c3a66fd8b894cce0af20e6232b7ed01143a9bf32` counts **133 production WA tags** (tests excluded): chat 78, components 35, new-session 5, plugins 1, Usage 8, model setup 2, and Board 4. Components includes the two group-defaults tags. All root-owned live tags are covered by the five prepared consumer files; the remaining package consumers belong to active lanes. This is not a zero-usage claim.
 
 Only then remove Web Awesome from `ui/package.json` and regenerate the lockfile; remove its 3,096-line patch, workspace patch entry, checker/README references, theme import, `wa-light`/`wa-dark` bootstrap and mock toggles, WA token bridges/selectors/types/registrations, and PostCSS workaround/test/config references. Preserve live custom-event ABIs such as AgentFilePreview `wa-show`/`wa-hide` until their callers are cut over. The pet scene's stale `wa-button` obstacle selector also belongs in the final sweep. Regenerate the boot manifest through its owner.
 
