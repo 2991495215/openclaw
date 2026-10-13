@@ -553,7 +553,7 @@ export function resolvePrimaryTtsProviderCandidate(
   });
 }
 
-/** @deprecated Use isTtsProviderConfiguredAsync. Removed at the next Plugin SDK major. */
+/** @deprecated Use isTtsProviderConfiguredAsync. Removed in a later stable release. */
 export function isTtsProviderConfigured(
   config: ResolvedTtsConfig,
   provider: TtsProvider | SpeechProviderPlugin,

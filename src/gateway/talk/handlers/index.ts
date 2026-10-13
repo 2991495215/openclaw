@@ -65,7 +65,7 @@ import {
 import { CODE_HEAVY_SPOKEN_FALLBACK, isCodeHeavySpeechText } from "../../../tts/speech-text.js";
 import { synthesizeTalkSpeech } from "../../../tts/tts-synthesis.js";
 import {
-  getResolvedSpeechProviderConfig,
+  isTtsProviderConfiguredAsync,
   resolveTtsConfig,
   type TtsDirectiveOverrides,
 } from "../../../tts/tts.js";
@@ -317,20 +317,11 @@ async function buildTalkCatalog(config: OpenClawConfig, params: TalkCatalogParam
                       : undefined;
                   const speechConfig = setup && !("error" in setup) ? setup.cfg : config;
                   const effectiveTts = resolveTtsConfig(speechConfig);
-                  const context = {
-                    cfg: speechConfig,
-                    providerConfig: getResolvedSpeechProviderConfig(
-                      effectiveTts,
-                      provider.id,
-                      speechConfig,
-                      speechRegistry,
-                    ),
-                    timeoutMs: effectiveTts.timeoutMs,
-                  };
-                  return (
-                    provider.isConfiguredAsync?.(context) ??
-                    provider.isConfigured?.(context) ??
-                    false
+                  return isTtsProviderConfiguredAsync(
+                    effectiveTts,
+                    provider,
+                    speechConfig,
+                    speechRegistry,
                   );
                 })),
               modes: ["stt-tts"],

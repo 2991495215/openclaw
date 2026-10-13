@@ -53,8 +53,6 @@ const mocks = vi.hoisted(() => ({
   canonicalizeSpeechProviderId: vi.fn((providerId: string | undefined) => providerId),
   getSpeechProvider: vi.fn(),
   listSpeechProviders: vi.fn(() => []),
-  getResolvedSpeechProviderConfig: vi.fn(() => ({})),
-  resolveTtsConfig: vi.fn(() => ({ timeoutMs: 30_000 })),
   synthesizeSpeech: vi.fn(),
   canonicalizeRealtimeVoiceProviderId: vi.fn((providerId: string | undefined) =>
     providerId === "gemini-live" ? "google" : providerId?.trim().toLowerCase(),
@@ -178,9 +176,11 @@ vi.mock("../../../tts/provider-registry.js", () => {
   };
 });
 
-vi.mock("../../../tts/tts.js", () => ({
-  getResolvedSpeechProviderConfig: mocks.getResolvedSpeechProviderConfig,
-  resolveTtsConfig: mocks.resolveTtsConfig,
+// mock-isolation: Keep synthesis stubbed while using real settings/readiness without barrel initialization.
+vi.mock("../../../tts/tts.js", async () => ({
+  isTtsProviderConfiguredAsync: (await import("../../../tts/tts-provider-resolution.js"))
+    .isTtsProviderConfiguredAsync,
+  resolveTtsConfig: (await import("../../../tts/tts-settings.js")).resolveTtsConfig,
   synthesizeSpeech: mocks.synthesizeSpeech,
 }));
 
@@ -399,8 +399,6 @@ describe("talk.catalog handler", () => {
     mocks.listSpeechProviders.mockReturnValue([]);
     mocks.listRealtimeTranscriptionProviders.mockReturnValue([]);
     mocks.listRealtimeVoiceProviders.mockReturnValue([]);
-    mocks.getResolvedSpeechProviderConfig.mockReturnValue({});
-    mocks.resolveTtsConfig.mockReturnValue({ timeoutMs: 30_000 });
   });
 
   it("rejects an ambiguous owner before discovering catalog providers", async () => {
@@ -471,7 +469,6 @@ describe("talk.catalog handler", () => {
           isConfigured: vi.fn(() => true),
         } as never,
       ]);
-      mocks.getResolvedSpeechProviderConfig.mockReturnValue({ apiKey: "speech-key" });
       mocks.listRealtimeTranscriptionProviders.mockReturnValue([
         {
           id: "openai",

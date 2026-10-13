@@ -521,11 +521,11 @@ test.for(["lost-worker-response", "restart-before-ack"] as const)(
   },
 );
 
-test("retains idle chat input custody when its separate transcript commit is refused", async () => {
+test("rolls back unacknowledged idle chat input when its atomic commit is refused", async () => {
   const { storePath } = await createSessionStoreDir();
   const { ws } = await openClient();
   const key = "agent:main:dashboard:idle-staging-preserved";
-  const message = "Idle input keeps its separately accepted bytes.";
+  const message = "Idle input transfers custody only when its atomic commit succeeds.";
   const runId = "idle-staging-preserved";
   const target = { agentId: "main", sessionKey: key, storePath };
   dispatch.start.mockClear();
@@ -556,8 +556,8 @@ test("retains idle chat input custody when its separate transcript commit is ref
     expect(
       pending,
       JSON.stringify({ sent, lastAcceptedInput: turnBoundary.lastAcceptedInput }),
-    ).toMatchObject({ total: 1, items: [{ state: "interrupted" }] });
-    expect(JSON.stringify(pending.items)).toContain(message);
+    ).toEqual({ items: [], total: 0 });
+    expect(turnBoundary.lastAcceptedInput).toMatchObject({ kind: "rolled-back" });
     expect(
       (await loadTranscriptEvents(scope)).filter((event) =>
         JSON.stringify(event).includes(message),
