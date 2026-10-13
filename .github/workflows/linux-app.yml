@@ -446,9 +446,14 @@ jobs:
           pnpm dlx @tauri-apps/cli@2.11.4 build --target ${{ matrix.target }} --bundles nsis --config $config
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Verify staged signed Windows runtime
+      - name: Verify Windows GUI executable and signed runtime
         shell: pwsh
         run: |
+          $app = [System.IO.File]::ReadAllBytes('apps/linux/src-tauri/target/${{ matrix.target }}/release/openclaw-desktop.exe')
+          if ($app.Length -lt 64) { throw 'Windows app has no PE header' }
+          $pe = [System.BitConverter]::ToInt32($app, 0x3c)
+          if ($pe -lt 0 -or $pe -gt ($app.Length - 94) -or [System.BitConverter]::ToUInt32($app, $pe) -ne 0x4550) { throw 'Windows app has an invalid PE header' }
+          if ([System.BitConverter]::ToUInt16($app, $pe + 92) -ne 2) { throw 'Windows release app must use the GUI subsystem' }
           $pin = Get-Content scripts/lib/openclaw-bun.json -Raw | ConvertFrom-Json
           $entry = $pin.artifacts.'windows-${{ matrix.arch }}'
           if ($entry.authenticodeSigned -ne $true -or $entry.testOnly -ne $false) { throw 'Windows runtime pin is not signed production metadata' }

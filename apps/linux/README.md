@@ -107,6 +107,8 @@ Windows desktop publication and the Windows updater are disabled by the checked-
 `release-policy.json`. Regular Linux releases do not publish Windows installers,
 Windows updater metadata, or a Windows update channel. Existing local Gateway
 installations keep their service and runtime when the app is replaced.
+Release builds use the Windows GUI subsystem, so starting the companion does not
+open a separate console window. Debug builds retain their console output.
 
 The existing desktop release workflow has a **Windows rehearsal** operation for
 maintainers. It builds native x64 and ARM64 NSIS installers from the exact

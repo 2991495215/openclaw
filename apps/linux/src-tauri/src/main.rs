@@ -1,3 +1,8 @@
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
+
 #[cfg(any(target_os = "linux", target_os = "windows", test))]
 mod bundled_runtime;
 mod chrome_setup;
