@@ -85,6 +85,7 @@ import {
   type PublicChannelTurnParams,
 } from "../../plugin-sdk/reply-options.js";
 import {
+  readSessionUpdatedAt,
   updateLastRoute,
   updateLastRouteWithAuthority,
 } from "../../plugin-sdk/session-store-runtime.js";

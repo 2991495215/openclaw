@@ -5,11 +5,13 @@ import {
   loadSqliteVecExtension,
   openOpenClawAgentDatabaseReadOnly,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
-import { resolveOpenClawAgentSqlitePath, tableExists } from "openclaw/plugin-sdk/sqlite-runtime";
 import {
-  observeHostDataSql,
+  captureOpenClawAgentDatabaseExecution,
   openOpenClawAgentDatabase,
-} from "openclaw/plugin-sdk/sqlite-runtime-testing";
+  resolveOpenClawAgentSqlitePath,
+  tableExists,
+} from "openclaw/plugin-sdk/sqlite-runtime";
+import { observeHostDataSql } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import {
   openNodeSqliteDatabase,
   readSqliteDatabaseWriteTokenForPath,
@@ -78,6 +80,48 @@ describe("memory index schema admission", () => {
       } finally {
         observed.restore();
       }
+    }
+  });
+
+  it("starts a fresh agent index and makes a subsequent turn searchable", async () => {
+    const cfg = fixture.createConfig({
+      provider: "none",
+      vectorEnabled: false,
+      sources: ["memory", "sessions"],
+      sessionMemory: true,
+    });
+    const agentPath = resolveOpenClawAgentSqlitePath({ agentId: "main" });
+    await expect(fs.access(agentPath)).rejects.toThrow("ENOENT");
+    await fs.mkdir(path.dirname(agentPath), { recursive: true });
+    const canonicalPath = path.join(
+      await fs.realpath(path.dirname(agentPath)),
+      path.basename(agentPath),
+    );
+    const creator = captureOpenClawAgentDatabaseExecution(
+      { agentId: "main" },
+      {
+        expectedCreationIdentity: { key: `path:${canonicalPath}`, canonicalPath },
+      },
+    );
+    try {
+      const manager = await fixture.getFreshManager(cfg);
+      await fixture.seedSessionTranscript({
+        sessionId: "fresh-agent-turn",
+        messages: [
+          { role: "user", content: "Remember the cobalt telescope.", timestamp: 1 },
+          {
+            role: "assistant",
+            content: "The cobalt telescope is stored in the observatory.",
+            timestamp: 2,
+          },
+        ],
+      });
+      await manager.sync({ reason: "test", force: true });
+      expect(await manager.search("cobalt telescope")).toEqual(
+        expect.arrayContaining([expect.objectContaining({ source: "sessions" })]),
+      );
+    } finally {
+      await creator.release();
     }
   });
 

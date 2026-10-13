@@ -194,6 +194,9 @@ it("moves observer admission, publication, terminal and companion reads off the 
       });
       const sql = observeMainThreadSql();
       try {
+        observer.handleEvent(start);
+        sql.expectIdle();
+        sql.clear();
         await observer.handleEventAsync({ ...start, runId: "worker-run" });
         expect(inventories).toBe(1);
         inventories = 0;
@@ -383,6 +386,12 @@ it("does not disclose a predecessor digest when the configured store changes wit
     );
     await replaceStore();
     advanceClock();
+    observer.handleEvent(
+      event({
+        stream: "item",
+        data: { kind: "preamble", progressText: "Unowned source" },
+      }),
+    );
     expect(await observer.getCompanionSnapshotAsync(key, "main")).toEqual({
       agentId: "main",
       notes: [],
@@ -403,6 +412,31 @@ it("does not write a dormant predecessor digest into a replacement store", async
     await observer.disposeAsync();
     expect(persisted).not.toHaveBeenCalled();
   });
+});
+
+it("joins the worker-backed persistence of a legacy event adapter", async () => {
+  await withObserver(async ({ observer, peer }) => {
+    observer.handleEvent(
+      event({ stream: "item", data: { kind: "preamble", progressText: "Legacy admission" } }),
+    );
+    const disposal = observer.disposeAsync();
+    const afterClose = event({
+      stream: "item",
+      data: { kind: "preamble", progressText: "Rejected after close" },
+    });
+    observer.handleEvent(afterClose);
+    await expect(observer.handleEventAsync(afterClose)).rejects.toThrow(
+      "Session observer is closed",
+    );
+    await disposal;
+    expect(
+      peer
+        .prepare(
+          "SELECT json_extract(entry_json, '$.observerDigest.headline') AS headline FROM session_nodes WHERE session_key = ?",
+        )
+        .get(key),
+    ).toEqual({ headline: "Legacy admission" });
+  }, true);
 });
 
 it("lets the publisher finish its nested write before persisting the background digest", async ({
@@ -435,7 +469,7 @@ it("lets the publisher finish its nested write before persisting the background 
     let disposal: Promise<void> | undefined;
     try {
       await runOpenClawAgentWriteAdmission(options, async () => {
-        await harness.observer.handleEventAsync(
+        harness.observer.handleEvent(
           event({ stream: "item", data: { kind: "preamble", progressText: "Reviewing" } }),
         );
         expect(persistDigest).toHaveBeenCalledOnce();

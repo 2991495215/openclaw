@@ -23,8 +23,8 @@ import { readTranscriptContextVersionInTransaction } from "./session-accessor.sq
 import {
   readPreparedSessionTranscriptChange,
   publishUnchangedSessionTranscriptAuthority,
-  type SessionTranscriptAuthority,
 } from "./session-transcript-authority.js";
+import type { SessionTranscriptAuthority } from "./session-transcript-authority.types.js";
 
 const rollbackFault = useSqliteWorkerFault([
   {
@@ -79,7 +79,7 @@ it("publishes the committed context through SessionManager worker persistence be
     replaceSessionEntrySync(scope, { sessionId: scope.sessionId, updatedAt: 1 });
     const manager = await SessionManager.openAsync(scope);
     const values = observe(scope.sessionKey);
-    const invoke = async (worker: () => Promise<unknown>) => {
+    const invoke = async (worker: () => Promise<unknown>, lastMessagePreview?: string | null) => {
       const count = values.length;
       await worker();
       expect(values.length).toBeGreaterThan(count);
@@ -89,15 +89,21 @@ it("publishes the committed context through SessionManager worker persistence be
         sessionId: scope.sessionId,
         sessionKey: scope.sessionKey,
       });
+      expect(values.at(-1)?.lastMessagePreview).toBe(lastMessagePreview);
     };
-    await invoke(() => manager.appendMessageAsync({ role: "user", content: "seed", timestamp: 1 }));
+    await invoke(
+      () => manager.appendMessageAsync({ role: "user", content: "seed", timestamp: 1 }),
+      "seed",
+    );
     const seed = manager.getLeafId()!;
-    await invoke(() =>
-      manager.appendMessageWithTranscriptAnchorAsync({
-        role: "user",
-        content: "second",
-        timestamp: 2,
-      }),
+    await invoke(
+      () =>
+        manager.appendMessageWithTranscriptAnchorAsync({
+          role: "user",
+          content: "second",
+          timestamp: 2,
+        }),
+      "second",
     );
     await invoke(() => manager.appendCustomEntryAsync("authority", { synthetic: true }));
     await invoke(() => manager.appendSessionInfoAsync("authority"));
@@ -143,6 +149,62 @@ it("publishes the committed context through SessionManager worker persistence be
       const rewrite = await refreshed.prepareTranscriptRewriteAsync();
       await rewrite.commit(await populateRewrite(rewrite.sessionManager));
     });
+  });
+});
+
+it("publishes bounded worker previews and clears them for nonprojectable and side appends", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    const database = openOpenClawAgentDatabase({ agentId: "main", env: state.env });
+    const scope = {
+      agentId: "main",
+      sessionKey: "agent:main:authority-preview",
+      sessionId: "authority-preview",
+      storePath: database.path,
+      env: state.env,
+    };
+    const manager = await SessionManager.openAsync(scope);
+    const values = observe(scope.sessionKey);
+    const atLimit = {
+      type: "message" as const,
+      id: "at-preview-limit",
+      parentId: manager.getLeafId(),
+      timestamp: new Date(1).toISOString(),
+      message: { role: "user" as const, content: "", timestamp: 1 },
+    };
+    atLimit.message.content = "x".repeat(
+      64 * 1024 - Buffer.byteLength(JSON.stringify(atLimit)) - 1,
+    );
+    await manager.persistAsync(atLimit);
+    expect(values.at(-1)?.lastMessagePreview).toBe(`${"x".repeat(237)}...`);
+
+    const overLimit = {
+      ...atLimit,
+      id: "over-preview-limit",
+      parentId: atLimit.id,
+      message: { ...atLimit.message, content: "" },
+    };
+    overLimit.message.content = "x".repeat(
+      64 * 1024 - Buffer.byteLength(JSON.stringify(overLimit)),
+    );
+    await manager.persistAsync(overLimit);
+    expect(values.at(-1)?.lastMessagePreview).toBeNull();
+
+    const hidden = {
+      ...atLimit,
+      id: "hidden-preview",
+      parentId: overLimit.id,
+      message: { ...atLimit.message, content: "hidden", display: false },
+    };
+    await manager.persistAsync(hidden);
+    expect(values.at(-1)?.lastMessagePreview).toBeUndefined();
+
+    await manager.persistAsync({
+      ...atLimit,
+      id: "side-preview",
+      parentId: atLimit.id,
+      message: { ...atLimit.message, content: "side branch" },
+    });
+    expect(values.at(-1)?.lastMessagePreview).toBeUndefined();
   });
 });
 

@@ -168,6 +168,7 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
       setSessionModelUsageSink(sessionManager, recordUsage);
     }
     const settingsManager = createPreparedEmbeddedAgentSettingsManager({
+      sessionId: params.sessionId,
       cwd: effectiveCwd,
       agentDir,
       cfg: params.config,

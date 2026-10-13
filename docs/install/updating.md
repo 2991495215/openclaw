@@ -135,6 +135,9 @@ the handoff, the candidate retains exact file and parent-directory identities;
 later replacement still stops the update. Lease read failures report their
 underlying cause instead of a parent-binding mismatch.
 
+Service backups and interrupted agent cleanup also retain exact file identities.
+Older rounded receipts remain readable and upgrade after verification on their next write.
+
 Post-install Doctor also accepts older updaters, including `2026.8.2`, that do not
 provide an update run ID. Its commands retain invocation-specific custody without
 requiring an environment-variable workaround.
@@ -297,6 +300,15 @@ repeated full-tree scans. Content changes inside that private candidate during
 publication are not detected. Its full fingerprint is retained for recovery;
 resumed publication and repair still verify package contents. This optimization
 applies when the installed updater contains it; older updaters keep their checks.
+
+Native pnpm updates also relocate pnpm 12 launcher paths before publishing them.
+After activation, unresolved launcher targets produce a warning with repair
+guidance without rolling back the updated package. These protections require
+the installed updater to contain the fix. If an older updater left `openclaw`
+pointing into a missing `.openclaw-update-native-*` directory, reinstall the
+same version with `pnpm add -g --force openclaw@<installed-version>` using the
+same account and global directories to recreate the launcher. Back up first
+and follow the [manual package-manager procedure](/install/updating/update-methods#alternative-manual-npm-pnpm-or-bun).
 
 If a pnpm-owned install fails with `IO error: not a terminal`, the installed
 updater may be triggering an interactive pnpm build-approval prompt while
@@ -852,6 +864,12 @@ Dev Git target. The card checks again before opening update confirmation. While
 checking, it hides the previous SHA and disables the update action. A failed
 check shows an error; retry the action to check again. Opening the card does not
 start an update.
+
+Update confirmation belongs to the Gateway and profile that opened it. Switching
+Gateways or profiles retires the pending confirmation; open it again on the
+intended Gateway. Native updates also check current administrator access when you
+confirm and show an access error if it was revoked. Once an update starts, its
+progress report remains available through that Gateway's restart.
 
 Ask the agent to update OpenClaw, or send `/update` from Discord or another
 connected chat. Natural-language requests use the existing `gateway` tool's

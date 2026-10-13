@@ -15,8 +15,10 @@ import {
   getPluginRuntimeGatewayRequestScope,
   withPluginRuntimeGatewayRequestScope,
 } from "../../plugins/runtime/gateway-request-scope.js";
+import { warnPluginSdkDeprecation } from "../../plugins/sdk-deprecation.js";
 import { bindUserTurnTranscriptAnnotation } from "../../sessions/user-turn-transcript-annotation.js";
 import { getAsyncWorkSignal } from "../../shared/async-work-scope.js";
+import { loadSkillLibrarySelection } from "../../skills/library/selection.js";
 import { resolveSkillResourceCandidates } from "../../skills/runtime/resource-candidates.js";
 import type { SkillEntry } from "../../skills/types.js";
 import {
@@ -25,7 +27,10 @@ import {
   retainAdmittedRunBeforeToolCallRecovery,
 } from "../admitted-run-context.js";
 import { runBeforeToolCallHook } from "../agent-tools.before-tool-call.js";
-import { createOpenClawCodingToolsInternalAsync } from "../agent-tools.js";
+import {
+  createOpenClawCodingToolsInternal,
+  createOpenClawCodingToolsInternalAsync,
+} from "../agent-tools.js";
 import { log } from "../embedded-agent-runner/logger.js";
 import type { EmbeddedRunAttemptParams } from "../embedded-agent-runner/run/types.js";
 import { runBestEffortCallback } from "../embedded-agent-subscribe.callback.js";
@@ -495,6 +500,25 @@ export function createAgentHarnessHostCapabilities(params: {
       return buildActiveNodeContextText(requesterProfileId);
     },
     bindToolSurface,
+    /** @deprecated Await createToolSurfaceAsync for worker-backed tool construction. */
+    createToolSurface: (options, bindingOptions) => {
+      warnPluginSdkDeprecation({
+        family: "agent-harness-host",
+        method: "createToolSurface",
+        replacement: "createToolSurfaceAsync",
+        compatibility: "Synchronous tool construction retains its pinned skill resources.",
+      });
+      const inputs = toolConstructionInputs(
+        options,
+        loadSkillLibrarySelection(skillResourceSnapshot(options)?.librarySelections ?? []),
+      );
+      return bindCreatedTools(
+        withToolConstructionScope(() =>
+          createOpenClawCodingToolsInternal(inputs.options, inputs.skillReadResources),
+        ),
+        bindingOptions,
+      );
+    },
     createToolSurfaceAsync: async (options, bindingOptions) => {
       const librarySelections = skillResourceSnapshot(options)?.librarySelections ?? [];
       const library = librarySelections.length
@@ -659,7 +683,7 @@ export function createAgentHarnessHostCapabilities(params: {
   return {
     capabilities,
     setInputAttachmentReadAllowed: media.setInputAttachmentReadAllowed,
-    runWithScope: (run) => {
+    runWithScope: async (run) => {
       const preparedCaller = getGatewayToolCallerIdentity();
       if (preparedCaller?.operationalRunInstance === operationalRunInstance) {
         personalToolParticipants ??= preparedCaller.personalToolParticipants;
@@ -667,21 +691,25 @@ export function createAgentHarnessHostCapabilities(params: {
           callerIdentity.personalToolParticipants = personalToolParticipants;
         }
       }
-      const nodeAuthorities = createSessionNodeAuthorities(
+      const { release, ...nodeAuthorities } = await createSessionNodeAuthorities(
         attempt,
         params.pluginId,
         requiredNodeCommands,
         assertActive,
         bindAbortSignal(attempt.abortSignal),
       );
-      return withPluginRuntimeGatewayRequestScope(
-        {
-          isWebchatConnect: () => false,
-          ...getPluginRuntimeGatewayRequestScope(),
-          ...nodeAuthorities,
-        },
-        run,
-      );
+      try {
+        return await withPluginRuntimeGatewayRequestScope(
+          {
+            isWebchatConnect: () => false,
+            ...getPluginRuntimeGatewayRequestScope(),
+            ...nodeAuthorities,
+          },
+          run,
+        );
+      } finally {
+        release?.();
+      }
     },
     close: () => {
       if (!active) {

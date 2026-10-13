@@ -21,6 +21,7 @@ export type SessionObserverEventSteps = Generator<
 /** The observer's accepted work settles independently of scheduler cancellation. */
 export function createSessionObserverWork(params: {
   deps: SessionObserverDeps;
+  readSession: NonNullable<SessionObserverDeps["readSession"]>;
   companionReader: ReturnType<typeof createSessionObserverCompanionSnapshotReader>;
   handleEventSteps: (
     event: SessionObserverEvent,
@@ -34,6 +35,8 @@ export function createSessionObserverWork(params: {
 }) {
   let disposed = false;
   let closing = false;
+  let disposal: Promise<void> | undefined;
+  let nativeEvent = false;
   const acceptedWork = new AsyncWorkScope();
   let eventTail = Promise.resolve();
   const pending = new Set<{ scopeKey: string; current: boolean }>();
@@ -46,7 +49,7 @@ export function createSessionObserverWork(params: {
     scopeKey: string,
     run: (assertCurrent: () => void, bindScope: (scopeKey: string) => void) => Promise<T>,
   ): Promise<T> => {
-    if (closing) {
+    if (disposal) {
       return Promise.reject(new Error("Session observer is closed"));
     }
     const operation = { scopeKey, current: true };
@@ -73,12 +76,41 @@ export function createSessionObserverWork(params: {
     eventTail = result.then(clearPending, clearPending);
     return result;
   };
+  function handleEvent(event: SessionObserverEvent, settledError = false) {
+    if (disposal) {
+      return;
+    }
+    if (!params.deps.readSession) {
+      void runInDetachedAsyncContext(() => handleEventAsync(event, settledError)).catch(
+        reportError,
+      );
+      return;
+    }
+    const reader =
+      event.sessionKey && event.agentId
+        ? captureSessionObserverRead(params.deps, event.sessionKey, event.agentId)
+        : undefined;
+    const steps = params.handleEventSteps(event, settledError, reader);
+    nativeEvent = true;
+    try {
+      let next = steps.next();
+      while (!next.done) {
+        if ("work" in next.value) {
+          throw new Error("Synchronous observer event unexpectedly yielded");
+        }
+        next = steps.next(params.readSession(next.value.sessionKey, next.value.agentId));
+      }
+    } finally {
+      nativeEvent = false;
+    }
+  }
+
   async function handleEventAsync(
     event: SessionObserverEvent,
     settledError = false,
     captured?: SessionObserverRead,
   ) {
-    if (closing) {
+    if (disposal) {
       throw new Error("Session observer is closed");
     }
     const sessionKey = event.sessionKey ?? "";
@@ -116,18 +148,18 @@ export function createSessionObserverWork(params: {
     );
   }
 
-  let disposal: Promise<void> | undefined;
   function disposeAsync() {
     if (!disposal) {
-      closing = true;
-      params.beginClose();
+      // Reject new events now; accepted events still own their publication and persistence.
       disposal = eventTail
-        .then(() =>
-          AsyncWorkScope.runWhenAllIdle(
+        .then(() => {
+          closing = true;
+          params.beginClose();
+          return AsyncWorkScope.runWhenAllIdle(
             () => [acceptedWork],
             () => acceptedWork.drain(),
-          ),
-        )
+          );
+        })
         .then(() => {
           if (!disposed) {
             disposed = true;
@@ -146,19 +178,29 @@ export function createSessionObserverWork(params: {
     },
     resetting,
     background,
+    handleEvent,
     handleEventAsync,
     disposeAsync,
+    dispose: () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      void disposeAsync().catch(reportError);
+      params.finishClose();
+    },
     async withCurrent<T>(
       reader: SessionObserverRead | undefined,
       sessionKey: string,
       agentId: string,
       consume: (session: SessionEntry | undefined) => T,
     ) {
-      const source = reader ?? captureSessionObserverRead(params.deps, sessionKey, agentId);
-      return source.withRead((session) => {
-        source.assertCurrent();
-        return consume(session);
-      });
+      return reader
+        ? reader.withRead((session) => {
+            reader.assertCurrent();
+            return consume(session);
+          })
+        : captureSessionObserverRead(params.deps, sessionKey, agentId).withRead(consume);
     },
     refreshAfterReset(
       sessionKey: string,
@@ -171,7 +213,7 @@ export function createSessionObserverWork(params: {
           operation.current = false;
         }
       }
-      if (closing) {
+      if (disposal) {
         return;
       }
       const reader = captureSessionObserverRead(params.deps, sessionKey, agentId);
@@ -201,12 +243,17 @@ export function createSessionObserverWork(params: {
           publish();
         }
       };
+      if (nativeEvent) {
+        state.reader?.assertCurrent();
+        consume(params.readSession(state.sessionKey, state.agentId));
+        return undefined;
+      }
       const reader =
         state.reader ?? captureSessionObserverRead(params.deps, state.sessionKey, state.agentId);
       return acceptedWork.track(() => reader.withRead(consume)).catch(reportError);
     },
     async getCompanionSnapshotAsync(this: void, sessionKey: string, selectedAgentId?: string) {
-      if (closing) {
+      if (disposal) {
         throw new Error("Session observer is closed");
       }
       const target = params.companionReader.resolve(sessionKey, selectedAgentId);

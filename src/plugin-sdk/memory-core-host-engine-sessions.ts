@@ -23,6 +23,7 @@ export {
 } from "../config/sessions/session-transcript-inventory-runtime.js";
 
 export {
+  buildSessionEntries,
   extractKeywords,
   isCronRunSessionKey,
   isDreamingNarrativeSessionStoreKey,
