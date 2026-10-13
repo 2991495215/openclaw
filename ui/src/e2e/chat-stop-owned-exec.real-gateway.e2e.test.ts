@@ -265,7 +265,7 @@ for (const stopMethod of ["button", "slash"] as const) {
                       return { html: paragraph.outerHTML, ancestors };
                     }),
                   groups: Array.from(element.querySelectorAll(".chat-group")).map((group) => ({
-                    ...describe(group),
+                    identity: describe(group),
                     text: group.textContent,
                   })),
                 };
