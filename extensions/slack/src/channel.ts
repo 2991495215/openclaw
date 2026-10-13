@@ -83,7 +83,7 @@ import {
   normalizeSlackMessagingTarget,
   parseSlackTarget,
 } from "./target-parsing.js";
-import { slackContextTargetsMatch } from "./targets.js";
+import { slackSourceTargetsMatch } from "./targets.js";
 import {
   normalizeSlackThreadTsCandidate,
   resolveSlackReplyThreadTs,
@@ -753,7 +753,7 @@ export const slackPlugin = createChatChannelPlugin<ResolvedSlackAccount, SlackPr
   threading: {
     threadAddressing: "message",
     matchesToolContextTarget: ({ target, toolContext }) =>
-      slackContextTargetsMatch(target, toolContext),
+      slackSourceTargetsMatch(target, toolContext),
     scopedAccountReplyToMode: {
       resolveAccount: adaptScopedAccountAccessor(resolveSlackAccount),
       resolveReplyToMode: resolveSlackReplyToMode,
