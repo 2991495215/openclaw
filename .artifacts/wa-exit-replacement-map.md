@@ -1,6 +1,6 @@
 # Web Awesome exit replacement map
 
-Updated 2026-10-13 19:18 UTC. Statuses are snapshots, not live merge claims. Source inspection is pinned to main `c3a66fd8b894cce0af20e6232b7ed01143a9bf32`. This coordination note distinguishes landed replacements from open PRs and prepared candidates; it does not claim that Web Awesome is gone.
+Updated 2026-10-13. Statuses are snapshots, not live merge claims. The completed source inventory is pinned to main `ae94b8626e3c2243c517d2f1fe84edeec1fa8b66`; the four active PR heads are recorded below. This coordination note distinguishes 19 landed W-WA-EXIT cuts from open consumers and the final package-removal tail; it does not claim that Web Awesome is gone.
 
 ## Ownership
 
@@ -30,39 +30,62 @@ PRIM-B landed in [#169128](https://github.com/openclaw/openclaw/pull/169128), me
 | Folder defaults controls | Owned controls | [#170566](https://github.com/openclaw/openclaw/pull/170566), `24a0c839f5ec86d569d2a16531e8e2bb95d77ff2` |
 | Meetings reader tabs | `Tabs`, manual activation and existing panel IDs | [#170314](https://github.com/openclaw/openclaw/pull/170314), `7ff7af1773a6c0107f36d52dcb0e44f6d2a200fd` |
 | Sessions advanced filters | `Popover`, native inputs and existing filter owner | [#170565](https://github.com/openclaw/openclaw/pull/170565), `71a4b8fb5d3889a645dc02bdafca675e0eda7d36` |
+| Usage query filters | `Menu`, existing query owner and callbacks | [#170567](https://github.com/openclaw/openclaw/pull/170567), `e2df637d6058537b4a289306e2b97708b990dd13` |
+| Shared menu/popover contracts | Stable root trigger ID, typed busy state, caller-selected Tab destination and pinned outside-dismissal policy | [#171269](https://github.com/openclaw/openclaw/pull/171269), `dab8518dfd4c42aef20d59a5c062e14398dd89e7` |
+| Retired select styling and pet obstacle selector | Remove stale vendor selectors after owned-control migration | [#171302](https://github.com/openclaw/openclaw/pull/171302), `55eb758f6992fe726231c1c6a85c13e7757a55fe` |
 
-## Open and prepared consumers
+## Active consumers
 
-| Surface | Replacement / retained contract | Current state |
+All four root consumer PRs are open at these recorded heads and build against the landed shared contracts.
+
+| Surface | Replacement / retained contract | PR / recorded head |
 | --- | --- | --- |
-| Shared menu/popover contracts | Existing owners: stable root trigger ID, typed busy state, caller-selected Tab destination, pinned outside-dismissal policy | [#171269](https://github.com/openclaw/openclaw/pull/171269), head `6cd95533450c9eec8864aaf90d122e3c1c712cb3`; reviewed and in native preparation/CI. Not on main yet. W-WA-EXIT-3 and W-WA-EXIT-CHAT can consume it after landing. |
-| Usage query filters | `Menu`, existing query owner and callbacks | [#170567](https://github.com/openclaw/openclaw/pull/170567), head `39c32c4c54ab52ee61cacb0cc9f7e97c467aaecc`; final CI completed, native inherited-build-failure admission in progress. |
-| Provider picker | Searchable `Menu`, selected-option focus and existing credential Tab flow | [#170785](https://github.com/openclaw/openclaw/pull/170785); PRIM-C2 fixed shared selected-item reopening. Prepared cleanup replaces local keyboard handling with #171269's owned Tab destination. |
-| Group mode menu | `Menu`, preserve exact trigger ID and modal settlement | Prepared: production 2183→2154 LOC; waiting for #171269 on main. |
-| Usage export | `Menu`, existing export callbacks and busy state | Prepared: production 2659→2655 LOC; waiting for Usage and #171269 on main. |
-| Plugin install progress | `Popover`, preserve hover/pin intent and shared Escape owner | Prepared: production 402→417 LOC; waiting for #171269 on main. Retains the closing-phase guard against focus-return reopening. |
+| Provider picker | Searchable `Menu`, selected-option focus and existing credential Tab flow; shared `tabFocusTarget` replaces local keyboard handling | [#170785](https://github.com/openclaw/openclaw/pull/170785), `8a620d8564a8f5222cf28e9091a4b760df06abbf` |
+| Group mode menu | `Menu`, exact root trigger ID and existing modal settlement | [#171343](https://github.com/openclaw/openclaw/pull/171343), `41ec00b75ca432a8d430edca11cc9147b08e8d17` |
+| Plugin install progress | `Popover`, hover/pin intent, shared Escape owner and closing-phase focus-return guard | [#171346](https://github.com/openclaw/openclaw/pull/171346), `d66c37e0996265c1c6384d49117bba28b1fbcd9b` |
+| Usage export | `Menu`, existing export callbacks and typed trigger busy state | [#171347](https://github.com/openclaw/openclaw/pull/171347), `092596505d2c6939c887337775bff8f95b52a626` |
+
+Other consumer ownership remains unchanged:
+
+| Surface | Replacement / retained contract | Owner |
+| --- | --- | --- |
 | Catalog / session menus / communication options | `Menu`, action-before-close, nested controls and return focus | W-WA-EXIT-2 and current session-menu owners. |
 | Mermaid / Board actions and tabs | `Menu` / `Tabs`, preserve selectors | W-WA-EXIT-2 and Board owner. |
 | Browser/Terminal panels | Native `div[role=tabpanel]`, preserve IDs/classes/events | W-WA-EXIT-2 with current viewport owners. |
 | Sidebar / shared pickers | Owned Menu/Popover/picker primitives | Sidebar and PRIM-C2 owners; active work must land on main first. |
 | Chat / new-session menus and previews | Owned primitives in each renderer | Active chat/new-session lanes. |
 
-Usage's original failed case was `app-sidebar-session-filter.browser.test.ts > sidebar session filter popover > keeps keyboard navigation, focus and surface inside the viewport at 390 px (rtl)`: the first Filter opening expected `[false,true]` and observed `[false,true,false,true]`. Its original cause remains unproven; it was not classified as inherited. PRIM-C2 then landed an explicit Owners-picker occlusion contract. After merging actual main, the updated exact RTL case passed locally, and all three UI-unit shards passed on Usage's final CI run `38450927143`. The remaining failures occur before tests in the core SQLite build and match scheduled main's diagnostic; the native evidence records them separately.
+Usage's original sidebar RTL failure was not classified as inherited. After the PRIM-C2 Owners-picker occlusion fix landed and Usage merged actual main, the exact RTL case and all three UI-unit shards passed. The later SQLite build failures were separately attributed to main in the native evidence; Usage's native landing is complete.
 
 ## Shared primitive contracts
 
-PRIM-C2 [#170387](https://github.com/openclaw/openclaw/pull/170387), merge `ecdc40dbcf9bfc4c083237fdfa69ea949088f27c`, now owns selected-item keyboard reopening. Its menu-machine implementation is preserved unchanged in #171269. Do not add consumer refocus or retry handlers.
+The contracts below are on main through #171269, merge `dab8518dfd4c42aef20d59a5c062e14398dd89e7`. Consumers should use these owners directly.
 
-| Contract in #171269 | Consumer | Ownership |
+PRIM-C2 [#170387](https://github.com/openclaw/openclaw/pull/170387), merge `ecdc40dbcf9bfc4c083237fdfa69ea949088f27c`, now owns selected-item keyboard reopening. Its menu-machine implementation is preserved unchanged by the #171269 extension. Do not add consumer refocus or retry handlers.
+
+| Landed contract | Consumer | Ownership |
 | --- | --- | --- |
 | Explicit root `triggerAttributes.id` | Group mode | Passed into both Zag IDs and the rendered trigger; nested IDs remain owned. |
 | Typed trigger `aria-busy` | Usage export | Extends the constrained trigger attribute type. |
 | `tabFocusTarget(backward)` | Provider | The existing Menu handler dismisses and honors vetoes before focusing the supplied destination. |
 | `dismissOutsidePointer` / `dismissOutsideFocus` | Install progress | Popover forwards live options to the existing lifecycle owner; Escape stays with that owner. |
 
-#171269's Chromium menu file passed 16 cases. Its new pinned-popover case passed Chromium and WebKit. Four existing WebKit native-Tab/button-focus cases failed identically on untouched PRIM-C2 main; their exact names and evidence are recorded in the PR. Current CI skips WebKit, so do not claim CI WebKit coverage. The shared API has no second dismissal owner and adds no startup imports.
+#171269's Chromium menu file passed 16 cases. Its new pinned-popover case passed Chromium and WebKit. Four existing WebKit native-Tab/button-focus cases failed identically on untouched PRIM-C2 main; their exact names and evidence are recorded in the PR. That PR's CI skipped WebKit, so its hosted run is not WebKit coverage. The shared API has no second dismissal owner and adds no startup imports.
 
 Recheck actual main before integrating a prerequisite. Read unlanded branches only; merge `origin/main`, never a lane branch. Historical draft patches do not override the current owner API or count as final proof.
+
+## Preserved primary drafts
+
+The read-only dirty-path audit accounted for all 82 original paths against the 19 landed cuts and four active consumer PRs. Index blobs, working-file bytes and status records remained unchanged. Scope attribution is not exact-byte parity and grants no permission to discard historical drafts.
+
+| Classification | Distinct paths |
+| --- | ---: |
+| Landed PR scope | 60 |
+| Active consumer PR scope | 18 |
+| Other-lane work already landed or superseded | 2 |
+| Unrepresented residuals | 2 |
+
+The residuals are the staged 31-line `ui/src/test-helpers/menu.ts` draft, absent from main and all 23 PR file sets, and the unstaged one-line removal of the `web-awesome.ts` import in `ui/src/pages/sessions/session-row.tsx`, whose ownership is unestablished and whose import is still on the inventory head. Preserve both for explicit reconciliation. The group unit-test draft is folder-selector work already covered by #170566. The Usage overview tooltip-selector edit is superseded by PRIM-B #169128, not an omitted export change. No primary draft was restored, deleted or staged during the audit.
 
 ## Theme and final package removal
 
@@ -76,8 +99,20 @@ The five formerly implicit values are already owned by Control UI:
 | `--control-ui-focus-ring` | `solid 0.1875rem var(--ring)` |
 | `--control-ui-focus-ring-offset` | `0.0625rem` |
 
-The completed AST inventory at main `c3a66fd8b894cce0af20e6232b7ed01143a9bf32` counts **133 production WA tags** (tests excluded): chat 78, components 35, new-session 5, plugins 1, Usage 8, model setup 2, and Board 4. Components includes the two group-defaults tags. All root-owned live tags are covered by the five prepared consumer files; the remaining package consumers belong to active lanes. This is not a zero-usage claim.
+The official AST inventory at main `ae94b8626e3c2243c517d2f1fe84edeec1fa8b66` counts **127 production WA tags in 48 files** (tests excluded):
 
-Only then remove Web Awesome from `ui/package.json` and regenerate the lockfile; remove its 3,096-line patch, workspace patch entry, checker/README references, theme import, `wa-light`/`wa-dark` bootstrap and mock toggles, WA token bridges/selectors/types/registrations, and PostCSS workaround/test/config references. Preserve live custom-event ABIs such as AgentFilePreview `wa-show`/`wa-hide` until their callers are cut over. The pet scene's stale `wa-button` obstacle selector also belongs in the final sweep. Regenerate the boot manifest through its owner.
+| Owner | Tags | Files |
+| --- | ---: | ---: |
+| W-WA-EXIT root consumers | 9 | 4 |
+| Chat | 78 | 27 |
+| Sidebar | 25 | 8 |
+| W-WA-EXIT-2/3 components | 10 | 5 |
+| New session | 5 | 4 |
+
+The root sites are `session-group-defaults-dialog.tsx` (2), `pages/model-setup/provider-picker.tsx` (2), `pages/plugins/install-action.tsx` (1), and `pages/usage/view.tsx` (4). The other **118 tags** remain external prerequisites even after the four root PRs land. Re-run the inventory at the final candidate; this is not a zero-usage claim.
+
+Once all consumers are gone, remove Web Awesome from `ui/package.json` and regenerate the lockfile; remove its 3,096-line patch, workspace patch entry, checker/README references, theme import, `wa-light`/`wa-dark` bootstrap and mock toggles, WA token bridges/selectors/types/registrations, and PostCSS workaround/test/config references. Retire vendor-only test/prebundle entries while preserving shared ownership tests. Regenerate the boot manifest through `pnpm ui:boot-manifest:gen`; do not hand-edit its vendor module entries. The full package-tail inspection was pinned to `8118777aeb0aa13640623fd9bd4c18aa0bd842ff`; #171302 subsequently removed the stale select styling and pet `wa-button` obstacle-selector alternative. Recheck remaining imports and selectors on the final candidate instead of replaying the old tail blindly.
+
+**Native event ABI:** package removal alone does not remove every `wa-*` name. The native `modal-dialog.ts` owner still emits `wa-show`, `wa-hide`, `wa-after-show`, and `wa-after-hide`; AgentFilePreview, toast reparenting and modal test helpers consume those events. Preserve that live ABI during package removal, or migrate the producer, consumers and tests together before claiming literal zero `wa-*` usage. Also reconcile stale Workboard overlay tokens and the vendor-specific native-overlay-occlusion branch at their owners.
 
 Current startup budget: **374,285 B gzip JS and one startup CSS request**. Keep lazy boundaries. Use `ci:full` for overlay/focus changes and let PR CI run broad proof. Local proof is types plus the few directly changed test files; no local E2E batteries, repeat suites, Testbox waiting, or parity runs. Visual changes still need a few inspected, synthetic before/after captures. Attribute red checks by exact test name against the latest scheduled main run. Never bypass native landing guards.
