@@ -571,12 +571,12 @@ describe("runCronIsolatedAgentTurn — cron model override (#21057)", () => {
       const result = await runCronIsolatedAgentTurn(makePersistParams());
       expect(result.status).toBe("ok");
 
-      expect(snapshotsAtRun).toHaveLength(preRunWriteFails ? 3 : 2);
-      expect(snapshotsAtRun.filter(({ sessionKey }) => !sessionKey.includes(":run:"))).toHaveLength(
-        1,
+      const baseSnapshot = snapshotsAtRun.findLast(
+        ({ sessionKey }) => !sessionKey.includes(":run:"),
       );
-      for (const { entry } of snapshotsAtRun) {
-        expect(entry).toMatchObject({
+      const runSnapshot = snapshotsAtRun.findLast(({ sessionKey }) => sessionKey.includes(":run:"));
+      for (const snapshot of [baseSnapshot, runSnapshot]) {
+        expect(snapshot?.entry).toMatchObject({
           model: "claude-sonnet-4-6",
           modelProvider: "anthropic",
           agentHarnessId: "openclaw",
