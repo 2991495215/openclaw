@@ -1,6 +1,6 @@
 # Web Awesome exit replacement map
 
-Updated 2026-10-13 06:17 UTC. GitHub PR states below were read at that time; they are not CI or merge claims. Native primitive sources were inspected on main `bc745ece46ccd4682a9242f5978f4826a6b8235f`. This coordination map does not publish any prepared source or merge an unlanded lane.
+Updated 2026-10-13 06:59 UTC. GitHub PR states below are coordination snapshots, not current-head CI claims. Native primitive sources were inspected on main `0348a2526c561d8ccce61bfd23931024a6b8f13e`. This coordination map does not publish any prepared source or merge an unlanded lane.
 
 ## Ownership and landed foundations
 
@@ -24,15 +24,15 @@ PRIM-B [#169128](https://github.com/openclaw/openclaw/pull/169128) and SHELL [#1
 | Usage query filters | `Menu`; existing query callbacks and checked state | Open [#170567](https://github.com/openclaw/openclaw/pull/170567) |
 | Usage export menu | `Menu`; existing export callbacks | Separate prepared cut; today’s API suffices, deferred while `usage.css` overlaps the query-filter PR |
 | Group-defaults folder picker | Native modal; save/abort/late-result ownership | Open [#170566](https://github.com/openclaw/openclaw/pull/170566); mode menu remains a separate cut |
-| Pet dismiss menu | Lazy `Menu`; existing dismiss actions and focus handoff | Open [#170568](https://github.com/openclaw/openclaw/pull/170568) |
+| Pet dismiss menu | Lazy `Menu`; existing dismiss actions and focus handoff | Landed [#170568](https://github.com/openclaw/openclaw/pull/170568), merge `8b1315ac0cb1834b683186d7eab01f18d65b3d66` |
 | Plugin settings actions | `Menu`; editor lifecycle and nested Escape | Open [#170569](https://github.com/openclaw/openclaw/pull/170569) |
 | Cron job-filter popup | `Popover`; existing filter owner | Open [#170580](https://github.com/openclaw/openclaw/pull/170580); independent of remaining Cron menus |
 | Meetings reader tabs | `Tabs`; manual activation and panel IDs | Open [#170314](https://github.com/openclaw/openclaw/pull/170314) |
 | Secret Store row actions | `Menu`; permissions, busy state, Edit/Delete, trigger title | Open [#170663](https://github.com/openclaw/openclaw/pull/170663); uses the existing public trigger handle, so no new primitive API is required |
-| Provider picker | `Menu`; provider name/method/hint, selected-item focus, secret retention | Prepared private cut; needs item attributes and rich leaf content |
-| Devices actions | `Menu`; action order, danger/disabled state and read-only reason | Prepared private cut; trigger metadata and disabled-item title remain API gaps |
-| Remaining Cron menus | `Menu`; title, selected-row semantics, ordered groups | Prepared; item attributes and ordered non-action entries remain API gaps |
-| Systems filter/sort | `Menu`; Sort/Status headings, radio groups, divider, `.session-menu__text` | Prepared; rich leaf content and ordered non-action entries remain API gaps |
+| Provider picker | `Menu`; provider name/method/hint, selected-item focus, secret retention | Private cut now uses landed item attributes and rich leaf content; review/proof in progress |
+| Devices actions | `Menu`; action order, danger/disabled state and read-only reason | Private cut uses landed trigger/item attributes; reviewed, runtime proof pending |
+| Remaining Cron menus | `Menu`; title, selected-row semantics, ordered groups | Separate prepared follow-up uses landed attributes and ordered content entries; follows the job-filter PR |
+| Systems filter/sort | `Menu`; Sort/Status headings, radio groups, divider, `.session-menu__text` | Private cut uses landed rich leaf content and ordered entries; review/proof pending |
 | Group-defaults mode menu | `Menu`; exact trigger ID and selected `data-value` | Prepared; preserve stable root trigger metadata |
 | Plugin install-progress popup | `Popover`; hover, focus, pinning, explicit Escape | Prepared; needs outside-pointer/focus dismissal options exposed by Popover |
 
@@ -44,18 +44,18 @@ Shared pickers/dialogs/toast remain with PRIM-C2 [#170387](https://github.com/op
 
 ## Exact remaining primitive contracts
 
-These are narrow presentation adapters, not new domain owners. Current main's `MenuItem.content` is only used under submenus; `Menu.children` prepends content and cannot interleave groups.
+Main now supplies typed trigger attributes, item attributes, checkbox/radio entries, rich leaf content, and ordered `MenuEntry` content rows. Provider, Devices, Systems, and remaining Cron menus use these landed APIs. Leaf `content` preserves visual structure while `label` supplies typeahead text. Decorative content entries do not join keyboard navigation.
+
+Two presentation contracts remain with W-WA-EXIT-2:
 
 | Needed API | Concrete contract |
 | --- | --- |
-| `Menu.triggerAttributes` | Preserve title on Cron/Devices/System triggers. Preserve explicit root trigger ID and caller-supplied root `data-value` for group-defaults mode; nested triggers retain authoritative item identity. Secret Store's newer cut already preserves title through the public trigger handle. |
-| `MenuItem.title` | A disabled Devices pairing action retains the localized read-only reason. An undefined dedicated title must not erase a supplied attribute. |
-| `MenuItem.attributes` | Provider rows retain `data-manual-provider`, `data-selected`, and `data-initial-focus`; selected Cron rows retain `aria-current`. Primitive-owned identity/role/disabled state remain authoritative. |
-| Rich leaf `MenuItem.content` | Render provider name + method + hint and Systems `.session-menu__text`, while `label` remains the accessible name and typeahead text. |
-| Ordered content entries (`MenuEntry` or equivalent) | Preserve Sort heading → three radios → separator + Status heading → three radios, and Cron action dividers. Decorative entries must not join keyboard navigation. |
-| `Popover.dismissOutsidePointer` / `dismissOutsideFocus` | `pages/plugins/install-action.tsx` currently controls a `wa-popup`: pinned progress survives outside pointer/focus, unpinned hover/focus handlers may close it, and Escape dismisses it. Forward false for both outside policies to the existing overlay owner; preserve defaults for other consumers and retain native Escape. |
+| Explicit root Menu trigger ID | Group defaults must preserve `session-group-defaults-mode-trigger` and its selected `data-value`. Current `triggerAttributes` excludes `id`, and Menu writes `${identity.id}:trigger`; a wrapper ID is not equivalent. Keep nested trigger identity owned by the menu. |
+| `Popover.dismissOutsidePointer` / `dismissOutsideFocus` | The install-progress popup stays open while pinned after outside pointer/focus, but explicit Escape still dismisses it. Forward these existing overlay options through Popover, preserving defaults for other consumers. |
 
-Owner handoff: `/tmp/w-wa-exit-menu-contract-handoff.md`. Retained proposals: `/tmp/w-wa-exit-native-api-b285afec.patch`, `/tmp/session-menu-menu-entry.patch`, and `/tmp/solid2-wa-exit-popover-dismiss-options.patch`. They are proposals for the W2 owner, not code to merge from an unlanded branch. Activity, Sessions, Usage, Pet, plugin settings, the Cron filter popup, folder modal, and the newer Secret Store cut can use today's primitives independently.
+Owner handoff: `/tmp/w-wa-exit-menu-contract-handoff.md`. The retained `/tmp/solid2-wa-exit-popover-dismiss-options.patch` is a proposal for the W2 owner, not a branch to merge. Older Menu proposal files are historical: inspect the landed owner before adopting any hunk.
+
+Activity and Sessions have complete proof but remain blocked by native landing guards: Activity's cancelled auxiliary jobs yield `UNSTABLE`; Sessions' retained partial-checkout journal names missing archive tests. Do not bypass either guard. Settings, Secrets, Folder, Cron, and Meetings are integrating actual main where a named failure or native `UNKNOWN` recovery requires it. The canonical sidebar roster repair landed in [#170708](https://github.com/openclaw/openclaw/pull/170708), merge `4ef51a7506977f3f689fb780da01cd3968753fe5`; preserve other unproven CI failures separately.
 
 ## Installed theme values
 
