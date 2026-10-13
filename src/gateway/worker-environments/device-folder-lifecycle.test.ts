@@ -24,7 +24,7 @@ async function fixture() {
   const root = dirs.make("device-folder-lifecycle-");
   const database = openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: root } });
   const placements = createWorkerSessionPlacementStore({ database, now: () => 1000 });
-  const harness = createHarness(database, placements, { workspacePath: root });
+  const harness = await createHarness(database, placements, { workspacePath: root });
   const seeded = await harness.placements.seedActive(1);
   harness.markEnvironmentOwnerEpoch(1);
   const folder = path.join(root, "user-folder");

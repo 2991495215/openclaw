@@ -29,6 +29,7 @@ import { DraftRepositoryController } from "./draft-repository-state.ts";
 import type { PendingPlacementPlace } from "./draft-session-placement.ts";
 import {
   selectDraftDevice,
+  selectDraftDeviceFolder,
   selectDraftCloudProfile,
   selectDraftWorktree,
 } from "./draft-target-actions.ts";
@@ -101,23 +102,9 @@ export class DraftPlaceState {
   }
 
   selectDeviceFolder() {
-    if (
-      !this.deviceFolderAvailable ||
-      this.read().submitting ||
-      this.read().pendingPlacementSessionKey
-    ) {
-      return;
-    }
-    this.deviceFolderValue = "";
-    this.selection.freshWorkspace = false;
-    this.selection.folderSelectedByUser = true;
-    markDraftPlaceProjectChoice(this.selection, true);
-    this.browser.resetProjectSearch();
-    this.folderValidation.cancel();
-    this.browser.clearProjectSelection();
-    this.repositoryState.reset();
-    this.browser.close();
-    this.callbacks.requestUpdate();
+    selectDraftDeviceFolder(this.targetActions(), () => {
+      this.deviceFolderValue = "";
+    });
   }
 
   setDeviceFolderPath(path: string) {

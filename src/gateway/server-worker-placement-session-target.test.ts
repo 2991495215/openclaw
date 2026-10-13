@@ -555,6 +555,7 @@ test("resolves consecutive placement workspaces without decoding unrelated sessi
 
 test("resolves a device folder without consulting Git or the managed-worktree registry", async () => {
   await withStateDirEnv("device-folder-target-", async () => {
+    setRuntimeConfigSnapshot({});
     const identity = {
       agentId: "main",
       sessionKey: "agent:main:dashboard:incognito-device-folder",
@@ -577,13 +578,13 @@ test("resolves a device folder without consulting Git or the managed-worktree re
     const findLiveByOwner = vi.fn(async () => undefined);
     try {
       await withIncognitoSessionActor(actor, async () => {
-        const resolved = await resolveWorkerPlacementSessionTarget({
+        using resolved = await resolveWorkerPlacementSessionTarget({
           ...identity,
           config: {},
           errorMessage: "folder binding changed",
           sessionRuntime: {
             managedWorktrees: { findLiveByOwner },
-            resolveGatewaySessionStoreTargetWithStore,
+            resolveGatewaySessionStoreTargetInWorker,
             resolveCanonicalSessionEntryFromStoreKeys,
           },
         });

@@ -4,6 +4,7 @@ import { DEVICE_FOLDER_MANIFEST_REF } from "../../worker/device-folder.js";
 import {
   NODE_WORKER_WORKSPACE_STDOUT_MAX_BYTES,
   NODE_WORKSPACE_VALIDATE_DEVICE_FOLDER_COMMAND,
+  type NodeWorkerWorkspaceExecInput,
   type NodeWorkerWorkspaceExecResult,
 } from "../../worker/node-workspace-protocol.js";
 import { NODE_WORKSPACE_EMPTY_MANIFEST_REF } from "../../worker/node-workspace-transfer-protocol.js";
@@ -40,6 +41,12 @@ import { captureRemoteWorkspaceManifest } from "./workspace-sync-helpers.js";
 const workspaceLog = createSubsystemLogger("gateway/worker-workspace");
 // Leave room for the manifest reference and bounded numeric metrics in the result envelope.
 const NODE_WORKSPACE_HASH_MEMO_BYTES = NODE_WORKER_WORKSPACE_STDOUT_MAX_BYTES - 4 * 1024;
+
+export function assertDeviceFolderWorkspaceCommand(input: NodeWorkerWorkspaceExecInput) {
+  if (input.deviceFolder !== undefined && (input.transfer || input.seed || input.resetWorkspace)) {
+    throw new Error("Device folders cannot receive workspace transfers, seeds, or resets");
+  }
+}
 
 export type NodeWorkerWorkspaceBinding = {
   source:

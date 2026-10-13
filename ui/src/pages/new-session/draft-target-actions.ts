@@ -1,7 +1,10 @@
 import type { DraftGatewayState } from "./draft-gateway-state.ts";
 import type { DraftPlaceBrowser } from "./draft-place-browser.ts";
 import type { DraftPlaceCallbacks, DraftPlaceSnapshot } from "./draft-place-contract.ts";
-import type { createDraftPlaceRestoreState } from "./draft-place-restore.ts";
+import {
+  markDraftPlaceProjectChoice,
+  type createDraftPlaceRestoreState,
+} from "./draft-place-restore.ts";
 import type { DraftPlaceState } from "./draft-place-state.ts";
 import type { DraftRepositoryController } from "./draft-repository-state.ts";
 import type { DraftRestoredFolderValidation } from "./folder-validation.ts";
@@ -15,7 +18,13 @@ import { resolveNewSessionWhere } from "./preferences.ts";
 type DraftTargetContext = {
   place: Pick<
     DraftPlaceState,
-    "requiredPlacement" | "hostedEnvironment" | "devices" | "worktree" | "isAdmin" | "folder"
+    | "requiredPlacement"
+    | "hostedEnvironment"
+    | "devices"
+    | "worktree"
+    | "isAdmin"
+    | "folder"
+    | "deviceFolderAvailable"
   >;
   read: () => DraftPlaceSnapshot;
   selection: ReturnType<typeof createDraftPlaceRestoreState>;
@@ -28,6 +37,27 @@ type DraftTargetContext = {
   persistPreference: (patch: Parameters<DraftGatewayState["persistPreference"]>[2]) => void;
   clearDeviceFolder: () => void;
 };
+
+export function selectDraftDeviceFolder(context: DraftTargetContext, select: () => void) {
+  const snapshot = context.read();
+  if (
+    !context.place.deviceFolderAvailable ||
+    snapshot.submitting ||
+    snapshot.pendingPlacementSessionKey
+  ) {
+    return;
+  }
+  select();
+  context.selection.freshWorkspace = false;
+  context.selection.folderSelectedByUser = true;
+  markDraftPlaceProjectChoice(context.selection, true);
+  context.browser.resetProjectSearch();
+  context.folderValidation.cancel();
+  context.browser.clearProjectSelection();
+  context.repositoryState.reset();
+  context.browser.close();
+  context.callbacks.requestUpdate();
+}
 
 export function selectDraftDevice(
   context: DraftTargetContext,
