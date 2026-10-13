@@ -1,7 +1,7 @@
-# Focused coverage fallback: ordinary PR CI omitted the original image-auth test file.
+# Focused coverage fallback: ordinary PR CI omitted the full-tree unused-file scan.
 # Setup owner: status-usage-focused-workflow.yml. No private QA runtime is needed.
-name: Red-main image auth proof
-run-name: Image auth 30edf5f4bed3 ${{ inputs.dispatch_id }}
+name: Red-main Bun unused-file proof
+run-name: Bun unused-file d79c87980ff4 ${{ inputs.dispatch_id }}
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: redmain-image-auth-proof-30edf5f4bed3
+  group: redmain-bun-unused-files-proof-d79c87980ff4
   cancel-in-progress: false
 
 env:
@@ -23,15 +23,15 @@ env:
   NODE_VERSION: "24.21.0"
 
 jobs:
-  image-auth-proof:
-    name: Image auth original six cases
+  bun-unused-files-proof:
+    name: Bun full-tree unused-file scan
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout reviewed candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 30edf5f4bed3e34b3aab06d39c8a914b976ff76d
+          ref: d79c87980ff41b2218803b907201de9cfa164ff6
           fetch-depth: 1
           persist-credentials: false
 
@@ -41,13 +41,13 @@ jobs:
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 30edf5f4bed3e34b3aab06d39c8a914b976ff76d
-          proof_dir="$RUNNER_TEMP/image-auth-proof"
+          test "$(git rev-parse HEAD)" = d79c87980ff41b2218803b907201de9cfa164ff6
+          proof_dir="$RUNNER_TEMP/bun-unused-files-proof"
           mkdir -p "$proof_dir"
           {
             echo "Candidate: $(git rev-parse HEAD)"
             echo "Workflow: $WORKFLOW_SHA"
-            git ls-tree HEAD -- test/vitest/vitest.database-worker-core-paths.mjs test/vitest-scoped-config.test.ts src/agents/tools/image-generate-tool.auth.test.ts
+            git ls-tree HEAD -- src/infra/sqlite-existing-database.bun.test.ts src/infra/sqlite-existing-database.bun.test-support.ts scripts/check-deadcode-unused-files.mts scripts/deadcode-knip-runner.mts config/knip.all-exports.config.ts
           } | tee "$proof_dir/provenance.txt"
           cat "$proof_dir/provenance.txt" >> "$GITHUB_STEP_SUMMARY"
 
@@ -60,36 +60,35 @@ jobs:
           install-bun: "false"
           dependency-cache: "false"
           frozen-lockfile: "true"
-          vitest-fs-cache: "true"
+          vitest-fs-cache: "false"
           vitest-worker-cache: "false"
           node-compile-cache: "true"
 
-      - name: Run original image-auth test file
-        id: image_auth_cases
+      - name: Run full-tree unused-file scan
+        id: bun_unused_files
         shell: bash
         env:
           OPENCLAW_LOCAL_CHECK: "0"
-          OPENCLAW_VITEST_RUNTIME: node
         run: |
           set -euo pipefail
-          pnpm test src/agents/tools/image-generate-tool.auth.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee "$RUNNER_TEMP/image-auth-proof/image-auth-cases.log"
+          pnpm dlx --package knip@6.32.2 knip --no-progress --reporter compact --files --no-config-hints --config config/knip.all-exports.config.ts 2>&1 | tee "$RUNNER_TEMP/bun-unused-files-proof/bun-unused-files-cases.log"
 
       - name: Record outcome and verify unchanged sources
         if: ${{ always() }}
         shell: bash
         env:
-          TEST_OUTCOME: ${{ steps.image_auth_cases.outcome }}
+          TEST_OUTCOME: ${{ steps.bun_unused_files.outcome }}
         run: |
           set -euo pipefail
-          echo "Image-auth original six cases: $TEST_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          echo "Bun full-tree unused-file scan: $TEST_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
           git status --short
-          git diff --exit-code -- test/vitest/vitest.database-worker-core-paths.mjs test/vitest-scoped-config.test.ts src/agents/tools/image-generate-tool.auth.test.ts
+          git diff --exit-code -- src/infra/sqlite-existing-database.bun.test.ts src/infra/sqlite-existing-database.bun.test-support.ts scripts/check-deadcode-unused-files.mts scripts/deadcode-knip-runner.mts config/knip.all-exports.config.ts
 
       - name: Preserve proof logs
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: redmain-image-auth-proof-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/image-auth-proof/
+          name: redmain-bun-unused-files-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bun-unused-files-proof/
           if-no-files-found: warn
           retention-days: 14
