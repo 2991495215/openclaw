@@ -34,6 +34,7 @@ export function buildModelsMenu(data: {
   const byProvider = new Map<string, ModelsProviderMenu>();
   for (const [id, models] of data.byProvider) {
     const notices = new Set<string>();
+    const availabilityNotices = new Set<string>();
     const providerRoute = resolveModelRuntimeRoute(id);
     if (providerRoute === "claudeCli" || providerRoute === "anthropicConfigured") {
       notices.add(MODEL_PROVIDER_ROUTE_DETAILS[providerRoute]);
@@ -91,7 +92,11 @@ export function buildModelsMenu(data: {
         }
       }
       modelNames.set(key, `${label} — ${modelNames.get(key) ?? model}`);
-      notices.add(`${id}: ${label}. ${recovery}`);
+      availabilityNotices.add(`${label}. ${recovery}`);
+    }
+    const availabilityScope = available > 0 ? `${id} (some models)` : id;
+    for (const notice of availabilityNotices) {
+      notices.add(`${availabilityScope}: ${notice}`);
     }
     byProvider.set(id, { available, notice: [...notices].join("\n") });
   }
