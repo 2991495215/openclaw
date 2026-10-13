@@ -130,6 +130,8 @@ suite.define(() => {
       await suite.withPage(
         { serviceWorkers: "block", viewport: { width, height: 900 } },
         async ({ page }) => {
+          const pageErrors: string[] = [];
+          page.on("pageerror", (error) => pageErrors.push(`${error.name}: ${error.message}`));
           const explicitEnvironmentId = "manual-desktop";
           const gateway = await installMockGateway(page, {
             sessionKey: key,
@@ -170,9 +172,45 @@ suite.define(() => {
             source: { kind: "environment", environmentId: "worker-desktop" },
             control: false,
           });
+          const beforeRfb = {
+            observeRequests: await gateway.getRequests("desktop.observe"),
+            canvasCount: await pane(page).locator(".desktop-surface canvas").count(),
+          };
           const rfb = await installScriptedRfbServer(page);
           await gateway.resolveDeferred("desktop.observe");
-          await pane(page).locator(".desktop-surface canvas").waitFor();
+          try {
+            await pane(page).locator(".desktop-surface canvas").waitFor();
+          } finally {
+            console.info(
+              "redmain-ui5-rfb-diagnostic",
+              JSON.stringify({
+                beforeRfb,
+                pageErrors,
+                rfbEvents: await rfb.events(),
+                rfbConnections: await rfb.connectionCount(),
+                requests: (await gateway.getRequests()).filter((request) =>
+                  [
+                    "desktop.observe",
+                    "desktop.release",
+                    "sessions.describe",
+                    "environments.status",
+                  ].includes(request.method),
+                ),
+                desktop: await pane(page)
+                  .locator("openclaw-desktop-panel")
+                  .evaluateAll((panels) =>
+                    panels.map((panel) => ({
+                      text: panel.textContent,
+                      canvases: [...panel.querySelectorAll("canvas")].map((canvas) => ({
+                        width: canvas.width,
+                        height: canvas.height,
+                        rect: canvas.getBoundingClientRect().toJSON(),
+                      })),
+                    })),
+                  ),
+              }),
+            );
+          }
           await expect.poll(rfb.events).toEqual(["authenticated:1"]);
           expect(await desktopTab(page).count()).toBe(1);
           const chatBox = await pane(page).locator(".sidebar-region__primary").boundingBox();
