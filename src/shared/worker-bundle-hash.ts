@@ -13,6 +13,7 @@ export const WORKER_BUNDLE_ARTIFACT_PATHS = [
   "openclaw-state-read.worker.mjs",
   "worker-native-lifecycle.worker.mjs",
   WORKER_BUNDLE_FILE_TOOL_PLANNING_PATH,
+  "gateway-state-owner-heartbeat.worker.mjs",
   WORKER_BUNDLE_GITHUB_EXEC_LAUNCHER_PATH,
   WORKER_BUNDLE_IMAGE_PROCESSOR_PATH,
   "service-child-group-anchor.mjs",

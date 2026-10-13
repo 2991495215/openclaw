@@ -47,6 +47,7 @@ async function writeFixture(
   for (const [artifactName, contents] of [
     ["code-mode-node.worker.mjs", "export const codeModeNode = true;\n"],
     ["file-tool-planning.worker.mjs", "export const fileToolPlanning = true;\n"],
+    ["gateway-state-owner-heartbeat.worker.mjs", "export const heartbeat = true;\n"],
     ["github-exec-launcher.mjs", "export const launcher = true;\n"],
     ["image-processor.worker.mjs", "export const imageProcessor = true;\n"],
     ["openclaw-state-read.worker.mjs", "export const stateRead = true;\n"],
@@ -225,6 +226,7 @@ describe("worker bundle producer", () => {
       expect(entries).toEqual([
         "code-mode-node.worker.mjs",
         "file-tool-planning.worker.mjs",
+        "gateway-state-owner-heartbeat.worker.mjs",
         "github-exec-launcher.mjs",
         "image-processor.worker.mjs",
         "openclaw-state-read.worker.mjs",
@@ -244,6 +246,7 @@ describe("worker bundle producer", () => {
       await tar.extract({ file: first.tarballPath, cwd: extractRoot });
       for (const [artifactName, expectedContents] of [
         ["file-tool-planning.worker.mjs", "export const fileToolPlanning = true;\n"],
+        ["gateway-state-owner-heartbeat.worker.mjs", "export const heartbeat = true;\n"],
         ["github-exec-launcher.mjs", "export const launcher = true;\n"],
         ["image-processor.worker.mjs", "export const imageProcessor = true;\n"],
         ["openclaw-state-read.worker.mjs", "export const stateRead = true;\n"],
@@ -283,6 +286,7 @@ describe("worker bundle producer", () => {
       let previousHash = first.bundleHash;
       for (const artifactName of [
         "file-tool-planning.worker.mjs",
+        "gateway-state-owner-heartbeat.worker.mjs",
         "github-exec-launcher.mjs",
         "image-processor.worker.mjs",
         "openclaw-state-read.worker.mjs",
@@ -707,6 +711,7 @@ describe("worker bundle producer", () => {
       await expect(listTarball(repaired.tarballPath)).resolves.toEqual([
         "code-mode-node.worker.mjs",
         "file-tool-planning.worker.mjs",
+        "gateway-state-owner-heartbeat.worker.mjs",
         "github-exec-launcher.mjs",
         "image-processor.worker.mjs",
         "openclaw-state-read.worker.mjs",
@@ -724,6 +729,7 @@ describe("worker bundle producer", () => {
     for (const artifactName of [
       "worker-chunk-symlink.mjs",
       "file-tool-planning.worker.mjs",
+      "gateway-state-owner-heartbeat.worker.mjs",
       "github-exec-launcher.mjs",
       "image-processor.worker.mjs",
       "openclaw-state-read.worker.mjs",
