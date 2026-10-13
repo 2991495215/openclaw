@@ -84,8 +84,8 @@ Runtime admission, SQLite safety checks, and the fork's disabled implicit packag
 auto-install remain enabled. macOS Tauri test builds keep their existing runtime
 behavior; the native macOS app owns its separate bundled runtime. Windows Tauri
 builds enable bundled-runtime setup and the same explicit action only after a
-signed Windows fork artifact is admitted. Unsigned proof is limited to debug
-builds and is not shippable. See [Windows runtime preparation](/platforms/windows#tauri-companion-runtime-preparation)
+signed, non-test Windows fork artifact is admitted. Unsigned artifacts are not
+eligible for bundled-runtime setup. See [Windows bundled-runtime adoption](/platforms/windows#bundled-runtime-adoption)
 and [Bun compatibility](/install/bun-compatibility).
 
 Published AMD64 AppImages are built on Ubuntu 22.04 and require glibc 2.35 or
