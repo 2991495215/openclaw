@@ -514,6 +514,7 @@ export async function createPageViaPlaywright(
     isolatedContext?: true;
     /** Launch-owner fact for managed headless Chromium. */
     headless?: true;
+    timeoutMs?: number;
   } & BrowserNavigationPolicyOptions,
 ): Promise<PlaywrightOwnedPage> {
   const assertCurrent = () => {
