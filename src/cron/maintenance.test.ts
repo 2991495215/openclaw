@@ -228,6 +228,7 @@ it("rearms parked retention from a committed worker history write", async () => 
       try {
         startCronMaintenance(scheduler);
         await clock.advanceBy(5_000);
+        console.warn("RETENTION_DIAGNOSTIC initial", { next: scheduler.nextWakeAtMs, armed: clock.armedAtMs, wakes: clock.wakes });
         await recordCronRun({
           storeKey: "/synthetic/cron/jobs.json",
           jobId: "expired",
@@ -239,7 +240,9 @@ it("rearms parked retention from a committed worker history write", async () => 
         });
         await expect.poll(() => scheduler.nextWakeAtMs).toBe(now + 65_000);
         expect(readHistory()).toHaveLength(1);
+        console.warn("RETENTION_DIAGNOSTIC before", { next: scheduler.nextWakeAtMs, armed: clock.armedAtMs, wakes: clock.wakes });
         await clock.advanceBy(60_000);
+        console.warn("RETENTION_DIAGNOSTIC after", { next: scheduler.nextWakeAtMs, armed: clock.armedAtMs, wakes: clock.wakes });
         await stopCronMaintenance();
         expect(readHistory()).toEqual([]);
       } finally {

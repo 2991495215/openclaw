@@ -62,10 +62,12 @@ async function sweep(signal: AbortSignal) {
         const context = captureOpenClawStateWorkerContext();
         const assertCurrent = context.admission.assertCurrent;
         const now = scope?.now() ?? Date.now();
+        console.warn("RETENTION_DIAGNOSTIC sweep", { now, nextHistorySweepAtMs, nextRegistrySweepAtMs });
         if (nextHistorySweepAtMs <= now) {
           nextHistorySweepAtMs = Infinity;
           try {
             const result = await maintainCronRunHistory(context, assertCurrent);
+            console.warn("RETENTION_DIAGNOSTIC history result", result);
             assertCurrent();
             nextHistorySweepAtMs = Math.min(nextHistorySweepAtMs, result.nextSweepAtMs ?? Infinity);
           } catch (error) {
@@ -96,6 +98,7 @@ async function sweep(signal: AbortSignal) {
       signal,
     );
   } catch (error) {
+    console.warn("RETENTION_DIAGNOSTIC error", error);
     const now = scope?.now() ?? Date.now();
     if (nextHistorySweepAtMs <= now) {
       nextHistorySweepAtMs = now + 60_000;
@@ -118,6 +121,7 @@ export function startCronMaintenance(scheduler: GatewayScheduler) {
   scope = scheduler.scope();
   nextHistorySweepAtMs = nextRegistrySweepAtMs = scope.now() + 5_000;
   const invalidateHistory = () => {
+    console.warn("RETENTION_DIAGNOSTIC invalidate", { now: scope?.now(), nextHistorySweepAtMs, sweeping: Boolean(scheduledSweep) });
     if (scope) {
       nextHistorySweepAtMs = Math.min(nextHistorySweepAtMs, scope.now() + 60_000);
       scheduleSweep();
