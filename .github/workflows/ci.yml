@@ -63,7 +63,7 @@ on:
         default: false
         type: boolean
       fixture_group:
-        description: Fixture matrix to verify (all, final, or repairs)
+        description: Fixture matrix to verify (all, final, repairs, or incognito)
         required: false
         default: all
         type: choice
@@ -71,6 +71,7 @@ on:
           - all
           - final
           - repairs
+          - incognito
       base_sha:
         description: Full predecessor commit SHA
         required: true
@@ -184,7 +185,7 @@ jobs:
           retention-days: 14
   main-dependencies:
     name: Main dependency attribution
-    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor && !inputs.diagnose_readiness }}
+    if: ${{ always() && !inputs.diagnose_upgrade && !inputs.diagnose_doctor && !inputs.diagnose_node_wire && !inputs.diagnose_copilot && !inputs.diagnose_actor && !inputs.diagnose_readiness && inputs.fixture_group != 'incognito' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -686,7 +687,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        include: ${{ fromJSON(inputs.fixture_group == 'repairs' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"creation-spawn-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'final' && '[{"group":"final-node","runtime":"node"}]' || '[{"group":"sharing-grants-node","runtime":"node"},{"group":"sharing-siblings-node","runtime":"node"},{"group":"fixture-imports-node","runtime":"node"},{"group":"native-and-merge-node","runtime":"node"},{"group":"creation-mention-node","runtime":"node"},{"group":"patch-recovery-node","runtime":"node"},{"group":"goal-history-node","runtime":"node"},{"group":"typed-fixtures-node","runtime":"node"},{"group":"sharing-routes-node","runtime":"node"},{"group":"session-utils-node","runtime":"node"},{"group":"publication-history-node","runtime":"node"}]') }}
+        include: ${{ fromJSON(inputs.fixture_group == 'incognito' && '[{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'repairs' && '[{"group":"logical-entry-repair-node","runtime":"node"},{"group":"creation-durability-repair-node","runtime":"node"},{"group":"creation-spawn-repair-node","runtime":"node"},{"group":"incognito-close-repair-node","runtime":"node"}]' || inputs.fixture_group == 'final' && '[{"group":"final-node","runtime":"node"}]' || '[{"group":"sharing-grants-node","runtime":"node"},{"group":"sharing-siblings-node","runtime":"node"},{"group":"fixture-imports-node","runtime":"node"},{"group":"native-and-merge-node","runtime":"node"},{"group":"creation-mention-node","runtime":"node"},{"group":"patch-recovery-node","runtime":"node"},{"group":"goal-history-node","runtime":"node"},{"group":"typed-fixtures-node","runtime":"node"},{"group":"sharing-routes-node","runtime":"node"},{"group":"session-utils-node","runtime":"node"},{"group":"publication-history-node","runtime":"node"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
