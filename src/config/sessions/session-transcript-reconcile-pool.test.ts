@@ -41,6 +41,56 @@ vi.mock("node:worker_threads", async () =>
 const observer = useReconcileWorkerObserver();
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
+it("closes a queued admission without dispatching it after shutdown", async () => {
+  const { maxWorkers } = getSessionTranscriptReconcileWorkerPoolSnapshot();
+  const holders = Array.from({ length: maxWorkers }, () => createDeferredCore());
+  const dispatched: string[] = [];
+  observer.beforeCreate = () => ({
+    filename: "setInterval(() => {}, 1_000)",
+    options: { eval: true },
+  });
+  observer.onTask = ({ input }) => {
+    dispatched.push(input.mode === "memory" ? input.sessionIds.join(",") : input.mode);
+  };
+  const startMemoryTask = (sessionId: string, started?: () => void) =>
+    runSessionTranscriptReconcileOperation(
+      captureSessionTranscriptReconcileGeneration(),
+      async (operation) => {
+        const task = await operation.startTask({ mode: "memory", sessionIds: [sessionId] }, 1);
+        started?.();
+        try {
+          await task.completion;
+        } finally {
+          task.port.close();
+        }
+      },
+    );
+  const operations = holders.map((holder, index) =>
+    startMemoryTask(`holder-${index}`, () => holder.resolve()),
+  );
+  await Promise.all(holders.map((holder) => holder.promise));
+  const { pendingTasks } = getSessionTranscriptReconcileWorkerPoolSnapshot();
+  operations.push(startMemoryTask("queued"));
+  const outcome = Promise.allSettled(operations);
+  let closing: Promise<void> | undefined;
+  try {
+    expect(getSessionTranscriptReconcileWorkerPoolSnapshot().pendingTasks).toBe(pendingTasks + 1);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    closing = closeSessionTranscriptReconcileWorkerPool();
+    await vi.advanceTimersByTimeAsync(5_000);
+    vi.useRealTimers();
+    await closing;
+    expect((await outcome).map((result) => result.status)).toEqual(
+      operations.map(() => "rejected"),
+    );
+    expect(dispatched).not.toContain("queued");
+  } finally {
+    vi.useRealTimers();
+    await (closing ?? closeSessionTranscriptReconcileWorkerPool());
+    await outcome;
+  }
+});
+
 function readAgentDatabaseLeaseIds(pathname: string, env: NodeJS.ProcessEnv): string[] {
   return openOpenClawStateDatabase({ env })
     .db.prepare(
@@ -304,7 +354,7 @@ it.each(["complete", "native-exit"] as const)(
   30_000,
 );
 
-it.each(["complete", "native-exit"] as const)(
+it.each(["complete", "native-exit", "pool-timeout"] as const)(
   "joins transcript lease settlement before closing an agent (%s)",
   async (ending) => {
     const stateDir = tempDirs.make("openclaw-reconcile-agent-close-");
@@ -411,23 +461,34 @@ it.each(["complete", "native-exit"] as const)(
           .prepare("DELETE FROM transcript_events WHERE session_id = ?")
           .run(orphanSessionId);
       }
+      if (ending === "pool-timeout") {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const terminate = vi.spyOn(activeWorker!, "terminate");
+        const poolClosing = closeSessionTranscriptReconcileWorkerPool();
+        await vi.advanceTimersByTimeAsync(4_999);
+        expect(terminate).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(terminate).toHaveBeenCalledOnce();
+        vi.useRealTimers();
+        await poolClosing;
+      }
       closing = closeOpenClawAgentDatabaseByPathAsync(database.path);
       if (ending === "native-exit") {
         releaseAcknowledgement = undefined;
         await activeWorker!.terminate();
-      } else {
+      } else if (ending === "complete") {
         releaseAcknowledgement!();
         releaseAcknowledgement = undefined;
       }
       await expect(closing).resolves.toBe(true);
       const [result] = await reconciliation;
       expect(result).toEqual(
-        ending === "native-exit"
+        ending !== "complete"
           ? expect.objectContaining({ status: "rejected" })
           : { status: "fulfilled", value: { reconciledSessions: 1 } },
       );
       expect(events).toEqual(
-        ending === "native-exit"
+        ending !== "complete"
           ? ["release-task", "worker-release", "native-close"]
           : ["worker-release", "native-close"],
       );
@@ -474,6 +535,7 @@ it.each(["complete", "native-exit"] as const)(
         });
       }
     } finally {
+      vi.useRealTimers();
       canonical.restore();
       releaseAcknowledgement?.();
       await reconciliation;
