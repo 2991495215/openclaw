@@ -16,6 +16,7 @@ import {
 } from "../config/runtime-snapshot.js";
 import { createPluginStateKeyedStore } from "../plugin-state/plugin-state-store.js";
 import { captureEnv } from "../test-utils/env.js";
+import { formatGatewayPendingCloseSteps, startGatewayRestartTrace } from "./restart-trace.js";
 import { disconnectGatewayClient, startGatewayWithClient } from "./test-helpers.e2e.js";
 
 type ProviderRequest = {
@@ -208,6 +209,7 @@ it.each(cases)(
       OPENCLAW_STATE_DIR: state,
       OPENCLAW_CONFIG_PATH: path.join(state, "openclaw.json"),
       OPENCLAW_GATEWAY_TOKEN: "synthetic-recovery-token",
+      OPENCLAW_GATEWAY_RESTART_TRACE: "1",
       OPENCLAW_TEST_MINIMAL_GATEWAY: "0",
       OPENCLAW_AGENT_RUNTIME: "codex",
       OPENCLAW_SKIP_CHANNELS: "1",
@@ -353,10 +355,17 @@ it.each(cases)(
     });
     let nativeConfig: typeof import("../plugin-sdk/runtime-config-snapshot.js") | undefined =
       undefined;
+    onTestFinished(() => {
+      console.warn(`[recovery diagnostic] final pending close: ${formatGatewayPendingCloseSteps()}`);
+    });
     onTestFinished(async () => {
       releaseSibling.resolve();
+      console.warn("[recovery diagnostic] client disconnect starting");
       await disconnectGatewayClient(gateway.client);
+      console.warn("[recovery diagnostic] Gateway close starting");
+      startGatewayRestartTrace("recovery-fixture-close");
       await gateway.server.close();
+      console.warn("[recovery diagnostic] Gateway close finished");
       nativeConfig?.clearRuntimeConfigSnapshot();
     });
     const runtimeConfig = getRuntimeConfigSnapshot();
@@ -536,6 +545,7 @@ it.each(cases)(
     const continued = await start("Continue with changed instructions.", "second");
     if (exitGate) {
       await withTestTimeout(exitGate.waiting, 10_000, "startup did not wait for physical exit");
+      console.warn("[recovery diagnostic] physical-exit waiter installed");
       expect(exitGate.child.exitCode).toBeNull();
       expect(exitGate.child.signalCode).toBeNull();
       expect(nativeProcesses.size).toBe(beforeRecoveryProcesses);
@@ -559,8 +569,10 @@ it.each(cases)(
           expect.arrayContaining([expect.stringContaining(SHUTDOWN_FAILURE_DETAIL)]),
         );
       }
+      console.warn("[recovery diagnostic] binding assertion completed; releasing physical exit");
       exitGate.release();
       await withTestTimeout(exitGate.exited, 10_000, "old native process did not exit");
+      console.warn("[recovery diagnostic] physical exit observed");
       if (shutdown !== "delayed") {
         await wait(continued.runId);
         expect(nativeProcesses.size).toBe(beforeRecoveryProcesses);
@@ -595,6 +607,7 @@ it.each(cases)(
       await continueIdleSibling(recovered.clientId);
     }
     expect(requests).toHaveLength(idleSibling ? 4 : 2);
+    console.warn("[recovery diagnostic] recovery assertions completed");
   },
 );
 
@@ -697,6 +710,9 @@ function holdNativeExit(
         return;
       }
       released = true;
+      console.warn(
+        `[recovery diagnostic] releasing clock; fake timers: ${vi.isFakeTimers() ? vi.getTimerCount() : "none"}`,
+      );
       vi.useRealTimers();
       child.off("newListener", onListener);
       restoreExitConfirmation();
