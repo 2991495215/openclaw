@@ -108,7 +108,14 @@ describe("candidate readiness authority", () => {
   it("admits the exact candidate without waiting for review, then revalidates it for the gate", async () => {
     const f = fixture();
     expect(await inspect(f)).toMatchObject({ broad_ci: "true", request_id: "101" });
-    expect(await inspect(f, { requestId: "101" })).toMatchObject({ broad_ci: "true" });
+    expect(
+      await inspect(f, {
+        phase: "result",
+        requestId: "101",
+        runAttempt: "1",
+        admittedAttempt: "1",
+      }),
+    ).toMatchObject({ broad_ci: "true" });
     expect(f.writes).toEqual([]);
   });
   it.each(["off", "canary"])("preserves ordinary CI outside %s rollout", async (mode) => {
@@ -176,12 +183,16 @@ describe("candidate readiness authority", () => {
   ])("does not resurrect an admission after %s, even on the same head", async (event) => {
     const f = fixture();
     f.ledger.push({ ...f.labeled, id: 102, event });
-    await expect(inspect(f, { requestId: "101" })).rejects.toThrow("revoked");
+    await expect(
+      inspect(f, { phase: "result", requestId: "101", runAttempt: "1", admittedAttempt: "1" }),
+    ).rejects.toThrow("revoked");
   });
   it("rejects a new label event when accepting an older request's result", async () => {
     const f = fixture();
     f.ledger.push({ ...f.labeled, id: 102 });
-    await expect(inspect(f, { requestId: "101" })).rejects.toThrow("identity changed");
+    await expect(
+      inspect(f, { phase: "result", requestId: "101", runAttempt: "1", admittedAttempt: "1" }),
+    ).rejects.toThrow("identity changed");
   });
   it("does not trust author association or the historical event actor's former permission", async () => {
     const f = fixture();
@@ -235,14 +246,23 @@ describe("candidate readiness authority", () => {
         ? { status: "ahead", merge_base_commit: { sha: base } }
         : api(path, options),
     );
-    expect(await inspect(f, { requestId: "101" })).toMatchObject({ broad_ci: "true" });
+    expect(
+      await inspect(f, {
+        phase: "result",
+        requestId: "101",
+        runAttempt: "1",
+        admittedAttempt: "1",
+      }),
+    ).toMatchObject({ broad_ci: "true" });
     await expect(inspect(f)).rejects.toThrow("superseded");
     f.api.mockImplementation(async (path, options) =>
       path.includes("/compare/")
         ? { status: "diverged", merge_base_commit: { sha: "f".repeat(40) } }
         : api(path, options),
     );
-    await expect(inspect(f, { requestId: "101" })).rejects.toThrow("rewritten");
+    await expect(
+      inspect(f, { phase: "result", requestId: "101", runAttempt: "1", admittedAttempt: "1" }),
+    ).rejects.toThrow("rewritten");
   });
   it("fails closed on an incomplete bounded event ledger", async () => {
     const f = fixture();
@@ -453,6 +473,7 @@ function runGate(env: Record<string, string>) {
       GITHUB_RUN_ATTEMPT: "1",
       READINESS_RESULT: "success",
       READINESS_ATTEMPT: "1",
+      READINESS_AUTHORITY_RESULT: "success",
       READINESS_ENFORCED: "false",
       READINESS_REQUEST_ID: "",
       BROAD_CI: "true",
@@ -485,12 +506,17 @@ describe("real CI workflow admission and required status", () => {
     expect(
       steps.find((s: { name: string }) => s.name === "Classify candidate cache trust").run,
     ).toContain("trust=pull-request\n  cache_mode=restore");
+    const checkout = workflow.jobs.readiness.steps.find((s: { uses?: string }) =>
+      s.uses?.startsWith("actions/checkout@"),
+    );
+    expect(checkout.with.ref).toBe("${{ github.event.pull_request.base.sha }}");
+    expect(checkout.with["persist-credentials"]).toBe(false);
+    const result = workflow.jobs["ci-gate"].steps.find(
+      (s: { id?: string }) => s.id === "readiness_result",
+    );
+    expect(result.env.READINESS_PHASE).toBe("result");
+    expect(result.env.READINESS_REQUEST_ID).toBe("${{ needs.readiness.outputs.request_id }}");
     for (const job of [workflow.jobs.readiness, workflow.jobs["ci-gate"]]) {
-      const checkout = job.steps.find((s: { uses?: string }) =>
-        s.uses?.startsWith("actions/checkout@"),
-      );
-      expect(checkout.with.ref).toBe("${{ github.event.pull_request.base.sha }}");
-      expect(checkout.with["persist-credentials"]).toBe(false);
       expect(Object.values(job.permissions)).not.toContain("write");
     }
   });
@@ -595,6 +621,29 @@ describe("real CI workflow admission and required status", () => {
         JOB_RESULTS: results,
       });
       expect(result.status, result.stdout + result.stderr).toBe(status);
+    },
+  );
+  it.skipIf(process.platform === "win32").each(["failure", "skipped", ""])(
+    "rejects broad proof when current result authority is %s",
+    (outcome) => {
+      const result = runGate({
+        READINESS_ENFORCED: "true",
+        READINESS_REQUEST_ID: "101",
+        READINESS_AUTHORITY_RESULT: outcome,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("CI readiness authority lost");
+    },
+  );
+  it.skipIf(process.platform === "win32")(
+    "does not count a successful failure reporter as broad workload proof",
+    () => {
+      const result = runGate({
+        JOB_RESULTS:
+          "preflight=success|true\nsecurity-fast=success|true\npr-failure-report=success|true\nbuild=skipped|false",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("CI broad proof missing");
     },
   );
 });

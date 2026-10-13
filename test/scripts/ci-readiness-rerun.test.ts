@@ -21,6 +21,7 @@ const broadJobs = Object.entries(workflow.jobs).filter(
       "ci-gate",
       "seal_release_child_evidence",
       "ios-release-e2e",
+      "pr-failure-report",
     ].includes(id),
 );
 
@@ -40,13 +41,21 @@ describe("attempt-bound workflow entry paths", () => {
     );
     const gate = workflow.jobs["ci-gate"];
     expect(gate.needs.toSorted()).toEqual(
-      ["readiness", "preflight", "security-fast", ...ids, "ios-release-e2e"].toSorted(),
+      [
+        "readiness",
+        "preflight",
+        "security-fast",
+        ...ids,
+        "ios-release-e2e",
+        "pr-failure-report",
+      ].toSorted(),
     );
     const verifyStep = gate.steps.find(
       (step: { name: string }) => step.name === "Verify selected CI lanes",
     );
     expect(Object.keys(verifyStep.env)).toEqual([
       "READINESS_RESULT",
+      "READINESS_AUTHORITY_RESULT",
       "READINESS_ATTEMPT",
       "READINESS_ENFORCED",
       "READINESS_REQUEST_ID",
@@ -63,7 +72,9 @@ describe("attempt-bound workflow entry paths", () => {
         .split("\n")
         .map((row: string) => row.split("=")[0])
         .toSorted(),
-    ).toEqual(["preflight", "security-fast", ...ids, "ios-release-e2e"].toSorted());
+    ).toEqual(
+      ["preflight", "security-fast", ...ids, "ios-release-e2e", "pr-failure-report"].toSorted(),
+    );
     for (const runAttempt of [1, 2]) {
       expect(
         evaluateWorkflowExpression(workflow.jobs["ios-release-e2e"].if, {
@@ -123,13 +134,16 @@ describe("attempt-bound workflow entry paths", () => {
             ...context,
             sha: head,
             additionalNeeds: {
-              "check-plan": { outputs: {}, result: "success" },
+              "check-plan": { outputs: { check_matrix: "fixture-matrix" }, result: "success" },
+              "build-artifacts": {
+                outputs: { published_driver_artifact_id: "123" },
+                result: "success",
+              },
               "check-extension-package-boundary": { outputs: {}, result: "success" },
             },
             preflightOutputs: {
               ...selected,
               checkout_revision: head,
-              disable_fail_fast: "false",
               runner_profile: "hybrid",
               frozen_target: "false",
               compatibility_target: "false",
@@ -158,7 +172,13 @@ describe("attempt-bound workflow entry paths", () => {
           repository,
           runAttempt: 2,
           sha: head,
-          additionalNeeds: { "check-plan": { outputs: {}, result: "success" } },
+          additionalNeeds: {
+            "check-plan": { outputs: { check_matrix: "fixture-matrix" }, result: "success" },
+            "build-artifacts": {
+              outputs: { published_driver_artifact_id: "123" },
+              result: "success",
+            },
+          },
           preflightOutputs: {
             run_check_plan: "true",
             run_check: "true",

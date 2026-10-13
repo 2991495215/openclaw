@@ -145,7 +145,13 @@ export async function inspectReadiness({
   testedSha,
   requestId = "",
   triggeringActor = "",
+  phase = "admission",
+  runAttempt = "",
+  admittedAttempt = "",
 }) {
+  if (!["admission", "work-start", "result"].includes(phase)) {
+    throw new Error("Invalid CI readiness validation phase");
+  }
   validatePolicy(policy);
   const original = event.pull_request;
   candidate(original);
@@ -158,6 +164,21 @@ export async function inspectReadiness({
       reason: labelEvent ? "Readiness rollout is disabled for this PR" : "Ordinary event-driven CI",
     };
   }
+  if (phase !== "admission") {
+    if (!/^[1-9][0-9]*$/.test(requestId) || !Number.isSafeInteger(Number(requestId))) {
+      throw new Error("Missing admitted CI readiness request identity");
+    }
+    if (
+      !/^[1-9][0-9]*$/.test(runAttempt) ||
+      !Number.isSafeInteger(Number(runAttempt)) ||
+      admittedAttempt !== runAttempt
+    ) {
+      throw new Error("Fresh CI readiness admission required for this run attempt");
+    }
+  } else if (requestId) {
+    throw new Error("CI readiness admission must discover its request identity");
+  }
+  const acceptingResult = phase === "result";
   const deferred = (reason) => ({ broad_ci: "false", enforced: "true", reason });
   assertOpen(original, repository);
   const label = readinessLabel(original, policy);
@@ -171,15 +192,15 @@ export async function inspectReadiness({
   const current = await api(pullPath);
   assertOpen(current, repository);
   if (
-    !sameCandidate(original, current, Boolean(requestId)) ||
-    (!requestId && current.merge_commit_sha !== testedSha)
+    !sameCandidate(original, current, acceptingResult) ||
+    (!acceptingResult && current.merge_commit_sha !== testedSha)
   ) {
     throw new Error("CI readiness candidate or tested merge revision was superseded");
   }
   // Normal main advancement does not invalidate completed proof of this run's
   // original merge tree. Preserve non-strict required-check policy, but never
   // accept a base rewrite or retarget as ordinary advancement.
-  if (requestId && original.base.sha !== current.base.sha) {
+  if (acceptingResult && original.base.sha !== current.base.sha) {
     const comparison = await api(
       `repos/${repository}/compare/${original.base.sha}...${current.base.sha}`,
     );
@@ -204,14 +225,14 @@ export async function inspectReadiness({
     await requireWriter(api, repository, triggeringActor);
   }
   // Recheck lifecycle/candidate after the awaited authority reads, both before
-  // planner fanout and again at result acceptance. Labels never change source trust.
+  // planner fanout, queued workload start, and result acceptance. Labels never change source trust.
   const finalRequest = await requestEvent(api, repository, original.number, label);
   const finalPr = await api(pullPath);
   assertOpen(finalPr, repository);
   if (
     finalRequest.id !== request.id ||
     !sameCandidate(current, finalPr) ||
-    (!requestId && finalPr.merge_commit_sha !== testedSha) ||
+    (!acceptingResult && finalPr.merge_commit_sha !== testedSha) ||
     !finalPr.labels.some((item) => item.name === label)
   ) {
     throw new Error("CI readiness authority changed during admission");
@@ -373,6 +394,8 @@ async function main() {
       base: { type: "string" },
       policy: { type: "string" },
       "request-id": { type: "string" },
+      phase: { type: "string" },
+      "admitted-attempt": { type: "string" },
     },
   });
   if (command === "request") {
@@ -400,8 +423,11 @@ async function main() {
     testedSha: process.env.GITHUB_SHA,
     triggeringActor: process.env.GITHUB_TRIGGERING_ACTOR,
     requestId: values["request-id"],
+    phase: values.phase,
+    runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+    admittedAttempt: values["admitted-attempt"],
   });
-  if (values["request-id"] && result.broad_ci !== "true") {
+  if (values.phase && values.phase !== "admission" && result.broad_ci !== "true") {
     throw new Error(result.reason);
   }
   for (const [key, value] of Object.entries(result)) {

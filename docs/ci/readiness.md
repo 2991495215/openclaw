@@ -72,8 +72,8 @@ service, cross-provider proof cache, or a claim of exactly-once event delivery.
 The concurrent-label/live-event boundary must be qualified before rollout.
 
 A failed CI run remains failed. A current authorized maintainer can use GitHub's
-**Re-run all jobs** on the existing request; admission and result acceptance
-recheck live authority, including the rerun actor. For enrolled candidates,
+**Re-run all jobs** on the existing request; admission, queued work start, and
+result acceptance recheck live authority, including the rerun actor. For enrolled candidates,
 partial/failed-job reruns cannot reuse a prior attempt's readiness or planner
 outputs: both preflight and every broad job reject the stale attempt before
 expensive work or runner allocation. The aggregate reports the need for a full
@@ -91,7 +91,8 @@ label removal is a revocation event, not routine metadata cleanup.
   explicit current-candidate request. Retained labels never admit subsequent
   pushes or ready-for-review transitions.
 - Draft conversion, closure, label removal, new head, retarget, changed request,
-  and lost requester authority revoke admission/result acceptance. A same-head
+  and lost requester authority revoke admission, queued work start, and result
+  acceptance. A same-head
   draft/ready, close/reopen, retarget-away/back, or force-push-back cycle does not
   resurrect the old label event.
 - A valid enrolled candidate awaiting a request reports a failing **CI deferred
@@ -116,12 +117,28 @@ label removal is a revocation event, not routine metadata cleanup.
   with the target branch merge commit, where they must not replace main CI.
   Base-retarget edits invalidate the required PR gate and need a fresh request,
   including after an earlier candidate had already completed CI.
-- The final gate rechecks admission after all selected jobs. Each selected job
-  must still succeed under the existing aggregate contract. Ordinary forward
-  base advancement may retain proof of the run's original tested merge tree;
-  the gate verifies ancestry and a stable final snapshot, not proof of the newer
-  tree. Base rewrites, retargets, or changed heads fail. Native exact-head merge
-  checks and branch rules remain authoritative.
+- Preflight and every selected workload revalidate the admitted request when
+  their runner starts, after checkout and before dependency setup, build, or test
+  execution. Matrix children validate independently; the reusable published-driver
+  workflow validates inside its own job. A pinned GitHub action loads the existing
+  authority helper and policy only from the immutable event base. Missing request,
+  enforcement, or attempt bindings and unavailable authority fail closed. Work-start
+  validation requires the original candidate, base, and tested merge revision;
+  passing a request ID does not grant result-time base-advance tolerance.
+  Cheap security admission remains independent of broad readiness.
+- The post-run failure reporter and final gate use explicit **result** validation.
+  Only this phase may retain completed proof after ordinary forward base advancement:
+  it verifies ancestry and a stable final snapshot, not proof of the newer tree.
+  Base rewrites, retargets, changed heads, or lost requester authority fail. The
+  aggregate preserves current completed-job classification and its narrow
+  first-attempt known-main-red allowance; those rules never waive readiness
+  authority or freshness. A successful reporter is diagnostic, not successful
+  broad-work proof. Native exact-head merge checks and branch rules remain authoritative.
+- Work-start validation cannot prevent the runner allocation or checkout cost
+  already incurred, and it is not atomic cancellation after the final authority
+  read. Permission removal has no workflow event of its own. Lifecycle cancellation
+  and the independent result-time check remain necessary; no zero-cost revocation
+  or live rollout qualification is claimed.
 - Native merge consumes the transport's required-check results unchanged.
   GitHub CLI selects current CI CheckRuns before required-check export, while
   REST selects latest checks. The independent same-name Security Review

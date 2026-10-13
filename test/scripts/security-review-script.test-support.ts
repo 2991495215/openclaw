@@ -11,6 +11,7 @@ export const pr = {
   number: 7,
   state: "open",
   draft: false,
+  maintainer_can_modify: true,
   created_at: "2026-01-01T00:00:00Z",
   user: { id: 1, login: "maintainer", type: "User" },
   changed_files: 2,
