@@ -527,9 +527,9 @@ export function handleMessageUpdate(
         !ctx.params.enforceFinalTag &&
         (priorBlockIndex === streamContentIndex ||
           (priorBlockIndex === undefined && !priorBlockText)) &&
-        previousText === previousCleaned &&
-        next === cleanedText &&
-        next === nextRawStreamText.trim();
+        next === nextRawStreamText.trim() &&
+        ((previousText === previousCleaned && next === cleanedText) ||
+          (appendDelta !== null && replyDelta === appendDelta));
       if (plainAppend) {
         ctx.blockChunker.append(chunk);
       } else {
