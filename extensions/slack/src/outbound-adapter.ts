@@ -4,10 +4,7 @@ import {
   resolveOutboundSendDep,
   type OutboundIdentity,
 } from "openclaw/plugin-sdk/channel-outbound";
-import {
-  attachChannelToResult,
-  type ChannelOutboundAdapter,
-} from "openclaw/plugin-sdk/channel-send-result";
+import type { ChannelOutboundAdapter } from "openclaw/plugin-sdk/channel-send-result";
 import {
   normalizeMessagePresentation,
   resolveLegacyInteractiveTextFallback,
@@ -43,22 +40,12 @@ import {
   type SlackReplyBlockResolution,
   type SlackReplyBlockSegment,
 } from "./reply-blocks.js";
-import { mergeSlackSendResults } from "./send-results.js";
+import { mergeSlackSendResults, toSlackOutboundResult } from "./send-results.js";
 import type { SlackSendIdentity, SlackSendResult } from "./send.js";
 import { parseSlackTarget } from "./target-parsing.js";
 import { resolveSlackThreadTsValue } from "./thread-ts.js";
 
 type SlackSendFn = typeof import("./send.js").sendMessageSlack;
-
-function toSlackOutboundResult<T extends { channelId?: string }>(result: T) {
-  const { channelId, ...delivery } = result;
-  return attachChannelToResult(
-    "slack",
-    channelId === undefined
-      ? delivery
-      : { ...delivery, target: { kind: "channel" as const, id: channelId } },
-  );
-}
 
 type SlackOutboundChannelData = Record<string, unknown> & {
   authoredPresentationText?: string;
@@ -342,11 +329,16 @@ export const slackOutbound: ChannelOutboundAdapter = {
     if (!deliveryMessage || !deliveredDisplayBlocks || !result?.messageId) {
       return;
     }
-    const channelId = result.target?.kind === "channel" ? result.target.id : undefined;
-    if (!channelId) {
+    const deliveredTo = result.target?.kind === "channel" ? result.target.id : undefined;
+    const deliveredTarget = deliveredTo
+      ? parseSlackTarget(deliveredTo, { defaultKind: "channel" })
+      : undefined;
+    if (deliveredTarget?.kind !== "channel") {
       return;
     }
-    const teamId = parseSlackTarget(target.to, { defaultKind: "channel" })?.teamId;
+    const channelId = deliveredTarget.id;
+    const teamId =
+      deliveredTarget.teamId ?? parseSlackTarget(target.to, { defaultKind: "channel" })?.teamId;
     // Aggregate fallback receipts retain their last platform id separately
     // from the actual card whose question controls need finalization.
     const questionMessageId =
@@ -355,7 +347,7 @@ export const slackOutbound: ChannelOutboundAdapter = {
         : result.messageId;
     questionGatewayRuntime.registerChannelDelivery({
       questionId,
-      deliveryId: `slack:${target.accountId ?? "default"}:${channelId}:${questionMessageId}`,
+      deliveryId: `slack:${target.accountId ?? "default"}:${deliveredTo}:${questionMessageId}`,
       finalize: async (statusLine) => {
         const { updateMessageSlack } = await loadSlackSendRuntime();
         const escapedStatusLine = escapeSlackMrkdwn(statusLine);

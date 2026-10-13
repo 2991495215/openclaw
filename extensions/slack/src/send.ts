@@ -1,13 +1,10 @@
 import { createHash, createHmac } from "node:crypto";
 import type { MessageMetadata } from "@slack/types";
 import type { Block, KnownBlock, WebClient } from "@slack/web-api";
-import {
-  createMessageReceiptFromOutboundResults,
-  type ChannelMessageUnknownSendContext,
-  type ChannelMessageUnknownSendReconciliationResult,
-  type MessageReceipt,
-  type MessageReceiptPartKind,
-  type MessageReceiptSourceResult,
+import type {
+  ChannelMessageUnknownSendContext,
+  ChannelMessageUnknownSendReconciliationResult,
+  MessageReceiptPartKind,
 } from "openclaw/plugin-sdk/channel-outbound";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { KeyedAsyncQueue } from "openclaw/plugin-sdk/keyed-async-queue";
@@ -56,6 +53,11 @@ import {
   resolveSlackQuestionActionIds,
   SLACK_QUESTION_FINALIZATION_BLOCKS,
 } from "./reply-action-ids.js";
+import {
+  createSlackSendReceipt,
+  createSlackSendReceiptFromResults,
+  type SlackSendResult,
+} from "./send-results.js";
 import { recordSlackThreadParticipation } from "./sent-thread-cache.js";
 import { cacheSlackDmChannelId, readCachedSlackDmChannelId } from "./slack-dm-channel-cache.js";
 import { canonicalizeSlackApiTargetId, parseSlackTarget } from "./target-parsing.js";
@@ -220,17 +222,7 @@ function resolvePostedMessageThreadTs(response: {
   return typeof threadTs === "string" ? normalizeSlackThreadTsCandidate(threadTs) : undefined;
 }
 
-export type SlackSendResult = {
-  messageId: string;
-  channelId: string;
-  receipt: MessageReceipt;
-  threadTs?: string;
-  meta?: {
-    slackQuestionActionIds: string[];
-    slackQuestionMessageId?: string;
-    [SLACK_QUESTION_FINALIZATION_BLOCKS]?: (Block | KnownBlock)[];
-  };
-};
+export type { SlackSendResult } from "./send-results.js";
 
 export async function updateMessageSlack(params: {
   cfg: OpenClawConfig;
@@ -272,56 +264,22 @@ type SlackConversationLookupResponse = {
 
 type SlackConversationLookupClient = Pick<WebClient, "conversations">;
 
-function createSlackSendReceipt(params: {
-  platformMessageIds: readonly string[];
-  channelId?: string;
-  kind: MessageReceiptPartKind;
-  threadTs?: string;
-}): MessageReceipt {
-  const platformMessageIds = params.platformMessageIds
-    .map((messageId) => messageId.trim())
-    .filter((messageId) => messageId && messageId !== "unknown");
-  return createMessageReceiptFromOutboundResults({
-    results: platformMessageIds.map((messageId) => {
-      const result: MessageReceiptSourceResult = {
-        channel: "slack",
-        messageId,
-      };
-      if (params.channelId) {
-        result.channelId = params.channelId;
-      }
-      return result;
-    }),
-    kind: params.kind,
-    threadId: params.threadTs,
-  });
-}
-
-function createSlackSendReceiptFromResults(
-  results: readonly SlackSendResult[],
-  threadTs?: string,
-): MessageReceipt {
-  const receipt = createMessageReceiptFromOutboundResults({ results, threadId: threadTs });
-  const thread = threadTs ? { threadId: threadTs } : {};
-  for (const [index, part] of receipt.parts.entries()) {
-    Object.assign(part, { index, ...thread });
-  }
-  return Object.assign(receipt, thread);
-}
-
 function createSlackSendResult(
   messageId: string,
   channelId: string,
   kind: MessageReceiptPartKind,
   threadTs?: string,
+  teamId?: string,
 ): SlackSendResult {
   return {
     messageId,
     channelId,
+    ...(teamId ? { teamId } : {}),
     threadTs,
     receipt: createSlackSendReceipt({
       platformMessageIds: [messageId],
       channelId,
+      teamId,
       kind,
       threadTs,
     }),
@@ -727,6 +685,7 @@ function findSlackConversationDeliveryParts(params: {
 async function scanSlackConversationForDelivery(params: {
   client: SlackConversationLookupClient;
   channelId: string;
+  teamId?: string;
   threadTs?: string;
   oldest: string;
   latest: string;
@@ -793,6 +752,7 @@ async function scanSlackConversationForDelivery(params: {
           receipt: createSlackSendReceipt({
             platformMessageIds,
             channelId: params.channelId,
+            teamId: params.teamId,
             kind: "text",
             ...(reconciledThreadTs ? { threadTs: reconciledThreadTs } : {}),
           }),
@@ -921,6 +881,7 @@ export async function reconcileSlackUnknownSend(
         const scan = await scanSlackConversationForDelivery({
           client: lookupClient,
           channelId,
+          teamId: recipient.teamId,
           ...(threadTs ? { threadTs } : {}),
           oldest,
           latest,
@@ -1137,6 +1098,7 @@ async function sendMessageSlackQueued(params: {
         deliveredChannelId,
         part.blocks ? "card" : "text",
         responseThreadTs ?? normalizeSlackThreadTsCandidate(opts.threadTs),
+        delivery.teamId,
       ),
       part.blocks,
     );
@@ -1207,6 +1169,7 @@ async function sendMessageSlackQueued(params: {
       return {
         messageId: lastMessageId,
         channelId: deliveredChannelId,
+        ...(delivery.teamId ? { teamId: delivery.teamId } : {}),
         threadTs: deliveredThreadTs,
         // Core replaces per-card progress with this aggregate; retain the
         // actual question-card identity even when a later fallback part wins.
@@ -1263,6 +1226,7 @@ async function sendMessageSlackQueued(params: {
         channelId,
         "media",
         normalizeSlackThreadTsCandidate(opts.threadTs),
+        delivery.teamId,
       ),
     );
     chunksToPost = rest;
@@ -1300,6 +1264,7 @@ async function sendMessageSlackQueued(params: {
   return {
     messageId: lastMessageId,
     channelId: deliveredChannelId,
+    ...(delivery.teamId ? { teamId: delivery.teamId } : {}),
     threadTs: deliveredThreadTs,
     receipt: createSlackSendReceiptFromResults(deliveredResults, deliveredThreadTs),
   };
