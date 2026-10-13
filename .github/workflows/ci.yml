@@ -1,7 +1,5 @@
-# Focused coverage fallback: ordinary PR CI omitted the full-tree unused-file scan.
-# Setup owner: status-usage-focused-workflow.yml. No private QA runtime is needed.
-name: Red-main Bun unused-file proof
-run-name: Bun unused-file d79c87980ff4 ${{ inputs.dispatch_id }}
+name: Red-main renderer reveal proof
+run-name: Renderer reveal ${{ inputs.dispatch_id }}
 
 on:
   workflow_dispatch:
@@ -15,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: redmain-bun-unused-files-proof-d79c87980ff4
+  group: redmain-renderer-reveal-proof
   cancel-in-progress: false
 
 env:
@@ -23,31 +21,31 @@ env:
   NODE_VERSION: "24.21.0"
 
 jobs:
-  bun-unused-files-proof:
-    name: Bun full-tree unused-file scan
+  renderer-reveal-proof:
+    name: Original renderer reveal cases
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - name: Checkout reviewed candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: d79c87980ff41b2218803b907201de9cfa164ff6
+          ref: 5ed8e6c21f2dba67cb0f33d2562b08e099e5e059
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Record candidate sources
+      - name: Record candidate and unchanged original tests
         shell: bash
         env:
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = d79c87980ff41b2218803b907201de9cfa164ff6
-          proof_dir="$RUNNER_TEMP/bun-unused-files-proof"
+          test "$(git rev-parse HEAD)" = 5ed8e6c21f2dba67cb0f33d2562b08e099e5e059
+          proof_dir="$RUNNER_TEMP/renderer-reveal-proof"
           mkdir -p "$proof_dir"
           {
             echo "Candidate: $(git rev-parse HEAD)"
             echo "Workflow: $WORKFLOW_SHA"
-            git ls-tree HEAD -- src/infra/sqlite-existing-database.bun.test.ts src/infra/sqlite-existing-database.bun.test-support.ts scripts/check-deadcode-unused-files.mts scripts/deadcode-knip-runner.mts config/knip.all-exports.config.ts
+            git ls-tree HEAD -- ui/src/pages/chat/components/chat-transcript-virtualizer-host.ts ui/src/e2e/chat-collapsed-reply-reveal.e2e.test.ts ui/src/e2e/chat-position-rail.e2e.test.ts ui/src/e2e/chat-reply-preview-recovery.e2e.test.ts
           } | tee "$proof_dir/provenance.txt"
           cat "$proof_dir/provenance.txt" >> "$GITHUB_STEP_SUMMARY"
 
@@ -60,35 +58,54 @@ jobs:
           install-bun: "false"
           dependency-cache: "false"
           frozen-lockfile: "true"
-          vitest-fs-cache: "false"
+          vitest-fs-cache: "true"
           vitest-worker-cache: "false"
           node-compile-cache: "true"
 
-      - name: Run full-tree unused-file scan
-        id: bun_unused_files
+      - name: Setup Chromium
+        uses: ./.github/actions/setup-playwright-chromium
+        with:
+          cache-mode: restore
+
+      - name: Run unchanged original four reveal cases
+        id: original_cases
         shell: bash
         env:
+          NODE_OPTIONS: --max-old-space-size=8192
           OPENCLAW_LOCAL_CHECK: "0"
+          OPENCLAW_VITEST_RUNTIME: node
+          OPENCLAW_CI_TEST_RUNTIME_POLICY: node
+          OPENCLAW_UI_E2E_SKIP_REAL_GATEWAY: "1"
+          OPENCLAW_VITEST_MAX_WORKERS: "1"
+          OPENCLAW_UI_E2E_DIAGNOSTIC_DIR: .artifacts/control-ui-e2e-timeouts/renderer-reveal-proof
         run: |
           set -euo pipefail
-          pnpm dlx --package knip@6.32.2 knip --no-progress --reporter compact --files --no-config-hints --config config/knip.all-exports.config.ts 2>&1 | tee "$RUNNER_TEMP/bun-unused-files-proof/bun-unused-files-cases.log"
+          node scripts/run-vitest.mjs run \
+            --config test/vitest/vitest.ui-e2e.config.ts \
+            --configLoader runner \
+            --maxWorkers 1 \
+            --reporter=verbose \
+            ui/src/e2e/chat-collapsed-reply-reveal.e2e.test.ts \
+            ui/src/e2e/chat-position-rail.e2e.test.ts \
+            ui/src/e2e/chat-reply-preview-recovery.e2e.test.ts \
+            -t 'reveals the deep earlier message in standalone work|tracks reader position and keyboard jumps|refreshes the page-carried original after reconnect and keeps source navigation working' \
+            2>&1 | tee "$RUNNER_TEMP/renderer-reveal-proof/original-case.log"
 
       - name: Record outcome and verify unchanged sources
         if: ${{ always() }}
         shell: bash
         env:
-          TEST_OUTCOME: ${{ steps.bun_unused_files.outcome }}
+          TEST_OUTCOME: ${{ steps.original_cases.outcome }}
         run: |
           set -euo pipefail
-          echo "Bun full-tree unused-file scan: $TEST_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
-          git status --short
-          git diff --exit-code -- src/infra/sqlite-existing-database.bun.test.ts src/infra/sqlite-existing-database.bun.test-support.ts scripts/check-deadcode-unused-files.mts scripts/deadcode-knip-runner.mts config/knip.all-exports.config.ts
+          echo "Original renderer reveal cases: $TEST_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          git diff --exit-code -- ui/src/pages/chat/components/chat-transcript-virtualizer-host.ts ui/src/e2e/chat-collapsed-reply-reveal.e2e.test.ts ui/src/e2e/chat-position-rail.e2e.test.ts ui/src/e2e/chat-reply-preview-recovery.e2e.test.ts
 
       - name: Preserve proof logs
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: redmain-bun-unused-files-proof-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/bun-unused-files-proof/
+          name: redmain-renderer-reveal-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/renderer-reveal-proof/
           if-no-files-found: warn
           retention-days: 14
