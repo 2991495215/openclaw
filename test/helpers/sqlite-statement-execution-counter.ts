@@ -80,12 +80,18 @@ export function trackSqliteStatementExecutions<Key extends string>(
       statement.run = new Proxy(statement.run.bind(statement), {
         apply(run, receiver, args) {
           counts[key] += 1;
+          if (sqlText.includes('"config_machine_state"')) {
+            console.error("[pending-input-host-sql]", JSON.stringify({ sql: sqlText, args, stack: new Error("SQL execution").stack }));
+          }
           return Reflect.apply(run, receiver, args);
         },
       });
       statement.get = new Proxy(statement.get.bind(statement), {
         apply(get, _receiver, args) {
           counts[key] += 1;
+          if (sqlText.includes('"config_machine_state"')) {
+            console.error("[pending-input-host-sql]", JSON.stringify({ sql: sqlText, args, stack: new Error("SQL execution").stack }));
+          }
           const row = get(...args);
           if (row) {
             observeRow(key, row);
@@ -96,6 +102,9 @@ export function trackSqliteStatementExecutions<Key extends string>(
       statement.all = new Proxy(statement.all.bind(statement), {
         apply(all, _receiver, args) {
           counts[key] += 1;
+          if (sqlText.includes('"config_machine_state"')) {
+            console.error("[pending-input-host-sql]", JSON.stringify({ sql: sqlText, args, stack: new Error("SQL execution").stack }));
+          }
           const rows = all(...args);
           for (const row of rows) {
             observeRow(key, row);
@@ -109,6 +118,9 @@ export function trackSqliteStatementExecutions<Key extends string>(
       // iterate is overloaded, so the wrapper forwards untyped and casts back.
       statement.iterate = ((...args: unknown[]) => {
         counts[key] += 1;
+        if (sqlText.includes('"config_machine_state"')) {
+          console.error("[pending-input-host-sql]", JSON.stringify({ sql: sqlText, args, stack: new Error("SQL execution").stack }));
+        }
         const rows = originalIterate(...args);
         return (function* () {
           for (const row of rows) {
