@@ -351,7 +351,7 @@ describe("createReplyRestartRecoveryClaimController", () => {
 
     it("keeps staged input worker-owned when provisioning commits during its placement read", async () => {
       await using fixture = await createPlacementAdmission();
-      const beforeAdmission = await loadSessionEntry(fixture.scope);
+      const beforeAdmission = loadSessionEntry(fixture.scope);
       const requested = expectDefined(await fixture.service.getAsync(fixture.entry.sessionId));
       const provisioning = await fixture.service.transition({
         sessionId: fixture.entry.sessionId,
@@ -391,7 +391,7 @@ describe("createReplyRestartRecoveryClaimController", () => {
       } finally {
         hostSql.restore();
       }
-      expect(await loadSessionEntry(fixture.scope)).toEqual(beforeAdmission);
+      expect(loadSessionEntry(fixture.scope)).toEqual(beforeAdmission);
     });
 
     it("refuses an unavailable placement observation instead of reading synchronously", async () => {
