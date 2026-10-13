@@ -20,7 +20,6 @@ import type { NodeWorkerChildAdapter } from "./node-worker-launch-transport.js";
 import type { NodeWorkerNativeInferenceSnapshot } from "./node-worker-native-inference.js";
 import type { NodeWorkerCredentialScrubber } from "./node-worker-output.js";
 import type { NodeWorkerProcessIdentity } from "./node-worker-process-identity.js";
-import type { createNodeWorkerLaunchRecovery } from "./node-worker-supervisor-recovery.js";
 import type { NodeWorkerTurnStore } from "./node-worker-turn-store.js";
 import type { NodeWorkerWorkspaceRuntime } from "./node-worker-workspace.js";
 
@@ -28,6 +27,13 @@ export const NODE_WORKER_STOP_GRACE_MS = 1_000;
 export const NODE_WORKER_FORCE_STOP_WAIT_MS = 4_000;
 
 export type NodeWorkerStopState = Extract<NodeWorkerTerminalState, "cancelled" | "interrupted">;
+
+export type NodeWorkerLaunchRecovery = (
+  receipt: NodeWorkerLaunchReceipt,
+  notifyCapacity?: boolean,
+  state?: NodeWorkerStopState,
+  awaitCleanup?: boolean,
+) => Promise<NodeWorkerLaunchReceipt>;
 
 export type NodeWorkerEnvironmentBinding = ReturnType<typeof nodeWorkerEnvironmentBinding>;
 
@@ -204,5 +210,5 @@ export type NodeWorkerChildLifecycleOptions = {
   cancelTurn: (
     expected: NodeWorkerSupervisorIdentity,
   ) => Promise<NodeWorkerLaunchReceipt | undefined>;
-  recoverRunning: ReturnType<typeof createNodeWorkerLaunchRecovery>;
+  recoverRunning: NodeWorkerLaunchRecovery;
 };

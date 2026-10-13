@@ -338,6 +338,10 @@ export function testWorkerLaunchInput(
     expectedBundleHash: TEST_BUNDLE_HASH,
     placementGeneration: 4,
     sessionKey: "session-1",
-    descriptor: testWorkerDescriptor(fs.realpathSync.native(workspaceDir), prompt, launchId),
+    descriptor: testWorkerDescriptor(
+      fs.existsSync(workspaceDir) ? fs.realpathSync.native(workspaceDir) : workspaceDir,
+      prompt,
+      launchId,
+    ),
   };
 }

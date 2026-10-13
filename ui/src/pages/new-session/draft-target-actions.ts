@@ -1,3 +1,4 @@
+import type { DevicePlacementOption } from "./device-placement.ts";
 import type { DraftGatewayState } from "./draft-gateway-state.ts";
 import type { DraftPlaceBrowser } from "./draft-place-browser.ts";
 import type { DraftPlaceCallbacks, DraftPlaceSnapshot } from "./draft-place-contract.ts";
@@ -5,7 +6,6 @@ import {
   markDraftPlaceProjectChoice,
   type createDraftPlaceRestoreState,
 } from "./draft-place-restore.ts";
-import type { DraftPlaceState } from "./draft-place-state.ts";
 import type { DraftRepositoryController } from "./draft-repository-state.ts";
 import type { DraftRestoredFolderValidation } from "./folder-validation.ts";
 import {
@@ -15,17 +15,18 @@ import {
 import type { NewSessionModelControl } from "./model-control.ts";
 import { resolveNewSessionWhere } from "./preferences.ts";
 
+type DraftTargetPlace = {
+  requiredPlacement: boolean;
+  hostedEnvironment: unknown;
+  devices: () => DevicePlacementOption[];
+  worktree: boolean;
+  isAdmin: () => boolean;
+  folder: string;
+  deviceFolderAvailable: boolean;
+};
+
 type DraftTargetContext = {
-  place: Pick<
-    DraftPlaceState,
-    | "requiredPlacement"
-    | "hostedEnvironment"
-    | "devices"
-    | "worktree"
-    | "isAdmin"
-    | "folder"
-    | "deviceFolderAvailable"
-  >;
+  place: DraftTargetPlace;
   read: () => DraftPlaceSnapshot;
   selection: ReturnType<typeof createDraftPlaceRestoreState>;
   gateway: DraftGatewayState;

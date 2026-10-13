@@ -32,6 +32,7 @@ vi.mock("../node-registry-private.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../node-registry-private.js")>()),
   collectNodeCatalogRuntimeState: vi.fn(() => ({
     sessionHostNodeIds: new Set(),
+    deviceFolderNodeIds: new Set(),
     issuesByNodeId: new Map(),
     workerSlotsByNodeId: new Map(),
     workerBundleByNodeId: new Map(),
@@ -53,6 +54,7 @@ beforeEach(() => {
   vi.spyOn(Date, "now").mockReturnValue(NOW);
   runtimeState = {
     sessionHostNodeIds: new Set(),
+    deviceFolderNodeIds: new Set(),
     issuesByNodeId: new Map(),
     workerSlotsByNodeId: new Map(),
     workerBundleByNodeId: new Map(),
