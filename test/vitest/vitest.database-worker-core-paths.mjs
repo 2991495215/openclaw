@@ -5,7 +5,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/mcp-oauth-authorization.test.ts",
   "src/agents/mcp-auth-profile-authorization.test.ts",
   "src/agents/auth-profiles/authorization-observation.test.ts",
-  "src/commands/doctor/shared/xai-auto-retirement.test.ts",
   "src/cli/plugin-invocation-resources.owner.test.ts",
   "src/gateway/config-revision-token.test.ts",
   "src/gateway/local-request-context.session-archive.test.ts",
