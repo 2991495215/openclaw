@@ -103,13 +103,18 @@ it.each(["fresh", "cached-worker", "saved-fetch"] as const)(
     vi.stubEnv("OPENCLAW_DEBUG_PROXY_REQUIRE", "1");
     const settings = resolveDebugProxySettings();
     const committed = vi.fn<OpenClawStateWorkerLease["execute"]>().mockResolvedValue(undefined);
+    const captureOperations: Promise<unknown>[] = [];
     createWorkerLease.mockImplementation((_context, finalize) => {
       const scope = { execute: committed };
       let closing: Promise<void> | undefined;
       return {
         ready: Promise.resolve(),
         execute: committed,
-        runOperation: async (operation) => await operation(scope),
+        runOperation: (operation) => {
+          const pending = operation(scope);
+          captureOperations.push(pending);
+          return pending;
+        },
         release: () => (closing ??= Promise.resolve().then(() => finalize?.(scope))),
         retire: async () => {},
       };
@@ -127,6 +132,8 @@ it.each(["fresh", "cached-worker", "saved-fetch"] as const)(
       const savedFetch = target.fetch;
       exercise = async () => {
         expect((await savedFetch(params.url)).status).toBe(204);
+        // Fetch settles before its detached capture; join the admitted worker operation.
+        await Promise.all(captureOperations.splice(0));
       };
     } else if (mode === "cached-worker") {
       await initializeDebugProxyCaptureAsync("fixture", settings, { fetchTarget: target });

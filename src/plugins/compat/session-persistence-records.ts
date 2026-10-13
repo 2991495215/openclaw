@@ -44,6 +44,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
       "Call acquireDebugProxyCaptureStoreAsync and await the lease's release. Use createDebugProxyCaptureReaderAsync, initializeDebugProxyCaptureAsync, captureHttpExchangeAsync, captureWsEventAsync, and finalizeDebugProxyCaptureAsync.",
     docsPath: "/plugins/sdk-migration/deprecated-sqlite",
     surfaces: [
+      "openclaw/plugin-sdk/proxy-capture.DebugProxyCaptureReader",
       "openclaw/plugin-sdk/proxy-capture.DebugProxyCaptureStore",
       "openclaw/plugin-sdk/proxy-capture.getDebugProxyCaptureStore",
       "openclaw/plugin-sdk/proxy-capture.acquireDebugProxyCaptureStore",
@@ -505,7 +506,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
     deprecated: "2026-10-01",
     warningStarts: "2026-10-01",
     replacement:
-      "Await ExtensionAPI.appendEntryAsync, setSessionNameAsync, and setLabelAsync, and AgentSession.setSessionNameAsync. Supply ExtensionActionsV2 and ExtensionRuntimeV2 through bindCoreV2.",
+      "Await ExtensionAPI.appendEntryAsync, setSessionNameAsync, and setLabelAsync, and AgentSession.setSessionNameAsync. Supply ExtensionActionsV2 and ExtensionRuntimeV2 through bindCoreAsync.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-extension-session-changes",
     surfaces: [
       "ExtensionAPI.appendEntry",
@@ -534,6 +535,10 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
       "ProviderPlugin.sanitizeReplayHistory",
       "ProviderReplaySessionState.appendCustomEntry",
       "sanitizeGoogleGeminiReplayHistory",
+      "openclaw/plugin-sdk/core.ProviderReplaySessionState",
+      "openclaw/plugin-sdk/core.ProviderSanitizeReplayHistoryContext",
+      "openclaw/plugin-sdk/plugin-entry.ProviderReplaySessionState",
+      "openclaw/plugin-sdk/plugin-entry.ProviderSanitizeReplayHistoryContext",
     ],
     tests: [
       "src/plugins/compat/registry.test.ts",

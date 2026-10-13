@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { expect, it, onTestFinished, vi } from "vitest";
+import { assert, expect, it, onTestFinished, vi } from "vitest";
 import { makeUserMessage } from "../../../test/helpers/user-message.js";
 import { createAdmittedRunOperatorAuthority } from "../../agents/admitted-run-context.js";
 import { SessionManager } from "../../agents/sessions/session-manager.js";
@@ -128,6 +128,7 @@ async function withAdmittedInput(
     const retained = await source.appendMessageAsync(
       makeUserMessage("Keep the Cedar project receipt.", 3),
     );
+    assert.isDefined(retained);
     await source.appendMessageAsync(
       makeAgentAssistantMessage({
         content: [{ type: "text", text: "Cedar receipt is maple-17." }],
@@ -204,6 +205,7 @@ it("isolates a required checkpoint while preserving compacted admitted input", a
     const instruction = await checkpoint.sessionManager.appendMessageAsync(
       makeUserMessage("Checkpoint instruction", 5),
     );
+    assert.isDefined(instruction);
     await checkpoint.sessionManager.appendMessageAsync(
       makeAgentAssistantMessage({
         content: [{ type: "text", text: "NO_REPLY" }],

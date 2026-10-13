@@ -238,15 +238,17 @@ describe("account-scoped conversation binding expiry", () => {
   );
 
   it("enforces maximum age even when activity refreshes the idle deadline", async () => {
-    const now = vi.spyOn(Date, "now").mockReturnValue(startedAt);
+    // The async resolver's worker uses the real clock.
+    const bindingStartedAt = Date.now();
+    const now = vi.spyOn(Date, "now").mockReturnValue(bindingStartedAt);
     const manager = createManager({
       cfg: { session: { threadBindings: { idleHours: 2, maxAgeHours: 1 } } },
     });
     const binding = bindConversation(manager);
 
-    now.mockReturnValue(startedAt + 30 * 60_000);
+    now.mockReturnValue(bindingStartedAt + 30 * 60_000);
     expect(manager.touchConversation(binding.conversationId)?.lastActivityAt).toBe(
-      startedAt + 30 * 60_000,
+      bindingStartedAt + 30 * 60_000,
     );
     expect(
       (
@@ -256,9 +258,9 @@ describe("account-scoped conversation binding expiry", () => {
           conversationId: binding.conversationId,
         })
       )?.expiresAt,
-    ).toBe(startedAt + 60 * 60_000);
+    ).toBe(bindingStartedAt + 60 * 60_000);
 
-    now.mockReturnValue(startedAt + 60 * 60_000);
+    now.mockReturnValue(bindingStartedAt + 60 * 60_000);
 
     expect(manager.getByConversationId(binding.conversationId)).toBeUndefined();
     expect(manager.listBySessionKey(binding.targetSessionKey)).toEqual([]);

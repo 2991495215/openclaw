@@ -57,9 +57,9 @@ describe("profile-owned skill publication and selection", () => {
       const pins = await seedSkillLibrarySelection(alice, options);
       const entries = loadSkillLibrarySelection(pins, options);
       const { buildSkillSnapshot } = await import("../loading/workspace-skill-prompt.js");
-      const { assembleWorkspaceSkillCommandSpecs } = await import("../discovery/command-specs.js");
+      const { buildWorkspaceSkillCommandSpecs } = await import("../discovery/command-specs.js");
       const snapshot = await buildSkillSnapshot(stateDir, { entries });
-      const commands = assembleWorkspaceSkillCommandSpecs(stateDir, entries);
+      const commands = buildWorkspaceSkillCommandSpecs(stateDir, { entries });
       expect(pins[0]!.name).toMatch(/^s_long_skil_[a-f0-9]{20}$/);
       expect(commands[0]).toMatchObject({
         name: pins[0]!.name,
@@ -74,6 +74,9 @@ describe("profile-owned skill publication and selection", () => {
       await expect(buildSkillSnapshot(stateDir, { entries: [copied, ...entries] })).rejects.toThrow(
         "ambiguous",
       );
+      expect(() =>
+        buildWorkspaceSkillCommandSpecs(stateDir, { entries: [copied, ...entries] }),
+      ).toThrow("ambiguous");
     },
   );
   it("discovers pinned commands through the loader without leaking them into workspace state", async () => {
@@ -109,8 +112,11 @@ describe("profile-owned skill publication and selection", () => {
         options,
       ),
     ).toThrow(expect.objectContaining({ code: "NOT_FOUND" }));
-    const { prepareSkillCommandsForWorkspace, prepareSkillCommandsForAgents } =
-      await import("../discovery/chat-commands.js");
+    const {
+      listSkillCommandsForAgents,
+      prepareSkillCommandsForWorkspace,
+      prepareSkillCommandsForAgents,
+    } = await import("../discovery/chat-commands.js");
     await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, async () => {
       const cfg = { agents: { defaults: { skills: [] } } };
       const discover = (
@@ -152,6 +158,7 @@ describe("profile-owned skill publication and selection", () => {
         agentIds: ["main"],
         sessionEntry: { skillLibrarySelections: pins },
       };
+      expect(listSkillCommandsForAgents(agentParams)).toEqual(commands);
       expect(await prepareSkillCommandsForAgents(agentParams)).toEqual(commands);
       expect(
         await prepareSkillCommandsForAgents({ ...agentParams, sessionEntry: undefined }),

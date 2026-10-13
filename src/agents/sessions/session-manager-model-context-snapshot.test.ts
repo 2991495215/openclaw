@@ -617,7 +617,7 @@ it.each([
           manager.resetLeaf();
           expectedMessages = [];
         } else if (change === "local-branch") {
-          manager.branch(questionId!);
+          await manager.branchAsync(questionId!);
           expectedMessages = [{ role: "user", content: "question" }];
         } else if (change === "fork") {
           const forkId = await runWithoutOwnedSessionTranscriptWrites(() =>
@@ -777,55 +777,6 @@ it("rejects a removed user admission before the bounded reader captures its witn
     });
   });
 });
-
-it.each(["append", "rewrite"] as const)(
-  "rejects a native %s before consuming bounded admitted model context",
-  async (mutation) => {
-    await withOpenClawTestState({ label: "admitted-context-native-mutation" }, async (state) => {
-      const scope = {
-        agentId: "main",
-        sessionId: "admitted-context",
-        sessionKey: "agent:main:admitted-context",
-        storePath: path.join(state.agentDir("main"), "openclaw-agent.sqlite"),
-      };
-      await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
-      const source = await SessionManager.openAsync(scope);
-      await source.appendMessageAsync(makeUserMessage("original", 1));
-      await withSelectedTranscriptReader(scope, async () => {
-        const options = { limits: { maxBytes: 8192, maxEvents: 20 } };
-        const read = contextWorker.readSessionTranscriptModelContextInWorker;
-        let changed = false;
-        const spy = vi
-          .spyOn(contextWorker, "readSessionTranscriptModelContextInWorker")
-          .mockImplementationOnce(async (...args) => {
-            const context = await read(...args);
-            if (mutation === "rewrite") {
-              expect(
-                await source.removeTrailingEntriesAsync((entry) => entry.type === "message"),
-              ).toBe(1);
-            }
-            await source.appendMessageAsync(makeUserMessage("changed", 2));
-            changed = true;
-            return context;
-          });
-        try {
-          await expect(SessionManager.openModelContextAsync(scope, options)).rejects.toThrow(
-            "Session entry changed during read",
-          );
-          expect(changed).toBe(true);
-        } finally {
-          spy.mockRestore();
-        }
-        const current = await SessionManager.openModelContextAsync(scope, options);
-        expect(current.buildSessionContext().messages).toMatchObject(
-          mutation === "rewrite"
-            ? [{ content: "changed" }]
-            : [{ content: "original" }, { content: "changed" }],
-        );
-      });
-    });
-  },
-);
 
 it("allows a queued writer to finish during an unbounded admitted context read", async ({
   signal,

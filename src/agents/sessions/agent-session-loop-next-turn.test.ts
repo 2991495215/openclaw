@@ -463,6 +463,7 @@ describe("AgentSession queue and next-turn lifecycle correctness", () => {
   it("retires duplicate text by exact occurrence and owning queue once", async () => {
     const { session } = await createTestSession();
     await session.steer("same queued text");
+    await session.steer("same queued text");
     await session.followUp("same queued text");
     type QueuedMessage = Parameters<AgentSession["agent"]["steer"]>[0];
     const queues = session.agent as unknown as Record<
@@ -479,6 +480,7 @@ describe("AgentSession queue and next-turn lifecycle correctness", () => {
       message: QueuedMessage;
     }) => Promise<void>;
 
+    await handleAgentEvent({ type: "message_start", message: secondSteer });
     await handleAgentEvent({ type: "message_start", message: secondSteer });
     expect(session.getSteeringMessages()).toEqual(["same queued text"]);
     expect(session.getFollowUpMessages()).toEqual(["same queued text"]);
@@ -525,6 +527,7 @@ describe("AgentSession queue and next-turn lifecycle correctness", () => {
     expect(session.getSteeringMessages()).toEqual(["runtime prompt"]);
     expect(JSON.stringify(message)).toBe(serialized);
 
+    await handleAgentEvent({ type: "message_start", message });
     await handleAgentEvent({ type: "message_start", message });
 
     expect(session.getSteeringMessages()).toEqual([]);

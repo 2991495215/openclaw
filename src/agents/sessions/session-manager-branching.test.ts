@@ -235,6 +235,7 @@ describe("SessionManager branch replacement", () => {
       sessionKey: "agent:main:branch-write-failure",
       storePath: path.join(dir, "sessions.json"),
     };
+    await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
     const manager = await SessionManager.openAsync(scope, dir);
     const leafId = expectDefined(
       await manager.appendMessageAsync({

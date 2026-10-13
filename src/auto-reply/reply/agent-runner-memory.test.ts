@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   afterAll,
   afterEach,
+  assert,
   beforeAll,
   beforeEach,
   describe,
@@ -478,6 +479,7 @@ describe("runMemoryFlushIfNeeded", () => {
         const retained = await memorySession.appendMessageAsync(
           makeUserMessage("Private retained work", 1),
         );
+        assert.isDefined(retained);
         await memorySession.appendCompactionAsync("Private summary", retained, 120);
         throw primaryError;
       })

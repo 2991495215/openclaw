@@ -108,12 +108,12 @@ it("requires the reviewed declaration's deprecation marker", () => {
 
 it("permits a deprecated API only from an exact reviewed one-shot entry", () => {
   const doctorFile = "src/flows/doctor-tool-schema-projection.ts";
-  const doctor = `import { ${first} } from '../plugin-sdk/sqlite-runtime-legacy.js';
-    export function collectAgentRuntimeToolSchemaFindings() { return ${first}(); }`;
+  const doctor = `import { ${apiName} } from '../../extensions/matrix/auth-presence.js';
+    export function collectAgentRuntimeToolSchemaFindings() { return ${apiName}(); }`;
   const inspectDoctor = (file: string, source: string) =>
     inspectDatabaseWorkerBoundaries(
       process.cwd(),
-      new Map(Object.entries({ [legacyFile]: legacy, [file]: source })),
+      new Map(Object.entries({ [compatFile]: legacy, [file]: source })),
       (candidate) => candidate === doctorFile,
       (candidate, operation) =>
         candidate === doctorFile && operation === "collectAgentRuntimeToolSchemaFindings"
@@ -124,7 +124,7 @@ it("permits a deprecated API only from an exact reviewed one-shot entry", () => 
   for (const [file, source] of [
     [doctorFile, doctor.replace("collectAgentRuntimeToolSchemaFindings", "unreviewed")],
     ["src/flows/unreviewed.ts", doctor],
-    [doctorFile, doctor.replace(`return ${first}()`, `return () => ${first}()`)],
+    [doctorFile, doctor.replace(`return ${apiName}()`, `return () => ${apiName}()`)],
   ] as const) {
     expect(inspectDoctor(file, source).violations).toEqual([
       expect.stringContaining("bundled runtime reference"),
@@ -252,7 +252,7 @@ it.each([".queryAsync", "['queryAsync']"])(
   "allows a statically selected async member from an inline dynamic import: %s",
   (selector) => {
     const result = inspect({
-      "src/plugin-sdk/barrel.ts": `export { ${first} as oldQuery } from './sqlite-runtime-legacy.js';
+      "src/plugin-sdk/barrel.ts": `export { ${apiName} as oldQuery } from '../../extensions/matrix/auth-presence.js';
         export async function queryAsync() { return 1; }`,
       "src/consumer.ts": `await (await import('./plugin-sdk/barrel.js'))${selector}();`,
     });
@@ -264,7 +264,7 @@ it.each([".oldQuery", "['oldQuery']", "[key]"])(
   "rejects a legacy or computed member from an inline dynamic import: %s",
   (selector) => {
     const result = inspect({
-      "src/plugin-sdk/barrel.ts": `export { ${first} as oldQuery } from './sqlite-runtime-legacy.js';`,
+      "src/plugin-sdk/barrel.ts": `export { ${apiName} as oldQuery } from '../../extensions/matrix/auth-presence.js';`,
       "src/consumer.ts": `const key = 'oldQuery'; (await import('./plugin-sdk/barrel.js'))${selector}();`,
     });
     expect(result.violations).toEqual([expect.stringContaining("src/consumer.ts:")]);
@@ -644,9 +644,9 @@ export function selectResolvedUserProfile() {
   return readResolvedUserProfile('id', (id) => executeSqliteQueryTakeFirstSync(db, query));
 }`,
     },
-    `import { selectResolvedUserProfile } from '../state/user-profiles-internal.js';
+    `import { selectResolvedUserProfile } from '../../src/state/user-profiles-internal.js';
 /** @deprecated Use workers. */
-export function ${first}() { return selectResolvedUserProfile(); }`,
+export function ${apiName}() { return selectResolvedUserProfile(); }`,
   );
   expect(result.violations).toEqual([]);
   expect(result.callLocations.get(profileFile)).toEqual(new Set(["1:53", "3:10", "3:48"]));

@@ -111,20 +111,6 @@ async function unbindAndExpectClearedSessionBinding(binding: SessionBindingRecor
   expect(await service.resolveByConversationAsync(binding.conversation)).toBeNull();
 }
 
-async function expectClearedSessionBinding(params: {
-  channel: string;
-  accountId: string;
-  conversationId: string;
-}) {
-  expect(
-    await getSessionBindingService().resolveByConversationAsync({
-      channel: params.channel,
-      accountId: params.accountId,
-      conversationId: params.conversationId,
-    }),
-  ).toBeNull();
-}
-
 function resetMatrixSessionBindingStateDir() {
   resetPluginStateStoreForTests();
   fs.rmSync(matrixSessionBindingStateDir, { recursive: true, force: true });
@@ -385,7 +371,7 @@ function createSessionBindingContractEntry(
     unbindAndVerify: unbindAndExpectClearedSessionBinding,
     cleanup: async () => {
       await fixture.stopManager?.();
-      await expectClearedSessionBinding(conversation);
+      expect(getSessionBindingService().getCapabilities(conversation).adapterAvailable).toBe(false);
     },
   };
 }

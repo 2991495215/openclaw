@@ -36,37 +36,39 @@ afterEach(() => {
   bundleCommandState.entries = [];
 });
 
-describe("assembleWorkspaceSkillCommandSpecs", () => {
+describe("buildWorkspaceSkillCommandSpecs", () => {
   it("uses shared user-invocable skill exposure policy", async () => {
-    const { assembleWorkspaceSkillCommandSpecs } = await import("./command-specs.js");
-    const specs = assembleWorkspaceSkillCommandSpecs("/workspace", [
-      createFixtureSkillEntry("visible"),
-      createFixtureSkillEntry("hidden-by-exposure", {
-        exposure: {
-          includeInRuntimeRegistry: true,
-          includeInAvailableSkillsPrompt: true,
-          userInvocable: false,
-        },
-      }),
-      createFixtureSkillEntry("hidden-by-invocation", {
-        invocation: {
-          userInvocable: false,
-          disableModelInvocation: false,
-        },
-      }),
-    ]);
+    const { buildWorkspaceSkillCommandSpecs } = await import("./command-specs.js");
+    const specs = buildWorkspaceSkillCommandSpecs("/workspace", {
+      entries: [
+        createFixtureSkillEntry("visible"),
+        createFixtureSkillEntry("hidden-by-exposure", {
+          exposure: {
+            includeInRuntimeRegistry: true,
+            includeInAvailableSkillsPrompt: true,
+            userInvocable: false,
+          },
+        }),
+        createFixtureSkillEntry("hidden-by-invocation", {
+          invocation: {
+            userInvocable: false,
+            disableModelInvocation: false,
+          },
+        }),
+      ],
+    });
 
     expect(specs.map((spec) => spec.skillName)).toEqual(["visible"]);
   });
 
   it("preserves workspace skill descriptions for provider-specific limits", async () => {
-    const { assembleWorkspaceSkillCommandSpecs } = await import("./command-specs.js");
+    const { buildWorkspaceSkillCommandSpecs } = await import("./command-specs.js");
     const prefix = "a".repeat(98);
     const entry = createFixtureSkillEntry("emoji-skill");
     entry.skill.displayName = "Emoji Skill";
     entry.skill.description = `${prefix}😀 extra text beyond the limit`;
 
-    const specs = assembleWorkspaceSkillCommandSpecs("/workspace", [entry]);
+    const specs = buildWorkspaceSkillCommandSpecs("/workspace", { entries: [entry] });
 
     expect(specs[0]?.displayName).toBe("Emoji Skill");
     expect(specs[0]?.description).toBe(entry.skill.description);
@@ -75,7 +77,7 @@ describe("assembleWorkspaceSkillCommandSpecs", () => {
   });
 
   it("preserves bundle command descriptions for provider-specific limits", async () => {
-    const { assembleWorkspaceSkillCommandSpecs } = await import("./command-specs.js");
+    const { buildWorkspaceSkillCommandSpecs } = await import("./command-specs.js");
     const prefix = "a".repeat(98);
     const description = `${prefix}😀 extra text beyond the limit`;
     bundleCommandState.entries = [
@@ -88,7 +90,7 @@ describe("assembleWorkspaceSkillCommandSpecs", () => {
       },
     ];
 
-    const specs = assembleWorkspaceSkillCommandSpecs("/workspace", []);
+    const specs = buildWorkspaceSkillCommandSpecs("/workspace", { entries: [] });
 
     expect(specs[0]).toMatchObject({
       skillName: "bundle-emoji",
@@ -98,7 +100,7 @@ describe("assembleWorkspaceSkillCommandSpecs", () => {
   });
 
   it("bounds the skill command debug cache and re-logs evicted keys", async () => {
-    const { assembleWorkspaceSkillCommandSpecs } = await import("./command-specs.js");
+    const { buildWorkspaceSkillCommandSpecs } = await import("./command-specs.js");
     const entries = [];
     for (let index = 0; index < 1025; index += 1) {
       entries.push({
@@ -111,11 +113,11 @@ describe("assembleWorkspaceSkillCommandSpecs", () => {
     }
 
     bundleCommandState.entries = entries;
-    assembleWorkspaceSkillCommandSpecs("/workspace", []);
+    buildWorkspaceSkillCommandSpecs("/workspace", { entries: [] });
     expect(skillsLoggerMock.debug).toHaveBeenCalledTimes(1025);
 
     bundleCommandState.entries = [entries[0]!];
-    assembleWorkspaceSkillCommandSpecs("/workspace", []);
+    buildWorkspaceSkillCommandSpecs("/workspace", { entries: [] });
     expect(skillsLoggerMock.debug).toHaveBeenCalledTimes(1026);
   });
 });

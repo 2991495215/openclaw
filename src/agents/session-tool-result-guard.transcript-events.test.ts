@@ -468,9 +468,9 @@ describe("guardSessionManager transcript updates", () => {
       timestamp: 1,
     };
     const assertOriginalInputCommit = vi.fn(() => {
-      expect(
-        loadTranscriptEventsSync(target).filter((entry) => entry.type === "message"),
-      ).toHaveLength(0);
+      expect(loadTranscriptEventsSync(target)).not.toContainEqual(
+        expect.objectContaining({ type: "message" }),
+      );
     });
     const recorder = createUserTurnTranscriptRecorder({
       message,

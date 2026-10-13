@@ -178,6 +178,7 @@ async function seedFixture(state: OpenClawTestState, shape: typeof fixture) {
     content: "Benchmark anchor",
     timestamp: 1,
   });
+  assert.ok(baseLeafId, "Benchmark anchor must be persisted");
   await waitForSessionTranscriptIndexReconcilesInStateDir(state.stateDir);
   const verifiedSeed = await SessionManager.openAsync(target);
   assert.equal(verifiedSeed.getLeafId(), baseLeafId);
