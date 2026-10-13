@@ -57,6 +57,8 @@ val phoneReleaseSigning =
     .findByName("release")
 
 android {
+  sourceSets.getByName("androidTest").kotlin.directories.add(rootProject.file("release-validation/src/main/java").path)
+
   namespace = "ai.openclaw.wear"
   compileSdk = 37
 
