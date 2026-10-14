@@ -8,16 +8,18 @@ export const standaloneExternalModules = ["chromium-bidi/*", "@audio/decode-ape"
 /** Compile the same prepared split graph in separate modes, one invocation at a time. */
 export function compileStandalone({
   outputRoot,
-  compiledEntries,
+  compiledEntries: providedEntries,
   compileFlags = [],
   audit = false,
 }) {
   const modules = path.join(outputRoot, "modules");
-  compiledEntries ??= fs
-    .readdirSync(modules, { recursive: true })
-    .filter((entry) => entry.endsWith(".js"))
-    .sort()
-    .map((entry) => path.join(modules, entry));
+  const compiledEntries =
+    providedEntries ??
+    fs
+      .readdirSync(modules, { recursive: true })
+      .filter((entry) => entry.endsWith(".js"))
+      .toSorted()
+      .map((entry) => path.join(modules, entry));
   const mainEntry = path.join(modules, "standalone-entry.js");
   const name = audit
     ? "audit"
@@ -57,10 +59,11 @@ export function compileStandalone({
 
 if (isDirectRunUrl(import.meta.url)) {
   const [directory, ...compileFlags] = process.argv.slice(2);
-  if (!directory || !globalThis.Bun)
+  if (!directory || !globalThis.Bun) {
     throw new Error(
       "Usage: bun scripts/lib/bun-standalone-compile.mjs <prepared-build-directory> [--bytecode|--compile-aot]",
     );
+  }
   console.log(
     `Standalone ready: ${compileStandalone({ outputRoot: path.resolve(directory), compileFlags })}`,
   );

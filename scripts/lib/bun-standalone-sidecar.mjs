@@ -18,20 +18,31 @@ function contained(root, relative) {
 function walk(root, visit, relative = "") {
   for (const entry of fs.readdirSync(path.join(root, relative), { withFileTypes: true })) {
     const name = relative ? `${relative}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) walk(root, visit, name);
-    else visit(name, entry);
+    if (entry.isDirectory()) {
+      walk(root, visit, name);
+    } else {
+      visit(name, entry);
+    }
   }
 }
 
 function keepAsset(relative) {
+  if (relative.startsWith("docs/internal/")) {
+    return false;
+  }
   if (
     relative === "package.json" ||
     relative === "openclaw-install-owner.json" ||
     relative.startsWith("skills/")
-  )
+  ) {
     return true;
-  if (relative.startsWith("docs/")) return relative.endsWith(".md") || relative.endsWith(".json");
-  if (relative.startsWith("dist/control-ui/")) return true;
+  }
+  if (relative.startsWith("docs/")) {
+    return relative.endsWith(".md") || relative.endsWith(".json");
+  }
+  if (relative.startsWith("dist/control-ui/")) {
+    return true;
+  }
   if (/^(?:node_modules|packages)\//.test(relative)) {
     return relative.endsWith("/package.json") || nativeFile.test(relative);
   }
@@ -46,7 +57,9 @@ function keepAsset(relative) {
 }
 
 function moduleShim(source, embedded, commonJs) {
-  if (commonJs) return `module.exports = require(${JSON.stringify(embedded)});\n`;
+  if (commonJs) {
+    return `module.exports = require(${JSON.stringify(embedded)});\n`;
+  }
   const ast = parse(source, { ecmaVersion: "latest", sourceType: "module" });
   const hasDefault = ast.body.some(
     (node) =>
@@ -60,8 +73,12 @@ function moduleShim(source, embedded, commonJs) {
 }
 
 function isCommonJs(filename, runtimeRoot) {
-  if (filename.endsWith(".cjs")) return true;
-  if (filename.endsWith(".mjs")) return false;
+  if (filename.endsWith(".cjs")) {
+    return true;
+  }
+  if (filename.endsWith(".mjs")) {
+    return false;
+  }
   let directory = path.dirname(filename);
   while (directory.startsWith(runtimeRoot)) {
     const manifest = path.join(directory, "package.json");
@@ -75,52 +92,68 @@ function isCommonJs(filename, runtimeRoot) {
 
 /** Build a fresh experimental sidecar; never prune or change the source snapshot. */
 export function createStandaloneSidecar({
-  runtimeRoot,
-  outputRoot,
+  runtimeRoot: runtimeRootInput,
+  outputRoot: outputRootInput,
   embeddedPaths,
-  docsRoot,
+  docsRoot: docsRootInput,
   additionalFiles = [],
   nativeFiles,
 }) {
-  runtimeRoot = fs.realpathSync(runtimeRoot);
-  outputRoot = path.resolve(outputRoot);
+  const runtimeRoot = fs.realpathSync(runtimeRootInput);
+  const outputRoot = path.resolve(outputRootInput);
+  const docsRoot = docsRootInput ? fs.realpathSync(docsRootInput) : undefined;
   if (outputRoot === runtimeRoot || outputRoot.startsWith(runtimeRoot + path.sep)) {
     throw new Error("Sidecar output must be outside the runtime snapshot");
   }
-  if (fs.existsSync(outputRoot)) throw new Error(`Sidecar output already exists: ${outputRoot}`);
+  if (fs.existsSync(outputRoot)) {
+    throw new Error(`Sidecar output already exists: ${outputRoot}`);
+  }
   const selected = new Map();
   const links = [];
   const observedFile = (relative) => {
     const source = fs.realpathSync(contained(runtimeRoot, relative));
     const physicalRelative = path.relative(runtimeRoot, source).split(path.sep).join("/");
     contained(runtimeRoot, physicalRelative);
-    if (!fs.statSync(source).isFile()) throw new Error(`Expected sidecar file: ${relative}`);
+    if (!fs.statSync(source).isFile()) {
+      throw new Error(`Expected sidecar file: ${relative}`);
+    }
     return physicalRelative;
   };
   const nativeSelection =
     nativeFiles === undefined ? undefined : new Set(nativeFiles.map(observedFile));
   walk(runtimeRoot, (relative, entry) => {
-    if (entry.isSymbolicLink()) links.push(relative);
-    else if (
+    if (entry.isSymbolicLink()) {
+      links.push(relative);
+    } else if (
       entry.isFile() &&
       keepAsset(relative) &&
       (!/^(?:node_modules|packages)\//.test(relative) ||
         !nativeFile.test(relative) ||
         !nativeSelection ||
         nativeSelection.has(relative))
-    )
+    ) {
       selected.set(relative, "asset");
+    }
   });
   for (const relative of additionalFiles) {
-    selected.set(observedFile(relative), "observed");
+    const sourceRelative = observedFile(relative);
+    if (!sourceRelative.startsWith("docs/internal/")) {
+      selected.set(sourceRelative, "observed");
+    }
   }
   // Addressable modules remain real files for loader admission and require.resolve.
   // Their bodies only re-export the already embedded graph, including SDK singletons.
   for (const [relative, embedded] of Object.entries(embeddedPaths)) {
-    if (!/\.[cm]?js$/.test(relative)) continue; // Package-name aliases are not file paths.
-    if (relative.startsWith("../")) continue; // Builder-generated worker bootstrap outside runtime.
+    if (!/\.[cm]?js$/.test(relative)) {
+      continue;
+    } // Package-name aliases are not file paths.
+    if (relative.startsWith("../")) {
+      continue;
+    } // Builder-generated worker bootstrap outside runtime.
     const source = contained(runtimeRoot, relative);
-    if (!fs.existsSync(source)) continue; // Generated bootstrap entries live outside runtime.
+    if (!fs.existsSync(source)) {
+      continue;
+    } // Generated bootstrap entries live outside runtime.
     if (typeof embedded !== "string" || !embedded.startsWith("/$bunfs/root/")) {
       throw new Error(`Expected embedded module path for ${relative}`);
     }
@@ -128,7 +161,7 @@ export function createStandaloneSidecar({
   }
   fs.mkdirSync(outputRoot, { recursive: true });
   const inventory = [];
-  for (const [relative, kind] of [...selected].sort(([left], [right]) =>
+  for (const [relative, kind] of [...selected].toSorted(([left], [right]) =>
     left.localeCompare(right),
   )) {
     const source = contained(runtimeRoot, relative);
@@ -143,19 +176,26 @@ export function createStandaloneSidecar({
           isCommonJs(source, runtimeRoot),
         ),
       );
-    } else fs.copyFileSync(source, destination);
+    } else {
+      fs.copyFileSync(source, destination);
+    }
     inventory.push({ path: relative, kind, bytes: fs.statSync(destination).size });
   }
   if (docsRoot) {
-    docsRoot = fs.realpathSync(docsRoot);
     walk(docsRoot, (relative, entry) => {
-      if (relative.split("/").includes("internal")) return;
-      if (!entry.isFile() || (!relative.endsWith(".md") && relative !== "docs.json")) return;
+      if (relative.split("/").includes("internal")) {
+        return;
+      }
+      if (!entry.isFile() || (!relative.endsWith(".md") && relative !== "docs.json")) {
+        return;
+      }
       const destination = contained(outputRoot, `docs/${relative}`);
       fs.mkdirSync(path.dirname(destination), { recursive: true });
       fs.copyFileSync(contained(docsRoot, relative), destination);
       const index = inventory.findIndex((item) => item.path === `docs/${relative}`);
-      if (index !== -1) inventory.splice(index, 1);
+      if (index !== -1) {
+        inventory.splice(index, 1);
+      }
       inventory.push({
         path: `docs/${relative}`,
         kind: "docs",
@@ -172,9 +212,13 @@ export function createStandaloneSidecar({
     } catch {
       continue;
     }
-    if (!resolved.startsWith(runtimeRoot + path.sep)) continue;
+    if (!resolved.startsWith(runtimeRoot + path.sep)) {
+      continue;
+    }
     const target = contained(outputRoot, path.relative(runtimeRoot, resolved));
-    if (!fs.existsSync(target)) continue;
+    if (!fs.existsSync(target)) {
+      continue;
+    }
     const destination = contained(outputRoot, relative);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     const targetRelative = path.relative(path.dirname(destination), target);

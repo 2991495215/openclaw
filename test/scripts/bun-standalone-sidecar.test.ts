@@ -35,6 +35,7 @@ it("pruned sidecars retain assets and SDK shims share the embedded module instan
   write("skills/example/SKILL.md", "# Example");
   write("skills/example/scripts/run.py", "print('skill asset')");
   write("skills/example/assets/helper.wasm", "skill helper");
+  write("docs/internal/runtime.md", "internal runtime fixture");
   write("node_modules/.pnpm/native/node_modules/native/package.json", '{"main":"index.js"}');
   write("node_modules/.pnpm/native/node_modules/native/addon.node", "native fixture");
   write("node_modules/.pnpm/native/node_modules/native/unused.dll", "foreign native fixture");
@@ -47,12 +48,14 @@ it("pruned sidecars retain assets and SDK shims share the embedded module instan
   fs.writeFileSync(path.join(docsRoot, "docs.json"), "{}");
   fs.writeFileSync(path.join(docsRoot, "guide.md"), "# Guide");
   fs.writeFileSync(path.join(docsRoot, "unneeded.png"), "image");
+  fs.mkdirSync(path.join(docsRoot, "internal"));
+  fs.writeFileSync(path.join(docsRoot, "internal", "source.md"), "internal source fixture");
   const embedded = "/$bunfs/root/runtime/dist/plugin-sdk/core.js";
   const result = createStandaloneSidecar({
     runtimeRoot,
     outputRoot,
     docsRoot,
-    additionalFiles: ["node_modules/native/schema.json"],
+    additionalFiles: ["node_modules/native/schema.json", "docs/internal/runtime.md"],
     nativeFiles: ["node_modules/native/addon.node"],
     embeddedPaths: {
       "dist/plugin-sdk/core.js": embedded,
@@ -82,6 +85,7 @@ it("pruned sidecars retain assets and SDK shims share the embedded module instan
   assert.equal(read("dist/control-ui/assets/app.js"), "browser asset");
   assert.equal(fs.existsSync(path.join(outputRoot, "dist/unused.js")), false);
   assert.equal(fs.existsSync(path.join(outputRoot, "docs/unneeded.png")), false);
+  assert.equal(fs.existsSync(path.join(outputRoot, "docs/internal")), false);
   assert.equal(fs.existsSync(path.join(outputRoot, "node_modules/native/unused.dll")), false);
   assert.equal(fs.existsSync(path.join(outputRoot, "node_modules/native/unused.json")), false);
   assert.equal(fs.existsSync(path.join(outputRoot, "extensions/example/unused.png")), false);

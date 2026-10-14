@@ -198,13 +198,19 @@ def main():
         result["error"] = str(error)
         raise
     finally:
-        if gateway is not None:
-            os.killpg(gateway.pid, signal.SIGTERM)
+        if gateway is not None and gateway.poll() is None:
             try:
-                gateway.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                os.killpg(gateway.pid, signal.SIGKILL)
-                gateway.wait()
+                os.killpg(gateway.pid, signal.SIGTERM)
+                try:
+                    gateway.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    os.killpg(gateway.pid, signal.SIGKILL)
+                    gateway.wait()
+            except OSError as error:
+                result["cleanup_error"] = str(error)
+                result["pass"] = False
+        if gateway is not None:
+            result["gateway_exit"] = gateway.poll()
         server.shutdown()
         server.server_close()
         thread.join()

@@ -10,14 +10,20 @@ if (destination) {
   const root = path.join(path.dirname(process.execPath), "runtime");
   const append = fs.appendFileSync.bind(fs);
   const seen = new Set();
-  function note(operation, value) {
-    if (value instanceof URL && value.protocol === "file:") value = fileURLToPath(value);
-    if (typeof value !== "string") return;
+  function note(operation, input) {
+    const value = input instanceof URL && input.protocol === "file:" ? fileURLToPath(input) : input;
+    if (typeof value !== "string") {
+      return;
+    }
     const filename = path.resolve(value);
-    if (!filename.startsWith(root + path.sep)) return;
+    if (!filename.startsWith(root + path.sep)) {
+      return;
+    }
     const relative = path.relative(root, filename);
     const key = `${operation}:${relative}`;
-    if (seen.has(key)) return;
+    if (seen.has(key)) {
+      return;
+    }
     seen.add(key);
     append(
       destination,
@@ -54,7 +60,9 @@ if (destination) {
     fs[method] = function (filename, ...args) {
       const callback = args.pop();
       return original.call(this, filename, ...args, function (error, ...results) {
-        if (!error) note(method, filename);
+        if (!error) {
+          note(method, filename);
+        }
         callback.call(this, error, ...results);
       });
     };
@@ -72,16 +80,23 @@ if (destination) {
       return new Proxy(blob, {
         get(target, property) {
           const value = Reflect.get(target, property, target);
-          if (typeof value !== "function") return value;
+          if (typeof value !== "function") {
+            return value;
+          }
           return (...parameters) => {
             const result = value.apply(target, parameters);
-            if (["text", "json", "arrayBuffer", "bytes"].includes(property)) {
+            if (
+              typeof property === "string" &&
+              ["text", "json", "arrayBuffer", "bytes"].includes(property)
+            ) {
               return result.then((data) => {
                 note(`Bun.file.${property}`, filename);
                 return data;
               });
             }
-            if (property === "stream") note("Bun.file.stream-intent", filename);
+            if (property === "stream") {
+              note("Bun.file.stream-intent", filename);
+            }
             return result;
           };
         },
@@ -90,7 +105,9 @@ if (destination) {
   }
   const require = createRequire(import.meta.url);
   process.on("exit", () => {
-    for (const filename of Object.keys(require.cache)) note("module-cache", filename);
+    for (const filename of Object.keys(require.cache)) {
+      note("module-cache", filename);
+    }
   });
   const dlopen = process.dlopen;
   process.dlopen = function (module, filename, ...args) {
