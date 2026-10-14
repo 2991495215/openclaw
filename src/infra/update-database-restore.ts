@@ -33,7 +33,7 @@ import {
 import { readUpdateDatabaseGenerationsIsolated } from "./update-candidate-state.js";
 import { readUpdateStateDatabaseSizes } from "./update-candidate-state.sizes.js";
 import type { UpdateDatabaseBackup } from "./update-database-backup.js";
-import type { UpdateDatabaseGenerations } from "./update-database-generations.js";
+import type { UpdateDatabaseGenerations } from "./update-database-generations.types.js";
 
 async function existingFile(file: string) {
   try {

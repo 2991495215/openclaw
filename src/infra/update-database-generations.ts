@@ -13,13 +13,7 @@ import { runWithSqliteCleanup } from "./sqlite-lifecycle-errors.js";
 import { prepareSqliteReadOnlyLocationSyncInProcess } from "./sqlite-readonly-location.js";
 import { truncateSqliteWal } from "./sqlite-wal-checkpoint.js";
 import { readDatabaseIdentityBirthtime } from "./sqlite-worker-identity.js";
-
-export type UpdateDatabaseGenerations = Record<string, string | null>;
-export type UpdateDatabaseWriteReceipt = {
-  unchanged: boolean;
-  fromGenerations?: UpdateDatabaseGenerations;
-  generations: UpdateDatabaseGenerations;
-};
+import type { UpdateDatabaseGenerations } from "./update-database-generations.types.js";
 
 function readCommittedContent(pathname: string): string {
   // Checkpoint only a private copy: opening the source would compete with the
