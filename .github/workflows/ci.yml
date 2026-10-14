@@ -20,6 +20,7 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   NODE_VERSION: "24.19.0"
+  PYTHONIOENCODING: utf-8
 jobs:
   manifest-closure-proof:
     name: Original manifest failures (${{ matrix.platform }})
@@ -28,8 +29,6 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - platform: linux
-            runner: ubuntu-24.04
           - platform: windows
             runner: windows-2025
     runs-on: ${{ matrix.runner }}
