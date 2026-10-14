@@ -1968,7 +1968,7 @@ class WearChatEventFlowTest {
         flow.abortGate = CompletableDeferred()
         flow.clickAppAction("Abort run")
         flow.idle()
-        assertTrue("The explicit action still stops current playback immediately", speech.isStopped)
+        assertTrue("The explicit action stops current playback before the RPC outcome", speech.isStopped)
         assertEquals(ownRun, flow.state.pendingReply?.runId)
         if (mode == "confirmed-foreign") flow.emit("delta", eventRunId = "foreign-run", text = "Foreign live")
         flow.abortGate?.complete(Unit)
