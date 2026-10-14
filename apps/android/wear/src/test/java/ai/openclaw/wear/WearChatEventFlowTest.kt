@@ -3124,7 +3124,8 @@ class WearChatEventFlowTest {
     fun close() {
       replyObserver?.pause()?.stop()?.destroy()
       owner.viewModelStore.clear()
-      idle()
+      // Disposal shuts down the speech worker; only drain the remaining main-thread cleanup.
+      shadowOf(Looper.getMainLooper()).idle()
       clientField.set(app, previousClient)
       repositoryField.set(app, previousRepository)
       originalScale?.let { Settings.Global.putFloat(app.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, it) }
