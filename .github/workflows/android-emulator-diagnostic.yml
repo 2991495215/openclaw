@@ -111,7 +111,19 @@ jobs:
           }
           """
           replace_once('export async function main', diagnostic + '\nexport async function main')
-          replace_once('  } catch (error) {\n    evidence.failure = stage;', '  } catch (error) {\n    diagnostic(error, "startup");\n    evidence.failure = stage;')
+          log_signals = r"""
+              const logs = instance?.logs() ?? "";
+              console.log(JSON.stringify({
+                diagnostic: "startup-log-signals",
+                ownerRefusal: logs.includes("Linux child ownership requires the built process owner, without a source loader"),
+                moduleNotFound: logs.includes("ERR_MODULE_NOT_FOUND"),
+                packagePathNotExported: logs.includes("ERR_PACKAGE_PATH_NOT_EXPORTED"),
+                normalizationCore: logs.includes("@openclaw/normalization-core"),
+                tsx: logs.includes("tsx"),
+                procSafe: logs.includes("proc-safe"),
+              }));
+          """
+          replace_once('  } catch (error) {\n    evidence.failure = stage;', '  } catch (error) {\n    diagnostic(error, "startup");\n' + log_signals + '\n    evidence.failure = stage;')
           replace_once('    const cleanupFailed =\n', '    for (const [index, result] of gatewayCleanup.entries()) {\n      if (result.status === "rejected") diagnostic(result.reason, `gateway-cleanup[${index}]`);\n    }\n    for (const [index, result] of cleanup.entries()) {\n      if (result.status === "rejected") diagnostic(result.reason, `service-cleanup[${index}]`);\n    }\n    const cleanupFailed =\n')
           replace_once('  void main().catch(() => {', '  void main().catch((error: unknown) => {\n    diagnostic(error, "preparation");')
           replace_once('    service(\n      process.execPath,', '    console.log("Diagnostic: starting original provider");\n    service(\n      process.execPath,')
@@ -125,6 +137,9 @@ jobs:
           PATCH
 
       - name: Exercise the original Linux Gateway startup and cleanup
+        id: original
+        # A strict failed-control assertion below owns this diagnostic exception.
+        continue-on-error: true
         run: |
           set -euo pipefail
           node --import ./scripts/tsx.mjs scripts/android-release-e2e.ts \
@@ -133,16 +148,119 @@ jobs:
             --output "$RUNNER_TEMP/android-gateway-diagnostic-proof.json" \
             --artifacts-dir "$RUNNER_TEMP/android-gateway-diagnostic-artifacts"
 
+      - name: Require the original failing control before adding the compiled owner
+        env:
+          ORIGINAL_OUTCOME: ${{ steps.original.outcome }}
+        run: |
+          python3 - <<'CONTROL'
+          import json, os
+          from pathlib import Path
+          proof = Path(os.environ["RUNNER_TEMP"]) / "android-gateway-diagnostic-proof.json"
+          data = json.loads(proof.read_text())
+          assert os.environ["ORIGINAL_OUTCOME"] == "failure"
+          assert data["status"] == "failed" and data["phases"] == []
+          assert data["failure"] == "gateway-start"
+          assert data["targetSha"] == os.environ["TARGET_SHA"]
+          print("Original pinned-source startup failed before native work; compiled-owner comparison admitted.")
+          CONTROL
+
+      - name: Add only the proposed target-owned Linux fixture bootstrap
+        run: |
+          set -euo pipefail
+          python3 - <<'BOOTSTRAP'
+          from pathlib import Path
+          owner = Path("scripts/android-release-e2e.ts")
+          source = owner.read_text()
+          assert 'phase("gateway-process-owner")' not in source
+          assert "registerSealedRuntimeProcessEntrypoint" not in source
+
+          def replace_once(before, after):
+              global source
+              assert source.count(before) == 1, "Pinned bootstrap patch input differs"
+              source = source.replace(before, after, 1)
+
+          fs_import = r"""import {
+            mkdir,
+            mkdtemp,
+            readFile,
+            readdir,
+            rename,
+            rm,
+            symlink,
+            writeFile,
+          } from "node:fs/promises";"""
+          replace_once('import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";', fs_import)
+          replace_once('import { callGateway } from "../src/gateway/call.js";', 'import { callGateway } from "../src/gateway/call.js";\nimport { registerSealedRuntimeProcessEntrypoint } from "../src/infra/runtime-process-url.js";')
+          replace_once('import { resolveRepoRoot } from "./lib/repo-root.mjs";', 'import { resolveRepoRoot } from "./lib/repo-root.mjs";\nimport {\n  getStandaloneRuntimeProcessOutputOptions,\n  standaloneRuntimeProcessBuildEntries,\n} from "./lib/runtime-process-core-build-entries.mts";')
+          bootstrap = r"""
+              if (process.platform === "linux") {
+                phase("gateway-process-owner");
+                // Linux custody requires a built subreaper without loader children. Compile
+                // this target's owner so its protocol matches the source-loaded fixture.
+                const name = "process/supervisor/service-child-group-anchor";
+                const entry = standaloneRuntimeProcessBuildEntries[name];
+                if (!entry) {
+                  throw new Error("gateway-process-owner-entry-missing");
+                }
+                const outDir = path.join(root, "process-owner", "dist");
+                await symlink(path.join(repo, "node_modules"), path.join(root, "node_modules"), "dir");
+                const { build } = await import("tsdown");
+                await build({
+                  config: false,
+                  cwd: repo,
+                  entry: { [name]: entry },
+                  outDir,
+                  format: "esm",
+                  platform: "node",
+                  tsconfig: path.join(repo, "tsconfig.json"),
+                  dts: false,
+                  envPrefix: [],
+                  clean: false,
+                  outExtensions: () => ({ js: ".js" }),
+                  outputOptions: getStandaloneRuntimeProcessOutputOptions(name),
+                  logLevel: "warn",
+                });
+                registerSealedRuntimeProcessEntrypoint(
+                  "serviceChildGroupAnchor",
+                  pathToFileURL(path.join(outDir, `${name}.js`)),
+                );
+              }
+          """
+          replace_once('    phase("gateway-start");', bootstrap + '\n    phase("gateway-start");')
+          owner.write_text(source)
+          print("Only this pinned target's canonical standalone process owner will be compiled and registered.")
+          BOOTSTRAP
+
+      - name: Exercise the compiled-owner Linux Gateway startup and cleanup
+        run: |
+          set -euo pipefail
+          node --import ./scripts/tsx.mjs scripts/android-release-e2e.ts \
+            --target-sha "$TARGET_SHA" \
+            --selection-dir "$RUNNER_TEMP/android-gateway-diagnostic-selection" \
+            --output "$RUNNER_TEMP/android-gateway-diagnostic-fixed-proof.json" \
+            --artifacts-dir "$RUNNER_TEMP/android-gateway-diagnostic-fixed-artifacts"
+          python3 - <<'FIXED'
+          import json, os
+          from pathlib import Path
+          proof = Path(os.environ["RUNNER_TEMP"]) / "android-gateway-diagnostic-fixed-proof.json"
+          data = json.loads(proof.read_text())
+          assert data["status"] == "passed" and data["cleanupConfirmed"] is True
+          assert data["phases"] == [] and data["targetSha"] == os.environ["TARGET_SHA"]
+          print("Compiled-owner startup and cleanup passed; no native application qualification was executed.")
+          FIXED
+
       - name: Report bounded diagnostic status
         if: always()
         run: |
           python3 - <<'REPORT'
           import json, os
           from pathlib import Path
-          proof = Path(os.environ["RUNNER_TEMP"]) / "android-gateway-diagnostic-proof.json"
-          if proof.exists():
-              data = json.loads(proof.read_text())
-              print(json.dumps({key: data.get(key) for key in ("targetSha", "status", "failure", "cleanupConfirmed", "coverage")}))
-          else:
-              print(json.dumps({"diagnostic": "preparation did not produce proof"}))
+          for control, filename in (("original", "android-gateway-diagnostic-proof.json"),
+                                    ("compiled-owner", "android-gateway-diagnostic-fixed-proof.json")):
+              proof = Path(os.environ["RUNNER_TEMP"]) / filename
+              if proof.exists():
+                  data = json.loads(proof.read_text())
+                  print(json.dumps({"control": control, **{key: data.get(key) for key in ("targetSha", "status", "failure", "cleanupConfirmed", "coverage")}}))
+              else:
+                  print(json.dumps({"control": control, "diagnostic": "preparation did not produce proof"}))
           REPORT
