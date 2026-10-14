@@ -820,9 +820,13 @@ file. Its internal deprecation window does not preserve the former SDK import.
 
 ### Auth display-path compatibility
 
-Await `AuthStorage.resolvePathForDisplayAsync` from
-`openclaw/plugin-sdk/agent-sessions`. Like the deprecated synchronous helper, it
-chooses the agent-local database when that auth store exists, otherwise the shared store.
+Public physical database-path displays are retired after 2026-12-31. External
+plugins should display provider/profile identifiers instead; there is no public
+async replacement for `resolveAuthStorePathForDisplay`.
+
+Bundled plugins can await `AuthStorage.resolvePathForDisplayAsync` from the private
+`openclaw/plugin-sdk/agent-sessions` surface. Like the deprecated synchronous helper,
+it chooses the agent-local database when that auth store exists, otherwise the shared store.
 `resolveProviderAuthProfileMetadataAsync` returns profile/account identifiers,
 not the selected database path, so it is not an equivalent replacement.
 
@@ -830,7 +834,7 @@ The bundled Hermes migration uses this distinction in auth and secret preview
 targets (`database-path#profileId`), including profiles that do not exist yet.
 The source callers are `extensions/migrate-hermes/auth.ts` and
 `extensions/migrate-hermes/secrets.ts`; selected-store behavior is covered by
-`src/agents/auth-profiles/paths-direct-import.test.ts`. The public static method
+`src/agents/auth-profiles/paths-direct-import.test.ts`. The private static method
 uses the canonical awaited resolver without constructing `AuthStorage` or loading
 credentials. The synchronous helper remains compatible through 2026-12-31 and
 is removed in the first January 2027 stable release.

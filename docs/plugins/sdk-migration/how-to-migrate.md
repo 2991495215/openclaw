@@ -1640,8 +1640,12 @@ No stored data migration or update step is required.
 
 ## Await auth-profile and provider-availability operations
 
-Await `AuthStorage.resolvePathForDisplayAsync` from
-`openclaw/plugin-sdk/agent-sessions` for a selected database path. It preserves
+External plugins should replace physical database-path displays with
+provider/profile identifiers. The public path-display use case retires after
+2026-12-31, with no public async path replacement.
+
+Bundled plugins can await `AuthStorage.resolvePathForDisplayAsync` from the private
+`openclaw/plugin-sdk/agent-sessions` surface for a selected database path. It preserves
 agent-local-versus-shared store selection, including migration locators such as
 `<selected-database-path>#<profile-id>` before a profile exists.
 `resolveProviderAuthProfileMetadataAsync` returns profile/account identity and
@@ -1692,9 +1696,9 @@ any other existing read options. The core helper
 `loadAuthProfileStoreForSecretsRuntimeAsync` is not a public SDK export.
 
 `resolveAuthStorePathForDisplay` remains a deprecated SDK compatibility export
-through 2026-12-31. Its public awaited replacement,
+through 2026-12-31. Its private bundled-plugin replacement,
 `AuthStorage.resolvePathForDisplayAsync`, retains the selected-path result contract
-without constructing credential storage.
+without constructing credential storage; it is not a public SDK import.
 Use `resolveProviderAuthProfileMetadataAsync` from `provider-auth-runtime` when
 the caller needs profile/account metadata instead.
 
