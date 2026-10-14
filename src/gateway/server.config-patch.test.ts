@@ -43,20 +43,80 @@ import {
 
 const reloadBarrier = vi.hoisted(() => ({ hold: undefined as (() => Promise<void>) | undefined }));
 
+const ownerReloadDiagnostic = vi.hoisted(() => ({
+  active: false,
+  startedAt: 0,
+  events: [] as Array<{ phase: string; elapsedMs: number }>,
+  record(phase: string) {
+    if (this.active && this.events.length < 64) {
+      this.events.push({ phase, elapsedMs: Math.round(performance.now() - this.startedAt) });
+    }
+  },
+}));
+
 vi.mock("./config-reload.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./config-reload.js")>();
   return {
     ...actual,
     startGatewayConfigReloader: (
       options: Parameters<typeof actual.startGatewayConfigReloader>[0],
-    ) =>
-      actual.startGatewayConfigReloader({
+    ) => {
+      const prepareConfigCandidate = options.prepareConfigCandidate;
+      return actual.startGatewayConfigReloader({
         ...options,
+        ...(prepareConfigCandidate
+          ? {
+              prepareConfigCandidate: async (
+                ...args: Parameters<typeof prepareConfigCandidate>
+              ) => {
+                ownerReloadDiagnostic.record("prepare-candidate:start");
+                try {
+                  return await prepareConfigCandidate(...args);
+                } finally {
+                  ownerReloadDiagnostic.record("prepare-candidate:settled");
+                }
+              },
+            }
+          : {}),
         onHotReload: async (...args) => {
-          await reloadBarrier.hold?.();
-          return await options.onHotReload(...args);
+          ownerReloadDiagnostic.record("hot-reload:start");
+          try {
+            await reloadBarrier.hold?.();
+            return await options.onHotReload(...args);
+          } finally {
+            ownerReloadDiagnostic.record("hot-reload:settled");
+          }
         },
-      }),
+        onConfigApplied: async (...args) => {
+          ownerReloadDiagnostic.record("config-applied:start");
+          try {
+            return await options.onConfigApplied?.(...args);
+          } finally {
+            ownerReloadDiagnostic.record("config-applied:settled");
+          }
+        },
+        onConfigAccepted: async (...args) => {
+          ownerReloadDiagnostic.record("config-accepted:start");
+          try {
+            return await options.onConfigAccepted?.(...args);
+          } finally {
+            ownerReloadDiagnostic.record("config-accepted:settled");
+          }
+        },
+        onConfigRevisionApplied: (...args) => {
+          ownerReloadDiagnostic.record("revision-applied");
+          return options.onConfigRevisionApplied?.(...args);
+        },
+        onRuntimeConfigCommitted: (...args) => {
+          ownerReloadDiagnostic.record("runtime-committed");
+          return options.onRuntimeConfigCommitted?.(...args);
+        },
+        onConfigCandidateCommitted: (...args) => {
+          ownerReloadDiagnostic.record("source-committed");
+          return options.onConfigCandidateCommitted?.(...args);
+        },
+      });
+    },
   };
 });
 
@@ -93,7 +153,11 @@ describe("gateway config methods", () => {
       },
     };
 
+    ownerReloadDiagnostic.active = true;
+    ownerReloadDiagnostic.startedAt = performance.now();
+    ownerReloadDiagnostic.events.length = 0;
     try {
+      ownerReloadDiagnostic.record("seed-patch:start");
       const seed = await rpcReq<{ degradedSecretOwners?: unknown[] }>(
         requireClient(),
         "config.patch",
@@ -103,17 +167,20 @@ describe("gateway config methods", () => {
         },
         CONFIG_SECRETREF_RPC_TIMEOUT_MS,
       );
+      ownerReloadDiagnostic.record("seed-patch:resolved");
       expect(seed.ok, seed.error?.message).toBe(true);
       expect(seed.payload?.degradedSecretOwners).toBeUndefined();
 
       await writeJsonFile(secretFile, { second: "second-new" });
       await fs.chmod(secretFile, 0o600);
+      ownerReloadDiagnostic.record("secrets-reload:start");
       const reload = await rpcReq<{ warningCount?: number }>(
         requireClient(),
         "secrets.reload",
         {},
         CONFIG_SECRETREF_RPC_TIMEOUT_MS,
       );
+      ownerReloadDiagnostic.record("secrets-reload:resolved");
       expect(reload.ok).toBe(true);
       const stale = getActiveSecretsRuntimeSnapshot();
       expect(stale?.config.models?.providers?.["reload-first"]?.apiKey).toBe("first-old");
@@ -123,6 +190,7 @@ describe("gateway config methods", () => {
       ]);
 
       const beforeCold = await getCurrentConfigObject();
+      ownerReloadDiagnostic.record("cold-patch:start");
       const cold = await rpcReq<{
         degradedSecretOwners?: Array<{ ownerId?: string; state?: string }>;
       }>(
@@ -140,6 +208,7 @@ describe("gateway config methods", () => {
         },
         CONFIG_SECRETREF_RPC_TIMEOUT_MS,
       );
+      ownerReloadDiagnostic.record("cold-patch:resolved");
       expect(cold.ok).toBe(true);
       expect(cold.payload?.degradedSecretOwners).toEqual([
         expect.objectContaining({ ownerId: "reload-first", state: "cold" }),
@@ -150,6 +219,12 @@ describe("gateway config methods", () => {
       );
       expect(coldSnapshot?.config.models?.providers?.["reload-second"]?.apiKey).toBe("second-new");
     } finally {
+      ownerReloadDiagnostic.record("test:finally");
+      ownerReloadDiagnostic.active = false;
+      console.error(
+        "[config-owner-reload-diagnostic]",
+        JSON.stringify(ownerReloadDiagnostic.events),
+      );
       await restoreConfigFileForTest(original);
       activateSecretsRuntimeSnapshot(
         await prepareSecretsRuntimeSnapshot({
