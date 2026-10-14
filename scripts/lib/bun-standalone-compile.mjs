@@ -58,7 +58,7 @@ export function compileStandalone({
   return executable;
 }
 
-if (isDirectRunUrl(import.meta.url)) {
+if (isDirectRunUrl(process.argv[1], import.meta.url)) {
   const [directory, ...compileFlags] = process.argv.slice(2);
   if (!directory || !globalThis.Bun) {
     throw new Error(
