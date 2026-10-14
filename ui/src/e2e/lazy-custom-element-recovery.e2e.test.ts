@@ -922,7 +922,36 @@ suite.define(() => {
           });
         }
 
-        await retryThroughReload(page, error);
+        const retryGeometry = () =>
+          error.getByRole("button", { name: "Retry", exact: true }).evaluate((button) => {
+            const ancestors = [];
+            for (let node: Element | null = button; node; ) {
+              const rect = node.getBoundingClientRect();
+              const style = getComputedStyle(node);
+              ancestors.push({
+                tag: node.tagName,
+                className: node.getAttribute("class"),
+                rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                display: style.display,
+                visibility: style.visibility,
+                contentVisibility: style.contentVisibility,
+                overflow: style.overflow,
+                inert: node.hasAttribute("inert"),
+                open: node.getAttribute("open"),
+              });
+              const root = node.getRootNode();
+              node = node.assignedSlot ?? node.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+            }
+            return { ancestors, active: document.activeElement?.outerHTML.slice(0, 500), ready: document.readyState };
+          });
+        console.log("[native-retry-before]", JSON.stringify(await retryGeometry()));
+        try {
+          await retryThroughReload(page, error);
+        } catch (failure) {
+          console.log("[native-retry-after]", JSON.stringify(await retryGeometry()));
+          await page.screenshot({ path: path.join(process.env.RUNNER_TEMP!, "native-retry-failed.png") });
+          throw failure;
+        }
         const toolbar = page.locator(".macos-titlebar-controls");
         await toolbar.waitFor({ state: "visible" });
         await page.locator(".sidebar-session-toolbar__collapse").click();
