@@ -2870,8 +2870,9 @@ describe("google transport stream", () => {
     ["gemini-pro-latest", "Gemini Pro Latest"],
     ["gemini-flash-latest", "Gemini Flash Latest"],
     ["gemini-flash-lite-latest", "Gemini Flash Lite Latest"],
+    ["gemini-4-argon", "Gemini 4 Argon"],
   ])(
-    "adds skip-validator fallback to first-turn unsigned Gemini 3 tool calls for %s",
+    "adds skip-validator fallback to first-turn unsigned Gemini tool calls for %s",
     (modelId, modelName) => {
       const model = buildGeminiModel({ id: modelId, name: modelName });
       const params = buildGoogleGenerativeAiParams(model, {
@@ -2974,7 +2975,6 @@ describe("google transport stream", () => {
       expect(generationConfig).toHaveProperty("maxOutputTokens", maxOutputTokens);
     }
   });
-
   it("omits stopSequences when the stop list is empty", () => {
     const generationConfig = buildGeminiUserParams({}, { stop: [] }).generationConfig ?? {};
     expect(generationConfig).not.toHaveProperty("stopSequences");
