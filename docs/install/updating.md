@@ -335,6 +335,9 @@ reported recovery command. Doctor does not clear those artifacts.
 pnpm updates use the installation's own pnpm home and bin directory, even when
 macOS service PATH excludes pnpm. The installed updater must contain this fix.
 
+pnpm updates use the installation's own pnpm home and bin directory, even when
+macOS service PATH excludes pnpm. The installed updater must contain this fix.
+
 Native pnpm updates also relocate pnpm 12 launcher paths before publishing them.
 After activation, unresolved launcher targets produce a warning with repair
 guidance without rolling back the updated package. These protections require
