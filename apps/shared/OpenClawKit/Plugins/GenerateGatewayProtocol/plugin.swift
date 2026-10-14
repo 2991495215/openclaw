@@ -32,8 +32,11 @@ struct GenerateGatewayProtocol: BuildToolPlugin {
         var unusable: [String] = []
         var required: String?
         for candidate in candidates {
-            guard let probe = Self.probe(candidate, root: root) else {
-                unusable.append(candidate)
+            let probe: NodeProbe
+            do {
+                probe = try Self.probe(candidate, root: root)
+            } catch {
+                unusable.append("\(candidate) (\(error.localizedDescription))")
                 continue
             }
             guard probe.supported else {
@@ -75,7 +78,15 @@ struct GenerateGatewayProtocol: BuildToolPlugin {
     })));
     """
 
-    private static func probe(_ candidate: String, root: URL) -> NodeProbe? {
+    private static func probe(_ candidate: String, root: URL) throws -> NodeProbe {
+        let started = ProcessInfo.processInfo.systemUptime
+        func failure(_ reason: String) -> NSError {
+            let elapsed = String(format: "%.3f", ProcessInfo.processInfo.systemUptime - started)
+            return NSError(
+                domain: "GenerateGatewayProtocol",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "\(reason) after \(elapsed)s"])
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: candidate)
         process.arguments = ["--eval", self.probeScript, root.appending(path: "node-version.mjs").path]
@@ -88,25 +99,37 @@ struct GenerateGatewayProtocol: BuildToolPlugin {
         let output = Pipe()
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
+        process.standardError = FileHandle.standardError
         let exited = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in exited.signal() }
         do {
             try process.run()
         } catch {
-            return nil
+            throw failure("launch failed: \(error.localizedDescription)")
         }
         // A stalled launcher must not hang build planning; skip it like any other unusable candidate.
         // The plugin sandbox may refuse the signal, leaving the launcher to exit on its own.
         guard exited.wait(timeout: .now() + .seconds(30)) == .success else {
             kill(process.processIdentifier, SIGKILL)
-            return nil
+            throw failure("timed out waiting for exit (30s limit)")
         }
-        guard process.terminationStatus == 0 else { return nil }
+        guard process.terminationStatus == 0 else {
+            let reason = process.terminationReason == .uncaughtSignal ? "terminated by signal" : "exited with status"
+            throw failure("\(reason) \(process.terminationStatus)")
+        }
         // Read without blocking: a descendant of the exited launcher may still hold stdout open.
         let handle = output.fileHandleForReading
         _ = fcntl(handle.fileDescriptor, F_SETFL, O_NONBLOCK)
-        guard let data = try? handle.readToEnd() else { return nil }
-        return try? JSONDecoder().decode(NodeProbe.self, from: data)
+        let data: Data
+        do {
+            data = try handle.readToEnd() ?? Data()
+        } catch {
+            throw failure("stdout read failed: \(error.localizedDescription)")
+        }
+        do {
+            return try JSONDecoder().decode(NodeProbe.self, from: data)
+        } catch {
+            throw failure("JSON decode failed: \(error.localizedDescription)")
+        }
     }
 }
