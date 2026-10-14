@@ -1104,6 +1104,37 @@ function traceStartupHttp(signal: AbortSignal) {
       if (failed) {
         flush();
       }
+      // Emit coverage only after the fixture close attempt and observer cleanup.
+      // A passing run must show whether the relevant taps actually fired.
+      try {
+        console.error(
+          "[startup-http-coverage]",
+          JSON.stringify({
+            failed,
+            retainedEvents: events.length,
+            dropped,
+            counts: Object.fromEntries(
+              [
+                "undici:request:create",
+                "undici:request:headers",
+                "server.arrival",
+                "response.finish",
+                "request-lifetime.observed",
+                "request-lifetime.close-entry",
+                "request-lifetime.abort",
+                "server.close-entry",
+                "response.destroy-entry",
+                "socket.destroy-entry",
+                "observer.error",
+                "observer.transport-error",
+                "observer.cleanup-error",
+              ].map((event) => [event, events.filter((entry) => entry.event === event).length]),
+            ),
+          }),
+        );
+      } catch {
+        // Diagnostic reporting cannot change the original test or cleanup result.
+      }
     },
   };
 }
