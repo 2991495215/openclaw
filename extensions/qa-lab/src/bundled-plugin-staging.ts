@@ -40,12 +40,9 @@ function readQaBundledManifestId(manifestPath: string): string | null {
   }
 }
 
-function findQaBundledPluginDirsByManifestId(params: {
-  repoRoot: string;
-  pluginId: string;
-}): string[] {
-  const candidates: string[] = [];
-  for (const sourceRoot of resolveQaBundledPluginScanRoots(params.repoRoot)) {
+function indexQaBundledPluginDirs(roots: readonly string[]) {
+  const directories = new Map<string, string[]>();
+  for (const sourceRoot of roots) {
     for (const entry of readdirSync(sourceRoot, { withFileTypes: true }).toSorted((left, right) =>
       left.name.localeCompare(right.name),
     )) {
@@ -54,12 +51,14 @@ function findQaBundledPluginDirsByManifestId(params: {
       }
       const candidate = path.join(sourceRoot, entry.name);
       const manifestId = readQaBundledManifestId(path.join(candidate, "openclaw.plugin.json"));
-      if (manifestId === params.pluginId) {
-        candidates.push(candidate);
+      if (manifestId) {
+        const matches = directories.get(manifestId) ?? [];
+        matches.push(candidate);
+        directories.set(manifestId, matches);
       }
     }
   }
-  return candidates;
+  return directories;
 }
 
 export async function resolveQaOwnerPluginIdsForProviderIds(params: {
@@ -126,15 +125,13 @@ function collectQaBundledPluginSources(params: {
 }) {
   const sources = new Map<string, { sourceDir: string; manifestPath: string | undefined }>();
   const roots = resolveQaBundledPluginScanRoots(params.repoRoot);
+  const directories = indexQaBundledPluginDirs(roots);
   const sourceExtensionsRoot = path.join(params.repoRoot, "extensions");
   for (const pluginId of [...params.allowedPluginIds, ...QA_ALWAYS_STAGE_RUNTIME_PLUGIN_IDS]) {
     if (!QA_BUNDLED_PLUGIN_ID_PATTERN.test(pluginId)) {
       throw new Error(`invalid QA bundled plugin id: ${pluginId}`);
     }
-    const manifestDirs = findQaBundledPluginDirsByManifestId({
-      repoRoot: params.repoRoot,
-      pluginId,
-    });
+    const manifestDirs = directories.get(pluginId) ?? [];
     const candidates = uniqueStrings([
       ...roots.map((root) => path.join(root, pluginId)).filter(existsSync),
       ...manifestDirs,
@@ -191,39 +188,16 @@ async function symlinkQaStagedEntry(sourceDir: string, targetDir: string, entry:
   );
 }
 
-async function seedQaStagedNodeModules(params: { repoRoot: string; stagedRoot: string }) {
-  const sourceNodeModulesDir = path.join(params.repoRoot, "node_modules");
-  if (!existsSync(sourceNodeModulesDir)) {
+async function linkQaStagingEntries(sourceDir: string, targetDir: string, excluded: string) {
+  if (!existsSync(sourceDir)) {
     return;
   }
-  const stagedNodeModulesDir = path.join(params.stagedRoot, "node_modules");
-  await fs.mkdir(stagedNodeModulesDir, { recursive: true });
-  for (const entry of await fs.readdir(sourceNodeModulesDir, { withFileTypes: true })) {
-    if (entry.name === "openclaw") {
+  await fs.mkdir(targetDir, { recursive: true });
+  for (const entry of await fs.readdir(sourceDir, { withFileTypes: true })) {
+    if (entry.name === excluded || existsSync(path.join(targetDir, entry.name))) {
       continue;
     }
-    await symlinkQaStagedEntry(sourceNodeModulesDir, stagedNodeModulesDir, entry);
-  }
-}
-
-async function seedQaStagedBuiltTreeRoots(params: {
-  stagedTreeRoot: string;
-  sourceTreeRoots: readonly string[];
-}) {
-  for (const sourceTreeRoot of params.sourceTreeRoots) {
-    if (!existsSync(sourceTreeRoot)) {
-      continue;
-    }
-    for (const entry of await fs.readdir(sourceTreeRoot, { withFileTypes: true })) {
-      if (entry.name === "extensions") {
-        continue;
-      }
-      const targetPath = path.join(params.stagedTreeRoot, entry.name);
-      if (existsSync(targetPath)) {
-        continue;
-      }
-      await symlinkQaStagedEntry(sourceTreeRoot, params.stagedTreeRoot, entry);
-    }
+    await symlinkQaStagedEntry(sourceDir, targetDir, entry);
   }
 }
 
@@ -273,10 +247,11 @@ export async function createQaBundledPluginsDir(params: {
     path.join(params.repoRoot, "package.json"),
     path.join(stagedRoot, "package.json"),
   );
-  await seedQaStagedNodeModules({
-    repoRoot: params.repoRoot,
-    stagedRoot,
-  });
+  await linkQaStagingEntries(
+    path.join(params.repoRoot, "node_modules"),
+    path.join(stagedRoot, "node_modules"),
+    "openclaw",
+  );
   const stagedOpenClawPackageDir = path.join(stagedRoot, "node_modules", "openclaw");
   await fs.mkdir(stagedOpenClawPackageDir, { recursive: true });
   await fs.copyFile(
@@ -290,19 +265,18 @@ export async function createQaBundledPluginsDir(params: {
       : "dist";
   const stagedTreeRoot = path.join(stagedRoot, stagedTreeName);
   await fs.mkdir(stagedTreeRoot, { recursive: true });
-  await seedQaStagedBuiltTreeRoots({
-    stagedTreeRoot,
-    sourceTreeRoots: uniqueStrings([
-      path.join(params.repoRoot, stagedTreeName),
-      ...[...stagedPluginSources.values()].flatMap(({ sourceDir }) => {
-        const treeRoot = resolveQaBuiltBundledPluginTreeRoot({
-          repoRoot: params.repoRoot,
-          sourceDir,
-        });
-        return treeRoot ? [treeRoot] : [];
-      }),
-    ]),
-  });
+  for (const sourceTreeRoot of uniqueStrings([
+    path.join(params.repoRoot, stagedTreeName),
+    ...[...stagedPluginSources.values()].flatMap(({ sourceDir }) => {
+      const treeRoot = resolveQaBuiltBundledPluginTreeRoot({
+        repoRoot: params.repoRoot,
+        sourceDir,
+      });
+      return treeRoot ? [treeRoot] : [];
+    }),
+  ])) {
+    await linkQaStagingEntries(sourceTreeRoot, stagedTreeRoot, "extensions");
+  }
   if (stagedTreeName === "dist-runtime" && !existsSync(path.join(stagedRoot, "dist"))) {
     const repoDistDir = path.join(params.repoRoot, "dist");
     const stagedDistTarget = existsSync(repoDistDir) ? repoDistDir : stagedTreeRoot;

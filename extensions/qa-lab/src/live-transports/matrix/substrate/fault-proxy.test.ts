@@ -170,6 +170,34 @@ describe("Matrix QA fault proxy", () => {
     expect(target.requests).toHaveLength(1);
   });
 
+  it("keeps scenario-local hit histories separate when a rule is reinstalled", async () => {
+    const target = await startTargetServer();
+    proxy = await startMatrixQaFaultProxy({ targetBaseUrl: target.baseUrl, rules: [] });
+    const rule = {
+      id: "scenario-local-sync-fault",
+      match: () => true,
+      response: () => ({ body: { errcode: "M_QA_FAULT" }, status: 503 }),
+    };
+    const first = proxy.installRule(rule);
+    const endpoint = `${proxy.baseUrl}/_matrix/client/v3/sync`;
+    expect((await fetch(endpoint)).status).toBe(503);
+    const historyBeforeReinstall = proxy.hits();
+    first.remove();
+    const second = proxy.installRule(rule);
+    first.remove();
+    expect((await fetch(endpoint)).status).toBe(503);
+    const expected = { method: "GET", path: "/_matrix/client/v3/sync", ruleId: rule.id };
+    expect(historyBeforeReinstall).toEqual([expected]);
+    expect(first.hits()).toEqual([expected]);
+    expect(second.hits()).toEqual([expected]);
+    expect(proxy.hits()).toEqual([expected, expected]);
+
+    second.remove();
+    expect((await fetch(endpoint)).status).toBe(200);
+    expect(proxy.hits()).toEqual([expected, expected]);
+    expect(target.requests).toHaveLength(1);
+  });
+
   it("rejects request targets that resolve outside the configured origin", async () => {
     const target = await startTargetServer();
     proxy = await startMatrixQaFaultProxy({ targetBaseUrl: target.baseUrl, rules: [] });

@@ -732,11 +732,10 @@ extensions/qa-lab/src/qa-transport.ts	1
 extensions/qa-lab/src/run-config.ts	1
 extensions/qa-lab/src/runtime-parity.ts	1
 extensions/qa-lab/src/runtime-tool-fixture.ts	1
-extensions/qa-lab/src/scenario-catalog.ts	1
 extensions/qa-lab/src/scenario-flow-runner.ts	5
 extensions/qa-lab/src/self-check-scenario.ts	2
 extensions/qa-lab/src/suite-launch.runtime.ts	1
-extensions/qa-lab/src/suite-planning.ts	2
+extensions/qa-lab/src/suite-planning.ts	1
 extensions/qa-lab/src/suite-run-standard.ts	1
 extensions/qa-lab/src/suite-runtime-agent-process.ts	6
 extensions/qa-lab/src/suite-runtime-agent-session.ts	4
