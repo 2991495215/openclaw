@@ -280,10 +280,11 @@ it.each(["changed", "healthy"])(
     const cfg = config();
     cfg.mcp!.servers![heldServer] = { transport: "streamable-http", url };
     const acquisition = await manager.acquire({ ...params, cfg });
+    // Keep cold stdio startup outside the held HTTP request's deadline.
+    await probe(acquisition.runtime, heldServer === "changed" ? "healthy" : "changed");
     const pending = materializeBundleMcpToolsForRun(acquisition);
     void pending.catch(() => undefined);
     await started.promise;
-    await probe(acquisition.runtime, heldServer === "changed" ? "healthy" : "changed");
     const next = structuredClone(cfg);
     delete next.mcp!.servers!.changed;
     await manager.reloadConfig({ cfg: next, manifestRegistry: params.manifestRegistry });
