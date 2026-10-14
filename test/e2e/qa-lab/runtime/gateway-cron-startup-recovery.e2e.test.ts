@@ -110,7 +110,7 @@ describe("Gateway cron startup recovery", () => {
     const historyRetryAtMs = Date.now() + 60_000;
     const jobs = [
       cronJob({
-        id: "persisted-retry-without-history",
+        id: "history-without-retry",
         startedAtMs,
         nextRunAtMs: persistedRetryAtMs,
       }),
@@ -130,7 +130,7 @@ describe("Gateway cron startup recovery", () => {
       }),
     ];
     const historyNextRunAtMs = new Map<string, number | undefined>([
-      ["persisted-retry-without-history", undefined],
+      ["history-without-retry", undefined],
       ["persisted-retry", historyRetryAtMs],
       ["history-retry", historyRetryAtMs],
       ["persisted-disable", historyRetryAtMs],
@@ -216,13 +216,15 @@ describe("Gateway cron startup recovery", () => {
       );
       const recovered = new Map(response.jobs.map((job) => [job.id, job] as const));
 
-      expect(recovered.get("persisted-retry-without-history")).toMatchObject({
-        enabled: true,
-        state: { nextRunAtMs: persistedRetryAtMs },
+      // A stale retry timestamp is not a committed schedule edit; finalized history owns recovery.
+      expect(recovered.get("history-without-retry")).toMatchObject({
+        enabled: false,
+        state: { lastRunStatus: "error" },
       });
+      expect(recovered.get("history-without-retry")?.state.nextRunAtMs).toBeUndefined();
       expect(recovered.get("persisted-retry")).toMatchObject({
         enabled: true,
-        state: { nextRunAtMs: persistedRetryAtMs },
+        state: { nextRunAtMs: historyRetryAtMs },
       });
       expect(recovered.get("history-retry")).toMatchObject({
         enabled: true,
