@@ -4,7 +4,7 @@ import Testing
 @testable import OpenClaw
 
 extension BundledRuntimeTests {
-    private func makeArchive(at app: URL, buildID: String) async throws -> URL {
+    private func makeArchive(at app: URL, buildID: String, nativeAlias: Bool = false) async throws -> URL {
         let dist = try self.makeBundle(
             at: app, builtAt: "2026-08-27T00:00:00.000Z", buildID: buildID, command: "unused")
         let resources = app.appendingPathComponent("Contents/Resources")
@@ -20,6 +20,16 @@ extension BundledRuntimeTests {
             encoding: .utf8)
         try FileManager.default.createSymbolicLink(
             atPath: package.appendingPathComponent("package-link").path, withDestinationPath: "README.md")
+        if nativeAlias {
+            let nativeBin = resources.appendingPathComponent("runtime/bin")
+            try FileManager.default.moveItem(
+                at: nativeBin.appendingPathComponent("bun"),
+                to: nativeBin.appendingPathComponent("bun-real"))
+            let payloadBin = payload.appendingPathComponent("bin")
+            try FileManager.default.createDirectory(at: payloadBin, withIntermediateDirectories: true)
+            try FileManager.default.createSymbolicLink(
+                atPath: payloadBin.appendingPathComponent("bun").path, withDestinationPath: "bun-real")
+        }
         let archive = resources.appendingPathComponent("runtime.aar")
         let result = await ShellExecutor.runDetailed(
             command: [
@@ -51,6 +61,7 @@ extension BundledRuntimeTests {
         "invalid-format",
         "missing-digest",
         "invalid-digest",
+        "mismatched-digest",
         "missing-archive",
         "corrupt",
         "invalid-archive",
@@ -78,6 +89,8 @@ extension BundledRuntimeTests {
             .updateArchiveMetadata(app: app) { $0.removeValue(forKey: "OpenClawRuntimeArchiveSHA256") }
         case "invalid-digest": try self
             .updateArchiveMetadata(app: app) { $0["OpenClawRuntimeArchiveSHA256"] = "invalid" }
+        case "mismatched-digest": try self
+            .updateArchiveMetadata(app: app) { $0["OpenClawRuntimeArchiveSHA256"] = String(repeating: "0", count: 64) }
         case "missing-archive": try FileManager.default.removeItem(at: archive)
         case "corrupt": try Data("corrupt".utf8).write(to: archive)
         default:
@@ -113,7 +126,7 @@ extension BundledRuntimeTests {
         let originalCLI = try Data(contentsOf: cli)
         for build in ["archive-1", "archive-2"] {
             let app = home.appendingPathComponent("\(build).app")
-            let archive = try await self.makeArchive(at: app, buildID: build)
+            let archive = try await self.makeArchive(at: app, buildID: build, nativeAlias: build == "archive-1")
             let bundle = try #require(Bundle(url: app))
             let prepared = try await BundledRuntime.prepare(bundle: bundle, profile: profile, homeDirectory: home)
             #expect(try BundledRuntime.seeded(profile: profile, homeDirectory: home)?.root.path == loose.root.path)

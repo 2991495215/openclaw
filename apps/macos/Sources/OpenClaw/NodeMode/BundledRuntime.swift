@@ -73,14 +73,7 @@ struct BundledRuntime: Sendable {
         let root = bundle.bundleURL.appendingPathComponent("Contents/Resources/runtime")
         let archive = try self.archive(bundle: bundle)
         guard archive != nil else { return try (self.resolve(root: root, bundle: bundle), nil) }
-        let runtime = Self(root: root)
-        guard FileManager.default.isExecutableFile(atPath: runtime.bun.path),
-              FileManager.default.isReadableFile(atPath: runtime.sqliteLibrary.path)
-        else {
-            throw MacNodeHostWorker.WorkerError.unavailable(
-                reason: "The bundled runtime is missing or incompatible. Rebuild or reinstall OpenClaw.app.")
-        }
-        return (runtime, archive)
+        return (Self(root: root), archive)
     }
 
     static func resolve(root: URL, bundle: Bundle) throws -> Self {
