@@ -11,7 +11,7 @@ extension BundledRuntime {
     private static let archiveLogger = Logger(subsystem: "ai.openclaw", category: "bundled-runtime.archive")
 
     static func archive(bundle: Bundle) throws -> RuntimeArchive? {
-        let url = bundle.bundleURL.appendingPathComponent("Contents/Resources/runtime.zip")
+        let url = bundle.bundleURL.appendingPathComponent("Contents/Resources/runtime.aar")
         let info = bundle.infoDictionary ?? [:]
         let version = info["OpenClawRuntimeArchiveFormatVersion"]
         let digest = info["OpenClawRuntimeArchiveSHA256"]
@@ -44,7 +44,7 @@ extension BundledRuntime {
         guard actual == archive.sha256 else { throw SeedError.archiveIntegrity }
         let start = ContinuousClock.now
         let result = await ShellExecutor.runDetailed(
-            command: ["/usr/bin/ditto", "-x", "-k", archive.url.path, destination.path],
+            command: ["/usr/bin/aa", "extract", "-i", archive.url.path, "-d", destination.path],
             cwd: nil,
             env: [:],
             timeout: 300)

@@ -88,6 +88,7 @@ extension BundledRuntime {
             }
             try Task.checkCancellation()
             try fileManager.moveItem(at: partial, to: target)
+            return Self(root: target)
         }
         return try self.resolve(root: target, bundle: bundle)
     }

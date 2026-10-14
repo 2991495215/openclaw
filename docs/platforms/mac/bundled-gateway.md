@@ -14,7 +14,9 @@ Chrome-extension setup entry point run on this Bun runtime. The app bundle
 contains no Node executable.
 
 In standard desktop app builds, non-native runtime files are packaged in
-`Contents/Resources/runtime.zip`, including documentation and symbolic links.
+`Contents/Resources/runtime.aar`, including documentation and symbolic links.
+This uncompressed AppleArchive uses the macOS system extractor's parallel
+workers; the outer app download is compressed separately.
 Native executables and libraries, including Bun, remain loose under
 `Contents/Resources/runtime` so signing and notarization tools can inspect them.
 Universal apps share the JavaScript package between architectures and include
@@ -49,7 +51,7 @@ for the default state directory, `~/.config/openclaw/gateway.env`.
 Before the Gateway, node worker, or browser setup helper runs, the app seeds its
 runtime to `<state>/runtime/<runtimeBuildId>/`, where `<state>` is `~/.openclaw`
 or `~/.openclaw-<profile>`. It clones the loose native files when APFS supports
-it, verifies the ZIP's SHA-256 and format version against the signed app metadata, and extracts the
+it, verifies the archive's SHA-256 and format version against the signed app metadata, and extracts the
 resources into a temporary directory. The complete runtime is published
 atomically after provenance and Bun checks succeed. Archive integrity or
 extraction failures leave the current runtime unchanged; reinstall the app if

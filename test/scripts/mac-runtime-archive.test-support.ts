@@ -32,6 +32,7 @@ export function registerMacRuntimeArchiveTests() {
       await symlink(".pnpm/pkg/node_modules/pkg", path.join(runtime, "sidecar/pkg"));
       const native = await readFile("/usr/bin/true");
       await writeFile(path.join(runtime, "bin/bun"), native, { mode: 0o755 });
+      await writeFile(path.join(runtime, "bin/bun.md"), "Bun documentation\n");
       await writeFile(path.join(runtime, "sidecar/addon.node"), native, { mode: 0o755 });
       await writeFile(path.join(runtime, "sidecar/library.dylib"), native, { mode: 0o755 });
       await symlink("addon.node", path.join(runtime, "sidecar/native-link"));
@@ -49,7 +50,7 @@ export function registerMacRuntimeArchiveTests() {
         root,
         mac,
       );
-      const archive = path.join(resources, "runtime.zip");
+      const archive = path.join(resources, "runtime.aar");
       expect(await readFile(path.join(runtime, "bin/bun"))).toEqual(native);
       expect(existsSync(path.join(packageRoot, "hello.js"))).toBe(false);
       expect(existsSync(path.join(runtime, metadata))).toBe(false);
@@ -72,7 +73,13 @@ export function registerMacRuntimeArchiveTests() {
       expect(info.OpenClawRuntimeBuildID).toBe("fixture");
 
       const extracted = path.join(root, "extracted");
-      await runMacFixtureTool("/usr/bin/ditto", ["-x", "-k", archive, extracted], root, mac);
+      await mkdir(extracted);
+      await runMacFixtureTool(
+        "/usr/bin/aa",
+        ["extract", "-i", archive, "-d", extracted],
+        root,
+        mac,
+      );
       const restoredScript = path.join(extracted, "lib/node_modules/openclaw/hello.js");
       expect(await readFile(restoredScript, "utf8")).toBe(script);
       expect((await stat(restoredScript)).mode & 0o777).toBe(0o755);
@@ -81,6 +88,9 @@ export function registerMacRuntimeArchiveTests() {
       );
       expect((await stat(path.join(extracted, "empty"))).isDirectory()).toBe(true);
       expect(existsSync(path.join(extracted, "bin/bun"))).toBe(false);
+      expect(await readFile(path.join(extracted, "bin/bun.md"), "utf8")).toBe(
+        "Bun documentation\n",
+      );
       expect(existsSync(path.join(extracted, "sidecar/addon.node"))).toBe(false);
       expect(existsSync(path.join(extracted, "sidecar/library.dylib"))).toBe(false);
       expect(await readFile(path.join(extracted, metadata), "utf8")).toBe('{"buildId":"fixture"}');

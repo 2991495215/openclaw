@@ -643,10 +643,10 @@ if [[ "${CLOUD_WORKER_HOST:-0}" == "1" ]]; then
   fi
 fi
 VERIFIED_RUNTIME="$APP_ROOT/Contents/Resources/runtime"
-if [[ -f "$APP_ROOT/Contents/Resources/runtime.zip" ]]; then
+if [[ -f "$APP_ROOT/Contents/Resources/runtime.aar" ]]; then
   VERIFIED_RUNTIME="$APP_STAGE_DIR/verified-runtime"
   /usr/bin/ditto "$APP_ROOT/Contents/Resources/runtime" "$VERIFIED_RUNTIME"
-  /usr/bin/ditto -x -k "$APP_ROOT/Contents/Resources/runtime.zip" "$VERIFIED_RUNTIME"
+  /usr/bin/aa extract -i "$APP_ROOT/Contents/Resources/runtime.aar" -d "$VERIFIED_RUNTIME"
 fi
 for arch in "${BUILD_ARCHS[@]}"; do
   if /usr/bin/arch -"$arch" /usr/bin/true 2>/dev/null; then

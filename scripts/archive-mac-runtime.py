@@ -5,14 +5,15 @@ import importlib.util
 import os
 from pathlib import Path
 import plistlib
+import re
 import stat
+import subprocess
 import sys
-import zipfile
 
 
 def archive_runtime(app):
     runtime = app / "Contents/Resources/runtime"
-    archive = app / "Contents/Resources/runtime.zip"
+    archive = app / "Contents/Resources/runtime.aar"
     plist = app / "Contents/Info.plist"
     with plist.open("rb") as source:
         metadata = plistlib.load(source)
@@ -29,31 +30,34 @@ def archive_runtime(app):
     retained = {os.fsdecode(records[index + 1]) for index in range(0, len(records) - 1, 2)
                 if records[index] in (b"executable", b"library")}
     archived = []
-    with zipfile.ZipFile(archive, "x", zipfile.ZIP_DEFLATED, compresslevel=6, strict_timestamps=False) as output:
-        for directory, directories, files in os.walk(runtime, followlinks=False):
-            for name in sorted(directories + files):
-                entry = Path(directory) / name
-                if str(entry) in retained:
-                    continue
-                info = entry.lstat()
-                relative = entry.relative_to(runtime).as_posix()
-                if stat.S_ISLNK(info.st_mode):
-                    member = zipfile.ZipInfo(relative)
-                    member.create_system = 3
-                    member.external_attr = info.st_mode << 16
-                    output.writestr(member, os.readlink(entry))
-                    archived.append(entry)
-                elif stat.S_ISDIR(info.st_mode):
-                    output.write(entry, relative + "/")
-                elif stat.S_ISREG(info.st_mode):
-                    output.write(entry, relative)
-                    archived.append(entry)
-                else:
-                    raise ValueError(f"Unsupported runtime entry: {relative}")
+    for directory, directories, files in os.walk(runtime, followlinks=False):
+        for name in directories + files:
+            entry = Path(directory) / name
+            if str(entry) in retained:
+                continue
+            mode = entry.lstat().st_mode
+            if stat.S_ISLNK(mode) or stat.S_ISREG(mode):
+                archived.append(entry)
+            elif not stat.S_ISDIR(mode):
+                raise ValueError(f"Unsupported runtime entry: {entry.relative_to(runtime)}")
+    command = ["/usr/bin/aa", "archive", "-d", str(runtime), "-a", "raw", "-t", "8",
+               "-exclude-field", "uid,gid"]
+    for entry in sorted(retained):
+        relative = Path(entry).relative_to(runtime).as_posix()
+        command.extend(["-exclude-regex", "^" + re.escape(relative) + "$"])
     digest = hashlib.sha256()
-    with archive.open("rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
+    archive_size = 0
+    with archive.open("xb") as output, subprocess.Popen(command, stdout=subprocess.PIPE) as process:
+        try:
+            for chunk in iter(lambda: process.stdout.read(1024 * 1024), b""):
+                output.write(chunk)
+                digest.update(chunk)
+                archive_size += len(chunk)
+            if process.wait() != 0:
+                raise subprocess.CalledProcessError(process.returncode, command)
+        except BaseException:
+            process.kill()
+            raise
     metadata["OpenClawRuntimeArchiveSHA256"] = digest.hexdigest()
     metadata["OpenClawRuntimeArchiveFormatVersion"] = 1
     with plist.open("wb") as output:
@@ -63,7 +67,7 @@ def archive_runtime(app):
     for directory, _, _ in os.walk(runtime, topdown=False):
         if directory != str(runtime) and not os.listdir(directory):
             os.rmdir(directory)
-    print(f"Archived {len(archived)} resources ({archive.stat().st_size} bytes); retained {len(retained)} native files")
+    print(f"Archived {len(archived)} resources ({archive_size} bytes); retained {len(retained)} native files")
 
 
 if __name__ == "__main__":

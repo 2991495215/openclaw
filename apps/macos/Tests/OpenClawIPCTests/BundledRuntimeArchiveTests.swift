@@ -20,9 +20,12 @@ extension BundledRuntimeTests {
             encoding: .utf8)
         try FileManager.default.createSymbolicLink(
             atPath: package.appendingPathComponent("package-link").path, withDestinationPath: "README.md")
-        let archive = resources.appendingPathComponent("runtime.zip")
+        let archive = resources.appendingPathComponent("runtime.aar")
         let result = await ShellExecutor.runDetailed(
-            command: ["/usr/bin/ditto", "-c", "-k", "--norsrc", payload.path, archive.path],
+            command: [
+                "/usr/bin/aa", "archive", "-d", payload.path, "-o", archive.path,
+                "-a", "raw", "-t", "8", "-exclude-field", "uid,gid",
+            ],
             cwd: nil,
             env: [:],
             timeout: 5)
@@ -50,7 +53,7 @@ extension BundledRuntimeTests {
         "invalid-digest",
         "missing-archive",
         "corrupt",
-        "invalid-zip",
+        "invalid-archive",
     ])
     func `archive failures preserve the selected loose runtime and publish no partial build`(
         failure: String) async throws
@@ -78,7 +81,7 @@ extension BundledRuntimeTests {
         case "missing-archive": try FileManager.default.removeItem(at: archive)
         case "corrupt": try Data("corrupt".utf8).write(to: archive)
         default:
-            let bytes = Data("not a ZIP archive".utf8)
+            let bytes = Data("not an AppleArchive".utf8)
             try bytes.write(to: archive)
             try self.updateArchiveMetadata(app: app) {
                 $0["OpenClawRuntimeArchiveSHA256"] = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }
