@@ -3,7 +3,7 @@ import { raceWithTimeout } from "../../packages/retry/src/index.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { getPairedDevice, getPendingDevicePairing } from "../infra/device-pairing.js";
 import type { GatewayScheduler, GatewaySchedulerScope } from "../infra/gateway-scheduler.js";
-import { AsyncWorkScope, getAsyncWorkSignal, trackAsyncWork } from "../shared/async-work-scope.js";
+import { AsyncWorkScope, getAsyncWorkSignal } from "../shared/async-work-scope.js";
 import { createDeferredCore, type Deferred } from "../shared/deferred.js";
 import { roleScopesAllow } from "../shared/operator-scope-compat.js";
 
@@ -40,42 +40,19 @@ export class ScopeUpgradeCoordinator {
   private readonly entries = new Map<string, UpgradeEntry>();
   private readonly work = new AsyncWorkScope();
   private readonly scheduler: GatewaySchedulerScope;
-  private lifetimeBound = false;
-
-  constructor(scheduler: GatewayScheduler) {
+  constructor(
+    scheduler: GatewayScheduler,
+    gatewaySignal: AbortSignal,
+    trackGatewayWork: AsyncWorkScope["track"],
+  ) {
     this.scheduler = scheduler.scope();
-  }
-
-  private bindGatewayLifetime(): void {
-    if (this.lifetimeBound || this.work.isClosing) {
-      return;
-    }
-    this.lifetimeBound = true;
-    // Construction is outside received work. The first registration captures
-    // this Gateway, never a later waiter or an ordinary socket disconnect.
-    const gatewaySignal = getAsyncWorkSignal();
-    if (!gatewaySignal) {
-      return;
-    }
+    // Passive polling stops at request-entry close, before recovery joins
+    // retained execution. A queued wake must not start another durable read.
+    const close = () => void trackGatewayWork(() => this.close());
+    gatewaySignal.addEventListener("abort", close, { once: true, signal: this.work.signal });
     if (gatewaySignal.aborted) {
-      void this.close();
-      return;
+      close();
     }
-    const signal = AbortSignal.any([gatewaySignal, this.work.signal]);
-    void trackAsyncWork(
-      () =>
-        new Promise<void>((resolve, reject) => {
-          // Fence synchronously: a previously queued poll wake must see close before
-          // its microtask can start another read. The lifetime task joins the drain.
-          signal.addEventListener(
-            "abort",
-            () => {
-              void this.close().then(resolve, reject);
-            },
-            { once: true },
-          );
-        }),
-    );
   }
 
   async close(): Promise<void> {
@@ -96,7 +73,6 @@ export class ScopeUpgradeCoordinator {
     initialToken?: string;
     initialApprovedAtMs?: number;
   }): boolean {
-    this.bindGatewayLifetime();
     if (this.work.isClosing) {
       return false;
     }

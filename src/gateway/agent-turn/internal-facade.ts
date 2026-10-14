@@ -414,7 +414,7 @@ export function createInternalAgentTurnFacade(
             ? runWithGatewayObservationScope(
                 method,
                 observe,
-                [signal, options.client?.connectionSignal],
+                [context.requestEntryLifetime?.signal, signal, options.client?.connectionSignal],
                 (error) => throwEnvelopeRejection(method, error),
               )
             : observe());
