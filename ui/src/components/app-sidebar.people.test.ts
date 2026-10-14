@@ -1,5 +1,6 @@
 /* @vitest-environment jsdom */
 
+import "../test-helpers/sidebar-diagnostic.ts";
 import "../test-helpers/app-sidebar-suite.ts";
 import "../test-helpers/app-sidebar-cases/agent-menu.ts";
 import "../test-helpers/app-sidebar-cases/agent-menu-scope.ts";

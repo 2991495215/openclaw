@@ -36,6 +36,7 @@ import {
   hiddenScopeUpgradeCapability,
 } from "./application-context.ts";
 import { gatewayHelloForMethods, SESSION_MUTATION_TEST_METHODS } from "./gateway-methods.ts";
+import { observeSidebarDiagnosticCollection } from "./sidebar-diagnostic.ts";
 import { waitForSolid } from "./solid-settle.ts";
 
 // mock-isolation: Keep attention health RPCs out of sidebar call-order assertions; sidebar-attention.test.ts owns its rendering.
@@ -100,6 +101,8 @@ export function createGatewayHarness(client: GatewayBrowserClient) {
   };
   const listeners = new Set<(next: ApplicationGatewaySnapshot) => void>();
   const eventListeners = new Set<(event: { event: string; payload: unknown }) => void>();
+  observeSidebarDiagnosticCollection("gateway-snapshots", listeners);
+  observeSidebarDiagnosticCollection("gateway-events", eventListeners);
   const gateway = {
     get snapshot() {
       return snapshot;
@@ -192,6 +195,7 @@ export function createSessionsHarness(agentId: string, keys: string[]) {
   let revision = 0;
   let canonicalListRevision = 1;
   const listeners = new Set<(next: SessionState) => void>();
+  observeSidebarDiagnosticCollection("session-state", listeners);
   const notify = () => {
     revision += 1;
     for (const listener of listeners) {
