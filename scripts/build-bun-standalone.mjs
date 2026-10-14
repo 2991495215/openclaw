@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createStandaloneCodegenAdapter } from "./lib/bun-standalone-codegen.mjs";
+import { compileStandalone, standaloneExternalModules } from "./lib/bun-standalone-compile.mjs";
 import { prepareStandaloneWorkers } from "./lib/bun-standalone-workers.mjs";
 
 const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,12 +40,17 @@ if (!fs.existsSync(runtimeRoot)) {
       fs.cpSync(source, destination, { recursive: true, verbatimSymlinks: true });
     }
   }
-  fs.mkdirSync(path.join(runtimeRoot, "docs/reference"), { recursive: true });
-  fs.cpSync(
-    path.join(sourceRoot, "docs/reference/templates"),
-    path.join(runtimeRoot, "docs/reference/templates"),
-    { recursive: true },
-  );
+  fs.cpSync(path.join(sourceRoot, "docs"), path.join(runtimeRoot, "docs"), {
+    recursive: true,
+    filter: (filename) =>
+      !path
+        .relative(path.join(sourceRoot, "docs"), filename)
+        .split(path.sep)
+        .includes("internal") &&
+      (fs.statSync(filename).isDirectory() ||
+        filename.endsWith(".md") ||
+        path.basename(filename) === "docs.json"),
+  });
   fs.mkdirSync(path.join(runtimeRoot, "scripts"), { recursive: true });
   fs.copyFileSync(
     path.join(sourceRoot, "scripts/windows-cmd-helpers.mjs"),
@@ -72,7 +78,7 @@ function runtimeJavaScriptEntries(directory, relative = "") {
     const name = relative ? `${relative}/${entry.name}` : entry.name;
     if (entry.isDirectory() && !entry.isSymbolicLink()) {
       result.push(...runtimeJavaScriptEntries(path.join(directory, entry.name), name));
-    } else if (entry.isFile() && /\.(?:c?js)$/.test(entry.name)) {
+    } else if (entry.isFile() && /\.[cm]?js$/.test(entry.name)) {
       result.push(name);
     }
   }
@@ -102,7 +108,13 @@ moduleEntries.push(
     .toSorted(),
 );
 // Include conditional ESM/CJS entries reached through computed imports.
-for (const packageName of ["@openclaw/fs-safe", "@openclaw/proc-safe", "sqlite-vec", "ws"]) {
+for (const packageName of [
+  "@openclaw/fs-safe",
+  "@openclaw/proc-safe",
+  "jiti",
+  "sqlite-vec",
+  "ws",
+]) {
   const manifest = fs.realpathSync(
     path.join(runtimeRoot, "node_modules", packageName, "package.json"),
   );
@@ -225,6 +237,10 @@ globalThis.__zod_globalConfig = { ...globalThis.__zod_globalConfig, jitless: tru
 const entries = ${JSON.stringify(embeddedPaths)};
 const embeddedEntries = new Set(Object.values(entries));
 const commonJsEntries = new Set(${JSON.stringify(commonJsEntries)});
+globalThis.__openclawStandaloneResolve = (parent, specifier) => {
+  const resolved = Bun.resolveSync(specifier, path.dirname(fileURLToPath(parent)));
+  return path.isAbsolute(resolved) ? pathToFileURL(resolved).href : resolved;
+};
 function embedded(pathname) {
   if (embeddedEntries.has(pathname)) return pathname;
   return entries[pathname] ?? entries[path.relative(root, pathname).split(path.sep).join("/")];
@@ -308,7 +324,7 @@ const auditSites = [];
 const codegen = await createStandaloneCodegenAdapter({ runtimeRoot, outputRoot, parse });
 const codegenTransforms = [];
 const transformedFiles = [];
-const external = ["chromium-bidi/*", "@audio/decode-ape"];
+const external = standaloneExternalModules;
 const result = await Bun.build({
   entrypoints: [
     bootstrap,
@@ -407,11 +423,17 @@ const result = await Bun.build({
             if (
               node.type === "MemberExpression" &&
               !node.computed &&
-              node.property.name === "url" &&
+              ["url", "resolve"].includes(node.property.name) &&
               node.object?.type === "MetaProperty" &&
               node.object.meta.name === "import"
             ) {
-              edits.push([node.start, node.end, physicalUrl]);
+              edits.push([
+                node.start,
+                node.end,
+                node.property.name === "url"
+                  ? physicalUrl
+                  : `globalThis.__openclawStandaloneResolve.bind(null, ${physicalUrl})`,
+              ]);
               continue;
             }
             if (
@@ -564,36 +586,10 @@ fs.writeFileSync(
   path.join(outputRoot, "split-require-edges.json"),
   JSON.stringify(splitRequireEdges, null, 2),
 );
-const mainEntry = path.join(outputRoot, "modules/standalone-entry.js");
-const executable = path.join(
+const executable = compileStandalone({
   outputRoot,
-  audit
-    ? "openclaw-standalone-audit"
-    : compileFlags.includes("--compile-aot")
-      ? "openclaw-standalone-aot"
-      : "openclaw-standalone",
-);
-const compiled = spawnSync(
-  process.execPath,
-  [
-    "build",
-    "--compile",
-    "--splitting",
-    `--root=${path.join(outputRoot, "modules")}`,
-    "--compile-autoload-package-json",
-    "--no-compile-autoload-dotenv",
-    "--no-compile-autoload-bunfig",
-    ...compileFlags,
-    ...external.map((specifier) => `--external=${specifier}`),
-    path.relative(path.join(outputRoot, "modules"), mainEntry),
-    ...compiledEntries
-      .filter((entry) => entry !== mainEntry)
-      .map((entry) => path.relative(path.join(outputRoot, "modules"), entry)),
-    `--outfile=${executable}`,
-  ],
-  { stdio: "inherit", cwd: path.join(outputRoot, "modules") },
-);
-if (compiled.status !== 0) {
-  throw new Error(`Standalone compilation failed (${compiled.status})`);
-}
+  compiledEntries,
+  compileFlags,
+  audit: Boolean(audit),
+});
 console.log(`Standalone ready: ${executable}`);
