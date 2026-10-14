@@ -342,7 +342,10 @@ ksp {
 }
 
 android {
-  sourceSets.getByName("androidTest").kotlin.directories.add(rootProject.file("release-validation/src/main/java").path)
+  sourceSets
+    .getByName("androidTest")
+    .kotlin.directories
+    .add(rootProject.file("release-validation/src/main/java").path)
 
   namespace = "ai.openclaw.app"
   // AndroidX Core 1.19 and Lifecycle 2.11 require API 37 compilation.

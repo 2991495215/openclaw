@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +16,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { callGateway } from "../src/gateway/call.js";
+import { registerSealedRuntimeProcessEntrypoint } from "../src/infra/runtime-process-url.js";
 import { createOpenClawTestInstance } from "../test/helpers/openclaw-test-instance.js";
 import { applyMockOpenAiModelConfig } from "./e2e/lib/fixtures/mock-openai-config.mjs";
 import {
@@ -22,6 +32,10 @@ import {
 import { prepareIOSReleaseGateway } from "./lib/ios-release-gateway.js";
 import { hasUnjoinedWork, runManagedCommand } from "./lib/managed-child-process.mjs";
 import { resolveRepoRoot } from "./lib/repo-root.mjs";
+import {
+  getStandaloneRuntimeProcessOutputOptions,
+  standaloneRuntimeProcessBuildEntries,
+} from "./lib/runtime-process-core-build-entries.mts";
 import { resolveAndroidSdkEnv } from "./run-android-gradle.mts";
 
 const repo = resolveRepoRoot(import.meta.url);
@@ -354,6 +368,38 @@ export async function main(argv = process.argv.slice(2)) {
     };
     let mockPort: number | undefined;
     let mockOutput = "";
+    if (process.platform === "linux") {
+      phase("gateway-process-owner");
+      // Linux custody requires a built subreaper without loader children. Compile
+      // this target's owner so its protocol matches the source-loaded fixture.
+      const name = "process/supervisor/service-child-group-anchor";
+      const entry = standaloneRuntimeProcessBuildEntries[name];
+      if (!entry) {
+        throw new Error("gateway-process-owner-entry-missing");
+      }
+      const outDir = path.join(root, "process-owner", "dist");
+      await symlink(path.join(repo, "node_modules"), path.join(root, "node_modules"), "dir");
+      const { build } = await import("tsdown");
+      await build({
+        config: false,
+        cwd: repo,
+        entry: { [name]: entry },
+        outDir,
+        format: "esm",
+        platform: "node",
+        tsconfig: path.join(repo, "tsconfig.json"),
+        dts: false,
+        envPrefix: [],
+        clean: false,
+        outExtensions: () => ({ js: ".js" }),
+        outputOptions: getStandaloneRuntimeProcessOutputOptions(name),
+        logLevel: "warn",
+      });
+      registerSealedRuntimeProcessEntrypoint(
+        "serviceChildGroupAnchor",
+        pathToFileURL(path.join(outDir, `${name}.js`)),
+      );
+    }
     phase("gateway-start");
     service(
       process.execPath,

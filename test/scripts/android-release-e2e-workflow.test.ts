@@ -1,3 +1,4 @@
+import { ok } from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
@@ -67,6 +68,8 @@ describe("Android release validation admission", () => {
       const workflow = readWorkflow("android-store-release.yml");
       const qualify = workflow.jobs.qualify;
       const release = workflow.jobs.release;
+      ok(qualify, "Android store release must have its qualification job");
+      ok(release, "Android store release must have its release job");
       const context = {
         github: {
           event_name: "workflow_dispatch",
@@ -89,10 +92,12 @@ describe("Android release validation admission", () => {
   it("keeps qualification credential-free and publishes only its public evidence", () => {
     const workflow = readWorkflow("android-release-e2e.yml");
     expect(workflow.permissions).toEqual({ actions: "read", contents: "read" });
-    const uploads = workflow.jobs.qualify.steps?.filter((step) =>
+    const qualify = workflow.jobs.qualify;
+    ok(qualify, "Android validation must have its qualification job");
+    const uploads = qualify.steps?.filter((step) =>
       step.uses?.startsWith("actions/upload-artifact@"),
     );
-    expect(uploads?.map((step) => step.with?.path.trim().split("\n"))).toEqual([
+    expect(uploads?.map((step) => step.with?.path?.trim().split("\n"))).toEqual([
       [
         "${{ env.GATEWAY_SELECTION_DIR }}/selection.json",
         "${{ env.GATEWAY_SELECTION_DIR }}/package.json",
@@ -107,7 +112,9 @@ describe("Android release validation admission", () => {
 
   it("rejects reruns without the same immutable Gateway selection", async () => {
     const workflow = readWorkflow("android-release-e2e.yml");
-    const script = workflow.jobs.qualify.steps?.find(
+    const qualify = workflow.jobs.qualify;
+    ok(qualify, "Android validation must have its qualification job");
+    const script = qualify.steps?.find(
       (step) => step.name === "Find this run's stable Gateway selection",
     )?.with?.script;
     expect(script).toBeDefined();

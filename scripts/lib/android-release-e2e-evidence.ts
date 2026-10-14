@@ -6,7 +6,7 @@ import { stripInboundMetadata } from "../../src/auto-reply/reply/strip-inbound-m
 import { readMockUserText } from "../e2e/lib/mock-inference-facts.js";
 
 export const ANDROID_RELEASE_APPLICATION_ID = "ai.openclaw.app.debug";
-export const ANDROID_RELEASE_MARKERS = [
+const ANDROID_RELEASE_MARKERS = [
   "PHONE_FIRST",
   "PHONE_SECOND",
   "WEAR_FIRST",
