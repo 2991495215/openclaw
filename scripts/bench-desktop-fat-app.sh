@@ -16,12 +16,12 @@ fi
 TEMPLATE="$1"
 EXECUTABLE="$2"
 SIDECAR="$3"
-OUTPUT="$4"
+OUTPUT="$(/usr/bin/python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$4")"
 case "$OUTPUT" in
   /private/tmp/oc-zc2-bench/*.app) ;;
   *) echo "Output must be a new app below /private/tmp/oc-zc2-bench" >&2; exit 2 ;;
 esac
-[[ ! -e "$OUTPUT" && -d "$TEMPLATE" && -f "$EXECUTABLE" && -d "$SIDECAR" ]]
+[[ ! -e "$OUTPUT" && ! -L "$OUTPUT" && -d "$TEMPLATE" && -f "$EXECUTABLE" && -d "$SIDECAR" ]]
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
 export SIGN_IDENTITY="Developer ID Application: OpenClaw Foundation (FWJYW4S8P8)"

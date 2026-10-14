@@ -37,13 +37,13 @@ def fixture_config(root, port, provider_port):
                                    "maxTokens": 512, "cost": {"input": 0, "output": 0,
                                                            "cacheRead": 0, "cacheWrite": 0}}]}}},
         "agents": {"defaults": {"workspace": str(root / "workspace"), "skipBootstrap": True,
-                                "memorySearch": {"enabled": False},
                                 "model": {"primary": "openai/" + model, "fallbacks": []},
                                 "models": {"openai/" + model: {"agentRuntime": {"id": "openclaw"},
                                            "params": {"transport": "sse", "openaiWsWarmup": False}}},
                                 "utilityModel": "", "timeoutSeconds": 120,
                                 "modelPolicy": {"allow": ["openai/" + model]}}},
-        "plugins": {"enabled": True, "allow": ["openai"], "entries": {"openai": {"enabled": True}}},
+        "plugins": {"enabled": True, "allow": ["openai"], "slots": {"memory": "none"},
+                    "entries": {"openai": {"enabled": True}}},
         "skills": {"allowBundled": []}, "tools": {"deny": ["*"]},
         "meta": {"migrations": {"modelPolicyAllowlist": True, "utilityModelSeparation": True}},
     }
@@ -202,18 +202,20 @@ def measure(variant, output, timeout, doctor=False):
     except Exception as error:
         row["error"] = str(error)
     finally:
-        row["cleanup_exit"] = stop(gateway)
-        if doctor and "doctor_exit" not in row:
-            try:
-                row["doctor_exit"], _ = run("doctor", ["doctor", "--non-interactive"])
-            except Exception as error:
-                row["doctor_error"] = str(error)
-        server.shutdown()
-        server.server_close()
-        thread.join()
-        row["provider_receipts"] = receipts
-        row["load_end"] = os.getloadavg()
-        shutil.rmtree(state)
-        row["isolated_state_removed"] = not state.exists()
-        (output / "result.json").write_text(json.dumps(row, indent=2) + "\n")
+        try:
+            row["cleanup_exit"] = stop(gateway)
+            if doctor and "doctor_exit" not in row:
+                try:
+                    row["doctor_exit"], _ = run("doctor", ["doctor", "--non-interactive"])
+                except Exception as error:
+                    row["doctor_error"] = str(error)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+            row["provider_receipts"] = receipts
+            row["load_end"] = os.getloadavg()
+            shutil.rmtree(state)
+            row["isolated_state_removed"] = not state.exists()
+            (output / "result.json").write_text(json.dumps(row, indent=2) + "\n")
     return row
