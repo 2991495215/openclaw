@@ -267,6 +267,160 @@ describe("web_fetch transport through native coding-tool assembly", () => {
     }
   });
 
+  it("prevents real dispatch when revoked during awaited host admission", async () => {
+    let hits = 0;
+    let current = true;
+    const enteredAdmission = createDeferred();
+    const resumeAdmission = createDeferred();
+    const server = createServer((_request, response) => {
+      hits += 1;
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("stale real adapter content");
+    });
+    try {
+      const origin = await listen(server);
+      const transport: WebFetchTransport = {
+        assertInvocationCurrent: vi.fn(() => {
+          if (!current) {
+            throw new Error("invocation closed");
+          }
+        }),
+        acquire: vi.fn<WebFetchTransport["acquire"]>(async (request) => {
+          enteredAdmission.resolve();
+          await resumeAdmission.promise;
+          transport.assertInvocationCurrent();
+          const response = await fetch(request.url, {
+            headers: request.init.headers,
+            method: request.init.method,
+            redirect: "manual",
+            signal: request.signal,
+          });
+          return {
+            response,
+            finalUrl: request.url,
+            release: async () => {},
+          };
+        }),
+      };
+      const [tool] = (await assemble(transport)).filter((entry) => entry.name === "web_fetch");
+      assert(tool);
+
+      const execution = tool.execute("real-revoked-admission", { url: `${origin}/private` });
+      await enteredAdmission.promise;
+      current = false;
+      resumeAdmission.resolve();
+
+      await expect(execution).rejects.toThrow("invocation closed");
+      expect(hits).toBe(0);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("blocks real cached delivery, spill creation and error details after retirement", async () => {
+    let current = true;
+    let hits = 0;
+    const bodyControls = {
+      "/cache": createDeferred(),
+      "/large": createDeferred(),
+      "/error": createDeferred(),
+    };
+    const transportReturned = {
+      "/cache": createDeferred(),
+      "/large": createDeferred(),
+      "/error": createDeferred(),
+    };
+    const server = createServer((request, response) => {
+      hits += 1;
+      if (request.url === "/error") {
+        response.writeHead(403, { "content-type": "text/plain" });
+        response.flushHeaders();
+        void bodyControls["/error"].promise.then(() => {
+          response.end("private host error detail");
+        });
+        return;
+      }
+      const path = request.url === "/large" ? "/large" : "/cache";
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.flushHeaders();
+      void bodyControls[path].promise.then(() => {
+        response.end(
+          path === "/large"
+            ? "private acquired content ".repeat(300)
+            : "cacheable real adapter content",
+        );
+      });
+    });
+    const release = vi.fn(async () => {});
+    const write = vi.spyOn(privateTempFiles, "writePrivateTempFile");
+    try {
+      const origin = await listen(server);
+      const transport: WebFetchTransport = {
+        assertInvocationCurrent: vi.fn(() => {
+          if (!current) {
+            throw new Error("invocation closed");
+          }
+        }),
+        acquire: vi.fn<WebFetchTransport["acquire"]>(async (request) => {
+          const response = await fetch(request.url, {
+            headers: request.init.headers,
+            method: request.init.method,
+            redirect: "manual",
+            signal: request.signal,
+          });
+          const path = new URL(request.url).pathname as "/cache" | "/large" | "/error";
+          const returned = transportReturned[path];
+          assert(returned);
+          returned.resolve();
+          return {
+            response,
+            finalUrl: request.url,
+            release,
+          };
+        }),
+      };
+      const [tool] = (await assemble(transport)).filter((entry) => entry.name === "web_fetch");
+      assert(tool);
+
+      const cacheSeed = tool.execute("real-cache-seed", { url: `${origin}/cache` });
+      await transportReturned["/cache"].promise;
+      bodyControls["/cache"].resolve();
+      expect(detailsOf(await cacheSeed).text).toContain("cacheable real adapter content");
+      current = false;
+      await expect(tool.execute("real-cache-retired", { url: `${origin}/cache` })).rejects.toThrow(
+        "invocation closed",
+      );
+      expect(hits).toBe(1);
+
+      current = true;
+      const spill = tool.execute("real-spill-retired", {
+        url: `${origin}/large`,
+        maxChars: 1_000,
+      });
+      await transportReturned["/large"].promise;
+      current = false;
+      bodyControls["/large"].resolve();
+      await expect(spill).rejects.toThrow("invocation closed");
+      expect(write).not.toHaveBeenCalled();
+
+      current = true;
+      const error = tool.execute("real-error-retired", { url: `${origin}/error` });
+      await transportReturned["/error"].promise;
+      current = false;
+      bodyControls["/error"].resolve();
+      await expect(error).rejects.toThrow("invocation closed");
+      try {
+        await error;
+      } catch (caught) {
+        expect((caught as Error).message).not.toContain("private host error detail");
+      }
+      expect(release).toHaveBeenCalledTimes(3);
+      expect(hits).toBe(3);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
   it("rejects forbidden host destinations before dispatch without falling back", async () => {
     let dispatches = 0;
     const transport: WebFetchTransport = {
