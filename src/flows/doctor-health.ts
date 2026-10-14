@@ -667,14 +667,11 @@ async function runDoctorHealthFlowWithResult(
     }
     throw error;
   } finally {
-    try {
-      await measureGatewayBootstrapStep("doctor.maintenance.release", async () => {
-        await maintenance?.release();
-      });
-    } finally {
-      if (updateResult) {
-        await publishDoctorUpdateResult({ updateResult, doctorResult, healthContext, maintenance });
-      }
+    await measureGatewayBootstrapStep("doctor.maintenance.release", async () => {
+      await maintenance?.release();
+    });
+    if (updateResult) {
+      await publishDoctorUpdateResult({ updateResult, doctorResult, healthContext, maintenance });
     }
     // The default runtime exits synchronously; finish native recovery and release
     // maintenance leases before handing it an exit code.
