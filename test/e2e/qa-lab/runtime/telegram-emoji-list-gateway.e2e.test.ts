@@ -2,6 +2,8 @@ import { ChildProcess } from "node:child_process";
 import { subscribe, unsubscribe } from "node:diagnostics_channel";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { withServer, withTempDir } from "openclaw/plugin-sdk/test-env";
 import { expect, test } from "vitest";
 import {
@@ -122,6 +124,18 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
 }) => {
   const startedAt = performance.now();
   const phases: Array<{ stage: string; elapsedMs: number }> = [];
+  const repairPhaseTimings: Array<{
+    phase: string;
+    startedOffsetMs: number;
+    durationMs: number;
+    outcome: string;
+  }> = [];
+  const doctorPhaseTimings: Array<{
+    phase: string;
+    durationMs: number;
+    totalMs: number;
+    startedOffsetMs: number;
+  }> = [];
   const mark = (stage: string) => {
     phases.push({ stage, elapsedMs: Math.round(performance.now() - startedAt) });
   };
@@ -151,6 +165,80 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
         child.once("exit", () => mark(`${stage}-exited`));
         child.once("close", () => mark(`${stage}-closed`));
       }
+      if (stage === "repair") {
+        let pendingStderr = "";
+        child.stderr?.on("data", (chunk: Buffer) => {
+          const lines = `${pendingStderr}${chunk.toString("utf8")}`.split("\n");
+          pendingStderr = (lines.pop() ?? "").slice(-16 * 1024);
+          for (const line of lines) {
+            const match =
+              /\[gateway\] startup trace: (doctor\.(?:maintenance\.(?:begin|finish|release)|database-preflight|config-flow|contributions|maintenance-ready)|cli\.bootstrap\.(?:state-write-admission|stale-update-runs|config-snapshot|state-migrations-import|state-dir-migrations|state-schema|session-entry-state|exec-approvals-migration|cron-repair-import|cron-repair|cron-policy-scan|legacy-state-migrations|media-persistence-migration|automatic-heartbeat-config-repair|automatic-config-repair|heartbeat-retirement)) (\d+(?:\.\d+)?)ms total=(\d+(?:\.\d+)?)ms start=(\d+(?:\.\d+)?)ms(?:\s|"|$)/u.exec(
+                line,
+              );
+            if (!match) {
+              continue;
+            }
+            const [, phase, duration, total, start] = match;
+            const durationMs = Number(duration);
+            const totalMs = Number(total);
+            const startedOffsetMs = Number(start);
+            if (
+              phase &&
+              Number.isFinite(durationMs) &&
+              Number.isFinite(totalMs) &&
+              Number.isFinite(startedOffsetMs)
+            ) {
+              doctorPhaseTimings.push({ phase, durationMs, totalMs, startedOffsetMs });
+            }
+          }
+        });
+        let stdout = "";
+        let stdoutBytes = 0;
+        const captureLimit = 1024 * 1024;
+        child.stdout?.on("data", (chunk: Buffer) => {
+          stdoutBytes += chunk.length;
+          stdout = stdoutBytes <= captureLimit ? stdout + chunk.toString("utf8") : "";
+        });
+        child.once("close", (code) => {
+          if (code !== 0 || stdoutBytes > captureLimit) {
+            return;
+          }
+          const result = safeParseJsonRecord(stdout);
+          stdout = "";
+          const knownPhases = new Set([
+            "preflight",
+            "targetConfigValidation",
+            "configSnapshot",
+            "doctor",
+            "plugins",
+            "targetConfigConvergence",
+            "completionCache",
+          ]);
+          const knownOutcomes = new Set(["completed", "failed", "warning", "skipped", "deferred"]);
+          const timings: unknown[] = Array.isArray(result?.phaseTimings) ? result.phaseTimings : [];
+          for (const entry of timings) {
+            if (
+              !isRecord(entry) ||
+              typeof entry.phase !== "string" ||
+              !knownPhases.has(entry.phase) ||
+              typeof entry.outcome !== "string" ||
+              !knownOutcomes.has(entry.outcome) ||
+              typeof entry.startedOffsetMs !== "number" ||
+              !Number.isFinite(entry.startedOffsetMs) ||
+              typeof entry.durationMs !== "number" ||
+              !Number.isFinite(entry.durationMs)
+            ) {
+              continue;
+            }
+            repairPhaseTimings.push({
+              phase: entry.phase,
+              startedOffsetMs: entry.startedOffsetMs,
+              durationMs: entry.durationMs,
+              outcome: entry.outcome,
+            });
+          }
+        });
+      }
     });
   };
   // Observe native lifecycle events without wrapping spawns or recording child options.
@@ -160,6 +248,12 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
   });
   onTestFailed(() => {
     process.stderr.write(`Telegram emoji-list phases: ${JSON.stringify(phases)}\n`);
+    process.stderr.write(
+      `Telegram emoji-list repair phases: ${JSON.stringify(repairPhaseTimings)}\n`,
+    );
+    process.stderr.write(
+      `Telegram emoji-list Doctor phases: ${JSON.stringify(doctorPhaseTimings)}\n`,
+    );
   });
   mark("test-started");
   const telegramCalls: TelegramCall[] = [];
@@ -340,6 +434,7 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
             controlUiEnabled: false,
             onListening: () => mark("gateway-listening"),
             runtimeEnvPatch: {
+              OPENCLAW_GATEWAY_STARTUP_TRACE: "1",
               OPENCLAW_SKIP_CHANNELS: undefined,
               OPENCLAW_SKIP_PROVIDERS: undefined,
               OPENCLAW_TEST_MINIMAL_GATEWAY: undefined,
