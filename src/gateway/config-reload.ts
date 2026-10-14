@@ -432,12 +432,11 @@ export function startGatewayConfigReloader(
     }
     // Preparation may use protected credential sources; retain the invoking admission.
     assertInvokerOwned();
-    const nextConfig = preparedCandidate?.runtimeConfig ?? candidateRuntimeConfig;
+    let nextConfig = preparedCandidate?.runtimeConfig ?? candidateRuntimeConfig;
     const nextCompareConfig = preparedCandidate?.compareConfig ?? nextSourceConfig;
     const nextConfigRevisionHash = hashRuntimeConfigValue(nextSourceConfig);
     let publishedRuntimeEnv: ConfigRuntimeEnvPublication | undefined;
     let runtimeEnvCommitted = false;
-    const nextSettings = resolveSettings(nextConfig);
     const commitPublishedRuntimeEnv = () => {
       runtimeEnvCommitted = true;
       publishedRuntimeEnv?.commit();
@@ -507,6 +506,13 @@ export function startGatewayConfigReloader(
       nextPluginInstallConfig,
     );
     const changedPaths = [...configChangedPaths, ...pluginInstallRecordChangedPaths];
+    const effectiveConfigUnchanged = changedPaths.length === 0 && !pluginLifecycle;
+    if (effectiveConfigUnchanged) {
+      // A managed write can follow its watcher after secrets have resolved.
+      // Reuse the committed runtime, not the write's unresolved file snapshot.
+      nextConfig = currentConfig;
+    }
+    const nextSettings = resolveSettings(nextConfig);
     // Finish the previous publication before preparing the next candidate.
     await appliedRevision.flush(currentConfig);
     await checkpoint();
@@ -547,7 +553,7 @@ export function startGatewayConfigReloader(
     }
     let publishedSource: { rollback: () => Promise<void>; commit?: () => void } | undefined;
     const publishSource =
-      changedPaths.length === 0 && !pluginLifecycle && opts.onEffectiveConfigUnchanged
+      effectiveConfigUnchanged && opts.onEffectiveConfigUnchanged
         ? async () => {
             publishedSource ??= await opts.onEffectiveConfigUnchanged!(
               nextConfig,
@@ -640,7 +646,7 @@ export function startGatewayConfigReloader(
       }
       await notifyCommitted();
     };
-    if (changedPaths.length === 0 && !pluginLifecycle) {
+    if (effectiveConfigUnchanged) {
       await commitReloadBaseline();
       pluginDrain.applied();
       publishedSource?.commit?.();

@@ -24,6 +24,7 @@ import {
 import { withTestTimeout } from "../../test/helpers/promise.js";
 import { getRuntimeConfig } from "../config/config.js";
 import { REDACTED_SENTINEL } from "../config/redact-snapshot.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { applyLoggingConfig } from "../logging/logger.js";
 import {
   activateSecretsRuntimeSnapshot,
@@ -41,7 +42,10 @@ import {
   withConfigFileFixture,
 } from "./server.config-patch.test-support.js";
 
-const reloadBarrier = vi.hoisted(() => ({ hold: undefined as (() => Promise<void>) | undefined }));
+const reloadBarrier = vi.hoisted(() => ({
+  hold: undefined as (() => Promise<void>) | undefined,
+  after: undefined as ((sourceConfig: OpenClawConfig) => void) | undefined,
+}));
 
 vi.mock("./config-reload.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./config-reload.js")>();
@@ -54,7 +58,9 @@ vi.mock("./config-reload.js", async (importOriginal) => {
         ...options,
         onHotReload: async (...args) => {
           await reloadBarrier.hold?.();
-          return await options.onHotReload(...args);
+          const result = await options.onHotReload(...args);
+          reloadBarrier.after?.(args[3]);
+          return result;
         },
       }),
   };
@@ -93,6 +99,21 @@ describe("gateway config methods", () => {
       },
     };
 
+    const watcherApplied = createDeferredCore();
+    let writerHeld = false;
+    let watcherReturned = false;
+    let writerReleased = false;
+    let restoreFinalization: (() => void) | undefined;
+    const recordFixturePhase = (phase: string) => {
+      process.stderr.write(
+        `[config-fixture-phase] ${JSON.stringify({ phase, atMs: Math.round(performance.now()) })}\n`,
+      );
+    };
+    const isColdSource = (sourceConfig: OpenClawConfig) => {
+      const key = sourceConfig.models?.providers?.["reload-first"]?.apiKey;
+      return typeof key === "object" && key !== null && key.id === "/changed";
+    };
+
     try {
       const seed = await rpcReq<{ degradedSecretOwners?: unknown[] }>(
         requireClient(),
@@ -123,6 +144,34 @@ describe("gateway config methods", () => {
       ]);
 
       const beforeCold = await getCurrentConfigObject();
+      const runtimeSnapshot = await import("../config/runtime-snapshot.js");
+      const finalizeWrite = runtimeSnapshot.finalizeRuntimeSnapshotWrite;
+      // Hold the real persisted writer before synchronous receipt publication.
+      // The real watcher releases it after publishing the cold runtime.
+      const finalization = vi
+        .spyOn(runtimeSnapshot, "finalizeRuntimeSnapshotWrite")
+        .mockImplementation(async (params) => {
+          if (!writerHeld && isColdSource(params.nextSourceConfig)) {
+            writerHeld = true;
+            recordFixturePhase("fixture:writer-held");
+            await watcherApplied.promise;
+            if (!watcherReturned) {
+              throw new Error("Controlled fixture invalid: watcher did not reach release boundary");
+            }
+            writerReleased = true;
+            recordFixturePhase("fixture:writer-released");
+          }
+          return await finalizeWrite(params);
+        });
+      restoreFinalization = () => finalization.mockRestore();
+      reloadBarrier.after = (sourceConfig) => {
+        if (!watcherReturned && isColdSource(sourceConfig)) {
+          watcherReturned = true;
+          recordFixturePhase("fixture:watcher-returned");
+          watcherApplied.resolve();
+        }
+      };
+      recordFixturePhase("fixture:armed");
       const cold = await rpcReq<{
         degradedSecretOwners?: Array<{ ownerId?: string; state?: string }>;
       }>(
@@ -150,6 +199,12 @@ describe("gateway config methods", () => {
       );
       expect(coldSnapshot?.config.models?.providers?.["reload-second"]?.apiKey).toBe("second-new");
     } finally {
+      recordFixturePhase(
+        writerHeld && watcherReturned && writerReleased ? "fixture:qualified" : "fixture:invalid",
+      );
+      reloadBarrier.after = undefined;
+      watcherApplied.resolve();
+      restoreFinalization?.();
       await restoreConfigFileForTest(original);
       activateSecretsRuntimeSnapshot(
         await prepareSecretsRuntimeSnapshot({

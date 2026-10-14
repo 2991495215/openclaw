@@ -1904,6 +1904,62 @@ describe("startGatewayConfigReloader", () => {
     expect(harness.onRestart).not.toHaveBeenCalled();
   });
 
+  it("retains resolved runtime config when a managed write follows its watcher", async () => {
+    const initialConfig: OpenClawConfig = { gateway: { reload: {} } };
+    const sourceConfig: OpenClawConfig = {
+      ...initialConfig,
+      tts: {
+        providers: {
+          elevenlabs: { apiKey: { source: "env", provider: "default", id: "TTS_TOKEN" } },
+        },
+      },
+    };
+    const runtimeConfig: OpenClawConfig = {
+      ...initialConfig,
+      tts: { providers: { elevenlabs: { apiKey: "resolved-test-token" } } },
+    };
+    const publishRuntime = async (
+      plan: GatewayReloadPlan,
+      _config: OpenClawConfig,
+      ownership: GatewayConfigReloadTransactionOwnership,
+    ) => {
+      ownership.markRuntimeCommitted(runtimeConfig, plan);
+    };
+    const harness = createReloaderHarness(
+      async () => makeSnapshot({ config: sourceConfig, hash: "watcher-first" }),
+      {
+        initialConfig,
+        prepareConfigCandidate: async ({
+          runtimeConfig: candidateRuntimeConfig,
+          sourceConfig: candidateSourceConfig,
+        }) => ({
+          runtimeConfig: candidateRuntimeConfig,
+          compareConfig: candidateSourceConfig,
+        }),
+        onHotReload: publishRuntime,
+        onNoopConfigCommit: publishRuntime,
+      },
+    );
+    await harness.reloader.ready;
+    try {
+      await flushWatcherChange(harness);
+      expect(harness.onConfigAccepted.mock.lastCall?.[0]).toEqual(runtimeConfig);
+
+      for (const hash of ["delayed-write", "subsequent-echo"]) {
+        const application = createRuntimeConfigWriteApplication();
+        harness.emitWrite(
+          attachRuntimeConfigWriteApplication(makeWrite(sourceConfig, hash), application),
+        );
+        await flushReload(harness.reloader);
+        await expect(application.result).resolves.toBe("applied");
+        expect(harness.onConfigAccepted.mock.lastCall?.[0]).toEqual(runtimeConfig);
+        expect(harness.onConfigAccepted.mock.lastCall?.[2]).toEqual(sourceConfig);
+      }
+    } finally {
+      await harness.reloader.stop();
+    }
+  });
+
   it("revalidates changed effective config when an accepted write hash is unchanged", async () => {
     const initialConfig = {
       gateway: { reload: {}, port: 18_789 },
