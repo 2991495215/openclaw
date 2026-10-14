@@ -31,7 +31,9 @@ extension BundledRuntimeTests {
         let archive = resources.appendingPathComponent("runtime.zip")
         let result = await ShellExecutor.runDetailed(
             command: ["/usr/bin/ditto", "-c", "-k", "--norsrc", payload.path, archive.path],
-            cwd: nil, env: [:], timeout: 5)
+            cwd: nil,
+            env: [:],
+            timeout: 5)
         #expect(result.success)
         let data = try Data(contentsOf: archive)
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
@@ -42,7 +44,7 @@ extension BundledRuntimeTests {
         try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: plist)
         if condition == "corrupt" { try Data("corrupt".utf8).write(to: archive) }
         let bundle = try #require(Bundle(url: app))
-        let profile = AppProfile(environment: ["OPENCLAW_PROFILE": "archive-fixture"])
+        let profile = AppProfile(environment: [:])
         if condition != "valid" {
             await #expect(throws: BundledRuntime.SeedError.self) {
                 try await BundledRuntime.seed(bundle: bundle, profile: profile, homeDirectory: home)
@@ -51,7 +53,43 @@ extension BundledRuntimeTests {
             #expect(try FileManager.default.contentsOfDirectory(
                 atPath: profile.stateDirectoryURL(homeDirectory: home).appendingPathComponent("runtime").path).isEmpty)
         } else {
+            let oldApp = home.appendingPathComponent("Existing.app")
+            _ = try self.makeBundle(
+                at: oldApp, builtAt: "2026-08-26T00:00:00.000Z", buildID: "existing-build", command: "unused")
+            let oldBundle = try #require(Bundle(url: oldApp))
+            _ = try await BundledRuntime.seed(
+                bundle: oldBundle, profile: profile, homeDirectory: home)
+            let state = profile.stateDirectoryURL(homeDirectory: home)
+            let current = state.appendingPathComponent("runtime/current")
+            let cli = state.appendingPathComponent("bin/openclaw")
+            let managedEntry = state
+                .appendingPathComponent("tools/node-v24.16.0/lib/node_modules/openclaw/dist/entry.js")
+            let managedNode = """
+            #!/usr/bin/env bash
+            set -euo pipefail
+            exec "\(state.path)/tools/node/bin/node" "\(managedEntry.path)" "$@"
+
+            """
+            try managedNode.write(to: cli, atomically: true, encoding: .utf8)
+            let shell = home.appendingPathComponent(".zprofile")
+            try "# existing shell settings\n".write(to: shell, atomically: true, encoding: .utf8)
+            let config = state.appendingPathComponent("openclaw.json")
+            let configBytes = Data("{\"gateway\":{\"mode\":\"remote\"}}\n".utf8)
+            try configBytes.write(to: config)
+            let macCLI = state.appendingPathComponent("bin/openclaw-mac")
+            let macTarget = try FileManager.default.destinationOfSymbolicLink(atPath: macCLI.path)
+            let worker = try await CommandResolver.nodeHostWorkerLaunch(bundle: bundle, homeDirectory: home)
+            let browser = try await BundledRuntime.browserSetupLaunch(
+                bundle: bundle, action: .inspect, profile: profile, homeDirectory: home)
+            #expect(worker.command[0] == browser.command[0])
+            #expect(worker.command[0].contains("/runtime/archive-build/"))
+            #expect(try FileManager.default.destinationOfSymbolicLink(atPath: current.path) == "existing-build")
+            #expect(try String(contentsOf: cli, encoding: .utf8) == managedNode)
+            #expect(try String(contentsOf: shell, encoding: .utf8) == "# existing shell settings\n")
+            #expect(try Data(contentsOf: config) == configBytes)
+            #expect(try FileManager.default.destinationOfSymbolicLink(atPath: macCLI.path) == macTarget)
             let seeded = try await BundledRuntime.seed(bundle: bundle, profile: profile, homeDirectory: home)
+            #expect(try FileManager.default.destinationOfSymbolicLink(atPath: current.path) == "archive-build")
             #expect(try Data(contentsOf: seeded.packageRoot.appendingPathComponent("openclaw.mjs")) ==
                 Data(contentsOf: stagedPackage.appendingPathComponent("openclaw.mjs")))
             #expect(FileManager.default.isExecutableFile(atPath: seeded.bun.path))

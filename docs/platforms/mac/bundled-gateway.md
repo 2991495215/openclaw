@@ -54,6 +54,11 @@ atomically after provenance and Bun checks succeed. Archive integrity or
 extraction failures leave the current runtime unchanged; reinstall the app if
 retrying setup does not help.
 
+Private worker, browser inspection/setup, and migration recovery only prepare
+the concrete runtime. They preserve the selected terminal runtime, CLI wrappers,
+shell profiles, and Gateway configuration. Local Gateway adoption owns selecting
+`runtime/current` and installing CLI integration.
+
 Extraction happens once per build and profile. Unlike the previous all-loose
 layout, extracted resources occupy separate disk blocks rather than sharing
 blocks with the app through an APFS directory clone. An unarchived development

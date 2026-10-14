@@ -26,6 +26,15 @@ extension BundledRuntime {
         try await BundledRuntimeSeeder.shared.seed(bundle: bundle, profile: profile, homeDirectory: homeDirectory)
     }
 
+    /// Private helpers need a concrete runtime without adopting the terminal CLI.
+    static func prepare(
+        bundle: Bundle = .main,
+        profile: AppProfile = .current,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) async throws -> Self
+    {
+        try await BundledRuntimeSeeder.shared.prepare(bundle: bundle, profile: profile, homeDirectory: homeDirectory)
+    }
+
     /// Read-only resolution never executes Bun or selects a checkout/PATH fallback.
     static func seeded(
         profile: AppProfile = .current,
@@ -56,7 +65,6 @@ extension BundledRuntime {
         let target = directory.appendingPathComponent(buildID)
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let previous = try self.buildLink("current", in: directory)
         if !fileManager.fileExists(atPath: target.path) {
             let partial = directory.appendingPathComponent("\(buildID).partial-\(UUID().uuidString)")
             defer { try? fileManager.removeItem(at: partial) }
@@ -73,27 +81,34 @@ extension BundledRuntime {
             }
             try Task.checkCancellation()
             try fileManager.moveItem(at: partial, to: target)
-        } else {
-            _ = try self.resolve(root: target, bundle: bundle)
         }
+        return try self.resolve(root: target, bundle: bundle)
+    }
+
+    fileprivate static func selectSeed(
+        _ runtime: Self,
+        bundle: Bundle,
+        profile: AppProfile,
+        homeDirectory: URL,
+        allowsPersistentIntegration: Bool) throws
+    {
+        let directory = runtime.root.deletingLastPathComponent()
+        let buildID = runtime.root.lastPathComponent
+        let previous = try self.buildLink("current", in: directory)
         if previous != buildID {
             if let previous {
                 try self.replaceBuildLink("previous", target: previous, in: directory)
             } else if try self.buildLink("previous", in: directory) != nil {
                 // With current missing, this link cannot identify the immediately previous build.
-                try fileManager.removeItem(at: directory.appendingPathComponent("previous"))
+                try FileManager.default.removeItem(at: directory.appendingPathComponent("previous"))
             }
             try self.replaceBuildLink("current", target: buildID, in: directory)
         }
-        let runtime = try self.resolve(root: target, bundle: bundle)
-        let allowsPersistentIntegration = await ApplicationRelocator.currentBundleAllowsPersistentIntegration(
-            bundle: bundle)
         runtime.installCLI(
             bundle: bundle,
             profile: profile,
             homeDirectory: homeDirectory,
             allowsPersistentIntegration: allowsPersistentIntegration)
-        return runtime
     }
 
     static func cloneRuntimeTree(
@@ -205,6 +220,20 @@ private actor BundledRuntimeSeeder {
     private var pending: [String: Task<BundledRuntime, Error>] = [:]
 
     func seed(bundle: Bundle, profile: AppProfile, homeDirectory: URL) async throws -> BundledRuntime {
+        let runtime = try await self.prepare(bundle: bundle, profile: profile, homeDirectory: homeDirectory)
+        let allowsPersistentIntegration = await ApplicationRelocator.currentBundleAllowsPersistentIntegration(
+            bundle: bundle)
+        // Keep selection and CLI writes serialized after asynchronous preparation.
+        try BundledRuntime.selectSeed(
+            runtime,
+            bundle: bundle,
+            profile: profile,
+            homeDirectory: homeDirectory,
+            allowsPersistentIntegration: allowsPersistentIntegration)
+        return runtime
+    }
+
+    func prepare(bundle: Bundle, profile: AppProfile, homeDirectory: URL) async throws -> BundledRuntime {
         let key = profile.stateDirectoryURL(homeDirectory: homeDirectory).path
         if let task = self.pending[key] { return try await task.value }
         let task = Task { try await BundledRuntime.prepareSeed(

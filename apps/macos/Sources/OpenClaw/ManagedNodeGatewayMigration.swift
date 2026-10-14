@@ -510,7 +510,7 @@ enum ManagedNodeGatewayMigration {
             nil
         },
         restorationInstaller: @escaping @MainActor () async throws -> BundledRuntime = {
-            try await BundledRuntime.seed(bundle: .main)
+            try await BundledRuntime.prepare(bundle: .main)
         },
         verifyHealth: @escaping () async throws -> Void,
         setServiceHosting: @escaping (Candidate) -> Void,

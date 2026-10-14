@@ -36,7 +36,7 @@ struct BundledRuntime: Sendable {
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         desktopSharingEnabled: Bool? = nil) async throws -> MacNodeHostWorkerLaunch
     {
-        let runtime = try await seed(bundle: bundle, profile: profile, homeDirectory: homeDirectory)
+        let runtime = try await prepare(bundle: bundle, profile: profile, homeDirectory: homeDirectory)
         return try MacNodeHostWorkerLaunch(
             command: CommandResolver.nodeHostWorkerCommand(
                 prefix: runtime.command(entry: "mac-node-worker.js"),
@@ -54,7 +54,7 @@ struct BundledRuntime: Sendable {
         profile: AppProfile = .current,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) async throws -> MacNodeHostWorkerLaunch
     {
-        let runtime = try await seed(bundle: bundle, profile: profile, homeDirectory: homeDirectory)
+        let runtime = try await prepare(bundle: bundle, profile: profile, homeDirectory: homeDirectory)
         var environment = runtime.environment
         environment["OPENCLAW_PROFILE"] = profile.name ?? "default"
         return try MacNodeHostWorkerLaunch(
