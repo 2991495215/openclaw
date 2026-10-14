@@ -314,10 +314,11 @@ describe("Codex active-run steering media", () => {
       fixture.recorder.message = { ...fixture.message, __openclaw: { media: [{ kind: "image" }] } };
       fixture.options.media = [];
       const note = "Attachments are available in /remote/workspace/.inputs/steered-turn.";
+      const privateAttachmentContext = "PublicCase7".repeat(4).slice(0, 40);
       const prepare = vi.fn<NonNullable<AgentWorkspaceAccess["prepareTurnAttachments"]>>(
         async (_turn, assertCurrent) => {
           assertCurrent();
-          return note;
+          return `${note} ${privateAttachmentContext}`;
         },
       );
       const release = registerSteeringWorkspace(fixture, prepare);
@@ -335,9 +336,14 @@ describe("Codex active-run steering media", () => {
           const steer = harness.requests.find((entry) => entry.method === "turn/steer")
             ?.params as SteerRequest;
           expect(steer.input).toEqual([
-            { type: "text", text: `${fixture.message.content}\n\n${note}`, text_elements: [] },
+            {
+              type: "text",
+              text: expect.stringContaining(`${fixture.message.content}\n\n${note}`),
+              text_elements: [],
+            },
             ...fixture.expectedImages,
           ]);
+          expect(JSON.stringify(steer.input)).not.toContain(privateAttachmentContext);
           expect(prepare).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({
               media: fixture.canonicalMedia.map((fact) => expect.objectContaining(fact)),

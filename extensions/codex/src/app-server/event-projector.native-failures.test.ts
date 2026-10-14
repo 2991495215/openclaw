@@ -130,10 +130,104 @@ describe("CodexAppServerEventProjector native tool failure recovery", () => {
     expect(observeToolTerminal).toHaveBeenLastCalledWith(
       expect.objectContaining({
         executionStarted: false,
-        nativeMutation: { mutatingAction: false, replaySafe: true },
+        replaySafe: false,
         outcome: "failure",
       }),
     );
+  });
+
+  it("preserves native command failures while distinguishing read-only actions from mutations", async () => {
+    const params = await createParams();
+    const observeToolTerminal = vi.fn(createContractToolTerminalObserver(params.runId));
+    const projector = await createProjector({ ...params, observeToolTerminal });
+    const commands = [
+      {
+        command: `/usr/bin/zsh -lc "rg -n -C 2 'term1|term2|ambiguous.*keys' notes.md"`,
+        exitCode: 1,
+        output: "",
+        mutatingAction: false,
+      },
+      {
+        command: "/usr/bin/zsh -lc 'rg pattern missing.md'",
+        exitCode: 2,
+        output: "missing.md: No such file or directory",
+        mutatingAction: false,
+      },
+      {
+        command: "/usr/bin/zsh -lc 'sed -i s/a/b/ notes.md'",
+        exitCode: 1,
+        output: "Permission denied",
+        mutatingAction: true,
+      },
+      {
+        command: "/usr/bin/zsh -lc 'rg --pre=touch pattern notes.md'",
+        exitCode: 1,
+        output: "preprocessor failed",
+        mutatingAction: true,
+      },
+      {
+        command: "/tmp/zsh -lc 'rg pattern notes.md'",
+        exitCode: 1,
+        output: "command failed",
+        mutatingAction: true,
+      },
+    ];
+    for (const [index, entry] of commands.entries()) {
+      const id = `cmd-failed-${index}`;
+      await notify(projector, "item/completed", {
+        item: {
+          ...nativeCommand,
+          id,
+          command: entry.command,
+          status: "failed",
+          exitCode: entry.exitCode,
+          aggregatedOutput: entry.output,
+          durationMs: 1,
+        },
+      });
+      const heartbeatArguments = {
+        outcome: "no_change",
+        notify: false,
+        summary: "Nothing needs attention.",
+      };
+      projector.recordDynamicToolCall({
+        callId: `heartbeat-${index}`,
+        tool: "heartbeat_respond",
+        arguments: heartbeatArguments,
+      });
+      const terminalResolution = observeToolTerminal({
+        toolName: "heartbeat_respond",
+        arguments: heartbeatArguments,
+        outcome: "success",
+      });
+      projector.recordDynamicToolResult({
+        callId: `heartbeat-${index}`,
+        tool: "heartbeat_respond",
+        success: true,
+        terminalResolution,
+        contentItems: [],
+      });
+      const result = projector.buildResult(buildEmptyToolTelemetry());
+      expect(result.lastToolError, entry.command).toMatchObject({
+        toolName: "bash",
+        executionStarted: true,
+        mutatingAction: entry.mutatingAction,
+      });
+      expect(
+        result.toolMetas.findLast((meta) => meta.toolName === "bash")?.isError,
+        entry.command,
+      ).toBe(true);
+      expect(
+        result.messagesSnapshot.find(
+          (message) => message.role === "toolResult" && message.toolCallId === id,
+        ),
+        entry.command,
+      ).toMatchObject({ role: "toolResult", isError: true });
+      expect(result.replayMetadata, entry.command).toEqual({
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+      });
+    }
   });
 
   it("projects a cancelled native approval as one terminal error", async () => {

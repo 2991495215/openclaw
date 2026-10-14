@@ -314,6 +314,23 @@ function isReadOnlyShellTokens(tokens: readonly string[]): boolean {
   return false;
 }
 
+/** Classify one native execution transport without relaxing host shell-tool policy. */
+export function buildNativeCommandMutationState(command: string): ToolMutationState {
+  const commands = tokenizeReadOnlyShellCommands(command);
+  const argv = commands?.length === 1 ? commands[0] : undefined;
+  const hasKnownTransport =
+    argv?.length === 3 &&
+    /^\/(?:usr\/)?bin\/(?:bash|sh|zsh)$/.test(argv[0]!) &&
+    (argv[1] === "-c" || argv[1] === "-lc");
+  return {
+    // Strip only the producer's outer shell. An explicit nested shell remains
+    // opaque to the existing classifier, as do unknown paths and extra flags.
+    mutatingAction: !hasKnownTransport || !isPlainReadOnlyShellCommand(argv?.[2]),
+    // Login startup and native execution remain potentially side-effecting.
+    replaySafe: false,
+  };
+}
+
 export function isMutatingToolCall(toolName: string, args: unknown): boolean {
   const normalized = normalizeLowercaseStringOrEmpty(toolName);
   const record = asRecord(args);

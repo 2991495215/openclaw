@@ -64,6 +64,40 @@ instead of a plain OpenAI API-key failure.
 Doctor rewrites legacy model refs to `openai/*`, removes stale session and
 whole-agent runtime pins, and preserves existing auth-profile overrides.
 
+**A managed remote session still selects a retired auth profile:** an existing
+Codex binding retains its selected profile even when the outer session override
+is empty. Missing profiles fail closed. After explicitly verifying that the
+configured WebSocket endpoint already belongs to the intended native account,
+an administrator can preview a history-preserving migration:
+
+```bash
+openclaw gateway call codex.migrateAuthProfile --params '{
+  "agentId": "main",
+  "sessionKey": "agent:main:example",
+  "expectedSessionId": "CURRENT_OPENCLAW_SESSION_ID",
+  "expectedThreadId": "CURRENT_CODEX_THREAD_ID",
+  "expectedClientId": "CURRENT_BINDING_CLIENT_ID",
+  "expectedAuthProfileId": "openai:retired-profile",
+  "expectedAccountEmail": "owner@example.com",
+  "expectedServerUrl": "wss://codex.example.com"
+}'
+```
+
+Use `null` for `expectedClientId` only when the binding has no client ID.
+The request defaults to preview. Apply the same exact request with
+`"apply": true, "confirmNativeAccount": true` after reviewing it. The operation
+verifies the native account without logging in, rejects configured or automatic
+replacement profiles, and refuses active leases, running sessions, changed
+owners, supervised bindings, and bindings with native child metadata. It clears
+only the exact retired outer and binding pins; session IDs, native thread IDs,
+history, and scheduled jobs are retained. It does not change normal auth
+selection or introduce a missing-profile fallback.
+
+The outer pin is cleared before the binding pin. If a concurrent change refuses
+the second step, the old binding remains fail-closed; inspect the current
+metadata before retrying. Inventory other affected sessions and retained legacy
+imports separately; this operation repairs only the explicitly named session.
+
 **The app-server is rejected:** use Codex `0.149.0` or newer. Older, malformed,
 and unversioned servers are rejected. Newer semantic versions continue with a
 compatibility warning and normal runtime validation against the Codex version

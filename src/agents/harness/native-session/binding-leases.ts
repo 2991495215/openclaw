@@ -88,8 +88,9 @@ export function createNativeSessionBindingLeases<TRecord extends NativeSessionBi
     ttlMs?: number | ((next: TRecord) => number | undefined),
     assertCurrent?: () => void,
     authority?: NativeSessionBindingAuthority,
+    leaseWaitMs = options.lease.waitMs,
   ): Promise<TResult> => {
-    const deadline = Date.now() + options.lease.waitMs;
+    const deadline = Date.now() + leaseWaitMs;
     while (true) {
       assertSettled(key);
       let busy = false;

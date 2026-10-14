@@ -115,6 +115,12 @@ type EmbeddedRunAttemptToolTerminalObservation = {
     mutatingAction: boolean;
     replaySafe: boolean;
   };
+  /**
+   * Trusted native-adapter argv serialization, including its execution shell
+   * (for example Codex's shlex_join(Shell::derive_exec_args(...))). This is not
+   * a model-supplied shell command or display-only commandActions metadata.
+   */
+  nativeCommand?: { format: "shell-argv"; command: string };
   /** Concrete plugin owner; the terminal observer derives mutation facts from executed args. */
   ownerMutation?: {
     ownerKey: string;

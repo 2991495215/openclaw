@@ -351,6 +351,11 @@ usage endpoint failed or returned no usable usage data.
 
 ### Sensitive text redaction
 
+`openclaw/plugin-sdk/logging-core` exposes `redactToolPayloadText(text, loggingConfig?)`
+for model-facing payloads that must match an explicit runtime redaction policy before dispatch.
+It always applies tools-mode redaction and combines custom patterns with the built-in rules.
+Omit `loggingConfig` to use the current logging policy.
+
 The retained `openclaw/plugin-sdk/security-runtime` export and its
 `@openclaw/plugin-sdk/security-runtime` package facade expose
 `redactSensitiveText(text, options?)`. It returns the redacted string.

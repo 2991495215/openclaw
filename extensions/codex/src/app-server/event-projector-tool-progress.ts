@@ -290,10 +290,19 @@ export class CodexToolProgressProjection {
       executionStarted,
       outcome: isFailure ? "failure" : "success",
       ...(isFailure ? { failure } : {}),
-      nativeMutation: {
-        mutatingAction,
-        replaySafe: !mutatingAction,
-      },
+      ...(params.item.type === "commandExecution"
+        ? {
+            // The host classifies command arguments using its shared shell
+            // policy. Native command presentation never proves replay safety.
+            nativeCommand: { format: "shell-argv" as const, command: params.item.command ?? "" },
+            replaySafe: false,
+          }
+        : {
+            nativeMutation: {
+              mutatingAction,
+              replaySafe: !mutatingAction,
+            },
+          }),
     });
     if (terminalResolution) {
       this.lastNativeToolError = terminalResolution.lastToolError;

@@ -103,6 +103,26 @@ export function ownsStoredSessionGeneration(
   );
 }
 
+export function storedSessionGeneration(
+  identity: CodexAppServerBindingIdentity,
+  current: StoredCodexAppServerBinding | undefined,
+): { sessionId?: string } {
+  if (identity.kind === "session") {
+    return { sessionId: identity.sessionId };
+  }
+  return current?.sessionId ? { sessionId: current.sessionId } : {};
+}
+
+export function preservedSessionGeneration(
+  identity: CodexAppServerBindingIdentity,
+  current: StoredCodexAppServerBinding | undefined,
+): { sessionId?: string } {
+  if (current?.sessionId) {
+    return { sessionId: current.sessionId };
+  }
+  return storedSessionGeneration(identity, current);
+}
+
 /** The same physical-generation check serves execution and read-only projections. */
 export function readCurrentCodexAppServerBinding(
   state: Pick<PluginStateSyncKeyedStore<StoredCodexAppServerBinding>, "lookup">,

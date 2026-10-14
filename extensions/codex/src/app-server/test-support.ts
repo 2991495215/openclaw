@@ -47,9 +47,13 @@ export function createCodexTestToolTerminalObserver(): NonNullable<
         ? (observation.arguments as Record<string, unknown>)
         : {};
     const action = typeof record.action === "string" ? record.action : undefined;
+    // Native shell classification is host-owned. Keep this lightweight fake
+    // conservative; tests of command arguments use the real contract observer.
+    const defaultMutatingAction =
+      observation.toolName === "bash" || (observation.toolName === "message" && action === "send");
     const mutation = observation.nativeMutation ?? {
-      mutatingAction: observation.toolName === "message" && action === "send",
-      replaySafe: !(observation.toolName === "message" && action === "send"),
+      mutatingAction: defaultMutatingAction,
+      replaySafe: !defaultMutatingAction,
     };
     const executionStarted = observation.executionStarted !== false;
     if (observation.outcome === "failure") {

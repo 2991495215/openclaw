@@ -27,6 +27,10 @@ import {
   adoptCodexNativeSubagentSubmissions,
   type CodexNativeSubagentSubmission,
 } from "./native-subagent-submission.js";
+import {
+  migrateCodexBindingAuthProfile,
+  type CodexAuthProfileMigrationMutation,
+} from "./session-binding-auth-migration.js";
 import { createCodexSessionGenerationSupersededError } from "./session-binding-authority.js";
 import {
   CODEX_APP_SERVER_BINDING_LEASE,
@@ -43,6 +47,8 @@ import {
   bindingStoreKey,
   matchesPendingSupervisionBranch,
   ownsStoredSessionGeneration,
+  storedSessionGeneration,
+  preservedSessionGeneration,
   preserveCodexNativeSubagentSubmissions,
   readCurrentCodexAppServerBinding,
   readCurrentCodexAppServerBindings,
@@ -91,6 +97,7 @@ export {
 
 type CodexAppServerBindingMutation =
   | CodexNativeSubagentBindingMutation
+  | CodexAuthProfileMigrationMutation
   | {
       kind: "set";
       binding: CodexAppServerThreadBinding;
@@ -441,6 +448,9 @@ export function createCodexAppServerBindingStore(
         return await lifecycle.transact(
           key,
           (current, leaseToken) => {
+            if (mutation.kind === "clear-auth-profile") {
+              return migrateCodexBindingAuthProfile(identity, current, mutation);
+            }
             if (
               mutation.kind === "record-native-subagent-assignment" ||
               mutation.kind === "consume-native-subagent-assignment" ||
@@ -617,6 +627,7 @@ export function createCodexAppServerBindingStore(
               : undefined,
           assertCurrent,
           authority,
+          mutation.kind === "clear-auth-profile" ? 0 : undefined,
         );
       });
     },
@@ -727,24 +738,4 @@ function isSameSupervisionOwner(
     replacement.threadId === current.threadId &&
     replacement.supervisionSourceThreadId === current.supervisionSourceThreadId
   );
-}
-
-function storedSessionGeneration(
-  identity: CodexAppServerBindingIdentity,
-  current: StoredCodexAppServerBinding | undefined,
-): { sessionId?: string } {
-  if (identity.kind === "session") {
-    return { sessionId: identity.sessionId };
-  }
-  return current?.sessionId ? { sessionId: current.sessionId } : {};
-}
-
-function preservedSessionGeneration(
-  identity: CodexAppServerBindingIdentity,
-  current: StoredCodexAppServerBinding | undefined,
-): { sessionId?: string } {
-  if (current?.sessionId) {
-    return { sessionId: current.sessionId };
-  }
-  return storedSessionGeneration(identity, current);
 }

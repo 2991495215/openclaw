@@ -1,12 +1,49 @@
 // Tool mutation tests cover fail-closed mutation and replay-safety classification.
 import { describe, expect, it } from "vitest";
 import {
+  buildNativeCommandMutationState,
   buildToolMutationState,
   isMutatingToolCall,
   isReplaySafeToolCall,
 } from "./tool-mutation.js";
 
 describe("tool mutation helpers", () => {
+  it.each([
+    `/usr/bin/zsh -lc "rg -n -C 2 'term1|term2|ambiguous.*keys' notes.md"`,
+    "/bin/bash -c 'cat missing.md'",
+    "/usr/bin/sh -c 'ls missing-directory'",
+  ])("classifies only the native transport payload without permitting replay: %s", (command) => {
+    expect(buildNativeCommandMutationState(command)).toEqual({
+      mutatingAction: false,
+      replaySafe: false,
+    });
+    expect(buildToolMutationState("bash", { command }).mutatingAction).toBe(true);
+  });
+
+  it.each([
+    "",
+    "zsh -lc 'rg TODO src'",
+    "./zsh -lc 'rg TODO src'",
+    "/tmp/zsh -lc 'rg TODO src'",
+    "/bin/zsh -lc 'rg TODO src' extra-argument",
+    "/bin/zsh -lic 'rg TODO src'",
+    "/bin/zsh -lc 'bash -c cat'",
+    "/bin/zsh -lc 'cat notes.md > /tmp/out'",
+    "/bin/zsh -lc 'sed -i s/a/b/ notes.md'",
+    "/bin/zsh -lc 'rg --pre=touch pattern notes.md'",
+    "/bin/zsh -lc 'rg --hostname-bin=/tmp/helper pattern notes.md'",
+    "/bin/zsh -lc 'rg -z pattern archive.zip'",
+    "/bin/zsh -lc 'rg \"$(touch /tmp/out)\" notes.md'",
+    "/bin/zsh -lc 'rg \"`touch /tmp/out`\" notes.md'",
+    '/bin/zsh -lc "rg $(touch /tmp/out) notes.md"',
+    "/bin/zsh -lc 'rg pattern notes.md' && touch /tmp/out",
+  ])("keeps unsafe or unknown native commands mutating: %s", (command) => {
+    expect(buildNativeCommandMutationState(command)).toEqual({
+      mutatingAction: true,
+      replaySafe: false,
+    });
+  });
+
   it.each([undefined, "list", "person", "device", "future-action"])(
     "classifies presence action %s for safe replay",
     (action) => {

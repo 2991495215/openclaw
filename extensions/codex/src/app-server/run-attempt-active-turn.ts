@@ -377,6 +377,9 @@ export function activateCodexAttemptTurn(
         input: buildCodexUserInput(
           attachmentNote ? `${text}\n\n${attachmentNote}` : text,
           result.images,
+          undefined,
+          undefined,
+          params.config?.logging,
         ),
         message: {
           ...source,

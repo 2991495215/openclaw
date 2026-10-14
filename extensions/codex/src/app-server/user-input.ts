@@ -1,5 +1,6 @@
 import type { EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { sanitizeInlineImageDataUrl } from "openclaw/plugin-sdk/inline-image-data-url-runtime";
+import { redactToolPayloadText } from "openclaw/plugin-sdk/logging-core";
 import type { CodexProjectedImageGroup } from "./context-engine-projection.js";
 import { invalidInlineImageText } from "./image-payload-sanitizer.js";
 import type { CodexUserInput } from "./protocol.js";
@@ -28,16 +29,35 @@ export function buildCodexUserInput(
   images?: EmbeddedRunAttemptParams["images"],
   contextImageGroups?: CodexProjectedImageGroup[],
   historyProvenancePrefix?: string,
+  loggingConfig?: NonNullable<EmbeddedRunAttemptParams["config"]>["logging"],
+): CodexUserInput[] {
+  // Native prompt provenance must describe the exact text sent upstream.
+  // Apply storage redaction after assembling context and media, before dispatch,
+  // for both new turns and steering. Never restore redacted text into history.
+  const input = buildUnredactedUserInput(text, images, contextImageGroups, historyProvenancePrefix);
+  for (const item of input) {
+    if (item.type === "text") {
+      item.text = redactToolPayloadText(item.text, loggingConfig);
+    }
+  }
+  return input;
+}
+
+function buildUnredactedUserInput(
+  text: string | undefined,
+  images?: EmbeddedRunAttemptParams["images"],
+  contextImageGroups?: CodexProjectedImageGroup[],
+  historyProvenancePrefix?: string,
 ): CodexUserInput[] {
   if (text !== undefined && contextImageGroups?.length) {
     let offset = 0;
     const input = contextImageGroups.flatMap((group) => {
-      const parts = buildCodexUserInput(text.slice(offset, group.end), group.images);
+      const parts = buildUnredactedUserInput(text.slice(offset, group.end), group.images);
       offset = group.end;
       return parts;
     });
     return prependHistoryProvenance(
-      [...input, ...buildCodexUserInput(text.slice(offset), images)],
+      [...input, ...buildUnredactedUserInput(text.slice(offset), images)],
       historyProvenancePrefix,
     );
   }

@@ -21,6 +21,19 @@ afterEach(() => {
 });
 
 describe("native session binding leases", () => {
+  it("can refuse a busy owner immediately without changing default lease waits", async () => {
+    const { values, owner } = createLeaseFixture();
+    values.set("binding", {
+      value: "owner",
+      lease: { token: "busy", expiresAt: Date.now() + 60_000 },
+    });
+    const apply = vi.fn(() => ({ result: true }));
+    await expect(
+      owner.transact("binding", apply, undefined, undefined, undefined, 0),
+    ).rejects.toThrow();
+    expect(apply).not.toHaveBeenCalled();
+    expect(values.get("binding")?.value).toBe("owner");
+  });
   it.each(["absent", "renewed"])(
     "serializes peer writes behind a %s binding lease",
     async (mode) => {

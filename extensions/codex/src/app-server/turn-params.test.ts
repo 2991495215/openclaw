@@ -14,6 +14,39 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("buildTurnStartParams native prompt redaction", () => {
+  it("redacts generated context before it becomes native prompt provenance", () => {
+    const credentialShapedContext = "PublicCase7".repeat(4).slice(0, 40);
+    const params = createParams("/tmp/session.jsonl", "/repo");
+    const prompt = `Check the monitor.\nGenerated context: ${credentialShapedContext}`;
+    const turn = buildTurnStartParams(params, {
+      threadId: "thread-1",
+      cwd: "/repo",
+      appServer: createAppServerOptions(),
+      promptText: prompt,
+    });
+    const text = turn.input.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n");
+    expect(text).toContain("Check the monitor.");
+    expect(text).not.toContain(credentialShapedContext);
+    expect(text).toContain("…");
+    expect(params.prompt).not.toBe(prompt);
+  });
+
+  it("uses the attempt's custom redaction policy even when logging is silent", () => {
+    const params = createParams("/tmp/session.jsonl", "/repo", {
+      logging: { level: "silent", redactPatterns: ["private-context-value"] },
+    });
+    const turn = buildTurnStartParams(params, {
+      threadId: "thread-1",
+      cwd: "/repo",
+      appServer: createAppServerOptions(),
+      promptText: "Check the monitor. private-context-value",
+    });
+    expect(JSON.stringify(turn.input)).not.toContain("private-context-value");
+    expect(JSON.stringify(turn.input)).toContain("Check the monitor.");
+  });
+});
+
 describe("buildTurnStartParams active computer context", () => {
   it("keeps required-root native environments disabled on warm native turns", () => {
     const params = createParams("/tmp/session.jsonl", "/repo");

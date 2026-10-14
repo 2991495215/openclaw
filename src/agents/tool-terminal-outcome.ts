@@ -9,7 +9,7 @@ import type { EmbeddedRunAttemptParams } from "./embedded-agent-runner/run/types
 import { buildToolEffectReceipt, readToolEffectReceipt } from "./tool-effect-receipt.js";
 import { createToolErrorState } from "./tool-error-state.js";
 import type { ToolErrorSummary } from "./tool-error-summary.js";
-import { buildToolMutationState } from "./tool-mutation.js";
+import { buildNativeCommandMutationState, buildToolMutationState } from "./tool-mutation.js";
 import { readToolResultDetails } from "./tool-result-error.js";
 
 function readTimeoutDiagnostic(result: unknown): ToolErrorSummary["terminalDiagnostic"] {
@@ -59,8 +59,12 @@ export function createToolTerminalObserver(
           ownerKey: observation.ownerMutation.ownerKey,
         })
       : (observation.nativeMutation ??
-        buildToolMutationState(observation.toolName, executedArguments));
-    const replaySafe = observation.replaySafe ?? mutation.replaySafe;
+        (observation.nativeCommand
+          ? buildNativeCommandMutationState(observation.nativeCommand.command)
+          : buildToolMutationState(observation.toolName, executedArguments)));
+    const replaySafe = observation.nativeCommand
+      ? false
+      : (observation.replaySafe ?? mutation.replaySafe);
     const details = readToolResultDetails(observation.result);
     let lastToolError: ToolErrorSummary | undefined;
     if (!executionStarted && details?.status === "skipped" && details.deniedReason === "steering") {

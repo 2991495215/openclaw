@@ -175,6 +175,7 @@ export function buildTurnStartParams(
         options.contextImageGroups,
         options.historyProvenancePrefix ??
           (params.trigger === "user" ? buildCodexHistoryProvenancePrefix(params) : undefined),
+        params.config?.logging,
       ),
       ...(options.explicitSkillInputs ?? []),
     ],
