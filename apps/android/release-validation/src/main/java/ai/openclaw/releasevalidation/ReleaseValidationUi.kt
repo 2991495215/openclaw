@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Instrumentation
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
@@ -64,11 +65,10 @@ internal class ReleaseValidationUi(
     selector: BySelector,
     label: String,
   ): Boolean {
-    val action = AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK
     val target =
       checkNotNull(
         device.wait(
-          Condition<UiDevice, AccessibilityNodeInfo?> {
+          Condition<UiDevice, Point?> {
             // A screen heading and its drawer destination can expose the same text.
             device
               .findObjects(selector)
@@ -76,9 +76,14 @@ internal class ReleaseValidationUi(
               .mapNotNull { match ->
                 try {
                   val node = match.accessibilityNodeInfo
-                  generateSequence(node) { it.parent }.take(8).firstOrNull {
-                    it.isVisibleToUser && it.isClickable && it.isEnabled && it.actionList.contains(action)
-                  }
+                  generateSequence(node) { it.parent }
+                    .take(8)
+                    .firstOrNull {
+                      it.isVisibleToUser && it.isEnabled && (it.isClickable || it.isSelected)
+                    }?.let { target ->
+                      val bounds = Rect().also(target::getBoundsInScreen)
+                      if (bounds.isEmpty) null else Point(bounds.centerX(), bounds.centerY())
+                    }
                 } catch (_: StaleObjectException) {
                   // Reacquire replaced nodes within the existing deadline, before issuing any action.
                   null
@@ -87,8 +92,9 @@ internal class ReleaseValidationUi(
           },
           30_000,
         ),
-      ) { "$label: native click was not exposed" }
-    return target.performAction(action.id)
+      ) { "$label: native tap target was not exposed" }
+    // Compose omits click actions for selected items; use the same native tap as UiObject2.click.
+    return device.click(target.x, target.y)
   }
 
   fun swipe(forward: Boolean) {
