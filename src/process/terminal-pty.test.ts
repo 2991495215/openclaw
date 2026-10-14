@@ -151,7 +151,7 @@ describe("terminal PTY spawn diagnostics", () => {
         configurable: true,
         value: backend === "node-pty" ? undefined : "synthetic-bun",
       });
-      vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+      const platform = vi.spyOn(process, "platform", "get").mockReturnValue("linux");
       const pty = fakePty();
       mocks.spawn.mockReturnValueOnce(pty);
       mocks.spawnBunTerminalPty.mockReturnValueOnce(pty);
@@ -164,18 +164,19 @@ describe("terminal PTY spawn diagnostics", () => {
         await withChildProcessOperation("agent.exec", () =>
           spawnTerminalPty({ file: "/bin/bash", args: ["-c", "synthetic"], cols: 80, rows: 24 }),
         );
-        now = 60_000;
-        emitChildProcessSpawnSample();
-        expect(events).toEqual([
-          expect.objectContaining({ family: "bash", operation: "agent.exec", count: 1 }),
-        ]);
       } finally {
+        platform.mockRestore();
         if (bunDescriptor) {
           Object.defineProperty(process.versions, "bun", bunDescriptor);
         } else {
           Reflect.deleteProperty(process.versions, "bun");
         }
       }
+      now = 60_000;
+      emitChildProcessSpawnSample();
+      expect(events).toEqual([
+        expect.objectContaining({ family: "bash", operation: "agent.exec", count: 1 }),
+      ]);
     },
   );
 
