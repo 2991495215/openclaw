@@ -221,20 +221,18 @@ describe("candidate service capability startup", () => {
     getCliProcessTestTimeout(CLI_CHILD_TIMEOUT_MS, CLI_CHILD_TIMEOUT_MS, CLI_CHILD_TIMEOUT_MS),
   );
 
-  it("keeps ordinary service commands behind the live Gateway schema fence", async () => {
+  it("preserves the live Gateway database when update install cannot inspect the service", async () => {
     const fixture = createFixture({ canonicalServiceIdentity: true });
     const before = fs.readFileSync(fixture.databasePath);
     try {
       const result = await fixture.run(["gateway", "install", "--json"]);
       expect(result.code).toBe(1);
       expect(JSON.parse(result.stdout)).toMatchObject({
+        action: "install",
         ok: false,
-        error: {
-          type: "cli_error",
-          message: expect.stringContaining(
-            `OpenClaw state database is busy at ${fixture.databasePath}.`,
-          ),
-        },
+        error: expect.stringContaining(
+          "SERVICE_DEFINITION_UNKNOWN: Gateway service definition could not be inspected; it was left unchanged.",
+        ),
       });
       expect(fs.readFileSync(fixture.databasePath)).toEqual(before);
     } finally {
