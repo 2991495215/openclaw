@@ -10,20 +10,14 @@ export async function refreshModelAuthStateAfterMutation(
   agentId: string,
 ): Promise<void> {
   // The first CLI login can move the shared store after this Gateway pinned its owner.
-  console.log("CATALOG_REFRESH_TRACE", "ownership-reload-start");
   await reloadSharedAuthStoreOwnership();
-  console.log("CATALOG_REFRESH_TRACE", "ownership-reload-end");
   clearModelAuthStatusUsageCache();
-  console.log("CATALOG_REFRESH_TRACE", "secrets-refresh-start");
   await refreshActiveProviderAuthRuntimeSnapshot();
-  console.log("CATALOG_REFRESH_TRACE", "secrets-refresh-end");
   const config = getRuntimeConfig();
   const scope = resolveModelAuthAgentScope(config, agentId);
   if (!scope.ok) {
     throw new Error(scope.error.message);
   }
   // Persistence and secrets activation publish actual auth changes; join that generation.
-  console.log("CATALOG_REFRESH_TRACE", "runtime-prepare-start");
   await prepareModelRuntimeSnapshot({ config, agentId, agentDir: scope.agentDir });
-  console.log("CATALOG_REFRESH_TRACE", "runtime-prepare-end");
 }

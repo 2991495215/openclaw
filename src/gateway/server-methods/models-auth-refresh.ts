@@ -27,9 +27,7 @@ export const modelsAuthRefreshHandlers: GatewayRequestHandlers = {
     }
     await respondUnavailableOnThrow(respond, async () => {
       // Explicit refresh must observe persisted changes that supplied no in-process receipt.
-      console.log("CATALOG_REFRESH_TRACE", "snapshot-clear-start");
       clearRuntimeAuthProfileStoreSnapshots();
-      console.log("CATALOG_REFRESH_TRACE", "snapshot-clear-end");
       await refreshModelAuthStateAfterMutation(context.getRuntimeConfig, scope.agentId);
       respond(true, { refreshed: true }, undefined);
     });
