@@ -290,6 +290,8 @@ type PreparedModelCatalogWorker = Readonly<{
   >;
 }>;
 
+let diagnosticOwnerSequence = 0;
+
 export function createPreparedModelCatalogWorker(
   params: Parameters<typeof createPreparedModelCatalogWorkerInput>[0] & {
     isCurrent: () => boolean;
@@ -297,6 +299,8 @@ export function createPreparedModelCatalogWorker(
     pluginRegistry?: PluginRegistry;
   },
 ): PreparedModelCatalogWorker {
+  const diagnosticOwner = ++diagnosticOwnerSequence;
+  let diagnosticRequestSequence = 0;
   const workerInput = createPreparedModelCatalogWorkerInput(params);
   // Parent probes retain the canonical generation; only the worker restores a cloned payload.
   const metadataSnapshot = params.pluginMetadataSnapshot;
@@ -397,6 +401,21 @@ export function createPreparedModelCatalogWorker(
     command: PreparedModelWorkerCommand,
     onRecovery?: (error: Error) => void,
   ): Promise<Extract<PreparedModelWorkerResult, { status: "ok" }>> => {
+    const diagnosticRequest = ++diagnosticRequestSequence;
+    const trace = (phase: string, outcome?: string) =>
+      console.log(
+        "CATALOG_TASK_TRACE",
+        JSON.stringify({
+          phase,
+          owner: diagnosticOwner,
+          request: diagnosticRequest,
+          kind: command.kind,
+          providerIds: command.providerIds ?? null,
+          refresh: command.kind === "catalog" ? command.refresh === true : undefined,
+          outcome,
+        }),
+      );
+    trace("requested");
     let message: PreparedModelWorkerResult;
     let requestPool: typeof pool;
     let pending: Promise<PreparedModelWorkerResult> | undefined;
@@ -501,6 +520,7 @@ export function createPreparedModelCatalogWorker(
             clawInstallSchemaVersions: captureClawInstallSchemaVersionFacts({ env: input.env }),
           };
           expectedFingerprint = fingerprintPreparedModelWorkerRequest(workerInput, workerRequest);
+          trace("dispatched");
           const publication = beginAuthProfileCredentialBatch(
             captureOpenClawStateWorkerContext({ env: input.env }),
           );
@@ -539,8 +559,10 @@ export function createPreparedModelCatalogWorker(
       );
       tasks.set(pending, task);
       message = await pending;
+      trace("worker-settled", message.status);
       assertCurrent();
     } catch (error) {
+      trace("request-rejected", error instanceof Error ? error.name : "unknown");
       const failure = error instanceof Error ? error : new Error(String(error));
       if (failure instanceof PreparedModelCatalogAdmissionStalledError) {
         throw failure;

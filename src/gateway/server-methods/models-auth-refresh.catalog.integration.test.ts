@@ -180,18 +180,24 @@ describe("models.authRefresh learned catalog", () => {
         ).toBe(0);
         const initialRequests = requests.length;
         const initialTasks = catalogWork.read().completedTasks;
+        console.log("CATALOG_TEST_TRACE", "initial-idle", catalogWork.read());
         const renewalRequest = once(discovery, "request");
         const renewalStarted = Date.now();
         await saveAccount("account-one", "account-one-renewed");
+        console.log("CATALOG_TEST_TRACE", "renewal-saved", catalogWork.read());
         await expect(
           client.request("models.authRefresh", { agentId: "main", operation: "update" }),
         ).resolves.toEqual({ refreshed: true });
+        console.log("CATALOG_TEST_TRACE", "renewal-rpc-returned", catalogWork.read());
         expect((await list()).map((model) => model.id)).toEqual(["account-one-learned"]);
+        console.log("CATALOG_TEST_TRACE", "renewal-first-list", catalogWork.read());
         console.log(
           "RENEWAL_PENDING",
-          await client.request("models.list", { agentId: "main", view: "all" }),
+          (await client.request<ModelsListResult>("models.list", { agentId: "main", view: "all" }))
+            .models.length,
         );
         await renewalRequest;
+        console.log("CATALOG_TEST_TRACE", "renewal-request-observed", catalogWork.read());
         console.log("RENEWAL_REQUEST_MS", Date.now() - renewalStarted);
         expect(requests.slice(initialRequests)).toEqual(["Bearer account-one-renewed"]);
         expect(

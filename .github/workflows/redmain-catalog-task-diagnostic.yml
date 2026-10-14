@@ -1,0 +1,123 @@
+# Temporary focused diagnostic only. Never merge this workflow or source instrumentation.
+name: Red-main auth catalog task diagnostic
+run-name: Auth catalog tasks ${{ inputs.candidate_sha }} ${{ inputs.dispatch_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Reviewed full diagnostic source commit SHA
+        type: string
+        required: true
+      workflow_sha:
+        description: Reviewed full diagnostic workflow commit SHA
+        type: string
+        required: true
+      dispatch_id:
+        description: Diagnostic correlation ID
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redmain-catalog-task-diagnostic-${{ github.ref }}-${{ inputs.candidate_sha }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  NODE_VERSION: "24.19.0"
+  OPENCLAW_LOCAL_CHECK: "0"
+  OPENCLAW_VITEST_RUNTIME: node
+
+jobs:
+  catalog-task-diagnostic:
+    name: Auth catalog tasks (one failing case)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact diagnostic source
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify source and workflow identity
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.candidate_sha }}
+          EXPECTED_WORKFLOW_SHA: ${{ inputs.workflow_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$EXPECTED_WORKFLOW_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$WORKFLOW_SHA" = "$EXPECTED_WORKFLOW_SHA"
+          mkdir -p "$RUNNER_TEMP/catalog-task-diagnostic"
+          {
+            echo "Candidate: $EXPECTED_SHA"
+            echo "Workflow: $WORKFLOW_SHA"
+            git show -s --format='%H%n%P%n%s' HEAD
+            git ls-tree HEAD -- package.json pnpm-lock.yaml \
+              test/vitest/vitest.gateway-server-isolated.config.ts \
+              src/agents/prepared-model-catalog-worker.ts \
+              src/gateway/model-auth-refresh.ts \
+              src/gateway/server-methods/models-auth-refresh.ts \
+              src/gateway/server-methods/models-auth-refresh.catalog.integration.test.ts
+          } | tee "$RUNNER_TEMP/catalog-task-diagnostic/provenance.log"
+
+      - name: Setup frozen Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          semantic-checks: "true"
+          cache-mode: restore
+          install-bun: "false"
+          dependency-cache: "false"
+          frozen-lockfile: "true"
+          vitest-fs-cache: "false"
+          vitest-worker-cache: "false"
+
+      - name: Run original failing catalog case with sanitized tracing
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = v24.19.0
+          started="$(date +%s)"
+          if pnpm test src/gateway/server-methods/models-auth-refresh.catalog.integration.test.ts \
+            --maxWorkers=1 -t 'retains same-account rows while renewing and discovers a replacement account' \
+            2>&1 | tee "$RUNNER_TEMP/catalog-task-diagnostic/test.log"; then
+            test_exit=0
+          else
+            test_exit=$?
+          fi
+          {
+            echo "Diagnostic exit: $test_exit"
+            echo "Diagnostic seconds: $(( $(date +%s) - started ))"
+          } | tee "$RUNNER_TEMP/catalog-task-diagnostic/result.txt" >> "$GITHUB_STEP_SUMMARY"
+          exit "$test_exit"
+
+      - name: Verify tracked source stayed unchanged
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git diff --exit-code HEAD --
+
+      - name: Preserve focused evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: redmain-catalog-task-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/catalog-task-diagnostic/
+          if-no-files-found: warn
+          retention-days: 14
