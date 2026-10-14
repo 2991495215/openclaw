@@ -601,7 +601,8 @@ export async function main(argv = process.argv.slice(2)) {
       fresh: true,
       phone: `android-36/google_apis/${abi}`,
       wear: `android-34/android-wear/${abi}`,
-      sdkEmulator: await command(path.join(sdk, "emulator/emulator"), ["-version"]),
+      // Metadata must use the same headless backend as the CI emulators.
+      sdkEmulator: await command(path.join(sdk, "emulator/emulator"), ["-no-window", "-version"]),
     };
     const setup = await rpc<{ setupCode: string }>("device.pair.setupCode", {
       publicUrl: instance.url,
