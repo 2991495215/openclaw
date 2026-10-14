@@ -5,6 +5,13 @@ import { formatErrorMessageWithCode } from "../infra/errors.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { writeSkill } from "../skills/test-support/e2e-test-helpers.js";
 
+function traceAgentTestPhase(phase: string, method: string) {
+  console.error(
+    "[agents-create-phase]",
+    JSON.stringify({ phase, method, atMs: Math.round(performance.now()) }),
+  );
+}
+
 type ConfigState = { hash: string; path: string; config: Record<string, unknown> };
 type RpcResult = { ok: boolean; error?: { message?: string } };
 
@@ -37,16 +44,19 @@ export function registerAgentConfigMutationTests({
       { method: "agents.delete", params: { agentId: "revision-worker", deleteFiles: false } },
     ];
     for (const operation of operations) {
+      traceAgentTestPhase("operation:start", operation.method);
       const before = await getConfigHash();
       const entered = createDeferredCore();
       const gate = createDeferredCore();
       reloadBarrier.hold = () => {
+        traceAgentTestPhase("barrier:entered", operation.method);
         entered.resolve();
         return gate.promise;
       };
       try {
         // Agent RPCs acknowledge only after runtime application, so a concurrent
         // reader observes the persisted revision while publication is held.
+        traceAgentTestPhase("request:start", operation.method);
         const changed = rpc(operation.method, operation.params);
         await Promise.race([
           entered.promise,
@@ -56,9 +66,14 @@ export function registerAgentConfigMutationTests({
             );
           }),
         ]);
+        traceAgentTestPhase("barrier:observed", operation.method);
+        traceAgentTestPhase("held-read:start", operation.method);
         const current = await getCurrentConfigObject();
+        traceAgentTestPhase("held-read:settled", operation.method);
+        traceAgentTestPhase("barrier:release", operation.method);
         gate.resolve();
         const result = await changed;
+        traceAgentTestPhase("request:settled", operation.method);
         expect(result.ok, `${operation.method}: ${result.error?.message}`).toBe(true);
         if (operation.method === "agents.create") {
           const status = await rpc("skills.status", { agentId: "revision-worker" });
@@ -82,6 +97,7 @@ export function registerAgentConfigMutationTests({
         expect(patched.ok, patched.error?.message).toBe(true);
         expect(current.hash).not.toBe(before);
       } finally {
+        traceAgentTestPhase("finally:release", operation.method);
         gate.resolve();
         reloadBarrier.hold = undefined;
       }

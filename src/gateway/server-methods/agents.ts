@@ -63,6 +63,13 @@ import {
 import type { GatewayRequestHandlers, RespondFn } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
+function traceAgentHandlerPhase(phase: string) {
+  console.error(
+    "[agents-create-phase]",
+    JSON.stringify({ phase, atMs: Math.round(performance.now()) }),
+  );
+}
+
 function respondAgentNotFound(respond: RespondFn, agentId: string): void {
   respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, `agent "${agentId}" not found`));
 }
@@ -75,7 +82,9 @@ function createAgentConfigApplication(respond: RespondFn) {
     attach: <T extends object>(options: T) =>
       attachRuntimeConfigWriteApplication(options, application),
     confirm: async () => {
+      traceAgentHandlerPhase("application:start");
       const outcome = application.claimed ? await application.result : "unclaimed";
+      traceAgentHandlerPhase("application:settled");
       if (outcome === "applied") {
         return true;
       }
@@ -95,6 +104,7 @@ function createAgentConfigApplication(respond: RespondFn) {
 export const agentsHandlers: GatewayRequestHandlers = {
   "agents.list": agentListHandler,
   "agents.create": async (options) => {
+    traceAgentHandlerPhase("handler:entered");
     const { params, respond, client, context } = options;
     if (!assertValidParams(params, validateAgentsCreateParams, "agents.create", respond)) {
       return;
@@ -128,16 +138,20 @@ export const agentsHandlers: GatewayRequestHandlers = {
         },
         application.attach({}),
       );
+      traceAgentHandlerPhase("create-owner:settled");
       if (result.status === "error") {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.message));
         return;
       }
+      traceAgentHandlerPhase("revival:start");
       await reviveAgentDatabasesAfterConfigCommit([result.agentId], (message) =>
         context.logGateway.warn(message),
       );
+      traceAgentHandlerPhase("revival:settled");
       if (!(await application.confirm())) {
         return;
       }
+      traceAgentHandlerPhase("respond");
       respond(
         true,
         {

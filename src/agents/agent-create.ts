@@ -57,6 +57,13 @@ import {
   isWorkspaceBootstrapPending,
 } from "./workspace.js";
 
+function traceAgentCreationPhase(phase: string) {
+  console.error(
+    "[agents-create-phase]",
+    JSON.stringify({ phase, atMs: Math.round(performance.now()) }),
+  );
+}
+
 const BOOTSTRAP_AGENT_ID = "main";
 
 export type CreateAgentSuccess = {
@@ -302,6 +309,7 @@ async function writeIdentityFile(params: {
 }
 
 export async function createAgent(params: CreateAgentParams): Promise<CreateAgentResult> {
+  traceAgentCreationPhase("create:entered");
   const expectedConfigHash = params.stagedConfig
     ? (params.stagedConfig.writeSnapshot.snapshot.hash ?? null)
     : params.expectedConfigHash;
@@ -380,8 +388,13 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
   };
 
   try {
+    traceAgentCreationPhase("config-lock:waiting");
     return await withConfigMutationExclusive(async (lockedConfig) => {
+      traceAgentCreationPhase("config-lock:entered");
+      traceAgentCreationPhase("recovery-holds:start");
+
       held = automaticBootstrap ? [] : await readAgentDeletionRecoveryHoldsInWorker();
+      traceAgentCreationPhase("recovery-holds:settled");
       const recoveryPaths = selectedRecoveryPaths(
         lockedConfig,
         agentId,
@@ -396,19 +409,23 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
           agentId,
         );
       }
+      traceAgentCreationPhase("main-gate:start");
       const gateError =
         recoveryPaths.length > 0 || (automaticBootstrap && (await hasBootstrapHold()))
           ? undefined
           : await evaluateMainCreationGate(lockedConfig, agentId);
+      traceAgentCreationPhase("main-gate:settled");
       if (gateError) {
         return gateError;
       }
       beforePersistentApply();
       // Held bootstrap can still be a no-op; never claim its journal before that decision.
+      traceAgentCreationPhase("deletion-journal:start");
       const deletion =
         automaticBootstrap && (await hasBootstrapHold())
           ? undefined
           : await readAgentDeletionJournalForCreation(agentId);
+      traceAgentCreationPhase("deletion-journal:settled");
       beforePersistentApply();
       if (deletion && !deletion.cleanupCompleted) {
         return createError(
@@ -427,6 +444,7 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
         }
         tombstoneClaimed = true;
       }
+      traceAgentCreationPhase("transform:start");
       const committed = await transformConfig<CreateAgentSuccess>({
         afterWrite: { mode: "auto" },
         maxAttempts: 1,
@@ -441,6 +459,7 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
           },
         },
         transform: async (currentConfig, context) => {
+          traceAgentCreationPhase("transform:entered");
           if (
             (params.stagedConfig || Object.hasOwn(params, "expectedConfigHash")) &&
             context.previousHash !== expectedConfigHash
@@ -567,6 +586,7 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
             throw new UnfinishedRoleBootstrapError();
           }
           beforePersistentApply();
+          traceAgentCreationPhase("workspace:start");
           const workspace = await ensureAgentWorkspace({
             dir: workspaceDir,
             guard: { assertHost, recoveryHoldPredicate: recoveryHoldPredicate() },
@@ -590,6 +610,7 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
               : (params.skipOptionalBootstrapFiles ??
                 nextConfig.agents?.defaults?.skipOptionalBootstrapFiles),
           });
+          traceAgentCreationPhase("workspace:settled");
           if (workspace.dir !== workspaceDir) {
             const entries = listAgentEntries(nextConfig);
             const entryIndex = findAgentEntryIndex(entries, agentId);
@@ -626,10 +647,12 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
           await withCreationClaim(async () => {
             configCommitReceipt = (await params.prepareConfigCommit?.()) ?? undefined;
             beforePersistentApply();
+            traceAgentCreationPhase("database:start");
             await prepareOpenClawAgentDatabaseExecution(
               { agentId, path: resolveAuthProfileDatabasePath(agentDir) },
               assertHost,
             );
+            traceAgentCreationPhase("database:settled");
           });
 
           return {
@@ -647,6 +670,7 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
           };
         },
       });
+      traceAgentCreationPhase("transform:settled");
       // Successful publication owns completion of tombstone/provenance bookkeeping,
       // even after delegated authority closes; it must not roll staged state back.
       const committedReceipt = configCommitReceipt;
@@ -672,7 +696,9 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
         throw new Error(`agent "${agentId}" deletion tombstone changed during creation`);
       }
       if (result.status === "created") {
+        traceAgentCreationPhase("provenance:start");
         await recordAgentProvenance(agentId, params.provenance ?? { createdVia: "operator" });
+        traceAgentCreationPhase("provenance:settled");
       }
       if (recoveryPaths.length > 0) {
         assertRecoveryCurrent();
@@ -689,6 +715,7 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
           assertRecoveryPathCurrent,
         );
       }
+      traceAgentCreationPhase("create:return");
       return result;
     });
   } catch (error) {
