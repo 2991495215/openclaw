@@ -1,4 +1,4 @@
-name: Admitcut focused base proof
+name: Admitcut focused auth proof
 
 on:
   push:
@@ -8,22 +8,32 @@ permissions:
   contents: read
 
 concurrency:
-  group: admitcut-focused-base-proof
+  group: admitcut-auth-focused-proof
   cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false"
+  OPENCLAW_E2E_USE_PREBUILT_DIST: "1"
 
 jobs:
-  exports:
+  auth:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: base
+            sha: e589d87d7b7e02bccf241fad47b62f0fdab04a2a
+          - label: candidate
+            sha: 02d5010ba90781a50165ccd6321c85b7ce3c569c
+    name: auth-${{ matrix.label }}
     steps:
-      - name: Checkout exact reviewed candidate
+      - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: e589d87d7b7e02bccf241fad47b62f0fdab04a2a
+          ref: ${{ matrix.sha }}
           persist-credentials: false
       - name: Setup Node environment
         uses: ./.github/actions/setup-node-env
@@ -32,8 +42,12 @@ jobs:
           install-bun: "false"
           cache-mode: restore
           semantic-checks: "true"
-      - name: Verify base and reproduce session failures
+      - name: Verify source and build runtime
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
         run: |
-          test "$(git rev-parse HEAD)" = e589d87d7b7e02bccf241fad47b62f0fdab04a2a
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           git rev-parse HEAD
-          pnpm test src/gateway/server-methods/chat-send-reply-dispatch.test.ts src/auto-reply/reply/agent-runner-completion.persistence.test.ts --maxWorkers=1 -t 'reads released actor reply facts and rejects the old answer|preserves the completed reply after one invalidated|does not retry or publish a completed reply past second-invalidation'
+          node --import ./scripts/tsx.mjs scripts/build-all.mts qaRuntime
+      - name: Reproduce selected-profile logout
+        run: pnpm test test/e2e/qa-lab/runtime/codex-auth-product-proof.e2e.test.ts --maxWorkers=1 -t 'returns bounded recovery after the explicitly selected profile is removed'
