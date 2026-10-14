@@ -187,7 +187,7 @@ export async function isRealtimeVoiceProviderConfiguredAsync(
   if (configured !== undefined) {
     return configured;
   }
-  if (!params.provider.isConfiguredAsync && params.provider.isConfigured) {
+  if (!params.provider.isConfiguredAsync) {
     warnPluginSdkDeprecation({
       family: "provider-sync-configuration",
       method: "RealtimeVoiceProviderPlugin.isConfigured",
