@@ -18,12 +18,12 @@ env:
 jobs:
   exports:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout exact reviewed candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 02d5010ba90781a50165ccd6321c85b7ce3c569c
+          ref: e589d87d7b7e02bccf241fad47b62f0fdab04a2a
           persist-credentials: false
       - name: Setup Node environment
         uses: ./.github/actions/setup-node-env
@@ -34,6 +34,13 @@ jobs:
           semantic-checks: "true"
       - name: Verify candidate and export surface
         run: |
-          test "$(git rev-parse HEAD)" = 02d5010ba90781a50165ccd6321c85b7ce3c569c
+          test "$(git rev-parse HEAD)" = e589d87d7b7e02bccf241fad47b62f0fdab04a2a
           git rev-parse HEAD
           pnpm deadcode:exports
+      - name: Build base runtime for auth failure attribution
+        id: auth_runtime
+        if: ${{ !cancelled() }}
+        run: node --import ./scripts/tsx.mjs scripts/build-all.mts qaRuntime
+      - name: Reproduce selected-profile logout on base
+        if: ${{ !cancelled() && steps.auth_runtime.outcome == 'success' }}
+        run: pnpm test test/e2e/qa-lab/runtime/codex-auth-product-proof.e2e.test.ts --maxWorkers=1 -t 'returns bounded recovery after the explicitly selected profile is removed'

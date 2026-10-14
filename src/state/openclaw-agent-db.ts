@@ -359,11 +359,7 @@ function* openOpenClawAgentDatabaseSteps(
         reuseAdmittedIntegrity,
         pending?.workerPrepared,
       );
-      if (!reusedSchema) {
-        admitSqliteSchema(db, (userVersion) => {
-          assertSupportedAgentSchemaVersion(db, pathname, userVersion);
-        });
-      }
+      assertSupportedAgentSchemaVersion(db, pathname);
       const existingSchema = readExistingAgentSchemaMeta(db);
       assertExistingAgentSchemaOwner(existingSchema, agentId, pathname);
       if (reusedSchema) {

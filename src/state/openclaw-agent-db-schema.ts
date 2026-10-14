@@ -83,7 +83,6 @@ import {
   readExistingAgentSchemaMeta,
   repairAndAssertOpenClawAgentV14SchemaForMigration,
 } from "./openclaw-agent-db-schema-helpers.js";
-import { hasAgentDatabaseApplicationSchema } from "./openclaw-agent-db-schema-read.js";
 import {
   backfillSessionConversations,
   assertSupportedAgentMigrationSchemas,
@@ -166,11 +165,12 @@ export function* agentDatabaseIntegrityBeforeMutationSteps(
     return false;
   }
   setSqliteBusyTimeout(database, OPENCLAW_SQLITE_BUSY_TIMEOUT_MS);
-  const userVersion =
-    getAdmittedSqliteSchemaFacts(database)?.userVersion ?? readSqliteUserVersion(database);
-  const hasApplicationSchema = userVersion === 0 && hasAgentDatabaseApplicationSchema(database);
+  const userVersion = readSqliteUserVersion(database);
+  const hasApplicationSchema = database
+    .prepare("SELECT 1 FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' LIMIT 1")
+    .get();
   const migrationPending =
-    (userVersion === 0 && hasApplicationSchema) ||
+    (userVersion === 0 && hasApplicationSchema !== undefined) ||
     (userVersion > 0 && userVersion < OPENCLAW_AGENT_SCHEMA_VERSION);
   if (migrationPending) {
     agentDbLog.info("agent database schema migration pending; verifying integrity first", {
@@ -341,26 +341,11 @@ function ensureAgentSchema(
 ): void {
   const warnings: string[] = [];
   const schemaSql = getOpenClawAgentMigrationSchema(targetVersion);
-  const metadata = readExistingAgentSchemaMeta(db);
-  assertExistingAgentSchemaOwner(metadata, agentId, pathname);
-  const originalVersion = assertSupportedAgentSchemaVersion(db, pathname);
-  const isEmptyDatabase = originalVersion === 0 && !hasAgentDatabaseApplicationSchema(db);
+  const originalVersion = readSqliteUserVersion(db);
   const schemaMigration =
-    originalVersion < targetVersion && (originalVersion > 0 || metadata !== null);
+    originalVersion < targetVersion &&
+    (originalVersion > 0 || readExistingAgentSchemaMeta(db) !== null);
   const identityMigration = targetVersion >= 18 && schemaMigration;
-  if (identityMigration && metadata?.schemaVersion !== originalVersion) {
-    throw new Error(
-      `Agent schema markers disagree for ${pathname}; repair ownership metadata before migration.`,
-    );
-  }
-  if (originalVersion > targetVersion) {
-    throw new Error(
-      `OpenClaw agent database ${pathname} uses schema version ${originalVersion}; expected at most ${targetVersion} for this migration.`,
-    );
-  }
-  if (!isEmptyDatabase && originalVersion < targetVersion) {
-    assertSupportedAgentMigrationSchemas(db, pathname, originalVersion);
-  }
   const assertMigration = () => {
     if (!schemaMigration) {
       return;
@@ -383,8 +368,30 @@ function ensureAgentSchema(
   let created = false;
   try {
     const mutate = () => {
-      // Gateway or offline maintenance owns this store throughout schema preparation.
-      const previousVersion = originalVersion;
+      // Repeat preflight ownership/version gates inside the write transaction;
+      // concurrent openers must not overwrite another agent after the scan.
+      // Role/ownership gates before version: user_version is only meaningful
+      // within one schema role, and the global state DB now carries version 3.
+      assertExistingAgentSchemaOwner(readExistingAgentSchemaMeta(db), agentId, pathname);
+      assertSupportedAgentSchemaVersion(db, pathname);
+      const previousVersion = readSqliteUserVersion(db);
+      if (identityMigration && readExistingAgentSchemaMeta(db)?.schemaVersion !== previousVersion) {
+        throw new Error(
+          `Agent schema markers disagree for ${pathname}; repair ownership metadata before migration.`,
+        );
+      }
+      if (previousVersion > targetVersion) {
+        throw new Error(
+          `OpenClaw agent database ${pathname} uses schema version ${previousVersion}; expected at most ${targetVersion} for this migration.`,
+        );
+      }
+      if (previousVersion < targetVersion) {
+        assertSupportedAgentMigrationSchemas(db, pathname, previousVersion);
+      }
+      const isEmptyDatabase =
+        previousVersion === 0 &&
+        readExistingAgentSchemaMeta(db) === null &&
+        !db.prepare("SELECT 1 FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' LIMIT 1").get();
       if (isEmptyDatabase && targetVersion === OPENCLAW_AGENT_SCHEMA_VERSION) {
         // Canonical creation has no legacy rows or definitions to converge or repair.
         db.exec(schemaSql);
