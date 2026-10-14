@@ -10,7 +10,9 @@ export function registerMacRuntimeArchiveTests() {
   describe.runIf(process.platform === "darwin")("Mac runtime resource archive", () => {
     const test = createMacScriptTest();
 
-    test("retains native code and build identity while resources round-trip", async ({ mac }) => {
+    test("archives a runtime tree with docs and pnpm links while retaining native code", async ({
+      mac,
+    }) => {
       const root = mac.createTempDir("openclaw-runtime-archive-");
       const app = path.join(root, "OpenClaw.app");
       const resources = path.join(app, "Contents/Resources");
@@ -21,13 +23,23 @@ export function registerMacRuntimeArchiveTests() {
       await mkdir(path.join(runtime, "bin"));
       await mkdir(path.join(runtime, "empty"));
       await writeFile(path.join(runtime, metadata), '{"buildId":"fixture"}');
+      await writeFile(path.join(runtime, "README.md"), "Runtime documentation\n");
       const script = "console.log('fixture');\n";
       await writeFile(path.join(packageRoot, "hello.js"), script, { mode: 0o755 });
       await symlink("lib/node_modules/openclaw/hello.js", path.join(runtime, "link"));
+      await mkdir(path.join(runtime, "sidecar/.pnpm/pkg/node_modules/pkg"), { recursive: true });
+      await writeFile(path.join(runtime, "sidecar/.pnpm/pkg/node_modules/pkg/index.js"), script);
+      await symlink(".pnpm/pkg/node_modules/pkg", path.join(runtime, "sidecar/pkg"));
       const native = await readFile("/usr/bin/true");
       await writeFile(path.join(runtime, "bin/bun"), native, { mode: 0o755 });
+      await writeFile(path.join(runtime, "sidecar/addon.node"), native, { mode: 0o755 });
+      await writeFile(path.join(runtime, "sidecar/library.dylib"), native, { mode: 0o755 });
+      await symlink("addon.node", path.join(runtime, "sidecar/native-link"));
       const plist = path.join(app, "Contents/Info.plist");
-      await writeFile(plist, '<?xml version="1.0"?><plist version="1.0"><dict/></plist>');
+      await writeFile(
+        plist,
+        '<?xml version="1.0"?><plist version="1.0"><dict><key>OpenClawRuntimeBuildID</key><string>fixture</string></dict></plist>',
+      );
 
       await runMacFixtureTool(
         "/usr/bin/python3",
@@ -38,7 +50,9 @@ export function registerMacRuntimeArchiveTests() {
       const archive = path.join(resources, "runtime.zip");
       expect(await readFile(path.join(runtime, "bin/bun"))).toEqual(native);
       expect(existsSync(path.join(packageRoot, "hello.js"))).toBe(false);
-      expect(await readFile(path.join(runtime, metadata), "utf8")).toBe('{"buildId":"fixture"}');
+      expect(existsSync(path.join(runtime, metadata))).toBe(false);
+      expect(await readFile(path.join(runtime, "sidecar/addon.node"))).toEqual(native);
+      expect(await readFile(path.join(runtime, "sidecar/library.dylib"))).toEqual(native);
       const info = JSON.parse(
         await runMacFixtureTool(
           "/usr/bin/plutil",
@@ -52,6 +66,8 @@ export function registerMacRuntimeArchiveTests() {
           .update(await readFile(archive))
           .digest("hex"),
       );
+      expect(info.OpenClawRuntimeArchiveFormatVersion).toBe(1);
+      expect(info.OpenClawRuntimeBuildID).toBe("fixture");
 
       const extracted = path.join(root, "extracted");
       await runMacFixtureTool("/usr/bin/ditto", ["-x", "-k", archive, extracted], root, mac);
@@ -63,7 +79,17 @@ export function registerMacRuntimeArchiveTests() {
       );
       expect((await stat(path.join(extracted, "empty"))).isDirectory()).toBe(true);
       expect(existsSync(path.join(extracted, "bin/bun"))).toBe(false);
-      expect(existsSync(path.join(extracted, metadata))).toBe(false);
+      expect(existsSync(path.join(extracted, "sidecar/addon.node"))).toBe(false);
+      expect(existsSync(path.join(extracted, "sidecar/library.dylib"))).toBe(false);
+      expect(await readFile(path.join(extracted, metadata), "utf8")).toBe('{"buildId":"fixture"}');
+      expect(await readFile(path.join(extracted, "README.md"), "utf8")).toBe(
+        "Runtime documentation\n",
+      );
+      expect(await readlink(path.join(extracted, "sidecar/pkg"))).toBe(
+        ".pnpm/pkg/node_modules/pkg",
+      );
+      expect(await readFile(path.join(extracted, "sidecar/pkg/index.js"), "utf8")).toBe(script);
+      expect(await readlink(path.join(extracted, "sidecar/native-link"))).toBe("addon.node");
     });
   });
 }

@@ -6,14 +6,21 @@ extension BundledRuntime {
         case invalidBuildID
         case invalidCurrent
         case runtimeProbe(String)
-        case archive(String)
+        case archiveMetadata
+        case archiveUnavailable
+        case archiveIntegrity
+        case archiveExtraction(String)
 
         var errorDescription: String? {
             switch self {
             case .invalidBuildID: "The app's runtime build ID is invalid. Reinstall OpenClaw.app."
             case .invalidCurrent: "The seeded runtime link is invalid. Retry OpenClaw setup."
             case let .runtimeProbe(detail): "The bundled Bun runtime could not start: \(detail)"
-            case let .archive(detail): "The bundled runtime archive could not be prepared: \(detail)"
+            case .archiveMetadata: "The bundled runtime archive metadata is invalid. Reinstall OpenClaw.app."
+            case .archiveUnavailable: "The bundled runtime archive is missing or unreadable. Reinstall OpenClaw.app."
+            case .archiveIntegrity: "The bundled runtime archive failed its integrity check. Reinstall OpenClaw.app."
+            case let .archiveExtraction(detail):
+                "The bundled runtime archive could not be extracted: \(detail). Reinstall OpenClaw.app."
             }
         }
     }
@@ -57,7 +64,7 @@ extension BundledRuntime {
 
     @concurrent
     fileprivate static func prepareSeed(bundle: Bundle, profile: AppProfile, homeDirectory: URL) async throws -> Self {
-        let source = try self.resolve(bundle: bundle)
+        let (source, archive) = try self.bundlePayload(bundle: bundle)
         guard let buildID = bundle.infoDictionary?["OpenClawRuntimeBuildID"] as? String,
               self.isBuildDirectoryName(buildID)
         else { throw SeedError.invalidBuildID }
@@ -69,7 +76,7 @@ extension BundledRuntime {
             let partial = directory.appendingPathComponent("\(buildID).partial-\(UUID().uuidString)")
             defer { try? fileManager.removeItem(at: partial) }
             try self.cloneRuntimeTree(from: source.root, to: partial)
-            try await self.extractArchive(bundle: bundle, to: partial)
+            if let archive { try await self.extractArchive(archive, to: partial) }
             let staged = try self.resolve(root: partial, bundle: bundle)
             let result = await ShellExecutor.runDetailed(
                 command: [staged.bun.path, "--version"],
@@ -94,16 +101,7 @@ extension BundledRuntime {
     {
         let directory = runtime.root.deletingLastPathComponent()
         let buildID = runtime.root.lastPathComponent
-        let previous = try self.buildLink("current", in: directory)
-        if previous != buildID {
-            if let previous {
-                try self.replaceBuildLink("previous", target: previous, in: directory)
-            } else if try self.buildLink("previous", in: directory) != nil {
-                // With current missing, this link cannot identify the immediately previous build.
-                try FileManager.default.removeItem(at: directory.appendingPathComponent("previous"))
-            }
-            try self.replaceBuildLink("current", target: buildID, in: directory)
-        }
+        try self.selectBuild(buildID, current: "current", previous: "previous", in: directory)
         runtime.installCLI(
             bundle: bundle,
             profile: profile,
@@ -124,103 +122,16 @@ extension BundledRuntime {
         }
         try fileManager.copyItem(at: source, to: destination)
     }
-
-    /// Call only after readiness confirms the replacement Gateway is healthy.
-    @concurrent
-    static func garbageCollectAfterHealthy(
-        profile: AppProfile = .current,
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) async throws
-    {
-        let directory = profile.stateDirectoryURL(homeDirectory: homeDirectory).appendingPathComponent("runtime")
-        // A recovered missing current link needs one successful update cycle to reestablish retention.
-        guard let current = try self.buildLink("current", in: directory),
-              let previous = try self.buildLink("previous", in: directory),
-              let liveExecutables = self.liveExecutablePaths()
-        else { return }
-        let retained = Set([current, previous])
-        for entry in try FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-        {
-            let name = entry.lastPathComponent
-            guard self.isBuildDirectoryName(name), !retained.contains(name),
-                  let values = try? entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
-                  values.isDirectory == true, values.isSymbolicLink != true,
-                  let data = try? Data(contentsOf: entry
-                      .appendingPathComponent("lib/node_modules/openclaw/dist/build-info.json")),
-                  let build = try? JSONDecoder().decode(BuildInfo.self, from: data), build.buildId == name
-            else { continue }
-            let prefix = entry.resolvingSymlinksInPath().path + "/"
-            guard !liveExecutables.contains(where: { $0.hasPrefix(prefix) }) else { continue }
-            try FileManager.default.removeItem(at: entry)
-        }
-    }
-
-    private static func isBuildDirectoryName(_ name: String) -> Bool {
-        !name.isEmpty && name != "." && name != ".." && name != "current" && name != "previous"
-            && !name.contains("/") && !name.contains("\0") && !name.contains(".partial-")
-    }
-
-    private static func buildLink(_ name: String, in directory: URL) throws -> String? {
-        let url = directory.appendingPathComponent(name)
-        let fileManager = FileManager.default
-        guard let target = try? fileManager.destinationOfSymbolicLink(atPath: url.path) else {
-            if fileManager.fileExists(atPath: url.path) { throw SeedError.invalidCurrent }
-            return nil
-        }
-        guard self.isBuildDirectoryName(target) else { throw SeedError.invalidCurrent }
-        return target
-    }
-
-    private static func replaceBuildLink(_ name: String, target: String, in directory: URL) throws {
-        let temporary = directory.appendingPathComponent(".\(name)-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        try FileManager.default.createSymbolicLink(atPath: temporary.path, withDestinationPath: target)
-        guard rename(temporary.path, directory.appendingPathComponent(name).path) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-    }
-
-    private static func liveExecutablePaths() -> [String]? {
-        let capacity = proc_listpids(UInt32(PROC_UID_ONLY), getuid(), nil, 0)
-        guard capacity > 0 else { return nil }
-        var pids = [pid_t](repeating: 0, count: Int(capacity) / MemoryLayout<pid_t>.size + 64)
-        let bytes = pids.withUnsafeMutableBytes {
-            proc_listpids(UInt32(PROC_UID_ONLY), getuid(), $0.baseAddress, Int32($0.count))
-        }
-        guard bytes > 0, Int(bytes) < pids.count * MemoryLayout<pid_t>.size else { return nil }
-        var paths: [String] = []
-        for pid in pids.prefix(Int(bytes) / MemoryLayout<pid_t>.size) where pid > 0 {
-            // sys/proc_info.h defines the maximum as 4 * MAXPATHLEN; that macro is not imported into Swift.
-            var buffer = [CChar](repeating: 0, count: 4 * Int(PATH_MAX))
-            let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
-            guard length > 0 else {
-                do {
-                    guard try ProcessIdentity.birth(pid: pid) != nil else { continue }
-                } catch { return nil }
-                // An app or package-manager update can unlink a still-running executable.
-                // KERN_PROCARGS2 retains its launch path when proc_pidpath reports ENOENT.
-                if let path = ProcessArguments.read(pid: pid)?.executablePath, path.hasPrefix("/") {
-                    paths.append(path)
-                    continue
-                }
-                // An unreadable live process defers collection.
-                return nil
-            }
-            guard let path = String(bytes: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, encoding: .utf8)
-            else { return nil }
-            paths.append(path)
-        }
-        // Foundation canonicalizes /private/var to /var, unlike proc_pidpath. Match both sides identically.
-        return paths.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
-    }
 }
 
 private actor BundledRuntimeSeeder {
     static let shared = BundledRuntimeSeeder()
     private var pending: [String: Task<BundledRuntime, Error>] = [:]
+    private let logger = Logger(subsystem: "ai.openclaw", category: "bundled-runtime.retention")
 
     func seed(bundle: Bundle, profile: AppProfile, homeDirectory: URL) async throws -> BundledRuntime {
-        let runtime = try await self.prepare(bundle: bundle, profile: profile, homeDirectory: homeDirectory)
+        let runtime = try await self.prepare(
+            bundle: bundle, profile: profile, homeDirectory: homeDirectory, retainForHelper: false)
         let allowsPersistentIntegration = await ApplicationRelocator.currentBundleAllowsPersistentIntegration(
             bundle: bundle)
         // Keep selection and CLI writes serialized after asynchronous preparation.
@@ -233,13 +144,34 @@ private actor BundledRuntimeSeeder {
         return runtime
     }
 
-    func prepare(bundle: Bundle, profile: AppProfile, homeDirectory: URL) async throws -> BundledRuntime {
+    func prepare(
+        bundle: Bundle,
+        profile: AppProfile,
+        homeDirectory: URL,
+        retainForHelper: Bool = true) async throws -> BundledRuntime
+    {
         let key = profile.stateDirectoryURL(homeDirectory: homeDirectory).path
         if let task = self.pending[key] { return try await task.value }
         let task = Task { try await BundledRuntime.prepareSeed(
             bundle: bundle, profile: profile, homeDirectory: homeDirectory) }
         self.pending[key] = task
         defer { self.pending[key] = nil }
-        return try await task.value
+        let runtime = try await task.value
+        // Helpers retain their own builds without changing the terminal CLI's selected runtime.
+        if retainForHelper {
+            do {
+                if try BundledRuntime.selectBuild(
+                    runtime.root.lastPathComponent,
+                    current: "helper-current",
+                    previous: "helper-previous",
+                    in: runtime.root.deletingLastPathComponent())
+                {
+                    try await BundledRuntime.garbageCollectAfterHealthy(profile: profile, homeDirectory: homeDirectory)
+                }
+            } catch {
+                self.logger.warning("Runtime helper cleanup failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return runtime
     }
 }
