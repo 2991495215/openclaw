@@ -24,6 +24,7 @@ def free_port():
 def fixture_config(root, port, provider_port):
     model = "layout-fixture"
     return {
+        "logging": {"file": str(root.parent / "gateway.log")},
         "gateway": {"mode": "local", "bind": "loopback", "port": port,
                     "auth": {"mode": "token", "token": "synthetic-bench-token"},
                     "controlUi": {"enabled": True}},

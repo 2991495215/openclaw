@@ -18,7 +18,9 @@ python3 scripts/bench-desktop-app.py manifest.json \
 
 Use fresh output directories for each campaign. Runtime trials interleave in
 manifest order. Each trial has an empty HOME, state, workspace, Codex directory,
-and Claude directory. The only provider is a loopback Responses SSE fixture;
+and Claude directory. The rolling log is pinned to that trial's output directory;
+private state alone does not redirect the default shared temporary log. The only
+provider is a loopback Responses SSE fixture;
 the Gateway must return the exact synthetic marker. The first trial also runs
 Doctor. The memory plugin is disabled so background embeddings cannot contaminate
 the Responses measurement. Raw logs and numerical receipts remain; isolated state is deleted after
