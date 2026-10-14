@@ -1,4 +1,5 @@
 import { AsyncLocalStorage, createHook } from "node:async_hooks";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import { queryObjects } from "node:v8";
 import { describe, expect, it, vi } from "vitest";
 import { trackAsyncWork } from "../shared/async-work-scope.js";
@@ -127,7 +128,7 @@ describe("Gateway timed work", () => {
 
   it.each(["root", "scope"] as const)(
     "releases the retiring caller while its %s abort signal remains reachable",
-    (kind) => {
+    async (kind) => {
       class RetiredOwner {
         close() {
           const { scheduler } = fixture();
@@ -137,6 +138,8 @@ describe("Gateway timed work", () => {
         }
       }
       const signals = Array.from({ length: 12 }, () => new RetiredOwner().close());
+      // Let the allocating caller stack unwind before measuring retained owners.
+      await nextTurn();
       expect(queryObjects(RetiredOwner)).toBe(0);
       for (const signal of signals) {
         expect(signal.aborted).toBe(true);
