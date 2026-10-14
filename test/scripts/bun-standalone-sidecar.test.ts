@@ -41,7 +41,10 @@ it("pruned sidecars retain assets and SDK shims share the embedded module instan
   write("node_modules/.pnpm/native/node_modules/native/unused.dll", "foreign native fixture");
   write("node_modules/.pnpm/native/node_modules/native/schema.json", '{"type":"object"}');
   write("node_modules/.pnpm/native/node_modules/native/unused.json", "{}");
-  write("node_modules/.pnpm/native/node_modules/native/index.js", "module.exports = {};");
+  write(
+    "node_modules/.pnpm/native/node_modules/native/index.js",
+    "module.exports = function triple(value) { return value * 3; };",
+  );
   fs.symlinkSync(".pnpm/native/node_modules/native", path.join(runtimeRoot, "node_modules/native"));
   const docsRoot = path.join(root, "docs");
   fs.mkdirSync(docsRoot);
@@ -72,7 +75,7 @@ it("pruned sidecars retain assets and SDK shims share the embedded module instan
   assert.equal(read("dist/worker.js"), 'export * from "/$bunfs/root/runtime/dist/worker.js";\n');
   assert.equal(
     read("node_modules/native/index.js"),
-    'module.exports = require("/$bunfs/root/native.js");\n',
+    'module.exports = require("/$bunfs/root/native.js").default;\n',
   );
   assert.equal(read("node_modules/native/addon.node"), "native fixture");
   assert.equal(read("node_modules/native/schema.json"), '{"type":"object"}');
@@ -92,6 +95,13 @@ it("pruned sidecars retain assets and SDK shims share the embedded module instan
   assert.equal(result.symlinks, 1);
   const canonicalUrl = pathToFileURL(path.join(runtimeRoot, "dist/plugin-sdk/core.js")).href;
   const shimUrl = pathToFileURL(path.join(outputRoot, "dist/plugin-sdk/core.js")).href;
+  const canonicalNativePath = path.join(root, "canonical-native.mjs");
+  fs.writeFileSync(
+    canonicalNativePath,
+    "export default function triple(value) { return value * 3; }",
+  );
+  const canonicalNativeUrl = pathToFileURL(canonicalNativePath).href;
+  const nativeShimPath = path.join(outputRoot, "node_modules/native/index.js");
   const child = spawnSync(
     resolveTestNodeExecPath(),
     [
@@ -99,11 +109,15 @@ it("pruned sidecars retain assets and SDK shims share the embedded module instan
       "--eval",
       `
     import assert from "node:assert/strict";
-    import { registerHooks } from "node:module";
+    import { createRequire, registerHooks } from "node:module";
+    const targets = new Map([
+      [${JSON.stringify(embedded)}, ${JSON.stringify(canonicalUrl)}],
+      ["/$bunfs/root/native.js", ${JSON.stringify(canonicalNativeUrl)}],
+    ]);
     const hooks = registerHooks({
       resolve(specifier, context, nextResolve) {
-        return specifier === ${JSON.stringify(embedded)}
-          ? { url: ${JSON.stringify(canonicalUrl)}, shortCircuit: true }
+        return targets.has(specifier)
+          ? { url: targets.get(specifier), shortCircuit: true }
           : nextResolve(specifier, context);
       },
     });
@@ -112,6 +126,13 @@ it("pruned sidecars retain assets and SDK shims share the embedded module instan
     assert.equal(shim.registry, canonical.registry);
     assert.equal(shim.default, canonical.registry);
     assert.ok(new shim.Example() instanceof canonical.Example);
+    const required = createRequire(import.meta.url)(${JSON.stringify(nativeShimPath)});
+    assert.equal(typeof required, "function");
+    assert.equal(required(7), 21);
+    const imported = await import(${JSON.stringify(pathToFileURL(nativeShimPath).href)});
+    const canonicalNative = await import(${JSON.stringify(canonicalNativeUrl)});
+    assert.equal(required, canonicalNative.default);
+    assert.equal(imported.default, required);
     hooks.deregister();
   `,
     ],

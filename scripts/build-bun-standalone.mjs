@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createStandaloneCodegenAdapter } from "./lib/bun-standalone-codegen.mjs";
 import { compileStandalone, standaloneExternalModules } from "./lib/bun-standalone-compile.mjs";
+import { isStandaloneCommonJs } from "./lib/bun-standalone-sidecar.mjs";
 import { prepareStandaloneWorkers } from "./lib/bun-standalone-workers.mjs";
 
 const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -136,16 +137,12 @@ for (const packageName of [
   }
 }
 const moduleAliases = {};
-const commonJsPackageRoots = [];
 for (const name of ["ws", "undici"]) {
   const directory = fs.realpathSync(path.join(runtimeRoot, "node_modules", name));
   const manifest = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
   const entry = path.resolve(directory, manifest.main);
   moduleAliases[name] = entry;
   moduleEntries.push(path.relative(runtimeRoot, entry).split(path.sep).join("/"));
-  if (manifest.type !== "module") {
-    commonJsPackageRoots.push(directory + path.sep);
-  }
   // The Gateway loads ws/lib directly to bypass Bun's smaller built-in adapter.
   if (name === "ws") {
     moduleEntries.push(
@@ -217,12 +214,7 @@ for (const [name, entry] of Object.entries(moduleAliases)) {
 }
 const commonJsEntries = [
   ...moduleEntries
-    .filter(
-      (entry) =>
-        entry.endsWith(".cjs") ||
-        (entry.endsWith(".js") &&
-          commonJsPackageRoots.some((root) => path.resolve(runtimeRoot, entry).startsWith(root))),
-    )
+    .filter((entry) => isStandaloneCommonJs(path.resolve(runtimeRoot, entry), runtimeRoot))
     .map((entry) => embeddedPaths[entry]),
   ...Object.keys(moduleAliases).map((name) => embeddedPaths[name]),
 ];
@@ -280,6 +272,8 @@ if (isMainThread) Bun.plugin({ name: "openclaw-embedded-modules", setup(build) {
         })();
     } catch { return; } finally { resolving = false; }
     const entry = embedded(target);
+    // Physical CJS forwarding files unwrap the compiled ESM default for require callers.
+    if (entry && entry !== target && kind === "require-call" && commonJsEntries.has(entry)) return;
     if (entry) return {path: entry, namespace: "file"};
   });
 }});

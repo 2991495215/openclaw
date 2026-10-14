@@ -58,7 +58,7 @@ function keepAsset(relative) {
 
 function moduleShim(source, embedded, commonJs) {
   if (commonJs) {
-    return `module.exports = require(${JSON.stringify(embedded)});\n`;
+    return `module.exports = require(${JSON.stringify(embedded)}).default;\n`;
   }
   const ast = parse(source, { ecmaVersion: "latest", sourceType: "module" });
   const hasDefault = ast.body.some(
@@ -72,7 +72,7 @@ function moduleShim(source, embedded, commonJs) {
   );
 }
 
-function isCommonJs(filename, runtimeRoot) {
+export function isStandaloneCommonJs(filename, runtimeRoot) {
   if (filename.endsWith(".cjs")) {
     return true;
   }
@@ -173,7 +173,7 @@ export function createStandaloneSidecar({
         moduleShim(
           fs.readFileSync(source, "utf8"),
           embeddedPaths[relative],
-          isCommonJs(source, runtimeRoot),
+          isStandaloneCommonJs(source, runtimeRoot),
         ),
       );
     } else {
