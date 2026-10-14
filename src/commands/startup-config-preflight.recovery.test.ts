@@ -92,7 +92,7 @@ it.each(["current", "webhook-repair"] as const)(
         await expect(runStartupConfigPreflight(options)).rejects.toMatchObject({
           code: 78,
           message: expect.stringMatching(
-            /openclaw doctor --fix[\s\S]*Pinned channels\.nextcloud-talk\.legacyWebhook/,
+            /openclaw doctor --fix[\s\S]*Pinned channels\.nextcloud-talk\.accounts\.default\.legacyWebhook/,
           ),
         });
         // Only the webhook receipt needs a read; plugin metadata is already prepared.
