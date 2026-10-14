@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Duplex } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runManagedCommand } from "../../scripts/lib/managed-child-process.mts";
 import { createBoundedChildOutput } from "../../test/helpers/bounded-child-output.js";
@@ -11,6 +12,7 @@ import {
   withinTest,
 } from "../../test/helpers/promise.js";
 import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
+import { sqliteWorkerPreloadEnv } from "../infra/sqlite-worker-preload.test-support.js";
 import { logInfo } from "../logger.js";
 import { writeConfigMachineState } from "../state/config-machine-state-write.js";
 import { readConfigMachineState } from "../state/config-machine-state.js";
@@ -39,21 +41,65 @@ async function runConcurrentImplicitConfigures(
   const workerUrl = resolveRuntimeWorkerUrl(nodeHostConfigRuntimeEntrypoint);
   const cancellation = new AbortController();
   const childSignal = AbortSignal.any([signal, cancellation.signal]);
+  type Receipt = {
+    role: string;
+    phase: string;
+    pid: number;
+    foreignPid?: number;
+    exists?: boolean;
+  };
+  const receipts: Receipt[] = [];
+  const gates = new Map<string, ReturnType<typeof createDeferred<Receipt>>>();
+  const gate = (key: string) => {
+    let value = gates.get(key);
+    if (!value) {
+      value = createDeferred<Receipt>();
+      gates.set(key, value);
+    }
+    return value;
+  };
+  const preload = sqliteWorkerPreloadEnv(
+    path.resolve("src/node-host/config-cold-admission-diagnostic.test-support.cjs"),
+  );
   const workers = ["candidate-a", "candidate-b"].map((candidate, index) => {
     const ready = createDeferred<ChildProcess>();
     const stderr = createBoundedChildOutput();
     let config: NodeHostConfig | undefined;
+    let control: Duplex | undefined;
     const outcome = fixture.track(
       runManagedCommand({
         bin: process.execPath,
         args: [...resolveRuntimeWorkerArgv(workerUrl), candidate, String(index + 1)],
-        env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
+        env: {
+          ...process.env,
+          ...preload,
+          OPENCLAW_STATE_DIR: stateDir,
+          OPENCLAW_NODE_CONFIG_DIAGNOSTIC_ROLE: index === 0 ? "a" : "b",
+        },
         shell: false,
-        stdio: ["ignore", "ignore", "pipe", "ipc"],
+        stdio: ["ignore", "ignore", "pipe", "ipc", "pipe"],
         signal: childSignal,
         requireProcessTreeExit: process.platform !== "win32",
         onReady(child) {
           child.stderr!.on("data", stderr.append);
+          const pipe = child.stdio[4];
+          if (!(pipe instanceof Duplex)) {
+            throw new Error("Diagnostic native gate pipe missing");
+          }
+          control = pipe;
+          let buffered = "";
+          pipe.setEncoding("utf8");
+          pipe.on("data", (chunk: string) => {
+            buffered += chunk;
+            for (let end = buffered.indexOf("\n"); end >= 0; end = buffered.indexOf("\n")) {
+              const line = buffered.slice(0, end);
+              buffered = buffered.slice(end + 1);
+              process.stderr.write(`[redmain:node-config:gate] ${line}\n`);
+              const receipt = JSON.parse(line) as Receipt;
+              receipts.push(receipt);
+              gate(`${receipt.role}:${receipt.phase}`).resolve(receipt);
+            }
+          });
           child.on("message", (message: "ready" | NodeHostConfig) => {
             if (message === "ready") {
               ready.resolve(child);
@@ -69,6 +115,7 @@ async function runConcurrentImplicitConfigures(
         if (!config) {
           throw new Error("configure worker produced no result");
         }
+        process.stderr.write(`[redmain:node-config:completed] ${candidate}\n`);
         return config;
       }),
     );
@@ -79,16 +126,53 @@ async function runConcurrentImplicitConfigures(
         "configure worker exited before the start barrier",
       ),
       outcome,
+      releaseNative() {
+        if (!control) {
+          throw new Error("Diagnostic native gate pipe not ready");
+        }
+        control.write("r");
+      },
     };
   });
 
   try {
     // Both real processes must finish imports before either can choose its implicit id.
     const children = await withinTest(Promise.all(workers.map(({ ready }) => ready)), signal);
-    for (const child of children) {
-      child.send("start");
+    const [a, b] = children;
+    const [aWorker, bWorker] = workers;
+    if (!a || !b || !aWorker || !bWorker) {
+      throw new Error("Diagnostic requires both configure processes");
     }
-    const outcomes = await Promise.all(workers.map(({ outcome }) => outcome));
+    const observed = (key: string) =>
+      withinTest(
+        awaitGateBeforeSettlement(
+          gate(key).promise,
+          Promise.all(workers.map(({ outcome }) => outcome)),
+          `Configure settled before diagnostic gate ${key}`,
+        ),
+        signal,
+      );
+    b.send("start");
+    expect((await observed("b:before-schema-prepare")).exists).toBe(false);
+    a.send("start");
+    await observed("a:execute-held");
+    bWorker.releaseNative();
+    expect((await observed("b:schema-granted")).exists).toBe(true);
+    a.send("release-execute");
+    const foreign = await observed("a:foreign-schema-read");
+    expect(foreign.foreignPid).toBe(b.pid);
+    await withinTest(gate("a:refusal-reply").promise, signal);
+    expect(
+      receipts.some((event) => event.role === "a" && event.phase === "transaction-request"),
+    ).toBe(false);
+    bWorker.releaseNative();
+    const settled = await Promise.allSettled(workers.map(({ outcome }) => outcome));
+    const outcomes = settled.map((result) => {
+      if (result.status === "rejected") {
+        throw result.reason;
+      }
+      return result.value;
+    });
     const first = outcomes[0];
     const second = outcomes[1];
     if (!first || !second) {
