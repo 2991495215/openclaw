@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 import process from "node:process";
 import {
   composeReleaseChildAttemptEvidence,
+  readReleaseJobListing,
   releaseChildSpec,
   releaseCompositeJobsSha256,
   validateReleaseChildRunProvenance,
@@ -17,6 +18,8 @@ import {
 import { execGhRead } from "./lib/plain-gh.mjs";
 
 const MAX_INPUT_BYTES = 128 * 1024;
+// Twenty 100-job pages; the ceiling stays the same at any fallback page size.
+const MAX_ATTEMPT_JOBS = 2000;
 function required(name, pattern) {
   const value = process.env[name] ?? "";
   if (!pattern.test(value)) {
@@ -47,31 +50,39 @@ function github(repository, endpoint, paginate = false) {
   );
 }
 
-function readJobs(repository, runId, runAttempt) {
-  const pages = github(
-    repository,
-    `actions/runs/${runId}/attempts/${runAttempt}/jobs?per_page=100`,
-    true,
-  );
-  if (!Array.isArray(pages) || pages.length === 0 || pages.length > 20) {
-    throw new Error("Child evidence job inventory is incomplete");
-  }
-  const jobs = pages.flatMap((page) => {
-    if (!Array.isArray(page.jobs) || page.total_count !== pages[0].total_count) {
+async function readJobs(repository, runId, runAttempt) {
+  // GitHub can persistently 5xx a 100-job page of a large attempt while smaller pages succeed.
+  const jobs = await readReleaseJobListing(async (perPage) => {
+    const pages = github(
+      repository,
+      `actions/runs/${runId}/attempts/${runAttempt}/jobs?per_page=${perPage}`,
+      true,
+    );
+    if (
+      !Array.isArray(pages) ||
+      pages.length === 0 ||
+      pages.length > Math.ceil(MAX_ATTEMPT_JOBS / perPage)
+    ) {
       throw new Error("Child evidence job inventory is incomplete");
     }
-    return page.jobs;
+    const pageJobs = pages.flatMap((page) => {
+      if (!Array.isArray(page.jobs) || page.total_count !== pages[0].total_count) {
+        throw new Error("Child evidence job inventory is incomplete");
+      }
+      return page.jobs;
+    });
+    if (pageJobs.length > MAX_ATTEMPT_JOBS || pageJobs.length !== pages[0].total_count) {
+      throw new Error("Child evidence job inventory is incomplete or belongs to another attempt");
+    }
+    return pageJobs;
   });
-  if (
-    jobs.length !== pages[0].total_count ||
-    jobs.some((job) => String(job.run_id) !== runId || job.run_attempt !== runAttempt)
-  ) {
+  if (jobs.some((job) => String(job.run_id) !== runId || job.run_attempt !== runAttempt)) {
     throw new Error("Child evidence job inventory is incomplete or belongs to another attempt");
   }
   return jobs;
 }
 
-function seal() {
+async function seal() {
   const repository = required("GITHUB_REPOSITORY", /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u);
   const runId = required("GITHUB_RUN_ID", /^[1-9][0-9]*$/u);
   const runAttempt = Number(required("GITHUB_RUN_ATTEMPT", /^[1-9][0-9]*$/u));
@@ -123,7 +134,7 @@ function seal() {
   const attempts = [];
   let publisher;
   for (let attempt = 1; attempt <= runAttempt; attempt += 1) {
-    const allJobs = readJobs(repository, runId, attempt);
+    const allJobs = await readJobs(repository, runId, attempt);
     const publishers = allJobs.filter((job) => job.name === PUBLISHER_JOB);
     if (attempt === runAttempt) {
       if (publishers.length !== 1 || publishers[0].status !== "in_progress") {
@@ -182,7 +193,7 @@ function seal() {
 }
 
 try {
-  seal();
+  await seal();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
