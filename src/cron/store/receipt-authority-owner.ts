@@ -12,7 +12,10 @@ import type { RetainedWorkerTransactionAdmission } from "../../infra/sqlite-work
 import { AsyncWorkScope, runOutsideAsyncWorkScope } from "../../shared/async-work-scope.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
-import { observeOpenClawDatabaseMaintenanceResource } from "../../state/openclaw-state-db-async-lifecycle.js";
+import {
+  observeOpenClawDatabaseMaintenanceResource,
+  StateDatabaseCustodyRetainedError,
+} from "../../state/openclaw-state-db-async-lifecycle.js";
 import { registerOpenClawStateDatabaseAsyncResource } from "../../state/openclaw-state-db-cache.js";
 import { executeExistingOpenClawStateRead } from "../../state/openclaw-state-db-readonly.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
@@ -362,7 +365,7 @@ function acquireUse(
               finish();
             },
             (error: unknown) => {
-              const failure = new Error(
+              const failure = new StateDatabaseCustodyRetainedError(
                 "Cron native launch retirement is unconfirmed; receipt authority custody is retained. Retire the Gateway process before reopening this database.",
                 { cause: error },
               );

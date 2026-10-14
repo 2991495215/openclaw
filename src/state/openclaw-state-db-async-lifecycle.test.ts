@@ -10,6 +10,7 @@ import { drainGlobalSingletonLifecycleState } from "../shared/global-singleton.j
 import {
   createOpenClawDatabaseMaintenanceScope,
   createOpenClawStateDatabaseAsyncLifecycle,
+  StateDatabaseCustodyRetainedError,
 } from "./openclaw-state-db-async-lifecycle.js";
 import {
   clearOpenClawStateDatabaseOpenFailure,
@@ -464,6 +465,28 @@ describe("canonical shared-state resource drainage", () => {
     } finally {
       outcome = undefined;
       finish.resolve();
+      unregister();
+    }
+  });
+
+  it("keeps reads sealed when a failed resource retains custody past orderly close", async () => {
+    const lifecycle = createOpenClawStateDatabaseAsyncLifecycle();
+    const pathname = databasePath();
+    writeFileSync(pathname, "original");
+    lifecycle.capture(pathname);
+    const failure = new StateDatabaseCustodyRetainedError("retire the process");
+    const close = vi.fn(async () => {
+      throw failure;
+    });
+    const unregister = lifecycle.register({ close });
+    const retireNative = vi.fn(() => true);
+    try {
+      await expect(lifecycle.close(pathname, retireNative)).rejects.toBe(failure);
+      expect(() => lifecycle.capture(pathname)).toThrow(/admission is closed/);
+      await expect(lifecycle.close(pathname, retireNative)).rejects.toBe(failure);
+      expect(() => lifecycle.capture(pathname)).toThrow(/admission is closed/);
+      expect(retireNative).not.toHaveBeenCalled();
+    } finally {
       unregister();
     }
   });

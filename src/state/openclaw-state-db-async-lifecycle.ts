@@ -37,6 +37,12 @@ export function isStateDatabaseReadAdmissionInvalidatedError(error: unknown): bo
   return extractErrorCode(error) === STATE_DATABASE_READ_ADMISSION_INVALIDATED;
 }
 
+/**
+ * A resource close failure whose live custody outlives this process's orderly close.
+ * Reads stay sealed until process retirement instead of resuming after failed drainage.
+ */
+export class StateDatabaseCustodyRetainedError extends Error {}
+
 export type OpenClawStateDatabaseReadAdmission = {
   readonly databasePath: string;
   /** Stable across first creation and aliases; coordinates work but grants no authority. */
@@ -645,9 +651,14 @@ export function createOpenClawStateDatabaseAsyncLifecycle() {
               }),
             );
           }
-          if (errors.length && !current.superseded) {
+          if (
+            errors.length &&
+            !current.superseded &&
+            !errors.some((error) => error instanceof StateDatabaseCustodyRetainedError)
+          ) {
             // Native handles were not retired, so the database stays live and
             // reads can resume. Failed resources stay retained for the retry.
+            // Retained custody instead keeps reads sealed until process retirement.
             release(current);
           }
           throwSqliteLifecycleErrors(errors, "OpenClaw state resource drainage failed");
@@ -679,7 +690,8 @@ export function createOpenClawStateDatabaseAsyncLifecycle() {
         () => undefined,
       );
       void pending.catch(() => {
-        // Failed native retirement keeps its seal; failed drainage released it above.
+        // Failed native retirement and retained custody keep their seal; other
+        // failed drainage released it above.
         // Both keep failed resource custody for an explicit retry.
         current.pending = undefined;
       });
