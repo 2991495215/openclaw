@@ -73,7 +73,10 @@ describe("scope upgrade observations", () => {
     vi.useFakeTimers();
     pairing.pending = true;
     const scheduler = createTestGatewayScheduler();
-    const coordinator = new ScopeUpgradeCoordinator(scheduler);
+    const gatewayWork = new AsyncWorkScope();
+    const coordinator = new ScopeUpgradeCoordinator(scheduler, gatewayWork.signal, (run) =>
+      gatewayWork.track(run),
+    );
     const observer = new AsyncWorkScope();
     const owner = { deviceId: "device", publicKey: "public-key" };
     const pendingRead = vi.spyOn(devicePairing, "getPendingDevicePairing");
@@ -103,6 +106,7 @@ describe("scope upgrade observations", () => {
     } finally {
       observer.beginClose();
       await coordinator.close();
+      await gatewayWork.drain();
       await observation;
       await observer.drain();
       await scheduler.stop();
