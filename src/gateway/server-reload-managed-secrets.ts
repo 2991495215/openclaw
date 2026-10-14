@@ -46,6 +46,13 @@ import {
   type SharedGatewaySessionGenerationOwnership,
 } from "./server-shared-auth-generation.js";
 
+// Temporary branch-only observation; never merge.
+function recordEffectiveConfigBranch(phase: string): void {
+  process.stderr.write(
+    `[config-rpc-phase] ${JSON.stringify({ phase, atMs: Math.round(performance.now()) })}\n`,
+  );
+}
+
 export function isRuntimeSecretsPreparationCurrent(
   preparation: CurrentRuntimeSecretsPreparation,
 ): boolean {
@@ -142,6 +149,7 @@ export function createManagedReloadSecretHandlers(options: {
           sourceConfig: nextSecretsSourceConfig,
         };
         if (!isDeepStrictEqual(sourceOnlySnapshot.config, nextConfig)) {
+          recordEffectiveConfigBranch("effective:reuse-mismatch");
           throw new GatewayConfigReloadSupersededError();
         }
         await transactionOwnership.checkpoint();
@@ -211,6 +219,7 @@ export function createManagedReloadSecretHandlers(options: {
       await transactionOwnership.checkpoint();
       assertReloadPublicationCurrent(transactionOwnership.isCurrent(), false);
       if (!isDeepStrictEqual(preparedSecrets.config, nextConfig)) {
+        recordEffectiveConfigBranch("effective:prepared-mismatch");
         throw new GatewayConfigReloadSupersededError();
       }
       if (!previousRuntimeSourceConfig || !previousSecretsSnapshot) {
