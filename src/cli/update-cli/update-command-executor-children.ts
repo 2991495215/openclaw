@@ -281,7 +281,7 @@ export function createChildOwner(params: {
                 );
               }
               bindingAttempted = true;
-              const assigned = store.bindUpdateChildren(children, pid, argv);
+              const assigned = store.bindUpdateChildren(children, store.processIdentity(pid, argv));
               if (!assigned) {
                 throw new UpdateCommandRecoveryPendingError("Update process binding failed.");
               }

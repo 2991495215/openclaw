@@ -139,6 +139,11 @@ Post-install Doctor also accepts older updaters, including `2026.8.2`, that do n
 provide an update run ID. Its commands retain invocation-specific custody without
 requiring an environment-variable workaround.
 
+Doctor keeps a command's captured birth identity through native custody binding.
+If a command finishes before that identity can be captured, its original spawning
+owner still joins the command and confirms its process group has exited before
+releasing the reservation. A live or unreadable command remains protected.
+
 Managed-service inspection is best effort. If the service manager is unavailable,
 including Linux hosts without systemd, the update continues and records a warning.
 It leaves unverified service definitions unchanged and skips their automatic
