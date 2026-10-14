@@ -1,149 +1,148 @@
-name: Android Store Gate Failure Rehearsal
+name: Android Gateway Startup Diagnostic
 
-run-name: Android store gate rehearsal (${{ inputs.target_sha }})
+run-name: Android Gateway startup diagnostic (${{ inputs.target_sha }})
 
 on:
   workflow_dispatch:
     inputs:
       target_sha:
-        description: Reviewed canonical source SHA for the read-only policy comparison
+        description: Exact reviewed Android qualification source to diagnose
         required: true
+        default: 5519409614b71bb3a1eb94424aa351e663782f4e
         type: string
-      operation:
-        description: Canonical manual store operation used by the inert gate fixture
-        required: false
-        default: release
-        type: choice
-        options: [release]
 
-permissions: {}
+permissions:
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  TARGET_SHA: 5519409614b71bb3a1eb94424aa351e663782f4e
 
 jobs:
-  qualify:
-    permissions:
-      actions: read
-      contents: read
-    uses: ./.github/workflows/android-release-e2e.yml
-    with:
-      # Exercise the real preparation failure before checkout, tooling, or native tests.
-      target_sha: rehearsal-invalid-target
-
-  signing_upload_sentinel:
-    needs: qualify
-    # Copy of the canonical gate with only the main-ref literal adapted to this
-    # disposable branch. This job has no secrets, environment, signing, or upload.
-    if: >-
-      !cancelled() &&
-      github.ref == 'refs/heads/ci/android-store-gate-probe-5519409614b7' && github.repository == 'openclaw/openclaw' &&
-      ((github.event_name == 'schedule' && vars.ANDROID_INTERNAL_ENABLED == 'true') ||
-      (github.event_name == 'workflow_dispatch' &&
-      (inputs.operation == 'internal' || (inputs.operation == 'release' && needs.qualify.result == 'success'))))
-    permissions: {}
+  gateway_startup:
     runs-on: ubuntu-24.04
-    timeout-minutes: 1
+    timeout-minutes: 20
     steps:
-      - name: Reject unexpected publication admission
+      - name: Require the pinned diagnostic source
+        env:
+          REQUESTED_SHA: ${{ inputs.target_sha }}
+        run: test "$REQUESTED_SHA" = "$TARGET_SHA"
+
+      - name: Checkout the reviewed Android qualification source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 5519409614b71bb3a1eb94424aa351e663782f4e
+          persist-credentials: false
+
+      - name: Verify source before applying the disposable probe
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -f scripts/android-release-e2e.ts
+
+      - name: Setup the qualification Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24.21.0"
+          install-bun: "false"
+          cache-mode: "off"
+
+      - name: Prepare the published stable Gateway selection
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node --import ./scripts/tsx.mjs scripts/ios-release-gateway.ts \
+            --target-sha "$TARGET_SHA" \
+            --selection-dir "$RUNNER_TEMP/android-gateway-diagnostic-selection"
+
+      - name: Patch only this runner's startup diagnostic
         shell: bash
         run: |
-          echo "::error::Failed qualification unexpectedly admitted the inert publication sentinel"
-          exit 1
+          set -euo pipefail
+          python3 - <<'PATCH'
+          from pathlib import Path
 
-  verify:
-    needs: [qualify, signing_upload_sentinel]
-    if: always() && !cancelled()
-    permissions:
-      contents: read
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Verify canonical gate and actual scheduler outcomes
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
-        env:
-          CANONICAL_SHA: ${{ inputs.target_sha }}
-          OPERATION: ${{ inputs.operation }}
-          QUALIFY_RESULT: ${{ needs.qualify.result }}
-          SENTINEL_RESULT: ${{ needs.signing_upload_sentinel.result }}
-        with:
-          script: |
-            const { createHash } = require('node:crypto');
-            const { runInNewContext } = require('node:vm');
-            const canonicalSha = '5519409614b71bb3a1eb94424aa351e663782f4e';
-            const probeRef = 'refs/heads/ci/android-store-gate-probe-5519409614b7';
-            const sourceHash = '05015387c9de3d3adaf9b4ae1bafbe5c18c547d86024b34b0db6c55ec3bc0dae';
-            const gateHash = '3f9092e7fc5e3985263f4b6f5a856a2d716031df1b132d69e766315fa0239be9';
-            const hash = (value) => createHash('sha256').update(value).digest('hex');
-            if (process.env.CANONICAL_SHA !== canonicalSha || context.ref !== probeRef ||
-                process.env.OPERATION !== 'release' || process.env.QUALIFY_RESULT !== 'failure' ||
-                process.env.SENTINEL_RESULT !== 'skipped') {
-              throw new Error('Rehearsal identity or actual scheduler outcome does not match the intended failure case.');
+          owner = Path("scripts/android-release-e2e.ts")
+          source = owner.read_text()
+          original = source
+
+          def replace_once(before, after):
+              global source
+              assert source.count(before) == 1, "Pinned diagnostic patch input differs"
+              source = source.replace(before, after, 1)
+
+          def remove_between(before, after):
+              global source
+              assert source.count(before) == 1 and source.count(after) == 1, "Pinned diagnostic cut input differs"
+              start = source.index(before)
+              end = source.index(after, start)
+              source = source[:start] + source[end:]
+
+          remove_between('    if (\n      !evidence.source.clean &&\n', '    phase("build");\n')
+          remove_between('    phase("build");\n', '    phase("gateway-install");\n')
+          remove_between('    const rpc = <T>', '    evidence.status = "passed";\n')
+          replace_once(
+              '      "Native phone and Wear application behavior through a controlled Google Data Layer boundary, real protocol, phone bridge/controller, published Gateway and local provider.",',
+              '      "Disposable hosted Linux Gateway startup diagnostic; no native application qualification.",',
+          )
+          diagnostic = r"""
+          function diagnostic(error: unknown, relation = "caught", seen = new Set<unknown>()): void {
+            if (seen.has(error)) return;
+            seen.add(error);
+            if (!(error instanceof Error)) {
+              console.log(JSON.stringify({ diagnostic: relation, class: typeof error }));
+              return;
             }
-            async function readAt(path, ref) {
-              const { data } = await github.rest.repos.getContent({ ...context.repo, path, ref });
-              if (Array.isArray(data) || data.type !== 'file' || data.encoding !== 'base64') {
-                throw new Error('Expected one committed source file.');
-              }
-              return Buffer.from(data.content, 'base64');
+            const rawCode: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value;
+            const code = typeof rawCode === "string" && /^[A-Za-z0-9_-]{1,120}$/u.test(rawCode)
+              ? rawCode : typeof rawCode === "number" && Number.isFinite(rawCode) ? rawCode : undefined;
+            const name = /^[A-Za-z0-9_$]{1,80}$/u.test(error.name) ? error.name : "Error";
+            const classification = error.message === "Linux child ownership requires the built process owner, without a source loader"
+              ? "linux-built-process-owner-required" : undefined;
+            const frames = (error.stack ?? "").split(/\r?\n/u).filter((line) => /^\s*at /u.test(line));
+            console.log(JSON.stringify({ diagnostic: relation, class: name, code, classification, frames }));
+            if (error.cause !== undefined) diagnostic(error.cause, `${relation}.cause`, seen);
+            if (error instanceof AggregateError) {
+              const errors: readonly unknown[] = error.errors;
+              for (const [index, nested] of errors.entries()) diagnostic(nested, `${relation}.errors[${index}]`, seen);
             }
-            function foldedGate(bytes, job) {
-              const source = bytes.toString('utf8');
-              const jobStart = source.indexOf(`\n  ${job}:\n`);
-              if (jobStart === -1) throw new Error('Expected job is missing.');
-              const jobBody = source.slice(jobStart + 1).split(/\n  [a-z][a-z0-9_-]*:\n/, 1)[0];
-              const match = /^    if: >-\n((?:      .*\n)+)/m.exec(jobBody);
-              if (!match) throw new Error('Expected canonical folded gate is missing.');
-              return match[1].trimEnd().split('\n').map((line) => line.slice(6)).join(' ');
-            }
-            const canonical = await readAt('.github/workflows/android-store-release.yml', canonicalSha);
-            const canonicalGate = foldedGate(canonical, 'release');
-            if (hash(canonical) !== sourceHash || hash(canonicalGate) !== gateHash) {
-              throw new Error('Pinned canonical source or gate hash differs.');
-            }
-            const mainLiteral = "'refs/heads/main'";
-            if (canonicalGate.split(mainLiteral).length !== 2) {
-              throw new Error('Expected exactly one main-ref predicate.');
-            }
-            const fixture = await readAt('.github/workflows/android-emulator-diagnostic.yml', context.sha);
-            const fixtureGate = foldedGate(fixture, 'signing_upload_sentinel');
-            if (fixtureGate !== canonicalGate.replace(mainLiteral, `'${probeRef}'`)) {
-              throw new Error('Fixture changes more than the approved branch literal.');
-            }
-            const childPath = '.github/workflows/android-release-e2e.yml';
-            const canonicalChild = await readAt(childPath, canonicalSha);
-            const probeChild = await readAt(childPath, context.sha);
-            if (hash(canonicalChild) !== hash(probeChild)) {
-              throw new Error('Reusable qualification source differs from the reviewed source.');
-            }
-            const controls = ['success', process.env.QUALIFY_RESULT].map((result) => {
-              const canonicalContext = {
-                github: { ref: 'refs/heads/main', repository: 'openclaw/openclaw', event_name: 'workflow_dispatch' },
-                inputs: { operation: 'release' },
-                needs: { qualify: { result } },
-                vars: {},
-                cancelled: () => false,
-              };
-              const admitted = runInNewContext(canonicalGate, canonicalContext, { timeout: 1000 });
-              if (admitted !== (result === 'success')) throw new Error('Canonical gate control failed.');
-              return { qualification: result, canonicalStoreGate: admitted };
-            });
-            // The real scheduler is exercised on a probe ref. The unmodified main
-            // predicate uses synthetic context; real store environments and publication
-            // are deliberately absent and are not proven by this rehearsal.
-            const evidence = {
-              canonicalSha,
-              probeSha: context.sha,
-              workflowSha256: sourceHash,
-              gateSha256: gateHash,
-              childWorkflowSha256: hash(canonicalChild),
-              actualQualificationResult: process.env.QUALIFY_RESULT,
-              actualSentinelResult: process.env.SENTINEL_RESULT,
-              controls,
-              limitation: 'Scheduler proof uses the adapted probe ref; the canonical main-ref gate is evaluated with synthetic context. No signing, upload, or protected store environment is exercised.',
-            };
-            core.setOutput('evidence', JSON.stringify(evidence));
-            core.info(JSON.stringify(evidence));
-            await core.summary.addHeading('Android store qualification failure rehearsal')
-              .addRaw('The real qualification failed before native preparation; the inert signing/upload sentinel was skipped.\n\n')
-              .addCodeBlock(JSON.stringify(evidence, null, 2), 'json').write();
+          }
+          """
+          replace_once('export async function main', diagnostic + '\nexport async function main')
+          replace_once('  } catch (error) {\n    evidence.failure = stage;', '  } catch (error) {\n    diagnostic(error, "startup");\n    evidence.failure = stage;')
+          replace_once('    const cleanupFailed =\n', '    for (const [index, result] of gatewayCleanup.entries()) {\n      if (result.status === "rejected") diagnostic(result.reason, `gateway-cleanup[${index}]`);\n    }\n    for (const [index, result] of cleanup.entries()) {\n      if (result.status === "rejected") diagnostic(result.reason, `service-cleanup[${index}]`);\n    }\n    const cleanupFailed =\n')
+          replace_once('  void main().catch(() => {', '  void main().catch((error: unknown) => {\n    diagnostic(error, "preparation");')
+          replace_once('    service(\n      process.execPath,', '    console.log("Diagnostic: starting original provider");\n    service(\n      process.execPath,')
+          replace_once('    applyMockOpenAiModelConfig(config, {', '    console.log("Diagnostic: waiting for provider port");\n    applyMockOpenAiModelConfig(config, {')
+          replace_once('    const fixtureOwnedKeys = new Set([', '    console.log("Diagnostic: provider port ready");\n    const fixtureOwnedKeys = new Set([')
+          replace_once('    instance = await createOpenClawTestInstance({', '    console.log("Diagnostic: creating original test instance");\n    instance = await createOpenClawTestInstance({')
+          replace_once('    await instance.startGateway();', '    console.log("Diagnostic: instance created; starting original Gateway");\n    await instance.startGateway();\n    console.log("Diagnostic: original Gateway startup passed");')
+          assert source != original
+          owner.write_text(source)
+          print("Disposable diagnostic patch applied to the verified source; Android builds, APK checks, and native work removed.")
+          PATCH
+
+      - name: Exercise the original Linux Gateway startup and cleanup
+        run: |
+          set -euo pipefail
+          node --import ./scripts/tsx.mjs scripts/android-release-e2e.ts \
+            --target-sha "$TARGET_SHA" \
+            --selection-dir "$RUNNER_TEMP/android-gateway-diagnostic-selection" \
+            --output "$RUNNER_TEMP/android-gateway-diagnostic-proof.json" \
+            --artifacts-dir "$RUNNER_TEMP/android-gateway-diagnostic-artifacts"
+
+      - name: Report bounded diagnostic status
+        if: always()
+        run: |
+          python3 - <<'REPORT'
+          import json, os
+          from pathlib import Path
+          proof = Path(os.environ["RUNNER_TEMP"]) / "android-gateway-diagnostic-proof.json"
+          if proof.exists():
+              data = json.loads(proof.read_text())
+              print(json.dumps({key: data.get(key) for key in ("targetSha", "status", "failure", "cleanupConfirmed", "coverage")}))
+          else:
+              print(json.dumps({"diagnostic": "preparation did not produce proof"}))
+          REPORT
