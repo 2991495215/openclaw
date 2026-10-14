@@ -115,30 +115,18 @@ export function createCombinedSessionMcpRuntime(params: {
       return catalogInFlight;
     }
     const inFlight = (async () => {
-      let loaded: Array<{ catalog: McpToolCatalog; cached: boolean } | undefined> = [];
-      // Replay once when a completed catalog invalidates while siblings await I/O.
-      // A child returning an uncached result already exhausted its own replay budget.
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const { results, firstError, hasError } = await runTasksWithConcurrency({
-          tasks: parts.map((part, index) => async () => {
-            const previous = loaded[index];
-            if (previous && (!previous.cached || part.retiredCatalog || part.peekCatalog())) {
-              return previous;
-            }
-            const catalog = await loadCurrentCatalog(part);
-            return { catalog, cached: part.peekCatalog() !== null };
-          }),
-          limit: 6,
-          errorMode: "continue",
-        });
-        if (hasError) {
-          throw firstError;
-        }
-        loaded = results;
+      const { results, firstError, hasError } = await runTasksWithConcurrency({
+        tasks: parts.map((part) => () => loadCurrentCatalog(part)),
+        limit: 6,
+        errorMode: "continue",
+      });
+      if (hasError) {
+        throw firstError;
       }
+      // A list_changed notification during sibling discovery is picked up on the next load.
       // An owner can retire after its discovery finishes while a sibling still awaits I/O.
       const catalogs = parts.map(
-        (part, index) => part.retiredCatalog ?? part.peekCatalog() ?? loaded[index]!.catalog,
+        (part, index) => part.retiredCatalog ?? part.peekCatalog() ?? results[index]!,
       );
       if (
         cachedCatalog &&
@@ -160,9 +148,7 @@ export function createCombinedSessionMcpRuntime(params: {
     try {
       return await inFlight;
     } finally {
-      if (catalogInFlight === inFlight) {
-        catalogInFlight = undefined;
-      }
+      catalogInFlight = undefined;
     }
   };
 
