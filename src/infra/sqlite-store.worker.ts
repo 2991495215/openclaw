@@ -179,6 +179,7 @@ async function receive(request: SqliteWorkerRequest): Promise<void> {
   let inputNext = false;
   let openNotEntered = false;
   let commandAdmissionRefused = false;
+  let diagnosticCommand: "nodeWorker.configure" | undefined;
   try {
     if (request.databaseAdmissions) {
       installSqliteDatabaseAdmissions(request.databaseAdmissions);
@@ -213,6 +214,9 @@ async function receive(request: SqliteWorkerRequest): Promise<void> {
       }
       // SAFETY: The broker serialized a command from this actor's typed store contract.
       const typedCommand = command as SqliteWorkerCommand<SqliteWorkerOperations>;
+      if (typedCommand.type === "nodeWorker.configure") {
+        diagnosticCommand = "nodeWorker.configure";
+      }
       return withSqliteReaderOwner(
         { operation: typedCommand.type, ownerKind: "worker", actorId: request.actor },
         async () => {
@@ -532,6 +536,15 @@ async function receive(request: SqliteWorkerRequest): Promise<void> {
         operationAdmission.context.refusal === originalError);
     const failure =
       originalError instanceof Error ? originalError : new Error(String(originalError));
+    if (failure.name === "StateDatabaseAccessError") {
+      process.stderr.write(
+        `[redmain:node-config:refusal] ${JSON.stringify({
+          requestType: request.type,
+          commandType: diagnosticCommand,
+          stack: failure.stack,
+        })}\n`,
+      );
+    }
     const code = executed ? "outcome-unknown" : "code" in failure ? failure.code : undefined;
     const errorContext =
       request.stateContext ??
