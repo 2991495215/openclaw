@@ -124,9 +124,10 @@ places it beside the correct reply. Stopping a call drains finalized speech,
 skips unfinished transcriptions, and records a browser console warning for
 missing transcriptions or unresolved conversation links.
 
-Google Live saves complete utterances during the call, including Gemini 3.1
-transcriptions that omit an explicit transcription-finished flag. Partial text
-stays provisional until the provider's completion boundary.
+Google Live saves complete utterances during the call, including Gemini 3.1 and
+3.8 transcriptions that omit an explicit transcription-finished flag. This also
+applies to Gemini 3.8 Extended Thinking. Partial text from older models stays
+provisional until the provider's completion boundary.
 
 Voice-originated consult runs require a new, exact spoken confirmation before high-impact actions such as sending messages, controlling nodes, browser/computer actions, service changes, destructive shell commands, or publication. The gate applies to runs started through `talk.client.toolCall`, the Gateway relay, and GPT-Live sideband delegations. The confirmation applies only to the canonical final execution arguments and is consumed once; if a policy or hook rewrites the approved action, OpenClaw blocks it until the rewritten action is confirmed. Unrelated concurrent runs remain unaffected. When a call closes, OpenClaw can send a compact **Voice call changes** digest for mutating tools to the session's last non-WebChat delivery target.
 
