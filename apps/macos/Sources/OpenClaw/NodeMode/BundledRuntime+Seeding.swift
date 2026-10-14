@@ -6,12 +6,14 @@ extension BundledRuntime {
         case invalidBuildID
         case invalidCurrent
         case runtimeProbe(String)
+        case archive(String)
 
         var errorDescription: String? {
             switch self {
             case .invalidBuildID: "The app's runtime build ID is invalid. Reinstall OpenClaw.app."
             case .invalidCurrent: "The seeded runtime link is invalid. Retry OpenClaw setup."
             case let .runtimeProbe(detail): "The bundled Bun runtime could not start: \(detail)"
+            case let .archive(detail): "The bundled runtime archive could not be prepared: \(detail)"
             }
         }
     }
@@ -59,6 +61,7 @@ extension BundledRuntime {
             let partial = directory.appendingPathComponent("\(buildID).partial-\(UUID().uuidString)")
             defer { try? fileManager.removeItem(at: partial) }
             try self.cloneRuntimeTree(from: source.root, to: partial)
+            try await self.extractArchive(bundle: bundle, to: partial)
             let staged = try self.resolve(root: partial, bundle: bundle)
             let result = await ShellExecutor.runDetailed(
                 command: [staged.bun.path, "--version"],

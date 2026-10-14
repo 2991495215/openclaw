@@ -33,9 +33,10 @@ struct BundledRuntime: Sendable {
     static func launch(
         bundle: Bundle,
         profile: AppProfile = .current,
-        desktopSharingEnabled: Bool? = nil) throws -> MacNodeHostWorkerLaunch
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        desktopSharingEnabled: Bool? = nil) async throws -> MacNodeHostWorkerLaunch
     {
-        let runtime = try resolve(bundle: bundle)
+        let runtime = try await seed(bundle: bundle, profile: profile, homeDirectory: homeDirectory)
         return try MacNodeHostWorkerLaunch(
             command: CommandResolver.nodeHostWorkerCommand(
                 prefix: runtime.command(entry: "mac-node-worker.js"),
@@ -50,9 +51,10 @@ struct BundledRuntime: Sendable {
     static func browserSetupLaunch(
         bundle: Bundle,
         action: ChromeExtensionSetupAction = .install,
-        profile: AppProfile = .current) throws -> MacNodeHostWorkerLaunch
+        profile: AppProfile = .current,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) async throws -> MacNodeHostWorkerLaunch
     {
-        let runtime = try resolve(bundle: bundle)
+        let runtime = try await seed(bundle: bundle, profile: profile, homeDirectory: homeDirectory)
         var environment = runtime.environment
         environment["OPENCLAW_PROFILE"] = profile.name ?? "default"
         return try MacNodeHostWorkerLaunch(
