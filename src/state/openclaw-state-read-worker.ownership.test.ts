@@ -68,9 +68,13 @@ it.each(["submission", "dispatch"] as const)(
         unexpectedTask.result.resolve(emptyReply);
         await expect(
           executeExistingOpenClawStateRead(options, { type: "backup.runs" }),
-        ).rejects.toThrow(/could not be verified|Shared-state read and cleanup failed/);
+        ).rejects.toThrow(
+          /lock removed\/replaced; restart the Gateway|Shared-state read and cleanup failed/,
+        );
         expect(mock.runTask).toHaveBeenCalledTimes(submittedBefore);
-        expect(() => assertStateDatabaseAccessAllowed(pathname)).toThrow("could not be verified");
+        expect(() => assertStateDatabaseAccessAllowed(pathname)).toThrow(
+          "lock removed/replaced; restart the Gateway",
+        );
       } else {
         const task = queueTask(dispatch.promise);
         const settled = executeExistingOpenClawStateRead(options, { type: "backup.runs" }).then(
@@ -91,7 +95,9 @@ it.each(["submission", "dispatch"] as const)(
           () => undefined,
         );
         dispatch.resolve();
-        await expect(task.captured).rejects.toThrow("could not be verified");
+        await expect(task.captured).rejects.toThrow(
+          /state ownership at .+ was lost: .+lock removed\/replaced; restart the Gateway/,
+        );
         expect(await settled).toHaveProperty("error");
         expect(received).not.toHaveBeenCalled();
       }
@@ -124,7 +130,7 @@ it("retries an intact owner's read after one transient verification error withou
     vi.advanceTimersByTime(1000);
     await expect(
       executeExistingOpenClawStateRead(options, { type: "backup.runs" }),
-    ).rejects.toThrow(/could not be verified|EMFILE|Shared-state read and cleanup failed/);
+    ).rejects.toThrow(/was lost|EMFILE|Shared-state read and cleanup failed/);
     expect(failVerification).toBe(false);
     expect(mock.runTask).toHaveBeenCalledOnce();
     await expect(completeRead(options)).resolves.toEqual(emptyReply);
