@@ -132,7 +132,8 @@ it("preserves settlement task errors and source custody through canonical retrie
   await expect(closeOpenClawStateDatabaseByPathAsync(pathname)).rejects.toBe(retryFailure);
   expect(publish).not.toHaveBeenCalled();
   expect(release).not.toHaveBeenCalled();
-  expect(() => captureOpenClawStateWorkerContext(options)).toThrow(/admission is closed/);
+  // Failed drainage leaves the source live, so reads resume until the retry seals again.
+  captureOpenClawStateWorkerContext(options).admission.assertCurrent();
   const retry = queueTask();
   const retryCloseStarted = createDeferredCore();
   const stopped = createDeferredCore();
