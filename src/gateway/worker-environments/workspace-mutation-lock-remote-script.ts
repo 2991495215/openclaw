@@ -17,17 +17,6 @@ export const REMOTE_WORKSPACE_MUTATION_LOCK_JS = String.raw`function removeTree(
 function sameInode(left, right) {
   return left.dev === right.dev && left.ino === right.ino;
 }
-function removeQuarantinedLock(quarantine, observed, message) {
-  const directory = fs.lstatSync(quarantine);
-  const entry = fs.lstatSync(path.join(quarantine, observed.name));
-  if (
-    !sameInode(directory, observed.directoryStats) ||
-    !sameInode(entry, observed.entryStats)
-  ) {
-    throw new Error(message);
-  }
-  removeTree(quarantine);
-}
 const lockRoot = path.join(
   transactionRoot,
   ".openclaw-accepted-lock-" + workspaceKey,
@@ -72,15 +61,6 @@ function parseLockIdentity(parts) {
   }
   return { action: entryAction, nonce: entryNonce, pid, controllerPid, token };
 }
-function sameLockIdentity(left, right) {
-  return (
-    left.action === right.action &&
-    left.nonce === right.nonce &&
-    left.pid === right.pid &&
-    left.controllerPid === right.controllerPid &&
-    left.token === right.token
-  );
-}
 function processIsAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -104,19 +84,11 @@ function lockIdentityIsAlive(identity) {
 function ownerEntryName(owner) {
   return "owner." + encodeLockIdentity(owner);
 }
-function reclaimEntryName(owner, reclaimer) {
-  return "reclaim." + encodeLockIdentity(owner) + "." + encodeLockIdentity(reclaimer);
-}
 function parseLockEntry(name) {
   const parts = name.split(".");
   if (parts[0] === "owner" && parts.length === 6) {
     const owner = parseLockIdentity(parts.slice(1));
-    return owner ? { kind: "owner", owner } : null;
-  }
-  if (parts[0] === "reclaim" && parts.length === 11) {
-    const owner = parseLockIdentity(parts.slice(1, 6));
-    const reclaimer = parseLockIdentity(parts.slice(6));
-    return owner && reclaimer ? { kind: "reclaim", owner, reclaimer } : null;
+    return owner ? { owner } : null;
   }
   return null;
 }
@@ -133,6 +105,9 @@ function readLock() {
   if (directoryStats.isSymbolicLink() || !directoryStats.isDirectory()) {
     throw new Error("unsafe workspace mutation lock");
   }
+  // A dead owner's entry is unlinked before removing the now-empty directory.
+  // Atomic acquisition may replace that directory even if recovery was interrupted.
+  if (names.length === 0) return null;
   if (names.length !== 1) throw new Error("invalid workspace mutation lock");
   const entry = parseLockEntry(names[0]);
   if (!entry) throw new Error("invalid workspace mutation lock owner");
@@ -150,87 +125,24 @@ function readLock() {
 }
 function sameLock(left, right) {
   return (
-    left.kind === right.kind &&
     left.name === right.name &&
     sameInode(left.directoryStats, right.directoryStats) &&
     sameInode(left.entryStats, right.entryStats)
   );
 }
-function observedLockIdentity(lock) {
-  return [
-    lock.directoryStats.dev,
-    lock.directoryStats.ino,
-    lock.entryStats.dev,
-    lock.entryStats.ino,
-    lock.name,
-  ].join(":");
-}
-function restoreOwnerEntry(observed) {
-  const current = readLock();
-  if (!current || !sameLock(current, observed)) return false;
+function removeLockOwner(observed) {
   try {
-    fs.renameSync(current.entryPath, path.join(lockRoot, ownerEntryName(current.owner)));
+    // The random owner filename cannot belong to a replacement. Remove only
+    // that owner, then let rmdir or atomic acquisition retire the empty lock.
+    fs.unlinkSync(observed.entryPath);
+    fs.rmdirSync(lockRoot);
   } catch (error) {
-    if (error && error.code === "ENOENT") return false;
+    if (error && (error.code === "ENOENT" || error.code === "ENOTEMPTY" || error.code === "EEXIST")) {
+      return false;
+    }
     throw error;
   }
   return true;
-}
-function restoreAbandonedTransition(observed) {
-  if (observed.kind !== "reclaim" || lockIdentityIsAlive(observed.reclaimer)) return false;
-  const current = readLock();
-  if (!current || !sameLock(current, observed) || lockIdentityIsAlive(current.reclaimer)) {
-    return false;
-  }
-  return restoreOwnerEntry(current);
-}
-function reclaimDeadOwner(observed) {
-  const current = readLock();
-  if (
-    !current ||
-    current.kind !== "owner" ||
-    !sameLock(current, observed) ||
-    lockIdentityIsAlive(current.owner)
-  ) {
-    return false;
-  }
-  const claimName = reclaimEntryName(current.owner, lockOwner);
-  try {
-    // This sole-entry rename is the reclaim CAS. Only one dead-owner contender
-    // can install its complete owner+reclaimer identity.
-    fs.renameSync(current.entryPath, path.join(lockRoot, claimName));
-  } catch (error) {
-    if (error && error.code === "ENOENT") return false;
-    throw error;
-  }
-  let claimed = readLock();
-  if (
-    !claimed ||
-    claimed.kind !== "reclaim" ||
-    claimed.name !== claimName ||
-    !sameInode(claimed.directoryStats, current.directoryStats) ||
-    !sameInode(claimed.entryStats, current.entryStats) ||
-    !sameLockIdentity(claimed.owner, current.owner) ||
-    !sameLockIdentity(claimed.reclaimer, lockOwner)
-  ) {
-    throw new Error("workspace mutation reclaim ownership changed");
-  }
-  let quarantined = false;
-  const quarantine = lockRoot + ".stale." + process.pid + "." + lockToken;
-  try {
-    if (lockIdentityIsAlive(claimed.owner)) return false;
-    const validated = readLock();
-    if (!validated || !sameLock(validated, claimed) || lockIdentityIsAlive(validated.owner)) {
-      return false;
-    }
-    claimed = validated;
-    fs.renameSync(lockRoot, quarantine);
-    quarantined = true;
-    removeQuarantinedLock(quarantine, claimed, "workspace mutation lock changed during reclamation");
-    return true;
-  } finally {
-    if (!quarantined) restoreOwnerEntry(claimed);
-  }
 }
 function acquireWorkspaceLock() {
   const candidate = lockRoot + "." + process.pid + "." + lockToken;
@@ -238,7 +150,6 @@ function acquireWorkspaceLock() {
   fs.mkdirSync(candidate, { mode: 0o700 });
   fs.writeFileSync(path.join(candidate, ownerName), "", { flag: "wx", mode: 0o600 });
   let acquired = false;
-  let previousIdentity = "";
   let waitMs = 10;
   try {
     while (Date.now() < lockDeadlineMs) {
@@ -248,11 +159,7 @@ function acquireWorkspaceLock() {
         fs.renameSync(candidate, lockRoot);
         acquired = true;
         const observed = readLock();
-        if (
-          !observed ||
-          observed.kind !== "owner" ||
-          !sameLockIdentity(observed.owner, lockOwner)
-        ) {
+        if (!observed || observed.name !== ownerName) {
           throw new Error("workspace mutation lock acquisition changed");
         }
         acquiredLock = observed;
@@ -262,18 +169,10 @@ function acquireWorkspaceLock() {
       }
       const observed = readLock();
       if (!observed) {
-        previousIdentity = "";
         waitMs = 10;
         continue;
       }
-      const identity = observedLockIdentity(observed);
-      if (identity !== previousIdentity) {
-        previousIdentity = identity;
-        waitMs = 10;
-      }
-      if (observed.kind !== "owner") {
-        if (restoreAbandonedTransition(observed)) continue;
-      } else if (!lockIdentityIsAlive(observed.owner) && reclaimDeadOwner(observed)) {
+      if (!lockIdentityIsAlive(observed.owner) && removeLockOwner(observed)) {
         continue;
       }
       Atomics.wait(lockWait, 0, 0, waitMs);
@@ -289,17 +188,9 @@ function releaseWorkspaceLock() {
   if (
     !current ||
     !acquiredLock ||
-    current.kind !== "owner" ||
-    !sameLock(current, acquiredLock) ||
-    !sameLockIdentity(current.owner, lockOwner)
+    !sameLock(current, acquiredLock)
   ) {
     throw new Error("workspace mutation lock ownership changed");
   }
-  const validated = readLock();
-  if (!validated || !sameLock(validated, current)) {
-    throw new Error("workspace mutation lock changed during release");
-  }
-  const quarantine = lockRoot + ".released." + process.pid + "." + lockToken;
-  fs.renameSync(lockRoot, quarantine);
-  removeQuarantinedLock(quarantine, validated, "workspace mutation lock changed during release");
+  removeLockOwner(current);
 }`;

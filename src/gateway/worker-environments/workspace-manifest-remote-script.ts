@@ -87,39 +87,5 @@ function resolveManifest(manifestRoot, requestedDigest) {
     if (!error || error.code !== "ENOENT") throw error;
   }
 
-  const candidates = fs
-    .readdirSync(manifestRoot)
-    .filter((name) => /^[a-f0-9]{64}\.json$/.test(name))
-    .map((name) => {
-      try {
-        return { name, mtimeMs: fs.lstatSync(path.join(manifestRoot, name)).mtimeMs };
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean)
-    .sort((left, right) =>
-      right.mtimeMs - left.mtimeMs || (left.name < right.name ? -1 : left.name > right.name ? 1 : 0),
-    )
-    .slice(0, 256);
-  let scannedBytes = 0;
-  for (const { name } of candidates) {
-    const candidatePath = path.join(manifestRoot, name);
-    let canonical;
-    try {
-      const raw = readManifestFile(candidatePath);
-      scannedBytes += Buffer.byteLength(raw);
-      if (scannedBytes > 256 * 1024 * 1024) break;
-      if (crypto.createHash("sha256").update(raw).digest("hex") !== name.slice(0, -5)) continue;
-      const value = JSON.parse(raw);
-      if (!value || value.version !== 1 || !Array.isArray(value.entries)) continue;
-      canonical = serializeManifest(value.baseCommit ?? null, value.entries);
-    } catch {
-      continue;
-    }
-    if (crypto.createHash("sha256").update(canonical).digest("hex") !== requestedDigest) continue;
-    publishManifest(manifestRoot, canonical);
-    return requestedDigest;
-  }
   fail("worker workspace manifest is unavailable: " + requestedDigest);
 }`;

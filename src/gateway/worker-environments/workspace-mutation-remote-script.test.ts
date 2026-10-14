@@ -97,6 +97,26 @@ describe("remote workspace mutation receiver script", () => {
         fs.writeFile(path.join(workspace, "current.txt"), "current\n"),
         fs.writeFile(path.join(workspace, "node_modules/cache"), "keep\n"),
       ]);
+      const workspaceKey = createHash("sha256").update(workspace).digest("hex");
+      const lock = path.join(path.dirname(workspace), `.openclaw-accepted-lock-${workspaceKey}`);
+      await fs.mkdir(lock);
+      const nonce = "a".repeat(32);
+      const recovered = await runCommandWithTimeout(
+        [
+          process.execPath,
+          "-e",
+          REMOTE_GIT_WORKSPACE_RETRY_RESET_JS,
+          workspace,
+          home,
+          relative,
+          nonce,
+        ],
+        { timeoutMs: 10_000, baseEnv: { ...process.env, HOME: home } },
+      );
+      expect(recovered).toMatchObject({ code: 0, stdout: `reset ${nonce}\n`, stderr: "" });
+      await expect(fs.readdir(workspace)).resolves.toEqual(["node_modules"]);
+      await expect(fs.access(lock)).rejects.toThrow();
+      await fs.writeFile(path.join(workspace, "current.txt"), "current\n");
       const fifo = await runCommandWithTimeout(["mkfifo", gate], { timeoutMs: 10_000 });
       expect(fifo.code).toBe(0);
       await fs.writeFile(
@@ -163,8 +183,6 @@ process.kill = function(pid, signal) {
       try {
         await waitForFile(receiverMarker, signal);
         receiverGateReady = true;
-        const workspaceKey = createHash("sha256").update(workspace).digest("hex");
-        const lock = path.join(path.dirname(workspace), `.openclaw-accepted-lock-${workspaceKey}`);
         const [ownerName] = await fs.readdir(lock);
         const { receiverPid, controllerPid } = parseReceiverOwner(ownerName!);
         expect(Number.isSafeInteger(receiverPid)).toBe(true);
@@ -252,11 +270,12 @@ process.kill = function(pid, signal) {
       await fs.writeFile(
         preload,
         String.raw`const fs = require("node:fs");
-const renameSync = fs.renameSync.bind(fs);
-fs.renameSync = function(source, destination) {
+const path = require("node:path");
+const unlinkSync = fs.unlinkSync.bind(fs);
+fs.unlinkSync = function(source) {
   if (
     process.argv[4] === process.env.OPENCLAW_TEST_RECEIVER_NONCE &&
-    destination.includes(".released.")
+    path.basename(source).startsWith("owner.receiver.")
   ) {
     fs.writeFileSync(process.env.OPENCLAW_TEST_RELEASE_MARKER, "");
     fs.writeSync(3, "ready");
@@ -264,7 +283,7 @@ fs.renameSync = function(source, destination) {
       throw new Error("invalid receiver controller release gate");
     }
   }
-  return renameSync(source, destination);
+  return unlinkSync(source);
 };
 const kill = process.kill.bind(process);
 process.kill = function(pid, signal) {

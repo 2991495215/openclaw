@@ -322,26 +322,11 @@ export async function stageSessionRepositoryCheckpoint(
         );
       }
     }
-    const verify = async () => {
-      const objects = (
-        await requireWorkspaceResultGit(root, [
-          "rev-parse",
-          `${candidateRef}^{commit}`,
-          ...(companionId ? [`${companionCandidate}^{commit}`] : []),
-        ])
-      ).split("\n");
-      if (objects[0] !== objectId) {
-        throw new Error("Repository checkpoint preparation changed");
-      }
-      if (companionId && objects[1] !== companionId) {
-        throw new Error("Repository publication preparation changed");
-      }
-      assertRevision();
-    };
-    await verify();
+    // Staging returns immutable object IDs; only owner authority can change here.
+    assertRevision();
     return {
       checkpointRef: ref,
-      verify,
+      verify: async () => assertRevision(),
       discard,
       publish: async () => {
         await withWorkspaceResultRefMutation(root, async (baseEnv) => {

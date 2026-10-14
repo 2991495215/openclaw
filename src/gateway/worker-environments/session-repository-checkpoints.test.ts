@@ -26,7 +26,6 @@ import * as workspaceResultGit from "./workspace-result-git.js";
 import { requireWorkspaceResultGit } from "./workspace-result-git.js";
 import {
   hasWorkerWorkspaceResultRef,
-  readStagedWorkerWorkspaceResult,
   workerWorkspaceResultRef,
 } from "./workspace-result-staging.js";
 
@@ -705,53 +704,6 @@ it.each([false, true])(
       ),
     ).rejects.toThrow("consumer failed after starting");
     expect(reads).toBe(2);
-  },
-);
-
-it.each(["recovery", "publication"])(
-  "verifies the peeled %s candidate and rejects its replacement or removal",
-  async (target) => {
-    const { root, remote, store, workspace, stage } = await fixture();
-    await fs.writeFile(path.join(remote, "edit.txt"), "working tree\r\n");
-    const { input } = await publicationFixture(root);
-    const prepared = await stage("turn-verify", input);
-    const artifact = store.artifactPath(workspace.workspaceId);
-    const refs = (
-      await requireWorkspaceResultGit(artifact, [
-        "for-each-ref",
-        "--format=%(refname)",
-        "refs/openclaw/worker-result-candidates/",
-      ])
-    ).split("\n");
-    const candidates = await Promise.all(
-      refs.map(async (ref) => ({
-        ref,
-        objectId: await requireWorkspaceResultGit(artifact, ["rev-parse", `${ref}^{commit}`]),
-        snapshot: await readStagedWorkerWorkspaceResult(artifact, ref),
-      })),
-    );
-    expect(candidates).toHaveLength(2);
-    const candidate = candidates.find(
-      (value) => (value.snapshot.base.baseCommit === baseCommit) === (target === "recovery"),
-    )!;
-    const other = candidates.find((value) => value !== candidate)!;
-    const tag = await requireWorkspaceResultGit(artifact, ["mktag"], {
-      input: Buffer.from(
-        `object ${candidate.objectId}\ntype commit\ntag checkpoint-peel\ntagger Checkpoint Test <checkpoint@example.invalid> 0 +0000\n\nsame candidate\n`,
-      ),
-    });
-    await requireWorkspaceResultGit(artifact, ["update-ref", candidate.ref, tag]);
-    await prepared.verify();
-    await requireWorkspaceResultGit(artifact, ["update-ref", candidate.ref, other.objectId]);
-    await expect(prepared.verify()).rejects.toThrow(
-      target === "recovery"
-        ? "Repository checkpoint preparation changed"
-        : "Repository publication preparation changed",
-    );
-    await requireWorkspaceResultGit(artifact, ["update-ref", "-d", candidate.ref]);
-    await expect(prepared.verify()).rejects.toThrow();
-    expect((await store.get(workspace.workspaceId))?.checkpointRef).toBeNull();
-    await prepared.discard();
   },
 );
 

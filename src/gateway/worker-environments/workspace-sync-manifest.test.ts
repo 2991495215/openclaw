@@ -471,7 +471,7 @@ process.kill = function(pid, signal) {
     }
   });
 
-  it("restores a dead reclaimer before settling its dead apply owner", async () => {
+  it("settles an interrupted apply after its lock owner dies", async () => {
     const root = tempDirs.make("openclaw-accepted-dead-owner-");
     let workspace = path.join(root, "workspace");
     await fs.mkdir(workspace);
@@ -520,9 +520,7 @@ process.kill = function(pid, signal) {
     expect(rejected.stderr).toContain("invalid workspace mutation lock owner");
     await fs.unlink(invalidEntry);
     const ownerIdentity = ["apply", nonce, deadPid, deadPid, token].join(".");
-    const reclaimToken = "a".repeat(32);
-    const reclaimerIdentity = ["settle", nonce, deadPid, deadPid, reclaimToken].join(".");
-    await fs.writeFile(path.join(lock, `reclaim.${ownerIdentity}.${reclaimerIdentity}`), "");
+    await fs.writeFile(path.join(lock, `owner.${ownerIdentity}`), "");
 
     const settled = await runTransaction("settle");
 
@@ -601,41 +599,7 @@ process.kill = function(pid, signal) {
     expect(published.stdout.trim()).toBe(firstTurnRef);
     await expect(fs.readFile(firstTurnPath, "utf8")).resolves.toBe(firstTurnRaw);
 
-    const legacy = JSON.parse(firstTurnRaw) as {
-      entries: Array<{ path: string; type: string; mode: number }>;
-    };
-    for (const entry of legacy.entries) {
-      if (entry.path === "notes.md") {
-        entry.mode = 0o664;
-      }
-    }
-    legacy.entries.sort((left, right) =>
-      left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
-    );
-    const legacyRaw = JSON.stringify(legacy);
-    const legacyDigest = createHash("sha256").update(legacyRaw).digest("hex");
-    await fs.writeFile(path.join(manifestRoot, `${legacyDigest}.json`), legacyRaw);
-    await fs.rm(firstTurnPath);
-
-    const legacyCanonical = structuredClone(legacy);
-    for (const entry of legacyCanonical.entries) {
-      if (entry.type === "directory") {
-        entry.mode = 0o700;
-      } else if (entry.type === "symlink") {
-        entry.mode = 0o777;
-      } else {
-        entry.mode = (entry.mode & 0o111) === 0 ? 0o644 : 0o755;
-      }
-    }
-    legacyCanonical.entries.sort((left, right) =>
-      left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
-    );
-    const acceptedRaw = JSON.stringify(legacyCanonical);
-    const acceptedDigest = createHash("sha256").update(acceptedRaw).digest("hex");
-    const acceptedRef = `sha256:${acceptedDigest}`;
-    const acceptedPath = path.join(manifestRoot, `${acceptedDigest}.json`);
-
-    const recovered = await runCommandWithTimeout(
+    const resolved = await runCommandWithTimeout(
       [
         process.execPath,
         "-e",
@@ -643,13 +607,13 @@ process.kill = function(pid, signal) {
         workspace,
         "",
         "resolve",
-        acceptedDigest,
+        firstTurnDigest,
       ],
       { timeoutMs: 10_000, baseEnv: env },
     );
-    expect(recovered.code).toBe(0);
-    expect(recovered.stdout.trim()).toBe(acceptedRef);
-    await expect(fs.readFile(acceptedPath, "utf8")).resolves.toBe(acceptedRaw);
+    expect(resolved.code).toBe(0);
+    expect(resolved.stdout.trim()).toBe(firstTurnRef);
+    await expect(fs.readFile(firstTurnPath, "utf8")).resolves.toBe(firstTurnRaw);
 
     await fs.writeFile(path.join(workspace, "notes.md"), "second cloud edit\n");
     const secondTurn = await runCommandWithTimeout(
@@ -660,12 +624,12 @@ process.kill = function(pid, signal) {
         workspace,
         baseCommit,
         "eligible",
-        acceptedDigest,
+        firstTurnDigest,
       ],
       { timeoutMs: 10_000, baseEnv: env },
     );
     expect(secondTurn.code).toBe(0);
-    expect(secondTurn.stdout.trim()).not.toBe(acceptedRef);
+    expect(secondTurn.stdout.trim()).not.toBe(firstTurnRef);
   });
 
   it("keeps base tombstones in the final ignored-path verification", async () => {

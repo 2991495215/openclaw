@@ -1,4 +1,3 @@
-import { isFutureDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
 import { getPreparedModelRuntimeStartupStatus } from "../../agents/prepared-model-runtime.startup-status.js";
 import type { ChannelAccountSnapshot } from "../../channels/plugins/types.public.js";
 import { readChildRuntimeViability } from "../../infra/child-runtime-viability.js";
@@ -88,7 +87,6 @@ export const healthHandlers: GatewayRequestHandlers = {
       !wantsProbe &&
       cached &&
       !cachedDiffersFromRuntime &&
-      !isFutureDateTimestampMs(cached.ts, { nowMs: now }) &&
       now - cached.ts < HEALTH_REFRESH_INTERVAL_MS
     ) {
       const getEventLoopHealth = context.getEventLoopHealth;

@@ -2400,22 +2400,6 @@ describe("gateway healthHandlers.health cache freshness", () => {
     expect(refreshHealthSnapshot).toHaveBeenCalledTimes(2);
   });
 
-  it("refreshes a cached health snapshot dated after the current clock", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-07-28T12:00:00Z"));
-    const cached = createHealthSnapshot({ ts: Date.now() + HEALTH_REFRESH_INTERVAL_MS });
-    const fresh = createHealthSnapshot({ ts: Date.now() });
-
-    const { respond, refreshHealthSnapshot } = await requestHealthSnapshot({ cached, fresh });
-
-    expect(refreshHealthSnapshot).toHaveBeenCalledOnce();
-    expect(respond).toHaveBeenCalledWith(
-      true,
-      { ...fresh, childRuntime: healthyChildRuntime },
-      undefined,
-    );
-  });
-
   it("restarts request-driven health refreshes when the clock moves backward", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-28T12:00:00Z"));
