@@ -11,6 +11,13 @@ title: "Database schemas"
 
 OpenClaw stores control-plane state in the shared state database and agent data in one SQLite database per agent. Schema migrations run forward when a database opens. Older OpenClaw builds refuse databases written by a newer schema.
 
+Update-history workers bound commit-admission waits to one second. On timeout,
+the transaction rolls back before the same worker command retries, preserving
+FIFO ordering and rereading the current rows. Fresh admission waits outside
+`BEGIN IMMEDIATE`, leaving the serving Gateway's writer free while the updater
+host is busy. Authority refusals and uncertain rollback outcomes are not retried;
+required update and recovery records retain their existing durability.
+
 Native SQLite initialization reads the loaded library's version and extension
 capability in one query before admitting real state databases. Auth-profile
 readers install their lock-wait timeout at connection open.
