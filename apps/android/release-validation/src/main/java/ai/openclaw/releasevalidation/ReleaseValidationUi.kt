@@ -69,16 +69,21 @@ internal class ReleaseValidationUi(
       checkNotNull(
         device.wait(
           Condition<UiDevice, AccessibilityNodeInfo?> {
-            try {
-              device.findObject(selector)?.accessibilityNodeInfo?.let { node ->
-                generateSequence(node) { it.parent }
-                  .take(8)
-                  .firstOrNull { it.isClickable && it.isEnabled && it.actionList.contains(action) }
-              }
-            } catch (_: StaleObjectException) {
-              // Reacquire replaced nodes within the existing deadline, before issuing any action.
-              null
-            }
+            // A screen heading and its drawer destination can expose the same text.
+            device
+              .findObjects(selector)
+              .asSequence()
+              .mapNotNull { match ->
+                try {
+                  val node = match.accessibilityNodeInfo
+                  generateSequence(node) { it.parent }.take(8).firstOrNull {
+                    it.isVisibleToUser && it.isClickable && it.isEnabled && it.actionList.contains(action)
+                  }
+                } catch (_: StaleObjectException) {
+                  // Reacquire replaced nodes within the existing deadline, before issuing any action.
+                  null
+                }
+              }.firstOrNull()
           },
           30_000,
         ),
