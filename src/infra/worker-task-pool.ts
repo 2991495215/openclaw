@@ -1,5 +1,6 @@
 import { WorkerTaskPoolCore } from "@openclaw/worker-runtime";
 import { captureRuntimeWorkerSource } from "./runtime-worker-generation.js";
+import { retainNativeWorkerPoolForGeneration } from "./worker-native-lifecycle.js";
 import { createWorkerTaskHost } from "./worker-task-host.js";
 import type {
   WorkerTaskInput,
@@ -22,12 +23,12 @@ function createWorkerTaskPoolCore<Input, Output>(
   const source = captureRuntimeWorkerSource(options.workerUrl);
   const host = createWorkerTaskHost(source, ownerOptions, options.workerClass);
   const core = new WorkerTaskPoolCore<Input, Output>(options, host, dispatch, ownerOptions);
-  // Explicit native owners keep their other domains; this generation still
-  // joins the pool that consumes its code. A default supervisor joins with it.
+  // A native owner in this generation drains domains before pool retirement.
+  // Other native lifetimes stay independent; this code generation still joins its pool.
   const generation = source.runtimeGeneration;
-  const lifetime =
-    generation && !ownerOptions?.nativeSource ? (host.nativeSource ?? generation) : generation;
-  lifetime?.retain(core, () => core.close());
+  if (generation && !retainNativeWorkerPoolForGeneration(host.nativeSource, generation, core)) {
+    generation.retain(core, () => core.close());
+  }
   return core;
 }
 
