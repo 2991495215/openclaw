@@ -76,13 +76,12 @@ export async function createFaceTimeRuntime(params: {
   }
 
   const calls = new FaceTimeCallRegistry<ActiveFaceTimeCall>();
-  const storeOptions = {
-    namespace: "pending-dial",
-    maxEntries: 1,
-    overflowPolicy: "reject-new" as const,
-  };
   const pendingDialStore = new PendingFaceTimeDialStore(
-    params.runtime.state.openKeyedStoreV2(storeOptions),
+    params.runtime.state.openKeyedStoreV2({
+      namespace: "pending-dial",
+      maxEntries: 1,
+      overflowPolicy: "reject-new",
+    }),
   );
   let outboundDialInFlight: Promise<FaceTimeDialResult> | undefined;
   let outboundDialDispatchPending = false;

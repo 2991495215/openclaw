@@ -25,8 +25,7 @@ openclaw gateway restart
   Runtime startup, helper dispatch, and shutdown await the required publications.
   Pending outbound calls reserve admission while persistence waits, preserving the
   same incoming-call policy before and after durable publication.
-  As a first-party plugin, FaceTime supports the current OpenClaw host and uses
-  `openKeyedStoreV2` with atomic comparisons for conditional dial-ID cleanup.
+  The plugin releases with its host and requires the host's V2 state API.
 - `src/helper-rpc.ts` owns bounded loopback IPC with mutual authentication,
   connection-epoch message MACs, replay sequencing, and typed native
   postcondition projection.

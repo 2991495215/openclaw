@@ -14,11 +14,7 @@ import {
 } from "./friend-types.js";
 import type { ReefTrustStateOperations } from "./trust-state-operation.js";
 import { createReefPeerAssertion, type ReefTrustOperationState } from "./trust-store-authority.js";
-import {
-  createReefRejectionRecovery,
-  prepareReefOutboundDelivery,
-  readReefOutboundDelivery,
-} from "./trust-store-delivery.js";
+import { createReefRejectionRecovery, readReefOutboundDelivery } from "./trust-store-delivery.js";
 import {
   REEF_TRUST_STORE_OPTIONS,
   REEF_DELIVERY_STORE_OPTIONS,
@@ -40,7 +36,6 @@ export {
   resolveReefTrustStoreKey,
   ReefPeerTrustChangedError,
 } from "./trust-store-format.js";
-export type ReefTrustStore = WorkerReefTrustStore;
 const operationHandler = {
   moduleName: "trust-state-operation-api.js",
   exportName: "runReefTrustStateOperation",
@@ -53,7 +48,7 @@ function openStores(openStore: PluginRuntime["state"]["openKeyedStoreV2"]) {
   };
 }
 
-class WorkerReefTrustStore {
+export class ReefTrustStore {
   readonly #prefix: string;
   readonly operationState: ReefTrustOperationState;
 
@@ -293,11 +288,6 @@ class WorkerReefTrustStore {
     return this.#write("removeRequest", { key: this.#key(peer), requestId }, [0]);
   }
 
-  prepareOutboundDelivery(peer: string, id: string) {
-    const input = this.#delivery(peer, id);
-    return prepareReefOutboundDelivery(this.#operation(), input);
-  }
-
   async overdueOutboundDeliveries(olderThanMs: number, now = Date.now()) {
     return (
       await this.#read("overdueDeliveries", { prefix: this.#prefix, olderThanMs, now }, [], [0, 1])
@@ -358,10 +348,8 @@ class WorkerReefTrustStore {
   }
 }
 
-export function getReefTrustOperationState(
-  trust: ReefTrustStore,
-): ReefTrustOperationState | undefined {
-  return trust instanceof WorkerReefTrustStore ? trust.operationState : undefined;
+export function getReefTrustOperationState(trust: ReefTrustStore): ReefTrustOperationState {
+  return trust.operationState;
 }
 
 export function openReefTrustStore(
@@ -370,5 +358,5 @@ export function openReefTrustStore(
   assertCurrent?: () => void,
 ): ReefTrustStore {
   const stores = openStores(runtime.state.openKeyedStoreV2);
-  return new WorkerReefTrustStore(stores, config, assertCurrent);
+  return new ReefTrustStore(stores, config, assertCurrent);
 }

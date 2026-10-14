@@ -296,7 +296,7 @@ export const reefPlugin: ChannelPlugin<ReefAccount, unknown, unknown, 2> = {
           });
           return;
         }
-        // Released hosts may ignore the forwarded authority hook.
+        // Refuse revoked peer trust before handing message content to the host.
         assertCurrent();
         await dispatchInboundDirectDm({
           channelIngress: "unsupported",
@@ -361,7 +361,7 @@ export const reefPlugin: ChannelPlugin<ReefAccount, unknown, unknown, 2> = {
             authority.signal.throwIfAborted();
             notice.recovery.assertCurrent();
           };
-          // Reserve may yield; older dispatchers do not recheck this hook.
+          // Reservation may yield; check trust before handing the notice to the host.
           assertCurrent();
           await dispatchInboundDirectDm({
             channelIngress: "unsupported",
@@ -412,7 +412,6 @@ export const reefPlugin: ChannelPlugin<ReefAccount, unknown, unknown, 2> = {
               replyTo: notice.messageId,
               expectedRecipient: notice.recipient,
               resendDisabled: true,
-              prepareDelivery: notice.recovery.prepareOutboundDelivery.bind(notice.recovery),
               recovery: notice.recovery,
             });
           }

@@ -598,7 +598,7 @@ function resolveComfyConfigurationReadiness(
   return undefined;
 }
 
-/** Retained for synchronous SDK consumers through 2026-12-31. */
+/** The released resolveCapabilityModelCandidates SDK needs this hook through 2026-12-31. */
 export function isComfyCapabilityConfigured(params: ComfyCapabilityConfiguredParams): boolean {
   return (
     resolveComfyConfigurationReadiness(params) ??

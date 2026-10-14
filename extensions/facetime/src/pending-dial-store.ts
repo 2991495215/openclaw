@@ -36,6 +36,7 @@ function decodePendingDial(
 export class PendingFaceTimeDialStore {
   #tail: Promise<void> = Promise.resolve();
   readonly #clearing = new Map<string, Promise<boolean>>();
+
   constructor(private readonly store: PluginStateKeyedStore<StoredPendingFaceTimeDial, 2>) {}
 
   async #deleteMatching(expectedDialID: string): Promise<boolean> {

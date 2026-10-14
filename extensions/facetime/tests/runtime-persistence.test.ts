@@ -61,11 +61,10 @@ describe("FaceTime runtime asynchronous persistence", () => {
   });
 
   it.each(["open", "lookup"] as const)(
-    "propagates a V2 %s failure without opening a legacy store",
+    "propagates a V2 %s failure before starting the helper",
     async (stage) => {
       const state = emptyState();
       const failure = new Error("worker state unavailable");
-      const openKeyedStore = vi.fn(() => state);
       const openKeyedStoreV2 = vi.fn(() => {
         if (stage === "open") {
           throw failure;
@@ -76,22 +75,15 @@ describe("FaceTime runtime asynchronous persistence", () => {
         vi.spyOn(state, "lookup").mockRejectedValueOnce(failure);
       }
 
-      await expect(
-        createRuntime(state, undefined, { openKeyedStore, openKeyedStoreV2 }),
-      ).rejects.toBe(failure);
+      await expect(createRuntime(state, undefined, { openKeyedStoreV2 })).rejects.toBe(failure);
       expect(openKeyedStoreV2).toHaveBeenCalledOnce();
-      expect(openKeyedStore).not.toHaveBeenCalled();
       expect(mocks.helper.start).not.toHaveBeenCalled();
     },
   );
 
   it("never dispatches a helper dial when its initial persistence fails", async () => {
     const state = emptyState();
-    const openKeyedStore = vi.fn(() => state);
-    const runtime = await createRuntime(state, undefined, {
-      openKeyedStore,
-      openKeyedStoreV2: () => state,
-    });
+    const runtime = await createRuntime(state);
     const failure = new Error("pending dial publication failed");
     vi.spyOn(state, "register").mockRejectedValueOnce(failure);
     try {
@@ -99,7 +91,6 @@ describe("FaceTime runtime asynchronous persistence", () => {
 
       expect(mocks.helper.startCall).not.toHaveBeenCalled();
       expect(await state.lookup("active")).toBeUndefined();
-      expect(openKeyedStore).not.toHaveBeenCalled();
     } finally {
       await runtime.stop();
     }

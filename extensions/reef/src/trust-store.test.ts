@@ -108,18 +108,17 @@ function nativePeerWriter() {
   });
 }
 
-async function recordDelivery(
+async function seedDelivery(
   store: ReturnType<typeof openReefTrustStore>,
   peer: string,
   id: string,
   binding: ReefOutboundDeliveryBinding,
   options: { resendDisabled?: true } = {},
 ) {
-  const preparation = await store.prepareOutboundDelivery(peer, id);
-  if (!preparation) {
-    throw new Error(`Missing trusted peer ${peer}`);
-  }
-  await preparation.record(binding, options);
+  await store.operationState.deliveries.register(
+    `${store.operationState.identityScope}:${peer}:${id}`,
+    { ...binding, ...options, sentAt: Date.now() },
+  );
 }
 
 async function rejectDelivery(
@@ -214,7 +213,7 @@ describe("ReefTrustStore", () => {
     const binding = { bodyHash: "a".repeat(64), recipient };
     const notice = { lastRejectionAt: 10_000, lastResendAt: 10_100 };
     await store.set("clawd", trustedPeer);
-    await recordDelivery(store, "clawd", id, binding);
+    await seedDelivery(store, "clawd", id, binding);
     await rejectDelivery(store, "clawd", id);
     const recovery = (await store.readOutboundDelivery("clawd", id))!.recovery;
     await recovery.reserve(notice);
@@ -319,7 +318,7 @@ describe("ReefTrustStore", () => {
       const binding = { bodyHash: "a".repeat(64), textHash: "b".repeat(64), recipient };
       const store = openReefTrustStore(runtime(), config());
       await store.set("clawd", trustedPeer);
-      await recordDelivery(store, "clawd", id, binding);
+      await seedDelivery(store, "clawd", id, binding);
       const settlement = (await store.readOutboundDelivery("clawd", id))!;
       const raw = runtime().state.openSyncKeyedStore({
         namespace: "outbound-deliveries",
@@ -341,42 +340,6 @@ describe("ReefTrustStore", () => {
     },
   );
 
-  it("refuses an outbound delivery insert when channel authority closes before worker admission", async () => {
-    const authority = new AbortController();
-    const revoked = new Error("outbound authority closed");
-    const store = openReefTrustStore(runtime(), config(), () => authority.signal.throwIfAborted());
-    const trustedPeer = peerTrust();
-    await store.set("clawd", trustedPeer);
-    const id = "01JZ0000000000000000000126";
-    const preparation = (await store.prepareOutboundDelivery("clawd", id))!;
-    beforeNextOperationWrite(() => authority.abort(revoked));
-    await expect(
-      preparation.record({ bodyHash: "a".repeat(64), recipient: reefPeerIdentity(trustedPeer) }),
-    ).rejects.toThrow("outbound authority closed");
-    expect(
-      await openReefTrustStore(runtime(), config()).readOutboundDelivery("clawd", id),
-    ).toBeUndefined();
-  });
-
-  it("refuses a prepared delivery after a sanctioned peer key rotation", async () => {
-    const store = openReefTrustStore(runtime(), config());
-    const trustedPeer = peerTrust();
-    await store.set("clawd", trustedPeer);
-    const id = "01JZ0000000000000000000135";
-    const preparation = (await store.prepareOutboundDelivery("clawd", id))!;
-    const previous = await store.snapshot("clawd");
-    nativePeerWriter().register(resolveReefTrustStoreKey(config(), "clawd"), {
-      ...previous,
-      revision: previous.revision + 1,
-      trust: peerTrust(),
-    });
-
-    await expect(
-      preparation.record({ bodyHash: "a".repeat(64), recipient: reefPeerIdentity(trustedPeer) }),
-    ).rejects.toThrow("changed trust before dispatch");
-    expect(await store.readOutboundDelivery("clawd", id)).toBeUndefined();
-  });
-
   it("revokes captured peer authority on sanctioned writes without another worker request", async () => {
     const store = openReefTrustStore(runtime(), config());
     await store.set("clawd", peerTrust());
@@ -391,30 +354,23 @@ describe("ReefTrustStore", () => {
     expect(await store.get("clawd")).toBeUndefined();
   });
 
-  it.each(["prepare", "read"] as const)(
-    "rejects a borrowed delivery %s result after channel closure",
-    async (operation) => {
-      const authority = new AbortController();
-      const revoked = new Error("delivery authority closed");
-      const store = openReefTrustStore(runtime(), config(), () =>
-        authority.signal.throwIfAborted(),
-      );
-      await store.set("clawd", peerTrust());
-      nextOperationRead = () => authority.abort(revoked);
-      await expect(
-        operation === "prepare"
-          ? store.prepareOutboundDelivery("clawd", "01JZ0000000000000000000136")
-          : store.readOutboundDelivery("clawd", "01JZ0000000000000000000136"),
-      ).rejects.toBe(revoked);
-    },
-  );
+  it("rejects a borrowed delivery read after channel closure", async () => {
+    const authority = new AbortController();
+    const revoked = new Error("delivery authority closed");
+    const store = openReefTrustStore(runtime(), config(), () => authority.signal.throwIfAborted());
+    await store.set("clawd", peerTrust());
+    nextOperationRead = () => authority.abort(revoked);
+    await expect(store.readOutboundDelivery("clawd", "01JZ0000000000000000000136")).rejects.toBe(
+      revoked,
+    );
+  });
 
   it("preserves a rejection written after the accepted receipt read", async () => {
     const store = openReefTrustStore(runtime(), config());
     const trustedPeer = peerTrust();
     await store.set("clawd", trustedPeer);
     const id = "01JZ0000000000000000000137";
-    await recordDelivery(store, "clawd", id, {
+    await seedDelivery(store, "clawd", id, {
       bodyHash: "a".repeat(64),
       recipient: reefPeerIdentity(trustedPeer),
     });
@@ -489,7 +445,7 @@ describe("ReefTrustStore", () => {
     const textHash = "c".repeat(64);
     const binding = { bodyHash, textHash, recipient };
     await store.set("clawd", trustedPeer);
-    await recordDelivery(store, "clawd", id, binding);
+    await seedDelivery(store, "clawd", id, binding);
 
     expect(await rejectDelivery(store, "clawd", id)).toMatchObject({ category: "guard_deny" });
 
@@ -533,7 +489,7 @@ describe("ReefTrustStore", () => {
     const recipient = reefPeerIdentity(trustedPeer);
     const binding = { bodyHash: "a".repeat(64), recipient };
     await store.set("clawd", trustedPeer);
-    await recordDelivery(store, "clawd", id, binding, { resendDisabled: true });
+    await seedDelivery(store, "clawd", id, binding, { resendDisabled: true });
 
     expect(await rejectDelivery(store, "clawd", id)).toMatchObject({ category: "guard_deny" });
     expect(await store.pendingOutboundRejections()).toMatchObject([
@@ -554,7 +510,7 @@ describe("ReefTrustStore", () => {
     const recipient = reefPeerIdentity(trustedPeer);
     const binding = { bodyHash: "a".repeat(64), recipient };
     await store.set("clawd", trustedPeer);
-    await recordDelivery(store, "clawd", id, binding);
+    await seedDelivery(store, "clawd", id, binding);
     await rejectDelivery(store, "clawd", id);
 
     const selected = (await store.pendingOutboundRejections())[0];
@@ -603,7 +559,7 @@ describe("ReefTrustStore", () => {
         if (!id) {
           throw new Error("Missing fixture delivery id");
         }
-        await recordDelivery(store, peer, id, binding);
+        await seedDelivery(store, peer, id, binding);
         if (kind === "rejections") {
           await rejectDelivery(store, peer, id);
         }
@@ -640,7 +596,7 @@ describe("ReefTrustStore", () => {
     await store.set("clawd", trustedPeer);
     const latestId = "01JZ0000000000000000000122";
     const latestBinding = { bodyHash: "a".repeat(64), recipient };
-    await recordDelivery(store, "clawd", latestId, latestBinding);
+    await seedDelivery(store, "clawd", latestId, latestBinding);
     await rejectDelivery(store, "clawd", latestId);
     const latestState = {
       lastRejectionAt: 10_000,
@@ -652,7 +608,7 @@ describe("ReefTrustStore", () => {
 
     const olderId = "01JZ0000000000000000000123";
     const olderBinding = { bodyHash: "b".repeat(64), recipient };
-    await recordDelivery(reopened, "clawd", olderId, olderBinding);
+    await seedDelivery(reopened, "clawd", olderId, olderBinding);
     await rejectDelivery(reopened, "clawd", olderId);
     const olderState = {
       lastRejectionAt: 9_000,
@@ -826,7 +782,7 @@ describe("ReefTrustStore overdue outbound deliveries", () => {
       textHash: "b".repeat(64),
       recipient: reefPeerIdentity(trustedPeer),
     };
-    await recordDelivery(store, "clawd", id, binding);
+    await seedDelivery(store, "clawd", id, binding);
 
     expect(await store.overdueOutboundDeliveries(OVERDUE_MS)).toEqual([]);
     const later = Date.now() + OVERDUE_MS + 1_000;
@@ -850,14 +806,14 @@ describe("ReefTrustStore overdue outbound deliveries", () => {
       bodyHash: "c".repeat(64),
       recipient: reefPeerIdentity(trustedPeer),
     };
-    await recordDelivery(store, "clawd", rejectedId, rejectedBinding);
+    await seedDelivery(store, "clawd", rejectedId, rejectedBinding);
     expect(await rejectDelivery(store, "clawd", rejectedId)).toMatchObject({
       category: "guard_deny",
     });
 
     const unpinnedId = "01JZ0000000000000000000142";
     await store.set("stranger", trustedPeer);
-    await recordDelivery(store, "stranger", unpinnedId, {
+    await seedDelivery(store, "stranger", unpinnedId, {
       bodyHash: "d".repeat(64),
       recipient: reefPeerIdentity(trustedPeer),
     });

@@ -188,7 +188,7 @@ describe("pending FaceTime dial persistence", () => {
     expect(backend.store.delete).not.toHaveBeenCalled();
   });
 
-  it("propagates a comparison transport failure without retrying or falling back", async () => {
+  it("propagates a comparison transport failure without retrying", async () => {
     const initial: StoredDial = { ...pendingDial(), callUUIDAliases: ["a-call"] };
     const backend = createBackend(initial);
     const failure = new Error("worker transport lost after dispatch");
