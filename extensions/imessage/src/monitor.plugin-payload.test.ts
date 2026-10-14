@@ -296,7 +296,7 @@ describe("iMessage plugin payload attachments", () => {
           }),
         );
       } finally {
-        await bindings.stop();
+        bindings.stop();
         await owner.close();
       }
 
