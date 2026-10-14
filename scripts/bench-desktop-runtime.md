@@ -5,7 +5,8 @@ operator's installed application, Gateway, LaunchAgents, or credentials.
 
 Write a JSON manifest with a `variants` array. Each runtime entry supplies `name`,
 `source_commit`, `runtime`, and a `command` array (executable followed by fixed
-arguments). App entries supply `name`, `app`, and `app_source_commit`. A missing
+arguments). Use absolute paths for executable/file arguments in command arrays;
+children run inside isolated directories. App entries supply `name`, `app`, and `app_source_commit`. A missing
 command or app is skipped; record the build failure in the final report.
 
 ```sh

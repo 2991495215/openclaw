@@ -51,6 +51,7 @@ def main():
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=180)
     args = parser.parse_args()
+    args.output = args.output.resolve()
     if args.trials < 5:
         parser.error("At least five interleaved trials are required")
     args.output.mkdir(parents=True, exist_ok=True)

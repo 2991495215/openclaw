@@ -132,6 +132,7 @@ def main():
     parser.add_argument("--trials", default=5, type=int)
     parser.add_argument("--timeout", default=120, type=float)
     args = parser.parse_args()
+    args.output = args.output.resolve()
     if args.trials < 5:
         parser.error("At least five trials required")
     args.output.mkdir(parents=True, exist_ok=True)
