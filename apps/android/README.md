@@ -629,8 +629,9 @@ Each run freezes its stable Gateway version and dependency lock in an artifact;
 reruns reuse that selection. Missing or invalid saved selections fail instead of
 silently choosing a newer Gateway. Qualification retains sanitized proof and
 synthetic UI screenshots, with no raw Gateway or instrumentation logs or setup
-credentials. Skipped selected tests, crashes, timeouts, and incomplete cleanup
-fail qualification.
+credentials. Failed proof records bounded SDK operation/exit facts and native
+test source locations, excluding command arguments and assertion text. Skipped
+selected tests, crashes, timeouts, and incomplete cleanup fail qualification.
 
 Keep a small physical-device smoke separate, using matching Play-signed phone
 and Wear apps:

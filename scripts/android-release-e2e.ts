@@ -20,6 +20,11 @@ import { registerSealedRuntimeProcessEntrypoint } from "../src/infra/runtime-pro
 import { createOpenClawTestInstance } from "../test/helpers/openclaw-test-instance.js";
 import { applyMockOpenAiModelConfig } from "./e2e/lib/fixtures/mock-openai-config.mjs";
 import {
+  androidReleaseCommandFacts,
+  androidReleaseErrorFacts,
+  androidReleaseNativeFacts,
+} from "./lib/android-release-e2e-diagnostics.js";
+import {
   ANDROID_RELEASE_APPLICATION_ID,
   ANDROID_RELEASE_LONG_REPLY,
   androidReleaseProviderEvidence,
@@ -62,6 +67,7 @@ type Evidence = {
   provider?: unknown;
   emulators?: unknown;
   failure?: string;
+  diagnostics: { stage: string; kind: string; details: unknown }[];
   cleanupConfirmed: boolean;
 };
 
@@ -139,6 +145,12 @@ export async function main(argv = process.argv.slice(2)) {
       "physical hardware, voice, realtime audio, notifications, Tiles and performance",
     ],
     cleanupConfirmed: false,
+    diagnostics: [],
+  };
+  const diagnostic = (kind: string, details: unknown) => {
+    if (evidence.diagnostics.length < 16) {
+      evidence.diagnostics.push({ stage, kind, details });
+    }
   };
   const sdkEnv = resolveAndroidSdkEnv();
   const sdk =
@@ -163,37 +175,57 @@ export async function main(argv = process.argv.slice(2)) {
     let stderr = "";
     const binary: Buffer[] = [];
     const index = ++commandIndex;
-    const code = await runManagedCommand({
-      bin,
-      args,
-      cwd: repo,
-      env,
-      timeoutMs,
-      shell: false,
-      signal: extra.cleanup ? undefined : abort.signal,
-      stdio: [extra.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-      requireProcessTreeExit: true,
-      onReady(child) {
-        if (extra.input !== undefined) {
-          child.stdin?.end(extra.input);
-        }
-        child.stdout?.on("data", (chunk: Buffer) => {
-          if (extra.binaryFile) {
-            binary.push(chunk);
-          } else {
-            stdout = (stdout + chunk.toString()).slice(-16 * 1024 * 1024);
+    const startedAt = Date.now();
+    let code: number;
+    try {
+      code = await runManagedCommand({
+        bin,
+        args,
+        cwd: repo,
+        env,
+        timeoutMs,
+        shell: false,
+        signal: extra.cleanup ? undefined : abort.signal,
+        stdio: [extra.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+        requireProcessTreeExit: true,
+        onReady(child) {
+          if (extra.input !== undefined) {
+            child.stdin?.end(extra.input);
           }
+          child.stdout?.on("data", (chunk: Buffer) => {
+            if (extra.binaryFile) {
+              binary.push(chunk);
+            } else {
+              stdout = (stdout + chunk.toString()).slice(-16 * 1024 * 1024);
+            }
+          });
+          child.stderr?.on("data", (chunk: Buffer) => {
+            stderr = (stderr + chunk.toString()).slice(-16 * 1024 * 1024);
+          });
+        },
+      });
+    } catch (error) {
+      if (!extra.cleanup) {
+        diagnostic("command", {
+          ...androidReleaseCommandFacts(bin, args, stderr),
+          ...androidReleaseErrorFacts(error),
+          elapsedMs: Date.now() - startedAt,
         });
-        child.stderr?.on("data", (chunk: Buffer) => {
-          stderr = (stderr + chunk.toString()).slice(-16 * 1024 * 1024);
-        });
-      },
-    });
+      }
+      throw error;
+    }
     await writeFile(path.join(root, `command-${index}.private.log`), stdout + stderr);
     if (extra.binaryFile) {
       await writeFile(extra.binaryFile, Buffer.concat(binary));
     }
     if (code !== 0) {
+      if (!extra.cleanup) {
+        diagnostic("command", {
+          ...androidReleaseCommandFacts(bin, args, stderr),
+          exitCode: code,
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
       throw new Error(`command-exit-${code}`);
     }
     return stdout.trim();
@@ -642,6 +674,7 @@ export async function main(argv = process.argv.slice(2)) {
       "files/release-setup-code",
     ]);
     async function instrument(device: Device, releasePhase: string) {
+      phase(`${device.role}-${releasePhase}-launch`);
       await deviceCommand(device, ["shell", "input", "keyevent", "224"]);
       await deviceCommand(device, ["shell", "wm", "dismiss-keyguard"]);
       let text = "";
@@ -698,6 +731,11 @@ export async function main(argv = process.argv.slice(2)) {
             !/OK \(1 test\)/u.test(text) ||
             /FAILURES!!!|INSTRUMENTATION_FAILED/u.test(text)
           ) {
+            diagnostic("native", {
+              role: device.role,
+              phase: releasePhase,
+              ...androidReleaseNativeFacts(text),
+            });
             throw new Error("native-test-failed");
           }
         })
@@ -722,6 +760,11 @@ export async function main(argv = process.argv.slice(2)) {
                 text,
               )
             ) {
+              diagnostic("native", {
+                role: device.role,
+                phase: releasePhase,
+                ...androidReleaseNativeFacts(text),
+              });
               throw new Error("native-test-failed");
             }
             return text.includes(`OPENCLAW_ANDROID_PHASE_READY ${name}`) ? true : undefined;
@@ -730,6 +773,7 @@ export async function main(argv = process.argv.slice(2)) {
           transports.push(
             androidReleaseTransportSnapshot(await control(device, "health"), device.role, name),
           );
+          phase(`${device.role}-${name}-screenshots`);
           await deviceCommand(device, [
             "pull",
             `/sdcard/Android/data/${applicationId}/files/release-validation/.`,
@@ -744,6 +788,7 @@ export async function main(argv = process.argv.slice(2)) {
     }
     const firstPhone = await instrument(phone, "initial");
     await firstPhone.ready("initial");
+    phase("phone-setup-cleanup");
     await deviceCommand(phone, [
       "shell",
       "run-as",
@@ -787,6 +832,7 @@ export async function main(argv = process.argv.slice(2)) {
     evidence.status = "passed";
   } catch (error) {
     evidence.failure = stage;
+    diagnostic("runner", androidReleaseErrorFacts(error));
     if (hasUnjoinedWork(error)) {
       preserveRoot = true;
     }
