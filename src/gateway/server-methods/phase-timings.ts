@@ -31,7 +31,7 @@ export function createPhaseTimings<Phase extends string>() {
             phase = next;
           }
         },
-        finish() {
+        finish(this: void) {
           scope.mark();
           active.delete(record);
         },

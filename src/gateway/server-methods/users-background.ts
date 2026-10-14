@@ -25,7 +25,7 @@ import { defineValidatedGatewayHandler, type Validator } from "./validation.js";
 
 /** Bind private profile work to this live human connection before asynchronous image decoding. */
 export async function prepareUserBackgroundAction(
-  options: GatewayRequestHandlerOptions,
+  options: Omit<GatewayRequestHandlerOptions, "params">,
   scope: "operator.read" | "operator.write",
 ) {
   const { client, context } = options;
@@ -76,7 +76,7 @@ export async function prepareUserBackgroundAction(
   return { owner, assertCurrent };
 }
 
-function backgroundHandler<P extends Record<string, unknown>>(
+function backgroundHandler<P extends object>(
   operation: "get" | "upload" | "remove",
   validate: Validator<P>,
   run: (

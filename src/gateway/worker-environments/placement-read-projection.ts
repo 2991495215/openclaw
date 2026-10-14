@@ -161,7 +161,43 @@ function readProjectionRows(
   const moves = moveRows(db, sessionIds, schema);
   const environments = query
     .selectFrom("worker_environments")
-    .selectAll()
+    .select([
+      "environment_id",
+      "provider_id",
+      "profile_id",
+      "profile_snapshot_json",
+      "preparation_consumed_at_ms",
+      "preparation_demand_at_ms",
+      "preparation_expires_at_ms",
+      "preparation_key",
+      "preparation_purpose",
+      "provision_operation_id",
+      "node_setup_id",
+      "node_device_id",
+      "shared_host",
+      "lease_id",
+      "ssh_host",
+      "ssh_port",
+      "ssh_user",
+      "ssh_host_key",
+      "ssh_key_ref_json",
+      "desktop_json",
+      "bootstrap_bundle_hash",
+      "bootstrap_openclaw_version",
+      "bootstrap_protocol_features_json",
+      "bootstrap_install_kind",
+      "owner_epoch",
+      "teardown_terminal_state",
+      "state",
+      "attached_session_ids_json",
+      "created_at_ms",
+      "updated_at_ms",
+      "state_changed_at_ms",
+      "last_activated_at_ms",
+      "idle_since_at_ms",
+      "destroy_requested_at_ms",
+      "last_error",
+    ])
     .where(
       "environment_id",
       "in",
@@ -205,7 +241,7 @@ export function readWorkerSessionPlacementProjectionInDatabase(
         sessionIds.slice(offset, offset + PROJECTION_BATCH_SIZE),
         schema,
       );
-      // SAFETY: jsonArrayFrom serializes the typed placement selection; fromRow validates its domain shape.
+      // SAFETY: jsonArrayFrom serializes the $assertType-checked placement selection; fromRow validates its domain shape.
       for (const row of JSON.parse(rows.placements, revivePlacementProjectionInteger) as Selectable<
         StateDatabase["worker_session_placements"]
       >[]) {

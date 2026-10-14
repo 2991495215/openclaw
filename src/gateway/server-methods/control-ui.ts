@@ -564,7 +564,7 @@ export function createControlUiHandlers(
             : gitHubPublicApi.formatControlUiGitHubPreviewError(error).message;
         respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, message));
       } finally {
-        await preparedSession?.release();
+        preparedSession?.release();
       }
     },
     "controlUi.sessionPullRequests.subscribe": async ({ params, client, context, respond }) => {
