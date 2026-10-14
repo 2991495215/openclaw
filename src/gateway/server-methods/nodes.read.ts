@@ -2,6 +2,8 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import {
   ErrorCodes,
   errorShape,
+  type NodePluginToolsUpdateParams,
+  type NodeSkillsUpdateParams,
   validateNodeDescribeParams,
   validateNodeListParams,
   validateNodePluginToolsUpdateParams,
@@ -32,7 +34,7 @@ import { nodeInvokePolicy } from "./nodes-policy.js";
 import { respondUnavailableOnThrow } from "./response.js";
 import type { GatewayClient, GatewayRequestContext, RespondFn } from "./shared-types.js";
 import type { GatewayRequestHandler, GatewayRequestHandlers } from "./types.js";
-import { assertValidParams } from "./validation.js";
+import { assertValidParams, defineValidatedGatewayHandler } from "./validation.js";
 
 function safeNodeReadProjection(
   node: NodeListNode,
@@ -194,6 +196,39 @@ export function refreshConnectedNodeSurfaceCaches(params: {
   );
 }
 
+function nodeCatalogUpdateHandler(operation: "pluginTools" | "skills"): GatewayRequestHandler {
+  return defineValidatedGatewayHandler<NodePluginToolsUpdateParams | NodeSkillsUpdateParams>(
+    `node.${operation}.update`,
+    operation === "pluginTools"
+      ? validateNodePluginToolsUpdateParams
+      : validateNodeSkillsUpdateParams,
+    ({ params, respond, client, context }) => {
+      const nodeId = normalizeOptionalString(
+        client?.connect?.device?.id ?? client?.connect?.client?.id,
+      );
+      if (!nodeId) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "nodeId required"));
+        return;
+      }
+      const updated =
+        "tools" in params
+          ? context.nodeRegistry.updateNodePluginTools(nodeId, client?.connId, params.tools)
+          : context.nodeRegistry.updateNodeSkills(nodeId, client?.connId, params.skills);
+      if (!updated) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown nodeId"));
+        return;
+      }
+      respond(
+        true,
+        "tools" in params
+          ? { nodeId, tools: updated.nodePluginTools }
+          : { nodeId, skills: updated.nodeSkills },
+        undefined,
+      );
+    },
+  );
+}
+
 export const nodeReadHandlers: GatewayRequestHandlers = {
   "node.list": async ({ params, respond, client, context }) => {
     if (!assertValidParams(params, validateNodeListParams, "node.list", respond)) {
@@ -247,53 +282,8 @@ export const nodeReadHandlers: GatewayRequestHandlers = {
   },
   "plugin.surface.refresh": handlePluginSurfaceRefresh,
   "node.pluginSurface.refresh": handlePluginSurfaceRefresh,
-  "node.pluginTools.update": async ({ params, respond, client, context }) => {
-    if (
-      !assertValidParams(
-        params,
-        validateNodePluginToolsUpdateParams,
-        "node.pluginTools.update",
-        respond,
-      )
-    ) {
-      return;
-    }
-    const nodeId = normalizeOptionalString(
-      client?.connect?.device?.id ?? client?.connect?.client?.id,
-    );
-    if (!nodeId) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "nodeId required"));
-      return;
-    }
-    const updated = context.nodeRegistry.updateNodePluginTools(
-      nodeId,
-      client?.connId,
-      params.tools,
-    );
-    if (!updated) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown nodeId"));
-      return;
-    }
-    respond(true, { nodeId, tools: updated.nodePluginTools }, undefined);
-  },
-  "node.skills.update": async ({ params, respond, client, context }) => {
-    if (!assertValidParams(params, validateNodeSkillsUpdateParams, "node.skills.update", respond)) {
-      return;
-    }
-    const nodeId = normalizeOptionalString(
-      client?.connect?.device?.id ?? client?.connect?.client?.id,
-    );
-    if (!nodeId) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "nodeId required"));
-      return;
-    }
-    const updated = context.nodeRegistry.updateNodeSkills(nodeId, client?.connId, params.skills);
-    if (!updated) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown nodeId"));
-      return;
-    }
-    respond(true, { nodeId, skills: updated.nodeSkills }, undefined);
-  },
+  "node.pluginTools.update": nodeCatalogUpdateHandler("pluginTools"),
+  "node.skills.update": nodeCatalogUpdateHandler("skills"),
   "node.runnerInventory.update": async ({ params, respond, client, context }) => {
     const declaration = parseNodeRunnerInventoryDeclaration(params);
     if (!declaration) {
