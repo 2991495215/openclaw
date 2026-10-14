@@ -4,7 +4,6 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Instrumentation
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
@@ -65,10 +64,11 @@ internal class ReleaseValidationUi(
     selector: BySelector,
     label: String,
   ): Boolean {
+    val action = AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK
     val target =
       checkNotNull(
         device.wait(
-          Condition<UiDevice, Point?> {
+          Condition<UiDevice, AccessibilityNodeInfo?> {
             // A screen heading and its drawer destination can expose the same text.
             device
               .findObjects(selector)
@@ -79,10 +79,7 @@ internal class ReleaseValidationUi(
                   generateSequence(node) { it.parent }
                     .take(8)
                     .firstOrNull {
-                      it.isVisibleToUser && it.isEnabled && (it.isClickable || it.isSelected)
-                    }?.let { target ->
-                      val bounds = Rect().also(target::getBoundsInScreen)
-                      if (bounds.isEmpty) null else Point(bounds.centerX(), bounds.centerY())
+                      it.isVisibleToUser && it.isEnabled && (it.actionList.contains(action) || it.isSelected)
                     }
                 } catch (_: StaleObjectException) {
                   // Reacquire replaced nodes within the existing deadline, before issuing any action.
@@ -93,8 +90,11 @@ internal class ReleaseValidationUi(
           30_000,
         ),
       ) { "$label: native tap target was not exposed" }
-    // Compose omits click actions for selected items; use the same native tap as UiObject2.click.
-    return device.click(target.x, target.y)
+    if (target.actionList.contains(action)) return target.performAction(action.id)
+    // Compose omits click actions for selected tabs; only those need a native tap.
+    val bounds = Rect().also(target::getBoundsInScreen)
+    check(!bounds.isEmpty) { "$label: selected tab bounds were empty" }
+    return device.click(bounds.centerX(), bounds.centerY())
   }
 
   fun swipe(forward: Boolean) {
