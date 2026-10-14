@@ -2,7 +2,16 @@
 import fs from "node:fs/promises";
 import { Agent, request as httpRequest } from "node:http";
 import path from "node:path";
-import { afterEach, assert, describe, expect, test, vi, type TestContext } from "vitest";
+import {
+  afterEach,
+  assert,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+  type TestContext,
+} from "vitest";
 import { createFixtureLifetime } from "../../test/helpers/fixture-lifetime.js";
 import {
   awaitGateBeforeSettlement,
@@ -14,6 +23,11 @@ import { withFullRuntimeReplyConfig } from "../auto-reply/reply/get-reply-fast-p
 import { getReplyFromConfig } from "../auto-reply/reply/get-reply.js";
 import * as sessionEventHandoff from "../auto-reply/reply/session-event-handoff.js";
 import { getRuntimeConfig } from "../config/config.js";
+import { runtimeConfigPublication } from "../config/runtime-config-publication.js";
+import {
+  getRuntimeConfigSnapshot,
+  getRuntimeConfigSnapshotMetadata,
+} from "../config/runtime-snapshot.js";
 import { resolveMainSessionKeyFromConfig } from "../config/sessions/main-session.runtime.js";
 import type { CronLaneWaitCallback } from "../cron/isolated-agent/run.types.js";
 import { DEFAULT_WEBHOOK_MAX_BODY_BYTES } from "../infra/http-body.js";
@@ -243,6 +257,67 @@ async function createBlockedHookTransform(moduleName: string): Promise<{
   };
 }
 
+function traceHookConfigPublications() {
+  const descriptor = Object.getOwnPropertyDescriptor(runtimeConfigPublication, "current");
+  assert(
+    descriptor?.configurable && descriptor.writable && "value" in descriptor,
+    "expected writable publication data property",
+  );
+  let current = runtimeConfigPublication.current;
+  const publications: {
+    revision: number | undefined;
+    sameConfig: boolean;
+    samePublication: boolean;
+    frames: string[];
+  }[] = [];
+  Object.defineProperty(runtimeConfigPublication, "current", {
+    configurable: descriptor.configurable,
+    enumerable: descriptor.enumerable,
+    get: () => current,
+    set: (next: typeof current) => {
+      publications.push({
+        revision: getRuntimeConfigSnapshotMetadata()?.revision,
+        sameConfig: next?.config === current?.config,
+        samePublication: next?.revision === current?.revision,
+        frames: (new Error("runtime config publication").stack ?? "")
+          .split("\n")
+          .map((line) => line.replaceAll("\\", "/"))
+          .filter((line) => line.includes("/src/"))
+          .slice(0, 8),
+      });
+      if (publications.length > 32) {
+        publications.shift();
+      }
+      current = next;
+    },
+  });
+  onTestFinished(() => {
+    Object.defineProperty(runtimeConfigPublication, "current", { ...descriptor, value: current });
+  });
+  return {
+    capture() {
+      const config = getRuntimeConfigSnapshot();
+      const metadata = getRuntimeConfigSnapshotMetadata();
+      return (receipt: ReturnType<typeof sessionEventHandoff.enqueueSessionEventForHost>) => {
+        void receipt.accepted.then((result) => {
+          if (!result.ok) {
+            console.error(
+              "[hook-publication-trace]",
+              JSON.stringify({
+                capturedRevision: metadata?.revision,
+                currentRevision: getRuntimeConfigSnapshotMetadata()?.revision,
+                sameConfig: getRuntimeConfigSnapshot() === config,
+                samePublication: getRuntimeConfigSnapshotMetadata() === metadata,
+                publications,
+              }),
+            );
+          }
+        });
+      };
+    },
+  };
+}
+
 function mockHookEventReply() {
   gatewayReplyMock.mockImplementation((ctx, options, config) =>
     getReplyFromConfig(ctx, options, withFullRuntimeReplyConfig(config ?? getRuntimeConfig())),
@@ -293,12 +368,15 @@ function withRevokedHook(
             string,
             ReturnType<typeof sessionEventHandoff.enqueueSessionEventForHost>
           >();
+          const publicationTrace = traceHookConfigPublications();
           const enqueue = sessionEventHandoff.enqueueSessionEventForHost;
           const eventObserver = vi
             .spyOn(sessionEventHandoff, "enqueueSessionEventForHost")
             .mockImplementation((text, options) => {
+              const observe = publicationTrace.capture();
               const receipt = enqueue(text, options);
               if (options.source === "hook") {
+                observe(receipt);
                 receipts.set(text, receipt);
               }
               return receipt;
@@ -633,12 +711,15 @@ describe("gateway hook admission", () => {
           >();
           const firstNotice =
             createDeferred<ReturnType<typeof sessionEventHandoff.enqueueSessionEventForHost>>();
+          const publicationTrace = traceHookConfigPublications();
           const enqueue = sessionEventHandoff.enqueueSessionEventForHost;
           const eventObserver = vi
             .spyOn(sessionEventHandoff, "enqueueSessionEventForHost")
             .mockImplementation((text, options) => {
+              const observe = publicationTrace.capture();
               const receipt = enqueue(text, options);
               if (options.source === "hook") {
+                observe(receipt);
                 receipts.add(receipt);
                 firstNotice.resolve(receipt);
               }
