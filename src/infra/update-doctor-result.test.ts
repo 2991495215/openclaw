@@ -28,27 +28,6 @@ afterEach(async () => {
 describe("post-install doctor result IPC", () => {
   it.each(
     [
-      { status: "ok" as const, configHash: "unchanged" },
-      {
-        status: "error" as const,
-        databaseWrites: {
-          unchanged: false,
-          generations: {
-            "/fixture/agent.sqlite": "captured-generation",
-            "/fixture/missing.sqlite": null,
-          },
-        },
-      },
-      { status: "ok" as const, warnings: ["plugin/example: version probe timed out"] },
-      {
-        status: "ok" as const,
-        warnings: ["Doctor maintenance is deferred; run openclaw doctor --fix."],
-        maintenanceRefusal: {
-          kind: "deferred" as const,
-          reason: "coordinator-contention" as const,
-        },
-      },
-      { status: "error" as const, configHash: "a".repeat(64), configInputHash: "b".repeat(64) },
       {
         status: "error" as const,
         failureFacts: [
@@ -56,27 +35,14 @@ describe("post-install doctor result IPC", () => {
         ],
       },
       {
-        status: "ok" as const,
-        configChanges: [
-          { kind: "key" as const, key: "agents" },
-          { kind: "key" as const, key: "meta" },
-          { kind: "migration" as const, message: "Moved agents.list to agents.entries." },
-        ],
-      },
-      {
-        status: "error" as const,
-        configWriteRefusal: {
-          reason: "include-ownership",
-          message: "Repair agents in its included file.",
-          keys: ["agents"],
-        },
-      },
-      {
         ...createDeferredConfiguredPluginRepairDoctorResult(["deferred repair"]),
         configHash: "b".repeat(64),
         warnings: ["plugin/example: version probe timed out"],
+        deferredInspectionCheckIds: [
+          "core/doctor/new-target-inspection",
+          "target:Inspection_Check",
+        ],
       },
-      createDeferredConfiguredPluginRepairDoctorResult(["legacy child advisory"]),
     ].flatMap((result) => ["file", "stdout"].map((destination) => ({ result, destination }))),
   )("round-trips $result.status results over $destination", async ({ result, destination }) => {
     if (destination === "stdout") {

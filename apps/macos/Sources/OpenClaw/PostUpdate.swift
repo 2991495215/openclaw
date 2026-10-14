@@ -972,6 +972,25 @@ extension PostUpdateController {
         }
     }
 
+    private static func currentBundledRuntimeIsReady() -> Bool {
+        let manager = GatewayProcessManager.shared
+        guard manager.usesSeededGateway, manager.desiredActive,
+              !AppStateStore.shared.isPaused, !manager.isTerminating,
+              let runtime = try? BundledRuntime.seeded(),
+              (try? BundledRuntime.resolve(root: runtime.root, bundle: .main)) != nil
+        else { return false }
+        switch manager.status {
+        case .running, .attachedExisting:
+            break
+        default:
+            return false
+        }
+        // App-owned children were seeded by this launch. Services can still pin an
+        // older concrete build even when runtime/current already points at this app.
+        return manager.hasAppHostedGateway ||
+            GatewayLaunchAgentManager.installedServiceCLI()?.matchesBundledRuntime(runtime) == true
+    }
+
     static func captureRuntimeContext(
         connectionMode: AppState.ConnectionMode,
         bundledApp: Bool,
@@ -1103,7 +1122,7 @@ extension PostUpdateController {
         source: GatewayProcessManager.ActivationSource,
         generation: UInt64) async -> PostUpdateRuntimeVerification
     {
-        guard self.markGatewayUpdateIncomplete(receipt: receipt) else { return .failed }
+        self.markGatewayUpdateIncomplete(receipt: receipt)
         let dispatchedReceipt = self.receipt ?? receipt
         self.model.phase = .updating
         self.model.message = String(localized: "Preparing the bundled Gateway runtime…")
@@ -1113,9 +1132,9 @@ extension PostUpdateController {
                 source: self.activationSource(source, generation: generation))
             switch activation {
             case .ready:
-                // Bundled preparation joins Doctor and activation before settling this version's core checkpoint.
+                // Bundled preparation joins Doctor and activation before settling this exact core checkpoint.
                 self.receipt = PostAppUpdateReceiptStore.completeCoreRepair(
-                    currentVersion: dispatchedReceipt.toVersion, owner: .gateway) ?? self.receipt
+                    receipt: dispatchedReceipt, owner: .gateway)
                 return .verified
             case .deferred: return .deferred
             case let .failed(reason):
