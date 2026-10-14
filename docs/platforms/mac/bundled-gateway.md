@@ -68,6 +68,11 @@ The `runtime/current` symlink selects the runtime for the terminal CLI shim.
 The app retains the current and previous builds; older copies are removed only
 after Gateway health succeeds and no process runs from them.
 
+In this prototype, helper-only profiles retain every prepared build. Cleanup
+requires both current and previous Gateway adoption links, so it cannot reclaim
+those copies until two distinct builds have been adopted and Gateway health
+succeeds. Each additional build and profile needs another expanded resource tree.
+
 For an app-owned full Gateway payload, packaging writes
 `openclaw-install-owner.json` at the OpenClaw package root with `schemaVersion: 1`,
 `owner: "macos-app"`, `displayName: "OpenClaw.app"`, and
