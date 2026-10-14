@@ -1,4 +1,4 @@
-// ClawHub discovery and exact-artifact resolution for official Claws.
+// ClawHub metadata and exact-artifact resolution for official Claws.
 import fs from "node:fs/promises";
 import { flattenMarkdownToPlainText } from "@openclaw/normalization-core/markdown-plain-text";
 import { isRecord as isJsonObject } from "@openclaw/normalization-core/record-coerce";
@@ -11,10 +11,7 @@ import {
   fetchClawHubPackageArtifact,
   fetchClawHubPackageDetail,
   fetchClawHubPackageVersion,
-  listClawHubPackages,
-  searchClawHubPackages,
   type ClawHubPackageDetail,
-  type ClawHubPackageListItem,
 } from "../infra/clawhub-packages.js";
 import { withExtractedArchiveRoot } from "../infra/install-flow.js";
 import { parseRegistryNpmSpec } from "../infra/npm-registry-spec.js";
@@ -35,8 +32,6 @@ import { isExactSemVer } from "./schema-portability.js";
 export type { ClawHubClawCatalogPreview } from "./clawhub-preview-content.js";
 export { ClawHubSourceError };
 
-const CATALOG_PAGE_SIZE = 100;
-const MAX_CATALOG_PAGES = 20;
 const MAX_CONTENT_EXCERPT_CHARS = 2048;
 
 function toCatalogExcerpt(content: string | undefined): string {
@@ -83,7 +78,7 @@ function isOfficialClawName(name: string): boolean {
   return spec?.selectorKind === "none" && spec.name === name && name.startsWith("@openclaw/");
 }
 
-function isOfficialClawPackage(pkg: unknown): pkg is ClawHubPackageListItem {
+function isOfficialClawPackage(pkg: unknown): pkg is NonNullable<ClawHubPackageDetail["package"]> {
   return (
     isJsonObject(pkg) &&
     typeof pkg.name === "string" &&
@@ -99,10 +94,6 @@ function isOfficialClawPackage(pkg: unknown): pkg is ClawHubPackageListItem {
     pkg.isOfficial === true &&
     isOfficialClawName(pkg.name)
   );
-}
-
-function isOfficialClawListItem(pkg: unknown): pkg is ClawHubPackageListItem {
-  return isOfficialClawPackage(pkg) && pkg.ownerHandle === "openclaw";
 }
 
 function requireOfficialClawPackage(detail: ClawHubPackageDetail, requestedName: string) {
@@ -140,7 +131,9 @@ function requireExactVersion(version: string): void {
   }
 }
 
-function projectCatalogEntry(pkg: ClawHubPackageListItem): ClawHubClawCatalogEntry {
+function projectCatalogEntry(
+  pkg: NonNullable<ClawHubPackageDetail["package"]>,
+): ClawHubClawCatalogEntry {
   const downloads = pkg.stats?.downloads;
   return {
     packageName: pkg.name,
@@ -153,10 +146,6 @@ function projectCatalogEntry(pkg: ClawHubPackageListItem): ClawHubClawCatalogEnt
       typeof downloads === "number" && Number.isFinite(downloads) ? Math.max(0, downloads) : 0,
     updatedAtMs: Math.max(0, pkg.updatedAt),
   };
-}
-
-function projectOfficialEntries(packages: unknown[]): ClawHubClawCatalogEntry[] {
-  return packages.filter(isOfficialClawListItem).map(projectCatalogEntry);
 }
 
 function readExactClawArtifact(value: unknown, coordinate: ClawHubCoordinate) {
@@ -206,65 +195,6 @@ function readExactClawArtifact(value: unknown, coordinate: ClawHubCoordinate) {
     npmIntegrity: value.npmIntegrity,
     ...(typeof value.npmShasum === "string" ? { npmShasum: value.npmShasum } : {}),
   };
-}
-
-export async function listClawHubClaws(
-  params: ClawHubFetchOptions & { limit?: number } = {},
-): Promise<ClawHubClawCatalogEntry[]> {
-  const entries = new Map<string, ClawHubClawCatalogEntry>();
-  const seenCursors = new Set<string>();
-  const requestedLimit = params.limit && params.limit > 0 ? params.limit : undefined;
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_CATALOG_PAGES; page += 1) {
-    const result = await listClawHubPackages({
-      ...params,
-      family: "claw",
-      isOfficial: true,
-      limit: Math.min(
-        CATALOG_PAGE_SIZE,
-        requestedLimit ? requestedLimit - entries.size : CATALOG_PAGE_SIZE,
-      ),
-      ...(cursor ? { cursor } : {}),
-    });
-    for (const entry of projectOfficialEntries(result.items)) {
-      entries.set(entry.packageName, entry);
-      if (requestedLimit && entries.size >= requestedLimit) {
-        return [...entries.values()];
-      }
-    }
-    if (result.nextCursor === null) {
-      return [...entries.values()];
-    }
-    if (!result.nextCursor || seenCursors.has(result.nextCursor)) {
-      throw new ClawHubSourceError(
-        "clawhub_catalog_cursor_invalid",
-        "ClawHub returned a repeating catalog cursor.",
-      );
-    }
-    seenCursors.add(result.nextCursor);
-    cursor = result.nextCursor;
-  }
-  throw new ClawHubSourceError(
-    "clawhub_catalog_too_large",
-    "ClawHub returned too many catalog pages for this request.",
-  );
-}
-
-export async function searchClawHubClaws(
-  params: ClawHubFetchOptions & { query: string; limit?: number },
-): Promise<ClawHubClawCatalogEntry[]> {
-  const query = params.query.trim();
-  if (!query) {
-    return await listClawHubClaws(params);
-  }
-  const results = await searchClawHubPackages({
-    ...params,
-    query,
-    family: "claw",
-    isOfficial: true,
-    limit: params.limit ?? CATALOG_PAGE_SIZE,
-  });
-  return projectOfficialEntries(results.map((result) => result.package));
 }
 
 export async function readClawHubClawDetail(

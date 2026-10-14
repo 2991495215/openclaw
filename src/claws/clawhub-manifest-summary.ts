@@ -1,8 +1,10 @@
 import { isRecord as isJsonObject } from "@openclaw/normalization-core/record-coerce";
-import type { ClawHubClawManifestSummary } from "../infra/clawhub-packages.js";
+import type { ClawHubPackageVersion } from "../infra/clawhub-packages.js";
 import { ClawHubSourceError } from "./clawhub-source-artifact.js";
 
-export function parseClawManifestSummary(value: unknown): ClawHubClawManifestSummary {
+export function parseClawManifestSummary(
+  value: unknown,
+): NonNullable<NonNullable<ClawHubPackageVersion["version"]>["clawManifestSummary"]> {
   if (!isJsonObject(value) || value.schemaVersion !== 1) {
     throw new ClawHubSourceError(
       "clawhub_manifest_summary_missing",

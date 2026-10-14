@@ -6,8 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTrackedTempDirs } from "../test-utils/tracked-temp-dirs.js";
 
 const mocks = vi.hoisted(() => ({
-  list: vi.fn(),
-  search: vi.fn(),
   detail: vi.fn(),
   version: vi.fn(),
   artifact: vi.fn(),
@@ -21,8 +19,6 @@ const mocks = vi.hoisted(() => ({
 
 // mock-isolation: Catalog responses are fixed fixtures; no live registry request may escape.
 vi.mock("../infra/clawhub-packages.js", () => ({
-  listClawHubPackages: mocks.list,
-  searchClawHubPackages: mocks.search,
   fetchClawHubPackageDetail: mocks.detail,
   fetchClawHubPackageVersion: mocks.version,
   fetchClawHubPackageArtifact: mocks.artifact,
@@ -51,10 +47,8 @@ vi.mock("./reader.js", () => ({
 
 import {
   ClawHubSourceError,
-  listClawHubClaws,
   readClawHubClawDetail,
   readClawHubClawPreview,
-  searchClawHubClaws,
   withResolvedClawHubSource,
 } from "./clawhub-source.js";
 import type { ClawManifest } from "./types.js";
@@ -249,83 +243,6 @@ afterEach(async () => {
 });
 
 describe("official ClawHub Claw catalog", () => {
-  it("loads all 30 official starters across paginated list responses", async () => {
-    const first = Array.from({ length: 25 }, (_, index) =>
-      officialPackage(`@openclaw/starter-${index}`),
-    );
-    const second = Array.from({ length: 5 }, (_, index) =>
-      officialPackage(`@openclaw/starter-${index + 25}`),
-    );
-    mocks.list
-      .mockResolvedValueOnce({
-        items: [...first, officialPackage("@other/impostor")],
-        nextCursor: "page 2",
-      })
-      .mockResolvedValueOnce({ items: second, nextCursor: null });
-
-    const result = await listClawHubClaws();
-
-    expect(result).toHaveLength(30);
-    expect(result[0]).toMatchObject({ packageName: "@openclaw/starter-0", official: true });
-    expect(result.at(-1)?.packageName).toBe("@openclaw/starter-29");
-    expect(mocks.list).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ family: "claw", isOfficial: true, limit: 100 }),
-    );
-    expect(mocks.list).toHaveBeenNthCalledWith(2, expect.objectContaining({ cursor: "page 2" }));
-  });
-
-  it("uses list for a blank query and filters typed search to the official publisher", async () => {
-    mocks.list.mockResolvedValue({ items: [officialPackage()], nextCursor: null });
-    await expect(searchClawHubClaws({ query: "  " })).resolves.toHaveLength(1);
-    expect(mocks.search).not.toHaveBeenCalled();
-
-    mocks.search.mockResolvedValue([
-      { score: 1, package: officialPackage() },
-      { score: 1, package: officialPackage("@other/impostor") },
-      { score: 1, package: { ...officialPackage(), ownerHandle: "someone-else" } },
-      { score: 1, package: { ...officialPackage(), name: 42 } },
-    ]);
-    const result = await searchClawHubClaws({ query: "research" });
-    expect(result.map((item) => item.packageName)).toEqual([packageName]);
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ query: "research", family: "claw", isOfficial: true, limit: 100 }),
-    );
-  });
-
-  it("honors the starter catalog limit for a blank query", async () => {
-    mocks.list.mockResolvedValue({
-      items: [officialPackage("@openclaw/first"), officialPackage("@openclaw/second")],
-      nextCursor: "page 2",
-    });
-
-    const entries = await searchClawHubClaws({ query: " ", limit: 1 });
-
-    expect(entries.map((entry) => entry.packageName)).toEqual(["@openclaw/first"]);
-    expect(mocks.list).toHaveBeenCalledOnce();
-    expect(mocks.list).toHaveBeenCalledWith(
-      expect.objectContaining({ family: "claw", isOfficial: true, limit: 1 }),
-    );
-  });
-
-  it("finds an official match when community matches fill the search cap", async () => {
-    mocks.search.mockImplementation(async ({ isOfficial, limit }) =>
-      isOfficial
-        ? [{ score: 1, package: officialPackage() }]
-        : Array.from({ length: limit }, (_, index) => ({
-            score: 1,
-            package: { ...officialPackage(`@community/result-${index}`), isOfficial: false },
-          })),
-    );
-
-    await expect(searchClawHubClaws({ query: "research", limit: 1 })).resolves.toMatchObject([
-      { packageName },
-    ]);
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ query: "research", family: "claw", isOfficial: true, limit: 1 }),
-    );
-  });
-
   it("projects exact-release contents from the verified archive", async () => {
     mocks.skillCard.mockResolvedValueOnce(
       "---\nname: citation-check\ndescription: Metadata description\n---\n# Citation check\n",
@@ -523,11 +440,6 @@ describe("official ClawHub Claw catalog", () => {
       owner: { handle: "someone-else" },
     });
     await expect(readClawHubClawDetail({ packageName })).rejects.toThrow(/identity/);
-  });
-
-  it("rejects repeating pagination cursors rather than silently hiding starters", async () => {
-    mocks.list.mockResolvedValue({ items: [officialPackage()], nextCursor: "loop" });
-    await expect(listClawHubClaws()).rejects.toThrow(/cursor/);
   });
 });
 
