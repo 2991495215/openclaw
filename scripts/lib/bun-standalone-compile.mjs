@@ -35,6 +35,7 @@ export function compileStandalone({
       "build",
       "--compile",
       "--splitting",
+      "--format=esm",
       `--root=${modules}`,
       "--compile-autoload-package-json",
       "--no-compile-autoload-dotenv",

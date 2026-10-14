@@ -136,6 +136,16 @@ for (const packageName of [
     }
   }
 }
+// Jiti's ESM factory lazily requires this private transformer outside package exports.
+moduleEntries.push(
+  path
+    .relative(
+      runtimeRoot,
+      fs.realpathSync(path.join(runtimeRoot, "node_modules/jiti/dist/babel.cjs")),
+    )
+    .split(path.sep)
+    .join("/"),
+);
 const moduleAliases = {};
 for (const name of ["ws", "undici"]) {
   const directory = fs.realpathSync(path.join(runtimeRoot, "node_modules", name));
