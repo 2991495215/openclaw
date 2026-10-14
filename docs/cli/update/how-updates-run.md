@@ -32,6 +32,11 @@ replacement. Choose an empty `OPENCLAW_GIT_DIR` and retry.
 
 ### Validation and activation
 
+If a service refresh refuses before writing its definition, the candidate keeps
+the original refusal in its output. The updater can then revalidate and restart
+the preserved service definition. Actual loss of native service authority still
+leaves recovery pending until ownership and restoration can be verified.
+
 If the resolved registry package version equals the installed version without changing the selected channel or installation method, or the Git target SHA equals `HEAD` and the installed runtime passes artifact verification, plugin convergence still runs; if plugins and runtime artifacts remain unchanged, the run finishes `skipped` with reason `already-current`.
 Runtime maintenance can therefore succeed without changing the Git revision.
 A same-version explicit `--channel` or installation-method change finishes successfully.
@@ -1020,6 +1025,10 @@ installed version and its recorded selector. The summary, warning log, and run
 history name the plugin, requested target, resolution failure, and
 `openclaw plugins update <id>` next action. JSON keeps top-level `status: "ok"`
 with a `plugin-target-unavailable` advisory under `postUpdate.plugins.warnings`.
+An official `@openclaw/*` plugin is not retained when its installed files import
+`openclaw/plugin-sdk/*` subpaths the new core no longer exports, because it
+would fail to load. Plugin sync reports it as a failed plugin update that names
+the missing subpaths and the `openclaw plugins update <id>` retry instead.
 
 Before mutation, OpenClaw checks installed compatibility metadata and skips
 registry queries for compatible plugins. If a plugin's declared
