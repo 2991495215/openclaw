@@ -212,7 +212,7 @@ export function buildGoogleSimpleThinking<T extends GoogleApiType>(
     clampedReasoning === "max" ? "high" : clampedReasoning
   ) as ClampedGoogleThinkingLevel;
 
-  if (isGoogleGemini3ThinkingLevelModel(model.id) || isGemma4Model(model)) {
+  if (interactions || isGoogleGemini3ThinkingLevelModel(model.id) || isGemma4Model(model)) {
     return {
       enabled: true,
       level: getGoogleThinkingLevel(effort, model),
