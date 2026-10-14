@@ -89,6 +89,30 @@ const MISSING_CONFIG_MAX_RETRIES = 2;
 const LEASE_RETRY_INITIAL_DELAY_MS = 250;
 const LEASE_RETRY_MAX_DELAY_MS = 5_000;
 
+// Temporary exact-case diagnostic; never merge.
+function recordConfigRpcPhase(phase: string): void {
+  process.stderr.write(
+    `[config-rpc-phase] ${JSON.stringify({ phase, atMs: Math.round(performance.now()) })}\n`,
+  );
+}
+
+function recordConfigCandidatePhase(
+  phase: string,
+  candidate?: GatewayConfigReloadCandidate | null,
+  state: Record<string, boolean | number> = {},
+): void {
+  process.stderr.write(
+    `[config-candidate-phase] ${JSON.stringify({
+      phase,
+      atMs: Math.round(performance.now()),
+      epoch: candidate?.epoch ?? null,
+      origin: candidate?.origin ?? null,
+      receipts: candidateApplications(candidate).map((claim) => claim.diagnosticReceiptId ?? null),
+      ...state,
+    })}\n`,
+  );
+}
+
 function candidateApplications(candidate: GatewayConfigReloadCandidate | null | undefined) {
   return [candidate?.application, ...(candidate?.carriedApplications ?? [])].filter(
     (application): application is RuntimeConfigWriteApplicationClaim => application !== undefined,
@@ -99,6 +123,7 @@ function settleCandidateApplications(
   candidate: GatewayConfigReloadCandidate | null | undefined,
   status: RuntimeConfigWriteApplicationStatus,
 ) {
+  recordConfigCandidatePhase(`candidate:settle:${status}`, candidate);
   for (const application of candidateApplications(candidate)) {
     application.settle(status);
   }
@@ -108,6 +133,7 @@ function transferCandidateApplications(
   candidate: GatewayConfigReloadCandidate | null,
   nextConfig: OpenClawConfig | undefined,
 ): RuntimeConfigWriteApplicationClaim[] {
+  recordConfigCandidatePhase("candidate:transfer", candidate);
   const carried: RuntimeConfigWriteApplicationClaim[] = [];
   for (const application of candidateApplications(candidate)) {
     if (nextConfig && application.isCarriedBy?.(nextConfig)) {
@@ -290,7 +316,22 @@ export function startGatewayConfigReloader(
     reloadJob?.cancel();
     reloadJob = null;
   };
+  const recordReloadState = (phase: string) => {
+    recordConfigCandidatePhase(phase, pendingInProcessConfig, {
+      running,
+      pending,
+      watcherReload: Boolean(watcherReload),
+      timer: reloadJob !== null,
+      revision: source.observation.revision,
+      writerRevision: source.observation.writerRevision,
+      activeEpoch: activeConfigCandidate?.epoch ?? -1,
+      retryEpoch: retryCandidate?.epoch ?? -1,
+      stopped,
+      initialized,
+    });
+  };
   const scheduleAfter = (wait: number) => {
+    recordReloadState("scheduler:schedule");
     if (stopped || !initialized || opts.scheduler.signal.aborted) {
       return;
     }
@@ -363,6 +404,7 @@ export function startGatewayConfigReloader(
       assertInvokerOwned?: () => void;
     } = {},
   ) => {
+    recordConfigCandidatePhase("candidate:apply", candidate, { initialEpoch });
     const { hash: persistedHash } = sourceSnapshot;
     const {
       config: candidateRuntimeConfig = sourceSnapshot.config,
@@ -407,6 +449,7 @@ export function startGatewayConfigReloader(
         leaseRetryDelayMs = 0;
         source.accept(initialEpoch);
       }
+      recordReloadState("candidate:complete");
       return { runtime, isCurrent };
     };
     assertInvokerOwned();
@@ -566,6 +609,8 @@ export function startGatewayConfigReloader(
         opts.log.info(
           `config source revision ${initialEpoch} accepted (${candidate?.origin ?? "file"})`,
         );
+        recordConfigRpcPhase("reload:source:committed");
+        recordConfigCandidatePhase("candidate:source-committed", candidate, { initialEpoch });
         opts.onReloadEnabledChange?.(nextSettings.mode !== "off");
         if (changedPaths.length > 0) {
           opts.onConfigCandidateCommitted?.({
@@ -576,8 +621,11 @@ export function startGatewayConfigReloader(
         }
         if (options.runtimeApplied !== false && (changedPaths.length > 0 || pluginLifecycle)) {
           try {
+            recordConfigRpcPhase("reload:skills:import:start");
             const { refreshSkillsDiscovery } = await import("../skills/runtime/refresh.js");
+            recordConfigRpcPhase("reload:skills:import:returned");
             await refreshSkillsDiscovery({ config: currentConfig, reason: "config-change" });
+            recordConfigRpcPhase("reload:skills:refresh:returned");
           } catch (error) {
             opts.log.warn(`config applied, but skills discovery refresh failed: ${String(error)}`);
           }
@@ -840,6 +888,7 @@ export function startGatewayConfigReloader(
   };
 
   const runReload = async (assertLeaseOwned: () => void) => {
+    recordReloadState("reload:enter");
     if (stopped || !initialized) {
       return;
     }
@@ -858,6 +907,7 @@ export function startGatewayConfigReloader(
         attemptedCandidate = pendingWrite;
         pendingInProcessConfig = null;
         activeConfigCandidate = pendingWrite;
+        recordConfigCandidatePhase("candidate:pick-write", pendingWrite);
         missingConfigRetries = 0;
         try {
           await runAcceptedTransaction(async () => {
@@ -870,6 +920,7 @@ export function startGatewayConfigReloader(
               snapshot.hash !== pendingWrite.persistedHash ||
               diffConfigPaths(snapshot.sourceConfig, pendingWrite.compareConfig).length > 0
             ) {
+              recordConfigCandidatePhase("candidate:write-validation-rejected", pendingWrite);
               throw new GatewayConfigReloadSupersededError();
             }
             await applyCandidateSnapshot(
@@ -889,6 +940,7 @@ export function startGatewayConfigReloader(
             !retryCandidate
           ) {
             retryCandidate = pendingWrite;
+            recordConfigCandidatePhase("candidate:retain-write", pendingWrite);
           }
           throw err;
         } finally {
@@ -928,6 +980,7 @@ export function startGatewayConfigReloader(
       ) {
         retryCandidate = null;
         activeConfigCandidate = intentCandidate;
+        recordConfigCandidatePhase("candidate:pick-retry", intentCandidate);
         try {
           await runAcceptedTransaction(async () => {
             await applyCandidateSnapshot(
@@ -940,6 +993,7 @@ export function startGatewayConfigReloader(
         } catch (err) {
           if (!pendingInProcessConfig && !retryCandidate) {
             retryCandidate = intentCandidate;
+            recordConfigCandidatePhase("candidate:retain-retry", intentCandidate);
           }
           throw err;
         }
@@ -957,6 +1011,7 @@ export function startGatewayConfigReloader(
         acceptedSourceSnapshot &&
         configSourceSnapshotsMatch(snapshot, acceptedSourceSnapshot)
       ) {
+        recordReloadState("candidate:accepted-echo");
         await acceptCurrentRuntimeEcho(
           transactionEpoch,
           snapshot,
@@ -1036,6 +1091,8 @@ export function startGatewayConfigReloader(
       await source.acceptPaths(snapshot.includedPaths ?? []);
     } catch (err) {
       const superseded = isConfigReloadSuperseded(err);
+      recordConfigCandidatePhase("candidate:catch", attemptedCandidate, { superseded });
+      recordReloadState("reload:catch");
       if (superseded && pendingInProcessConfig) {
         pendingInProcessConfig.carriedApplications = [
           ...(pendingInProcessConfig.carriedApplications ?? []),
@@ -1086,6 +1143,7 @@ export function startGatewayConfigReloader(
   }
 
   function startTrackedReload(): void | Promise<void> {
+    recordReloadState("scheduler:start");
     if (stopped || !initialized) {
       return;
     }
@@ -1138,6 +1196,7 @@ export function startGatewayConfigReloader(
     void reload.then(() => {
       activeReloads.delete(reload);
       watcherReload = undefined;
+      recordReloadState("scheduler:returned");
       if (pending && !running) {
         pending = false;
         schedule();
@@ -1330,6 +1389,7 @@ export function startGatewayConfigReloader(
         carriedApplications,
         epoch: observation.revision,
       };
+      recordConfigCandidatePhase("candidate:enqueue", pendingInProcessConfig);
       scheduleAfter(0);
     },
   });
@@ -1457,6 +1517,10 @@ export function startGatewayConfigReloader(
     stop: async () => {
       stopped = true;
       lifecycle.abort(new GatewayConfigReloadSupersededError());
+      recordReloadState("reload:stop");
+      recordConfigCandidatePhase("candidate:stop-pending", pendingInProcessConfig);
+      recordConfigCandidatePhase("candidate:stop-active", activeConfigCandidate);
+      recordConfigCandidatePhase("candidate:stop-retry", retryCandidate);
       settleCandidateApplications(pendingInProcessConfig, "stopped");
       settleCandidateApplications(activeConfigCandidate, "stopped");
       settleCandidateApplications(retryCandidate, "stopped");

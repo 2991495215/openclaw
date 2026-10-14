@@ -30,6 +30,13 @@ import { resolveSharedGatewaySessionGeneration } from "../server/ws-shared-gener
 import { parseRestartRequestParams } from "./restart-request.js";
 import type { GatewayRequestContext, RespondFn } from "./types.js";
 
+// Temporary exact-case diagnostic; never merge.
+function recordConfigRpcPhase(phase: string): void {
+  process.stderr.write(
+    `[config-rpc-phase] ${JSON.stringify({ phase, atMs: Math.round(performance.now()) })}\n`,
+  );
+}
+
 type ConfigWriteSnapshot = Awaited<ReturnType<typeof readConfigFileSnapshotForWrite>>["snapshot"];
 type ConfigWriteOptions = Awaited<
   ReturnType<typeof readConfigFileSnapshotForWrite>
@@ -181,6 +188,7 @@ export async function commitGatewayConfigWrite(params: {
     ? createRuntimeConfigWriteApplication(captureGatewayRootWorkAdmissionContinuationScope()?.run)
     : undefined;
   holdGatewayPolicyResponse(params.respond);
+  recordConfigRpcPhase("writer:replace:start");
   const result = await replaceConfigFile({
     sourceConfig: params.nextConfig,
     // The early RPC hash check is only advisory until this lock-time CAS. Without
@@ -199,6 +207,7 @@ export async function commitGatewayConfigWrite(params: {
     ),
     afterWrite: { mode: "auto" },
   });
+  recordConfigRpcPhase("writer:replace:returned");
   return {
     path: resolveGatewayConfigPath(params.snapshot),
     config: result.nextConfig,
@@ -269,10 +278,12 @@ export async function resolveGatewayConfigRestartWriteResult(params: {
       requiresRestart: restartRequirement.requiresRestart,
     },
   };
+  recordConfigRpcPhase("sentinel:write:start");
   const sentinelPersisted = await writeRestartSentinel(payload).then(
     () => true,
     () => false,
   );
+  recordConfigRpcPhase("sentinel:write:returned");
   const restart = restartRequirement.scheduleDirectRestart
     ? scheduleGatewayRestart({
         delayMs: restartDelayMs,
