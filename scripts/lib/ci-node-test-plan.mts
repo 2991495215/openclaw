@@ -5369,20 +5369,23 @@ function createCompactNodeTestShardBundles(
       );
     }
     if (options.runnerBackend === "hybrid") {
-      // A stranded parallel tail can run serially beside tooling without giving
-      // either child more workers. Keep the existing no-build serial budget.
+      // Stranded parallel or serial tooling tails can share a serial tooling row.
+      // Keep the stronger runner, child worker ceilings and no-build serial budget.
       const boundedWorkers = (job: CompactNodeTestShard) =>
         Object.keys(job.env ?? {}).every((key) => key === "OPENCLAW_VITEST_MAX_WORKERS") &&
-        Number(job.env?.OPENCLAW_VITEST_MAX_WORKERS ?? 2) <= 2 &&
+        Number(job.env?.OPENCLAW_VITEST_MAX_WORKERS ?? 2) === 2 &&
         job.groups.every((group) => Number(group.env?.OPENCLAW_VITEST_MAX_WORKERS ?? 2) <= 2);
       for (const tail of measuredJobs.slice()) {
+        const serialTooling =
+          tail.planConcurrency === 1 && tail.groups.every(isParallelToolingGroup);
         if (
           measuredJobs.length <= compactJobCap ||
-          tail.planConcurrency !== 2 ||
+          !measuredJobs.includes(tail) ||
+          (!serialTooling &&
+            (tail.planConcurrency !== 2 || !tail.groups.every(isParallelCompactGroup))) ||
           tail.pretestBuildMode ||
           tail.requiresDist ||
-          !boundedWorkers(tail) ||
-          !tail.groups.every(isParallelCompactGroup)
+          !boundedWorkers(tail)
         ) {
           continue;
         }
@@ -5392,15 +5395,23 @@ function createCompactNodeTestShardBundles(
             estimateBinSeconds(groups),
             (job.predictedSeconds ?? 0) + (tail.predictedSeconds ?? 0),
           );
+          const secondsCap = serialTooling
+            ? Math.min(
+                COMPACT_EXPANDED_NODE_TEST_JOB_SECONDS,
+                compactToolingTestSecondsLimit(groups, options.runnerBackend),
+              )
+            : COMPACT_EXPANDED_NODE_TEST_JOB_SECONDS;
           return (
-            job.runner === tail.runner &&
+            job !== tail &&
+            (job.runner === tail.runner ||
+              (serialTooling && runnerRank(job) >= 0 && runnerRank(job) < runnerRank(tail))) &&
             job.planConcurrency === 1 &&
             !job.pretestBuildMode &&
             !job.requiresDist &&
             boundedWorkers(job) &&
             (job.timeoutMinutes ?? 60) <= (tail.timeoutMinutes ?? 60) &&
             job.groups.every(isParallelToolingGroup) &&
-            admitsCompactBin(groups, COMPACT_EXPANDED_NODE_TEST_JOB_SECONDS, () => seconds)
+            admitsCompactBin(groups, secondsCap, () => seconds)
           );
         });
         if (!recipient) {
