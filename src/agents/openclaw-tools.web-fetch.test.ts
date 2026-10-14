@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -86,6 +88,24 @@ function delayedTextResponse(
   return new Response(body, init);
 }
 
+async function listen(server: Server): Promise<string> {
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert(address && typeof address === "object");
+  return `http://127.0.0.1:${(address as AddressInfo).port}`;
+}
+
+async function closeServer(server: Server): Promise<void> {
+  if (!server.listening) {
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
+
 describe("web_fetch transport through native coding-tool assembly", () => {
   it("binds one native tool and honors runtime disable/re-enable before cache reuse", async () => {
     const transport = hostTransport();
@@ -149,6 +169,102 @@ describe("web_fetch transport through native coding-tool assembly", () => {
     expect(transport.acquire).toHaveBeenCalledTimes(1);
     expect(dispatches).toBe(1);
     expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a real host adapter for allowed dispatch and blocks denied redirects before fallback", async () => {
+    let allowedHits = 0;
+    let deniedHits = 0;
+    let deniedOrigin = "";
+    const allowedServer = createServer((request, response) => {
+      allowedHits += 1;
+      if (request.url === "/redirect") {
+        response.writeHead(302, { location: `${deniedOrigin}/secret` });
+        response.end();
+        return;
+      }
+      expect(request.headers["x-route"]).toBe("real-adapter-proof");
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("allowed real adapter content");
+    });
+    const deniedServer = createServer((_request, response) => {
+      deniedHits += 1;
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("denied origin content");
+    });
+    try {
+      const [allowedOrigin, deniedUrl] = await Promise.all([
+        listen(allowedServer),
+        listen(deniedServer),
+      ]);
+      deniedOrigin = deniedUrl;
+      const allowedOrigins = new Set([allowedOrigin]);
+      const transport: WebFetchTransport = {
+        assertInvocationCurrent: vi.fn(() => {}),
+        acquire: vi.fn<WebFetchTransport["acquire"]>(async (request) => {
+          const admit = (candidate: string, reason: "destination" | "redirect") => {
+            if (!allowedOrigins.has(new URL(candidate).origin)) {
+              throw new Error(`host policy refused ${reason}`);
+            }
+          };
+          let nextUrl = request.url;
+          let remainingRedirects = request.maxRedirects;
+          for (;;) {
+            transport.assertInvocationCurrent();
+            admit(nextUrl, "destination");
+            const response = await fetch(nextUrl, {
+              headers: request.init.headers,
+              method: request.init.method,
+              redirect: "manual",
+              signal: request.signal,
+            });
+            transport.assertInvocationCurrent();
+            if (response.status < 300 || response.status >= 400) {
+              return {
+                response,
+                finalUrl: nextUrl,
+                release: async () => {},
+              };
+            }
+            if (remainingRedirects <= 0) {
+              throw new Error("host policy refused redirect");
+            }
+            const location = response.headers.get("location");
+            if (!location) {
+              throw new Error("host redirect missing location");
+            }
+            const redirected = new URL(location, nextUrl).href;
+            admit(redirected, "redirect");
+            nextUrl = redirected;
+            remainingRedirects -= 1;
+          }
+        }),
+      };
+      const [tool] = (
+        await assemble(transport, {
+          tools: { web: { fetch: { headers: { "X-Route": "real-adapter-proof" } } } },
+        })
+      ).filter((entry) => entry.name === "web_fetch");
+      assert(tool);
+
+      expect(
+        detailsOf(await tool.execute("real-allowed", { url: `${allowedOrigin}/ok` })),
+      ).toMatchObject({
+        finalUrl: `${allowedOrigin}/ok`,
+        text: expect.stringContaining("allowed real adapter content"),
+      });
+      await expect(
+        tool.execute("real-denied-destination", { url: `${deniedOrigin}/secret` }),
+      ).rejects.toThrow("host policy refused destination");
+      await expect(
+        tool.execute("real-denied-redirect", { url: `${allowedOrigin}/redirect` }),
+      ).rejects.toThrow("host policy refused redirect");
+
+      expect(transport.acquire).toHaveBeenCalledTimes(3);
+      expect(allowedHits).toBe(2);
+      expect(deniedHits).toBe(0);
+    } finally {
+      await Promise.all([closeServer(allowedServer), closeServer(deniedServer)]);
+    }
   });
 
   it("rejects forbidden host destinations before dispatch without falling back", async () => {
