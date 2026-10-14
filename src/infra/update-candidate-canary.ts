@@ -63,7 +63,11 @@ type CanaryOutcome =
   | { status: "ok" }
   | {
       status: "error";
-      reason: "doctor-failed" | "candidate-checks-timeout" | "runtime-verification-failed";
+      reason:
+        | "doctor-failed"
+        | "candidate-checks-timeout"
+        | "candidate-snapshot-failed"
+        | "runtime-verification-failed";
     };
 
 type CanaryResult = {
@@ -692,7 +696,9 @@ export async function validateUpdateCandidateCanary(params: {
           ? "candidate-checks-timeout"
           : phase === "doctor" || phase === "lint"
             ? "doctor-failed"
-            : "runtime-verification-failed",
+            : phase === "snapshot"
+              ? "candidate-snapshot-failed"
+              : "runtime-verification-failed",
       },
       phase,
     );
