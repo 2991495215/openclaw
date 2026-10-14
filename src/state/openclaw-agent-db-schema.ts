@@ -447,6 +447,9 @@ function ensureAgentSchema(
           { agentId, pathname, version: previousVersion },
           getOpenClawAgentMigrationSchema(previousVersion),
         );
+        // Schema-25 writers predate later startup columns; read-only session
+        // readers refuse a migrated database that still lacks them.
+        ensureSessionAdditiveColumns(db);
         finishStorageMigration();
         return;
       }
