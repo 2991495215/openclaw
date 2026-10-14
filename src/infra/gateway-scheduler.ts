@@ -130,7 +130,7 @@ export class GatewayScheduler {
     };
     const beginClose = () => {
       controller.abort();
-      materializeErrorStack(controller.signal.reason);
+      materializeErrorStack(owner.signal.reason);
       for (const job of owner.jobs) {
         this.cancel(job);
       }
