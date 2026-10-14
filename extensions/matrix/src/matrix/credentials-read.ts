@@ -3,7 +3,7 @@
 // plugin-state store access.
 import { normalizeAccountId } from "openclaw/plugin-sdk/account-id";
 import {
-  createPluginStateKeyedStore,
+  createPluginStateKeyedStoreV2,
   createPluginStateSyncKeyedStore,
 } from "openclaw/plugin-sdk/plugin-state-store-runtime";
 import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
@@ -35,7 +35,7 @@ function matrixCredentialsStoreOptions(env: NodeJS.ProcessEnv) {
 
 /**
  * Retained only for the released synchronous channel-account compatibility callbacks.
- * @deprecated Use openMatrixCredentialsAsyncStore; removed in the next Plugin SDK major.
+ * @deprecated Use openMatrixCredentialsAsyncStore. Final compatibility day: 2026-12-31.
  */
 export function openMatrixCredentialsStore(env: NodeJS.ProcessEnv = process.env) {
   return createPluginStateSyncKeyedStore<MatrixCredentialStateRecord>(
@@ -49,7 +49,7 @@ export function openMatrixCredentialsAsyncStore(env: NodeJS.ProcessEnv = process
   const runtime = getOptionalMatrixRuntime();
   return runtime
     ? runtime.state.openKeyedStoreV2<MatrixCredentialStateRecord>(options)
-    : createPluginStateKeyedStore<MatrixCredentialStateRecord>("matrix", options);
+    : createPluginStateKeyedStoreV2<MatrixCredentialStateRecord>("matrix", options);
 }
 
 export function captureMatrixCredentialsEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -74,7 +74,7 @@ export async function loadMatrixCredentialsAsync(
 
 /**
  * Retained only for the released synchronous channel-account compatibility callbacks.
- * @deprecated Use loadMatrixCredentialsAsync; removed in the next Plugin SDK major.
+ * @deprecated Use loadMatrixCredentialsAsync. Final compatibility day: 2026-12-31.
  */
 export function loadMatrixCredentials(
   env: NodeJS.ProcessEnv = process.env,

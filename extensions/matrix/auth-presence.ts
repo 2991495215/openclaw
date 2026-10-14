@@ -1,6 +1,6 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
-  createPluginStateKeyedStore,
+  createPluginStateKeyedStoreV2,
   createPluginStateSyncKeyedStore,
 } from "openclaw/plugin-sdk/plugin-state-store-runtime";
 import {
@@ -17,7 +17,7 @@ type MatrixAuthPresenceParams =
     }
   | OpenClawConfig;
 
-/** @deprecated Use hasAnyMatrixAuthAsync. This adapter will be removed in the next Plugin SDK major. */
+/** @deprecated Use hasAnyMatrixAuthAsync. Final compatibility day: 2026-12-31. */
 export function hasAnyMatrixAuth(
   params: MatrixAuthPresenceParams,
   env: NodeJS.ProcessEnv = process.env,
@@ -44,7 +44,7 @@ export async function hasAnyMatrixAuthAsync(
   const resolvedEnv =
     params && typeof params === "object" && "cfg" in params ? (params.env ?? env) : env;
   try {
-    const store = createPluginStateKeyedStore<MatrixCredentialStateRecord>("matrix", {
+    const store = createPluginStateKeyedStoreV2<MatrixCredentialStateRecord>("matrix", {
       namespace: MATRIX_CREDENTIALS_NAMESPACE,
       maxEntries: MATRIX_CREDENTIALS_MAX_ENTRIES,
       overflowPolicy: "reject-new",

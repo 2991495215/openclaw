@@ -31,7 +31,6 @@ import {
   type ReefPeerStateSnapshot,
   type ReefOutboundDelivery,
 } from "./trust-store-format.js";
-import { LegacyReefTrustStore } from "./trust-store.legacy.js";
 import type { ReefDeliveryRejection, ReefRejectionNoticeState, RelayFriend } from "./types.js";
 
 export {
@@ -41,13 +40,13 @@ export {
   resolveReefTrustStoreKey,
   ReefPeerTrustChangedError,
 } from "./trust-store-format.js";
-export type ReefTrustStore = WorkerReefTrustStore | LegacyReefTrustStore;
+export type ReefTrustStore = WorkerReefTrustStore;
 const operationHandler = {
   moduleName: "trust-state-operation-api.js",
   exportName: "runReefTrustStateOperation",
 };
 
-function openStores(openStore: PluginRuntime["state"]["openKeyedStore"]) {
+function openStores(openStore: PluginRuntime["state"]["openKeyedStoreV2"]) {
   return {
     peers: openStore<ReefPeerStateSnapshot>(REEF_TRUST_STORE_OPTIONS),
     deliveries: openStore<ReefOutboundDelivery>(REEF_DELIVERY_STORE_OPTIONS),
@@ -370,9 +369,6 @@ export function openReefTrustStore(
   config: ReefChannelConfig,
   assertCurrent?: () => void,
 ): ReefTrustStore {
-  const stores = openStores(runtime.state.openKeyedStore);
-  if (!stores.peers.createOperation) {
-    return new LegacyReefTrustStore(runtime, config, assertCurrent);
-  }
+  const stores = openStores(runtime.state.openKeyedStoreV2);
   return new WorkerReefTrustStore(stores, config, assertCurrent);
 }

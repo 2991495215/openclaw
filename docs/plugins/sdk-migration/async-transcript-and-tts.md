@@ -86,8 +86,8 @@ to avoid synchronous state-database reads and deprecation warnings.
 
 ## Removal timing
 
-These adapters remain supported. Their removal date and target ordinary stable
-release are **TBD**; this migration does not schedule a removal. Removal requires
-the announced stable deprecation window, migration evidence, and explicit
-maintainer approval described in the [compatibility policy](/plugins/compatibility)
+These deprecated adapters remain supported through **2026-12-31**, the final
+compatibility day. Removal ships in the **first January 2027 stable release**,
+without a Plugin SDK major version. The prepared SQL-free TTS overloads remain
+supported. See the [complete SQLite migration guide](/plugins/sdk-migration/sqlite-async)
 and [removal timeline](/plugins/sdk-migration/removal-timeline).

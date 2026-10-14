@@ -1,7 +1,4 @@
-import {
-  createPluginStateKeyedStoreForTests,
-  createPluginStateKeyedStoreV2ForTests,
-} from "openclaw/plugin-sdk/plugin-state-test-runtime";
+import { createPluginStateKeyedStoreV2ForTests } from "openclaw/plugin-sdk/plugin-state-test-runtime";
 import { observeHostDataSql } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -62,48 +59,6 @@ describe("FaceTime runtime asynchronous persistence", () => {
     mocks.helper.cancelOutgoingCall.mockResolvedValue(pendingDialCancellationResult());
     mocks.helper.findOutgoingCall.mockResolvedValue(pendingDialCarrierResult());
   });
-
-  it.each([false, true])(
-    "recovers and conditionally clears a dial without V2 on a supported host (replacement=%s)",
-    async (replacement) => {
-      const state = await pendingDialState();
-      const legacy = createPluginStateKeyedStoreForTests<unknown>("facetime", {
-        namespace: "pending-dial",
-        maxEntries: 1,
-        overflowPolicy: "reject-new",
-      });
-      const deletion = vi.spyOn(legacy, "deleteIf");
-      const openKeyedStore = vi.fn(() => ({
-        ...legacy,
-        observe: undefined,
-        compareAndApply: undefined,
-      }));
-      const runtime = await createRuntime(state, undefined, { openKeyedStore });
-      try {
-        expect((await runtime.status()).outboundCallPending).toMatchObject({
-          dialID: "approved-dial",
-        });
-        expect(await state.lookup("active")).toMatchObject({
-          dialID: "approved-dial",
-          ownerEpoch: 2,
-        });
-        if (replacement) {
-          await pendingDialState({ dialID: "replacement-dial" });
-        }
-        await mocks.helperParams?.onMessage(outgoingCall("approved-dial", 6));
-
-        expect(openKeyedStore).toHaveBeenCalledOnce();
-        expect(deletion).toHaveBeenCalledOnce();
-        if (replacement) {
-          expect(await state.lookup("active")).toMatchObject({ dialID: "replacement-dial" });
-        } else {
-          expect(await state.lookup("active")).toBeUndefined();
-        }
-      } finally {
-        await runtime.stop();
-      }
-    },
-  );
 
   it.each(["open", "lookup"] as const)(
     "propagates a V2 %s failure without opening a legacy store",

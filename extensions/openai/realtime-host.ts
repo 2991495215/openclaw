@@ -24,6 +24,7 @@ const captureHost: Partial<Pick<typeof proxyCaptureSdk, "captureWsEventAsync">> 
 
 export const openAIRealtimeHost = {
   resolveAgentDir,
+  // Retained for public synchronous SDK calls through 2026-12-31.
   isProviderAuthProfileConfigured,
   isProviderAuthProfileConfiguredAsync,
   resolveProviderAuthProfileApiKey,
