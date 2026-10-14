@@ -47,10 +47,28 @@ extents. These measurements do not prove first-run seeding or dashboard readines
 
 Build apps with the canonical release packager under the shared macOS build
 lock, pinned Xcode, arm64, `ai.openclaw.mac.tcctest`, no MLX skip, and a clean
-exact-commit release source check. For a fat-runtime assessment bundle, use a
-task-owned copy and the release signer, retaining the normal native shell and
-its entitlements. Record both the shell's and the runtime's source identities;
-an assessment bundle is not an integrated first-run implementation.
+exact-commit release source check. Alternatively, isolate bundle-layout cost
+using one signed release base and the layout owners:
+
+```sh
+python3 scripts/bench-desktop-assessment.py --base /path/OpenClaw.app \
+  --trim-root /path/trim-checkout --archive-root /path/archive-checkout \
+  --fat-executable /path/openclaw-standalone --sidecar /path/runtime \
+  --output /private/tmp/oc-zc2-bench/assessment
+python3 scripts/bench-desktop-app.py \
+  /private/tmp/oc-zc2-bench/assessment/manifest.json \
+  --output /private/tmp/oc-zc2-bench/app-trials --trials 7
+```
+
+Assessment assembly uses private APFS copies and the canonical release signer,
+without building or acquiring the build lock. It verifies deep/strict signatures,
+Developer ID, hardened runtime, and unchanged app entitlements, and records
+Gatekeeper assessment results. Unnotarized assessment bundles may be rejected by
+Gatekeeper. B retains the base runtime; T applies the trim owner's pruning; A
+uses the archive owner's packer; F substitutes the fat executable and sidecar.
+The native shell remains the base version, so these layouts qualify distribution
+and immediate-entry measurements only. First-run measurements require real
+integrated apps. Record shell, layout-owner, and runtime source identities.
 
 Compare fully successful runtime trials using sample count, median and minimum/maximum.
 Keep failed trials' partial timings in the raw rows and report failure counts beside
