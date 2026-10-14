@@ -5,6 +5,7 @@ import { json as readJson } from "node:stream/consumers";
 import { expectDefined } from "@openclaw/normalization-core";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as preparedModelRuntime from "../src/agents/prepared-model-runtime.js";
 import { refreshPreparedModelRuntimeSnapshots } from "../src/agents/prepared-model-runtime.js";
 import { resetPreparedModelRuntimeSnapshotsForTest } from "../src/agents/prepared-model-runtime.test-support.js";
 import { AUTOMATIONS_TOOL_NAME } from "../src/agents/tools/automations-tool-name.js";
@@ -221,10 +222,63 @@ async function closeServer(server: Server): Promise<void> {
   }
 }
 
+const acquirePreparedRuntime = preparedModelRuntime.acquireAgentRunPreparedModelRuntime;
+const activeDiagnostics = new Map<string, { started: number; phase: string }>();
+
+function diagnosticError(error: unknown): string {
+  const cause = error instanceof Error ? error.cause : undefined;
+  const stack = error instanceof Error ? (error.stack ?? error.message) : formatErrorMessage(error);
+  const causeStack =
+    cause instanceof Error ? (cause.stack ?? cause.message) : formatErrorMessage(cause);
+  return redactToolPayloadText(`${stack}; cause: ${causeStack}`);
+}
+
 describe("scheduled message actions", () => {
+  afterEach(() => {
+    for (const [title, diagnostic] of activeDiagnostics) {
+      console.info(
+        "[cron-diagnostic]",
+        JSON.stringify({
+          title,
+          phase: "native-afterEach-before-fixture-settled",
+          lastPhase: diagnostic.phase,
+          elapsedMs: Math.round(performance.now() - diagnostic.started),
+        }),
+      );
+    }
+  });
   const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
   it.each(scenarios)("$title", { timeout: 60_000 }, async (scenario) => {
+    const diagnostic = { started: performance.now(), phase: "case-start" };
+    activeDiagnostics.set(scenario.title, diagnostic);
+    const trace = (phase: string, error?: unknown) => {
+      diagnostic.phase = phase;
+      console.info(
+        "[cron-diagnostic]",
+        JSON.stringify({
+          title: scenario.title,
+          phase,
+          monotonicMs: Math.round(performance.now()),
+          elapsedMs: Math.round(performance.now() - diagnostic.started),
+          ...(error === undefined ? {} : { error: diagnosticError(error) }),
+        }),
+      );
+    };
+    trace("case-start");
+    vi.spyOn(preparedModelRuntime, "acquireAgentRunPreparedModelRuntime").mockImplementation(
+      async (...args) => {
+        trace("runtime-acquire-start");
+        try {
+          const result = await acquirePreparedRuntime(...args);
+          trace("runtime-acquire-end");
+          return result;
+        } catch (error) {
+          trace("runtime-acquire-error", error);
+          throw error;
+        }
+      },
+    );
     const { runtime, action, disableBeforeResponse, creator = "trusted" } = scenario;
     const nativeCreator = creator === "native";
     // Local creator turns use the default account identity, independent of provider defaults.
@@ -336,6 +390,7 @@ describe("scheduled message actions", () => {
     };
     await runQaGatewayFixture(
       async () => {
+        trace("fixture-setup-start");
         await mkdir(workspaceDir, { recursive: true });
         await writeFile(childPath, `#!${process.execPath}\n${PROTOCOL_CHILD}`, { mode: 0o700 });
         vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
@@ -393,6 +448,7 @@ describe("scheduled message actions", () => {
           const work = (async () => {
             const url = new URL(req.url ?? "/", "http://fixture.invalid");
             if (req.method === "POST" && url.pathname === "/scheduled-clock-gap") {
+              trace("cli-clock-gap");
               expect(runtime).toBe("claude-cli");
               const realNow = Date.now.bind(Date);
               // The real CLI has its grant; model a pause beyond its former timeout-plus-grace TTL.
@@ -414,6 +470,7 @@ describe("scheduled message actions", () => {
               edits.push(edit);
               expect(edit).toEqual({ topic: expectedTopic });
               if (heldPatch && edits.length === 1) {
+                trace("provider-patch-entered");
                 heldPatch.entered.resolve();
                 await heldPatch.release.promise;
                 if (disableBeforeResponse === 429) {
@@ -639,16 +696,19 @@ describe("scheduled message actions", () => {
           }),
         );
 
+        trace("runtime-install-start");
         const stopBindingManager = await installScheduledMessageReadRuntime({
           cfg,
           childPath,
           nativeCreatorAccountId: nativeCreator ? creatorAccountId : undefined,
           cleanup,
         });
+        trace("runtime-install-end");
         cleanup.push(() => resetPreparedModelRuntimeSnapshotsForTest());
         const finished = createDeferred<Record<string, unknown>>();
         const scheduledJob: { id?: string } = {};
         unstartedGatewayPortClaim = undefined;
+        trace("gateway-start");
         const gateway = await startGatewayWithClient({
           portClaim: gatewayPortClaim,
           cfg,
@@ -662,22 +722,30 @@ describe("scheduled message actions", () => {
               event.payload.action === "finished" &&
               event.payload.jobId === scheduledJob.id
             ) {
+              trace("cron-finished-event");
               finished.resolve(event.payload);
             }
           },
         });
+        trace("gateway-started");
         cleanup.push(async () => {
+          trace("gateway-cleanup-start");
           await runQaGatewayFixture(
             () => disconnectGatewayClient(gateway.client),
             () => stopBindingManager(),
             () => gateway.server.close({ reason: "scheduled read fixture complete" }),
           );
+          trace("gateway-cleanup-end");
         });
+        trace("startup-settled-wait");
         await gateway.server.startupSettled;
+        trace("startup-settled");
+        trace("runtime-refresh-start");
         await refreshPreparedModelRuntimeSnapshots(getRuntimeConfig(), {
           gatewayLifecycle: true,
           catalogMode: "static",
         });
+        trace("runtime-refresh-end");
         const runtimeConfig = getRuntimeConfig();
         const params = {
           name: nativeCreator
@@ -700,6 +768,7 @@ describe("scheduled message actions", () => {
               ? { mode: "none", channel: "discord", accountId: "other" }
               : { mode: "none" },
         } satisfies CronJobCreate;
+        trace("cron-add-start");
         let created: { id: string };
         if (nativeCreator) {
           vi.stubEnv("OPENCLAW_SCHEDULED_CREATE_JOB", JSON.stringify(params));
@@ -766,6 +835,7 @@ describe("scheduled message actions", () => {
             job: params,
           });
         }
+        trace("cron-add-end");
         scheduledJob.id = created.id;
         const storePath = resolveCronJobsStorePathFromConfig(getRuntimeConfig());
         const job = expectDefined(
@@ -820,10 +890,13 @@ describe("scheduled message actions", () => {
           });
         }
         expect(job).toMatchObject({ payload: { toolsAllow: ["message"] } });
+        trace("cron-run-start");
         expect(
           await gateway.client.request("cron.run", { id: job.id, mode: "force" }),
         ).toMatchObject({ ok: true, enqueued: true });
+        trace("cron-run-enqueued");
         if (heldPatch) {
+          trace("provider-patch-wait");
           try {
             await withTestTimeout(
               Promise.race([
@@ -836,10 +909,12 @@ describe("scheduled message actions", () => {
               "Expected authenticated scheduled PATCH before disabling the job",
             );
             expect(edits).toEqual([{ topic: providerTopic }]);
+            trace("cron-disable-start");
             await gateway.client.request("cron.update", {
               id: job.id,
               patch: { enabled: false },
             });
+            trace("cron-disable-end");
             const disabledJob = expectDefined(
               (await loadCronStore(storePath)).jobs.find((entry) => entry.id === job.id),
               "persisted disabled scheduled job",
@@ -873,6 +948,7 @@ describe("scheduled message actions", () => {
             heldPatch.release.resolve();
           }
         }
+        trace("cron-completion-wait");
         const completion = await withTestTimeout(
           finished.promise,
           45_000,
@@ -965,13 +1041,19 @@ describe("scheduled message actions", () => {
           expect(edits).toEqual([]);
         }
         expect(providerErrors).toEqual([]);
+        trace("body-assertions-complete");
       },
+      () => trace("cleanup-start"),
       // Release provider responses before Gateway shutdown waits for pending writes.
       () => heldPatch?.release.resolve(),
       () => runQaGatewayFixture(async () => {}, ...cleanup.toReversed()),
       () => vi.restoreAllMocks(),
       () => vi.unstubAllGlobals(),
       () => vi.unstubAllEnvs(),
-    );
+      () => trace("cleanup-end"),
+    ).finally(() => {
+      trace("fixture-settled");
+      activeDiagnostics.delete(scenario.title);
+    });
   });
 });
