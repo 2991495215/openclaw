@@ -89,10 +89,11 @@ def boundary(app, work, profile, timeout):
     for key, value in environment.items():
         command.extend(["--env", key + "=" + value])
     command.extend([str(app), "--args", "--elevation-rename-exclusive"])
-    row = {"profile": profile, "load_start": os.getloadavg(), "started": time.time()}
+    row = {"profile": profile, "load_start": os.getloadavg(), "started": time.time(), "success": False}
     started = time.monotonic()
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = None
     try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         while time.monotonic() - started < timeout:
             if stderr.exists() and stderr.read_bytes():
                 row["open_to_entry_output_s"] = time.monotonic() - started
@@ -107,12 +108,20 @@ def boundary(app, work, profile, timeout):
                    stdout_empty=not stdout.exists() or not stdout.read_bytes(), open_output=(out + err).decode())
         if not row["expected_entry_output"]:
             raise RuntimeError("Unexpected diagnostic response")
+        row["success"] = True
+    except Exception as error:
+        row["error"] = str(error)
     finally:
-        if process.poll() is None:
+        if process is not None and process.poll() is None:
             process.terminate()
             process.wait(timeout=10)
+        if process is not None and "open_output" not in row:
+            out, err = process.communicate(timeout=5)
+            row["open_output"] = (out + err).decode(errors="replace")
         stop_native(app)
         row["load_end"] = os.getloadavg()
+        row["diagnostic_stdout"] = stdout.read_text(errors="replace") if stdout.exists() else ""
+        row["diagnostic_stderr"] = stderr.read_text(errors="replace") if stderr.exists() else ""
     return row
 
 

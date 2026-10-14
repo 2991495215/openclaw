@@ -31,6 +31,19 @@ def save(output, result):
     temporary.replace(output / "results.json")
 
 
+def summarize_trials(result):
+    result["counts"] = {}
+    for variant in result["manifest"]["variants"]:
+        rows = [row for row in result["trials"] if row["variant"] == variant["name"]]
+        passed = [row for row in rows if row["success"]]
+        result["counts"][variant["name"]] = {
+            "attempted": len(rows), "successful": len(passed), "failed": len(rows) - len(passed)}
+        result["summary"][variant["name"]] = {
+            key: summary([row[key] for row in passed if isinstance(row.get(key), (int, float))])
+            for key in ("cold_ready_s", "warm_ready_s", "agent_cli_s", "agent_runtime_ms",
+                        "rss_ready_kib", "rss_post_turn_kib", "cpu_ready_s", "cpu_post_turn_s")}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
@@ -58,12 +71,7 @@ def main():
             result["trials"].append(row)
             save(args.output, result)
             print(json.dumps(row), flush=True)
-    for variant in manifest["variants"]:
-        rows = [row for row in result["trials"] if row["variant"] == variant["name"]]
-        result["summary"][variant["name"]] = {
-            key: summary([row[key] for row in rows if isinstance(row.get(key), (int, float))])
-            for key in ("cold_ready_s", "warm_ready_s", "agent_cli_s", "agent_runtime_ms",
-                        "rss_ready_kib", "rss_post_turn_kib", "cpu_ready_s", "cpu_post_turn_s")}
+    summarize_trials(result)
     result["finished"] = time.time()
     result["host"]["load_end"] = os.getloadavg()
     save(args.output, result)

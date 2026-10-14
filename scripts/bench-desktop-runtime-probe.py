@@ -194,9 +194,6 @@ def measure(variant, output, timeout, doctor=False):
         launch("warm")
         row["warm_exit"] = stop(gateway)
         gateway = None
-        if doctor:
-            code, _ = run("doctor", ["doctor", "--non-interactive"])
-            row["doctor_exit"] = code
         row["success"] = row["health_ok"] and row["ui_ok"] and row["agent_ok"] and all(
             r["stream"] is True and r["marker"] and r["path"] == "/v1/responses" for r in receipts) and bool(receipts)
     except Exception as error:
@@ -204,7 +201,7 @@ def measure(variant, output, timeout, doctor=False):
     finally:
         try:
             row["cleanup_exit"] = stop(gateway)
-            if doctor and "doctor_exit" not in row:
+            if doctor:
                 try:
                     row["doctor_exit"], _ = run("doctor", ["doctor", "--non-interactive"])
                 except Exception as error:

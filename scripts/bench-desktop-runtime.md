@@ -51,8 +51,10 @@ task-owned copy and the release signer, retaining the normal native shell and
 its entitlements. Record both the shell's and the runtime's source identities;
 an assessment bundle is not an integrated first-run implementation.
 
-Compare successful observations using sample count, median and minimum/maximum.
-Keep failure counts beside the timings. Never convert missing or failed trials
+Compare fully successful runtime trials using sample count, median and minimum/maximum.
+Keep failed trials' partial timings in the raw rows and report failure counts beside
+the successful-trial summaries. App launch failures retain their diagnostics and
+allow later trials to proceed after cleanup. Never convert missing or failed trials
 to zero, combine different source cuts, or treat prior lane measurements as
 trials from this campaign. Shared-host load and warm filesystem caches limit
 causal claims even when ordering is interleaved. No cache purge is performed.
