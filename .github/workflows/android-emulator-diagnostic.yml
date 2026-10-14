@@ -8,7 +8,7 @@ on:
       target_sha:
         description: Exact reviewed Android qualification source to diagnose
         required: true
-        default: 39a3106b0bf331931ea437b77fc3c0b77bfb4272
+        default: a5468fb15f655be2f5d619a53e0ec8897fe2e72c
         type: string
 
 permissions:
@@ -17,7 +17,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  TARGET_SHA: 39a3106b0bf331931ea437b77fc3c0b77bfb4272
+  TARGET_SHA: a5468fb15f655be2f5d619a53e0ec8897fe2e72c
 
 jobs:
   full_runner_diagnostic:
@@ -35,7 +35,7 @@ jobs:
       - name: Checkout the reviewed Android qualification source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 39a3106b0bf331931ea437b77fc3c0b77bfb4272
+          ref: a5468fb15f655be2f5d619a53e0ec8897fe2e72c
           persist-credentials: false
 
       - name: Verify clean source before applying the disposable probe
@@ -56,9 +56,9 @@ jobs:
       - name: Restore the failed exact-head run's Gateway selection
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: android-release-gateway-selection-38490094724
+          name: android-release-gateway-selection-38495093082
           github-token: ${{ github.token }}
-          run-id: 38490094724
+          run-id: 38495093082
           path: ${{ runner.temp }}/android-full-diagnostic-selection
           digest-mismatch: error
 
@@ -77,46 +77,6 @@ jobs:
         with:
           cache-mode: "off"
           install-screenshot-emulators: "true"
-
-      - name: Compare default and headless emulator version queries
-        env:
-          JAVA_HOME: ${{ steps.android-toolchain.outputs.gradle-java-home }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          version_probe_dir="$(mktemp -d "$RUNNER_TEMP/android-version-query.XXXXXX")"
-          export ANDROID_USER_HOME="$version_probe_dir/android"
-          export ANDROID_AVD_HOME="$version_probe_dir/avd"
-          mkdir -p "$ANDROID_USER_HOME" "$ANDROID_AVD_HOME"
-          set +e
-          /usr/bin/timeout --kill-after="2s" "10s" "$ANDROID_HOME/emulator/emulator" "-version" \
-            >"$version_probe_dir/default.private.stdout" 2>"$version_probe_dir/default.private.stderr"
-          default_exit=$?
-          /usr/bin/timeout --kill-after="2s" "10s" "$ANDROID_HOME/emulator/emulator" "-no-window" "-version" \
-            >"$version_probe_dir/headless.private.stdout" 2>"$version_probe_dir/headless.private.stderr"
-          headless_exit=$?
-          set -e
-          VERSION_PROBE_DIR="$version_probe_dir" DEFAULT_EXIT="$default_exit" HEADLESS_EXIT="$headless_exit" \
-            python3 - <<'VERSION'
-          import json, os, re
-          from pathlib import Path
-          root = Path(os.environ["VERSION_PROBE_DIR"])
-          for query, variable in (("default", "DEFAULT_EXIT"), ("headless", "HEADLESS_EXIT")):
-              stderr = (root / (query + ".private.stderr")).read_text(errors="replace")
-              match = re.search(r"error while loading shared libraries: ([A-Za-z0-9_.+-]+):", stderr)
-              library = match.group(1) if match else None
-              classification = ("libX11" if library and library.startswith("libX11") else
-                                "libX" if library and library.startswith("libX") else
-                                "Qt" if library and library.startswith("libQt") else
-                                "other-library" if library else "none")
-              print(json.dumps({"diagnostic": "emulator-version-control", "query": query,
-                                "exitCode": int(os.environ[variable]),
-                                "requiresSharedLibrary": "error while loading shared libraries" in stderr,
-                                "missingLibrary": library, "libraryClass": classification}))
-          assert int(os.environ["DEFAULT_EXIT"]) == 127, "Default version-query failure differs"
-          assert int(os.environ["HEADLESS_EXIT"]) == 0, "Headless version query did not pass"
-          VERSION
 
       - name: Add bounded diagnostics to the verified full runner
         shell: bash
@@ -154,6 +114,50 @@ jobs:
             return value === "ETIMEDOUT" || value === "ABORT_ERR" ||
               value === "EPROCESSGROUP_CLEANUP_FAILED" ? value : undefined;
           }
+          function diagnosticOperation(bin: string, args: string[]): string {
+            if (path.basename(bin) !== "adb") return "other";
+            const command = args[0] === "-s" ? args.slice(2) : args;
+            const operation = command[0];
+            if (operation === "shell") {
+              return command[1] === "run-as" ? "shell:run-as" :
+                command[1] === "am" ? "shell:am" :
+                command[1] === "getprop" ? "shell:getprop" :
+                command[1] === "settings" ? "shell:settings" : "shell:other";
+            }
+            if (operation === "exec-out") return command[1] === "run-as" ? "exec-out:run-as" : "exec-out";
+            return operation === "pull" || operation === "install" || operation === "forward" ||
+              operation === "reverse" || operation === "emu" || operation === "logcat" ? operation : "other";
+          }
+          function sdkSignals(stderr: string) {
+            return {
+              permissionDenied: stderr.includes("Permission denied"),
+              missingFile: stderr.includes("No such file or directory"),
+              deviceOffline: stderr.includes("device offline"),
+              connectionReset: stderr.toLowerCase().includes("connection reset"),
+              failedToCopy: stderr.toLowerCase().includes("failed to copy"),
+              timeout: /timed out|timeout/iu.test(stderr),
+            };
+          }
+          function nativeDiagnostic(text: string, role: "phone" | "wear", releasePhase: string): void {
+            const labels = {
+              awaitSettled: "Actual Wear send must settle before phase completion",
+              keyboardMissing: "Native Gboard keyboard did not render",
+              keyboardChoiceMissing: "Wear keyboard choice was not available",
+              gboardEditorMissing: "Native Gboard editor was not available",
+              phoneKeyboardMissing: "Real phone keyboard did not open",
+              readFullReplyMissing: "Long Wear reply did not expose its full reader",
+              renderedHeadUnreachable: "The rendered head of the full Wear reply was not reachable",
+              renderedTailUnreachable: "The rendered tail of the full Wear reply was not reachable",
+              phoneHeadUnreachable: "The rendered head of the long phone reply was not reachable",
+              phoneTailUnreachable: "The rendered tail of the long phone reply was not reachable",
+            };
+            const flags = Object.fromEntries(Object.entries(labels).map(([name, label]) => [name, text.includes(label)]));
+            const classes = ["AssertionError", "IllegalStateException", "NullPointerException", "StaleObjectException"];
+            const failureClass = classes.find((name) => text.includes("." + name + ":")) ?? "unknown";
+            const frames = [...text.matchAll(/(AndroidReleaseWearTest|AndroidReleasePhoneTest|ReleaseValidationUi)\.kt:(\d+)/gu)]
+              .slice(0, 8).map((match) => ({ file: match[1] + ".kt", line: Number(match[2]) }));
+            console.log(JSON.stringify({ diagnostic: "native-failure", role, phase: releasePhase, class: failureClass, flags, frames }));
+          }
           function diagnostic(error: unknown, relation: string, depth = 0): void {
             const names = new Set(["Error", "TypeError", "RangeError", "SyntaxError",
               "AggregateError", "AbortError", "DOMException"]);
@@ -181,6 +185,7 @@ jobs:
               const commandStage = stage;
               const startedAt = Date.now();
               const basename = path.basename(bin);
+              const operation = diagnosticOperation(bin, args);
               if (basename === "adb" && !observedFirstAdb) {
                 observedFirstAdb = true;
                 let present: boolean | null = null;
@@ -200,11 +205,11 @@ jobs:
               '    });\n    await writeFile(path.join(root, `command-${index}.private.log`), stdout + stderr);',
               r"""    });
               } catch (error) {
-                console.log(JSON.stringify({ diagnostic: "command-error", basename,
+                console.log(JSON.stringify({ diagnostic: "command-error", basename, operation, signals: sdkSignals(stderr),
                   phase: commandStage, code: diagnosticCode(error), elapsedMs: Date.now() - startedAt }));
                 throw error;
               }
-              console.log(JSON.stringify({ diagnostic: "command-complete", basename,
+              console.log(JSON.stringify({ diagnostic: "command-complete", basename, operation, signals: sdkSignals(stderr),
                 phase: commandStage, exitCode: code, elapsedMs: Date.now() - startedAt }));
               await writeFile(path.join(root, `command-${index}.private.log`), stdout + stderr);""",
           )
@@ -243,8 +248,12 @@ jobs:
           replace_once('  void main().catch(() => {',
                        '  void main().catch((error: unknown) => {\n    diagnostic(error, "preparation");')
           replace_once(
-              '      sdkEmulator: await command(path.join(sdk, "emulator/emulator"), ["-version"]),',
-              '      sdkEmulator: await command(path.join(sdk, "emulator/emulator"), ["-no-window", "-version"]),',
+              '            throw new Error("native-test-failed");\n          }\n        })',
+              '            nativeDiagnostic(text, device.role, releasePhase);\n            throw new Error("native-test-failed");\n          }\n        })',
+          )
+          replace_once(
+              '              throw new Error("native-test-failed");\n            }\n            return text.includes',
+              '              nativeDiagnostic(text, device.role, releasePhase);\n              throw new Error("native-test-failed");\n            }\n            return text.includes',
           )
           assert source != original
           owner.write_text(source)
@@ -256,6 +265,9 @@ jobs:
           OPENCLAW_GRADLE_JAVA_HOME: ${{ steps.android-toolchain.outputs.gradle-java-home }}
         run: |
           set -euo pipefail
+          umask 077
+          export TMPDIR="$RUNNER_TEMP/android-full-diagnostic-private"
+          mkdir -p "$TMPDIR"
           pnpm android:release:validate -- \
             --target-sha "$TARGET_SHA" \
             --selection-dir "$RUNNER_TEMP/android-full-diagnostic-selection" \
@@ -280,6 +292,100 @@ jobs:
               print(json.dumps({"diagnostic": "preparation-no-proof"}))
           REPORT
 
+      - name: Sanitize eligible reader failure facts from this invocation only
+        if: always()
+        run: |
+          python3 - <<'SANITIZE'
+          import json, math, os, re, shutil
+          from pathlib import Path
+          parent = Path(os.environ["RUNNER_TEMP"]) / "android-full-diagnostic-private"
+          proof_path = Path(os.environ["RUNNER_TEMP"]) / "android-full-diagnostic-proof.json"
+          if not proof_path.exists():
+              raise SystemExit(0)
+          proof = json.loads(proof_path.read_text())
+          if proof["status"] != "failed" or "wear:phone-restart" not in proof["phases"]:
+              raise SystemExit(0)
+          roots = list(parent.glob("openclaw-android-release-*")) if parent.exists() else []
+          assert len(roots) <= 1, "Multiple invocation roots; refuse diagnostic collection"
+          if not roots:
+              raise SystemExit(0)
+          private = roots[0]
+          assert private.is_dir() and not private.is_symlink()
+          public = Path(os.environ["RUNNER_TEMP"]) / "android-full-diagnostic" / "diagnostics"
+          public.mkdir(parents=True, exist_ok=True)
+
+          # Fixed-key projection deliberately excludes transport and every text field.
+          booleans = {"stateObserved", "connected", "loading", "sending", "hasActiveStream",
+                      "pendingReply", "selectedSession", "healthy", "streaming", "errorPresent"}
+          counts = {"messageCount", "pendingRuns"}
+          markers = {"PHONE_FIRST", "PHONE_SECOND", "WEAR_FIRST", "WEAR_SECOND",
+                     "WEAR_RELAUNCH", "PHONE_RELAUNCH", "PHONE_RESTART", "LONG_REPLY"}
+          packages = {"ai.openclaw.app.debug", "com.google.android.inputmethod.latin",
+                      "com.google.android.wearable.sysui"}
+          def number(value):
+              return type(value) in (int, float) and math.isfinite(value)
+          def bounds(value):
+              return value if value is None or (isinstance(value, str) and
+                  re.fullmatch(r"-?\d+ -?\d+ -?\d+ -?\d+", value)) else None
+          def node(value, ancestor=False):
+              result = {}
+              for key in ("scrollable", "visible", "characterRefresh"):
+                  if type(value.get(key)) is bool:
+                      result[key] = value[key]
+              for key in ("textLength", "sentinelIndex"):
+                  if number(value.get(key)):
+                      result[key] = value[key]
+              result["bounds"] = bounds(value.get("bounds"))
+              if value.get("package") in packages:
+                  result["package"] = value["package"]
+              if isinstance(value.get("class"), str) and re.fullmatch(r"[A-Za-z0-9_.]+", value["class"]):
+                  result["class"] = value["class"]
+              resource = value.get("resource")
+              if isinstance(resource, str) and re.fullmatch(r"[A-Za-z0-9_.]+:id/[A-Za-z0-9_]+", resource):
+                  result["resource"] = resource
+              if not ancestor:
+                  boxes = value.get("characterBoxes")
+                  result["characterBoxes"] = None if boxes is None else [
+                      box if isinstance(box, list) and len(box) == 4 and all(number(n) for n in box) else None
+                      for box in boxes[:32]]
+                  result["ancestors"] = [node(item, True) for item in value.get("ancestors", [])[:32]]
+              return result
+          def reader(value):
+              result = {}
+              if value.get("activePackage") in packages:
+                  result["activePackage"] = value["activePackage"]
+              for key in ("displayWidth", "displayHeight"):
+                  if number(value.get(key)):
+                      result[key] = value[key]
+              if type(value.get("round")) is bool:
+                  result["round"] = value["round"]
+              for key in ("composerBounds", "imeBounds"):
+                  result[key] = bounds(value.get(key))
+              result["sentinels"] = {key: [node(item) for item in value.get("sentinels", {}).get(key, [])[:64]]
+                                     for key in ("HEAD SENTINEL", "TRAILING SENTINEL")}
+              return result
+          for filename in ("wear-relaunch.private.json", "phone-reader-before.private.json", "phone-reader.private.json"):
+              path = private / filename
+              if not path.is_file() or path.is_symlink():
+                  continue
+              data = json.loads(path.read_text())
+              result = {key: data[key] for key in booleans if type(data.get(key)) is bool}
+              result.update({key: data[key] for key in counts if number(data.get(key))})
+              result["reader"] = reader(data.get("reader", data))
+              for field, keys in (("roles", {"assistant", "user", "system", "tool", "toolResult", "other"}),
+                                  ("assistantMarkers", markers), ("exactAssistantMarkers", markers),
+                                  ("visibleExactMarkers", markers),
+                                  ("assistantSentinels", {"HEAD SENTINEL", "TRAILING SENTINEL"})):
+                  if isinstance(data.get(field), dict):
+                      result[field] = {key: data[field][key] for key in keys if number(data[field].get(key))}
+              (public / filename.replace(".private", ".sanitized")).write_text(json.dumps(result, indent=2))
+          image = private / "wear-relaunch.private.png"
+          if image.is_file() and not image.is_symlink() and image.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n":
+              shutil.copyfile(image, public / "wear-relaunch.synthetic.png")
+          print(json.dumps({"diagnostic": "reader-failure-sanitized",
+                            "files": sorted(path.name for path in public.iterdir())}))
+          SANITIZE
+
       - name: Retain only public diagnostic proof and synthetic screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -288,5 +394,7 @@ jobs:
           path: |
             ${{ runner.temp }}/android-full-diagnostic-proof.json
             ${{ runner.temp }}/android-full-diagnostic/screenshots/*.png
+            ${{ runner.temp }}/android-full-diagnostic/diagnostics/*.sanitized.json
+            ${{ runner.temp }}/android-full-diagnostic/diagnostics/wear-relaunch.synthetic.png
           if-no-files-found: warn
           retention-days: 7
