@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { createConfigIO } from "../config/io.js";
+import { readBackupEngine, fingerprintPostgresBackup } from "../snapshot/database-backup.js";
 import { sha256Hex } from "./crypto-digest.js";
 import { hashFileDescriptorSync } from "./file-descriptor.js";
 import { openNodeSqliteDatabase } from "./node-sqlite.js";
@@ -133,13 +135,10 @@ export function readUpdateDatabaseGenerations(paths: readonly string[]): UpdateD
 
 export async function readUpdatePhysicalDatabaseGenerations(paths: readonly string[]) {
   const result = readUpdateDatabaseGenerations(paths);
-  const { readBackupEngine, fingerprintPostgresBackup } =
-    await import("../snapshot/database-backup.js");
   const postgres = paths.filter(
     (pathname) => result[pathname] !== null && readBackupEngine(pathname).engine === "postgres",
   );
   if (postgres.length) {
-    const { createConfigIO } = await import("../config/io.js");
     const { config } = await createConfigIO({
       observe: false,
       pluginValidation: "core-only",
