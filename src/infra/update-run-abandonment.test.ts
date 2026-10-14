@@ -524,6 +524,7 @@ describe("abandoned update runs", () => {
   it.each([false, true])(
     "renews a slow step and stops heartbeats after failure=%s",
     async (fails) => {
+      console.error("heartbeat diagnostic: entered test body");
       const options = isolatedOptions();
       const created = createUpdateRun({ trigger: "cli" }, options);
       const run = adoptUpdateRun(created.runId, options);
@@ -552,7 +553,9 @@ describe("abandoned update runs", () => {
       const settled = fails
         ? expect(pending).rejects.toThrow("build interrupted")
         : expect(pending).resolves.toMatchObject({ exitCode: 0 });
+      console.error("heartbeat diagnostic: awaiting command admission");
       await Promise.race([started.promise, pending]);
+      console.error("heartbeat diagnostic: command admitted");
       const admitted = getUpdateRun(run.runId, options);
       if (!admitted) {
         throw new Error("Started command has no admitted progress receipt");
@@ -560,6 +563,7 @@ describe("abandoned update runs", () => {
       // The worker uses its own clock; age the step from its committed admission.
       vi.setSystemTime(admitted.updatedAtMs);
       await vi.advanceTimersByTimeAsync(ABANDONED_UPDATE_RUN_MS + UPDATE_RUN_HEARTBEAT_MS);
+      console.error("heartbeat diagnostic: fake clock advanced");
 
       const active = getUpdateRun(run.runId, options);
       expect(active?.updatedAtMs).toBeGreaterThan(admitted.updatedAtMs + ABANDONED_UPDATE_RUN_MS);
@@ -573,7 +577,9 @@ describe("abandoned update runs", () => {
       } else {
         command.resolve({ stdout: "", stderr: "", code: 0 });
       }
+      console.error("heartbeat diagnostic: awaiting completion receipt");
       await settled;
+      console.error("heartbeat diagnostic: completion recorded");
       expect(heartbeat).toHaveBeenCalled();
       heartbeat.mockClear();
       const finished = getUpdateRun(run.runId, options);

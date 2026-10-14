@@ -405,7 +405,9 @@ it.each([
 );
 
 it("leaves the run ledger unchanged while the activation Doctor child is pending", async () => {
+  console.error("Doctor diagnostic: entered test body");
   const { root, env } = await createDoctorFixture();
+  console.error("Doctor diagnostic: fixture created");
   vi.useFakeTimers();
   const { runId } = createUpdateRun({ trigger: "control-ui" }, { env });
   expect(adoptUpdateRun(runId, { env }).origin.driver?.pid).toBe(process.pid);
@@ -434,7 +436,9 @@ it("leaves the run ledger unchanged while the activation Doctor child is pending
   });
 
   try {
+    console.error("Doctor diagnostic: awaiting child admission");
     await spawned.promise;
+    console.error("Doctor diagnostic: child admitted");
     expect(doctorEnv).toMatchObject({
       OPENCLAW_SERVICE_REPAIR_POLICY: "external",
       OPENCLAW_UPDATE_IN_PROGRESS: "1",
@@ -450,6 +454,7 @@ it("leaves the run ledger unchanged while the activation Doctor child is pending
       status: "in_progress",
     });
     await vi.advanceTimersByTimeAsync(ABANDONED_UPDATE_RUN_MS + UPDATE_RUN_HEARTBEAT_MS);
+    console.error("Doctor diagnostic: fake clock advanced");
     const observed = getUpdateRun(runId, { env });
     expect(observed).toEqual(admitted);
     assert(observed);
@@ -457,7 +462,9 @@ it("leaves the run ledger unchanged while the activation Doctor child is pending
     expect(onStepComplete).not.toHaveBeenCalled();
   } finally {
     exited.resolve();
+    console.error("Doctor diagnostic: awaiting completion receipt");
     await running;
+    console.error("Doctor diagnostic: completion recorded");
   }
   await expect(running).resolves.toMatchObject({ exitCode: 0 });
   expect(onStepComplete).toHaveBeenCalledOnce();
