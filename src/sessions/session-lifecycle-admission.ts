@@ -61,6 +61,9 @@ export {
   type SessionWorkAdmissionInterrupt,
 } from "./session-work-admission-interruption.js";
 
+// Temporary hosted diagnostic only; never land this instrumentation.
+let durableRetryAdmissionDiagnosticSequence = 0;
+
 export const SESSION_WORK_ADMISSION_DRAIN_TIMEOUT_MS = 15_000;
 type SessionWorkAdmission = HandoffSessionWorkAdmission & {
   agent?: AgentWorkAdmissionIdentity;
@@ -482,6 +485,31 @@ export async function beginSessionWorkAdmission(params: {
     },
     released: releasedPromise,
   };
+  const diagnosticScope = process.env.OPENCLAW_TEST_DURABLE_RETRY_DIAGNOSTIC_SCOPE;
+  const diagnostic =
+    diagnosticScope === params.scope.trim() &&
+    /(?:^|[\\/])openclaw-chat-persistent-[^\\/]+[\\/]sessions\.json$/.test(diagnosticScope)
+      ? {
+          id: ++durableRetryAdmissionDiagnosticSequence,
+          scope: diagnosticScope.split(/[\\/]/).slice(-2).join("/"),
+          identities: rawIdentities,
+          owner: params.owner?.description,
+          createdStack: new Error("admission created").stack?.split(process.cwd()).join("<repo>"),
+        }
+      : undefined;
+  const traceAdmission = (event: "created" | "acquired" | "released") => {
+    if (diagnostic) {
+      console.error(
+        "[durable-retry-admission]",
+        JSON.stringify({
+          ...diagnostic,
+          event,
+          phase: admission.phase,
+          stack: new Error(`admission ${event}`).stack?.split(process.cwd()).join("<repo>"),
+        }),
+      );
+    }
+  };
   bindGatewayContextResolver(admission, resolveGatewayContext);
   // Reserve before waiting: Stop must own queued ingress as well as running work.
   for (const identity of identities) {
@@ -489,6 +517,7 @@ export async function beginSessionWorkAdmission(params: {
     active.add(admission);
     ACTIVE_SESSION_WORK_ADMISSIONS.set(identity, active);
   }
+  traceAdmission("created");
   let released = false;
   const release = () => {
     if (released) {
@@ -512,6 +541,7 @@ export async function beginSessionWorkAdmission(params: {
       }
     }
     clearSessionWorkAdmissionHandoffs(admission);
+    traceAdmission("released");
     resolveReleased();
     if (protectionReleased) {
       notifyListeners(listeners ?? [], undefined);
@@ -589,6 +619,7 @@ export async function beginSessionWorkAdmission(params: {
         }
         if (params.revalidateAllowed) {
           admission.phase = "acquired";
+          traceAdmission("acquired");
         }
         await runExclusiveSessionStoreWrite(
           params.scope,
@@ -602,6 +633,7 @@ export async function beginSessionWorkAdmission(params: {
               } else {
                 await params.assertAllowed?.(signal);
                 admission.phase = "acquired";
+                traceAdmission("acquired");
               }
             });
             assertIngressOpen();

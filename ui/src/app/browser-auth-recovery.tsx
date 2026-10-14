@@ -54,7 +54,29 @@ export function startBrowserAuthRecovery(
   let dialog: { close: () => void; update: () => void } | undefined;
   let probeResult: "unavailable" | "sign-in" | undefined;
 
+  let diagnosticProbe = 0;
+  let diagnosticPhase = "idle";
+  const trace = (event: string, details: Record<string, unknown> = {}) => {
+    console.warn(
+      "BROWSER_AUTH_DIAGNOSTIC",
+      JSON.stringify({
+        event,
+        probe: diagnosticProbe,
+        phase: diagnosticPhase,
+        pending: Boolean(pending),
+        aborted: lifetime.signal.aborted,
+        signInRequired,
+        dismissed,
+        openedSignIn,
+        dialog: Boolean(dialog),
+        probeResult,
+        ...details,
+      }),
+    );
+  };
+
   const showDialog = () => {
+    trace("show-dialog");
     if (dialog || dismissed || lifetime.signal.aborted) {
       return;
     }
@@ -139,9 +161,14 @@ export function startBrowserAuthRecovery(
   };
 
   function check(explicit = false): Promise<void> | undefined {
+    trace("check-enter", { explicit });
     if (lifetime.signal.aborted || pending || (!explicit && Date.now() - lastProbeAt < 30_000)) {
+      trace("check-coalesced-or-skipped", { explicit });
       return pending;
     }
+    diagnosticProbe += 1;
+    diagnosticPhase = "capturing-auth";
+    trace("check-start", { explicit });
     lastProbeAt = Date.now();
     const authCandidates = resolveControlUiAuthCandidates(getAuth());
     const isCurrent = () => {
@@ -169,19 +196,28 @@ export function startBrowserAuthRecovery(
             authCandidates,
             isCurrent,
           );
+        diagnosticPhase = "first-probe";
+        trace("probe-start");
         let response = await probe();
+        trace("probe-response", { responseType: response.type, responseStatus: response.status });
         if (!isCurrent()) {
           return;
         }
         if (response.type === "opaqueredirect" && !signInRequired) {
           signInRequired = true;
+          diagnosticPhase = "renewal";
+          trace("renewal-start");
           await renewBrowserSession(probeUrl, lifetime.signal);
+          trace("renewal-finished");
           if (!isCurrent()) {
             return;
           }
           // Login/error pages can also finish loading (or refuse framing).
           // Only a fresh authenticated probe establishes renewed HTTP access.
+          diagnosticPhase = "renewed-probe";
+          trace("probe-start");
           response = await probe();
+          trace("probe-response", { responseType: response.type, responseStatus: response.status });
         }
         if (!isCurrent()) {
           return;
@@ -189,7 +225,9 @@ export function startBrowserAuthRecovery(
         if (response.type === "opaqueredirect") {
           signInRequired = true;
           probeResult = openedSignIn ? "sign-in" : undefined;
+          diagnosticPhase = "show-dialog";
           showDialog();
+          trace("show-dialog-returned");
         } else if (
           response.ok &&
           response.headers.get("content-type")?.split(";")[0]?.trim() === "application/json"
@@ -198,21 +236,36 @@ export function startBrowserAuthRecovery(
           signInRequired = false;
           dismissed = false;
           openedSignIn = false;
+          diagnosticPhase = "dialog-close";
+          trace("dialog-close-start", { recovered });
           dialog?.close();
+          trace("dialog-close-finished", { recovered });
           if (recovered) {
+            diagnosticPhase = "notify-restored";
+            trace("notify-start");
             notifyBrowserAuthRestored();
+            trace("notify-finished");
           }
         } else {
           probeResult = "unavailable";
         }
-      } catch {
+      } catch (error) {
+        trace("caught", {
+          errorClass: error instanceof Error ? error.name : typeof error,
+          stack:
+            error instanceof Error
+              ? error.stack?.split("\n").filter((line) => /^\s+at /.test(line))
+              : undefined,
+        });
         if (isCurrent()) {
           probeResult = "unavailable";
         }
       }
     })().finally(() => {
+      trace("pending-finally-start");
       pending = undefined;
       dialog?.update();
+      trace("pending-finally-finished");
     });
     dialog?.update();
     return pending;
@@ -235,11 +288,13 @@ export function startBrowserAuthRecovery(
     }
   };
   const onFocus = () => {
+    trace("window-focus");
     if (signInRequired) {
       void check(true);
     }
   };
   const onVisibilityChange = () => {
+    trace("visibility", { visible: document.visibilityState === "visible" });
     if (document.visibilityState === "visible") {
       onFocus();
     }
@@ -248,6 +303,7 @@ export function startBrowserAuthRecovery(
   window.addEventListener("focus", onFocus, { signal: lifetime.signal });
   document.addEventListener("visibilitychange", onVisibilityChange, { signal: lifetime.signal });
   return () => {
+    trace("stop");
     lifetime.abort();
     stopFailures();
   };

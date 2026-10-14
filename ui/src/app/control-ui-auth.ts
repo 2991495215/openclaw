@@ -73,11 +73,31 @@ export async function fetchWithControlUiAuth(
     if (!isCurrent()) {
       throw new DOMException("Gateway request is no longer current", "AbortError");
     }
+    console.warn(
+      "BROWSER_AUTH_FETCH_DIAGNOSTIC",
+      JSON.stringify({
+        event: "candidate-start",
+        index,
+        count: candidates.length,
+        aborted: init.signal.aborted,
+      }),
+    );
     const token = candidates[index];
     const response = await fetchControlUiResource(url, {
       ...init,
       ...(token ? { headers: { ...init.headers, Authorization: `Bearer ${token}` } } : {}),
     });
+    console.warn(
+      "BROWSER_AUTH_FETCH_DIAGNOSTIC",
+      JSON.stringify({
+        event: "candidate-response",
+        index,
+        count: candidates.length,
+        responseStatus: response.status,
+        responseType: response.type,
+        aborted: init.signal.aborted,
+      }),
+    );
     init.signal.throwIfAborted();
     // A mutation's 403 is a scope/origin rejection, not a rejected credential.
     if (

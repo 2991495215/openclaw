@@ -175,7 +175,16 @@ let harness: GatewayHarness;
 
 const autoCleanupTempDirs = createTempDirTracker();
 const sessionStoreFixture = createDirectChatSessionStoreFixture(autoCleanupTempDirs);
-const openDirectChatSession = sessionStoreFixture.open;
+// Temporary hosted diagnostic only; trace this module's synthetic persistent fixture.
+const previousDurableRetryDiagnosticScope =
+  process.env.OPENCLAW_TEST_DURABLE_RETRY_DIAGNOSTIC_SCOPE;
+const openDirectChatSession = (options?: ChatSessionDirectoryOptions) => {
+  const session = sessionStoreFixture.open(options);
+  if (!options?.fresh) {
+    process.env.OPENCLAW_TEST_DURABLE_RETRY_DIAGNOSTIC_SCOPE = session.storePath;
+  }
+  return session;
+};
 
 afterEach(async () => {
   await resetDirectChatSession();
@@ -191,7 +200,16 @@ afterAll(async () => {
   try {
     await sessionStoreFixture.dispose();
   } finally {
-    await harness.close();
+    try {
+      await harness.close();
+    } finally {
+      if (previousDurableRetryDiagnosticScope === undefined) {
+        delete process.env.OPENCLAW_TEST_DURABLE_RETRY_DIAGNOSTIC_SCOPE;
+      } else {
+        process.env.OPENCLAW_TEST_DURABLE_RETRY_DIAGNOSTIC_SCOPE =
+          previousDurableRetryDiagnosticScope;
+      }
+    }
   }
 });
 
@@ -3502,6 +3520,7 @@ describe("gateway server chat", () => {
   test("chat.send keeps a durable Control UI retry pending when recovery remains abandoned", async () => {
     const { storePath } = openDirectChatSession();
     const idempotencyKey = "idem-restart-safe-duplicate";
+    console.error("[durable-retry-case] body-start");
     try {
       await writeSessionStore({ entries: {} });
       await replaceSessionEntry(
@@ -3567,10 +3586,20 @@ describe("gateway server chat", () => {
         sessionId: "sess-main",
         status: "interrupted",
       });
+      console.error("[durable-retry-case] body-complete");
+    } catch (error) {
+      console.error(
+        "[durable-retry-case] original-body-error",
+        error instanceof Error ? error.stack?.split(process.cwd()).join("<repo>") : error,
+      );
+      throw error;
     } finally {
+      console.error("[durable-retry-case] cleanup-wait-start");
       await getDirectChatSessionWorkRelease();
+      console.error("[durable-retry-case] cleanup-wait-complete");
       restartRecoveryMocks.retryRestartAbortedMainSessionRecovery.mockClear();
       await resetDirectChatSession();
+      console.error("[durable-retry-case] cleanup-reset-complete");
     }
   });
 

@@ -203,9 +203,23 @@ describe("browser sign-in recovery", () => {
       ).rejects.toThrow();
       await finishRenewal();
       await getRenderedModalDialog(document.body);
+      console.warn("BROWSER_AUTH_TEST_DIAGNOSTIC", "modal-helper-returned");
       signedIn = true;
+      console.warn("BROWSER_AUTH_TEST_DIAGNOSTIC", "dispatch-focus");
       window.dispatchEvent(new Event("focus"));
-      await expect.poll(() => restored.mock.calls.length).toBe(1);
+      try {
+        await expect.poll(() => restored.mock.calls.length).toBe(1);
+      } finally {
+        console.warn(
+          "BROWSER_AUTH_TEST_DIAGNOSTIC",
+          JSON.stringify({
+            event: "restored-assertion-finished",
+            restoredCalls: restored.mock.calls.length,
+            credentialAttempts: credentials.length,
+            modalExists: Boolean(document.querySelector("openclaw-modal-dialog")),
+          }),
+        );
+      }
       expect(credentials).toEqual([
         "Bearer expired-device-token",
         "Bearer stored-token",
