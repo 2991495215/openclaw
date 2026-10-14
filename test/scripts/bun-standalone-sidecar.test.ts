@@ -28,6 +28,7 @@ it("pruned sidecars retain assets and SDK shims share the embedded module instan
   write("dist/worker.js", "export const value = 1;");
   write("dist/unused.js", "throw new Error('must not be copied');");
   write("dist/control-ui/assets/app.js", "browser asset");
+  write("dist/control-ui/assets/app.js.map", "browser debug asset");
   write("dist/cli-startup-metadata.json", "{}");
   write("dist/extensions/example/openclaw.plugin.json", '{"id":"example"}');
   write("extensions/example/package.json", '{"name":"@openclaw/example"}');
@@ -86,6 +87,7 @@ it("pruned sidecars retain assets and SDK shims share the embedded module instan
   assert.equal(read("skills/example/scripts/run.py"), "print('skill asset')");
   assert.equal(read("skills/example/assets/helper.wasm"), "skill helper");
   assert.equal(read("dist/control-ui/assets/app.js"), "browser asset");
+  assert.equal(fs.existsSync(path.join(outputRoot, "dist/control-ui/assets/app.js.map")), false);
   assert.equal(fs.existsSync(path.join(outputRoot, "dist/unused.js")), false);
   assert.equal(fs.existsSync(path.join(outputRoot, "docs/unneeded.png")), false);
   assert.equal(fs.existsSync(path.join(outputRoot, "docs/internal")), false);

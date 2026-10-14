@@ -41,7 +41,7 @@ function keepAsset(relative) {
     return relative.endsWith(".md") || relative.endsWith(".json");
   }
   if (relative.startsWith("dist/control-ui/")) {
-    return true;
+    return !relative.endsWith(".map");
   }
   if (/^(?:node_modules|packages)\//.test(relative)) {
     return relative.endsWith("/package.json") || nativeFile.test(relative);
