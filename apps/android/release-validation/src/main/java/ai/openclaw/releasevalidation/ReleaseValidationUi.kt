@@ -431,7 +431,13 @@ internal class ReleaseValidationUi(
     val sentinel = if (tail) "TRAILING SENTINEL" else "HEAD SENTINEL"
     val nextPart = By.pkg(candidatePackage).text("Next part").enabled(true)
     repeat(100) {
-      val nodes = device.findObjects(By.pkg(candidatePackage).textContains(sentinel)).map { it.accessibilityNodeInfo }
+      val nodes =
+        try {
+          device.findObjects(By.pkg(candidatePackage).textContains(sentinel)).map { it.accessibilityNodeInfo }
+        } catch (_: StaleObjectException) {
+          // Opening or scrolling the reader can replace a matched Compose node; reacquire before acting.
+          return@repeat
+        }
       if (nodes.any { visibleCharacters(it, sentinel, device.displayHeight) }) return
       val textNode = nodes.firstOrNull { AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY in it.availableExtraData }
       if (textNode != null && centerWearReaderNode(textNode)) {

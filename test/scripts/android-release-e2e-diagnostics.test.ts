@@ -39,12 +39,15 @@ describe("Android release public failure diagnostics", () => {
     });
   });
 
-  it("retains native source locations without assertion text or unrelated stack frames", () => {
+  it.each([
+    ["java.lang.AssertionError: private-token", "AssertionError"],
+    ["androidx.test.uiautomator.StaleObjectException", "StaleObjectException"],
+  ])("retains native source locations for %s without private text", (exception, expectedClass) => {
     const facts = androidReleaseNativeFacts(
-      "java.lang.AssertionError: private-token\n at ai.openclaw.wear.AndroidReleaseWearTest.releasePhase(AndroidReleaseWearTest.kt:121)\n at private.Secret(secret.kt:5)\n at ai.openclaw.release.ReleaseValidationUi.read(ReleaseValidationUi.kt:88)",
+      `${exception}\n at ai.openclaw.wear.AndroidReleaseWearTest.releasePhase(AndroidReleaseWearTest.kt:121)\n at private.Secret(secret.kt:5)\n at ai.openclaw.release.ReleaseValidationUi.read(ReleaseValidationUi.kt:88)`,
     );
     expect(facts).toEqual({
-      class: "AssertionError",
+      class: expectedClass,
       frames: [
         { file: "AndroidReleaseWearTest.kt", line: 121 },
         { file: "ReleaseValidationUi.kt", line: 88 },

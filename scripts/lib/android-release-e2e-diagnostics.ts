@@ -50,7 +50,8 @@ export function androidReleaseNativeFacts(text: string) {
     "StaleObjectException",
   ];
   return {
-    class: classes.find((name) => text.includes(`.${name}:`)) ?? "unknown",
+    class:
+      classes.find((name) => new RegExp(`\\.${name}(?=[:\\s]|$)`, "u").test(text)) ?? "unknown",
     frames: [
       ...text.matchAll(
         /(AndroidReleaseWearTest|AndroidReleasePhoneTest|ReleaseValidationUi)\.kt:(\d+)/gu,
