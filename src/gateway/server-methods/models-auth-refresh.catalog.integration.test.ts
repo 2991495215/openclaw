@@ -31,6 +31,8 @@ describe("models.authRefresh learned catalog", () => {
     const initialRefreshReturned = createDeferred();
     const requests: string[] = [];
     let holdDiscovery = false;
+    let holdRenewalResponse = false;
+    let releaseRenewalResponse: (() => void) | undefined;
     const heldResponses: Array<() => void> = [];
     let releasedHeldResponses = 0;
     const accounts = new Map([
@@ -49,7 +51,9 @@ describe("models.authRefresh learned catalog", () => {
       response.setHeader("Content-Type", "application/json");
       const reply = () =>
         response.end(JSON.stringify([{ id: `${account}-learned`, name: `${account} learned` }]));
-      if (holdDiscovery) {
+      if (holdRenewalResponse && authorization === "Bearer account-one-renewed") {
+        releaseRenewalResponse = reply;
+      } else if (holdDiscovery) {
         heldResponses.push(() => {
           releasedHeldResponses++;
           reply();
@@ -183,23 +187,36 @@ describe("models.authRefresh learned catalog", () => {
         console.log("CATALOG_TEST_TRACE", "initial-idle", catalogWork.read());
         const renewalRequest = once(discovery, "request");
         const renewalStarted = Date.now();
+        holdRenewalResponse = true;
         await saveAccount("account-one", "account-one-renewed");
         console.log("CATALOG_TEST_TRACE", "renewal-saved", catalogWork.read());
-        await expect(
-          client.request("models.authRefresh", { agentId: "main", operation: "update" }),
-        ).resolves.toEqual({ refreshed: true });
-        console.log("CATALOG_TEST_TRACE", "renewal-rpc-returned", catalogWork.read());
-        expect((await list()).map((model) => model.id)).toEqual(["account-one-learned"]);
-        console.log("CATALOG_TEST_TRACE", "renewal-first-list", catalogWork.read());
-        console.log(
-          "RENEWAL_PENDING",
-          (await client.request<ModelsListResult>("models.list", { agentId: "main", view: "all" }))
-            .models.length,
-        );
         await renewalRequest;
-        console.log("CATALOG_TEST_TRACE", "renewal-request-observed", catalogWork.read());
-        console.log("RENEWAL_REQUEST_MS", Date.now() - renewalStarted);
-        expect(requests.slice(initialRequests)).toEqual(["Bearer account-one-renewed"]);
+        console.log("CATALOG_TEST_TRACE", "receipt-request-held", catalogWork.read());
+        try {
+          await expect(
+            client.request("models.authRefresh", { agentId: "main", operation: "update" }),
+          ).resolves.toEqual({ refreshed: true });
+          console.log("CATALOG_TEST_TRACE", "renewal-rpc-returned", catalogWork.read());
+          expect((await list()).map((model) => model.id)).toEqual(["account-one-learned"]);
+          console.log("CATALOG_TEST_TRACE", "renewal-first-list", catalogWork.read());
+          console.log(
+            "RENEWAL_PENDING",
+            (
+              await client.request<ModelsListResult>("models.list", {
+                agentId: "main",
+                view: "all",
+              })
+            ).models.length,
+          );
+          await renewalRequest;
+          console.log("CATALOG_TEST_TRACE", "renewal-request-observed", catalogWork.read());
+          console.log("RENEWAL_REQUEST_MS", Date.now() - renewalStarted);
+          expect(requests.slice(initialRequests)).toEqual(["Bearer account-one-renewed"]);
+        } finally {
+          holdRenewalResponse = false;
+          releaseRenewalResponse?.();
+          releaseRenewalResponse = undefined;
+        }
         expect(
           await waitForCatalogPublication({
             signal,
@@ -207,6 +224,10 @@ describe("models.authRefresh learned catalog", () => {
             ready: (pending) => pending === 0,
           }),
         ).toBe(0);
+        console.log("CATALOG_TEST_TRACE", "renewal-final", {
+          ...catalogWork.read(),
+          renewedHttpRequests: requests.slice(initialRequests),
+        });
         expect(catalogWork.read()).toMatchObject({
           workersCreated: 1,
           completedTasks: initialTasks + 1,
@@ -261,6 +282,8 @@ describe("models.authRefresh learned catalog", () => {
         expect((await list()).filter((model) => model.available)).toEqual([]);
         expect((await list()).map((model) => model.id)).not.toContain("account-two-learned");
       } finally {
+        holdRenewalResponse = false;
+        releaseRenewalResponse?.();
         initialRefreshReturned.resolve();
         await disconnectGatewayClient(client);
         await server.close();
