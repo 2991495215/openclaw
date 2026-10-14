@@ -7,10 +7,8 @@ import {
   type AiProviderStreamHookContext,
 } from "../host.js";
 import {
-  buildTransportAwareSimpleStreamFn,
   createOpenClawTransportStreamFnForModel,
   createTransportAwareStreamFnForModel,
-  prepareTransportAwareSimpleModel,
   resolveTransportAwareSimpleApi,
 } from "./provider-transport-stream.js";
 import { resolveOpencodeSessionHeaders } from "./session-affinity.js";
@@ -280,14 +278,6 @@ export function prepareModelForSimpleCompletion<TApi extends Api>(params: {
   const codexTransportModel = prepareCodexSimpleTransportModel(apiRegistry, model, cfg);
   if (codexTransportModel) {
     return wrap(codexTransportModel);
-  }
-
-  const transportAwareModel = prepareTransportAwareSimpleModel(model, { cfg });
-  if (transportAwareModel !== model) {
-    const streamFn = buildTransportAwareSimpleStreamFn(model, { cfg });
-    if (streamFn && registerCustomApi(apiRegistry, transportAwareModel.api, streamFn)) {
-      return wrap(transportAwareModel);
-    }
   }
 
   if (model.provider === "anthropic-vertex") {

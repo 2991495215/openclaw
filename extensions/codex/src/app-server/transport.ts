@@ -182,12 +182,7 @@ async function waitForCodexAppServerTransportExit(
   drained?: Promise<boolean>,
 ): Promise<boolean> {
   return await new Promise<boolean>((resolve) => {
-    let settled = false;
     const finish = (exited: boolean) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
       clearTimeout(timeout);
       child.off?.("exit", onExit);
       resolve(exited);

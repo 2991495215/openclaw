@@ -10,10 +10,8 @@ const createAnthropicVertexStreamFnForModel = vi.fn();
 const ensureCustomApiRegistered = vi.fn();
 const resolveProviderStreamFn = vi.fn();
 const wrapProviderSimpleCompletionStreamFn = vi.fn();
-const buildTransportAwareSimpleStreamFn = vi.fn();
 const createOpenClawTransportStreamFnForModel = vi.fn();
 const createTransportAwareStreamFnForModel = vi.fn();
-const prepareTransportAwareSimpleModel = vi.fn();
 const resolveTransportAwareSimpleApi = vi.fn();
 const inheritManagedTransport = vi.fn((_source: Model, target: Model) => target);
 const pluginStreamFn = vi.fn<StreamFn>(() => createAssistantMessageEventStream());
@@ -22,10 +20,8 @@ const TEST_SECRET_SENTINEL = "test-secret-sentinel";
 const initialHost = getAiTransportHost();
 
 vi.mock("./provider-transport-stream.js", () => ({
-  buildTransportAwareSimpleStreamFn,
   createOpenClawTransportStreamFnForModel,
   createTransportAwareStreamFnForModel,
-  prepareTransportAwareSimpleModel,
   resolveTransportAwareSimpleApi,
 }));
 
@@ -84,19 +80,15 @@ describe("prepareModelForSimpleCompletion", () => {
     resolveProviderStreamFn.mockReset();
     pluginStreamFn.mockClear();
     wrapProviderSimpleCompletionStreamFn.mockReset();
-    buildTransportAwareSimpleStreamFn.mockReset();
     createOpenClawTransportStreamFnForModel.mockReset();
     createTransportAwareStreamFnForModel.mockReset();
-    prepareTransportAwareSimpleModel.mockReset();
     resolveTransportAwareSimpleApi.mockReset();
     inheritManagedTransport.mockClear();
     createAnthropicVertexStreamFnForModel.mockReturnValue("vertex-stream");
     resolveProviderStreamFn.mockReturnValue(pluginStreamFn);
     wrapProviderSimpleCompletionStreamFn.mockReturnValue(undefined);
-    buildTransportAwareSimpleStreamFn.mockReturnValue(undefined);
     createOpenClawTransportStreamFnForModel.mockReturnValue(undefined);
     createTransportAwareStreamFnForModel.mockReturnValue(undefined);
-    prepareTransportAwareSimpleModel.mockImplementation((model) => model);
     resolveTransportAwareSimpleApi.mockReturnValue(undefined);
     configureAiTransportHost({
       plugin: {
@@ -332,7 +324,7 @@ describe("prepareModelForSimpleCompletion", () => {
     expect(inheritManagedTransport).toHaveBeenCalledWith(model, result);
   });
 
-  it("uses a transport-aware custom api alias when llm request transport overrides are present", () => {
+  it("uses the managed stream when llm request transport overrides are present", () => {
     const model: Model<"openai-responses"> = {
       id: "gpt-5",
       name: "GPT-5",
@@ -347,25 +339,21 @@ describe("prepareModelForSimpleCompletion", () => {
     };
 
     resolveProviderStreamFn.mockReturnValueOnce(undefined);
-    buildTransportAwareSimpleStreamFn.mockReturnValueOnce("transport-stream");
-    prepareTransportAwareSimpleModel.mockReturnValueOnce({
-      ...model,
-      api: "openclaw-openai-responses-transport",
-    });
+    const transportStream = vi.fn<StreamFn>(() => createAssistantMessageEventStream());
+    createTransportAwareStreamFnForModel.mockReturnValueOnce(transportStream);
 
     const result = prepareModelForSimpleCompletion({ model });
 
-    expect(prepareTransportAwareSimpleModel).toHaveBeenCalledWith(model, { cfg: undefined });
-    expect(buildTransportAwareSimpleStreamFn).toHaveBeenCalledWith(model, { cfg: undefined });
+    expect(createTransportAwareStreamFnForModel).toHaveBeenCalledWith(model, { cfg: undefined });
     expect(ensureCustomApiRegistered).toHaveBeenCalledWith(
       apiRegistry,
-      "openclaw-openai-responses-transport",
-      "transport-stream",
+      "openai-responses",
+      expect.any(Function),
     );
-    expect(result).toEqual({
-      ...model,
-      api: "openclaw-openai-responses-transport",
-    });
+    expect(result).toBe(model);
+    const registeredStream = ensureCustomApiRegistered.mock.calls.at(-1)?.[2] as StreamFn;
+    void registeredStream(result, { messages: [] }, {});
+    expect(transportStream).toHaveBeenCalledExactlyOnceWith(model, { messages: [] }, {});
   });
 
   it.each([
@@ -416,7 +404,6 @@ describe("prepareModelForSimpleCompletion", () => {
         baseUrl: expectedBaseUrl,
         api: "openclaw-openai-chatgpt-responses-transport",
       });
-      expect(prepareTransportAwareSimpleModel).not.toHaveBeenCalled();
     },
   );
 
