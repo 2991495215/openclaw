@@ -131,6 +131,59 @@ suite.define(() => {
             }),
           )
           .toBe(true);
+        // Transcript persistence is debounced independently from the roster write.
+        await expect
+          .poll(() =>
+            page.evaluate(async (expectedSessionKey) => {
+              if (
+                !(await indexedDB.databases()).some((db) => db.name === "openclaw-chat-snapshots")
+              ) {
+                return false;
+              }
+              return new Promise<boolean>((resolve, reject) => {
+                const open = indexedDB.open("openclaw-chat-snapshots");
+                open.addEventListener("error", () =>
+                  reject(open.error ?? new Error("Transcript cache open failed")),
+                );
+                open.addEventListener("success", () => {
+                  const db = open.result;
+                  const transaction = db.transaction("snapshots", "readonly");
+                  const request = transaction.objectStore("snapshots").getAll();
+                  transaction.addEventListener("complete", () => {
+                    db.close();
+                    resolve(
+                      request.result.some((record: unknown) => {
+                        if (
+                          typeof record !== "object" ||
+                          record === null ||
+                          !("sessionKey" in record) ||
+                          typeof record.sessionKey !== "string" ||
+                          !record.sessionKey.endsWith(`\u0000${expectedSessionKey}`) ||
+                          !("snapshot" in record) ||
+                          typeof record.snapshot !== "object" ||
+                          record.snapshot === null ||
+                          !("messages" in record.snapshot) ||
+                          !Array.isArray(record.snapshot.messages)
+                        ) {
+                          return false;
+                        }
+                        return record.snapshot.messages.some(
+                          (message: unknown) =>
+                            typeof message === "object" &&
+                            message !== null &&
+                            "role" in message &&
+                            message.role === "assistant" &&
+                            "content" in message &&
+                            message.content === "Synthetic mission briefing.",
+                        );
+                      }),
+                    );
+                  });
+                });
+              });
+            }, sessionKey),
+          )
+          .toBe(true);
         await page.addInitScript(() => {
           const frames: Array<{
             title: string;
