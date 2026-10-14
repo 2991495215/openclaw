@@ -1323,7 +1323,7 @@ describe("modelsAuthLoginCommand", () => {
     );
   });
 
-  it("offers searchable providers in label order without changing the chosen provider", async () => {
+  it("offers searchable providers with preferred providers first without changing selection", async () => {
     const runSelected = vi.fn().mockResolvedValue({ profiles: [] });
     const runOther = vi.fn().mockResolvedValue({ profiles: [] });
     const select = vi.fn().mockResolvedValue("beta-first");
@@ -1332,8 +1332,10 @@ describe("modelsAuthLoginCommand", () => {
       (
         [
           ["zeta", "Zeta"],
+          ["xai", "xAI"],
           ["beta-second", "Beta"],
           ["alpha", "Alpha"],
+          ["openai", "OpenAI"],
           ["beta-first", "Beta"],
         ] as const
       ).map(([id, label]) =>
@@ -1347,6 +1349,8 @@ describe("modelsAuthLoginCommand", () => {
       message: "Select a provider",
       searchable: true,
       options: [
+        { value: "openai", label: "OpenAI", hint: undefined },
+        { value: "xai", label: "xAI", hint: undefined },
         { value: "alpha", label: "Alpha", hint: undefined },
         { value: "beta-first", label: "Beta", hint: undefined },
         { value: "beta-second", label: "Beta", hint: undefined },
