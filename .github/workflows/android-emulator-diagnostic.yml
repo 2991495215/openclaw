@@ -1,6 +1,6 @@
-name: Android Gateway Startup Diagnostic
+name: Android Full Runner Diagnostic
 
-run-name: Android Gateway startup diagnostic (${{ inputs.target_sha }})
+run-name: Android full runner diagnostic (${{ inputs.target_sha }})
 
 on:
   workflow_dispatch:
@@ -8,38 +8,43 @@ on:
       target_sha:
         description: Exact reviewed Android qualification source to diagnose
         required: true
-        default: 5519409614b71bb3a1eb94424aa351e663782f4e
+        default: 39a3106b0bf331931ea437b77fc3c0b77bfb4272
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  TARGET_SHA: 5519409614b71bb3a1eb94424aa351e663782f4e
+  TARGET_SHA: 39a3106b0bf331931ea437b77fc3c0b77bfb4272
 
 jobs:
-  gateway_startup:
+  full_runner_diagnostic:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 90
     steps:
-      - name: Require the pinned diagnostic source
+      - name: Require the pinned diagnostic source and owned probe branch
         env:
           REQUESTED_SHA: ${{ inputs.target_sha }}
-        run: test "$REQUESTED_SHA" = "$TARGET_SHA"
+        run: |
+          set -euo pipefail
+          test "$REQUESTED_SHA" = "$TARGET_SHA"
+          test "$GITHUB_REF" = refs/heads/ci/android-store-gate-probe-5519409614b7
 
       - name: Checkout the reviewed Android qualification source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 5519409614b71bb3a1eb94424aa351e663782f4e
+          ref: 39a3106b0bf331931ea437b77fc3c0b77bfb4272
           persist-credentials: false
 
-      - name: Verify source before applying the disposable probe
+      - name: Verify clean source before applying the disposable probe
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           test -z "$(git status --porcelain --untracked-files=all)"
           test -f scripts/android-release-e2e.ts
+          test -f scripts/ios-release-gateway.ts
 
       - name: Setup the qualification Node environment
         uses: ./.github/actions/setup-node-env
@@ -48,16 +53,32 @@ jobs:
           install-bun: "false"
           cache-mode: "off"
 
-      - name: Prepare the published stable Gateway selection
+      - name: Restore the failed exact-head run's Gateway selection
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: android-release-gateway-selection-38490094724
+          github-token: ${{ github.token }}
+          run-id: 38490094724
+          path: ${{ runner.temp }}/android-full-diagnostic-selection
+          digest-mismatch: error
+
+      - name: Verify the restored published stable Gateway selection
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           node --import ./scripts/tsx.mjs scripts/ios-release-gateway.ts \
             --target-sha "$TARGET_SHA" \
-            --selection-dir "$RUNNER_TEMP/android-gateway-diagnostic-selection"
+            --selection-dir "$RUNNER_TEMP/android-full-diagnostic-selection"
 
-      - name: Patch only this runner's startup diagnostic
+      - name: Setup the original Android toolchain and standard emulator images
+        id: android-toolchain
+        uses: ./.github/actions/setup-android-toolchain
+        with:
+          cache-mode: "off"
+          install-screenshot-emulators: "true"
+
+      - name: Add bounded diagnostics to the verified full runner
         shell: bash
         run: |
           set -euo pipefail
@@ -73,194 +94,155 @@ jobs:
               assert source.count(before) == 1, "Pinned diagnostic patch input differs"
               source = source.replace(before, after, 1)
 
-          def remove_between(before, after):
-              global source
-              assert source.count(before) == 1 and source.count(after) == 1, "Pinned diagnostic cut input differs"
-              start = source.index(before)
-              end = source.index(after, start)
-              source = source[:start] + source[end:]
-
-          remove_between('    if (\n      !evidence.source.clean &&\n', '    phase("build");\n')
-          remove_between('    phase("build");\n', '    phase("gateway-install");\n')
-          remove_between('    const rpc = <T>', '    evidence.status = "passed";\n')
+          replace_once('import { randomUUID } from "node:crypto";',
+                       'import { execFileSync } from "node:child_process";\nimport { randomUUID } from "node:crypto";')
+          # This disposable runner is not qualification evidence. Preserve the dirty
+          # fingerprint and final source-stability check; only admit this known edit.
+          replace_once(
+              '    if (\n      !evidence.source.clean &&\n      (!values["allow-dirty"] || process.env.GITHUB_ACTIONS === "true")\n    ) {\n      throw new Error("dirty-source");\n    }',
+              '    if (evidence.source.clean || !evidence.source.diffSha256) {\n      throw new Error("diagnostic-source-edit-missing");\n    }',
+          )
           replace_once(
               '      "Native phone and Wear application behavior through a controlled Google Data Layer boundary, real protocol, phone bridge/controller, published Gateway and local provider.",',
-              '      "Disposable hosted Linux Gateway startup diagnostic; no native application qualification.",',
+              '      "Disposable exact-source full runner diagnostic with explicit dirty-source fingerprint; not release qualification evidence.",',
           )
+
           diagnostic = r"""
-          function diagnostic(error: unknown, relation = "caught", seen = new Set<unknown>()): void {
-            if (seen.has(error)) return;
-            seen.add(error);
-            if (!(error instanceof Error)) {
-              console.log(JSON.stringify({ diagnostic: relation, class: typeof error }));
-              return;
-            }
-            const rawCode: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value;
-            const code = typeof rawCode === "string" && /^[A-Za-z0-9_-]{1,120}$/u.test(rawCode)
-              ? rawCode : typeof rawCode === "number" && Number.isFinite(rawCode) ? rawCode : undefined;
-            const name = /^[A-Za-z0-9_$]{1,80}$/u.test(error.name) ? error.name : "Error";
-            const classification = error.message === "Linux child ownership requires the built process owner, without a source loader"
-              ? "linux-built-process-owner-required" : undefined;
-            const frames = (error.stack ?? "").split(/\r?\n/u).filter((line) => /^\s*at /u.test(line));
-            console.log(JSON.stringify({ diagnostic: relation, class: name, code, classification, frames }));
-            if (error.cause !== undefined) diagnostic(error.cause, `${relation}.cause`, seen);
-            if (error instanceof AggregateError) {
-              const errors: readonly unknown[] = error.errors;
-              for (const [index, nested] of errors.entries()) diagnostic(nested, `${relation}.errors[${index}]`, seen);
+          function diagnosticCode(error: unknown): string | undefined {
+            if (!(error instanceof Error)) return undefined;
+            const value: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value;
+            return value === "ETIMEDOUT" || value === "ABORT_ERR" ||
+              value === "EPROCESSGROUP_CLEANUP_FAILED" ? value : undefined;
+          }
+          function diagnostic(error: unknown, relation: string, depth = 0): void {
+            const names = new Set(["Error", "TypeError", "RangeError", "SyntaxError",
+              "AggregateError", "AbortError", "DOMException"]);
+            const name = error instanceof Error && names.has(error.name) ? error.name : "unknown";
+            const frames = error instanceof Error ? (error.stack ?? "").split(/\r?\n/u)
+              .flatMap((line) => {
+                const match = /^\s*at .*[\/](android-release-e2e\.ts|managed-child-process\.mjs|openclaw-test-instance\.ts|qa-gateway-child\.ts):(\d+):(\d+)\)?$/u.exec(line);
+                return match ? [{ file: match[1], line: Number(match[2]), column: Number(match[3]) }] : [];
+              }).slice(0, 8) : [];
+            console.log(JSON.stringify({ diagnostic: relation, class: name,
+              code: diagnosticCode(error), frames }));
+            if (depth < 2 && error instanceof Error) {
+              if (error.cause !== undefined) diagnostic(error.cause, "cause", depth + 1);
+              if (error instanceof AggregateError) {
+                for (const nested of error.errors.slice(0, 4)) diagnostic(nested, "aggregate", depth + 1);
+              }
             }
           }
           """
           replace_once('export async function main', diagnostic + '\nexport async function main')
-          log_signals = r"""
-              const logs = instance?.logs() ?? "";
-              console.log(JSON.stringify({
-                diagnostic: "startup-log-signals",
-                ownerRefusal: logs.includes("Linux child ownership requires the built process owner, without a source loader"),
-                moduleNotFound: logs.includes("ERR_MODULE_NOT_FOUND"),
-                packagePathNotExported: logs.includes("ERR_PACKAGE_PATH_NOT_EXPORTED"),
-                normalizationCore: logs.includes("@openclaw/normalization-core"),
-                tsx: logs.includes("tsx"),
-                procSafe: logs.includes("proc-safe"),
-              }));
-          """
-          replace_once('  } catch (error) {\n    evidence.failure = stage;', '  } catch (error) {\n    diagnostic(error, "startup");\n' + log_signals + '\n    evidence.failure = stage;')
-          replace_once('    const cleanupFailed =\n', '    for (const [index, result] of gatewayCleanup.entries()) {\n      if (result.status === "rejected") diagnostic(result.reason, `gateway-cleanup[${index}]`);\n    }\n    for (const [index, result] of cleanup.entries()) {\n      if (result.status === "rejected") diagnostic(result.reason, `service-cleanup[${index}]`);\n    }\n    const cleanupFailed =\n')
-          replace_once('  void main().catch(() => {', '  void main().catch((error: unknown) => {\n    diagnostic(error, "preparation");')
-          replace_once('    service(\n      process.execPath,', '    console.log("Diagnostic: starting original provider");\n    service(\n      process.execPath,')
-          replace_once('    applyMockOpenAiModelConfig(config, {', '    console.log("Diagnostic: waiting for provider port");\n    applyMockOpenAiModelConfig(config, {')
-          replace_once('    const fixtureOwnedKeys = new Set([', '    console.log("Diagnostic: provider port ready");\n    const fixtureOwnedKeys = new Set([')
-          replace_once('    instance = await createOpenClawTestInstance({', '    console.log("Diagnostic: creating original test instance");\n    instance = await createOpenClawTestInstance({')
-          replace_once('    await instance.startGateway();', '    console.log("Diagnostic: instance created; starting original Gateway");\n    await instance.startGateway();\n    console.log("Diagnostic: original Gateway startup passed");')
+          replace_once('  let commandIndex = 0;', '  let commandIndex = 0;\n  let observedFirstAdb = false;')
+          replace_once(
+              '    const index = ++commandIndex;\n    const code = await runManagedCommand({',
+              r"""    const index = ++commandIndex;
+              const commandStage = stage;
+              const startedAt = Date.now();
+              const basename = path.basename(bin);
+              if (basename === "adb" && !observedFirstAdb) {
+                observedFirstAdb = true;
+                let present: boolean | null = null;
+                try {
+                  present = execFileSync("ps", ["-eo", "comm="], { encoding: "utf8", timeout: 2_000 })
+                    .split(/\r?\n/u).some((line) => line.trim() === "adb");
+                } catch {
+                  // This observation neither starts nor stops the daemon.
+                }
+                console.log(JSON.stringify({ diagnostic: "adb-server-before-first-adb", present }));
+              }
+              let code: number;
+              try {
+                code = await runManagedCommand({""",
+          )
+          replace_once(
+              '    });\n    await writeFile(path.join(root, `command-${index}.private.log`), stdout + stderr);',
+              r"""    });
+              } catch (error) {
+                console.log(JSON.stringify({ diagnostic: "command-error", basename,
+                  phase: commandStage, code: diagnosticCode(error), elapsedMs: Date.now() - startedAt }));
+                throw error;
+              }
+              console.log(JSON.stringify({ diagnostic: "command-complete", basename,
+                phase: commandStage, exitCode: code, elapsedMs: Date.now() - startedAt }));
+              await writeFile(path.join(root, `command-${index}.private.log`), stdout + stderr);""",
+          )
+          replace_once('  function service(\n    bin: string,',
+                       '  function service(\n    serviceName: "provider" | "phone-emulator" | "wear-emulator",\n    bin: string,')
+          replace_once('    service(\n      process.execPath,',
+                       '    service(\n      "provider",\n      process.execPath,')
+          replace_once('      service(\n        path.join(sdk, "emulator/emulator"),',
+                       '      phase(role + "-boot");\n      service(\n        role === "phone" ? "phone-emulator" : "wear-emulator",\n        path.join(sdk, "emulator/emulator"),')
+          replace_once(
+              '      .then((code) => {\n        if (!closing && !stop.signal.aborted) {\n          unexpectedExit = true;',
+              '      .then((code) => {\n        if (!closing && !stop.signal.aborted) {\n          console.log(JSON.stringify({ diagnostic: "service-unexpected-exit", service: serviceName, exitCode: code }));\n          unexpectedExit = true;',
+          )
+          replace_once(
+              '    void done.catch(() => {\n      if (!closing) {\n        unexpectedExit = true;',
+              '    void done.catch((error: unknown) => {\n      if (!closing) {\n        console.log(JSON.stringify({ diagnostic: "service-unexpected-error", service: serviceName, code: diagnosticCode(error) }));\n        unexpectedExit = true;',
+          )
+          replace_once('    instance.child?.once("exit", () => {',
+                       '    instance.child?.once("exit", (code) => {\n      console.log(JSON.stringify({ diagnostic: "gateway-exit", exitCode: code }));')
+          replace_once('      await command(\n        path.join(sdk, "cmdline-tools/latest/bin/avdmanager"),',
+                       '      phase(role + "-create");\n      await command(\n        path.join(sdk, "cmdline-tools/latest/bin/avdmanager"),')
+          replace_once('      if (!(await deviceCommand(device, ["emu", "avd", "name"])).split(/\\r?\\n/u).includes(name)) {',
+                       '      phase(role + "-identity");\n      if (!(await deviceCommand(device, ["emu", "avd", "name"])).split(/\\r?\\n/u).includes(name)) {')
+          replace_once('      await deviceCommand(device, [\n        "shell",\n        "settings",\n        "put",\n        "global",\n        "window_animation_scale",',
+                       '      phase(role + "-settings");\n      await deviceCommand(device, [\n        "shell",\n        "settings",\n        "put",\n        "global",\n        "window_animation_scale",')
+          replace_once('      await deviceCommand(device, ["install", "-t", "-g", role === "phone" ? phoneApk : wearApk]);',
+                       '      phase(role + "-install-app");\n      await deviceCommand(device, ["install", "-t", "-g", role === "phone" ? phoneApk : wearApk]);')
+          replace_once('      await deviceCommand(device, ["install", "-t", "-g", role === "phone" ? phoneTest : wearTest]);',
+                       '      phase(role + "-install-test");\n      await deviceCommand(device, ["install", "-t", "-g", role === "phone" ? phoneTest : wearTest]);')
+          replace_once('      device.forward = Number(',
+                       '      phase(role + "-forward");\n      device.forward = Number(')
+          replace_once('  } catch (error) {\n    evidence.failure = stage;',
+                       '  } catch (error) {\n    diagnostic(error, "runner-caught");\n    evidence.failure = stage;')
+          replace_once('    const cleanupFailed =\n',
+                       '    for (const result of gatewayCleanup) {\n      if (result.status === "rejected") diagnostic(result.reason, "gateway-cleanup");\n    }\n    for (const result of cleanup) {\n      if (result.status === "rejected") diagnostic(result.reason, "service-cleanup");\n    }\n    const cleanupFailed =\n')
+          replace_once('  void main().catch(() => {',
+                       '  void main().catch((error: unknown) => {\n    diagnostic(error, "preparation");')
           assert source != original
           owner.write_text(source)
-          print("Disposable diagnostic patch applied to the verified source; Android builds, APK checks, and native work removed.")
+          print("Full exact-source runner retained; bounded diagnostics added, source fingerprint remains dirty.")
           PATCH
 
-      - name: Exercise the original Linux Gateway startup and cleanup
-        id: original
-        # A strict failed-control assertion below owns this diagnostic exception.
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          node --import ./scripts/tsx.mjs scripts/android-release-e2e.ts \
-            --target-sha "$TARGET_SHA" \
-            --selection-dir "$RUNNER_TEMP/android-gateway-diagnostic-selection" \
-            --output "$RUNNER_TEMP/android-gateway-diagnostic-proof.json" \
-            --artifacts-dir "$RUNNER_TEMP/android-gateway-diagnostic-artifacts"
-
-      - name: Require the original failing control before adding the compiled owner
+      - name: Run full original build, APK, Gateway, emulator and native flow
         env:
-          ORIGINAL_OUTCOME: ${{ steps.original.outcome }}
-        run: |
-          python3 - <<'CONTROL'
-          import json, os
-          from pathlib import Path
-          proof = Path(os.environ["RUNNER_TEMP"]) / "android-gateway-diagnostic-proof.json"
-          data = json.loads(proof.read_text())
-          assert os.environ["ORIGINAL_OUTCOME"] == "failure"
-          assert data["status"] == "failed" and data["phases"] == []
-          assert data["failure"] == "gateway-start"
-          assert data["targetSha"] == os.environ["TARGET_SHA"]
-          print("Original pinned-source startup failed before native work; compiled-owner comparison admitted.")
-          CONTROL
-
-      - name: Add only the proposed target-owned Linux fixture bootstrap
+          OPENCLAW_GRADLE_JAVA_HOME: ${{ steps.android-toolchain.outputs.gradle-java-home }}
         run: |
           set -euo pipefail
-          python3 - <<'BOOTSTRAP'
-          from pathlib import Path
-          owner = Path("scripts/android-release-e2e.ts")
-          source = owner.read_text()
-          assert 'phase("gateway-process-owner")' not in source
-          assert "registerSealedRuntimeProcessEntrypoint" not in source
-
-          def replace_once(before, after):
-              global source
-              assert source.count(before) == 1, "Pinned bootstrap patch input differs"
-              source = source.replace(before, after, 1)
-
-          fs_import = r"""import {
-            mkdir,
-            mkdtemp,
-            readFile,
-            readdir,
-            rename,
-            rm,
-            symlink,
-            writeFile,
-          } from "node:fs/promises";"""
-          replace_once('import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";', fs_import)
-          replace_once('import { callGateway } from "../src/gateway/call.js";', 'import { callGateway } from "../src/gateway/call.js";\nimport { registerSealedRuntimeProcessEntrypoint } from "../src/infra/runtime-process-url.js";')
-          replace_once('import { resolveRepoRoot } from "./lib/repo-root.mjs";', 'import { resolveRepoRoot } from "./lib/repo-root.mjs";\nimport {\n  getStandaloneRuntimeProcessOutputOptions,\n  standaloneRuntimeProcessBuildEntries,\n} from "./lib/runtime-process-core-build-entries.mts";')
-          bootstrap = r"""
-              if (process.platform === "linux") {
-                phase("gateway-process-owner");
-                // Linux custody requires a built subreaper without loader children. Compile
-                // this target's owner so its protocol matches the source-loaded fixture.
-                const name = "process/supervisor/service-child-group-anchor";
-                const entry = standaloneRuntimeProcessBuildEntries[name];
-                if (!entry) {
-                  throw new Error("gateway-process-owner-entry-missing");
-                }
-                const outDir = path.join(root, "process-owner", "dist");
-                await symlink(path.join(repo, "node_modules"), path.join(root, "node_modules"), "dir");
-                const { build } = await import("tsdown");
-                await build({
-                  config: false,
-                  cwd: repo,
-                  entry: { [name]: entry },
-                  outDir,
-                  format: "esm",
-                  platform: "node",
-                  tsconfig: path.join(repo, "tsconfig.json"),
-                  dts: false,
-                  envPrefix: [],
-                  clean: false,
-                  outExtensions: () => ({ js: ".js" }),
-                  outputOptions: getStandaloneRuntimeProcessOutputOptions(name),
-                  logLevel: "warn",
-                });
-                registerSealedRuntimeProcessEntrypoint(
-                  "serviceChildGroupAnchor",
-                  pathToFileURL(path.join(outDir, `${name}.js`)),
-                );
-              }
-          """
-          replace_once('    phase("gateway-start");', bootstrap + '\n    phase("gateway-start");')
-          owner.write_text(source)
-          print("Only this pinned target's canonical standalone process owner will be compiled and registered.")
-          BOOTSTRAP
-
-      - name: Exercise the compiled-owner Linux Gateway startup and cleanup
-        run: |
-          set -euo pipefail
-          node --import ./scripts/tsx.mjs scripts/android-release-e2e.ts \
+          pnpm android:release:validate -- \
             --target-sha "$TARGET_SHA" \
-            --selection-dir "$RUNNER_TEMP/android-gateway-diagnostic-selection" \
-            --output "$RUNNER_TEMP/android-gateway-diagnostic-fixed-proof.json" \
-            --artifacts-dir "$RUNNER_TEMP/android-gateway-diagnostic-fixed-artifacts"
-          python3 - <<'FIXED'
-          import json, os
-          from pathlib import Path
-          proof = Path(os.environ["RUNNER_TEMP"]) / "android-gateway-diagnostic-fixed-proof.json"
-          data = json.loads(proof.read_text())
-          assert data["status"] == "passed" and data["cleanupConfirmed"] is True
-          assert data["phases"] == [] and data["targetSha"] == os.environ["TARGET_SHA"]
-          print("Compiled-owner startup and cleanup passed; no native application qualification was executed.")
-          FIXED
+            --selection-dir "$RUNNER_TEMP/android-full-diagnostic-selection" \
+            --output "$RUNNER_TEMP/android-full-diagnostic-proof.json" \
+            --artifacts-dir "$RUNNER_TEMP/android-full-diagnostic"
 
-      - name: Report bounded diagnostic status
+      - name: Report bounded diagnostic proof status
         if: always()
         run: |
           python3 - <<'REPORT'
           import json, os
           from pathlib import Path
-          for control, filename in (("original", "android-gateway-diagnostic-proof.json"),
-                                    ("compiled-owner", "android-gateway-diagnostic-fixed-proof.json")):
-              proof = Path(os.environ["RUNNER_TEMP"]) / filename
-              if proof.exists():
-                  data = json.loads(proof.read_text())
-                  print(json.dumps({"control": control, **{key: data.get(key) for key in ("targetSha", "status", "failure", "cleanupConfirmed", "coverage")}}))
-              else:
-                  print(json.dumps({"control": control, "diagnostic": "preparation did not produce proof"}))
+          path = Path(os.environ["RUNNER_TEMP"]) / "android-full-diagnostic-proof.json"
+          if path.exists():
+              data = json.loads(path.read_text())
+              assert data["targetSha"] == os.environ["TARGET_SHA"]
+              assert data["source"]["clean"] is False and data["source"].get("diffSha256")
+              assert data["coverage"] == "Disposable exact-source full runner diagnostic with explicit dirty-source fingerprint; not release qualification evidence."
+              print(json.dumps({key: data.get(key) for key in
+                                ("targetSha", "status", "failure", "cleanupConfirmed", "source", "coverage")}))
+          else:
+              print(json.dumps({"diagnostic": "preparation-no-proof"}))
           REPORT
+
+      - name: Retain only public diagnostic proof and synthetic screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-full-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/android-full-diagnostic-proof.json
+            ${{ runner.temp }}/android-full-diagnostic/screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 7
