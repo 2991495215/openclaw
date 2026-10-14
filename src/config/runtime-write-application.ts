@@ -40,11 +40,22 @@ type RuntimeConfigWriteApplication = {
 
 const runtimeConfigWriteApplications = new WeakMap<object, RuntimeConfigWriteApplication>();
 
+// Temporary exact-case diagnostic; never merge.
+function recordConfigRpcPhase(phase: string): void {
+  process.stderr.write(
+    `[config-rpc-phase] ${JSON.stringify({ phase, atMs: Math.round(performance.now()) })}\n`,
+  );
+}
+
+let diagnosticReceiptId = 0;
+
 /** Creates a single-owner receipt for one persisted config write. */
 export function createRuntimeConfigWriteApplication(
   runTransaction?: <T>(run: () => Promise<T>) => Promise<T>,
   activation?: Pick<RuntimeConfigWriteApplicationClaim, "prepare" | "requireImmediateApplication">,
 ): RuntimeConfigWriteApplication {
+  const receiptId = ++diagnosticReceiptId;
+  recordConfigRpcPhase(`receipt:${receiptId}:created`);
   let claimed = false;
   let settled = false;
   let isCarriedBy: RuntimeConfigWriteApplicationClaim["isCarriedBy"];
@@ -62,14 +73,17 @@ export function createRuntimeConfigWriteApplication(
     },
     claim: () => {
       if (claimed) {
+        recordConfigRpcPhase(`receipt:${receiptId}:duplicate-claim`);
         return null;
       }
       claimed = true;
+      recordConfigRpcPhase(`receipt:${receiptId}:claimed`);
       const claim: RuntimeConfigWriteApplicationClaim = {
         settle: (status) => {
           settled = true;
           // Reply settlement releases the RPC root; retained watcher intent must reacquire admission.
           delete claim.runTransaction;
+          recordConfigRpcPhase(`receipt:${receiptId}:settle:${status}`);
           result.resolve(status);
         },
         ...(runTransaction ? { runTransaction } : {}),

@@ -513,6 +513,13 @@ export function clearConfigSchemaResponseCacheForTests() {
   invalidateConfigGetResponseCache();
 }
 
+// Temporary exact-case diagnostic; never merge.
+function recordConfigRpcPhase(phase: string): void {
+  process.stderr.write(
+    `[config-rpc-phase] ${JSON.stringify({ phase, atMs: Math.round(performance.now()) })}\n`,
+  );
+}
+
 async function commitConfigRestartWrite(params: {
   requestParams: unknown;
   mode: ConfigRestartWriteMode;
@@ -543,6 +550,7 @@ async function commitConfigRestartWrite(params: {
       fallbackSource: snapshot.sourceConfig,
       next: params.preparedSecretsSnapshot.config,
     });
+  recordConfigRpcPhase("handler:write:start");
   const writeResult = await commitGatewayConfigWriteOrRespond({
     snapshot,
     writeOptions,
@@ -556,6 +564,7 @@ async function commitConfigRestartWrite(params: {
     }),
     respond: params.respond,
   });
+  recordConfigRpcPhase("handler:write:returned");
   if (!writeResult) {
     return;
   }
@@ -566,7 +575,9 @@ async function commitConfigRestartWrite(params: {
     ...(!params.summary ? { config: redactConfigObject(writeResult.config, params.uiHints) } : {}),
   };
   if (writeResult.application) {
+    recordConfigRpcPhase("handler:application:wait");
     const outcome = await writeResult.application;
+    recordConfigRpcPhase("handler:application:returned");
     if (outcome !== "applied") {
       const message =
         outcome === "applied-restart-required"
@@ -599,6 +610,7 @@ async function commitConfigRestartWrite(params: {
     writeResult.queueFollowUp();
     return;
   }
+  recordConfigRpcPhase("handler:restart:wait");
   const { payload, sentinelPersisted, restart } = await resolveGatewayConfigRestartWriteResult({
     requestParams: params.requestParams,
     kind: params.mode === "config.patch" ? "config-patch" : "config-apply",
@@ -610,6 +622,8 @@ async function commitConfigRestartWrite(params: {
     actor: params.actor,
     context: params.context,
   });
+  recordConfigRpcPhase("handler:restart:returned");
+  recordConfigRpcPhase("handler:response:start");
   params.respond(
     true,
     {
@@ -628,6 +642,7 @@ async function commitConfigRestartWrite(params: {
     },
     undefined,
   );
+  recordConfigRpcPhase("handler:response:returned");
   writeResult.queueFollowUp();
 }
 

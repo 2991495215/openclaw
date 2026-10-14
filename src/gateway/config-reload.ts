@@ -89,6 +89,13 @@ const MISSING_CONFIG_MAX_RETRIES = 2;
 const LEASE_RETRY_INITIAL_DELAY_MS = 250;
 const LEASE_RETRY_MAX_DELAY_MS = 5_000;
 
+// Temporary exact-case diagnostic; never merge.
+function recordConfigRpcPhase(phase: string): void {
+  process.stderr.write(
+    `[config-rpc-phase] ${JSON.stringify({ phase, atMs: Math.round(performance.now()) })}\n`,
+  );
+}
+
 function candidateApplications(candidate: GatewayConfigReloadCandidate | null | undefined) {
   return [candidate?.application, ...(candidate?.carriedApplications ?? [])].filter(
     (application): application is RuntimeConfigWriteApplicationClaim => application !== undefined,
@@ -566,6 +573,7 @@ export function startGatewayConfigReloader(
         opts.log.info(
           `config source revision ${initialEpoch} accepted (${candidate?.origin ?? "file"})`,
         );
+        recordConfigRpcPhase("reload:source:committed");
         opts.onReloadEnabledChange?.(nextSettings.mode !== "off");
         if (changedPaths.length > 0) {
           opts.onConfigCandidateCommitted?.({
@@ -576,8 +584,11 @@ export function startGatewayConfigReloader(
         }
         if (options.runtimeApplied !== false && (changedPaths.length > 0 || pluginLifecycle)) {
           try {
+            recordConfigRpcPhase("reload:skills:import:start");
             const { refreshSkillsDiscovery } = await import("../skills/runtime/refresh.js");
+            recordConfigRpcPhase("reload:skills:import:returned");
             await refreshSkillsDiscovery({ config: currentConfig, reason: "config-change" });
+            recordConfigRpcPhase("reload:skills:refresh:returned");
           } catch (error) {
             opts.log.warn(`config applied, but skills discovery refresh failed: ${String(error)}`);
           }
