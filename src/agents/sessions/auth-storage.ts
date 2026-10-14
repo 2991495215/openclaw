@@ -26,6 +26,7 @@ import {
   isOAuthRefreshFence,
   isPendingOAuthRefreshFence,
 } from "../auth-profiles/oauth-refresh-marker.js";
+import { resolveAuthStorePathForDisplayAsync } from "../auth-profiles/paths.js";
 import { loadPersistedAuthProfileStore } from "../auth-profiles/persisted.js";
 import {
   inspectPersistedAuthProfileStateRaw,
@@ -348,6 +349,9 @@ class InMemoryAuthStorageBackend implements StorageBackend {
  * Provider-keyed credential facade backed by the canonical auth-profile store.
  */
 export class AuthStorage {
+  /** Resolve the selected auth store's display path without loading credentials. */
+  static resolvePathForDisplayAsync = resolveAuthStorePathForDisplayAsync;
+
   private data: AuthStorageData = {};
   private credentialSources = new Map<string, AuthProfileCredentialSource>();
   private runtimeOverrides: Map<string, string> = new Map();

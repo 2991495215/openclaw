@@ -138,7 +138,7 @@ await auth.setAsync(providerId, credential);
 | `saveAuthProfileStore`                                   | `await updateAuthProfileStoreWithLock(...)` from `provider-auth`; mutate the current store under its owner                     |
 | `findPersistedAuthProfileCredential`                     | `await findPersistedAuthProfileCredentialAsync(...)`                                                                           |
 | `resolvePersistedAuthProfileOwnerAgentDir`               | `await resolvePersistedAuthProfileOwnerAgentDirAsync(...)`                                                                     |
-| `resolveAuthStorePathForDisplay`                         | `await resolveAuthStorePathForDisplayAsync(...)`                                                                               |
+| `resolveAuthStorePathForDisplay`                         | `await AuthStorage.resolvePathForDisplayAsync(...)` from `agent-sessions`                                                      |
 | `replaceRuntimeAuthProfileStoreSnapshots`                | `await replaceRuntimeAuthProfileStoreSnapshotsAsync(...)`                                                                      |
 | `AuthStorage.create(authPath)`                           | `await AuthStorage.forAgentAsync(agentDir)` using the path's owning agent directory                                            |
 | `AuthStorage.forAgent`                                   | `await AuthStorage.forAgentAsync(...)`                                                                                         |

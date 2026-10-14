@@ -1,8 +1,7 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   type AuthProfileFailureReason,
   type AuthProfileStore,
-  resolveAuthStorePathForDisplayAsync,
   resolveProfilesUnavailableReason,
 } from "./agent-runtime.js";
 
@@ -43,12 +42,6 @@ function consumeCanonicalReasonFromPublicStore(
 }
 
 describe("agent-runtime auth profile contract", () => {
-  it("exposes the awaited selected-store display path", () => {
-    expectTypeOf<typeof resolveAuthStorePathForDisplayAsync>().toEqualTypeOf<
-      (agentDir?: string, env?: NodeJS.ProcessEnv) => Promise<string>
-    >();
-  });
-
   it("keeps the canonical reason independent of diagnostic classification", () => {
     const now = 1_700_000_000_000;
     const profileId = "openai:default";

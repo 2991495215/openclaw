@@ -1,7 +1,5 @@
-import {
-  loadAuthProfileStoreWithoutExternalProfilesAsync,
-  resolveAuthStorePathForDisplayAsync,
-} from "openclaw/plugin-sdk/agent-runtime";
+import { loadAuthProfileStoreWithoutExternalProfilesAsync } from "openclaw/plugin-sdk/agent-runtime";
+import { AuthStorage } from "openclaw/plugin-sdk/agent-sessions";
 import {
   markMigrationItemConflict,
   markMigrationItemError,
@@ -265,7 +263,7 @@ export async function buildSecretItems(params: {
   }
   const [store, authStorePath] = await Promise.all([
     loadAuthProfileStoreWithoutExternalProfilesAsync(params.targets.agentDir),
-    resolveAuthStorePathForDisplayAsync(params.targets.agentDir),
+    AuthStorage.resolvePathForDisplayAsync(params.targets.agentDir),
   ]);
   const seenProfiles = new Set<string>();
   const items: MigrationItem[] = [];

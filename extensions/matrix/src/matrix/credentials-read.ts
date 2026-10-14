@@ -3,7 +3,7 @@
 // plugin-state store access.
 import { normalizeAccountId } from "openclaw/plugin-sdk/account-id";
 import {
-  createPluginStateKeyedStoreV2,
+  createPluginStateKeyedStore,
   createPluginStateSyncKeyedStore,
 } from "openclaw/plugin-sdk/plugin-state-store-runtime";
 import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
@@ -49,7 +49,7 @@ export function openMatrixCredentialsAsyncStore(env: NodeJS.ProcessEnv = process
   const runtime = getOptionalMatrixRuntime();
   return runtime
     ? runtime.state.openKeyedStoreV2<MatrixCredentialStateRecord>(options)
-    : createPluginStateKeyedStoreV2<MatrixCredentialStateRecord>("matrix", options);
+    : createPluginStateKeyedStore<MatrixCredentialStateRecord>("matrix", options);
 }
 
 export function captureMatrixCredentialsEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

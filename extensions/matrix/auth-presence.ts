@@ -1,6 +1,6 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
-  createPluginStateKeyedStoreV2,
+  createPluginStateKeyedStore,
   createPluginStateSyncKeyedStore,
 } from "openclaw/plugin-sdk/plugin-state-store-runtime";
 import {
@@ -44,7 +44,7 @@ export async function hasAnyMatrixAuthAsync(
   const resolvedEnv =
     params && typeof params === "object" && "cfg" in params ? (params.env ?? env) : env;
   try {
-    const store = createPluginStateKeyedStoreV2<MatrixCredentialStateRecord>("matrix", {
+    const store = createPluginStateKeyedStore<MatrixCredentialStateRecord>("matrix", {
       namespace: MATRIX_CREDENTIALS_NAMESPACE,
       maxEntries: MATRIX_CREDENTIALS_MAX_ENTRIES,
       overflowPolicy: "reject-new",

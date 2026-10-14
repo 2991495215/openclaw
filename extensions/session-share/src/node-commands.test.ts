@@ -1,6 +1,7 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
 import { createPluginRuntimeMock } from "openclaw/plugin-sdk/plugin-test-runtime";
+import { setRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import {
   applySessionEntryPatch,
   listSessionEntries,
@@ -33,6 +34,7 @@ it.each([false, true])(
           session: { store: storePath },
           plugins: { entries: { "session-share": { config: { share: { groups: ["team"] } } } } },
         };
+        setRuntimeConfigSnapshot(config);
         const runtime = createPluginRuntimeMock({
           config: { current: () => config },
           agent: {
