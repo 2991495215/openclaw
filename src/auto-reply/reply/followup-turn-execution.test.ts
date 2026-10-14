@@ -17,6 +17,7 @@ import {
   type ReplyOperationRunState,
 } from "./reply-operation-run-state.js";
 import { markReplyOperationExecutionStarted } from "./reply-run-registry.state.js";
+import { buildStalledTurnRecoveryRun } from "./stalled-turn-recovery.js";
 import { createMockReplyOperation } from "./test-helpers.js";
 
 const state = getFollowupTurnTestState();
@@ -96,6 +97,35 @@ async function runFastAutoProgressCase(params: {
 }
 
 describe("executeFollowupTurn", () => {
+  it.each(["explicit source", "Gateway message ID"])(
+    "executes transcript-only recovery without readmitting its %s",
+    async (source) => {
+      const entry = { sessionId: "session", updatedAt: 1 };
+      state.readEntry.mockResolvedValue(entry);
+      const turn = createTurn({
+        session: {
+          kind: "session",
+          key: "main",
+          storePath: "/tmp/sessions.json",
+          current: () => entry,
+          publish: () => undefined,
+          adopt: () => undefined,
+        },
+      });
+      turn.queued.messageId = "interrupted-input";
+      turn.queued.sourceTurnId = source === "explicit source" ? "interrupted-source" : undefined;
+      turn.queued.originatingChannel = "webchat";
+      turn.queued.originatingTo = "dashboard";
+      turn.queued.run.messageProvider = "webchat";
+      turn.queued.run.inputProvenance = { kind: "external_user" };
+      turn.queued = buildStalledTurnRecoveryRun(turn.queued);
+
+      await executeTestTurn({ turn });
+
+      expect(state.execute).toHaveBeenCalledOnce();
+    },
+  );
+
   it("refreshes the eligible queued turn from its current personal profile", async () => {
     const turn = createTurn({
       session: {
