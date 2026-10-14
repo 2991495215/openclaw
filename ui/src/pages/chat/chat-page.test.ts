@@ -37,7 +37,7 @@ import {
   setViewerPresenceContext,
   stubMatchMedia,
 } from "./chat-page.test-support.ts";
-import { ChatPage, ChatPageView, chatPageState } from "./chat-page.ts";
+import { ChatPage, ChatPageView, ChatPageState } from "./chat-page.ts";
 import { loadChatRoute } from "./route-loader.ts";
 
 const WORK_SESSION_KEY = "agent:main:dashboard:12345678-90ab-cdef-1234-567890abcdef";
@@ -80,7 +80,7 @@ function itemAt<T>(items: ArrayLike<T>, index: number, label: string): T {
 }
 
 function getLayout(page: ChatPage): ChatSplitLayout | undefined {
-  return (chatPageState(page) as unknown as { layout: ChatSplitLayout | undefined }).layout;
+  return (ChatPageState.forHost(page) as unknown as { layout: ChatSplitLayout | undefined }).layout;
 }
 
 function dispatchSessionDrag(
@@ -860,7 +860,7 @@ describe("chat page split layout host", () => {
       const navigation = setNavigationContext(page);
       document.body.append(page);
       const layout = createSplitLayout("main");
-      const state = chatPageState(page);
+      const state = ChatPageState.forHost(page);
       setLayout(page, layout);
       await settleChatPage(page);
 

@@ -15,21 +15,11 @@ export type ChatPage = ChatPageHost & {
   readonly sessionSplitAvailable: boolean;
 };
 
-const pageStates = new WeakMap<HTMLElement, ChatPageState>();
-export function chatPageState(host: ChatPageHost): ChatPageState {
-  let state = pageStates.get(host);
-  if (!state) {
-    state = new ChatPageState(host);
-    pageStates.set(host, state);
-  }
-  return state;
-}
-
 export const ChatPageView = defineSolidBridge<ChatPageProps, ChatPageMethods>(
   "openclaw-chat-page",
   (props, element) => {
     const host = element;
-    const state = chatPageState(host);
+    const state = ChatPageState.forHost(host);
     const application = untrack(() => props.context ?? useApplication());
     state.context = application;
     Object.defineProperty(host, "sessionSplitAvailable", {
@@ -69,7 +59,6 @@ export const ChatPageView = defineSolidBridge<ChatPageProps, ChatPageMethods>(
     );
     onCleanup(() => {
       state.disconnect();
-      pageStates.delete(host);
     });
     return createComponent(ChatPageBody, {
       get snapshot() {
@@ -85,9 +74,9 @@ export const ChatPageView = defineSolidBridge<ChatPageProps, ChatPageMethods>(
       context: { default: undefined, attribute: false },
     },
     methods: {
-      requestUpdate: (host) => pageStates.get(host)?.requestUpdate(),
-      addController: (host, controller) => pageStates.get(host)?.addController(controller),
-      removeController: (host, controller) => pageStates.get(host)?.removeController(controller),
+      requestUpdate: (host) => ChatPageState.get(host)?.requestUpdate(),
+      addController: (host, controller) => ChatPageState.get(host)?.addController(controller),
+      removeController: (host, controller) => ChatPageState.get(host)?.removeController(controller),
     },
   },
 );
