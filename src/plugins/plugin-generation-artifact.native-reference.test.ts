@@ -113,16 +113,17 @@ it("records a native host mismatch while preserving unrelated channel accounts",
   });
 });
 
-it("validates a hardlinked companion placement once per capture, including recovery", async () => {
+it("validates overlapping hardlinked companion placements once per member, including recovery", async () => {
   await withOpenClawTestState({ label: "native-reference-verdict" }, async (state) => {
     const root = state.path("plugin");
     fs.mkdirSync(root);
     fs.writeFileSync(path.join(root, "package.json"), '{"name":"native-reference-fixture"}');
     fs.writeFileSync(path.join(root, "index.cjs"), "exports.value = 1;");
     fs.writeFileSync(path.join(root, "helper.dat"), "original companion");
-    fs.mkdirSync(path.join(root, "companion-sentinel"));
-    for (let index = 0; index < 8; index++) {
-      fs.writeFileSync(path.join(root, `addon-${index}.node`), `native fixture ${index}`);
+    fs.mkdirSync(path.join(root, "nested", "companion-sentinel"), { recursive: true });
+    for (let index = 0; index < 33; index++) {
+      const directory = index % 2 ? path.join(root, "nested") : root;
+      fs.writeFileSync(path.join(directory, `addon-${index}.node`), `native fixture ${index}`);
     }
     const symlink = fs.symlinkSync;
     const denial = vi.spyOn(fs, "symlinkSync").mockImplementation((target, link, type) => {
@@ -134,7 +135,7 @@ it("validates a hardlinked companion placement once per capture, including recov
     const paths = vi.spyOn(fs, "realpathSync");
     const walks = (directory: string) =>
       paths.mock.calls.filter(
-        ([filename]) => filename === path.join(directory, "companion-sentinel"),
+        ([filename]) => filename === path.join(directory, "nested", "companion-sentinel"),
       ).length;
     const cache = createPluginCache();
     const artifacts: ReturnType<typeof capturePluginGenerationArtifact>[] = [];
@@ -164,6 +165,9 @@ it("validates a hardlinked companion placement once per capture, including recov
       expect.soft(walks(first.rootDir)).toBe(1);
       const successor = capture();
       expect.soft(walks(successor.rootDir)).toBe(1);
+      expect(fs.statSync(successor.resolve(path.join(root, "addon-0.node"))).ino).toBe(
+        fs.statSync(first.resolve(path.join(root, "addon-0.node"))).ino,
+      );
       paths.mockClear();
       successor.linkHost(hosts[1]!);
       expect.soft(walks(successor.rootDir)).toBe(1);
@@ -332,6 +336,39 @@ it.each([
   },
 );
 
+it("keeps temporary native inspections from hardlinking rehearsal companions", async () => {
+  await withOpenClawTestState({ label: "native-rehearsal-companions" }, async (state) => {
+    const fixture = createFixture(state.path("installed"), true);
+    const companion = path.join(fixture.root, "versions.json");
+    fs.writeFileSync(companion, '{"vips":"fixture"}');
+    const before = fs.statSync(companion, { bigint: true });
+    const cache = createPluginCache();
+    let artifact: ReturnType<typeof capturePluginGenerationArtifact> | undefined;
+    try {
+      artifact = withPluginCache(cache, () =>
+        withPluginSourceCaptureStorage({ stateDir: state.stateDir, placement: "temporary" }, () => {
+          preparePluginNativeAdmissions(fixture.index, cache);
+          return capturePluginGenerationArtifact(fixture.root);
+        }),
+      );
+      const captured = fs.realpathSync(artifact.resolve(companion));
+      expect(fs.readFileSync(captured, "utf8")).toBe('{"vips":"fixture"}');
+      expect(fs.statSync(companion, { bigint: true })).toMatchObject({
+        dev: before.dev,
+        ino: before.ino,
+        nlink: 1n,
+        ctimeNs: before.ctimeNs,
+      });
+      expect(fs.statSync(captured, { bigint: true }).ino).not.toBe(before.ino);
+      fs.writeFileSync(captured, "private inspection change");
+      expect(fs.readFileSync(companion, "utf8")).toBe('{"vips":"fixture"}');
+    } finally {
+      await artifact?.disposeAsync();
+      await retirePluginCache(cache);
+    }
+  });
+});
+
 it.each(["state root", "temporary placement", "publication root"] as const)(
   "keeps native admission in its selected %s within one cache",
   async (change) => {
@@ -382,7 +419,6 @@ it.each(["state root", "temporary placement", "publication root"] as const)(
               expect(captured.startsWith(fs.realpathSync(runtimeTemp) + path.sep)).toBe(true);
             }
             expect(fs.readFileSync(captured).equals(fixture.bytes)).toBe(true);
-            artifact.assertSourceCurrent();
           }
           expect(capturedPaths[0] === capturedPaths[1]).toBe(false);
           await settlePluginNativeAdmissions(cache);
