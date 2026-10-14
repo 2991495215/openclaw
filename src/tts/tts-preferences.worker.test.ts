@@ -42,7 +42,10 @@ it("carries the worker-read path through delivery and plugin prompt rendering wi
     );
   });
   const cfg = { tts: { auto: "off" as const } };
-  const buildHint = expectDefined(createPluginRuntime().tts.buildSystemPromptHintAsync);
+  const buildHint = expectDefined(
+    createPluginRuntime().tts.buildSystemPromptHintAsync,
+    "current host TTS prompt-hint API",
+  );
   const reads = vi.spyOn(stateReads, "executeExistingOpenClawStateRead");
   const sql = observeMainThreadSql();
   sql.calibrate();
