@@ -9,7 +9,7 @@ export const TTS_PREFERENCES_COMPAT_RECORD = {
   warningStarts: "2026-10-03",
   removeAfter: "2026-12-31",
   replacement:
-    "Await resolveTtsPrefsPathAsync(config) for the machine-owned path. Await buildTtsSystemPromptHintAsync, or await prepareTtsPreferences and pass preparedTtsPreferences to the supported synchronous hint overload. The unprepared synchronous hint and preference-path calls remain compatible through 2026-12-31; removal ships in the first January 2027 stable release.",
+    "Await resolveTtsPrefsPathAsync(config) for the machine-owned path. For prompt hints, await the public api.runtime.tts.buildSystemPromptHintAsync method. Bundled plugins can also await private prepareTtsPreferences and pass preparedTtsPreferences to the supported synchronous hint overload. The unprepared synchronous hint and preference-path calls remain compatible through 2026-12-31; removal ships in the first January 2027 stable release.",
   docsPath: "/plugins/sdk-migration/async-transcript-and-tts",
   surfaces: [
     "openclaw/plugin-sdk/agent-runtime resolveTtsPrefsPath",

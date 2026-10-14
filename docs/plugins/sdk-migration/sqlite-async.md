@@ -518,18 +518,23 @@ and [observer visibility](/plugins/sdk-migration/how-to-migrate#await-session-ob
 | `OpenClawPluginNodeHostCommandContext.acquireManagedWorkspace`                                 | `await context.acquireManagedWorkspaceAsync(...)`; release the lease in `finally`                            |
 | `ensureAgentWorkspace.beforePersistentApply`                                                   | Await owner preparation before the call and use the SQL-free `guard.assertHost` at the effect                |
 | Unprepared `resolveTtsPrefsPath`                                                               | `await resolveTtsPrefsPathAsync(...)`, or pass `preparedTtsPreferences`                                      |
-| Unprepared `buildTtsSystemPromptHint`                                                          | `await buildTtsSystemPromptHintAsync(...)`, or pass `options.preparedTtsPreferences`                         |
+| Unprepared `buildTtsSystemPromptHint`                                                          | `await api.runtime.tts.buildSystemPromptHintAsync(...)`                                                      |
 
 ```ts
 // Before
 const hint = buildTtsSystemPromptHint(config, agentId);
 // After
-const hint = await buildTtsSystemPromptHintAsync(config, agentId);
+const prepareHint = api.runtime.tts.buildSystemPromptHintAsync;
+if (!prepareHint) {
+  throw new Error("Update OpenClaw to use async TTS prompt preparation.");
+}
+const hint = await prepareHint(config, agentId);
 ```
 
-For several TTS operations in one turn, call public `prepareTtsPreferences`
-once and pass that result to the supported prepared overloads. Those SQL-free
-synchronous overloads are not deprecated. See the [public TTS preparation
+Bundled plugins can call private `prepareTtsPreferences` once per turn and pass
+that result to the supported prepared overloads. Those SQL-free synchronous
+overloads are not deprecated. External plugins use the public runtime method
+above. See the [public TTS preparation
 recipe](/plugins/sdk-migration/async-transcript-and-tts#tts-prompts).
 
 ## Debug proxy capture and raw SQLite

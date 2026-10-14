@@ -9,6 +9,7 @@ import type { MediaUnderstandingRuntime } from "../../media-understanding/runtim
 import type { OpenAsyncKeyedStoreOptions } from "../../plugin-state/plugin-state-store.types.js";
 
 type TtsRuntimeApi = typeof import("../../tts/runtime-api.js");
+type BuildTtsSystemPromptHintAsync = TtsRuntimeApi["buildTtsSystemPromptHintAsync"];
 type ListSpeechVoices = TtsRuntimeApi["listSpeechVoices"];
 type PrepareTtsRequest = TtsRuntimeApi["prepareTtsRequest"];
 type TextToSpeech = typeof import("../../tts/tts.js").textToSpeech;
@@ -497,6 +498,8 @@ export type PluginRuntimeCore = {
     resizeToJpeg: typeof import("../../media/media-services.js").resizeToJpeg;
   };
   tts: {
+    /** Await machine preference preparation before rendering; optional for older custom runtimes. */
+    buildSystemPromptHintAsync?: BuildTtsSystemPromptHintAsync;
     prepareTtsRequest: PrepareTtsRequest;
     textToSpeech: TextToSpeech;
     textToSpeechStream: TextToSpeechStream;
