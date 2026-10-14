@@ -171,7 +171,6 @@ export async function snapshotRoleViaPlaywright(opts: {
         throw new Error("Snapshot root changed before native capture; retry.");
       }
       let result: Awaited<ReturnType<typeof snapshotRoleViaCdpSession>>;
-      let captureOwnsRoot = false;
       try {
         result = await withPageScopedCdpClient({
           page,
@@ -179,59 +178,51 @@ export async function snapshotRoleViaPlaywright(opts: {
           timeoutMs: remaining(),
           fn: async (send) => {
             assertCurrent();
-            captureOwnsRoot = true;
-            try {
-              return await withCdpSnapshotRoot({
-                root,
-                send,
-                run: async (rootBackendNodeId) => {
-                  const captured = await snapshotRoleViaCdpSession({
-                    send,
-                    rootBackendNodeId,
-                    options: opts.options,
-                    urlEntries: opts.urls ? await collectSnapshotUrls(snapshotScope) : undefined,
-                    maxChars: opts.maxChars,
-                    delta: opts.delta,
-                    recurseIframes: false,
-                  });
-                  remaining();
-                  const backendRefs = Object.entries(captured.refs).map(([ref, info]) => {
-                    if (!info.backendDOMNodeId) {
-                      throw new Error("Snapshot control has no DOM identity; retry.");
-                    }
-                    return { ref, backendDOMNodeId: info.backendDOMNodeId };
-                  });
-                  const marked = await markBackendDomRefsOnPage({
-                    page,
-                    frame,
-                    send,
-                    rootBackendNodeId,
-                    refs: backendRefs,
-                    assertCurrent,
-                  });
-                  if (marked.size !== backendRefs.length) {
-                    throw new Error("Snapshot controls changed before refs were bound; retry.");
+            return await withCdpSnapshotRoot({
+              root,
+              send,
+              run: async (rootBackendNodeId) => {
+                const captured = await snapshotRoleViaCdpSession({
+                  send,
+                  rootBackendNodeId,
+                  options: opts.options,
+                  urlEntries: opts.urls ? await collectSnapshotUrls(snapshotScope) : undefined,
+                  maxChars: opts.maxChars,
+                  delta: opts.delta,
+                  recurseIframes: false,
+                });
+                remaining();
+                const backendRefs = Object.entries(captured.refs).map(([ref, info]) => {
+                  if (!info.backendDOMNodeId) {
+                    throw new Error("Snapshot control has no DOM identity; retry.");
                   }
-                  remaining();
-                  const refs = Object.fromEntries(
-                    Object.entries(captured.refs).map(([ref, info]) => {
-                      const { backendDOMNodeId: _backend, ...metadata } = info;
-                      return [ref, { ...metadata, domMarker: true }];
-                    }),
-                  );
-                  return { ...captured, refs };
-                },
-              });
-            } finally {
-              // A timed-out session still owns marker cleanup until its work settles.
-              void root.dispose().catch(() => {});
-            }
+                  return { ref, backendDOMNodeId: info.backendDOMNodeId };
+                });
+                const marked = await markBackendDomRefsOnPage({
+                  page,
+                  frame,
+                  send,
+                  rootBackendNodeId,
+                  refs: backendRefs,
+                  assertCurrent,
+                });
+                if (marked.size !== backendRefs.length) {
+                  throw new Error("Snapshot controls changed before refs were bound; retry.");
+                }
+                remaining();
+                const refs = Object.fromEntries(
+                  Object.entries(captured.refs).map(([ref, info]) => {
+                    const { backendDOMNodeId: _backend, ...metadata } = info;
+                    return [ref, { ...metadata, domMarker: true }];
+                  }),
+                );
+                return { ...captured, refs };
+              },
+            });
           },
         });
       } finally {
-        if (!captureOwnsRoot) {
-          void root.dispose().catch(() => {});
-        }
+        void root.dispose().catch(() => {});
       }
       remaining();
       storeRoleRefsForTarget({

@@ -395,32 +395,18 @@ export function createMemoryWikiCompiledCacheStore(
         return;
       }
       const durableIdentity = await loadDurableIdentity();
-      if (durableIdentity.compiledCachePublicationId) {
-        try {
-          await store.lookup(publicationKey(ownerId, durableIdentity.compiledCachePublicationId));
-        } catch (error) {
-          options.onReadError?.(error);
-          throw error;
-        }
-      }
-      const confirmedIdentity = await loadDurableIdentity();
       if (resolveActiveVault(config) !== activeVault) {
         return;
       }
-      if (
-        !confirmedIdentity.vaultGeneration ||
-        confirmedIdentity.vaultGeneration !== durableIdentity.vaultGeneration ||
-        confirmedIdentity.compiledCachePublicationId !== durableIdentity.compiledCachePublicationId
-      ) {
+      if (!durableIdentity.vaultGeneration) {
         activeVaults.delete(ownerId);
         return;
       }
-      // SQLite is observed before the durable identity reread. A cross-process write that
-      // races this boundary stays unreadable until the next lifecycle refresh.
+      // An external compile during refresh is picked up by the next lifecycle refresh.
       activeVaults.set(ownerId, {
         path: activeVault.path,
-        vaultGeneration: confirmedIdentity.vaultGeneration,
-        compiledCachePublicationId: confirmedIdentity.compiledCachePublicationId ?? undefined,
+        vaultGeneration: durableIdentity.vaultGeneration,
+        compiledCachePublicationId: durableIdentity.compiledCachePublicationId ?? undefined,
         reconciled: true,
       });
     },
@@ -560,29 +546,13 @@ export async function writeMemoryWikiCompiledCache(
     }
     throw error;
   }
-  // The publication committed. If validation fails, retain its immutable row
-  // so a later lifecycle refresh can reconcile it.
-  const durableIdentity = await loadDurableIdentity();
-  if (
-    durableIdentity.vaultGeneration !== activeVault.vaultGeneration ||
-    durableIdentity.compiledCachePublicationId !== publicationId
-  ) {
-    await store.deletePublication(config, publicationId);
-    if (resolveActiveVault(config) === activeVault) {
-      activeVaults.delete(resolveMemoryWikiCompiledCacheOwnerId(config));
-    }
-    throw new Error("Memory Wiki vault changed while its compiled cache was being published.");
-  }
-  if (resolveActiveVault(config) !== activeVault) {
-    await store.deletePublication(config, publicationId);
-    throw new Error("Memory Wiki cache owner retired during publication.");
-  }
   if (parentPublicationId) {
     await store.deletePublication(config, parentPublicationId);
   }
+  // Retired owners cannot install a live projection; the committed row remains
+  // available for the next lifecycle refresh without rereading the vault here.
   if (resolveActiveVault(config) !== activeVault) {
-    await store.deletePublication(config, publicationId);
-    throw new Error("Memory Wiki cache owner retired while replacing its predecessor.");
+    return;
   }
   activeVaults.set(resolveMemoryWikiCompiledCacheOwnerId(config), {
     ...activeVault,

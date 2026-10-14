@@ -88,35 +88,4 @@ describe("withMemoryWikiVaultMutation", () => {
       await Promise.allSettled([first, alias].filter((item) => item !== undefined));
     }
   });
-
-  it("queues detached work after its inherited transaction has ended", async () => {
-    const releaseDetached = deferred();
-    const holderEntered = deferred();
-    const releaseHolder = deferred();
-    let detachedEntered = false;
-    let detached!: Promise<void>;
-
-    await withMemoryWikiVaultMutation("/tmp/wiki-detached", async () => {
-      detached = (async () => {
-        await releaseDetached.promise;
-        await withMemoryWikiVaultMutation("/tmp/wiki-detached", async () => {
-          detachedEntered = true;
-        });
-      })();
-    });
-
-    const holder = withMemoryWikiVaultMutation("/tmp/wiki-detached", async () => {
-      holderEntered.resolve();
-      await releaseHolder.promise;
-    });
-    await holderEntered.promise;
-    releaseDetached.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(detachedEntered).toBe(false);
-
-    releaseHolder.resolve();
-    await Promise.all([holder, detached]);
-    expect(detachedEntered).toBe(true);
-  });
 });

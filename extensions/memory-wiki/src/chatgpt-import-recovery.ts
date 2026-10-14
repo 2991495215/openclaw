@@ -90,43 +90,39 @@ export async function moveTargetToRecovery(params: {
     params.ref.entry.path,
     "Memory Wiki import page path",
   );
-  for (;;) {
-    const slot = await reserveRecoverySlot(params.runRoot, params.ref);
-    const recoveryVaultRelativePath = path.posix.join(
-      params.runRelativePath,
-      slot.contentRelativePath,
-    );
-    try {
-      await params.vaultRoot.move(params.ref.entry.path, recoveryVaultRelativePath, {
-        assertBeforeMutation: () => {
-          // Root.move accepts directories; rollback owns the narrower page-file contract.
-          // Root.move rechecks its retained source identity after this admission callback.
-          let source;
-          try {
-            source = statRegularFileSync(sourcePath);
-          } catch (cause) {
-            if (extractErrorCode(cause)) {
-              throw cause;
-            }
-            throw new FsSafeError("invalid-path", "Memory Wiki rollback requires a regular file", {
-              cause,
-            });
+  const slot = await reserveRecoverySlot(params.runRoot, params.ref);
+  const recoveryVaultRelativePath = path.posix.join(
+    params.runRelativePath,
+    slot.contentRelativePath,
+  );
+  // A collision inside the fresh UUID slot fails without overwriting either file.
+  try {
+    await params.vaultRoot.move(params.ref.entry.path, recoveryVaultRelativePath, {
+      assertBeforeMutation: () => {
+        // Root.move accepts directories; rollback owns the narrower page-file contract.
+        // Root.move rechecks its retained source identity after this admission callback.
+        let source;
+        try {
+          source = statRegularFileSync(sourcePath);
+        } catch (cause) {
+          if (extractErrorCode(cause)) {
+            throw cause;
           }
-          if (source.missing) {
-            throw new FsSafeError("not-found", "Memory Wiki rollback target no longer exists");
-          }
-        },
-      });
-      return { ref: params.ref, ...slot };
-    } catch (error) {
-      await removeEmptyRecoverySlot(params.runRoot, slot.slotRelativePath);
-      if (isFsSafeErrorCode(error, "not-found")) {
-        return null;
-      }
-      if (isFsSafeErrorCode(error, "already-exists")) {
-        continue;
-      }
-      throw error;
+          throw new FsSafeError("invalid-path", "Memory Wiki rollback requires a regular file", {
+            cause,
+          });
+        }
+        if (source.missing) {
+          throw new FsSafeError("not-found", "Memory Wiki rollback target no longer exists");
+        }
+      },
+    });
+    return { ref: params.ref, ...slot };
+  } catch (error) {
+    await removeEmptyRecoverySlot(params.runRoot, slot.slotRelativePath);
+    if (isFsSafeErrorCode(error, "not-found")) {
+      return null;
     }
+    throw error;
   }
 }

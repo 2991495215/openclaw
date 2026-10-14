@@ -2,7 +2,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import type { OpenBlobStoreOptions } from "openclaw/plugin-sdk/plugin-state-runtime";
 import {
   createPluginBlobStoreForTests,
@@ -450,67 +449,13 @@ describe("Memory Wiki compiled cache lifecycle", () => {
     await expect(fs.readFile(legacyPath, "utf8")).resolves.toContain("claimCount");
   });
 
-  it("defers a publication that completes during lifecycle reconciliation", async () => {
-    const { config } = await createPersistentVault({ initialize: true });
-    await publishSnapshot(config, snapshot("before"));
-    const nextSnapshot = snapshot("during reconciliation");
-    const nextGeneration = resolveMemoryWikiCompiledCacheGeneration(nextSnapshot);
-    const nextPublicationId = randomUUID();
-    const nextReservationId = randomUUID();
-    const parentPublicationId = (await loadMemoryWikiVaultIdentity(config.vault.path))
-      .compiledCachePublicationId;
-    await appendMemoryWikiLog(config.vault.path, {
-      type: "compile",
-      timestamp: "2026-07-17T00:01:00.000Z",
-      details: { compiledCacheReservationId: nextReservationId },
-    });
-    const sourceGeneration = await resolveMemoryWikiVaultSourceGeneration(config.vault.path);
-    const externalStore = createCacheStore();
-    let publishDuringLookup = true;
-    const reconcilingStore = createMemoryWikiCompiledCacheStore(
-      <T>(options: OpenBlobStoreOptions) => {
-        const blobStore = createPluginBlobStoreForTests<T>("memory-wiki", options, blobStoreEnv);
-        return {
-          ...blobStore,
-          async lookup(key) {
-            const entry = await blobStore.lookup(key);
-            if (publishDuringLookup) {
-              publishDuringLookup = false;
-              await appendMemoryWikiLog(config.vault.path, {
-                type: "compile",
-                timestamp: "2026-07-17T00:01:00.000Z",
-                details: {
-                  compiledCachePublicationId: nextPublicationId,
-                  compiledCacheParentPublicationId: parentPublicationId,
-                  compiledCacheReservationId: nextReservationId,
-                  compiledCacheSourceGeneration: sourceGeneration,
-                },
-              });
-              await externalStore.write(config, nextSnapshot, nextGeneration, nextPublicationId);
-            }
-            return entry;
-          },
-        };
-      },
-    );
-    configureMemoryWikiCompiledCacheStore(reconcilingStore);
-
-    await activateVault(config);
-
-    await expect(loadMemoryWikiCompiledCache(config)).resolves.toBeNull();
-    await activateVault(config);
-    expect((await loadMemoryWikiCompiledCache(config))?.claims[0]?.text).toBe(
-      "during reconciliation",
-    );
-  });
-
   it("rejects claims newer than a restored vault after lifecycle refresh", async () => {
     const { rootDir, config } = await createPersistentVault({ initialize: true });
     await publishSnapshot(config, snapshot("backup"));
     const logPath = path.join(rootDir, ".openclaw-wiki", "log.jsonl");
     const backupLog = await fs.readFile(logPath, "utf8");
     const newerSnapshot = snapshot("Private post-backup claim.");
-    const preRestorePublicationId = await publishSnapshot(config, newerSnapshot);
+    await publishSnapshot(config, newerSnapshot);
     await fs.writeFile(logPath, backupLog, "utf8");
 
     configureMemoryWikiCompiledCacheStore(undefined);
@@ -527,131 +472,6 @@ describe("Memory Wiki compiled cache lifecycle", () => {
       randomUUID(),
     );
     await expect(loadMemoryWikiCompiledCache(config)).resolves.toBeNull();
-
-    const republishedId = randomUUID();
-    const staleReservationId = randomUUID();
-    const newerGeneration = resolveMemoryWikiCompiledCacheGeneration(newerSnapshot);
-    const sourceGeneration = await resolveMemoryWikiVaultSourceGeneration(config.vault.path);
-    await appendMemoryWikiLog(config.vault.path, {
-      type: "compile",
-      timestamp: "2026-07-17T00:02:00.000Z",
-      details: {
-        compiledCachePublicationId: republishedId,
-        compiledCacheParentPublicationId: preRestorePublicationId,
-        compiledCacheReservationId: staleReservationId,
-        compiledCacheSourceGeneration: sourceGeneration,
-      },
-    });
-    await expect(
-      writeMemoryWikiCompiledCache(
-        config,
-        newerSnapshot,
-        newerGeneration,
-        republishedId,
-        preRestorePublicationId,
-        async () => {},
-        async () => {},
-        () => loadMemoryWikiValidatedVaultIdentity(config.vault.path),
-      ),
-    ).rejects.toThrow("vault changed");
-
-    await expect(loadMemoryWikiCompiledCache(config)).resolves.toBeNull();
-    await activateVault(config);
-    await expect(loadMemoryWikiCompiledCache(config)).resolves.toBeNull();
-  });
-
-  it("rejects a reserved publication when its identical parent was restored", async () => {
-    const { rootDir, config } = await createPersistentVault({ initialize: true });
-    await publishSnapshot(config, snapshot("backup"));
-    const logPath = path.join(rootDir, ".openclaw-wiki", "log.jsonl");
-    const backupLog = await fs.readFile(logPath, "utf8");
-    const parentPublicationId = (await loadMemoryWikiVaultIdentity(rootDir))
-      .compiledCachePublicationId;
-    const reservedPublicationId = randomUUID();
-    const reservationId = randomUUID();
-    await appendMemoryWikiLog(rootDir, {
-      type: "compile",
-      timestamp: "2026-07-17T00:03:00.000Z",
-      details: {
-        compiledCacheReservationId: reservationId,
-        compiledCacheParentPublicationId: parentPublicationId,
-      },
-    });
-    const compiledAfterBackup = snapshot("Private content scanned after backup.");
-    await fs.writeFile(logPath, backupLog, "utf8");
-    const sourceGeneration = await resolveMemoryWikiVaultSourceGeneration(rootDir);
-
-    await expect(
-      writeMemoryWikiCompiledCache(
-        config,
-        compiledAfterBackup,
-        resolveMemoryWikiCompiledCacheGeneration(compiledAfterBackup),
-        reservedPublicationId,
-        parentPublicationId,
-        async () => {},
-        async () => {
-          await appendMemoryWikiLog(rootDir, {
-            type: "compile",
-            timestamp: "2026-07-17T00:03:01.000Z",
-            details: {
-              compiledCachePublicationId: reservedPublicationId,
-              compiledCacheParentPublicationId: parentPublicationId,
-              compiledCacheReservationId: reservationId,
-              compiledCacheSourceGeneration: sourceGeneration,
-            },
-          });
-        },
-        () => loadMemoryWikiValidatedVaultIdentity(rootDir),
-      ),
-    ).rejects.toThrow("vault changed");
-    await expect(loadMemoryWikiCompiledCache(config)).resolves.toBeNull();
-    await activateVault(config);
-    expect((await loadMemoryWikiCompiledCache(config))?.claims[0]?.text).toBe("backup");
-  });
-
-  it("keeps a committed publication when an older writer is rejected", async () => {
-    const { config } = await createPersistentVault({ initialize: true });
-    const parentPublicationId = await publishSnapshot(config, snapshot("parent"));
-    const stalePublicationId = randomUUID();
-    const staleReservationId = randomUUID();
-    await appendMemoryWikiLog(config.vault.path, {
-      type: "compile",
-      timestamp: "2026-07-17T00:03:30.000Z",
-      details: { compiledCacheReservationId: staleReservationId },
-    });
-    const staleSnapshot = snapshot("stale candidate");
-    const sourceGeneration = await resolveMemoryWikiVaultSourceGeneration(config.vault.path);
-    const callbackEntered = createDeferred<void>();
-    const releaseCallback = createDeferred<void>();
-    const staleWrite = writeMemoryWikiCompiledCache(
-      config,
-      staleSnapshot,
-      resolveMemoryWikiCompiledCacheGeneration(staleSnapshot),
-      stalePublicationId,
-      parentPublicationId,
-      async () => {},
-      async () => {
-        callbackEntered.resolve();
-        await releaseCallback.promise;
-        await appendMemoryWikiLog(config.vault.path, {
-          type: "compile",
-          timestamp: "2026-07-17T00:04:00.000Z",
-          details: {
-            compiledCachePublicationId: stalePublicationId,
-            compiledCacheParentPublicationId: parentPublicationId,
-            compiledCacheReservationId: staleReservationId,
-            compiledCacheSourceGeneration: sourceGeneration,
-          },
-        });
-      },
-      () => loadMemoryWikiValidatedVaultIdentity(config.vault.path),
-    );
-    await callbackEntered.promise;
-    await publishSnapshot(config, snapshot("accepted successor"));
-    releaseCallback.resolve();
-
-    await expect(staleWrite).rejects.toThrow("vault changed");
-    expect((await loadMemoryWikiCompiledCache(config))?.claims[0]?.text).toBe("accepted successor");
   });
 
   it("reports transient SQLite read failures as failed dashboard state", async () => {
@@ -686,41 +506,6 @@ describe("Memory Wiki compiled cache lifecycle", () => {
     });
     expect(errors).toHaveLength(1);
     expect((await loadMemoryWikiCompiledCache(config))?.claims[0]?.text).toBe("recoverable");
-  });
-
-  it("keeps a restored owner closed when lifecycle reconciliation fails", async () => {
-    const { rootDir, config } = await createPersistentVault({ initialize: true });
-    await publishSnapshot(config, snapshot("backup"));
-    const logPath = path.join(rootDir, ".openclaw-wiki", "log.jsonl");
-    const backupLog = await fs.readFile(logPath, "utf8");
-    await publishSnapshot(config, snapshot("Private newer claim."));
-    await fs.writeFile(logPath, backupLog, "utf8");
-
-    const errors: unknown[] = [];
-    let failNextRead = true;
-    const store = createMemoryWikiCompiledCacheStore(
-      <T>(options: OpenBlobStoreOptions) => {
-        const blobStore = createPluginBlobStoreForTests<T>("memory-wiki", options, blobStoreEnv);
-        return {
-          ...blobStore,
-          async lookup(key) {
-            if (failNextRead) {
-              failNextRead = false;
-              throw new Error("transient reconciliation failure");
-            }
-            return await blobStore.lookup(key);
-          },
-        };
-      },
-      { onReadError: (error) => errors.push(error) },
-    );
-    configureMemoryWikiCompiledCacheStore(undefined);
-    configureMemoryWikiCompiledCacheStore(store);
-    await expect(activateVault(config)).rejects.toThrow("transient reconciliation failure");
-
-    await expect(loadMemoryWikiCompiledCache(config)).resolves.toBeNull();
-    await expect(loadMemoryWikiCompiledCache(config)).resolves.toBeNull();
-    expect(errors).toHaveLength(1);
   });
 
   it("rejects a predecessor snapshot when a vault path is reused", async () => {

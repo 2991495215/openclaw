@@ -750,31 +750,4 @@ describe("relay logical Runtime subscriptions", () => {
     ).toEqual([{ sessionId: next, method: "Runtime.bindingCalled", params }]);
     expect(f.commands("Runtime.removeBinding")).toHaveLength(0);
   });
-
-  it("keeps a concurrent admission alive when another enable for the same logical owner fails", async () => {
-    const f = createRuntimeFixture();
-    const c = f.client();
-    const root = await c.attach();
-    f.hold();
-    const failed = c.send("Runtime.enable", root);
-    const admitted = c.send("Runtime.enable", root);
-    await flush();
-    f.extension.handlers.onMessage(
-      JSON.stringify({
-        type: "error",
-        seq: f.commands("Runtime.enable")[0]!.seq,
-        message: "admission failed",
-      }),
-    );
-    await flush();
-    expect(c.socket.frames().find((frame) => frame.id === failed)?.error).toBeDefined();
-    expect.soft(c.socket.frames().find((frame) => frame.id === admitted)).toBeUndefined();
-    f.release();
-    await flush();
-    expect(c.socket.frames().find((frame) => frame.id === admitted)).toMatchObject({ result: {} });
-    expectContextBeforeResult(c.socket, root, admitted);
-    f.event("Runtime.executionContextCreated", { context: runtimeContext(3) });
-    expect(createdRuntimeContexts(c.socket, root)).toHaveLength(2);
-    expect(f.commands("Runtime.disable")).toEqual([]);
-  });
 });

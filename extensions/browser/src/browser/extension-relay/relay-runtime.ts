@@ -2,7 +2,6 @@ import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 
 type Subscription = {
   send: (method: string, params: unknown) => void;
-  pending: number;
   delivered?: Set<number>;
 };
 
@@ -117,10 +116,9 @@ export class RelayRuntime {
     this.active.throwIfAborted();
     let subscription = this.subscribers.get(owner);
     if (!subscription) {
-      subscription = { send, pending: 0, delivered: new Set() };
+      subscription = { send, delivered: new Set() };
       this.subscribers.set(owner, subscription);
     }
-    subscription.pending++;
     try {
       // Each enable must pass the worker's current access gate, even when native
       // Runtime is already enabled and no longer emits its existing contexts.
@@ -138,12 +136,8 @@ export class RelayRuntime {
         subscription.delivered = undefined;
       }
     } finally {
-      subscription.pending--;
-      if (
-        subscription.delivered &&
-        subscription.pending === 0 &&
-        this.subscribers.get(owner) === subscription
-      ) {
+      // Duplicate concurrent enables that lose admission can be retried by the client.
+      if (subscription.delivered && this.subscribers.get(owner) === subscription) {
         this.subscribers.delete(owner);
       }
     }

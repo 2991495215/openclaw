@@ -1,4 +1,3 @@
-import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { INTERACTIVE_ROLES, STRUCTURAL_ROLES } from "./snapshot-roles.js";
 
@@ -198,7 +197,6 @@ function parseSnapshotLine(line: string) {
   if (!entry) {
     return null;
   }
-  const prefix = entry[1]!;
   const content = entry[2]!;
   // Playwright JSON-encodes names, then single-quotes YAML keys when required.
   // Keep the token lexical here: the shared finalizer also consumes MCP text.
@@ -226,7 +224,6 @@ function parseSnapshotLine(line: string) {
   const attributes = suffix.match(/^(?:\s+\[[^\][]*\])*/)?.[0];
   const ref = attributes?.match(/\[ref=([^\][]+)\]/)?.[1];
   return {
-    prefix,
     roleRaw,
     role: normalizeLowercaseStringOrEmpty(roleRaw),
     nameToken,
@@ -244,10 +241,7 @@ function compactTree(lines: readonly string[]) {
   const stack: (typeof entries)[number][] = [];
 
   const finishEntry = () => {
-    const current = stack.pop();
-    if (!current) {
-      return;
-    }
+    const current = stack.pop()!;
     current.keep ||= current.hasRef;
     const parent = stack.at(-1);
     if (current.hasRef && parent) {
@@ -258,7 +252,7 @@ function compactTree(lines: readonly string[]) {
   for (const line of lines) {
     const indent = getIndentLevel(line);
     while (stack.length > 0) {
-      const lastEntry = expectDefined(stack.at(-1), "non-empty role snapshot stack");
+      const lastEntry = stack.at(-1)!;
       if (lastEntry.indent < indent) {
         break;
       }
@@ -308,7 +302,7 @@ export function buildRoleSnapshotFromAiSnapshot(
   aiSnapshot: string,
   suppliedOptions?: RoleSnapshotOptions,
 ): { snapshot: string; refs: RoleRefMap } {
-  const options = suppliedOptions === undefined ? {} : suppliedOptions;
+  const options = suppliedOptions ?? {};
   const lines = aiSnapshot.split("\n");
   const refs: RoleRefMap = {};
 
@@ -328,32 +322,22 @@ export function buildRoleSnapshotFromAiSnapshot(
     }
     const { role } = parsed;
     const name = decodeSnapshotName(parsed.nameToken);
-    if (options.interactive) {
-      const ref = parseAiSnapshotRef(parsed.ref);
-      if (INTERACTIVE_ROLES.has(role) && ref) {
-        refs[ref] = { role, ...(name ? { name } : {}) };
-        let enhanced = `- ${parsed.roleRaw}`;
-        if (name) {
-          enhanced += ` ${JSON.stringify(name)}`;
-        }
-        enhanced += ` [ref=${ref}]`;
-        enhanced += parsed.suffix.replace(` [ref=${ref}]`, "");
-        out?.push(enhanced);
-      }
-      continue;
-    }
-    const isStructural = STRUCTURAL_ROLES.has(role);
-
-    if (options.compact && isStructural && !name) {
-      continue;
-    }
-
     const ref = parseAiSnapshotRef(parsed.ref);
+    if (
+      options.interactive
+        ? !INTERACTIVE_ROLES.has(role) || !ref
+        : options.compact && STRUCTURAL_ROLES.has(role) && !name
+    ) {
+      continue;
+    }
     if (ref) {
       refs[ref] = { role, ...(name ? { name } : {}) };
     }
-
-    out?.push(line);
+    out?.push(
+      options.interactive
+        ? `- ${parsed.roleRaw}${name ? ` ${JSON.stringify(name)}` : ""} [ref=${ref}]${parsed.suffix.replace(` [ref=${ref}]`, "")}`
+        : line,
+    );
   }
 
   return {
