@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readlink, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readlink, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect } from "vitest";
 import { runMacFixtureTool } from "./mac-native-fixtures.test-support.js";
@@ -35,6 +35,8 @@ export function registerMacRuntimeArchiveTests() {
       await writeFile(path.join(runtime, "sidecar/addon.node"), native, { mode: 0o755 });
       await writeFile(path.join(runtime, "sidecar/library.dylib"), native, { mode: 0o755 });
       await symlink("addon.node", path.join(runtime, "sidecar/native-link"));
+      await utimes(path.join(runtime, "README.md"), 0, 0);
+      await utimes(path.join(runtime, "empty"), 0, 0);
       const plist = path.join(app, "Contents/Info.plist");
       await writeFile(
         plist,

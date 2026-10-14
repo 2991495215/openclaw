@@ -29,7 +29,7 @@ def archive_runtime(app):
     retained = {os.fsdecode(records[index + 1]) for index in range(0, len(records) - 1, 2)
                 if records[index] in (b"executable", b"library")}
     archived = []
-    with zipfile.ZipFile(archive, "x", zipfile.ZIP_DEFLATED, compresslevel=6) as output:
+    with zipfile.ZipFile(archive, "x", zipfile.ZIP_DEFLATED, compresslevel=6, strict_timestamps=False) as output:
         for directory, directories, files in os.walk(runtime, followlinks=False):
             for name in sorted(directories + files):
                 entry = Path(directory) / name
