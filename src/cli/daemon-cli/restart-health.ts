@@ -93,6 +93,7 @@ type GatewayRestartWaitOptions = {
   expectedBuildId?: string | null;
   requireRunningService?: boolean;
   requirePluginHealth?: boolean;
+  requireChannelHealth?: boolean;
   /** Diagnostics can report absence immediately; start/restart callers wait for installation. */
   waitForMissingService?: boolean;
   supervisorKeepsAlive?: boolean;
@@ -205,7 +206,7 @@ export async function waitForGatewayHealthyRestart(
       snapshot.runtime.status !== "running" ||
       snapshot.versionMismatch ||
       snapshot.buildIdMismatch ||
-      snapshot.channelProbeErrors?.length ||
+      (params.requireChannelHealth !== false && snapshot.channelProbeErrors?.length) ||
       (params.requirePluginHealth !== false && snapshot.activatedPluginErrors?.length) ||
       snapshot.staleGatewayPids.length > 0
     ) {
@@ -268,6 +269,7 @@ export async function waitForGatewayHealthyRestart(
         expectedVersion: params.expectedVersion,
         expectedBuildId: params.expectedBuildId,
         requirePluginHealth: params.requirePluginHealth,
+        requireChannelHealth: params.requireChannelHealth,
         probeContext,
         configuredProbe,
         probeHosts,
@@ -348,7 +350,7 @@ export async function waitForGatewayHealthyRestart(
       if (params.requirePluginHealth !== false && snapshot.activatedPluginErrors?.length) {
         return withWaitContext(snapshot, "plugin-errors", elapsedMs);
       }
-      if (snapshot.channelProbeErrors?.length) {
+      if (params.requireChannelHealth !== false && snapshot.channelProbeErrors?.length) {
         return withWaitContext(snapshot, "channel-errors", elapsedMs);
       }
       if (snapshot.versionMismatch) {

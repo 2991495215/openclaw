@@ -134,6 +134,7 @@ export async function recoverLaunchAgentAndRecheckGatewayHealth(params: {
     expectedVersion: params.expectedVersion,
     ...(params.expectedBuildId ? { expectedBuildId: params.expectedBuildId } : {}),
     requirePluginHealth: false,
+    requireChannelHealth: false,
     env: params.env,
     supervisorKeepsAlive: true,
     settle: { probes: 12 },
