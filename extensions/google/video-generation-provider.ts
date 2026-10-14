@@ -509,9 +509,9 @@ export function buildGoogleVideoGenerationProvider(): VideoGenerationProvider {
         }
         operation = sdkOperation;
       }
-      const finalOperation = operation as { error?: unknown; name?: string };
-      if (finalOperation.error) {
-        throw new Error(JSON.stringify(finalOperation.error));
+      const operationError = (operation as { error?: unknown }).error;
+      if (operationError) {
+        throw new Error(JSON.stringify(operationError));
       }
       let generatedVideos = extractGeneratedVideos(operation);
       if (generatedVideos.length === 0 && !hasReferenceInputs && !usedRestFallback) {
@@ -521,6 +521,7 @@ export function buildGoogleVideoGenerationProvider(): VideoGenerationProvider {
       if (generatedVideos.length === 0) {
         throw new Error(GOOGLE_VIDEO_EMPTY_RESULT_MESSAGE);
       }
+      const finalOperation = operation as { name?: string };
       const maxVideoBytes = resolveGeneratedMediaMaxBytes(req.cfg, "video");
       const videos = await Promise.all(
         generatedVideos.map(async (entry, index) => {

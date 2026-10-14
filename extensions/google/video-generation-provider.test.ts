@@ -511,58 +511,70 @@ describe("google video generation provider", () => {
     expect(downloadMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to REST predictLongRunning when text-only SDK video generation returns 404", async () => {
-    mockGoogleApiKeyAuth();
-    generateVideosMock.mockRejectedValue(Object.assign(new Error("sdk 404"), { status: 404 }));
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            done: true,
-            name: "operations/rest-123",
-            response: {
-              generateVideoResponse: {
-                generatedSamples: [
-                  {
-                    video: {
-                      uri: "https://generativelanguage.googleapis.com/v1beta/files/rest-video:download?alt=media",
-                      mimeType: "video/mp4",
+  it.each(["404", "no generated videos"])(
+    "returns the REST video operation when the SDK returns %s",
+    async (sdkResult) => {
+      mockGoogleApiKeyAuth();
+      if (sdkResult === "404") {
+        generateVideosMock.mockRejectedValue(Object.assign(new Error("sdk 404"), { status: 404 }));
+      } else {
+        generateVideosMock.mockResolvedValue({
+          done: true,
+          name: "operations/sdk-empty",
+          response: {},
+        });
+      }
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              done: true,
+              name: "operations/rest-123",
+              response: {
+                generateVideoResponse: {
+                  generatedSamples: [
+                    {
+                      video: {
+                        uri: "https://generativelanguage.googleapis.com/v1beta/files/rest-video:download?alt=media",
+                        mimeType: "video/mp4",
+                      },
                     },
-                  },
-                ],
+                  ],
+                },
               },
-            },
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response("rest-video", {
+            status: 200,
+            statusText: "OK",
+            headers: { "content-type": "video/mp4" },
           }),
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response("rest-video", {
-          status: 200,
-          statusText: "OK",
-          headers: { "content-type": "video/mp4" },
-        }),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-    const result = await generateVideo({
-      model: "google/models/veo-3.1-fast-generate-preview",
-      durationSeconds: 3,
-    });
+        );
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await generateVideo({
+        model: "google/models/veo-3.1-fast-generate-preview",
+        durationSeconds: 3,
+      });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchInputUrl(fetchMock, 0)).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-fast-generate-preview:predictLongRunning",
-    );
-    expect(parseFetchJsonBody(fetchMock, 0)).toEqual({
-      instances: [{ prompt: "A tiny robot watering a windowsill garden" }],
-      parameters: { durationSeconds: 4 },
-    });
-    expect(fetchInputUrl(fetchMock, 1)).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/files/rest-video:download?alt=media&key=google-key",
-    );
-    expect(downloadMock).not.toHaveBeenCalled();
-    expect(result.videos[0]?.buffer).toEqual(Buffer.from("rest-video"));
-  });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchInputUrl(fetchMock, 0)).toBe(
+        "https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-fast-generate-preview:predictLongRunning",
+      );
+      expect(parseFetchJsonBody(fetchMock, 0)).toEqual({
+        instances: [{ prompt: "A tiny robot watering a windowsill garden" }],
+        parameters: { durationSeconds: 4 },
+      });
+      expect(fetchInputUrl(fetchMock, 1)).toBe(
+        "https://generativelanguage.googleapis.com/v1beta/files/rest-video:download?alt=media&key=google-key",
+      );
+      expect(downloadMock).not.toHaveBeenCalled();
+      expect(result.videos[0]?.buffer).toEqual(Buffer.from("rest-video"));
+      expect(result.metadata).toEqual({ operationName: "operations/rest-123" });
+    },
+  );
 
   it("bounds successful Google REST operation JSON bodies instead of buffering the whole response", async () => {
     mockGoogleApiKeyAuth();
