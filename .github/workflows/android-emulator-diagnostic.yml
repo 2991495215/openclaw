@@ -78,6 +78,46 @@ jobs:
           cache-mode: "off"
           install-screenshot-emulators: "true"
 
+      - name: Compare default and headless emulator version queries
+        env:
+          JAVA_HOME: ${{ steps.android-toolchain.outputs.gradle-java-home }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          version_probe_dir="$(mktemp -d "$RUNNER_TEMP/android-version-query.XXXXXX")"
+          export ANDROID_USER_HOME="$version_probe_dir/android"
+          export ANDROID_AVD_HOME="$version_probe_dir/avd"
+          mkdir -p "$ANDROID_USER_HOME" "$ANDROID_AVD_HOME"
+          set +e
+          /usr/bin/timeout --kill-after="2s" "10s" "$ANDROID_HOME/emulator/emulator" "-version" \
+            >"$version_probe_dir/default.private.stdout" 2>"$version_probe_dir/default.private.stderr"
+          default_exit=$?
+          /usr/bin/timeout --kill-after="2s" "10s" "$ANDROID_HOME/emulator/emulator" "-no-window" "-version" \
+            >"$version_probe_dir/headless.private.stdout" 2>"$version_probe_dir/headless.private.stderr"
+          headless_exit=$?
+          set -e
+          VERSION_PROBE_DIR="$version_probe_dir" DEFAULT_EXIT="$default_exit" HEADLESS_EXIT="$headless_exit" \
+            python3 - <<'VERSION'
+          import json, os, re
+          from pathlib import Path
+          root = Path(os.environ["VERSION_PROBE_DIR"])
+          for query, variable in (("default", "DEFAULT_EXIT"), ("headless", "HEADLESS_EXIT")):
+              stderr = (root / (query + ".private.stderr")).read_text(errors="replace")
+              match = re.search(r"error while loading shared libraries: ([A-Za-z0-9_.+-]+):", stderr)
+              library = match.group(1) if match else None
+              classification = ("libX11" if library and library.startswith("libX11") else
+                                "libX" if library and library.startswith("libX") else
+                                "Qt" if library and library.startswith("libQt") else
+                                "other-library" if library else "none")
+              print(json.dumps({"diagnostic": "emulator-version-control", "query": query,
+                                "exitCode": int(os.environ[variable]),
+                                "requiresSharedLibrary": "error while loading shared libraries" in stderr,
+                                "missingLibrary": library, "libraryClass": classification}))
+          assert int(os.environ["DEFAULT_EXIT"]) == 127, "Default version-query failure differs"
+          assert int(os.environ["HEADLESS_EXIT"]) == 0, "Headless version query did not pass"
+          VERSION
+
       - name: Add bounded diagnostics to the verified full runner
         shell: bash
         run: |
@@ -202,6 +242,10 @@ jobs:
                        '    for (const result of gatewayCleanup) {\n      if (result.status === "rejected") diagnostic(result.reason, "gateway-cleanup");\n    }\n    for (const result of cleanup) {\n      if (result.status === "rejected") diagnostic(result.reason, "service-cleanup");\n    }\n    const cleanupFailed =\n')
           replace_once('  void main().catch(() => {',
                        '  void main().catch((error: unknown) => {\n    diagnostic(error, "preparation");')
+          replace_once(
+              '      sdkEmulator: await command(path.join(sdk, "emulator/emulator"), ["-version"]),',
+              '      sdkEmulator: await command(path.join(sdk, "emulator/emulator"), ["-no-window", "-version"]),',
+          )
           assert source != original
           owner.write_text(source)
           print("Full exact-source runner retained; bounded diagnostics added, source fingerprint remains dirty.")
