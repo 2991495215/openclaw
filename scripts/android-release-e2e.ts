@@ -148,9 +148,10 @@ export async function main(argv = process.argv.slice(2)) {
     diagnostics: [],
   };
   const diagnostic = (kind: string, details: unknown) => {
-    if (evidence.diagnostics.length < 16) {
-      evidence.diagnostics.push({ stage, kind, details });
+    if (evidence.diagnostics.length === 16) {
+      evidence.diagnostics.shift();
     }
+    evidence.diagnostics.push({ stage, kind, details });
   };
   const sdkEnv = resolveAndroidSdkEnv();
   const sdk =
