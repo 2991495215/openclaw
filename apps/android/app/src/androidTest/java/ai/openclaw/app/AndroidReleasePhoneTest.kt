@@ -34,11 +34,11 @@ class AndroidReleasePhoneTest {
         "initial" -> {
           onboard(ui, app)
           ui.requireObject(By.desc("Show Sidebar"), "Native sidebar was not available").click()
-          ui.clickPhoneDestination("Overview")
+          ui.clickText("Overview")
           ui.requireObject(By.text("Online"), "Paired Gateway was not online in Overview")
           ui.capture("phone-initial-overview-online")
           ui.requireObject(By.desc("Show Sidebar"), "Overview sidebar was not available").click()
-          ui.clickPhoneDestination("Home")
+          ui.clickText("Home")
           ui.phoneSend(marker("PHONE_FIRST"))
           ui.verifyPhoneDraft(marker("PHONE_FIRST"), "phone-initial-keyboard")
           ui.phoneSend(marker("PHONE_SECOND"))
@@ -50,7 +50,7 @@ class AndroidReleasePhoneTest {
         "relaunch" -> {
           assertFalse("Saved pairing must not reopen onboarding", ui.device.hasObject(By.text("Scan QR or setup code")))
           ui.requireObject(By.desc("Show Sidebar"), "Saved pairing did not return to the native shell").click()
-          ui.clickPhoneDestination("Home")
+          ui.clickText("Home")
           ui.reply(marker("PHONE_SECOND"))
           ui.reply(marker("WEAR_RELAUNCH"))
           ui.phoneSend(marker("PHONE_RELAUNCH"))

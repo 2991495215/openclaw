@@ -57,36 +57,31 @@ internal class ReleaseValidationUi(
   ): UiObject2 = checkNotNull(device.wait(Until.findObject(selector), timeoutMillis)) { label }
 
   fun clickText(text: String) {
-    requireObject(By.pkg(candidatePackage).text(text), "Native action was not available: $text").click()
-  }
-
-  fun clickPhoneDestination(destination: String) {
-    check(destination == "Overview" || destination == "Home")
-    try {
-      clickText(destination)
-    } catch (_: StaleObjectException) {
-      // UiObject2.click refreshes its node before injecting a gesture; reacquire a replaced drawer row once.
-      clickText(destination)
-    }
+    assertTrue("Native action was rejected: $text", nativeClick(By.pkg(candidatePackage).text(text), "Native action was not available: $text"))
   }
 
   private fun nativeClick(
     selector: BySelector,
     label: String,
   ): Boolean {
-    val node =
-      try {
-        requireObject(selector, label).accessibilityNodeInfo
-      } catch (_: StaleObjectException) {
-        // A replaced Compose node can be reacquired before invoking any UI action.
-        requireObject(selector, label).accessibilityNodeInfo
-      }
     val action = AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK
     val target =
       checkNotNull(
-        generateSequence(node) { it.parent }
-          .take(8)
-          .firstOrNull { it.isClickable && it.isEnabled && it.actionList.contains(action) },
+        device.wait(
+          Condition<UiDevice, AccessibilityNodeInfo?> {
+            try {
+              device.findObject(selector)?.accessibilityNodeInfo?.let { node ->
+                generateSequence(node) { it.parent }
+                  .take(8)
+                  .firstOrNull { it.isClickable && it.isEnabled && it.actionList.contains(action) }
+              }
+            } catch (_: StaleObjectException) {
+              // Reacquire replaced nodes within the existing deadline, before issuing any action.
+              null
+            }
+          },
+          30_000,
+        ),
       ) { "$label: native click was not exposed" }
     return target.performAction(action.id)
   }
