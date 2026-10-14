@@ -108,9 +108,40 @@ or connections without a durable profile stay browser-local rather than writing
 another person’s layout or shared Gateway configuration.
 
 New session previews the first prompt immediately while the Gateway accepts it.
-The submitted browser draft is retired before the confirmed conversation URL is
-committed, so closing the tab does not restore a sent prompt. Saved worktree-name
-preferences can finish clearing alongside navigation.
+As soon as creation is accepted, the submitted prompt and attachments are cleared
+from the New session composer, without waiting for its chat preview to load. The
+submitted browser draft is retired before the confirmed conversation URL is
+committed, so closing the tab does not restore a sent prompt. A failed creation or
+a newer unsent draft stays available. Saved worktree-name preferences can finish
+clearing alongside navigation.
+
+## Move an existing session
+
+Right-click one session in the sidebar or Sessions page, or open its chat-header
+actions. **Move to cloud…** opens the destination picker for a local session;
+**Move session…** does the same for an active cloud or device session. Choose a
+configured cloud profile or eligible paired device. Active remote sessions can
+also move back to the **Gateway**. The conversation keeps its session identity.
+
+Moving requires a session-owned worktree or repository workspace. Local sessions
+with an active turn must finish that turn first; a busy refusal does not interrupt
+it or start provisioning. Moving an active remote session warns before interrupting
+its turn and does not replay it. Continuing from an offline device requires an
+explicit confirmation because unsynced files and in-flight work may be lost.
+
+If an accepted move fails with a draining source,
+**Retry move** resumes its saved destination and original source. It does not
+open another destination picker or replay the interrupted turn. The same retry
+is available from the **Move failed** chip. An offline-device abandonment retry
+requires the destructive confirmation again. Wait for that move to finish before
+choosing a different destination.
+
+Device moves require write access; configured cloud profiles require administrator
+access. Unavailable or runtime-incompatible destinations remain disabled. A
+[deployment-required worker profile](/gateway/cloud-workers/placement-and-machine-selection#a-deployment-required-openclaw-destination)
+cannot be overridden by this menu: only that profile without operating-system or
+machine-class overrides is selectable. If placement or the connection changes while
+the picker is open, reopen the action rather than applying a stale selection.
 
 ## New session names
 
@@ -144,6 +175,10 @@ updates the sidebar without renaming an existing branch.
 
 ## New-session preferences and recents
 
+Changing agents or handing a draft to its new session closes the draft's open
+menus. In the command palette's session settings, Escape closes the nested agent
+menu first and returns focus to its trigger.
+
 In **Project → Browse**, keyboard focus moves to the folder path. Escape returns
 focus to **Browse**. Loading and folder errors are announced without moving focus
 away from the path field.
@@ -152,6 +187,10 @@ Tab completes a folder name. If the starting workspace does not exist yet, Brows
 opens the home folder. Errors for paths you enter remain visible.
 
 For connections with a durable user profile, the Gateway stores each agent's latest folder, worktree, model, thinking, and fast-mode choices. New sessions restore the last fast-mode choice, including an explicit off choice, for supported providers. The new-session picker also shows recent projects and folders derived only from sessions created by that profile. These conveniences follow the person across browsers; they do not grant access to a project or path.
+
+Guests with session access can save these choices in their own profile without
+broader Gateway write permission. This does not allow changing another person's
+preferences or private background resources.
 
 A custom worktree **Name** applies to the submitted session. Once its start is
 accepted, New session clears that name while remembering the repository, checkout
