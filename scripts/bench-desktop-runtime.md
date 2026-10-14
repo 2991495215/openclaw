@@ -80,3 +80,35 @@ allow later trials to proceed after cleanup. Never convert missing or failed tri
 to zero, combine different source cuts, or treat prior lane measurements as
 trials from this campaign. Shared-host load and warm filesystem caches limit
 causal claims even when ordering is interleaved. No cache purge is performed.
+
+## Executable scan cohort
+
+`bench-desktop-exescan.py` reuses the native-entry diagnostic and profile cleanup
+above. Supply one signed release shell with the test bundle ID. Assembly keeps
+that shell immutable: X0 uses the archive owner's recipe; XJ/XB/XA replace the
+runtime with the supplied JIT/bytecode/AOT executable at `runtime/bin/bun` and one
+identical sidecar ZIP. The canonical signer applies the release Bun entitlements.
+The archived sidecar is not extracted: this is scan-cost proof, not integrated
+runtime or onboarding qualification.
+
+```sh
+python3 scripts/bench-desktop-exescan.py assemble \
+  --base /path/OpenClaw.app --archive-owner /path/archive-mac-runtime.py \
+  --fat-root /path/current --sidecar-zip /path/sidecar.zip \
+  --output /private/tmp/oc-zc2-exescan
+python3 scripts/bench-desktop-exescan.py measure \
+  --output /private/tmp/oc-zc2-exescan --trials 5
+```
+
+Assembly records bundle inventory, executable bytes, entitlements and measured
+release-style ZIP sizes. Each interleaved variant gets an open-first fresh APFS
+copy (open, immediate executable `--version`, repeat open, repeat executable) and
+an independent exec-first fresh copy (`--version`, repeat `--version`). Child
+processes use isolated HOME/state/provider directories; each copy is deleted
+after its trial. Samples include load averages, outputs, exit codes and failures.
+Only successful observations enter median/min/max summaries. Direct execution
+includes runtime startup and CLI work; first-minus-repeat is an estimate of cold
+assessment overhead, not an instrumented XProtect duration. Do not combine a
+quarantined/Gatekeeper-rejected attempt with successful unquarantined timings.
+The harness stops if free disk drops below 10 GiB during signing/archiving or at
+trial admission. Keep the common source shell when another lane needs it.
