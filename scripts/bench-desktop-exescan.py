@@ -147,8 +147,12 @@ def execute(exe, work, timeout):
                    "OPENCLAW_NO_RESPAWN": "1", "NO_COLOR": "1"}
     row = {"started": time.time(), "load_start": os.getloadavg(), "success": False}
     started = time.monotonic()
-    child = subprocess.Popen([str(exe), "--version"], cwd=work, env=environment,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    try:
+        child = subprocess.Popen([str(exe), "--version"], cwd=work, env=environment,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    except OSError as error:
+        row.update(error=str(error), seconds=time.monotonic() - started, load_end=os.getloadavg())
+        return row
     try:
         out, err = child.communicate(timeout=timeout)
         row.update(seconds=time.monotonic() - started, exit=child.returncode,
