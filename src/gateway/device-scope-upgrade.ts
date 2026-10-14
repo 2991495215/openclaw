@@ -49,8 +49,9 @@ export class ScopeUpgradeCoordinator {
     // Passive polling stops at request-entry close, before recovery joins
     // retained execution. A queued wake must not start another durable read.
     const close = () => void trackGatewayWork(() => this.close());
-    gatewaySignal.addEventListener("abort", close, { once: true, signal: this.work.signal });
-    if (gatewaySignal.aborted) {
+    const signal = AbortSignal.any([gatewaySignal, this.scheduler.signal]);
+    signal.addEventListener("abort", close, { once: true, signal: this.work.signal });
+    if (signal.aborted) {
       close();
     }
   }
@@ -124,7 +125,11 @@ export class ScopeUpgradeCoordinator {
         }
       });
     }
-    return await racePromiseWithAbortSignal(entry.resultPromise, getAsyncWorkSignal());
+    const observerSignal = getAsyncWorkSignal();
+    return await racePromiseWithAbortSignal(
+      entry.resultPromise,
+      observerSignal ? AbortSignal.any([observerSignal, this.work.signal]) : this.work.signal,
+    );
   }
 
   private async waitForResult(entry: UpgradeEntry): Promise<ScopeUpgradeWaitResult | null> {
