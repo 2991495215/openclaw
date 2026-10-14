@@ -61,6 +61,8 @@ export async function runDoctorHealthFlow(
   const run = () =>
     withDeferredDebugProxyCapture(async (resumeCapture) => {
       let preparedPreflight = databasePreflight;
+      // Snapshot-time generations must survive Doctor's own pre-maintenance reads.
+      const preserveSourceArtifacts = writeAuthority?.databaseGenerations ? true : undefined;
       const preCaptureRehearsalRoot =
         !writeAuthority?.postCoreSchemaRepair && (options.repair === true || options.yes === true)
           ? resolveUpdateRehearsalRoot(process.env)
@@ -76,6 +78,7 @@ export async function runDoctorHealthFlow(
           runtime,
           json: options.json,
           statePublicationOnly: preCaptureRehearsalRoot !== undefined,
+          preserveSourceArtifacts,
         });
         if (!preCaptureRehearsalRoot) {
           preparedPreflight = guarded ?? preparedPreflight;
@@ -137,6 +140,9 @@ async function runDoctorHealthFlowWithResult(
     ReturnType<typeof import("../commands/doctor-maintenance.js").beginDoctorMaintenance>
   >;
   let sqliteNoCowPaths: string[] = [];
+  const preflightOptions = {
+    preserveSourceArtifacts: writeAuthority?.databaseGenerations ? (true as const) : undefined,
+  };
   let sqliteReclamationAgents: readonly AgentDatabaseMigrationTarget[] | undefined;
   let exitCode: number | undefined;
   let healthContext: DoctorHealthFlowContext | undefined;
@@ -195,6 +201,7 @@ async function runDoctorHealthFlowWithResult(
       preparedArchiveDiscovery = await prepareDoctorMaintenanceArchives(
         databasePreflight,
         effectiveRuntime,
+        preflightOptions,
       );
     }
     const [{ beginDoctorMaintenance }, { createDoctorOriginalCaptureHook }] = await Promise.all([
@@ -254,7 +261,7 @@ async function runDoctorHealthFlowWithResult(
         databasePreflight && !refreshRecoveryInventory
           ? databasePreflight
           : await measureGatewayBootstrapStep("doctor.database-preflight", () =>
-              prepareDoctorDatabasePreflight(),
+              prepareDoctorDatabasePreflight(preflightOptions),
             );
       const { recordAgentDatabaseAdmissions } =
         await import("../state/agent-database-admission.js");
