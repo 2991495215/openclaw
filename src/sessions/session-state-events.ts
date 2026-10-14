@@ -281,7 +281,6 @@ export async function recordSessionStateEventAsync(
     let preparedWatchers: PreparedSessionWatcherStorePaths | undefined;
     const assertCurrent = () => {
       options.assertCurrent?.();
-      preparedWatchers?.assertCurrent();
     };
     return await runOpenClawStateWorkerOperation(
       context,

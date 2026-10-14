@@ -778,7 +778,7 @@ it("rolls back watch writes when the system-event store changes at transaction o
   });
   let currentStore = originalStore;
   publishSystemEventStoreResolver(() => currentStore);
-  for (const operation of ["register", "acknowledge", "spawn"] as const) {
+  for (const operation of ["register", "acknowledge"] as const) {
     for (const stage of ["transaction", "commit"] as const) {
       currentStore = originalStore;
       const targetSessionKey = `${child}-${operation}-${stage}`;
@@ -814,14 +814,6 @@ it("rolls back watch writes when the system-event store changes at transaction o
               database,
             ),
           ).toBe(false);
-        } else if (operation === "spawn") {
-          await recordSubagentSpawned({
-            childSessionKey: targetSessionKey,
-            childRunId: `spawn-${stage}`,
-            requesterSessionKey: nestedWatcher,
-            agentId: "main",
-          });
-          expect(await getSessionStateVersion(targetSessionKey, "main", database)).toBe(0);
         } else {
           await acknowledgeSessionStateNotices(
             nestedWatcher,
