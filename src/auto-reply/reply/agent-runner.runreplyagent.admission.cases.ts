@@ -262,37 +262,34 @@ export function registerReplyAdmissionCases({
         storePath,
       },
     });
-    try {
-      expect(authorized.error).toBeNull();
-      const authority = expectDefined(
-        authorized.authorization,
-        "session-backed retirement authority",
-      );
-      duplicate.followupRun.operatorAuthority = createAdmittedRunOperatorAuthority({
-        profileId,
-        scopes,
-        assertCurrent: authority.assertCurrent,
-      });
+    expect(authorized.error).toBeNull();
+    const authority = expectDefined(
+      authorized.authorization,
+      "session-backed retirement authority",
+    );
+    onTestFinished(() => authority.release?.());
+    duplicate.followupRun.operatorAuthority = createAdmittedRunOperatorAuthority({
+      profileId,
+      scopes,
+      assertCurrent: authority.assertCurrent,
+    });
 
-      await expect(duplicate.run()).resolves.toBeUndefined();
+    await expect(duplicate.run()).resolves.toBeUndefined();
 
-      expect(duplicate.sourceTurnId).toBe(sourceTurnId);
-      expect(onAdopted).not.toHaveBeenCalled();
-      expect(queueEmbeddedAgentMessageMock).not.toHaveBeenCalled();
-      expect(runEmbeddedAgentMock).not.toHaveBeenCalled();
-      const stored = expectDefined(
-        loadSessionEntry({ storePath, sessionKey: "main", readConsistency: "latest" }),
-        "stored terminal session",
-      );
-      expect(stored).toMatchObject({
-        status: "done",
-        restartRecoveryTerminalRunIds: [sourceTurnId],
-      });
-      expect(stored.restartRecoveryDeliveryRunId).toBeUndefined();
-      expect(stored.restartRecoveryDeliverySourceRunId).toBeUndefined();
-    } finally {
-      authorized.authorization?.release?.();
-    }
+    expect(duplicate.sourceTurnId).toBe(sourceTurnId);
+    expect(onAdopted).not.toHaveBeenCalled();
+    expect(queueEmbeddedAgentMessageMock).not.toHaveBeenCalled();
+    expect(runEmbeddedAgentMock).not.toHaveBeenCalled();
+    const stored = expectDefined(
+      loadSessionEntry({ storePath, sessionKey: "main", readConsistency: "latest" }),
+      "stored terminal session",
+    );
+    expect(stored).toMatchObject({
+      status: "done",
+      restartRecoveryTerminalRunIds: [sourceTurnId],
+    });
+    expect(stored.restartRecoveryDeliveryRunId).toBeUndefined();
+    expect(stored.restartRecoveryDeliverySourceRunId).toBeUndefined();
   });
 
   it.each(["backend", "adoption"] as const)(
