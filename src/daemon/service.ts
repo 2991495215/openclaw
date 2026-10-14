@@ -1,4 +1,5 @@
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
+import { captureStalledGatewayStartup } from "../infra/gateway-startup-owner.js";
 import { assertGatewayServiceMutationAllowed } from "../infra/gateway-supervision.js";
 import { assertFutureConfigActionAllowed } from "./future-config-guard.js";
 import {
@@ -20,6 +21,7 @@ import {
   commitDaemonRuntimePin,
   readDaemonRuntimePinForInstall,
 } from "./runtime-pin-state.js";
+import { stopStalledGatewayStartup } from "./schtasks-process.js";
 import {
   installScheduledTask,
   isScheduledTaskEnabled,
@@ -431,7 +433,13 @@ function withGatewayServiceMutationGuards(
       },
     ),
     start: guardGatewayServiceMutation("start the gateway service", service.start),
-    stop: guardGatewayServiceMutation("stop the gateway service", service.stop),
+    stop: guardGatewayServiceMutation("stop the gateway service", async (args) => {
+      const stalled = kind === "gateway" ? captureStalledGatewayStartup(args.env) : undefined;
+      await service.stop(args);
+      if (stalled) {
+        await stopStalledGatewayStartup(stalled, args.assertCurrent);
+      }
+    }),
     restart: guardGatewayServiceMutation("restart the gateway service", service.restart),
   };
 }
