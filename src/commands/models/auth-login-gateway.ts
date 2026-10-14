@@ -62,11 +62,17 @@ export async function readGatewayLoginParams(
     : await prompter
         .select({
           message: "Choose a provider sign-in method",
-          options: choices.map((entry) => ({
-            value: formatProviderLoginChoiceRef(entry),
-            label: entry.choiceLabel,
-            hint: `${entry.providerId} / ${entry.methodId}`,
-          })),
+          searchable: true,
+          options: choices
+            .map((entry) => ({
+              value: formatProviderLoginChoiceRef(entry),
+              label: entry.choiceLabel,
+              hint: `${entry.providerId} / ${entry.methodId}`,
+            }))
+            .toSorted(
+              (a, b) =>
+                a.label.localeCompare(b.label, "en") || a.value.localeCompare(b.value, "en"),
+            ),
         })
         .catch((error: unknown) => {
           if (error instanceof WizardCancelledError) {

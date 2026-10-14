@@ -881,11 +881,16 @@ async function runModelsAuthLoginFlow(
     (await prompter
       .select({
         message: "Select a provider",
-        options: authProviders.map((provider) => ({
-          value: provider.id,
-          label: provider.label,
-          hint: provider.docsPath ? `Docs: ${provider.docsPath}` : undefined,
-        })),
+        searchable: true,
+        options: authProviders
+          .map((provider) => ({
+            value: provider.id,
+            label: provider.label,
+            hint: provider.docsPath ? `Docs: ${provider.docsPath}` : undefined,
+          }))
+          .toSorted(
+            (a, b) => a.label.localeCompare(b.label, "en") || a.value.localeCompare(b.value, "en"),
+          ),
       })
       .then((id) => resolveProviderMatch(authProviders, id)));
 

@@ -396,6 +396,12 @@ or ambiguous plugin method is not silently replaced with a different login.
 The menu reads the selected local configuration, including `plugins.load.paths`,
 and honors plugin disablement and allowlists.
 
+Provider menus list choices alphabetically. Type to filter by label, provider ID,
+or method ID. Use the arrow keys and Enter to select a match. If `--provider` and
+`--method` identify one available flow, the menu is skipped. Keep these flags on
+the same shell command. Use a trailing backslash when you split the command
+across lines.
+
 For these online logins, `--profile-id`, `--force`, `--set-default`, and Copilot
 `--yes` are refused before starting sign-in because the Gateway login API does
 not represent those options. Stop the Gateway to use those options offline.
