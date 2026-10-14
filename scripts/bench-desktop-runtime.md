@@ -41,7 +41,8 @@ after main dispatch and exits before initialization or any rename. The measured
 interval is an upper bound from `open` to main, including LaunchServices and
 up to approximately 5 ms of observation delay. It is not a literal main timestamp.
 Profiles, their two possible defaults domains/plists, exact Keychain namespaces,
-and copies are removed after each pair. The app's ZIP uses the release-style
+and copies are removed after each pair. Native removal of the app copy runs
+outside the launch timing interval. The app's ZIP uses the release-style
 `ditto --sequesterRsrc --keepParent` format; allocated bytes are not unique APFS
 extents. These measurements do not prove first-run seeding or dashboard readiness.
 

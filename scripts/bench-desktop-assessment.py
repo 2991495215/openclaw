@@ -35,8 +35,9 @@ def main():
     args.base = args.base.resolve(strict=True)
     args.output = args.output.resolve()
     lane = Path("/private/tmp/oc-zc2-bench")
-    if not args.output.is_relative_to(lane) or args.output == lane or args.output.exists():
-        parser.error("Output must be a new directory below /private/tmp/oc-zc2-bench")
+    if (not args.output.is_relative_to(lane) or args.output == lane or args.output.exists()
+            or any(args.output.is_relative_to(root) for root in (args.base, args.sidecar.resolve()))):
+        parser.error("Output must be a new directory below /private/tmp/oc-zc2-bench, outside input trees")
     metadata = plistlib.loads((args.base / "Contents/Info.plist").read_bytes())
     if metadata["CFBundleIdentifier"] != "ai.openclaw.mac.tcctest":
         parser.error("Only the tcctest base application is allowed")

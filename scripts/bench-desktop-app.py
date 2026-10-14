@@ -189,7 +189,7 @@ def main():
                     print(json.dumps(row), flush=True)
             finally:
                 stop_native(copy)
-                shutil.rmtree(root)
+                checked(["/bin/rm", "-rf", str(root)])
 
 
 if __name__ == "__main__":
