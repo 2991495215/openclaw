@@ -43,7 +43,8 @@ export type RuntimeToolSchemaQuarantineIdentity = {
 };
 
 // Remember submitted records before awaiting them, so recovery also joins a pending write.
-const submittedQuarantines = new Set<string>();
+// Identity checks below keep a late clear reply from forgetting a newer same-key failure.
+const submittedQuarantines = new Map<string, symbol>();
 
 export async function recordPersistedRuntimeToolSchemaQuarantine(
   quarantine: RuntimeToolSchemaQuarantine,
@@ -54,7 +55,10 @@ export async function recordPersistedRuntimeToolSchemaQuarantine(
     ...createRuntimeHealthRecordEnvelope(quarantine.failedAt),
     ...(quarantine.owner ? { owner: quarantine.owner } : {}),
   };
-  submittedQuarantines.add(runtimeToolSchemaIdentityKey(record));
+  submittedQuarantines.set(
+    runtimeToolSchemaIdentityKey(record),
+    Symbol("runtime-tool-quarantine-submission"),
+  );
   await quarantineStore.register(recordKey(record), record);
 }
 
@@ -69,20 +73,34 @@ export async function clearRecoveredPersistedRuntimeToolSchemaQuarantines(
   if (submittedQuarantines.size === 0) {
     return;
   }
-  const recoveredKeys = listHealthyTools()
-    .map(runtimeToolSchemaIdentityKey)
-    .filter((key) => submittedQuarantines.has(key));
-  if (recoveredKeys.length === 0) {
+  const recoveredKeys = new Map(
+    listHealthyTools()
+      .map(runtimeToolSchemaIdentityKey)
+      .flatMap((key) => {
+        const submission = submittedQuarantines.get(key);
+        return submission ? [[key, submission] as const] : [];
+      }),
+  );
+  if (recoveredKeys.size === 0) {
     return;
   }
-  // Recovery is best effort: an overlapping failure re-registers its warning on the next run.
-  if (
-    await quarantineStore.clearForProcess(process.pid, { kind: "tool-schema", keys: recoveredKeys })
-  ) {
-    for (const key of recoveredKeys) {
-      submittedQuarantines.delete(key);
-    }
-  }
+  // Capture every key's source now; a renewed failure must not veto another key's recovery.
+  await Promise.all(
+    Array.from(recoveredKeys, async ([key, submission]) => {
+      const cleared = await quarantineStore.clearForProcess(
+        process.pid,
+        { kind: "tool-schema", keys: [key] },
+        () => {
+          if (submittedQuarantines.get(key) !== submission) {
+            throw new Error("Runtime tool quarantine changed during recovery");
+          }
+        },
+      );
+      if (cleared && submittedQuarantines.get(key) === submission) {
+        submittedQuarantines.delete(key);
+      }
+    }),
+  );
 }
 
 export async function listPersistedRuntimeToolSchemaQuarantines(): Promise<
