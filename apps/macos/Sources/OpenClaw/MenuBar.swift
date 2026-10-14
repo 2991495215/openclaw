@@ -10,7 +10,7 @@ import SwiftUI
 @main
 enum OpenClawProcessMain {
     static func main() {
-        OSLog.Logger(subsystem: "ai.openclaw", category: "launch").notice("process main entered")
+        Logger(subsystem: "ai.openclaw", category: "launch").notice("process main entered")
         if let status = OpenClawProcessEntrypoint.run(arguments: CommandLine.arguments, launchApplication: {
             guard GatewayKeychainAccess.configure(launchPlan: .current) == 0 else {
                 fputs(
