@@ -82,7 +82,7 @@ jobs:
             node --input-type=module -e 'import os from "node:os"; console.log(JSON.stringify({ logicalCpuCount: os.availableParallelism(), totalMemoryBytes: os.totalmem() }));'
           } | tee "$proof_dir/runtime.txt"
           started="$(date +%s)"
-          node scripts/run-vitest.mjs run --config test/vitest/vitest.cli-process.config.ts src/cli/update-finalization-output.process.test.ts --maxWorkers=1 --passWithNoTests=false --testNamePattern '^update repair process output (doctor-error|plugin-error|human-plugin-error) preserves the output and exit contract$' --reporter=default --reporter=json --outputFile.json="$proof_dir/vitest.json" 2>&1 | tee "$proof_dir/vitest.log"
+          node scripts/run-vitest.mjs run --config test/vitest/vitest.cli-process.config.ts src/cli/update-finalization-output.process.test.ts --maxWorkers=1 --passWithNoTests=false --testNamePattern '^update repair process output > (doctor-error|plugin-error|human-plugin-error) preserves the output and exit contract$' --reporter=default --reporter=json --outputFile.json="$proof_dir/vitest.json" 2>&1 | tee "$proof_dir/vitest.log"
           echo "Exact failed cases elapsed seconds: $(( $(date +%s) - started ))" >> "$GITHUB_STEP_SUMMARY"
       - name: Verify exactly three passing cases
         shell: bash
