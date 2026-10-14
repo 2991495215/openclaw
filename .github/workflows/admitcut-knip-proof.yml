@@ -1,4 +1,4 @@
-name: Admitcut export proof
+name: Admitcut focused base proof
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: admitcut-knip-proof
+  group: admitcut-focused-base-proof
   cancel-in-progress: false
 
 env:
@@ -18,7 +18,7 @@ env:
 jobs:
   exports:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - name: Checkout exact reviewed candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,15 +32,8 @@ jobs:
           install-bun: "false"
           cache-mode: restore
           semantic-checks: "true"
-      - name: Verify candidate and export surface
+      - name: Verify base and reproduce session failures
         run: |
           test "$(git rev-parse HEAD)" = e589d87d7b7e02bccf241fad47b62f0fdab04a2a
           git rev-parse HEAD
-          pnpm deadcode:exports
-      - name: Build base runtime for auth failure attribution
-        id: auth_runtime
-        if: ${{ !cancelled() }}
-        run: node --import ./scripts/tsx.mjs scripts/build-all.mts qaRuntime
-      - name: Reproduce selected-profile logout on base
-        if: ${{ !cancelled() && steps.auth_runtime.outcome == 'success' }}
-        run: pnpm test test/e2e/qa-lab/runtime/codex-auth-product-proof.e2e.test.ts --maxWorkers=1 -t 'returns bounded recovery after the explicitly selected profile is removed'
+          pnpm test src/gateway/server-methods/chat-send-reply-dispatch.test.ts src/auto-reply/reply/agent-runner-completion.persistence.test.ts --maxWorkers=1 -t 'reads released actor reply facts and rejects the old answer|preserves the completed reply after one invalidated|does not retry or publish a completed reply past second-invalidation'
