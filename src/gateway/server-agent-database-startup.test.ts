@@ -64,6 +64,7 @@ import {
 import { assertOpenClawDatabasesReady } from "../state/openclaw-database-preflight.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import { acquireTestPortBlock, type TestPortClaim } from "../test-utils/port-claims.js";
+import { registerStartupHttpDiagnostic } from "./startup-http-diagnostic.test-support.js";
 import { loadGatewayTestConfig } from "./test-helpers.config-runtime.js";
 import { gatewayReplyMock, testState } from "./test-helpers.runtime-state.js";
 import {
@@ -75,6 +76,8 @@ import {
 } from "./test-helpers.server.js";
 
 installGatewayTestHooks();
+registerStartupHttpDiagnostic("src/gateway/server-agent-database-startup.test.ts");
+
 let pendingFixtureCleanup: Promise<void> | undefined;
 afterEach(async () => {
   try {
