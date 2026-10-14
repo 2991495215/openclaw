@@ -13,9 +13,9 @@ if [[ "$#" != 4 ]]; then
   echo "Usage: $0 <template.app> <fat-executable> <slim-runtime> <new-output.app>" >&2
   exit 2
 fi
-TEMPLATE="$1"
-EXECUTABLE="$2"
-SIDECAR="$3"
+TEMPLATE="$(/usr/bin/python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1")"
+EXECUTABLE="$(/usr/bin/python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$2")"
+SIDECAR="$(/usr/bin/python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$3")"
 OUTPUT="$(/usr/bin/python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$4")"
 case "$OUTPUT" in
   /private/tmp/oc-zc2-bench/*.app) ;;
@@ -31,6 +31,10 @@ unset OPENCLAW_SKIP_MLX_TTS
 /usr/bin/codesign --verify --deep --strict "$TEMPLATE"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TEMPLATE/Contents/Info.plist")" == ai.openclaw.mac.tcctest ]]
 /bin/cp -cR "$TEMPLATE" "$OUTPUT"
+# Mutating a copied root symlink would mutate the original template instead.
+[[ -d "$OUTPUT" && ! -L "$OUTPUT" &&
+   -d "$OUTPUT/Contents" && ! -L "$OUTPUT/Contents" &&
+   -d "$OUTPUT/Contents/Resources" && ! -L "$OUTPUT/Contents/Resources" ]]
 RUNTIME="$OUTPUT/Contents/Resources/runtime"
 /bin/rm -rf "$RUNTIME"
 /bin/mkdir -p "$RUNTIME/bin"

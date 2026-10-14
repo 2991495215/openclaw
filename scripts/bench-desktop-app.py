@@ -142,6 +142,7 @@ def main():
         if not variant.get("app"):
             continue
         app = Path(variant["app"]).resolve()
+        variant["app"] = str(app)
         checked(["codesign", "--verify", "--deep", "--strict", str(app)])
         metadata = plistlib.loads((app / "Contents/Info.plist").read_bytes())
         if metadata["CFBundleIdentifier"] != "ai.openclaw.mac.tcctest":
