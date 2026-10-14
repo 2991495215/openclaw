@@ -35,6 +35,8 @@ const repositoryScriptEntries = [
   "apps/linux/scripts/test-native-control-auth.mjs!",
   "scripts/render-proof-video.mts!",
   "scripts/ci-shard-timings-refresh.mts!",
+  // db:postgres:gen/check invoke this generator through the source loader.
+  "scripts/generate-postgres-schema.mts!",
   // CI preflight executes the manifest from its trusted harness checkout.
   "scripts/ci-build-manifest.mjs!",
   // CI security-fast runs this from its trusted harness checkout.
@@ -61,8 +63,9 @@ const repositoryScriptEntries = [
   "scripts/bench-channel-turn.mts!",
   // Maintainers invoke this isolated transcript-rewrite benchmark by path.
   "scripts/bench-session-manager-rewrite.ts",
-  // The team-shaped fixture README invokes this measurement CLI by path.
+  // The team-shaped fixture README invokes these measurement CLIs by path.
   "scripts/perf/team-shape-measure.ts",
+  "scripts/perf/transcript-broadcast-measure.ts",
   "scripts/bundle-a2ui.mts!",
   "scripts/build-discord-activity-sdk.mts!",
   // Plugin package asset hooks invoke the browser builder by path.
@@ -126,7 +129,7 @@ const repositoryScriptEntries = [
   "scripts/e2e/lib/fixtures/config.mjs!",
   "scripts/e2e/lib/fixtures/plugins.mjs!",
   "scripts/e2e/lib/fixtures/workspace.mjs!",
-  // Muse Docker setup and mode dispatch execute these files by path.
+  // Muse Docker shells invoke auth directly and select deterministic/live by mode.
   "scripts/e2e/lib/muse-runtime/auth.mjs!",
   "scripts/e2e/lib/muse-runtime/deterministic.mjs!",
   "scripts/e2e/lib/muse-runtime/live.mjs!",
@@ -883,7 +886,7 @@ const config = {
       ignoreBinaries: [
         "lsattr",
         "mint",
-        // Muse Docker setup installs this CLI separately from npm dependencies.
+        // Muse E2E setup installs this CLI outside npm (scripts/e2e/lib/muse-runtime/setup.sh).
         "muse",
         "ngrok",
         "open",

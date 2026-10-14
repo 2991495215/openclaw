@@ -115,6 +115,7 @@ export function makeTerminalInput(overrides: TerminalInputOverrides = {}): Termi
       timedOutDuringPrompt: false,
       hasSuccessfulFinalAssistantAfterPromptTimeout: false,
       hasPartialAssistantTextAfterPromptTimeout: false,
+      finalAssistantMessageRawText: undefined,
       terminalToolFailure: undefined,
       ...base,
       ...overrides,

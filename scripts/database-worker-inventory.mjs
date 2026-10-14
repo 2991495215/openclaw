@@ -240,14 +240,6 @@ const reviewed = new Map([
     },
   ],
   [
-    "src/config/sessions/session-accessor.sqlite-archive-transaction.ts",
-    {
-      priority: 99,
-      evidence:
-        "reclaimSqliteSessionInTransaction dispatches archive metadata writes in mutation workers; archive-store.ts also calls it only in its !supportsOpenClawAgentDatabaseExecution native branch. Durable publication uses publishSessionStateArchivesInWorker; native compatibility publication remains; incognito never enters these kernels.",
-    },
-  ],
-  [
     "src/cron/store/quarantine.kernel.ts",
     {
       tier: "T3",
@@ -587,7 +579,61 @@ const reviewedOperations = new Map([
           "markOpenClawAgentIntegrityClean",
         ],
         evidence:
-          "Integrity receipts belong to agent-database lease admission and final release: openclaw-agent-db-lease.ts consumes proof during claim, records completed admission, invalidates dead-owner proof, and certifies the last clean closer. openclaw-agent-db-lifecycle.ts revokes proof on failed disposal; openclaw-agent-schema-inspection.worker.ts also reads proof during boot inspection. These are startup/lock primitives, not ordinary quarantine-decision guards.",
+          "Integrity lease primitives: openclaw-agent-db-lease.ts reads during claim/reclaim, records admission, invalidates stale/unclean leases and marks final release. Failed native close invalidates before releasing its lease; schema-inspection.worker.ts also reads receipts. These are admission/release/repair exceptions, not ordinary Gateway queries.",
+      },
+    ],
+  ],
+  [
+    "src/state/agent-deletion-journal-history.ts",
+    [
+      {
+        tier: "T2",
+        operations: ["hasPreJournalStateSchema"],
+        evidence:
+          "Missing-schema admission only: openclaw-state-db-schema-runtime.ts initialization, openclaw-state-db-repair.ts and readRetainedAgentDeletionsFromDatabase's pre-journal compatibility branch.",
+      },
+    ],
+  ],
+  [
+    "src/state/openclaw-agent-db-metadata-write.ts",
+    [
+      {
+        tier: "T2",
+        operations: ["persistAgentSchemaMetadata"],
+        evidence:
+          "Only openclaw-agent-db-schema-helpers.ts and openclaw-agent-db-schema.ts call this schema admission/migration writer.",
+      },
+    ],
+  ],
+  [
+    "src/state/openclaw-state-db-maintenance.ts",
+    [
+      {
+        tier: "T2",
+        operations: ["writeCurrentStateSchemaMetadata"],
+        evidence:
+          "Only openclaw-state-db-schema-runtime.ts schema initialization/admission writes the current schema marker.",
+      },
+    ],
+  ],
+  [
+    "src/state/user-github-connections.kernel.ts",
+    [
+      {
+        tier: "W",
+        operations: ["listUserGitHubConnectionsInDatabase"],
+        evidence: "Only user-github-connections.worker.ts dispatches the connection listing.",
+      },
+    ],
+  ],
+  [
+    "src/state/user-profile-mutation.ts",
+    [
+      {
+        tier: "T2",
+        operations: ["runUserProfileWriteTransaction"],
+        evidence:
+          "Profile mutations run in user-profile-writes.worker.ts and user-profiles.worker.ts; native user-profiles-schema.ts uses this only for once-per-load schema initialization.",
       },
     ],
   ],
@@ -776,19 +822,133 @@ const reviewedOperations = new Map([
           "Entry/lifecycle reader workers and replacement-state.ts query pending publication. Replacement-state also serves opaque SDK replacement transactions; keep this shared read mixed.",
       },
       {
-        tier: "T1",
+        tier: "T3",
         operations: [
           "prepareSessionTranscriptArchivePublishPlans",
           "recordSessionTranscriptArchivePublishResults",
         ],
         evidence:
-          "Durable archive publication uses openclaw-agent-execution-operations.ts workers. archive-transaction.ts retains the !supportsOpenClawAgentDatabaseExecution native publication path from archive-store.ts; no worker-only classification while that compatibility owner remains.",
+          "Only archive-transaction.ts:24,30 and openclaw-agent-execution-operations.ts:433,445 call prepare/record. Runtime publication dispatches through session-archive-publication.ts to the agent execution worker. The alternate archive-store.ts route passes reclamation-run.ts:68,140: native reclamation requires a worker or explicit schema/agent maintenance custody; !supportsOpenClawAgentDatabaseExecution alone never admits native reclamation.",
       },
       {
         tier: "T1",
         operations: ["persistSessionTranscriptArchive"],
         evidence:
           "Only lifecycle-state.ts deleteMaterializedSessionStatePlans inserts the canonical recovery copy. That lifecycle kernel serves mutation workers plus opaque SDK deletion transactions; retain the shared user-data integrity check and mixed tier.",
+      },
+    ],
+  ],
+  [
+    "src/config/sessions/session-accessor.sqlite-archive-transaction.ts",
+    [
+      {
+        tier: "T3",
+        operations: ["reclaimSessionArchivePublicationInTransaction"],
+        evidence:
+          "Only session-accessor.sqlite-reclamation.ts:204 calls this archive-publish-prepare/record transaction. Incoming reclamation passes reclamation-run.ts:68,140: !isMainThread or exclusive schema/agent maintenance permits native work; ordinary runtime dispatches to session-accessor.sqlite-archive.worker.ts:500-512. Agent execution publication uses its own worker transaction.",
+      },
+    ],
+  ],
+  [
+    "src/config/sessions/session-accessor.sqlite-compaction.ts",
+    [
+      {
+        tier: "T3",
+        operations: ["persistCompactionBoundary"],
+        evidence:
+          "agent-runner-memory.ts:489 uses the async compaction facade, which dispatches session.transcript.compactionBoundary via withSessionMetadataWorker to session-manager-metadata.worker.ts:141. The native Sync wrapper has no production value caller: accessor barrels only re-export it and session-accessor.sqlite-compaction-runtime.ts:17,37-38 uses its type. No SDK value export. Worker initialization uses ensureSessionEntryInTransaction; the unused native branch is not a new entry exemption.",
+      },
+    ],
+  ],
+  [
+    "src/config/sessions/session-accessor.sqlite-transcript-anchor.ts",
+    [
+      {
+        tier: "T3",
+        operations: ["assertSessionTranscriptContextAnchorInDatabase"],
+        guard: "expectedAuthority",
+        evidence:
+          "Only the expectedAuthority SELECT is covered. model-context.ts:202 forwards it from anchor-read.kernel.ts:215; callers are entry-read, entry-cohort, hydration-read and history-read-operation workers, plus openclaw-agent-execution-operations.ts:185 registered in execution.worker.ts:454. Runtime anchor readers use owned cohorts or transcript-worker readAnchors. Released detached validators accept only version/admission, and withTranscriptContextSnapshot omits expectedAuthority; shared anchor helpers remain mixed.",
+      },
+    ],
+  ],
+  [
+    "src/config/sessions/session-accessor.sqlite-transcript-message-rewrite.ts",
+    [
+      {
+        tier: "T3",
+        operations: [
+          "rewriteNativeAssistantTranscriptMessageForRun",
+          "rewriteNativeTranscriptMessageAtAnchor",
+        ],
+        evidence:
+          "The sole production value callers are session-message-rewrite.ts:160,193, each dominated by !isMainThread at :159,191. Main-thread callers take rewritePreparedTranscriptMessage at :176,208. Neither native helper has a plugin-SDK value export; the surrounding mixed module is not exempted.",
+      },
+    ],
+  ],
+  [
+    "src/config/sessions/session-accessor.sqlite-transcript-write.ts",
+    [
+      {
+        tier: "T3",
+        operations: ["appendTranscriptEvent", "rewriteTranscriptEventRowsExact"],
+        evidence:
+          "Raw append's only production caller is session-transcript-event.ts:94 under !isMainThread; memory returns earlier and main-thread append dispatches to its worker. sqlite-runtime-testing.ts is a private first-party test helper excluded from the published package. Exact-row rewrite is called only by session-transcript-correction.ts:164 inside runNative, invoked solely under !isMainThread at :190. Internal re-exports are not runtime roots; snapshot/SDK siblings stay mixed.",
+      },
+    ],
+  ],
+  [
+    "src/config/sessions/session-transcript-index.ts",
+    [
+      {
+        tier: "T3",
+        operations: [
+          "deleteOrphanedTranscriptIndexRowsInTransaction",
+          "listSessionsNeedingTranscriptIndexReconcile",
+        ],
+        evidence:
+          "Only reconcile.ts:205,206,280 and projection-writer.ts:299,301 call these full scans, in no-execution/publication branches. Ordinary durable reconcile/search captures agent execution and uses projection-publication.worker.ts maintained status. Memory returns before SQL; execution-scope.ts:93-112 confines unsupported execution to explicit maintenance or worker-native deletion cleanup. Synchronous per-session rebuild uses separate helpers.",
+      },
+    ],
+  ],
+  [
+    "src/config/sessions/session-transcript-projection-rebuild.ts",
+    [
+      {
+        tier: "T3",
+        operations: [
+          "claimPreparedSessionTranscriptProjectionInTransaction",
+          "deletePreparedSessionTranscriptProjectionChunkInTransaction",
+          "finalizePreparedSessionTranscriptProjectionInTransaction",
+          "insertPreparedSessionTranscriptProjectionRows",
+          "prepareProjectionTailCatchUp",
+          "projectionTailFitsCatchUpBounds",
+          "readProjectionSourceSnapshot",
+        ],
+        evidence:
+          "Prepared claim/delete/append/finalize are called only by projection-writer.ts:124,143,184,212 and projection-publication.worker.ts:118-128; snapshot/tail/insertion helpers are private descendants. reconcile.ts:175-192 supplies publication for ordinary durable execution. Memory returns first; execution-scope.ts:93-112 confines native branches to explicit maintenance or worker-native cleanup. The synchronous index.ts:497-531 rebuild uses visitSessionTranscriptProjection/readProjectionSource, not these operations.",
+      },
+    ],
+  ],
+  [
+    "src/config/sessions/session-transcript-projection-writer.ts",
+    [
+      {
+        tier: "T3",
+        operations: ["finalizePreparedProjection", "runProjectionWrite.write"],
+        evidence:
+          "runProjectionWrite is called only by this module's native claim/delete/append/finalize/status branches and reconcile.ts:201,277 without publication. Durable reconcile/search uses the publication worker; finalize's worker branch returns before its SELECT. Memory returns before SQL; execution-scope.ts:93-112 limits unsupported execution to maintenance or worker-native cleanup, whose sole host factory supplies workerAuthority in agent-lifecycle-registry.ts:436-439.",
+      },
+    ],
+  ],
+  [
+    "src/config/sessions/session-transcript-reconcile-readiness.ts",
+    [
+      {
+        tier: "T3",
+        operations: ["readSessionTranscriptProjectionStatus"],
+        evidence:
+          "Only reconcile.ts:557 calls this after waitForSessionTranscriptProjection's memory return and running-reconcile check. Supported durable execution dispatches via withSessionHistoryWorkerDatabase to session-transcript.worker.ts:460-470. Native reads require the maintenance/worker-native cleanup scopes in execution-scope.ts:93-112; failed execution capture or worker admission never falls back to native SQL.",
       },
     ],
   ],
@@ -2389,17 +2549,6 @@ const reviewedOperations = new Map([
     ],
   ],
   [
-    "src/secrets/store/secret-store-hidden-github.ts",
-    [
-      {
-        tier: "W",
-        operations: ["writePersonalGitHubSecret"],
-        evidence:
-          "Counted expression is null DELETE only: src/state/user-github-connections.kernel.ts:202 → user-profiles-merge.ts:58 → user-profile-writes.worker.ts:375,425,482. Other value callers pass JSON strings.",
-      },
-    ],
-  ],
-  [
     "src/state/agent-deletion-journal.read.ts",
     [
       {
@@ -2465,8 +2614,34 @@ const reviewedOperations = new Map([
     ],
   ],
   [
+    "src/state/github-publication-session-lifecycles.ts",
+    [
+      {
+        tier: "W",
+        operations: [
+          "insertGitHubPublicationSessionLifecycle",
+          "readGitHubPublicationSessionLifecycle",
+        ],
+        evidence:
+          "Native insert/read kernels run only in gateway/github-publication-store.worker.ts, gateway/github-personal-publication-store.worker.ts, state/github-publication.worker.ts and state/openclaw-state-read.worker.ts. Gateway callers use readGitHubPublicationSessionLifecycleInWorker; remaining native references are test fixtures.",
+      },
+    ],
+  ],
+  [
     "src/state/openclaw-agent-canonical-validation-receipt.ts",
     [
+      {
+        tier: "T2",
+        operations: ["loadOpenClawAgentCanonicalValidationReceipt"],
+        evidence:
+          "setOpenClawAgentDatabaseValidation loads the receipt only during registry/schema admission; the other caller is openclaw-agent-db-readonly-open.ts under !isMainThread. Runtime hasPersistedOpenClawAgentCanonicalValidation consumes only the admitted cache.",
+      },
+      {
+        tier: "T2",
+        operations: ["clearPersistedOpenClawAgentCanonicalValidation"],
+        evidence:
+          "Invalidation is restricted to startup/Doctor main-key migration and allowStoredAlias import/repair branches; ordinary session writers do not enable those branches.",
+      },
       {
         tier: "W",
         operations: ["recordOpenClawAgentCanonicalValidation"],
@@ -2489,6 +2664,24 @@ const reviewedOperations = new Map([
   [
     "src/state/openclaw-agent-db-registry.ts",
     [
+      {
+        tier: "T2",
+        operations: ["registerOpenClawAgentDatabase"],
+        evidence:
+          "Database-open admission only: openclaw-agent-db.ts registers a newly admitted physical store; openclaw-agent-db-schema.ts registers after schema initialization. Runtime async opens perform admission in the agent executor; synchronous SDK/Doctor opens retain the admission exception.",
+      },
+      {
+        tier: "T2",
+        operations: ["resolveRegisteredAgentDatabaseStoredPath"],
+        evidence:
+          "Private locator query used only by database-open registration admission and unregisterOpenClawAgentDatabase; unregister runs in openclaw-agent-db-registry.worker.ts or offline state-migrations.media-persistence.ts.",
+      },
+      {
+        tier: "W",
+        operations: ["unregisterOpenClawAgentDatabase"],
+        evidence:
+          "Runtime removal is dispatched by openclaw-agent-db-registry.worker.ts; the only native production caller is offline Doctor migration state-migrations.media-persistence.ts. No Gateway native caller remains.",
+      },
       {
         tier: "T3",
         operations: ["unregisterOpenClawAgentDatabases"],

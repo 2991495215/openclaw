@@ -34,8 +34,7 @@ export type MuseRuntime = {
 };
 type MuseLease = { runtime: MuseRuntime; release: () => void };
 
-/** @internal */
-export function museEnvironment(apiKey?: string): NodeJS.ProcessEnv {
+function museEnvironment(apiKey?: string): NodeJS.ProcessEnv {
   // Without an OpenClaw-selected key, Muse applies its own documented order:
   // META_API_KEY, then a stored key, then a browser sign-in.
   return {

@@ -1,14 +1,9 @@
 import type { ApprovalHandler } from "@muse-code/sdk";
 import type { AgentHarnessAttemptParamsV2 } from "openclaw/plugin-sdk/agent-harness-runtime";
 
-/** @internal */
-export type MuseApprovalRequest = Parameters<ApprovalHandler>[0];
+type MuseApprovalRequest = Parameters<ApprovalHandler>[0];
 
-/** @internal */
-export function selectApprovalChoice(
-  request: MuseApprovalRequest,
-  decision: string | null | undefined,
-) {
+function selectApprovalChoice(request: MuseApprovalRequest, decision: string | null | undefined) {
   const wanted = decision === "allow-once" ? "approved" : "denied";
   const choice =
     request.availableChoices.find(

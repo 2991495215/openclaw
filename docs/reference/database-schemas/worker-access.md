@@ -272,6 +272,15 @@ shutdown, and restart catch-up, and
 [`manager-session-sync-ops.ts`](https://github.com/openclaw/openclaw/blob/main/extensions/memory-core/src/memory/manager-session-sync-ops.ts)
 for scheduling ownership.
 
+Usage rollup refreshes share one queue per database and scope. Session usage reads
+promote only their requested sessions and wait for those refreshes to commit,
+including appends published while a refresh is running. Aggregate cache reads
+flush pending dirty-session publications. Neither waits for unrelated startup or
+repair backfill to finish: exact reads run before the next bounded bulk batch.
+An already-running batch finishes before priority work starts. Background scope
+drain still owns the complete backfill, and a failed or cancelled refresh rejects
+its pending exact reads instead of returning stale totals.
+
 ## Transactions and query shape
 
 Use Kysely for ordinary queries. Raw SQL belongs to schema, migrations,
@@ -332,6 +341,9 @@ COMMIT, then publishes only a confirmed native receipt. FIFO ordering, durabilit
 schemas, stored formats, and update behavior are unchanged.
 
 Durable heartbeat outcome claims check the current row in their existing worker FIFO.
+Persistence and claims retain the agent executor directly, without opening a native
+database on the Gateway thread. Absent storage has no durable base session or outcome
+and remains absent. The worker owns admission and publishes committed results.
 Missing outcomes and already committed claims for the same run return without
 another write. New claims keep their atomic conditional update and live commit
 authority check; retries retain the original claim timestamp.
@@ -420,6 +432,11 @@ worker snapshot; discovery still reads only metadata. Its transcript statistics
 batch carries the rewrite generation and hot/cold state alongside the bounds,
 so the subsequent scan reuses those facts without another watermark read. A
 rewrite during a background scan converges on the next receipt-driven refresh.
+Usage reports capture cache metadata, bodies, and selected monthly partitions in
+one synchronous engine read snapshot, then close it before asynchronous transcript
+discovery, replay, or pricing. Concurrent refreshes cannot change those captured
+inputs; subsequent reports see the newer cache. Canonical replay retains its
+checkpoint-bounded transcript reads and anchor comparison.
 Participant writers likewise reuse their committed projection-change decision:
 counter-only contributions skip the display-projection read, preserve committed
 display facts, and invalidate exact aggregate records. These changes do not alter stored
@@ -454,6 +471,10 @@ participant records, including contribution counts and recency. The participant 
 updates those records in its existing transaction and publishes them on commit;
 rollback retains the previous facts. Cold, evicted, or invalidated actors use the
 canonical participant read. Participant updates remain independent of metadata CAS.
+Canonical repairs publish merged participant records through this same actor owner
+before projecting the repaired entry, including copies from another store. The next
+participant or membership-facts read sees the committed merge, and a later contribution
+builds on its count. Rolled-back repairs retain the previous participant facts.
 This changes no schema, retention, stored format, or update behavior.
 
 Collaboration writes reuse the captured agent executor without opening a Gateway
@@ -471,6 +492,18 @@ Source preparation borrows an already-retained entry predicate instead of dispat
 another exact-entry read. Releasing a mutation's source leaves its selecting reader
 current; releasing that reader revokes every borrower. The destination worker keeps
 its transaction-local source comparison before the effect.
+
+Bundled native harnesses prepare session lineage once and retain the same entry
+predicate through terminal cleanup. Final lineage checks use published facts;
+tool policy and caller liveness still authorize each effect. Cleanup may borrow
+the lineage with its own liveness check, but cannot outlive the capture owner.
+The released synchronous authority factories remain deprecated compatibility
+entry points, separate from the prepared API.
+
+Session-list row materialization consumes prepared title fields. Its old
+synchronous transcript-title fallback is removed; bounded title probes and their
+cache live in the history worker. Deprecated SessionManager readers and SDK
+facades remain explicitly guarded compatibility paths, not physical SQL retirements.
 
 Reply-initialization cohorts reuse those entry facts only when the selected entry
 and its parent are both covered. Cold-archive absence requires a complete actor
@@ -614,8 +647,9 @@ the loaded generation, sequence, and mutation timestamp once in their write
 transaction. Compaction uses its append receipt instead of rereading the appended
 rows or version. These paths preserve stored bytes, permissions, and update behavior.
 Durable SessionManager calls from the Gateway must use the asynchronous methods.
-The deprecated synchronous SDK methods retain compatibility until the next SDK
-major; bundled transcript archive and model-context readers use workers. Skill Workshop
+The deprecated synchronous SDK methods retain compatibility during their
+deprecation period and will be removed in a later stable release; bundled
+transcript archive and model-context readers use workers. Skill Workshop
 validates source permissions, lifecycle, and the accepted anchor through the history
 worker. It reuses those facts until the Gateway's session-key or transcript write
 receipt changes. The final filesystem guard checks the retained receipt without SQL;
@@ -669,9 +703,25 @@ registry reads and write receipts. Committed replacement/removal invalidates the
 old generation before the next effect; unknown settlement clears the facts.
 Worktree cleanup consumes its already-loaded lease census. Removal locks and
 process-exit lease cleanup retain their synchronous lock-primitive boundary.
-Released synchronous auth/ModelRegistry adapters and destructive lifecycle or
-descendant-deletion guards remain explicit migration debt; this cutover does not
-change those public contracts, schemas, retention, or update behavior.
+Released synchronous auth/ModelRegistry adapters and descendant-deletion guards
+remain explicit migration debt. Agent deletion cleanup instead prepares its
+journal through the shared-state worker and checks the live lease owner and
+committed journal receipts immediately before the effect. Journal rollback does
+not publish a replacement, and unknown settlement invalidates prepared authority.
+The deletion transaction validates the captured install; supported Claw install
+writers refuse a pending deletion. Raw out-of-owner SQL during a live Gateway is
+outside the single-owner contract. These changes preserve public contracts,
+schemas, retention, and update behavior.
+
+Machine-state consumers prepare config, cron partitions, auth-store ownership,
+and onboarding outcomes through the shared-state worker.
+Auth-store ownership and batched plugin metadata reads use the read-only worker,
+including retained artifact-preserving snapshots, without admitting a writer.
+Gateway profile policy and display readers consume the admitted profile catalog;
+committed profile writes update that catalog before their callers resume. Agent lifecycle readers
+likewise seed facts in the worker and apply provenance and deletion-journal
+receipts. Canonical validation predicates consume admitted receipts; only schema
+admission and worker opens load a missing persisted receipt.
 
 The Gateway process is the single owner of OpenClaw databases and their state.
 Reader workers, writer workers, and main-thread projections share that ownership;
@@ -5173,6 +5223,12 @@ larger events need follow-up slice queries. The cursor and follow-up reads retai
 one SQLite snapshot across transport acknowledgments.
 Manual compaction reads entry and transcript statistics after the previous writer
 settles, then reuses them while its lifecycle owner holds admission closed.
+The initial canonical lookup supplies session identity without an unchanged-entry
+write. Terminal accounting uses the entry owner's fixed compaction operation,
+which increments the current writer-owned row without a detached preparation
+snapshot. It preserves intervening metadata and participant updates and refuses
+accounting for a replaced session, lifecycle revision, or writer. Already-completed
+compaction accounting does not repeat work-start eligibility checks.
 Compaction preflight, reset hooks, BTW context, exports, and the asynchronous SDK
 reader retain raw event order, read fences, and byte limits. The host captures the
 physical store before discovery yields and keeps its read custody through cold
@@ -5865,6 +5921,13 @@ event still commits before the runtime advances; bulk transcript imports reuse
 their transaction-local append cursor. Root checks read metadata without saved
 prompt payloads. No cross-transaction root cache is introduced.
 
+Awaited metadata and compaction retain the database executor without opening a
+native handle on the Gateway thread. The worker prepares storage and publishes
+its physical identity; transcript and session-entry hooks use that identity for
+the existing commit receipts. Manager ordering, live write authority, and committed
+view adoption remain unchanged. Released synchronous persistence methods retain
+their separate native adapter.
+
 Transcript rewrite preparation and publication copy mutable view containers while
 retaining already-owned string values, so old tool results and image payloads do
 not require another full byte copy on the main thread. Prepared views remain
@@ -5894,9 +5957,10 @@ repeats selection; uncertain writes are never replayed. Startup orphan repair
 retains its native transaction so session settlement and the report remain atomic.
 Bundled session callers await this owner before dependent publication. The
 shipped synchronous SessionManager methods remain named third-party
-compatibility adapters, deprecated for removal at the next Plugin SDK major;
-each warns once per method per process. Incognito reports use the memory actor;
-its synchronous persistence methods refuse access and name the awaited replacement. Schemas, stored bytes,
+compatibility adapters, deprecated for removal in a later stable release after
+the deprecation period; each warns once per method per process. Incognito reports
+use the memory actor; synchronous persistence methods refuse access and name
+the awaited replacement. Schemas, stored bytes,
 retention, and update behavior are unchanged. See the
 [SDK migration](/plugins/sdk-migration/how-to-migrate#await-session-transcript-persistence).
 
