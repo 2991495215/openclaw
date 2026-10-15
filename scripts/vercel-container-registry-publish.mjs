@@ -4,11 +4,27 @@ import { execFileSync } from "node:child_process";
 import process from "node:process";
 import { parseArgs } from "node:util";
 import { isDirectRunUrl } from "./lib/direct-run.mjs";
-import { resolveDockerReleasePolicy } from "./lib/docker-release-policy.mjs";
+import { isMissingManifestError } from "./lib/docker-manifest-error.mjs";
+import {
+  parseDockerImageConfigVersion,
+  resolveDockerReleasePolicy,
+} from "./lib/docker-release-policy.mjs";
 import { compareReleaseVersions } from "./lib/release-version.mjs";
-import { verifyReleaseToolingIdentityFromEnvironment } from "./release-tooling-identity.mjs";
+import {
+  verifyReleaseToolingIdentity,
+  verifyReleaseWorkflowRun,
+} from "./release-tooling-identity.mjs";
+import { verifyDockerAttestations } from "./verify-docker-attestations.mjs";
 
 const IMAGETOOLS_TIMEOUT_MS = 20 * 60_000;
+// Conservative decimal client caps, not independently verified server byte thresholds.
+// https://vercel.com/docs/container-registry/limits-and-pricing (September 23, 2026).
+const VCR_BYTE_CAPS = Object.freeze({
+  layer: 2_000_000_000,
+  total: 15_000_000_000,
+  manifest: 4_000_000,
+  config: 1_000_000,
+});
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const IMAGE_INDEX_MEDIA_TYPE = "application/vnd.oci.image.index.v1+json";
 const IMAGE_MANIFEST_MEDIA_TYPES = new Set([
@@ -77,7 +93,15 @@ export function createVercelContainerRegistryPublishPlan({
   };
 }
 
-function runImagetools(args, execFileSyncImpl, { inherit = false } = {}) {
+function runImagetools(args, execFileSyncImpl, { inherit = false, beforeMutation } = {}) {
+  if (args[0] === "create") {
+    if (typeof beforeMutation !== "function") {
+      throw new Error("VCR publication requires a synchronous beforeMutation authority check.");
+    }
+    if (beforeMutation() !== undefined) {
+      throw new Error("VCR beforeMutation authority check must complete synchronously.");
+    }
+  }
   return execFileSyncImpl("docker", ["buildx", "imagetools", ...args], {
     encoding: "utf8",
     killSignal: "SIGKILL",
@@ -146,6 +170,66 @@ function inspectRawManifest(imageRef, execFileSyncImpl) {
   }
 }
 
+function verifyPlatformSizeAdmission(imageRef, selection, execFileSyncImpl) {
+  const context = `VCR preflight: ${selection} ${imageRef}`;
+  const failure = (message, cause) =>
+    new Error(`${context}: ${message} No images copied.`, { cause });
+  const checkCap = (size, cap, resource) => {
+    if (size > cap) {
+      throw failure(
+        `${resource} is ${size} bytes; client cap ${cap} bytes (conservative decimal policy).`,
+      );
+    }
+  };
+  let raw;
+  try {
+    raw = String(runImagetools(["inspect", imageRef, "--raw"], execFileSyncImpl));
+  } catch (error) {
+    throw failure("Could not inspect platform manifest.", error);
+  }
+  checkCap(Buffer.byteLength(raw, "utf8"), VCR_BYTE_CAPS.manifest, "manifest body");
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch (error) {
+    throw failure("Invalid platform manifest JSON.", error);
+  }
+  if (manifest?.schemaVersion !== 2 || !IMAGE_MANIFEST_MEDIA_TYPES.has(manifest.mediaType)) {
+    throw failure("Expected a supported image manifest.");
+  }
+  if (!Array.isArray(manifest.layers)) {
+    throw failure("layers must be an array.");
+  }
+  const descriptorSize = (descriptor, field) => {
+    if (
+      typeof descriptor?.digest !== "string" ||
+      !DIGEST_PATTERN.test(descriptor.digest) ||
+      typeof descriptor.mediaType !== "string" ||
+      descriptor.mediaType.trim().length === 0
+    ) {
+      throw failure(`${field} must have a valid sha256 digest and mediaType.`);
+    }
+    if (!Number.isSafeInteger(descriptor.size) || descriptor.size < 0) {
+      throw failure(`${field}.size must be a nonnegative safe integer byte count.`);
+    }
+    return descriptor.size;
+  };
+  const configSize = descriptorSize(manifest.config, "config");
+  checkCap(configSize, VCR_BYTE_CAPS.config, `config ${manifest.config.digest}`);
+  let total = configSize;
+  for (const [index, layer] of manifest.layers.entries()) {
+    const size = descriptorSize(layer, `layer[${index}]`);
+    checkCap(size, VCR_BYTE_CAPS.layer, `layer[${index}] ${layer.digest}`);
+    // Each admitted prefix is <= the total cap, so the next addition stays exact.
+    total += size;
+    checkCap(
+      total,
+      VCR_BYTE_CAPS.total,
+      `total (compressed layers plus config, through layer[${index}])`,
+    );
+  }
+}
+
 function inspectManifestDescriptor(imageRef, execFileSyncImpl) {
   const raw = String(
     runImagetools(["inspect", imageRef, "--format", "{{json .Manifest}}"], execFileSyncImpl),
@@ -164,28 +248,6 @@ function inspectManifestDescriptor(imageRef, execFileSyncImpl) {
   }
 }
 
-function formatCommandError(error) {
-  if (!(error instanceof Error)) {
-    return String(error);
-  }
-  const output = [error.message];
-  for (const field of ["stderr", "stdout"]) {
-    const value = error[field];
-    if (typeof value === "string") {
-      output.push(value);
-    } else if (Buffer.isBuffer(value)) {
-      output.push(value.toString("utf8"));
-    }
-  }
-  return output.join("\n");
-}
-
-function isMissingManifestError(error) {
-  return /(?:manifest unknown|no such manifest|:\s*not found(?:\s|$))/i.test(
-    formatCommandError(error),
-  );
-}
-
 function inspectImageVersion(imageRef, execFileSyncImpl, { allowMissing = false } = {}) {
   const versions = new Map();
   for (const [index, architecture] of ARCHITECTURES.entries()) {
@@ -197,25 +259,13 @@ function inspectImageVersion(imageRef, execFileSyncImpl, { allowMissing = false 
         execFileSyncImpl,
       );
     } catch (error) {
-      if (allowMissing && index === 0 && isMissingManifestError(error)) {
+      if (allowMissing && index === 0 && isMissingManifestError(error, imageRef)) {
         return null;
       }
       throw error;
     }
-    let version;
-    try {
-      version = JSON.parse(raw)?.config?.Labels?.["org.opencontainers.image.version"];
-    } catch (error) {
-      throw new Error(`Could not parse the ${platform} image config for ${imageRef}.`, {
-        cause: error,
-      });
-    }
-    if (typeof version !== "string" || version.trim().length === 0) {
-      throw new Error(
-        `${imageRef} does not have an org.opencontainers.image.version label for ${platform}.`,
-      );
-    }
-    versions.set(platform, version.trim());
+    const version = parseDockerImageConfigVersion(raw, imageRef, platform);
+    versions.set(platform, version);
   }
   const uniqueVersions = new Set(versions.values());
   if (uniqueVersions.size !== 1) {
@@ -278,7 +328,6 @@ function verifyCleanIndex(imageRef, expectedDigests, execFileSyncImpl) {
 
 /** Publish every immutable release tag with byte-identical platform manifests. */
 export function publishVercelContainerRegistryImages(params, options = {}) {
-  const beforeMutation = options.beforeMutation ?? (() => {});
   const execFileSyncImpl = options.execFileSyncImpl ?? execFileSync;
   const log = options.log ?? console.log;
   const immutableSources = parseImmutableSourceRefs(params.sourceRefs, params.includeBrowser);
@@ -294,31 +343,47 @@ export function publishVercelContainerRegistryImages(params, options = {}) {
   // unknown/unknown platforms. VCR stores those indexes but does not prepare
   // them for Sandbox, so publish a clean amd64+arm64 index from the exact image
   // manifest digests and keep the architecture tags as carbon-copy manifests.
-  // Every source ref was attestation-verified by the caller as an immutable
-  // index, so a mutable release-tag rewrite cannot change these copy inputs.
+  // Verify every immutable source here because recovery callers supply digests
+  // directly; producer-side verification alone does not protect that boundary.
+  verifyDockerAttestations({
+    execFileSyncImpl,
+    imageRefs: selectedVariants.map(({ aliasKey }) => immutableSources.byAlias.get(aliasKey)),
+    log,
+    requiredPlatforms: ARCHITECTURES.map((architecture) => ({ architecture, os: "linux" })),
+  });
   const variants = selectedVariants.map(({ aliasKey, suffix }) => {
     const manifestTag = `${plan.version}${suffix}`;
     const manifestSourceRef = immutableSources.byAlias.get(aliasKey);
+    const sourceVersion = inspectImageVersion(manifestSourceRef, execFileSyncImpl);
+    if (sourceVersion !== plan.version) {
+      throw new Error(
+        `${manifestSourceRef} reports version ${sourceVersion}, expected ${plan.version}.`,
+      );
+    }
     const platformDigests = resolvePlatformDigests(
       manifestSourceRef,
       execFileSyncImpl,
       ARCHITECTURES,
     );
+    for (const architecture of ARCHITECTURES) {
+      verifyPlatformSizeAdmission(
+        `${plan.sourceImage}@${platformDigests[architecture]}`,
+        `${aliasKey}/${manifestTag} linux/${architecture}`,
+        execFileSyncImpl,
+      );
+    }
     return { manifestTag, platformDigests };
   });
 
-  // A prevalidated tooling branch can move during a multi-variant copy. Recheck
-  // the exact approved identity at each registry write, not once per step.
   for (const { manifestTag, platformDigests } of variants) {
     const manifestTargetRef = `${plan.targetImage}:${manifestTag}`;
     const platformSourceRefs = ARCHITECTURES.map(
       (architecture) => `${plan.sourceImage}@${platformDigests[architecture]}`,
     );
-    beforeMutation();
     runImagetools(
       ["create", "--progress", "plain", "--tag", manifestTargetRef, ...platformSourceRefs],
       execFileSyncImpl,
-      { inherit: true },
+      { inherit: true, beforeMutation: options.beforeMutation },
     );
     verifyCleanIndex(manifestTargetRef, platformDigests, execFileSyncImpl);
     const manifestDescriptor = inspectManifestDescriptor(manifestTargetRef, execFileSyncImpl);
@@ -331,7 +396,6 @@ export function publishVercelContainerRegistryImages(params, options = {}) {
     for (const architecture of ARCHITECTURES) {
       const targetRef = `${plan.targetImage}:${manifestTag}-${architecture}`;
       const sourceDigest = platformDigests[architecture];
-      beforeMutation();
       runImagetools(
         [
           "create",
@@ -343,7 +407,7 @@ export function publishVercelContainerRegistryImages(params, options = {}) {
           `${plan.sourceImage}@${sourceDigest}`,
         ],
         execFileSyncImpl,
-        { inherit: true },
+        { inherit: true, beforeMutation: options.beforeMutation },
       );
       const descriptor = inspectManifestDescriptor(targetRef, execFileSyncImpl);
       if (!IMAGE_MANIFEST_MEDIA_TYPES.has(descriptor.mediaType)) {
@@ -363,7 +427,6 @@ export function publishVercelContainerRegistryImages(params, options = {}) {
 
 /** Promote moving aliases only after Sandbox proves the immutable image is ready. */
 export function promoteVercelContainerRegistryAliases(params, options = {}) {
-  const beforeMutation = options.beforeMutation ?? (() => {});
   const execFileSyncImpl = options.execFileSyncImpl ?? execFileSync;
   const log = options.log ?? console.log;
   const policy = resolveDockerReleasePolicy(params.version);
@@ -424,16 +487,13 @@ export function promoteVercelContainerRegistryAliases(params, options = {}) {
     }
   }
 
-  // Alias promotion runs after the potentially long Sandbox smoke. Recheck at
-  // each write so elapsed time cannot turn stale tooling into a live publisher.
   for (const { manifestDigest, manifestTag, targetRefs } of promotions) {
     const targetArgs = targetRefs.flatMap((targetRef) => ["--tag", targetRef]);
     const sourceDigestRef = `${targetImage}@${manifestDigest}`;
-    beforeMutation();
     runImagetools(
       ["create", "--prefer-index=false", ...targetArgs, sourceDigestRef],
       execFileSyncImpl,
-      { inherit: true },
+      { inherit: true, beforeMutation: options.beforeMutation },
     );
     for (const targetRef of targetRefs) {
       const descriptor = inspectManifestDescriptor(targetRef, execFileSyncImpl);
@@ -452,6 +512,48 @@ export function promoteVercelContainerRegistryAliases(params, options = {}) {
     channel: policy.channel,
     targetImage,
     version: policy.version,
+  };
+}
+
+function createBeforeMutation(env) {
+  const workflowPath =
+    env.VCR_ADVISORY === "true"
+      ? ".github/workflows/openclaw-release-publish.yml"
+      : ".github/workflows/vercel-container-registry-publish.yml";
+  const binding = {
+    repository: env.GITHUB_REPOSITORY,
+    workflowSha: env.VCR_TOOLING_SHA,
+    workflowRef: env.VCR_TOOLING_REF,
+    workflowFullRef: env.VCR_TOOLING_FULL_REF,
+    runId: env.VCR_WRITER_RUN_ID,
+    runAttempt: env.VCR_WRITER_RUN_ATTEMPT,
+  };
+  if (
+    Object.values(binding).some((value) => typeof value !== "string" || !value.trim()) ||
+    !["true", "false"].includes(env.VCR_ADVISORY) ||
+    env.GITHUB_EVENT_NAME !== "workflow_dispatch" ||
+    binding.workflowSha !== env.GITHUB_WORKFLOW_SHA ||
+    binding.workflowRef !== env.GITHUB_REF_NAME ||
+    binding.workflowFullRef !== env.GITHUB_REF ||
+    binding.runId !== env.GITHUB_RUN_ID ||
+    binding.runAttempt !== env.GITHUB_RUN_ATTEMPT ||
+    env.VCR_WRITER_WORKFLOW_PATH !== workflowPath ||
+    env.GITHUB_WORKFLOW_REF !==
+      `${binding.repository}/${workflowPath}@${binding.workflowFullRef}` ||
+    (env.VCR_ADVISORY === "false" && binding.workflowFullRef !== "refs/heads/main")
+  ) {
+    throw new Error("VCR tooling and writer must match the complete executing workflow identity.");
+  }
+  // The reusable VCR job is inside the active Release Publish run. Recovery
+  // instead owns an active VCR dispatch; neither route accepts a completed run.
+  return () => {
+    verifyReleaseToolingIdentity(binding);
+    verifyReleaseWorkflowRun({
+      ...binding,
+      workflowPath,
+      workflowEvent: "workflow_dispatch",
+      runStatePolicy: "active",
+    });
   };
 }
 
@@ -481,8 +583,7 @@ function main() {
   if (!values.version || !values["target-image"]) {
     throw new Error("--version and --target-image are required.");
   }
-  const beforeMutation = () =>
-    verifyReleaseToolingIdentityFromEnvironment(process.env, { requireActiveParentRun: true });
+  const beforeMutation = createBeforeMutation(process.env);
   if (values["promote-aliases"]) {
     if (values["source-ref"]) {
       throw new Error("--promote-aliases cannot be combined with --source-ref.");

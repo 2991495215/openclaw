@@ -1,6 +1,8 @@
 // Control UI browser proof covers condition-trigger visibility and server-backed filtering.
 import { expect, it } from "vitest";
+import type { CronJob } from "../api/types.ts";
 import { installMockGateway } from "../test-helpers/control-ui-e2e.ts";
+import { cronListResponseFixture } from "../test-helpers/cron.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
 
 const suite = createControlUiE2eSuite({
@@ -9,7 +11,7 @@ const suite = createControlUiE2eSuite({
   unavailableMessage: (executablePath) => `Playwright Chromium is unavailable at ${executablePath}`,
 });
 
-const baseJob = {
+const baseJob: Omit<CronJob, "id" | "name" | "payload"> = {
   enabled: true,
   createdAtMs: Date.parse("2026-05-29T08:00:00.000Z"),
   updatedAtMs: Date.parse("2026-05-29T08:05:00.000Z"),
@@ -18,15 +20,19 @@ const baseJob = {
   wakeMode: "next-heartbeat",
   state: {},
 };
-const conditionalJob = {
+const conditionalJob: CronJob = {
   ...baseJob,
   id: "conditional-job",
   configRevision: "conditional-revision",
   name: "Conditional job",
   payload: { kind: "systemEvent", text: "conditional" },
   trigger: { script: "json({ fire: true })" },
+  state: {
+    triggerEvalCount: 42,
+    lastTriggerEvalAtMs: Date.now() - 3 * 60_000,
+  },
 };
-const plainJob = {
+const plainJob: CronJob = {
   ...baseJob,
   id: "plain-job",
   configRevision: "plain-revision",
@@ -34,7 +40,7 @@ const plainJob = {
   payload: { kind: "systemEvent", text: "plain" },
 };
 
-function listResponse(jobs: unknown[]) {
+function listResponse(jobs: CronJob[]) {
   return {
     jobs,
     snapshotRevision: `trigger-filter:${jobs.length}`,
@@ -53,15 +59,13 @@ suite.define(() => {
       async ({ page }) => {
         const gateway = await installMockGateway(page, {
           methodResponses: {
-            "cron.list": {
-              cases: [
-                { match: { lastRunStatus: "error" }, response: listResponse([]) },
-                { match: { trigger: "conditional" }, response: listResponse([conditionalJob]) },
-                { response: listResponse([conditionalJob, plainJob]) },
-              ],
-            },
+            "cron.list": cronListResponseFixture([
+              { match: { lastRunStatus: "error" }, response: listResponse([]) },
+              { match: { trigger: "conditional" }, response: listResponse([conditionalJob]) },
+              { response: listResponse([conditionalJob, plainJob]) },
+            ]),
             "cron.runs": { entries: [], total: 0, offset: 0, limit: 50, hasMore: false },
-            "cron.status": { enabled: true, jobs: 2, nextWakeAtMs: null },
+            "cron.status": { enabled: true, triggersEnabled: false, jobs: 2, nextWakeAtMs: null },
           },
         });
 
@@ -90,6 +94,17 @@ suite.define(() => {
           .poll(async () => page.locator('[data-test-id="cron-row-plain-job"]').count())
           .toBe(0);
         expect(await conditionalRow.count()).toBe(1);
+
+        await conditionalRow.click();
+        await page.getByRole("tab", { name: "Run history", exact: true }).click();
+        const activity = page.locator('[data-test-id="cron-condition-activity"]');
+        await activity.waitFor();
+        await expect.poll(() => activity.textContent()).toContain("42");
+        await expect.poll(() => activity.textContent()).toContain("3m ago");
+        await expect.poll(() => activity.textContent()).toContain("Never");
+        await expect
+          .poll(() => page.locator(".cron-empty-state").textContent())
+          .toContain("No payload runs yet");
       },
     );
   });

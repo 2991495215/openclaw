@@ -4,6 +4,26 @@ import Testing
 @testable import OpenClaw
 
 struct AppLaunchRuntimePlanTests {
+    @Test(arguments: [
+        ["OpenClaw"],
+        ["OpenClaw", "--no-activate"],
+        ["OpenClaw", "--chat"],
+        ["OpenClaw", "--no-activate", "--chat", "--dashboard"],
+        ["OpenClaw", "--no-activate", "--background-only", "--chat"],
+    ])
+    func `automation focus is independent of automatic window presentation`(arguments: [String]) {
+        let policy = AppLaunchRuntimePlan(arguments: arguments)
+        #expect(policy.allowsActivation == !arguments.contains("--no-activate"))
+        #expect(policy.allowsUpdater == !arguments.contains("--no-activate"))
+        #expect(policy.shouldAutoOpenChat(arguments: arguments) ==
+            (arguments.contains("--chat") && !arguments.contains("--background-only")))
+        #expect(policy.shouldAutoOpenDashboard(arguments: arguments) == arguments.contains("--dashboard"))
+        if !policy.allowsActivation {
+            #expect(DockIconManager.activationPolicy(
+                launchPlan: policy, userWantsDockHidden: false, hasVisibleWindows: true) == .accessory)
+        }
+    }
+
     @Test func `elevation rename is exclusive and source preserving on conflict`() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openclaw-elevation-rename-\(UUID().uuidString)", isDirectory: true)
@@ -126,17 +146,15 @@ struct AppLaunchRuntimePlanTests {
             hasVisibleWindows: true) == .accessory)
     }
 
-    @Test func `elevation host derives its mandatory computer control role in memory`() {
+    @Test func `elevation host derives pause and Peekaboo roles in memory`() {
         let interactive = AppLaunchRuntimePlan(arguments: ["OpenClaw"])
         let elevation = AppLaunchRuntimePlan(arguments: ["OpenClaw", "--elevation-host"])
 
         for storedValue in [false, true] {
             #expect(interactive.resolvePaused(storedValue) == storedValue)
-            #expect(interactive.resolveComputerControlEnabled(storedValue) == storedValue)
             #expect(interactive.resolvePeekabooBridgeEnabled(storedValue) == storedValue)
         }
         #expect(!elevation.resolvePaused(true))
-        #expect(elevation.resolveComputerControlEnabled(false))
         #expect(elevation.resolvePeekabooBridgeEnabled(false))
     }
 

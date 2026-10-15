@@ -1,12 +1,26 @@
-import type { OpenClawExecServer } from "./sandbox-exec-server/types.js";
+import type { OpenClawLeasedExecServer } from "./sandbox-exec-server/types.js";
 
 export const sandboxExecServerRegistry = {
-  servers: new Map<string, Promise<OpenClawExecServer>>(),
-  async close(server: OpenClawExecServer): Promise<void> {
+  servers: new Map<string, Promise<OpenClawLeasedExecServer>>(),
+  async close(server: OpenClawLeasedExecServer): Promise<void> {
     if (server.closed) {
       return;
     }
     server.closed = true;
+    if ("node" in server) {
+      for (const lease of server.node.leases.values()) {
+        if (!lease.closed) {
+          lease.closed = true;
+          lease.channel.close();
+        }
+      }
+      server.node.leases.clear();
+    } else {
+      for (const { unsubscribe } of server.processAuthorities?.values() ?? []) {
+        unsubscribe();
+      }
+      server.processAuthorities?.clear();
+    }
     for (const client of server.server.clients) {
       client.close(1001, "shutdown");
     }

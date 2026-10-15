@@ -14,6 +14,8 @@ export type ReleaseToolingIdentityInput = {
 
 export function resolveReleaseToolingIdentity(
   input: {
+    qualificationAdmission?: unknown;
+    candidateSha?: string;
     requestedIdentityJson?: string;
     workflowContract: string;
   } & Pick<ReleaseToolingIdentityInput, "workflowFullRef" | "workflowRef" | "workflowSha">,
@@ -27,27 +29,46 @@ export function validateReleaseToolingIdentity(
   },
 ): ReleaseToolingIdentity;
 
+export function runReleaseToolingGh(args: string[]): string;
+
+export function verifyReleaseWorkflowRun(input: {
+  repository: string;
+  workflowFullRef: string;
+  workflowRef: string;
+  workflowSha: string;
+  runId: string;
+  runAttempt: string;
+  workflowPath: string;
+  workflowEvent: string;
+  runStatePolicy: "active" | "success";
+  runGh?: (args: string[]) => string;
+}): Record<string, unknown>;
+
 export function verifyReleaseToolingIdentity(
   input: ReleaseToolingIdentityInput & {
     repository: string;
-    requireActiveParentRun?: boolean;
+    releasePublishFullRef?: string;
+    releasePublishParentStatePolicy?:
+      | "active"
+      | "active-or-failure"
+      | "active-or-success"
+      | "manual-recovery";
+    releasePublishRef?: string;
     releasePublishRunAttempt?: string;
     releasePublishRunId?: string;
     runGh?: (args: string[]) => string;
   },
 ): ReleaseToolingIdentity;
 
-export function verifyReleaseToolingIdentityFromEnvironment(
-  env?: Record<string, string | undefined>,
-  options?: {
-    requireActiveParentRun?: boolean;
-    runGh?: (args: string[]) => string;
-  },
-): ReleaseToolingIdentity;
-
 export function validateReleasePublishParentRun(input: {
   identity: Pick<ReleaseToolingIdentity, "fullRef" | "ref" | "sha">;
-  requireActiveParentRun?: boolean;
+  releasePublishFullRef: string;
+  releasePublishParentStatePolicy:
+    | "active"
+    | "active-or-failure"
+    | "active-or-success"
+    | "manual-recovery";
+  releasePublishRef: string;
   releasePublishRunAttempt: string;
   releasePublishRunId: string;
   repository: string;

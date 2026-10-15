@@ -3,55 +3,68 @@ name: Vercel Container Registry Publish
 on:
   workflow_call:
     inputs:
+      runner_group:
+        description: Optional dedicated release runner group; empty retains the current labels
+        required: false
+        default: ""
+        type: string
+      advisory:
+        description: Keep automated release mirroring non-blocking
+        required: true
+        type: boolean
+      tooling_sha:
+        description: Exact trusted Release Publish tooling commit
+        required: true
+        type: string
+      tooling_ref:
+        description: Release Publish tooling ref name
+        required: true
+        type: string
+      tooling_full_ref:
+        description: Full Release Publish tooling ref
+        required: true
+        type: string
+      release_publish_run_id:
+        description: Active Release Publish run containing this job
+        required: true
+        type: string
+      release_publish_run_attempt:
+        description: Exact active Release Publish run attempt
+        required: true
+        type: string
       version:
         description: Docker release version without the v prefix
         required: true
         type: string
-      source_refs:
-        description: Newline-delimited alias=immutable-ref entries verified by the caller
+      source_digests:
+        description: Newline-delimited alias=sha256:<64 lowercase hex> entries
         required: true
         type: string
       include_browser:
         description: Whether the tagged Docker release includes browser images
         required: true
         type: boolean
-      trusted_workflow_ref:
-        description: Trusted release tooling ref name
-        required: true
-        type: string
-      trusted_workflow_full_ref:
-        description: Trusted release tooling full ref
-        required: true
-        type: string
-      trusted_workflow_sha:
-        description: Trusted release tooling commit SHA
-        required: true
-        type: string
-      trusted_workflow_allow_prevalidated_ref:
-        description: Allow an exact live branch outside main as trusted release tooling
-        required: true
-        type: boolean
-      release_publish_run_id:
-        description: Exact parent OpenClaw Release Publish run id
-        required: true
-        type: string
-      release_publish_run_attempt:
-        description: Exact parent OpenClaw Release Publish run attempt
-        required: true
-        type: string
     secrets:
       VERCEL_TOKEN:
         required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Docker release version without the v prefix
+        required: true
+        type: string
+      source_digests:
+        description: Newline-delimited alias=sha256:<64 lowercase hex> entries
+        required: true
+        type: string
+      include_browser:
+        description: Whether the tagged Docker release includes browser images
+        required: true
+        type: boolean
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  NODE_VERSION: "24.15.0"
-  RELEASE_PUBLISH_RUN_ATTEMPT: ${{ inputs.release_publish_run_attempt }}
-  RELEASE_PUBLISH_RUN_ID: ${{ inputs.release_publish_run_id }}
-  RELEASE_TOOLING_ALLOW_PREVALIDATED_REF: ${{ inputs.trusted_workflow_allow_prevalidated_ref }}
-  RELEASE_TOOLING_FULL_REF: ${{ inputs.trusted_workflow_full_ref }}
-  RELEASE_TOOLING_REF: ${{ inputs.trusted_workflow_ref }}
-  RELEASE_TOOLING_SHA: ${{ inputs.trusted_workflow_sha }}
+  NODE_VERSION: "24.21.0"
 
 concurrency:
   # Alias promotion is read-then-write. Serialize VCR independently so a slow
@@ -60,32 +73,102 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate_recovery:
+    if: ${{ !inputs.advisory }}
+    runs-on: ${{ inputs.runner_group != '' && fromJSON(format('{{"group":{0},"labels":{1}}}', toJSON(inputs.runner_group), toJSON('ubuntu-24.04'))) || ('ubuntu-24.04') }}
+    permissions: {}
+    steps:
+      - name: Require a main-branch recovery dispatch
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "${WORKFLOW_REF}" != "refs/heads/main" ]]; then
+            echo "::error::Vercel registry recovery must be dispatched from main; got ${WORKFLOW_REF}." >&2
+            exit 1
+          fi
+
+  approve_recovery:
+    needs: validate_recovery
+    if: ${{ !inputs.advisory }}
+    runs-on: ubuntu-24.04
+    environment: docker-release
+    permissions: {}
+    steps:
+      - name: Approve Vercel registry recovery
+        env:
+          VERSION: ${{ inputs.version }}
+        run: echo "Approved Vercel Container Registry mirror recovery for ${VERSION}"
+
   publish:
+    needs: [validate_recovery, approve_recovery]
+    if: ${{ always() && (inputs.advisory || (needs.validate_recovery.result == 'success' && needs.approve_recovery.result == 'success')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # VCR is a best-effort mirror. Failed steps remain visible, but the primary
-    # Docker publication and GitHub release finalization must continue.
-    continue-on-error: true
+    # Release mirroring is advisory; approved recovery must fail visibly.
+    continue-on-error: ${{ inputs.advisory == true }}
     permissions:
       actions: read
       contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VCR_ADVISORY: ${{ inputs.advisory == true }}
     steps:
+      - name: Bind trusted registry tooling
+        id: tooling
+        env:
+          TOOLING_SHA: ${{ inputs.tooling_sha }}
+          TOOLING_REF: ${{ inputs.tooling_ref }}
+          TOOLING_FULL_REF: ${{ inputs.tooling_full_ref }}
+          RELEASE_PUBLISH_RUN_ID: ${{ inputs.release_publish_run_id }}
+          RELEASE_PUBLISH_RUN_ATTEMPT: ${{ inputs.release_publish_run_attempt }}
+        run: |
+          set -euo pipefail
+          if [[ "${VCR_ADVISORY}" == "true" ]]; then
+            for name in TOOLING_SHA TOOLING_REF TOOLING_FULL_REF RELEASE_PUBLISH_RUN_ID RELEASE_PUBLISH_RUN_ATTEMPT; do
+              if [[ -z "${!name}" ]]; then
+                echo "::error::${name} is required for automated VCR publication." >&2
+                exit 1
+              fi
+            done
+            writer_path=.github/workflows/openclaw-release-publish.yml
+          else
+            if [[ "${VCR_ADVISORY}" != "false" || "${GITHUB_REF}" != "refs/heads/main" || -n "${TOOLING_SHA}${TOOLING_REF}${TOOLING_FULL_REF}${RELEASE_PUBLISH_RUN_ID}${RELEASE_PUBLISH_RUN_ATTEMPT}" ]]; then
+              echo "::error::VCR recovery requires its own main-branch workflow dispatch." >&2
+              exit 1
+            fi
+            TOOLING_SHA="${GITHUB_WORKFLOW_SHA}"
+            TOOLING_REF="${GITHUB_REF_NAME}"
+            TOOLING_FULL_REF="${GITHUB_REF}"
+            RELEASE_PUBLISH_RUN_ID="${GITHUB_RUN_ID}"
+            RELEASE_PUBLISH_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT}"
+            writer_path=.github/workflows/vercel-container-registry-publish.yml
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" || "${TOOLING_SHA}" != "${GITHUB_WORKFLOW_SHA}" || "${TOOLING_REF}" != "${GITHUB_REF_NAME}" || "${TOOLING_FULL_REF}" != "${GITHUB_REF}" || "${RELEASE_PUBLISH_RUN_ID}" != "${GITHUB_RUN_ID}" || "${RELEASE_PUBLISH_RUN_ATTEMPT}" != "${GITHUB_RUN_ATTEMPT}" || "${GITHUB_WORKFLOW_REF}" != "${GITHUB_REPOSITORY}/${writer_path}@${TOOLING_FULL_REF}" ]]; then
+            echo "::error::VCR tooling and writer must match the exact executing workflow." >&2
+            exit 1
+          fi
+          echo "sha=${TOOLING_SHA}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "VCR_TOOLING_SHA=${TOOLING_SHA}"
+            echo "VCR_TOOLING_REF=${TOOLING_REF}"
+            echo "VCR_TOOLING_FULL_REF=${TOOLING_FULL_REF}"
+            echo "VCR_WRITER_RUN_ID=${RELEASE_PUBLISH_RUN_ID}"
+            echo "VCR_WRITER_RUN_ATTEMPT=${RELEASE_PUBLISH_RUN_ATTEMPT}"
+            echo "VCR_WRITER_WORKFLOW_PATH=${writer_path}"
+          } >> "${GITHUB_ENV}"
+
       - name: Checkout trusted registry tooling
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.trusted_workflow_sha }}
+          ref: ${{ steps.tooling.outputs.sha }}
           persist-credentials: false
 
-      - name: Validate trusted release tooling
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/release-tooling-identity.mjs verify-env
-
       - name: Set up Docker Builder
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Setup trusted Node runtime
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -122,14 +205,21 @@ jobs:
 
       - name: Authenticate Docker to Vercel Container Registry
         env:
-          GH_TOKEN: ${{ github.token }}
           VERCEL_CLI: ${{ steps.vercel_cli.outputs.cli }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
           VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          node scripts/release-tooling-identity.mjs verify-env --require-active-parent-run
+          node scripts/release-tooling-identity.mjs verify \
+            --repository "${GITHUB_REPOSITORY}" \
+            --workflow-sha "${VCR_TOOLING_SHA}" \
+            --workflow-ref "${VCR_TOOLING_REF}" \
+            --workflow-full-ref "${VCR_TOOLING_FULL_REF}" \
+            --writer-run-id "${VCR_WRITER_RUN_ID}" \
+            --writer-run-attempt "${VCR_WRITER_RUN_ATTEMPT}" \
+            --writer-workflow-path "${VCR_WRITER_WORKFLOW_PATH}" \
+            --writer-workflow-event workflow_dispatch
           "${VERCEL_CLI}" vcr login docker \
             --project "${VERCEL_PROJECT_ID}" \
             --scope "${VERCEL_SCOPE}" \
@@ -138,9 +228,9 @@ jobs:
       - name: Copy and verify immutable release images
         id: copy_images
         env:
-          GH_TOKEN: ${{ github.token }}
           INCLUDE_BROWSER: ${{ inputs.include_browser }}
-          SOURCE_REFS: ${{ inputs.source_refs }}
+          SOURCE_DIGESTS: ${{ inputs.source_digests }}
+          SOURCE_IMAGE: ghcr.io/${{ github.repository }}
           TARGET_IMAGE: ${{ vars.VERCEL_VCR_IMAGE }}
           VERSION: ${{ inputs.version }}
         run: |
@@ -150,10 +240,10 @@ jobs:
             browser_args+=(--include-browser)
           fi
           source_ref_args=()
-          while IFS= read -r source_ref; do
-            [[ -z "${source_ref}" ]] && continue
-            source_ref_args+=(--source-ref "${source_ref}")
-          done <<< "${SOURCE_REFS}"
+          while IFS='=' read -r alias digest; do
+            [[ -z "${alias}" ]] && continue
+            source_ref_args+=(--source-ref "${alias}=${SOURCE_IMAGE}@${digest}")
+          done <<< "${SOURCE_DIGESTS}"
           node scripts/vercel-container-registry-publish.mjs \
             --version "${VERSION}" \
             "${source_ref_args[@]}" \
@@ -165,9 +255,8 @@ jobs:
       - name: Run custom-image Sandbox smoke
         id: sandbox_smoke
         env:
-          GH_TOKEN: ${{ github.token }}
+          SANDBOX_CLI: ${{ steps.vercel_cli.outputs.sandbox_cli }}
           VERCEL_AUTH_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_CLI: ${{ steps.vercel_cli.outputs.cli }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
           VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
           VERCEL_VCR_IMAGE: ${{ vars.VERCEL_VCR_IMAGE }}
@@ -178,10 +267,18 @@ jobs:
           retry_deadline=$((SECONDS + 600))
           attempt=1
           while true; do
-            node scripts/release-tooling-identity.mjs verify-env --require-active-parent-run
+            node scripts/release-tooling-identity.mjs verify \
+              --repository "${GITHUB_REPOSITORY}" \
+              --workflow-sha "${VCR_TOOLING_SHA}" \
+              --workflow-ref "${VCR_TOOLING_REF}" \
+              --workflow-full-ref "${VCR_TOOLING_FULL_REF}" \
+              --writer-run-id "${VCR_WRITER_RUN_ID}" \
+              --writer-run-attempt "${VCR_WRITER_RUN_ATTEMPT}" \
+              --writer-workflow-path "${VCR_WRITER_WORKFLOW_PATH}" \
+              --writer-workflow-event workflow_dispatch
             set +e
             output="$(
-              "${VERCEL_CLI}" sandbox run \
+              "${SANDBOX_CLI}" run \
                 --silent \
                 --rm \
                 --non-persistent \
@@ -213,7 +310,7 @@ jobs:
             if (( delay > remaining )); then
               delay="${remaining}"
             fi
-            echo "::notice::Vercel image is not ready; retrying Sandbox smoke in ${delay}s (attempt ${attempt})."
+            echo "::warning::Vercel image is not ready; retrying Sandbox acquisition in ${delay}s (attempt ${attempt})."
             sleep "${delay}"
             attempt=$((attempt + 1))
           done
@@ -221,7 +318,6 @@ jobs:
       - name: Promote and verify channel aliases
         id: promote_aliases
         env:
-          GH_TOKEN: ${{ github.token }}
           INCLUDE_BROWSER: ${{ inputs.include_browser }}
           TARGET_IMAGE: ${{ vars.VERCEL_VCR_IMAGE }}
           VERSION: ${{ inputs.version }}
@@ -240,6 +336,7 @@ jobs:
       - name: Summarize Vercel publication
         if: ${{ always() }}
         env:
+          ADVISORY: ${{ inputs.advisory }}
           COPY_OUTCOME: ${{ steps.copy_images.outcome }}
           INCLUDE_BROWSER: ${{ inputs.include_browser }}
           PROMOTE_OUTCOME: ${{ steps.promote_aliases.outcome }}
@@ -253,8 +350,11 @@ jobs:
           fi
           status="passed"
           if [[ "${COPY_OUTCOME}" != "success" || "${SMOKE_OUTCOME}" != "success" || "${PROMOTE_OUTCOME}" != "success" ]]; then
-            status="failed (non-blocking)"
-            echo "::warning::VCR mirror failed; Docker publication and GitHub release finalization are unaffected."
+            status="failed"
+            if [[ "${ADVISORY}" == "true" ]]; then
+              status="failed (non-blocking)"
+              echo "::warning::VCR mirror failed; Docker publication and GitHub release finalization are unaffected."
+            fi
           fi
           {
             echo "## Vercel Container Registry"
