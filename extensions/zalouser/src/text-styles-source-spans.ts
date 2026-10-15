@@ -1,4 +1,4 @@
-import type { MarkdownIRWithMetadata } from "openclaw/plugin-sdk/text-chunking";
+import type { MarkdownIRWithMetadata } from "./text-styles-shared.js";
 
 export function createMarkdownSource(source: string, ir: MarkdownIRWithMetadata) {
   const lines = source.split("\n");
