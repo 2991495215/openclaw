@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { sha256Hex as hashMemoryContent } from "openclaw/plugin-sdk/crypto-runtime";
 import { extractErrorCode } from "openclaw/plugin-sdk/error-runtime";
 import {
   resolvePathPrefixSync,
-  sha256Hex as hashMemoryContent,
   writeFileWindowFully,
 } from "openclaw/plugin-sdk/file-access-runtime";
 import type { MemoryWorkspaceFiles } from "openclaw/plugin-sdk/memory-core-host-engine-storage";

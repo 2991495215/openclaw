@@ -11,6 +11,7 @@ import {
   isPathStrictlyInside,
   readDirectoryEntriesSync as safeReadDir,
   regularFileExistsSync as existsFile,
+  safeStatSync,
 } from "openclaw/plugin-sdk/file-access-runtime";
 import { normalizeAgentId } from "openclaw/plugin-sdk/routing";
 import {

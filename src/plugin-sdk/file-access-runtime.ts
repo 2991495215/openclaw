@@ -62,7 +62,7 @@ export const removePathWithinRoot: (params: {
 }) => Promise<void> = removePathWithinRootCore;
 export { basenameFromMediaSource, safeFileURLToPath } from "@openclaw/fs-safe/advanced";
 export { isPathInside, isPathStrictlyInside } from "../infra/path-guards.js";
-export { hasNodeErrorCode, isNotFoundPathError } from "../infra/path-guards.js";
+export { hasNodeErrorCode, isNotFoundPathError, safeStatSync } from "../infra/path-guards.js";
 export { getFileWatchCapacityCode } from "../infra/fs-watch-errors.js";
 export type { Root as ObservationRoot } from "@openclaw/fs-safe/root";
 export {
