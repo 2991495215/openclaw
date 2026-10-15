@@ -1,18 +1,17 @@
 import { normalizeResolvedSecretInputString } from "openclaw/plugin-sdk/secret-input";
 import type {
-  SpeechDirectiveTokenParseContext,
   SpeechProviderConfig,
   SpeechProviderOverrides,
   SpeechProviderPlugin,
 } from "openclaw/plugin-sdk/speech-core";
 import {
-  parseSpeechDirectiveNumberOverride,
+  createSpeechDirectiveParser,
+  removeUndefinedProperties,
   resolveSpeechProviderApiKey,
 } from "openclaw/plugin-sdk/speech-provider";
 import {
   asFiniteNumberInRange,
   asOptionalRecord,
-  filterStringRecord,
   normalizeOptionalString as trimToUndefined,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
 import {
@@ -84,27 +83,20 @@ async function synthesizeInworld(req: InworldSynthesisRequest): Promise<Buffer> 
   });
 }
 
-function parseDirectiveToken(ctx: SpeechDirectiveTokenParseContext) {
-  if (ctx.key === "temperature") {
-    return parseSpeechDirectiveNumberOverride({
-      ctx,
-      overrideKey: "temperature",
-      range: { min: 0, minExclusive: true, max: 2 },
-      warning: (value) => `invalid Inworld temperature "${value}"`,
-    });
-  }
-  const key = ["voice", "voiceid", "voice_id", "inworld_voice", "inworldvoice"].includes(ctx.key)
-    ? "voiceId"
-    : ["model", "modelid", "model_id", "inworld_model", "inworldmodel"].includes(ctx.key)
-      ? "modelId"
-      : undefined;
-  if (!key) {
-    return { handled: false };
-  }
-  return (key === "voiceId" ? ctx.policy.allowVoice : ctx.policy.allowModelId)
-    ? { handled: true, overrides: { [key]: ctx.value } }
-    : { handled: true };
-}
+const parseDirectiveToken = createSpeechDirectiveParser({
+  temperature: [
+    "allowVoiceSettings",
+    ["temperature"],
+    {
+      number: {
+        range: { min: 0, minExclusive: true, max: 2 },
+        warning: (value) => `invalid Inworld temperature "${value}"`,
+      },
+    },
+  ],
+  voiceId: ["allowVoice", ["voice", "voiceid", "voice_id", "inworld_voice", "inworldvoice"]],
+  modelId: ["allowModelId", ["model", "modelid", "model_id", "inworld_model", "inworldmodel"]],
+});
 
 export function buildInworldSpeechProvider(): SpeechProviderPlugin {
   const isConfigured: NonNullable<SpeechProviderPlugin["isConfigured"]> = ({ providerConfig }) =>
@@ -128,28 +120,23 @@ export function buildInworldSpeechProvider(): SpeechProviderPlugin {
             });
       return {
         ...base,
-        ...filterStringRecord({
+        ...removeUndefinedProperties({
           apiKey: resolvedApiKey,
           baseUrl: trimToUndefined(talkProviderConfig.baseUrl)
             ? normalizeInworldBaseUrl(trimToUndefined(talkProviderConfig.baseUrl))
             : undefined,
           voiceId: trimToUndefined(talkProviderConfig.voiceId),
           modelId: trimToUndefined(talkProviderConfig.modelId),
+          temperature: normalizeInworldTemperature(talkProviderConfig.temperature),
         }),
-        ...(normalizeInworldTemperature(talkProviderConfig.temperature) == null
-          ? {}
-          : { temperature: normalizeInworldTemperature(talkProviderConfig.temperature) }),
       };
     },
-    resolveTalkOverrides: ({ params }) => ({
-      ...filterStringRecord({
+    resolveTalkOverrides: ({ params }) =>
+      removeUndefinedProperties({
         voiceId: trimToUndefined(params.voiceId),
         modelId: trimToUndefined(params.modelId),
+        temperature: normalizeInworldTemperature(params.temperature),
       }),
-      ...(normalizeInworldTemperature(params.temperature) == null
-        ? {}
-        : { temperature: normalizeInworldTemperature(params.temperature) }),
-    }),
     listVoices: async (req) => {
       const config = req.providerConfig ? readInworldProviderConfig(req.providerConfig) : undefined;
       const apiKey = resolveInworldApiKey(req.apiKey, config?.apiKey);

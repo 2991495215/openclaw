@@ -18,6 +18,14 @@ the private `openclaw/plugin-sdk/concurrency-runtime` subpath. It returns
 `promise`, `resolve`, and `reject` without loading logging or provider auth;
 the adapter retains responsibility for cancellation and terminal settlement.
 
+Speech providers can use `createSpeechDirectiveParser` from the lightweight
+`openclaw/plugin-sdk/speech-provider` subpath. Map each override field to its
+policy key and accepted token aliases; optional field callbacks retain vendor
+validation and warning text. The shared parser handles alias dispatch and policy
+gating and returns an override patch. The host merges these patches into the
+provider's accumulated overrides; callbacks use `currentOverrides` only when
+merging a nested value such as voice settings.
+
 ## Media and search capabilities
 
 <Tabs>
@@ -126,8 +134,10 @@ the adapter retains responsibility for cancellation and terminal settlement.
     from the private `openclaw/plugin-sdk/video-generation` subpath to round an
     optional duration and reject values outside 1–9007199254740991 seconds after
     rounding. Omission returns `undefined`; provider defaults remain provider-owned.
-    `selectSupportedVideoDuration` selects the nearest value from a nonempty list,
-    preferring the longer duration on ties. Keep provider-specific bounds in the provider.
+    Pass `supportedDurationSeconds` to the same helper to select the nearest allowed
+    value, preferring the longer duration on ties. `selectSupportedVideoDuration`
+    provides selection alone for an already-normalized duration and a nonempty list.
+    Keep provider-specific bounds in the provider.
 
     ```typescript
     api.registerImageGenerationProvider({

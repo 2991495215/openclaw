@@ -1,17 +1,18 @@
 import { asFiniteNumber } from "@openclaw/normalization-core/number-coercion";
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import {
+  asOptionalRecord,
+  removeUndefinedProperties,
+} from "@openclaw/normalization-core/record-coerce";
 import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString as trimToUndefined,
 } from "@openclaw/normalization-core/string-coerce";
 import { normalizeResolvedSecretInputString } from "openclaw/plugin-sdk/secret-input";
+import type { OpenClawConfig } from "../config/types.js";
 import type { SpeechProviderPlugin } from "../plugins/types.js";
 import { appendConfigPathSegment } from "../shared/dot-path.js";
-import type {
-  SpeechDirectiveTokenParseContext,
-  SpeechProviderConfig,
-  SpeechProviderOverrides,
-} from "./provider-types.js";
+import { createSpeechDirectiveParser } from "./directive-parser.js";
+import type { SpeechProviderConfig } from "./provider-types.js";
 
 type OpenAiCompatibleSpeechProviderBaseConfig = {
   apiKey?: string;
@@ -66,11 +67,6 @@ export type OpenAiCompatibleSpeechProviderOptions<
   missingApiKeyError?: string;
 };
 
-type ModelProviderConfig = {
-  apiKey?: unknown;
-  baseUrl?: unknown;
-};
-
 function resolveConfiguredSpeechVoice(
   config: SpeechProviderConfig | undefined,
 ): string | undefined {
@@ -84,45 +80,6 @@ function resolveConfiguredSpeechVoice(
 
 function trimTrailingBaseUrl(value: unknown, fallback: string): string {
   return (trimToUndefined(value) ?? fallback).replace(/\/+$/u, "");
-}
-
-function readModelProviderConfig(
-  cfg: unknown,
-  providerConfigKey: string,
-): ModelProviderConfig | undefined {
-  const root = asOptionalRecord(cfg);
-  const models = asOptionalRecord(root?.models);
-  const providers = asOptionalRecord(models?.providers);
-  return asOptionalRecord(providers?.[providerConfigKey]);
-}
-
-function parseDirectiveToken(
-  ctx: SpeechDirectiveTokenParseContext,
-  providerConfigKey: string,
-): { handled: boolean; overrides?: SpeechProviderOverrides } {
-  const compactProviderKey = providerConfigKey.replace(/[^a-z0-9]+/giu, "").toLowerCase();
-  switch (ctx.key) {
-    case "voice":
-    case "voice_id":
-    case "voiceid":
-    case `${providerConfigKey}_voice`:
-    case `${compactProviderKey}voice`:
-      if (!ctx.policy.allowVoice) {
-        return { handled: true };
-      }
-      return { handled: true, overrides: { voice: ctx.value } };
-    case "model":
-    case "model_id":
-    case "modelid":
-    case `${providerConfigKey}_model`:
-    case `${compactProviderKey}model`:
-      if (!ctx.policy.allowModelId) {
-        return { handled: true };
-      }
-      return { handled: true, overrides: { model: ctx.value } };
-    default:
-      return { handled: false };
-  }
 }
 
 function buildExtraJsonBodyFields<ExtraConfig extends Record<string, unknown>>(
@@ -144,6 +101,17 @@ export function createOpenAiCompatibleSpeechProvider<
   ExtraConfig extends Record<string, unknown> = Record<string, never>,
 >(options: OpenAiCompatibleSpeechProviderOptions<ExtraConfig>): SpeechProviderPlugin {
   const providerConfigKey = options.configKey ?? options.id;
+  const compactProviderKey = providerConfigKey.replace(/[^a-z0-9]+/giu, "").toLowerCase();
+  const parseDirectiveToken = createSpeechDirectiveParser({
+    voice: [
+      "allowVoice",
+      ["voice", "voice_id", "voiceid", `${providerConfigKey}_voice`, `${compactProviderKey}voice`],
+    ],
+    model: [
+      "allowModelId",
+      ["model", "model_id", "modelid", `${providerConfigKey}_model`, `${compactProviderKey}model`],
+    ],
+  });
   const normalizeModel =
     options.normalizeModel ?? ((value, fallback) => trimToUndefined(value) ?? fallback);
   const readExtraConfig = options.readExtraConfig ?? (() => ({}) as ExtraConfig);
@@ -207,13 +175,13 @@ export function createOpenAiCompatibleSpeechProvider<
   }
 
   function resolveApiKey(params: {
-    cfg?: unknown;
+    cfg?: OpenClawConfig;
     providerConfig: OpenAiCompatibleSpeechProviderConfig<ExtraConfig>;
   }): string | undefined {
     return (
       params.providerConfig.apiKey ??
       normalizeResolvedSecretInputString({
-        value: readModelProviderConfig(params.cfg, providerConfigKey)?.apiKey,
+        value: params.cfg?.models?.providers?.[providerConfigKey]?.apiKey,
         path: `${appendConfigPathSegment("models.providers", providerConfigKey)}.apiKey`,
       }) ??
       trimToUndefined(process.env[options.envKey])
@@ -228,7 +196,7 @@ export function createOpenAiCompatibleSpeechProvider<
     models: [...options.models],
     voices: [...options.voices],
     resolveConfig: ({ rawConfig }) => normalizeConfig(rawConfig),
-    parseDirectiveToken: (ctx) => parseDirectiveToken(ctx, providerConfigKey),
+    parseDirectiveToken,
     resolveTalkConfig: ({ baseTtsConfig, talkProviderConfig }) => {
       const base = normalizeConfig(baseTtsConfig);
       const responseFormat = normalizeResponseFormat(talkProviderConfig.responseFormat);
@@ -257,15 +225,12 @@ export function createOpenAiCompatibleSpeechProvider<
       }
       return next;
     },
-    resolveTalkOverrides: ({ params }) => ({
-      ...(trimToUndefined(params.voiceId ?? params.voice) == null
-        ? {}
-        : { voice: trimToUndefined(params.voiceId ?? params.voice) }),
-      ...(trimToUndefined(params.modelId ?? params.model) == null
-        ? {}
-        : { model: trimToUndefined(params.modelId ?? params.model) }),
-      ...(asFiniteNumber(params.speed) == null ? {} : { speed: asFiniteNumber(params.speed) }),
-    }),
+    resolveTalkOverrides: ({ params }) =>
+      removeUndefinedProperties({
+        voice: trimToUndefined(params.voiceId ?? params.voice),
+        model: trimToUndefined(params.modelId ?? params.model),
+        speed: asFiniteNumber(params.speed),
+      }),
     listVoices: async () => options.voices.map((voice) => ({ id: voice, name: voice })),
     isConfigured: ({ cfg, providerConfig }) =>
       Boolean(resolveApiKey({ cfg, providerConfig: readProviderConfig(providerConfig) })),
@@ -281,7 +246,7 @@ export function createOpenAiCompatibleSpeechProvider<
       }
 
       const baseUrl = normalizeBaseUrl(
-        config.baseUrl ?? readModelProviderConfig(req.cfg, providerConfigKey)?.baseUrl,
+        config.baseUrl ?? req.cfg.models?.providers?.[providerConfigKey]?.baseUrl,
       );
       const responseFormat = config.responseFormat ?? options.defaultResponseFormat;
       const {

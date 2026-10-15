@@ -8,6 +8,7 @@ export {
   resolveSpeechProviderApiKey,
 } from "../tts/tts-provider-helpers.js";
 export { parseSpeechDirectiveNumberOverride } from "../tts/directive-number.js";
+export { createSpeechDirectiveParser } from "../tts/directive-parser.js";
 export {
   createOpenAiCompatibleSpeechProvider,
   type OpenAiCompatibleSpeechProviderBaseUrlPolicy,
@@ -20,3 +21,4 @@ export { MAX_AUDIO_BYTES } from "@openclaw/media-core/constants";
 
 export { retryAsync } from "../infra/retry.js";
 export { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+export { removeUndefinedProperties } from "@openclaw/normalization-core/record-coerce";
