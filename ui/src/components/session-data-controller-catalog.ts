@@ -86,7 +86,6 @@ export interface SessionCatalogDataOwner {
   sessionCatalogRevision: number;
   readonly sessionCatalogPageDepths: ReadonlyMap<string, number>;
   readonly sessionCatalogRevisions: Map<string, number>;
-  expandedAgentId(): string;
   sessionCatalogGatewayClient(): GatewayBrowserClient | null;
   synchronizeSessionScope(): void;
   requestSessionDataUpdate(): void;
