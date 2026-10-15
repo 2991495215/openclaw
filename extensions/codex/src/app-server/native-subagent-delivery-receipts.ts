@@ -1,6 +1,9 @@
 import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { readStringField as readString } from "openclaw/plugin-sdk/string-coerce-runtime";
-import { codexNativeSubagentNotifications } from "./native-subagent-notification.js";
+import {
+  codexNativeSubagentNotifications,
+  type CodexNativeSubagentDeliveryReceipt,
+} from "./native-subagent-notification.js";
 import { isJsonObject, type CodexServerNotification } from "./protocol.js";
 
 type ReceiptParent = Readonly<{
@@ -46,7 +49,6 @@ export function registerCodexNativeSubagentReceiptAlias<Parent extends ReceiptPa
   return known.deliveryReceipts.addAlias(childThreadId, agentPath);
 }
 
-type Receipt = { agentPath: string; result?: string };
 type Outcome = {
   paths: Set<string>;
   result?: string;
@@ -57,7 +59,7 @@ type Outcome = {
 /** Correlates native receipts with immutable assignments while a parent is registered. */
 export class CodexNativeSubagentDeliveryReceipts {
   private readonly seen = new Set<string>();
-  private readonly pending: Receipt[] = [];
+  private readonly pending: CodexNativeSubagentDeliveryReceipt[] = [];
   private readonly outcomes = new Map<string, Outcome>();
 
   observe(notification: CodexServerNotification): string[] {
@@ -66,22 +68,14 @@ export class CodexNativeSubagentDeliveryReceipts {
     if (!item) {
       return [];
     }
-    const nativeResults = codexNativeSubagentNotifications.fromNotification(notification);
-    for (const agentPath of codexNativeSubagentNotifications.deliveredAgentPaths(notification)) {
+    for (const { agentPath, result } of codexNativeSubagentNotifications.deliveredReceipts(
+      notification,
+    )) {
       const id = `${notification.method}:${readString(item, "id") ?? JSON.stringify(item)}:${agentPath}`;
       if (this.seen.has(id)) {
         continue;
       }
       this.seen.add(id);
-      let result = nativeResults.find((value) => value.agentPath === agentPath)?.result;
-      if (item.type === "agent_message" && Array.isArray(item.content)) {
-        const part = item.content[0];
-        const text = isJsonObject(part) ? readString(part, "text") : undefined;
-        result = text?.split("\nPayload:\n").slice(1).join("\nPayload:\n");
-      } else if (isJsonObject(item.agentsStates)) {
-        const child = item.agentsStates[agentPath];
-        result = isJsonObject(child) ? readString(child, "message") : result;
-      }
       this.pending.push({ agentPath, result: receiptResultKey(result) });
     }
     return this.match();

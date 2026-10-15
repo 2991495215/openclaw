@@ -277,7 +277,7 @@ export function fitCodexProjectedContextForTurnStart(params: {
     };
   };
   const maxChars =
-    typeof params.maxChars === "number" && Number.isFinite(params.maxChars)
+    params.maxChars !== undefined && Number.isFinite(params.maxChars)
       ? Math.max(0, Math.floor(params.maxChars))
       : CODEX_TURN_START_TEXT_INPUT_MAX_CHARS;
   if (params.promptText.length <= maxChars) {
@@ -377,7 +377,7 @@ export function resolveProjectionPromptBudgetTokens(params: {
   reserveTokens?: number;
 }): number {
   const requestedReserveTokens =
-    typeof params.reserveTokens === "number" &&
+    params.reserveTokens !== undefined &&
     Number.isFinite(params.reserveTokens) &&
     params.reserveTokens >= 0
       ? Math.floor(params.reserveTokens)
@@ -641,8 +641,8 @@ function stableJson(value: unknown): string {
   }
 }
 
-function normalizeRenderedContextMaxChars(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+function normalizeRenderedContextMaxChars(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) {
     return DEFAULT_RENDERED_CONTEXT_CHARS;
   }
   return Math.min(MAX_RENDERED_CONTEXT_CHARS, Math.max(1, Math.floor(value)));

@@ -2,8 +2,8 @@ import { sanitizeTerminalText } from "openclaw/plugin-sdk/text-chunking";
 import {
   projectCodexCatalogNativeResponse,
   projectCodexCatalogNativeThread,
-  type CodexCatalogPreviewCache,
 } from "../session-catalog-native-projection.js";
+import type { CodexCatalogPreviewCache } from "../session-catalog-types.js";
 import { redactCodexAppServerLinePreview } from "./client-line-preview.js";
 import { parseCodexAppServerMessage } from "./client-message-decoder.js";
 import {
@@ -69,16 +69,17 @@ export function projectCodexCatalogMessage(
     }
     if (route.kind === "list") {
       const raw = message.result;
-      message.result = projectCodexCatalogNativeResponse(
+      const projected = projectCodexCatalogNativeResponse(
         raw,
         sanitizeTerminalText,
         cachedPreview,
         remainingRows,
       );
+      message.result = projected;
       if (!cachedPreview) {
         result.previewStates = Array.isArray(raw.data)
           ? raw.data
-              .slice(0, Array.isArray(message.result.data) ? message.result.data.length : 0)
+              .slice(0, projected.data.length)
               .map((row) =>
                 isJsonObject(row) && typeof row.preview === "string"
                   ? Boolean(row.preview)

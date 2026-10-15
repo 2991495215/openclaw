@@ -17,7 +17,7 @@ export function invalidateCodexComputerFrame(contextEpoch: CodexComputerContextE
 export function computerFrameImageIdentity(
   content: AgentToolResult<unknown>["content"] | undefined,
 ): string | undefined {
-  if (!Array.isArray(content)) {
+  if (!content) {
     return undefined;
   }
   const images = content.filter((block): block is ImageContent => block.type === "image");

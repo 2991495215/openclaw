@@ -58,8 +58,11 @@ describe("Codex native subagent notifications", () => {
           result: "done",
         },
       ]);
-      expect(codexNativeSubagentNotifications.deliveredAgentPaths(notification)).toEqual([
-        "child-thread",
+      expect(codexNativeSubagentNotifications.deliveredReceipts(notification)).toEqual([
+        {
+          agentPath: "child-thread",
+          result: "done",
+        },
       ]);
     },
   );
@@ -97,7 +100,7 @@ describe("Codex native subagent notifications", () => {
       params: { threadId: "parent-thread", turnId: "parent-turn", item },
     };
     expect(extractCodexNativeSubagentCompletions(notification)).toEqual([]);
-    expect(codexNativeSubagentNotifications.deliveredAgentPaths(notification)).toEqual([]);
+    expect(codexNativeSubagentNotifications.deliveredReceipts(notification)).toEqual([]);
   });
 
   it.each([
@@ -129,7 +132,7 @@ describe("Codex native subagent notifications", () => {
     "recognizes only returned native wait results: $kind",
     ({ tool, toolStatus, childStatus, sender, expected }) => {
       expect(
-        codexNativeSubagentNotifications.deliveredAgentPaths({
+        codexNativeSubagentNotifications.deliveredReceipts({
           method: "item/completed",
           params: {
             threadId: "parent-thread",
@@ -153,7 +156,7 @@ describe("Codex native subagent notifications", () => {
 
   it("records every terminal result in a mixed native wait response", () => {
     expect(
-      codexNativeSubagentNotifications.deliveredAgentPaths({
+      codexNativeSubagentNotifications.deliveredReceipts({
         method: "item/completed",
         params: {
           threadId: "parent-thread",
@@ -172,12 +175,15 @@ describe("Codex native subagent notifications", () => {
           },
         },
       }),
-    ).toEqual(["succeeded-child", "failed-child"]);
+    ).toEqual([
+      { agentPath: "succeeded-child", result: "done" },
+      { agentPath: "failed-child", result: "error" },
+    ]);
   });
 
   it("recognizes a native completion receipt without treating its payload as a status", () => {
     expect(
-      codexNativeSubagentNotifications.deliveredAgentPaths({
+      codexNativeSubagentNotifications.deliveredReceipts({
         method: "rawResponseItem/completed",
         params: {
           threadId: "parent-thread",
@@ -195,7 +201,7 @@ describe("Codex native subagent notifications", () => {
           },
         },
       }),
-    ).toEqual(["/root/worker"]);
+    ).toEqual([{ agentPath: "/root/worker", result: "Build result" }]);
   });
 
   it.each(["  "])("preserves completed-without-final for %j", (completed) => {

@@ -34,6 +34,8 @@ type CodexNativeSubagentNotificationCompletion = CodexNativeSubagentCompletionDe
   agentPath: string;
 };
 
+export type CodexNativeSubagentDeliveryReceipt = { agentPath: string; result?: string };
+
 function extractCodexNativeSubagentCompletions(
   notification: CodexServerNotification,
 ): CodexNativeSubagentNotificationCompletion[] {
@@ -91,11 +93,13 @@ function extractCodexNativeSubagentCompletions(
 
 export const codexNativeSubagentNotifications = {
   fromNotification: extractCodexNativeSubagentCompletions,
-  deliveredAgentPaths: readDeliveredNativeCompletionPaths,
+  deliveredReceipts: readDeliveredNativeCompletionReceipts,
 };
 
 /** Reads native delivery receipts, leaving status and result ownership with the child lifecycle. */
-function readDeliveredNativeCompletionPaths(notification: CodexServerNotification): string[] {
+function readDeliveredNativeCompletionReceipts(
+  notification: CodexServerNotification,
+): CodexNativeSubagentDeliveryReceipt[] {
   const params = isJsonObject(notification.params) ? notification.params : undefined;
   const item = isJsonObject(params?.item) ? params.item : undefined;
   // V1 wait returns these exact terminal states to the foreground parent.
@@ -114,7 +118,7 @@ function readDeliveredNativeCompletionPaths(notification: CodexServerNotificatio
       receivers.has(threadId) &&
       isJsonObject(state) &&
       ["completed", "errored", "shutdown", "notFound"].includes(readString(state, "status") ?? "")
-        ? [threadId]
+        ? [{ agentPath: threadId, result: readString(state, "message") }]
         : [],
     );
   }
@@ -122,9 +126,10 @@ function readDeliveredNativeCompletionPaths(notification: CodexServerNotificatio
     return [];
   }
   if (!item || readString(item, "type") !== "agent_message") {
-    return extractCodexNativeSubagentCompletions(notification).map(
-      (completion) => completion.agentPath,
-    );
+    return extractCodexNativeSubagentCompletions(notification).map(({ agentPath, result }) => ({
+      agentPath,
+      result,
+    }));
   }
   const author = readString(item, "author");
   const recipient = readString(item, "recipient");
@@ -139,11 +144,8 @@ function readDeliveredNativeCompletionPaths(notification: CodexServerNotificatio
   const text = readString(part, "text");
   // Codex's native completion envelope identifies both endpoints outside the
   // payload. Ordinary messages and quoted completion text are not receipts.
-  return text?.startsWith(
-    `Message Type: FINAL_ANSWER\nTask name: ${recipient}\nSender: ${author}\nPayload:\n`,
-  )
-    ? [author]
-    : [];
+  const prefix = `Message Type: FINAL_ANSWER\nTask name: ${recipient}\nSender: ${author}\nPayload:\n`;
+  return text?.startsWith(prefix) ? [{ agentPath: author, result: text.slice(prefix.length) }] : [];
 }
 
 function readCompletionStatus(

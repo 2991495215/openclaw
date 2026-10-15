@@ -1,5 +1,5 @@
 import { raceWithTimeout } from "openclaw/plugin-sdk/time-runtime";
-import type { CodexCatalogPreviewCache } from "../session-catalog-native-projection.js";
+import type { CodexCatalogPreviewCache } from "../session-catalog-types.js";
 import type { resolveCodexAppServerAuthProfileIdForAgent } from "./auth-profile.js";
 import type { CodexAppServerClient } from "./client.js";
 import type {

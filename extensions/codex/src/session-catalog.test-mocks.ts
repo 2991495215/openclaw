@@ -4,7 +4,7 @@ const commandRpcMocks = vi.hoisted(() => ({
   codexControlRequest: vi.fn() as Mock,
 }));
 const pinnedConnectionMocks = vi.hoisted(() => ({
-  client: { connectionId: "pinned-catalog-client" },
+  client: { getInstanceId: () => "pinned-catalog-client" },
   getClient: vi.fn() as Mock,
   releaseClient: vi.fn() as Mock,
   request: vi.fn() as Mock,
@@ -23,17 +23,30 @@ const nodeHostMocks = vi.hoisted(() => ({
 vi.mock("./command-rpc.js", async () => {
   const { codexCatalogSourceForClient, getCodexCatalogSource, recordCodexCatalogResponseSource } =
     await import("./session-catalog-source.js");
+  const { projectCodexCatalogNativeResponse } =
+    await import("./session-catalog-native-projection.js");
+  const terminalText = await import("openclaw/plugin-sdk/text-chunking");
   return {
-    codexControlRequest: async (...args: unknown[]) => {
-      const response = await commandRpcMocks.codexControlRequest(...args);
-      if (typeof args[1] === "string") {
-        recordCodexCatalogResponseSource(
-          args[1],
-          response,
-          getCodexCatalogSource(response) ??
-            codexCatalogSourceForClient(commandRpcMocks.codexControlRequest),
-        );
-      }
+    codexControlRequest: async (
+      ...args: Parameters<typeof import("./command-rpc.js").codexControlRequest>
+    ) => {
+      const raw = await commandRpcMocks.codexControlRequest(...args);
+      const options = args[3];
+      const response =
+        options?.catalogPreview && args[1] === "thread/list"
+          ? projectCodexCatalogNativeResponse(
+              raw,
+              terminalText.sanitizeTerminalText,
+              options.catalogPreviewCache,
+              options.catalogRows,
+            )
+          : raw;
+      recordCodexCatalogResponseSource(
+        args[1],
+        response,
+        getCodexCatalogSource(response) ??
+          codexCatalogSourceForClient(commandRpcMocks.codexControlRequest),
+      );
       return response;
     },
   };

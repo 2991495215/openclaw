@@ -313,7 +313,7 @@ describeLive("codex native subagent monitor live", () => {
             item?.type === "function_call_output" &&
             typeof item.call_id === "string" &&
             waitCalls.has(item.call_id);
-          const receipts = codexNativeSubagentNotifications.deliveredAgentPaths(notification);
+          const receipts = codexNativeSubagentNotifications.deliveredReceipts(notification);
           if (
             notification.method === "turn/started" ||
             notification.method === "turn/completed" ||
@@ -330,7 +330,7 @@ describeLive("codex native subagent monitor live", () => {
               turnStatus: turn?.status ?? null,
               itemType: item?.type ?? null,
               itemId: item?.id ?? item?.call_id ?? null,
-              receiptPaths: receipts,
+              receiptPaths: receipts.map(({ agentPath }) => agentPath),
             });
           }
           if (notification.method === "turn/completed" && params?.threadId === parentThreadId) {

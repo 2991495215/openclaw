@@ -8,7 +8,7 @@ import { CodexAppServerClient } from "./app-server/client.js";
 import { createCodexNativeTestState } from "./app-server/native-app-server.test-support.js";
 import type { CodexThreadListResponse } from "./app-server/protocol.js";
 import { CODEX_APP_SERVER_VERSION } from "./app-server/version.js";
-import type { CodexCatalogPreviewCache } from "./session-catalog-native-projection.js";
+import type { CodexCatalogPreviewCache } from "./session-catalog-types.js";
 
 export type NativeCatalogBoundary = "ordinary" | "catalog";
 const PAGE_SIZE = 64;

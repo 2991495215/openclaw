@@ -207,9 +207,7 @@ export function createCodexDynamicToolBridge(params: {
     : availableProjection;
   // Supervised thread declarations are native-owned and fingerprinted. Narrow
   // executors below, but never rewrite the catalog checked by thread-lifecycle-run.
-  const inheritedSpecs = params.registeredSpecs
-    ? structuredClone([...params.registeredSpecs])
-    : undefined;
+  const inheritedSpecs = params.registeredSpecs ? [...params.registeredSpecs] : undefined;
   const inheritedNames = inheritedSpecs
     ? new Set(flattenCodexDynamicToolFunctions(inheritedSpecs).map((tool) => tool.name))
     : undefined;

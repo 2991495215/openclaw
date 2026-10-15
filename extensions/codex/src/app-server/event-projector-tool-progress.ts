@@ -60,8 +60,8 @@ const TRANSCRIPT_PROGRESS_SUPPRESSED_TOOL_NAMES = new Set([
   "typing",
 ]);
 
-export function shouldEmitTranscriptToolProgress(toolName: unknown): boolean {
-  const normalized = typeof toolName === "string" ? toolName.trim().toLowerCase() : "";
+export function shouldEmitTranscriptToolProgress(toolName: string): boolean {
+  const normalized = toolName.trim().toLowerCase();
   return Boolean(normalized && !TRANSCRIPT_PROGRESS_SUPPRESSED_TOOL_NAMES.has(normalized));
 }
 
@@ -378,13 +378,12 @@ export class CodexToolProgressProjection {
     const existing = this.metas.get(item.id);
     const terminalStatus = auditNativeToolTerminalStatus(item);
     const isError =
-      typeof existing?.isError === "boolean"
-        ? existing.isError
-        : terminalStatus === "completed"
-          ? false
-          : terminalStatus === "failed" || terminalStatus === "blocked"
-            ? true
-            : undefined;
+      existing?.isError ??
+      (terminalStatus === "completed"
+        ? false
+        : terminalStatus === "failed" || terminalStatus === "blocked"
+          ? true
+          : undefined);
     this.metas.set(item.id, {
       toolName,
       ...(meta ? { meta } : {}),

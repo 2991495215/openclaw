@@ -2,11 +2,11 @@ import { randomUUID } from "node:crypto";
 import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { coerceErrorMessage, toStringifiedError } from "openclaw/plugin-sdk/error-runtime";
 import { sleepWithAbort } from "openclaw/plugin-sdk/runtime-env";
-import type { CodexCatalogPreviewCache } from "../session-catalog-native-projection.js";
 import {
   closeCodexCatalogClientSource,
   codexCatalogSourceForClient,
 } from "../session-catalog-source.js";
+import type { CodexCatalogPreviewCache } from "../session-catalog-types.js";
 import type { CodexClientRequestAttempt } from "./client-catalog-response.js";
 import { CodexCatalogWorker, codexCatalogRequestId } from "./client-catalog-worker.js";
 import {
@@ -69,11 +69,6 @@ import {
 const CODEX_APP_SERVER_STDERR_TAIL_MAX = 2_000;
 const CODEX_APP_SERVER_OVERLOAD_MAX_RETRIES = 3;
 const CODEX_APP_SERVER_OVERLOAD_RETRY_BASE_MS = 50;
-
-export {
-  getCodexAppServerClientInstanceId,
-  resolveCodexAppServerClientInstanceId,
-} from "./client-diagnostics.js";
 
 type RequestOptions = {
   timeoutMs?: number;
@@ -312,7 +307,7 @@ export class CodexAppServerClient {
   }
 
   getRuntimeIdentity(): CodexAppServerRuntimeIdentity | undefined {
-    return this.runtimeIdentity ? { ...this.runtimeIdentity } : undefined;
+    return this.runtimeIdentity;
   }
 
   /** Returns a bounded, redacted stderr diagnostic from the app-server process. */
@@ -393,7 +388,7 @@ export class CodexAppServerClient {
           params,
           {
             ...options,
-            ...(remainingTimeoutMs !== undefined ? { timeoutMs: remainingTimeoutMs } : {}),
+            timeoutMs: remainingTimeoutMs,
           },
           retry + 1,
           deadline,

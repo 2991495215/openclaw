@@ -7,7 +7,7 @@ import {
   startNativeCatalogPerformanceClient,
   walkNativeCatalog,
 } from "./session-catalog-native-performance.test-support.js";
-import type { CodexCatalogPreviewCache } from "./session-catalog-native-projection.js";
+import type { CodexCatalogPreviewCache } from "./session-catalog-types.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 

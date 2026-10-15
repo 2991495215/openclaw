@@ -38,7 +38,7 @@ export function readCodexInferenceMetadata(
     if (!nativeImageTurnId) {
       throw new Error("Codex image inference has no native turn metadata");
     }
-    return Object.freeze({ nativeImageTurnId });
+    return { nativeImageTurnId };
   }
   const flat = body.client_metadata;
   if (flat !== undefined && !isRecord(flat)) {
@@ -68,7 +68,7 @@ export function readCodexInferenceMetadata(
   // identity remains in native metadata; the HTTP routing hint is not attribution.
   const sessionId = readId("session", flat?.session_id, ...nativeField("session_id"));
   const routingSessionId = readId("routing session", httpHeaders?.["session-id"]);
-  return Object.freeze({
+  return {
     sessionId: sessionId ?? routingSessionId,
     threadId: readId("thread", flat?.thread_id, nativeThreadId, httpHeaders?.["thread-id"]),
     turnId: readTurnId("turn", "turn_id"),
@@ -102,7 +102,7 @@ export function readCodexInferenceMetadata(
       ...nativeField("node_repl_auto_review_required"),
     ),
     generation,
-  });
+  };
 }
 
 function readNativeMetadata(raw: unknown): Record<string, unknown> | undefined {
@@ -118,7 +118,9 @@ function readNativeMetadata(raw: unknown): Record<string, unknown> | undefined {
     if (isRecord(value)) {
       return value;
     }
-  } catch {}
+  } catch {
+    // Replace JSON syntax errors with the same boundary error as other invalid metadata.
+  }
   throw new Error("Codex inference request has invalid native metadata");
 }
 

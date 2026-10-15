@@ -5,6 +5,7 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { resolveCodexAppServerLocalHomeDir } from "./app-server/auth-start-options.js";
 import { CODEX_CONTROL_METHODS } from "./app-server/capabilities.js";
 import type { CodexAppServerStartOptions } from "./app-server/config-contracts.js";
+import { readCodexPluginConfig } from "./app-server/config-parsing.js";
 import type { resolveCodexSupervisionAppServerRuntimeOptions } from "./app-server/config-runtime.js";
 import type { CodexManagedThreadStore } from "./app-server/managed-thread-store.js";
 import { buildCodexAppServerConnectionFingerprint } from "./app-server/plugin-app-cache-key.js";
@@ -29,10 +30,10 @@ import { createCodexCatalogHomeResolver, type CodexCatalogHome } from "./session
 import type { CodexCatalogState } from "./session-catalog-index-state.js";
 import type { CodexCatalogIndex } from "./session-catalog-index.js";
 import { currentCodexCatalogListRequest } from "./session-catalog-list-request.js";
-import type { CodexCatalogPreviewCache } from "./session-catalog-native-projection.js";
 import type { CodexSessionCatalogRequestSnapshot } from "./session-catalog-request-types.js";
 import { CodexCatalogSourceBackoff } from "./session-catalog-source-backoff.js";
 import type {
+  CodexCatalogPreviewCache,
   CodexSessionCatalogControl,
   CodexSessionCatalogControlFactory,
   CodexSessionCatalogPageParams,
@@ -111,7 +112,8 @@ export function createCodexSessionCatalogControl(params: {
       void retireIndexes();
     }
     const runtime =
-      source?.appServer ?? resolveRuntimeOptions({ pluginConfig: params.getPluginConfig() });
+      source?.appServer ??
+      resolveRuntimeOptions({ pluginConfig: readCodexPluginConfig(params.getPluginConfig()) });
     const requestOptions = resolveRequestOptions(runtime.start, agentId, source);
     const key = source?.sourceHomeId ?? agentId ?? "";
     let home = directHomes.get(key);
@@ -229,19 +231,16 @@ export function createCodexSessionCatalogControl(params: {
               }
             }
             foreground?.assertActive();
-            const { sanitizeTerminalText } = await import("openclaw/plugin-sdk/text-chunking");
-            const bounded = { ...response, data: response.data.slice(0, remainingRows) };
             const projection = {
               localSessionsRoot: root,
-              sanitize: sanitizeTerminalText,
               diagnostics,
             };
             const page = query.useStateDbOnly
-              ? await projectCodexCatalogDeltaPage(bounded, {
+              ? await projectCodexCatalogDeltaPage(response, {
                   ...projection,
                   getRow: (threadId) => index?.get(threadId),
                 })
-              : await projectCodexCatalogPage(bounded, projection);
+              : await projectCodexCatalogPage(response, projection);
             foreground?.assertActive();
             outcome = "resolved";
             return page;
@@ -291,7 +290,7 @@ export function createCodexSessionCatalogControl(params: {
     catalogRows?: number,
     preparedRequestOptions?: CodexCatalogRequestOptions,
   ): CodexSessionCatalogRequestSnapshot => {
-    const pluginConfig = params.getPluginConfig();
+    const pluginConfig = readCodexPluginConfig(params.getPluginConfig());
     const runtime = source?.appServer ?? resolveRuntimeOptions({ pluginConfig });
     const requestOptions =
       preparedRequestOptions ?? resolveRequestOptions(runtime.start, agentId, source);
@@ -334,7 +333,7 @@ export function createCodexSessionCatalogControl(params: {
     const withPinnedConnection: CodexSessionCatalogControl["withPinnedConnection"] = async (
       run,
     ) => {
-      const pluginConfig = params.getPluginConfig();
+      const pluginConfig = readCodexPluginConfig(params.getPluginConfig());
       const runtime = source?.appServer ?? resolveRuntimeOptions({ pluginConfig });
       const {
         agentDir,
@@ -349,7 +348,6 @@ export function createCodexSessionCatalogControl(params: {
         releaseLeasedSharedCodexAppServerClient,
         retireSharedCodexAppServerClientIfCurrent,
       } = await import("./app-server/shared-client.js");
-      const { resolveCodexAppServerClientInstanceId } = await import("./app-server/client.js");
       const { requestCodexAppServerClientJson } = await import("./app-server/request.js");
       const client = await getLeasedSharedCodexAppServerClient({
         agentDir,
@@ -388,7 +386,7 @@ export function createCodexSessionCatalogControl(params: {
                   localSessionsRoot: source?.localSessionsRoot,
                 }
               : undefined,
-            clientId: resolveCodexAppServerClientInstanceId(client),
+            clientId: client.getInstanceId(),
             retireConnection: () => {
               retireSharedCodexAppServerClientIfCurrent(client);
             },
