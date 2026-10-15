@@ -30,7 +30,7 @@ import {
   resolveDefaultRollingLogFile,
 } from "./log-file-path.js";
 import { canUseNodeFs, formatLocalDate, LOG_PREFIX, LOG_SUFFIX } from "./log-file-shared.js";
-import { buildFileLogMessage, type FileLogMessagePart } from "./logger-file-message.js";
+import { serializeFileLogRecord, type FileLogMessagePart } from "./logger-file-message.js";
 import { ensureLogDirectorySync, fileLogTransport } from "./logger-file-transport.js";
 import { setLoggerFileTargetResolver } from "./logger-settings-internal.js";
 import {
