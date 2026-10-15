@@ -49,6 +49,12 @@ follows the admitted replacement through preparation and publication. Cancelling
 the retired acquisition does not stop the Gateway; genuine replacement failures
 still propagate.
 
+Transcript projection repair runs after readiness in yielding worker-backed work.
+An agent deferred by database inspection becomes usable after its session,
+credentials, and model preparation finish; rebuilding its transcript projections
+does not hold agent admission or another agent's preparation. Shutdown still joins
+accepted repair work, and repair failures are logged without withdrawing admission.
+
 Health and status collection groups fast session-store reads into short work
 slices, keeping busy background preparation from delaying every individual read.
 Slow reads finish their transaction before yielding to other Gateway work.

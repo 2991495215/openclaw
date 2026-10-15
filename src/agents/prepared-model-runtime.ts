@@ -111,9 +111,25 @@ const modelRuntimeDrain = createPreparedModelRuntimePluginDrain(
   () => pendingModelRuntimeReplacement !== undefined || authPublication.hasPendingPublication,
 );
 const authPublication = new PreparedModelRuntimeAuthPublicationOwner();
-const getBlockingReplacement = () =>
-  pendingModelRuntimeReplacement?.degraded ? undefined : pendingModelRuntimeReplacement;
-const getAdmissionReplacement = () => modelRuntimeDrain.pending ?? getBlockingReplacement();
+const getBlockingReplacement = (input?: PreparedModelRuntimeInput) => {
+  const replacement = pendingModelRuntimeReplacement;
+  if (replacement?.degraded) {
+    return undefined;
+  }
+  const agentIds = replacement?.agentIds;
+  const owner =
+    agentIds && input && !input.readOnly ? resolveConfiguredOwner(owners, input) : undefined;
+  return agentIds &&
+    owner?.input.agentId &&
+    !agentIds.has(owner.input.agentId) &&
+    owner.snapshot &&
+    !owner.needsRefresh &&
+    !owner.pending
+    ? undefined
+    : replacement;
+};
+const getAdmissionReplacement = (input?: PreparedModelRuntimeInput) =>
+  modelRuntimeDrain.pending ?? getBlockingReplacement(input);
 
 const replyDispatchPublication = new PreparedReplyDispatchPublicationOwner({
   retainOwner: retainPublishedModelRuntimeOwner,
@@ -415,11 +431,15 @@ export function markPreparedModelRuntimeSnapshotsStale(
   const previousCancellation = refreshCancellation;
   refreshCancellation = new AbortController();
   setPreparedModelRuntimeStartupStatus(undefined);
-  replyDispatchPublication.clear();
+  if (options.agentIds) {
+    replyDispatchPublication.remove(options.agentIds);
+  } else {
+    replyDispatchPublication.clear();
+  }
   const requestEpoch = ++refreshRequestEpoch;
   if (options.waitForReplacement) {
     const superseded = pendingModelRuntimeReplacement;
-    const replacement = createPreparedModelRuntimeReplacement();
+    const replacement = createPreparedModelRuntimeReplacement(options.agentIds);
     pendingModelRuntimeReplacement = replacement;
     // Admission precedes queued work; retain its failure before retiring acquisition.
     publicationQueue.admit(replacement.promise, () => requestEpoch === refreshRequestEpoch);
