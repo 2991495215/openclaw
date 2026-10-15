@@ -24,6 +24,8 @@ type CronToolsAllowCaptureProvenance = {
 
 export type CronToolsAllowCaptureRef = {
   value?: CronToolsAllowCaptureProvenance;
+  /** Ordinary jobs authored from this native surface retain inherited tool selection. */
+  nativeToolsRequireInheritedSelection?: boolean;
 };
 
 export type CronCreatorToolAuthorityMaterialization = {
