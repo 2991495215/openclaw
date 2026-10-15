@@ -187,7 +187,12 @@ function getDiagnosticWorkSnapshot(now = Date.now()): DiagnosticWorkSnapshot {
   const queuedLabels: string[] = [];
 
   for (const state of diagnosticSessionStates.values()) {
-    if (state.state === "processing") {
+    // Message completion can leave an active owner behind an idle session.
+    // Keep heartbeat recovery running after the recent-activity window expires.
+    const idleOwner =
+      state.state === "idle" &&
+      getDiagnosticSessionActivitySnapshot(state, now).hasActiveEmbeddedRun;
+    if (state.state === "processing" || idleOwner) {
       activeCount += 1;
       pushLimitedDiagnosticLabel(activeLabels, state, now);
     } else if (state.state === "waiting") {
@@ -355,21 +360,19 @@ function isActiveAbortRecoveryEligible(params: {
   );
 }
 
-function isIdleQueuedRecoverableSessionStall(params: {
-  state: {
-    state: SessionStateValue;
-    queueDepth: number;
-  };
+function isIdleRecoverableSessionStall(params: {
+  state: Pick<SessionState, "state" | "queueDepth">;
   activity: DiagnosticSessionActivitySnapshot;
   staleMs: number;
 }): boolean {
-  // Also detect orphaned activity (model_call or tool_call left behind
-  // without an active embedded owner) so recovery can pump the stale queue.
+  // Message completion can mark the session idle while another run still owns it.
+  // Check that owner even without backlog; existing runtime waits and deadlines
+  // still decide whether recovery may abort it. Orphaned activity only matters
+  // when queued work needs recovery.
   return (
     params.state.state === "idle" &&
-    params.state.queueDepth > 0 &&
-    (params.activity.activeWorkKind !== undefined ||
-      params.activity.hasActiveEmbeddedRun === true) &&
+    (params.activity.hasActiveEmbeddedRun === true ||
+      (params.state.queueDepth > 0 && params.activity.activeWorkKind !== undefined)) &&
     (params.activity.lastProgressAgeMs ?? 0) > params.staleMs
   );
 }
@@ -950,19 +953,19 @@ export function startGatewayDiagnosticHeartbeat(
         continue;
       }
       const activity = getDiagnosticSessionActivitySnapshot(observation, recoveryObservationNow);
-      const idleQueuedRecoverableStall = isIdleQueuedRecoverableSessionStall({
+      const idleRecoverableStall = isIdleRecoverableSessionStall({
         state: { state: observation.expectedState, queueDepth: observation.queueDepth },
         activity,
         staleMs: stuckSessionWarnMs,
       });
       // Inbound traffic refreshes session age; owned work stalls on its progress clock.
       const ownedWorkAgeMs = activity.activeWorkKind ? (activity.lastProgressAgeMs ?? 0) : 0;
-      const attentionAgeMs = idleQueuedRecoverableStall
+      const attentionAgeMs = idleRecoverableStall
         ? (activity.lastProgressAgeMs ?? ageMs)
         : Math.max(ageMs, activity.repeatedRequestNoProgressAgeMs ?? 0, ownedWorkAgeMs);
       if (
         (observation.expectedState === "processing" && attentionAgeMs > stuckSessionWarnMs) ||
-        idleQueuedRecoverableStall
+        idleRecoverableStall
       ) {
         const recovery = logSessionAttention(state, {
           ...observation,

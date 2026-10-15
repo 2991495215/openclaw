@@ -1,5 +1,6 @@
 import {
   AgentHarnessPreflightError,
+  embeddedAgentLog,
   type EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 /** Enforces one bounded startup budget across Codex plugin config discovery. */
@@ -114,6 +115,7 @@ async function buildCodexPluginThreadConfigWithinDeadline(
   const deadlineMs = performance.now() + timeoutMs;
   let requestTimedOut = false;
   const boundedRequest: CodexPluginRuntimeRequest = async (method, requestParams) => {
+    signal.throwIfAborted();
     const remainingTimeoutMs = deadlineMs - performance.now();
     if (requestTimedOut || remainingTimeoutMs <= 0) {
       throw new CodexPluginThreadConfigDeadlineError();
@@ -183,6 +185,7 @@ export function createCodexPluginThreadConfigStartupProvider(params: {
   metadataCache?: CodexPluginMetadataCache;
   scheduledRuntimeAuthority?: EmbeddedRunAttemptParams["scheduledRuntimeAuthority"];
   nativeToolSurfaceEnabled?: boolean;
+  diagnosticContext?: Pick<EmbeddedRunAttemptParams, "runId" | "sessionId">;
 }) {
   const {
     client,
@@ -192,6 +195,7 @@ export function createCodexPluginThreadConfigStartupProvider(params: {
     appCache,
     metadataCache: configuredMetadataCache,
     nativeToolSurfaceEnabled,
+    diagnosticContext,
     ...buildParams
   } = params;
   const metadataCache = configuredMetadataCache ?? defaultCodexPluginMetadataCache;
@@ -233,6 +237,20 @@ export function createCodexPluginThreadConfigStartupProvider(params: {
           : undefined,
         request: (method, requestParams, options) => client.request(method, requestParams, options),
       });
+      if (config.diagnostics.length > 0) {
+        // Bindings retain admitted apps only. Record why discovery excluded apps,
+        // without logging native error text that can contain account credentials.
+        embeddedAgentLog.warn("codex plugin thread config degraded", {
+          runId: diagnosticContext?.runId,
+          sessionId: diagnosticContext?.sessionId,
+          diagnostics: config.diagnostics.slice(0, 20).map((diagnostic) => ({
+            code: diagnostic.code,
+            plugin: "plugin" in diagnostic ? diagnostic.plugin?.configKey.slice(0, 100) : undefined,
+          })),
+          diagnosticCount: config.diagnostics.length,
+          admittedAppCount: Object.keys(config.policyContext.apps).length,
+        });
+      }
       return params.scheduledRuntimeAuthority && params.inputFingerprint
         ? { ...config, inputFingerprint: params.inputFingerprint }
         : config;

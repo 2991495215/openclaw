@@ -165,11 +165,23 @@ OpenClaw still bounds its own requests, dynamic tools, cancellation, and local
 settlement. See [Timeouts](/plugins/codex-harness-reference#timeouts) for those
 budgets, Stop and replay behavior, and Doctor migration of retired idle settings.
 
-Failed app-server startup waits for child shutdown before returning its error.
+Client/thread acquisition has a separate total startup budget: the greater of
+five minutes and three times the app-server control-request timeout. A shorter
+attempt budget still wins. Retries and backoff share this startup budget; it does
+not shorten native turn execution. Preparation stages still pending after 30
+seconds emit a diagnostic with the run, session, and stage, even if the wait never
+returns. Failed app-server startup waits for child shutdown before returning its
+error.
 If startup times out or is canceled during process registration, cleanup joins
 that registration and closes any late child. Cleanup can extend beyond the
 startup deadline. A canceled caller leaves startup running when another caller
 still owns it.
+
+Plugin metadata reads retry once within the same startup deadline when the remote
+catalog returns HTTP 408, 500, 502, 503, or 504. Healthy plugin details remain
+cached for that build. Authentication failures, rate limits, and explicit app
+denials do not trigger this retry. If discovery still excludes a plugin, a
+bounded diagnostic identifies the run, session, and exclusion reason.
 
 OpenClaw preserves assistant text supplied with the initial native item and
 reasoning supplied with a completed item, even when Codex sends no text deltas.

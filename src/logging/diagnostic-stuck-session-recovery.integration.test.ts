@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
+import { prepareSystemAgentRunAdmission } from "../agents/admitted-run-context.js";
 import { resolveEmbeddedSessionLane } from "../agents/embedded-agent-runner/lanes.js";
 import {
   clearActiveEmbeddedRun,
   setActiveEmbeddedRun,
 } from "../agents/embedded-agent-runner/runs.js";
 import { testing as embeddedRunTesting } from "../agents/embedded-agent-runner/runs.test-support.js";
+import {
+  createAdmittedGatewayToolCallerIdentity,
+  withGatewayToolCallerIdentity,
+} from "../agents/tools/gateway-caller-context.js";
 import {
   createReplyOperation,
   runAfterReplyOperationClear,
@@ -35,6 +40,7 @@ import { logMessageQueuedWithBacklogPolicy } from "./diagnostic-runtime.js";
 import { recoverStuckDiagnosticSession } from "./diagnostic-stuck-session-recovery.runtime.js";
 import { logSessionStateChange, startGatewayDiagnosticHeartbeat } from "./diagnostic.js";
 import { resetDiagnosticStateForTest } from "./diagnostic.test-support.js";
+import { createDiagnosticMessageLifecycle } from "./message-lifecycle.js";
 
 async function expectPendingAfterEventLoopTurn(promise: Promise<unknown>): Promise<void> {
   let settled = false;
@@ -61,7 +67,8 @@ describe("stuck session recovery integration", () => {
     resetDiagnosticEventsForTest();
   });
 
-  it("keeps queued work behind a live backend allowance and recovers once after expiry", async () => {
+  const modes = ["queued", "idle", "runtime wait"] as const;
+  it.each(modes)("recovers %s work once after liveness protection ends", async (mode) => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.parse("2026-08-04T03:00:00Z"));
     const sessionKey = "agent:main:backend-allowance";
@@ -74,15 +81,23 @@ describe("stuck session recovery integration", () => {
       { diagnostics: { enabled: true } },
       {
         recoverStuckSession: recoverStuckDiagnosticSession,
-        testTimings: { stuckSessionWarnMs: 30_000, stuckSessionAbortMs: 60_000 },
+        sampleLiveness: () => null,
       },
     );
+    const admission = prepareSystemAgentRunAdmission(
+      {},
+      sessionId,
+      "main",
+      "backend-allowance-test",
+    );
+    const admitted = await admission.admit("embedded");
     const operation = createReplyOperation({ sessionKey, sessionId, resetTriggered: false });
     operation.setPhase("running");
     const entered = createDeferred();
     const release = createDeferred();
     const owner = createDiagnosticEmbeddedRunOwner({ sessionKey, sessionId, runId: sessionId });
     const abort = vi.fn<() => void>();
+    let ownsLiveness = mode === "runtime wait";
     const handle = {
       runId: sessionId,
       diagnosticOwner: owner,
@@ -90,6 +105,7 @@ describe("stuck session recovery integration", () => {
       queueMessage: async () => {},
       isStreaming: () => true,
       isCompacting: () => false,
+      ownsLiveness: () => ownsLiveness,
       abort,
     };
     abort.mockImplementation(() => {
@@ -97,7 +113,14 @@ describe("stuck session recovery integration", () => {
       operation.complete();
       release.resolve();
     });
-    setActiveEmbeddedRun(sessionId, handle, sessionKey);
+    await withGatewayToolCallerIdentity(
+      createAdmittedGatewayToolCallerIdentity({
+        admittedRunContext: admitted,
+        agentId: "main",
+        sessionKey,
+      }),
+      () => setActiveEmbeddedRun(sessionId, handle, sessionKey),
+    );
     const backend = beginDiagnosticBackendActivity({
       owner,
       noOutputTimeoutMs: 180_000,
@@ -112,10 +135,24 @@ describe("stuck session recovery integration", () => {
       { warnAfterMs: Number.MAX_SAFE_INTEGER },
     );
     const deliver = vi.fn(async () => "delivered");
-    const queued = enqueueCommandInLane(lane, deliver, {
-      warnAfterMs: Number.MAX_SAFE_INTEGER,
-    });
-    logMessageQueuedWithBacklogPolicy({ sessionId, sessionKey, source: "test" }, true);
+    const queued =
+      mode === "queued"
+        ? enqueueCommandInLane(lane, deliver, { warnAfterMs: Number.MAX_SAFE_INTEGER })
+        : undefined;
+    if (mode === "queued") {
+      logMessageQueuedWithBacklogPolicy({ sessionId, sessionKey, source: "test" }, true);
+    } else {
+      // A sibling message may finish while this owner still holds the session.
+      // Exercise the production lifecycle transition, not a mutated state fixture.
+      createDiagnosticMessageLifecycle({
+        sessionId,
+        sessionKey,
+        enabled: true,
+        channel: "slack",
+        source: "test-sibling",
+        trackSessionState: true,
+      }).markIdle("sibling_message_completed");
+    }
     try {
       await entered.promise;
       await vi.advanceTimersByTimeAsync(120_000);
@@ -126,17 +163,28 @@ describe("stuck session recovery integration", () => {
           sessionId,
           sessionKey,
           ageMs: 120_000,
-          queueDepth: 1,
-          staleActiveProgressAbortMs: 60_000,
+          queueDepth: mode === "queued" ? 1 : 0,
+          expectedState: mode === "queued" ? "processing" : "idle",
+          staleActiveProgressAbortMs: 360_000,
         }),
       ).resolves.toMatchObject({ status: "skipped" });
       expect(abort).not.toHaveBeenCalled();
       expect(deliver).not.toHaveBeenCalled();
-      expect(getQueueSize(lane)).toBe(2);
+      expect(getQueueSize(lane)).toBe(mode === "queued" ? 2 : 1);
 
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(240_000);
+      if (ownsLiveness) {
+        // Native runtime waits retain authority even after the backend
+        // silence deadline expires.
+        expect(abort).not.toHaveBeenCalled();
+        ownsLiveness = false;
+        await vi.advanceTimersByTimeAsync(30_000);
+      }
+      // Assert before awaiting settlement so the baseline failure cannot hang.
+      expect(abort).toHaveBeenCalledOnce();
       await active;
-      await expect(queued).resolves.toBe("delivered");
+      const next = queued ?? enqueueCommandInLane(lane, deliver);
+      await expect(next).resolves.toBe("delivered");
       await vi.advanceTimersByTimeAsync(30_000);
 
       expect(abort).toHaveBeenCalledOnce();
@@ -150,6 +198,7 @@ describe("stuck session recovery integration", () => {
     } finally {
       backend.close();
       clearActiveEmbeddedRun(sessionId, handle, sessionKey);
+      admission.close();
       operation.complete();
       release.resolve();
       await Promise.allSettled([active, queued]);
