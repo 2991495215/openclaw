@@ -14,7 +14,7 @@ import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gatew
 import { resolveRuntimeAccountSnapshot } from "./channels-account.js";
 import { respondUnavailable } from "./response.js";
 import type { GatewayRequestContext, GatewayRequestHandlers, RespondFn } from "./types.js";
-import { assertValidParams, type Validator } from "./validation.js";
+import { defineValidatedGatewayHandler, type Validator } from "./validation.js";
 
 const WEB_LOGIN_METHODS = new Set(["web.login.start", "web.login.wait"]);
 
@@ -102,10 +102,7 @@ function webLoginHandler<
     respond: RespondFn,
   ) => Promise<void>,
 ): GatewayRequestHandlers[string] {
-  return async ({ params, respond, context }) => {
-    if (!assertValidParams(params, validate, method, respond)) {
-      return;
-    }
+  return defineValidatedGatewayHandler(method, validate, async ({ params, respond, context }) => {
     try {
       const accountId = params.accountId;
       const provider = resolveWebLoginProvider(params.channel);
@@ -145,7 +142,7 @@ function webLoginHandler<
     } catch (err) {
       respondUnavailable(respond, err);
     }
-  };
+  });
 }
 
 export const webHandlers: GatewayRequestHandlers = {
