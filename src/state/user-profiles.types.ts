@@ -40,7 +40,14 @@ export type CachedGitHubIdentityBinding = { accountId: number; email: string } |
 
 export type StoredGitHubIdentity = { accountId: number; login: string };
 
-export type UserProfileGitHubAttribution = Map<string, StoredGitHubIdentity | null>;
+export type FactoryGitHubIdentity = StoredGitHubIdentity & {
+  host: string;
+  verifiedEmail?: string;
+};
+export type UserProfileGitHubAttribution = Map<
+  string,
+  StoredGitHubIdentity | FactoryGitHubIdentity | null
+>;
 
 export type UserProfileGitHubAttributionRead = {
   identities: UserProfileGitHubAttribution;

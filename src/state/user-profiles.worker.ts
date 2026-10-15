@@ -20,11 +20,13 @@ import {
   listUserModelAccounts,
   readSelectedUserModelAccount,
 } from "./user-model-accounts.js";
+import { applyFactoryGitHubIdentity } from "./user-profile-factory-github-identity.js";
 import {
   selectProfileAccessEntries,
   selectStoredGitHubIdentities,
   selectUserProfileRoleAuthority,
 } from "./user-profile-github-identity.js";
+import { runUserProfileWriteTransaction } from "./user-profile-mutation.js";
 import {
   createUserProfileWriteOperation,
   linkEmail,
@@ -42,6 +44,7 @@ import {
 } from "./user-profiles-internal.js";
 import { ensureUserProfilesSchema } from "./user-profiles-schema.js";
 import {
+  ensureFactoryGitHubProfile,
   ensureGatewayOwnerProfile,
   ensureProfileForEmail,
   ensureProfileForTailscaleIdentity,
@@ -117,6 +120,31 @@ const userProfileWriteOperations = {
         ...owned,
         expectedGitHubAccountId: input.expectedGitHubAccountId,
       }),
+  ),
+  "userProfiles.ensureFactoryGitHub": createUserProfileWriteOperation(
+    "userProfiles.ensureFactoryGitHub",
+    (
+      input: {
+        principal: string;
+        name: string;
+        verifiedMetadata: { login: string; email?: string };
+      },
+      owned,
+    ) => {
+      const profile = ensureFactoryGitHubProfile(input.principal, input.name, owned);
+      runUserProfileWriteTransaction(
+        ({ db }) =>
+          applyFactoryGitHubIdentity(db, {
+            profileId: profile.id,
+            principal: input.principal,
+            metadata: input.verifiedMetadata,
+            mutation: owned.mutation,
+          }),
+        owned,
+        { operationLabel: "user-profiles.factory-github-identity" },
+      );
+      return profile;
+    },
   ),
   "userProfiles.ensureTailscale": createUserProfileWriteOperation(
     "userProfiles.ensureTailscale",

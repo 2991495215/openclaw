@@ -52,6 +52,7 @@ export const UserProfileAvatarMimeSchema = Type.Union([
   Type.Literal("image/webp"),
 ]);
 export const UserProfileGitHubIdentitySchema = closedObject({
+  host: Type.Optional(NonEmptyString),
   login: Type.String({ minLength: 1, maxLength: 39 }),
   profileUrl: NonEmptyString,
   avatarUrl: NonEmptyString,

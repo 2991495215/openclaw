@@ -55,6 +55,8 @@ const enProfile = {
       gitCoauthor: "Git co-author credit",
       gitCoauthorDescription:
         "Adds this account's public GitHub noreply address to commits created from shared sessions. Turning it off affects future commits only.",
+      gitCoauthorEnterpriseDescription:
+        "Adds this account's verified enterprise email address to commits created from shared sessions. The address is visible in commit history. Turning it off affects future commits only.",
       gitCoauthorUnavailable:
         "Available after your GitHub-backed sign-in is verified. Refresh to retry.",
       ownerGitCoauthorDescription:

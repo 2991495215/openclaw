@@ -192,7 +192,9 @@ export function IdentitySection(props: IdentitySectionProps) {
             isOwnerProfile()
               ? t("profilePage.identity.ownerGitCoauthorDescription")
               : props.profile.githubIdentity
-                ? t("profilePage.identity.gitCoauthorDescription")
+                ? props.profile.githubIdentity.host
+                  ? t("profilePage.identity.gitCoauthorEnterpriseDescription")
+                  : t("profilePage.identity.gitCoauthorDescription")
                 : t("profilePage.identity.gitCoauthorUnavailable")
           }
           checked={Boolean(props.profile.githubIdentity && props.gitCoauthorEnabled)}

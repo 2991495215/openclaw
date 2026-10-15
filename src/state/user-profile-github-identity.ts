@@ -19,6 +19,7 @@ import {
   captureUserProfileAuthorityRead,
   publishUserProfileAuthorityChange,
 } from "./user-profile-events.js";
+import { selectFactoryGitHubIdentities } from "./user-profile-factory-github-identity.js";
 import type { UserProfileMutationContext } from "./user-profile-mutation.js";
 import {
   selectProfileDisplayEntries,
@@ -36,6 +37,7 @@ import type {
   UserProfileGitHubAttribution,
   UserProfileGitHubAttributionRead,
   UserProfileRoleAuthority,
+  FactoryGitHubIdentity,
 } from "./user-profiles.types.js";
 
 const GITHUB_PROVIDER = "github";
@@ -250,9 +252,20 @@ export function selectUserProfileGitHubIdentities(
   profileIds?: readonly string[],
 ): Map<string, UserProfileGitHubIdentity> {
   const identities = new Map<string, UserProfileGitHubIdentity>();
-  for (const [profileId, { primary }] of selectStoredGitHubIdentities(db, profileIds)) {
+  const publicIdentities = selectStoredGitHubIdentities(db, profileIds);
+  for (const [profileId, { primary }] of publicIdentities) {
     if (primary) {
       identities.set(profileId, projectGitHubIdentity(primary));
+    }
+  }
+  for (const [profileId, identity] of selectFactoryGitHubIdentities(db, profileIds)) {
+    if (!publicIdentities.has(profileId)) {
+      identities.set(profileId, {
+        host: identity.host,
+        login: identity.login,
+        profileUrl: `https://${identity.host}/${identity.login}`,
+        avatarUrl: `https://${identity.host}/avatars/u/${identity.accountId}`,
+      });
     }
   }
   return identities;
@@ -269,7 +282,7 @@ function projectGitHubIdentity(primary: StoredGitHubIdentity): UserProfileGitHub
 /** Resolves current verified identities and public-credit preferences without initializing storage. */
 export async function resolveUserProfileGitHubAttribution(
   profileIds: readonly string[],
-  options: OpenClawStateDatabaseOptions = {},
+  options: OpenClawStateDatabaseOptions & { host?: string } = {},
 ): Promise<UserProfileGitHubAttribution> {
   if (profileIds.length === 0) {
     return new Map();
@@ -280,6 +293,7 @@ export async function resolveUserProfileGitHubAttribution(
 function resolveUserProfileGitHubAttributionInDatabase(
   db: EngineConnection,
   profileIds: readonly string[],
+  host = "github.com",
 ): UserProfileGitHubAttributionRead {
   if (profileIds.length === 0 || !tableExists(db, "user_profiles")) {
     return { identities: new Map(), canonicalProfileIds: [] };
@@ -296,15 +310,28 @@ function resolveUserProfileGitHubAttributionInDatabase(
   );
   const canonicalIds = [...new Set(canonicalBySource.values())];
   const identities = selectStoredGitHubIdentities(db, canonicalIds);
+  const factory =
+    host !== "github.com"
+      ? selectFactoryGitHubIdentities(db, canonicalIds, host)
+      : new Map<string, FactoryGitHubIdentity>();
   const preferences = selectUserPreferenceValues(db, canonicalIds, GIT_COAUTHOR_PREFERENCE_KEY);
   return {
     identities: new Map(
-      [...canonicalBySource].map(([sourceId, canonicalId]) => [
-        sourceId,
-        isGitCoauthorCreditEnabled(preferences.get(canonicalId))
-          ? (identities.get(canonicalId)?.primary ?? null)
-          : null,
-      ]),
+      [...canonicalBySource].map(([sourceId, canonicalId]) => {
+        const enterpriseIdentity = factory.get(canonicalId);
+        const identity =
+          host !== "github.com"
+            ? enterpriseIdentity?.verifiedEmail
+              ? enterpriseIdentity
+              : null
+            : host === "github.com"
+              ? (identities.get(canonicalId)?.primary ?? null)
+              : null;
+        return [
+          sourceId,
+          isGitCoauthorCreditEnabled(preferences.get(canonicalId)) ? identity : null,
+        ];
+      }),
     ),
     canonicalProfileIds: canonicalIds,
   };
@@ -320,11 +347,12 @@ const preparedGitHubAttributions = new Map<string, PreparedGitHubAttribution>();
 /** Bind public credit to its live profile owner before any later publication awaits. */
 export async function prepareUserProfileGitHubAttribution(
   profileIds: readonly string[],
-  options: OpenClawStateDatabaseOptions = {},
+  options: OpenClawStateDatabaseOptions & { host?: string } = {},
 ): Promise<PreparedGitHubAttribution> {
   const selectedProfileIds = [...profileIds];
   const context = captureOpenClawStateWorkerContext(options);
-  const key = JSON.stringify([context.admission.identity.key, selectedProfileIds]);
+  const host = options.host ?? "github.com";
+  const key = JSON.stringify([context.admission.identity.key, selectedProfileIds, host]);
   const cached = preparedGitHubAttributions.get(key);
   if (cached?.isCurrent()) {
     return { identities: structuredClone(cached.identities), isCurrent: cached.isCurrent };
@@ -334,7 +362,7 @@ export async function prepareUserProfileGitHubAttribution(
     const authority = await captureUserProfileAuthorityRead(context.admission);
     const reply = await executeExistingOpenClawStateRead(
       { path: context.admission.databasePath, env: context.environment },
-      { type: "userProfiles.githubAttribution.resolve", profileIds: selectedProfileIds },
+      { type: "userProfiles.githubAttribution.resolve", profileIds: selectedProfileIds, host },
       { context, current: true },
     );
     context.admission.assertCurrent();
@@ -377,7 +405,7 @@ export function readUserProfileGitHubCommand(
         }
       : {
           type: command.type,
-          ...resolveUserProfileGitHubAttributionInDatabase(db, command.profileIds),
+          ...resolveUserProfileGitHubAttributionInDatabase(db, command.profileIds, command.host),
         },
   );
 }

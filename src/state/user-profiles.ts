@@ -3,6 +3,7 @@ import { sql } from "kysely";
 import { executeSqliteQuerySync, executeSqliteQueryTakeFirstSync } from "../infra/kysely-sync.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
 import { runSqliteDeferredTransactionSync } from "../infra/sqlite-transaction.js";
+import { parseFactoryGitHubPrincipal } from "../shared/factory-github-principal.js";
 import { openOpenClawStateDatabase } from "./openclaw-state-db.js";
 import {
   ensureProfileForEmailInDatabase,
@@ -178,6 +179,44 @@ function ensureProfileForProviderIdentity(params: {
     },
     params.options,
     { operationLabel: "user-profiles.ensure-identity" },
+  );
+}
+
+/** Adopt verified Factory display metadata only while the profile still has its fallback principal. */
+export function ensureFactoryGitHubProfile(
+  principal: string,
+  name: string,
+  options: UserProfileMutationOptions = {},
+): UserProfile {
+  if (!parseFactoryGitHubPrincipal(principal)) {
+    throw new Error("Factory GitHub principal is invalid");
+  }
+  const displayName = normalizeInitialDisplayName(name);
+  const profile = ensureProfileForEmailWithInitialName(principal, displayName, options);
+  if (!displayName || profile.displayName !== principal) {
+    return profile;
+  }
+  return runUserProfileWriteTransaction(
+    ({ db }) => {
+      const current = requireResolvedUserProfileMetadataById(db, profile.id);
+      if (current.display_name !== principal) {
+        return toUserProfile(current);
+      }
+      const now = Date.now();
+      options.mutation?.before(db, profile.id);
+      executeSqliteQuerySync(
+        db,
+        userProfilesDb(db)
+          .updateTable("user_profiles")
+          .set({ display_name: displayName, updated_at: now })
+          .where("id", "=", profile.id),
+      );
+      options.mutation?.publish(profile.id);
+      publishUserProfilesChange(db, profile.id);
+      return toUserProfile({ ...current, display_name: displayName, updated_at: now });
+    },
+    options,
+    { operationLabel: "user-profiles.ensure-factory-github" },
   );
 }
 

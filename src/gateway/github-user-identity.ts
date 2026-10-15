@@ -4,11 +4,16 @@ import {
   normalizeLowercaseStringOrEmpty,
   readNonBlankString,
 } from "@openclaw/normalization-core/string-coerce";
+import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
 import type { GatewayAuthConfig, GatewayTrustedProxyConfig } from "../config/types.gateway.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
+import { parseFactoryGitHubPrincipal } from "../shared/factory-github-principal.js";
 import { createLazyPromise, getOrCreatePromise } from "../shared/lazy-promise.js";
+import { normalizeVerifiedEmail } from "../shared/verified-email.js";
 import { resolveCanonicalCachedGitHubIdentity } from "../state/user-profile-reads.js";
 import {
+  ensureCanonicalFactoryGitHubProfile,
   ensureCanonicalUserProfileForEmail,
   syncCanonicalGitHubIdentity,
 } from "../state/user-profile-writes.js";
@@ -280,6 +285,7 @@ function resolveGitHubUserIdentityById(
 function cloudflareAccessAssertion(params: {
   authResult: GatewayAuthResult;
   authConfig?: GatewayAuthConfig;
+  config?: OpenClawConfig;
   requestHeaders?: IncomingHttpHeaders;
 }): { assertion: string; principal: string } | undefined {
   const trustedProxy = params.authConfig?.trustedProxy;
@@ -301,9 +307,79 @@ function cloudflareAccessAssertion(params: {
   return principal && assertion ? { assertion, principal } : undefined;
 }
 
+/** A Factory principal is authoritative only after trusted-proxy admission. */
+export function resolveTrustedFactoryGitHubAccountId(params: {
+  authResult: Pick<GatewayAuthResult, "ok" | "method" | "user">;
+  authConfig?: GatewayAuthConfig;
+  config?: OpenClawConfig;
+}): number | undefined {
+  if (
+    !params.authResult.ok ||
+    params.authResult.method !== "trusted-proxy" ||
+    params.authConfig?.mode !== "trusted-proxy" ||
+    normalizeLowercaseStringOrEmpty(params.authConfig.trustedProxy?.userHeader) !==
+      "x-factory-principal"
+  ) {
+    return undefined;
+  }
+  const principal = parseFactoryGitHubPrincipal(params.authResult.user ?? "");
+  return principal?.host === resolveConfiguredGitHubHost(params.config)
+    ? principal.accountId
+    : undefined;
+}
+
+/** Metadata is accepted only from the same trusted hop that asserted the immutable account. */
+export function resolveTrustedFactoryGitHubMetadata(params: {
+  authResult: Pick<GatewayAuthResult, "ok" | "method" | "user">;
+  authConfig?: GatewayAuthConfig;
+  config?: OpenClawConfig;
+  requestHeaders?: IncomingHttpHeaders;
+}) {
+  const accountId = resolveTrustedFactoryGitHubAccountId(params);
+  if (!accountId) {
+    return undefined;
+  }
+  const rawLogin = firstHeaderValue(params.requestHeaders?.["x-factory-github-login"]);
+  const login = rawLogin && rawLogin.length <= 39 ? normalizeGitHubLogin(rawLogin) : undefined;
+  const rawName = firstHeaderValue(params.requestHeaders?.["x-factory-github-name"]);
+  const name =
+    rawName && rawName.length <= 128 && !/[\p{Cc}\p{Cf}]/u.test(rawName)
+      ? rawName.trim()
+      : undefined;
+  const rawAvatar = firstHeaderValue(params.requestHeaders?.["x-factory-github-avatar-url"]);
+  const email = normalizeVerifiedEmail(params.requestHeaders?.["x-factory-github-email"]);
+  let avatarUrl: string | undefined;
+  if (rawAvatar && rawAvatar.length <= 512) {
+    try {
+      const url = new URL(rawAvatar);
+      if (
+        url.origin === `https://${resolveConfiguredGitHubHost(params.config)}` &&
+        url.pathname === `/avatars/u/${accountId}` &&
+        !url.username &&
+        !url.password &&
+        !url.hash
+      ) {
+        avatarUrl = url.href;
+      }
+    } catch {
+      /* Invalid metadata never grants authority. */
+    }
+  }
+  return login
+    ? {
+        accountId,
+        login,
+        ...(email ? { email } : {}),
+        ...(name ? { name } : {}),
+        ...(avatarUrl ? { avatarUrl } : {}),
+      }
+    : undefined;
+}
+
 export function createAuthenticatedGitHubIdentitySync(params: {
   authResult: GatewayAuthResult;
   authConfig?: GatewayAuthConfig;
+  config?: OpenClawConfig;
   requestHeaders?: IncomingHttpHeaders;
   assertCurrent?: () => void;
 }): AuthenticatedGitHubIdentitySync | undefined {
@@ -318,6 +394,28 @@ export function createAuthenticatedGitHubIdentitySync(params: {
     params.assertCurrent?.();
     return cached;
   };
+  const factory = resolveTrustedFactoryGitHubMetadata(params);
+  if (factory) {
+    return createLazyPromise(async () => {
+      params.assertCurrent?.();
+      const profile = await ensureCanonicalFactoryGitHubProfile(
+        params.authResult.user!,
+        factory.name ?? factory.login,
+        options,
+        { login: factory.login, email: factory.email },
+      );
+      params.assertCurrent?.();
+      return {
+        profileId: profile.id,
+        updatedAt: profile.updatedAt,
+        factory: {
+          accountId: factory.accountId,
+          login: factory.login,
+          ...(factory.avatarUrl ? { avatarUrl: factory.avatarUrl } : {}),
+        },
+      };
+    });
+  }
   const tailscaleLogin = params.authResult.tailscaleIdentity
     ? classifyTailscaleLogin(params.authResult.tailscaleIdentity.login)
     : undefined;
