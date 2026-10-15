@@ -32,6 +32,13 @@ replacement. Choose an empty `OPENCLAW_GIT_DIR` and retry.
 
 ### Validation and activation
 
+Before replacing the same installation, the updater observes the incumbent Gateway once. Failed
+readiness produces a warning and prevents automatic rollback from restarting it;
+the updater does not wait for the incumbent to recover before replacing it.
+The replacement still receives the full startup and readiness verification.
+Certifying a service rooted in a different installation, or verifying a restored
+service after restart, still waits within the existing readiness budget.
+
 On Windows, candidate commands verify their recorded handoff lease and their own
 PID/start identity even when the launcher process tree changes. A different
 immediate parent no longer causes a valid candidate to fail with `Candidate
@@ -52,10 +59,11 @@ foreign ownership, symlinks, and protected mounts still refuse replacement.
 This repair runs in the candidate installer, including when an older installed
 updater invokes it.
 
-Channel health collection timeouts are warnings during post-update verification.
+Channel probe failures, stopped channels, and health collection timeouts are
+warnings during post-update verification.
 The Gateway must still answer, report the expected version and build, pass HTTP
-readiness, and remain in the same running generation. An explicit negative channel
-probe still fails verification. Timeout warnings remain in the update report even
+readiness, and remain in the same running generation. A channel fault that also
+makes HTTP readiness fail still fails verification. Timeout warnings remain in the update report even
 if a later probe completes; run `openclaw health` to check the affected channels.
 The seven-second collection budget is unchanged. Updated Gateways also avoid
 reporting collection timeouts as negative probes to older updaters, although those
