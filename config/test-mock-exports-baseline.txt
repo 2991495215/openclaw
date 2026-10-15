@@ -483,7 +483,6 @@
 ["extensions/discord/src/monitor/provider.proxy.test.ts","../internal/ws-runtime.js","3c71270dcf3c9ee3a467d267c1b6c3005e090f8032d2a39396e1351d2bf7bb6d",1]
 ["extensions/discord/src/monitor/provider.proxy.test.ts","openclaw/plugin-sdk/proxy-capture","5b4e76093dea8c75ba5b3f50607ef8b2085b0488b3041571ae201bbdc4bb7295",1]
 ["extensions/discord/src/monitor/provider.startup.test.ts","../internal/voice.js","f7640ea42a8a8792feee205995cef78aa5e86189a3c419a135e5d32b5a630d53",1]
-["extensions/discord/src/monitor/provider.startup.test.ts","../proxy-request-client.js","c186041603dfd130b31db1df141f1f1b0aee0b4086a3212df86f8db2f768f415",1]
 ["extensions/discord/src/monitor/provider.startup.test.ts","./auto-presence.js","1a57ba79dad5937430f2947ff87936451c7e0c13fff452b0bd1def894bd99d69",1]
 ["extensions/discord/src/monitor/provider.startup.test.ts","./gateway-plugin.js","a2abb7d620dfa2d2b41c51d5d0a9494480b0b25a7ea437fb379567135c82ac81",1]
 ["extensions/discord/src/monitor/provider.startup.test.ts","./gateway-supervisor.js","a207fb9ca53938bcab1eb9174aeee961c6ec1649b4be55f733e4a6fe1d723207",1]
