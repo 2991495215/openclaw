@@ -78,18 +78,12 @@ export async function prepareCodexNativeExecutionPolicy(
     sessionEntry?: SessionEntry | null;
   },
 ): Promise<PreparedCodexNativeExecutionPolicy> {
-  const captured = {
-    ...params,
-    execOverrides: params.execOverrides && { ...params.execOverrides },
-    sessionTarget: params.sessionTarget && { ...params.sessionTarget },
-  };
-  const { sourceAgentId, sourceSessionKey, canReadSessionEntry } =
-    resolveSessionSelection(captured);
+  const { sourceAgentId, sourceSessionKey, canReadSessionEntry } = resolveSessionSelection(params);
   if (!canReadSessionEntry || !sourceAgentId || !sourceSessionKey) {
     return {
       policy: resolveCodexNativeExecutionPolicy({
-        ...captured,
-        sessionEntry: captured.sessionEntry ?? null,
+        ...params,
+        sessionEntry: params.sessionEntry ?? null,
       }),
       async assertCurrent() {},
       retain: () => () => {},
@@ -99,7 +93,7 @@ export async function prepareCodexNativeExecutionPolicy(
   const selected = await captureSessionEntryCurrentCheckAsync({
     agentId: sourceAgentId,
     sessionKey: sourceSessionKey,
-    storePath: captured.sessionTarget?.storePath ?? captured.storePath,
+    storePath: params.sessionTarget?.storePath ?? params.storePath,
     fields: ["sessionId", "lifecycleRevision", "execHost", "execNode", "sandbox", "sandboxMode"],
     errorMessage: "Codex session execution policy changed; prepare the operation again.",
   });
@@ -121,7 +115,7 @@ export async function prepareCodexNativeExecutionPolicy(
     };
     return {
       policy: resolveCodexNativeExecutionPolicy({
-        ...captured,
+        ...params,
         sessionEntry: selected.entry ?? null,
         readRuntimeSessionEntry: false,
       }),
