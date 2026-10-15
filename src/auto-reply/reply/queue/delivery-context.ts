@@ -19,13 +19,14 @@ import {
   FollowupRunDeferredError,
   isFollowupRunAborted,
   type FollowupRun,
+  type InternalFollowupRun,
   type QueuedFollowupReplyBatch,
 } from "./types.js";
 
 export function hasPreparedCurrentTurnImages(run: FollowupRun): boolean {
   return (
     // SAFETY: queue producers attach this private marker; only literal true selects prepared input.
-    (run as FollowupRun & { currentTurnImagesPrepared?: true }).currentTurnImagesPrepared === true
+    (run as InternalFollowupRun).currentTurnImagesPrepared === true
   );
 }
 

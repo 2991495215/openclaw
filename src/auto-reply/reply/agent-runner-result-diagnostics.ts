@@ -84,9 +84,9 @@ export async function buildReplyDiagnosticsPayload(params: {
       authMode:
         runResult.meta?.requestShaping?.authMode ??
         (cfg?.models?.providers && providerUsed in cfg.models.providers
-          ? ((await resolveModelAuthModeAsync(providerUsed, cfg, undefined, {
+          ? await resolveModelAuthModeAsync(providerUsed, cfg, undefined, {
               workspaceDir: followupRun.run.workspaceDir,
-            })) ?? undefined)
+            })
           : undefined),
       thinking:
         runResult.meta?.requestShaping?.thinking ??

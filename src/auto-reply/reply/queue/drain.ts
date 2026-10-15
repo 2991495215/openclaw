@@ -65,14 +65,12 @@ import {
   trimSummaryElisionsToCap,
 } from "./state.js";
 import { consumeQueueSummaryDelivery } from "./summary-consumption.js";
-import { FollowupRunDeferredError, isFollowupRunAborted, type FollowupRun } from "./types.js";
-
-type InternalFollowupRun = FollowupRun & {
-  /** Keep admission state out of the public plugin-facing FollowupRun contract. */
-  currentTurnImagesPrepared?: true;
-  /** Admission-owned layout; fact indexes are relative to this run's media array. */
-  mediaImageLayout?: MediaImageLayout;
-};
+import {
+  FollowupRunDeferredError,
+  isFollowupRunAborted,
+  type FollowupRun,
+  type InternalFollowupRun,
+} from "./types.js";
 
 // Persists the most recent runFollowup callback per queue key so that
 // enqueueFollowupRun can restart a drain that finished and deleted the queue.
@@ -343,7 +341,7 @@ function createCollectUserTurnTranscriptRecorder(items: FollowupRun[]) {
     );
     const timestamp = messages.reduce<number | undefined>((latest, message) => {
       const candidate = message?.timestamp;
-      return typeof candidate === "number" && (latest === undefined || candidate > latest)
+      return candidate !== undefined && (latest === undefined || candidate > latest)
         ? candidate
         : latest;
     }, undefined);

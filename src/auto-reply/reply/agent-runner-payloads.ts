@@ -34,11 +34,11 @@ const replyPayloadsDedupeRuntimeLoader = createLazyImportLoader(
 const BUN_FETCH_SOCKET_ERROR_RE = /socket connection was closed unexpectedly/i;
 
 async function normalizeSentMediaUrlsForDedupe(params: {
-  sentMediaUrls: readonly string[];
+  sentMediaUrls: string[];
   normalizeMediaPaths?: (payload: ReplyPayload) => Promise<ReplyPayload>;
 }): Promise<string[]> {
   if (params.sentMediaUrls.length === 0 || !params.normalizeMediaPaths) {
-    return [...params.sentMediaUrls];
+    return params.sentMediaUrls;
   }
 
   const normalizedUrls = new Set<string>();

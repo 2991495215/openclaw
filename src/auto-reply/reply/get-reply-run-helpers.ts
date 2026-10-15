@@ -67,12 +67,12 @@ export function buildPersistedMediaImageLayout(params: {
  * are not conflated.
  */
 export function suppressUnresolvedPromptMedia(params: {
-  promptMedia: readonly MediaFact[];
+  promptMedia: MediaFact[];
   inboundMediaIndexes: readonly number[];
   unresolvedSourceIndexes: ReadonlySet<number>;
 }): MediaFact[] {
   if (params.unresolvedSourceIndexes.size === 0) {
-    return [...params.promptMedia];
+    return params.promptMedia;
   }
   return params.promptMedia.map((fact, promptIndex) =>
     params.inboundMediaIndexes[promptIndex] !== undefined &&
@@ -171,8 +171,8 @@ export const loadSessionUpdatesRuntime = sessionUpdatesRuntimeLoader.load;
 
 export function hasInboundHistoryBody(ctx: TemplateContext): boolean {
   return (
-    Array.isArray(ctx.InboundHistory) &&
-    ctx.InboundHistory.some((entry) => entry.body.replaceAll("\u0000", "").trim().length > 0)
+    ctx.InboundHistory?.some((entry) => entry.body.replaceAll("\u0000", "").trim().length > 0) ??
+    false
   );
 }
 
@@ -180,8 +180,7 @@ export function hasReplyTargetContext(ctx: MsgContext | TemplateContext): boolea
   if (normalizeOptionalString(ctx.ReplyToBody)) {
     return true;
   }
-  const replyChain = ctx.ReplyChain;
-  return Array.isArray(replyChain) && replyChain.length > 0;
+  return (ctx.ReplyChain?.length ?? 0) > 0;
 }
 
 export function finishReplyPreparation(typing: TypingController, createReply?: () => ReplyPayload) {

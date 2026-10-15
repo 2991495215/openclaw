@@ -204,14 +204,8 @@ function markReplyPayloadSendingBeforeDeliverInstalled(
 function buildDispatchTimelineAttributes(ctx: MsgContext | FinalizedMsgContext) {
   const commandTurn = resolveCommandTurnContext(ctx);
   return {
-    surface:
-      typeof ctx.Surface === "string"
-        ? ctx.Surface
-        : typeof ctx.Provider === "string"
-          ? ctx.Provider
-          : "unknown",
-    hasSessionKey:
-      typeof ctx.SessionKey === "string" || typeof ctx.CommandTargetSessionKey === "string",
+    surface: ctx.Surface ?? ctx.Provider ?? "unknown",
+    hasSessionKey: ctx.SessionKey !== undefined || ctx.CommandTargetSessionKey !== undefined,
     commandSource: commandTurn.source,
   };
 }
