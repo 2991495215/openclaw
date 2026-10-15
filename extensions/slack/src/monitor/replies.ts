@@ -81,18 +81,16 @@ function compactSlackResponseUrlFallback(
       compacted.push(message);
       continue;
     }
-    if (!pending?.blocks?.length) {
-      pending = { ...message, blocks: [...message.blocks] };
-      continue;
-    }
-    const text = `${pending.text}\n\n${message.text}`;
-    const blocks = [...pending.blocks, ...message.blocks];
-    if (text.length > SLACK_MESSAGE_TEXT_HARD_LIMIT || blocks.length > SLACK_MAX_BLOCKS) {
+    if (pending?.blocks?.length) {
+      const text = `${pending.text}\n\n${message.text}`;
+      const blocks = [...pending.blocks, ...message.blocks];
+      if (text.length <= SLACK_MESSAGE_TEXT_HARD_LIMIT && blocks.length <= SLACK_MAX_BLOCKS) {
+        pending = { text, blocks, mrkdwn: false };
+        continue;
+      }
       flush();
-      pending = { ...message, blocks: [...message.blocks] };
-      continue;
     }
-    pending = { text, blocks, mrkdwn: false };
+    pending = { ...message, blocks: [...message.blocks] };
   }
   flush();
   return compacted;
@@ -190,25 +188,16 @@ export async function deliverReplies(params: {
       textIsSlackMrkdwn?: boolean;
       textIsSlackPlainText?: boolean;
     }): Promise<SlackSendResult> => {
-      return await sendMessageSlack(params.target, input.text, {
+      const { text, ...options } = input;
+      return await sendMessageSlack(params.target, text, {
+        ...options,
         cfg: params.cfg,
         token: params.token,
-        threadTs: input.threadTs,
         accountId: params.accountId,
+        ...(mediaLocalRoots ? { mediaLocalRoots } : {}),
         onDeliveryResult: (result) => {
           acceptedResults.push(result);
         },
-        ...(input.mediaUrl ? { mediaUrl: input.mediaUrl } : {}),
-        ...(mediaLocalRoots ? { mediaLocalRoots } : {}),
-        ...(input.blocks ? { blocks: input.blocks } : {}),
-        ...(input.authoredTextPlacement
-          ? { authoredTextPlacement: input.authoredTextPlacement }
-          : {}),
-        ...(Object.hasOwn(input, "nativeDataFallbackBaseText")
-          ? { nativeDataFallbackBaseText: input.nativeDataFallbackBaseText }
-          : {}),
-        ...(input.textIsSlackMrkdwn ? { textIsSlackMrkdwn: true } : {}),
-        ...(input.textIsSlackPlainText ? { textIsSlackPlainText: true } : {}),
         ...(params.eventScope
           ? {
               eventScope: params.eventScope,
@@ -333,17 +322,10 @@ export function createSlackReplyDeliveryPlan(params: {
   incomingThreadTs: string | undefined;
   messageTs: string | undefined;
   hasRepliedRef: { value: boolean };
-  isThreadReply?: boolean;
+  isThreadReply: boolean;
 }) {
-  // Older/internal callers may not pass explicit thread classification. Keep
-  // genuine thread replies sticky, but do not let Slack's auto-populated
-  // top-level thread_ts override the configured replyToMode.
-  const effectiveIsThreadReply =
-    params.isThreadReply ??
-    Boolean(params.incomingThreadTs && params.incomingThreadTs !== params.messageTs);
-  const effectiveMode = effectiveIsThreadReply ? "all" : params.replyToMode;
   const replyReference = createReplyReferencePlanner({
-    replyToMode: effectiveMode,
+    replyToMode: params.isThreadReply ? "all" : params.replyToMode,
     existingId: params.incomingThreadTs,
     startId: params.messageTs,
     hasReplied: params.hasRepliedRef.value,
