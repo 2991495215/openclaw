@@ -261,7 +261,7 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
     profileCatalogPath,
     discovery: discoveryRead,
     run: inOwnerContext,
-    state: () => ({ cfg, stores, disposed, dirty: topologyDirty, epoch }),
+    state: () => ({ cfg, stores, disposed, dirty: topologyDirty }),
     config: () => params.getConfig?.() ?? cfg,
     rows,
     byStore,

@@ -5,7 +5,6 @@ import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
 } from "../../test-utils/gateway-scheduler-clock.js";
-import type { WorkerProviderPreparedIntent } from "./preparation-identity.js";
 import {
   IDLE_TIMEOUT_MS,
   PREPARATION_KEY,
@@ -13,6 +12,7 @@ import {
   usePreparedPoolFixture,
   type PoolOptions,
 } from "./prepared-pool.test-support.js";
+import { readWorkerProjectSnapshot } from "./project-preparation.js";
 import { createWorkerEnvironmentService, type WorkerEnvironmentService } from "./service.js";
 import type { WorkerEnvironmentRecord } from "./store.js";
 
@@ -137,13 +137,9 @@ describe("prepared worker reserve lifecycle", () => {
     const reconcile = vi.fn<PoolOptions["reconcile"]>(async () => {});
     await fixture.schedule(
       fixture.pool({
-        prepareIntent: async () => {
+        prepareRetention: async () => {
           fixture.nowMs = 2_000;
-          return {
-            providerId: fixture.provider.id,
-            profileSnapshot: fixture.profile(),
-            preparationKey: PREPARATION_KEY,
-          };
+          return { isCurrent: () => true };
         },
         reconcile,
       }),
@@ -190,39 +186,44 @@ describe("prepared worker reserve lifecycle", () => {
     },
   );
 
-  it("revalidates an earlier source when another awaited preparation changes admission authority", async () => {
+  it("keeps an independent reserve when another source cannot provision", async () => {
     await fixture.attach(await fixture.ready(await fixture.seed("source-a")));
+    const unavailableProject = "1".repeat(64);
     await fixture.attach(
-      await fixture.ready(await fixture.seed("source-b", { projectKey: "1".repeat(64) })),
+      await fixture.ready(await fixture.seed("source-b", { projectKey: unavailableProject })),
     );
-    let generation = 0;
-    let admittedAtHasFirst = false;
-    const admittedAt = new WeakMap<WorkerProviderPreparedIntent, number>();
-    const reconcile = vi.fn<PoolOptions["reconcile"]>(async () => {});
+    const warn = vi.fn();
     const owner = fixture.pool({
-      prepareIntent: async (_profileId, { projectPath }) => {
-        if (admittedAtHasFirst) {
-          generation += 1;
+      reconcile: async (record, _signal, beforeProvision) => {
+        beforeProvision();
+        if (readWorkerProjectSnapshot(record.profileSnapshot.project)?.key === unavailableProject) {
+          throw new Error("Repository access is unavailable");
         }
-        admittedAtHasFirst = true;
-        const intent = {
-          providerId: fixture.provider.id,
-          profileSnapshot: fixture.profile(path.basename(projectPath!)),
-          preparationKey: PREPARATION_KEY,
-        };
-        admittedAt.set(intent, generation);
-        return intent;
+        await fixture.ready(record);
       },
-      assertIntentCurrent: (_profileId, intent) => {
-        if (admittedAt.get(intent) !== generation) {
-          throw new Error("preparation authority changed");
-        }
-      },
-      reconcile,
+      warn,
     });
-    await expect(fixture.schedule(owner)).rejects.toThrow("preparation authority changed");
-    expect(fixture.reserves()).toEqual([]);
-    expect(reconcile).not.toHaveBeenCalled();
+    await fixture.schedule(owner);
+    expect(fixture.reserves()).toHaveLength(2);
+    expect(
+      fixture
+        .reserves()
+        .find(
+          (record) =>
+            readWorkerProjectSnapshot(record.profileSnapshot.project)?.key !== unavailableProject,
+        )?.state,
+    ).toBe("ready");
+    expect(
+      fixture
+        .reserves()
+        .find(
+          (record) =>
+            readWorkerProjectSnapshot(record.profileSnapshot.project)?.key === unavailableProject,
+        )?.state,
+    ).toBe("requested");
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "Prepared worker maintenance failed; inspect the recorded environment failure and cleanup state",
+    );
   });
 
   it("runs only two preparations concurrently and drains admitted work after shutdown", async () => {

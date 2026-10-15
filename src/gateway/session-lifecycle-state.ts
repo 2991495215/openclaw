@@ -223,6 +223,7 @@ export function deriveGatewaySessionLifecycleSnapshot(params: {
 function derivePersistedSessionLifecyclePatch(params: {
   entry?: Partial<Omit<PersistedLifecycleSessionShape, "status">> | null;
   event: LifecycleEventLike;
+  clientRunId?: string;
 }): Partial<PersistedLifecycleSessionShape> {
   const phase = resolveLifecyclePhase(params.event);
   // Queued request settlement cannot end the turn that owns this session.
@@ -247,7 +248,8 @@ function derivePersistedSessionLifecyclePatch(params: {
   if (projection.action === "suppress") {
     return {};
   }
-  const clientRunId = normalizeLifecycleRunId(params.event.clientRunId) ?? runId;
+  const clientRunId =
+    normalizeLifecycleRunId(params.clientRunId ?? params.event.clientRunId) ?? runId;
   // Execution ownership survives yielded outcomes until the continuation settles.
   return {
     ...projection.patch,
@@ -336,6 +338,7 @@ function matchesProviderReviewWriter(
 type GatewaySessionLifecycleEventParams = {
   sessionKey: string;
   agentId?: string;
+  clientRunId?: string;
   event: LifecycleEventLike;
   assertCommitAllowed?: () => void;
   expectedWriter?: {
@@ -477,7 +480,9 @@ async function persistPreparedGatewaySessionLifecycleEvent(
         return null;
       }
       const eventRunId = normalizeLifecycleRunId(params.event.runId);
-      const eventClientRunId = normalizeLifecycleRunId(params.event.clientRunId);
+      const eventClientRunId = normalizeLifecycleRunId(
+        params.clientRunId ?? params.event.clientRunId,
+      );
       const terminalRunId = normalizeLifecycleRunId(entry.lastRunId);
       if (
         phase === "start" &&
@@ -493,6 +498,7 @@ async function persistPreparedGatewaySessionLifecycleEvent(
         Pick<SessionEntry, "providerReview" | "goal"> = derivePersistedSessionLifecyclePatch({
         entry,
         event: params.event,
+        clientRunId: params.clientRunId,
       });
       if (
         eventRunId &&

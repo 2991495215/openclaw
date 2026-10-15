@@ -30,7 +30,6 @@ export function createSessionRowTopology(owner: {
   state: () => {
     disposed: boolean;
     dirty: boolean;
-    epoch: number;
     cfg: records.Inputs["cfg"];
     stores: Map<string, records.SessionRowStore>;
   };
@@ -65,16 +64,10 @@ export function createSessionRowTopology(owner: {
         if (current.disposed || !current.dirty) {
           return;
         }
-        const revision = current.epoch;
         const nextConfig = owner.config();
         const prepared = await owner.discovery.readWithCurrentAdmission();
-        prepared.assertCurrent();
-        const isCurrent = () => !owner.state().disposed && owner.state().epoch === revision;
-        if (!isCurrent()) {
-          return;
-        }
         const discovery = { env: owner.env, snapshot: prepared.snapshot };
-        while (isCurrent()) {
+        while (!owner.state().disposed) {
           try {
             const storeRead = owner.createStoreRead({
               stores: owner.state().stores,
@@ -84,7 +77,7 @@ export function createSessionRowTopology(owner: {
             });
             await storeRead.loadCombinedStore(nextConfig, discovery, (load, scopes) => {
               prepared.assertCurrent();
-              if (!isCurrent()) {
+              if (owner.state().disposed) {
                 return;
               }
               const loaded = load();

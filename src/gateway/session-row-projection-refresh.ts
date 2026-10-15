@@ -53,7 +53,6 @@ export function createSessionRowRefresh(
   let exactPreparations = 0;
   let exactPreparationsIdle: Deferred | undefined;
   const selectionPreparations = new Map<string, Promise<void>>();
-  const runtimeOwnershipRetries = new Set<string>();
   // Admission and the background drain must share each pending database acquisition.
   let refreshing: Promise<void> | undefined;
   function releaseExactRead(id: string, read: ExactRowPreparation) {
@@ -180,22 +179,12 @@ export function createSessionRowRefresh(
         dirty: owner.dirty,
         selected,
         isActive: () => !owner.state().disposed,
-        prepareRegistryFacts: owner.prepareRegistryFacts,
         cfg: owner.state().cfg,
         env: owner.env,
       },
       {
         refreshPending: options.materialize === false ? () => false : materializer.refreshPending,
-        accept: (ids, facts) => {
-          materializer.accept(ids, facts, options);
-          for (const id of ids) {
-            if (owner.rows.get(id)?.retainedDatabaseFacts?.runtimeOwnershipRetryPending) {
-              runtimeOwnershipRetries.add(id);
-            } else {
-              runtimeOwnershipRetries.delete(id);
-            }
-          }
-        },
+        accept: (ids, facts) => materializer.accept(ids, facts, options),
       },
     );
   }
@@ -259,6 +248,19 @@ export function createSessionRowRefresh(
       }
     };
   }
+  async function prepareInputs(includeCatalog: boolean, includePlacement = false) {
+    await owner.prepareRegistryFacts();
+    if (owner.state().topologyDirty) {
+      await owner.topology();
+    }
+    await owner.membership.prepare();
+    if (includeCatalog && owner.catalog.needsInitialRead) {
+      await owner.catalog.refresh();
+    }
+    if (includePlacement) {
+      await owner.placementFacts.prepare();
+    }
+  }
   function prepareSelection(
     options: SessionRowSelectionPreparationOptions & { yieldForCatalog?: boolean } = {},
     candidateIds?: () => Iterable<string>,
@@ -294,50 +296,24 @@ export function createSessionRowRefresh(
     // Lists share metadata readiness, then only their exact pages build display rows.
     const preparation = owner.runAsOwner(async () => {
       try {
+        await prepareInputs(includeCatalog);
+        // Capture lineage once; later owner publications are prepared by the next pass.
+        for (const id of candidateIds?.() ?? owner.dirty) {
+          const row = owner.rows.get(id);
+          if (
+            row?.entryAcquisitionPending &&
+            row.storedEntry &&
+            row.sharingEntry === row.storedEntry &&
+            !row.unresolvedDatabaseFacts
+          ) {
+            owner.acquireEntry(row, row.storedEntry);
+          }
+        }
         const attempted = new Set<string>();
         const held = new Set<Promise<void>>();
         let candidates: Iterator<string> | undefined;
         while (!owner.state().disposed) {
-          for (
-            let pending = owner.prepareRegistryFacts();
-            pending;
-            pending = owner.prepareRegistryFacts()
-          ) {
-            candidates = undefined;
-            await pending;
-          }
-          if (owner.state().topologyDirty) {
-            candidates = undefined;
-            await owner.topology();
-          }
-          if (owner.state().disposed || owner.state().topologyDirty) {
-            continue;
-          }
-          if (owner.membership.needsPreparation) {
-            candidates = undefined;
-          }
-          await owner.membership.prepare();
-          if (!candidates) {
-            // Acquire lineage before any batch; keep the dirty cursor across accepted batches.
-            // Restart only when another preparation owner or a joined read changes readiness.
-            if (owner.state().registryPrepared) {
-              for (const id of candidateIds?.() ?? owner.dirty) {
-                const row = owner.rows.get(id);
-                if (
-                  row?.entryAcquisitionPending &&
-                  row.storedEntry &&
-                  row.sharingEntry === row.storedEntry &&
-                  !row.unresolvedDatabaseFacts
-                ) {
-                  owner.acquireEntry(row, row.storedEntry);
-                }
-              }
-            }
-            candidates = (candidateIds?.() ?? owner.dirty)[Symbol.iterator]();
-          }
-          if (includeCatalog && owner.catalog.needsInitialRead) {
-            await owner.catalog.refresh();
-          }
+          candidates ??= (candidateIds?.() ?? owner.dirty)[Symbol.iterator]();
           const selected = new Set<string>();
           for (let next = candidates.next(); !next.done; next = candidates.next()) {
             const id = next.value;
@@ -420,40 +396,8 @@ export function createSessionRowRefresh(
       }
       await pending.promise;
     }
-    for (
-      let pending = owner.prepareRegistryFacts();
-      pending;
-      pending = owner.prepareRegistryFacts()
-    ) {
-      await pending;
-    }
+    await prepareInputs(true, true);
     if (owner.state().disposed) {
-      return;
-    }
-    if (owner.state().topologyDirty) {
-      await owner.topology();
-      if (owner.state().disposed || owner.state().topologyDirty) {
-        return;
-      }
-    }
-    await owner.membership.prepare();
-    if (owner.catalog.needsInitialRead) {
-      await owner.catalog.refresh();
-    }
-    await owner.placementFacts.prepare();
-    for (
-      let pending = owner.prepareRegistryFacts();
-      pending;
-      pending = owner.prepareRegistryFacts()
-    ) {
-      await pending;
-    }
-    if (
-      exactPreparations > 0 ||
-      owner.state().topologyDirty ||
-      owner.membership.needsPreparation ||
-      owner.placementFacts.needsPreparation
-    ) {
       return;
     }
     const selected = new Set<string>();
@@ -515,22 +459,12 @@ export function createSessionRowRefresh(
       // Preserve page priority across search/placement awaits and metadata preparation.
       const release = retainExactPreparation();
       try {
-        // Retry once per foreground request, outside its readiness loops and background drain.
-        for (const id of runtimeOwnershipRetries) {
-          const row = owner.rows.get(id);
-          if (row?.retainedDatabaseFacts?.runtimeOwnershipRetryPending) {
-            row.pendingDatabaseFacts = undefined;
-            owner.dirty.add(id);
-          }
-        }
-        runtimeOwnershipRetries.clear();
         return await consume();
       } finally {
         release();
       }
     },
     dispose(this: void) {
-      runtimeOwnershipRetries.clear();
       exactPreparationsIdle?.resolve();
       for (const [id, read] of queuedExactReads) {
         read.completion.reject(new Error("Session row projection is no longer active"));

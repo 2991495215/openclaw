@@ -1,17 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { runTasksWithConcurrency } from "../../utils/run-with-concurrency.js";
-import {
-  readWorkerPreparation,
-  workerPreparationSourceKey,
-} from "./preparation-identity.schema.js";
+import { workerPreparationSourceKey } from "./preparation-identity.schema.js";
 import type { Generations, PassContext, PoolOptions } from "./prepared-pool-admission.js";
 import * as pool from "./prepared-pool-admission.js";
 import { isSupersededPresenceReserve } from "./prepared-pool-presence.js";
-import { readWorkerProjectSnapshot } from "./project-preparation.js";
 import { deriveEnvironmentIntent } from "./service-contract.js";
-import { readWorkerProfileSelection } from "./service-validation.js";
 import type { WorkerEnvironmentRecord as Environment } from "./store.js";
-import { boundedWorkerError } from "./worker-error.js";
 const PREPARATION_CONCURRENCY = 2;
 type Retained = { cleanup: Environment[]; work: Environment[]; cleaned: Set<string> };
 type Reconciled = ReturnType<typeof runTasksWithConcurrency<void>>;
@@ -97,7 +91,7 @@ async function retain(
     const valid =
       !isSupersededPresenceReserve(record, ctx.activeDemand) &&
       !expired &&
-      generation?.preparationKey === record.preparation.key &&
+      generation?.preparation.key === record.preparation.key &&
       (!requireRetention || generation.retention !== undefined || generation.deferred) &&
       ((record.preparation.purpose === "build" && record.state !== "ready") ||
         count < limits.target) &&
@@ -123,16 +117,19 @@ async function retain(
   }
   return { cleanup, work, cleaned };
 }
-async function planRefill(ctx: PassContext, eligible: Generations): Promise<Generations> {
-  const { options, presence, activeDemand: demand, presenceDeferred: deferred } = ctx;
-  const { store, signal, now } = options;
+async function prepareSources(ctx: PassContext, eligible: Generations): Promise<void> {
+  const { options, presenceDeferred: deferred } = ctx;
+  const { signal } = options;
   for (const [key, generation] of eligible) {
     if (deferred && generation.presenceOwned && !generation.activationEligible) {
       continue;
     }
     try {
-      generation.retention = await options.prepareRetention(generation.source, signal, (reason) =>
-        pool.skipRefill(ctx, generation.source, reason),
+      generation.retention = await options.prepareRetention(
+        generation.source,
+        generation.preparation,
+        signal,
+        (reason) => pool.skipRefill(ctx, generation.source, reason),
       );
       signal.throwIfAborted();
       if (!generation.retention) {
@@ -143,29 +140,28 @@ async function planRefill(ctx: PassContext, eligible: Generations): Promise<Gene
       pool.deferGeneration(ctx, generation, error);
     }
   }
-  let plannedTotal = 0;
-  for (const [key, generation] of eligible) {
+}
+async function refill(ctx: PassContext, eligible: Generations, work: Environment[]): Promise<void> {
+  const { options, presence, activeDemand: demand } = ctx;
+  const { store, signal, now } = options;
+  for (const generation of eligible.values()) {
     signal.throwIfAborted();
     if (generation.deferred) {
       continue;
     }
-    const { source } = generation;
+    const { source, preparation, demandAtMs, expiresAtMs } = generation;
     const limits = pool.poolPolicy(options, source.profileId, source.providerId);
-    const project = readWorkerProjectSnapshot(source.profileSnapshot.project);
     const capacity = {
       profileId: source.profileId,
       projectKey: workerPreparationSourceKey(source.profileSnapshot)!,
       ...limits,
     };
-    const slots = store.preparedCapacity({
-      ...capacity,
-      maxTotal: Math.max(0, limits.maxTotal - plannedTotal),
-    });
+    const slots = store.preparedCapacity(capacity);
     if (
       generation.expiresAtMs <= now() ||
       (!presence.isPresent() &&
         demand &&
-        generation.preparationKey === demand.preparationKey &&
+        preparation.key === demand.preparationKey &&
         !generation.activationEligible)
     ) {
       pool.skipRefill(ctx, source, "demand expired or authenticated presence ended");
@@ -177,62 +173,17 @@ async function planRefill(ctx: PassContext, eligible: Generations): Promise<Gene
       }
       continue;
     }
-    try {
-      const preparation = readWorkerPreparation(source.profileSnapshot)!;
-      const intent = await options.prepareIntent(source.profileId, {
-        ...(project
-          ? "source" in project
-            ? { projectRepository: project }
-            : { projectPath: project.root, projectCommit: project.baseCommit }
-          : { emptyWorkspace: true }),
-        ...readWorkerProfileSelection(source.profileSnapshot),
-        setupAuthorized:
-          preparation.setupRecipe !== undefined && preparation.runSetupScript !== false,
-        runSetupScript: preparation.runSetupScript,
-        signal,
-      });
-      signal.throwIfAborted();
-      if (intent.providerId !== source.providerId || intent.preparationKey !== preparation.key) {
-        pool.skipRefill(ctx, source, "refill intent no longer matches the activated preparation");
-        eligible.delete(key);
-        continue;
-      }
-      generation.intent = intent;
-      generation.slots = slots;
-      plannedTotal += slots;
-    } catch (error) {
-      signal.throwIfAborted();
-      ctx.reportRefill(
-        `Prepared worker refill deferred (${source.profileId}, ${source.environmentId}): ${boundedWorkerError(error)}`,
-      );
-    }
-  }
-  return eligible;
-}
-async function launchReserves(
-  ctx: PassContext,
-  eligible: Generations,
-  work: Environment[],
-): Promise<Environment[]> {
-  const { options } = ctx;
-  const { store, signal } = options;
-  for (const generation of eligible.values()) {
-    const { source, intent, demandAtMs, expiresAtMs } = generation;
-    if (!intent) {
-      continue;
-    }
-    const limits = pool.poolPolicy(options, source.profileId, source.providerId);
-    for (let index = 0; index < generation.slots!; index += 1) {
+    for (let index = 0; index < slots; index += 1) {
       signal.throwIfAborted();
       const admitted = await store.ensurePreparedIntent({
         intent: {
           ...deriveEnvironmentIntent(`prepared:${randomUUID()}`),
-          providerId: intent.providerId,
+          providerId: source.providerId,
           profileId: source.profileId,
-          profileSnapshot: intent.profileSnapshot,
-          preparation: { purpose: "reserve", key: intent.preparationKey!, demandAtMs, expiresAtMs },
+          profileSnapshot: source.profileSnapshot,
+          preparation: { purpose: "reserve", key: preparation.key, demandAtMs, expiresAtMs },
         },
-        projectKey: workerPreparationSourceKey(intent.profileSnapshot)!,
+        projectKey: capacity.projectKey,
         ...limits,
         assertCurrent: () => pool.assertGenerationCurrent(ctx, generation),
       });
@@ -242,7 +193,6 @@ async function launchReserves(
       work.push(admitted);
     }
   }
-  return work;
 }
 export async function runPreparedPoolPass(
   options: PoolOptions,
@@ -273,9 +223,9 @@ export async function runPreparedPoolPass(
   // Drain that cleanup first so unrelated GitHub latency cannot hold its owner.
   const initial = await retain(ctx, eligible, new Set<string>(), false);
   await reconcileAll(ctx, eligible, initial.cleanup);
-  const planned = await planRefill(ctx, eligible);
-  const retained = await retain(ctx, planned, initial.cleaned, true);
-  await reconcileAll(ctx, planned, retained.cleanup);
-  const work = await launchReserves(ctx, planned, retained.work);
-  await reconcileAll(ctx, planned, work);
+  await prepareSources(ctx, eligible);
+  const retained = await retain(ctx, eligible, initial.cleaned, true);
+  await reconcileAll(ctx, eligible, retained.cleanup);
+  await refill(ctx, eligible, retained.work);
+  await reconcileAll(ctx, eligible, retained.work);
 }

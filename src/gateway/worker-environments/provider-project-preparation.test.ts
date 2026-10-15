@@ -14,8 +14,17 @@ import { sessionChanges } from "../../sessions/session-row-changes.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { completeWorkerNodeSetupForTest } from "./node-enrollment.test-support.js";
 import { readWorkerProjectPreparation } from "./preparation-identity.schema.js";
+import type { RepositoryWorkerProjectSnapshot } from "./repository-project-source.schema.js";
+import { deriveEnvironmentIntent } from "./service-contract.js";
 import * as support from "./service.test-support.js";
 import * as workspaceGitBase from "./workspace-git-base.js";
+
+const sourceAdmission = vi.hoisted(() =>
+  vi.fn<typeof import("./repository-project-admission.js").prepareRepositoryWorkerProjectSource>(),
+);
+vi.mock("./repository-project-admission.js", () => ({
+  prepareRepositoryWorkerProjectSource: sourceAdmission,
+}));
 
 type ProjectPreparation = NonNullable<
   NonNullable<Parameters<WorkerProvider["provision"]>[2]>["project"]
@@ -56,6 +65,119 @@ function createService(
 
 describe("worker provider project preparation ownership", () => {
   support.setupWorkerEnvironmentServiceSuite();
+
+  it.each(["missing source", "missing commit", "moved repository"] as const)(
+    "rejects a fresh reserve after local admission loses its %s",
+    async (change) => {
+      const git = await repository("local-admission");
+      const provision = vi.fn<WorkerProvider["provision"]>();
+      const service = support.createService(
+        support.createProvider({
+          requiresNodeEnrollment: true,
+          supportsProjectPreparation: () => true,
+          resolvePreparationTarget: () => ({ machineClass: "small", platform: "linux" }),
+          provision,
+        }),
+        {
+          projectNamespace: "gateway",
+          prepareNodeEnrollment: async () => {
+            throw new Error("Unavailable source must not reach node enrollment");
+          },
+          prepareNodeArtifacts: async () => ({
+            artifacts: {
+              nodeBootstrapSha256: support.NODE_BOOTSTRAP.sha256,
+              enabledPluginIds: [],
+              workerBundleHash: support.BUNDLE_HASH,
+              workerArchiveSha256: support.BUNDLE_ARTIFACT.tarballSha256,
+              openclawVersion: support.BUNDLE_ARTIFACT.openclawVersion,
+              protocolFeatures: [],
+            },
+            assertCurrent: () => {},
+          }),
+        },
+      );
+      const admittedIntent = await service.prepareProjectIntent("development", {
+        projectPath: git.root,
+      });
+      const preparation = expectDefined(
+        admittedIntent.profileSnapshot.project?.preparation,
+        "prepared project",
+      );
+      await support.testState.store.createIntent({
+        ...deriveEnvironmentIntent("stale-local-admission"),
+        profileId: "development",
+        providerId: admittedIntent.providerId,
+        profileSnapshot: admittedIntent.profileSnapshot,
+        preparation: {
+          purpose: "reserve",
+          key: preparation.key,
+          demandAtMs: support.testState.nowMs,
+          expiresAtMs: support.testState.nowMs + 10_000,
+        },
+      });
+      await fs.rename(git.root, `${git.root}-moved`);
+      if (change === "missing commit") {
+        const replacement = await repository("replacement");
+        await fs.rename(replacement.root, git.root);
+      } else if (change === "moved repository") {
+        await fs.symlink(`${git.root}-moved`, git.root, "dir");
+      }
+
+      await expect(
+        service.createWithRequest({
+          profileId: "development",
+          idempotencyKey: "stale-local-admission",
+        }),
+      ).rejects.toThrow(
+        change === "moved repository"
+          ? "Prepared local project source no longer matches its admission"
+          : change === "missing source"
+            ? "ENOENT"
+            : "git rev-parse",
+      );
+      expect(provision).not.toHaveBeenCalled();
+      expect(support.testState.store.list()[0]).toMatchObject({ state: "failed", leaseId: null });
+    },
+  );
+
+  it("rechecks repository access in the provisioning owner before allocating", async () => {
+    const project: RepositoryWorkerProjectSnapshot = {
+      key: "a".repeat(64),
+      baseCommit: "b".repeat(40),
+      source: {
+        kind: "repository",
+        url: "https://github.com/example/prepared.git",
+        repositoryId: "R_prepared_fixture",
+        owner: { agent: { agentId: "main", provenance: null }, identity: { source: "anonymous" } },
+      },
+    };
+    sourceAdmission.mockReset().mockResolvedValueOnce({
+      project,
+      setupRecipe: undefined,
+      recipe: { source: "none", inputs: {}, env: {} },
+      assertCurrent: () => {},
+      revalidate: async () => {},
+    });
+    const provision = vi.fn<WorkerProvider["provision"]>();
+    const service = createService(provision);
+    const admittedIntent = await service.prepareProjectIntent("development", {
+      projectRepository: project,
+    });
+    sourceAdmission.mockRejectedValue(new Error("Repository access is no longer available"));
+
+    await expect(
+      service.createWithRequest({
+        profileId: "development",
+        idempotencyKey: "lost-repository-access",
+        admittedIntent,
+      }),
+    ).rejects.toThrow("Repository access is no longer available");
+    expect(provision).not.toHaveBeenCalled();
+    expect(support.testState.store.list()[0]).toMatchObject({ state: "failed", leaseId: null });
+    expect(sourceAdmission).toHaveBeenLastCalledWith(
+      expect.objectContaining({ expected: project, namespace: "gateway" }),
+    );
+  });
 
   it.each([
     [true, true],
@@ -444,9 +566,9 @@ describe("worker provider project preparation ownership", () => {
     expect(support.testState.bootstrapWorker).not.toHaveBeenCalled();
   });
 
-  it.each([undefined])(
-    "persists and replays project identity with a legacy provider hook (machineClass=%s)",
-    async (machineClass) => {
+  it.each([false, true])(
+    "replays a possibly paid project allocation with its original identity (source removed=%s)",
+    async (sourceRemoved) => {
       const git = await repository("project");
       await requireGit(git.root, [
         "remote",
@@ -486,13 +608,12 @@ describe("worker provider project preparation ownership", () => {
         return { leaseId: "lease-project", ssh: support.SSH_ENDPOINT };
       };
       const supportsProjectPreparation = (_profile: unknown, selectedClass?: string) =>
-        selectedClass === machineClass;
+        selectedClass === undefined;
       const first = createService(provision, undefined, supportsProjectPreparation);
       await expect(
         first.createWithRequest({
           profileId: "development",
           idempotencyKey: "project-replay",
-          machineClass,
           projectPath: git.root,
         }),
       ).rejects.toMatchObject({ code: "provider_failure" });
@@ -506,6 +627,9 @@ describe("worker provider project preparation ownership", () => {
         "git@example.invalid:Other/Project.git",
       ]);
       expect(await requireGit(git.root, ["rev-parse", "HEAD"])).not.toBe(git.baseCommit);
+      if (sourceRemoved) {
+        await fs.rename(git.root, `${git.root}-removed`);
+      }
       await support.reopenWorkerEnvironmentStore();
 
       const restarted = createService(provision, undefined, supportsProjectPreparation);
@@ -513,8 +637,7 @@ describe("worker provider project preparation ownership", () => {
         restarted.createWithRequest({
           profileId: "development",
           idempotencyKey: "project-replay",
-          machineClass,
-          projectPath: git.root,
+          projectPath: sourceRemoved ? undefined : git.root,
         }),
       ).resolves.toMatchObject({ state: "ready", leaseId: "lease-project" });
       expect(operationIds).toHaveLength(2);

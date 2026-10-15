@@ -684,7 +684,7 @@ function setPendingRegistrations(
         status: "accepted",
         sessionKey: "main",
         agentId: "main",
-        ...(attemptId ? { reservationId: attemptId, attemptId } : {}),
+        ...(attemptId ? { reservationId: attemptId } : {}),
       },
     });
   }

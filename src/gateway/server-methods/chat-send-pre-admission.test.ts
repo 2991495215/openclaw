@@ -34,6 +34,7 @@ import {
   respondChatSendRetry,
   runChatSendPreAdmission,
 } from "./chat-send-pre-admission.js";
+import { createPendingChatSendReservationAccess } from "./chat-send-reservation.js";
 
 vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../config/sessions/session-accessor.js")>()),
@@ -323,30 +324,43 @@ describe("chat send retry identity", () => {
     expectConflict(params.respond);
   });
 
-  it("transfers the pending input identity when an abort precedes active registration", async () => {
-    const params = retryFixture("early-abort-retry");
-    params.context.dedupe.set(params.session.pendingChatSendKey, {
-      ts: 100,
-      ok: true,
-      requestIdentity: params.request.requestIdentity,
-      payload: {
+  it.each([false, true])(
+    "retains aborted input identity after reservation eviction=%s",
+    async (evicted) => {
+      const { params } = preAdmissionFixture("early-abort-retry");
+      const reservation = createPendingChatSendReservationAccess(params);
+      reservation.reserve();
+      if (evicted) {
+        params.context.dedupe.delete(params.session.pendingChatSendKey);
+      }
+      writePreRegisteredChatAbort({
+        context: params.context,
         runId: params.session.clientRunId,
-        status: "accepted",
-        sessionKey: params.session.sessionKey,
-        attemptId: "attempt",
-      },
-    });
-    writePreRegisteredChatAbort({
-      context: params.context,
-      runId: params.session.clientRunId,
-      stopReason: "rpc",
-      attemptId: "attempt",
-      endedAt: 200,
-    });
-    params.request.requestIdentity = "changed-after-abort";
-    expect(respondChatSendRetry(params, await prepareChatSendRetryComparison(params))).toBe(true);
-    expectConflict(params.respond);
-    expect(params.context.dedupe.has(params.session.pendingChatSendKey)).toBe(false);
+        stopReason: "rpc",
+        reservationPayload: reservation.payload,
+        requestIdentity: params.request.requestIdentity,
+        endedAt: 200,
+      });
+      params.request.requestIdentity = "changed-after-abort";
+      expect(respondChatSendRetry(params, await prepareChatSendRetryComparison(params))).toBe(true);
+      expectConflict(params.respond);
+      expect(params.context.dedupe.has(params.session.pendingChatSendKey)).toBe(false);
+    },
+  );
+
+  it.each([false, true])("clears only the admitted reservation (replaced=%s)", (replaced) => {
+    const { params } = preAdmissionFixture("reservation-clear");
+    const reservation = createPendingChatSendReservationAccess(params);
+    reservation.reserve();
+    if (replaced) {
+      params.context.dedupe.set(params.session.pendingChatSendKey, {
+        ts: params.session.now,
+        ok: true,
+        payload: { ...reservation.payload },
+      });
+    }
+    reservation.clear();
+    expect(params.context.dedupe.has(params.session.pendingChatSendKey)).toBe(replaced);
   });
 
   it.each(["different", undefined])(

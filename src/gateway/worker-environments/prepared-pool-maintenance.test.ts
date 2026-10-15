@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
-import {
-  PREPARATION_KEY,
-  usePreparedPoolFixture,
-  type PoolOptions,
-} from "./prepared-pool.test-support.js";
+import { usePreparedPoolFixture, type PoolOptions } from "./prepared-pool.test-support.js";
 
 describe("prepared pool retention and source admission", () => {
   const fixture = usePreparedPoolFixture();
@@ -94,24 +90,13 @@ describe("prepared pool retention and source admission", () => {
     expect(fixture.reserves()).toHaveLength(1);
   });
 
-  it.each([
-    "retention",
-    "missing provider",
-    "provider resolution",
-    "idle timeout",
-    "refill admission",
-  ] as const)(
+  it.each(["retention", "missing provider", "provider resolution", "idle timeout"] as const)(
     "retains ready capacity during a %s outage and resumes on recovery",
     async (failure) => {
       fixture.developmentProfile.readyWorkers = 2;
       const reserve = await readyReserve();
       let recovered = false;
-      const refillFailure = failure === "refill admission";
-      const unavailable = new Error(
-        refillFailure
-          ? "GitHub request timed out"
-          : `${failure} observation temporarily unavailable`,
-      );
+      const unavailable = new Error(`${failure} observation temporarily unavailable`);
       const resolveProvider: PoolOptions["resolveProvider"] = () => {
         if (!recovered && failure === "missing provider") {
           return undefined;
@@ -136,22 +121,11 @@ describe("prepared pool retention and source admission", () => {
           new Error(`Artifact archive temporarily unreadable (EBUSY): ${"x".repeat(4_096)}`),
         );
       }
-      const prepareIntent = vi.fn<PoolOptions["prepareIntent"]>(async () => {
-        if (refillFailure && !recovered) {
-          throw unavailable;
-        }
-        return {
-          providerId: fixture.provider.id,
-          profileSnapshot: fixture.profile(),
-          preparationKey: PREPARATION_KEY,
-        };
-      });
       const reconcile = vi.fn<PoolOptions["reconcile"]>(async () => {});
       const warn = vi.fn<PoolOptions["warn"]>();
       const owner = fixture.pool({
         resolveProvider,
         prepareRetention,
-        prepareIntent,
         reconcile,
         warn,
       });
@@ -159,15 +133,7 @@ describe("prepared pool retention and source admission", () => {
       await fixture.schedule(owner);
 
       expect(fixture.reserves()).toEqual([reserve]);
-      if (refillFailure) {
-        expect(reconcile.mock.calls.map(([record]) => record.environmentId)).toEqual([
-          reserve.environmentId,
-        ]);
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining("GitHub request timed out"));
-      } else {
-        expect(reconcile).not.toHaveBeenCalled();
-      }
-      expect(prepareIntent).toHaveBeenCalledTimes(refillFailure ? 1 : 0);
+      expect(reconcile).not.toHaveBeenCalled();
       expect(prepareRetention).toHaveBeenCalledOnce();
       const diagnostic = warn.mock.calls.map(([message]) => message).join("\n");
       expect(diagnostic).toContain(
@@ -187,7 +153,6 @@ describe("prepared pool retention and source admission", () => {
       expect(reconcile.mock.calls.map(([record]) => record.environmentId)).toContain(
         reserve.environmentId,
       );
-      expect(prepareIntent).toHaveBeenCalledTimes(refillFailure ? 2 : 1);
       expect(fixture.reserves()).toHaveLength(2);
     },
   );
@@ -243,14 +208,10 @@ describe("prepared pool retention and source admission", () => {
     const reconcile = vi.fn<PoolOptions["reconcile"]>(async () => {});
     const owner = fixture.pool({
       reconcile,
-      prepareIntent: async () => {
+      prepareRetention: async () => {
         entered.resolve();
         await release.promise;
-        return {
-          providerId: fixture.provider.id,
-          profileSnapshot: fixture.profile(projectKey),
-          preparationKey: PREPARATION_KEY,
-        };
+        return { isCurrent: () => true };
       },
     });
     const running = fixture.schedule(owner);

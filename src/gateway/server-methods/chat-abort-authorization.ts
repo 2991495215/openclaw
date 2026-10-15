@@ -86,7 +86,6 @@ export function captureSessionAbortRequestOrigin(
 type PreRegisteredAgentDedupePayload = {
   goalFingerprint?: unknown;
   agentId?: unknown;
-  attemptId?: unknown;
   controlUiVisible?: unknown;
   dedupeKeys?: unknown;
   expiresAtMs?: unknown;
@@ -169,6 +168,47 @@ export function canRequesterAbortChatRun(
     (ownerDeviceId && requester.deviceId && ownerDeviceId === requester.deviceId) ||
     (ownerConnId && requester.connId && ownerConnId === requester.connId),
   );
+}
+
+export function resolveChatAbortTargetError(
+  target: ChatAbortTarget,
+  params: {
+    sessionKeys: readonly string[];
+    requester: ChatAbortRequester;
+    discardPendingInput?: boolean;
+    narrow: boolean;
+    requiredSessionId?: string;
+    agentId: string;
+    defaultAgentId?: string;
+  },
+): string | undefined {
+  const matchesSession = params.sessionKeys.includes(target.sessionKey);
+  if (params.discardPendingInput && !matchesSession) {
+    return "discarded input runId does not match sessionKey";
+  }
+  if (params.narrow && target.sessionId !== params.requiredSessionId) {
+    return "runId does not match session incarnation";
+  }
+  if (
+    !matchesSession &&
+    (params.narrow ||
+      !canRequesterAbortChatRun(target, params.requester, { requireOwnerMatch: true }))
+  ) {
+    return "runId does not match sessionKey";
+  }
+  if (
+    !chatRunBelongsToAgent(
+      {
+        agentId: target.agentId,
+        sessionKey: target.sessionKey,
+        defaultAgentId: params.defaultAgentId,
+      },
+      params.agentId,
+    )
+  ) {
+    return "runId does not match agentId";
+  }
+  return canRequesterAbortChatRun(target, params.requester) ? undefined : "unauthorized";
 }
 
 export function readPreRegisteredAgentDedupePayloadForSession(params: {
@@ -332,7 +372,7 @@ export function writePreRegisteredChatAbort(params: {
   runId: string;
   stopReason: string;
   endedAt?: number;
-  attemptId?: string;
+  reservationPayload?: object;
   requestIdentity?: string;
   expectedPayload?: PreRegisteredAgentDedupePayload;
 }) {
@@ -353,17 +393,15 @@ export function writePreRegisteredChatAbort(params: {
     createChatAbortMarker(endedAt);
   const pendingKey = pendingChatSendDedupeKey(params.runId);
   const pendingEntry = params.context.dedupe.get(pendingKey);
-  const pendingAttemptId = normalizeOptionalString(
-    (pendingEntry?.payload as PreRegisteredAgentDedupePayload | undefined)?.attemptId,
-  );
-  const ownsPendingAttempt = !params.attemptId || pendingAttemptId === params.attemptId;
+  const ownsPendingReservation =
+    !params.reservationPayload || pendingEntry?.payload === params.reservationPayload;
   // Eviction removes the reservation, not the admission's immutable input identity.
   const requestIdentity = pendingEntry
-    ? ownsPendingAttempt
+    ? ownsPendingReservation
       ? pendingEntry.requestIdentity
       : undefined
     : params.requestIdentity;
-  if (ownsPendingAttempt) {
+  if (ownsPendingReservation) {
     params.context.dedupe.delete(pendingKey);
   }
   setGatewayDedupeEntry({

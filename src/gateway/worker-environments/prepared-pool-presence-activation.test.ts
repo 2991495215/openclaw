@@ -69,21 +69,12 @@ describe("activation demand overlapping presence admission", () => {
       const release = createDeferredCore();
       const otherProgressed = createDeferredCore();
       fixture.releases.push(() => release.resolve());
-      const prepareIntent = vi.fn<PoolOptions["prepareIntent"]>(async (_profileId, options) => {
-        if (options.repository) {
-          entered.resolve();
-          if (failure === "held") {
-            await release.promise;
-          }
-          throw new Error("Presence repository resolution unavailable");
+      const prepareIntent = vi.fn<PoolOptions["prepareIntent"]>(async () => {
+        entered.resolve();
+        if (failure === "held") {
+          await release.promise;
         }
-        return {
-          providerId: fixture.provider.id,
-          profileSnapshot: options.projectRepository
-            ? fixture.profile(PROJECT_KEY, PREPARATION_KEY, undefined, options.projectRepository)
-            : fixture.profile(otherKey),
-          preparationKey: PREPARATION_KEY,
-        };
+        throw new Error("Presence repository resolution unavailable");
       });
       const owner = fixture.pool({
         prepareIntent,
@@ -137,14 +128,7 @@ describe("activation demand overlapping presence admission", () => {
         expect(reserves.every((record) => record.destroyRequestedAtMs === null)).toBe(true);
         expect(fixture.store.get(kept.environmentId)).toEqual(kept);
         expect(fixture.store.get(active.environmentId)).toEqual(active);
-        expect(prepareIntent.mock.calls.filter(([, options]) => options.repository)).toHaveLength(
-          1,
-        );
-        expect(
-          prepareIntent.mock.calls.some(
-            ([, options]) => options.projectRepository?.key === PROJECT_KEY,
-          ),
-        ).toBe(activation === "current");
+        expect(prepareIntent).toHaveBeenCalledOnce();
       } finally {
         release.resolve();
         await settled;

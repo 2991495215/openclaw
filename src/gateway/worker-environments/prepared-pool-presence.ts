@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { OpenClawConfig } from "../../config/types.js";
 import type { WorkerProviderPreparedIntent } from "./preparation-identity.js";
-import { readWorkerProjectPreparation } from "./preparation-identity.schema.js";
 import type { PreparedPoolPresenceDemand } from "./prepared-pool-presence.types.js";
 import { readWorkerProjectSnapshot } from "./project-preparation.js";
 import type { RepositoryWorkerProjectSnapshot } from "./repository-project-source.schema.js";
@@ -162,11 +161,11 @@ export function createPreparedPoolPresence(options: PreparedPoolPresenceOptions)
       signal,
     });
     current();
-    const project = readWorkerProjectSnapshot(intent.profileSnapshot.project);
-    const preparation = readWorkerProjectPreparation(intent.profileSnapshot.project);
-    if (!project || !("source" in project) || !preparation) {
+    const preparedProject = intent.profileSnapshot.project;
+    if (!preparedProject || !("source" in preparedProject) || !preparedProject.preparation) {
       throw new Error("Human-presence demand requires an admitted repository preparation");
     }
+    const { preparation, ...project } = preparedProject;
     state = {
       revision: (state?.revision ?? 0) + 1,
       profileId: source.profileId,

@@ -24,10 +24,8 @@ describe("prepared worker builds", () => {
       const release = createDeferred();
       fixture.releases.push(() => release.resolve());
       const reconcile = vi.fn<PoolOptions["reconcile"]>(async () => {});
-      const prepareIntent = vi.fn<PoolOptions["prepareIntent"]>();
       const owner = fixture.pool({
         reconcile,
-        prepareIntent,
         prepareRetention: async (record) => {
           if (record.environmentId === "source-a") {
             entered.resolve();
@@ -73,7 +71,6 @@ describe("prepared worker builds", () => {
         },
       });
       expect(fixture.reserves()).toHaveLength(1);
-      expect(prepareIntent).not.toHaveBeenCalled();
       expect(reconcile.mock.calls.map(([record]) => record.environmentId)).toContain(
         build.environmentId,
       );

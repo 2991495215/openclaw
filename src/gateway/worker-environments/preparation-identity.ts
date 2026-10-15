@@ -7,13 +7,20 @@ import {
   WorkerPreparationTargetSchema,
   type WorkerPreparationArtifacts,
   type WorkerProjectPreparationIdentity,
+  type WorkerRuntimePreparationIdentity,
 } from "./preparation-identity.schema.js";
 import type { WorkerProjectSnapshot } from "./workspace-git-base.js";
 
 export type WorkerProviderPreparedIntent = {
   providerId: string;
-  profileSnapshot: WorkerProfile;
-  preparationKey?: string;
+  profileSnapshot: WorkerProfile &
+    (
+      | {
+          project?: WorkerProjectSnapshot & { preparation?: WorkerProjectPreparationIdentity };
+          runtimePreparation?: never;
+        }
+      | { project?: never; runtimePreparation: WorkerRuntimePreparationIdentity }
+    );
 };
 
 export function createWorkerPreparationIdentity(params: {

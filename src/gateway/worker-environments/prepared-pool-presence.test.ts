@@ -73,7 +73,6 @@ describe("authenticated human prepared-pool demand", () => {
       return {
         providerId: fixture.provider.id,
         profileSnapshot,
-        preparationKey,
       };
     });
     const owner = fixture.pool({
@@ -240,14 +239,7 @@ describe("authenticated human prepared-pool demand", () => {
       const prepare = presence.prepareIntent.getMockImplementation()!;
       presence.prepareIntent.mockClear();
       fixture.releases.push(() => release.resolve());
-      presence.prepareIntent.mockImplementation(async (_profileId, options) => {
-        if (options.projectPath) {
-          return {
-            providerId: fixture.provider.id,
-            profileSnapshot: fixture.profile(healthyKey),
-            preparationKey: PREPARATION_KEY,
-          };
-        }
+      presence.prepareIntent.mockImplementation(async () => {
         entered.resolve();
         if (failure === "held") {
           await release.promise;
@@ -297,9 +289,7 @@ describe("authenticated human prepared-pool demand", () => {
             repeated,
             "Later cleanup did not progress",
           );
-          expect(
-            presence.prepareIntent.mock.calls.filter(([, options]) => !options.projectPath),
-          ).toHaveLength(1);
+          expect(presence.prepareIntent).toHaveBeenCalledOnce();
           expect(fixture.store.get("expired-again")?.destroyRequestedAtMs).toBe(2_100);
           const departure = presence.owner.setHumanPresence(false).catch(() => {});
           fixture.operations.add(departure);
@@ -315,9 +305,7 @@ describe("authenticated human prepared-pool demand", () => {
               .slice(1)
               .map((record) => fixture.store.get(record.environmentId)?.destroyRequestedAtMs),
           ).toEqual([902_100, 902_100]);
-          expect(
-            presence.prepareIntent.mock.calls.filter(([, options]) => !options.projectPath),
-          ).toHaveLength(1);
+          expect(presence.prepareIntent).toHaveBeenCalledOnce();
         }
       } finally {
         release.resolve();

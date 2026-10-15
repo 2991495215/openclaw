@@ -29,10 +29,7 @@ import {
 } from "./placement-dispatch-provisioning.js";
 import { reportPlacementTransition } from "./placement-record.js";
 import type { WorkerProviderPreparedIntent } from "./preparation-identity.js";
-import {
-  readWorkerPreparation,
-  readWorkerProjectPreparation,
-} from "./preparation-identity.schema.js";
+import { readWorkerProjectPreparation } from "./preparation-identity.schema.js";
 import { readWorkerProjectSnapshot } from "./project-preparation.js";
 import { runWorkerProjectLifecycle } from "./project-setup-script.js";
 import { syncSessionRepositoryWorkspace } from "./repository-workspace-startup.js";
@@ -148,8 +145,10 @@ export function createWorkerPlacementDispatchStartup(options: {
     intent: WorkerProviderPreparedIntent;
     assertCurrent: WorkerPlacementAuthorization;
   }) => {
-    const preparation = readWorkerPreparation(params.intent.profileSnapshot);
-    if (!preparation || params.intent.preparationKey !== preparation.key) {
+    const preparation =
+      params.intent.profileSnapshot.runtimePreparation ??
+      params.intent.profileSnapshot.project?.preparation;
+    if (!preparation) {
       return undefined;
     }
     const assertCurrent = composePlacementAuthorization(params.assertCurrent, () => {
@@ -660,17 +659,8 @@ export function createWorkerPlacementDispatchStartup(options: {
               if (isPendingProvisioningEnvironment(environment, environmentId)) {
                 return;
               }
-              let devicePlacement: DevicePlacementRequirement | undefined;
-              if (environment.nodeDeviceId) {
-                if (!options.resolveDevicePlacementRequirement) {
-                  throw new Error("Node-backed recovery has no authoritative runtime requirement");
-                }
-                devicePlacement = await options.resolveDevicePlacementRequirement({
-                  sessionId: placement.sessionId,
-                  sessionKey: placement.sessionKey,
-                  agentId: placement.agentId,
-                  executionMode: placement.executionMode,
-                });
+              if (environment.nodeDeviceId && !options.resolveDevicePlacementRequirement) {
+                throw new Error("Node-backed recovery has no authoritative runtime requirement");
               }
               result = await continueProvisionedDispatch({
                 request: {
@@ -679,7 +669,6 @@ export function createWorkerPlacementDispatchStartup(options: {
                   agentId: placement.agentId,
                   profileId: environment.profileId,
                   executionMode: placement.executionMode,
-                  ...(devicePlacement ? { devicePlacement } : {}),
                   ...(environment.providerId === DEVICE_WORKER_PROVIDER_ID &&
                   environment.nodeDeviceId
                     ? { deviceId: environment.nodeDeviceId }

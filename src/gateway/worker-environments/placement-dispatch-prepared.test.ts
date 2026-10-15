@@ -41,6 +41,7 @@ import { createHarness } from "./placement-dispatch-test-harness.js";
 import type { WorkerPlacementExecutionMode } from "./placement-record.js";
 import { createWorkerSessionPlacementStore } from "./placement-store.js";
 import type { WorkerProviderPreparedIntent } from "./preparation-identity.js";
+import type { WorkerProjectPreparationIdentity } from "./preparation-identity.schema.js";
 import * as support from "./service.test-support.js";
 import {
   readSessionRepositoryArtifacts,
@@ -107,7 +108,7 @@ async function preparedHarness(
       ),
   });
   const environmentId = reserve ? "prepared-spare" : harness.ready.environmentId;
-  const preparation = {
+  const preparation: WorkerProjectPreparationIdentity = {
     key: PREPARATION_KEY,
     cacheKey: "a".repeat(64),
     contractVersion: 1,
@@ -123,7 +124,6 @@ async function preparedHarness(
   };
   const intent: WorkerProviderPreparedIntent = {
     providerId: "fake",
-    preparationKey: PREPARATION_KEY,
     profileSnapshot: {
       settings: { region: "test" },
       executionMode,

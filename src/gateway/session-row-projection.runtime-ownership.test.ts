@@ -126,131 +126,79 @@ it("rereads native model ownership after its harness plugin config changes", asy
   });
 });
 
-it.for(["once", "continued", "failure"] as const)(
-  "keeps native ownership changes local to one listed row: %s",
-  async (change) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
-      const cfg = {
-        agents: {
-          entries: { main: {} },
-          defaults: { model: { primary: "openai/gpt-5.5" } },
+it("reports native ownership read failures without responding with partial rows", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    const cfg = {
+      agents: {
+        entries: { main: {} },
+        defaults: { model: { primary: "openai/gpt-5.5" } },
+      },
+    };
+    const key = "agent:main:harness:row-native:changing";
+    for (const sessionKey of [key, "agent:main:dashboard:unaffected"]) {
+      replaceSessionEntrySync(
+        { agentId: "main", sessionKey },
+        {
+          sessionId: sessionKey === key ? "changing" : "unaffected",
+          updatedAt: sessionKey === key ? 2 : 1,
+          ...(sessionKey === key
+            ? { agentHarnessId: "row-native", modelSelectionLocked: true }
+            : {}),
         },
-      };
-      const key = "agent:main:harness:row-native:changing";
-      for (const sessionKey of [key, "agent:main:dashboard:unaffected"]) {
-        replaceSessionEntrySync(
-          { agentId: "main", sessionKey },
-          {
-            sessionId: sessionKey === key ? "changing" : "unaffected",
-            updatedAt: sessionKey === key ? 2 : 1,
-            ...(sessionKey === key
-              ? { agentHarnessId: "row-native", modelSelectionLocked: true }
-              : {}),
-          },
-        );
-      }
-      const previousRegistry = captureActivePluginRegistrySnapshot();
-      const registry = createEmptyPluginRegistry();
-      const failure = new AgentHarnessPreflightError("Synthetic native read failure");
-      let changed = false;
-      let reads = 0;
-      let changing = false;
-      registry.agentHarnesses.push({
-        pluginId: "row-native",
-        source: "test",
-        harness: {
-          id: "row-native",
-          label: "Native changing fixture",
-          supports: () => ({ supported: true }),
-          runAttempt: async () => {
-            throw new Error("Presentation must not run a model");
-          },
-          resolveSessionRuntimeOwnershipAsync: async (params) => {
-            reads++;
-            if (changing && change === "failure") {
-              throw failure;
-            }
-            if (changing && (!changed || change === "continued")) {
-              changed = true;
-              const registration = registry.agentHarnesses[0]!;
-              registration.harness = { ...registration.harness };
-              params.assertCurrent?.();
-            }
-            return {
-              model: "native",
-              auth: "native",
-              modelRef: { provider: "openai", model: "gpt-5.6-sol" },
-            };
-          },
+      );
+    }
+    const previousRegistry = captureActivePluginRegistrySnapshot();
+    const registry = createEmptyPluginRegistry();
+    const failure = new AgentHarnessPreflightError("Synthetic native read failure");
+    let changing = false;
+    registry.agentHarnesses.push({
+      pluginId: "row-native",
+      source: "test",
+      harness: {
+        id: "row-native",
+        label: "Native changing fixture",
+        supports: () => ({ supported: true }),
+        runAttempt: async () => {
+          throw new Error("Presentation must not run a model");
         },
-      });
-      setActivePluginRegistry(registry);
-      const release = retainSessionListForegroundWork();
-      let projection: SessionRowProjection | undefined;
-      try {
-        projection = await createSessionRowProjection({ cfg, modelCatalog: [] });
-        await projection.ensureMaterialized();
-        changing = true;
-        reads = 0;
-        sessionChanges.emit({ agentId: "main", sessionKey: key, factsInvalidated: true });
-        const respond = vi.fn();
-        const request = sessionReadHandlers["sessions.list"]!({
-          req: { type: "req", id: "ownership-change-list", method: "sessions.list" },
-          params: {},
-          client: null,
-          context: bindSessionRowProjection(requestContext(cfg), () => projection!),
-          isWebchatConnect: () => false,
-          respond,
-        });
-        if (change === "failure") {
-          await expect(request).rejects.toBe(failure);
-          expect(respond).not.toHaveBeenCalled();
-        } else {
-          await request;
-          expect(respond).toHaveBeenCalledWith(
-            true,
-            expect.objectContaining({
-              sessions: [
-                expect.objectContaining({
-                  sessionId: "changing",
-                  model: change === "continued" ? "gpt-5.5" : "gpt-5.6-sol",
-                }),
-                expect.objectContaining({ sessionId: "unaffected" }),
-              ],
-            }),
-          );
-          expect(reads).toBe(2);
-          if (change === "continued") {
-            changing = false;
-            respond.mockClear();
-            await sessionReadHandlers["sessions.list"]!({
-              req: { type: "req", id: "ownership-stable-list", method: "sessions.list" },
-              params: {},
-              client: null,
-              context: bindSessionRowProjection(requestContext(cfg), () => projection!),
-              isWebchatConnect: () => false,
-              respond,
-            });
-            expect(respond).toHaveBeenCalledWith(
-              true,
-              expect.objectContaining({
-                sessions: [
-                  expect.objectContaining({ sessionId: "changing", model: "gpt-5.6-sol" }),
-                  expect.objectContaining({ sessionId: "unaffected" }),
-                ],
-              }),
-            );
-            expect(reads).toBe(3);
+        resolveSessionRuntimeOwnershipAsync: async () => {
+          if (changing) {
+            throw failure;
           }
-        }
-      } finally {
-        projection?.dispose();
-        release();
-        restoreActivePluginRegistrySnapshot(previousRegistry);
-      }
+          return {
+            model: "native",
+            auth: "native",
+            modelRef: { provider: "openai", model: "gpt-5.6-sol" },
+          };
+        },
+      },
     });
-  },
-);
+    setActivePluginRegistry(registry);
+    const release = retainSessionListForegroundWork();
+    let projection: SessionRowProjection | undefined;
+    try {
+      projection = await createSessionRowProjection({ cfg, modelCatalog: [] });
+      await projection.ensureMaterialized();
+      changing = true;
+      sessionChanges.emit({ agentId: "main", sessionKey: key, factsInvalidated: true });
+      const respond = vi.fn();
+      const request = sessionReadHandlers["sessions.list"]!({
+        req: { type: "req", id: "ownership-change-list", method: "sessions.list" },
+        params: {},
+        client: null,
+        context: bindSessionRowProjection(requestContext(cfg), () => projection!),
+        isWebchatConnect: () => false,
+        respond,
+      });
+      await expect(request).rejects.toBe(failure);
+      expect(respond).not.toHaveBeenCalled();
+    } finally {
+      projection?.dispose();
+      release();
+      restoreActivePluginRegistrySnapshot(previousRegistry);
+    }
+  });
+});
 
 it("prepares native model ownership in workers and invalidates only its committed binding", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {

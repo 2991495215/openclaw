@@ -88,9 +88,17 @@ describe("empty workspace prepared worker reserves", () => {
       projectPath: uncommittedRoot,
       executionMode: "worker-turn",
     } as const;
-    expect((await owner.prepareIntent("development", uncommitted)).preparationKey).toBeUndefined();
+    const uninitialized = await owner.prepareIntent("development", uncommitted);
+    expect(
+      uninitialized.profileSnapshot.runtimePreparation ??
+        uninitialized.profileSnapshot.project?.preparation,
+    ).toBeUndefined();
     await requireGit(uncommittedRoot, ["init", "--quiet", "-b", "main"]);
-    expect((await owner.prepareIntent("development", uncommitted)).preparationKey).toBeUndefined();
+    const initialized = await owner.prepareIntent("development", uncommitted);
+    expect(
+      initialized.profileSnapshot.runtimePreparation ??
+        initialized.profileSnapshot.project?.preparation,
+    ).toBeUndefined();
 
     const firstRoot = await repository("first-empty");
     const source = await owner.createWithProfile("development", "first-allocation", {
@@ -123,7 +131,7 @@ describe("empty workspace prepared worker reserves", () => {
       projectPath: secondRoot,
       executionMode: "worker-turn",
     });
-    expect(second.preparationKey).toBe(key);
+    expect(second.profileSnapshot.runtimePreparation?.key).toBe(key);
     expect(second.profileSnapshot.project).toBeUndefined();
     expect(pool.candidates(second)).toEqual([spare]);
 
@@ -132,7 +140,7 @@ describe("empty workspace prepared worker reserves", () => {
       projectPath: projectRoot,
       executionMode: "worker-turn",
     });
-    expect(projectIntent.preparationKey).not.toBe(key);
+    expect(projectIntent.profileSnapshot.project?.preparation?.key).not.toBe(key);
     expect(pool.candidates(projectIntent)).toEqual([]);
     const project = await fixture.attach(
       await owner.createWithProfile(
@@ -144,7 +152,8 @@ describe("empty workspace prepared worker reserves", () => {
     );
     await pool.maintain(project.environmentId);
     const projectSpare = available().find(
-      (record) => record.preparation?.key === projectIntent.preparationKey,
+      (record) =>
+        record.preparation?.key === projectIntent.profileSnapshot.project?.preparation?.key,
     );
     expect(projectSpare).toBeDefined();
     expect(pool.candidates(projectIntent)).toEqual([projectSpare]);

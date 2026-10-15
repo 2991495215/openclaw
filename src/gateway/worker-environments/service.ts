@@ -607,8 +607,6 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
       preparedPool.candidates(intent).map(environmentAccess.project),
     schedulePreparedRefill,
     setHumanPresence: preparedPool.setHumanPresence,
-    inventoryVersion: store.inventoryVersion,
-    machineShapeVersion: providerLifecycle.machineShapeVersion,
     subscribeMachineShapeChanged: providerLifecycle.subscribeMachineShapeChanged,
     readMachineShape: (environmentId: string, prepared?: WorkerEnvironmentPlacementFacts) =>
       providerLifecycle.readMachineShape(prepared ?? store.get(environmentId)),

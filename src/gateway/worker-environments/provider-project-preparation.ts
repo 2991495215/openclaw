@@ -3,18 +3,30 @@ import type { WorkerProjectPreparationIdentity } from "./preparation-identity.sc
 import { createWorkerProjectPreparation } from "./project-preparation.js";
 import { prepareRepositoryWorkerProjectSource } from "./repository-project-admission.js";
 import type { WorkerEnvironmentRecord } from "./store.js";
-import type { WorkerProjectSnapshot } from "./workspace-git-base.js";
+import { prepareWorkerProjectSnapshot, type WorkerProjectSnapshot } from "./workspace-git-base.js";
 
 export async function prepareWorkerProviderProject(params: {
   project: WorkerProjectSnapshot;
   preparation: WorkerProjectPreparationIdentity | undefined;
-  record: Pick<WorkerEnvironmentRecord, "preparation" | "createdAtMs">;
+  record: Pick<WorkerEnvironmentRecord, "preparation" | "createdAtMs" | "state">;
   namespace: string;
   getConfig: () => OpenClawConfig;
   requireCurrent: () => void;
   signal?: AbortSignal;
 }) {
   const { project, preparation, record } = params;
+  // Refills reuse retained facts. Paid replays must still recover after source loss.
+  if (record.preparation && record.state === "requested" && "root" in project) {
+    const current = await prepareWorkerProjectSnapshot({
+      localPath: project.root,
+      namespace: params.namespace,
+      baseCommit: project.baseCommit,
+      signal: params.signal,
+    });
+    if (!current || current.key !== project.key || current.baseCommit !== project.baseCommit) {
+      throw new Error("Prepared local project source no longer matches its admission");
+    }
+  }
   const repository =
     "source" in project
       ? await prepareRepositoryWorkerProjectSource({

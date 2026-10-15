@@ -7,7 +7,7 @@ import { createPreparedGatewayModelCatalog } from "./server-model-catalog-view.j
 import type { PreparedGatewayModelCatalog } from "./server-model-catalog.types.js";
 import { createSessionRowProjectionCatalog } from "./session-row-projection-catalog.js";
 
-it("retains completed catalog facts during runtime replacement and adopts completed or failed publications", async () => {
+it("retains completed catalog facts until a complete replacement is published", async () => {
   const pluginRegistry = createEmptyPluginRegistry();
   const metadataSnapshot = createPluginMetadataSnapshotFixture();
   const other = createPreparedGatewayModelCatalog({
@@ -64,9 +64,7 @@ it("retains completed catalog facts during runtime replacement and adopts comple
     await catalog.refresh();
     expect(catalog.current).toBe(original);
     expect(refreshed).not.toHaveBeenCalled();
-    expect(read).not.toHaveBeenCalled();
-
-    // Provider publication does not finish the pending runtime replacement.
+    // Incomplete reads retain the cache without a replacement-promise gate.
     notifyPreparedModelRuntimePublication({ phase: "catalog-published" });
     await catalog.refresh();
     expect(catalog.current).toBe(original);
@@ -77,7 +75,6 @@ it("retains completed catalog facts during runtime replacement and adopts comple
     await catalog.refresh();
     expect(catalog.current).toBe(original);
     expect(refreshed).not.toHaveBeenCalled();
-    expect(read).not.toHaveBeenCalled();
 
     next = view(8_192);
     successor.resolve();
@@ -104,8 +101,7 @@ it("retains completed catalog facts during runtime replacement and adopts comple
     failed.reject(new Error("Refresh failed"));
     await failed.promise.catch(() => {});
     await catalog.refresh();
-    expect(refreshed).toHaveBeenLastCalledWith(undefined);
-    expect(catalog.current).toBe(next);
+    expect(catalog.current).not.toBe(next);
 
     next = new Map([["other", other]]);
     notifyPreparedModelRuntimePublication({ phase: "catalog-published" });

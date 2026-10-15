@@ -1,10 +1,6 @@
-import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import {
-  createGatewaySchedulerClock,
-  createTestGatewayScheduler,
-} from "../test-utils/gateway-scheduler-clock.js";
 
 const persistLifecycle = vi.hoisted(() => vi.fn());
 const ownerStatus = vi.hoisted(() => vi.fn());
@@ -42,10 +38,7 @@ const terminal = {
 };
 
 function fixture() {
-  const time = createGatewaySchedulerClock();
-  const scheduler = createTestGatewayScheduler(time.clock);
-  onTestFinished(() => scheduler.stop());
-  return { owner: createSessionLifecyclePersistenceOwner(scheduler), scheduler, time };
+  return { owner: createSessionLifecyclePersistenceOwner() };
 }
 
 describe("session lifecycle persistence owner", () => {
@@ -126,7 +119,7 @@ describe("session lifecycle persistence owner", () => {
         }
         phases.push(params.event.data?.phase);
       });
-      const { owner, scheduler } = fixture();
+      const { owner } = fixture();
       const start = owner.persist({
         ...terminal,
         sessionKey: globalAlias ? "agent:research:main" : terminal.sessionKey,
@@ -136,7 +129,6 @@ describe("session lifecycle persistence owner", () => {
         ...terminal,
         ...(globalAlias ? { agentId: "research", sessionKey: "global" } : {}),
       });
-      scheduler.beginClose();
       const draining = owner.drain();
       try {
         expect(persistLifecycle).toHaveBeenCalledOnce();
@@ -151,13 +143,12 @@ describe("session lifecycle persistence owner", () => {
   );
 
   it.each([false, true])(
-    "keeps an expired write available until settlement (consumed while pending: %s)",
+    "reuses the original event's write before and after settlement (consumed while pending: %s)",
     async (consumeWhilePending) => {
       const deferred = createDeferred();
       persistLifecycle.mockReturnValue(deferred.promise);
-      const { owner, time } = fixture();
+      const { owner } = fixture();
       const prepared = owner.observe(terminal);
-      await time.advanceBy(60_000);
 
       expect(owner.observe(terminal)).toBe(prepared);
       if (consumeWhilePending) {
@@ -165,11 +156,7 @@ describe("session lifecycle persistence owner", () => {
       }
       deferred.resolve();
       await prepared;
-      if (!consumeWhilePending) {
-        await expect(owner.persist(terminal)).rejects.toMatchObject({
-          code: "ERR_STALE_GATEWAY_LIFECYCLE",
-        });
-      }
+      expect(owner.persist(terminal)).toBe(prepared);
       expect(persistLifecycle).toHaveBeenCalledOnce();
       await owner.drain();
     },
@@ -257,14 +244,15 @@ describe("session lifecycle persistence owner", () => {
     { name: "native cancellation", data: { phase: "error", aborted: true, stopReason: "aborted" } },
     { name: "fallback exhaustion", data: { phase: "error", fallbackExhaustedFailure: true } },
     { name: "settled execution failure", data: { phase: "error", executionSettled: true } },
-  ])("does not restart $name after its prepared promise expires", async ({ data }) => {
+  ])("reuses settled $name only for the original runtime event", async ({ data }) => {
     persistLifecycle.mockResolvedValue(undefined);
-    const { owner, time } = fixture();
+    const { owner } = fixture();
     const event = { ...terminal, event: { ...terminal.event, data } };
-    await owner.observe(event);
-    await time.advanceBy(60_000);
+    const prepared = owner.observe(event);
+    await prepared;
 
-    await expect(owner.persist(event)).rejects.toMatchObject({
+    expect(owner.persist(event)).toBe(prepared);
+    await expect(owner.persist({ ...event, event: { ...event.event } })).rejects.toMatchObject({
       code: "ERR_STALE_GATEWAY_LIFECYCLE",
     });
     expect(persistLifecycle).toHaveBeenCalledOnce();
