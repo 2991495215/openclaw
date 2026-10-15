@@ -151,6 +151,7 @@ export const CANONICAL_COERCION_HELPER_OWNERS = [
       "isRecord",
       "isStringRecord",
       "readStringField",
+      "removeUndefinedProperties",
     ],
   },
   {

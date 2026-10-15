@@ -1,5 +1,6 @@
 // Voice Call tests cover config plugin behavior.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { z } from "zod";
 import {
   VoiceCallConfigSchema,
   resolveTwilioAuthToken,
@@ -359,10 +360,10 @@ describe("validateProviderConfig", () => {
     },
   ] satisfies Array<{
     name: string;
-    input: Parameters<typeof resolveVoiceCallConfig>[0];
+    input: z.input<typeof VoiceCallConfigSchema>;
     error: string;
   }>)("$name", ({ input, error }) => {
-    const config = resolveVoiceCallConfig({ ...createBaseConfig("twilio"), ...input });
+    const config = normalizeVoiceCallConfig({ ...createBaseConfig("twilio"), ...input });
     const result = validateProviderConfig(config);
     expect(result.valid).toBe(false);
     expect(result.errors).toContain(error);
