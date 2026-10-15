@@ -20,11 +20,8 @@ import { LearnMoreLink, SettingsPageHeader } from "../../components/solid/settin
 import { SettingsWorkspace } from "../../components/solid/settings-workspace.tsx";
 import { resolveChannelPairingAuthSignature } from "../../lib/channels/index.ts";
 import { formatUiError } from "../../lib/format-error.ts";
-import {
-  createGatewayConnectionLifecycle,
-  type GatewayConnectionScope,
-} from "../../lib/gateway-connection-lifecycle.ts";
-import { projectGateway } from "../../lib/reactive/application.ts";
+import type { GatewayConnectionScope } from "../../lib/gateway-connection-lifecycle.ts";
+import { GatewayPageBinding, type GatewayPageChange } from "../../lib/gateway-page-binding.ts";
 import { useApplication } from "../../lib/reactive/context.ts";
 import { projectChannels, projectRuntimeConfig } from "../../lib/reactive/domain-capabilities.ts";
 import { t } from "../../lib/reactive/i18n.ts";
@@ -68,8 +65,6 @@ class ChannelsPageController {
   private pairingNotice: string | null = null;
   private active = true;
   private readonly cleanups: Array<() => void> = [];
-  private currentGateway?: ApplicationContext["gateway"];
-  private currentClient: ApplicationContext["gateway"]["snapshot"]["client"] = null;
   private pairingTimer: ReturnType<typeof setInterval> | null = null;
   private pairingScrollPending = false;
 
@@ -106,18 +101,18 @@ class ChannelsPageController {
   private schemaLoadStarted = false;
   private channelsSource?: ApplicationContext["channels"];
   private gatewayPairingAuthSignature: string | null = null;
-  private readonly gateway = createGatewayConnectionLifecycle({ client: null, phase: "stopped" });
+  private readonly gateway = new GatewayPageBinding(() => this.requestUpdate(), {
+    getGateway: () => this.context.gateway,
+    onSnapshot: (change) => this.handleGatewaySnapshot(change),
+  });
 
   bindContext(context: ApplicationContext) {
     for (const cleanup of this.cleanups.splice(0)) {
       cleanup();
     }
-    const gateway = projectGateway(context.gateway);
     const channels = projectChannels(context.channels);
     const config = projectRuntimeConfig(context.runtimeConfig);
-    const applyGateway = () => this.handleGatewaySnapshot(context.gateway);
-    this.cleanups.push(gateway.subscribe(applyGateway), () => gateway.dispose());
-    applyGateway();
+    this.gateway.refresh();
     if (this.channelsSource && this.channelsSource !== context.channels) {
       this.invalidateNostrForm();
     }
@@ -151,20 +146,10 @@ class ChannelsPageController {
     }
   }
 
-  private handleGatewaySnapshot(source: ApplicationContext["gateway"]) {
-    if (this.context.gateway !== source) {
-      return;
-    }
-    const snapshot = source.snapshot;
-    const initial = this.currentGateway === undefined;
-    const identityChanged =
-      !initial && (this.currentGateway !== source || this.currentClient !== snapshot.client);
-    const transportChanged = this.gateway.transition(snapshot);
-    if (identityChanged && !transportChanged) {
-      this.gateway.invalidate();
-    }
-    this.currentGateway = source;
-    this.currentClient = snapshot.client;
+  private handleGatewaySnapshot(change: GatewayPageChange) {
+    const { snapshot, initial, identityChanged } = change;
+    const transportChanged =
+      change.sourceChanged || change.clientChanged || change.connectionChanged;
     const pairingAccess = hasOperatorPairingAccess(snapshot.hello?.auth ?? null);
     const pairingAuthSignature = resolveChannelPairingAuthSignature(snapshot);
     const pairingAuthChanged =
@@ -196,7 +181,6 @@ class ChannelsPageController {
     } else {
       this.schemaLoadStarted = false;
     }
-    this.requestUpdate();
   }
 
   private ensureInitialData() {
@@ -326,7 +310,7 @@ class ChannelsPageController {
   }
 
   private beginNostrOperation(): NostrOperation | null {
-    const gateway = this.currentGateway;
+    const gateway = this.gateway.gateway;
     const channels = this.context.channels;
     let scope = this.gateway.capture();
     if (
