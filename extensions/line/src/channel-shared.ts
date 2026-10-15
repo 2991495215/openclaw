@@ -1,26 +1,19 @@
 import { describeWebhookAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
+import { buildChannelMetaFromManifest } from "openclaw/plugin-sdk/channel-core";
 import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
+import pluginPackage from "../package.json" with { type: "json" };
 import { hasLineCredentials } from "./account-helpers.js";
 import { lineConfigAdapter } from "./config-adapter.js";
 import { LineChannelConfigSchema } from "./config-schema.js";
 import type { ResolvedLineAccount } from "./types.js";
 
-const lineChannelMeta = {
-  id: "line",
-  label: "LINE",
-  selectionLabel: "LINE (Messaging API)",
-  detailLabel: "LINE Bot",
-  docsPath: "/channels/line",
-  docsLabel: "line",
-  blurb: "LINE Messaging API bot for Japan/Taiwan/Thailand markets.",
-  systemImage: "message.fill",
-} as const;
-
 export const lineChannelPluginCommon = {
-  meta: {
-    ...lineChannelMeta,
-    quickstartAllowFrom: true,
-  },
+  meta: buildChannelMetaFromManifest({
+    ...pluginPackage.openclaw.channel,
+    blurb: "LINE Messaging API bot for Japan/Taiwan/Thailand markets.",
+    systemImage: "message.fill",
+    order: undefined,
+  }),
   capabilities: {
     chatTypes: ["direct", "group"],
     reactions: false,

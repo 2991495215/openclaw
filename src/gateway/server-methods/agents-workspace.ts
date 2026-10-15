@@ -15,7 +15,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { WORKSPACE_PREVIEW_MAX_BYTES } from "../workspace-file-limits.js";
 import { resolveConfiguredAgentIdOrRespondError } from "./agent-id-shared.js";
 import type { GatewayRequestHandlers, RespondFn } from "./types.js";
-import { assertValidParams } from "./validation.js";
+import { assertValidParams, defineValidatedGatewayHandler } from "./validation.js";
 import {
   decodeUtf8Strict,
   listWorkspacePath,
@@ -102,58 +102,52 @@ function resolveWorkspaceScopeOrRespond(
 }
 
 export const agentsWorkspaceHandlers: GatewayRequestHandlers = {
-  "agents.workspace.list": async ({ params, respond, context }) => {
-    if (
-      !assertValidParams(
-        params,
-        validateAgentsWorkspaceListParams,
-        "agents.workspace.list",
-        respond,
-      )
-    ) {
-      return;
-    }
-    const scope = resolveWorkspaceScopeOrRespond(params, context.getRuntimeConfig(), respond);
-    if (!scope) {
-      return;
-    }
-    const { agentId, workspaceDir, browserPath } = scope;
-    const stat = await statWorkspacePath(workspaceDir, browserPath);
-    const dirents = stat?.isDirectory
-      ? await listWorkspacePath(workspaceDir, browserPath)
-      : undefined;
-    if (!dirents) {
-      respond(
-        false,
-        undefined,
-        workspaceError("workspace_path_not_found", "workspace directory not found", {
-          path: browserPath,
-        }),
+  "agents.workspace.list": defineValidatedGatewayHandler(
+    "agents.workspace.list",
+    validateAgentsWorkspaceListParams,
+    async ({ params, respond, context }) => {
+      const scope = resolveWorkspaceScopeOrRespond(params, context.getRuntimeConfig(), respond);
+      if (!scope) {
+        return;
+      }
+      const { agentId, workspaceDir, browserPath } = scope;
+      const stat = await statWorkspacePath(workspaceDir, browserPath);
+      const dirents = stat?.isDirectory
+        ? await listWorkspacePath(workspaceDir, browserPath)
+        : undefined;
+      if (!dirents) {
+        respond(
+          false,
+          undefined,
+          workspaceError("workspace_path_not_found", "workspace directory not found", {
+            path: browserPath,
+          }),
+        );
+        return;
+      }
+      const entries = sortWorkspaceEntries(
+        dirents
+          .map((dirent) =>
+            toWorkspaceBrowserEntry(
+              browserPath ? `${browserPath}/${dirent.name}` : dirent.name,
+              dirent,
+            ),
+          )
+          .filter((entry): entry is AgentsWorkspaceEntry => entry !== undefined),
       );
-      return;
-    }
-    const entries = sortWorkspaceEntries(
-      dirents
-        .map((dirent) =>
-          toWorkspaceBrowserEntry(
-            browserPath ? `${browserPath}/${dirent.name}` : dirent.name,
-            dirent,
-          ),
-        )
-        .filter((entry): entry is AgentsWorkspaceEntry => entry !== undefined),
-    );
-    const offset = Math.min(params.offset ?? 0, entries.length);
-    const limit = Math.min(params.limit ?? DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
-    const parent = path.dirname(browserPath);
-    respond(true, {
-      agentId,
-      path: browserPath,
-      ...(browserPath ? { parentPath: parent === "." ? "" : parent } : {}),
-      entries: entries.slice(offset, offset + limit),
-      totalEntries: entries.length,
-      offset,
-    });
-  },
+      const offset = Math.min(params.offset ?? 0, entries.length);
+      const limit = Math.min(params.limit ?? DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
+      const parent = path.dirname(browserPath);
+      respond(true, {
+        agentId,
+        path: browserPath,
+        ...(browserPath ? { parentPath: parent === "." ? "" : parent } : {}),
+        entries: entries.slice(offset, offset + limit),
+        totalEntries: entries.length,
+        offset,
+      });
+    },
+  ),
   "agents.workspace.get": async ({ params, respond, context }) => {
     if (
       !assertValidParams(params, validateAgentsWorkspaceGetParams, "agents.workspace.get", respond)

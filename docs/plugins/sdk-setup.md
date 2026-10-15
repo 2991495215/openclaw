@@ -382,6 +382,8 @@ For hot setup-only paths, prefer the narrow setup helper interfaces over the bro
 
 Use the broader `plugin-sdk/setup` interface when you want the full shared setup toolbox, including config-patch helpers such as `moveSingleAccountChannelSectionToDefaultAccount(...)`.
 
+`defineTokenCredential(...)` defaults `configKey` to `inputKey`. For credentials supplied by an environment variable only on the default account, set `defaultAccountEnv` to its name; the helper supplies the preferred variable, account restriction, and trimmed inspection value. Keep custom `allowEnv` and `envValue` callbacks for other channel-owned policies.
+
 Use `createSetupTranslator(...)` for fixed setup wizard copy. It uses the first nonblank value from `OPENCLAW_LOCALE`, `LC_ALL`, `LC_MESSAGES`, and `LANG`, in that order, then falls back to English. Set `OPENCLAW_LOCALE=en` for an explicit English override. Keep plugin-specific setup text in plugin-owned code and use shared catalog keys only for common setup labels, status text, and official bundled plugin setup copy.
 
 The setup patch adapters do no eager work when a plugin imports them. Their bundled single-account promotion contract-surface lookup is lazy, so importing `plugin-sdk/setup-runtime` does not eagerly load bundled contract-surface discovery before the adapter is actually used.

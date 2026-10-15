@@ -4,7 +4,7 @@ import {
   createScopedDmSecurityResolver,
 } from "openclaw/plugin-sdk/channel-config-helpers";
 import type { ChannelGatewayContext } from "openclaw/plugin-sdk/channel-contract";
-import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import { buildChannelMetaFromManifest, type ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import {
   waitUntilAbort,
   createMessageReceiptFromOutboundResults,
@@ -36,6 +36,7 @@ import {
   isInsideCode,
   sanitizeAssistantVisibleText,
 } from "openclaw/plugin-sdk/text-chunking";
+import pluginPackage from "../package.json" with { type: "json" };
 import { listAccountIds, resolveAccount } from "./accounts.js";
 import { synologyChatApprovalAuth } from "./approval-auth.js";
 import { SYNOLOGY_CHAT_TEXT_CHUNK_LIMIT, sendHostedFileUrl, sendMessage } from "./client.js";
@@ -271,15 +272,12 @@ const synologyChatMessageAdapter = defineChannelMessageAdapter({
 
 export const synologyChatPlugin = {
   id: CHANNEL_ID,
-  meta: {
-    id: CHANNEL_ID,
-    label: "Synology Chat",
-    selectionLabel: "Synology Chat (Webhook)",
+  meta: buildChannelMetaFromManifest({
+    ...pluginPackage.openclaw.channel,
     detailLabel: "Synology Chat (Webhook)",
-    docsPath: "/channels/synology-chat",
+    docsLabel: undefined,
     blurb: "Connect your Synology NAS Chat to OpenClaw",
-    order: 90,
-  },
+  }),
   capabilities: {
     chatTypes: ["direct" as const],
     media: true,

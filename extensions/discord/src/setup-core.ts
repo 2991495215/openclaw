@@ -149,24 +149,18 @@ export function createDiscordSetupWizardBase(handlers: {
     credentials: [
       defineTokenCredential({
         inputKey: "token",
-        configKey: "token",
         providerHint: channel,
         credentialLabel: t("wizard.discord.botToken"),
-        preferredEnvVar: "DISCORD_BOT_TOKEN",
+        defaultAccountEnv: "DISCORD_BOT_TOKEN",
         helpTitle: t("wizard.discord.botToken"),
         helpLines: DISCORD_TOKEN_HELP_LINES,
         envPrompt: t("wizard.discord.tokenEnvPrompt"),
         keepPrompt: t("wizard.discord.tokenKeepPrompt"),
         inputPrompt: t("wizard.discord.tokenInputPrompt"),
-        allowEnv: ({ accountId }: { accountId: string }) => accountId === DEFAULT_ACCOUNT_ID,
         resolveAccount: inspectDiscordSetupAccount,
         accountConfigured: (account) => account.configured,
         hasConfiguredValue: (account) => account.tokenStatus !== "missing",
         resolvedValue: (account) => normalizeOptionalString(account.token),
-        envValue: ({ accountId }) =>
-          accountId === DEFAULT_ACCOUNT_ID
-            ? normalizeOptionalString(process.env.DISCORD_BOT_TOKEN)
-            : undefined,
       }),
     ],
     groupAccess: createAccountScopedGroupAccessSection({

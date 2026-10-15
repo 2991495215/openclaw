@@ -5,7 +5,8 @@ import {
   createScopedChannelConfigAdapter,
 } from "openclaw/plugin-sdk/channel-config-helpers";
 import { buildChannelConfigSchema } from "openclaw/plugin-sdk/channel-config-schema";
-import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import { buildChannelMetaFromManifest, type ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import pluginPackage from "../package.json" with { type: "json" };
 import {
   listZalouserAccountIds,
   resolveDefaultZalouserAccountId,
@@ -15,18 +16,6 @@ import {
 } from "./accounts.js";
 import { ZalouserConfigSchema } from "./config-schema.js";
 import { zalouserDoctor } from "./doctor.js";
-
-const zalouserMeta: ChannelPlugin<ResolvedZalouserAccount>["meta"] = {
-  id: "zalouser",
-  label: "Zalo Personal",
-  selectionLabel: "Zalo (Personal Account)",
-  docsPath: "/channels/zalouser",
-  docsLabel: "zalouser",
-  blurb: "Zalo personal account via QR code login.",
-  aliases: ["zlu"],
-  order: 85,
-  quickstartAllowFrom: false,
-};
 
 const zalouserConfigAdapter = createScopedChannelConfigAdapter<ResolvedZalouserAccount>({
   sectionKey: "zalouser",
@@ -67,7 +56,7 @@ export function createZalouserPluginBase(params: {
 > {
   return {
     id: "zalouser",
-    meta: zalouserMeta,
+    meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
     setupWizard: params.setupWizard,
     capabilities: {
       chatTypes: ["direct", "group"],

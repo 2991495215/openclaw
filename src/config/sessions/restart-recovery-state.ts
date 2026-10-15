@@ -159,6 +159,76 @@ function normalizeHarnessCompletionRecovery(value: unknown): HarnessCompletionRe
   };
 }
 
+/** Bound live and persisted delivery facts without retaining transport-owned objects. */
+export function normalizeRestartRecoveryDeliveryStatus(
+  value: unknown,
+  // Live captures supply selected outcomes; persisted receipts require nonnegative indices.
+  prepared?: { payloadOutcomes: readonly unknown[] | undefined; reason: unknown },
+): RestartRecoveryTerminalDeliveryEvidenceResult["deliveryStatus"] {
+  const rawStatus = asOptionalObjectRecord(value);
+  if (!rawStatus) {
+    return undefined;
+  }
+  const status = rawStatus.status;
+  if (
+    status !== "failed" &&
+    status !== "partial_failed" &&
+    status !== "sent" &&
+    status !== "suppressed"
+  ) {
+    return undefined;
+  }
+  const retainedOutcomes = prepared
+    ? prepared.payloadOutcomes
+    : Array.isArray(rawStatus.payloadOutcomes)
+      ? rawStatus.payloadOutcomes.slice(0, 64)
+      : undefined;
+  const payloadOutcomes: NonNullable<
+    RestartRecoveryTerminalDeliveryEvidenceResult["deliveryStatus"]
+  >["payloadOutcomes"] = retainedOutcomes
+    ? retainedOutcomes.flatMap((outcome) => {
+        if (!isRecord(outcome)) {
+          return [];
+        }
+        const outcomeStatus = outcome.status;
+        if (
+          (outcomeStatus !== "failed" &&
+            outcomeStatus !== "sent" &&
+            outcomeStatus !== "suppressed") ||
+          typeof outcome.index !== "number" ||
+          !Number.isInteger(outcome.index) ||
+          (!prepared && outcome.index < 0)
+        ) {
+          return [];
+        }
+        const reason = normalizeRunId(outcome.reason)?.slice(0, 256);
+        return [
+          {
+            index: outcome.index,
+            status: outcomeStatus,
+            ...(reason ? { reason } : {}),
+            ...(typeof outcome.sentBeforeError === "boolean"
+              ? { sentBeforeError: outcome.sentBeforeError }
+              : {}),
+          },
+        ];
+      })
+    : undefined;
+  const errorMessage = normalizeRunId(rawStatus.errorMessage);
+  const reason = normalizeRunId(prepared ? prepared.reason : rawStatus.reason)?.slice(0, 256);
+  return {
+    status,
+    ...(typeof rawStatus.resultCount === "number" &&
+    Number.isSafeInteger(rawStatus.resultCount) &&
+    rawStatus.resultCount >= 0
+      ? { resultCount: rawStatus.resultCount }
+      : {}),
+    ...(errorMessage ? { errorMessage } : {}),
+    ...(reason ? { reason } : {}),
+    ...(payloadOutcomes?.length ? { payloadOutcomes } : {}),
+  };
+}
+
 function normalizeTerminalDeliveryEvidenceResult(
   record: unknown,
 ): RestartRecoveryTerminalDeliveryEvidenceResult | undefined {
@@ -200,63 +270,7 @@ function normalizeTerminalDeliveryEvidenceResult(
     record.payloadsTruncated === true || (rawPayloads?.length ?? 0) > 64
       ? (true as const)
       : undefined;
-  const rawStatus = asOptionalObjectRecord(record.deliveryStatus);
-  const status =
-    rawStatus?.status === "failed" ||
-    rawStatus?.status === "partial_failed" ||
-    rawStatus?.status === "sent" ||
-    rawStatus?.status === "suppressed"
-      ? rawStatus.status
-      : undefined;
-  const payloadOutcomes: NonNullable<
-    RestartRecoveryTerminalDeliveryEvidenceResult["deliveryStatus"]
-  >["payloadOutcomes"] = Array.isArray(rawStatus?.payloadOutcomes)
-    ? rawStatus.payloadOutcomes.slice(0, 64).flatMap((outcome) => {
-        if (!isRecord(outcome)) {
-          return [];
-        }
-        const outcomeStatus =
-          outcome.status === "failed" ||
-          outcome.status === "sent" ||
-          outcome.status === "suppressed"
-            ? outcome.status
-            : undefined;
-        if (
-          !outcomeStatus ||
-          typeof outcome.index !== "number" ||
-          !Number.isInteger(outcome.index) ||
-          outcome.index < 0
-        ) {
-          return [];
-        }
-        const reason = normalizeRunId(outcome.reason)?.slice(0, 256);
-        return [
-          {
-            index: outcome.index,
-            status: outcomeStatus,
-            ...(reason ? { reason } : {}),
-            ...(typeof outcome.sentBeforeError === "boolean"
-              ? { sentBeforeError: outcome.sentBeforeError }
-              : {}),
-          },
-        ];
-      })
-    : undefined;
-  const errorMessage = normalizeRunId(rawStatus?.errorMessage);
-  const reason = normalizeRunId(rawStatus?.reason)?.slice(0, 256);
-  const deliveryStatus: RestartRecoveryTerminalDeliveryEvidenceResult["deliveryStatus"] = status
-    ? {
-        status,
-        ...(typeof rawStatus?.resultCount === "number" &&
-        Number.isSafeInteger(rawStatus.resultCount) &&
-        rawStatus.resultCount >= 0
-          ? { resultCount: rawStatus.resultCount }
-          : {}),
-        ...(errorMessage ? { errorMessage } : {}),
-        ...(reason ? { reason } : {}),
-        ...(payloadOutcomes?.length ? { payloadOutcomes } : {}),
-      }
-    : undefined;
+  const deliveryStatus = normalizeRestartRecoveryDeliveryStatus(record.deliveryStatus);
   const rawMessagingToolSentTargets = Array.isArray(record.messagingToolSentTargets)
     ? record.messagingToolSentTargets
     : undefined;

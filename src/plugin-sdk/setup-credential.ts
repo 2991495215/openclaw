@@ -1,9 +1,11 @@
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type {
   ChannelSetupWizardCredential,
   ChannelSetupWizardTextInput,
 } from "../channels/plugins/setup-wizard-types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { hasConfiguredSecretInput } from "../config/types.secrets.js";
+import { DEFAULT_ACCOUNT_ID } from "../routing/account-id.js";
 
 type ResolvedCredentialAccount = {
   config: object;
@@ -22,7 +24,9 @@ type TokenCredentialParams<TAccount extends ResolvedCredentialAccount> = Omit<
   ChannelSetupWizardCredential,
   "inspect" | "applySet" | "applyUseEnv"
 > & {
-  configKey: string;
+  configKey?: string;
+  /** Environment credentials belong to the implicit default account, never named accounts. */
+  defaultAccountEnv?: string;
   configuredFields?: string[];
   resolveAccount: (params: { cfg: OpenClawConfig; accountId: string }) => TAccount;
   accountConfigured?: (account: TAccount) => boolean;
@@ -47,13 +51,16 @@ export function defineTokenCredential<TAccount extends ResolvedCredentialAccount
   params: TokenCredentialParams<TAccount>,
 ): ChannelSetupWizardCredential {
   const {
-    configKey,
+    configKey = params.inputKey,
+    defaultAccountEnv,
     configuredFields = [configKey],
     resolveAccount,
     accountConfigured,
     hasConfiguredValue: resolveHasConfiguredValue,
     resolvedValue,
     envValue,
+    preferredEnvVar = defaultAccountEnv,
+    allowEnv = defaultAccountEnv ? ({ accountId }) => accountId === DEFAULT_ACCOUNT_ID : undefined,
     patchAccount,
     set,
     useEnv,
@@ -62,6 +69,8 @@ export function defineTokenCredential<TAccount extends ResolvedCredentialAccount
 
   return {
     ...credential,
+    preferredEnvVar,
+    allowEnv,
     inspect: ({ cfg, accountId }) => {
       const account = resolveAccount({ cfg, accountId });
       const config = account.config as Record<string, unknown>;
@@ -74,7 +83,11 @@ export function defineTokenCredential<TAccount extends ResolvedCredentialAccount
           accountConfigured?.(account) ?? Boolean(inspectedResolvedValue || hasConfiguredValue),
         hasConfiguredValue,
         resolvedValue: inspectedResolvedValue,
-        envValue: envValue?.({ accountId }),
+        envValue: envValue
+          ? envValue({ accountId })
+          : defaultAccountEnv && accountId === DEFAULT_ACCOUNT_ID
+            ? normalizeOptionalString(process.env[defaultAccountEnv])
+            : undefined,
       };
     },
     ...(patchAccount && useEnv

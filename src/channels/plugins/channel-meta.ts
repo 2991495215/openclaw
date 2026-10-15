@@ -4,6 +4,11 @@ import type { ChannelMeta } from "./types.core.js";
 
 type ArrayFieldMode = "defined" | "non-empty";
 
+/** Project a plugin's own static manifest without loading the host channel catalog. */
+export function buildChannelMetaFromManifest(channel: ChannelMeta): ChannelMeta {
+  return buildManifestChannelMeta({ ...channel, channel, arrayFieldMode: "defined" });
+}
+
 export function buildManifestChannelMeta(params: {
   id: string;
   channel: PluginPackageChannel;

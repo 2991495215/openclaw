@@ -25,3 +25,4 @@ export {
   tryReadSecretFileSync,
 } from "./core.js";
 export { createChannelConfigUiHints } from "./channel-config-ui-hints.js";
+export { buildChannelMetaFromManifest } from "../channels/plugins/channel-meta.js";
