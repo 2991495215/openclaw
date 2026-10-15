@@ -35,7 +35,6 @@ import { CodexCatalogSourceBackoff } from "./session-catalog-source-backoff.js";
 import type {
   CodexSessionCatalogControl,
   CodexSessionCatalogControlFactory,
-  CodexSessionCatalogPageParams,
 } from "./session-catalog-types.js";
 
 type CodexCatalogRequestOptions = {
@@ -328,7 +327,6 @@ export function createCodexSessionCatalogControl(params: {
     agentId: string | undefined,
     source?: CodexCatalogControlSource,
   ): CodexSessionCatalogControl => {
-    source?.assertCurrent();
     const withPinnedConnection: CodexSessionCatalogControl["withPinnedConnection"] = async (
       run,
     ) => {
@@ -413,10 +411,6 @@ export function createCodexSessionCatalogControl(params: {
       ...control,
       requireEligibleThread: (threadId) =>
         withPinnedConnection((pinned) => pinned.requireEligibleThread(threadId)),
-      async listPage(pageParams: CodexSessionCatalogPageParams) {
-        source?.assertCurrent();
-        return await control.listPage(pageParams);
-      },
     };
   };
   const forUpstream = async (agentId: string, connectionFingerprint: string) => {

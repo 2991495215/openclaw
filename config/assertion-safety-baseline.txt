@@ -938,14 +938,12 @@ extensions/workboard/src/store-normalizers.ts	4
 extensions/workboard/src/tools.ts	8
 extensions/xai/image-generation-provider.ts	1
 extensions/xai/index.ts	2
-extensions/xai/model-compat.ts	2
 extensions/xai/model-definitions.ts	1
 extensions/xai/provider-catalog.ts	1
 extensions/xai/provider-discovery.ts	1
 extensions/xai/provider-models.ts	1
 extensions/xai/realtime-voice-bridge.ts	1
 extensions/xai/realtime-voice-config.ts	2
-extensions/xai/runtime-model-compat.ts	1
 extensions/xai/src/code-execution-config.ts	1
 extensions/xai/src/tool-auth-shared.ts	2
 extensions/xai/src/web-search-provider.runtime.ts	2
