@@ -9,7 +9,7 @@ import { shouldHandleNavigationClick } from "../../lib/navigation-click.ts";
 import { useApplication } from "../../lib/reactive/context.ts";
 import { projectLobsterdex } from "../../lib/reactive/events-browser.ts";
 import { t } from "../../lib/reactive/i18n.ts";
-import { projectSource } from "../../lib/reactive/projection.ts";
+import { projectOwner } from "../../lib/reactive/projection.ts";
 import { LobsterdexView, type LobsterdexCopyFeedback } from "./view.tsx";
 import "../../styles/settings.css";
 
@@ -24,13 +24,10 @@ declare module "@solidjs/web" {
 export function LobsterdexPage() {
   let host!: HTMLElement;
   const context = useApplication();
-  const branding = projectSource(
+  const branding = projectOwner(
     untrack(() => context.theme),
-    {
-      read: (theme) => theme.branding,
-      subscribe: (theme, notify) => theme.subscribe(notify),
-      equality: Object.is,
-    },
+    (theme) => theme.branding,
+    Object.is,
   );
   createEffect(
     () => context.theme,
