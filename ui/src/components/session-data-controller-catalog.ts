@@ -20,7 +20,10 @@ import {
   SessionCatalogLiveState,
   sessionCatalogListClient,
 } from "./app-sidebar-session-catalog-live.ts";
-import { refreshSessionCatalogsLive } from "./app-sidebar-session-catalog-refresh.ts";
+import {
+  captureSessionCatalogRequest,
+  refreshSessionCatalogsLive,
+} from "./app-sidebar-session-catalog-refresh.ts";
 import {
   excludeSessionCatalogRows,
   mergeSessionCatalogPage,
@@ -94,13 +97,18 @@ export function retireSessionCatalogData(owner: SessionCatalogResetOwner): void 
   owner.sessionCatalogLive.clear();
 }
 
+/** Agent changes and reconnects both discard source rows and their authorization windows. */
+export function clearSessionCatalogRows(owner: SessionCatalogDataOwner): void {
+  owner.sessionCatalogs = [];
+  owner.sessionCatalogLive.windows.clear();
+  owner.sessionCatalogRevisions.clear();
+}
+
 export function resetSessionCatalogConnection(owner: SessionCatalogResetOwner): void {
   retireSessionCatalogData(owner);
   owner.sessionCatalogRevision += 1;
-  owner.sessionCatalogs = [];
+  clearSessionCatalogRows(owner);
   owner.sessionCatalogRefreshStatus = createPanelRefreshStatus();
-  owner.sessionCatalogLive.windows.clear();
-  owner.sessionCatalogRevisions.clear();
   owner.requestSessionDataUpdate();
 }
 
@@ -666,32 +674,6 @@ export async function loadMoreSessionCatalog(
       owner.requestSessionDataUpdate();
     }
   }
-}
-
-function captureSessionCatalogRequest(
-  owner: SessionCatalogDataOwner,
-  catalogId: string,
-  client: GatewayBrowserClient,
-  hostIds: readonly string[],
-): () => boolean {
-  const generation = owner.sessionScopeGeneration;
-  const revision = owner.sessionCatalogRevisions.get(catalogId) ?? 0;
-  const hosts =
-    owner.sessionCatalogs
-      .find((catalog) => catalog.id === catalogId)
-      ?.hosts.filter((host) => hostIds.includes(host.hostId)) ?? [];
-  // Host snapshots are immutable publications. A sibling update does not retire
-  // this read; a root refresh, adoption, or replacement of any requested host does.
-  return () =>
-    generation === owner.sessionScopeGeneration &&
-    revision === (owner.sessionCatalogRevisions.get(catalogId) ?? 0) &&
-    client === owner.sessionCatalogGatewayClient() &&
-    hosts.every(
-      (host) =>
-        owner.sessionCatalogs
-          .find((catalog) => catalog.id === catalogId)
-          ?.hosts.find((entry) => entry.hostId === host.hostId) === host,
-    );
 }
 
 export async function archiveSessionCatalog(

@@ -1,7 +1,6 @@
 import path from "node:path";
 import { expect, it } from "vitest";
 import type { SessionCatalog } from "../../../packages/gateway-protocol/src/index.ts";
-import type { AppSidebarSessionNavigationElement } from "../components/app-sidebar-session-navigation.ts";
 import { createControlUiE2eArtifactDir } from "../test-helpers/control-ui-e2e-artifacts.ts";
 import { installMockGateway } from "../test-helpers/control-ui-e2e.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
@@ -56,6 +55,7 @@ suite.define(() => {
       const found = ordinary("Ordinary discovered row");
       const gateway = await installMockGateway(page, {
         featureMethods: ["chat.metadata", "chat.startup", "sessions.catalog.list"],
+        featureEvents: ["sessions.catalog.changed", "sessions.catalog.host"],
         methodResponses: {
           "sessions.catalog.list": {
             sequence: [
@@ -76,9 +76,7 @@ suite.define(() => {
       await deeper.waitFor();
       await page.screenshot({ path: path.join(artifacts, "expanded.png") });
       await gateway.deferNext("sessions.catalog.list", { catalogId: "ordinary" });
-      await sidebar.evaluate((element) => {
-        void (element as AppSidebarSessionNavigationElement).sessionData.refreshSessionCatalogs();
-      });
+      await gateway.emitGatewayEvent("sessions.catalog.changed", { agentId: "main" });
       await gateway.waitForRequest("sessions.catalog.list", { after: 4 });
       expect(await deeper.count()).toBe(0);
       const refresh = (await gateway.getRequests("sessions.catalog.list"))[3]!;
@@ -88,15 +86,8 @@ suite.define(() => {
         catalog: head,
       });
       await gateway.resolveDeferred("sessions.catalog.list", result(found));
-      await expect
-        .poll(() =>
-          sidebar.evaluate(
-            (element) =>
-              (element as AppSidebarSessionNavigationElement).sessionData.sessionCatalogLive
-                .requestGeneration,
-          ),
-        )
-        .toBeNull();
+      await deeper.waitFor();
+      await sidebar.getByText("Ordinary discovered row", { exact: true }).waitFor();
       // The capture precedes the assertion so the missing expanded window is retained on red.
       await page.screenshot({ path: path.join(artifacts, "settled.png") });
       expect(await deeper.count()).toBe(1);
@@ -131,6 +122,7 @@ suite.define(() => {
               : [transport];
         const gateway = await installMockGateway(page, {
           featureMethods: ["chat.metadata", "chat.startup", "sessions.catalog.list"],
+          featureEvents: ["sessions.catalog.changed", "sessions.catalog.host"],
           methodResponses: {
             "sessions.catalog.list": {
               sequence: [result(initial), ...failure, result(head), result(deep)],
@@ -142,15 +134,7 @@ suite.define(() => {
         const button = sidebar.locator('[data-session-catalog-load-more="shared"]');
         await sidebar.getByText("Previously authorized row", { exact: true }).waitFor();
         await button.click();
-        await expect
-          .poll(() =>
-            sidebar.evaluate(
-              (element) =>
-                (element as AppSidebarSessionNavigationElement).sessionData
-                  .loadingMoreSessionCatalogIds.size,
-            ),
-          )
-          .toBe(0);
+        await expect.poll(() => button.getAttribute("aria-busy")).toBe("false");
         await page.screenshot({ path: path.join(artifacts, "failure.png") });
         expect(await sidebar.getByText("Previously authorized row", { exact: true }).count()).toBe(
           0,

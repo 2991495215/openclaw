@@ -151,6 +151,7 @@ suite.define(() => {
         };
         const gateway = await installMockGateway(page, {
           featureMethods: ["chat.metadata", "chat.startup", "sessions.catalog.list"],
+          featureEvents: ["sessions.catalog.changed", "sessions.catalog.host"],
           methodResponses: {
             "sessions.catalog.list":
               scenario === "cross-host"
@@ -166,7 +167,9 @@ suite.define(() => {
           await gateway.deferNext("sessions.catalog.list");
           await sidebar.locator('[data-session-catalog-load-more="source-authorized"]').click();
           await gateway.waitForRequest("sessions.catalog.list", { after: 1 });
-          expect(await sidebar.getByText("Authorized head", { exact: true }).count()).toBe(0);
+          await expect
+            .poll(() => sidebar.getByText("Authorized head", { exact: true }).count())
+            .toBe(0);
           await gateway.emitGatewayEvent("sessions.catalog.host", {
             progressId: (initial.params as { progressId: string }).progressId,
             agentId: "main",
@@ -197,15 +200,7 @@ suite.define(() => {
               },
             ],
           });
-          await expect
-            .poll(() =>
-              sidebar.evaluate(
-                (element) =>
-                  (element as AppSidebarSessionNavigationElement).sessionData
-                    .loadingMoreSessionCatalogIds.size,
-              ),
-            )
-            .toBe(0);
+          await sidebar.getByText("Fresh source window", { exact: true }).waitFor();
           await page.screenshot({ path: path.join(artifacts, "settled-window.png") });
           expect(await sidebar.getByText("Authorized sibling row", { exact: true }).count()).toBe(
             1,
@@ -215,11 +210,13 @@ suite.define(() => {
           await sidebar.locator('[data-session-catalog-load-more="source-authorized"]').click();
           await sidebar.getByText("Authorized deeper row", { exact: true }).waitFor();
           await page.screenshot({ path: path.join(artifacts, "expanded-window.png") });
-          await sidebar.evaluate(async (element) => {
-            const sidebarElement = element as AppSidebarSessionNavigationElement;
-            await sidebarElement.sessionData.refreshSessionCatalogs();
-            await sidebarElement.updateComplete;
-          });
+          const beforeRefresh = await gateway.deferNext("sessions.catalog.list");
+          await gateway.emitGatewayEvent("sessions.catalog.changed", { agentId: "main" });
+          await gateway.waitForRequest("sessions.catalog.list", { after: beforeRefresh });
+          await gateway.resolveDeferred("sessions.catalog.list");
+          await expect
+            .poll(() => sidebar.getByText("Authorized deeper row", { exact: true }).count())
+            .toBe(0);
           expect(await sidebar.getByText("Authorized deeper row", { exact: true }).count()).toBe(0);
           const refresh = (await gateway.getRequests("sessions.catalog.list")).at(-1)!;
           await gateway.emitGatewayEvent("sessions.catalog.host", {
@@ -274,6 +271,7 @@ suite.define(() => {
         };
         const gateway = await installMockGateway(page, {
           featureMethods: ["chat.metadata", "chat.startup", "sessions.catalog.list"],
+          featureEvents: ["sessions.catalog.changed", "sessions.catalog.host"],
           methodResponses: { "sessions.catalog.list": { catalogs: [catalog] } },
         });
         await page.goto(`${suite.server.baseUrl}chat`);
@@ -299,11 +297,11 @@ suite.define(() => {
             },
           ],
         });
-        await sidebar.evaluate(async (element) => {
-          const sidebarElement = element as AppSidebarSessionNavigationElement;
-          await sidebarElement.sessionData.refreshSessionCatalogs();
-          await sidebarElement.updateComplete;
-        });
+        const beforeRefresh = await gateway.deferNext("sessions.catalog.list");
+        await gateway.emitGatewayEvent("sessions.catalog.changed", { agentId: "main" });
+        await gateway.waitForRequest("sessions.catalog.list", { after: beforeRefresh });
+        await gateway.resolveDeferred("sessions.catalog.list");
+        await expect.poll(() => row.count()).toBe(0);
         await page.screenshot({ path: path.join(artifactDir, `${outcome}.png`) });
         expect(await row.count()).toBe(0);
         const request = (await gateway.getRequests("sessions.catalog.list")).at(-1)!;

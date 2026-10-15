@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { validateJsonSchemaValue } from "openclaw/plugin-sdk/json-schema-runtime";
+import { setRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { appendSessionTranscriptMessageByIdentity } from "openclaw/plugin-sdk/session-transcript-runtime";
 import * as transcriptRuntime from "openclaw/plugin-sdk/session-transcript-runtime";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
@@ -270,14 +271,15 @@ describe("session-share source publication filters", () => {
 
   it("resolves the filtered runtime reader's identities in its explicit environment", async () => {
     await withOpenClawTestState({ scenario: "minimal", applyEnv: false }, async ({ env }) => {
+      setRuntimeConfigSnapshot({});
       const profile = ensureProfileForEmail("scoped@example.test", { env });
       const scope = { agentId: "main", sessionKey: "agent:main:scoped", env };
-      await replaceSessionEntry(scope, {
+      replaceSessionEntrySync(scope, {
         sessionId: "scoped",
         updatedAt: Date.now(),
         createdActor: { type: "human", source: "profile", id: profile.id },
       });
-      await replaceSessionEntry(
+      replaceSessionEntrySync(
         { ...scope, sessionKey: "agent:main:mentiononly" },
         {
           sessionId: "mentiononly",
@@ -325,6 +327,7 @@ describe("session-share source publication filters", () => {
 
   it("releases prepared profile catalogs after success, consumer failure, and async misuse", async () => {
     await withOpenClawTestState({ scenario: "minimal", applyEnv: false }, async ({ env }) => {
+      setRuntimeConfigSnapshot({});
       const person = ensureProfileForEmail("lease@example.test", { env });
       const runtime = createPluginRuntime();
       const sessionKey = "agent:main:lease";

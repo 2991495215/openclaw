@@ -28,6 +28,7 @@ import type {
 import { createPanelRefreshStatus, type PanelRefreshStatus } from "./panel-refresh-status.ts";
 import {
   applySessionCatalogContinuation,
+  clearSessionCatalogRows,
   archiveSessionCatalog as archiveSessionCatalogData,
   importSessionCatalog as importSessionCatalogData,
   applySessionCatalogHostEvent as applySessionCatalogHostEventToData,
@@ -318,9 +319,7 @@ export class SessionDataController implements SolidController, SessionCatalogDat
 
     if (agentChanged || catalogAgentChanged) {
       // Catalog cursors and rows belong to the selected agent, not just its host.
-      this.sessionCatalogs = [];
-      this.sessionCatalogLive.windows.clear();
-      this.sessionCatalogRevisions.clear();
+      clearSessionCatalogRows(this);
     }
     if (agentChanged && !ownsCurrentCanonicalList) {
       // A replacement capability may publish its new-agent list before selection synchronizes.

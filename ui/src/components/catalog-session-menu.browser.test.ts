@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import "@awesome.me/webawesome/dist/styles/themes/default.css";
 import "../test-helpers/load-styles.ts";
-import "./catalog-session-menu.ts";
-import type { CatalogSessionMenuAction } from "./catalog-session-menu.ts";
+import "./catalog-session-menu-solid.tsx";
+import type { CatalogSessionMenuAction } from "./catalog-session-menu-solid.tsx";
 
 type Menu = HTMLElement & {
   x: number;
@@ -38,7 +37,7 @@ describe.skipIf(typeof HTMLElement.prototype.showPopover !== "function")(
         container.append(trigger);
         document.body.append(container);
         await page.elementLocator(trigger).hover();
-        // The production caller reaches this same registered tag through its shim.
+        // The production caller uses the same native Solid menu owner.
         const menu = document.createElement("openclaw-catalog-session-menu") as Menu;
         menu.x = window.innerWidth;
         menu.y = window.innerHeight;
@@ -54,11 +53,9 @@ describe.skipIf(typeof HTMLElement.prototype.showPopover !== "function")(
         menu.onClose = close;
         container.append(menu);
         await menu.updateComplete;
-        const dropdown = menu.querySelector("wa-dropdown")!;
-        await dropdown.updateComplete;
-        const first = menu.querySelector("wa-dropdown-item")!;
+        const first = menu.querySelector('[role="menuitem"]')!;
         await expect.poll(() => document.activeElement).toBe(first);
-        const surface = dropdown.shadowRoot!.querySelector<HTMLElement>('[part="menu"]')!;
+        const surface = menu.querySelector<HTMLElement>('[role="menu"]')!;
         await expect
           .poll(() => {
             const bounds = surface.getBoundingClientRect();
@@ -72,14 +69,7 @@ describe.skipIf(typeof HTMLElement.prototype.showPopover !== "function")(
             );
           })
           .toBe(true);
-        expect(menu.querySelector('[value="original"]') !== null).toBe(configured);
-        dropdown.dispatchEvent(
-          new CustomEvent("wa-select", {
-            detail: { item: { value: "unknown-action" } },
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
+        expect(menu.querySelector('[data-value="original"]') !== null).toBe(configured);
         expect(order).toEqual([]);
         await userEvent.keyboard("{Escape}");
         expect(close).toHaveBeenCalledTimes(1);
@@ -92,9 +82,11 @@ describe.skipIf(typeof HTMLElement.prototype.showPopover !== "function")(
         await menu.updateComplete;
         await expect
           .poll(() => document.activeElement)
-          .toBe(menu.querySelector("wa-dropdown-item"));
+          .toBe(menu.querySelector('[role="menuitem"]'));
         const action = configured ? "original" : "viewer";
-        await page.elementLocator(menu.querySelector<HTMLElement>(`[value="${action}"]`)!).click();
+        await page
+          .elementLocator(menu.querySelector<HTMLElement>(`[data-value="${action}"]`)!)
+          .click();
         expect(order).toEqual([action, "close"]);
         expect(menu.isConnected).toBe(false);
       },

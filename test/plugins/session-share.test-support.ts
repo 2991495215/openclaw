@@ -5,6 +5,7 @@ import type {
 } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
+import { setRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import type {
   SessionCatalogProvider,
   SessionCatalogSession,
@@ -51,6 +52,7 @@ export function commandFixture(groups: string[] = ["Team"]) {
   const config: OpenClawConfig = {
     plugins: { entries: { "session-share": { enabled: true, config: { share: { groups } } } } },
   };
+  setRuntimeConfigSnapshot(config);
   const runtime = createPluginRuntime();
   runtime.config.current = () => config;
   const registry = createRuntimeTestRegistry(runtime);

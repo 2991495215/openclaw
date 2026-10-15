@@ -1,7 +1,8 @@
 /* @vitest-environment jsdom */
 
-import { render } from "lit";
 import { describe, expect, it, vi } from "vitest";
+import { mountSolid } from "../test-helpers/mount-solid.ts";
+import { waitForSolid } from "../test-helpers/solid-settle.ts";
 import { SidebarCatalogMenuController } from "./app-sidebar-catalog-menu.tsx";
 import { SESSION_MENU_OPEN_EVENT } from "./session-progress-hovercard-target.ts";
 
@@ -36,6 +37,7 @@ describe("SidebarCatalogMenuController", () => {
     );
     const container = document.createElement("div");
     document.body.append(container);
+    let unmount: (() => void) | undefined;
     try {
       controller.open(
         {
@@ -52,21 +54,29 @@ describe("SidebarCatalogMenuController", () => {
         10,
         20,
       );
-      render(controller.render(), container);
+      unmount = mountSolid(() => controller.render(), { container }).unmount;
+      await waitForSolid(() => expect(container.querySelector('[role="menu"]')).not.toBeNull());
       const menu = container.querySelector("openclaw-catalog-session-menu") as HTMLElement & {
         updateComplete: Promise<unknown>;
       };
       await menu.updateComplete;
-      const original = menu.querySelector<HTMLElement>('wa-dropdown-item[value="original"]');
+      const original = menu.querySelector<HTMLElement>('[data-value="original"]');
       expect(Boolean(original)).toBe(allowed);
       original?.click();
       if (allowed) {
-        expect(open).toHaveBeenCalledExactlyOnceWith(originalUrl, "_blank", "noopener,noreferrer");
+        await waitForSolid(() =>
+          expect(open).toHaveBeenCalledExactlyOnceWith(
+            originalUrl,
+            "_blank",
+            "noopener,noreferrer",
+          ),
+        );
       } else {
         expect(open).not.toHaveBeenCalled();
       }
       expect(navigate).not.toHaveBeenCalled();
     } finally {
+      unmount?.();
       container.remove();
       open.mockRestore();
     }

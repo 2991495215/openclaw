@@ -13,11 +13,17 @@ import {
   createTestGatewayClient,
 } from "../test-helpers/gateway-client.ts";
 import "../test-helpers/app-sidebar-suite.ts";
+import { settleLitElement } from "../test-helpers/lit-settle.ts";
+import "./app-sidebar.tsx";
 import {
   applySessionCatalogContinuation,
   loadMoreSessionCatalog,
+  resetSessionCatalogConnection,
 } from "./session-data-controller-catalog.ts";
-import "./app-sidebar.ts";
+
+const catalogClock: Parameters<typeof vi.useFakeTimers>[0] = {
+  toFake: ["setTimeout", "clearTimeout", "Date"],
+};
 
 function sourceCatalogPage(rows: Parameters<typeof catalogPage>[0], cursor?: string) {
   const page = catalogPage(rows, cursor);
@@ -45,14 +51,14 @@ async function mountTab(
     createSessions("main", ["agent:main:main"]),
   );
   sidebar.connected = true;
-  await sidebar.updateComplete;
+  await settleLitElement(sidebar);
   await vi.advanceTimersByTimeAsync(0);
   expect(request).toHaveBeenCalledTimes(1);
   return { sidebar, gateway, request };
 }
 
 describe("late expanded host publication while root discovery is active", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -79,11 +85,11 @@ describe("late expanded host publication while root discovery is active", () => 
       .mockResolvedValue(deep);
     const { sidebar, gateway } = await mountTab(request);
     await loadMoreSessionCatalog(sidebar.sessionData, "codex", ["gateway:local"]);
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(sidebar.textContent).toContain("Authorized deep");
     const refreshing = sidebar.sessionData.refreshSessionCatalogs();
     await vi.advanceTimersByTimeAsync(0);
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(request).toHaveBeenCalledTimes(5);
     expect(sidebar.sessionData.sessionCatalogLive.refetching).toBe(false);
     expect(sidebar.sessionData.sessionCatalogLive.requestGeneration).not.toBeNull();
@@ -101,7 +107,7 @@ describe("late expanded host publication while root discovery is active", () => 
     discovery.resolve(found);
     await refreshing;
     await vi.advanceTimersByTimeAsync(5_000);
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(sidebar.textContent).toContain("Other found");
     expect(sidebar.textContent).toContain("Authorized head");
     expect(sidebar.textContent).toContain("Authorized deep");
@@ -109,7 +115,7 @@ describe("late expanded host publication while root discovery is active", () => 
 });
 
 describe("targeted fresh-window retry after source failure", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -173,7 +179,7 @@ describe("targeted fresh-window retry after source failure", () => {
       );
     const { sidebar } = await mountTab(request);
     await loadMoreSessionCatalog(sidebar.sessionData, "codex", ["gateway:local"]);
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     const failedCallCount = request.mock.calls.length;
     const button = sidebar.querySelector('[data-session-catalog-load-more="codex"]');
     expect(sidebar.textContent).not.toContain("Authorized head");
@@ -185,7 +191,7 @@ describe("targeted fresh-window retry after source failure", () => {
     }
     button.click();
     await vi.advanceTimersByTimeAsync(0);
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(request.mock.calls.length).toBe(failedCallCount + 2);
     expect(request.mock.calls[failedCallCount]![1]).not.toHaveProperty("cursors");
     expect(request.mock.calls[failedCallCount + 1]![1]).toMatchObject({
@@ -197,7 +203,7 @@ describe("targeted fresh-window retry after source failure", () => {
 });
 
 describe("source window lifecycle boundaries", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -243,7 +249,7 @@ describe("source window lifecycle boundaries", () => {
       root.resolve(pending);
       replay.resolve(deep);
       await refreshing;
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).toContain("Fresh published head");
       expect(sidebar.textContent).toContain("Fresh published deep");
       expect(sidebar.textContent).not.toContain("Old deeper row");
@@ -279,7 +285,7 @@ describe("source window lifecycle boundaries", () => {
         .mockResolvedValueOnce(stopped);
       const { sidebar } = await mountTab(request);
       await sidebar.sessionData.loadMoreSessionCatalog("codex");
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Old authorized row");
       expect(sidebar.textContent?.includes("Fresh head")).toBe(outcome === "revoked");
       expect(sidebar.querySelector('[data-session-catalog-load-more="codex"]')).toBeNull();
@@ -303,13 +309,13 @@ describe("source window lifecycle boundaries", () => {
       await sidebar.sessionData.loadMoreSessionCatalog("codex");
       const pending = sidebar.sessionData.loadMoreSessionCatalog("codex");
       if (outcome === "reset") {
-        sidebar.sessionData.resetSessionCatalogConnection();
+        resetSessionCatalogConnection(sidebar.sessionData);
       } else {
         await sidebar.sessionData.refreshSessionCatalogs();
       }
       retry.resolve(sourceCatalogPage([{ threadId: "retired", name: "Retired retry row" }]));
       await pending;
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Old authorized row");
       expect(sidebar.textContent).not.toContain("Retired retry row");
     },
@@ -317,7 +323,7 @@ describe("source window lifecycle boundaries", () => {
 });
 
 describe("expanded source recovery", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -366,7 +372,7 @@ describe("expanded source recovery", () => {
         });
         await vi.advanceTimersByTimeAsync(0);
       }
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Old deeper row");
       if (mode !== "root-error") {
         expect(sidebar.textContent).not.toContain("Source head");
@@ -377,7 +383,7 @@ describe("expanded source recovery", () => {
         expect(retry).not.toBeNull();
         retry!.click();
         await vi.advanceTimersByTimeAsync(0);
-        await sidebar.updateComplete;
+        await settleLitElement(sidebar);
         expect(request.mock.calls.at(-2)![1]).not.toHaveProperty("cursors");
       }
       expect(sidebar.textContent).toContain("Currently authorized deep");
@@ -387,7 +393,7 @@ describe("expanded source recovery", () => {
 });
 
 describe("fresh retry intent across root replacement", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -423,7 +429,7 @@ describe("fresh retry intent across root replacement", () => {
         request.mockResolvedValueOnce(failed);
       }
       await sidebar.sessionData.refreshSessionCatalogs();
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Previously authorized");
       expect(
         sidebar.sessionData.sessionCatalogLive.canRetry(sidebar.sessionData.sessionCatalogs[0]!),
@@ -439,7 +445,7 @@ describe("fresh retry intent across root replacement", () => {
       }
       retry!.click();
       await vi.advanceTimersByTimeAsync(0);
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(request.mock.calls[before]![1]).not.toHaveProperty("cursors");
       expect(request.mock.calls.length).toBe(before + (previousRetry ? 2 : 1));
       expect(sidebar.textContent).toContain("Current authorized head");
@@ -452,7 +458,7 @@ describe("fresh retry intent across root replacement", () => {
       }
       request.mockResolvedValueOnce(sourceCatalogPage([]));
       await sidebar.sessionData.refreshSessionCatalogs();
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Current authorized head");
       expect(sidebar.textContent).not.toContain("Current authorized deep");
       expect(sidebar.querySelector('[data-session-catalog-load-more="codex"]')).toBeNull();
@@ -461,7 +467,7 @@ describe("fresh retry intent across root replacement", () => {
 });
 
 describe("pending publications do not settle a failed fresh window", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -494,7 +500,7 @@ describe("pending publications do not settle a failed fresh window", () => {
         catalog: pending.catalogs[0],
       });
     }
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(sidebar.textContent).not.toContain("Old authorized row");
     const retry = sidebar.querySelector<HTMLButtonElement>(
       '[data-session-catalog-load-more="codex"]',
@@ -504,7 +510,7 @@ describe("pending publications do not settle a failed fresh window", () => {
     await vi.advanceTimersByTimeAsync(0);
     root.resolve(pending);
     await refreshing;
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(request).toHaveBeenCalledTimes(5);
     expect(request.mock.calls[3]![1]).not.toHaveProperty("cursors");
     expect(request.mock.calls[4]![1]).toMatchObject({ cursors: { "gateway:local": "new-cursor" } });
@@ -514,7 +520,7 @@ describe("pending publications do not settle a failed fresh window", () => {
   });
 });
 describe("fresh cursor ownership", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -529,7 +535,7 @@ describe("fresh cursor ownership", () => {
       .mockResolvedValueOnce(deep);
     const { sidebar } = await mountTab(request);
     await sidebar.sessionData.loadMoreSessionCatalog("codex");
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(sidebar.textContent).not.toContain("Old row");
     expect(sidebar.textContent).toContain("Current deep");
     expect(sidebar.sessionData.sessionCatalogs[0]!.hosts[0]!.error).toBeUndefined();
@@ -539,7 +545,7 @@ describe("fresh cursor ownership", () => {
 });
 
 describe("fresh provider and missing-page recovery", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -574,7 +580,7 @@ describe("fresh provider and missing-page recovery", () => {
         request.mockResolvedValueOnce(failed);
         await sidebar.sessionData.refreshSessionCatalogs();
       }
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Old head");
       expect(sidebar.textContent).not.toContain("Old deep");
       const retry = sidebar.querySelector<HTMLButtonElement>(
@@ -588,7 +594,7 @@ describe("fresh provider and missing-page recovery", () => {
       }
       retry!.click();
       await vi.advanceTimersByTimeAsync(0);
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(request.mock.calls[before]![1]).not.toHaveProperty("cursors");
       expect(sidebar.textContent).toContain("Current head");
       if (phase !== "initial") {
@@ -616,7 +622,7 @@ describe("fresh provider and missing-page recovery", () => {
       request.mockResolvedValueOnce(missing);
       const { sidebar } = await mountTab(request);
       await sidebar.sessionData.loadMoreSessionCatalog("codex");
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Old row");
       const retry = sidebar.querySelector<HTMLButtonElement>(
         '[data-session-catalog-load-more="codex"]',
@@ -626,7 +632,7 @@ describe("fresh provider and missing-page recovery", () => {
       request.mockResolvedValueOnce(head).mockResolvedValueOnce(deep);
       retry!.click();
       await vi.advanceTimersByTimeAsync(0);
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(request.mock.calls[before]![1]).not.toHaveProperty("cursors");
       expect(request.mock.calls[before + 1]![1]).toMatchObject({
         cursors: { "gateway:local": "fresh-cursor" },
@@ -638,7 +644,7 @@ describe("fresh provider and missing-page recovery", () => {
 });
 
 describe("completed publication resumes requested depth after a failed expansion", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -666,7 +672,7 @@ describe("completed publication resumes requested depth after a failed expansion
       catalog: head.catalogs[0],
     });
     await vi.advanceTimersByTimeAsync(0);
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(request).toHaveBeenCalledTimes(4);
     expect(request.mock.calls[3]![1]).toMatchObject({ cursors: { "gateway:local": "new-next" } });
     expect(sidebar.textContent).toContain("Current published head");
@@ -676,7 +682,7 @@ describe("completed publication resumes requested depth after a failed expansion
 });
 
 describe("hidden discovery is not a requested expanded window", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -695,7 +701,7 @@ describe("hidden discovery is not a requested expanded window", () => {
     request.mockResolvedValueOnce(exhausted);
     const { sidebar } = await mountTab(request);
     await sidebar.sessionData.refreshSessionCatalogs();
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(request).toHaveBeenCalledTimes(fresh ? 4 : 3);
     expect(sidebar.sessionData.sessionCatalogPageDepths.size).toBe(0);
     expect(sidebar.sessionData.sessionCatalogLive.discoveryPages.size).toBe(0);
@@ -704,7 +710,7 @@ describe("hidden discovery is not a requested expanded window", () => {
 });
 
 describe("root reconciliation while a source retry owns one host", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -750,7 +756,7 @@ describe("root reconciliation while a source retry owns one host", () => {
       const { sidebar, gateway } = await mountTab(request);
       await loadMoreSessionCatalog(sidebar.sessionData, "codex", ["gateway:local"]);
       const refreshing = sidebar.sessionData.refreshSessionCatalogs();
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       const button = sidebar.querySelector<HTMLButtonElement>(
         '[data-session-catalog-load-more="codex"]',
       );
@@ -770,7 +776,7 @@ describe("root reconciliation while a source retry owns one host", () => {
       }
       if (outcome === "reset") {
         request.mockResolvedValue(sourceCatalogPage([]));
-        sidebar.sessionData.resetSessionCatalogConnection();
+        resetSessionCatalogConnection(sidebar.sessionData);
       }
       const finishRoot = async () => {
         if (outcome === "root-error") {
@@ -810,7 +816,7 @@ describe("root reconciliation while a source retry owns one host", () => {
       if (progress === "after") {
         publish();
       }
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       if (outcome === "target-error") {
         const retryButton = sidebar.querySelector<HTMLButtonElement>(
           '[data-session-catalog-load-more="codex"]',
@@ -818,7 +824,7 @@ describe("root reconciliation while a source retry owns one host", () => {
         expect(retryButton).not.toBeNull();
         retryButton!.click();
         await vi.advanceTimersByTimeAsync(0);
-        await sidebar.updateComplete;
+        await settleLitElement(sidebar);
         expect(request.mock.calls.at(-1)![1]).not.toHaveProperty("cursors");
       }
       if (outcome === "provider-error") {
@@ -837,7 +843,7 @@ describe("root reconciliation while a source retry owns one host", () => {
         const before = request.mock.calls.length;
         retryRoot!.click();
         await vi.advanceTimersByTimeAsync(0);
-        await sidebar.updateComplete;
+        await settleLitElement(sidebar);
         expect(request).toHaveBeenCalledTimes(before + 1);
         expect(request.mock.calls[before]![1]).not.toHaveProperty("hostIds");
         expect(request.mock.calls[before]![1]).not.toHaveProperty("cursors");
@@ -860,7 +866,7 @@ describe("root reconciliation while a source retry owns one host", () => {
 });
 
 describe("catalog return without a progress frame", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => vi.useFakeTimers(catalogClock));
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -886,11 +892,11 @@ describe("catalog return without a progress frame", () => {
         });
       }
       await sidebar.sessionData.refreshSessionCatalogs();
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.sessionData.sessionCatalogs).toEqual([]);
       expect(sidebar.textContent).not.toContain("Previous catalog row");
       await sidebar.sessionData.refreshSessionCatalogs();
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).toContain("Returning catalog row");
       expect(sidebar.textContent).not.toContain("Previous catalog row");
       expect(request).toHaveBeenCalledTimes(3);

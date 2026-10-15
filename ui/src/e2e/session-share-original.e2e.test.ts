@@ -210,22 +210,10 @@ suite.define(() => {
           .toBe(configured ? 1 : 0);
         await writeFile(
           path.join(artifacts, "menu.png"),
-          await takeControlUiViewportScreenshot(page, menu.locator('[part="menu"]'), [
+          await takeControlUiViewportScreenshot(page, menu.getByRole("menu"), [
             menu.getByText("Open in OpenClaw", { exact: true }),
           ]),
         );
-        // The maintained menu ignores unrecognized Web Awesome selections.
-        // Exercise the registered sidebar entry point, not a standalone renderer.
-        await menu.locator("wa-dropdown").evaluate((dropdown) => {
-          dropdown.dispatchEvent(
-            new CustomEvent("wa-select", {
-              detail: { item: { value: "unknown-action" } },
-              bubbles: true,
-              cancelable: true,
-            }),
-          );
-        });
-        await expect.poll(() => menu.count()).toBe(1);
         await page.keyboard.press("Escape");
         await expect.poll(() => menu.count()).toBe(0);
         const menuTrigger = row.getByRole("button", { name: "Open session menu" });

@@ -79,7 +79,7 @@ describe("AppSidebar catalog event refresh", () => {
       expect(sidebar.textContent).toContain("Source-authorized row");
       const refresh = sidebar.sessionData.refreshSessionCatalogs();
       await vi.advanceTimersByTimeAsync(0);
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect.soft(sidebar.textContent).not.toContain("Source-authorized row");
       if (outcome === "failed") {
         pending.reject(new Error("Source unavailable"));
@@ -95,7 +95,7 @@ describe("AppSidebar catalog event refresh", () => {
         pending.resolve(result);
       }
       await refresh;
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent?.includes("Source-authorized row")).toBe(outcome === "success");
     },
   );
@@ -112,7 +112,7 @@ describe("AppSidebar catalog event refresh", () => {
         .mockResolvedValue(page([{ threadId: "older", name: "Fresh older row" }]));
       const { sidebar } = await mountTab(request);
       const more = sidebar.sessionData.loadMoreSessionCatalog("codex");
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Previously authorized head");
       expect(request).toHaveBeenLastCalledWith("sessions.catalog.list", {
         agentId: "main",
@@ -129,7 +129,7 @@ describe("AppSidebar catalog event refresh", () => {
         );
       }
       await more;
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Previously authorized head");
       if (outcome === "success") {
         expect(sidebar.textContent).toContain("Fresh authorized head");
@@ -159,7 +159,7 @@ describe("AppSidebar catalog event refresh", () => {
     const { sidebar } = await mountTab(request);
     await loadMoreSessionCatalog(sidebar.sessionData, "codex", undefined, true);
     await loadMoreSessionCatalog(sidebar.sessionData, "codex", undefined, true);
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(sidebar.textContent).toContain("Visible later page");
     expect(request).toHaveBeenCalledTimes(6);
     expect(request).toHaveBeenLastCalledWith("sessions.catalog.list", {
@@ -186,7 +186,7 @@ describe("AppSidebar catalog event refresh", () => {
         agentId: "main",
         catalog: warm.catalogs[0],
       });
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect.soft(sidebar.textContent).not.toContain("Old source publication");
       if (outcome === "failed") {
         next.reject(new Error("Source unavailable"));
@@ -199,7 +199,7 @@ describe("AppSidebar catalog event refresh", () => {
         agentId: "main",
         catalog: warm.catalogs[0],
       });
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Old source publication");
     },
   );
@@ -217,11 +217,11 @@ describe("AppSidebar catalog event refresh", () => {
     const more = sidebar.sessionData.loadMoreSessionCatalog("codex");
     root.resolve(warm);
     await refresh;
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect.soft(sidebar.textContent).not.toContain("Old root publication");
     next.resolve(sourceCatalogPage([]));
     await more;
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(sidebar.textContent).not.toContain("Old root publication");
   });
 
@@ -250,7 +250,7 @@ describe("AppSidebar catalog event refresh", () => {
       const progressId = (request.mock.calls[0]![1] as { progressId: string }).progressId;
       const more = loadMoreSessionCatalog(sidebar.sessionData, "codex", ["gateway:local"]);
       await vi.advanceTimersByTimeAsync(0);
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Old A");
       gateway.publishEvent("sessions.catalog.host", {
         progressId,
@@ -268,7 +268,7 @@ describe("AppSidebar catalog event refresh", () => {
       });
       held.resolve(phase === "head" ? head : deep);
       await more;
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).toContain("Fresh A");
       expect(sidebar.textContent).toContain("Deep A");
       expect(sidebar.textContent).toContain("Fresh B");
@@ -296,7 +296,7 @@ describe("AppSidebar catalog event refresh", () => {
         .mockResolvedValue(sourceCatalogPage([]));
       const { sidebar, gateway } = await mountTab(request);
       await loadMoreSessionCatalog(sidebar.sessionData, "codex", ["gateway:local"]);
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).toContain("Old deeper row");
       await sidebar.sessionData.refreshSessionCatalogs();
       const progressId = (request.mock.calls[3]![1] as { progressId: string }).progressId;
@@ -306,7 +306,7 @@ describe("AppSidebar catalog event refresh", () => {
         catalog: head.catalogs[0],
       });
       await vi.advanceTimersByTimeAsync(0);
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Old deeper row");
       expect(request).toHaveBeenCalledTimes(5);
       if (outcome === "new-root") {
@@ -322,7 +322,7 @@ describe("AppSidebar catalog event refresh", () => {
         );
       }
       await vi.advanceTimersByTimeAsync(0);
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).not.toContain("Old deeper row");
       expect(sidebar.textContent?.includes("Fresh deeper row")).toBe(outcome === "success");
       expect(sidebar.textContent?.includes("Authorized head")).toBe(

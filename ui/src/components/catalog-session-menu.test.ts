@@ -37,8 +37,8 @@ describe("catalog session menu", () => {
       const warnings = vi.spyOn(console, "warn");
       let backingState: { open: true } | null = { open: true };
       const order: string[] = [];
-      const onAction = vi.fn((action: CatalogSessionMenuAction) => {
-        order.push(backingState ? action : "cleared");
+      const onAction = vi.fn((selected: CatalogSessionMenuAction) => {
+        order.push(backingState ? selected : "cleared");
       });
       // SAFETY: The imported bridge registers this tag with its declared properties.
       const menu = document.createElement("openclaw-catalog-session-menu") as CatalogMenuElement;

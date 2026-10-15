@@ -13,7 +13,6 @@ import { resolveStorePath } from "openclaw/plugin-sdk/session-store-runtime";
 import { appendSessionTranscriptMessageByIdentity } from "openclaw/plugin-sdk/session-transcript-runtime";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { setRuntimeConfigSnapshot } from "../../src/config/runtime-snapshot.js";
 import {
   replaceSessionEntry,
   upsertSessionEntryCore,
