@@ -1,3 +1,8 @@
+import {
+  getSessionBindingService as getSdkSessionBindingService,
+  registerSessionBindingAdapterV2 as registerSdkSessionBindingAdapter,
+  type SessionBindingAdapterV2,
+} from "openclaw/plugin-sdk/session-binding-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { withPluginRuntimePluginScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { createDeferredCore } from "../../shared/deferred.js";
@@ -53,6 +58,94 @@ function createScopedAdapter(
 }
 
 describe("awaited binding read ownership", () => {
+  it("retains class adapter methods and their receiver through SDK registration", async () => {
+    class Adapter implements SessionBindingAdapterV2 {
+      readonly version = 2;
+      readonly channel = " External ";
+      readonly accountId = " DEFAULT ";
+      #binding: SessionBindingRecord | null = record;
+
+      assertCurrent() {
+        if (!this.#binding) {
+          throw new Error("adapter closed");
+        }
+      }
+      listBySession(key: string) {
+        return this.#binding?.targetSessionKey === key ? [this.#binding] : [];
+      }
+      resolveByConversation(ref: Parameters<SessionBindingAdapterV2["resolveByConversation"]>[0]) {
+        return this.#binding?.conversation.conversationId === ref.conversationId
+          ? this.#binding
+          : null;
+      }
+      async listBySessionAsync(key: string) {
+        return this.listBySession(key);
+      }
+      async resolveByConversationAsync(
+        ref: Parameters<SessionBindingAdapterV2["resolveByConversation"]>[0],
+      ) {
+        return this.resolveByConversation(ref);
+      }
+      async inspectByConversationAsync(
+        ref: Parameters<SessionBindingAdapterV2["resolveByConversation"]>[0],
+      ) {
+        return this.resolveByConversation(ref);
+      }
+      async inspectByConversationsAsync(
+        refs: Parameters<SessionBindingAdapterV2["inspectByConversationsAsync"]>[0],
+      ) {
+        return {
+          bindings: refs.map((ref) => this.resolveByConversation(ref)),
+          assertCurrent: () => this.assertCurrent(),
+        };
+      }
+      async bind(input: Parameters<NonNullable<SessionBindingAdapterV2["bind"]>>[0]) {
+        input.assertCurrent?.();
+        this.#binding = {
+          ...record,
+          targetSessionKey: input.targetSessionKey,
+          conversation: input.conversation,
+        };
+        return this.#binding;
+      }
+      async touchAsync(_id: string, at = 1) {
+        this.#binding = this.#binding ? { ...this.#binding, boundAt: at } : null;
+      }
+      async unbind() {
+        const removed = this.#binding ? [this.#binding] : [];
+        this.#binding = null;
+        return removed;
+      }
+    }
+
+    const adapter = new Adapter();
+    registerSdkSessionBindingAdapter(adapter);
+    const service = getSdkSessionBindingService();
+    const scope = { channel: "external", accountId: "default" };
+    expect(service.getCapabilities(scope)).toMatchObject({
+      adapterAvailable: true,
+      bindSupported: true,
+      unbindSupported: true,
+    });
+    expect(await service.resolveByConversationAsync(record.conversation)).toBe(record);
+    const bound = await service.bind({
+      targetSessionKey: "agent:owner:other",
+      targetKind: "session",
+      conversation: { ...record.conversation, channel: " External ", accountId: " DEFAULT " },
+    });
+    expect(bound.conversation).toEqual(record.conversation);
+    await service.touchAsync(bound.bindingId, 42, scope);
+    expect(await service.resolveByConversationAsync(record.conversation)).toMatchObject({
+      targetSessionKey: "agent:owner:other",
+      boundAt: 42,
+    });
+    expect(await service.unbind({ scope, reason: "test" })).toHaveLength(1);
+    expect(adapter.channel).toBe(" External ");
+    expect(adapter.accountId).toBe(" DEFAULT ");
+    unregisterSessionBindingAdapter({ ...scope, adapter });
+    expect(testing.getRegisteredAdapterKeys()).toEqual([]);
+  });
+
   it.each(["added", "removed", "replaced", "retired"] as const)(
     "keeps scoped selections tied to their published source (%s)",
     async (change) => {
