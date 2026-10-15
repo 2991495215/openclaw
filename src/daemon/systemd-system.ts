@@ -1,7 +1,6 @@
 /** Detects system-scope systemd ownership before mutating a user gateway unit. */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
 import { isMissingPathError } from "../infra/errors.js";
 import {
@@ -11,6 +10,7 @@ import {
 import { ServiceOwnershipRefusalError } from "./service-inspection-error.js";
 import { formatServiceInspectionDetail } from "./service-runtime.js";
 import {
+  decodeSystemdBusProperties,
   readSystemdBusOwner,
   readSystemdUnitObjectPath,
   systemdUnitCallArgs,
@@ -150,11 +150,7 @@ async function inspectLoadedSystemOwnership(
           }
           throw unavailable();
         }
-        const parsed = asOptionalRecord(JSON.parse(result.stdout));
-        if (parsed?.type !== signature) {
-          throw unavailable();
-        }
-        return parsed.data;
+        return decodeSystemdBusProperties(result.stdout, [signature], unavailable)[0];
       };
       const readOwner = () =>
         readSystemdBusOwner(
