@@ -795,11 +795,38 @@ jobs:
     permissions:
       contents: read
     needs: [validate_release, build_windows]
-    uses: ./.github/workflows/windows-installer-qualify.yml
-    with:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    outputs:
       artifact_id: ${{ needs.build_windows.outputs.unsigned_updater_artifact_id }}
-      manifest_sha256: ${{ needs.build_windows.outputs.manifest_sha256 }}
-      release_tag: ${{ needs.validate_release.outputs.release_tag }}
+      sha256: ${{ steps.install.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          sparse-checkout: apps/linux/tests/windows_installer_smoke.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build_windows.outputs.unsigned_updater_artifact_id }}
+          path: ${{ runner.temp }}/candidate
+          merge-multiple: true
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install exact candidate and verify packaged runtime
+        id: install
+        shell: pwsh
+        env:
+          CANDIDATE_DIR: ${{ runner.temp }}/candidate
+          RELEASE_TAG: ${{ needs.validate_release.outputs.release_tag }}
+          EXPECTED_MANIFEST_SHA256: ${{ needs.build_windows.outputs.manifest_sha256 }}
+        run: node apps/linux/tests/windows_installer_smoke.mjs
 
   # Authenticode is opt-in until Foundation signing is configured in this repository.
   # A configured signer must succeed; updater signing never falls back to unsigned bytes.

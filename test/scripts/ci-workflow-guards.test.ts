@@ -7398,20 +7398,28 @@ it("isolates release credentials and verifies trusted AppImage and signing tools
     );
   }
   const qualifyWindows = linux.jobs.qualify_windows;
-  expect(qualifyWindows).toMatchObject({
-    needs: ["validate_release", "build_windows"],
-    uses: "./.github/workflows/windows-installer-qualify.yml",
-    with: {
-      artifact_id: "${{ needs.build_windows.outputs.unsigned_updater_artifact_id }}",
-      manifest_sha256: "${{ needs.build_windows.outputs.manifest_sha256 }}",
-      release_tag: "${{ needs.validate_release.outputs.release_tag }}",
-    },
-  });
+  expect(qualifyWindows.needs).toEqual(["validate_release", "build_windows"]);
   expect(qualifyWindows.permissions).toEqual({ contents: "read" });
-  expect(qualifyWindows.secrets).toBeUndefined();
-  const qualifier = readWorkflow(".github/workflows/windows-installer-qualify.yml");
-  expect(qualifier.permissions).toEqual({ contents: "read" });
-  expect(qualifier.jobs.qualify.permissions).toBeUndefined();
+  expect(JSON.stringify(qualifyWindows)).not.toContain("${{ secrets.");
+  const qualificationSteps = qualifyWindows.steps as WorkflowStep[];
+  expect(
+    qualificationSteps.find(({ uses }) => uses?.startsWith("actions/checkout"))?.with,
+  ).toMatchObject({ ref: "${{ github.workflow_sha }}", "persist-credentials": false });
+  const builtInstallerId = "${{ needs.build_windows.outputs.unsigned_updater_artifact_id }}";
+  expect(
+    qualificationSteps.find(({ uses }) => uses === DOWNLOAD_ARTIFACT_V8)?.with?.["artifact-ids"],
+  ).toBe(builtInstallerId);
+  expect(qualificationSteps.find(({ id }) => id === "install")).toMatchObject({
+    env: {
+      EXPECTED_MANIFEST_SHA256: "${{ needs.build_windows.outputs.manifest_sha256 }}",
+      RELEASE_TAG: "${{ needs.validate_release.outputs.release_tag }}",
+    },
+    run: "node apps/linux/tests/windows_installer_smoke.mjs",
+  });
+  expect(qualifyWindows.outputs).toEqual({
+    artifact_id: builtInstallerId,
+    sha256: "${{ steps.install.outputs.sha256 }}",
+  });
   const qualifiedInstallerId = "${{ needs.qualify_windows.outputs.artifact_id }}";
   const windowsSigner = linux.jobs.sign_windows;
   expect(windowsSigner.needs).toEqual(["validate_release", "qualify_windows"]);
