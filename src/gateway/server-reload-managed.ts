@@ -158,6 +158,7 @@ export function startManagedGatewayConfigReloader(
       ),
     restartRecoveryAvailable,
   });
+  let failedRestartPlan: GatewayReloadPlan | undefined;
   const runManagedRestart = async (
     plan: GatewayReloadPlan,
     nextConfig: OpenClawConfig,
@@ -172,6 +173,7 @@ export function startManagedGatewayConfigReloader(
     };
     await transactionOwnership.checkpoint();
     assertCurrent();
+    failedRestartPlan = undefined;
     const restartLifecycle = beginGatewayRestartLifecycle();
     let preparation:
       | {
@@ -220,6 +222,7 @@ export function startManagedGatewayConfigReloader(
         break;
       }
     } catch (error) {
+      failedRestartPlan = plan;
       restartLifecycle.settle("rejected");
       throw error;
     }
@@ -256,6 +259,9 @@ export function startManagedGatewayConfigReloader(
       restartTransaction = requestGatewayRestart(plan, preparedRuntimeConfig, {
         prepareRuntimeConfig: () =>
           prepareRestartRuntimeConfig(preparedRuntimeConfig, sourceConfig, transactionOwnership),
+        onDeferredFailure: () => {
+          failedRestartPlan = plan;
+        },
       });
       if (restartTransaction.status === "recovery-pending") {
         throw new GatewayHotReloadRecoveryError("config restart");
@@ -272,6 +278,7 @@ export function startManagedGatewayConfigReloader(
       transactionOwnership.commitRuntimeEnv();
       restartLifecycle.settle("committed");
     } catch (error) {
+      failedRestartPlan = plan;
       restartTransaction?.settle("rejected");
       restartLifecycle.settle("rejected");
       transactionOwnership.rollbackRuntimeEnv();
@@ -388,7 +395,13 @@ export function startManagedGatewayConfigReloader(
     },
     onConfigRevisionApplied: publishAppliedConfigHash,
     hasOutstandingGatewayRestart,
-    onEffectiveConfigUnchanged,
+    onEffectiveConfigUnchanged: async (nextConfig, ownership, sourceConfig) => {
+      if (failedRestartPlan) {
+        await runManagedRestart(failedRestartPlan, nextConfig, ownership, sourceConfig);
+        return { rollback: async () => {} };
+      }
+      return onEffectiveConfigUnchanged(nextConfig, ownership, sourceConfig);
+    },
     onNoopConfigCommit: onHotReload,
     onHotReload,
     onRestart: runManagedRestart,
@@ -414,6 +427,7 @@ export function startManagedGatewayConfigReloader(
       configReloader.isReady() &&
       !lifecycle.signal.aborted &&
       !configReloader.isReloading() &&
+      !hasPendingModelRuntimeReload() &&
       !hasOutstandingGatewayRestart(),
   };
 }

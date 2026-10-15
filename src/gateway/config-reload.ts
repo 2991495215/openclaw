@@ -1481,7 +1481,7 @@ export function startGatewayConfigReloader(
     ready,
     isReady: () => readyCompleted,
     applyPluginLifecycleChange,
-    isReloading: () => activeReloads.size > 0,
+    isReloading: () => activeReloads.size > 0 || reloadJob !== null,
     stop: async () => {
       stopped = true;
       wakeStartup?.();

@@ -187,6 +187,7 @@ class GatewayRestartTransaction {
             }
             const resolvedReason = reason ?? restartReason;
             if (!emissionPrepared) {
+              options?.onDeferredFailure?.();
               params.logReload.warn(
                 "gateway restart preparation failed; reapply the config or restart the Gateway manually",
               );
@@ -194,9 +195,12 @@ class GatewayRestartTransaction {
             }
             const emitResult = requestRecoveryRestart(resolvedReason, intent);
             if (emitResult.status === "failed") {
+              options?.onDeferredFailure?.();
               params.logReload.warn(
                 "gateway restart recovery emission failed; reapply the config or restart the Gateway manually",
               );
+            } else {
+              params.logReload.info("all operations and replies completed; restarting gateway now");
             }
             return emitResult;
           },
@@ -204,9 +208,6 @@ class GatewayRestartTransaction {
         hooks: {
           onReady: () => {
             this.restartDeferral = null;
-            if (this.operation === operation) {
-              params.logReload.info("all operations and replies completed; restarting gateway now");
-            }
           },
           onStillPending: (_pending, elapsedMs) => {
             params.logReload.warn(

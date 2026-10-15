@@ -724,11 +724,10 @@ describe("startGatewayDiscovery", () => {
       gatewayDiscoveryServices: [old],
     });
     try {
-      await discovery.update({ mdnsMode: "minimal" });
+      const next = makeDiscoveryService({ id: "next" });
+      await discovery.update({ mdnsMode: "minimal", gatewayDiscoveryServices: [next] });
       expect(oldStop).toHaveBeenCalledOnce();
       expect(old.service.advertise).toHaveBeenCalledOnce();
-      const next = makeDiscoveryService({ id: "next" });
-      await discovery.update({ gatewayDiscoveryServices: [next] });
       expect(next.service.advertise).toHaveBeenCalledWith(
         expect.objectContaining({ minimal: true }),
       );

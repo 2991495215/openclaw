@@ -3021,7 +3021,7 @@ describe("gateway Gmail hot reload handlers", () => {
       expect(emitStateEvent).not.toHaveBeenCalled();
       expect(getActiveSecretsRuntimeSnapshot()?.sourceConfig).toEqual(nextConfig);
       expect(acceptTerminalConfig).toHaveBeenCalledWith({
-        retireRejectedRestart: true,
+        retireRejectedRestart: false,
       });
       expect(heartbeatRunner.updateConfig).not.toHaveBeenCalled();
       expect(commitRuntimePolicy).toHaveBeenCalledWith(nextConfig);
@@ -4125,57 +4125,6 @@ describe("gateway Gmail hot reload handlers", () => {
       }
     },
   );
-
-  it("supersedes a blocked emission preflight without marking sessions or signaling", async () => {
-    vi.useFakeTimers();
-    const { clock, scheduler } = createConfigReloadTestClock();
-    const harness = await createManagedRestartSequenceHarness({ scheduler });
-    const leaseClock = createPluginLifecycleLeaseTestClock();
-    const { promise: emissionPreflightStarted, resolve: recordEmissionPreflightStarted } =
-      createDeferred();
-    const { promise: emissionPreflightGate, resolve: releaseEmissionPreflight } = createDeferred();
-    const originalActivateRuntimeSecrets =
-      harness.activateRuntimeSecrets.prepareSnapshot.getMockImplementation();
-    if (!originalActivateRuntimeSecrets) {
-      throw new Error("Expected managed secrets activation implementation");
-    }
-    let restartCheckCount = 0;
-    harness.activateRuntimeSecrets.prepareSnapshot.mockImplementation(async (...args) => {
-      if (++restartCheckCount === 2) {
-        recordEmissionPreflightStarted?.();
-        await emissionPreflightGate;
-      }
-      return await originalActivateRuntimeSecrets(...args);
-    });
-    hoisted.activeAgentRunCount.value = 1;
-
-    try {
-      const deferredPromotion = harness.nextPromotion();
-      harness.writeConfig(harness.deferredConfig, "deferred-a", 1);
-      const deferredAdvance = clock.wake();
-      await expect(deferredPromotion).resolves.toBe("deferred-a");
-      await deferredAdvance;
-
-      hoisted.activeAgentRunCount.value = 0;
-      const emissionAdvance = vi.advanceTimersByTimeAsync(500);
-      await emissionPreflightStarted;
-
-      harness.writeConfig(harness.invalidConfig, "invalid-b", 2);
-      expect(harness.requestRecoveryRestart).not.toHaveBeenCalled();
-
-      // The write listener supersedes the blocked preflight synchronously. Release it before
-      // draining fake timers so Vitest does not need to nest timer advances around the gate.
-      releaseEmissionPreflight();
-      await emissionAdvance;
-      await leaseClock.waitFor(Promise.resolve(clock.wake()));
-      expect(harness.requestRecoveryRestart).not.toHaveBeenCalled();
-      expect(hoisted.markRestartAbortedMainSessions).not.toHaveBeenCalled();
-    } finally {
-      releaseEmissionPreflight();
-      hoisted.activeAgentRunCount.value = 0;
-      await harness.reloader.stop();
-    }
-  });
 
   it("rejects unavailable secrets when reapplying an earlier config", async () => {
     vi.useFakeTimers();

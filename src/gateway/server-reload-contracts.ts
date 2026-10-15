@@ -62,6 +62,7 @@ export type GatewayRestartTransactionResult = {
 
 export type GatewayRestartRequestOptions = {
   prepareRuntimeConfig?: () => Promise<OpenClawConfig>;
+  onDeferredFailure?: () => void;
 };
 
 class GatewayHotReloadCancelledError extends Error {
