@@ -1,4 +1,4 @@
-import { isRecord, isStringArray } from "@openclaw/normalization-core/record-coerce";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { Selectable } from "kysely";
 import type { EngineConnection } from "../infra/sql-connection.js";
 import {
@@ -38,7 +38,10 @@ export const workspaceStatePublication = createStateDomainPublication<WorkspaceS
       return (
         typeof value.workspaceKey === "string" &&
         Array.isArray(value.hashes) &&
-        value.hashes.every((entry) => isStringArray(entry) && entry.length === 2)
+        value.hashes.every(
+          (entry) =>
+            Array.isArray(entry) && entry.length === 2 && entry.every((v) => typeof v === "string"),
+        )
       );
     }
     const row = value.row;
