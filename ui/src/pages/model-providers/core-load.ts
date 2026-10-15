@@ -54,7 +54,6 @@ async function loadConnectedProviderData(
 }
 
 export class ModelProviderCoreLoader {
-  private active = false;
   private catalogRequest: AbortController | null = null;
   catalogError: string | null = null;
   retryProvider: string | undefined;
@@ -66,7 +65,7 @@ export class ModelProviderCoreLoader {
   ) {}
 
   get loading(): boolean {
-    return this.active;
+    return this.request !== null;
   }
 
   get catalogLoading(): boolean {
@@ -125,14 +124,13 @@ export class ModelProviderCoreLoader {
     reason: ModelProviderRefreshReason,
     target?: { providerId?: string; data: ModelProvidersData },
   ): Promise<void> {
-    if (reason === "publication" && (this.active || this.catalogLoading)) {
+    if (reason === "publication" && (this.loading || this.catalogLoading)) {
       // Catalog changes during an existing read are best effort until the next refresh.
       return;
     }
     this.request?.abort();
     const request = new AbortController();
     this.request = request;
-    this.active = true;
     if (reason !== "publication") {
       this.resetCatalog();
     }
@@ -149,16 +147,16 @@ export class ModelProviderCoreLoader {
             signal: request.signal,
           });
       if (this.request === request) {
-        this.active = false;
+        this.request = null;
         this.retryProvider = target && data.error ? target.providerId : undefined;
         this.options.onComplete({ client, agentId, reason, data });
+        this.host.requestUpdate();
       }
     } catch {
       // Each source reports its own error; a retired request has no result to publish.
     } finally {
       if (this.request === request) {
         this.request = null;
-        this.active = false;
         this.host.requestUpdate();
       }
     }
@@ -167,7 +165,6 @@ export class ModelProviderCoreLoader {
   invalidate(): void {
     this.resetCatalog();
     this.retryProvider = undefined;
-    this.active = false;
     this.request?.abort();
     this.request = null;
     this.host.requestUpdate();
