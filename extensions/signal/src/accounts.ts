@@ -236,7 +236,7 @@ export function resolveSignalTransport(
     httpPort,
     startupTimeoutMs: managedTransport?.startupTimeoutMs ?? 30_000,
     ...(managedTransport?.receiveMode ? { receiveMode: managedTransport.receiveMode } : {}),
-    ...(typeof managedTransport?.ignoreStories === "boolean"
+    ...(managedTransport?.ignoreStories !== undefined
       ? { ignoreStories: managedTransport.ignoreStories }
       : {}),
   };
