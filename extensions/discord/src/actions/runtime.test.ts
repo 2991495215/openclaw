@@ -245,7 +245,7 @@ async function expectBlockedRead(
 }
 const disabledActions = (key: keyof DiscordActionConfig) => key !== "reactions";
 const channelInfoEnabled = (key: keyof DiscordActionConfig) => key === "channelInfo";
-const moderationEnabled = (key: keyof DiscordActionConfig) => key === "moderation";
+const moderationEnabled = (key: keyof DiscordActionConfig): boolean => key === "moderation";
 const rolesEnabled = (key: keyof DiscordActionConfig) => key === "roles";
 
 beforeEach(() => {
