@@ -2,7 +2,6 @@ import type { acquireFileLockSync } from "./file-lock-manager.js";
 
 export type GatewayStateProjection = {
   readonly lockPath: string;
-  readonly verifiedAt: number | undefined;
   verifyStillHeld(): boolean;
   retain(): GatewayStateProjection;
   release(): void;
@@ -14,25 +13,13 @@ export function createGatewayStateProjectionResource(
   invalidateReads: () => void,
 ): GatewayStateProjection {
   let references = 1;
-  let verifiedAt: number | undefined;
-  const verify = () => {
-    verifiedAt = undefined;
-    if (!lock.verifyStillHeld()) {
-      return false;
-    }
-    verifiedAt = performance.now();
-    return true;
-  };
   const reference = (): GatewayStateProjection => {
     let released = false;
     return {
       lockPath: lock.lockPath,
-      get verifiedAt() {
-        return released ? undefined : verifiedAt;
-      },
-      verifyStillHeld: () => !released && verify(),
+      verifyStillHeld: () => !released && lock.verifyStillHeld(),
       retain() {
-        if (released || !verify()) {
+        if (released || !lock.verifyStillHeld()) {
           throw new Error("Gateway state projection is no longer current");
         }
         references += 1;
