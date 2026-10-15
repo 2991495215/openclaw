@@ -1,6 +1,6 @@
-import { markdownToIR, type MarkdownIRWithMetadata } from "openclaw/plugin-sdk/text-chunking";
+import { markdownToIR } from "openclaw/plugin-sdk/text-chunking";
 import { isEscaped, protectLiteral, protectLocalInlineSyntax } from "./text-styles-inline.js";
-import type { TokenRegistry } from "./text-styles-shared.js";
+import type { MarkdownIRWithMetadata, TokenRegistry } from "./text-styles-shared.js";
 import {
   sourceBlockquotePrefixLength,
   sourceContainerProjection,

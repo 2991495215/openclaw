@@ -1,8 +1,9 @@
-import type { MarkdownBlockSpan, MarkdownIRWithMetadata } from "openclaw/plugin-sdk/text-chunking";
 import {
   normalizeCodeBlockLeadingWhitespace,
   projectOffset,
   UNICODE_SEPARATOR_PATTERN,
+  type MarkdownBlockSpan,
+  type MarkdownIRWithMetadata,
   type TextEdit,
 } from "./text-styles-shared.js";
 import {

@@ -1,5 +1,9 @@
-import type { MarkdownIRWithMetadata } from "openclaw/plugin-sdk/text-chunking";
-import { projectOffset, type StructuralStyle, type TextEdit } from "./text-styles-shared.js";
+import {
+  projectOffset,
+  type MarkdownIRWithMetadata,
+  type StructuralStyle,
+  type TextEdit,
+} from "./text-styles-shared.js";
 import type { MarkdownSource } from "./text-styles-source-spans.js";
 import { TextStyle, type Style } from "./zca-constants.js";
 
