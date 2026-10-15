@@ -221,16 +221,23 @@ suite.define(() => {
         ],
       });
       const retry = sidebar.locator('[data-session-catalog-load-more="codex"]');
+      const beforeInvalidation = (await gateway.getRequests("sessions.catalog.list")).length;
       await gateway.emitGatewayEvent("sessions.catalog.changed", { agentId: "main" });
+      // Event refresh is debounced; start rendering assertions after the request is admitted.
+      await gateway.waitForRequest("sessions.catalog.list", { after: beforeInvalidation });
       const codingSection = sidebar.locator('[data-session-section="catalog:codex"]');
       await expectBrowser(codingSection.getByText(involved.label, { exact: true })).toHaveCount(0);
       await expectBrowser(retry).toBeEnabled();
-      const directory = createControlUiE2eArtifactDir("catalog-involvement-retry");
-      await writeFile(
-        path.join(directory, "empty-retry.png"),
-        (await takeControlUiScreenshotFrame(page, sidebar, [retry], { animations: "disabled" }))
-          .png,
-      );
+      const directory = artifactParent
+        ? createControlUiE2eArtifactDir("catalog-involvement-retry", artifactParent)
+        : undefined;
+      if (directory) {
+        await writeFile(
+          path.join(directory, "empty-retry.png"),
+          (await takeControlUiScreenshotFrame(page, sidebar, [retry], { animations: "disabled" }))
+            .png,
+        );
+      }
       await gateway.setMethodResponse("sessions.catalog.list", {
         catalogs: [
           ...catalogs.slice(0, 2),
@@ -250,18 +257,23 @@ suite.define(() => {
       ).toHaveCount(0);
       await expectBrowser(sidebar.getByText("Imported meeting", { exact: true })).toHaveCount(0);
       await expectBrowser(retry).toHaveCount(0);
-      await writeFile(
-        path.join(directory, "recovered.png"),
-        (
-          await takeControlUiScreenshotFrame(
-            page,
-            sidebar,
-            [sidebar.getByText(involved.label, { exact: true })],
-            { animations: "disabled" },
-          )
-        ).png,
-      );
-      await writeFile(path.join(directory, "retry-request.json"), JSON.stringify(retried, null, 2));
+      if (directory) {
+        await writeFile(
+          path.join(directory, "recovered.png"),
+          (
+            await takeControlUiScreenshotFrame(
+              page,
+              sidebar,
+              [sidebar.getByText(involved.label, { exact: true })],
+              { animations: "disabled" },
+            )
+          ).png,
+        );
+        await writeFile(
+          path.join(directory, "retry-request.json"),
+          JSON.stringify(retried, null, 2),
+        );
+      }
       await selectAllSidebarSessions(page);
       await expectBrowser(
         sidebar.getByText("Remote shared conversation", { exact: true }),
