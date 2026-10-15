@@ -22,6 +22,7 @@ import {
 import { SQLITE_WORKER_MAX_MESSAGE_BYTES } from "../sqlite-worker-contract.js";
 import {
   deferSqliteWorkerCommitReceipt,
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../sqlite-worker-operation-admission.js";
@@ -271,28 +272,23 @@ export function withCurrentConversationBindingPublication(
       }
     });
     let finished = false;
-    const finish = owner.admission.finish.bind(owner.admission);
-    owner.admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        if (!finished) {
-          finished = true;
-          unsubscribe();
-          notifyListeners(state.facts, {
-            kind: "settled",
-            identity: identity(),
-            operation,
-            outcome:
-              !unknown && owner.admission.settlement?.kind === "completed"
-                ? published
-                  ? "published"
-                  : "unchanged"
-                : "unknown",
-          });
-        }
+    observeSqliteWorkerAdmissionFinish(owner.admission, () => {
+      if (!finished) {
+        finished = true;
+        unsubscribe();
+        notifyListeners(state.facts, {
+          kind: "settled",
+          identity: identity(),
+          operation,
+          outcome:
+            !unknown && owner.admission.settlement?.kind === "completed"
+              ? published
+                ? "published"
+                : "unchanged"
+              : "unknown",
+        });
       }
-    };
+    });
     observeSqliteWorkerCommittedFacts(owner.admission, ({ facts }) => {
       assertPublicationCurrent();
       if (isRecord(facts) && facts.kind === "unknown" && facts.identity === identity()) {

@@ -9,6 +9,7 @@ import type { SqliteCommitReceipt } from "../infra/sqlite-commit-receipt.js";
 import { SQLITE_WORKER_MAX_MESSAGE_BYTES } from "../infra/sqlite-worker-contract.js";
 import {
   deferSqliteWorkerCommitReceipt,
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../infra/sqlite-worker-operation-admission.js";
@@ -296,20 +297,15 @@ export function withPluginStatePublication(
       throw error;
     }
     let installed = false;
-    const finish = owner.admission.finish.bind(owner.admission);
-    owner.admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        const settlement = owner.admission.settlement;
-        // A completed rollback has no receipt; a committed write must publish before denial ends.
-        pending.finish(
-          settlement?.kind === "completed" && (!settlement.committed || installed)
-            ? "completed"
-            : "unknown",
-        );
-      }
-    };
+    observeSqliteWorkerAdmissionFinish(owner.admission, () => {
+      const settlement = owner.admission.settlement;
+      // A completed rollback has no receipt; a committed write must publish before denial ends.
+      pending.finish(
+        settlement?.kind === "completed" && (!settlement.committed || installed)
+          ? "completed"
+          : "unknown",
+      );
+    });
     observeSqliteWorkerCommittedFacts(owner.admission, ({ facts }) => {
       pending.install(facts);
       installed = true;

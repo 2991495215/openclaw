@@ -132,6 +132,21 @@ export function observeSqliteWorkerCommittedFacts(
   bind(observer);
 }
 
+/** Observe each finish after the previously installed handler, including failure. */
+export function observeSqliteWorkerAdmissionFinish(
+  admission: SqliteWorkerOperationAdmission,
+  observer: () => void,
+): void {
+  const finish = admission.finish.bind(admission);
+  admission.finish = () => {
+    try {
+      finish();
+    } finally {
+      observer();
+    }
+  };
+}
+
 type AdmissionHandler = (
   request: SqliteWorkerAdmissionRequest,
   grant: (beforeRelease?: () => void) => boolean,

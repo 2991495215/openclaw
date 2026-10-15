@@ -5,6 +5,7 @@ import { parsePersistedExecApprovals } from "./exec-approvals-config.js";
 import type { ExecAuthorizationCommitInput } from "./exec-approvals-contracts.js";
 import type { ExecApprovalsFile } from "./exec-approvals-core.js";
 import {
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "./sqlite-worker-operation-admission.js";
@@ -61,15 +62,10 @@ export function withExecApprovalsPublication(
     observeSqliteWorkerCommittedFacts(admission, ({ facts }) => {
       publication?.committed(isRecord(facts) ? facts.execFacts : undefined);
     });
-    const finish = admission.finish.bind(admission);
-    admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        const confirmed = admission.settlement?.kind === "completed";
-        publication?.finish(confirmed, confirmed && !admission.committed && !commitAdmitted);
-      }
-    };
+    observeSqliteWorkerAdmissionFinish(admission, () => {
+      const confirmed = admission.settlement?.kind === "completed";
+      publication?.finish(confirmed, confirmed && !admission.committed && !commitAdmitted);
+    });
     return retained;
   };
 }

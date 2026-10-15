@@ -6,6 +6,7 @@ import type { SqliteCommitReceipt } from "../../infra/sqlite-commit-receipt.js";
 import { SQLITE_WORKER_MAX_MESSAGE_BYTES } from "../../infra/sqlite-worker-contract.js";
 import {
   deferSqliteWorkerCommitReceipt,
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../../infra/sqlite-worker-operation-admission.js";
@@ -142,14 +143,9 @@ export function withWorktreeRegistryPublication(
       owner.admission.finish();
       throw error;
     }
-    const finish = owner.admission.finish.bind(owner.admission);
-    owner.admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        pending.finish(owner.admission.settlement?.kind === "completed");
-      }
-    };
+    observeSqliteWorkerAdmissionFinish(owner.admission, () => {
+      pending.finish(owner.admission.settlement?.kind === "completed");
+    });
     observeSqliteWorkerCommittedFacts(owner.admission, ({ facts }) => {
       const committed = readWorkerReceiptEnvelope(facts);
       if (!committed) {

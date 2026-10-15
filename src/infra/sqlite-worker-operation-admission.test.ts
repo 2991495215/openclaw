@@ -23,6 +23,7 @@ import {
   createSqliteDatabaseAdmissionRelay,
   createSqliteWorkerOperationAdmission,
   deferSqliteWorkerCommitReceipt,
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   requestSqliteWorkerOperationAdmission,
   requestSqliteWorkerSchemaMaintenance,
@@ -41,6 +42,31 @@ import { getWorkerMessageMetrics } from "./worker-message-metrics.js";
 
 afterEach(() => vi.restoreAllMocks());
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+
+it("preserves nested finish order and error precedence on repeated calls", () => {
+  const admission = createSqliteWorkerOperationAdmission((_request, grant) => grant());
+  const finish = admission.finish.bind(admission);
+  const events: string[] = [];
+  const earlierFailure = new Error("Synthetic earlier finish observer failed");
+  const failure = new Error("Synthetic later finish observer failed");
+  observeSqliteWorkerAdmissionFinish(admission, () => {
+    events.push("first");
+    throw earlierFailure;
+  });
+  observeSqliteWorkerAdmissionFinish(admission, () => {
+    events.push("second");
+    throw failure;
+  });
+
+  try {
+    expect(() => admission.finish()).toThrow(failure);
+    expect(() => admission.finish()).toThrow(failure);
+    expect(events).toEqual(["first", "second", "first", "second"]);
+    expect(() => admission.observeRequests(() => {})).toThrow("closed");
+  } finally {
+    finish();
+  }
+});
 
 it.each([
   "revoke",
