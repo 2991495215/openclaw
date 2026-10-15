@@ -21,7 +21,10 @@ import {
 import { createLazyPromise } from "../../shared/lazy-promise.js";
 import { isRecord } from "../../utils.js";
 import { extractReadableContent } from "../../web-fetch/content-extractors.runtime.js";
-import { writePrivateTempFile } from "../sessions/tools/private-temp-file.js";
+import {
+  writePrivateTempFile,
+  type PrivateTempFileOptions,
+} from "../sessions/tools/private-temp-file.js";
 import { formatFullOutputFooter } from "../sessions/tools/tool-contracts.js";
 import type { WebFetchTransport } from "./web-fetch-transport.js";
 import {
@@ -138,7 +141,7 @@ async function spillWebFetchContent(
   wrapped: WebFetchWrappedContent,
   maxChars: number,
   sourceTruncated: boolean,
-  assertWriteAllowed?: () => void,
+  output: PrivateTempFileOptions,
 ): Promise<WebFetchWrappedContent> {
   if (!wrapped.truncated) {
     return sourceTruncated ? { ...wrapped, truncated: true } : wrapped;
@@ -147,12 +150,24 @@ async function spillWebFetchContent(
   // uses this fixed file cap so vanished pages can still be read after truncation.
   const content = truncateUtf16Safe(value, WEB_FETCH_SPILL_MAX_CHARS);
   const spillChars = content.length;
-  // Extraction can yield after acquisition admission. Recheck at the content effect.
-  assertWriteAllowed?.();
-  const spillPath = await writePrivateTempFile(
-    "openclaw-web-fetch",
-    wrapWebContent(content, "web_fetch"),
-  );
+  let spillPath: string;
+  output.assertCurrent?.();
+  try {
+    spillPath = await writePrivateTempFile(
+      "openclaw-web-fetch",
+      wrapWebContent(content, "web_fetch"),
+      output,
+    );
+  } catch (error) {
+    output.assertCurrent?.();
+    if (!output.sandbox) {
+      throw error;
+    }
+    const notice = "\n\n[Full output unavailable in sandbox.]";
+    const visible = wrapWebFetchContent(value, maxChars - notice.length);
+    const text = `${visible.text}${notice}`;
+    return { ...visible, truncated: true, text, length: text.length };
+  }
   const spillCapped = value.length > WEB_FETCH_SPILL_MAX_CHARS;
   const isSpillTruncated = sourceTruncated || spillCapped;
   const spillNote = sourceTruncated
@@ -209,6 +224,8 @@ type WebFetchRuntimeParams = {
   lookupFn?: LookupFn;
   signal?: AbortSignal;
   resolveProviderFallback: () => Promise<WebFetchProviderFallback>;
+  output: PrivateTempFileOptions;
+  cacheScope?: string;
 };
 
 function normalizeProviderFinalUrl(value: unknown): string | undefined {
@@ -240,7 +257,7 @@ async function buildWebFetchPayload(params: {
   extractMode: ExtractMode;
   maxChars: number;
   tookMs: number;
-  assertWriteAllowed?: () => void;
+  output: PrivateTempFileOptions;
 }): Promise<Record<string, unknown>> {
   const payload = isRecord(params.payload) ? params.payload : {};
   let metadataTruncated = false;
@@ -285,7 +302,7 @@ async function buildWebFetchPayload(params: {
     wrapWebFetchContent(rawText, bodyMaxChars),
     bodyMaxChars,
     payload.truncated === true,
-    params.assertWriteAllowed,
+    params.output,
   );
   const providerRawLength =
     resolveOptionalIntegerOption(payload.rawLength, { min: 0 }) ?? wrapped.rawLength;
@@ -354,6 +371,7 @@ export async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record
   // Append the operator header set after the existing cache discriminators so
   // requests without custom headers keep their current cache key.
   const cacheDiscriminators = [
+    params.cacheScope ? `sandbox:${params.cacheScope}` : "",
     `user-agent:${sha256Hex(params.userAgent)}`,
     params.providerCacheKey ? `provider:${params.providerCacheKey}` : "",
     params.ssrfPolicy ? `ssrf-policy:${sha256Hex(JSON.stringify(params.ssrfPolicy))}` : "",
@@ -377,7 +395,25 @@ export async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record
   }
   const cached = readCache(cache, cacheKey, params.cacheTtlMs);
   if (cached) {
-    return { ...cached.value, cached: true };
+    const spill = cached.value.spill;
+    const sandbox = params.output.sandbox;
+    const available =
+      !sandbox ||
+      !isRecord(spill) ||
+      typeof spill.path !== "string" ||
+      (
+        await sandbox.bridge?.stat({
+          filePath: spill.path,
+          cwd: sandbox.root,
+          expectedPolicyPath: spill.path,
+          signal: params.signal,
+        })
+      )?.type === "file";
+    params.output.assertCurrent?.();
+    params.transport?.assertInvocationCurrent();
+    if (available) {
+      return { ...cached.value, cached: true };
+    }
   }
 
   // Preserve the direct fetch's rejection; replacing it with signal.reason would
@@ -389,7 +425,10 @@ export async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record
   // leave a successful cache entry for a call that never returned its content.
   throwIfFetchAborted(params.signal);
   params.transport?.assertInvocationCurrent();
-  writeCache(cache, cacheKey, payload, params.cacheTtlMs);
+  params.output.assertCurrent?.();
+  if (!params.output.sandbox || !payload.truncated || payload.spill) {
+    writeCache(cache, cacheKey, payload, params.cacheTtlMs);
+  }
   return payload;
 }
 
@@ -424,6 +463,7 @@ async function fetchWebPayload(params: WebFetchRuntimeParams): Promise<Record<st
       extractMode: params.extractMode,
       maxChars: params.maxChars,
       tookMs,
+      output: params.output,
     });
   }
 
@@ -617,12 +657,16 @@ async function fetchWebPayload(params: WebFetchRuntimeParams): Promise<Record<st
       extractMode: params.extractMode,
       maxChars: params.maxChars,
       tookMs: Date.now() - start,
-      assertWriteAllowed: params.transport
-        ? () => {
-            throwIfFetchAborted(params.signal);
-            params.transport?.assertInvocationCurrent();
+      output: params.transport
+        ? {
+            ...params.output,
+            assertCurrent: () => {
+              params.output.assertCurrent?.();
+              throwIfFetchAborted(params.signal);
+              params.transport?.assertInvocationCurrent();
+            },
           }
-        : undefined,
+        : params.output,
     });
   } finally {
     if (!res.bodyUsed) {

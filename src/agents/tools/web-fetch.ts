@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   asPositiveFiniteNumber,
   resolveIntegerOption,
@@ -5,6 +6,7 @@ import {
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
 import { Type } from "typebox";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { sha256Hex } from "../../infra/crypto-digest.js";
 import type { LookupFn } from "../../infra/net/ssrf.js";
 import { logWarn } from "../../logger.js";
 import { assertSecretOwnerAvailable } from "../../secrets/runtime-degraded-state.js";
@@ -13,6 +15,8 @@ import type { RuntimeWebFetchMetadata } from "../../secrets/runtime-web-tools.ty
 import { createLazyPromise } from "../../shared/lazy-promise.js";
 import { isRecord } from "../../utils.js";
 import { resolveWebProviderConfig } from "../../web/provider-runtime-shared.js";
+import { captureAgentToolSourceExecutionGuard } from "../agent-tool-source-execution-guard.js";
+import type { SandboxFsBridge } from "../sandbox/fs-bridge.types.js";
 import { stringEnum } from "../schema/string-enum.js";
 import { setToolTerminalPresentation } from "../tool-terminal-presentation.js";
 import type { AnyAgentTool } from "./common.js";
@@ -214,6 +218,10 @@ function sanitizeWebFetchUrl(raw: string): string {
 export function createWebFetchTool(options?: {
   config?: OpenClawConfig;
   sandboxed?: boolean;
+  sandboxRoot?: string;
+  sandboxFsBridge?: SandboxFsBridge;
+  agentSessionKey?: string;
+  assertInvocationCurrent?: () => void;
   runtimeWebFetch?: RuntimeWebFetchMetadata;
   lateBindRuntimeConfig?: boolean;
   lookupFn?: LookupFn;
@@ -224,6 +232,11 @@ export function createWebFetchTool(options?: {
   if (fetch?.enabled === false) {
     return null;
   }
+  // Saved locations belong to the requesting session and filesystem, even when
+  // another caller fetches the same URL with identical network settings.
+  const cacheScope = options?.sandboxed
+    ? sha256Hex(JSON.stringify([options.agentSessionKey ?? randomUUID(), options.sandboxRoot]))
+    : undefined;
   const tool: AnyAgentTool = {
     label: "Web Fetch",
     name: "web_fetch",
@@ -232,6 +245,12 @@ export function createWebFetchTool(options?: {
     parameters: WebFetchSchema,
     outputSchema: WebFetchOutputSchema,
     execute: async (toolCallId, args, signal, onUpdate) => {
+      const assertSourceCurrent = captureAgentToolSourceExecutionGuard(signal);
+      const assertCurrent = () => {
+        assertSourceCurrent();
+        options?.assertInvocationCurrent?.();
+      };
+      assertCurrent();
       const {
         config,
         preferRuntimeProviders,
@@ -331,6 +350,14 @@ export function createWebFetchTool(options?: {
           lookupFn: options?.lookupFn,
           signal,
           resolveProviderFallback,
+          cacheScope,
+          output: {
+            ...(options?.sandboxed
+              ? { sandbox: { root: options.sandboxRoot, bridge: options.sandboxFsBridge } }
+              : {}),
+            assertCurrent,
+            signal,
+          },
         });
         if (options?.transport) {
           throwIfFetchAborted(signal);

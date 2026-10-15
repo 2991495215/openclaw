@@ -1,24 +1,27 @@
 import type { GatewaySessionRow } from "../api/types.ts";
 import { registerSessionOrganizationEnglish } from "../i18n/locales/en-session-organization.ts";
+import { registerSessionPlacementEnglish } from "../i18n/locales/en-session-placement.ts";
 import { EDITOR_IDS, type EditorId } from "../lib/editor-links.ts";
 import { resolveAsciiShortcutKey } from "../lib/keyboard-shortcuts.ts";
 import { projectGateway } from "../lib/reactive/application.ts";
 import { useOptionalApplication } from "../lib/reactive/context.ts";
+import type { SessionCreatedActor, SessionOwnerOption } from "../lib/session-owner.ts";
+import { customSnoozeStorageKey, readCustomSnooze } from "../lib/sessions/custom-snooze.ts";
 import type { SolidControllerHost } from "../lit/solid-controller-host.ts";
 import type { SessionCommunicationMenuAction } from "./session-communication-options.ts";
 import { SessionMenuSettings } from "./session-menu-settings.ts";
-import type { SessionCreatedActor, SessionOwnerOption } from "./session-owner-chip.ts";
 import { SessionOwnerMenu } from "./session-owner-menu.ts";
 import "../styles/sidebar-menus.css";
 
 registerSessionOrganizationEnglish();
+registerSessionPlacementEnglish();
 
 export type SessionMenuData = {
   label: string;
+  placementAction?: "dispatch" | "move" | "retry";
   target?: { key: string; agentId?: string };
   sessionId: string | null;
   isChild?: boolean;
-  hasChildren?: boolean;
   pinnable?: boolean;
   pinned: boolean;
   unread: boolean;
@@ -49,9 +52,9 @@ const SIMPLE_SESSION_ACTIONS = [
   "toggle-involving-me",
   "rename",
   "fork",
+  "move-session",
   "new-group",
   "toggle-archived",
-  "archive-tree",
   "move-to-top-level",
   "delete",
 ] as const;
@@ -66,7 +69,7 @@ export type SessionManagementAction =
   | { kind: "set-color"; color: string | null }
   | { kind: "assign-owner"; owner: Pick<SessionOwnerOption, "type" | "id"> }
   | { kind: "move-to-group"; category: string | null }
-  | { kind: "snooze"; snoozedUntil: number }
+  | { kind: "snooze"; snoozedUntil: number; rememberCustom?: boolean }
   | { kind: "wake" };
 
 export type SessionManagementActionKind = SessionManagementAction["kind"];
@@ -113,6 +116,13 @@ export class SessionMenuActions {
   private readonly gateway = this.context ? projectGateway(this.context.gateway) : undefined;
   readonly ownerMenu: SessionOwnerMenu;
   readonly advanced;
+  openCustomSnooze?: () => void;
+  customSnoozeKeydown?: (event: KeyboardEvent) => boolean;
+
+  get customSnoozeKey(): string | null {
+    const client = this.gateway?.read().snapshot.client;
+    return client ? customSnoozeStorageKey(client.gatewayUrl, client.recoveryScope) : null;
+  }
 
   constructor(
     private readonly host: SessionMenuActionsHost,
@@ -188,6 +198,8 @@ export class SessionMenuActions {
       case "set-color":
       case "assign-owner":
         return batch;
+      case "move-session":
+        return batch || !session.placementAction || session.archived;
       case "fork":
         return batch || state.forkDisabled;
       case "move-to-group":
@@ -195,14 +207,6 @@ export class SessionMenuActions {
         return false;
       case "move-to-top-level":
         return batch || !session.isChild;
-      case "archive-tree":
-        return (
-          batch ||
-          !session.hasChildren ||
-          session.archived ||
-          session.archiving === true ||
-          !state.archiveAllowed
-        );
       case "toggle-archived":
         return session.archiving === true || (!batch && !session.archived && !state.archiveAllowed);
       case "delete":
@@ -240,6 +244,19 @@ export class SessionMenuActions {
     const kind = SIMPLE_SESSION_ACTIONS.find((candidate) => candidate === value);
     if (kind) {
       this.runAction({ kind });
+      return true;
+    }
+    if (value === "snooze-reuse") {
+      const snoozedUntil = readCustomSnooze(this.customSnoozeKey);
+      if (snoozedUntil !== null) {
+        this.runAction({ kind: "snooze", snoozedUntil });
+      }
+      return true;
+    }
+    if (value === "snooze-custom") {
+      if (!this.actionDisabled("snooze", this.actionExtraDisabled("snooze"))) {
+        this.openCustomSnooze?.();
+      }
       return true;
     }
     if (value === "wake") {
@@ -287,6 +304,9 @@ export class SessionMenuActions {
   }
 
   handleKeydown(event: KeyboardEvent, appearancePicker: { showIconGrid: () => void }): boolean {
+    if (this.customSnoozeKeydown?.(event)) {
+      return true;
+    }
     const target = event.composedPath().find((node) => node instanceof HTMLElement);
     const key = resolveAsciiShortcutKey(event);
     // Moving these actions into Advanced must not retire their existing menu shortcuts.

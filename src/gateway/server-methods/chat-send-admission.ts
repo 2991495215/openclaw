@@ -72,7 +72,7 @@ import {
 
 /** Reserve the session lifecycle and register the abortable run before attachment work. */
 export async function admitChatSend(params: ChatSendAdmissionParams) {
-  const { request, session, respond, context, client } = params;
+  const { request, session, respond, context, client, diagnostics } = params;
   const { p, turnKind } = request;
   const requestIdentity = request.goalOperation?.requestFingerprint ?? request.requestIdentity;
   const progressRefresh = isProgressCardRefreshInputProvenance(request.systemInputProvenance);
@@ -235,7 +235,11 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
         const localRecovery = restartSafeRequest && !currentConfig.cloudWorkers?.requiredProfile;
         retryComparison = comparison;
         params.assertCurrent?.();
-        const retainedRequestConflict = resolveChatSendRequestConflict(params, retryComparison);
+        const retainedRequestConflict = resolveChatSendRequestConflict(
+          params,
+          retryComparison,
+          pendingAttemptId,
+        );
         if (retainedRequestConflict) {
           throw new Error(retainedRequestConflict.message);
         }
@@ -248,6 +252,7 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
         const requestConflict = resolveChatSendRequestConflict(
           { ...params, session: { ...session, entry: latestEntry } },
           retryComparison,
+          pendingAttemptId,
         );
         if (requestConflict) {
           throw new Error(requestConflict.message);
@@ -405,13 +410,12 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
       // End row consumption before joining the native writer; retain FIFO and recheck authority.
       await pendingPlacementRead();
     }
-    if (refreshPlacement) {
-      return commitChatWorkAdmission(acpMeta);
-    }
+    return refreshPlacement ? commitChatWorkAdmission(acpMeta) : undefined;
   };
 
   let retainedRequestConflict: ReturnType<typeof resolveChatSendRequestConflict>;
   try {
+    using workPhase = diagnostics?.scope("detail.admission.work");
     gatewayWorkAdmission = await beginSessionWorkAdmission({
       agentId,
       scope: storePath,
@@ -419,8 +423,9 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
       identities: [sessionKey, backingSessionId],
       storeWriterIdentities: [sessionKey, session.sessionTarget.storeKey],
       revalidateAllowed: async () => {
+        using _ = diagnostics?.scope("detail.admission.revalidate");
         if (!restartSafeRequest) {
-          return commitChatWorkAdmission(null);
+          return await commitChatWorkAdmission(null);
         }
         const latest = await withCurrentChatSendSession({
           session,
@@ -432,7 +437,7 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
           cfg: latest.cfg,
           entries: [{ agentId, sessionKey: latest.canonicalKey, entry: latest.entry }],
         });
-        return commitChatWorkAdmission(acpMeta ?? null);
+        return await commitChatWorkAdmission(acpMeta ?? null);
       },
       onInterrupt: (reason) => {
         const stopReason = isAgentRunRestartAbortReason(reason) ? "restart" : "rpc";
@@ -449,8 +454,9 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
         }
       },
     });
+    workPhase?.finish();
     retainedRequestConflict = await consumeChatSendCurrent(params, () =>
-      resolveChatSendRequestConflict(params, retryComparison),
+      resolveChatSendRequestConflict(params, retryComparison, pendingAttemptId),
     );
   } catch (err) {
     pendingReservation.clear();
@@ -467,6 +473,7 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
     return { ok: false as const };
   }
   if (
+    requestIdentity !== undefined &&
     admittedRunAbort?.registered &&
     !reservationSuperseded &&
     !readChatSendDedupeResponse(context.dedupe, clientRunId)
@@ -546,11 +553,16 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
       entry: activeRunAbort.entry,
       abortSession,
     });
-    releaseCallerAuthority = () =>
-      releaseChatSendCallerAuthority({ operator: capturedOperator, request });
+    releaseCallerAuthority = () => {
+      try {
+        releaseChatSendCallerAuthority({ operator: capturedOperator, request });
+      } finally {
+        session.releaseSessionStorage?.();
+      }
+    };
     // Authority stays fresh per segment; effects check cancellation themselves.
     // A cancelled admission callback must still reach the handler's abort settlement.
-    const consumeCurrent = <T>(consume: () => T): Promise<T | undefined> =>
+    const consumeCurrent = <T>(consume: () => T): Promise<T> =>
       consumeChatSendCurrent(params, () => {
         capturedOperator.authority?.assertCurrent();
         return consume();
@@ -567,9 +579,6 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
           }),
         ),
       }));
-      if (!pending) {
-        return { ok: false as const };
-      }
       const interruption = await pending.interruption();
       interruptedActiveRun = interruption.interrupted;
       if (!interruption.settled) {
@@ -596,17 +605,12 @@ export async function admitChatSend(params: ChatSendAdmissionParams) {
           : undefined,
       };
     });
-    if (!pending) {
-      return { ok: false as const };
-    }
     if (pending.admission) {
       if (!(await pending.admission())) {
         cleanupPreDispatchAdmission();
         return { ok: false as const };
       }
-      if (!(await consumeCurrent(() => true))) {
-        return { ok: false as const };
-      }
+      await consumeCurrent(() => undefined);
     }
   } catch (error) {
     // Join effects before releasing custody on reader failure; never replay them.

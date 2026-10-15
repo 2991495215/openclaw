@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred as deferred } from "../../../../test/helpers/promise.js";
+import "../../lib/toast-host.ts";
 // Side-effect import: registers the custom elements mount() depends on
 // without relying on transitive fixture imports.
 import "./board-view.ts";
@@ -92,7 +93,7 @@ describe("openclaw-board-view", () => {
   it("paces a stalled proxy retry without spending the authorization refresh budget", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn(async () => new Response("<!doctype html><p>Ready document</p>"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubBoardDocumentFetch(fetchMock);
     const frameLoadFailed = vi.fn(async () => undefined);
     const view = await mount({
       context: gatewayContext(null),
