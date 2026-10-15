@@ -388,8 +388,6 @@ describe("createReplyRestartRecoveryClaimController", () => {
       "placement-publication",
       "session-retarget",
       "lifecycle-rotation",
-      "service-replacement",
-      "service-removal",
       "pending-input-persisted",
       "terminal-source",
     ] as const)("revalidates %s while placement preparation is pending", async (change) => {
@@ -420,10 +418,6 @@ describe("createReplyRestartRecoveryClaimController", () => {
           fixture.retarget();
         } else if (change === "lifecycle-rotation") {
           rotateAgentEventLifecycleGeneration();
-        } else if (change === "service-replacement") {
-          fixture.context.workerSessionPlacementService = { ...fixture.service };
-        } else if (change === "service-removal") {
-          fixture.context.workerSessionPlacementService = undefined;
         } else if (change === "pending-input-persisted") {
           fixture.recorder.markRuntimePersisted(fixture.recorder.getPendingInputMessage?.());
         } else {
@@ -441,10 +435,6 @@ describe("createReplyRestartRecoveryClaimController", () => {
           const message = {
             "placement-publication": `Session ${fixture.entry.sessionId} placement authority changed`,
             "session-retarget": "session changed before durable user-turn admission",
-            "service-replacement":
-              "Worker placement service changed before durable user-turn admission",
-            "service-removal":
-              "Worker placement service changed before durable user-turn admission",
             "pending-input-persisted":
               "pending user turn changed before durable user-turn admission",
           }[change];

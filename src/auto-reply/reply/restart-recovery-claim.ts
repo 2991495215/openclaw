@@ -329,10 +329,9 @@ export function createReplyRestartRecoveryClaimController(params: {
     const hasPendingPlacementInput = () =>
       Boolean(recorder?.getPendingInputMessage?.() && !recorder.hasPersisted());
     const pendingPlacementInput = hasPendingPlacementInput();
-    const placementContext = pendingPlacementInput
-      ? resolveSessionWorkerPlacementContext()
+    const placementService = pendingPlacementInput
+      ? resolveSessionWorkerPlacementContext().workerSessionPlacementService
       : undefined;
-    const placementService = placementContext?.workerSessionPlacementService;
     if (placementService && !placementService.prepareRuntimeRefresh) {
       throw new Error("Worker placement observation service is unavailable");
     }
@@ -349,9 +348,6 @@ export function createReplyRestartRecoveryClaimController(params: {
         }
         if (hasPendingPlacementInput() !== pendingPlacementInput) {
           throw new Error("pending user turn changed before durable user-turn admission");
-        }
-        if (placementContext?.workerSessionPlacementService !== placementService) {
-          throw new Error("Worker placement service changed before durable user-turn admission");
         }
         placementObservation?.assertCurrent();
       };
