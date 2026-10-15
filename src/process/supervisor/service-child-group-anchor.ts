@@ -177,7 +177,7 @@ export function runServiceChildGroupAnchor(): void {
 
   const reportStartupFailure = async (error: string, hardKill = false) => {
     closeInheritedLineage();
-    await send({ type: "startup-error", error });
+    await send({ type: "startup-error", anchorPid: process.pid, error });
     // A write callback only proves kernel acceptance. Keep the exact anchor alive until the
     // host records the authoritative spawn failure and acknowledges it on this same channel.
     await Promise.race([startupErrorAcknowledged.promise, retirementReady.promise]);

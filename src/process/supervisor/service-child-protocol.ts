@@ -77,6 +77,7 @@ export type ServiceChildAnchorPayload =
   | {
       type: "startup-error";
       error: string;
+      anchorPid?: number;
     };
 
 export type ServiceChildAnchorMessage = ServiceChildAnchorPayload & {
