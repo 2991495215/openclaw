@@ -44,7 +44,6 @@ import type { ReplyPayload } from "../types.js";
 import {
   buildSilentFallbackFailurePayload,
   hasSuccessfulSourceReplyDelivery,
-  refreshSessionEntryFromStore,
   resolveSourceReplyPolicy,
   resolveTerminalReplyDelivery,
 } from "./agent-runner-core.js";
@@ -64,7 +63,6 @@ import { attachMcpAppChannelAction, attachMcpConnectChannelAction } from "./mcp-
 import { normalizeReplyPayload } from "./normalize-reply.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 import { replyRunRegistry } from "./reply-run-registry.js";
-import { getReplyOperationSessionReader } from "./reply-run-registry.state.js";
 import { createReplyToModeFilterForChannel } from "./reply-threading.js";
 import { resolveSourceReplyExpectation } from "./source-reply-delivery-mode.js";
 import { resolveStrandedReplyRecovery } from "./stranded-reply-recovery.js";
@@ -100,6 +98,7 @@ export async function prepareReplyAgentPayloads(state: {
     typingSignals,
   } = context;
   const {
+    activeSessionEntry,
     configuredFallbackModel,
     contextTokensUsed,
     hasDirectlySentBlockReply,
@@ -121,7 +120,7 @@ export async function prepareReplyAgentPayloads(state: {
     terminalFailurePayload,
     usage,
   } = accounting;
-  let { activeSessionEntry, didLogHeartbeatStrip } = accounting;
+  let { didLogHeartbeatStrip } = accounting;
   const terminalReplyExpectation =
     followupRun.run.terminalReplyExpectation ??
     resolveSourceReplyExpectation({
@@ -511,8 +510,7 @@ export async function prepareReplyAgentPayloads(state: {
         isReplyPayloadTerminalContent(payload) &&
         ((!shouldDeliverTerminalFailure && !waitingStatusPayload) ||
           followupRun.run.sourceReplyDeliveryMode !== "message_tool_only" ||
-          getReplyPayloadMetadata(payload)?.deliverDespiteSourceReplySuppression === true) &&
-        normalizeReplyPayload(payload, { applyChannelTransforms: false }) !== null,
+          getReplyPayloadMetadata(payload)?.deliverDespiteSourceReplySuppression === true),
     );
   if (waitingStatusPayload && hasTerminalReply) {
     replyPayloads = replyPayloadsWithoutToolWarnings;
@@ -560,10 +558,7 @@ export async function prepareReplyAgentPayloads(state: {
   });
 
   const hasVisibleReplyPayload = replyPayloads.some(
-    (payload) =>
-      !isReplyPayloadStatusNotice(payload) &&
-      isPayloadLaneEnabled(payload) &&
-      normalizeReplyPayload(payload, { applyChannelTransforms: false }) !== null,
+    (payload) => !isReplyPayloadStatusNotice(payload) && isPayloadLaneEnabled(payload),
   );
   const canDeliverStandaloneFallbackNotice =
     Boolean(blockReplyPipeline?.didStream()) || successfulSideEffectDelivery;
@@ -579,7 +574,7 @@ export async function prepareReplyAgentPayloads(state: {
     (payload) =>
       !payload.isError &&
       !isReplyPayloadStatusNotice(payload) &&
-      typeof payload.text === "string" &&
+      payload.text !== undefined &&
       hasUnbackedReminderCommitment(payload.text),
   );
   // Suppress the guard note when an existing cron job (created in a prior
@@ -687,21 +682,6 @@ export async function prepareReplyAgentPayloads(state: {
     preserveUserFacingSessionState,
     replyUsageState,
   });
-
-  // Refresh inherited verbosity even when it started off: session preferences
-  // and plugin diagnostics may change while the model runs.
-  if (followupRun.run.verboseLevelOverride !== "off" || followupRun.run.traceAuthorized === true) {
-    activeSessionEntry = context.completion
-      ? await context.completion.refresh()
-      : await refreshSessionEntryFromStore({
-          storePath,
-          sessionKey,
-          fallbackEntry: activeSessionEntry,
-          activeSessionStore,
-          expectedGeneration: accounting.expectedSession,
-          reader: getReplyOperationSessionReader(replyOperation),
-        });
-  }
 
   return {
     kind: "continue" as const,
