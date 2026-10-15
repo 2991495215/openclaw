@@ -157,7 +157,7 @@ suite.define(() => {
       sessionScope: "global" as const,
     },
   ])(
-    "opens $route ($sessionKey) from its session snapshot while an older reply is held",
+    "opens $route ($sessionKey) from its session snapshot without another discovery",
     async ({ route, sessionKey, target, sessionScope }) => {
       const context = await suite.newBrowserContext(createControlUiE2eContextOptions());
       const page = await context.newPage();
@@ -207,11 +207,9 @@ suite.define(() => {
         await page.goto(`${suite.server.baseUrl}${route}`);
         const connect = await gateway.waitForRequest("connect");
         expect(connect.params).toMatchObject({ modelCatalog: target });
-        await expect
-          .poll(async () => (await gateway.getRequests("models.list", scope)).length)
-          .toBe(1);
         // The chat's delayed child roster request is startup work, independent of the picker.
         await gateway.waitForRequest("sessions.list", { match: { spawnedBy: sessionKey } });
+        expect(await gateway.getRequests("models.list", scope)).toHaveLength(0);
         for (const otherScope of [
           { agentId: "alpha" },
           { agentId: "alpha", sessionKey: "agent:alpha:other" },
@@ -223,7 +221,7 @@ suite.define(() => {
             catalog: { models: [foreign] },
           });
         }
-        expect(await gateway.getRequests("models.list", scope)).toHaveLength(1);
+        expect(await gateway.getRequests("models.list", scope)).toHaveLength(0);
         await gateway.emitGatewayEvent("models.snapshot", {
           target,
           scope: "shortId" in target ? scope : target,
@@ -255,7 +253,11 @@ suite.define(() => {
         expect(await picker.locator("[data-chat-model-catalog-state]").count()).toBe(0);
         expect(await gateway.getRequests("models.list")).toHaveLength(requestsBeforeOpen);
         expect(await gateway.getRequests("sessions.list")).toHaveLength(sessionRequestsBeforeOpen);
-        await gateway.resolveDeferred("models.list", { models: [older] });
+        await gateway.emitGatewayEvent("models.snapshot", {
+          target,
+          scope: "shortId" in target ? scope : target,
+          catalog: { models: [older] },
+        });
         await expect.poll(() => currentRow.isVisible()).toBe(true);
         expect(
           await picker
@@ -298,7 +300,7 @@ suite.define(() => {
           let initialSnapshot = createDeferred<{ deliver: () => void; payload: unknown }>();
           const disconnect = createDeferred<() => Promise<void>>();
           const replacementRead = createDeferred();
-          const invalidation = createDeferred();
+          let invalidation = createDeferred();
           const catalogRequests = new Set<string>();
           const heldReplies: Array<() => void> = [];
           let holdReplacement = true;
@@ -382,8 +384,16 @@ suite.define(() => {
           const trigger = picker.locator('[data-chat-model-select][aria-disabled="false"]');
           const account = picker.locator("[data-chat-account-group-toggle]");
           await trigger.click();
+          expect(catalogRequests.size).toBe(0);
+          // A real mutation, not a redundant hydration read, supersedes the held snapshot.
+          await admin.request("sessions.patch", {
+            key: sessionKey,
+            agentId: "alpha",
+            model: "fixture/first@fixture:account-a",
+          });
           await expect.poll(() => account.isVisible()).toBe(true);
           await expect.poll(() => account.textContent()).toContain("Account A");
+          invalidation = createDeferred();
           if (replacementState === "reconnect" || replacementState === "ordinary-reconnect") {
             const mountedShell = await page.locator("openclaw-app-shell").elementHandle();
             assert.ok(mountedShell);
@@ -399,12 +409,19 @@ suite.define(() => {
               10_000,
               "Reconnected catalog snapshot did not arrive",
             );
-            await expect.poll(() => heldReplies.length).toBeGreaterThan(0);
             expect(await mountedShell.evaluate((element) => element.isConnected)).toBe(true);
             if (replacementState === "reconnect") {
+              expect(heldReplies).toHaveLength(0);
               frames.push({ direction: "deliver-reconnect-snapshot" });
               reconnected.deliver();
             } else {
+              // An invalidation must recover through an ordinary read even if publication stalls.
+              await admin.request("sessions.patch", {
+                key: sessionKey,
+                agentId: "alpha",
+                model: "fixture/second@fixture:account-a",
+              });
+              await expect.poll(() => heldReplies.length).toBeGreaterThan(0);
               frames.push({ direction: "deliver-ordinary-without-snapshot" });
               holdReconnectCatalog = false;
               heldReplies.splice(0).forEach((send) => send());

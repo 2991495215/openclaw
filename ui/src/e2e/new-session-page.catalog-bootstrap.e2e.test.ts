@@ -21,7 +21,7 @@ suite.define(() => {
     { route: "new", agentId: "alpha", hint: undefined },
     { route: "new?agent=missing", agentId: "alpha", hint: "missing" },
   ])(
-    "opens $route for $agentId despite saved bravo selection while its older models.list reply is held",
+    "opens $route for $agentId despite saved bravo selection without a redundant models.list while the handshake snapshot is held",
     async ({ route, agentId, hint }) => {
       const context = await suite.browser.newContext(createControlUiE2eContextOptions());
       const gatewayUrl = controlUiBundledGatewayUrl(suite.server.baseUrl);
@@ -56,6 +56,7 @@ suite.define(() => {
       };
       const older = { provider: "fixture", id: "older", name: "Older model", available: true };
       const gateway = await installMockGateway(page, {
+        featureEvents: ["models.snapshot", "models.snapshot.error"],
         defaultAgentId: "alpha",
         agentModel: "fixture/current",
         heldMethods: ["models.list"],
@@ -76,15 +77,14 @@ suite.define(() => {
         await page.goto(`${suite.server.baseUrl}${route}`);
         const connected = await gateway.waitForRequest("connect");
         expect(connected.params).toMatchObject({ modelCatalog: hint ? { agentId: hint } : {} });
-        await expect
-          .poll(async () => (await gateway.getRequests("models.list", { agentId })).length)
-          .toBe(1);
+        await expect.poll(() => page.locator(".new-session-page__message").isVisible()).toBe(true);
+        expect(await gateway.getRequests("models.list")).toHaveLength(0);
         await gateway.emitGatewayEvent("models.snapshot", {
           target: { agentId: agentId === "alpha" ? "bravo" : "alpha" },
           scope: { agentId: agentId === "alpha" ? "bravo" : "alpha" },
           catalog: { models: [{ ...current, id: "foreign", name: "Other agent model" }] },
         });
-        expect(await gateway.getRequests("models.list", { agentId })).toHaveLength(1);
+        expect(await gateway.getRequests("models.list", { agentId })).toHaveLength(0);
         await gateway.emitGatewayEvent("models.snapshot", {
           target: hint ? { agentId: hint } : {},
           scope: { agentId },
@@ -107,7 +107,7 @@ suite.define(() => {
         );
         expect(await page.locator("[data-chat-model-catalog-state]").count()).toBe(0);
 
-        await gateway.resolveDeferred("models.list", { models: [older] });
+        expect(await gateway.getRequests("models.list")).toHaveLength(0);
         await expect.poll(() => currentRow.isVisible()).toBe(true);
         expect(await page.locator('[data-chat-model-option="fixture/older"]').count()).toBe(0);
         expect(await page.locator('[data-chat-model-option="fixture/foreign"]').count()).toBe(0);
@@ -128,7 +128,7 @@ suite.define(() => {
     },
   );
 
-  it("reloads the current catalog after a late initial snapshot without losing its draft", async () => {
+  it("reloads the current catalog after failed publication and a stale snapshot without losing its draft", async () => {
     const context = await suite.browser.newContext(createControlUiE2eContextOptions());
     const page = await context.newPage();
     const current = { provider: "fixture", id: "current", name: "Current model", available: true };
@@ -149,6 +149,11 @@ suite.define(() => {
     });
     try {
       await page.goto(`${suite.server.baseUrl}new`);
+      await gateway.waitForRequest("connect");
+      await gateway.emitGatewayEvent("models.snapshot.error", {
+        target: {},
+        error: { code: "UNAVAILABLE", message: "Initial catalog unavailable" },
+      });
       await gateway.waitForRequest("models.list", { match: { agentId: "alpha" } });
       await gateway.resolveDeferred("models.list", { models: [current] });
       const message = page.locator(".new-session-page__message");
@@ -170,6 +175,11 @@ suite.define(() => {
         catalog: { models: [older] },
       });
       await page.reload();
+      await gateway.waitForRequest("connect");
+      await gateway.emitGatewayEvent("models.snapshot.error", {
+        target: {},
+        error: { code: "UNAVAILABLE", message: "Initial catalog unavailable" },
+      });
       const reloaded = await gateway.waitForRequest("models.list", { match: { agentId: "alpha" } });
       expect(reloaded.params).toMatchObject({ agentId: "alpha" });
       await gateway.resolveDeferred("models.list", { models: [current] });

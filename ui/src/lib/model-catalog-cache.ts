@@ -59,8 +59,41 @@ export type ModelCatalogRequest = {
 type ModelCatalogCache = {
   entries: Map<string, ModelCatalogEntry>;
   requiresSnapshot?: boolean;
+  bootstrap?: ModelCatalogBootstrap;
   requests: Map<string, Map<GatewayProtocolRequestOptions["timeoutMs"], ModelCatalogRequest>>;
 };
+
+export type ModelCatalogBootstrap = {
+  read: ModelCatalogRead;
+  matches: (params: ModelsListParams) => boolean;
+  promise: Promise<void>;
+  finish: () => void;
+};
+
+/** The negotiated publication is a read already in flight, not a second transport. */
+export function beginModelCatalogBootstrap(
+  client: ModelCatalogClient,
+  scope: ModelsListParams | undefined,
+  matches: (params: ModelsListParams) => boolean,
+): ModelCatalogBootstrap {
+  const controller = new AbortController();
+  const read = beginModelCatalogRead(client, scope, controller.signal);
+  const completion = Promise.withResolvers<void>();
+  const bootstrap: ModelCatalogBootstrap = {
+    read,
+    matches,
+    promise: completion.promise,
+    finish() {
+      controller.abort();
+      if (read.cache.bootstrap === bootstrap) {
+        delete read.cache.bootstrap;
+      }
+      completion.resolve();
+    },
+  };
+  read.cache.bootstrap = bootstrap;
+  return bootstrap;
+}
 
 export type ModelCatalogRead = {
   client: ModelCatalogClient;
@@ -220,6 +253,7 @@ export function clearModelCatalogCache(
   options?: { requireSnapshot?: boolean },
 ): void {
   const cache = modelCatalogCache.get(client);
+  cache?.bootstrap?.finish();
   modelCatalogCache.delete(client);
   getModelCatalogCache(client).requiresSnapshot =
     options?.requireSnapshot === true ||
@@ -310,6 +344,10 @@ export function invalidateModelCatalogCache(
       readScope.agentId,
     );
   };
+  // Invalidation supersedes the handshake read just like any cached generation.
+  if (cache.bootstrap && matches(cache.bootstrap.read.scope)) {
+    cache.bootstrap.finish();
+  }
   for (const entry of cache.entries.values()) {
     if (matches(entry.scope)) {
       markModelCatalogInvalid(entry);

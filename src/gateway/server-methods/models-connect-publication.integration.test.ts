@@ -3,7 +3,10 @@ import {
   GATEWAY_CLIENT_IDS,
   GATEWAY_CLIENT_MODES,
 } from "../../../packages/gateway-protocol/src/client-info.js";
-import type { ModelsSnapshotEvent } from "../../../packages/gateway-protocol/src/index.js";
+import type {
+  ModelsSnapshotEvent,
+  ModelsSnapshotErrorEvent,
+} from "../../../packages/gateway-protocol/src/index.js";
 import {
   awaitGateBeforeSettlement,
   createDeferred,
@@ -428,6 +431,47 @@ it("connect negotiates snapshots and preserves draft and saved-session catalog s
         releaseRequest.resolve();
         pendingPublication.mockRestore();
         await Promise.allSettled([pendingCatalog, deliveredCatalog]);
+      }
+      enterPhase("failed publications release readers");
+      for (const failure of ["catalog", "session"] as const) {
+        const failed = createDeferred<ModelsSnapshotErrorEvent>();
+        const target =
+          failure === "catalog"
+            ? { agentId: "alpha" }
+            : { agentId: "alpha", shortId: "00000000", slugHint: "missing" };
+        const failedRead =
+          failure === "catalog"
+            ? vi
+                .spyOn(chatMetadataHandler, "resolveChatMetadataReadParams")
+                .mockRejectedValueOnce(new Error("synthetic catalog failure"))
+            : undefined;
+        const failedClient = await connectGatewayClient({
+          url: `ws://127.0.0.1:${port}`,
+          token,
+          clientName: GATEWAY_CLIENT_IDS.CONTROL_UI,
+          modelCatalog: target,
+          mode: GATEWAY_CLIENT_MODES.WEBCHAT,
+          origin: `http://127.0.0.1:${port}`,
+          scopes: ["operator.admin"],
+          onEvent(event) {
+            if (event.event === "models.snapshot.error") {
+              failed.resolve(event.payload as ModelsSnapshotErrorEvent);
+            }
+          },
+        });
+        try {
+          expect(await failed.promise).toMatchObject({
+            target,
+            error: { code: expect.any(String) },
+          });
+          failedRead?.mockRestore();
+          await expect(
+            failedClient.request("models.list", { agentId: "alpha" }),
+          ).resolves.toMatchObject({ models: [{ id: "first", provider: "fixture" }] });
+        } finally {
+          failedRead?.mockRestore();
+          await disconnectGatewayClient(failedClient);
+        }
       }
       enterPhase("legacy clients");
       for (const clientName of [

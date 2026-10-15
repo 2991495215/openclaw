@@ -10,3 +10,9 @@ export type ModelsSnapshotEvent = {
   scope: ModelCatalogScope;
   catalog: ModelsListResult;
 };
+
+/** Completes a negotiated publication that could not produce a catalog. */
+export type ModelsSnapshotErrorEvent = {
+  target: ModelCatalogTarget;
+  error: { code: string; message: string };
+};

@@ -37,6 +37,7 @@ export const GATEWAY_EVENTS = [
   "chat",
   "chat.metadata.changed",
   "models.snapshot",
+  "models.snapshot.error",
   "ui.command",
   "session.approval",
   "session.message",

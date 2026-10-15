@@ -1,6 +1,7 @@
 import type {
   ModelCatalogTarget,
   ModelsSnapshotEvent,
+  ModelsSnapshotErrorEvent,
 } from "../../../packages/gateway-protocol/src/index.js";
 import type { EventLogEntry } from "../api/event-log.ts";
 import type { GatewayEventFrame } from "../api/gateway.ts";
@@ -9,13 +10,17 @@ import { invalidateCronCatalog } from "../lib/cron/catalog.ts";
 import { invalidateModelAuthStatusRequests } from "../lib/model-auth-request-state.ts";
 import {
   clearModelCatalogCache,
-  beginModelCatalogRead,
+  beginModelCatalogBootstrap,
+  modelCatalogKey,
+  modelCatalogParams,
   publishModelCatalogResult,
-  type ModelCatalogRead,
+  type ModelCatalogBootstrap,
   type ModelCatalogReadScope,
 } from "../lib/model-catalog-cache.ts";
 import {
   resolveUiConversationIdentity,
+  resolveUiKnownSelectedGlobalAgentId,
+  normalizeAgentId,
   type UiSessionDefaultsHost,
 } from "../lib/sessions/session-key.ts";
 import type { ApplicationGatewaySnapshot } from "./gateway.ts";
@@ -109,7 +114,7 @@ export function createGatewayMetadataObserver(
   isCurrent: (snapshot: ApplicationGatewaySnapshot) => boolean,
 ) {
   let target: ModelCatalogTarget | undefined;
-  let read: ModelCatalogRead | undefined;
+  let bootstrap: ModelCatalogBootstrap | undefined;
   const targetKey = (value: ModelCatalogTarget) =>
     JSON.stringify(
       "shortId" in value
@@ -153,7 +158,33 @@ export function createGatewayMetadataObserver(
             ? resolveUiConversationIdentity({ hello }, target.sessionKey, target.agentId)
             : {}
           : undefined;
-      read = target ? beginModelCatalogRead(client, scope) : undefined;
+      const requestedAgentId = target?.agentId ? normalizeAgentId(target.agentId) : undefined;
+      bootstrap = target
+        ? beginModelCatalogBootstrap(client, scope, (params) => {
+            if (scope?.sessionKey) {
+              return (
+                modelCatalogKey(modelCatalogParams(params)) ===
+                modelCatalogKey(modelCatalogParams(scope))
+              );
+            }
+            if (target && "shortId" in target) {
+              return (
+                params.sessionKey !== undefined &&
+                (!requestedAgentId || params.agentId === requestedAgentId) &&
+                modelCatalogKey(
+                  modelCatalogParams({ ...params, sessionKey: undefined, agentId: undefined }),
+                ) === modelCatalogKey(modelCatalogParams({}))
+              );
+            }
+            // An invalid agent hint resolves to the advertised default on the server.
+            const defaultAgentId = resolveUiKnownSelectedGlobalAgentId({ hello });
+            return (
+              (params.agentId === requestedAgentId || params.agentId === defaultAgentId) &&
+              modelCatalogKey(modelCatalogParams({ ...params, agentId: undefined })) ===
+                modelCatalogKey(modelCatalogParams({}))
+            );
+          })
+        : undefined;
       return true;
     },
     receive(
@@ -163,19 +194,23 @@ export function createGatewayMetadataObserver(
       if (host.client && (event.event === "cron" || event.event === "config.changed")) {
         invalidateCronCatalog(host.client);
       }
-      if (event.event !== "models.snapshot") {
+      if (event.event !== "models.snapshot" && event.event !== "models.snapshot.error") {
         return event;
       }
-      const currentRead = read;
-      if (!currentRead) {
+      const currentBootstrap = bootstrap;
+      if (!currentBootstrap) {
         return undefined;
       }
       // SAFETY: The negotiated authenticated snapshot carries ModelsSnapshotEvent.
-      const publication = event.payload as ModelsSnapshotEvent;
+      const publication = event.payload as ModelsSnapshotEvent | ModelsSnapshotErrorEvent;
       if (!target || targetKey(target) !== targetKey(publication.target)) {
         return undefined;
       }
-      read = undefined;
+      bootstrap = undefined;
+      if ("error" in publication) {
+        currentBootstrap.finish();
+        return undefined;
+      }
       const scope = publication.scope.sessionKey
         ? resolveUiConversationIdentity(
             host,
@@ -183,7 +218,8 @@ export function createGatewayMetadataObserver(
             publication.scope.agentId,
           )
         : publication.scope;
-      const accepted = publishModelCatalogResult(currentRead, scope, publication.catalog);
+      const accepted = publishModelCatalogResult(currentBootstrap.read, scope, publication.catalog);
+      currentBootstrap.finish();
       return accepted ? { ...event, payload: { ...publication, scope } } : undefined;
     },
   };

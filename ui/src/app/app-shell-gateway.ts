@@ -464,7 +464,9 @@ export class ShellGatewayOwner {
     const context = this.host.context;
     const generation = ++this.preferenceGeneration;
     this.runtimeConfigReady = (
-      runtimeConfig.state.bootstrapConfig ? Promise.resolve() : runtimeConfig.ensureLoaded()
+      runtimeConfig.state.bootstrapConfig
+        ? Promise.resolve()
+        : runtimeConfig.ensureLoaded({ displayOnly: true })
     ).then(async () => {
       if (
         this.host.context !== context ||
