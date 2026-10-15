@@ -1,12 +1,6 @@
-import {
-  GatewayProtocolRequestTimeoutError,
-  type GatewayProtocolRequestOptions,
-} from "@openclaw/gateway-client/browser";
+import type { GatewayProtocolRequestOptions } from "@openclaw/gateway-client/browser";
 import { sleepWithAbort } from "@openclaw/retry";
-import type {
-  ModelsListParams,
-  ModelsSnapshotEvent,
-} from "../../../packages/gateway-protocol/src/index.js";
+import type { ModelsListParams } from "../../../packages/gateway-protocol/src/index.js";
 import { createDeferredCore } from "../../../src/shared/deferred.js";
 import type { ModelCatalogResult } from "../api/types.ts";
 import type { ApplicationGateway } from "../app/context.ts";
@@ -178,7 +172,6 @@ export async function loadModelCatalog(
   options: ModelsListParams & Pick<GatewayProtocolRequestOptions, "signal" | "timeoutMs">,
 ): Promise<ModelCatalogResult> {
   const { signal, timeoutMs, ...requestOptions } = options;
-  let remainingTimeoutMs = timeoutMs;
   signal?.throwIfAborted();
   const params = modelCatalogParams(requestOptions);
   if (!params.refresh) {
@@ -188,49 +181,6 @@ export async function loadModelCatalog(
     }
   }
   const cache = getModelCatalogCache(client);
-  const bootstrap = cache.bootstrap;
-  if (!params.refresh && bootstrap?.matches(params)) {
-    const started = Date.now();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timedOut = new Promise<never>((_resolve, reject) => {
-      if (timeoutMs != null) {
-        timer = setTimeout(
-          () =>
-            reject(
-              new GatewayProtocolRequestTimeoutError({
-                method: "models.list",
-                timeoutMs,
-                requestSent: false,
-              }),
-            ),
-          timeoutMs,
-        );
-      }
-    });
-    try {
-      await subscribeToSharedRequest(
-        {
-          promise: Promise.race([bootstrap.promise, timedOut]),
-          subscribers: new Set<object>(),
-        },
-        {},
-        signal,
-      );
-    } finally {
-      clearTimeout(timer);
-    }
-    signal?.throwIfAborted();
-    if (modelCatalogCache.get(client) !== cache) {
-      throw new DOMException("Model catalog connection retired", "AbortError");
-    }
-    const result = peekModelCatalog(client, params);
-    if (result) {
-      return result;
-    }
-    if (timeoutMs != null) {
-      remainingTimeoutMs = Math.max(0, timeoutMs - (Date.now() - started));
-    }
-  }
   const key = modelCatalogKey(params);
   const budgets =
     cache.requests.get(key) ??
@@ -265,7 +215,7 @@ export async function loadModelCatalog(
         return await (timeoutMs === undefined
           ? client.request<ModelCatalogResult>("models.list", params)
           : client.request<ModelCatalogResult>("models.list", params, {
-              timeoutMs: remainingTimeoutMs,
+              timeoutMs,
               signal: controller.signal,
             }));
       } catch (error) {
@@ -304,15 +254,6 @@ export function subscribeModelCatalogChanges(
     const invalidation = modelCatalogEventInvalidation(event, scope);
     if (invalidation) {
       listener(invalidation);
-    } else if (event.event === "models.snapshot" && scope) {
-      // SAFETY: The authenticated connect dispatcher emits this as ModelsSnapshotEvent.
-      const publication = event.payload as ModelsSnapshotEvent;
-      if (
-        modelCatalogKey(modelCatalogParams(scope)) ===
-        modelCatalogKey(modelCatalogParams(publication.scope))
-      ) {
-        listener("refresh");
-      }
     }
   });
 }

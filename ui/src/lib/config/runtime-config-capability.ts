@@ -18,8 +18,6 @@ import {
   agentConfigEntry,
   clearConfigRequestVersions,
   createInitialConfigState,
-  currentConfigConnectionEpoch,
-  isCurrentConfigConnection,
   type RuntimeConfigGateway,
   type RuntimeConfigState,
 } from "./config-state-model.ts";
@@ -29,7 +27,6 @@ export function createRuntimeConfigCapability(
   gateway: RuntimeConfigGateway,
   bootstrap?: {
     current: () => Record<string, unknown> | null;
-    ready?: () => Promise<unknown>;
     subscribe: (listener: () => void) => () => void;
   },
 ) {
@@ -152,20 +149,7 @@ export function createRuntimeConfigCapability(
     isDisposed: () => disposed,
   });
 
-  const ensureLoaded = async (options?: { displayOnly?: boolean }) => {
-    if (options?.displayOnly && !state.configSnapshot && bootstrap?.ready) {
-      const client = state.client;
-      const epoch = currentConfigConnectionEpoch(state);
-      await bootstrap.ready();
-      if (
-        disposed ||
-        !client ||
-        !isCurrentConfigConnection(state, client, epoch) ||
-        state.bootstrapConfig
-      ) {
-        return;
-      }
-    }
+  const ensureLoaded = async () => {
     if (!state.configSnapshot) {
       await loadOnce("config", () => loadConfig(state, { draftWrites: writes }));
     }

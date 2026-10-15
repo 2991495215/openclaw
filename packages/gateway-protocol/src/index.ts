@@ -6,7 +6,6 @@ export type {
   ModelCatalogScope,
   ModelCatalogTarget,
   ModelsSnapshotEvent,
-  ModelsSnapshotErrorEvent,
 } from "./model-catalog-publication.js";
 export * from "./terminal-validators.js";
 export {

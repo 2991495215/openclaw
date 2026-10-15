@@ -1,28 +1,9 @@
-import type {
-  ModelCatalogTarget,
-  ModelsSnapshotEvent,
-  ModelsSnapshotErrorEvent,
-} from "../../../packages/gateway-protocol/src/index.js";
 import type { EventLogEntry } from "../api/event-log.ts";
 import type { GatewayEventFrame } from "../api/gateway.ts";
 import { invalidateChatMetadataStore } from "../lib/chat/chat-metadata-cache.ts";
 import { invalidateCronCatalog } from "../lib/cron/catalog.ts";
 import { invalidateModelAuthStatusRequests } from "../lib/model-auth-request-state.ts";
-import {
-  clearModelCatalogCache,
-  beginModelCatalogBootstrap,
-  modelCatalogKey,
-  modelCatalogParams,
-  publishModelCatalogResult,
-  type ModelCatalogBootstrap,
-  type ModelCatalogReadScope,
-} from "../lib/model-catalog-cache.ts";
-import {
-  resolveUiConversationIdentity,
-  resolveUiKnownSelectedGlobalAgentId,
-  normalizeAgentId,
-  type UiSessionDefaultsHost,
-} from "../lib/sessions/session-key.ts";
+import { clearModelCatalogCache } from "../lib/model-catalog-cache.ts";
 import type { ApplicationGatewaySnapshot } from "./gateway.ts";
 import { invalidateUserPreferences } from "./user-prefs-cache.ts";
 
@@ -109,23 +90,10 @@ export function createGatewayEventLog() {
   };
 }
 
-/** Reserve within the connected publication before subscribers can supersede the read. */
 export function createGatewayMetadataObserver(
   isCurrent: (snapshot: ApplicationGatewaySnapshot) => boolean,
 ) {
-  let target: ModelCatalogTarget | undefined;
-  let bootstrap: ModelCatalogBootstrap | undefined;
-  const targetKey = (value: ModelCatalogTarget) =>
-    JSON.stringify(
-      "shortId" in value
-        ? ["short", value.agentId, value.shortId, value.slugHint]
-        : ["scope", value.agentId, value.sessionKey],
-    );
   return {
-    captureTarget(value: ModelCatalogTarget | undefined) {
-      target = value;
-      return value;
-    },
     synchronize(previous: ApplicationGatewaySnapshot, next: ApplicationGatewaySnapshot): boolean {
       const connectionChanged = previous.client !== next.client || previous.hello !== next.hello;
       if (
@@ -143,84 +111,16 @@ export function createGatewayMetadataObserver(
           return false;
         }
       }
-      if (
-        !next.client ||
-        !next.hello ||
-        next.phase !== "connected" ||
-        (!connectionChanged && previous.phase === "connected")
-      ) {
-        return true;
-      }
-      const { client, hello } = next;
-      const scope: ModelCatalogReadScope | undefined =
-        target && !("shortId" in target)
-          ? target.sessionKey
-            ? resolveUiConversationIdentity({ hello }, target.sessionKey, target.agentId)
-            : {}
-          : undefined;
-      const requestedAgentId = target?.agentId ? normalizeAgentId(target.agentId) : undefined;
-      bootstrap = target
-        ? beginModelCatalogBootstrap(client, scope, (params) => {
-            if (scope?.sessionKey) {
-              return (
-                modelCatalogKey(modelCatalogParams(params)) ===
-                modelCatalogKey(modelCatalogParams(scope))
-              );
-            }
-            if (target && "shortId" in target) {
-              return (
-                params.sessionKey !== undefined &&
-                (!requestedAgentId || params.agentId === requestedAgentId) &&
-                modelCatalogKey(
-                  modelCatalogParams({ ...params, sessionKey: undefined, agentId: undefined }),
-                ) === modelCatalogKey(modelCatalogParams({}))
-              );
-            }
-            // An invalid agent hint resolves to the advertised default on the server.
-            const defaultAgentId = resolveUiKnownSelectedGlobalAgentId({ hello });
-            return (
-              (params.agentId === requestedAgentId || params.agentId === defaultAgentId) &&
-              modelCatalogKey(modelCatalogParams({ ...params, agentId: undefined })) ===
-                modelCatalogKey(modelCatalogParams({}))
-            );
-          })
-        : undefined;
       return true;
     },
     receive(
       event: GatewayEventFrame,
-      host: UiSessionDefaultsHost & Pick<ApplicationGatewaySnapshot, "client">,
+      host: Pick<ApplicationGatewaySnapshot, "client">,
     ): GatewayEventFrame | undefined {
       if (host.client && (event.event === "cron" || event.event === "config.changed")) {
         invalidateCronCatalog(host.client);
       }
-      if (event.event !== "models.snapshot" && event.event !== "models.snapshot.error") {
-        return event;
-      }
-      const currentBootstrap = bootstrap;
-      if (!currentBootstrap) {
-        return undefined;
-      }
-      // SAFETY: The negotiated authenticated snapshot carries ModelsSnapshotEvent.
-      const publication = event.payload as ModelsSnapshotEvent | ModelsSnapshotErrorEvent;
-      if (!target || targetKey(target) !== targetKey(publication.target)) {
-        return undefined;
-      }
-      bootstrap = undefined;
-      if ("error" in publication) {
-        currentBootstrap.finish();
-        return undefined;
-      }
-      const scope = publication.scope.sessionKey
-        ? resolveUiConversationIdentity(
-            host,
-            publication.scope.sessionKey,
-            publication.scope.agentId,
-          )
-        : publication.scope;
-      const accepted = publishModelCatalogResult(currentBootstrap.read, scope, publication.catalog);
-      currentBootstrap.finish();
-      return accepted ? { ...event, payload: { ...publication, scope } } : undefined;
+      return event;
     },
   };
 }

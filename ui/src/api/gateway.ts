@@ -192,8 +192,8 @@ export class GatewayBrowserClient {
           retryable: error.retryable,
           retryAfterMs: error.retryAfterMs,
         }),
-      buildConnectPlan: ({ nonce, challengeTs, generation, serverCapabilities }) =>
-        this.buildConnectPlan(nonce, challengeTs, generation, serverCapabilities),
+      buildConnectPlan: ({ nonce, challengeTs, generation }) =>
+        this.buildConnectPlan(nonce, challengeTs, generation),
       buildConnectParams: (plan) => plan.params,
       onConnectPlanError: (error) => {
         if (this.opts.nativeConnectAuth) {
@@ -376,7 +376,6 @@ export class GatewayBrowserClient {
     connectNonce: string | null,
     connectChallengeTs: number | null | undefined,
     generation: number,
-    serverCapabilities: readonly string[],
   ): Promise<ConnectPlan> {
     this.nativeAuthError = null;
     this.recovery = { ...this.recovery, generation, resolved: false };
@@ -387,7 +386,6 @@ export class GatewayBrowserClient {
       connectNonce,
       connectChallengeTs,
       generation,
-      serverCapabilities,
       nativeSignal: this.nativeAuthAbort.signal,
       selectAuth: (input) => this.selectConnectAuth(input),
     });
