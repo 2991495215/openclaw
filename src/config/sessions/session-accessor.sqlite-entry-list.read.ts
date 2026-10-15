@@ -66,6 +66,7 @@ export function readSelectedSessionEntriesInDatabase(
   sessionKeys: readonly string[],
   options: {
     continuation?: CanonicalSessionReaderContinuation;
+    includeParticipants?: boolean;
     fullEntryKeys?: readonly string[];
     label?: string;
     sessionIdOrKey?: string;
@@ -139,7 +140,14 @@ export function readSelectedSessionEntriesInDatabase(
         entries.push({ sessionKey: row.session_key, entry });
       }
     }
-    return entries;
+    return options.includeParticipants
+      ? [
+          ...projectSqliteSessionParticipantsBatch(
+            database.db,
+            new Map(entries.map(({ sessionKey, entry }) => [sessionKey, entry])),
+          ),
+        ].map(([sessionKey, entry]) => ({ sessionKey, entry }))
+      : entries;
   });
 }
 

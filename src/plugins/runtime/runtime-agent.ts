@@ -31,13 +31,13 @@ import {
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
 import { captureIncognitoSessionSource } from "../../config/sessions/session-incognito-binding.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
-import { filterSessionEntriesByProfile } from "../../gateway/session-identity-projection.js";
 import {
   getSessionEntryAsync,
   getSessionEntryByIdAsync,
 } from "../../plugin-sdk/session-store-runtime-internal.js";
 import {
   listSessionEntriesAsync,
+  withSessionEntriesAsync,
   patchSessionEntry,
   prepareSessionEntryPatch,
   updateSessionStoreEntry,
@@ -107,14 +107,7 @@ const listSessionEntries: RuntimeSession["listSessionEntries"] = (params = {}) =
       : {}),
     ...(params.storePath !== undefined ? { storePath: params.storePath } : {}),
   });
-  return params.involvingProfileId !== undefined
-    ? filterSessionEntriesByProfile({
-        entries,
-        profileId: params.involvingProfileId,
-        cfg: getRuntimeConfig(),
-        env: params.env,
-      })
-    : entries;
+  return entries;
 };
 
 async function runWithSessionWorkAdmission<T>(
@@ -257,6 +250,7 @@ export function createRuntimeAgent(): PluginRuntime["agent"] {
     getSessionEntryByIdAsync,
     listSessionEntries,
     listSessionEntriesAsync,
+    withSessionEntriesAsync,
     createSessionEntryListReader: async (
       params: Parameters<RuntimeSession["createSessionEntryListReader"]>[0],
     ) =>

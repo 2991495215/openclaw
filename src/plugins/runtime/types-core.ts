@@ -83,8 +83,6 @@ type RuntimeSessionStoreListParams = Partial<Omit<RuntimeSessionStoreReadParams,
   includeParticipants?: boolean;
   /** Capture the admitted store's physical identity; access policy remains caller-owned. */
   captureSource?: (assertCurrent: () => void) => void;
-  /** Exact source-local profile ID or merge alias; owners/participants only, not mentions. */
-  involvingProfileId?: string;
 };
 type RuntimeSessionStoreEntrySummary = {
   sessionKey: string;
@@ -427,6 +425,8 @@ export type PluginRuntimeCore = {
       ) => RuntimeSessionStoreEntrySummary[];
       /** Read-only metadata listing; saved prompts and other detached snapshots are omitted. */
       listSessionEntriesAsync: typeof import("../../plugin-sdk/session-store-runtime.js").listSessionEntriesAsync;
+      /** Exact selected entries retained through a synchronous disclosure callback. */
+      withSessionEntriesAsync: typeof import("../../plugin-sdk/session-store-runtime.js").withSessionEntriesAsync;
       createSessionEntryListReader: (params: {
         agentId: string;
         storePath: string;

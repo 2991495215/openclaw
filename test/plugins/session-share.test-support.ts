@@ -11,6 +11,8 @@ import type {
   SessionCatalogTranscriptItem,
 } from "openclaw/plugin-sdk/session-catalog";
 import sessionSharePlugin from "../../extensions/session-share/index.js";
+import { createPluginRecord } from "../../src/plugins/loader-records.js";
+import { createRuntimeTestRegistry } from "../../src/plugins/registry-runtime.test-helpers.js";
 import { createPluginRuntime } from "../../src/plugins/runtime/index.js";
 
 export function registerSessionShare(runtime: PluginRuntime, config: OpenClawConfig = {}) {
@@ -51,11 +53,24 @@ export function commandFixture(groups: string[] = ["Team"]) {
   };
   const runtime = createPluginRuntime();
   runtime.config.current = () => config;
-  const commands = registerSessionShare(runtime, config).commands;
+  const registry = createRuntimeTestRegistry(runtime);
+  const api = registry.createApi(
+    createPluginRecord({
+      id: "session-share",
+      source: "/plugins/session-share/index.js",
+      origin: "bundled",
+      enabled: true,
+      configSchema: false,
+    }),
+    { config },
+  );
+  sessionSharePlugin.register(api);
+  const commands = registry.registry.nodeHostCommands.map((entry) => entry.command);
   const list = commands.find((command) => command.command === "openclaw.sessions.list.v1")!;
   const read = commands.find((command) => command.command === "openclaw.sessions.read.v1")!;
   return {
     config,
+    runtime,
     commands,
     select: (share: unknown) => {
       config.plugins!.entries!["session-share"]!.config = { share };

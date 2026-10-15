@@ -26,11 +26,10 @@ import type { SessionOwnerFacetIdentity } from "../shared/session-types.js";
 import { sortAndLimitBy } from "../shared/sort-and-limit.js";
 import type { SynchronousWork } from "../shared/synchronous-work.js";
 import {
-  getUserProfileDisplays,
-  readUserProfileIdentity,
+  type prepareUserProfileCatalog,
   resolveUserProfileReference,
 } from "../state/user-profile-list.js";
-import { buildControlUiResourcePath, buildControlUiUserAvatarPath } from "./control-ui-contract.js";
+import { buildControlUiResourcePath } from "./control-ui-contract.js";
 import { normalizeControlUiBasePath } from "./control-ui-shared.js";
 import {
   resolveCurrentUserProfileDisplay,
@@ -261,54 +260,25 @@ export function projectSessionParticipants(
 export function filterSessionEntriesByProfile<T extends { entry: SessionEntry }>(params: {
   entries: T[];
   profileId: string;
-  cfg: OpenClawConfig;
-  env?: NodeJS.ProcessEnv;
+  readCurrentIdentity: Awaited<ReturnType<typeof prepareUserProfileCatalog>>["readCurrentIdentity"];
 }): T[] {
-  const profile = readUserProfileIdentity(params.profileId, { env: params.env });
-  if (!profile) {
+  const canonicalId = (id: string | undefined) =>
+    id ? params.readCurrentIdentity(id)?.profileId : undefined;
+  const profileId = canonicalId(params.profileId);
+  if (!profileId) {
     return [];
   }
-  const ids = new Set<string>();
-  for (const { entry } of params.entries) {
-    for (const id of [
-      normalizeOptionalString(
-        entry.owner?.actor.type === "human" ? entry.owner.actor.id : undefined,
-      ),
-      normalizeOptionalString(sessionCreatorProfileId(entry.createdActor)),
-      normalizeOptionalString(
-        entry.owner?.assignedBy?.type === "human" ? entry.owner.assignedBy.id : undefined,
-      ),
-      ...(entry.participants ?? []).flatMap(({ identity }) =>
-        identity.type === "profile" ? [identity.id] : [],
-      ),
-    ]) {
-      if (id) {
-        ids.add(id);
-      }
-    }
-  }
-  const displays = getUserProfileDisplays([...ids], { env: params.env });
-  const identities = new Map<string, SessionActorProfileIdentity | undefined>();
-  for (const id of ids) {
-    const display = displays.get(id);
-    identities.set(
-      id,
-      display
-        ? {
-            kind: "resolved",
-            profileId: display.id,
-            avatarUrl: buildControlUiUserAvatarPath(display.id, display.avatarRevision),
-            hasUploadedAvatar: display.hasAvatar,
-          }
-        : undefined,
-    );
-  }
   return params.entries.filter(({ entry }) => {
-    const owner = projectSessionOwner(entry, identities, params.cfg)?.actor.identity;
+    const owner = entry.owner?.actor;
+    const ownerId = owner
+      ? owner.type === "human"
+        ? normalizeOptionalString(owner.id)
+        : undefined
+      : sessionCreatorProfileId(entry.createdActor);
     return (
-      (owner?.type === "profile" && owner.id === profile.profileId) ||
-      projectSessionParticipants(entry, identities, params.cfg).has(
-        JSON.stringify({ type: "profile", id: profile.profileId }),
+      canonicalId(ownerId) === profileId ||
+      (entry.participants ?? []).some(
+        ({ identity }) => identity.type === "profile" && canonicalId(identity.id) === profileId,
       )
     );
   });
