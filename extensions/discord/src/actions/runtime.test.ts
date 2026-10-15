@@ -21,14 +21,7 @@ import { handleDiscordGuildAction } from "./runtime.guild.js";
 import { handleDiscordAction } from "./runtime.js";
 import { handleDiscordMessagingAction } from "./runtime.messaging.js";
 import { handleDiscordModerationAction } from "./runtime.moderation.js";
-
-type DiscordChannelInfoTest = {
-  id: string;
-  type: number;
-  guild_id?: string;
-  name?: string;
-  parent_id?: string;
-};
+import type { DiscordChannelInfoTest, DiscordSearchResult } from "./runtime.test-support.js";
 
 const {
   discordSendMocks,
@@ -93,7 +86,7 @@ const {
     removeOwnReactionsDiscord: vi.fn(async () => ({ removed: ["👍"] })),
     removeReactionDiscord: vi.fn(async () => ({})),
     removeRoleDiscord: vi.fn(async () => ({ ok: true })),
-    searchMessagesDiscord: vi.fn(async () => ({})),
+    searchMessagesDiscord: vi.fn(async (): Promise<DiscordSearchResult> => ({ messages: [] })),
     sendDiscordComponentMessage: vi.fn(componentMessageDefault),
     sendMessageDiscord: vi.fn(async () => ({})),
     sendStickerDiscord: vi.fn(async () => ({})),
