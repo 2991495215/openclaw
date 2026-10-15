@@ -732,6 +732,7 @@ export abstract class MatrixClientBase {
             abortSignal: abortController.signal,
             stateRuntime: this.stateRuntime,
           })
+            // Persistence already reports failures; later intervals remain free to retry.
             .catch(noop)
             .finally(() => {
               this.idbPersistPromise = null;
