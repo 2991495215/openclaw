@@ -10,9 +10,11 @@ import {
   isRequestBodyLimitError,
   readRequestBodyWithLimit,
   resolveRequestClientIp,
-  requestBodyErrorToText,
 } from "openclaw/plugin-sdk/webhook-ingress";
-import { sendHttpRequestRejection } from "openclaw/plugin-sdk/webhook-request-guards";
+import {
+  rejectJsonWebhookBodyLimitError,
+  sendHttpRequestRejection,
+} from "openclaw/plugin-sdk/webhook-request-guards";
 import {
   canonicalizeWebhookRouteKey,
   registerPluginHttpRoute,
@@ -39,18 +41,6 @@ function writeWebhookError(res: ServerResponse, status: number, error: string): 
   }
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error }));
-}
-
-async function rejectWebhookRequest(
-  req: IncomingMessage,
-  res: ServerResponse,
-  status: number,
-  error: string,
-): Promise<void> {
-  if (res.headersSent) {
-    return;
-  }
-  await sendHttpRequestRejection(req, res, status, JSON.stringify({ error }), "application/json");
 }
 
 type RegisteredNextcloudTalkWebhookTarget = NextcloudTalkWebhookTarget & {
@@ -205,12 +195,10 @@ async function handleWebhookRequest(
     }
     webhookAuthRateLimiter.reset(clientIp, WEBHOOK_AUTH_RATE_LIMIT_SCOPE);
   } catch (err) {
-    if (isRequestBodyLimitError(err, "PAYLOAD_TOO_LARGE")) {
-      await rejectWebhookRequest(req, res, 413, "Payload too large");
-      return;
-    }
-    if (isRequestBodyLimitError(err, "REQUEST_BODY_TIMEOUT")) {
-      await rejectWebhookRequest(req, res, 408, requestBodyErrorToText("REQUEST_BODY_TIMEOUT"));
+    if (isRequestBodyLimitError(err) && err.code !== "CONNECTION_CLOSED") {
+      if (!res.headersSent) {
+        await rejectJsonWebhookBodyLimitError(req, res, err);
+      }
       return;
     }
     const error = err instanceof Error ? err : new Error(formatErrorMessage(err));

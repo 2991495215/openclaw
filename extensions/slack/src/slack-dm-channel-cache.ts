@@ -1,6 +1,6 @@
 import type { WebClient } from "@slack/web-api";
+import { writeLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { createSlackTokenCacheKey } from "./client.js";
-import { writeLruMapEntry } from "./monitor/lru-map-cache.js";
 
 const SLACK_DM_CHANNEL_CACHE_MAX = 1024;
 const slackDmChannelCaches = new WeakMap<WebClient, Map<string, string>>();

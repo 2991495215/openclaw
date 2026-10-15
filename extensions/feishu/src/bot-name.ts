@@ -1,4 +1,4 @@
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { readExpiringMapEntry, writeLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { createFeishuClient } from "./client.js";
 import type { ResolvedFeishuAccount } from "./types.js";
 
@@ -19,26 +19,6 @@ const REQUEST_TIMEOUT_MS = 1_500;
 const cache = new Map<string, CacheEntry>();
 const backoffUntilByAccount = new Map<string, number>();
 const inflight = new Map<string, Promise<string | undefined>>();
-
-function readCache(key: string): CacheEntry | undefined {
-  const entry = cache.get(key);
-  if (!entry) {
-    return undefined;
-  }
-  if (entry.expiresAt <= Date.now()) {
-    cache.delete(key);
-    return undefined;
-  }
-  cache.delete(key);
-  cache.set(key, entry);
-  return entry;
-}
-
-function writeCache(key: string, entry: CacheEntry): void {
-  cache.delete(key);
-  cache.set(key, entry);
-  pruneMapToMaxSize(cache, MAX_CACHE_ENTRIES);
-}
 
 function readFeishuErrorCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") {
@@ -100,10 +80,15 @@ async function resolveUncachedBotName(params: {
   }
 
   const name = result.data?.bots?.[openId]?.name?.trim();
-  writeCache(cacheKey, {
-    ...(name ? { name } : {}),
-    expiresAt: Date.now() + (name ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS),
-  });
+  writeLruMapEntry(
+    cache,
+    cacheKey,
+    {
+      ...(name ? { name } : {}),
+      expiresAt: Date.now() + (name ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS),
+    },
+    MAX_CACHE_ENTRIES,
+  );
   return name;
 }
 
@@ -124,8 +109,10 @@ export async function resolveFeishuBotName(params: {
     backoffUntilByAccount.delete(params.account.accountId);
   }
   const key = `${params.account.accountId}::${openId}`;
-  const cached = readCache(key);
+  const cached = readExpiringMapEntry(cache, key);
   if (cached) {
+    cache.delete(key);
+    cache.set(key, cached);
     return cached.name;
   }
   const pending = inflight.get(key);

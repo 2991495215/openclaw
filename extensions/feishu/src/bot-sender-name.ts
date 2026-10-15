@@ -1,4 +1,4 @@
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { readExpiringMapEntry, writeLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { createFeishuClient } from "./client.js";
 import type { ResolvedFeishuAccount } from "./types.js";
@@ -22,8 +22,8 @@ type FeishuApiError = {
 };
 
 type SenderNameCacheEntry =
-  | { kind: "resolved"; name: string; expireAt: number }
-  | { kind: "unavailable"; expireAt: number };
+  | { kind: "resolved"; name: string; expiresAt: number }
+  | { kind: "unavailable"; expiresAt: number };
 
 const STALE_CONTACT_SCOPE = "contact:contact.base:readonly";
 const FEISHU_USER_LOOKUP_UNAUTHORIZED_CODE = 41050;
@@ -68,12 +68,6 @@ function extractPermissionError(feishuErr: FeishuApiError | null): FeishuPermiss
   };
 }
 
-function writeSenderNameCache(key: string, entry: SenderNameCacheEntry): void {
-  senderNameCache.delete(key);
-  senderNameCache.set(key, entry);
-  pruneMapToMaxSize(senderNameCache, SENDER_NAME_CACHE_MAX_SIZE);
-}
-
 function resolveSenderLookupIdType(senderId: string): "open_id" | "user_id" | "union_id" {
   if (senderId.startsWith("ou_")) {
     return "open_id";
@@ -100,12 +94,9 @@ export async function resolveFeishuSenderName(params: {
   }
 
   const cacheKey = `${account.accountId}:${normalizedSenderId}`;
-  const cached = senderNameCache.get(cacheKey);
-  if (cached && cached.expireAt > Date.now()) {
-    return cached.kind === "resolved" ? { name: cached.name } : {};
-  }
+  const cached = readExpiringMapEntry(senderNameCache, cacheKey);
   if (cached) {
-    senderNameCache.delete(cacheKey);
+    return cached.kind === "resolved" ? { name: cached.name } : {};
   }
 
   try {
@@ -119,11 +110,16 @@ export async function resolveFeishuSenderName(params: {
     const name = user?.name ?? user?.nickname ?? user?.en_name;
 
     if (name) {
-      writeSenderNameCache(cacheKey, {
-        kind: "resolved",
-        name,
-        expireAt: Date.now() + SENDER_NAME_TTL_MS,
-      });
+      writeLruMapEntry(
+        senderNameCache,
+        cacheKey,
+        {
+          kind: "resolved",
+          name,
+          expiresAt: Date.now() + SENDER_NAME_TTL_MS,
+        },
+        SENDER_NAME_CACHE_MAX_SIZE,
+      );
       return { name };
     }
     return {};
@@ -141,10 +137,15 @@ export async function resolveFeishuSenderName(params: {
     if (feishuErr?.code === FEISHU_USER_LOOKUP_UNAUTHORIZED_CODE) {
       // 41050 means this app cannot see the user. Cache the account-scoped miss
       // so later messages avoid repeating the same failing API request and SDK log.
-      writeSenderNameCache(cacheKey, {
-        kind: "unavailable",
-        expireAt: Date.now() + SENDER_NAME_NEGATIVE_TTL_MS,
-      });
+      writeLruMapEntry(
+        senderNameCache,
+        cacheKey,
+        {
+          kind: "unavailable",
+          expiresAt: Date.now() + SENDER_NAME_NEGATIVE_TTL_MS,
+        },
+        SENDER_NAME_CACHE_MAX_SIZE,
+      );
       return {};
     }
     log(`feishu: failed to resolve sender name for ${normalizedSenderId}: ${String(err)}`);

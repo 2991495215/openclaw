@@ -1,4 +1,5 @@
 import type { ChannelMessageActionContext } from "openclaw/plugin-sdk/channel-contract";
+import { readExpiringMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { normalizeMattermostMessagingTarget } from "../normalize.js";
 import { resolveMattermostAccount } from "./accounts.js";
 import {
@@ -33,12 +34,9 @@ async function resolveBotUserId(
   cacheKey: string,
 ): Promise<string | null> {
   const now = Date.now();
-  const cached = botUserIdCache.get(cacheKey);
+  const cached = readExpiringMapEntry(botUserIdCache, cacheKey, now);
   if (cached) {
-    if (cached.expiresAt > now) {
-      return cached.userId;
-    }
-    botUserIdCache.delete(cacheKey);
+    return cached.userId;
   }
   const me = await fetchMattermostMe(client);
   const userId = me?.id?.trim();

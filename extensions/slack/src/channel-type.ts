@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { pruneMapToMaxSize, readLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
   normalizeLowercaseStringOrEmpty,
@@ -9,7 +9,6 @@ import { normalizeStringEntriesLower } from "openclaw/plugin-sdk/string-normaliz
 import { resolveSlackAccount, resolveSlackOperationToken } from "./accounts.js";
 import { createSlackReadClient, createSlackWebClient } from "./client.js";
 import { assertSlackDetachedTargetAllowed } from "./detached-target-admission.js";
-import { readLruMapEntry } from "./monitor/lru-map-cache.js";
 
 export type SlackConversationInfo = {
   type: "channel" | "group" | "dm" | "unknown";

@@ -1,3 +1,4 @@
+import { writeLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { normalizeAccountId } from "openclaw/plugin-sdk/routing";
 import {
   normalizeOptionalString,
@@ -41,18 +42,6 @@ function ensureAccountCache(accountId?: string | null): Map<string, string> {
   return created;
 }
 
-function setCacheEntry(cache: Map<string, string>, key: string, userId: string): void {
-  cache.delete(key);
-  cache.set(key, userId);
-  if (cache.size <= DISCORD_DIRECTORY_CACHE_MAX_ENTRIES) {
-    return;
-  }
-  const oldest = cache.keys().next();
-  if (!oldest.done) {
-    cache.delete(oldest.value);
-  }
-}
-
 export function rememberDiscordDirectoryUser(params: {
   accountId?: string | null;
   userId: string | number | bigint;
@@ -71,10 +60,10 @@ export function rememberDiscordDirectoryUser(params: {
     if (!handle) {
       continue;
     }
-    setCacheEntry(cache, handle, userId);
+    writeLruMapEntry(cache, handle, userId, DISCORD_DIRECTORY_CACHE_MAX_ENTRIES);
     const withoutDiscriminator = handle.replace(DISCORD_DISCRIMINATOR_SUFFIX, "");
     if (withoutDiscriminator && withoutDiscriminator !== handle) {
-      setCacheEntry(cache, withoutDiscriminator, userId);
+      writeLruMapEntry(cache, withoutDiscriminator, userId, DISCORD_DIRECTORY_CACHE_MAX_ENTRIES);
     }
   }
 }

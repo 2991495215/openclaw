@@ -786,6 +786,13 @@ The former Tasks runtime is no longer available. See [removed Tasks and TaskFlow
 
 ### Bounded stale reads
 
+For caller-owned maps, `openclaw/plugin-sdk/collection-runtime` provides
+`readLruMapEntry` (touch a hit), `writeLruMapEntry` (touch a write and enforce an
+entry limit), `readExpiringMapEntry` (delete an expired hit without touching
+eviction order), and `pruneExpiredMapEntries` (remove expired entries). Expiring
+entries carry `expiresAt`; callers own expiry times, keys, negative-cache policy,
+and in-flight request sharing. Reads do not extend the expiry time.
+
 `openclaw/plugin-sdk/collection-runtime` exports `createStaleWhileRevalidateCache`
 for metadata readers. It coalesces refreshes, bounds retained entries and active
 loads, and returns `{ value, stale }`. Loads retain their credential and service authority checks before external requests.

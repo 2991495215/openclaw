@@ -1,5 +1,5 @@
 import type { ConversationsRepliesResponse, WebClient as SlackWebClient } from "@slack/web-api";
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { pruneMapToMaxSize, pruneExpiredMapEntries } from "openclaw/plugin-sdk/collection-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import {
@@ -14,7 +14,6 @@ import {
   resolveSlackBlocksText,
   resolveSlackMessageText as resolveSharedSlackMessageText,
 } from "./block-text.js";
-import { pruneExpiredMapEntries } from "./lru-map-cache.js";
 import { resolveSlackTimestampMs } from "./message-handler/timestamp.js";
 
 export type SlackThreadStarter = {

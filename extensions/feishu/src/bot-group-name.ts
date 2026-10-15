@@ -1,4 +1,8 @@
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import {
+  pruneMapToMaxSize,
+  pruneExpiredMapEntries,
+  readExpiringMapEntry,
+} from "openclaw/plugin-sdk/collection-runtime";
 import { feishuGroupNameCache } from "./bot-group-name-state.js";
 import { getChatInfo } from "./chat.js";
 import { createFeishuClient } from "./client.js";
@@ -8,13 +12,7 @@ const GROUP_NAME_CACHE_TTL_MS = 30 * 60 * 1000;
 const GROUP_NAME_CACHE_MAX_SIZE = 500;
 
 function evictGroupNameCache(): void {
-  const now = Date.now();
-  for (const [key, value] of feishuGroupNameCache) {
-    if (value.expiresAt <= now) {
-      feishuGroupNameCache.delete(key);
-    }
-  }
-
+  pruneExpiredMapEntries(feishuGroupNameCache, Date.now());
   pruneMapToMaxSize(feishuGroupNameCache, GROUP_NAME_CACHE_MAX_SIZE);
 }
 
@@ -34,12 +32,9 @@ export async function resolveGroupName(params: {
   }
 
   const cacheKey = `${account.accountId}:${chatId}`;
-  const cached = feishuGroupNameCache.get(cacheKey);
+  const cached = readExpiringMapEntry(feishuGroupNameCache, cacheKey);
   if (cached) {
-    if (cached.expiresAt > Date.now()) {
-      return cached.name || undefined;
-    }
-    feishuGroupNameCache.delete(cacheKey);
+    return cached.name || undefined;
   }
 
   let resolvedName: string | undefined;

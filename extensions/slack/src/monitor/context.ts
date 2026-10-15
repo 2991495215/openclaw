@@ -8,6 +8,7 @@ import {
 import { formatAllowlistMatchMeta } from "openclaw/plugin-sdk/allow-from";
 import type { ChannelRuntimeSurface } from "openclaw/plugin-sdk/channel-contract";
 import type { PluginRuntime } from "openclaw/plugin-sdk/channel-core";
+import { readLruMapEntry, writeLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import type {
   OpenClawConfig,
   SlackReactionNotificationMode,
@@ -39,7 +40,6 @@ import { resolveSlackChannelConfig, type SlackChannelConfigEntries } from "./cha
 import { normalizeSlackChannelType, parseSlackChannelType } from "./channel-type.js";
 import type { SlackIdentityHealth, SlackInstallationIdentity } from "./enterprise-install.js";
 import type { SlackEventScope } from "./event-scope.js";
-import { readLruMapEntry, writeLruMapEntry } from "./lru-map-cache.js";
 import { saveRemoteMedia } from "./media.runtime.js";
 import { isSlackChannelAllowedByPolicy } from "./policy.js";
 import { createSlackRuntimeContextReader } from "./runtime-policy.js";

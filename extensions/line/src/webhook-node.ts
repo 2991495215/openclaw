@@ -5,10 +5,8 @@ import { danger, logVerbose, type RuntimeEnv } from "openclaw/plugin-sdk/runtime
 import { safeParseJson } from "openclaw/plugin-sdk/text-utility-runtime";
 import { resolveSingleWebhookTarget } from "openclaw/plugin-sdk/webhook-ingress";
 import {
-  isRequestBodyLimitError,
   readRequestBodyWithLimit,
-  requestBodyErrorToText,
-  sendHttpRequestRejection,
+  rejectJsonWebhookBodyLimitError,
 } from "openclaw/plugin-sdk/webhook-request-guards";
 import type { createLineBot } from "./bot.js";
 import { validateLineSignature } from "./signature.js";
@@ -27,34 +25,6 @@ async function readLineWebhookRequestBody(
     // Defer destruction so the caller can answer 413/408 before the connection closes.
     destroyOnLimit: false,
   });
-}
-
-/**
- * Answer a body-limit failure through the connection owner.
- *
- * The reader defers destruction for these two codes, so the connection is already fenced
- * and only the owner can still write: responding directly would race the teardown and LINE
- * would see a reset instead of the status.
- */
-async function rejectLineWebhookRequest(
-  req: IncomingMessage,
-  res: ServerResponse,
-  error: unknown,
-): Promise<boolean> {
-  if (
-    !isRequestBodyLimitError(error, "PAYLOAD_TOO_LARGE") &&
-    !isRequestBodyLimitError(error, "REQUEST_BODY_TIMEOUT")
-  ) {
-    return false;
-  }
-  await sendHttpRequestRejection(
-    req,
-    res,
-    error.statusCode,
-    JSON.stringify({ error: requestBodyErrorToText(error.code) }),
-    "application/json",
-  );
-  return true;
 }
 
 type LineWebhookTarget = {
@@ -156,7 +126,7 @@ export function createLineNodeWebhookHandler(params: {
       }
       sendLineWebhookJson(res, 200, { status: "ok" });
     } catch (err) {
-      if (await rejectLineWebhookRequest(req, res, err)) {
+      if (await rejectJsonWebhookBodyLimitError(req, res, err)) {
         return;
       }
       params.runtime.error?.(danger(`line webhook error: ${formatErrorMessage(err)}`));

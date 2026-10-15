@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { BaseProbeResult } from "openclaw/plugin-sdk/channel-contract";
+import { readExpiringMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { runCommandWithTimeout } from "openclaw/plugin-sdk/process-runtime";
 import { captureRuntimeConfigAsyncReader } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
@@ -79,12 +80,9 @@ function setCachedRpcSupport(cliPath: string, result: RpcSupportResult): void {
 }
 
 async function probeRpcSupport(cliPath: string, timeoutMs: number): Promise<RpcSupportResult> {
-  const cached = rpcSupportCache.get(cliPath);
+  const cached = readExpiringMapEntry(rpcSupportCache, cliPath);
   if (cached) {
-    if (cached.expiresAt > Date.now()) {
-      return cached.result;
-    }
-    rpcSupportCache.delete(cliPath);
+    return cached.result;
   }
   try {
     const result = await runCommandWithTimeout([expandIMessageUserPath(cliPath), "rpc", "--help"], {

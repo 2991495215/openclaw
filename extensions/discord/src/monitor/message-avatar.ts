@@ -1,4 +1,4 @@
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { readLruMapEntry, writeLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { logDebug } from "openclaw/plugin-sdk/logging-core";
 import { saveRemoteMedia } from "openclaw/plugin-sdk/media-runtime";
@@ -19,12 +19,6 @@ type GuildIconEntry = {
   hash: string | null;
 };
 
-function setBoundedEntry<T>(map: Map<string, T>, key: string, value: T): void {
-  map.delete(key);
-  map.set(key, value);
-  pruneMapToMaxSize(map, DISCORD_AVATAR_CACHE_MAX_ENTRIES);
-}
-
 function discordAvatarUrl(owner: "avatars" | "icons", id: string, hash: string): string {
   return `https://cdn.discordapp.com/${owner}/${id}/${hash}.png?size=128`;
 }
@@ -41,10 +35,8 @@ export function createDiscordAvatarResolver() {
     url: string,
     endpointRuntime: DiscordEndpointRuntime | null,
   ): string | undefined => {
-    const cached = saved.get(key);
+    const cached = readLruMapEntry(saved, key);
     if (cached) {
-      saved.delete(key);
-      saved.set(key, cached);
       return cached;
     }
     if (pending.has(key) || pending.size >= DISCORD_AVATAR_CACHE_MAX_ENTRIES) {
@@ -66,7 +58,7 @@ export function createDiscordAvatarResolver() {
       ...(endpointGuard ? { maxRedirects: endpointGuard.maxRedirects } : {}),
     })
       .then((media) => {
-        setBoundedEntry(saved, key, media.path);
+        writeLruMapEntry(saved, key, media.path, DISCORD_AVATAR_CACHE_MAX_ENTRIES);
       })
       .catch((error: unknown) => {
         logDebug(`discord conversation avatar download failed: ${formatErrorMessage(error)}`);
@@ -91,10 +83,15 @@ export function createDiscordAvatarResolver() {
       .fetchGuild(guildId)
       .then((guild) => {
         const hash = guild.icon ?? null;
-        setBoundedEntry(guildIcons, guildId, {
-          expiresAt: Date.now() + DISCORD_GUILD_ICON_TTL_MS,
-          hash,
-        });
+        writeLruMapEntry(
+          guildIcons,
+          guildId,
+          {
+            expiresAt: Date.now() + DISCORD_GUILD_ICON_TTL_MS,
+            hash,
+          },
+          DISCORD_AVATAR_CACHE_MAX_ENTRIES,
+        );
         if (hash) {
           resolveSavedAvatar(
             `${conversationId}\0${hash}`,

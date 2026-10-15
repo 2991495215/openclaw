@@ -90,6 +90,28 @@ function resolveWebhookBodyReadLimits(params: {
   };
 }
 
+/** Answer size/time body-read failures as JSON through the connection rejection owner. */
+export async function rejectJsonWebhookBodyLimitError(
+  req: IncomingMessage,
+  res: ServerResponse,
+  error: unknown,
+): Promise<boolean> {
+  if (
+    !isRequestBodyLimitError(error, "PAYLOAD_TOO_LARGE") &&
+    !isRequestBodyLimitError(error, "REQUEST_BODY_TIMEOUT")
+  ) {
+    return false;
+  }
+  await sendHttpRequestRejection(
+    req,
+    res,
+    error.statusCode,
+    JSON.stringify({ error: requestBodyErrorToText(error.code) }),
+    "application/json",
+  );
+  return true;
+}
+
 async function respondWebhookBodyReadError(params: {
   req: IncomingMessage;
   res: ServerResponse;

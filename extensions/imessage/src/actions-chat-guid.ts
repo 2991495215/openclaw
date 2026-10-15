@@ -1,4 +1,5 @@
 import type { ChannelMessageActionContext } from "openclaw/plugin-sdk/channel-contract";
+import { readExpiringMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { parseStrictInteger } from "openclaw/plugin-sdk/number-runtime";
 import {
   isRecord,
@@ -66,11 +67,10 @@ export async function resolveIMessageActionChatGuid(params: {
 }): Promise<string | null> {
   const { cliPath, dbPath, remoteHost } = params.options;
   const key = `${cliPath}\0${dbPath ?? ""}\0${remoteHost ?? ""}`;
-  const cached = chatListCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) {
+  const cached = readExpiringMapEntry(chatListCache, key);
+  if (cached) {
     return findChatGuid(cached.list, params.target);
   }
-  chatListCache.delete(key);
   const client = await createIMessageRpcClient(params.options);
   try {
     const result = await client.request<IMessageChatListResponse>(

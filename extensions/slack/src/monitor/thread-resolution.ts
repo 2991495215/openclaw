@@ -5,7 +5,7 @@ import {
   WebAPIRateLimitedError,
   WebAPIRequestError,
 } from "@slack/web-api";
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { readExpiringMapEntry, writeLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import {
   collectErrorGraphCandidates,
   extractErrorCode,
@@ -85,26 +85,6 @@ export function createSlackThreadTsResolver(params: { client: SlackWebClient }) 
   const cache = new Map<string, ThreadTsCacheEntry>();
   const inflight = new Map<string, Promise<string | undefined>>();
 
-  const getCached = (key: string, now: number) => {
-    const entry = cache.get(key);
-    if (!entry) {
-      return undefined;
-    }
-    if (entry.expiresAt <= now) {
-      cache.delete(key);
-      return undefined;
-    }
-    cache.delete(key);
-    cache.set(key, entry);
-    return entry.threadTs;
-  };
-
-  const setCached = (key: string, threadTs: string | null, now: number) => {
-    cache.delete(key);
-    cache.set(key, { threadTs, expiresAt: now + DEFAULT_THREAD_TS_CACHE_TTL_MS });
-    pruneMapToMaxSize(cache, DEFAULT_THREAD_TS_CACHE_MAX);
-  };
-
   return {
     resolve: async (request: {
       message: SlackMessageEvent;
@@ -118,9 +98,13 @@ export function createSlackThreadTsResolver(params: { client: SlackWebClient }) 
 
       const cacheKey = `${message.channel}:${message.ts}`;
       const now = Date.now();
-      const cached = getCached(cacheKey, now);
-      if (cached !== undefined) {
-        return cached ? { ...message, thread_ts: cached } : markAmbiguousThreadReply(message);
+      const cached = readExpiringMapEntry(cache, cacheKey, now);
+      if (cached) {
+        cache.delete(cacheKey);
+        cache.set(cacheKey, cached);
+        return cached.threadTs
+          ? { ...message, thread_ts: cached.threadTs }
+          : markAmbiguousThreadReply(message);
       }
 
       if (shouldLogVerbose()) {
@@ -159,7 +143,12 @@ export function createSlackThreadTsResolver(params: { client: SlackWebClient }) 
         inflight.delete(cacheKey);
       }
 
-      setCached(cacheKey, resolved ?? null, Date.now());
+      writeLruMapEntry(
+        cache,
+        cacheKey,
+        { threadTs: resolved ?? null, expiresAt: Date.now() + DEFAULT_THREAD_TS_CACHE_TTL_MS },
+        DEFAULT_THREAD_TS_CACHE_MAX,
+      );
 
       if (resolved) {
         if (shouldLogVerbose()) {

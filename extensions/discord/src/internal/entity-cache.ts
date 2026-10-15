@@ -1,4 +1,9 @@
 import { GatewayDispatchEvents } from "discord-api-types/v10";
+import {
+  pruneExpiredMapEntries,
+  pruneMapToMaxSize,
+  readExpiringMapEntry,
+} from "openclaw/plugin-sdk/collection-runtime";
 import { getGuild, getGuildMember } from "./api.guild.js";
 import { getChannel } from "./api.messages.js";
 import { getUser } from "./api.users.js";
@@ -96,19 +101,14 @@ export class DiscordEntityCache {
 
   private async fetchCached<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
     const now = Date.now();
-    const cached = this.entries.get(key) as CacheEntry<T> | undefined;
-    if (cached && cached.expiresAt > now) {
-      return cached.value;
-    }
+    const cached = readExpiringMapEntry(this.entries, key, now);
     if (cached) {
-      this.entries.delete(key);
+      return cached.value as T;
     }
     const value = await fetcher();
     this.maybeSweepExpired(now);
     this.entries.set(key, { expiresAt: now + DEFAULT_REST_CACHE_TTL_MS, value });
-    if (this.entries.size > DEFAULT_MAX_ENTRIES) {
-      this.entries.delete(this.entries.keys().next().value!);
-    }
+    pruneMapToMaxSize(this.entries, DEFAULT_MAX_ENTRIES);
     return value;
   }
 
@@ -117,10 +117,6 @@ export class DiscordEntityCache {
       return;
     }
     this.lastSweepAt = now;
-    for (const [key, entry] of this.entries) {
-      if (entry.expiresAt <= now) {
-        this.entries.delete(key);
-      }
-    }
+    pruneExpiredMapEntries(this.entries, now);
   }
 }

@@ -19,6 +19,12 @@ formatting, roots, and orchestration. Use
 `openclaw/plugin-sdk/channel-outbound` for native send, receipt, durable
 delivery, and live preview behavior.
 
+Webhook handlers using JSON error responses can pass body-read failures to
+`rejectJsonWebhookBodyLimitError(req, res, error)` from
+`openclaw/plugin-sdk/webhook-request-guards`. It sends the standard 413/408 JSON
+response before closing an incomplete upload, and returns `false` for errors the
+channel must handle itself, including connection closure.
+
 ## Core helpers
 
 ```ts

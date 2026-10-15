@@ -5,7 +5,10 @@ import { EventEmitter } from "node:events";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it } from "vitest";
+import { RequestBodyLimitError } from "../infra/http-body.js";
 import { createMockServerResponse } from "../test-utils/mock-http-response.js";
+import { withServer } from "./test-helpers/http-test-server.js";
+import { postRawWebhook } from "./test-helpers/raw-http-request.js";
 import { createFixedWindowRateLimiter } from "./webhook-memory-guards.js";
 import {
   applyBasicWebhookRequestGuards,
@@ -14,6 +17,7 @@ import {
   isJsonContentType,
   readWebhookBodyOrReject,
   readJsonWebhookBodyOrReject,
+  rejectJsonWebhookBodyLimitError,
   runDetachedWebhookWork,
 } from "./webhook-request-guards.js";
 
@@ -86,6 +90,43 @@ describe("isJsonContentType", () => {
     "$name",
     ({ input, expected }) => {
       expect(isJsonContentType(input)).toBe(expected);
+    },
+  );
+});
+
+describe("rejectJsonWebhookBodyLimitError", () => {
+  it.each([
+    {
+      code: "PAYLOAD_TOO_LARGE" as const,
+      statusLine: "HTTP/1.1 413 Payload Too Large",
+      message: "Payload too large",
+    },
+    {
+      code: "REQUEST_BODY_TIMEOUT" as const,
+      statusLine: "HTTP/1.1 408 Request Timeout",
+      message: "Request body timeout",
+    },
+  ])("flushes the JSON $code rejection before closing", async ({ code, statusLine, message }) => {
+    await withServer(
+      (req, res) => {
+        void rejectJsonWebhookBodyLimitError(req, res, new RequestBodyLimitError({ code }));
+      },
+      async (baseUrl) => {
+        const result = await postRawWebhook({ url: baseUrl, body: "x", contentLength: 100 });
+        expect(result.statusLine).toBe(statusLine);
+        expect(result.headers["content-type"]).toBe("application/json");
+        expect(result.body).toBe(JSON.stringify({ error: message }));
+        expect(result.closedByServer).toBe(true);
+      },
+    );
+  });
+
+  it.each([new Error("dispatch failed"), new RequestBodyLimitError({ code: "CONNECTION_CLOSED" })])(
+    "leaves %s with the channel",
+    async (error) => {
+      const res = createMockServerResponse();
+      expect(await rejectJsonWebhookBodyLimitError(createMockRequest({}), res, error)).toBe(false);
+      expect(res.body).toBeUndefined();
     },
   );
 });

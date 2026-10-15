@@ -1,6 +1,6 @@
+import { writeLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 import { getOptionalSlackRuntime } from "../runtime.js";
-import { writeLruMapEntry } from "./lru-map-cache.js";
 
 const SLACK_AGENT_VIEW_STATE_NAMESPACE = "agent-view-workspaces";
 const SLACK_AGENT_VIEW_THREAD_STATE_NAMESPACE = "agent-view-threads";

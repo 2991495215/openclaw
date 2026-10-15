@@ -1,6 +1,6 @@
 import { hash } from "node:crypto";
 import { type WebClientOptions, WebClient } from "@slack/web-api";
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { pruneMapToMaxSize, readLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { captureEffectAuthority } from "openclaw/plugin-sdk/fetch-runtime";
 import type { SlackProxyDispatcher } from "./client-options.js";
 import {
@@ -11,7 +11,6 @@ import {
   SLACK_DEFAULT_RETRY_OPTIONS,
   SLACK_WRITE_RETRY_OPTIONS,
 } from "./client-options.js";
-import { readLruMapEntry } from "./monitor/lru-map-cache.js";
 
 const SLACK_WRITE_CLIENT_CACHE_MAX = 32;
 const SLACK_STARTUP_AUTH_TIMEOUT_MS = 10_000;

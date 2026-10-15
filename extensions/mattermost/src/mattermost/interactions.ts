@@ -7,15 +7,14 @@ import {
   normalizeStringifiedOptionalString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { safeParseJson } from "openclaw/plugin-sdk/text-utility-runtime";
+import { rejectJsonWebhookBodyLimitError } from "openclaw/plugin-sdk/webhook-request-guards";
 import { getMattermostRuntime } from "../runtime.js";
 import { resolveCallbackHost } from "./callback-host.js";
 import { updateMattermostPost, type MattermostClient, type MattermostPost } from "./client.js";
 import {
-  isRequestBodyLimitError,
   isTrustedProxyAddress,
   readRequestBodyWithLimit,
   resolveClientIp,
-  sendHttpRequestRejection,
   type OpenClawConfig,
 } from "./runtime-api.js";
 
@@ -376,24 +375,7 @@ export function createMattermostInteractionHandler(params: {
       payload = parseInteractionPayload(raw);
     } catch (err) {
       log?.(`mattermost interaction: failed to parse body: ${String(err)}`);
-      if (isRequestBodyLimitError(err, "PAYLOAD_TOO_LARGE")) {
-        await sendHttpRequestRejection(
-          req,
-          res,
-          413,
-          JSON.stringify({ error: "Payload too large" }),
-          "application/json",
-        );
-        return;
-      }
-      if (isRequestBodyLimitError(err, "REQUEST_BODY_TIMEOUT")) {
-        await sendHttpRequestRejection(
-          req,
-          res,
-          408,
-          JSON.stringify({ error: "Request body timeout" }),
-          "application/json",
-        );
+      if (await rejectJsonWebhookBodyLimitError(req, res, err)) {
         return;
       }
       sendInteractionResponse(res, 400, { error: "Invalid request body" });

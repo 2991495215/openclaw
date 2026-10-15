@@ -1,5 +1,5 @@
+import { pruneExpiredMapEntries } from "openclaw/plugin-sdk/collection-runtime";
 import { generateSecureToken } from "openclaw/plugin-sdk/secure-random-runtime";
-import { pruneExpiredMapEntries } from "./lru-map-cache.js";
 
 const SLACK_EXTERNAL_ARG_MENU_TOKEN_BYTES = 18;
 const SLACK_EXTERNAL_ARG_MENU_TOKEN_LENGTH = Math.ceil(

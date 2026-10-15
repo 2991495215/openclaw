@@ -4,7 +4,7 @@ import {
   type ChannelInboundMediaInput,
   type MediaPlaceholderTextFact,
 } from "openclaw/plugin-sdk/channel-inbound";
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { readExpiringMapEntry, writeLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import type {
   MediaKind,
   SavedRemoteMedia,
@@ -110,16 +110,18 @@ export function createMattermostMonitorResources(params: {
     const cache = new Map<string, { value: T; expiresAt: number }>();
     return async (id) => {
       const now = Date.now();
-      const cached = cache.get(id);
-      if (cached && cached.expiresAt > now) {
+      const cached = readExpiringMapEntry(cache, id, now);
+      if (cached) {
         return cached.value;
       }
-      cache.delete(id);
       try {
         const value = await fetchValue(id);
-        cache.delete(id);
-        cache.set(id, { value, expiresAt: now + ttlMs });
-        pruneMapToMaxSize(cache, MONITOR_RESOURCE_CACHE_MAX_ENTRIES);
+        writeLruMapEntry(
+          cache,
+          id,
+          { value, expiresAt: now + ttlMs },
+          MONITOR_RESOURCE_CACHE_MAX_ENTRIES,
+        );
         return value;
       } catch (err) {
         logger.debug?.(`mattermost: ${label} lookup failed: ${String(err)}`);

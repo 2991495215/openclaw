@@ -1,4 +1,4 @@
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { pruneMapToMaxSize, readExpiringMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { parseStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
 import { readProviderJsonResponse } from "openclaw/plugin-sdk/provider-http";
 import {
@@ -45,11 +45,10 @@ export async function resolveNextcloudTalkRoomKind(params: {
 }): Promise<NextcloudTalkRoomKind | undefined> {
   const { account, roomToken, runtime } = params;
   const key = `${account.accountId}:${roomToken}`;
-  const cached = roomCache.get(key);
-  if (cached && Date.now() < cached.expiresAt) {
+  const cached = readExpiringMapEntry(roomCache, key);
+  if (cached) {
     return cached.kind;
   }
-  roomCache.delete(key);
 
   const apiCredentials = resolveNextcloudTalkApiCredentials({
     apiUser: account.config.apiUser,

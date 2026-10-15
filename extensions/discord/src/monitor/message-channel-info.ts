@@ -1,4 +1,4 @@
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { pruneMapToMaxSize, readExpiringMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { normalizeOptionalStringifiedId } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { ChannelType, Message } from "../internal/discord.js";
@@ -61,12 +61,9 @@ export async function resolveDiscordChannelInfo(
   channelId: string,
 ): Promise<DiscordChannelInfo | null> {
   const now = Date.now();
-  const cached = discordChannelInfoCacheState.entries.get(channelId);
+  const cached = readExpiringMapEntry(discordChannelInfoCacheState.entries, channelId, now);
   if (cached) {
-    if (cached.expiresAt > now) {
-      return cached.value;
-    }
-    discordChannelInfoCacheState.entries.delete(channelId);
+    return cached.value;
   }
   try {
     const channel = await client.fetchChannel(channelId);

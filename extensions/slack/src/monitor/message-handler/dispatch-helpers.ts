@@ -1,5 +1,6 @@
 import type { ChannelBotLoopProtectionFacts } from "openclaw/plugin-sdk/channel-inbound";
 import { resolveChannelProgressDraftConfig } from "openclaw/plugin-sdk/channel-outbound";
+import { readLruMapEntry, writeLruMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import type { SlackAccountConfig } from "openclaw/plugin-sdk/config-contracts";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { mergePairLoopGuardConfig } from "openclaw/plugin-sdk/pair-loop-guard-runtime";
@@ -11,7 +12,6 @@ import {
   resolveSlackReplyBlocks,
   type PreparedSlackReply,
 } from "../../reply-blocks.js";
-import { readLruMapEntry, writeLruMapEntry } from "../lru-map-cache.js";
 import { resolveSlackTimestampMs } from "./timestamp.js";
 import type { PreparedSlackMessage } from "./types.js";
 

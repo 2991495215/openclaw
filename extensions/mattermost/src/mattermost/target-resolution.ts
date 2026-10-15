@@ -1,4 +1,4 @@
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { pruneMapToMaxSize, readExpiringMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
@@ -49,15 +49,7 @@ function cacheMattermostOpaqueTarget(
 function getCachedMattermostOpaqueTargetKind(
   key: string,
 ): MattermostOpaqueTargetResolution["kind"] | undefined {
-  const cached = mattermostOpaqueTargetCache.get(key);
-  if (!cached) {
-    return undefined;
-  }
-  if (cached.expiresAt <= Date.now()) {
-    mattermostOpaqueTargetCache.delete(key);
-    return undefined;
-  }
-  return cached.kind;
+  return readExpiringMapEntry(mattermostOpaqueTargetCache, key)?.kind;
 }
 
 function cacheKey(baseUrl: string, token: string, id: string): string {
