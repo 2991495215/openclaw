@@ -14,7 +14,6 @@ import {
 import { registerChatAbortController } from "../chat-abort.js";
 import {
   assertExpectedExistingSession,
-  consumeExpectedSessionWorkAdmission,
   type ExpectedExistingSessionConstraint,
 } from "../server-methods/agent-expected-session.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "../session-utils-store-worker.js";
@@ -197,42 +196,33 @@ export function createAgentAdmissionController(params: {
     const isSettling = () => admittedRunAbort?.entry?.terminalOutcomeObserved === true;
     const getAbortReason = () => admittedRunAbort?.controller.signal.reason;
     const sessionKey = params.getResolvedSessionKey();
-    admission =
-      consumeExpectedSessionWorkAdmission({
-        constraint: params.expectedSession,
-        scope,
-        identities: [params.getResolvedSessionKey(), params.getResolvedSessionId()],
-        onInterrupt: interrupt,
-        isSettling,
-        getAbortReason,
-      }) ??
-      (await beginSessionWorkAdmission({
-        agentId: params.getResolvedSessionAgentId() ?? params.getAgentId(),
-        scope,
-        run: {
-          runId: params.runId,
-          sessionKey: params.getResolvedSessionKey(),
-          sessionId: params.getResolvedSessionId(),
-          agentId: admissionAgentId(),
-        },
-        isSettling,
-        getAbortReason,
-        identities: [params.getResolvedSessionKey(), params.getResolvedSessionId()],
-        storeWriterIdentities:
-          sessionKey &&
-          parseAgentSessionKey(sessionKey) &&
-          normalizeStoreSessionKey(sessionKey) === sessionKey
-            ? [sessionKey]
-            : undefined,
-        ...(params.admissionOwner ? { owner: params.admissionOwner } : {}),
-        assertAllowed: () => {
-          assertAllowed(false);
-        },
-        revalidateAllowed: () => {
-          assertAllowed();
-        },
-        onInterrupt: interrupt,
-      }));
+    admission = await beginSessionWorkAdmission({
+      agentId: params.getResolvedSessionAgentId() ?? params.getAgentId(),
+      scope,
+      run: {
+        runId: params.runId,
+        sessionKey: params.getResolvedSessionKey(),
+        sessionId: params.getResolvedSessionId(),
+        agentId: admissionAgentId(),
+      },
+      isSettling,
+      getAbortReason,
+      identities: [params.getResolvedSessionKey(), params.getResolvedSessionId()],
+      storeWriterIdentities:
+        sessionKey &&
+        parseAgentSessionKey(sessionKey) &&
+        normalizeStoreSessionKey(sessionKey) === sessionKey
+          ? [sessionKey]
+          : undefined,
+      ...(params.admissionOwner ? { owner: params.admissionOwner } : {}),
+      assertAllowed: () => {
+        assertAllowed(false);
+      },
+      revalidateAllowed: () => {
+        assertAllowed();
+      },
+      onInterrupt: interrupt,
+    });
     if (sessionKey) {
       // A queued lifecycle mutation may finish before this lease is acquired.
       const loaded = await loadGatewaySessionEntryReadOnlyInWorker({

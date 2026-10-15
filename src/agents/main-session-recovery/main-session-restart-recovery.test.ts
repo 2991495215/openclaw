@@ -3392,7 +3392,6 @@ describe("main-session-restart-recovery", () => {
     expect(sendRecoveryNotice).not.toHaveBeenCalled();
     expect(gatewayParams()).toMatchObject({
       expectedExistingSessionId: "main-session",
-      internalRuntimeHandoffId: expect.any(String),
       sessionKey: "agent:main:main",
       sourceReplyDeliveryMode: "message_tool_only",
       deliver: false,

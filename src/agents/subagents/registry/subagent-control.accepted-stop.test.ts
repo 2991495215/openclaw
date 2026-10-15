@@ -24,6 +24,7 @@ import {
   bindGatewayContextResolver,
   clearGatewayContextResolver,
   getGatewayContextResolver,
+  withPluginRuntimeGatewayContextResolver,
 } from "../../../plugins/runtime/gateway-request-scope.js";
 import {
   beginSessionWorkAdmission,
@@ -358,19 +359,12 @@ it("joins an execution registered while its accepted Stop awaits kill-claim pers
   let stopSettled = false;
   const onResult = vi.fn(() => undefined);
   try {
-    // The fence blocks new admission. This existing lease is adopted after capture.
-    admission = await beginSessionWorkAdmission({
-      scope: storePath,
-      identities: [sessionKey, sessionId],
-      resolveGatewayContext,
-      assertAllowed: () => {},
-    });
     let admissionEntry: SessionEntry | undefined = sessionEntry;
     const nativeAdmission = createAgentAdmissionController({
       runId,
       lifecycleGeneration,
       agentDedupeKeys,
-      expectedSession: { handoffId: admission.createHandoff(), sessionId },
+      expectedSession: { sessionId },
       context,
       io,
       dedupeLifecycle,
@@ -387,6 +381,12 @@ it("joins an execution registered while its accepted Stop awaits kill-claim pers
       getSupersededSessionId: () => undefined,
       setAdmittedSessionId: (value) => expect(value).toBe(sessionId),
     });
+    // Ordinary handler admission precedes Stop; execution registration can follow it.
+    await withPluginRuntimeGatewayContextResolver(resolveGatewayContext, () =>
+      nativeAdmission.acquire(storePath),
+    );
+    admission = nativeAdmission.getAdmission();
+    expect(admission).toBeDefined();
     fixture.worker.mockImplementation((stateContext, operation, options) =>
       runSubagentStateWorkerOperation(
         stateContext,
@@ -431,8 +431,6 @@ it("joins an execution registered while its accepted Stop awaits kill-claim pers
     );
     expect(context.chatAbortControllers.has(runId)).toBe(false);
     expect(getActiveSessionLifecycleMutationCount()).toBe(1);
-    await nativeAdmission.acquire(storePath);
-    expect(nativeAdmission.getAdmission()).toBe(admission);
     expect(nativeAdmission.assertAllowed()).toMatchObject({ sessionId });
     expect(nativeAdmission.hasOutcome()).toBe(false);
     const activeRegistration = registerChatAbortController({

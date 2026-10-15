@@ -28,10 +28,7 @@ import {
   bindGatewayContextResolver,
   withPluginRuntimeGatewayRequestScope,
 } from "../../../plugins/runtime/gateway-request-scope.js";
-import {
-  beginSessionWorkAdmission,
-  consumeSessionWorkAdmissionHandoff,
-} from "../../../sessions/session-lifecycle-admission.js";
+import { beginSessionWorkAdmission } from "../../../sessions/session-lifecycle-admission.js";
 import { observeSessionWorkAdmissionDrain } from "../../../sessions/session-lifecycle-admission.test-support.js";
 import {
   createOperationalRunInstanceRef,
@@ -473,7 +470,7 @@ describe("pending spawn invocation authority", () => {
         return { runId: "accepted-task-run", status: "accepted" } as T;
       },
     });
-    let lease: ReturnType<typeof consumeSessionWorkAdmissionHandoff>;
+    let lease: Awaited<ReturnType<typeof beginSessionWorkAdmission>> | undefined;
     let cancellation: ReturnType<typeof killSubagentRunAdmin> | undefined;
     try {
       const spawned = await withPluginRuntimeGatewayRequestScope(
@@ -495,16 +492,11 @@ describe("pending spawn invocation authority", () => {
       const entry = subagentRuns.get(spawned.runId!)!;
       const child = loadSessionEntry({ storePath, sessionKey: spawned.childSessionKey! })!;
       const identities = [spawned.childSessionKey!, child.sessionId];
-      const work = await beginSessionWorkAdmission({
+      const interrupted = createDeferred();
+      lease = await beginSessionWorkAdmission({
         scope: storePath,
         identities,
         assertAllowed: () => {},
-      });
-      const interrupted = createDeferred();
-      lease = consumeSessionWorkAdmissionHandoff({
-        scope: storePath,
-        identities,
-        handoffId: work.createHandoff(),
         onInterrupt: () => interrupted.resolve(),
       });
       const generation = entry.generation;

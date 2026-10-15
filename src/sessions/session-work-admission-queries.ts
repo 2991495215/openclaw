@@ -9,7 +9,7 @@ import {
   collectSessionIdentityTargets,
   normalizeSessionIdentities,
 } from "./session-lifecycle-identity.js";
-import type { HandoffSessionWorkAdmission } from "./session-work-admission-handoff.js";
+import type { SessionWorkAdmissionFacts } from "./session-work-admission-interruption.js";
 
 export type SessionWorkRun = Readonly<{
   runId: string;
@@ -20,7 +20,7 @@ export type SessionWorkRun = Readonly<{
 }>;
 
 type ReleasableSessionWorkAdmission = Pick<
-  HandoffSessionWorkAdmission,
+  SessionWorkAdmissionFacts,
   "interrupt" | "interrupted" | "identities" | "getAbortReason"
 > & {
   run?: SessionWorkRun;

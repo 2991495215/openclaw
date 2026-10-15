@@ -19,7 +19,7 @@ import {
   listAgentDatabaseAdmissionRefusals,
   readAgentDatabaseAdmissionRefusal,
 } from "../../state/agent-database-admission.js";
-import { runWithMainSessionRecoveryAdmission } from "./main-session-recovery-admission.js";
+import { runWithMainSessionRecoveryContinuation } from "./main-session-recovery-admission.js";
 import { getMainSessionRecoveryRetryCount } from "./main-session-recovery-state.js";
 import type { MainSessionRecoveryStoreTarget } from "./main-session-recovery-store.js";
 import {
@@ -211,17 +211,15 @@ async function recoverExpectedRestartRecovery(
     return { started: 0, settled: 0, failed: 0, skipped: 0 };
   }
   return (
-    (await runWithMainSessionRecoveryAdmission({
+    (await runWithMainSessionRecoveryContinuation({
       ...params,
-      canonicalSessionKey: expected.canonicalSessionKey,
-      sessionId: expected.sessionId,
       isCurrent,
-      run: (recoveryAdmission) =>
+      run: (recoveryContinuation) =>
         recoverStore({
           ...params,
-          shouldContinue: recoveryAdmission.shouldContinue,
+          shouldContinue: recoveryContinuation.shouldContinue,
           handledSessionKeys: new Set<string>(),
-          recoveryAdmission,
+          recoveryContinuation,
         }),
     })) ?? { started: 0, settled: 0, failed: 0, skipped: 1 }
   );

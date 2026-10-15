@@ -8,7 +8,7 @@ import { applySessionEntryExactReplacements } from "../../../config/sessions/ses
 import { resolvePhysicalSessionStorePath } from "../../../config/sessions/session-store-path.js";
 import { runOpenClawAgentWriteTransaction } from "../../../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../../../test-utils/openclaw-test-state.js";
-import { runWithMainSessionRecoveryAdmission } from "../../main-session-recovery/main-session-recovery-admission.js";
+import { runWithMainSessionRecoveryContinuation } from "../../main-session-recovery/main-session-recovery-admission.js";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import { buildActiveSubagentRuntimeContext } from "./subagent-active-context.js";
 import { buildControlledSubagentRunsReadContext } from "./subagent-control-scope.js";
@@ -168,11 +168,8 @@ it.runIf(process.env.OPENCLAW_ENTRY_RELOAD_BENCH === "1")(
           });
           return value;
         };
-        const admitted = <T>(run: () => Promise<T>) =>
-          runWithMainSessionRecoveryAdmission({
-            storePath,
-            sessionKey: controllerSessionKey,
-            sessionId: "main-fixture",
+        const recoveryPrepared = <T>(run: () => Promise<T>) =>
+          runWithMainSessionRecoveryContinuation({
             isCurrent: () => loadExactSessionEntry(mainScope)?.entry.sessionId === "main-fixture",
             run,
           });
@@ -197,7 +194,9 @@ it.runIf(process.env.OPENCLAW_ENTRY_RELOAD_BENCH === "1")(
           expect(listed).toHaveLength(rows);
           expect(counters.fullLoads).toBe(1);
           expect(counters.parsedEntries).toBeGreaterThanOrEqual(rows);
-          await measure("main-admission-only", 0, () => admitted(async () => true));
+          await measure("main-recovery-preparation-only", 0, () =>
+            recoveryPrepared(async () => true),
+          );
 
           for (let iteration = 0; iteration < turns; iteration++) {
             const childSessionKey = `agent:main:subagent:benchmark-${iteration}`;
@@ -242,8 +241,10 @@ it.runIf(process.env.OPENCLAW_ENTRY_RELOAD_BENCH === "1")(
               }),
             });
 
-            const prompt = await measure("admitted-turn-prompt", iteration, () =>
-              admitted(() => buildActiveSubagentRuntimeContext({ cfg, controllerSessionKey })),
+            const prompt = await measure("prepared-recovery-prompt", iteration, () =>
+              recoveryPrepared(() =>
+                buildActiveSubagentRuntimeContext({ cfg, controllerSessionKey }),
+              ),
             );
             expect(prompt).toContain(`session=${childSessionKey}`);
             expect(prompt).toContain(`taskName_json="fixture_${iteration}"`);

@@ -36,15 +36,11 @@ import {
 } from "./session-lifecycle-identity.js";
 import { createSessionIdentityLockRunner } from "./session-lifecycle-locks.js";
 import {
-  clearSessionWorkAdmissionHandoffs,
-  createSessionWorkAdmissionHandoff,
-  type HandoffSessionWorkAdmission,
-  type SessionWorkAdmissionLease,
-} from "./session-work-admission-handoff.js";
-import {
   sessionWorkAdmissionAbortError,
   waitForSessionWorkAdmissionRelease,
+  type SessionWorkAdmissionFacts,
   type SessionWorkAdmissionInterrupt,
+  type SessionWorkAdmissionLease,
 } from "./session-work-admission-interruption.js";
 import {
   createSessionWorkAdmissionQueries,
@@ -52,17 +48,13 @@ import {
 } from "./session-work-admission-queries.js";
 
 export {
-  cancelSessionWorkAdmissionHandoff,
-  consumeSessionWorkAdmissionHandoff,
-  type SessionWorkAdmissionLease,
-} from "./session-work-admission-handoff.js";
-export {
   waitForSessionWorkAdmissionRelease,
   type SessionWorkAdmissionInterrupt,
+  type SessionWorkAdmissionLease,
 } from "./session-work-admission-interruption.js";
 
 export const SESSION_WORK_ADMISSION_DRAIN_TIMEOUT_MS = 15_000;
-type SessionWorkAdmission = HandoffSessionWorkAdmission & {
+type SessionWorkAdmission = SessionWorkAdmissionFacts & {
   agent?: AgentWorkAdmissionIdentity;
   run?: SessionWorkRun;
   phase: "pending" | "acquired";
@@ -469,7 +461,6 @@ export async function beginSessionWorkAdmission(params: {
     isSettling: params.isSettling,
     getAbortReason: params.getAbortReason ?? (() => signal.reason),
     ...(params.owner ? { owner: params.owner } : {}),
-    handoffIds: new Set(),
     identities: new Set(identities),
     interrupted: undefined,
     interrupt: (reason) => {
@@ -511,7 +502,6 @@ export async function beginSessionWorkAdmission(params: {
         protectionReleased = true;
       }
     }
-    clearSessionWorkAdmissionHandoffs(admission);
     resolveReleased();
     if (protectionReleased) {
       notifyListeners(listeners ?? [], undefined);
@@ -519,12 +509,6 @@ export async function beginSessionWorkAdmission(params: {
   };
   const lease: SessionWorkAdmissionLease = {
     isActive: () => !released,
-    createHandoff: () => {
-      if (released) {
-        throw new Error("cannot hand off a released session work admission");
-      }
-      return createSessionWorkAdmissionHandoff(admission, lease);
-    },
     release,
     released: admission.released,
     run: async <T>(run: () => Promise<T>) => {

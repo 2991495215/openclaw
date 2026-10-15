@@ -28,8 +28,8 @@ import {
 } from "../subagents/subagent-restart-recovery-prompt.js";
 import { TOOL_FAILURE_INSTRUCTION } from "../tool-outcome-instructions.js";
 import {
-  runWithMainSessionRecoveryAdmission,
-  type MainSessionRecoveryAdmission,
+  runWithMainSessionRecoveryContinuation,
+  type MainSessionRecoveryContinuation,
 } from "./main-session-recovery-admission.js";
 import {
   repairMainSessionRecoveryMutation,
@@ -150,7 +150,7 @@ type ResumeMainSessionParams = {
   pendingFinalDeliveryText?: string | null;
   forceRestartSafeTools?: boolean;
   forceCodeModeTools?: boolean;
-  recoveryAdmission?: MainSessionRecoveryAdmission;
+  recoveryContinuation?: MainSessionRecoveryContinuation;
   signal?: AbortSignal;
   lifecycleGeneration?: string;
   shouldContinue?: () => boolean;
@@ -192,23 +192,21 @@ export async function resumeMainSession(
   const isCurrent = () => {
     return source ? matchesRequester(source.readCurrent()) : retained?.isCurrent() === true;
   };
-  const result = await runWithMainSessionRecoveryAdmission({
+  const result = await runWithMainSessionRecoveryContinuation({
     ...params,
-    sessionId: params.entry.sessionId,
-    admission: params.recoveryAdmission,
+    continuation: params.recoveryContinuation,
     isCurrent,
-    run: (recoveryAdmission) =>
-      resumeMainSessionWithinAdmission({
+    run: (recoveryContinuation) =>
+      resumePreparedMainSession({
         ...params,
-        recoveryAdmission,
-        shouldContinue: recoveryAdmission.shouldContinue,
+        shouldContinue: recoveryContinuation.shouldContinue,
       }),
   });
   return result ?? "skipped";
 }
 
-async function resumeMainSessionWithinAdmission(
-  params: ResumeMainSessionParams & { recoveryAdmission: MainSessionRecoveryAdmission },
+async function resumePreparedMainSession(
+  params: ResumeMainSessionParams,
 ): Promise<MainSessionResumeResult> {
   if (params.shouldContinue?.() === false) {
     return "skipped";
@@ -441,7 +439,6 @@ async function resumeMainSessionWithinAdmission(
       ),
       sessionKey: dispatchSessionKey,
       expectedExistingSessionId: params.entry.sessionId,
-      internalRuntimeHandoffId: params.recoveryAdmission.handoffId,
       ...(isExecutionIdentityCollectionEnabled(params.cfg)
         ? { internalExecutionIdentityRetry: params.recoveryAttempt > 1 }
         : {}),
@@ -479,10 +476,6 @@ async function resumeMainSessionWithinAdmission(
     }
     if (params.forceRestartSafeTools) {
       log.info(`dispatching restart-safe recovery for ${params.sessionKey}`);
-    }
-    if (!params.recoveryAdmission.beginDispatch()) {
-      await rollbackReservation("cancel_reservation");
-      return "skipped";
     }
     dispatchStarted = true;
     let dispatchSettled = false;

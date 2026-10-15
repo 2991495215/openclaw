@@ -6,6 +6,21 @@ export type SessionWorkAdmissionInterrupt = (
   reason?: Error,
 ) => SessionWorkAdmissionInterruptionReceipt | void;
 
+export type SessionWorkAdmissionLease = {
+  isActive: () => boolean;
+  release: () => void;
+  released: Promise<void>;
+  run: <T>(run: () => Promise<T>) => Promise<T>;
+};
+
+export type SessionWorkAdmissionFacts = {
+  identities: ReadonlySet<string>;
+  interrupt?: SessionWorkAdmissionInterrupt;
+  interrupted: Error | undefined;
+  isSettling?: () => boolean;
+  getAbortReason?: () => unknown;
+};
+
 export function sessionWorkAdmissionAbortError(signal: AbortSignal): Error {
   return signal.reason instanceof Error
     ? signal.reason

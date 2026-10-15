@@ -159,7 +159,6 @@ export async function prepareAgentRequestPreflight(params: {
     canUseInternalRuntimeHandoff,
     expectedExistingSessionId: request.expectedExistingSessionId,
     expectedExistingSessionLifecycleRevision: request.expectedExistingSessionLifecycleRevision,
-    internalRuntimeHandoffId: request.internalRuntimeHandoffId,
   });
   if (!expectedSessionResult.ok) {
     return rejectInvalidRequest(expectedSessionResult.error);

@@ -22,7 +22,7 @@ import {
   readAdmittedHarnessCompletionInputAsync,
 } from "../agent-harness-completion-recovery.js";
 import { resolveExecDefaultsAsync } from "../exec-defaults.js";
-import type { MainSessionRecoveryAdmission } from "./main-session-recovery-admission.js";
+import type { MainSessionRecoveryContinuation } from "./main-session-recovery-admission.js";
 import { buildMainSessionRecoverySettlementPatch } from "./main-session-recovery-clear.js";
 import { createCurrentProcessOwnerLookup } from "./main-session-recovery-live-owners.js";
 import {
@@ -187,7 +187,7 @@ export async function recoverStore(params: {
   stateDir?: string;
   handledSessionKeys: Set<string>;
   expectedTarget?: ExpectedRestartRecoveryTarget;
-  recoveryAdmission?: MainSessionRecoveryAdmission;
+  recoveryContinuation?: MainSessionRecoveryContinuation;
   activeSessionIds?: Iterable<string>;
   activeSessionKeys?: Iterable<string>;
   lifecycleGeneration?: string;
@@ -654,7 +654,7 @@ export async function recoverStore(params: {
         observation: recoveryView.observation,
         completionSource,
         recoveryAttempt: recoveryView.nextAttempt,
-        recoveryAdmission: params.recoveryAdmission,
+        recoveryContinuation: params.recoveryContinuation,
         signal: params.signal,
         gatewayRuntime: params.gatewayRuntime,
         ...resumeOptions,

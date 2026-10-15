@@ -8,7 +8,6 @@ import {
   beginSessionWorkAdmission,
   captureSessionWorkRunInterruptions,
   collectActiveSessionWorkAdmissions,
-  consumeSessionWorkAdmissionHandoff,
   getActiveSessionWorkAdmissionCount,
   getCompetingSessionWorkAdmissionRelease,
   getSessionWorkAdmissionRelease,
@@ -51,19 +50,12 @@ it("notifies only the released scope when acquired identity protection shrinks",
 });
 
 it.each(["completed", "cancelled", "cancelled-then-restart", "restart", "timeout"] as const)(
-  "uses the adopted run's %s outcome when capturing restart work",
+  "uses the admitted run's %s outcome when capturing restart work",
   async (outcome) => {
     const scope = "settling-restart.sqlite";
     const sessionKey = "agent:main:settling";
     const sessionId = "settling-session";
     const resolveGatewayContext = () => undefined;
-    const admission = await beginSessionWorkAdmission({
-      scope,
-      identities: [sessionKey, sessionId],
-      resolveGatewayContext,
-      isSettling: () => false,
-      assertAllowed: () => {},
-    });
     let settled = false;
     const reason =
       outcome === "restart"
@@ -73,19 +65,18 @@ it.each(["completed", "cancelled", "cancelled-then-restart", "restart", "timeout
           : outcome === "timeout"
             ? Object.assign(new Error("timed out"), { name: "TimeoutError" })
             : undefined;
+    const admission = await beginSessionWorkAdmission({
+      scope,
+      identities: [sessionKey, sessionId],
+      resolveGatewayContext,
+      isSettling: () => settled,
+      getAbortReason: () => reason,
+      assertAllowed: () => {},
+    });
     const target = { scope, sessionKey, sessionId };
     const captured = captureGatewaySessionWorkAdmissions(resolveGatewayContext);
     try {
       expect(captured.isActive(target)).toBe(true);
-      expect(
-        consumeSessionWorkAdmissionHandoff({
-          handoffId: admission.createHandoff(),
-          scope,
-          identities: [sessionKey, sessionId],
-          isSettling: () => settled,
-          getAbortReason: () => reason,
-        }),
-      ).toBe(admission);
       settled = true;
       if (outcome === "cancelled-then-restart") {
         startSessionWorkAdmissionInterruption({

@@ -10,8 +10,6 @@ import {
   isAgentRunRestartAbortReason,
 } from "../../agents/run-termination.js";
 import {
-  beginSessionWorkAdmission,
-  cancelSessionWorkAdmissionHandoff,
   interruptSessionWorkAdmissions,
   runExclusiveSessionLifecycleMutation,
 } from "../../sessions/session-lifecycle-admission.js";
@@ -1014,82 +1012,6 @@ describe("gateway agent handler", () => {
 
     expect(mocks.agentCommand).toHaveBeenCalledOnce();
   });
-
-  it.each(["restart", "rpc"] as const)(
-    "adopts a recovery admission interrupted by %s before the RPC",
-    async (stopReason) => {
-      const reason =
-        stopReason === "rpc" ? createAgentRunDirectAbortError() : createAgentRunRestartAbortError();
-      const sessionKey = "agent:main:main";
-      const sessionId = "existing-session-id";
-      const runId = "idem-recovery-admission-handoff";
-      const scope = getAgentTestStorePath();
-      primeMainAgentRun({ sessionId });
-      mocks.agentCommand.mockClear();
-      const admission = await beginSessionWorkAdmission({
-        scope,
-        identities: [sessionKey, sessionId],
-        assertAllowed: () => {},
-      });
-      const handoffId = admission.createHandoff();
-      const { promise: mutationStarted, resolve: markMutationStarted } = createDeferredCore();
-      let mutationRan = false;
-      const mutation = runExclusiveSessionLifecycleMutation("patch", {
-        scope,
-        identities: [sessionKey, sessionId],
-        prepare: async () => {
-          markMutationStarted();
-          expect(
-            await interruptSessionWorkAdmissions({
-              scope,
-              identities: [sessionKey, sessionId],
-              reason,
-              timeoutMs: 1_000,
-            }),
-          ).toBe(true);
-        },
-        run: async () => {
-          mutationRan = true;
-        },
-      });
-      await mutationStarted;
-      const respond = vi.fn();
-
-      try {
-        await invokeAgent(
-          {
-            message: "resume the admitted turn",
-            agentId: "main",
-            sessionKey,
-            expectedExistingSessionId: sessionId,
-            internalRuntimeHandoffId: handoffId,
-            idempotencyKey: runId,
-          },
-          {
-            client: backendGatewayClient(),
-            flushDispatch: false,
-            reqId: runId,
-            respond,
-          },
-        );
-        await mutation;
-
-        expect(cancelSessionWorkAdmissionHandoff(handoffId)).toBe(false);
-        expect(mutationRan).toBe(true);
-        expect(mocks.agentCommand).not.toHaveBeenCalled();
-        expect(respond).toHaveBeenCalledWith(
-          true,
-          expect.objectContaining({ runId, status: "timeout", stopReason, providerStarted: false }),
-          undefined,
-          expect.objectContaining({ cached: true, runId }),
-        );
-      } finally {
-        cancelSessionWorkAdmissionHandoff(handoffId);
-        admission.release();
-        await mutation;
-      }
-    },
-  );
 
   it.each(["generic", "explicit restart", "terminal Stop", "already stopped"] as const)(
     "preserves Gateway lifecycle interruption semantics: %s",

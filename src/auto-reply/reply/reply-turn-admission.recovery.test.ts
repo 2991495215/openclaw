@@ -19,7 +19,6 @@ import type { GatewayRequestContext } from "../../gateway/server-methods/types.j
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import {
   beginSessionWorkAdmission,
-  consumeSessionWorkAdmissionHandoff,
   getSessionWorkAdmissionRelease,
   getSessionWorkAdmissionOwnerRelease,
   isCompetingSessionWorkAdmissionActive,
@@ -281,11 +280,7 @@ it("keeps new input and followups behind a concurrent recovery winner", async ()
         owner: MAIN_SESSION_RECOVERY_WORK_ADMISSION_OWNER,
         resolveGatewayContext,
       });
-      recoveryLease = consumeSessionWorkAdmissionHandoff({
-        handoffId: owner.createHandoff(),
-        ...f.scope,
-      });
-      expect(recoveryLease).toBe(owner);
+      recoveryLease = owner;
       await owner.run(() => {
         expect(isCompetingSessionWorkAdmissionActive(f.storePath, [sessionKey, sessionId])).toBe(
           false,

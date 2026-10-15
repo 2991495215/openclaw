@@ -1,13 +1,7 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { SessionEntry } from "../../config/sessions.js";
-import {
-  consumeSessionWorkAdmissionHandoff,
-  type SessionWorkAdmissionInterrupt,
-  type SessionWorkAdmissionLease,
-} from "../../sessions/session-lifecycle-admission.js";
 
 export type ExpectedExistingSessionConstraint = {
-  handoffId?: string;
   sessionId: string;
   lifecycleRevision?: string | null;
 };
@@ -23,7 +17,6 @@ export function resolveExpectedExistingSessionConstraint(params: {
   canUseInternalRuntimeHandoff: boolean;
   expectedExistingSessionId?: unknown;
   expectedExistingSessionLifecycleRevision?: string | null;
-  internalRuntimeHandoffId?: unknown;
 }): { ok: true; constraint?: ExpectedExistingSessionConstraint } | { ok: false; error: string } {
   const sessionId = normalizeOptionalString(params.expectedExistingSessionId);
   if (!sessionId) {
@@ -41,13 +34,11 @@ export function resolveExpectedExistingSessionConstraint(params: {
       error: "expectedExistingSessionId is reserved for backend callers.",
     };
   }
-  const handoffId = normalizeOptionalString(params.internalRuntimeHandoffId);
   return {
     ok: true,
     constraint: {
       sessionId,
       lifecycleRevision: params.expectedExistingSessionLifecycleRevision,
-      ...(handoffId ? { handoffId } : {}),
     },
   };
 }
@@ -82,30 +73,4 @@ export function assertExpectedExistingSession(params: {
   ) {
     throw new ExpectedExistingSessionChangedError(params.message);
   }
-}
-
-export function consumeExpectedSessionWorkAdmission(params: {
-  constraint?: ExpectedExistingSessionConstraint;
-  identities: Iterable<string | undefined>;
-  onInterrupt: SessionWorkAdmissionInterrupt;
-  isSettling?: () => boolean;
-  getAbortReason?: () => unknown;
-  scope: string;
-}): SessionWorkAdmissionLease | undefined {
-  const handoffId = params.constraint?.handoffId;
-  if (!handoffId) {
-    return undefined;
-  }
-  const lease = consumeSessionWorkAdmissionHandoff({
-    handoffId,
-    scope: params.scope,
-    identities: params.identities,
-    onInterrupt: params.onInterrupt,
-    isSettling: params.isSettling,
-    getAbortReason: params.getAbortReason,
-  });
-  if (!lease) {
-    throw new Error("session work admission handoff is unavailable");
-  }
-  return lease;
 }

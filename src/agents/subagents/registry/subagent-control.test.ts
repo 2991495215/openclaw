@@ -18,7 +18,6 @@ import { ensureContextEnginesInitialized } from "../../../context-engine/init.js
 import { resolveContextEngine } from "../../../context-engine/registry.js";
 import {
   beginSessionWorkAdmission,
-  consumeSessionWorkAdmissionHandoff,
   getActiveSessionLifecycleMutationCount,
 } from "../../../sessions/session-lifecycle-admission.js";
 import { loadAgentRuntimePluginRegistryHandle } from "../../runtime-plugins.js";
@@ -323,7 +322,6 @@ describe("killSubagentRunAdmin", () => {
       assertAllowed: () => {},
       onInterrupt: () => interrupted.resolve(),
     });
-    const handoffId = admission.createHandoff();
     const abort = vi.fn(() => true);
     setSubagentControlDepsForTest({
       isEmbeddedAgentRunActive: () => true,
@@ -335,16 +333,9 @@ describe("killSubagentRunAdmin", () => {
       sessionKey: childSessionKey,
       expectedRunId: source.runId,
     });
-    let adopted: ReturnType<typeof consumeSessionWorkAdmissionHandoff>;
     try {
       await interrupted.promise;
       expect(getActiveSessionLifecycleMutationCount()).toBeGreaterThan(0);
-      adopted = consumeSessionWorkAdmissionHandoff({
-        handoffId,
-        scope: storePath,
-        identities: [childSessionKey, sessionId],
-        onInterrupt: () => undefined,
-      });
       expect(
         await replaceSubagentRunAfterSteerCore({
           previousRunId: source.runId,
@@ -352,8 +343,7 @@ describe("killSubagentRunAdmin", () => {
           expected: source,
         }),
       ).toBe(true);
-      expect(adopted).toBeDefined();
-      adopted?.release();
+      admission.release();
 
       await expect(pendingKill).resolves.toMatchObject({
         found: true,
@@ -369,7 +359,6 @@ describe("killSubagentRunAdmin", () => {
       ).toBeUndefined();
       expect(abort).not.toHaveBeenCalled();
     } finally {
-      adopted?.release();
       admission.release();
       await pendingKill;
     }
@@ -1238,14 +1227,16 @@ describe("controlled subagent cancellation races", () => {
       abortedLastRun: true,
     });
     const interrupted = createDeferred();
+    let recoveryActive = false;
     const admission = await beginSessionWorkAdmission({
       scope: storePath,
       identities: [childSessionKey, sessionId],
       assertAllowed: () => {},
-      onInterrupt: () => interrupted.resolve(),
+      onInterrupt: () => {
+        recoveryActive = true;
+        interrupted.resolve();
+      },
     });
-    const handoffId = admission.createHandoff();
-    let recoveryActive = false;
     const abort = vi.fn(() => recoveryActive);
     setSubagentControlDepsForTest({
       isEmbeddedAgentRunActive: () => recoveryActive,
@@ -1257,21 +1248,11 @@ describe("controlled subagent cancellation races", () => {
       controller: controllerFor(controllerSessionKey),
       runs: [entry],
     });
-    let adopted: ReturnType<typeof consumeSessionWorkAdmissionHandoff>;
     try {
       await interrupted.promise;
       expect(getActiveSessionLifecycleMutationCount()).toBeGreaterThan(0);
-      adopted = consumeSessionWorkAdmissionHandoff({
-        handoffId,
-        scope: storePath,
-        identities: [childSessionKey, sessionId],
-        onInterrupt: () => {
-          recoveryActive = true;
-        },
-      });
-      expect(adopted).toBeDefined();
       expect(recoveryActive).toBe(true);
-      adopted?.release();
+      admission.release();
 
       await expect(pendingKill).resolves.toMatchObject({ status: "ok" });
       expect(abort).toHaveBeenCalledWith(sessionId);
@@ -1280,7 +1261,6 @@ describe("controlled subagent cancellation races", () => {
         execution: { status: "terminal" },
       });
     } finally {
-      adopted?.release();
       admission.release();
       await pendingKill;
     }
@@ -1410,20 +1390,15 @@ describe("killAllControlledSubagentRuns", () => {
       sessionId,
       updatedAt: 1,
     });
+    const response = createDeferred();
     const admission = await beginSessionWorkAdmission({
       scope: storePath,
       identities: [childSessionKey, sessionId],
       assertAllowed: () => {},
-    });
-    const response = createDeferred();
-    const started = createDeferred();
-    const launchDone = createDeferred();
-    const lease = consumeSessionWorkAdmissionHandoff({
-      handoffId: admission.createHandoff(),
-      scope: storePath,
-      identities: [childSessionKey, sessionId],
       onInterrupt: () => response.resolve(),
     });
+    const started = createDeferred();
+    const launchDone = createDeferred();
     enqueueSwarmRun({
       groupId: "remapping",
       runId,
@@ -1435,7 +1410,7 @@ describe("killAllControlledSubagentRuns", () => {
           await response.promise;
           expect(await startQueuedSubagentRun(runId, "accepted-launch")).toBe(true);
         } finally {
-          lease?.release();
+          admission.release();
           launchDone.resolve();
         }
       },
@@ -1458,7 +1433,7 @@ describe("killAllControlledSubagentRuns", () => {
     } finally {
       response.resolve();
       await launchDone.promise;
-      lease?.release();
+      admission.release();
       swarmSchedulerTesting.reset();
     }
   });

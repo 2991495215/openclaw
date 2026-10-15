@@ -5,7 +5,7 @@ import { getAgentDeletionDatabaseCleanup } from "../state/agent-deletion-cleanup
 import type { OpenClawAgentDatabaseOptions } from "../state/openclaw-agent-db-contract.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { collectSessionIdentityTargets } from "./session-lifecycle-identity.js";
-import type { HandoffSessionWorkAdmission } from "./session-work-admission-handoff.js";
+import type { SessionWorkAdmissionFacts } from "./session-work-admission-interruption.js";
 
 export type AgentWorkAdmissionTarget = {
   agentId: string;
@@ -97,7 +97,7 @@ export function matchesAgentWorkAdmission(
   );
 }
 
-type AgentSessionWorkAdmission = HandoffSessionWorkAdmission & {
+type AgentSessionWorkAdmission = SessionWorkAdmissionFacts & {
   agent?: AgentWorkAdmissionIdentity;
   phase: "pending" | "acquired";
   released: Promise<void>;

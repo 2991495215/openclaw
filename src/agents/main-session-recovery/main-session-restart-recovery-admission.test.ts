@@ -33,14 +33,9 @@ import {
   resetGatewayWorkAdmission,
   tryBeginGatewaySuspendAdmission,
 } from "../../process/gateway-work-admission.js";
-import {
-  getSessionWorkAdmissionOwnerRelease,
-  runExclusiveSessionLifecycleMutation,
-} from "../../sessions/session-lifecycle-admission.js";
+import { runExclusiveSessionLifecycleMutation } from "../../sessions/session-lifecycle-admission.js";
 import { withEnvAsync } from "../../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
-import { waitForFast } from "../subagent-test-fixtures.test-helpers.js";
-import { MAIN_SESSION_RECOVERY_WORK_ADMISSION_OWNER } from "./main-session-recovery-admission.js";
 import { createRecoveryRuntimeFixture } from "./main-session-recovery-runtime.test-support.js";
 import * as recoveryTargets from "./main-session-restart-recovery-exact-target.js";
 import { mainSessionRecoveryLog } from "./main-session-restart-recovery-shared.js";
@@ -360,7 +355,7 @@ describe("startup recovery admission", () => {
     },
   );
 
-  it("skips a recovery target replaced while its admission waits", async () => {
+  it("skips a recovery target replaced by an earlier lifecycle mutation", async () => {
     const { storePath, sessionKey } = await makeMainSessionFixture();
     const mutationEntered = createDeferred();
     const releaseMutation = createDeferred();
@@ -384,15 +379,6 @@ describe("startup recovery admission", () => {
       gatewayRuntime,
     });
     try {
-      await waitForFast(() =>
-        expect(
-          getSessionWorkAdmissionOwnerRelease({
-            scope: storePath,
-            identities: [sessionKey, "main-session"],
-            owner: MAIN_SESSION_RECOVERY_WORK_ADMISSION_OWNER,
-          }),
-        ).toBeDefined(),
-      );
       releaseMutation.resolve();
       await mutation;
       await expect(recovery).resolves.toEqual({ started: 0, settled: 0, failed: 0, skipped: 1 });
