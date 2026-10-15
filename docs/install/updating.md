@@ -430,9 +430,15 @@ test Gateway boot on copied state finish before the service stops. The stopped i
 contains the swap, required migrations, plugin downloads and convergence, and
 service start. Plugin work uses the installed target without requiring a serving
 Gateway. A changed plugin snapshot runs fresh Doctor migrations before restart;
-unchanged plugins do not run another full Doctor pass. The final report records
-downtime through convergence and final verification, plus verification
-results. See
+unchanged plugins do not run another full Doctor pass.
+If post-plugin lint execution cannot finish because of lock contention, a timeout,
+or an inspection failure, the verified core update continues with a recorded warning
+and the original lint diagnostics. Run `openclaw update repair` to retry those
+checks, stopping the Gateway first when the repair asks for exclusive state
+access. Concrete readiness findings and unverified process cleanup still block
+completion.
+The final report records downtime through convergence and final verification,
+plus verification results. See
 [Validation and activation](/cli/update#validation-and-activation) for the checks.
 
 Post-update configuration and settlement reads wait for temporary SQLite
