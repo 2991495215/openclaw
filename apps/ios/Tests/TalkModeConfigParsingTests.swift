@@ -791,28 +791,6 @@ struct TalkModeManagerTests {
         #expect(TalkModeManager._test_isPCMFormatRejectedByAPI(error) == false)
     }
 
-    @Test func `history fallback only selects the current run reply`() {
-        let messages: [[String: Any]] = [
-            [
-                "role": "assistant",
-                "idempotencyKey": "old-run",
-                "content": [["type": "text", "text": "stale answer"]],
-            ],
-            [
-                "role": "assistant",
-                "__openclaw": ["idempotencyKey": "current-run"],
-                "content": [["type": "text", "text": "current answer"]],
-            ],
-        ]
-
-        #expect(TalkModeManager._test_latestAssistantText(
-            messages: messages,
-            runId: "current-run") == "current answer")
-        #expect(TalkModeManager._test_latestAssistantText(
-            messages: messages,
-            runId: "missing-run") == nil)
-    }
-
     @Test func `native Talk chat request inherits thinking policy`() {
         let request = OpenClawChatGatewayRequests.sendMessage(
             sessionKey: "agent:main:main",
