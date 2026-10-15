@@ -24,6 +24,75 @@ export function createQuestionPromptLifetime(signal?: AbortSignal) {
   };
 }
 
+type GatewayQuestionDelivery = {
+  hasSubscriber: boolean;
+  markReady(): void;
+  waitForDelivery(signal?: AbortSignal): Promise<{ error?: unknown }>;
+  release(): void;
+};
+
+/** Callers retain registration policy and close publication on their exact answer promise. */
+export function createGatewayQuestionLifecycle(params: {
+  gatewayCall: GatewayQuestionCall;
+  questionId: string;
+  signal?: AbortSignal;
+}) {
+  const prompt = createQuestionPromptLifetime(params.signal);
+  const cancel = createGatewayQuestionCanceller({
+    gatewayCall: params.gatewayCall,
+    questionId: params.questionId,
+    beforeCancel: prompt.close,
+  });
+  return {
+    ...prompt,
+    cancel,
+    async wait(
+      delivery: GatewayQuestionDelivery,
+      startAnswer: () => Promise<QuestionWaitAnswerResult>,
+    ) {
+      const onAbort = () => {
+        prompt.close();
+        delivery.release();
+        void cancel("run-abort");
+      };
+      try {
+        params.signal?.addEventListener("abort", onAbort, { once: true });
+        if (params.signal?.aborted) {
+          onAbort();
+          params.signal.throwIfAborted();
+        }
+        const answer = startAnswer();
+        delivery.markReady();
+        let result: QuestionWaitAnswerResult | undefined;
+        if (delivery.hasSubscriber) {
+          const first = await Promise.race([
+            delivery.waitForDelivery(params.signal).then((result) => ({
+              kind: "delivery" as const,
+              result,
+            })),
+            answer.then((result) => ({ kind: "answer" as const, result })),
+          ]);
+          params.signal?.throwIfAborted();
+          if (first.kind === "answer") {
+            result = first.result;
+          } else if (first.result.error !== undefined) {
+            const recovered = await cancel("prompt-delivery-failed");
+            return recovered ?? { status: "delivery-error" as const, error: first.result.error };
+          }
+        }
+        result ??= await answer;
+        params.signal?.throwIfAborted();
+        if (result.status === "pending") {
+          result = (await cancel("wait-timeout")) ?? result;
+        }
+        return result;
+      } finally {
+        params.signal?.removeEventListener("abort", onAbort);
+      }
+    },
+  };
+}
+
 const TERMINAL_QUESTION_ERROR_REASONS = new Set([
   "QUESTION_ALREADY_TERMINAL",
   "QUESTION_NOT_FOUND",
