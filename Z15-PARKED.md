@@ -36,7 +36,7 @@ task's requested local coverage ledger.
   shared collector, official external fallback; Buzz, GoogleChat, Matrix,
   Microsoft Teams, Nostr, and Slack sidecars; related tests/docs/ratchet entry.
 - Shared undefined-property omission in normalization-core, its registration and
-  speech SDK export, plus Azure/ElevenLabs/Fish/Google/Inworld/MiniMax/OpenAI/XAI
+  speech SDK export, plus Azure/ElevenLabs/Fish/Google/Inworld/MiniMax/Microsoft/OpenAI/XAI
   and compatible-provider normalization callers and typed config guard cleanup.
 - Reply exec/queue/inline directive cleanup and CLI config-input guard cleanup.
 - TTS layered config, status, and settings cleanup, including its ratchet entry.
