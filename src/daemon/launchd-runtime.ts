@@ -5,8 +5,7 @@ import {
   parseStrictInteger,
   parseStrictPositiveInteger,
 } from "@openclaw/normalization-core/number-coercion";
-import { isStringArray } from "@openclaw/normalization-core/record-coerce";
-import { isStringRecord } from "@openclaw/normalization-core/record-coerce";
+import { isStringArray, isStringRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import { formatErrorMessage } from "../infra/errors.js";
 import { parseTcpPort, parseTcpPortFromArgs } from "../infra/tcp-port.js";

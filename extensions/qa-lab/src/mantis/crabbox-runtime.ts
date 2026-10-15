@@ -5,9 +5,9 @@ import {
 } from "@openclaw/crabbox-provider/cli-runtime-api.js";
 import { normalizeOptionalString as trimToValue } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { shellEscapeBackslash as shellQuote } from "openclaw/plugin-sdk/string-normalization-runtime";
+import { isTruthyOptIn } from "../mantis-options.runtime.js";
 
 export { shellQuote };
-import { isTruthyOptIn } from "../mantis-options.runtime.js";
 
 export type MantisCrabboxLeaseOptions = {
   idleTimeout?: string;

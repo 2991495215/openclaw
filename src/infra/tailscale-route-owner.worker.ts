@@ -2,8 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import process from "node:process";
 import { promisify } from "node:util";
 // Owns one foreground Tailscale route claim and releases it when Gateway IPC closes.
-import { isStringArray } from "@openclaw/normalization-core/record-coerce";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { isRecord, isStringArray } from "@openclaw/normalization-core/record-coerce";
 import { signalProcessTree } from "../process/kill-tree.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import {

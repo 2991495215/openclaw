@@ -1,12 +1,12 @@
 import { floorPositiveFiniteNumber as normalizeOptionalPositiveInteger } from "@openclaw/normalization-core/number-coercion";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
-export { truncateWithMarker as truncateRelayText } from "@openclaw/normalization-core/utf16-slice";
 import { shellEscapeBackslash } from "../../shared/shell-quote.js";
 import type {
   JsonValue,
   NativeHookRelayEvent,
   NativeHookRelayProvider,
 } from "./native-hook-relay-types.js";
+export { truncateWithMarker as truncateRelayText } from "@openclaw/normalization-core/utf16-slice";
 export { readNonEmptyStringPreservingWhitespace as readOptionalNonEmptyString } from "@openclaw/normalization-core/string-coerce";
 
 const MAX_NATIVE_HOOK_RELAY_JSON_DEPTH = 64;

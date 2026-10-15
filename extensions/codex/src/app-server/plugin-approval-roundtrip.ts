@@ -8,10 +8,10 @@ import type {
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { isApprovalNotFoundError, toErrorObject } from "openclaw/plugin-sdk/error-runtime";
 import { truncateWithMarker as truncateCodexApprovalDisplayText } from "openclaw/plugin-sdk/string-normalization-runtime";
-
-export { truncateCodexApprovalDisplayText };
 import { racePromiseWithAbortSignal } from "openclaw/plugin-sdk/time-runtime";
 import { resolveCodexGatewayTimeoutWithGraceMs } from "./attempt-timeouts.js";
+
+export { truncateCodexApprovalDisplayText };
 
 type AgentHarnessHostCapabilities = EmbeddedRunAttemptParams["hostCapabilities"];
 

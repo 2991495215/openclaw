@@ -3,8 +3,6 @@ import {
   escapeChatDisplayText as escapeCodexChatText,
   sanitizeChatDisplayText as sanitizeCodexTextForDisplay,
 } from "openclaw/plugin-sdk/string-normalization-runtime";
-
-export { escapeCodexChatText };
 import type { CodexComputerUseStatus } from "./app-server/computer-use.js";
 import type { CodexAppServerModelListResult } from "./app-server/models.js";
 import { isJsonObject, type JsonValue } from "./app-server/protocol.js";
@@ -16,6 +14,8 @@ import {
 import { isLikelyEmailAddress } from "./command-account-email.js";
 import type { CodexAccountAuthOverview } from "./command-account.js";
 import type { readCodexStatusProbes, SafeValue } from "./command-rpc.js";
+
+export { escapeCodexChatText };
 
 type CodexStatusProbes = Awaited<ReturnType<typeof readCodexStatusProbes>>;
 

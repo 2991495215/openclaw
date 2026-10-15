@@ -32,7 +32,14 @@ describe("lstatIfExists", () => {
     expect((await lstatIfExists(file))?.isFile()).toBe(true);
     expect((await lstatIfExists(link))?.isSymbolicLink()).toBe(true);
     expect(await lstatIfExists(path.join(dir, "absent"))).toBeUndefined();
+    expect(await lstatIfExists(path.join(dir, "absent"), "ENOENT")).toBeUndefined();
     expect(await lstatIfExists(path.join(file, "child"))).toBeUndefined();
+  });
+
+  it("preserves invalid-parent errors for callers that only ignore ENOENT", async () => {
+    const error = Object.assign(new Error("not a directory"), { code: "ENOTDIR" });
+    vi.spyOn(fs, "lstat").mockRejectedValueOnce(error);
+    await expect(lstatIfExists("invalid-parent/child", "ENOENT")).rejects.toBe(error);
   });
 
   it("surfaces filesystem failures other than missing paths", async () => {
