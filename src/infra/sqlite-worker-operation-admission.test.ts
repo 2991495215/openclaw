@@ -23,7 +23,6 @@ import {
   createSqliteDatabaseAdmissionRelay,
   createSqliteWorkerOperationAdmission,
   deferSqliteWorkerCommitReceipt,
-  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   requestSqliteWorkerOperationAdmission,
   requestSqliteWorkerSchemaMaintenance,
@@ -31,6 +30,7 @@ import {
   type SqliteWorkerAdmissionRequest,
 } from "./sqlite-worker-operation-admission.js";
 import {
+  observeSqliteWorkerAdmissionFinish,
   settleSqliteWorkerOperationContext,
   type SqliteWorkerOperationContext,
 } from "./sqlite-worker-operation-settlement.js";

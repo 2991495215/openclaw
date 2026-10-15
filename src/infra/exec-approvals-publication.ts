@@ -5,10 +5,10 @@ import { parsePersistedExecApprovals } from "./exec-approvals-config.js";
 import type { ExecAuthorizationCommitInput } from "./exec-approvals-contracts.js";
 import type { ExecApprovalsFile } from "./exec-approvals-core.js";
 import {
-  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "./sqlite-worker-operation-admission.js";
+import { observeSqliteWorkerAdmissionFinish } from "./sqlite-worker-operation-settlement.js";
 
 export type ExecApprovalsPublicationValue = {
   file: Omit<ExecApprovalsFile, "socket">;

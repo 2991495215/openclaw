@@ -10,11 +10,11 @@ import { execApprovalsPublication } from "../infra/exec-approvals-publication.js
 import type { SqliteWorkerInputPreparation } from "../infra/sqlite-worker-broker.types.js";
 import type { SqliteWorkerStore } from "../infra/sqlite-worker-contract.js";
 import {
-  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
   type SqliteWorkerOperationAdmission,
 } from "../infra/sqlite-worker-operation-admission.js";
+import { observeSqliteWorkerAdmissionFinish } from "../infra/sqlite-worker-operation-settlement.js";
 // Runtime approval operations retain the shared-state owner through worker settlement.
 import {
   createSqliteWorkerWriteAdmission,

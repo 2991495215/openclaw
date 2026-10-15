@@ -9,10 +9,10 @@ import { sqlPublicationAnchor, type EngineConnection } from "../infra/sql-connec
 import { stageSqliteTransactionState } from "../infra/sqlite-post-commit.js";
 import {
   createSqliteWorkerOperationAdmission,
-  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../infra/sqlite-worker-operation-admission.js";
+import { observeSqliteWorkerAdmissionFinish } from "../infra/sqlite-worker-operation-settlement.js";
 import { resolveGlobalMap, resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { findOpenClawAgentDatabaseIdentity } from "./openclaw-agent-db-identity.js";
 import { registerOpenClawAgentDatabaseReadCandidateResource } from "./openclaw-agent-db-resources.js";
