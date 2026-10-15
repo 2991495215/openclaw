@@ -43,6 +43,7 @@ describe("isRetryableAssistantError", () => {
     ["anthropic-incomplete-terminal-stream", true],
     ["google-incomplete-terminal-stream", true],
     ["google-sse-eof-incomplete-frame", true],
+    ["openai-sdk-malformed-sse", true],
     ["google-sse-malformed-json-frame", false],
     ["mistral-incomplete-terminal-stream", true],
     ["openai-completions-incomplete-terminal-stream", true],
