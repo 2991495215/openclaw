@@ -25,7 +25,63 @@ const record: SessionBindingRecord = {
   boundAt: 1,
 };
 
+function createScopedAdapter(
+  options: {
+    read?: (conversationId: string) => SessionBindingRecord | undefined;
+    assertCurrent?: () => void;
+  } = {},
+) {
+  const read = options.read ?? (() => record);
+  return createAccountScopedBindingAdapterV2({
+    channel: "external",
+    accountId: "default",
+    capabilities: {},
+    assertCurrent: options.assertCurrent ?? (() => {}),
+    bind: async () => record,
+    project: (entry: SessionBindingRecord) => entry,
+    listBySessionKey: () => [record],
+    getByConversation: (ref) => read(ref.conversationId),
+    touchConversation: () => {},
+    unbindConversation: () => null,
+    unbindBySessionKey: () => [],
+    listBySessionKeyAsync: async () => [record],
+    getByConversationAsync: async (ref) => read(ref.conversationId),
+    inspectByConversationAsync: async (ref) => read(ref.conversationId),
+    selectionChangedMessage: "binding selection changed",
+    touchConversationAsync: async () => {},
+  });
+}
+
 describe("awaited binding read ownership", () => {
+  it.each(["added", "removed", "replaced", "retired"] as const)(
+    "keeps scoped selections tied to their published source (%s)",
+    async (change) => {
+      let current = change === "added" ? undefined : record;
+      let active = true;
+      const adapter = createScopedAdapter({
+        read: () => current,
+        assertCurrent: () => {
+          if (!active) {
+            throw new Error("closed adapter");
+          }
+        },
+      });
+      const selection = await adapter.inspectByConversationsAsync([record.conversation]);
+      expect(selection.bindings).toEqual(change === "added" ? [null] : [record]);
+      selection.assertCurrent();
+
+      if (change === "retired") {
+        active = false;
+      } else {
+        current =
+          change === "removed" ? undefined : { ...record, targetSessionKey: "agent:other:main" };
+      }
+      expect(selection.assertCurrent).toThrow(
+        change === "retired" ? "closed adapter" : "binding selection changed",
+      );
+    },
+  );
+
   it.each([false, true])(
     "keeps admission inspection free of resolver mutations (async inspector=%s)",
     async (asyncInspector) => {
@@ -159,27 +215,7 @@ describe("awaited binding read ownership", () => {
       withPluginRuntimePluginScope({ pluginId: "binding-sdk-compat-fixture" }, body);
     try {
       await run(async () => {
-        const adapter = createAccountScopedBindingAdapterV2({
-          channel: "external",
-          accountId: "default",
-          capabilities: {},
-          assertCurrent: () => {},
-          bind: async () => record,
-          project: (entry: SessionBindingRecord) => entry,
-          listBySessionKey: () => [record],
-          getByConversation: () => record,
-          touchConversation: () => {},
-          unbindConversation: () => null,
-          unbindBySessionKey: () => [],
-          listBySessionKeyAsync: async () => [record],
-          getByConversationAsync: async () => record,
-          inspectByConversationAsync: async () => record,
-          inspectByConversations: (refs) => ({
-            records: refs.map(() => record),
-            assertCurrent: () => {},
-          }),
-          touchConversationAsync: async () => {},
-        });
+        const adapter = createScopedAdapter();
         registerSessionBindingAdapterV2(adapter);
         expect(
           await getSessionBindingService().resolveByConversationAsync(record.conversation),

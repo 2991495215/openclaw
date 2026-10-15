@@ -127,11 +127,7 @@ function createAccountScopedBindingAdapter<T>(params: {
 export function createAccountScopedBindingAdapterV2<T>(
   params: Parameters<typeof createAccountScopedBindingAdapter<T>>[0] & {
     assertCurrent: () => void;
-    /** Reads one coherent published projection and certifies its source until consumption. */
-    inspectByConversations: (refs: readonly ConversationRef[]) => {
-      records: readonly (T | null | undefined)[];
-      assertCurrent: () => void;
-    };
+    selectionChangedMessage: string;
     listBySessionKeyAsync: (targetSessionKey: string) => Promise<T[]>;
     getByConversationAsync: (ref: ConversationRef) => Promise<T | null | undefined>;
     inspectByConversationAsync: (ref: ConversationRef) => Promise<T | null | undefined>;
@@ -149,12 +145,14 @@ export function createAccountScopedBindingAdapterV2<T>(
     version: 2,
     inspectByConversationsAsync: async (refs) => {
       params.assertCurrent();
-      const snapshot = params.inspectByConversations(refs);
+      const records = refs.map((ref) => params.getByConversation(ref));
       return {
-        bindings: snapshot.records.map((record) => (record ? params.project(record) : null)),
+        bindings: records.map((record) => (record ? params.project(record) : null)),
         assertCurrent: () => {
           params.assertCurrent();
-          snapshot.assertCurrent();
+          if (refs.some((ref, index) => params.getByConversation(ref) !== records[index])) {
+            throw new Error(params.selectionChangedMessage);
+          }
         },
       };
     },

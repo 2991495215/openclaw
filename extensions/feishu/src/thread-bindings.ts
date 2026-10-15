@@ -250,22 +250,7 @@ export function createFeishuThreadBindingManager(params: {
   };
   const sessionBindingAdapter = createAccountScopedBindingAdapterV2({
     assertCurrent,
-    inspectByConversations: (refs) => {
-      const records = refs.map((ref) => manager.getByConversationId(ref.conversationId));
-      return {
-        records,
-        assertCurrent: () => {
-          assertCurrent();
-          if (
-            refs.some(
-              (ref, index) => manager.getByConversationId(ref.conversationId) !== records[index],
-            )
-          ) {
-            throw new Error("Feishu conversation binding changed during selection");
-          }
-        },
-      };
-    },
+    selectionChangedMessage: "Feishu conversation binding changed during selection",
     listBySessionKeyAsync: async (sessionKey) => manager.listBySessionKey(sessionKey),
     getByConversationAsync: async (ref) => manager.getByConversationId(ref.conversationId),
     inspectByConversationAsync: async (ref) => manager.getByConversationId(ref.conversationId),

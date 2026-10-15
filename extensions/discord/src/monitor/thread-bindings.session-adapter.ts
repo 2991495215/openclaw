@@ -114,22 +114,7 @@ export function createThreadBindingSessionAdapter(params: {
     listBySessionKeyAsync: async (key) => params.manager.listBySessionKey(key),
     getByConversationAsync: async (ref) => params.manager.getByThreadId(ref.conversationId),
     inspectByConversationAsync: async (ref) => params.manager.getByThreadId(ref.conversationId),
-    inspectByConversations: (refs) => {
-      const records = refs.map((ref) => params.manager.getByThreadId(ref.conversationId));
-      return {
-        records,
-        assertCurrent: () => {
-          params.assertCurrent();
-          if (
-            refs.some(
-              (ref, index) => params.manager.getByThreadId(ref.conversationId) !== records[index],
-            )
-          ) {
-            throw new Error("Discord thread binding selection changed");
-          }
-        },
-      };
-    },
+    selectionChangedMessage: "Discord thread binding selection changed",
     listBySessionKey: params.manager.listBySessionKey,
     getByConversation: (ref) => params.manager.getByThreadId(ref.conversationId),
     touchConversation: (threadId, at) =>

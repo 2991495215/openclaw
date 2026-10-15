@@ -401,22 +401,7 @@ async function initializeThreadBindingManager(
     listBySessionKeyAsync: async (key) => manager.listBySessionKey(key),
     getByConversationAsync: async (ref) => manager.getByConversationId(ref.conversationId),
     inspectByConversationAsync: async (ref) => manager.getByConversationId(ref.conversationId),
-    inspectByConversations: (refs) => {
-      const records = refs.map((ref) => manager.getByConversationId(ref.conversationId));
-      return {
-        records,
-        assertCurrent: () => {
-          assertManagerCurrent();
-          if (
-            refs.some(
-              (ref, index) => manager.getByConversationId(ref.conversationId) !== records[index],
-            )
-          ) {
-            throw new Error("Telegram thread binding selection changed");
-          }
-        },
-      };
-    },
+    selectionChangedMessage: "Telegram thread binding selection changed",
     listBySessionKey: manager.listBySessionKey,
     getByConversation: (ref) => manager.getByConversationId(ref.conversationId),
     touchConversation: (conversationId, at) => {
