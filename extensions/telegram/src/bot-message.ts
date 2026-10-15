@@ -263,7 +263,9 @@ export const createTelegramMessageProcessor = (
               "Something went wrong while processing your request. Please try again.",
               buildTelegramThreadParams(context.threadSpec),
             );
-          } catch {}
+          } catch {
+            // The processing error is already recorded; a failed notice must not replace it.
+          }
         }
         return {
           kind: "failed-retryable",

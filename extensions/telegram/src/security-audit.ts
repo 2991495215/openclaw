@@ -18,21 +18,18 @@ export async function collectTelegramSecurityAuditFindings(params: {
     remediation?: string;
   }> = [];
 
-  const telegramCfg = params.account.config ?? {};
+  const telegramCfg = params.account.config;
   const accountId =
     normalizeOptionalString(params.accountId) ?? params.account.accountId ?? "default";
   const invalidTelegramAllowFromEntries = new Set<string>();
-  const collectInvalidAllowFrom = (entries: unknown) => {
-    if (!Array.isArray(entries)) {
-      return false;
-    }
-    for (const entry of entries) {
+  const collectInvalidAllowFrom = (entries: Array<string | number> | undefined) => {
+    for (const entry of entries ?? []) {
       const normalized = normalizeTelegramAllowFromEntry(entry);
       if (normalized && normalized !== "*" && !isNumericTelegramSenderUserId(normalized)) {
         invalidTelegramAllowFromEntries.add(normalized);
       }
     }
-    return entries.length > 0;
+    return (entries?.length ?? 0) > 0;
   };
   const appendInvalidAllowFromFinding = () => {
     if (invalidTelegramAllowFromEntries.size === 0) {
@@ -62,7 +59,7 @@ export async function collectTelegramSecurityAuditFindings(params: {
 
   const defaultGroupPolicy = params.cfg.channels?.defaults?.groupPolicy;
   const groupPolicy = telegramCfg.groupPolicy ?? defaultGroupPolicy ?? "allowlist";
-  const groups = telegramCfg.groups as Record<string, unknown> | undefined;
+  const groups = telegramCfg.groups;
   const groupsConfigured = Boolean(groups) && Object.keys(groups ?? {}).length > 0;
   const groupAccessPossible =
     groupPolicy === "open" || (groupPolicy === "allowlist" && groupsConfigured);
@@ -78,28 +75,19 @@ export async function collectTelegramSecurityAuditFindings(params: {
     (value) => (normalizeOptionalString(value) ?? "") === "*",
   );
   collectInvalidAllowFrom(storeAllowFrom);
-  const groupAllowFrom = Array.isArray(telegramCfg.groupAllowFrom)
-    ? telegramCfg.groupAllowFrom
-    : [];
+  const groupAllowFrom = telegramCfg.groupAllowFrom ?? [];
   const groupAllowFromHasWildcard = groupAllowFrom.some(
     (value) => (normalizeOptionalString(String(value)) ?? "") === "*",
   );
   collectInvalidAllowFrom(groupAllowFrom);
 
-  const groupScopes = Object.values(groups ?? {}).flatMap((value) => {
-    if (!value || typeof value !== "object") {
-      return [];
-    }
-    const topics = (value as Record<string, unknown>).topics;
-    const scopes: unknown[] = [value];
-    return scopes.concat(topics && typeof topics === "object" ? Object.values(topics) : []);
-  });
+  const groupScopes = Object.values(groups ?? {}).flatMap((group) => [
+    group,
+    ...Object.values(group.topics ?? {}),
+  ]);
   let anyGroupOverride = false;
   for (const scope of groupScopes) {
-    if (scope && typeof scope === "object") {
-      anyGroupOverride =
-        collectInvalidAllowFrom((scope as Record<string, unknown>).allowFrom) || anyGroupOverride;
-    }
+    anyGroupOverride = collectInvalidAllowFrom(scope.allowFrom) || anyGroupOverride;
   }
 
   const hasAnySenderAllowlist =

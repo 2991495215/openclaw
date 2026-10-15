@@ -21,28 +21,11 @@ type TelegramCompatFetch = (
   input: TelegramFetchInput,
   init?: TelegramFetchInit,
 ) => Promise<Response>;
-type TelegramAbortSignalLike = {
-  aborted: boolean;
-  reason?: unknown;
-  addEventListener: (type: "abort", listener: () => void, options?: { once?: boolean }) => void;
-  removeEventListener: (type: "abort", listener: () => void) => void;
-};
 
 export function asTelegramClientFetch(
   fetchImpl: TelegramCompatFetch | typeof globalThis.fetch,
 ): TelegramClientFetch {
   return fetchImpl as unknown as TelegramClientFetch;
-}
-
-function isTelegramAbortSignalLike(value: unknown): value is TelegramAbortSignalLike {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "aborted" in value &&
-    typeof (value as { aborted?: unknown }).aborted === "boolean" &&
-    typeof (value as { addEventListener?: unknown }).addEventListener === "function" &&
-    typeof (value as { removeEventListener?: unknown }).removeEventListener === "function"
-  );
 }
 
 const TELEGRAM_TIMEOUT_FALLBACK_METHODS = new Set([
@@ -57,7 +40,7 @@ const TELEGRAM_TIMEOUT_FALLBACK_METHODS = new Set([
 export function createTelegramClientFetch(params: {
   fetchImpl: TelegramClientFetch;
   timeoutSeconds?: unknown;
-  shutdownSignal?: unknown;
+  shutdownSignal?: AbortSignal;
   transport?: Partial<Pick<TelegramTransport, "forceFallback" | "sourceFetch">>;
 }): TelegramCompatFetch {
   const callFetch = params.fetchImpl as unknown as TelegramCompatFetch;
@@ -69,10 +52,8 @@ export function createTelegramClientFetch(params: {
     const assertCurrent = getTelegramRequestAuthority(init);
     const method = extractTelegramApiMethod(input);
     const requestTimeoutMs = resolveTelegramRequestTimeoutMs(method, params.timeoutSeconds);
-    const shutdownSignal = isTelegramAbortSignalLike(params.shutdownSignal)
-      ? params.shutdownSignal
-      : undefined;
-    const requestSignal = isTelegramAbortSignalLike(init?.signal) ? init.signal : undefined;
+    const shutdownSignal = params.shutdownSignal;
+    const requestSignal = init?.signal;
 
     const canForceTransportFallback = (reason: string) =>
       !shutdownSignal?.aborted &&

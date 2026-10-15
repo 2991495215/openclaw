@@ -94,10 +94,7 @@ async function initializeThreadBindingManager(
 
   for (const entry of await loadBindingsFromStore(accountId)) {
     const key = resolveBindingKey(entry);
-    getThreadBindingsState().bindingsByAccountConversation.set(key, {
-      ...entry,
-      accountId,
-    });
+    getThreadBindingsState().bindingsByAccountConversation.set(key, entry);
   }
 
   await reconcileTelegramAcpBindingsOnStartup({
@@ -301,7 +298,7 @@ async function initializeThreadBindingManager(
           return null;
         }
         const placement = prepared.placement === "child" ? "child" : "current";
-        const metadata = { ...prepared.metadata };
+        const metadata = prepared.metadata;
         let conversationId: string | undefined;
         let nativeTopicCreated = false;
 
@@ -504,13 +501,8 @@ async function updateTelegramBindingsBySessionKey(params: {
   }
   const now = params.update ? Date.now() : 0;
   const updated: TelegramThreadBindingRecord[] = [];
-  const candidates = params.update
-    ? params.manager.listBySessionKey(targetSessionKey)
-    : listBindingsForAccount(params.manager.accountId);
+  const candidates = params.manager.listBySessionKey(targetSessionKey);
   for (const entry of candidates) {
-    if (!params.update && entry.targetSessionKey !== targetSessionKey) {
-      continue;
-    }
     const mutation = captureBindingMutation(params.manager, entry.conversationId);
     const current = mutation.previous;
     if (!current || current.targetSessionKey !== targetSessionKey) {
