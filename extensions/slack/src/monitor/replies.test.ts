@@ -1,27 +1,27 @@
 // Slack tests cover replies plugin behavior.
 import { createMessageReceiptFromOutboundResults } from "openclaw/plugin-sdk/channel-outbound";
 import { PlatformMessageNotDispatchedError } from "openclaw/plugin-sdk/error-runtime";
+import { clearInternalHooks, registerInternalHook } from "openclaw/plugin-sdk/hook-runtime";
 import { createReplyDispatcher } from "openclaw/plugin-sdk/reply-runtime";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendMock = vi.fn();
 vi.mock("../send.js", () => ({
   sendMessageSlack: (...args: unknown[]) => sendMock(...args),
 }));
 
-const triggerInternalHook = vi.hoisted(() => vi.fn(async () => {}));
+const internalSent = vi.fn();
 const messageHookRunner = vi.hoisted(() => ({
   hasHooks: vi.fn<(name: string) => boolean>(() => false),
   runMessageSent: vi.fn(),
 }));
 
-vi.mock("openclaw/plugin-sdk/hook-runtime", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/hook-runtime")>();
-  return {
-    ...actual,
-    triggerInternalHook,
-  };
+beforeEach(() => {
+  clearInternalHooks();
+  internalSent.mockReset();
+  registerInternalHook("message:sent", internalSent);
 });
+afterEach(() => clearInternalHooks());
 
 vi.mock("openclaw/plugin-sdk/plugin-runtime", async (importOriginal) => {
   const actual = await importOriginal<typeof import("openclaw/plugin-sdk/plugin-runtime")>();
@@ -138,7 +138,6 @@ describe("deliverReplies identity passthrough", () => {
     messageHookRunner.hasHooks.mockReset();
     messageHookRunner.hasHooks.mockReturnValue(false);
     messageHookRunner.runMessageSent.mockReset();
-    triggerInternalHook.mockReset();
   });
 
   it.each([{ name: "current reply", replyToCurrent: true, isCompactionNotice: false }])(
@@ -378,7 +377,6 @@ describe("deliverSlackSlashReplies chunking", () => {
     messageHookRunner.hasHooks.mockReset();
     messageHookRunner.hasHooks.mockReturnValue(false);
     messageHookRunner.runMessageSent.mockReset();
-    triggerInternalHook.mockReset();
   });
 
   it("keeps a 4205-character reply in a single slash response by default", async () => {
@@ -807,7 +805,10 @@ describe("deliverSlackSlashReplies chunking", () => {
       conversationId: "user:U1",
       sessionKey: "agent:main:slack:slash:u1",
     });
-    expect(triggerInternalHook).toHaveBeenCalledOnce();
+    expect(internalSent).toHaveBeenCalledOnce();
+    expect(internalSent).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionKey: "agent:main:slack:slash:u1" }),
+    );
   });
 
   it("emits only failure when a later slash response chunk throws", async () => {
@@ -902,7 +903,6 @@ describe("deliverReplies message_sent hook", () => {
     messageHookRunner.hasHooks.mockReset();
     messageHookRunner.hasHooks.mockReturnValue(false);
     messageHookRunner.runMessageSent.mockReset();
-    triggerInternalHook.mockReset();
   });
 
   it("defers both success and failure hooks for caller-owned terminal delivery", async () => {
@@ -929,7 +929,7 @@ describe("deliverReplies message_sent hook", () => {
     ).rejects.toThrow(/deferred failure/);
 
     expect(messageHookRunner.runMessageSent).not.toHaveBeenCalled();
-    expect(triggerInternalHook).not.toHaveBeenCalled();
+    expect(internalSent).not.toHaveBeenCalled();
   });
 
   it("emits one message_sent event after a multi-media reply succeeds", async () => {
