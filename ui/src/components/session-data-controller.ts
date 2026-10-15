@@ -228,6 +228,8 @@ export class SessionDataController implements SolidController, SessionCatalogDat
     return this.host.sessionCatalogRowsVisible;
   }
 
+  expandedAgentId = (): string => this.host.expandedAgentId();
+
   sessionCatalogIdsWithoutVisibleRows = (): readonly string[] =>
     this.host.sessionCatalogIdsWithoutVisibleRows();
 
@@ -410,9 +412,7 @@ export class SessionDataController implements SolidController, SessionCatalogDat
 
   private readonly handleCatalogSessionContinued = (
     event: CustomEvent<CatalogSessionContinuedDetail>,
-  ) => {
-    applySessionCatalogContinuation(this, event.detail);
-  };
+  ) => applySessionCatalogContinuation(this, event.detail);
 
   private readonly handleSessionCatalogPageActivation = () => scheduleSessionCatalogRefresh(this);
 
