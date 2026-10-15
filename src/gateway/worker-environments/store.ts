@@ -284,11 +284,8 @@ export async function createWorkerEnvironmentStore(
       }
     })());
   const unregister = registerOpenClawStateDatabaseAsyncResource({
-    close: async (identity) => {
-      if (!identity || identity.key === context.admission.identity.key) {
-        await close();
-      }
-    },
+    admission: context.admission,
+    close,
   });
   try {
     await mutate("workerEnvironments.initialize", {});
