@@ -18,6 +18,8 @@ const IRC_MAX_LINE_BYTES = 512;
 // server makes it, so reserve its ceiling: `~` + USERLEN 10, and HOSTLEN 63.
 const IRC_MAX_RELAY_USER_BYTES = 11;
 const IRC_MAX_RELAY_HOST_BYTES = 63;
+// Silent network drops need a receive deadline even when TCP never reports a close.
+const IRC_LIVENESS_TIMEOUT_MS = 4 * 60_000;
 
 function takeIrcPrivmsgChunk(text: string, maxChars: number, maxBytes: number): string {
   let end = 0;
@@ -262,11 +264,28 @@ export async function connectIrcClient(options: IrcClientOptions): Promise<IrcCl
     }
   };
 
+  let lastReceivedAt = Date.now();
+  const livenessTimer = setInterval(() => {
+    if (!ready || closed) {
+      return;
+    }
+    const silentMs = Date.now() - lastReceivedAt;
+    if (silentMs >= IRC_LIVENESS_TIMEOUT_MS) {
+      fail(new Error(`IRC server sent nothing for ${Math.round(silentMs / 1000)}s; reconnecting`));
+      // Let the close listener notify the monitor, which owns reconnect and backoff.
+      socket.destroy();
+    } else if (silentMs >= IRC_LIVENESS_TIMEOUT_MS / 2) {
+      sendRaw("PING :openclaw");
+    }
+  }, 30_000);
+  livenessTimer.unref();
+
   const quit = (reason?: string) => {
     if (closed) {
       return;
     }
     closed = true;
+    clearInterval(livenessTimer);
     removeAbortListener?.();
     removeAbortListener = null;
     const safeReason = sanitizeIrcOutboundText(reason ?? "bye");
@@ -287,6 +306,7 @@ export async function connectIrcClient(options: IrcClientOptions): Promise<IrcCl
       return;
     }
     closed = true;
+    clearInterval(livenessTimer);
     removeAbortListener?.();
     removeAbortListener = null;
     socket.destroy();
@@ -294,6 +314,7 @@ export async function connectIrcClient(options: IrcClientOptions): Promise<IrcCl
 
   let buffer = "";
   socket.on("data", (chunk: string) => {
+    lastReceivedAt = Date.now();
     buffer += chunk;
     let idx = buffer.indexOf("\n");
     while (idx !== -1) {
@@ -422,6 +443,7 @@ export async function connectIrcClient(options: IrcClientOptions): Promise<IrcCl
   });
 
   socket.once("close", () => {
+    clearInterval(livenessTimer);
     if (!closed) {
       closed = true;
       removeAbortListener?.();
