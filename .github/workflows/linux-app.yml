@@ -7,6 +7,7 @@ on:
       - "scripts/lib/openclaw-bun.json"
       - "scripts/stage-openclaw-bun.sh"
       - "test/scripts/stage-openclaw-bun.test.ts"
+      - ".github/workflows/windows-installer-qualify.yml"
       - ".github/workflows/linux-app.yml"
       - ".github/workflows/linux-app-release.yml"
       - "!apps/linux/README.md"
@@ -396,6 +397,10 @@ jobs:
     # Match the regular Windows installer build runner.
     runs-on: windows-2022
     timeout-minutes: 105
+    outputs:
+      unsigned_updater_artifact_id: ${{ steps.upload_updater.outputs.artifact-id }}
+      manifest_sha256: ${{ steps.identity.outputs.manifest_sha256 }}
+      product_version: ${{ steps.identity.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -442,10 +447,28 @@ jobs:
           OPENCLAW_DOCKER_PACKAGE_BUILD_TIMEOUT_MS: "3600000"
         run: pnpm dlx @tauri-apps/cli@2.11.4 build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
+      - name: Record expected installed runtime manifest
+        id: identity
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash apps/linux/src-tauri/target/desktop-runtime/manifest.json -Algorithm SHA256).Hash
+          "manifest_sha256=$hash" >> $env:GITHUB_OUTPUT
+          $version = (Get-Content apps/linux/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          "version=$version" >> $env:GITHUB_OUTPUT
+
       - name: Upload Windows installer
+        id: upload_updater
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: openclaw-windows-desktop
           retention-days: 14
           if-no-files-found: error
           path: apps/linux/src-tauri/target/release/bundle/nsis/*.exe
+
+  qualify_windows:
+    needs: [test-windows-power]
+    uses: ./.github/workflows/windows-installer-qualify.yml
+    with:
+      artifact_id: ${{ needs.test-windows-power.outputs.unsigned_updater_artifact_id }}
+      manifest_sha256: ${{ needs.test-windows-power.outputs.manifest_sha256 }}
+      release_tag: ${{ needs.test-windows-power.outputs.product_version }}

@@ -718,6 +718,7 @@ jobs:
       contents: read
     outputs:
       unsigned_updater_artifact_id: ${{ steps.upload_updater.outputs.artifact-id }}
+      manifest_sha256: ${{ steps.identity.outputs.manifest_sha256 }}
     steps:
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal
@@ -769,11 +770,18 @@ jobs:
           if ($signatures.Count -ne 0) {
             throw "Expected no updater signatures from the keyless build; found $($signatures.Count)"
           }
-          if (-not $installer.VersionInfo.ProductVersion.StartsWith($version)) {
+          if ($installer.VersionInfo.ProductVersion -cne $version) {
             throw "Windows bundle version '$($installer.VersionInfo.ProductVersion)' does not match release version '$version'"
           }
           New-Item -ItemType Directory -Force -Path "dist/windows-app/unsigned" | Out-Null
           Copy-Item -LiteralPath $installer.FullName -Destination "dist/windows-app/unsigned/OpenClaw-$version-windows-x86_64.exe"
+
+      - name: Record expected installed runtime manifest
+        id: identity
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash apps/linux/src-tauri/target/desktop-runtime/manifest.json -Algorithm SHA256).Hash
+          "manifest_sha256=$hash" >> $env:GITHUB_OUTPUT
 
       - name: Upload unsigned Windows updater installer
         id: upload_updater
@@ -783,12 +791,22 @@ jobs:
           path: dist/windows-app/unsigned/*.exe
           if-no-files-found: error
 
+  qualify_windows:
+    permissions:
+      contents: read
+    needs: [validate_release, build_windows]
+    uses: ./.github/workflows/windows-installer-qualify.yml
+    with:
+      artifact_id: ${{ needs.build_windows.outputs.unsigned_updater_artifact_id }}
+      manifest_sha256: ${{ needs.build_windows.outputs.manifest_sha256 }}
+      release_tag: ${{ needs.validate_release.outputs.release_tag }}
+
   # Authenticode is opt-in until Foundation signing is configured in this repository.
   # A configured signer must succeed; updater signing never falls back to unsigned bytes.
   sign_windows:
     name: Authenticode-sign Windows installer
-    needs: [validate_release, build_windows]
-    if: ${{ vars.OPENCLAW_RELEASE_WINDOWS_SIGNED == 'true' && needs.build_windows.result == 'success' }}
+    needs: [validate_release, qualify_windows]
+    if: ${{ vars.OPENCLAW_RELEASE_WINDOWS_SIGNED == 'true' && needs.qualify_windows.result == 'success' }}
     runs-on: windows-2025
     timeout-minutes: 15
     environment: release-signing
@@ -797,16 +815,18 @@ jobs:
       id-token: write
     outputs:
       signed_installer_artifact_id: ${{ steps.upload_signed.outputs.artifact-id }}
+      sha256: ${{ steps.signature.outputs.sha256 }}
     steps:
       - name: Download unsigned Windows installer
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          artifact-ids: ${{ needs.build_windows.outputs.unsigned_updater_artifact_id }}
+          artifact-ids: ${{ needs.qualify_windows.outputs.artifact_id }}
           path: dist/windows
 
       - name: Validate Windows signing input
         shell: pwsh
         env:
+          QUALIFIED_SHA256: ${{ needs.qualify_windows.outputs.sha256 }}
           RELEASE_TAG: ${{ needs.validate_release.outputs.release_tag }}
         run: |
           $ErrorActionPreference = "Stop"
@@ -815,6 +835,8 @@ jobs:
           if ($files.Count -ne 1 -or $files[0].FullName -cne (Join-Path (Resolve-Path dist/windows).Path "OpenClaw-$version-windows-x86_64.exe")) {
             throw "Expected exactly the selected Windows installer before signing"
           }
+          $hash = (Get-FileHash $files[0].FullName -Algorithm SHA256).Hash
+          if ($hash -ne $env:QUALIFIED_SHA256) { throw "Expected the exact smoke-tested installer" }
 
       - name: Azure OIDC login
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
@@ -837,6 +859,7 @@ jobs:
           timestamp-digest: SHA256
 
       - name: Verify Foundation Authenticode signature
+        id: signature
         shell: pwsh
         env:
           RELEASE_TAG: ${{ needs.validate_release.outputs.release_tag }}
@@ -847,6 +870,8 @@ jobs:
           if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -cne 'CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US' -or -not $signature.TimeStamperCertificate) {
             throw "Expected a valid OpenClaw Foundation Authenticode signature"
           }
+          $hash = (Get-FileHash "dist/windows/OpenClaw-$version-windows-x86_64.exe" -Algorithm SHA256).Hash
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
 
       - name: Upload Authenticode-signed installer
         id: upload_signed
@@ -861,13 +886,13 @@ jobs:
   sign_desktop:
     name: Sign finalized desktop updater bundles
     if: >-
-      ${{ always() && needs.build_windows.result == 'success' &&
+      ${{ always() && needs.qualify_windows.result == 'success' &&
           (needs.validate_release.outputs.desktop_test_bundles != 'true' || needs.build_macos.result == 'success') &&
           (vars.OPENCLAW_RELEASE_WINDOWS_SIGNED != 'true' || needs.sign_windows.result == 'success') }}
     needs:
       - validate_release
       - build_macos
-      - build_windows
+      - qualify_windows
       - sign_windows
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -911,7 +936,7 @@ jobs:
         if: ${{ vars.OPENCLAW_RELEASE_WINDOWS_SIGNED != 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          artifact-ids: ${{ needs.build_windows.outputs.unsigned_updater_artifact_id }}
+          artifact-ids: ${{ needs.qualify_windows.outputs.artifact_id }}
           path: dist/signing-input/windows
 
       - name: Download Authenticode-signed Windows updater installer
@@ -923,6 +948,7 @@ jobs:
 
       - name: Sign finalized desktop updater bundles
         env:
+          WINDOWS_SHA256: ${{ vars.OPENCLAW_RELEASE_WINDOWS_SIGNED == 'true' && needs.sign_windows.outputs.sha256 || needs.qualify_windows.outputs.sha256 }}
           DESKTOP_TEST_BUNDLES: ${{ needs.validate_release.outputs.desktop_test_bundles }}
           RELEASE_TAG: ${{ needs.validate_release.outputs.release_tag }}
           TAG_SHA: ${{ needs.validate_release.outputs.tag_sha }}
@@ -950,6 +976,7 @@ jobs:
             echo "Signing input must be exactly the admitted desktop bundles for ${RELEASE_TAG}"
             exit 1
           fi
+          printf '%s  %s\n' "$WINDOWS_SHA256" "$windows" | sha256sum --check -
           verify_dir=$(mktemp -d)
           trap 'rm -rf "$verify_dir"' EXIT
           printf '%s' "$UPDATER_PUBLIC_KEY" | base64 --decode > "$verify_dir/updater.pub"
