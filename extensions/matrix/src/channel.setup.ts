@@ -1,5 +1,6 @@
 import { describeAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
-import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import { buildChannelMetaFromManifest, type ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import pluginPackage from "../package.json" with { type: "json" };
 import { matrixConfigAdapter } from "./config-adapter.js";
 import { MatrixChannelConfigSchema } from "./config-schema.js";
 import {
@@ -15,16 +16,11 @@ const matrixSetupWizard = createMatrixSetupWizardProxy(async () => ({
 
 export const matrixPluginBase = {
   id: "matrix",
-  meta: {
-    id: "matrix",
-    label: "Matrix",
-    selectionLabel: "Matrix (plugin)",
-    docsPath: "/channels/matrix",
-    docsLabel: "matrix",
+  meta: buildChannelMetaFromManifest({
+    ...pluginPackage.openclaw.channel,
     blurb: "open protocol; configure a homeserver + access token.",
-    order: 70,
-    quickstartAllowFrom: true,
-  },
+    markdownCapable: undefined,
+  }),
   setupWizard: matrixSetupWizard,
   setupContract: matrixSetupContract,
   capabilities: {

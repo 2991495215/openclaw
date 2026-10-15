@@ -112,7 +112,6 @@ export const nostrSetupWizard: ChannelSetupWizard = {
   credentials: [
     defineTokenCredential({
       inputKey: "privateKey",
-      configKey: "privateKey",
       providerHint: channel,
       credentialLabel: "private key",
       preferredEnvVar: "NOSTR_PRIVATE_KEY",

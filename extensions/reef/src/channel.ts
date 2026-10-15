@@ -1,4 +1,5 @@
 import type { ChannelThreadingToolContext } from "openclaw/plugin-sdk/channel-contract";
+import { buildChannelMetaFromManifest } from "openclaw/plugin-sdk/channel-core";
 import {
   dispatchInboundDirectDm,
   recordChannelBotPairLoopAndCheckSuppression,
@@ -12,6 +13,7 @@ import {
 } from "openclaw/plugin-sdk/core";
 import { createChannelDirectoryAdapter } from "openclaw/plugin-sdk/directory-runtime";
 import { channelReadyPatch } from "openclaw/plugin-sdk/gateway-runtime";
+import pluginPackage from "../package.json" with { type: "json" };
 import { runReefChannelLifecycle } from "./channel-lifecycle.js";
 import {
   ReefChannelConfigSchema,
@@ -117,16 +119,7 @@ function matchesReefToolTarget(target: string, toolContext?: ChannelThreadingToo
 
 export const reefPlugin: ChannelPlugin<ReefAccount, unknown, unknown, 2> = {
   id: "reef",
-  meta: {
-    id: "reef",
-    label: "Reef",
-    selectionLabel: "Reef",
-    detailLabel: "Reef guarded claw channel",
-    docsPath: "/channels/reef",
-    docsLabel: "reef",
-    blurb: "Guarded end-to-end encrypted claw messaging.",
-    systemImage: "message.badge",
-  },
+  meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
   capabilities: {
     chatTypes: ["direct"],
     media: false,

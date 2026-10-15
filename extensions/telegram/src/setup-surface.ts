@@ -1,7 +1,6 @@
 import {
   createAllowFromSection,
   createStandardChannelSetupStatus,
-  DEFAULT_ACCOUNT_ID,
   defineTokenCredential,
   hasConfiguredSecretInput,
   setSetupChannelEnabled,
@@ -56,22 +55,17 @@ export const telegramSetupWizard: ChannelSetupWizard = {
       configuredFields: ["botToken", "tokenFile"],
       providerHint: channel,
       credentialLabel: t("wizard.telegram.botToken"),
-      preferredEnvVar: "TELEGRAM_BOT_TOKEN",
+      defaultAccountEnv: "TELEGRAM_BOT_TOKEN",
       helpTitle: t("wizard.telegram.botToken"),
       helpLines: getTelegramTokenHelpLines(),
       envPrompt: t("wizard.telegram.tokenEnvPrompt"),
       keepPrompt: t("wizard.telegram.tokenKeepPrompt"),
       inputPrompt: t("wizard.telegram.tokenInputPrompt"),
-      allowEnv: ({ accountId }) => accountId === DEFAULT_ACCOUNT_ID,
       resolveAccount: ({ cfg, accountId }) => resolveTelegramAccount({ cfg, accountId }),
       hasConfiguredValue: (account) =>
         hasConfiguredSecretInput(account.config.botToken) ||
         Boolean(account.config.tokenFile?.trim()),
       resolvedValue: (account) => normalizeOptionalString(account.token),
-      envValue: ({ accountId }) =>
-        accountId === DEFAULT_ACCOUNT_ID
-          ? normalizeOptionalString(process.env.TELEGRAM_BOT_TOKEN)
-          : undefined,
     }),
   ],
   allowFrom: createAllowFromSection({

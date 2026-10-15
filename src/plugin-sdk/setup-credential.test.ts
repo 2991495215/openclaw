@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { baseUrlTextInput, defineTokenCredential } from "./setup-credential.js";
 
@@ -28,6 +28,7 @@ function patchDemoConfig(params: {
 }
 
 describe("defineTokenCredential", () => {
+  afterEach(() => vi.unstubAllEnvs());
   const definition = defineTokenCredential({
     inputKey: "token",
     configKey: "token",
@@ -74,6 +75,35 @@ describe("defineTokenCredential", () => {
       resolvedValue: "redacted",
     });
     expect(setConfig?.channels?.demo).toEqual({ token: "redacted", baseUrl: "https://demo" });
+  });
+
+  it("offers the declared environment credential only for the default account", () => {
+    vi.stubEnv("OPENCLAW_TEST_SETUP_TOKEN", "  env-token  ");
+    const credential = defineTokenCredential({
+      inputKey: "token",
+      defaultAccountEnv: "OPENCLAW_TEST_SETUP_TOKEN",
+      providerHint: "demo",
+      credentialLabel: "token",
+      envPrompt: "env",
+      keepPrompt: "keep",
+      inputPrompt: "input",
+      resolveAccount: ({ cfg }) => resolveDemoAccount(cfg),
+    });
+    const cfg = {};
+    expect(credential.preferredEnvVar).toBe("OPENCLAW_TEST_SETUP_TOKEN");
+    expect(credential.allowEnv?.({ cfg, accountId: "default" })).toBe(true);
+    expect(credential.inspect({ cfg, accountId: "default" }).envValue).toBe("env-token");
+    expect(credential.allowEnv?.({ cfg, accountId: "work" })).toBe(false);
+    expect(credential.inspect({ cfg, accountId: "work" }).envValue).toBeUndefined();
+
+    vi.stubEnv("OPENCLAW_TEST_SETUP_TOKEN", "  ");
+    expect(credential.inspect({ cfg, accountId: "default" }).envValue).toBeUndefined();
+    expect(
+      credential.inspect({
+        cfg: { channels: { demo: { token: "configured" } } } as OpenClawConfig,
+        accountId: "default",
+      }).hasConfiguredValue,
+    ).toBe(true);
   });
 });
 

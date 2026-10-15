@@ -1,4 +1,3 @@
-import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/routing";
 import { hasConfiguredSecretInput } from "openclaw/plugin-sdk/secret-input";
 import {
   baseUrlTextInput,
@@ -9,7 +8,6 @@ import {
   createSetupTranslator,
   type ChannelSetupWizard,
 } from "openclaw/plugin-sdk/setup";
-import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { resolveNextcloudTalkAccount } from "./accounts.js";
 import {
   nextcloudTalkDmPolicy,
@@ -85,21 +83,16 @@ export const nextcloudTalkSetupWizard: ChannelSetupWizard = {
       configuredFields: ["botSecret", "botSecretFile"],
       providerHint: channel,
       credentialLabel: t("wizard.nextcloudTalk.botSecret"),
-      preferredEnvVar: "NEXTCLOUD_TALK_BOT_SECRET",
+      defaultAccountEnv: "NEXTCLOUD_TALK_BOT_SECRET",
       envPrompt: t("wizard.nextcloudTalk.botSecretEnvPrompt"),
       keepPrompt: t("wizard.nextcloudTalk.botSecretKeep"),
       inputPrompt: t("wizard.nextcloudTalk.botSecretInput"),
-      allowEnv: ({ accountId }) => accountId === DEFAULT_ACCOUNT_ID,
       resolveAccount: ({ cfg, accountId }) =>
         resolveNextcloudTalkAccount({ cfg: cfg as CoreConfig, accountId }),
       accountConfigured: (account) => Boolean(account.secret && account.baseUrl),
       hasConfiguredValue: (account) =>
         Boolean(hasConfiguredSecretInput(account.config.botSecret) || account.config.botSecretFile),
       resolvedValue: (account) => account.secret || undefined,
-      envValue: ({ accountId }) =>
-        accountId === DEFAULT_ACCOUNT_ID
-          ? normalizeOptionalString(process.env.NEXTCLOUD_TALK_BOT_SECRET)
-          : undefined,
       patchAccount: ({ cfg, accountId, patch, clearFields }) =>
         setNextcloudTalkAccountConfig(cfg as CoreConfig, accountId, patch, clearFields),
       useEnv: {

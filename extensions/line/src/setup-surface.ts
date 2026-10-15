@@ -1,4 +1,3 @@
-import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import { createChannelDmPolicy } from "openclaw/plugin-sdk/channel-dm-policy";
 import {
   createAllowFromSection,
@@ -95,13 +94,12 @@ function createLineTokenCredential(params: {
     configuredFields: [params.configKey, params.fileKey],
     providerHint: params.providerHint,
     credentialLabel: params.credentialLabel,
-    preferredEnvVar: params.envVar,
+    defaultAccountEnv: params.envVar,
     helpTitle: t("wizard.line.messagingApiTitle"),
     helpLines: LINE_SETUP_HELP_LINES,
     envPrompt: params.envPrompt,
     keepPrompt: params.keepPrompt,
     inputPrompt: params.inputPrompt,
-    allowEnv: ({ accountId }) => accountId === DEFAULT_ACCOUNT_ID,
     resolveAccount: ({ cfg, accountId }) => resolveLineAccount({ cfg, accountId }),
     accountConfigured: (account) =>
       Boolean(
@@ -114,10 +112,6 @@ function createLineTokenCredential(params: {
         normalizeOptionalString(account.config[params.fileKey]),
       ),
     resolvedValue: (account) => normalizeOptionalString(account[params.configKey]),
-    envValue: ({ accountId }) =>
-      accountId === DEFAULT_ACCOUNT_ID
-        ? normalizeOptionalString(process.env[params.envVar])
-        : undefined,
     patchAccount: ({ cfg, accountId, patch, clearFields }) =>
       patchLineAccountConfig({ cfg, accountId, enabled: true, clearFields, patch }),
     useEnv: { clearFields: [params.configKey, params.fileKey] },

@@ -211,7 +211,7 @@ new code; see the per-row notes below.
   <Accordion title="Channel subpaths">
     | Subpath | Key exports |
     | --- | --- |
-    | `plugin-sdk/channel-core` | `defineChannelPluginEntry`, `defineSetupPluginEntry`, `createChatChannelPlugin`, `createChannelPluginBase`, `createChannelConfigUiHints` |
+    | `plugin-sdk/channel-core` | `defineChannelPluginEntry`, `defineSetupPluginEntry`, `createChatChannelPlugin`, `createChannelPluginBase`, `createChannelConfigUiHints`, and `buildChannelMetaFromManifest` for projecting a plugin's own static channel metadata without loading the host catalog; apply local overrides before projection |
     | `plugin-sdk/json-schema-runtime` | Private-local after July 2026; Cached JSON Schema validation helper for plugin-owned schemas |
     | `plugin-sdk/channel-setup` | `defineChannelSetupContract`, channel-owned setup field/input types, `createOptionalChannelSetupSurface`, `createOptionalChannelSetupAdapter`, `createOptionalChannelSetupWizard`, plus `DEFAULT_ACCOUNT_ID`, `createTopLevelChannelDmPolicy`, `setSetupChannelEnabled`, `splitSetupEntries` |
     | `plugin-sdk/channel-dm-policy` | `createChannelDmPolicy` for account-aware setup policy descriptors |
@@ -549,7 +549,7 @@ Use `isLoopbackHost(host)` when a plugin must accept only the local machine. It 
     | `plugin-sdk/media-understanding-runtime` | Channel audio preflight/echo helpers plus image, video, audio, and structured media-understanding runtime functions |
     | `plugin-sdk/computer-use` | Computer Use v2 action and snapshot schemas, JSON parsers, validation, capability descriptors, and provider registration |
     | `plugin-sdk/native-command-config-runtime` | Dependency-light native command and skill enablement config checks |
-    | `plugin-sdk/text-chunking` | Grapheme-aware outbound text and offset-preserving range chunking, opt-in inline code source maps and renderer syntax through `findCodeRegions(text, { includeSource: true, syntax: "commonmark" })` (GFM by default), the surrogate-safe `avoidTrailingHighSurrogateBreak` boundary helper, markdown chunking/render helpers, quote-aware HTML tag tokenization, markdown table conversion, directive-tag stripping, and safe-text utilities |
+    | `plugin-sdk/text-chunking` | Grapheme-aware outbound text and offset-preserving range chunking, opt-in inline code source maps and renderer syntax through `findCodeRegions(text, { includeSource: true, syntax: "commonmark" })` (GFM by default), the surrogate-safe `avoidTrailingHighSurrogateBreak` boundary helper, markdown chunking/render helpers and parser-owned block/list metadata types, quote-aware HTML tag tokenization, markdown table conversion, directive-tag stripping, and safe-text utilities |
     | `plugin-sdk/speech` | Private-local after July 2026; Speech provider types plus provider-facing directive, registry, validation, OpenAI-compatible TTS builder, and speech helper exports |
     | `plugin-sdk/speech-core` | Private-local after July 2026; Shared speech provider types, registry, directive, normalization, and speech helper exports |
     | `plugin-sdk/speech-provider` | Private-local JavaScript-only host runtime for official plugins; speech provider types, configuration and directive helpers, and the OpenAI-compatible provider factory without host registry or synthesis imports. |

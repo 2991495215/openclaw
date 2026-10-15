@@ -4,7 +4,9 @@ import {
   adaptScopedAccountAccessor,
   createScopedChannelConfigAdapter,
 } from "openclaw/plugin-sdk/channel-config-helpers";
+import { buildChannelMetaFromManifest } from "openclaw/plugin-sdk/channel-core";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
+import pluginPackage from "../package.json" with { type: "json" };
 import {
   inspectMattermostAccount,
   isMattermostConfigured,
@@ -15,18 +17,12 @@ import {
 } from "./mattermost/accounts.js";
 export { resolveMattermostGatewayAuthBypassPaths } from "./gateway-auth-bypass.js";
 
-export const mattermostMeta = {
-  id: "mattermost",
-  label: "Mattermost",
-  selectionLabel: "Mattermost (plugin)",
+export const mattermostMeta = buildChannelMetaFromManifest({
+  ...pluginPackage.openclaw.channel,
   detailLabel: "Mattermost Bot",
-  docsPath: "/channels/mattermost",
-  docsLabel: "mattermost",
-  blurb: "self-hosted Slack-style chat; install the plugin to enable.",
   systemImage: "bubble.left.and.bubble.right",
-  order: 65,
   quickstartAllowFrom: true,
-} as const;
+});
 
 export function normalizeMattermostAllowEntry(entry: string): string {
   return normalizeLowercaseStringOrEmpty(

@@ -117,26 +117,19 @@ function createSlackTokenCredential(params: {
 }) {
   return defineTokenCredential({
     inputKey: params.inputKey,
-    configKey: params.inputKey,
     providerHint: params.providerHint,
     credentialLabel: params.credentialLabel,
-    preferredEnvVar: params.preferredEnvVar,
+    defaultAccountEnv: params.preferredEnvVar,
     envPrompt: params.preferredEnvVar
       ? `${params.preferredEnvVar} detected. Use env var?`
       : "Use the configured Slack credential?",
     keepPrompt: params.keepPrompt,
     inputPrompt: params.inputPrompt,
-    allowEnv: ({ accountId }: { accountId: string }) =>
-      Boolean(params.preferredEnvVar) && accountId === DEFAULT_ACCOUNT_ID,
     resolveAccount: ({ cfg, accountId }) => inspectSlackAccount({ cfg, accountId }),
     resolvedValue: (account) =>
       params.inputKey === "signingSecret"
         ? normalizeSecretInputString(account.config.signingSecret)
         : normalizeOptionalString(account[params.inputKey]),
-    envValue: ({ accountId }) =>
-      params.preferredEnvVar && accountId === DEFAULT_ACCOUNT_ID
-        ? normalizeOptionalString(process.env[params.preferredEnvVar])
-        : undefined,
     patchAccount: ({ cfg, accountId, mode, patch }) =>
       mode === "env"
         ? enableSlackAccount(cfg, accountId)

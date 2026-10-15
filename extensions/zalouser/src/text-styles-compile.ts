@@ -1,9 +1,8 @@
+import type { MarkdownBlockSpan, MarkdownIRWithMetadata } from "openclaw/plugin-sdk/text-chunking";
 import {
   normalizeCodeBlockLeadingWhitespace,
   projectOffset,
   UNICODE_SEPARATOR_PATTERN,
-  type MarkdownBlockMetadata,
-  type MarkdownIRWithBlockMetadata,
   type TextEdit,
 } from "./text-styles-shared.js";
 import {
@@ -15,7 +14,7 @@ import { sourceAtxIsMarkerOnly } from "./text-styles-source.js";
 import { TextStyle } from "./zca-constants.js";
 
 export function collectBlockEdits(
-  ir: MarkdownIRWithBlockMetadata,
+  ir: MarkdownIRWithMetadata,
   offsets: number[],
   projectedText: string,
   context: MarkdownSource,
@@ -261,7 +260,7 @@ export function collectBlockEdits(
 }
 
 function renderUnclosedCodeBlock(
-  block: MarkdownBlockMetadata,
+  block: MarkdownBlockSpan,
   context: MarkdownSource,
   payload: string,
 ): string {
@@ -284,7 +283,7 @@ function renderUnclosedCodeBlock(
 }
 
 function collectSourceSpacingEdits(
-  ir: MarkdownIRWithBlockMetadata,
+  ir: MarkdownIRWithMetadata,
   offsets: number[],
   text: string,
   { ir: sourceIR, lines: sourceLines, lineStarts: sourceLineStarts }: MarkdownSource,
@@ -396,7 +395,7 @@ function sourceContainerContent(line: string): string {
 
 function normalizeCodeBlock(
   text: string,
-  block: MarkdownBlockMetadata,
+  block: MarkdownBlockSpan,
   context: MarkdownSource,
 ): string {
   const { source, lines: sourceLines } = context;

@@ -1,9 +1,14 @@
 import { jsonResult, readStringParam } from "openclaw/plugin-sdk/channel-actions";
-import { buildChannelConfigSchema, type ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import {
+  buildChannelConfigSchema,
+  buildChannelMetaFromManifest,
+  type ChannelPlugin,
+} from "openclaw/plugin-sdk/channel-core";
 import { defineChannelMessageAdapter } from "openclaw/plugin-sdk/channel-outbound";
 import { buildOpenGroupPolicyWarning } from "openclaw/plugin-sdk/channel-policy";
 import { createStaticReplyToModeResolver } from "openclaw/plugin-sdk/conversation-runtime";
 import { extractToolSend } from "openclaw/plugin-sdk/tool-send";
+import pluginPackage from "../package.json" with { type: "json" };
 import {
   listXAccountIds,
   resolveXAccount,
@@ -26,15 +31,7 @@ const message = defineChannelMessageAdapter({ id: "x", send: { text: send } });
 
 export const xPlugin: ChannelPlugin<ResolvedXAccount> = {
   id: "x",
-  meta: {
-    id: "x",
-    label: "X (Twitter)",
-    selectionLabel: "X (Twitter mentions)",
-    docsPath: "/channels/x",
-    docsLabel: "x",
-    blurb: "Allowlisted mentions with thread context and public replies.",
-    order: 85,
-  },
+  meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
   capabilities: {
     chatTypes: ["group"],
     media: false,

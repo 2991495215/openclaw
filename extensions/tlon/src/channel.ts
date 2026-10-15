@@ -1,7 +1,10 @@
 import { describeAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import { createHybridChannelConfigAdapter } from "openclaw/plugin-sdk/channel-config-helpers";
-import { createChatChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import {
+  buildChannelMetaFromManifest,
+  createChatChannelPlugin,
+} from "openclaw/plugin-sdk/channel-core";
 import {
   createChannelMessageAdapterFromOutbound,
   createRuntimeOutboundDelegates,
@@ -16,6 +19,7 @@ import {
   chunkTextForOutbound,
   sanitizeAssistantVisibleText,
 } from "openclaw/plugin-sdk/text-chunking";
+import pluginPackage from "../package.json" with { type: "json" };
 import { tlonChannelConfigSchema } from "./config-schema.js";
 import { tlonDoctor } from "./doctor.js";
 import { resolveTlonOutboundSessionRoute } from "./session-route.js";
@@ -84,16 +88,12 @@ export const tlonPlugin = createChatChannelPlugin<
 >({
   base: {
     id: TLON_CHANNEL_ID,
-    meta: {
-      id: TLON_CHANNEL_ID,
-      label: "Tlon",
-      selectionLabel: "Tlon (Urbit)",
-      docsPath: "/channels/tlon",
-      docsLabel: "tlon",
+    meta: buildChannelMetaFromManifest({
+      ...pluginPackage.openclaw.channel,
       blurb: "Decentralized messaging on Urbit",
       aliases: ["urbit"],
-      order: 90,
-    },
+      quickstartAllowFrom: undefined,
+    }),
     capabilities: {
       chatTypes: ["direct", "group", "thread"],
       media: true,

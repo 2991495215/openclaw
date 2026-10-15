@@ -56,6 +56,7 @@ export {
 } from "../../packages/memory-host-sdk/src/engine-storage.js";
 
 export type {
+  MemoryEmbeddingProbeResult,
   MemoryWorkspaceFiles,
   MemoryWorkspaceWatchRequest,
   MemoryEntryProvenance,
@@ -65,16 +66,6 @@ export type {
 } from "../../packages/memory-host-sdk/src/engine-storage.js";
 
 export { openOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly.js";
-
-/** Health probe result for embedding provider availability checks. */
-export type MemoryEmbeddingProbeResult = {
-  ok: boolean;
-  error?: string;
-  checked?: boolean;
-  cached?: boolean;
-  checkedAtMs?: number;
-  cacheExpiresAtMs?: number;
-};
 
 export type {
   MemoryCliSearchParams,

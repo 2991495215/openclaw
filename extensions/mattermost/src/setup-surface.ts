@@ -74,7 +74,6 @@ export const mattermostSetupWizard: ChannelSetupWizard = {
   credentials: [
     defineTokenCredential({
       inputKey: "botToken",
-      configKey: "botToken",
       providerHint: channel,
       credentialLabel: t("wizard.mattermost.botToken"),
       preferredEnvVar: "MATTERMOST_BOT_TOKEN",

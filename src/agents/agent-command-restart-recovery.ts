@@ -2,7 +2,10 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { ReplyPayload } from "../auto-reply/reply-payload.js";
 import { createSessionWorkStartChangedError } from "../config/sessions/lifecycle.js";
-import { hasMainSessionRecoveryClaim } from "../config/sessions/restart-recovery-state.js";
+import {
+  hasMainSessionRecoveryClaim,
+  normalizeRestartRecoveryDeliveryStatus,
+} from "../config/sessions/restart-recovery-state.js";
 import type {
   HarnessCompletionRecovery,
   RestartRecoveryTerminalDeliveryEvidenceResult,
@@ -181,13 +184,6 @@ export function buildRestartRecoveryTerminalDeliveryEvidence(
     });
   const payloadsTruncated = rawPayloads && rawPayloads.length > 64 ? (true as const) : undefined;
   const rawDeliveryStatus = result.deliveryStatus;
-  const status =
-    rawDeliveryStatus?.status === "failed" ||
-    rawDeliveryStatus?.status === "partial_failed" ||
-    rawDeliveryStatus?.status === "sent" ||
-    rawDeliveryStatus?.status === "suppressed"
-      ? rawDeliveryStatus.status
-      : undefined;
   const rawPayloadOutcomes =
     rawDeliveryStatus && typeof rawDeliveryStatus === "object"
       ? (rawDeliveryStatus as { payloadOutcomes?: unknown }).payloadOutcomes
@@ -214,50 +210,10 @@ export function buildRestartRecoveryTerminalDeliveryEvidence(
       retainedPayloadOutcomes[63] = sendEvidence;
     }
   }
-  const payloadOutcomes: NonNullable<
-    RestartRecoveryTerminalDeliveryEvidenceResult["deliveryStatus"]
-  >["payloadOutcomes"] = retainedPayloadOutcomes
-    ? retainedPayloadOutcomes.flatMap((record) => {
-        if (!isRecord(record)) {
-          return [];
-        }
-        const outcomeStatus =
-          record.status === "failed" || record.status === "sent" || record.status === "suppressed"
-            ? record.status
-            : undefined;
-        if (!outcomeStatus || typeof record.index !== "number" || !Number.isInteger(record.index)) {
-          return [];
-        }
-        const reason = normalizeOptionalString(record.reason)?.slice(0, 256);
-        return [
-          {
-            index: record.index,
-            status: outcomeStatus,
-            ...(reason ? { reason } : {}),
-            ...(typeof record.sentBeforeError === "boolean"
-              ? { sentBeforeError: record.sentBeforeError }
-              : {}),
-          },
-        ];
-      })
-    : undefined;
-  const errorMessage = normalizeOptionalString(rawDeliveryStatus?.errorMessage);
-  const reason = normalizeOptionalString(
-    getAutomaticDeliveryEvidence(result).suppressionReason ?? rawDeliveryStatus?.reason,
-  )?.slice(0, 256);
-  const deliveryStatus: RestartRecoveryTerminalDeliveryEvidenceResult["deliveryStatus"] = status
-    ? {
-        status,
-        ...(typeof rawDeliveryStatus?.resultCount === "number" &&
-        Number.isSafeInteger(rawDeliveryStatus.resultCount) &&
-        rawDeliveryStatus.resultCount >= 0
-          ? { resultCount: rawDeliveryStatus.resultCount }
-          : {}),
-        ...(errorMessage ? { errorMessage } : {}),
-        ...(reason ? { reason } : {}),
-        ...(payloadOutcomes?.length ? { payloadOutcomes } : {}),
-      }
-    : undefined;
+  const deliveryStatus = normalizeRestartRecoveryDeliveryStatus(rawDeliveryStatus, {
+    payloadOutcomes: retainedPayloadOutcomes,
+    reason: getAutomaticDeliveryEvidence(result).suppressionReason ?? rawDeliveryStatus?.reason,
+  });
   const rawMessagingToolSentTargets = Array.isArray(result.messagingToolSentTargets)
     ? result.messagingToolSentTargets
     : undefined;

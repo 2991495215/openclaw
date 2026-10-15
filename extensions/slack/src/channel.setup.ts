@@ -1,4 +1,5 @@
-import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import { buildChannelMetaFromManifest, type ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import pluginPackage from "../package.json" with { type: "json" };
 import { isSlackSetupAccountConfigured } from "./account-configured.js";
 import type { ResolvedSlackAccount } from "./accounts.js";
 import { slackBaseConfigAdapter } from "./config-adapter.js";
@@ -8,18 +9,10 @@ import { describeSlackSetupAccount, SLACK_CHANNEL } from "./setup-shared.js";
 
 export const slackSetupPlugin: ChannelPlugin<ResolvedSlackAccount> = {
   id: SLACK_CHANNEL,
-  meta: {
-    id: SLACK_CHANNEL,
-    label: "Slack",
-    selectionLabel: "Slack (Socket Mode)",
-    detailLabel: "Slack Bot",
-    docsPath: "/channels/slack",
-    docsLabel: "slack",
-    blurb: "supported (Socket Mode).",
-    systemImage: "number",
-    markdownCapable: true,
+  meta: buildChannelMetaFromManifest({
+    ...pluginPackage.openclaw.channel,
     preferSessionLookupForAnnounceTarget: true,
-  },
+  }),
   setupWizard: createSlackSetupWizardProxy(() => import("./setup-surface.js")),
   capabilities: {
     chatTypes: ["direct", "channel", "thread"],

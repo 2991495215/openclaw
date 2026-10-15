@@ -241,16 +241,14 @@ export const synologyChatSetupWizard: ChannelSetupWizard = {
   credentials: [
     defineTokenCredential({
       inputKey: "token",
-      configKey: "token",
       providerHint: channel,
       credentialLabel: "outgoing webhook token",
-      preferredEnvVar: "SYNOLOGY_CHAT_TOKEN",
+      defaultAccountEnv: "SYNOLOGY_CHAT_TOKEN",
       helpTitle: t("wizard.synologyChat.webhookTokenTitle"),
       helpLines: SYNOLOGY_SETUP_HELP_LINES,
       envPrompt: t("wizard.synologyChat.tokenEnvPrompt"),
       keepPrompt: t("wizard.synologyChat.tokenKeep"),
       inputPrompt: t("wizard.synologyChat.tokenInput"),
-      allowEnv: ({ accountId }) => accountId === DEFAULT_ACCOUNT_ID,
       resolveAccount: ({ cfg, accountId }) => ({
         config: getRawAccountConfig(cfg, accountId),
         resolved: resolveAccount(cfg, accountId),
@@ -259,10 +257,6 @@ export const synologyChatSetupWizard: ChannelSetupWizard = {
       accountConfigured: (account) => account.configured,
       hasConfiguredValue: (account) => Boolean(normalizeOptionalString(account.config.token)),
       resolvedValue: (account) => normalizeOptionalString(account.resolved.token),
-      envValue: ({ accountId }) =>
-        accountId === DEFAULT_ACCOUNT_ID
-          ? normalizeOptionalString(process.env.SYNOLOGY_CHAT_TOKEN)
-          : undefined,
       patchAccount: ({ cfg, accountId, patch, clearFields }) =>
         patchSynologyChatAccountConfig({
           cfg,

@@ -2,7 +2,6 @@ import {
   baseUrlTextInput,
   createStandardChannelSetupStatus,
   createSetupTranslator,
-  DEFAULT_ACCOUNT_ID,
   defineTokenCredential,
   formatDocsLink,
   hasConfiguredSecretInput,
@@ -74,23 +73,17 @@ export const clickClackSetupWizard: ChannelSetupWizard = {
   credentials: [
     defineTokenCredential({
       inputKey: "token",
-      configKey: "token",
       configuredFields: ["token", "tokenFile"],
       providerHint: channel,
       credentialLabel: t("wizard.clickclack.botToken"),
-      preferredEnvVar: "CLICKCLACK_BOT_TOKEN",
+      defaultAccountEnv: "CLICKCLACK_BOT_TOKEN",
       envPrompt: t("wizard.clickclack.envPrompt"),
       keepPrompt: t("wizard.clickclack.botTokenKeep"),
       inputPrompt: t("wizard.clickclack.botTokenInput"),
-      allowEnv: ({ accountId }) => accountId === DEFAULT_ACCOUNT_ID,
       resolveAccount: ({ cfg, accountId }) =>
         resolveClickClackAccount({ cfg: cfg as CoreConfig, accountId }),
       hasConfiguredValue: hasConfiguredClickClackCredential,
       resolvedValue: (account) => account.token || undefined,
-      envValue: ({ accountId }) =>
-        accountId === DEFAULT_ACCOUNT_ID
-          ? process.env.CLICKCLACK_BOT_TOKEN?.trim() || undefined
-          : undefined,
       patchAccount: ({ cfg, accountId, mode, patch }) =>
         mode === "env"
           ? applyClickClackCredentialConfig({ cfg, accountId, useEnv: true })
