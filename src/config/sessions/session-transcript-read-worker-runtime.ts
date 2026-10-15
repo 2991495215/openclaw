@@ -52,9 +52,6 @@ export async function readSessionTranscriptModelContextInWorker(
       },
     ),
   );
-  if (!("events" in value)) {
-    throw new Error("Session context worker returned a database target instead of context");
-  }
   return value;
 }
 
@@ -75,9 +72,6 @@ export async function resolveSessionSqliteTargetInWorker(
       },
     ),
   );
-  if (!("target" in value)) {
-    throw new Error("Session context worker returned context instead of a database target");
-  }
   return value.target;
 }
 
@@ -98,9 +92,6 @@ export async function readSessionTranscriptContextMessagesInWorker(
       },
     ),
   );
-  if (!("messages" in value)) {
-    throw new Error("Session context worker returned a different context operation");
-  }
   return value;
 }
 
@@ -120,9 +111,7 @@ export async function prepareSessionEntryInWorker(
 }
 
 export async function prepareSessionEntriesInWorker(entries: SessionEntriesWorkerInput["entries"]) {
-  const result = unwrapSessionTranscriptWorkerReply<
-    "session-entry" | "session-entries" | "session-reset-recall"
-  >(
+  const result = unwrapSessionTranscriptWorkerReply(
     await sessionEntries.run(
       {
         kind: "session-entries",
@@ -145,9 +134,6 @@ export async function prepareSessionEntriesInWorker(entries: SessionEntriesWorke
       },
     ),
   );
-  if (!("entries" in result)) {
-    throw new Error("Session transcript worker returned a single export instead of a batch");
-  }
   return result.entries;
 }
 
@@ -172,9 +158,7 @@ export async function readSessionEntrySnapshotInWorker(
 async function readSessionEntryInWorker(input: SessionEntryWorkerInput) {
   const { absPath, options } = input;
   const receipt = resolveSessionTranscriptReadFence(options);
-  const result = unwrapSessionTranscriptWorkerReply<
-    "session-entry" | "session-entries" | "session-reset-recall"
-  >(
+  const result = unwrapSessionTranscriptWorkerReply(
     await sessionEntries.run(
       {
         ...input,
@@ -195,9 +179,6 @@ async function readSessionEntryInWorker(input: SessionEntryWorkerInput) {
       },
     ),
   );
-  if (!("entry" in result) && !("snapshot" in result)) {
-    throw new Error("Session transcript worker returned reset metadata instead of an export");
-  }
   return result;
 }
 
@@ -205,9 +186,7 @@ export async function readSessionResetRecallCutoffInWorker(
   scope: SessionResetRecallWorkerInput["scope"],
 ) {
   const receipt = resolveSessionTranscriptReadFence(scope);
-  const result = unwrapSessionTranscriptWorkerReply<
-    "session-entry" | "session-entries" | "session-reset-recall"
-  >(
+  const result = unwrapSessionTranscriptWorkerReply(
     await sessionEntries.run(
       {
         kind: "session-reset-recall",
@@ -221,8 +200,5 @@ export async function readSessionResetRecallCutoffInWorker(
       },
     ),
   );
-  if (!("cutoff" in result)) {
-    throw new Error("Session transcript worker returned an export instead of reset metadata");
-  }
   return result.cutoff;
 }

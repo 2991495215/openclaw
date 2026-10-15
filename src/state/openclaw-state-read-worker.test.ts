@@ -408,13 +408,11 @@ function captureCase<T extends OpenClawStateReadCommand>(
   command: T,
   reply: OpenClawStateReadReply,
   bytes: number,
-  mutate: (command: T) => void,
   options: {
     prepared?: boolean;
-    queued?: () => void;
   } = {},
 ) {
-  return { command, reply, bytes, mutate: () => mutate(command), ...options };
+  return { command, reply, bytes, ...options };
 }
 
 const selector = "租户🦞".repeat(512);
@@ -506,41 +504,7 @@ const captures = [
             ? 2
             : 1;
 
-    return captureCase(command, returned, selectorBytes * selectorCount, () => {
-      if (command.type === "githubPublication.sharedObservation") {
-        Object.assign(command.input.session, {
-          agentId: "changed",
-          sessionKey: "changed",
-          sessionId: "changed",
-          lifecycleRevision: "changed",
-        });
-        command.input.selector.requestId = "changed";
-        command.input.entry.repositoryWorkspaceId = "changed";
-        command.input.entry.lifecycleRevision = "changed";
-        Object.assign(command.input.entry.worktree, {
-          id: "changed",
-          branch: "changed",
-          repoRoot: "changed",
-        });
-      } else if (command.type === "updateRuns.get") {
-        command.runId = "different run after admission";
-      } else if (command.type === "onboardingRecommendations.read") {
-        command.configKey = "different key after admission";
-      } else if (command.type === "pluginBlob.lookup" || command.type === "pluginBlob.entries") {
-        command.input.pluginId = "different plugin after admission";
-        command.input.namespace = "different namespace after admission";
-        if (command.type === "pluginBlob.lookup") {
-          command.input.key = "different key after admission";
-        }
-      } else if (command.type === "sandboxRegistry.get") {
-        command.containerName = "different container after admission";
-      } else if (command.type === "sandboxRegistry.runtimeIds") {
-        command.backendId = "different backend after admission";
-        command.scopeKey = "different scope after admission";
-      } else {
-        command.workspaceDir = "different workspace after admission";
-      }
-    });
+    return captureCase(command, returned, selectorBytes * selectorCount);
   }),
   captureCase(
     {
@@ -549,12 +513,6 @@ const captures = [
     },
     { ok: true, type: "updateRuns.list", sourceAdmitted: true, runs: [] },
     selectorBytes * 2 + 9,
-    ({ input }) => {
-      input.reason = "changed";
-      input.includeRunId = "changed";
-      input.active = false;
-      input.limit = 1;
-    },
   ),
   ...(["descendants", "maintenance"] as const).map((kind) => {
     const input = {
@@ -579,16 +537,6 @@ const captures = [
             Buffer.byteLength(input.liveTopology[0]!.childSessionKey) +
             Buffer.byteLength(input.liveTopology[0]!.requesterSessionKey)
         : 0,
-      () => {
-        input.sessionKeys[0] = "changed";
-        input.sessionKeys.push("added after admission");
-        input.liveTopology[0]!.childSessionKey = "changed child";
-        input.liveTopology[0]!.requesterSessionKey = "changed requester";
-        input.liveTopology.push({
-          childSessionKey: "added child",
-          requesterSessionKey: "added requester",
-        });
-      },
     );
   }),
   captureCase(
@@ -598,14 +546,6 @@ const captures = [
     },
     { ok: true, type: "updateRuns.reconciliationCandidates", sourceAdmitted: true, candidates: [] },
     Buffer.byteLength("更新🦞修复🦞".repeat(512)) + 11,
-    ({ input }) => {
-      input.runIds[0] = "changed";
-      input.runIds.push("added after admission");
-      input.explicit = false;
-      input.requireAllActive = true;
-      input.legacyOnly = false;
-      input.repairHistorySinceMs = 999;
-    },
   ),
   captureCase(
     {
@@ -614,11 +554,6 @@ const captures = [
     },
     { ok: true, type: "skills.library.manifests", sourceAdmitted: true, value: [] },
     selectorBytes * 2,
-    ({ input }) => {
-      input[0]!.skillId = "changed";
-      input[0]!.revision = "changed";
-      input.push({ skillId: "extra", revision: "extra" });
-    },
   ),
   ...(
     [
@@ -644,34 +579,18 @@ const captures = [
         Buffer.byteLength("executionId" in input ? input.executionId : input.runId) +
           Buffer.byteLength(input.decisionCursor ?? "") +
           numericBytes,
-        () => {
-          input.now = 999;
-          input.decisionCursor = "changed before read";
-          input.decisionLimit = 99;
-          if ("executionId" in input) {
-            input.executionId = "changed execution";
-          } else {
-            input.runId = "changed run";
-            input.executionOffset = 99;
-            input.executionLimit = 99;
-          }
-        },
         {
           prepared: true,
-          queued: () => {
-            input.now = 1234;
-            input.decisionCursor = "changed while queued";
-          },
         },
       ),
   ),
 ];
 
 it.each(captures)(
-  "captures $command.type selectors and byte charges before queued dispatch (%#)",
+  "dispatches $command.type selectors and charges their queued bytes (%#)",
   async (fixture) => {
     const { pathname, options } = source();
-    const expected = structuredClone(fixture.command);
+    const expected = fixture.command;
     const originalRoot = options.env.OPENCLAW_STATE_DIR;
     const context = captureOpenClawStateWorkerContext(options);
     const location = { context, location: pathname, checkFreshAdmission: false };
@@ -682,9 +601,6 @@ it.each(captures)(
     const baselineTransport = fixture.prepared
       ? captureOpenClawStateReadSource().createTransport({ type: "backup.runs" })
       : undefined;
-    if (transport) {
-      fixture.mutate();
-    }
     const dispatch = createDeferredCore();
     const baselineTask = queueTask(dispatch.promise);
     const task = queueTask(dispatch.promise);
@@ -704,10 +620,6 @@ it.each(captures)(
           }),
         ]),
       ]);
-      if (!transport) {
-        fixture.mutate();
-      }
-      fixture.queued?.();
       options.env.OPENCLAW_STATE_DIR = path.join(originalRoot, "different");
       expect(Number.isSafeInteger(submitted.inputBytes)).toBe(true);
       expect(submitted.inputBytes).toBeGreaterThanOrEqual(
@@ -736,7 +648,7 @@ it.each(captures)(
 );
 
 it.each(["mcpOAuth.statuses", "userPreferences.values", "acpSessions.metadata"] as const)(
-  "captures and charges the full %s batch before queued dispatch",
+  "dispatches and charges the full %s batch",
   async (type) => {
     const { options } = source();
     const context = captureOpenClawStateWorkerContext(options);
@@ -796,12 +708,6 @@ it.each(["mcpOAuth.statuses", "userPreferences.values", "acpSessions.metadata"] 
       expect(batchOptions.inputBytes).toBeGreaterThanOrEqual(
         Number(baselineOptions.inputBytes) + additionalBytes,
       );
-      keys[0] = "changed-principal";
-      keys.push("added-after-admission");
-      entry.lifecycleRevision = "changed-revision";
-      entry.sessionId = "changed-session";
-      entry.sessionStartedAt = 99;
-      entries.push({ keys: ["added-entry-after-admission"] });
       dispatch.resolve();
       await baselineTask.captured;
       baselineTask.result.resolve(emptyReply);

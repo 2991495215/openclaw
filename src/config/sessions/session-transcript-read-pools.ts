@@ -39,6 +39,12 @@ type RetainedStore = {
   close(this: void): Promise<void>;
 };
 
+type ReadDatabases = {
+  storePaths: readonly string[];
+  admissionPaths: readonly string[];
+  families?: readonly string[];
+};
+
 export function createSessionTranscriptReadPool<Input extends SessionTranscriptWorkerInput>(
   maxWorkers: number,
   sharedCompute = false,
@@ -117,34 +123,30 @@ export function createSessionTranscriptReadPool<Input extends SessionTranscriptW
       await Promise.all(closing.map((store) => store.close()));
     },
   });
-  return {
-    async run(
-      input: Input,
-      options: WorkerTaskOptions<Input>,
-      databases: {
-        storePaths: readonly string[];
-        admissionPaths: readonly string[];
-        families?: readonly string[];
-      },
-    ) {
-      // Register before admission yields; cleanup also owns reads waiting to dispatch.
-      const retained = databases.storePaths.map(retainStore);
-      return runWithSqliteDatabaseAdmissionTurn(
-        databases.admissionPaths,
-        () =>
-          pool.run(() => {
-            if (retained.some((store) => store.revoked)) {
-              throw new WorkerTaskError(
-                "Session transcript database read was revoked",
-                "unavailable",
-              );
-            }
-            return input;
-          }, options),
-        databases.families,
-      );
-    },
-  };
+  function run<Request extends Input>(
+    input: Request,
+    options: WorkerTaskOptions<Input>,
+    databases: ReadDatabases,
+  ): Promise<SessionTranscriptWorkerReply<Request["kind"]>>;
+  async function run(input: Input, options: WorkerTaskOptions<Input>, databases: ReadDatabases) {
+    // Register before admission yields; cleanup also owns reads waiting to dispatch.
+    const retained = databases.storePaths.map(retainStore);
+    return runWithSqliteDatabaseAdmissionTurn(
+      databases.admissionPaths,
+      () =>
+        pool.run(() => {
+          if (retained.some((store) => store.revoked)) {
+            throw new WorkerTaskError(
+              "Session transcript database read was revoked",
+              "unavailable",
+            );
+          }
+          return input;
+        }, options),
+      databases.families,
+    );
+  }
+  return { run };
 }
 
 export function createSessionTranscriptHistoryPool(

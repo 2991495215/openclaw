@@ -206,7 +206,7 @@ it("joins captured domain cleanup before retiring its pool and execution generat
 });
 
 it.each(["workerPlacements.changeSnapshot", "cron.activeReceiptOwners"] as const)(
-  "captures and charges selectors before queued dispatch (%s)",
+  "dispatches selectors and charges queued bytes (%s)",
   async (type) => {
     const { pathname, options } = source();
     const selector = "选择🦞".repeat(512);
@@ -214,13 +214,7 @@ it.each(["workerPlacements.changeSnapshot", "cron.activeReceiptOwners"] as const
       type === "workerPlacements.changeSnapshot"
         ? { type, profileIds: [selector, selector] }
         : { type, agentId: selector };
-    const expected = structuredClone(command);
     const transport = captureOpenClawStateReadSource().createTransport(command);
-    if (command.type === "workerPlacements.changeSnapshot") {
-      command.profileIds.splice(0);
-    } else {
-      command.agentId = "different agent before preparation";
-    }
     const dispatch = createDeferredCore();
     const task = queueTask(dispatch.promise);
     const read = transport.startRead(
@@ -234,7 +228,7 @@ it.each(["workerPlacements.changeSnapshot", "cron.activeReceiptOwners"] as const
     try {
       const submitted = await task.submitted;
       dispatch.resolve();
-      expect.soft((await task.captured).command).toEqual(expected);
+      expect.soft((await task.captured).command).toEqual(command);
       expect
         .soft(submitted.inputBytes)
         .toBeGreaterThanOrEqual(

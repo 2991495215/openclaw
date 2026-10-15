@@ -82,8 +82,7 @@ export function prepareOpenClawStateReadSource(input: { path: string; env?: Node
     return inSourceContext(refresh);
   };
   const prepareWorker = () => {
-    // Actual reads verify the file even when no local publication revoked its admission.
-    const next = refresh();
+    const next = current();
     worker ??= captureOpenClawStateWorkerContext(options);
     if (worker.admission !== next.admission) {
       worker = { ...worker, ...next };

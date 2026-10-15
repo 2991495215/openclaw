@@ -543,7 +543,6 @@ export function startOpenClawStateReadOperation(
           context.maintenanceScope?.ownsSchemaMaintenance !== true &&
           !getStateDatabaseSchemaLease(pathname)
         ) {
-          const capturedCommand = structuredClone(command);
           receipt.phase = "unobserved";
           waitAwaited(
             withSqliteSnapshotWorker(signal, (worker, stagingRoot) => {
@@ -556,7 +555,7 @@ export function startOpenClawStateReadOperation(
                   input: {
                     stagingRoot,
                     expectedSourceIdentity: sourceIdentity,
-                    command: capturedCommand,
+                    command,
                     context: {
                       environment: context.environment,
                       existingSchemaPath: context.existingSchemaPath,

@@ -27,7 +27,7 @@ export type SessionHistoryWorkerRequestRunner = <
 /** Decode domain results; database custody remains with the enclosing history owner. */
 export function createSessionHistoryWorkerReaders(
   runRequest: SessionHistoryWorkerRequestRunner,
-): Omit<SessionHistoryWorkerDatabase, "generation" | "assertCurrent"> {
+): Omit<SessionHistoryWorkerDatabase, "assertCurrent"> {
   function reader<K extends SessionHistoryWorkerPreparedInput["kind"], T>(
     kind: K,
     project: (value: SessionTranscriptWorkerValues[K]) => T,
@@ -64,8 +64,6 @@ export function createSessionHistoryWorkerReaders(
     readTrajectoryRetention: (input, options) => {
       const captured = {
         ...input,
-        input: { ...input.input },
-        expectedIdentity: { ...input.expectedIdentity },
         env: captureSessionTranscriptStorageEnvironment(input.env),
       };
       return runRequest(
@@ -304,16 +302,15 @@ export function createSessionHistoryWorkerReaders(
     readEntryCurrent: reader("session-entry-current", (value) => value.entry),
     // The native reader validates the selected file. Replacement after that read is best effort.
     readEntries: async (scope, continuation, expectedIdentity, ifRevision) => {
-      const captured = expectedIdentity && { ...expectedIdentity };
       return runRequest(
         () => ({
           kind: "session-entry-list",
           scope,
           continuation,
-          expectedIdentity: captured,
+          expectedIdentity,
           ifRevision,
         }),
-        JSON.stringify({ scope, continuation, expectedIdentity: captured, ifRevision }).length * 2,
+        JSON.stringify({ scope, continuation, expectedIdentity, ifRevision }).length * 2,
         (value) => value,
       );
     },

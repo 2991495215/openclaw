@@ -136,8 +136,6 @@ let runtimeConfigValueFact: RuntimeConfigValueFact | null = null;
 let runtimeSourceConfigValueFact: RuntimeConfigValueFact | null = null;
 let runtimeConfigAppliedHash: string | null = null;
 let runtimeConfigSnapshotRevision = 0;
-let runtimeConfigSnapshotGeneration = 0;
-let runtimeConfigPreparerGeneration = 0;
 let runtimeConfigSnapshotRefreshHandler: RuntimeConfigSnapshotRefreshHandler | null = null;
 type ManagedRuntimeConfigWritePreflight = (
   sourceConfig: OpenClawConfig,
@@ -222,7 +220,6 @@ function publishRuntimeConfigSnapshot(
     ? "config"
     : runtimeSessionChangeScope(runtimeConfigSnapshot, config);
   prepareRuntimePluginsConfig(config);
-  runtimeConfigSnapshotGeneration += 1;
   clearExecutablePathCache();
   runtimeConfigSnapshot = config;
   runtimeConfigCapturedSnapshot = null;
@@ -250,39 +247,27 @@ export function registerRuntimeConfigSnapshotPreparer(
     ) => Promise<() => void>;
   },
 ): () => void {
-  runtimeConfigPreparerGeneration += 1;
   runtimeConfigSnapshotPreparers.set(prepare, options);
   if (runtimeConfigSnapshot) {
     prepare(runtimeConfigSnapshot);
   }
   return () => {
-    runtimeConfigPreparerGeneration += 1;
     runtimeConfigSnapshotPreparers.delete(prepare);
   };
 }
 
-function preparationFingerprint(config: OpenClawConfig): string {
-  return sha256Base64Url(
-    stableConfigStringify({ config, facts: serializeConfigResolutionFacts(config) }),
-  );
-}
-
-/** Prepare off the publication path; a superseded candidate must be discarded by its owner. */
+/** Prepare off the publication path; the caller retains publication authority. */
 async function prepareRuntimeConfigSnapshot(
   inputConfig: OpenClawConfig,
   context: RuntimeConfigSnapshotPreparationContext = {},
   assertCurrent?: () => void,
   sourceConfig?: OpenClawConfig,
-): Promise<() => boolean> {
+): Promise<() => void> {
   const config = getRuntimeConfigCapture(inputConfig)
     ? cloneConfigWithResolutionFacts(inputConfig)
     : inputConfig;
   const factSource = getConfigResolutionFacts(config) !== null ? config : (sourceConfig ?? config);
   copyConfigResolutionFacts(factSource, config);
-  const generation = runtimeConfigSnapshotGeneration;
-  const preparerGeneration = runtimeConfigPreparerGeneration;
-  const fingerprint = preparationFingerprint(config);
-  const envFingerprint = context.env ? sha256Base64Url(stableConfigStringify(context.env)) : null;
   const prepared = await Promise.allSettled(
     [...runtimeConfigSnapshotPreparers].map(async ([prepare, options]) =>
       options ? options.prepareAsync(config, context) : () => prepare(config),
@@ -295,30 +280,13 @@ async function prepareRuntimeConfigSnapshot(
     }
     contributions.push(result.value);
   }
-  const isCurrent = () => {
-    assertCurrent?.();
-    return (
-      runtimeConfigSnapshotGeneration === generation &&
-      runtimeConfigPreparerGeneration === preparerGeneration &&
-      preparationFingerprint(config) === fingerprint &&
-      (context.env ? sha256Base64Url(stableConfigStringify(context.env)) : null) === envFingerprint
-    );
-  };
-  let consumed = false;
   return () => {
-    if (consumed || !isCurrent()) {
-      return false;
-    }
-    consumed = true;
+    assertCurrent?.();
     for (const contribute of contributions) {
       contribute();
-      // Contributions may reenter config publication or revoke the admitting owner.
-      if (!isCurrent()) {
-        return false;
-      }
     }
+    assertCurrent?.();
     publishRuntimeConfigSnapshot(config, sourceConfig);
-    return true;
   };
 }
 
@@ -327,9 +295,7 @@ export async function setAppliedRuntimeConfigSnapshot(
   sourceConfig: OpenClawConfig,
 ): Promise<void> {
   const publish = await prepareRuntimeConfigSnapshot(config, {}, undefined, sourceConfig);
-  if (!publish()) {
-    throw new Error("Applied runtime config preparation was superseded before publication");
-  }
+  publish();
   runtimeConfigAppliedHash = hashRuntimeConfigValue(sourceConfig);
 }
 
@@ -359,7 +325,6 @@ export function setRuntimeConfigSourceSnapshotIfCurrent(params: {
 }
 
 export function resetConfigRuntimeState(options: { preserveConfigEnv?: boolean } = {}): void {
-  runtimeConfigSnapshotGeneration += 1;
   clearExecutablePathCache();
   prepareRuntimePluginsConfig(null);
   runtimeConfigSnapshot = null;
@@ -620,13 +585,7 @@ export async function loadPinnedRuntimeConfigAsync(
   if (runtimeConfigSnapshot) {
     return result(runtimeConfigSnapshot);
   }
-  const generation = runtimeConfigSnapshotGeneration;
-  const assertCurrent = () => {
-    options.assertCurrent?.();
-    if (runtimeConfigSnapshotGeneration !== generation) {
-      throw new Error("Runtime config load was superseded before publication");
-    }
-  };
+  const assertCurrent = () => options.assertCurrent?.();
   try {
     const { config, runtimeEnv } = await loadFresh(assertCurrent);
     options.assertCurrent?.();
@@ -647,9 +606,7 @@ export async function loadPinnedRuntimeConfigAsync(
     const publication = runtimeEnv?.publish();
     try {
       assertCurrent();
-      if (!commit()) {
-        throw new Error("Runtime config preparation was superseded before publication");
-      }
+      commit();
       publication?.commit();
     } catch (error) {
       publication?.();
@@ -709,7 +666,6 @@ export async function finalizeRuntimeSnapshotWrite(
     notifyCommittedWrite();
     return;
   }
-  const generation = runtimeConfigSnapshotGeneration;
   const refreshHandler = getRuntimeConfigSnapshotRefreshHandler();
   if (refreshHandler) {
     let refreshed: boolean;
@@ -738,12 +694,7 @@ export async function finalizeRuntimeSnapshotWrite(
     }
   }
 
-  const assertCurrent = () => {
-    params.assertCurrent?.();
-    if (runtimeConfigSnapshotGeneration !== generation) {
-      throw new Error("Runtime config reload was superseded before publication");
-    }
-  };
+  const assertCurrent = () => params.assertCurrent?.();
   const { config, runtimeEnv } =
     typeof params.freshConfig === "function"
       ? await params.freshConfig(assertCurrent)

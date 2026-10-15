@@ -141,10 +141,11 @@ async function commitConfiguredMcpServers(params: {
   assertCurrentAsync?: () => Promise<void>;
   mutation?: { name: string; onCommitted?: McpConfigMutationHook };
 }): Promise<ConfigMcpWriteResult> {
-  const next = structuredClone(params.loaded.config);
+  const next = { ...params.loaded.config };
   if (Object.keys(params.servers).length > 0) {
     next.mcp = { ...next.mcp, servers: params.servers };
   } else if (next.mcp) {
+    next.mcp = { ...next.mcp };
     delete next.mcp.servers;
     if (Object.keys(next.mcp).length === 0) {
       delete next.mcp;

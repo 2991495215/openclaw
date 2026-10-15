@@ -34,12 +34,9 @@ export async function readGitHubPublicationInWorker(
   command: SqliteWorkerCommand<PublicationReadOperations>,
 ) {
   const context = captureOpenClawStateReadWorkerContext();
-  const captured = structuredClone(command);
-  const result = await runOpenClawStateWorkerOperation(
-    context,
-    (scope) => scope.execute(captured),
-    { existingOnly: true },
-  );
+  const result = await runOpenClawStateWorkerOperation(context, (scope) => scope.execute(command), {
+    existingOnly: true,
+  });
   context.admission.assertCurrent();
   return result;
 }
@@ -121,10 +118,10 @@ export function createGitHubPublicationWorkerScope(context: OpenClawStateWorkerC
             }
           }
           const captured = binding
-            ? structuredClone({
+            ? {
                 ...commandSnapshot,
                 input: { ...commandSnapshot.input, source: binding.predicate },
-              })
+              }
             : commandSnapshot;
           const operationContext = binding?.context ?? context;
           let admission: SqliteWorkerOperationAdmission | undefined;

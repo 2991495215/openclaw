@@ -47,15 +47,11 @@ export function isSessionHistoryReadOperation(
 /** Load dependencies before the owner enters its synchronous, admitted read scope. */
 export function prepareSessionHistoryReadOperation<
   Request extends SessionHistoryReadOperationRequest,
->(
-  request: Request,
-  retainedDatabase?: OpenClawAgentReadOnlyDatabase,
-): Promise<() => SessionTranscriptWorkerValues[Request["kind"]]>;
+>(request: Request): Promise<() => SessionTranscriptWorkerValues[Request["kind"]]>;
 export async function prepareSessionHistoryReadOperation(
   request: SessionHistoryReadOperationRequest,
-  retainedDatabase?: OpenClawAgentReadOnlyDatabase,
 ): Promise<() => SessionTranscriptWorkerValues[SessionHistoryReadOperationRequest["kind"]]> {
-  const execute = await prepareHistoryRead(request, retainedDatabase);
+  const execute = await prepareHistoryRead(request);
   return () => {
     if (
       "expectedIdentity" in request &&
@@ -75,7 +71,6 @@ export async function prepareSessionHistoryReadOperation(
 
 async function prepareHistoryRead(
   request: SessionHistoryReadOperationRequest,
-  retainedDatabase?: OpenClawAgentReadOnlyDatabase,
 ): Promise<() => SessionTranscriptWorkerValues[SessionHistoryReadOperationRequest["kind"]]> {
   switch (request.kind) {
     case "trajectory-events": {
@@ -261,12 +256,6 @@ async function prepareHistoryRead(
           import("../../state/openclaw-agent-db-readonly.js"),
         ]);
       return () => {
-        if (retainedDatabase) {
-          return {
-            kind: request.kind,
-            result: findTranscriptEventMatchingInDatabase(retainedDatabase, request.request),
-          };
-        }
         const opened = withOpenClawAgentDatabaseReadOnly(
           (database) => findTranscriptEventMatchingInDatabase(database, request.request),
           {
@@ -278,17 +267,8 @@ async function prepareHistoryRead(
       };
     }
     case "branch-summaries": {
-      const { readSessionBranchSnapshot, readSessionBranchSummariesInWorker } =
+      const { readSessionBranchSummariesInWorker } =
         await import("./session-accessor.sqlite-branches.worker.js");
-      if (retainedDatabase) {
-        return () => ({
-          kind: request.kind,
-          result: readSessionBranchSnapshot(retainedDatabase, {
-            sessionKey: request.request.sessionKey,
-            previous: request.request.previous,
-          }),
-        });
-      }
       return () => ({
         kind: request.kind,
         result: readSessionBranchSummariesInWorker({
@@ -315,7 +295,7 @@ async function prepareHistoryRead(
       return () =>
         runWithSessionTranscriptReadFence(request.admission, () => ({
           kind: request.kind,
-          items: readSessionPreviewItemsReadOnly(request, retainedDatabase),
+          items: readSessionPreviewItemsReadOnly(request),
         }));
     }
     case "context-messages": {

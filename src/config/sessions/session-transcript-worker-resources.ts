@@ -349,6 +349,7 @@ export function acquireHistoryDatabaseResource(
             armDatabaseWorkerIdleRetirement(lane);
           }
         });
+        // Revocation starts cleanup eagerly; the lifecycle owner's awaited close reports failures.
         void owned.closing.catch(() => {});
       }
       return owned.closing;

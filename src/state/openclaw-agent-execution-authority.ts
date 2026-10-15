@@ -34,10 +34,5 @@ export class AgentDatabaseExecutionLifetime {
 export function readAgentDatabaseExecutionAuthority(
   authority: SqliteWorkerExecutionAuthority,
 ): boolean {
-  return (
-    Atomics.load(authority.logical, 0) === OPEN &&
-    Atomics.load(authority.native, 0) === OPEN &&
-    Atomics.load(authority.logical, 0) === OPEN &&
-    Atomics.load(authority.native, 0) === OPEN
-  );
+  return Atomics.load(authority.logical, 0) === OPEN && Atomics.load(authority.native, 0) === OPEN;
 }
