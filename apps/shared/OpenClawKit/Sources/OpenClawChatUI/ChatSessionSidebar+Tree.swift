@@ -153,7 +153,7 @@ extension ChatSessionSidebarModel {
             let folded = descendants.filter {
                 Self.isSidebarRun($0.id) || (options.ownerID != nil && $0.session.owner?.actor.id != options.ownerID)
             }.flatMap { [$0.session] + $0.foldedSessions }
-            let running = !row.isArchived && ChatSessionSidebarRowFacts.isRunning(row)
+            let running = !row.isArchived && ChatSessionSidebarModel.isRunning(row)
             let queued = running && row.status == "queued"
             let childRuns = descendants.reduce(0) { $0 + $1.badges.runningCount }
             let childQueued = descendants.reduce(0) { $0 + $1.badges.queuedCount }

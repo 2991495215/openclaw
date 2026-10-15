@@ -16,11 +16,11 @@ struct ChatSubagentWait: Equatable {
         runActive: Bool) -> ChatSubagentWait?
     {
         guard let session, !runActive, session.archived != true,
-              session.hasActiveSubagentRun == true, !Self.isRunning(session)
+              session.hasActiveSubagentRun == true, !ChatSessionSidebarModel.isRunning(session)
         else { return nil }
         let running = sessions.filter { row in
             guard row.key != session.key, row.archived != true,
-                  Self.isRunning(row) || row.hasActiveSubagentRun == true
+                  ChatSessionSidebarModel.isRunning(row) || row.hasActiveSubagentRun == true
             else { return false }
             if let parent = row.parentSessionKey ?? row.spawnedBy { return parent == session.key }
             return session.childSessions?.contains(row.key) == true
@@ -29,12 +29,6 @@ struct ChatSubagentWait: Equatable {
         return ChatSubagentWait(child: child.map {
             Child(key: $0.key, name: ChatSessionSidebarModel.displayName(for: $0))
         })
-    }
-
-    /// Match src/shared/session-run-state.ts: terminal status wins over stale liveness.
-    private static func isRunning(_ session: OpenClawChatSessionEntry) -> Bool {
-        if let status = session.status, status != "queued", status != "running" { return false }
-        return session.hasActiveRun ?? (session.status == "running" || session.status == "queued")
     }
 }
 

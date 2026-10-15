@@ -935,6 +935,21 @@ struct ChatSessionSidebarModelTests {
             mainSessionKey: "agent:main:main"))
     }
 
+    @Test func `archive eligibility follows terminal status and explicit liveness`() {
+        let cases: [(status: String, active: Bool?, canArchive: Bool)] = [
+            ("done", true, true),
+            ("running", false, true),
+            ("queued", nil, false),
+        ]
+        for item in cases {
+            let session = self.entry(
+                key: "agent:main:child", sessionId: "session-child",
+                status: item.status, hasActiveRun: item.active)
+            #expect(ChatSessionSidebarModel.canArchiveSession(
+                session, mainSessionKey: "agent:main:main") == item.canArchive)
+        }
+    }
+
     @Test func `observer events require the server run and advance monotonically`() throws {
         let running = self.entry(
             key: "agent:main:work",
