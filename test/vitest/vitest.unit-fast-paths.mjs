@@ -130,7 +130,6 @@ export const forcedUnitFastTestFiles = [
   "packages/terminal-core/src/restore.test.ts",
   "packages/terminal-core/src/table.test.ts",
   "src/test-helpers/state-dir-env.test.ts",
-  "src/test-utils/openclaw-test-state.test.ts",
   "src/test-utils/temp-home.test.ts",
   "src/utils.test.ts",
   "src/version.test.ts",
@@ -144,6 +143,8 @@ const broadUnitFastCandidatePatterns = prepareGlobPatterns(
   directoryPrefixForGlob,
 );
 const ownerRoutedUnitTestPatterns = [
+  // This family proof belongs to the PostgreSQL conformance owner.
+  "src/infra/database-engine/port-provider.postgres.test.ts",
   ...gatewayPluginTestFiles,
   ...cliProcessTestFiles,
   // Planner inventory proofs retain their tooling timing and worker policy

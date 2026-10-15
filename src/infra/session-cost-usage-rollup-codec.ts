@@ -23,6 +23,8 @@ export type UsageCostJsonlCheckpoint = {
 
 export type UsageCostSqliteCheckpoint = {
   kind: "sqlite";
+  /** Existing transcript rewrite watermark; absent legacy checkpoints rebuild once. */
+  generation?: string | null;
   maxSeq: number;
   eventCount: number;
   size: number;
@@ -44,7 +46,7 @@ export type UsageCostRollupEntry = {
 export type UsageCostRollupEnvelope = Omit<UsageCostRollupEntry, "rollup"> & {
   format: typeof USAGE_COST_ROLLUP_FORMAT_VERSION;
   projection?: {
-    version: 1;
+    version: 2;
     dates: string[];
     canonicalNumbers: boolean;
   };
@@ -120,6 +122,12 @@ export function decodeUsageCostRollupEnvelope(
       typeof record.body.utf16Length !== "number" ||
       !Number.isSafeInteger(record.body.utf16Length) ||
       record.body.utf16Length <= 0 ||
+      // The producer stores UTF-8 JSON and only chooses compression when smaller.
+      record.body.bytes < record.body.utf16Length ||
+      record.body.bytes > 3 * record.body.utf16Length ||
+      (record.body.encoding === "identity"
+        ? record.body.bytes !== record.body.storedBytes
+        : record.body.bytes <= record.body.storedBytes) ||
       typeof record.body.sha256 !== "string" ||
       !/^[0-9a-f]{64}$/.test(record.body.sha256)
     ) {
@@ -128,7 +136,7 @@ export function decodeUsageCostRollupEnvelope(
     if (
       record.projection !== undefined &&
       (!isRecord(record.projection) ||
-        record.projection.version !== 1 ||
+        record.projection.version !== 2 ||
         !Array.isArray(record.projection.dates) ||
         !record.projection.dates.every(
           (date) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date),
@@ -149,10 +157,28 @@ export function decodeUsageCostRollup(
   valueJson: string,
   pricingFingerprint: string,
   blob: Uint8Array | null,
-): UsageCostRollupEntry | undefined {
+): UsageCostRollupEntry | undefined;
+export function decodeUsageCostRollup(
+  valueJson: string,
+  pricingFingerprint: string,
+  blob: Uint8Array | null,
+  budget: { remainingBytes: number },
+): UsageCostRollupEntry | null | undefined;
+export function decodeUsageCostRollup(
+  valueJson: string,
+  pricingFingerprint: string,
+  blob: Uint8Array | null,
+  budget?: { remainingBytes: number },
+): UsageCostRollupEntry | null | undefined {
   const envelope = decodeUsageCostRollupEnvelope(valueJson, pricingFingerprint);
   if (!envelope || !blob || blob.byteLength !== envelope.body.storedBytes) {
     return undefined;
+  }
+  if (budget) {
+    if (envelope.body.bytes > budget.remainingBytes) {
+      return null;
+    }
+    budget.remainingBytes -= envelope.body.bytes;
   }
   try {
     const raw =

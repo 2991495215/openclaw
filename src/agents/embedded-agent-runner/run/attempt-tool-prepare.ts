@@ -22,7 +22,7 @@ import { getChannelAgentToolMeta } from "../../channel-tools.js";
 import { createCodeModePermissionChangeReason } from "../../code-mode-permission-change.js";
 import type { CodeModeSkill } from "../../code-mode-skills.js";
 import { loadPairedComputerUseAvailabilityForSurface } from "../../computer-use-node-capabilities.js";
-import { resolveConversationCapabilityProfile } from "../../conversation-capability-profile.js";
+import { prepareConversationCapabilityProfile } from "../../conversation-capability-profile.js";
 import { projectConversationToolNames } from "../../conversation-tool-policy-pipeline.js";
 import { gateBoundTool } from "../../harness/host-bound-tool.js";
 import { isWorkspaceTool } from "../../harness/host-capability-workspace.js";
@@ -86,6 +86,28 @@ export async function prepareEmbeddedAttemptToolBase(params: {
 }) {
   const { attempt } = params;
   const workspaceReadiness = captureAgentWorkspaceReadiness(attempt.sessionKey);
+  const captureBaseline = attempt.awaitSessionDiffBaseline;
+  const assertBaselineSource = captureBaseline
+    ? resolveAdmittedRunActiveAssertion(
+        attempt.admittedRunContext,
+        params.runAbortController.signal,
+      )
+    : undefined;
+  const awaitSessionDiffBaseline = captureBaseline
+    ? async () => {
+        try {
+          if (!assertBaselineSource) {
+            throw new Error("session attribution requires active admitted run authority");
+          }
+          assertBaselineSource();
+          await captureBaseline();
+          assertBaselineSource();
+        } catch (error) {
+          params.runAbortController.abort(error);
+          throw error;
+        }
+      }
+    : undefined;
   const completionCheck = attempt.completionCheck;
   const requireExplicitMessageTarget =
     attempt.requireExplicitMessageTarget ?? isSubagentSessionKey(attempt.sessionKey);
@@ -170,6 +192,9 @@ export async function prepareEmbeddedAttemptToolBase(params: {
   const cronCreatorToolAllowlist: CronCreatorToolAllowlistEntry[] = [];
   const cronCreatorToolAllowlistCaptureRef: CronToolsAllowCaptureRef = {};
   const inheritedToolAllowlist: string[] = [];
+  const inheritedPublicationToolRef: NonNullable<
+    OpenClawCodingToolsOptions["inheritedPublicationToolRef"]
+  > = {};
   const generationCleanups: Array<(reason: string) => Promise<void>> = [];
   const retiringGenerations = new Set<Promise<void>>();
   let retiredCleanupFailed = false;
@@ -214,7 +239,7 @@ export async function prepareEmbeddedAttemptToolBase(params: {
     skillsSnapshot: params.skillsSnapshot,
     runtimeToolAllowlist: effectiveToolsAllow,
   });
-  const runtimeCapabilityProfile = resolveConversationCapabilityProfile({
+  const runtimeCapabilityProfile = await prepareConversationCapabilityProfile({
     ...buildConversationContext(),
     agentId: attempt.sandboxAgentId ?? params.setup.sessionAgentId,
     conversationToolPolicy: attempt.conversationToolPolicy,
@@ -278,10 +303,12 @@ export async function prepareEmbeddedAttemptToolBase(params: {
     abortSignal: AbortSignal,
   ) => {
     webSearchUnconfigured = false;
+    inheritedPublicationToolRef.current = undefined;
     let constructedToolsRaw: Awaited<ReturnType<typeof createOpenClawCodingToolsInternalAsync>> =
       [];
     if (shouldConstructTools) {
       const codingToolOptions: OpenClawCodingToolsOptions = {
+        awaitSessionDiffBaseline,
         agentId: params.setup.sessionAgentId,
         ...buildConversationContext(),
         exec: {
@@ -322,6 +349,7 @@ export async function prepareEmbeddedAttemptToolBase(params: {
               webSearchEnabled: attempt.toolOverrides?.webSearch !== false,
               sandboxToolPolicy: params.setup.sandbox?.tools,
               authStore: attempt.authProfileStore,
+              preparedRequesterPolicy: runtimeCapabilityProfile.policy,
               pluginMetadataSnapshot: attempt.preparedModelRuntime?.metadataSnapshot,
             }).kind === "managed";
         },
@@ -355,6 +383,7 @@ export async function prepareEmbeddedAttemptToolBase(params: {
         enableHeartbeatTool: attempt.enableHeartbeatTool,
         forceHeartbeatTool: attempt.forceHeartbeatTool,
         inheritedToolAllowlistRef: inheritedToolAllowlist,
+        inheritedPublicationToolRef,
         cronCreatorToolAllowlistRef: cronCreatorToolAllowlist,
         cronCreatorToolAllowlistCaptureRef,
         authProfileStore: attempt.authProfileStore,
@@ -438,6 +467,7 @@ export async function prepareEmbeddedAttemptToolBase(params: {
     const toolsRaw = await constructTools(params.setup.sessionPermissionPolicy, toolAbortSignal);
     return {
       toolHookContext: {
+        awaitSessionDiffBaseline,
         agentId: params.setup.sessionAgentId,
         config: attempt.config,
         cwd: params.setup.effectiveCwd,
@@ -491,6 +521,7 @@ export async function prepareEmbeddedAttemptToolBase(params: {
       forceDirectMessageTool,
       requireExplicitMessageTarget,
       inheritedToolAllowlist,
+      inheritedPublicationToolRef,
       localModelLeanEnabled,
       localModelLeanPreserveToolNames,
       replaySafetyOptions,

@@ -30,7 +30,7 @@ import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import {
   mutateUserGitHubConnection,
-  readUserGitHubConnection,
+  readUserGitHubConnectionAsync,
 } from "../state/user-github-connections.js";
 import { updateUserGitHubConnection } from "../state/user-github-connections.test-support.js";
 import { linkCanonicalUserProfileEmail } from "../state/user-profile-writes.js";
@@ -566,10 +566,10 @@ describe("personal publication authority and recovery", () => {
           }
           if (race === "session") {
             const original = mocks.loadSession.getMockImplementation()!;
-            mocks.loadSession.mockImplementation((key: string) => ({
-              ...original(key),
-              entry: { sessionId: "replacement-session" },
-            }));
+            await upsertSessionEntryCore(
+              { agentId: "main", sessionKey: SESSION_KEY },
+              { ...original(SESSION_KEY).entry, sessionId: "replacement-session" },
+            );
           }
         }
         return await fallback(argv, options);
@@ -667,11 +667,16 @@ describe("personal publication authority and recovery", () => {
       if (recovering && command === "git rev-parse --verify HEAD^{commit}") {
         return commandResult(NEW_HEAD);
       }
-      if (recovering && command === "git show -s --format=%B HEAD") {
+      if (
+        recovering &&
+        command === "git show -s --no-show-signature --format=%H%n%T%n%P%n%B HEAD"
+      ) {
         const row = openOpenClawStateDatabase()
           .db.prepare(`SELECT request_id FROM ${table}`)
           .get() as { request_id: string };
-        return commandResult(`OpenClaw-Publication: ${row.request_id}`);
+        return commandResult(
+          `${NEW_HEAD}\n${WORKSPACE_TREE}\n${OLD_HEAD}\nOpenClaw-Publication: ${row.request_id}`,
+        );
       }
       if (recovering && argv.includes("state=all")) {
         return commandResult(
@@ -1018,6 +1023,6 @@ describe("personal publication authority and recovery", () => {
         requestId: result.requestId,
       }),
     ).toThrow("corrupt");
-    expect(readUserGitHubConnection(owner)?.generation).toBe(generation);
+    expect((await readUserGitHubConnectionAsync(owner))?.generation).toBe(generation);
   });
 });

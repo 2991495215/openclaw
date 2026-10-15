@@ -1,204 +1,166 @@
 /* @vitest-environment jsdom */
 
-import { html, render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { i18n, t } from "../i18n/index.ts";
-import "./catalog-session-menu.ts";
-import type { CatalogSessionMenuAction } from "./catalog-session-menu.ts";
+import { waitForSolid } from "../test-helpers/solid-settle.ts";
+import "./catalog-session-menu-solid.tsx";
+import type { CatalogSessionMenuAction } from "./catalog-session-menu-solid.tsx";
 
-type CatalogMenuElement = HTMLElement & {
-  updateComplete: Promise<boolean>;
-  canOpenOriginal: boolean;
-};
-type CatalogMenuItem = HTMLElement & { disabled: boolean; updateComplete: Promise<unknown> };
-
-const containers: HTMLElement[] = [];
+type CatalogMenuElement = HTMLElement & { updateComplete: Promise<boolean> };
+type CatalogMenuItem = HTMLButtonElement;
 
 afterEach(async () => {
-  for (const container of containers.splice(0)) {
-    container.remove();
-  }
+  document.body.replaceChildren();
+  vi.restoreAllMocks();
   await i18n.setLocale("en");
 });
 
 describe("catalog session menu", () => {
-  it("renders an anchored Web Awesome dropdown and focuses the first item", async () => {
-    const container = document.createElement("div");
-    containers.push(container);
-    document.body.append(container);
-    render(
-      html`<openclaw-catalog-session-menu .lastActive=${"57d"}></openclaw-catalog-session-menu>`,
-      container,
-    );
-    const menu = container.querySelector("openclaw-catalog-session-menu") as CatalogMenuElement;
+  it("renders an anchored native menu and focuses the first item", async () => {
+    // SAFETY: The imported bridge registers this tag with its declared properties.
+    const menu = document.createElement("openclaw-catalog-session-menu") as CatalogMenuElement;
+    Object.assign(menu, { lastActive: "57d" });
+    document.body.append(menu);
     await menu.updateComplete;
-    const dropdown = menu.querySelector<HTMLElement & { open: boolean }>("wa-dropdown");
-    const items = [...menu.querySelectorAll<CatalogMenuItem>("wa-dropdown-item")];
+    const panel = menu.querySelector<HTMLElement>('[role="menu"]');
+    const items = [...menu.querySelectorAll<CatalogMenuItem>('[role="menuitem"]')];
 
-    await Promise.resolve();
-    expect(dropdown?.open).toBe(true);
-    expect(document.activeElement).toBe(items[0]);
-    expect(items.map((item) => item.getAttribute("value"))).toEqual(["viewer", "terminal"]);
+    await waitForSolid(() => expect(document.activeElement).toBe(items[0]));
+    expect(panel?.matches(":popover-open")).toBe(true);
+    expect(items.map((item) => item.dataset.value)).toEqual(["viewer", "terminal"]);
     expect(menu.querySelector(".session-menu__info")?.textContent?.trim()).toBe("Last active 57d");
   });
 
   it.each(["terminal", "original"] as const)(
     "dispatches %s before synchronous close",
     async (action) => {
-      const container = document.createElement("div");
-      containers.push(container);
-      document.body.append(container);
+      const warnings = vi.spyOn(console, "warn");
       let backingState: { open: true } | null = { open: true };
       const order: string[] = [];
-      const onAction = vi.fn((selected: CatalogSessionMenuAction) => {
-        order.push(backingState ? selected : "cleared");
+      const onAction = vi.fn((action: CatalogSessionMenuAction) => {
+        order.push(backingState ? action : "cleared");
       });
-      render(
-        html`<openclaw-catalog-session-menu
-          .canOpenOriginal=${true}
-          .onAction=${onAction}
-          .onClose=${() => {
-            backingState = null;
-            order.push("close");
-          }}
-        ></openclaw-catalog-session-menu>`,
-        container,
-      );
-      const menu = container.querySelector("openclaw-catalog-session-menu") as CatalogMenuElement;
+      // SAFETY: The imported bridge registers this tag with its declared properties.
+      const menu = document.createElement("openclaw-catalog-session-menu") as CatalogMenuElement;
+      Object.assign(menu, {
+        onAction,
+        canOpenOriginal: true,
+        onClose: () => {
+          backingState = null;
+          order.push("close");
+        },
+      });
+      document.body.append(menu);
       await menu.updateComplete;
 
-      menu.querySelector<CatalogMenuItem>(`wa-dropdown-item[value="${action}"]`)?.click();
+      menu.querySelector<CatalogMenuItem>(`[data-value="${action}"]`)?.click();
 
-      expect(onAction).toHaveBeenCalledWith(action);
+      await waitForSolid(() => expect(onAction).toHaveBeenCalledWith(action));
       expect(order).toEqual([action, "close"]);
       expect(backingState).toBeNull();
+      expect(
+        warnings.mock.calls.filter(
+          ([message]) => typeof message === "string" && message.includes("[NO_OWNER_EFFECT]"),
+        ),
+      ).toEqual([]);
     },
   );
 
+  it("closes once after an action synchronously removes the menu", async () => {
+    const order: string[] = [];
+    const onClose = vi.fn(() => order.push("close"));
+    // SAFETY: The imported bridge registers this tag with its declared properties.
+    const menu = document.createElement("openclaw-catalog-session-menu") as CatalogMenuElement;
+    Object.assign(menu, {
+      onAction: (action: CatalogSessionMenuAction) => {
+        order.push(action);
+        menu.remove();
+      },
+      onClose,
+    });
+    document.body.append(menu);
+    await menu.updateComplete;
+
+    menu.querySelector<CatalogMenuItem>('[data-value="viewer"]')!.click();
+    await waitForSolid(() => expect(order).toEqual(["viewer", "close"]));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("disables terminal selection with the unavailable reason", async () => {
     const onAction = vi.fn();
-    const container = document.createElement("div");
-    containers.push(container);
-    document.body.append(container);
-    render(
-      html`<openclaw-catalog-session-menu
-        .terminalDisabled=${true}
-        .onAction=${onAction}
-      ></openclaw-catalog-session-menu>`,
-      container,
-    );
-    const menu = container.querySelector("openclaw-catalog-session-menu") as CatalogMenuElement;
+    // SAFETY: The imported bridge registers this tag with its declared properties.
+    const menu = document.createElement("openclaw-catalog-session-menu") as CatalogMenuElement;
+    Object.assign(menu, { terminalDisabled: true, onAction });
+    document.body.append(menu);
     await menu.updateComplete;
-    const terminal = menu.querySelector<CatalogMenuItem>('wa-dropdown-item[value="terminal"]');
+    const terminal = menu.querySelector<CatalogMenuItem>('[data-value="terminal"]');
 
     expect(terminal?.disabled).toBe(true);
     expect(terminal?.title).toBe("Terminal opening is unavailable for this session.");
     terminal?.click();
     expect(onAction).not.toHaveBeenCalled();
   });
-  it("rejects unknown dropdown actions without dispatching or closing", async () => {
-    const container = document.createElement("div");
-    containers.push(container);
-    document.body.append(container);
-    const onAction = vi.fn();
+
+  it("returns keyboard focus to the caller's trigger when Escape closes the menu", async () => {
     const onClose = vi.fn();
-    render(
-      html`<openclaw-catalog-session-menu
-        .onAction=${onAction}
-        .onClose=${onClose}
-      ></openclaw-catalog-session-menu>`,
-      container,
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    trigger.focus();
+    const menu = document.createElement("openclaw-catalog-session-menu");
+    Object.assign(menu, { trigger, onClose });
+    document.body.append(menu);
+    await waitForSolid(() =>
+      expect(document.activeElement).toBe(menu.querySelector('[data-value="viewer"]')),
     );
-    const menu = container.querySelector("openclaw-catalog-session-menu") as CatalogMenuElement;
-    await menu.updateComplete;
-    menu.querySelector("wa-dropdown")?.dispatchEvent(
-      new CustomEvent("wa-select", {
-        detail: { item: { value: "unknown-action" } },
-        bubbles: true,
-        cancelable: true,
-      }),
+
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
     );
-    expect(onAction).not.toHaveBeenCalled();
+
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(trigger);
+    expect(menu.querySelector('[role="menu"]')?.matches(":popover-open")).toBe(false);
+    menu.remove();
+    onClose.mockClear();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(onClose).not.toHaveBeenCalled();
   });
-
-  it("updates original-link visibility and edge placement on the retained menu", async () => {
-    const container = document.createElement("div");
-    containers.push(container);
-    document.body.append(container);
-    render(
-      html`<openclaw-catalog-session-menu
-        .x=${window.innerWidth}
-        .y=${window.innerHeight}
-      ></openclaw-catalog-session-menu>`,
-      container,
-    );
-    const menu = container.querySelector("openclaw-catalog-session-menu") as CatalogMenuElement;
+  it("updates original-link visibility and edge placement on the retained native menu", async () => {
+    const menu = document.createElement("openclaw-catalog-session-menu");
+    Object.assign(menu, { x: window.innerWidth, y: window.innerHeight });
+    document.body.append(menu);
     await menu.updateComplete;
-    const trigger = menu.querySelector<HTMLButtonElement>('button[slot="trigger"]')!;
+    const trigger = menu.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!;
     const topWithoutOriginal = Number.parseFloat(trigger.style.top);
-    expect(menu.querySelector('[value="original"]')).toBeNull();
+    expect(menu.querySelector('[data-value="original"]')).toBeNull();
     menu.canOpenOriginal = true;
-    await menu.updateComplete;
-    expect(
-      [...menu.querySelectorAll("wa-dropdown-item")].map((item) => item.getAttribute("value")),
-    ).toEqual(["viewer", "original", "terminal"]);
-    expect(Number.parseFloat(trigger.style.top)).toBeLessThan(topWithoutOriginal);
+    await waitForSolid(() => {
+      expect(
+        [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(
+          (item) => item.dataset.value,
+        ),
+      ).toEqual(["viewer", "original", "terminal"]);
+      expect(Number.parseFloat(trigger.style.top)).toBeLessThan(topWithoutOriginal);
+    });
     expect(Number.parseFloat(trigger.style.left)).toBeGreaterThanOrEqual(8);
     menu.canOpenOriginal = false;
-    await menu.updateComplete;
-    expect(menu.querySelector('[value="original"]')).toBeNull();
-    expect(Number.parseFloat(trigger.style.top)).toBe(topWithoutOriginal);
+    await waitForSolid(() => {
+      expect(menu.querySelector('[data-value="original"]')).toBeNull();
+      expect(Number.parseFloat(trigger.style.top)).toBe(topWithoutOriginal);
+    });
   });
 
-  it("reactively translates the open menu without a caller property change", async () => {
-    const container = document.createElement("div");
-    containers.push(container);
-    document.body.append(container);
-    render(
-      html`<openclaw-catalog-session-menu .lastActive=${"57d"}></openclaw-catalog-session-menu>`,
-      container,
-    );
-    const menu = container.querySelector("openclaw-catalog-session-menu") as CatalogMenuElement;
+  it("reactively translates the retained native menu without a caller property change", async () => {
+    const menu = document.createElement("openclaw-catalog-session-menu");
+    menu.lastActive = "57d";
+    document.body.append(menu);
     await menu.updateComplete;
     const info = menu.querySelector(".session-menu__info")!;
     const english = info.textContent;
     await i18n.setLocale("de");
-    await vi.waitFor(() =>
+    await waitForSolid(() =>
       expect(info.textContent?.trim()).toBe(t("sessionsView.lastActive", { time: "57d" })),
     );
     expect(info.textContent).not.toBe(english);
-  });
-
-  it("restores trigger focus on Escape and retires dismissal after disconnect", async () => {
-    const container = document.createElement("div");
-    containers.push(container);
-    document.body.append(container);
-    const trigger = document.createElement("button");
-    container.append(trigger);
-    const onClose = vi.fn();
-    const menu = document.createElement("openclaw-catalog-session-menu") as CatalogMenuElement & {
-      trigger: HTMLElement;
-      onClose: () => void;
-    };
-    menu.trigger = trigger;
-    menu.onClose = onClose;
-    container.append(menu);
-    await menu.updateComplete;
-    await vi.waitFor(() =>
-      expect(document.activeElement).toBe(menu.querySelector("wa-dropdown-item")),
-    );
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(document.activeElement).toBe(trigger);
-    menu.remove();
-    await Promise.resolve();
-    onClose.mockClear();
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    expect(onClose).not.toHaveBeenCalled();
-    container.append(menu);
-    await menu.updateComplete;
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

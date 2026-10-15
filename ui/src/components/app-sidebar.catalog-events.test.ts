@@ -14,8 +14,16 @@ import {
   createTestGatewayClient,
 } from "../test-helpers/gateway-client.ts";
 import "../test-helpers/app-sidebar-suite.ts";
+import { settleLitElement } from "../test-helpers/lit-settle.ts";
 import { loadMoreSessionCatalog } from "./session-data-controller-catalog.ts";
-import "./app-sidebar.ts";
+import "./app-sidebar.tsx";
+
+// Capture JSDOM's frame owner before the sidebar fixture installs its scheduler.
+const requestNativeFrame = window.requestAnimationFrame.bind(window);
+const cancelNativeFrame = window.cancelAnimationFrame.bind(window);
+const catalogClock: Parameters<typeof vi.useFakeTimers>[0] = {
+  toFake: ["setTimeout", "clearTimeout", "Date"],
+};
 
 function sourceCatalogPage(rows: Parameters<typeof catalogPage>[0], cursor?: string) {
   const page = catalogPage(rows, cursor);
@@ -43,14 +51,17 @@ async function mountTab(
     createSessions("main", ["agent:main:main"]),
   );
   sidebar.connected = true;
-  await sidebar.updateComplete;
+  await settleLitElement(sidebar);
   await vi.advanceTimersByTimeAsync(0);
   expect(request).toHaveBeenCalledTimes(1);
   return { sidebar, gateway, request };
 }
 
 describe("AppSidebar catalog event refresh", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => {
+    // Catalog retries use timeouts; JSDOM retains its native frame interval.
+    vi.useFakeTimers(catalogClock);
+  });
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -382,7 +393,7 @@ describe("AppSidebar catalog event refresh", () => {
     }
     const { gateway, sidebar } = await mountTab(request);
     await sidebar.sessionData.refreshSessionCatalogs();
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(sidebar.textContent).toContain("Stable catalog");
     expect(sidebar.sessionData.sessionCatalogRefreshStatus.error).toBeNull();
     if (outcome === "recovered") {
@@ -394,7 +405,7 @@ describe("AppSidebar catalog event refresh", () => {
       await vi.advanceTimersByTimeAsync(999);
       expect(request).toHaveBeenCalledTimes(2);
       await vi.advanceTimersByTimeAsync(1);
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(request).toHaveBeenCalledTimes(3);
       expect(sidebar.textContent).toContain("Updated catalog");
       expect(sidebar.sessionData.sessionCatalogRefreshStatus.error).toBeNull();
@@ -408,7 +419,7 @@ describe("AppSidebar catalog event refresh", () => {
         await vi.advanceTimersByTimeAsync(1);
         expect(request).toHaveBeenCalledTimes(requests + 1);
       }
-      await sidebar.updateComplete;
+      await settleLitElement(sidebar);
       expect(sidebar.textContent).toContain("Stable catalog");
       expect(sidebar.sessionData.sessionCatalogRefreshStatus).toMatchObject({
         error: expect.any(String),
@@ -421,7 +432,12 @@ describe("AppSidebar catalog event refresh", () => {
   });
 
   it("keeps agent startup quiet past three minutes and surfaces a later inspection failure", async () => {
+    // JSDOM may already own a native frame when the catalog clock takes over.
+    vi.useRealTimers();
+    const pendingFrame = requestNativeFrame(() => undefined);
+    vi.useFakeTimers(catalogClock);
     const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    cancelNativeFrame(pendingFrame);
     const request = createGatewayRequestMock().mockRejectedValue(
       new GatewayRequestError({
         code: "UNAVAILABLE",
@@ -433,7 +449,7 @@ describe("AppSidebar catalog event refresh", () => {
     );
     const { sidebar } = await mountTab(request);
     await vi.advanceTimersByTimeAsync(180_000);
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(request.mock.calls.length).toBeGreaterThan(30);
     expect(
       sidebar.querySelector('.sidebar-session-empty-hint--startup[role="status"]')?.textContent,
@@ -451,7 +467,7 @@ describe("AppSidebar catalog event refresh", () => {
       }),
     );
     await vi.advanceTimersByTimeAsync(5_000);
-    await sidebar.updateComplete;
+    await settleLitElement(sidebar);
     expect(sidebar.textContent).not.toContain("Starting up");
     expect(sidebar.querySelector(".sidebar-session-catalog-error")?.textContent).toContain(
       "Inspection failed. Run openclaw doctor --fix.",

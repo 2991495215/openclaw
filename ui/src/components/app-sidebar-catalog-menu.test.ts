@@ -2,7 +2,7 @@
 
 import { render } from "lit";
 import { describe, expect, it, vi } from "vitest";
-import { SidebarCatalogMenuController } from "./app-sidebar-catalog-menu.ts";
+import { SidebarCatalogMenuController } from "./app-sidebar-catalog-menu.tsx";
 import { SESSION_MENU_OPEN_EVENT } from "./session-progress-hovercard-target.ts";
 
 describe("SidebarCatalogMenuController", () => {

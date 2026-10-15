@@ -93,7 +93,7 @@ Open the receiver Control UI. Shared rows appear under the source node's heading
 
 Publication is shared with the receiver's permitted viewers, not just the named owner. Viewers need `operator.read`. Existing catalog visibility rules still apply: an explicit `sessions.others: "none"` cap and unprofiled restricted access hide published rows; profiled viewers without an explicit cap can see published catalogs. Selecting a source person does not restrict the receiver catalog to that person. See [Operator scopes](/gateway/operator-scopes).
 
-The catalog refreshes by polling, not a live transcript stream. The source node must remain connected for listings and reads. Long transcripts are paginated; individual text fields are redacted and clipped when necessary.
+The catalog refreshes by polling, not a live transcript stream. The source node must remain connected for listings and reads. Long transcripts are paginated; individual text fields are clipped when necessary and are not secret-masked.
 
 Catalog listings, searches, and pagination use one complete snapshot per requested paired node. The receiver retains at most 32 node snapshots and runs at most four refreshes concurrently. Discovery alone does not invoke nodes. At capacity, a new host returns a loading result immediately. A later catalog request can admit it after work settles and an idle, less recently requested snapshot can be replaced. The receiver refreshes it in the background every 30 seconds, with one refresh at a time per node and a five-minute budget for all source pages (at most 30 seconds per invocation). A snapshot is limited to 10,000 sessions and 16 MiB of serialized pages. Exceeding either limit fails the refresh explicitly without publishing a partial catalog; reduce the shared groups on the source node. Background refresh failures back off from 30 seconds to at most five minutes. A catalog request starts or joins a fresh source read before disclosing rows; transcript reads also recheck sharing on the source.
 
@@ -172,7 +172,7 @@ The source chooses what to publish; the receiver trusts the paired device for th
 
 With the two-command allowlist, the node exposes no shell execution, filesystem browsing, terminal uploads, plugin tools, MCP servers, skills, worker hosting, or computer use. Both commands are read-only, and every transcript read rechecks whether the session is still shared. The receiver does not need access to the source Gateway's HTTP endpoint or authentication credentials.
 
-Sharing a session exposes its user and assistant conversation text and catalog metadata, which may include workspace paths or branch names. Redaction masks known credential patterns; it does not make arbitrary conversation content safe to publish. Choose publication filters deliberately and treat received transcripts as untrusted text.
+Sharing a session exposes its user and assistant conversation text and catalog metadata, which may include workspace paths or branch names. Included text is not secret-masked. Review credentials and other sensitive content before publishing. Choose publication filters deliberately and treat received transcripts as untrusted text.
 
 ## Troubleshooting
 
