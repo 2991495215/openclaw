@@ -5,6 +5,7 @@ import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { flush } from "../../../test-helpers/solid-settle.ts";
 import { solidTemplate } from "./chat-composer-controls.ts";
 import { LitContent } from "./chat-composer-interop.tsx";
+import { createChatPickerOverlay } from "./chat-picker-overlay.ts";
 
 it("keeps the composer owner when lazy content creates native children", () => {
   const Label = createContext<string>();
@@ -58,16 +59,77 @@ it("retains the input through prop updates and retires each disconnected Solid o
     expect(disposed).not.toHaveBeenCalled();
 
     part.setConnected(false);
+    flush();
     expect(disposed).toHaveBeenCalledOnce();
     paint("Updated while disconnected");
     expect(mounted).toHaveBeenCalledOnce();
     part.setConnected(true);
+    flush();
     expect(view.getByRole("textbox", { name: "Updated while disconnected" })).toBeTruthy();
     expect(mounted).toHaveBeenCalledTimes(2);
     part.setConnected(false);
+    flush();
     expect(disposed).toHaveBeenCalledTimes(2);
   } finally {
     render(nothing, container);
+    view.unmount();
+  }
+});
+
+it("retires the previous component when a legacy slot changes renderers", async () => {
+  const disposed = vi.fn();
+  function First(props: { value: string }) {
+    onCleanup(disposed);
+    return <button>{props.value}</button>;
+  }
+  function Second(props: { value: string }) {
+    return <p>{props.value}</p>;
+  }
+  const view = mountSolid(() => <section />);
+  const container = view.container.querySelector("section")!;
+  const paint = (component: typeof First, value: string) =>
+    render(html`${solidTemplate(component, { value })}`, container);
+  try {
+    paint(First, "Before");
+    expect(view.getByRole("button").textContent).toBe("Before");
+    paint(Second, "After");
+    expect(view.queryByRole("button")).toBeNull();
+    expect(view.getByText("After")).toBeTruthy();
+    expect(disposed).toHaveBeenCalledOnce();
+  } finally {
+    render(nothing, container);
+    await Promise.resolve();
+    view.unmount();
+  }
+});
+
+it("closes a native composer picker when its legacy range is parked", async () => {
+  function NativePicker() {
+    const pickerRef = createChatPickerOverlay();
+    return (
+      <details ref={pickerRef}>
+        <summary>Model</summary>
+        <div data-anchored-overlay popover="manual">
+          <button>Choose model</button>
+        </div>
+      </details>
+    );
+  }
+  const view = mountSolid(() => <section />);
+  const container = view.container.querySelector("section")!;
+  const part = render(html`${solidTemplate(NativePicker, {})}`, container);
+  try {
+    const details = container.querySelector("details")!;
+    const popup = container.querySelector("[popover]")!;
+    details.open = true;
+    details.dispatchEvent(new Event("toggle"));
+    expect(popup.matches(":popover-open")).toBe(true);
+    part.setConnected(false);
+    flush();
+    expect(popup.matches(":popover-open")).toBe(false);
+  } finally {
+    render(nothing, container);
+    await Promise.resolve();
     view.unmount();
   }
 });

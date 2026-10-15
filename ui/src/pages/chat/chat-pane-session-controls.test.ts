@@ -35,6 +35,7 @@ import { handlePageGatewayEvent } from "./chat-state-events.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { solidTemplate } from "./components/chat-composer-controls.ts";
 import { renderChatModelAccountControl } from "./components/chat-model-account-control.ts";
+import { ChatModelAccountSectionView } from "./components/chat-model-account-control.tsx";
 import { ChatPermissionPicker } from "./components/chat-permission-picker.tsx";
 import { adoptStartedChatRun, reconcileChatRunLifecycle } from "./run-lifecycle.ts";
 
@@ -72,21 +73,23 @@ describe("chat account selection", () => {
     };
     const onSelect = vi.fn(async () => true);
     const onManage = vi.fn();
-    const draw = () =>
-      render(
-        renderChatModelAccountControl({
-          owner: state,
-          client: state.client,
-          selection: state.chatAccountSelection,
-          model: "openai/gpt-5.5",
-          disabled: false,
-          ownsSelection: () => current,
-          onSelect,
-          onManage,
-          onRequestUpdate: () => draw(),
-        })?.render(0),
+    const draw = () => {
+      const section = renderChatModelAccountControl({
+        owner: state,
+        client: state.client,
+        selection: state.chatAccountSelection,
+        model: "openai/gpt-5.5",
+        disabled: false,
+        ownsSelection: () => current,
+        onSelect,
+        onManage,
+        onRequestUpdate: () => draw(),
+      });
+      return render(
+        section ? solidTemplate(ChatModelAccountSectionView, section.viewProps(0)) : undefined,
         container,
       );
+    };
     draw();
     return {
       container,
