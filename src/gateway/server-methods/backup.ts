@@ -50,7 +50,7 @@ export const backupHandlers: GatewayRequestHandlers = {
         schedules: summarizeBackupSchedules(jobs),
         locations: listStorageLocations(
           context.getRuntimeConfig(),
-          getLoadedRuntimePluginRegistry() ?? undefined,
+          getLoadedRuntimePluginRegistry(),
         ),
       };
       respond(true, result, undefined);

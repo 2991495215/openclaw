@@ -97,7 +97,7 @@ export async function executeSessionPatchMutations(params: {
   const sandbox = resolveCreatorSandbox(cfg, operatorCreation);
   const creation = { ...operatorCreation, ...(sandbox ? { sandbox } : {}) };
   const archiveActor = gatewayClientSessionCreator(client);
-  const callerScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+  const callerScopes = client?.connect?.scopes ?? [];
   const callerIsAdmin = client === null || callerScopes.includes(ADMIN_SCOPE);
   const pluginOwnerId = client?.internal?.pluginRuntimeOwnerId;
   const discovery = await discoverSessionPatchTargets(cfg, params.targets);
@@ -531,7 +531,7 @@ export async function executeSessionPatchMutations(params: {
                       }
                       if (
                         existingEntry &&
-                        typeof target.fullPatch.archived === "boolean" &&
+                        target.fullPatch.archived !== undefined &&
                         (existingEntry.worktree ||
                           existingEntry.archivedAt !== undefined ||
                           target.fullPatch.archived)

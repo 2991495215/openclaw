@@ -206,7 +206,9 @@ export function startComputerHostProcess(params: {
       const cancel = () => {
         try {
           send({ type: "cancel", id });
-        } catch {}
+        } catch {
+          // The process may already be gone; the invocation still rejects below.
+        }
       };
       const abort = () => {
         cancel();

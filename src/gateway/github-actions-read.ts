@@ -189,7 +189,7 @@ export async function readBoardGitHubActions(
       );
     });
     await identity.start(() =>
-      publish(true, structuredClone({ ...result.value, ...(result.stale ? { stale: true } : {}) })),
+      publish(true, { ...result.value, ...(result.stale ? { stale: true } : {}) }),
     );
   } catch (error) {
     throw actionsFailure(error);

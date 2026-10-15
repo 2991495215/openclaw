@@ -8,7 +8,7 @@ export function resolveSharedGatewaySessionGeneration(
 ): string | undefined {
   const secret = auth.mode === "token" || auth.mode === "password" ? auth[auth.mode] : undefined;
   // trim() only rejects blank credentials; durable generations retain the exact secret bytes.
-  if (typeof secret === "string" && secret.trim().length > 0) {
+  if (secret?.trim()) {
     return sha256Base64Url(`${auth.mode}\u0000${secret}`);
   }
   if (auth.mode === "trusted-proxy") {

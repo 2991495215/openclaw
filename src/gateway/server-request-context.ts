@@ -187,7 +187,7 @@ function canDeliverApprovals(
   if (gatewayClient.invalidated) {
     return false;
   }
-  const scopes = Array.isArray(gatewayClient.connect.scopes) ? gatewayClient.connect.scopes : [];
+  const scopes = gatewayClient.connect.scopes ?? [];
   const hasApprovalScope =
     scopes.includes("operator.admin") || scopes.includes("operator.approvals");
   if (!hasApprovalScope) {

@@ -181,7 +181,7 @@ export class SessionHistorySseState {
     const messageSeq = carriedSeq ?? this.rawTranscriptSeq + 1;
     const idempotencyKey = readTranscriptMessageIdempotencyKey(update.message);
     const message = attachOpenClawTranscriptMeta(update.message, {
-      ...(typeof update.messageId === "string" ? { id: update.messageId } : {}),
+      ...(update.messageId !== undefined ? { id: update.messageId } : {}),
       ...(idempotencyKey ? { idempotencyKey } : {}),
       seq: messageSeq,
     });

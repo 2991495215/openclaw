@@ -350,7 +350,7 @@ export function resolveSessionKeyFromResolveParams(params: {
     });
     if (target?.entry) {
       const { entry } = target;
-      const spawnedBy = typeof p.spawnedBy === "string" && p.spawnedBy.trim().length > 0;
+      const spawnedBy = Boolean(p.spawnedBy?.trim());
       if (
         ((hasOperatorBoundary(client, policyConfig) || params.publicOnly) &&
           entryFilter?.(target.key, entry) === false) ||

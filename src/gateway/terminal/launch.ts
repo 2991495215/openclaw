@@ -206,7 +206,7 @@ export function buildTerminalEnv(
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(baseEnv)) {
-    if (typeof value === "string") {
+    if (value !== undefined) {
       env[key] = value;
     }
   }

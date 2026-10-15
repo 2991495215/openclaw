@@ -99,7 +99,7 @@ export async function reactivateCompletedSubagentSession(params: {
   const runtime = await import("../agents/subagents/registry/subagent-registry.js");
   assertOriginalOwnerCurrent();
   const task = params.task;
-  const hasTask = typeof task === "string" && task.trim().length > 0;
+  const hasTask = task !== undefined && task.trim().length > 0;
   // A yielded child still owes its parent completion; operator follow-ups must
   // preserve that wake rather than treating the task as already completed.
   const gatewayBinding = params.gatewayContextResolver

@@ -135,7 +135,7 @@ export const sessionGroupHandlers: GatewayRequestHandlers = {
         return;
       }
       let cwd = params.cwd;
-      const clientScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+      const clientScopes = client?.connect?.scopes ?? [];
       if (cwd && !clientScopes.includes(ADMIN_SCOPE)) {
         const containment = await resolveWorkspacePathContainment(cwd, context.getRuntimeConfig());
         if (

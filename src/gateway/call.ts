@@ -795,9 +795,7 @@ async function callGatewayWithScopes<T = Record<string, unknown>>(
       platform: opts.platform,
       mode: opts.mode ?? GATEWAY_CLIENT_MODES.CLI,
       ...(opts.approvalRuntimeToken ? { approvalRuntimeToken: opts.approvalRuntimeToken } : {}),
-      ...(opts.agentRuntimeIdentityToken
-        ? { agentRuntimeIdentityToken: opts.agentRuntimeIdentityToken }
-        : {}),
+      agentRuntimeIdentityToken: opts.agentRuntimeIdentityToken,
       role: "operator",
       ...(Array.isArray(effectiveScopes) ? { scopes: effectiveScopes } : {}),
       deviceIdentity,
@@ -814,7 +812,9 @@ async function callGatewayWithScopes<T = Record<string, unknown>>(
         }
         try {
           opts.onHelloOk?.(hello);
-        } catch {}
+        } catch {
+          // Hello observers are best-effort and must not prevent the requested RPC.
+        }
         // An observer may cancel after inspecting hello, before any RPC is sent.
         if (settled) {
           return;

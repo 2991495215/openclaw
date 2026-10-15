@@ -94,7 +94,7 @@ async function prepareGatewayServerBootstrapSelected(input: {
   const formatRuntimeGatewayAuthTokenWarning = input.formatRuntimeGatewayAuthTokenWarning;
   const traceOriginAt = opts.processStartedAt ?? opts.startupStartedAt;
   const startupElapsedMs =
-    typeof traceOriginAt === "number" ? Math.max(0, Date.now() - traceOriginAt) : 0;
+    traceOriginAt !== undefined ? Math.max(0, Date.now() - traceOriginAt) : 0;
   const startupTrace = createGatewayStartupTrace(
     log,
     performance.now() - startupElapsedMs,

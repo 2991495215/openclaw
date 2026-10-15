@@ -105,7 +105,7 @@ async function authenticateGatewayConnectCore(
     sendHandshakeErrorResponse,
   } = context;
   const resolvedAuth = getResolvedAuth();
-  const hasRequestedScopes = Array.isArray(connectParams.scopes);
+  const hasRequestedScopes = connectParams.scopes !== undefined;
   const admission = await admitGatewayConnect(context);
   if (!admission) {
     return undefined;

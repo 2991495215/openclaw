@@ -5,12 +5,120 @@ import {
   type ErrorShape,
   type SessionsCreateParams,
 } from "../../../packages/gateway-protocol/src/index.js";
+import { runWithoutOwnedSessionTranscriptWrites } from "../../config/sessions/transcript-write-context.js";
+import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
+import { captureAgentTurnPrincipal } from "../agent-turn/principal.js";
+import type { CreatedGatewaySession } from "../session-create-service.types.js";
 import {
   normalizeRpcAttachmentsToChatAttachments,
   type RpcAttachmentInput,
 } from "./attachment-normalize.js";
 import { normalizeChatSendRequest } from "./chat-send-request.js";
-import type { GatewayClient, GatewayRequestContext } from "./types.js";
+import { bindGatewayRequestHandlerMutationAuthority } from "./session-mutation-guards.js";
+import type {
+  GatewayClient,
+  GatewayRequestContext,
+  GatewayRequestHandlerOptions,
+  TrustedAgentToolCaller,
+} from "./types.js";
+
+const loadChatSendInternalEntry = createLazyRuntimeModule(() => import("./chat-send-handler.js"));
+const loadChatSendExternalEntry = createLazyRuntimeModule(
+  () => import("./chat-send-external-entry.js"),
+);
+
+// Dispatch can respond before throwing; creation retains the reply alongside that failure.
+export type SessionCreateInitialTurnResult = {
+  payload?: object;
+  error?: unknown;
+  meta?: Record<string, unknown>;
+};
+
+export async function dispatchSessionCreateInitialTurn(
+  options: GatewayRequestHandlerOptions,
+  params: {
+    client: GatewayClient | null;
+    session: Pick<CreatedGatewaySession, "key" | "agentId">;
+    request: Pick<SessionsCreateParams, "timeoutMs" | "mentions">;
+    initialTurn: NonNullable<ReturnType<typeof resolveSessionCreateInitialTurn>>;
+    initialRunId: string;
+    agentCreated: boolean;
+    sessionSourceAccepted: boolean;
+    toolRequester: TrustedAgentToolCaller | undefined;
+    requesterSessionKey: string | undefined;
+    assertCurrent: () => void;
+    result: SessionCreateInitialTurnResult;
+  },
+): Promise<void> {
+  const {
+    client,
+    session,
+    request,
+    initialTurn: { attachments, message },
+    initialRunId,
+    agentCreated,
+    sessionSourceAccepted,
+    toolRequester,
+    requesterSessionKey,
+    assertCurrent,
+    result,
+  } = params;
+  const sendClient =
+    sessionSourceAccepted || agentCreated ? captureAgentTurnPrincipal(client) : client;
+  if (agentCreated && sendClient && toolRequester) {
+    // Creator/access identity stays with the person; their agent wrote the opening message.
+    sendClient.internal = {
+      ...sendClient.internal,
+      senderAttribution: { id: "agent:" + toolRequester.agentId },
+    };
+  }
+  const sendOptions = bindGatewayRequestHandlerMutationAuthority(
+    options,
+    {
+      ...options,
+      client: sendClient,
+      params: {
+        sessionKey: session.key,
+        agentId: session.agentId,
+        message: message ?? "",
+        idempotencyKey: initialRunId,
+        ...(agentCreated
+          ? {
+              systemInputProvenance: {
+                kind: "inter_session",
+                sourceSessionKey: requesterSessionKey,
+                sourceTool: "sessions_create",
+              },
+              suppressCommandInterpretation: true,
+            }
+          : {}),
+        ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
+        ...(request.mentions ? { mentions: request.mentions } : {}),
+        ...(attachments ? { attachments } : {}),
+      },
+      respond: (ok, payload, error, meta) => {
+        if (ok && payload && typeof payload === "object") {
+          result.payload = payload;
+        } else {
+          result.error = error;
+        }
+        result.meta = meta;
+      },
+    },
+    undefined,
+  );
+  assertCurrent();
+  // The initial turn must acquire its own writer, not the requesting session's.
+  await runWithoutOwnedSessionTranscriptWrites(async () => {
+    if (agentCreated) {
+      const { handleTrustedInternalChatSend } = await loadChatSendInternalEntry();
+      await handleTrustedInternalChatSend(sendOptions, undefined, { stageCreatedInput: true });
+    } else {
+      const { handleDirectExternalChatSend } = await loadChatSendExternalEntry();
+      await handleDirectExternalChatSend(sendOptions);
+    }
+  });
+}
 
 export function resolveSessionCreateInitialTurn(params: {
   attachments?: unknown[];

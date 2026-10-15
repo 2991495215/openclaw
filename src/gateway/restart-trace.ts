@@ -191,7 +191,7 @@ export function recordGatewayRestartTrace(
   durationMs: number,
   metrics?: RestartTraceMetrics,
 ): void {
-  if (!isGatewayRestartTraceActive() || !Number.isFinite(durationMs)) {
+  if (!isGatewayRestartTraceActive()) {
     return;
   }
   const now = nowMs();
@@ -205,7 +205,7 @@ export function recordGatewayRestartTraceSpan(
   totalMs: number,
   metrics?: RestartTraceMetrics,
 ): void {
-  if (!isGatewayRestartTraceActive() || !Number.isFinite(durationMs) || !Number.isFinite(totalMs)) {
+  if (!isGatewayRestartTraceActive()) {
     return;
   }
   emitRestartTrace(name, Math.max(0, durationMs), Math.max(0, totalMs), metrics);
@@ -294,13 +294,12 @@ export function captureGatewayRestartTraceHandoff(): GatewayRestartTraceHandoff 
 export function createGatewayRestartTraceHandoffEnv(
   handoff: GatewayRestartTraceHandoff | undefined = captureGatewayRestartTraceHandoff(),
 ): NodeJS.ProcessEnv | undefined {
-  const normalized = normalizeRestartTraceHandoff(handoff);
-  if (!normalized) {
+  if (!handoff) {
     return undefined;
   }
   return {
-    [RESTART_TRACE_HANDOFF_STARTED_AT_ENV]: String(normalized.startedAt),
-    [RESTART_TRACE_HANDOFF_LAST_AT_ENV]: String(normalized.lastAt),
+    [RESTART_TRACE_HANDOFF_STARTED_AT_ENV]: String(handoff.startedAt),
+    [RESTART_TRACE_HANDOFF_LAST_AT_ENV]: String(handoff.lastAt),
   };
 }
 

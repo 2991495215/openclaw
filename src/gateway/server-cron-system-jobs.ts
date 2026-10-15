@@ -42,9 +42,10 @@ export function createGatewayCronSystemJobReconciler({
     const scope = (systemJobScope = scheduler.scope());
     const isCurrent = () => scope === systemJobScope && !scope.signal.aborted;
     const pass = async (): Promise<GatewaySystemJobReconciliationResult> => {
+      // Unrelated config replacements may finish this pass; monitor edits queue another.
       const cfg = getRuntimeConfig();
       const assertCurrent = () => {
-        if (!isCurrent() || cfg !== getRuntimeConfig()) {
+        if (!isCurrent()) {
           throw new GatewaySystemJobReconciliationSupersededError();
         }
       };
@@ -73,9 +74,7 @@ export function createGatewayCronSystemJobReconciler({
         if (!(error instanceof GatewaySystemJobReconciliationSupersededError)) {
           throw error;
         }
-        // A no-op accepted replacement may not request another pass. Finish
-        // against its config; an explicit newer request or stop owns its own tail.
-        return isCurrent() ? await pass() : "superseded";
+        return "superseded";
       }
     };
     systemJobReconcileTail = systemJobReconcileTail.then(pass, pass);

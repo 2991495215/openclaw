@@ -33,17 +33,13 @@ function inspectRestartReplyDrain(params: {
   chatAbortControllers: Map<string, ChatAbortControllerEntry>;
   chatQueuedTurns: QueuedChatTurnMap;
 }) {
-  const pendingReplyCount = params.getPendingReplyCount();
   const chatRuns = listRestartDrainRuns(params.chatAbortControllers).length;
   const queuedTurns = Array.from(
     params.chatQueuedTurns.values(),
     (entry) => entry.controller.signal.aborted,
   ).filter((aborted) => !aborted).length;
   const counts = {
-    pendingReplies:
-      Number.isFinite(pendingReplyCount) && pendingReplyCount > 0
-        ? Math.floor(pendingReplyCount)
-        : 0,
+    pendingReplies: params.getPendingReplyCount(),
     chatRuns,
     queuedTurns,
   };

@@ -5,6 +5,7 @@ import { capturePluginLifecycleAuthority } from "../plugins/registry-lifecycle.j
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import type { NodeListNode } from "../shared/node-list-types.js";
 import { isNodeCommandAllowed, resolveNodeCommandAllowlist } from "./node-command-policy.js";
 import type { GatewayNodeInvokeStream } from "./server-methods/shared-types.js";
 import type { GatewayContextResolver, GatewayRequestContext } from "./server-methods/types.js";
@@ -185,22 +186,14 @@ export async function openOwnedGatewayNodeDuplex(options: {
 }
 
 export function projectGatewayRuntimeNodes(
-  nodes: unknown[],
+  nodes: NodeListNode[],
   context: GatewayRequestContext | undefined,
-): unknown[] {
+): Array<NodeListNode & { invocableCommands?: string[] }> {
+  if (!context) {
+    return nodes;
+  }
   return nodes.map((node) => {
-    if (
-      !node ||
-      typeof node !== "object" ||
-      Array.isArray(node) ||
-      !context?.nodeRegistry?.get ||
-      !context.getRuntimeConfig
-    ) {
-      return node;
-    }
-    const nodeRecord = node as Record<string, unknown>;
-    const nodeId = typeof nodeRecord.nodeId === "string" ? nodeRecord.nodeId : "";
-    const liveNode = nodeId ? context.nodeRegistry.get(nodeId) : undefined;
+    const liveNode = context.nodeRegistry.get(node.nodeId);
     if (!liveNode) {
       return node;
     }
@@ -216,6 +209,6 @@ export function projectGatewayRuntimeNodes(
           allowlist,
         }).ok,
     );
-    return Object.assign({}, nodeRecord, { invocableCommands });
+    return { ...node, invocableCommands };
   });
 }

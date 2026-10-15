@@ -7,5 +7,5 @@ export function resolveGrantExpiryDaysConfig(cfg: {
   tools?: { exec?: { grantExpiryDays?: number } };
 }): number | null {
   const days = cfg.tools?.exec?.grantExpiryDays;
-  return typeof days === "number" && Number.isFinite(days) && days >= 1 ? Math.floor(days) : null;
+  return days !== undefined && Number.isFinite(days) && days >= 1 ? Math.floor(days) : null;
 }

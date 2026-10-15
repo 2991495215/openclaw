@@ -281,8 +281,7 @@ export function createAgentEventHandler({
     const chatLink = evt.contextClaimId ? undefined : chatRunState.registry.peek(evt.runId);
     const sessionAgentId = chatLink?.agentId ?? evt.agentId;
     const eventSessionKey =
-      evt.deliverySessionKey ??
-      (typeof evt.sessionKey === "string" && evt.sessionKey.trim() ? evt.sessionKey : undefined);
+      evt.deliverySessionKey ?? (evt.sessionKey?.trim() ? evt.sessionKey : undefined);
     const sessionKey =
       chatLink?.sessionKey ??
       eventSessionKey ??

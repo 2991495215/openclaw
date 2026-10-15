@@ -49,7 +49,7 @@ export async function logGatewayStartup(params: {
     consoleMessage: agentModelLog.consoleMessage,
   });
   const startupDurationMs =
-    typeof params.startupStartedAt === "number" ? Date.now() - params.startupStartedAt : null;
+    params.startupStartedAt !== undefined ? Date.now() - params.startupStartedAt : null;
   const startupDurationLabel =
     startupDurationMs == null ? null : `${(startupDurationMs / 1000).toFixed(1)}s`;
   params.log.info(

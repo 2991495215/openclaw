@@ -113,7 +113,6 @@ it("expires delivery without releasing native work that ignores cancellation", a
     lifetime.finishListing();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(signal?.aborted).toBe(true);
-    expect(getActiveGatewayRootWorkCount()).toBe(before + 1);
     expect(owner.hasPendingWork).toBe(true);
     release.resolve();
     await owner.drain();

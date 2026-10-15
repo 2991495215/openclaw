@@ -94,7 +94,7 @@ export function startSessionCatalogListDiagnostics(
     return undefined;
   }
   const id = provider.id;
-  const providerId = typeof id === "string" && id.length <= 256 ? id : undefined;
+  const providerId = id.length <= 256 ? id : undefined;
   if (providerId && !mappedProviders.has(provider) && catalogLog.isEnabled("debug")) {
     try {
       catalogLog.debug("session catalog provider identity", {

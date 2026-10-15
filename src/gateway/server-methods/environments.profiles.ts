@@ -9,7 +9,7 @@ export function listWorkerProfiles(context: GatewayRequestContext) {
   const profiles = context.getRuntimeConfig().cloudWorkers?.profiles ?? {};
   return Object.entries(profiles)
     .flatMap(([id, profile]) => {
-      const providerId = typeof profile.provider === "string" ? profile.provider.trim() : "";
+      const providerId = profile.provider.trim();
       return id.trim() && providerId
         ? [
             {

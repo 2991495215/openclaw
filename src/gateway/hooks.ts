@@ -176,7 +176,7 @@ export function resolveHookPathBodyLimit(
 }
 
 function resolveAllowedSessionKeyPrefixes(raw: string[] | undefined): string[] | undefined {
-  if (!Array.isArray(raw)) {
+  if (!raw) {
     return undefined;
   }
   const prefixes = [
@@ -592,7 +592,7 @@ function hasEffectiveTemplatedHookSessionKeyMapping(mappings: HookMappingResolve
       continue;
     }
     effectiveMappings.push(mapping);
-    if (typeof mapping.sessionKey === "string" && hasHookTemplateExpressions(mapping.sessionKey)) {
+    if (mapping.sessionKey !== undefined && hasHookTemplateExpressions(mapping.sessionKey)) {
       return true;
     }
   }

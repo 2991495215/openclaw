@@ -73,7 +73,7 @@ function collectTrackedActiveSessionRuns(
         runId,
         ...(sessionKey ? { sessionKey } : {}),
         ...(sessionId ? { sessionId } : {}),
-        agentId: typeof active.agentId === "string" ? normalizeAgentId(active.agentId) : undefined,
+        agentId: active.agentId === undefined ? undefined : normalizeAgentId(active.agentId),
         ...(terminalPersistence ? { terminalPersistence: true } : {}),
       });
     }

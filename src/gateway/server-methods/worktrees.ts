@@ -100,7 +100,7 @@ async function resolveAuthorizedRepoRoot(
   repoRoot: string,
   opts: Parameters<GatewayRequestHandlers[string]>[0],
 ): Promise<string | undefined> {
-  const scopes = Array.isArray(opts.client?.connect.scopes) ? opts.client.connect.scopes : [];
+  const scopes = opts.client?.connect.scopes ?? [];
   if (scopes.includes(ADMIN_SCOPE)) {
     return repoRoot;
   }
@@ -153,7 +153,7 @@ export function createWorktreesHandlers(service: WorktreeService): GatewayReques
         invalidParams(respond);
         return;
       }
-      const scopes = Array.isArray(opts.client?.connect.scopes) ? opts.client.connect.scopes : [];
+      const scopes = opts.client?.connect.scopes ?? [];
       const commitGuard = captureWorktreeMutationGuard(
         params.expectedOwnerId,
         opts,

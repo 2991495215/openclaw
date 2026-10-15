@@ -8,12 +8,9 @@ import {
 import { resolveAgentMainSessionKey } from "../../config/sessions/main-session.js";
 import { sessionEntryForkedFromParent } from "../../config/sessions/session-entry-lineage.js";
 import { resolveSessionPublicShare } from "../../config/sessions/session-public-share.js";
-import { runWithoutOwnedSessionTranscriptWrites } from "../../config/sessions/transcript-write-context.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
-import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
 import { assertPreparedSkillLibrarySelection } from "../../skills/library/selection.js";
-import { captureAgentTurnPrincipal } from "../agent-turn/principal.js";
 import { buildDashboardSessionTitleSource } from "../dashboard-session-title.js";
 import {
   acceptGatewayDeviceSourceAuthority,
@@ -51,9 +48,11 @@ import { emitSessionsChanged } from "./session-change-event.js";
 import { registerCommittedSessionCategory } from "./session-create-category.js";
 import { idempotentSessionCreate } from "./session-create-idempotency.js";
 import {
+  dispatchSessionCreateInitialTurn,
   resolveSessionCreateInitialTurn,
   validateSessionCreateInitialMentions,
   isFreshChatSendStarted,
+  type SessionCreateInitialTurnResult,
 } from "./session-create-initial-turn.js";
 import {
   normalizeSessionProjectGitUrl,
@@ -79,20 +78,11 @@ import {
   validateSessionCreateSpawnRequest,
 } from "./session-create-spawn.js";
 import { createSessionModelCatalogWait } from "./session-model-catalog-wait.js";
-import {
-  bindGatewayRequestHandlerMutationAuthority,
-  readGatewayRequestMutationAuthority,
-} from "./session-mutation-guards.js";
+import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import { sessionLog } from "./sessions-shared.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { prepareSessionModelAccountAccess } from "./users-model-account-access.js";
 import { assertValidParams } from "./validation.js";
-
-const loadChatSendInternalEntry = createLazyRuntimeModule(() => import("./chat-send-handler.js"));
-
-const loadChatSendExternalEntry = createLazyRuntimeModule(
-  () => import("./chat-send-external-entry.js"),
-);
 
 export const sessionCreateHandlers: GatewayRequestHandlers = {
   "sessions.create": idempotentSessionCreate(async (options) => {
@@ -119,7 +109,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       respond(false, undefined, uploadError);
       return;
     }
-    const p = structuredClone(params);
+    const p = { ...params };
     const requiredWorker = prepareRequiredWorkerSessionCreate(p, context.getRuntimeConfig());
     if (requiredWorker.error) {
       respond(false, undefined, requiredWorker.error);
@@ -348,7 +338,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       respond(false, undefined, projectPreparationError);
       return;
     }
-    const clientScopes = Array.isArray(client?.connect?.scopes) ? [...client.connect.scopes] : [];
+    const clientScopes = client?.connect?.scopes ?? [];
     const preparedCwd = await prepareSessionCreateRequestedCwd({
       cfg,
       requestedCwd,
@@ -512,10 +502,8 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       };
     }
     let publicRead = false;
-    let runPayload: Record<string, unknown> | undefined;
+    const initialRun: SessionCreateInitialTurnResult = {};
     let sessionSourceAccepted = false;
-    let runError: unknown;
-    let runMeta: Record<string, unknown> | undefined;
     const allowExistingModelSelection = authorizeOperatorScopesForRequiredScope(
       ADMIN_SCOPE,
       clientScopes,
@@ -635,62 +623,18 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
           scheduleCreatedDashboardSessionTitle(session, cfg, context, p.titleSource);
           return;
         }
-        const sendClient =
-          sessionSourceAccepted || agentCreated ? captureAgentTurnPrincipal(client) : client;
-        if (agentCreated && sendClient && toolRequester) {
-          // Creator/access identity stays with the person; their agent wrote the opening message.
-          sendClient.internal = {
-            ...sendClient.internal,
-            senderAttribution: { id: "agent:" + toolRequester.agentId },
-          };
-        }
-        const sendOptions = bindGatewayRequestHandlerMutationAuthority(
-          options,
-          {
-            ...options,
-            client: sendClient,
-            params: {
-              sessionKey: session.key,
-              agentId: session.agentId,
-              message: message ?? "",
-              idempotencyKey: initialRunId,
-              ...(agentCreated
-                ? {
-                    systemInputProvenance: {
-                      kind: "inter_session",
-                      sourceSessionKey: sessionCreation.requesterSessionKey,
-                      sourceTool: "sessions_create",
-                    },
-                    suppressCommandInterpretation: true,
-                  }
-                : {}),
-              ...(p.timeoutMs !== undefined ? { timeoutMs: p.timeoutMs } : {}),
-              ...(p.mentions ? { mentions: p.mentions } : {}),
-              ...(attachments ? { attachments } : {}),
-            },
-            respond: (ok, payload, error, meta) => {
-              if (ok && payload && typeof payload === "object") {
-                runPayload = payload as Record<string, unknown>;
-              } else {
-                runError = error;
-              }
-              runMeta = meta;
-            },
-          },
-          undefined,
-        );
-        assertSessionCreateCurrent();
-        // The initial turn must acquire its own writer, not the requesting session's.
-        await runWithoutOwnedSessionTranscriptWrites(async () => {
-          if (agentCreated) {
-            const { handleTrustedInternalChatSend } = await loadChatSendInternalEntry();
-            await handleTrustedInternalChatSend(sendOptions, undefined, {
-              stageCreatedInput: true,
-            });
-          } else {
-            const { handleDirectExternalChatSend } = await loadChatSendExternalEntry();
-            await handleDirectExternalChatSend(sendOptions);
-          }
+        await dispatchSessionCreateInitialTurn(options, {
+          client,
+          session,
+          request: p,
+          initialTurn,
+          initialRunId,
+          agentCreated,
+          sessionSourceAccepted,
+          toolRequester,
+          requesterSessionKey: sessionCreation.requesterSessionKey,
+          assertCurrent: assertSessionCreateCurrent,
+          result: initialRun,
         });
       },
     };
@@ -713,7 +657,10 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       return;
     }
     if (created.postCommit.status === "failed") {
-      runError = errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(created.postCommit.error));
+      initialRun.error = errorShape(
+        ErrorCodes.UNAVAILABLE,
+        formatErrorMessage(created.postCommit.error),
+      );
     }
     const createdWorktree = preparedWorktree?.worktree
       ? {
@@ -728,8 +675,8 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     const runStarted =
       !created.resetExisting &&
       isFreshChatSendStarted({
-        payload: runPayload,
-        cached: runMeta?.cached === true,
+        payload: initialRun.payload,
+        cached: initialRun.meta?.cached === true,
       });
 
     diagnostics?.mark("response");
@@ -740,8 +687,8 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       entry: responseEntry,
       runStarted,
       publicRead,
-      ...(!created.resetExisting && runPayload ? runPayload : {}),
-      ...(!created.resetExisting && runError ? { runError } : {}),
+      ...(!created.resetExisting && initialRun.payload ? initialRun.payload : {}),
+      ...(!created.resetExisting && initialRun.error ? { runError: initialRun.error } : {}),
       resolved: created.resolved,
       ...(createdWorktree ? { worktree: createdWorktree } : {}),
     });

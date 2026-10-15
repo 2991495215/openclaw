@@ -16,10 +16,8 @@ import {
   validateTalkSpeakParams,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import { AgentSelectionRequiredError } from "../../../agents/agent-scope.js";
-import { getRuntimeAuthProfileStoreCredentialsRevision } from "../../../agents/auth-profiles/runtime-snapshots.js";
 import { projectConfigOntoRuntimeSourceSnapshot } from "../../../config/config.js";
 import { redactConfigObject } from "../../../config/redact-snapshot.js";
-import { getRuntimeConfigSnapshotMetadata } from "../../../config/runtime-snapshot.js";
 import {
   buildTalkConfigResponse,
   normalizeTalkSection,
@@ -34,7 +32,6 @@ import type { OpenClawConfig, TtsConfig, TtsProviderConfigMap } from "../../../c
 import { resolveProviderRawConfig } from "../../../plugin-sdk/provider-selection-runtime.js";
 import { getCurrentPluginMetadataSnapshot } from "../../../plugins/current-plugin-metadata-snapshot.js";
 import type { RealtimeVoicePublicClientHints } from "../../../plugins/provider-policy-surface.js";
-import { getPluginRegistryVersion } from "../../../plugins/runtime-state.js";
 import {
   getCanonicalGatewayContextResolver,
   getGatewayContextLifetime,
@@ -48,7 +45,6 @@ import {
   assertSecretOwnerAvailable,
   isSecretOwnerAvailable,
 } from "../../../secrets/runtime-degraded-state.js";
-import { getActiveSecretsRuntimeSnapshotRevisionState } from "../../../secrets/runtime-state.js";
 import { runInDetachedAsyncContext } from "../../../shared/detached-async-context.js";
 import { getCanonicalUserPreferences } from "../../../state/user-preferences.js";
 import { resolveTalkSessionAgentId } from "../../../talk/agent-target.js";
@@ -109,7 +105,7 @@ type TalkSpeakReason =
   | "invalid_audio_result";
 
 function canReadTalkSecrets(client: { connect?: { scopes?: string[] } } | null): boolean {
-  const scopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+  const scopes = client?.connect?.scopes ?? [];
   return scopes.includes(ADMIN_SCOPE) || scopes.includes(TALK_SECRETS_SCOPE);
 }
 
@@ -225,7 +221,6 @@ function buildTalkTtsConfig(
 type TalkCatalogSnapshot = Awaited<ReturnType<typeof buildTalkCatalog>>;
 type TalkCatalogEntry = {
   snapshot?: TalkCatalogSnapshot;
-  revision?: readonly unknown[];
   refreshAfter: number;
   pending?: Promise<void>;
 };
@@ -273,22 +268,8 @@ function readTalkCatalog(
     config,
     allowSynchronousPolicyRead: false,
   });
-  const revision = [
-    config,
-    getRuntimeConfigSnapshotMetadata()?.revision,
-    registry,
-    getPluginRegistryVersion(registry),
-    metadataSnapshot,
-    getRuntimeAuthProfileStoreCredentialsRevision(),
-    getActiveSecretsRuntimeSnapshotRevisionState(),
-    isSecretOwnerAvailable("capability", "talk:speech"),
-    isSecretOwnerAvailable("capability", "talk:realtime"),
-  ];
-  if (
-    !entry.pending &&
-    (Date.now() >= entry.refreshAfter ||
-      !entry.revision?.every((value, index) => value === revision[index]))
-  ) {
+  // Readiness is advisory; actual launches check current credentials and policy.
+  if (!entry.pending && Date.now() >= entry.refreshAfter) {
     const retained = entry;
     const started = Date.now();
     const phases: Record<string, number> = {};
@@ -303,7 +284,6 @@ function readTalkCatalog(
         phases[phase] = Date.now() - start;
       }
     };
-    retained.revision = revision;
     retained.refreshAfter = started + CATALOG_REFRESH_MS;
     retained.pending = runInDetachedAsyncContext(async () => {
       const admission = tryBeginGatewayIndependentRootWorkAdmission("talk-catalog-refresh", {
@@ -617,10 +597,10 @@ function talkSpeakError(reason: TalkSpeakReason, message: string) {
 }
 
 function resolveTalkSpeed(params: TalkSpeakParams): number | undefined {
-  if (typeof params.speed === "number") {
+  if (params.speed !== undefined) {
     return params.speed;
   }
-  if (typeof params.rateWpm !== "number" || params.rateWpm <= 0) {
+  if (params.rateWpm === undefined) {
     return undefined;
   }
   const resolved = params.rateWpm / 175;
@@ -993,7 +973,7 @@ export const talkHandlers: GatewayRequestHandlers = {
     }
 
     const sessionMainKey = runtimeConfig.session?.mainKey;
-    if (typeof sessionMainKey === "string") {
+    if (sessionMainKey !== undefined) {
       configPayload.session = { mainKey: sessionMainKey };
     }
 
@@ -1008,7 +988,7 @@ export const talkHandlers: GatewayRequestHandlers = {
     // Profile accent overrides gateway prefs, then the gateway seam color and theme default.
     const seamColor =
       profileAccent ?? runtimeConfig.ui?.prefs?.accent ?? runtimeConfig.ui?.seamColor;
-    if (typeof seamColor === "string" && seamColor !== "theme") {
+    if (seamColor !== undefined && seamColor !== "theme") {
       configPayload.ui = { seamColor };
     }
 

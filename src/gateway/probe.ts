@@ -195,7 +195,7 @@ export function resolveProbeAuthSummary(params: {
   verifiedRead?: boolean;
   connectLatencyMs?: number | null;
 }): GatewayProbeAuthSummary {
-  const scopes = Array.isArray(params.scopes) ? params.scopes : [];
+  const scopes = params.scopes ?? [];
   let capability: GatewayProbeCapability = "unknown";
   if (
     classifyGatewayConnectFailure({

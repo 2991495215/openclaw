@@ -94,7 +94,7 @@ export const scopeUpgradeHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const currentScopes = Array.isArray(client?.connect.scopes) ? client.connect.scopes : [];
+    const currentScopes = client?.connect.scopes ?? [];
     if (
       !roleScopesAllow({
         role: "operator",

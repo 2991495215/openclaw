@@ -217,7 +217,7 @@ export async function retainGatewaySessionEntryReadOnly(
       }));
     const source = selected.capturedReadSource;
     const selectedPath = captureSessionStoreReadCandidate(selected.storePath);
-    if (source && typeof source.databaseIdentity === "string") {
+    if (source) {
       predicate = retainPreparedSessionEntryPredicate({
         databaseIdentity: `file:${source.databaseIdentity}`,
         sessionKey: selected.legacyKey ?? selected.canonicalKey,

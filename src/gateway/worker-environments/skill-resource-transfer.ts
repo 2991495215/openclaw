@@ -213,7 +213,7 @@ export async function transferSkillResources(params: {
       ...resolvedSkills.map((skill) => skill.name),
       ...delivery.skills.map((skill) => skill.name),
     ]);
-    const skills = structuredClone(params.snapshot.skills).filter(
+    const skills = params.snapshot.skills.filter(
       (skill) => !skippedSkillNames.has(skill.name) || retainedSkillNames.has(skill.name),
     );
     const mounts: Array<{ hostPath: string; containerPath: string }> = [];

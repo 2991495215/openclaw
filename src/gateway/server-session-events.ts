@@ -527,7 +527,7 @@ async function handleTranscriptUpdateBroadcast(
               message,
               resolveCronJobName,
               transcriptPosition,
-              ...(typeof update.messageId === "string" ? { messageId: update.messageId } : {}),
+              ...(update.messageId !== undefined ? { messageId: update.messageId } : {}),
               ...(messageSeq !== undefined ? { messageSeq } : {}),
               ...(update.runId ? { runId: update.runId } : {}),
               sessionSnapshot,
@@ -555,7 +555,7 @@ async function handleTranscriptUpdateBroadcast(
           ...(eventAgentId ? { agentId: eventAgentId } : {}),
           phase: "message",
           ts: Date.now(),
-          ...(!historyReset && typeof update.messageId === "string"
+          ...(!historyReset && update.messageId !== undefined
             ? { messageId: update.messageId }
             : {}),
           ...(!historyReset && messageSeq !== undefined ? { messageSeq } : {}),

@@ -147,8 +147,6 @@ it("reads known merged heads without network access only for the same live sessi
     releasedRead = read;
     const known = readKnownSessionBranchMergedHeads(testGitContext, read);
     expect(known).toEqual(expected);
-    known[0]!.sha = "d".repeat(40);
-    expect(readKnownSessionBranchMergedHeads(testGitContext, read)).toEqual(expected);
     expect(
       readKnownSessionBranchMergedHeads(testGitContext, { ...read, target: otherTarget }),
     ).toEqual([]);

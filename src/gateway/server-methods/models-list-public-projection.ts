@@ -60,8 +60,8 @@ export function buildPublicModelProjection(
     ...(options.includeDetails && entry.input?.length ? { input: entry.input } : {}),
     ...(entry.contextWindows ? { contextWindows: entry.contextWindows } : {}),
     ...(entry.contextWindowDefault ? { contextWindowDefault: entry.contextWindowDefault } : {}),
-    ...(typeof entry.reasoning === "boolean" ? { reasoning: entry.reasoning } : {}),
-    ...(typeof entry.compat?.supportsTools === "boolean"
+    ...(entry.reasoning !== undefined ? { reasoning: entry.reasoning } : {}),
+    ...(entry.compat?.supportsTools !== undefined
       ? { supportsTools: entry.compat.supportsTools }
       : {}),
   };

@@ -121,11 +121,11 @@ export async function createWorkerEnvironmentStore(
     if (closing) {
       throw new Error("Worker environment inventory is closing");
     }
-    const captured = structuredClone({
+    const captured = {
       ...input,
       nowMs: options.now?.(),
       publicationIncarnation: owner.incarnation,
-    });
+    };
     const operation = owner.enqueue(async () => {
       const token = {};
       let admission: SqliteWorkerOperationAdmission | undefined;

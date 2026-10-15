@@ -46,8 +46,8 @@ export function emitTalkPttNodeEvent(params: {
     payload: {
       nodeId: params.nodeId,
       command: params.command,
-      status: normalizeOptionalString(payloadObj.status) ?? undefined,
-      transcript: normalizeOptionalString(payloadObj.transcript) ?? undefined,
+      status: normalizeOptionalString(payloadObj.status),
+      transcript: normalizeOptionalString(payloadObj.transcript),
     },
   };
   params.context.broadcast(

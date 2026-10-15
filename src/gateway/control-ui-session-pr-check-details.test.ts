@@ -297,8 +297,6 @@ describe("session PR CI details", () => {
     const [a, b] = await Promise.all([h.load(), h.load()]);
     expect(a).toEqual(b);
     expect(h.deps.fetchImpl).toHaveBeenCalledTimes(4);
-    a.checks.splice(0);
-    expect((await h.load()).checks).toHaveLength(1);
     h.state.status = 429;
     vi.advanceTimersByTime(30_001);
     const stale = await h.load();

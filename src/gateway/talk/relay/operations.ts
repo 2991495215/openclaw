@@ -257,7 +257,7 @@ export function sendTalkRealtimeRelayAudio(params: {
       payload: { byteLength: audio.byteLength },
     },
   );
-  if (typeof params.timestamp === "number" && Number.isFinite(params.timestamp)) {
+  if (params.timestamp !== undefined) {
     session.bridge.setMediaTimestamp(params.timestamp);
   }
 }

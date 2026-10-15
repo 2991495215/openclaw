@@ -97,11 +97,11 @@ export const progressCardStore: ProgressCardStore = {
     ) {
       return createSessionActorProgressCardStore(() => selected).put(sessionKey, input, agentId);
     }
-    const capturedInput = structuredClone({
+    const capturedInput = {
       markdown: input.markdown,
       steps: input.steps,
       expectedRevision: input.expectedRevision,
-    });
+    };
     const { scope: resolved, assertCurrent } = captureProgressCardTarget(
       sessionKey,
       agentId,

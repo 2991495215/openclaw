@@ -112,12 +112,7 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
       );
 
     if (plan.reloadHooks || plan.refreshHooksPolicy) {
-      try {
-        nextState.hooksConfig = resolveHooksConfig(nextConfig);
-      } catch (err) {
-        params.logHooks.warn(`hooks config reload failed: ${String(err)}`);
-        throw err;
-      }
+      nextState.hooksConfig = resolveHooksConfig(nextConfig);
     }
     nextState.hookClientIpConfig = resolveHookClientIpConfig(nextConfig);
     const internalHooks =

@@ -629,7 +629,7 @@ export function presentSessionRow(
   row.totalTokens = freshSessionTotalTokens ?? asNonNegativeFiniteNumber(usage?.totalTokens);
   row.totalTokensFresh =
     freshSessionTotalTokens !== undefined ||
-    (typeof row.totalTokens === "number" && row.totalTokens > 0) ||
+    (row.totalTokens ?? 0) > 0 ||
     usage?.totalTokensFresh === true;
   row.agentStatus = resolveActiveSessionAgentStatus(entry?.agentStatus, now);
   row.spawnedBy = row.controlOwnerSessionKey = subagentOwner || entry?.spawnedBy;

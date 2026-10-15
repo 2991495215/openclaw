@@ -29,7 +29,7 @@ const KNOWN_OPERATOR_SCOPES: ReadonlySet<string> = new Set(KNOWN_OPERATOR_SCOPE_
 export function hasGatewayAdminScope(
   client: { connect?: { scopes?: readonly string[] } } | null | undefined,
 ): boolean {
-  const scopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+  const scopes = client?.connect?.scopes ?? [];
   return scopes.includes(ADMIN_SCOPE);
 }
 

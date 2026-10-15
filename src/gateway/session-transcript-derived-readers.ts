@@ -60,7 +60,7 @@ function extractTranscriptUsageSnapshot(
           : usageRaw?.costUsd;
   const hasMeaningfulUsage =
     hasNonzeroUsage(usage) ||
-    typeof totalTokens === "number" ||
+    totalTokens !== undefined ||
     (typeof costUsd === "number" &&
       Number.isFinite(costUsd) &&
       (source === "artifact" || costUsd > 0));
@@ -75,20 +75,16 @@ function extractTranscriptUsageSnapshot(
     ...(usage?.usageReport ? { usageReport: usage.usageReport } : {}),
     ...(!isDeliveryMirror && modelProvider ? { modelProvider } : {}),
     ...(!isDeliveryMirror && model ? { model } : {}),
-    ...(typeof normalizedUsage.input === "number" ? { inputTokens: normalizedUsage.input } : {}),
-    ...(typeof normalizedUsage.output === "number" ? { outputTokens: normalizedUsage.output } : {}),
-    ...(typeof normalizedUsage.cacheRead === "number"
-      ? { cacheRead: normalizedUsage.cacheRead }
-      : {}),
-    ...(typeof normalizedUsage.cacheWrite === "number"
-      ? { cacheWrite: normalizedUsage.cacheWrite }
-      : {}),
+    ...(normalizedUsage.input !== undefined ? { inputTokens: normalizedUsage.input } : {}),
+    ...(normalizedUsage.output !== undefined ? { outputTokens: normalizedUsage.output } : {}),
+    ...(normalizedUsage.cacheRead !== undefined ? { cacheRead: normalizedUsage.cacheRead } : {}),
+    ...(normalizedUsage.cacheWrite !== undefined ? { cacheWrite: normalizedUsage.cacheWrite } : {}),
     ...(legacyCliUsage
       ? { contextUsage: { state: "unavailable" } as const }
       : normalizedUsage.contextUsage
         ? { contextUsage: normalizedUsage.contextUsage }
         : {}),
-    ...(typeof totalTokens === "number" ? { totalTokens, totalTokensFresh: true } : {}),
+    ...(totalTokens !== undefined ? { totalTokens, totalTokensFresh: true } : {}),
     ...(typeof costUsd === "number" && Number.isFinite(costUsd) ? { costUsd } : {}),
   };
 }
@@ -166,13 +162,13 @@ export function createSessionTranscriptUsageAccumulator(source: TranscriptUsageS
     }
     for (const field of summedFields) {
       const value = snapshot[field];
-      if (typeof value === "number") {
+      if (value !== undefined) {
         totals[field] = (totals[field] ?? 0) + value;
       }
     }
     if (snapshot.contextUsage) {
       aggregate.contextUsage = snapshot.contextUsage;
-    } else if (typeof snapshot.totalTokens === "number") {
+    } else if (snapshot.totalTokens !== undefined) {
       delete aggregate.contextUsage;
     }
     if (snapshot.contextUsage?.state === "unavailable") {
@@ -180,7 +176,7 @@ export function createSessionTranscriptUsageAccumulator(source: TranscriptUsageS
       // per-call snapshot replaces it during this forward scan.
       delete aggregate.totalTokens;
       delete aggregate.totalTokensFresh;
-    } else if (typeof snapshot.totalTokens === "number") {
+    } else if (snapshot.totalTokens !== undefined) {
       aggregate.totalTokens = snapshot.totalTokens;
       aggregate.totalTokensFresh = true;
     }
@@ -191,7 +187,7 @@ export function createSessionTranscriptUsageAccumulator(source: TranscriptUsageS
     }
     for (const field of summedFields) {
       const value = totals[field];
-      if (typeof value === "number") {
+      if (value !== undefined) {
         aggregate[field] = value;
       }
     }

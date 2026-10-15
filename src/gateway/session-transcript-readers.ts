@@ -70,11 +70,10 @@ function createHistoryPageReader<Options, Result>(
 ) {
   return async (
     scope: SessionTranscriptReadScope,
-    inputOptions: Options,
+    options: Options,
     signal?: AbortSignal,
   ): Promise<Result> => {
     signal?.throwIfAborted();
-    const options = structuredClone(inputOptions);
     const memory = captureSessionActorTranscriptRead(scope, signal);
     if (memory) {
       return readActor(createSessionActorTranscriptReader(memory), scope, options, signal);
@@ -105,16 +104,15 @@ export async function readSessionTranscriptAccountingAsync(
   options: SessionTranscriptAccountingOptions,
   signal?: AbortSignal,
 ) {
-  const captured = structuredClone(options);
   const memory = captureSessionActorTranscriptRead(scope, signal);
   if (memory) {
-    return memory.read("session.history.accounting", { options: captured });
+    return memory.read("session.history.accounting", { options });
   }
   const target = captureHistoryReadScope(scope);
   const { readSessionHistoryPageInWorker } =
     await import("../config/sessions/session-history-worker-runtime.js");
   return readSessionHistoryPageInWorker(
-    { kind: "active-accounting", params: { target, options: captured } },
+    { kind: "active-accounting", params: { target, options } },
     signal,
   );
 }
@@ -124,16 +122,15 @@ export async function readSessionTranscriptBoundedMessageTailPageAsync(
   options: SessionTranscriptBoundedMessageTailOptions,
   signal?: AbortSignal,
 ) {
-  const captured = structuredClone(options);
   const memory = captureSessionActorTranscriptRead(scope, signal);
   if (memory) {
-    return memory.read("session.history.bounded-tail", { options: captured });
+    return memory.read("session.history.bounded-tail", { options });
   }
   const target = captureHistoryReadScope(scope);
   const { readSessionHistoryPageInWorker } =
     await import("../config/sessions/session-history-worker-runtime.js");
   return readSessionHistoryPageInWorker(
-    { kind: "bounded-tail", params: { target, options: captured } },
+    { kind: "bounded-tail", params: { target, options } },
     signal,
   );
 }
@@ -144,13 +141,12 @@ export async function readRecentSessionConversationTextAsync(
   signal?: AbortSignal,
 ) {
   signal?.throwIfAborted();
-  const captured = structuredClone(options);
   const memory = captureSessionActorTranscriptRead(scope, signal);
   if (memory) {
     const result = memory.missing
       ? []
       : await memory.read("session.history.recent-text", {
-          options: captured,
+          options,
         });
     memory.assertCurrent();
     return result;
@@ -159,7 +155,7 @@ export async function readRecentSessionConversationTextAsync(
   const { readSessionHistoryPageInWorker } =
     await import("../config/sessions/session-history-worker-runtime.js");
   return readSessionHistoryPageInWorker(
-    { kind: "recent-text", params: { target, options: captured } },
+    { kind: "recent-text", params: { target, options } },
     signal,
   );
 }
@@ -192,10 +188,7 @@ export async function readRecentSessionUsageFromTranscriptAsync(
   scope: SessionTranscriptReadScope,
   maxBytes: number,
 ) {
-  return readRecentSessionUsage(
-    scope,
-    Math.max(1024, Math.floor(Number.isFinite(maxBytes) ? maxBytes : 8 * 1024 * 1024)),
-  );
+  return readRecentSessionUsage(scope, maxBytes);
 }
 
 export const readSessionMessagesPageWithStatsAsync = createHistoryPageReader(
@@ -226,9 +219,8 @@ export function readSessionTranscriptSummaryAsync<Query extends SessionTranscrip
 ): Promise<Extract<SessionTranscriptSummaryResult, { kind: Query["kind"] }>>;
 export async function readSessionTranscriptSummaryAsync(
   scope: SessionTranscriptReadScope,
-  inputQuery: SessionTranscriptSummaryQuery,
+  query: SessionTranscriptSummaryQuery,
 ): Promise<SessionTranscriptSummaryResult> {
-  const query = structuredClone(inputQuery);
   const memory = captureSessionActorTranscriptRead(scope);
   if (memory) {
     const { prepareSessionTranscriptSummaryReader } =
@@ -252,9 +244,8 @@ export function readSessionArtifacts<Query extends SessionArtifactReadQuery>(
 ): Promise<Extract<SessionArtifactReadResult, { kind: Query["kind"] }>>;
 export async function readSessionArtifacts(
   scope: SessionTranscriptReadScope,
-  inputQuery: SessionArtifactReadQuery,
+  query: SessionArtifactReadQuery,
 ): Promise<SessionArtifactReadResult> {
-  const query = structuredClone(inputQuery);
   const memory = captureSessionActorTranscriptRead(scope);
   if (memory) {
     const { selectSessionArtifacts } = await import("./session-artifact-read.js");
@@ -273,13 +264,12 @@ export async function readSessionMessageByIdAsync(
   signal?: AbortSignal,
 ) {
   signal?.throwIfAborted();
-  const capturedOptions = options ? structuredClone(options) : undefined;
   const memory = captureSessionActorTranscriptRead(scope, signal);
   if (memory) {
     return createSessionActorTranscriptReader(memory).readSessionMessageByIdAsync(
       scope,
       messageId,
-      capturedOptions,
+      options,
       signal,
     );
   }
@@ -287,7 +277,7 @@ export async function readSessionMessageByIdAsync(
   const { readSessionHistoryPageInWorker } =
     await import("../config/sessions/session-history-worker-runtime.js");
   return readSessionHistoryPageInWorker(
-    { kind: "message-by-id", params: { target, messageId, options: capturedOptions } },
+    { kind: "message-by-id", params: { target, messageId, options } },
     signal,
   );
 }

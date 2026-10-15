@@ -313,7 +313,7 @@ async function defaultRun(params: SessionCompanionRunParams): Promise<string> {
     return (
       result.meta.finalAssistantVisibleText ??
       result.payloads
-        ?.filter((payload) => payload.isReasoning !== true && typeof payload.text === "string")
+        ?.filter((payload) => payload.isReasoning !== true && payload.text !== undefined)
         .map((payload) => payload.text)
         .join("") ??
       ""

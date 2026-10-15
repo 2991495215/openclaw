@@ -85,7 +85,7 @@ function createSessionPatchHandler(
         request = { many: false, params };
       }
       const inputPatch = request.many ? request.params.patch : request.params;
-      const scopes = Array.isArray(client?.connect.scopes) ? client.connect.scopes : [];
+      const scopes = client?.connect.scopes ?? [];
       if (
         (inputPatch.permissionMode === "full" ||
           inputPatch.sandboxMode !== undefined ||
@@ -103,14 +103,14 @@ function createSessionPatchHandler(
       let targets: SessionPatchTargetIdentity[];
       let patch: Parameters<typeof executeSessionPatchMutations>[0]["patch"];
       if (request.many) {
-        targets = structuredClone(request.params.targets);
-        patch = structuredClone(request.params.patch);
+        targets = request.params.targets;
+        patch = request.params.patch;
       } else {
         const key = requireSessionKey(request.params.key, respond);
         if (!key) {
           return;
         }
-        const singlePatch = structuredClone({ ...request.params, key });
+        const singlePatch = { ...request.params, key };
         patch = singlePatch;
         targets = [singlePatch];
       }
@@ -522,7 +522,7 @@ export const sessionMutationHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
-    const scopes = Array.isArray(client?.connect.scopes) ? client.connect.scopes : [];
+    const scopes = client?.connect.scopes ?? [];
     if (!scopes.includes(ADMIN_SCOPE)) {
       respond(
         false,

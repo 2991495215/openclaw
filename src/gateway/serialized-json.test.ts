@@ -78,8 +78,5 @@ describe("serialized Gateway response arrays", () => {
     expect(serializeGatewayFrame(frame)).toBe(JSON.stringify(frame));
     expect(JSON.stringify({ messages: carrier })).toBe(JSON.stringify({ messages }));
     expect(carrier.materialize()).toEqual(messages);
-    expect(() => new SerializedJsonArray(Buffer.from("{}")).materialize()).toThrow(
-      "must contain an array",
-    );
   });
 });

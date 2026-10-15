@@ -93,7 +93,7 @@ async function executeAgentRun(params: StartAgentRunExecutionParams): Promise<vo
     lifecycleGeneration: params.lifecycleGeneration,
   };
   let unpersistedOffloadedRefs = prepared.unpersistedOffloadedRefs;
-  const releaseGatewayRootContinuation = retainGatewayRootWorkAdmissionContinuation() ?? undefined;
+  const releaseGatewayRootContinuation = retainGatewayRootWorkAdmissionContinuation();
   let finishUndispatchedFollowup = false;
   try {
     await using runtimeResources = new AsyncDisposableStack();
@@ -355,7 +355,7 @@ async function executeAgentRun(params: StartAgentRunExecutionParams): Promise<vo
             : undefined;
         const pluginSubagentToolsAllow =
           params.client?.internal?.agentRunTracking === "plugin_subagent" &&
-          Array.isArray(params.client.internal.pluginSubagentToolsAllow)
+          params.client.internal.pluginSubagentToolsAllow
             ? [...params.client.internal.pluginSubagentToolsAllow]
             : undefined;
         const executionIdentityAdmission = resolveAgentRestartRecoveryExecutionIdentityAdmission({

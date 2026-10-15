@@ -84,6 +84,7 @@ function compareKnownNodes(left: NodeListNode, right: NodeListNode): number {
   return left.nodeId.localeCompare(right.nodeId);
 }
 
+/** Assemble borrowed metadata; node-catalog-read owns the immutable published snapshot. */
 export function createKnownNodeCatalog(params: {
   /** Devices selected by the pairing owner's current node bindings. */
   pairedDevices: readonly PairedDevice[];
@@ -215,10 +216,10 @@ export function createKnownNodeCatalog(params: {
       ...(live && params.deviceFolderNodeIds?.has(nodeId)
         ? { workerHost: { deviceFolders: true as const } }
         : {}),
-      ...(hostStats ? { hostStats: structuredClone(hostStats) } : {}),
-      ...(live && workerSlots ? { workerSlots: { ...workerSlots } } : {}),
-      ...(live && workerBundle ? { workerBundle: structuredClone(workerBundle) } : {}),
-      ...(issues?.length ? { issues: [...issues] } : {}),
+      ...(hostStats ? { hostStats } : {}),
+      ...(live && workerSlots ? { workerSlots } : {}),
+      ...(live && workerBundle ? { workerBundle } : {}),
+      ...(issues?.length ? { issues } : {}),
       nodePluginTools: live?.nodePluginTools,
       pathEnv: live?.pathEnv,
       permissions: live?.permissions ?? nodePairing?.permissions,

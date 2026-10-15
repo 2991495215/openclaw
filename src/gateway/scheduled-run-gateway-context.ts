@@ -42,7 +42,7 @@ export function fenceScheduledGatewayContextResolver(
   }
   const resolveScheduledContext = () => {
     const context = resolveGatewayContext();
-    return context?.resolveGatewayContext?.() ?? undefined;
+    return context?.resolveGatewayContext?.();
   };
   // Keep the execution fence while retaining the host identity used by shutdown.
   bindGatewayContextResolver(resolveScheduledContext, resolveGatewayContext);

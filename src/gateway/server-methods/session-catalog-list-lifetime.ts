@@ -3,7 +3,6 @@ import type {
   SessionCatalogHost,
 } from "../../../packages/gateway-protocol/src/index.js";
 import type { SessionCatalogListProviderParams } from "../../plugins/session-catalog.js";
-import { retainGatewayRootWorkAdmissionContinuation } from "../../process/gateway-work-admission.js";
 import { captureAsyncWorkTracker } from "../../shared/async-work-scope.js";
 import type { SessionCatalogInstances } from "./session-catalog-entry-snapshot.js";
 
@@ -28,47 +27,14 @@ type CatalogSubscriber = {
   remove: () => void;
 };
 
-// Native work still owns its admitted resources after delivery expires.
-class CatalogListWork {
-  private pending = 0;
-  private listing = true;
-  private releaseRoot: (() => void) | undefined;
-
-  begin(retainRoot = false): void {
-    this.pending++;
-    if (retainRoot) {
-      this.releaseRoot ??= retainGatewayRootWorkAdmissionContinuation() ?? undefined;
-    }
-  }
-
-  end(): void {
-    this.pending--;
-    this.finish();
-  }
-
-  finishListing(): void {
-    this.listing = false;
-    this.finish();
-  }
-
-  private finish(): void {
-    if (!this.listing && this.pending === 0) {
-      this.releaseRoot?.();
-      this.releaseRoot = undefined;
-    }
-  }
-}
-
 // Keep raw completion reactions outside the provider frame so a hung promise
 // cannot retain its request captures after the delivery callback is detached.
 function trackCatalogCompletion(
   completion: Promise<void>,
-  work: CatalogListWork,
   trackWork: ReturnType<typeof captureAsyncWorkTracker>,
   signal: AbortSignal,
   settled: () => void,
 ): void {
-  work.begin();
   let delivery: { signal: AbortSignal; settled: () => void } | undefined = { signal, settled };
   const close = () => {
     const current = delivery;
@@ -81,11 +47,7 @@ function trackCatalogCompletion(
   if (signal.aborted) {
     close();
   }
-  const finish = () => {
-    work.end();
-    close();
-  };
-  void trackWork(() => completion.then(finish, finish));
+  void trackWork(() => completion.then(close, close));
 }
 
 function createProviderCallbacks(
@@ -120,13 +82,12 @@ export class SessionCatalogListLifetime {
   private removeAbortListener: (() => void) | undefined;
   private listing = true;
   private pending = 0;
-  private readonly work = new CatalogListWork();
   private readonly deadline: ReturnType<typeof setTimeout>;
   private readonly sourceSignal: AbortSignal;
 
   constructor(signals: readonly AbortSignal[], catalogIds: readonly string[]) {
     this.catalogIds = new Set(catalogIds);
-    // This bounds delivery captures, not custody of native work that ignores abort.
+    // Delivery is bounded; the connection and plugin owners still join their native reads.
     this.deadline = setTimeout(
       () => this.retire(new Error("Session catalog list expired")),
       SESSION_CATALOG_LIST_LIFETIME_MS,
@@ -217,7 +178,6 @@ export class SessionCatalogListLifetime {
       if (preparation) {
         subscriber.preparing = true;
         this.pending++;
-        this.work.begin();
         void current.trackWork(() =>
           this.deliverPreparedSubscriber(subscriber, preparation).catch(() => undefined),
         );
@@ -257,7 +217,6 @@ export class SessionCatalogListLifetime {
       subscriber.queued.clear();
       subscriber.preparing = false;
       this.pending--;
-      this.work.end();
       this.finish();
     }
   }
@@ -279,7 +238,6 @@ export class SessionCatalogListLifetime {
     };
     this.publishers.add(releasePublisher);
     this.pending += 1;
-    this.work.begin(true);
     const settle = () => {
       pending -= 1;
       this.pending -= 1;
@@ -297,7 +255,7 @@ export class SessionCatalogListLifetime {
       (completion) => {
         pending += 1;
         this.pending += 1;
-        trackCatalogCompletion(completion, this.work, trackWork, signal, settle);
+        trackCatalogCompletion(completion, trackWork, signal, settle);
       },
     );
     try {
@@ -313,7 +271,6 @@ export class SessionCatalogListLifetime {
       listing = false;
       callbacks.closeRegistration();
       this.pending -= 1;
-      this.work.end();
       if (pending === 0) {
         releasePublisher();
       }
@@ -327,7 +284,6 @@ export class SessionCatalogListLifetime {
     // source signal directly so response cleanup does not cancel their work.
     this.removeAbortListener?.();
     this.removeAbortListener = undefined;
-    this.work.finishListing();
     this.releaseUnusedPublishers();
     this.finish();
   }

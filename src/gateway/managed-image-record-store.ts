@@ -77,10 +77,9 @@ function mutateManagedImageRecords(
   context: OpenClawStateWorkerContext,
   assertCurrent?: () => void,
 ): Promise<boolean> {
-  const prepared = structuredClone(commands);
   return trackAsyncWork(async () => {
     const lease = mutations.reserve(
-      prepared.map(({ input }) =>
+      commands.map(({ input }) =>
         JSON.stringify([context.admission.coordinationKey, input.attachmentId]),
       ),
     );
@@ -89,7 +88,7 @@ function mutateManagedImageRecords(
       const { runOpenClawStateWorkerOperation } =
         await import("../state/openclaw-state-worker-store.js");
       let result = true;
-      for (const command of prepared) {
+      for (const command of commands) {
         let admission: SqliteWorkerOperationAdmission | undefined;
         const check = () => {
           context.admission.assertCurrent();

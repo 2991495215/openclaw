@@ -302,7 +302,7 @@ export async function attachAuthenticatedGatewayConnect(
   let trustedAgentRuntimeIdentity:
     | Awaited<ReturnType<typeof verifyAgentRuntimeIdentityToken>>
     | undefined;
-  if (typeof agentRuntimeIdentityProof === "string") {
+  if (agentRuntimeIdentityProof !== undefined) {
     if (!isLocalBackendClient) {
       const message =
         "agent runtime identity token is only accepted from local backend gateway clients";

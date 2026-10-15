@@ -43,9 +43,7 @@ export function resolveProviderApiKeys(
   });
   const providerIds = new Set<string>([
     ...Object.keys(cfg.models?.providers ?? {}),
-    ...Object.values(cfg.auth?.profiles ?? {})
-      .map((profile) => profile?.provider)
-      .filter((provider): provider is string => typeof provider === "string"),
+    ...Object.values(cfg.auth?.profiles ?? {}).map((profile) => profile.provider),
     ...listProviderEnvAuthLookupKeys(lookupMaps),
   ]);
   const apiKeys = new Map<string, ModelAuthStatusProvider["apiKey"]>();

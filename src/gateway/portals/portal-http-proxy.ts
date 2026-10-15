@@ -234,10 +234,8 @@ async function connectPortalTarget(target: PortalTarget): Promise<Duplex> {
 }
 
 function connectionHeaderTokens(headers: IncomingHttpHeaders): Set<string> {
-  const value = headers.connection;
-  const joined = Array.isArray(value) ? value.join(",") : value;
   return new Set(
-    (joined ?? "")
+    (headers.connection ?? "")
       .split(",")
       .map((token) => token.trim().toLowerCase())
       .filter(Boolean),

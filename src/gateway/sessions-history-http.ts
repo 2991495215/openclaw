@@ -463,7 +463,7 @@ async function serveAuthorizedSessionHistory(
       target.agentId,
     )
       .map((candidate) => resolveTranscriptPathForComparison(candidate))
-      .filter((candidate): candidate is string => typeof candidate === "string"),
+      .filter((candidate) => candidate !== undefined),
   );
 
   const sseState = SessionHistorySseState.fromSnapshot({
@@ -692,7 +692,7 @@ async function serveAuthorizedSessionHistory(
         sseWrite(res, "message", {
           sessionKey: target.canonicalKey,
           message: presentation ? presentation.message(nextEvent.message) : nextEvent.message,
-          ...(typeof update.messageId === "string" ? { messageId: update.messageId } : {}),
+          ...(update.messageId !== undefined ? { messageId: update.messageId } : {}),
           messageSeq: nextEvent.messageSeq,
         });
       });

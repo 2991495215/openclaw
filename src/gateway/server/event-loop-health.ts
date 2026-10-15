@@ -136,7 +136,7 @@ function hostCpuUtilization(
       }
     }
   }
-  return total > 0 && Number.isFinite(total) ? roundMetric((total - idle) / total) : undefined;
+  return total > 0 ? roundMetric((total - idle) / total) : undefined;
 }
 
 function classifyGatewayEventLoopHealthReasons(

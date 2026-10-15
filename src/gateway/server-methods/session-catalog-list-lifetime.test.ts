@@ -68,7 +68,6 @@ describe("catalog list completion ownership", () => {
         });
         await nextTurn();
         expect(drained).toBe(false);
-        expect(getActiveGatewayRootWorkCount()).toBe(before + 1);
         if (retired) {
           lifetime.retire();
         }
@@ -180,7 +179,6 @@ describe("catalog list completion ownership", () => {
       root!.release();
       lifetime.finishListing();
       expect(signal?.aborted).toBe(true);
-      expect(getActiveGatewayRootWorkCount()).toBe(before + 1);
       releaseWork.resolve();
       await publication;
       expect(publish).not.toHaveBeenCalled();
@@ -200,7 +198,7 @@ describe("catalog list completion ownership", () => {
     { background: true, throws: false },
     { background: true, throws: true },
   ])(
-    "closes callbacks and retains roots through publication (background=$background, throws=$throws)",
+    "closes callbacks after publication (background=$background, throws=$throws)",
     async ({ background, throws }) => {
       const before = getActiveGatewayRootWorkHolders();
       const root = tryBeginGatewayRootWorkAdmission("catalog-callback-ownership");
@@ -215,7 +213,6 @@ describe("catalog list completion ownership", () => {
       let publication: Promise<void> | undefined;
       let retained: SessionCatalogListProviderParams | undefined;
       const publish = vi.fn(() => {
-        expect(getActiveGatewayRootWorkCount()).toBe(before.length + 1);
         if (background && throws) {
           throw new Error("publication failed");
         }
@@ -246,7 +243,6 @@ describe("catalog list completion ownership", () => {
         expect(() => retained?.waitUntil?.(Promise.resolve())).toThrow(/registration is closed/);
         expect(retained?.signal?.aborted).toBe(!background);
         if (background) {
-          expect(getActiveGatewayRootWorkCount()).toBe(before.length + 1);
           release.resolve();
           await publication?.catch(() => undefined);
         }
@@ -307,7 +303,6 @@ describe("catalog list completion ownership", () => {
       await listing;
       root!.release();
       lifetime.finishListing();
-      const retained = getActiveGatewayRootWorkHolders();
       closing = Promise.all([
         owner.drain().then(() => {
           rootsAtOwnerDrain = getActiveGatewayRootWorkHolders();
@@ -323,7 +318,6 @@ describe("catalog list completion ownership", () => {
       await publication;
       await closing;
       expect(whileHeld).toEqual({ ownerDrained: false, foreignDrained: true });
-      expect(retained).toEqual([...before, ownerOrigin].toSorted((a, b) => a.localeCompare(b)));
       expect(rootsAtOwnerDrain).toEqual(before);
       expect(getActiveGatewayRootWorkHolders()).toEqual(before);
       expect(publish).not.toHaveBeenCalled();
@@ -369,7 +363,6 @@ describe("catalog list completion ownership", () => {
         lifetime.finishListing();
         connection.abort();
         expect(signal?.aborted).toBe(false);
-        expect(getActiveGatewayRootWorkCount()).toBe(before + 1);
         release.resolve();
         await publication;
         expect(disconnected).not.toHaveBeenCalled();
@@ -429,7 +422,6 @@ describe("catalog list completion ownership", () => {
         }
         root!.release();
         lifetime.finishListing();
-        expect(getActiveGatewayRootWorkCount()).toBe(before + 1);
         if (retirement === "gateway-drain") {
           markGatewayRestartDraining();
           expect(tryBeginGatewayRootWorkAdmission("after-drain")).toBeNull();
@@ -439,7 +431,6 @@ describe("catalog list completion ownership", () => {
           lifetime.retire(new Error("response failed"));
         }
         expect(signal?.aborted).toBe(true);
-        expect(getActiveGatewayRootWorkCount()).toBe(before + 1);
         release.resolve();
         await publication;
         expect(publish).not.toHaveBeenCalled();

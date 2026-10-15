@@ -221,12 +221,12 @@ export async function loadControlUiSessionPullRequestChecks(
   try {
     const result = await entry.promise;
     assertCurrent();
-    return structuredClone({
+    return {
       ...result,
       ...(result.retryAfterMs === undefined
         ? {}
         : { retryAfterMs: Math.max(0, entry.expiresAt - Date.now()) }),
-    });
+    };
   } finally {
     release();
   }

@@ -149,7 +149,7 @@ export async function finishGatewayStartup(params: {
       bootId: params.bootId,
       preauthConnectionBudget: runtime.preauthConnectionBudget,
       port,
-      gatewayHost: bindHost ?? undefined,
+      gatewayHost: bindHost,
       pluginSurfaceScheme: gatewayTls.enabled ? "https" : "http",
       getPluginNodeCapabilities,
       getResolvedAuth,

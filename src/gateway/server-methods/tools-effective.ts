@@ -1,3 +1,4 @@
+import { setImmediate as nextTurn } from "node:timers/promises";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import {
   ErrorCodes,
@@ -36,7 +37,6 @@ import {
 import { resolveReplyToMode } from "../../auto-reply/reply/reply-threading.js";
 import { resolveRuntimeConfigCacheKey } from "../../config/config.js";
 import { captureSessionEntryMetadataRead } from "../../config/sessions/session-entry-source-authority.js";
-import { toErrorObject } from "../../infra/errors.js";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
 import { logDebug, logWarn } from "../../logger.js";
 import { stringifyRouteThreadId } from "../../plugin-sdk/channel-route.js";
@@ -159,25 +159,21 @@ function scheduleBaseToolsEffectiveRefresh(
     return existing;
   }
   const startedAt = Date.now();
-  const task = new Promise<EffectiveToolInventoryResult>((resolve, reject) => {
-    setImmediate(() => {
-      void resolveBaseToolsEffectiveInventory(context)
-        .then((value) => {
-          toolsEffectiveCache.delete(key);
-          toolsEffectiveCache.set(key, { value, createdAtMs: Date.now() });
-          pruneMapToMaxSize(toolsEffectiveCache, TOOLS_EFFECTIVE_CACHE_LIMIT);
-          const durationMs = Date.now() - startedAt;
-          if (durationMs >= TOOLS_EFFECTIVE_SLOW_LOG_MS) {
-            logDebug(
-              `tools-effective: refresh durationMs=${durationMs} agent=${context.agentId} session=${context.sessionKey} tools=${value.groups.reduce((sum, group) => sum + group.tools.length, 0)}`,
-            );
-          }
-          resolve(value);
-        })
-        .catch((err: unknown) => reject(toErrorObject(err, "Non-Error rejection")))
-        .finally(() => toolsEffectiveInflight.delete(key));
-    });
-  });
+  const task = nextTurn()
+    .then(() => resolveBaseToolsEffectiveInventory(context))
+    .then((value) => {
+      toolsEffectiveCache.delete(key);
+      toolsEffectiveCache.set(key, { value, createdAtMs: Date.now() });
+      pruneMapToMaxSize(toolsEffectiveCache, TOOLS_EFFECTIVE_CACHE_LIMIT);
+      const durationMs = Date.now() - startedAt;
+      if (durationMs >= TOOLS_EFFECTIVE_SLOW_LOG_MS) {
+        logDebug(
+          `tools-effective: refresh durationMs=${durationMs} agent=${context.agentId} session=${context.sessionKey} tools=${value.groups.reduce((sum, group) => sum + group.tools.length, 0)}`,
+        );
+      }
+      return value;
+    })
+    .finally(() => toolsEffectiveInflight.delete(key));
   toolsEffectiveInflight.set(key, task);
   return task;
 }

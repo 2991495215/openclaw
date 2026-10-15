@@ -273,7 +273,7 @@ export function resolveMcpRequestContext(
     // Gateway-launched CLI clients receive an immutable context grant. The
     // child process can replay the token, but cannot scope-shop by rewriting
     // session, channel, capability, or ownership headers.
-    return structuredClone(auth.boundClientGrant.context);
+    return auth.boundClientGrant.context;
   }
   // Grant-authenticated callers get only their server-bound session and optional
   // global-session agent owner; spoofable delivery/action headers stay reserved.
@@ -299,8 +299,7 @@ export function resolveMcpRequestContext(
   return {
     sessionKey: resolveScopedSessionKey(cfg, getHeader(req, "x-session-key")),
     sessionId: normalizeOptionalString(getHeader(req, "x-openclaw-session-id")),
-    messageProvider:
-      normalizeMessageChannel(getHeader(req, "x-openclaw-message-channel")) ?? undefined,
+    messageProvider: normalizeMessageChannel(getHeader(req, "x-openclaw-message-channel")),
     // The token-authenticated loopback client is gateway-spawned on 127.0.0.1. Caps only
     // widen tool availability; sender ownership remains derived from the bearer token.
     clientCaps: normalizeMcpClientCapsHeader(getHeader(req, "x-openclaw-client-caps")),

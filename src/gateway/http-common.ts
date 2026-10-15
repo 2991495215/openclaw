@@ -32,7 +32,7 @@ export function setDefaultSecurityHeaders(
     typeof opts?.strictTransportSecurity === "string"
       ? opts.strictTransportSecurity.trim()
       : undefined;
-  if (typeof strictTransportSecurity === "string" && strictTransportSecurity.length > 0) {
+  if (strictTransportSecurity) {
     res.setHeader("Strict-Transport-Security", strictTransportSecurity);
   }
 }
@@ -139,13 +139,12 @@ export function parseGatewayJsonRequest<T extends z.ZodType>(
 }
 
 export function sendMissingScopeForbidden(res: ServerResponse, missingScope: string | undefined) {
-  const details =
-    typeof missingScope === "string" && missingScope.length > 0
-      ? buildMissingScopeErrorDetails({
-          missingScope,
-          requiredScopes: [missingScope],
-        })
-      : undefined;
+  const details = missingScope
+    ? buildMissingScopeErrorDetails({
+        missingScope,
+        requiredScopes: [missingScope],
+      })
+    : undefined;
   sendJson(res, 403, {
     ok: false,
     error: {

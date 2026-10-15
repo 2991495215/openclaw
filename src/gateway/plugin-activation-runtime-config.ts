@@ -43,10 +43,10 @@ export function mergeActivationSectionsIntoRuntimeConfig(params: {
   const nextChannels = mergeEnabledEntries(runtimeConfig.channels, activationConfig.channels);
   const activationPlugins = activationConfig.plugins;
   let nextPlugins: Record<string, unknown> | undefined;
-  if (isRecord(activationPlugins)) {
-    const runtimePlugins = isRecord(runtimeConfig.plugins) ? runtimeConfig.plugins : {};
-    if (Array.isArray(activationPlugins.allow)) {
-      nextPlugins = { ...runtimePlugins, allow: [...activationPlugins.allow] };
+  if (activationPlugins) {
+    const runtimePlugins = runtimeConfig.plugins ?? {};
+    if (activationPlugins.allow) {
+      nextPlugins = { ...runtimePlugins, allow: activationPlugins.allow };
     }
     const nextEntries = mergeEnabledEntries(runtimePlugins.entries, activationPlugins.entries);
     if (nextEntries !== undefined) {

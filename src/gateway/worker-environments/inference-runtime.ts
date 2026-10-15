@@ -220,7 +220,7 @@ export const executePreparedWorkerInference = async (
       approved.provider,
       approved.model,
       {
-        ...structuredClone(streamPolicyOptions),
+        ...streamPolicyOptions,
         fastMode:
           fastModeSetting === "auto"
             ? () =>

@@ -30,15 +30,7 @@ export async function startGatewayTailscaleExposure(params: {
   const effectiveMode = params.tailscaleMode;
   let clearPublishedOrigin: (() => void) | undefined;
   if (params.tailscaleMode === "serve" && params.preserveFunnel === true) {
-    let preservedFunnel: boolean;
-    try {
-      preservedFunnel = await hasTailscaleFunnelRouteForPort(params.port);
-    } catch (error) {
-      params.logTailscale.warn(
-        `serve not changed because external Funnel status could not be inspected: ${formatErrorMessage(error)}`,
-      );
-      throw error;
-    }
+    const preservedFunnel = await hasTailscaleFunnelRouteForPort(params.port);
     if (preservedFunnel) {
       params.logTailscale.warn(
         `external Tailscale Funnel for port ${params.port} remains active only for plugin-authenticated webhook routes; Gateway-authenticated routes reject its unattributable ingress. ` +

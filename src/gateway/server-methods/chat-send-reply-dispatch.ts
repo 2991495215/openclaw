@@ -402,8 +402,8 @@ export function createChatSendReplyDispatch(params: {
         payloadMetadata?.assistantTranscriptMediaUrls?.length
           ? payloadMetadata.assistantTranscriptMediaUrls
           : [
-              ...(Array.isArray(payload.mediaUrls) ? payload.mediaUrls : []),
-              ...(typeof payload.mediaUrl === "string" ? [payload.mediaUrl] : []),
+              ...(payload.mediaUrls ?? []),
+              ...(payload.mediaUrl !== undefined ? [payload.mediaUrl] : []),
             ],
       );
       const ownedTranscriptIdempotencyKey =

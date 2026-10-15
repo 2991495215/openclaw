@@ -51,7 +51,7 @@ export async function closeAcpRuntimeForSession(params: {
   const sessionKeys = Array.from(
     new Set(
       [params.sessionKey, ...(params.fallbackSessionKeys ?? [])]
-        .map((key) => (typeof key === "string" ? key.trim() : ""))
+        .map((key) => key?.trim() ?? "")
         .filter(Boolean),
     ),
   );

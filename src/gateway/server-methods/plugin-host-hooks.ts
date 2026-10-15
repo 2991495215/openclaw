@@ -114,7 +114,7 @@ export const pluginHostHookHandlers: GatewayRequestHandlers = {
         );
         return;
       }
-      const scopes = Array.isArray(client?.connect.scopes) ? client.connect.scopes : [];
+      const scopes = client?.connect.scopes ?? [];
       const requiredScopes =
         registration.action.requiredScopes && registration.action.requiredScopes.length > 0
           ? registration.action.requiredScopes

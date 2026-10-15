@@ -125,7 +125,7 @@ export function resolveChatAbortRequester(
   client: GatewayRequestHandlerOptions["client"],
   authorization?: SessionMutationAuthorization,
 ): ChatAbortRequester {
-  const scopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+  const scopes = client?.connect?.scopes ?? [];
   const caller = client?.internal?.syntheticClient ? client.internal.agentToolCaller : undefined;
   const assertCallerCurrent = caller?.assertCurrent;
   const sessionTarget = authorization?.admittedTarget;

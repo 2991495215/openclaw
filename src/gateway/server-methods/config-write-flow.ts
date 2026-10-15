@@ -70,12 +70,10 @@ function projectAuthoredValuesOntoRuntimeOverlay(params: {
 }): unknown {
   const { source, active } = params;
   if (active === undefined) {
-    return structuredClone(params.fallback);
+    return params.fallback;
   }
   if (!isRecord(source) || !isRecord(active)) {
-    return structuredClone(
-      isDeepStrictEqual(source, params.activeSource) ? active : params.fallback,
-    );
+    return isDeepStrictEqual(source, params.activeSource) ? active : params.fallback;
   }
   const fallback = isRecord(params.fallback) ? params.fallback : {};
   const activeSource = isRecord(params.activeSource) ? params.activeSource : {};

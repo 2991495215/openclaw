@@ -37,6 +37,7 @@ import type {
   RuntimeGatewayRequestOptions,
 } from "../plugins/runtime/types.js";
 import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
+import type { NodeListNode } from "../shared/node-list-types.js";
 import { bindInProcessSessionDeliveryGeneration } from "./in-process-session-delivery.js";
 import { authorizeOperatorScopesForRequiredScope } from "./method-scopes.js";
 import { normalizeOperatorScopeList } from "./operator-scopes.js";
@@ -130,7 +131,7 @@ export async function dispatchTrustedPluginGatewayMethod<T>(
         if (
           !record?.entry.sessionId ||
           record.entry.sessionId !== expectedSession.sessionId ||
-          (record.entry.lifecycleRevision ?? undefined) !== expectedSession.lifecycleRevision
+          record.entry.lifecycleRevision !== expectedSession.lifecycleRevision
         ) {
           throw new Error("Requester session changed during delivery");
         }
@@ -205,8 +206,6 @@ export async function openPluginPanelForRequester(
   );
 }
 
-type GatewayRuntimeNodes = Awaited<ReturnType<PluginRuntime["nodes"]["list"]>>["nodes"];
-
 export function createGatewayNodesRuntime(
   resolveGatewayContext?: GatewayContextResolver,
   runtimeLifetime?: AbortSignal,
@@ -263,23 +262,18 @@ export function createGatewayNodesRuntime(
   return {
     async list(params) {
       const context = getInProcessGatewayRequestContext(resolveGatewayContext);
-      const payload = await dispatchGatewayMethodInProcess<{ nodes?: unknown[] }>(
+      const payload = await dispatchGatewayMethodInProcess<{ nodes: NodeListNode[] }>(
         "node.list",
         {},
         {
           resolveGatewayContext: () => context,
         },
       );
-      const nodes = Array.isArray(payload?.nodes) ? payload.nodes : [];
       const filteredNodes =
         params?.connected === true
-          ? nodes.filter(
-              (node) =>
-                typeof node === "object" &&
-                (node as { connected?: unknown } | null)?.connected === true,
-            )
-          : nodes;
-      return { nodes: projectGatewayRuntimeNodes(filteredNodes, context) as GatewayRuntimeNodes };
+          ? payload.nodes.filter((node) => node.connected === true)
+          : payload.nodes;
+      return { nodes: projectGatewayRuntimeNodes(filteredNodes, context) };
     },
     invoke: invokeNode,
     openDuplex: (params) =>

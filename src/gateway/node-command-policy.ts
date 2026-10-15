@@ -267,12 +267,7 @@ type NodeCommandPolicyNode = {
 };
 
 function isLiveNodeSession(node: NodeCommandPolicyNode | undefined): boolean {
-  return (
-    typeof node?.nodeId === "string" &&
-    node.nodeId.trim() !== "" &&
-    typeof node.connId === "string" &&
-    node.connId.trim() !== ""
-  );
+  return Boolean(node?.nodeId?.trim() && node.connId?.trim());
 }
 
 function hasTalkSurface(node?: NodeCommandPolicyNode): boolean {
@@ -421,7 +416,7 @@ export function isNodeCommandAllowed(params: {
   if (isPrivateNodeInvokeCommand(command) || !params.allowlist.has(command)) {
     return { ok: false, reason: "command not allowlisted" };
   }
-  if (Array.isArray(params.declaredCommands) && params.declaredCommands.length > 0) {
+  if (params.declaredCommands?.length) {
     if (!params.declaredCommands.includes(command)) {
       return { ok: false, reason: "command not declared by node" };
     }

@@ -47,8 +47,8 @@ import type {
   GatewayConnectPhaseContext,
 } from "./message-handler-types.js";
 
-function hasCredential(value: unknown): boolean {
-  return typeof value === "string" && value.trim().length > 0;
+function hasCredential(value: string | undefined): boolean {
+  return Boolean(value?.trim());
 }
 
 export function isStartupNodeConnect(connectParams: ConnectParams): boolean {
@@ -62,8 +62,7 @@ export function isStartupNodeBootstrapConnect(connectParams: ConnectParams): boo
   return (
     isStartupNodeConnect(connectParams) &&
     connectParams.client.id === GATEWAY_CLIENT_IDS.NODE_HOST &&
-    Array.isArray(connectParams.scopes) &&
-    connectParams.scopes.length === 0 &&
+    connectParams.scopes?.length === 0 &&
     Boolean(device?.id.trim() && device.publicKey.trim()) &&
     hasCredential(auth?.bootstrapToken) &&
     !hasCredential(auth?.token) &&
@@ -281,7 +280,7 @@ export async function admitGatewayConnect(context: GatewayConnectPhaseContext) {
   // Default-deny, except signed ingress requests may select their live grant ceiling.
   // Note: If the client does not present a device identity, we can't bind scopes to a paired
   // device/token, so we will clear scopes after auth to avoid self-declared permissions.
-  const scopes = Array.isArray(connectParams.scopes) ? connectParams.scopes : [];
+  const scopes = connectParams.scopes ?? [];
   const remoteIngress = getRemoteControlUiIngressContext(context.handler.upgradeReq);
   if (remoteIngress) {
     const denied = !hasCurrentRemoteControlUiIngress(remoteIngress)
@@ -311,7 +310,7 @@ export async function admitGatewayConnect(context: GatewayConnectPhaseContext) {
 
   const isBrowserCopilot = isBrowserCopilotClient(connectParams.client);
   const browserCopilotOrigin = isBrowserCopilot
-    ? normalizeChromeExtensionOrigin(requestOrigin ?? undefined)
+    ? normalizeChromeExtensionOrigin(requestOrigin)
     : undefined;
   if (
     isBrowserCopilot &&

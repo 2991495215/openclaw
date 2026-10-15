@@ -59,7 +59,7 @@ export async function publishSessionPatchEffects(params: {
       },
       { accessChanged },
     );
-    if (typeof target.fullPatch.archived === "boolean") {
+    if (target.fullPatch.archived !== undefined) {
       params.context.sessionActivitySummaries?.handleLifecycle({
         sessionKey: target.canonicalKey,
         agentId: target.targetAgentId,

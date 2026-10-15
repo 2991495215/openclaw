@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import { buildAgentRunTerminalOutcomeFromLifecycleEvent } from "../agents/agent-run-terminal-outcome.js";
 import { inspectMainSessionRecoveryLifecycleEvent } from "../agents/main-session-recovery/main-session-recovery-lifecycle.js";
 import { getRuntimeConfig } from "../config/io.js";
@@ -7,7 +6,6 @@ import {
   type AgentEventPayload,
   type AgentEventRuntimePayload,
 } from "../infra/agent-events.js";
-import { assertExistingDatabaseIdentity } from "../infra/sqlite-worker-identity.js";
 import { runOutsideAsyncWorkScope } from "../shared/async-work-scope.js";
 import type { ChatRunEntry } from "./server-chat-state.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
@@ -33,43 +31,19 @@ export function createAgentEventAdmission({
     sessionKey: string,
     agentId: string | undefined,
     event: AgentEventPayload,
-    previous?: Promise<void>,
-  ): Promise<{ suppress: boolean; assertCurrent?: () => void }> => {
+  ): Promise<{ suppress: boolean }> => {
     const cfg = getRuntimeConfig();
-    const read = () =>
-      loadGatewaySessionEntryReadOnlyInWorker({
-        cfg,
-        key: sessionKey,
-        ...(agentId ? { agentId } : {}),
-      }).catch(() => undefined);
-    let loaded = await read();
-    const source = loaded?.capturedReadSource;
-    const assertCurrent = () => {
-      if (source && typeof source.databaseIdentity === "string") {
-        assertExistingDatabaseIdentity(
-          source.path,
-          `file:${source.databaseIdentity}`,
-          source.databaseBirthtime,
-        );
-      }
-    };
-    if (previous && loaded) {
-      await previous.catch(() => undefined);
-      assertCurrent();
-      const refreshed = await read();
-      if (refreshed && !isDeepStrictEqual(refreshed.capturedReadSource, source)) {
-        throw new Error("Session recovery source changed while awaiting earlier events");
-      }
-      loaded = refreshed;
-    }
-    assertCurrent();
+    const loaded = await loadGatewaySessionEntryReadOnlyInWorker({
+      cfg,
+      key: sessionKey,
+      ...(agentId ? { agentId } : {}),
+    }).catch(() => undefined);
     return {
       suppress: inspectMainSessionRecoveryLifecycleEvent({
         currentLifecycleGeneration: getAgentEventLifecycleGeneration(),
         entry: loaded?.entry,
         event,
       }).suppress,
-      assertCurrent,
     };
   };
 
@@ -95,17 +69,15 @@ export function createAgentEventAdmission({
     const sessionKey = source.eventSessionKey ?? source.sessionKey;
     const agentId = evt.agentId ?? source.sessionAgentId;
     const previous = pendingEvents.get(evt.runId);
-    // Capture the physical reader before waiting for earlier events. Only the
-    // mandatory recovery read delays this run; display enrichment stays separate.
-    const prepared =
-      needsRecoveryRead && sessionKey
-        ? resolveRestartRecoveryLifecycleState(sessionKey, agentId, evt, previous)
-        : undefined;
-    if (!prepared && !previous) {
+    if (!(needsRecoveryRead && sessionKey) && !previous) {
       return handleEvent(evt);
     }
     const consume = async () => {
-      const recovery = await prepared;
+      // Read once after predecessors settle; display suppression uses the current store.
+      const recovery =
+        needsRecoveryRead && sessionKey
+          ? await resolveRestartRecoveryLifecycleState(sessionKey, agentId, evt)
+          : undefined;
       const current = resolveEventSession(evt);
       if (
         current.chatLink !== source.chatLink ||
@@ -114,7 +86,6 @@ export function createAgentEventAdmission({
       ) {
         return;
       }
-      recovery?.assertCurrent?.();
       handleEvent(evt, recovery);
     };
     const pending = previous ? previous.then(consume, consume) : consume();

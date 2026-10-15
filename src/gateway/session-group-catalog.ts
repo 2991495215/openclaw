@@ -199,11 +199,10 @@ export function readSessionGroupCatalog(
 }
 
 export function mutateSessionGroupCatalog(
-  input: SessionGroupCatalogMutation,
+  mutation: SessionGroupCatalogMutation,
   env: NodeJS.ProcessEnv,
   assertCurrent?: (facts?: SessionGroupCatalogAdmission) => void,
 ) {
-  const mutation = structuredClone(input);
   const context = captureOpenClawStateWorkerContext({ env });
   const catalog = bindCatalog(context.admission);
   const write = async (): Promise<SessionGroupCatalogMutationResult> => {

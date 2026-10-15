@@ -54,7 +54,7 @@ export function captureGatewaySessionStoreSelection(
   const key = parseAgentSessionKey(target.canonicalKey);
   // This selection has no alternate source or key whose absence needs a later read.
   return source &&
-    typeof databaseIdentity === "string" &&
+    databaseIdentity !== undefined &&
     source.agentId === target.agentId &&
     target.store[target.canonicalKey]?.incognito !== true &&
     target.store[target.canonicalKey] &&

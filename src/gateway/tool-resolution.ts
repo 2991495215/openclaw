@@ -301,7 +301,7 @@ export async function resolveGatewayScopedTools(
     ...basePolicies,
     defaultGatewayDeny.length > 0 ? { deny: defaultGatewayDeny } : undefined,
     ownerOnlyGatewayDeny.length > 0 ? { deny: ownerOnlyGatewayDeny } : undefined,
-    Array.isArray(gatewayToolsCfg?.deny) ? { deny: gatewayToolsCfg.deny } : undefined,
+    gatewayToolsCfg?.deny ? { deny: gatewayToolsCfg.deny } : undefined,
   ]);
   const inheritedToolDenylist = [
     ...explicitDenylist,
@@ -396,7 +396,7 @@ export async function resolveGatewayScopedTools(
       ? [params.approvalReviewerDeviceId]
       : undefined,
     requesterAgentIdOverride: sessionAgentId,
-    agentChannel: params.messageProvider ?? undefined,
+    agentChannel: params.messageProvider,
     gatewayCallerAccountId: gatewayCaller.accountId,
     gatewayCallerChannel: gatewayCaller.channel,
     gatewayCallerLocal: gatewayCaller.local,
@@ -631,7 +631,7 @@ export async function resolveGatewayScopedTools(
     [
       ...defaultGatewayDeny,
       ...ownerOnlyGatewayDeny,
-      ...(Array.isArray(gatewayToolsCfg?.deny) ? gatewayToolsCfg.deny : []),
+      ...(gatewayToolsCfg?.deny ?? []),
       ...excludedToolNames,
     ].map(normalizeToolPolicyName),
   );

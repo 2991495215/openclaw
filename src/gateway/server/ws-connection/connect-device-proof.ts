@@ -61,11 +61,11 @@ export function verifyGatewayConnectDeviceProof(
     return { ok: false };
   }
   const signedAt = device.signedAt;
-  if (typeof signedAt !== "number" || Math.abs(Date.now() - signedAt) > DEVICE_SIGNATURE_SKEW_MS) {
+  if (Math.abs(Date.now() - signedAt) > DEVICE_SIGNATURE_SKEW_MS) {
     rejectDeviceAuthInvalid("device-signature-stale", "device signature expired");
     return { ok: false };
   }
-  const providedNonce = typeof device.nonce === "string" ? device.nonce.trim() : "";
+  const providedNonce = device.nonce.trim();
   if (!providedNonce) {
     rejectDeviceAuthInvalid("device-nonce-missing", "device nonce required");
     return { ok: false };

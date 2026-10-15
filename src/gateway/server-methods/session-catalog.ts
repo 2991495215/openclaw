@@ -205,7 +205,7 @@ export const sessionCatalogHandlers: GatewayRequestHandlers = {
         const { catalogId: _catalogId, ...providerRequest } = request;
         // Fail closed for unscoped callers: providers gate high-authority
         // continues (e.g. node-executing bindings) on these scopes.
-        const clientScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+        const clientScopes = client?.connect?.scopes ?? [];
         const providerContinueParams = {
           ...providerRequest,
           agentId: authorization.agentId,

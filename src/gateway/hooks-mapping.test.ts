@@ -6,11 +6,6 @@ import path from "node:path";
 import process from "node:process";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
-  awaitGateBeforeSettlement,
-  createDeferred,
-  withinTest,
-} from "../../test/helpers/promise.js";
-import {
   cleanupTempDirs,
   makeTempDir,
   useAutoCleanupTempDirTracker,
@@ -617,75 +612,6 @@ describe("hooks mapping", () => {
     expect(newlyAccepted?.ok).toBe(true);
     if (newlyAccepted?.ok && newlyAccepted.action?.kind === "wake") {
       expect(newlyAccepted.action.text).toBe("candidate");
-    }
-  });
-
-  it("does not let an older in-flight transform import repopulate the reload cache", async ({
-    signal,
-  }) => {
-    const configDir = autoCleanupTempDirs.make("openclaw-hooks-overlap-");
-    const transformsRoot = path.join(configDir, "hooks", "transforms");
-    fs.mkdirSync(transformsRoot, { recursive: true });
-    const modPath = path.join(transformsRoot, "reloadable.mjs");
-    const oldStartedEvent = path.join(configDir, "old-started");
-    const oldStarted = createDeferred();
-    const releaseOld = createDeferred();
-    const onOldStarted = (release: () => void) => {
-      oldStarted.resolve();
-      void releaseOld.promise.then(release);
-    };
-    fs.writeFileSync(
-      modPath,
-      [
-        'import process from "node:process";',
-        `await new Promise((release) => process.emit(${JSON.stringify(oldStartedEvent)}, release));`,
-        'export default () => ({ kind: "wake", text: "old" });',
-      ].join("\n"),
-    );
-
-    let acceptedMappings = acceptHookMappings(resolveReloadableMappings(configDir));
-    process.once(oldStartedEvent, onOldStarted);
-    const oldImport = applyReloadableMappings(acceptedMappings);
-    try {
-      await withinTest(
-        awaitGateBeforeSettlement(
-          oldStarted.promise,
-          oldImport,
-          `timed out waiting for ${oldStartedEvent}`,
-        ),
-        signal,
-      );
-
-      fs.writeFileSync(modPath, 'export default () => ({ kind: "wake", text: "new" });');
-      const nextTime = new Date(Date.now() + 5_000);
-      fs.utimesSync(modPath, nextTime, nextTime);
-
-      acceptedMappings = acceptHookMappings(resolveReloadableMappings(configDir));
-      const afterReload = await withinTest(applyReloadableMappings(acceptedMappings), signal);
-      expect(afterReload?.ok).toBe(true);
-      if (afterReload?.ok && afterReload.action?.kind === "wake") {
-        expect(afterReload.action.text).toBe("new");
-      }
-
-      releaseOld.resolve();
-      const olderResult = await withinTest(oldImport, signal);
-      expect(olderResult?.ok).toBe(true);
-      if (olderResult?.ok && olderResult.action?.kind === "wake") {
-        expect(olderResult.action.text).toBe("old");
-      }
-
-      const final = await withinTest(applyReloadableMappings(acceptedMappings), signal);
-      expect(final?.ok).toBe(true);
-      if (final?.ok && final.action?.kind === "wake") {
-        expect(final.action.text).toBe("new");
-      }
-    } finally {
-      releaseOld.resolve();
-      try {
-        await oldImport;
-      } finally {
-        process.removeListener(oldStartedEvent, onOldStarted);
-      }
     }
   });
 

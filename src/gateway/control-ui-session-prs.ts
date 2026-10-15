@@ -106,7 +106,7 @@ export function readKnownSessionBranchMergedHeads(
     branchCacheKey(context, access, JSON.stringify([read.target.identity, read.sourceIdentity])),
   );
   access.assertCurrent();
-  return structuredClone(entry?.lastGood?.mergedHeads ?? []);
+  return entry?.lastGood?.mergedHeads ?? [];
 }
 
 type LoadSessionPullRequestDeps = {

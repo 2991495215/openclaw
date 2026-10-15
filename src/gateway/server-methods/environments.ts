@@ -114,8 +114,8 @@ function summarizeNodeEnvironment(
     ...(node.connected && node.workerHost?.deviceFolders === true
       ? { workerHost: { deviceFolders: true as const } }
       : {}),
-    ...(node.workerSlots ? { workerSlots: { ...node.workerSlots } } : {}),
-    ...(node.workerBundle ? { workerBundle: structuredClone(node.workerBundle) } : {}),
+    ...(node.workerSlots ? { workerSlots: node.workerSlots } : {}),
+    ...(node.workerBundle ? { workerBundle: node.workerBundle } : {}),
     ...(node.lastConnectedAtMs !== undefined ? { lastConnectedAtMs: node.lastConnectedAtMs } : {}),
     ...(node.lastDisconnectedAtMs !== undefined
       ? { lastDisconnectedAtMs: node.lastDisconnectedAtMs }
@@ -124,9 +124,7 @@ function summarizeNodeEnvironment(
     ...(node.lastSeenReason ? { lastSeenReason: node.lastSeenReason } : {}),
     trust: "persistent",
     ...(desktop ? { desktop: true } : {}),
-    ...(liveNode?.desktopAvailability
-      ? { desktopAvailability: { ...liveNode.desktopAvailability } }
-      : {}),
+    ...(liveNode?.desktopAvailability ? { desktopAvailability: liveNode.desktopAvailability } : {}),
     ...(capabilities.length > 0 ? { capabilities } : {}),
     ...(invocableCommands.length > 0 ? { invocableCommands } : {}),
     ...(requiredNodeCommand ? { requiredNodeCommand } : {}),
@@ -257,7 +255,7 @@ export const environmentsHandlers: GatewayRequestHandlers = {
     if (!assertValidParams(params, validateEnvironmentsListParams, "environments.list", respond)) {
       return;
     }
-    const scopes = Array.isArray(client?.connect.scopes) ? client.connect.scopes : [];
+    const scopes = client?.connect.scopes ?? [];
     const includePreparedDetails =
       params.includePreparedDetails === true &&
       authorizeOperatorScopesForRequiredScope(ADMIN_SCOPE, scopes).allowed;
@@ -293,10 +291,7 @@ export const environmentsHandlers: GatewayRequestHandlers = {
       authority.assertCurrent();
       const includeCurrentPreparedDetails =
         includePreparedDetails &&
-        authorizeOperatorScopesForRequiredScope(
-          ADMIN_SCOPE,
-          Array.isArray(client?.connect.scopes) ? client.connect.scopes : [],
-        ).allowed;
+        authorizeOperatorScopesForRequiredScope(ADMIN_SCOPE, client?.connect.scopes ?? []).allowed;
       const summarizedAtMs = Date.now();
       environments.push(
         ...workers.map((record) =>
@@ -365,10 +360,8 @@ export const environmentsHandlers: GatewayRequestHandlers = {
           ? summarizeWorkerEnvironment(worker, Date.now(), {
               includePreparedDetails:
                 params.includePreparedDetails === true &&
-                authorizeOperatorScopesForRequiredScope(
-                  ADMIN_SCOPE,
-                  Array.isArray(client?.connect.scopes) ? client.connect.scopes : [],
-                ).allowed,
+                authorizeOperatorScopesForRequiredScope(ADMIN_SCOPE, client?.connect.scopes ?? [])
+                  .allowed,
             })
           : undefined,
         worker ? undefined : errorShape(ErrorCodes.INVALID_REQUEST, "unknown environmentId"),

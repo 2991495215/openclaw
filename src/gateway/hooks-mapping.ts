@@ -184,7 +184,7 @@ export function resolveHookMappings(
     if (!presetMappings) {
       continue;
     }
-    if (preset === "gmail" && typeof gmailAllowUnsafe === "boolean") {
+    if (preset === "gmail" && gmailAllowUnsafe !== undefined) {
       mappings.push(
         ...presetMappings.map((mapping) => ({
           ...mapping,
@@ -515,9 +515,8 @@ async function loadTransform(transform: HookMappingTransformResolved): Promise<H
   if (cached) {
     return cached;
   }
-  const generation = transformCacheBustVersion;
   const mod: Record<string, unknown> = await import(
-    `${pathToFileURL(transform.modulePath).href}?t=${generation}`
+    `${pathToFileURL(transform.modulePath).href}?t=${transformCacheBustVersion}`
   );
   const fn = resolveFunctionModuleExport<HookTransformFn>({
     mod,
@@ -527,9 +526,8 @@ async function loadTransform(transform: HookMappingTransformResolved): Promise<H
   if (!fn) {
     throw new Error("hook transform module must export a function");
   }
-  if (generation === transformCacheBustVersion) {
-    transformCache.set(cacheKey, fn);
-  }
+  // A reload during import is best effort; the next reload clears this entry.
+  transformCache.set(cacheKey, fn);
   return fn;
 }
 

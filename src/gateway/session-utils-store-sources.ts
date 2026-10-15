@@ -354,7 +354,7 @@ export async function prepareGatewaySessionStoreReadSourcesAsync(
     }
   };
   assertCurrent();
-  return { request: request && structuredClone(request), assertCurrent };
+  return { request, assertCurrent };
 }
 
 async function prepareSourceRequest(

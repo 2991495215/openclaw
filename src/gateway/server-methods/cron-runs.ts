@@ -114,10 +114,7 @@ export const cronRunsHandler: GatewayRequestHandler = async (options) => {
       storeKey,
       jobId,
       ...cronRunLogPageFilters(p),
-      jobNameById:
-        matchedJob && typeof matchedJob.name === "string"
-          ? { [jobId]: matchedJob.name }
-          : undefined,
+      jobNameById: matchedJob ? { [jobId]: matchedJob.name } : undefined,
     };
     const page = projectCronRunHistoryPage(records, {
       ...pageOptions,

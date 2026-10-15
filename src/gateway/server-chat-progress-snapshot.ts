@@ -110,7 +110,7 @@ export function updateChatRunProgressSnapshot(
   const data = event.data ?? {};
   const phase = typeof data.phase === "string" ? data.phase : "";
   const toolCallId = typeof data.toolCallId === "string" ? data.toolCallId.trim() : "";
-  const review = asNullableRecord(data.review) ?? undefined;
+  const review = asNullableRecord(data.review);
   const reviewId = typeof review?.id === "string" ? review.id.trim() : "";
   const isStartupStatus =
     event.stream === "run_status" &&

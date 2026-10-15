@@ -192,7 +192,6 @@ describe("startGatewayTailscaleExposure", () => {
       }),
     ).rejects.toBe(failure);
     expect(mocks.claimTailscaleRoute).not.toHaveBeenCalled();
-    expect(logTailscale.warn).toHaveBeenCalledWith(expect.stringContaining(failure.message));
   });
 
   it("claims Serve when preserveFunnel is true but no Funnel route exists for the port", async () => {

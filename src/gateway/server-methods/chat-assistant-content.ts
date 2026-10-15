@@ -108,7 +108,7 @@ export function prepareAssistantDisplayText(
 export function extractAssistantDisplayText(
   content?: readonly AssistantDisplayContentBlock[] | null,
 ): string | undefined {
-  if (!Array.isArray(content) || content.length === 0) {
+  if (!content?.length) {
     return undefined;
   }
   const parts: string[] = [];
@@ -156,10 +156,7 @@ export async function buildAssistantReplyContentFromInputs(
     input.kind === "raw" ? input.payload : input.plan.payload,
   );
   const rawTextPayloadCount = payloads.filter(
-    (payload) =>
-      payload.isReasoning !== true &&
-      typeof payload.text === "string" &&
-      payload.text.trim().length > 0,
+    (payload) => payload.isReasoning !== true && payload.text?.trim(),
   ).length;
   const plan = params.inputs.flatMap((input, sourceIndex) => {
     if (payloads[sourceIndex]?.isReasoning === true) {
@@ -186,9 +183,7 @@ export async function buildAssistantReplyContentFromInputs(
     return { assistantContent, persistedAssistantContent: assistantContent };
   }
 
-  const preserveTextBoundaries =
-    plan.filter(({ payload }) => typeof payload.text === "string" && payload.text.trim()).length >
-    1;
+  const preserveTextBoundaries = plan.filter(({ payload }) => payload.text?.trim()).length > 1;
   const content: Array<AssistantDisplayContentBlock | [string, ...string[]]> = [];
   const persistedContent: AssistantDisplayContentBlock[] = [];
   const mediaBySource = new Map<string, readonly AssistantDisplayContentBlock[]>();
@@ -219,7 +214,7 @@ export async function buildAssistantReplyContentFromInputs(
           content.push([text]);
         }
       }
-    } else if (typeof payload.text === "string" && payload.text.trim().length > 0) {
+    } else if (payload.text?.trim()) {
       strippedTextPayloadCount += 1;
     }
     // Display text may merge across payloads. Transcript captions and directives
