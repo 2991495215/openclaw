@@ -47,13 +47,26 @@ function failureReport(record: UpdateRunRecord, result: Partial<UpdateRunResult>
 afterEach(() => vi.restoreAllMocks());
 
 describe("update run report", () => {
-  it.each([
-    {
-      reason: "preflight-node-runtime-incompatible",
-      detail: "Node 24.15.0; requires engines.node >=24.16.0",
-    },
-    { reason: "node-runtime-preflight", detail: "Runtime capability probe failed" },
-  ])("separates the runtime check failure from its $detail diagnostics", ({ reason, detail }) => {
+  it("reports repeated database-path advisories once across Doctor phases", () => {
+    const detail =
+      "Skipped agent database path repair during update Doctor. Run openclaw doctor --fix to repair agent database paths.";
+    const report = renderUpdateRunReport(
+      run({
+        steps: [
+          { step: "warning:doctor", status: "completed", detail },
+          { step: "activating", status: "completed" },
+          { step: "warning:post-plugin-doctor", status: "completed", detail },
+        ],
+      }),
+    );
+    expect(report.lines.filter((line) => line.startsWith("Warning: "))).toEqual([
+      `Warning: ${detail}`,
+    ]);
+    expect(report.headline).toContain("1 warning needs attention");
+  });
+  it.each([true, false])("keeps runtime guidance within the chat budget (saved=%s)", (saved) => {
+    const action = `Keep the candidate installed and do not roll back code alone. ${"🦞".repeat(600)}`;
+    const reason = saved ? "node-runtime-preflight" : "preflight-node-runtime-incompatible";
     const record = run({
       status: "failed",
       reason,
