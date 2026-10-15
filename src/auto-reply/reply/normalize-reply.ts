@@ -85,7 +85,7 @@ export function normalizeReplyPayloadOutcome(
     return suppress("empty");
   }
 
-  let text = payload.text ?? undefined;
+  let text = payload.text;
   // Monitoring already applied its configured acknowledgment and error-text policy.
   if (!getReplyPayloadMetadata(payload)?.heartbeatReply) {
     const silentToken = opts.silentToken ?? SILENT_REPLY_TOKEN;

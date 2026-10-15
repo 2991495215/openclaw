@@ -22,6 +22,7 @@ import type { OriginatingChannelType } from "../templating.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { ReplyPayload, ReplyThreadingPolicy } from "../types.js";
 import { createBlockReplyContentKey, type BlockReplyPipeline } from "./block-reply-pipeline.js";
+import { normalizeReplyPayload } from "./normalize-reply.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { normalizeReplyPayloadDirectives, type DirectBlockDelivery } from "./reply-delivery.js";
 import { shouldRetryReplyDispatch } from "./reply-dispatch-outcome.js";
@@ -34,11 +35,11 @@ const replyPayloadsDedupeRuntimeLoader = createLazyImportLoader(
 const BUN_FETCH_SOCKET_ERROR_RE = /socket connection was closed unexpectedly/i;
 
 async function normalizeSentMediaUrlsForDedupe(params: {
-  sentMediaUrls: readonly string[];
+  sentMediaUrls: string[];
   normalizeMediaPaths?: (payload: ReplyPayload) => Promise<ReplyPayload>;
 }): Promise<string[]> {
   if (params.sentMediaUrls.length === 0 || !params.normalizeMediaPaths) {
-    return [...params.sentMediaUrls];
+    return params.sentMediaUrls;
   }
 
   const normalizedUrls = new Set<string>();
@@ -415,7 +416,13 @@ export async function buildReplyPayloads(params: {
         })
       : contentSuppressedPayloads;
   return {
-    replyPayloads: filteredPayloads.filter(isRenderablePayload),
+    replyPayloads: filteredPayloads.flatMap(
+      (payload) =>
+        normalizeReplyPayload(payload, {
+          applyChannelTransforms: false,
+          conversationContext: params.conversationContext,
+        }) ?? [],
+    ),
     didLogHeartbeatStrip,
   };
 }
