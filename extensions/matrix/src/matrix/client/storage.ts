@@ -294,7 +294,6 @@ export async function maybeMigrateLegacyStorage({
   }
 
   const logger = getMatrixRuntime().logging.getChildLogger({ module: "matrix-storage" });
-  fs.mkdirSync(rootDir, { recursive: true });
   let migrated = false;
   try {
     const store = getMatrixRuntime().state.openKeyedStoreV2<
