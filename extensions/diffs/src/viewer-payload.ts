@@ -1,4 +1,3 @@
-import { isStringArray } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { DIFF_INDICATORS, DIFF_LAYOUTS, DIFF_THEMES } from "./types.js";
 import type { DiffViewerPayload } from "./types.js";
 
@@ -27,7 +26,8 @@ function isDiffViewerPayload(value: unknown): value is DiffViewerPayload {
   return (
     isViewerRecord(value) &&
     typeof value.prerenderedHTML === "string" &&
-    isStringArray(value.langs) &&
+    Array.isArray(value.langs) &&
+    value.langs.every((lang) => typeof lang === "string") &&
     isViewerOptions(value.options) &&
     (isViewerRecord(value.fileDiff) ||
       (isViewerRecord(value.oldFile) && isViewerRecord(value.newFile)))
