@@ -13,12 +13,32 @@ import { createTrackedTempDirs } from "../test-utils/tracked-temp-dirs.js";
 import {
   resolveOpenedFileRealPathForHandle,
   FsSafeError,
+  lstatIfExists,
   readLocalFileSafely,
   root as openRoot,
   writeExternalFileWithinRoot,
 } from "./fs-safe.js";
 
 const tempDirs = createTrackedTempDirs();
+
+describe("lstatIfExists", () => {
+  it("distinguishes missing paths from regular files and dangling links", async () => {
+    const dir = await tempDirs.make("openclaw-lstat-");
+    const file = path.join(dir, "file");
+    const link = path.join(dir, "link");
+    await fs.writeFile(file, "content");
+    await fs.symlink(path.join(dir, "absent"), link);
+
+    expect((await lstatIfExists(file))?.isFile()).toBe(true);
+    expect((await lstatIfExists(link))?.isSymbolicLink()).toBe(true);
+    expect(await lstatIfExists(path.join(dir, "absent"))).toBeUndefined();
+    expect(await lstatIfExists(path.join(file, "child"))).toBeUndefined();
+  });
+
+  it("surfaces filesystem failures other than missing paths", async () => {
+    await expect(lstatIfExists("\u0000")).rejects.toThrow();
+  });
+});
 
 afterEach(async () => {
   __setFsSafeTestHooksForTest(undefined);

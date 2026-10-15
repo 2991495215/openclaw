@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { scheduler } from "node:timers/promises";
 import {
@@ -7,7 +6,10 @@ import {
   resolveSessionAgentIdsStrict,
 } from "openclaw/plugin-sdk/agent-scope-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
-import { canonicalPathFromExistingAncestor } from "openclaw/plugin-sdk/file-access-runtime";
+import {
+  canonicalPathFromExistingAncestor,
+  directoryExists,
+} from "openclaw/plugin-sdk/file-access-runtime";
 import {
   resolveCodexAppServerHomeDir,
   resolveCodexAppServerLocalHomeDir,
@@ -105,12 +107,7 @@ export function createCodexCatalogHomeResolver(params: {
     const discovery = canonicalPathFromExistingAncestor(resolved)
       .catch(() => resolved)
       .then(async (canonical) => {
-        if (
-          await fs.stat(canonical).then(
-            (stat) => stat.isDirectory(),
-            () => false,
-          )
-        ) {
+        if (await directoryExists(canonical)) {
           snapshot.directories.add(value);
         }
         snapshot.paths.set(value, canonical);

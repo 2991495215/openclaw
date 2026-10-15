@@ -24,13 +24,7 @@ export function resolveHomePath(input: string): string {
 
 export { pathExists as exists };
 
-export async function isDirectory(dirPath: string): Promise<boolean> {
-  try {
-    return (await fs.stat(dirPath)).isDirectory();
-  } catch {
-    return false;
-  }
-}
+export { directoryExists as isDirectory } from "openclaw/plugin-sdk/file-access-runtime";
 
 export function sanitizeName(name: string): string {
   return name

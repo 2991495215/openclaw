@@ -5,6 +5,7 @@ import {
   parseStrictInteger,
   parseStrictPositiveInteger,
 } from "@openclaw/normalization-core/number-coercion";
+import { isStringArray } from "@openclaw/normalization-core/record-coerce";
 import { isStringRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import { formatErrorMessage } from "../infra/errors.js";
@@ -206,8 +207,7 @@ export async function readCorrespondingLaunchAgentCommand(
   const args = plist?.ProgramArguments;
   const environment = plist?.EnvironmentVariables ?? {};
   if (
-    !Array.isArray(args) ||
-    !args.every((arg): arg is string => typeof arg === "string") ||
+    !isStringArray(args) ||
     !isStringRecord(environment) ||
     (plist?.Program ?? args[0]) !== observation.program
   ) {

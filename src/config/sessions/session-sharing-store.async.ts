@@ -3,6 +3,7 @@ import {
   collectNestedErrorCandidates,
   extractErrorCode,
 } from "@openclaw/normalization-core/error-coercion";
+import { isStringArray } from "@openclaw/normalization-core/record-coerce";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import { resolveRuntimeWorkerUrl } from "../../infra/runtime-worker-url.js";
@@ -338,11 +339,7 @@ export async function runSessionCollaborationWrite<
                   {
                     async execute(prepareCommand, executeOptions) {
                       const result = await operation.execute(prepareCommand, executeOptions);
-                      if (
-                        prepareCommand.type === "category.prepare" &&
-                        Array.isArray(result) &&
-                        result.every((key) => typeof key === "string")
-                      ) {
+                      if (prepareCommand.type === "category.prepare" && isStringArray(result)) {
                         publicationKeys = result;
                       }
                       return result;

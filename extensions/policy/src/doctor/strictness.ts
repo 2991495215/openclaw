@@ -1,4 +1,3 @@
-// Policy doctor strictness comparisons for scoped policy overlays.
 import { normalizeProviderId } from "openclaw/plugin-sdk/provider-model-shared";
 import { normalizeAccountId, normalizeAgentId } from "openclaw/plugin-sdk/routing";
 import {
@@ -6,6 +5,8 @@ import {
   isRecord,
   normalizeLowercaseStringOrEmpty,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
+// Policy doctor strictness comparisons for scoped policy overlays.
+import { isStringArray } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { validPolicyRoutingMatchKinds } from "../policy-routing.js";
 import { expandPolicyToolRequirement, toolListCoversTool } from "../tool-policy-conformance.js";
 import { readExecApprovalAllowlistRequirements } from "./exec-approval-rules.js";
@@ -229,7 +230,7 @@ function policyStringList(
   if (metadata.policyPath.join(".") === "execApprovals.agents.allowlist.expected") {
     return readExecApprovalAllowlistRequirements(value, [])?.map((entry) => entry.key);
   }
-  if (!value.every((entry) => typeof entry === "string")) {
+  if (!isStringArray(value)) {
     return undefined;
   }
   return value

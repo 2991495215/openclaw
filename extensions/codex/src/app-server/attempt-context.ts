@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { shouldIncludeAgentHarnessRuntimeContext } from "openclaw/plugin-sdk/agent-harness-attempt-runtime";
 import {
   embeddedAgentLog,
@@ -8,7 +7,9 @@ import {
   type EmbeddedContextFile,
   type EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { sha256Hex as sha256Text } from "openclaw/plugin-sdk/crypto-runtime";
 import { MESSAGE_TOOL_DELIVERY_HINTS } from "openclaw/plugin-sdk/message-tool-delivery-hints";
+import { floorPositiveFiniteNumber as readPositiveNumber } from "openclaw/plugin-sdk/number-runtime";
 import type { TranscriptTurnAdmission } from "openclaw/plugin-sdk/session-transcript-runtime";
 import {
   normalizeLowercaseStringOrEmpty,
@@ -206,10 +207,6 @@ function buildCodexToolReportEntry(tool: CodexDynamicToolFunctionSpec): CodexToo
   };
 }
 
-function sha256Text(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
 function stableJsonHash(value: JsonValue): string {
   return sha256Text(JSON.stringify(stabilizeJsonValue(value)) ?? "null");
 }
@@ -298,12 +295,6 @@ function indexCodexContextFileContent(files: EmbeddedContextFile[]) {
       (baseName ? byBaseName.get(baseName) : undefined)
     );
   };
-}
-
-function readPositiveNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.floor(value)
-    : undefined;
 }
 
 export function buildCodexOpenClawPromptContext(params: {

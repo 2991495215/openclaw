@@ -8,6 +8,7 @@ import { extractErrorCode } from "openclaw/plugin-sdk/error-runtime";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/runtime-env";
 import { sanitizeUntrustedFileName } from "openclaw/plugin-sdk/security-runtime";
 import { asNullableRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { isStringArray } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { truncateUtf8Prefix } from "openclaw/plugin-sdk/text-utility-runtime";
 import { racePromiseWithAbortSignal } from "openclaw/plugin-sdk/time-runtime";
 import {
@@ -88,7 +89,7 @@ function readUploadPaths(body: Record<string, unknown>): string[] | null {
   if (!Array.isArray(body.paths) || body.paths.length === 0) {
     return null;
   }
-  if (!body.paths.every((entry): entry is string => typeof entry === "string")) {
+  if (!isStringArray(body.paths)) {
     throw new Error("browser proxy upload paths must contain only strings");
   }
   return body.paths;

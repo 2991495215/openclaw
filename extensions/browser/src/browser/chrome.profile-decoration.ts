@@ -1,6 +1,7 @@
 import path from "node:path";
 import { loadJsonFile, saveJsonFile } from "openclaw/plugin-sdk/json-store";
 import { asNullableRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { ensureRecord } from "openclaw/plugin-sdk/string-normalization-runtime";
 import {
   DEFAULT_OPENCLAW_BROWSER_COLOR,
   DEFAULT_OPENCLAW_BROWSER_PROFILE_NAME,
@@ -21,13 +22,7 @@ function readNestedRecord(root: unknown, ...keys: string[]): Record<string, unkn
 }
 
 function ensureNestedRecord(root: Record<string, unknown>, ...keys: string[]) {
-  let node = root;
-  for (const key of keys) {
-    const child = asNullableRecord(node[key]) ?? {};
-    node[key] = child;
-    node = child;
-  }
-  return node;
+  return keys.reduce(ensureRecord, root);
 }
 
 function parseHexRgbToSignedArgbInt(hex: string): number | null {

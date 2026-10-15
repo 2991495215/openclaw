@@ -1,9 +1,10 @@
-// Owns cleanup of transient handoff files and released legacy process claims.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { safeParseJson } from "@openclaw/normalization-core/json-coercion";
 import { positiveSecondsToSafeMilliseconds } from "@openclaw/normalization-core/number-coercion";
+// Owns cleanup of transient handoff files and released legacy process claims.
+import { isStringArray } from "@openclaw/normalization-core/record-coerce";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { ManagedHandoffRepairFacts } from "./update-managed-service-handoff-database.js";
 import type { ManagedHandoffLease } from "./update-managed-service-handoff-lease-types.js";
@@ -161,11 +162,7 @@ export async function readManagedHandoffRepairFacts(
       }
     }
     const timeouts = [value.recoveryTimeoutMs, value.parentExitTimeoutMs];
-    const argv =
-      Array.isArray(value.commandArgv) &&
-      value.commandArgv.every((arg): arg is string => typeof arg === "string")
-        ? value.commandArgv
-        : [];
+    const argv = isStringArray(value.commandArgv) ? value.commandArgv : [];
     for (const [index, arg] of argv.entries()) {
       const seconds = arg === "--timeout" ? argv[index + 1] : arg.match(/^--timeout=(.*)$/u)?.[1];
       timeouts.push(positiveSecondsToSafeMilliseconds(seconds?.trim()));

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { canAccessSync } from "./path-guards.js";
 
 // Container identity is process-stable; cache misses as well as detections.
 let containerEnvironmentCache: boolean | undefined;
@@ -13,11 +14,8 @@ function detectContainerEnvironment(): boolean {
   }
 
   for (const sentinelPath of ["/.dockerenv", "/run/.containerenv", "/var/run/.containerenv"]) {
-    try {
-      fs.accessSync(sentinelPath, fs.constants.F_OK);
+    if (canAccessSync(sentinelPath, fs.constants.F_OK)) {
       return true;
-    } catch {
-      // Not present; try the next signal.
     }
   }
 

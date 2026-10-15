@@ -1,4 +1,3 @@
-// ClickClack plugin module claims short-lived setup codes without loading gateway clients.
 import {
   createProviderOperationDeadline,
   readProviderJsonResponse,
@@ -11,6 +10,8 @@ import {
   ssrfPolicyFromHttpBaseUrlAllowedHostname,
   type LookupFn,
 } from "openclaw/plugin-sdk/ssrf-runtime";
+// ClickClack plugin module claims short-lived setup codes without loading gateway clients.
+import { isStringArray } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { withTimeout } from "openclaw/plugin-sdk/text-utility-runtime";
 import {
   buildClickClackSetupClaimUrl,
@@ -58,10 +59,7 @@ function parseClickClackSetupCodeClaim(value: unknown, expectedClaimUrl?: string
   if (defaultTo !== undefined && typeof defaultTo !== "string") {
     throw new Error("ClickClack setup code claim returned invalid defaults.defaultTo");
   }
-  if (
-    allowFrom !== undefined &&
-    (!Array.isArray(allowFrom) || !allowFrom.every((entry) => typeof entry === "string"))
-  ) {
+  if (allowFrom !== undefined && !isStringArray(allowFrom)) {
     throw new Error("ClickClack setup code claim returned invalid defaults.allowFrom");
   }
   if (agentActivity !== undefined && typeof agentActivity !== "boolean") {

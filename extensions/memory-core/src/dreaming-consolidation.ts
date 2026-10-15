@@ -3,6 +3,7 @@ import {
   formatMemoryDreamingDay,
 } from "openclaw/plugin-sdk/memory-core-host-status";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { isStringArray } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
 import type { MemoryConsolidationResult } from "./dreaming-consolidation-artifacts.js";
 import { filterConsolidationCandidates } from "./dreaming-consolidation-candidates.js";
@@ -97,8 +98,7 @@ function parseConsolidationPlan(
       if (
         typeof value.candidateKey !== "string" ||
         (value.action !== "added" && value.action !== "merged" && value.action !== "superseded") ||
-        !Array.isArray(value.priorEntries) ||
-        !value.priorEntries.every((entry): entry is string => typeof entry === "string")
+        !isStringArray(value.priorEntries)
       ) {
         return [];
       }

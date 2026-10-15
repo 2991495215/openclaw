@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { isPathInside } from "openclaw/plugin-sdk/file-access-runtime";
+import { hasNodeErrorCode, isPathInside } from "openclaw/plugin-sdk/file-access-runtime";
 import { resolveRequiredHomeDir, resolveStateDir } from "openclaw/plugin-sdk/state-paths";
 import type { CodexAppServerClient } from "./client.js";
 import type { CodexSkillsListResponse } from "./protocol-control-plane.js";
@@ -36,10 +36,6 @@ const nativeSkillIsolationByClient = new WeakMap<
     };
   }
 >();
-
-function isMissingPathError(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException).code === "ENOENT";
-}
 
 function isUnsupportedCodexVisualizeSkill(skill: {
   name: string;
@@ -116,7 +112,7 @@ async function collectPersonalSkillRealPaths(
   }));
   let entryCount = 0;
   const recordScanError = (error: unknown) => {
-    if (!isMissingPathError(error)) {
+    if (!hasNodeErrorCode(error, "ENOENT")) {
       complete = false;
     }
   };

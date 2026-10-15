@@ -1,6 +1,6 @@
-export function normalizeTooltipText(text: string) {
-  return text.replace(/\s+/g, " ").trim();
-}
+import { collapseWhitespace as normalizeTooltipText } from "@openclaw/normalization-core/string-normalization";
+
+export { normalizeTooltipText };
 
 export function isTooltipTriggerElement(element: unknown): element is HTMLElement | SVGElement {
   return (
