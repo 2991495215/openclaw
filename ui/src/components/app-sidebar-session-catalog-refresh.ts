@@ -8,7 +8,6 @@ import {
   refetchExpandedSessionCatalogPages,
   sessionCatalogRequestError,
 } from "./app-sidebar-session-catalog-state.ts";
-import type { SessionCatalogDataOwner } from "./session-data-controller-catalog.ts";
 
 const SESSION_CATALOG_SAFETY_REFRESH_MS = 10 * 60_000;
 const SESSION_CATALOG_STABLE_REFRESH_MS = 30_000;
@@ -177,28 +176,18 @@ export async function refreshSessionCatalogsLive(params: {
   }
 }
 
-export function captureSessionCatalogRequest(
-  owner: SessionCatalogDataOwner,
-  catalogId: string,
-  client: GatewayBrowserClient,
-  hostIds: readonly string[],
-): () => boolean {
-  const generation = owner.sessionScopeGeneration;
-  const revision = owner.sessionCatalogRevisions.get(catalogId) ?? 0;
-  const hosts =
-    owner.sessionCatalogs
-      .find((catalog) => catalog.id === catalogId)
-      ?.hosts.filter((host) => hostIds.includes(host.hostId)) ?? [];
-  // Host snapshots are immutable publications. A sibling update does not retire
-  // this read; a root refresh, adoption, or replacement of any requested host does.
-  return () =>
-    generation === owner.sessionScopeGeneration &&
-    revision === (owner.sessionCatalogRevisions.get(catalogId) ?? 0) &&
-    client === owner.sessionCatalogGatewayClient() &&
-    hosts.every(
-      (host) =>
-        owner.sessionCatalogs
-          .find((catalog) => catalog.id === catalogId)
-          ?.hosts.find((entry) => entry.hostId === host.hostId) === host,
-    );
+export function hiddenSessionCatalogPages(
+  catalogs: readonly SessionCatalog[],
+  hiddenCatalogIds: readonly string[],
+) {
+  const hiddenIds = new Set(hiddenCatalogIds);
+  return catalogs.flatMap((catalog) => {
+    if (!hiddenIds.has(catalog.id) || catalog.error) {
+      return [];
+    }
+    const hostIds = catalog.hosts
+      .filter((host) => host.nextCursor && !host.pending && !host.error)
+      .map((host) => host.hostId);
+    return hostIds.length > 0 ? [{ catalogId: catalog.id, hostIds }] : [];
+  });
 }

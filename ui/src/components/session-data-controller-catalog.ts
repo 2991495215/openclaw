@@ -22,7 +22,7 @@ import {
   sessionCatalogListClient,
 } from "./app-sidebar-session-catalog-live.ts";
 import {
-  captureSessionCatalogRequest,
+  hiddenSessionCatalogPages,
   refreshSessionCatalogsLive,
 } from "./app-sidebar-session-catalog-refresh.ts";
 import {
@@ -93,6 +93,26 @@ export interface SessionCatalogDataOwner {
   sessionCatalogIdsWithoutVisibleRows(): readonly string[];
 }
 
+function captureSessionCatalogRequest(
+  owner: SessionCatalogDataOwner,
+  catalogId: string,
+  client: GatewayBrowserClient,
+  hostIds: readonly string[],
+): () => boolean {
+  const generation = owner.sessionScopeGeneration;
+  const revision = owner.sessionCatalogRevisions.get(catalogId) ?? 0;
+  const currentHosts = () =>
+    owner.sessionCatalogs.find((catalog) => catalog.id === catalogId)?.hosts;
+  const hosts = currentHosts()?.filter((host) => hostIds.includes(host.hostId)) ?? [];
+  // Host snapshots are immutable publications. A sibling update does not retire
+  // this read; a root refresh, adoption, or replacement of any requested host does.
+  return () =>
+    generation === owner.sessionScopeGeneration &&
+    revision === (owner.sessionCatalogRevisions.get(catalogId) ?? 0) &&
+    client === owner.sessionCatalogGatewayClient() &&
+    hosts.every((host) => currentHosts()?.find((entry) => entry.hostId === host.hostId) === host);
+}
+
 interface SessionCatalogResetOwner extends SessionCatalogDataOwner {
   sessionScopeGeneration: number;
   pendingCatalogArchives: ReadonlySet<string>;
@@ -134,13 +154,10 @@ export function areSessionCatalogsSettled(
   >,
 ): boolean {
   const status = owner.sessionCatalogRefreshStatus;
+  const gateway = owner.context?.gateway.snapshot;
   return (
     !status.error &&
-    (!canCallGatewayMethod(
-      owner.context?.gateway.snapshot,
-      "sessions.catalog.list",
-      "operator.read",
-    ) ||
+    (!canCallGatewayMethod(gateway, "sessions.catalog.list", "operator.read") ||
       (status.hasLoaded &&
         !status.awaitingGateway &&
         owner.sessionCatalogLive.requestGeneration === null &&
@@ -257,11 +274,8 @@ export function updateSessionCatalogData(owner: SessionCatalogDataOwner): void {
 }
 
 function sessionCatalogChangesAdvertised(owner: SessionCatalogDataOwner): boolean {
-  return (
-    owner.context?.gateway.snapshot.hello?.features?.events?.includes(
-      "sessions.catalog.changed",
-    ) === true
-  );
+  const events = owner.context?.gateway.snapshot.hello?.features?.events;
+  return events?.includes("sessions.catalog.changed") === true;
 }
 
 export function applySessionCatalogChanged(owner: SessionCatalogDataOwner, payload: unknown): void {
@@ -443,19 +457,6 @@ export async function refreshSessionCatalogs(owner: SessionCatalogDataOwner): Pr
   owner.requestSessionDataUpdate();
 }
 
-function hiddenSessionCatalogPages(owner: SessionCatalogDataOwner) {
-  const hiddenIds = new Set(owner.sessionCatalogIdsWithoutVisibleRows());
-  return owner.sessionCatalogs.flatMap((catalog) => {
-    if (!hiddenIds.has(catalog.id) || catalog.error) {
-      return [];
-    }
-    const hostIds = catalog.hosts
-      .filter((host) => host.nextCursor && !host.pending && !host.error)
-      .map((host) => host.hostId);
-    return hostIds.length > 0 ? [{ catalogId: catalog.id, hostIds }] : [];
-  });
-}
-
 async function discoverHiddenSessionCatalogPages(owner: SessionCatalogDataOwner): Promise<void> {
   const generation = owner.sessionScopeGeneration;
   const client = visibleSessionCatalogClient(owner);
@@ -469,7 +470,8 @@ async function discoverHiddenSessionCatalogPages(owner: SessionCatalogDataOwner)
     client === visibleSessionCatalogClient(owner) &&
     owner.isSessionDataHostConnected
   ) {
-    const pages = hiddenSessionCatalogPages(owner);
+    const hiddenIds = owner.sessionCatalogIdsWithoutVisibleRows();
+    const pages = hiddenSessionCatalogPages(owner.sessionCatalogs, hiddenIds);
     if (pages.length === 0) {
       return;
     }
