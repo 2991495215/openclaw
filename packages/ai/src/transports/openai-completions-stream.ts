@@ -41,6 +41,7 @@ import {
   type OpenAICompletionsContentDelta as CompletionsReasoningDelta,
   type OpenAICompletionsTextSource,
   type OpenAIModeModel,
+  detachPartialSnapshot,
 } from "./openai-transport-shared.js";
 import { iterateModelStream, throwIfModelStreamAborted } from "./transport-stream-shared.js";
 
@@ -151,7 +152,7 @@ export async function processCompletionsStream(
   let chunkPushedEvent = false;
   const pushStreamEvent = (event: AssistantMessageEvent) => {
     chunkPushedEvent = true;
-    stream.push(event);
+    stream.push(detachPartialSnapshot(event));
   };
   const queuePostToolCallDelta = (next: CompletionsReasoningDelta) => {
     const nextBytes = Buffer.byteLength(next.text, "utf8");
