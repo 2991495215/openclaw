@@ -9,12 +9,12 @@ import {
   materializeSessionArchiveForRead,
   readSessionArchiveContentSync,
   SESSION_ARCHIVE_ZSTD_SUFFIX,
-  stripSessionArchiveCompressionSuffix,
 } from "./archive-compression.js";
 import {
   parseSessionArchiveTimestamp,
   parseUsageCountedSessionIdFromFileName,
 } from "./artifacts.js";
+import { stripSessionArchiveCompressionSuffix } from "./transcript-file-names.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 

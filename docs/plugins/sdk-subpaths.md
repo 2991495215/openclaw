@@ -193,6 +193,12 @@ longer package exports: `agent-runtime-test-contracts`,
 `ssrf-runtime-internal` is a JavaScript-only host runtime reserved for exact
 trusted local-service plugins; it is not a public plugin authoring API.
 
+The private-local `session-key-runtime` provides pure cron/dreaming session-key
+classification and usage-counted transcript filename parsing. Bundled memory
+readers use it without loading session storage, artifact cleanup, or archive
+compression. Filename parsing shares a pure grammar with the artifact helpers.
+Existing memory session facades retain these exports for installed plugin compatibility.
+
 ### Bundled plugin helper subpaths
 
 Bundled-only helper modules are private-local after the July 2026 sweep.
