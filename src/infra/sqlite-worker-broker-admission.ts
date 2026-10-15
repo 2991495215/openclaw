@@ -93,7 +93,9 @@ export function captureSqliteWorkerOpen(
   const carrierUrl = options.runtimeGeneration?.resolve(carrier) ?? carrier;
   return {
     ...native,
-    maintenanceScope: custody.maintenanceScope ?? getOpenClawDatabaseMaintenanceScope(),
+    maintenanceScope: custody.cleanupAccess
+      ? undefined
+      : (custody.maintenanceScope ?? getOpenClawDatabaseMaintenanceScope()),
     ...(preparation !== undefined ? { preparation: serialize(preparation) } : {}),
     runtimeGeneration: options.runtimeGeneration,
     carrierUrl,
@@ -334,6 +336,7 @@ export function prepareSqliteWorkerActorContext(actor: Actor | undefined, job: J
   if (actor && !actor.target && request.type !== "close") {
     assertStateDatabaseAccessAllowed(actor.stateDatabasePath ?? actor.databasePath, {
       maintenanceScope: job.maintenanceScope,
+      schemaLease: job.cleanupAccess,
     });
   }
   if (actor && stateContext) {
