@@ -281,6 +281,9 @@ describe("MCP OAuth refresh issuer binding", () => {
           mintedAccessToken: "rotated-access",
         });
         await buildOAuthFetch(sameIssuer.fetchFn)(SERVER_URL, { method: "POST", body: "{}" });
+        const refreshedStore = await readStore();
+        expect(refreshedStore.clientInformation?.issuer).toBe(ORIGINAL_ISSUER);
+        expect(refreshedStore.tokens?.issuer).toBe(ORIGINAL_ISSUER);
 
         const newIssuer = createOAuthNetwork({
           challengeMetadataUrl: REPLACEMENT_METADATA_URL,
@@ -289,7 +292,7 @@ describe("MCP OAuth refresh issuer binding", () => {
         });
         await expect(
           buildOAuthFetch(newIssuer.fetchFn)(SERVER_URL, { method: "POST", body: "{}" }),
-        ).rejects.toThrow(/requires OAuth authorization/);
+        ).rejects.toThrow("Incompatible auth server: does not support dynamic client registration");
 
         expect(newIssuer.tokenRequests).toEqual([]);
         expect((await readStore()).tokensAuthorizationServerUrl).toBe(ORIGINAL_ISSUER);
