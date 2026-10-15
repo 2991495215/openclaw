@@ -177,7 +177,8 @@ export async function reloadGatewayPlugins(
     recordWarning,
     retainRetirement: (retire) => kernel.pluginMetadata.retire(cache, retire),
   });
-  const replacement = kernel.pluginRuntimeGeneration.reserve();
+  const replacement = kernel.pluginRuntimeGeneration;
+  const previousReloadStatus = replacement.getReloadStatus();
   const assertCurrent = () => {
     drainSignal.throwIfAborted();
     params.assertInvokerOwned?.();
@@ -390,8 +391,7 @@ export async function reloadGatewayPlugins(
           );
           publishMetadata();
           runtime.pluginMetadataSnapshot = nextMetadata;
-          replacement.commit();
-          kernel.pluginRuntimeGeneration.publishServices(replacement.claim, startedServices);
+          replacement.publishServices(startedServices);
           // Compare handshake descriptors before the prepared credentials replace them.
           // Changed nodes stay invalidated while their connections close.
           for (const client of clients) {
@@ -433,10 +433,9 @@ export async function reloadGatewayPlugins(
         await attempt(activationErrors, () => sidecar.resume(params.nextConfig));
       }
       await attempt(activationErrors, () =>
-        runtimeState.discovery?.update(
-          { gatewayDiscoveryServices: nextRegistry.gatewayDiscoveryServices },
-          replacement.claim,
-        ),
+        runtimeState.discovery?.update({
+          gatewayDiscoveryServices: nextRegistry.gatewayDiscoveryServices,
+        }),
       );
     }
     await attempt(activationErrors, () => runLifecycleHooks(nextRegistry, true, params.nextConfig));
@@ -474,7 +473,6 @@ export async function reloadGatewayPlugins(
     const onCleanupFailure = (message: string) => (cleanupError: unknown) => {
       failure = new AggregateError([failure, cleanupError], message);
     };
-    replacement.reject();
     if (!committed) {
       const candidateRegistry =
         loaded?.pluginRegistry ??
@@ -482,10 +480,7 @@ export async function reloadGatewayPlugins(
       let candidateCleanupFailed = false;
       if (candidateServices) {
         // Retained services moved here; shutdown owns them even if recovery cannot run.
-        kernel.pluginRuntimeGeneration.publishServices(
-          kernel.pluginRuntimeGeneration.currentClaim(),
-          candidateServices,
-        );
+        kernel.pluginRuntimeGeneration.publishServices(candidateServices);
       }
       if (candidateRegistry) {
         try {
@@ -568,10 +563,7 @@ export async function reloadGatewayPlugins(
                   previousConfig,
                   (handle) => {
                     recoveredServices = handle;
-                    kernel.pluginRuntimeGeneration.publishServices(
-                      kernel.pluginRuntimeGeneration.currentClaim(),
-                      handle,
-                    );
+                    kernel.pluginRuntimeGeneration.publishServices(handle);
                   },
                   memoryReplacement?.retainedPluginIds,
                 );
@@ -604,10 +596,9 @@ export async function reloadGatewayPlugins(
             await attempt(recoveryErrors, () => sidecar.resume(previousConfig));
           }
           await attempt(recoveryErrors, () =>
-            runtimeState.discovery?.update(
-              { gatewayDiscoveryServices: restoredRegistry.gatewayDiscoveryServices },
-              kernel.pluginRuntimeGeneration.currentClaim(),
-            ),
+            runtimeState.discovery?.update({
+              gatewayDiscoveryServices: restoredRegistry.gatewayDiscoveryServices,
+            }),
           );
           // Early drain failures restore pauses without restarting hooks that never stopped.
           if (previousStopStarted) {
@@ -704,6 +695,7 @@ export async function reloadGatewayPlugins(
       pluginRuntime.registry,
       recovery.unavailablePluginIds,
       restartDrainSignal.aborted ? undefined : log.error,
+      previousReloadStatus,
     );
     recovery.dispose();
   }

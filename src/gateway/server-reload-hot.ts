@@ -71,13 +71,7 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
     waitForActiveWorkBeforeChannelReload,
   } = createGatewayActiveWorkTracker({ params, myGeneration });
 
-  const {
-    deferGatewayRestartDebt,
-    getLatestAcceptedRestartTarget,
-    hasRestartRequestTransaction,
-    isRestartRetryStopped,
-    ...restartCoordinator
-  } = createGatewayRestartCoordinator({
+  const { isRestartRetryStopped, ...restartCoordinator } = createGatewayRestartCoordinator({
     params,
     myGeneration,
     restartRecoveryAvailable,
@@ -447,30 +441,8 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
       };
       if (!isCurrent()) {
         params.logReload.warn(
-          `${surface} failed after config supersession${detail}; recovery deferred to the newer config`,
+          `${surface} failed after config supersession${detail}; reapply the config or restart the Gateway if the newer reload does not recover it`,
         );
-        const target = getLatestAcceptedRestartTarget();
-        if (
-          !restartCoordinator.hasConfigCandidatePending() &&
-          !hasRestartRequestTransaction() &&
-          target
-        ) {
-          const restartTransaction = restartCoordinator.requestGatewayRestart(
-            recoveryPlan,
-            target.runtimeConfig,
-            {
-              retainDebtAcrossConfigChanges: true,
-              debtConfig: target.sourceConfig,
-              prepareRuntimeConfig: target.prepareRuntimeConfig,
-            },
-          );
-          settleRecoveryRestart(restartTransaction, surface);
-          return;
-        }
-        deferGatewayRestartDebt(recoveryPlan, nextConfig, {
-          retainDebtAcrossConfigChanges: true,
-          debtConfig: publication?.sourceConfig ?? nextConfig,
-        });
         return;
       }
       const commitState = runtimeCommitted ? "after config commit" : "before config commit";
@@ -479,20 +451,15 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
         return;
       }
       try {
-        // Reuse the config-restart path to drain other work and fence restart delivery.
+        // Drain active work through the ordinary config-restart path.
         const restartTransaction = restartCoordinator.requestGatewayRestart(
           recoveryPlan,
           nextConfig,
-          // Recovery debt represents a failed runtime surface, not every path
-          // in the hot plan. Keep it until a replacement restart commits.
           {
-            retainDebtAcrossConfigChanges: true,
-            debtConfig: publication?.sourceConfig ?? nextConfig,
             prepareRuntimeConfig: publication?.prepareRestartRuntimeConfig,
           },
         );
         settleRecoveryRestart(restartTransaction, surface);
-        // Keep the committed transaction accepted while emission recovery retries.
       } catch (restartError) {
         params.logReload.warn(
           `failed to schedule post-commit gateway restart: ${formatErrorMessage(restartError)}`,

@@ -15,8 +15,6 @@ it("preserves readiness when rollback restores an already unavailable startup pl
     getServices: () => null,
     setServices() {},
   });
-  const rejected = generation.reserve();
-  rejected.reject();
-  rejected.finishReload("restored", selected, registry, recovery.unavailablePluginIds);
+  generation.finishReload("restored", selected, registry, recovery.unavailablePluginIds);
   expect(generation.getReloadStatus()).toBeUndefined();
 });

@@ -413,7 +413,6 @@ it("retains unrelated discovery after the selected service refuses cleanup", asy
       });
       const discovery = await startGatewayDiscovery({
         gatewayDiscoveryServices: fixture.previousRegistry.gatewayDiscoveryServices,
-        pluginRuntimeClaim: fixture.owner.currentClaim(),
         machineDisplayName: "fixture-gateway",
         port: 0,
         tailscaleMode: "off",
@@ -577,7 +576,6 @@ it.each(["rollback", "after-commit error", "late startup"] as const)(
         const discovery = await startGatewayDiscovery({
           discovery: { mdns: { mode: "minimal" } },
           gatewayDiscoveryServices: fixture.previousRegistry.gatewayDiscoveryServices,
-          pluginRuntimeClaim: fixture.owner.currentClaim(),
           machineDisplayName: "fixture-gateway",
           port: 0,
           tailscaleMode: "off",

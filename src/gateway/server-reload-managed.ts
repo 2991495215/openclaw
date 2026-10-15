@@ -22,10 +22,7 @@ import {
   GatewayConfigReloadSupersededError,
   GatewayHotReloadRecoveryError,
   GatewayHotReloadStaleSecretsError,
-  type AcceptedRestartTarget,
-  type AcceptedRestartTargetOwnership,
   type CurrentRuntimeSecretsPreparation,
-  type GatewayRestartRequestOptions,
   type GatewayRestartTransactionResult,
   type ManagedGatewayConfigReloaderHandle,
   type ManagedGatewayConfigReloaderParams,
@@ -141,14 +138,9 @@ export function startManagedGatewayConfigReloader(
     acceptRestartConfig,
     beginGatewayRestartLifecycle,
     hasOutstandingGatewayRestart,
-    hasConfigCandidatePending,
-    pauseGatewayRestartForConfigCandidate,
     publishAppliedConfigHash,
-    publishAcceptedRestartTarget,
     publishDeferredAppliedConfigHash,
-    recordAcceptedRestartTarget,
     requestGatewayRestart,
-    restoreConservativeRestartDebt,
     stopRestartRetries,
   } = createGatewayReloadHandlers({
     ...params,
@@ -171,8 +163,6 @@ export function startManagedGatewayConfigReloader(
     nextConfig: OpenClawConfig,
     transactionOwnership: GatewayConfigReloadTransactionOwnership,
     sourceConfig: OpenClawConfig,
-    restartOptions?: GatewayRestartRequestOptions,
-    beforeRestartRequest?: () => Promise<void>,
   ) => {
     const isCurrent = () => !lifecycle.signal.aborted && transactionOwnership.isCurrent();
     const assertCurrent = () => {
@@ -249,9 +239,6 @@ export function startManagedGatewayConfigReloader(
       await params.reconcileRuntimePolicy(preparedRuntimeConfig, "restart");
       await transactionOwnership.checkpoint();
       assertCurrent();
-      await beforeRestartRequest?.();
-      await transactionOwnership.checkpoint();
-      assertCurrent();
       // Claim the shared-session requirement before creating any async restart
       // emission. A rejected generation owner must never leave a live deferral.
       requiredOwnership = params.sharedGatewaySessionGenerationState.setRequired(
@@ -267,8 +254,6 @@ export function startManagedGatewayConfigReloader(
       // the admission edge, then roll it back if this restart is rejected.
       transactionOwnership.publishRuntimeEnv();
       restartTransaction = requestGatewayRestart(plan, preparedRuntimeConfig, {
-        ...restartOptions,
-        debtConfig: sourceConfig,
         prepareRuntimeConfig: () =>
           prepareRestartRuntimeConfig(preparedRuntimeConfig, sourceConfig, transactionOwnership),
       });
@@ -381,88 +366,17 @@ export function startManagedGatewayConfigReloader(
     onConfigCandidateObserved: () => {
       // Every writer must expose persisted revisions before runtime acceptance.
       invalidateConfigGetResponseCache();
-      pauseGatewayRestartForConfigCandidate();
     },
     onConfigChange: (plan, nextConfig) => {
       assertIrreversibleReloadPlanHasRecoveryOwner(plan, restartRecoveryAvailable);
       params.prepareTerminalConfig(plan, applyRuntimeConfigOverrides(nextConfig));
     },
-    onConfigAccepted: async (nextConfig, transactionOwnership, sourceConfig, acceptance) => {
-      const assertCurrent = () => {
-        assertReloadPublicationCurrent(transactionOwnership.isCurrent(), false);
-      };
-      const createRestartTarget = (): AcceptedRestartTarget => ({
-        runtimeConfig: prepareRuntimeCandidate(nextConfig, sourceConfig, transactionOwnership),
-        sourceConfig,
-        prepareRuntimeConfig: () =>
-          prepareRestartRuntimeConfig(nextConfig, sourceConfig, transactionOwnership),
-      });
-      let acceptedTargetOwnership: AcceptedRestartTargetOwnership | undefined;
-      let lateConservativeDebt: ReturnType<
-        typeof publishAcceptedRestartTarget
-      >["conservativeDebt"] = null;
-      try {
-        await transactionOwnership.checkpoint();
-        assertCurrent();
-        const acceptedRestart = acceptRestartConfig(sourceConfig);
-        if (!acceptance.runtimeApplied) {
-          // acceptRestartConfig leaves returned debt in its paused/conservative owner.
-          // This candidate explicitly skipped runtime application, so a later
-          // runtime-applied acceptance—not this source-only write—may rearm it.
-          await transactionOwnership.checkpoint();
-          assertCurrent();
-          recordAcceptedRestartTarget(createRestartTarget());
-          params.acceptTerminalConfig({
-            retireRejectedRestart: acceptedRestart.retireRejectedRestart,
-          });
-          publishDeferredAppliedConfigHash();
-          return;
-        }
-        if (acceptedRestart.debt) {
-          await runManagedRestart(
-            acceptedRestart.debt.plan,
-            nextConfig,
-            transactionOwnership,
-            sourceConfig,
-            {
-              retainDebtAcrossConfigChanges: acceptedRestart.debt.retainDebtAcrossConfigChanges,
-            },
-            acceptance.publishSource,
-          );
-        } else {
-          await acceptance.publishSource?.();
-        }
-        await transactionOwnership.checkpoint();
-        assertCurrent();
-        // Target publication clears the candidate pause. Take conservative debt
-        // synchronously at the same edge so acceptance-window failures cannot strand it.
-        const acceptedTarget = publishAcceptedRestartTarget(createRestartTarget());
-        acceptedTargetOwnership = acceptedTarget.ownership;
-        lateConservativeDebt = acceptedTarget.conservativeDebt;
-        if (lateConservativeDebt && lateConservativeDebt !== acceptedRestart.debt) {
-          await runManagedRestart(
-            lateConservativeDebt.plan,
-            nextConfig,
-            transactionOwnership,
-            sourceConfig,
-            {
-              retainDebtAcrossConfigChanges: lateConservativeDebt.retainDebtAcrossConfigChanges,
-            },
-          );
-        }
-        await transactionOwnership.checkpoint();
-        assertCurrent();
-        params.acceptTerminalConfig({
-          retireRejectedRestart: acceptedRestart.retireRejectedRestart && !lateConservativeDebt,
-        });
-        publishDeferredAppliedConfigHash();
-      } catch (error) {
-        if (lateConservativeDebt) {
-          restoreConservativeRestartDebt(lateConservativeDebt);
-        }
-        acceptedTargetOwnership?.reject();
-        throw error;
-      }
+    onConfigAccepted: async (_nextConfig, transactionOwnership, _sourceConfig, acceptance) => {
+      await acceptance.publishSource?.();
+      await transactionOwnership.checkpoint();
+      assertReloadPublicationCurrent(transactionOwnership.isCurrent(), false);
+      params.acceptTerminalConfig(acceptRestartConfig());
+      publishDeferredAppliedConfigHash();
     },
     onConfigApplied: (plan, nextConfig) => {
       // Applied runtime identity owns config-derived process memos; accepted
@@ -500,7 +414,6 @@ export function startManagedGatewayConfigReloader(
       configReloader.isReady() &&
       !lifecycle.signal.aborted &&
       !configReloader.isReloading() &&
-      !hasConfigCandidatePending() &&
       !hasOutstandingGatewayRestart(),
   };
 }
