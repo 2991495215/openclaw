@@ -106,7 +106,6 @@ function resolveSignalManagedNativePort(params: {
   transport: SignalTransportConfig | undefined;
 }): number {
   if (params.transport?.kind === "managed-native" && params.transport.socketPath !== undefined) {
-    assertSignalSocketTransport(params.transport);
     if (isSignalAccountEnabled(params.cfg, params.accountConfig)) {
       for (const accountId of listSignalAccountIds(params.cfg)) {
         if (normalizeAccountId(accountId) === params.accountId) {
