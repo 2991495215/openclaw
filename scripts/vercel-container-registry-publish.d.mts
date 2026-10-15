@@ -21,8 +21,8 @@ export function publishVercelContainerRegistryImages(
     sourceRefs: string[];
     targetImage: string;
   },
-  options?: {
-    beforeMutation?: () => void;
+  options: {
+    beforeMutation: () => undefined;
     execFileSyncImpl?: (command: string, args: string[], options: object) => unknown;
     log?: (message: string) => void;
   },
@@ -34,8 +34,8 @@ export function promoteVercelContainerRegistryAliases(
     version: string;
     targetImage: string;
   },
-  options?: {
-    beforeMutation?: () => void;
+  options: {
+    beforeMutation: () => undefined;
     execFileSyncImpl?: (command: string, args: string[], options: object) => unknown;
     log?: (message: string) => void;
   },

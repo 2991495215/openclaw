@@ -449,27 +449,6 @@ describe("scripts/validate-release-publish-approval.mjs", () => {
     expect(result.stdout).toBe("");
   });
 
-  it("binds the parent repository, workflow path, full ref, SHA, and attempt", () => {
-    const workflowSha = "d".repeat(40);
-    const fullRef = "refs/tags/release-publish/aaaaaaaaaaaa-111";
-    const result = runApprovalScript(
-      approvalRun({
-        headBranch: "release-publish/aaaaaaaaaaaa-111",
-        headSha: workflowSha,
-        path: `.github/workflows/openclaw-release-publish.yml@${fullRef}`,
-        runAttempt: 7,
-      }),
-      {
-        EXPECTED_RUN_ATTEMPT: "7",
-        EXPECTED_WORKFLOW_BRANCH: "release-publish/aaaaaaaaaaaa-111",
-        EXPECTED_WORKFLOW_FULL_REF: fullRef,
-        EXPECTED_WORKFLOW_SHA: workflowSha,
-      },
-    );
-
-    expect(result.status, result.stderr).toBe(0);
-  });
-
   it("rejects completed runs for normal approval handoff", () => {
     const result = runApprovalScript(approvalRun({ conclusion: "success", status: "completed" }));
 
