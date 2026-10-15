@@ -25,12 +25,37 @@ On first Gateway startup, a version-zero database containing only recognized
 native bootstrap tables is completed before runtime history is read. This uses
 the existing schema owner and preserves the native rows; it does not repair
 historical installations during ordinary startup.
-Non-mutating WAL observations reuse the loaded library's admitted capability;
-they still observe current WAL frames and read freshness on each use. Quarantine
-decision readers and writers set their existing lock-wait timeout at connection
-open; each decision reads the current schema version and quarantine row in one
-SQLite snapshot and validates any recorded file generation. WAL safety, quarantine authority, and recovery
-behavior are unchanged.
+Quarantine decision readers and writers set their existing lock-wait timeout at connection
+open. The quarantine store's format and each target's decision are loaded once
+per physical store. Record and clear operations publish the committed decision
+through the existing in-process admission facts, including absence, so ordinary
+guards do not repeat the durable lookup. Explicit Doctor inspection reads disk,
+and recorded refusals still validate their file generation. Quarantine rows retain
+their pathname scope, and aliases still share physical format, schema, and integrity facts.
+The persisted schema, WAL safety, and recovery behavior are unchanged.
+
+Agent database opens apply private file and directory modes. Warm reads and writes
+reuse the open connection without inspecting or repairing those modes again;
+permission drift is repaired on the next open or by explicit maintenance. Retained
+operations also reuse their admitted file identity. A replacement after admission
+does not redirect that operation to the replacement file; the next admission or
+open detects it through the database lifecycle owner. Commit authority checks and
+Doctor's explicit verification remain in place.
+
+Fresh agent databases install the current canonical schema directly, without
+running legacy migration discovery or repairing indexes that were just created.
+After the creation transaction commits, the schema owner publishes the admitted
+catalog and canonical-validation facts for later opens and workers. Tracked DDL
+and rollback still invalidate those facts; existing databases retain their first
+admission and migration checks. Connection lock timeouts are assigned through
+the shared per-handle owner so repeated setup does not repeat the PRAGMA.
+Schemas, stored bytes, and upgrade or downgrade behavior are unchanged.
+
+Chat input actors reuse their native owner’s admitted physical identity and
+canonical location, without queuing another writer reservation just to acquire
+the actor. Cold owners still prepare their database identity first. Captured
+session reads constrain the same physical file; actual input writes retain FIFO
+admission and current authority checks.
 
 Managed writes publish committed facts before their public observers. Private
 receipts distinguish explicit absence from incomplete coverage and preserve known
