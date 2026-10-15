@@ -20,6 +20,7 @@ import { handleDiscordMessageAction } from "./handle-action.js";
 import { handleDiscordGuildAction } from "./runtime.guild.js";
 import { handleDiscordAction } from "./runtime.js";
 import { handleDiscordMessagingAction } from "./runtime.messaging.js";
+import type { DiscordModerationAction } from "./runtime.moderation-shared.js";
 import { handleDiscordModerationAction } from "./runtime.moderation.js";
 import type { DiscordChannelInfoTest, DiscordSearchResult } from "./runtime.test-support.js";
 
@@ -222,7 +223,7 @@ function handleGuildAction(
 }
 
 function handleModerationAction(
-  action: string,
+  action: DiscordModerationAction,
   params: Record<string, unknown>,
   isActionEnabled: (
     key: keyof DiscordActionConfig,
@@ -2102,7 +2103,8 @@ describe("Discord action numeric validation", () => {
     {
       action: "timeout",
       params: { guildId: "G1", userId: "U1", durationMinutes: 5.5 },
-      handle: handleModerationAction,
+      handle: (_action: string, params: Record<string, unknown>, gate: typeof moderationEnabled) =>
+        handleModerationAction("timeout", params, gate),
       gate: moderationEnabled,
       call: timeoutMemberDiscord,
       error: "durationMinutes must be a non-negative integer",
