@@ -10,6 +10,7 @@ import { execApprovalsPublication } from "../infra/exec-approvals-publication.js
 import type { SqliteWorkerInputPreparation } from "../infra/sqlite-worker-broker.types.js";
 import type { SqliteWorkerStore } from "../infra/sqlite-worker-contract.js";
 import {
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
   type SqliteWorkerOperationAdmission,
@@ -184,18 +185,13 @@ function execute<Key extends Operation>(
         exec.committed(isRecord(facts) ? facts.execFacts : undefined);
       });
     });
-    const finish = admission.finish.bind(admission);
-    admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        const confirmed = admission?.settlement?.kind === "completed";
-        const rolledBack = confirmed && !admission?.committed && !commitAdmitted;
-        approvals.finish(confirmed, rolledBack);
-        grants.finish(confirmed, rolledBack);
-        exec.finish(confirmed, rolledBack);
-      }
-    };
+    observeSqliteWorkerAdmissionFinish(admission, () => {
+      const confirmed = admission?.settlement?.kind === "completed";
+      const rolledBack = confirmed && !admission?.committed && !commitAdmitted;
+      approvals.finish(confirmed, rolledBack);
+      grants.finish(confirmed, rolledBack);
+      exec.finish(confirmed, rolledBack);
+    });
     return retained;
   };
   const publishCommitted = (facts: unknown) => {

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../../infra/sqlite-worker-operation-admission.js";
@@ -89,18 +90,13 @@ export function createAuthProfileStoreUpdatePublication(params: {
         authorizationCommitted && params.committedIsCurrent() ? authorizationPostimage : undefined,
       );
     };
-    const finish = admission.finish.bind(admission);
-    admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        if (admission.settlement) {
-          const confirmed = admission.settlement.kind === "completed";
-          publication?.finish(confirmed, confirmed && !admission.committed);
-          finishAuthorization(confirmed);
-        }
+    observeSqliteWorkerAdmissionFinish(admission, () => {
+      if (admission.settlement) {
+        const confirmed = admission.settlement.kind === "completed";
+        publication?.finish(confirmed, confirmed && !admission.committed);
+        finishAuthorization(confirmed);
       }
-    };
+    });
     void operation.settled.then((outcome) => {
       const known = outcome.kind !== "unknown";
       publication?.finish(known, known && !admission.committed);

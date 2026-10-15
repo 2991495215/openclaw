@@ -17,6 +17,7 @@ import {
 import { SQLITE_WORKER_MAX_MESSAGE_BYTES } from "../../infra/sqlite-worker-contract.js";
 import {
   deferSqliteWorkerCommitReceipt,
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../../infra/sqlite-worker-operation-admission.js";
@@ -182,25 +183,20 @@ export function withConversationPublication(
       }
     });
     let finished = false;
-    const finish = owner.admission.finish.bind(owner.admission);
-    owner.admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        if (!finished) {
-          finished = true;
-          unsubscribe();
-          notifyListeners(listeners.facts, {
-            kind: "settled",
-            operation,
-            outcome:
-              published && !unknown && owner.admission.settlement?.kind === "completed"
-                ? "published"
-                : "unknown",
-          });
-        }
+    observeSqliteWorkerAdmissionFinish(owner.admission, () => {
+      if (!finished) {
+        finished = true;
+        unsubscribe();
+        notifyListeners(listeners.facts, {
+          kind: "settled",
+          operation,
+          outcome:
+            published && !unknown && owner.admission.settlement?.kind === "completed"
+              ? "published"
+              : "unknown",
+        });
       }
-    };
+    });
     observeSqliteWorkerCommittedFacts(owner.admission, ({ facts }) => {
       assertCurrent();
       const expected = expectedSource();

@@ -1,5 +1,6 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../infra/sqlite-worker-operation-admission.js";
@@ -80,15 +81,10 @@ export function withAgentDeletionJournalPublication(
         publication.committed(facts.journalAuthority);
       }
     });
-    const finish = owner.admission.finish.bind(owner.admission);
-    owner.admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        const settlement = owner.admission.settlement;
-        publication.finish(settlement?.kind === "completed", true);
-      }
-    };
+    observeSqliteWorkerAdmissionFinish(owner.admission, () => {
+      const settlement = owner.admission.settlement;
+      publication.finish(settlement?.kind === "completed", true);
+    });
     return owner;
   };
 }

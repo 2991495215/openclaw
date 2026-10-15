@@ -9,6 +9,7 @@ import { sqlPublicationAnchor, type EngineConnection } from "../infra/sql-connec
 import { stageSqliteTransactionState } from "../infra/sqlite-post-commit.js";
 import {
   createSqliteWorkerOperationAdmission,
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../infra/sqlite-worker-operation-admission.js";
@@ -223,17 +224,12 @@ export function withPersonalCredentialPublication(
     observeSqliteWorkerCommittedFacts(admission, ({ facts }) => {
       publication.committed(isRecord(facts) ? facts.personalCredentials : undefined);
     });
-    const finish = admission.finish.bind(admission);
-    admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        if (admission.settlement) {
-          const confirmed = admission.settlement.kind === "completed";
-          publication.finish(confirmed, confirmed && !admission.committed);
-        }
+    observeSqliteWorkerAdmissionFinish(admission, () => {
+      if (admission.settlement) {
+        const confirmed = admission.settlement.kind === "completed";
+        publication.finish(confirmed, confirmed && !admission.committed);
       }
-    };
+    });
     void operation.settled.then((outcome) => {
       const known = outcome.kind !== "unknown";
       publication.finish(known, known && !admission.committed);
@@ -417,17 +413,12 @@ export function createAuthProfileCredentialWriteAdmission(
     observeSqliteWorkerCommittedFacts(admission, ({ facts }) => {
       publication.committed(isRecord(facts) ? facts.authCredentials : undefined);
     });
-    const finish = admission.finish.bind(admission);
-    admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        if (admission.settlement) {
-          const confirmed = admission.settlement.kind === "completed";
-          publication.finish(confirmed, confirmed && !admission.committed);
-        }
+    observeSqliteWorkerAdmissionFinish(admission, () => {
+      if (admission.settlement) {
+        const confirmed = admission.settlement.kind === "completed";
+        publication.finish(confirmed, confirmed && !admission.committed);
       }
-    };
+    });
     void operation.settled.then((outcome) => {
       const known = outcome.kind !== "unknown";
       publication.finish(known, known && !admission.committed);

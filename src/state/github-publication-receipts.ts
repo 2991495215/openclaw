@@ -5,6 +5,7 @@ import type { SqliteCommitReceipt, SqliteCommittedFact } from "../infra/sqlite-c
 import { SQLITE_WORKER_MAX_MESSAGE_BYTES } from "../infra/sqlite-worker-contract.js";
 import {
   deferSqliteWorkerCommitReceipt,
+  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../infra/sqlite-worker-operation-admission.js";
@@ -267,17 +268,12 @@ function withGitHubPublicationReceipt(
     } finally {
       lifecycleOwner.pendingDeletion = previousDeletion;
     }
-    const finish = owner.admission.finish.bind(owner.admission);
-    owner.admission.finish = () => {
-      try {
-        finish();
-      } finally {
-        if (owner.admission.settlement) {
-          const confirmed = owner.admission.settlement.kind === "completed";
-          pending.finish(confirmed, confirmed && !owner.admission.committed);
-        }
+    observeSqliteWorkerAdmissionFinish(owner.admission, () => {
+      if (owner.admission.settlement) {
+        const confirmed = owner.admission.settlement.kind === "completed";
+        pending.finish(confirmed, confirmed && !owner.admission.committed);
       }
-    };
+    });
     void operation.settled.then((outcome) => {
       const known = outcome.kind !== "unknown";
       pending.finish(known, known && !owner.admission.committed);
