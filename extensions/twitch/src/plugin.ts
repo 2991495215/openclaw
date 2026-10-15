@@ -2,7 +2,6 @@ import { describeAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
 import { buildChannelConfigSchema } from "openclaw/plugin-sdk/channel-config-schema";
 import {
   buildChannelOutboundSessionRoute,
-  buildChannelMetaFromManifest,
   createChatChannelPlugin,
   stripChannelTargetPrefix,
   type PluginRuntime,
@@ -20,7 +19,6 @@ import {
   createComputedAccountStatusAdapter,
   createDefaultChannelRuntimeState,
 } from "openclaw/plugin-sdk/status-helpers";
-import pluginPackage from "../package.json" with { type: "json" };
 import { twitchMessageActions } from "./actions.js";
 import { removeClientManager } from "./client-manager-registry.js";
 import { TwitchConfigSchema } from "./config-schema.js";
@@ -75,7 +73,14 @@ export const twitchPlugin: ChannelPlugin<ResolvedTwitchAccount> =
     outbound: twitchOutbound,
     base: {
       id: "twitch",
-      meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
+      meta: {
+        id: "twitch",
+        label: "Twitch",
+        selectionLabel: "Twitch (Chat)",
+        docsPath: "/channels/twitch",
+        blurb: "Twitch chat integration",
+        aliases: ["twitch-chat"],
+      },
       setupContract: twitchSetupPlugin.setupContract,
       setupWizard: twitchSetupPlugin.setupWizard,
       reload: twitchSetupPlugin.reload,

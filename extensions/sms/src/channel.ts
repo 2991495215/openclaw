@@ -6,7 +6,6 @@ import {
 } from "openclaw/plugin-sdk/channel-config-helpers";
 import {
   buildChannelOutboundSessionRoute,
-  buildChannelMetaFromManifest,
   createChatChannelPlugin,
   type ChannelOutboundSessionRouteParams,
   type ChannelPlugin,
@@ -28,7 +27,6 @@ import {
 } from "openclaw/plugin-sdk/status-helpers";
 import { isRecord, normalizeStringEntries } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { chunkTextForOutbound } from "openclaw/plugin-sdk/text-chunking";
-import pluginPackage from "../package.json" with { type: "json" };
 import {
   inspectSmsAccount,
   isSmsAccountConfigured,
@@ -384,10 +382,16 @@ function resolveSmsOutboundSessionRoute(params: ChannelOutboundSessionRouteParam
 export const smsPlugin: ChannelPlugin<ResolvedSmsAccount, SmsProbe> = createChatChannelPlugin({
   base: {
     id: CHANNEL_ID,
-    meta: buildChannelMetaFromManifest({
-      ...pluginPackage.openclaw.channel,
-      quickstartAllowFrom: undefined,
-    }),
+    meta: {
+      id: CHANNEL_ID,
+      label: "SMS",
+      selectionLabel: "SMS (Twilio)",
+      detailLabel: "Twilio SMS/MMS",
+      docsPath: "/channels/sms",
+      docsLabel: "sms",
+      blurb: "Twilio-backed SMS/MMS with inbound webhooks and outbound replies.",
+      order: 88,
+    },
     capabilities: {
       chatTypes: ["direct"],
       media: true,

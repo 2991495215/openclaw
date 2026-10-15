@@ -1,13 +1,11 @@
 import { describeAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
 import { normalizeAccountId } from "openclaw/plugin-sdk/account-id";
-import { buildChannelMetaFromManifest } from "openclaw/plugin-sdk/channel-core";
 import {
   buildChannelConfigSchema,
   type ChannelPlugin,
 } from "openclaw/plugin-sdk/channel-plugin-common";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { createDelegatedSetupWizardProxy } from "openclaw/plugin-sdk/setup-runtime";
-import pluginPackage from "../package.json" with { type: "json" };
 import { getNostrConfig, resolveNostrAccountBase, type ResolvedNostrAccount } from "./accounts.js";
 import { NostrConfigSchema } from "./config-schema.js";
 import {
@@ -43,13 +41,15 @@ const nostrSetupWizard = createDelegatedSetupWizardProxy({
 
 export const nostrSetupPlugin: ChannelPlugin<ResolvedNostrAccount> = {
   id: channel,
-  meta: buildChannelMetaFromManifest({
-    ...pluginPackage.openclaw.channel,
+  meta: {
+    id: channel,
+    label: "Nostr",
     selectionLabel: "Nostr",
+    docsPath: "/channels/nostr",
+    docsLabel: "nostr",
     blurb: "Decentralized DMs via Nostr relays (NIP-04)",
     order: 100,
-    quickstartAllowFrom: undefined,
-  }),
+  },
   capabilities: {
     chatTypes: ["direct"],
     media: false,

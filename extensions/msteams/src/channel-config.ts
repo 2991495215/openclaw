@@ -4,9 +4,7 @@ import {
   adaptScopedAccountAccessor,
   createHybridChannelConfigAdapter,
 } from "openclaw/plugin-sdk/channel-config-helpers";
-import { buildChannelMetaFromManifest } from "openclaw/plugin-sdk/channel-core";
 import { createAllowlistProviderGroupPolicyWarningCollector } from "openclaw/plugin-sdk/channel-policy";
-import pluginPackage from "../package.json" with { type: "json" };
 import type { OpenClawConfig } from "../runtime-api.js";
 import { DEFAULT_ACCOUNT_ID } from "../runtime-api.js";
 import { patchMSTeamsAccountConfig } from "./accounts-mutations.js";
@@ -22,10 +20,16 @@ import {
 
 export type { ResolvedMSTeamsAccount } from "./accounts.js";
 
-export const msteamsMeta = buildChannelMetaFromManifest({
-  ...pluginPackage.openclaw.channel,
+export const msteamsMeta = {
+  id: "msteams",
+  label: "Microsoft Teams",
   selectionLabel: "Microsoft Teams (Bot Framework)",
-});
+  docsPath: "/channels/msteams",
+  docsLabel: "msteams",
+  blurb: "Teams SDK; enterprise support.",
+  aliases: ["teams"],
+  order: 60,
+} as const;
 
 function resolveMSTeamsSecurityWarningAccount(params: {
   cfg: OpenClawConfig;

@@ -15,7 +15,6 @@ import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import type { ReplyPayload } from "./reply-payload.js";
 
 export { isCompleteAgentPreamble } from "../agents/agent-activity-presentation.js";
-export { dispatchMessageSentHooks } from "../hooks/message-sent.js";
 
 type ChannelDurableDeliveryModule = typeof import("../channels/turn/durable-delivery.js");
 // Share one lazy import across SDK helper calls so plugin barrels do not eagerly pull

@@ -6,11 +6,10 @@ import {
   createScopedChannelConfigAdapter,
 } from "openclaw/plugin-sdk/channel-config-helpers";
 import type { ChannelDoctorAdapter } from "openclaw/plugin-sdk/channel-contract";
-import { buildChannelMetaFromManifest, type ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { resolveConfiguredFromCredentialStatuses } from "openclaw/plugin-sdk/channel-status";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
-import pluginPackage from "../package.json" with { type: "json" };
 import { inspectDiscordAccount } from "./account-inspect.js";
 import {
   isDiscordAccountEnabledForRuntime,
@@ -125,7 +124,18 @@ export function createDiscordPluginBase(params: {
     id: DISCORD_CHANNEL,
     setupContract: params.setupContract,
     ...(params.setupWizard ? { setupWizard: params.setupWizard } : {}),
-    meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
+    meta: {
+      id: "discord",
+      label: "Discord",
+      selectionLabel: "Discord (Bot API)",
+      detailLabel: "Discord Bot",
+      docsPath: "/channels/discord",
+      docsLabel: "discord",
+      blurb: "very well supported right now.",
+      systemImage: "bubble.left.and.bubble.right",
+      markdownCapable: true,
+      preferSessionLookupForAnnounceTarget: true,
+    },
     capabilities: {
       chatTypes: ["direct", "channel", "thread"],
       polls: true,

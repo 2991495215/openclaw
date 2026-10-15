@@ -12,10 +12,7 @@ import type {
   ChannelMessageActionContext,
   ChannelMessageToolDiscovery,
 } from "openclaw/plugin-sdk/channel-contract";
-import {
-  buildChannelMetaFromManifest,
-  createChatChannelPlugin,
-} from "openclaw/plugin-sdk/channel-core";
+import { createChatChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import {
   defineChannelMessageAdapter,
   createRuntimeOutboundDelegates,
@@ -48,8 +45,12 @@ import {
 } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { sanitizeAssistantVisibleText } from "openclaw/plugin-sdk/text-chunking";
 import { textResult } from "openclaw/plugin-sdk/tool-results";
-import pluginPackage from "../package.json" with { type: "json" };
-import type { ChannelMessageActionName, ChannelPlugin, ClawdbotConfig } from "../runtime-api.js";
+import type {
+  ChannelMessageActionName,
+  ChannelMeta,
+  ChannelPlugin,
+  ClawdbotConfig,
+} from "../runtime-api.js";
 import {
   inspectFeishuCredentials,
   listEnabledFeishuAccounts,
@@ -256,13 +257,17 @@ function containsLegacyFeishuCardCommandValue(node: unknown): boolean {
   return Object.values(node).some(containsLegacyFeishuCardCommandValue);
 }
 
-const meta = buildChannelMetaFromManifest({
-  ...pluginPackage.openclaw.channel,
+const meta: ChannelMeta = {
+  id: "feishu",
+  label: "Feishu",
+  selectionLabel: "Feishu/Lark (飞书)",
+  docsPath: "/channels/feishu",
+  docsLabel: "feishu",
   blurb: "飞书/Lark enterprise messaging.",
+  aliases: ["lark"],
   order: 70,
   preferSessionLookupForAnnounceTarget: true,
-  quickstartAllowFrom: undefined,
-});
+};
 
 const loadFeishuChannelRuntime = createLazyRuntimeNamedExport(
   () => import("./channel.runtime.js"),

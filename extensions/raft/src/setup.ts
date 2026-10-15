@@ -1,4 +1,3 @@
-import { buildChannelMetaFromManifest } from "openclaw/plugin-sdk/channel-core";
 import { defineChannelSetupContract } from "openclaw/plugin-sdk/channel-setup";
 import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
 // Raft plugin setup owns only the Raft CLI profile, never Raft credentials.
@@ -11,7 +10,6 @@ import {
 } from "openclaw/plugin-sdk/setup";
 import { detectBinary } from "openclaw/plugin-sdk/setup-tools";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
-import pluginPackage from "../package.json" with { type: "json" };
 import {
   listRaftAccountIds,
   RAFT_CHANNEL_ID,
@@ -54,7 +52,15 @@ const raftSetupContract = defineChannelSetupContract({
 
 export const raftSetupPlugin: ChannelPlugin<ResolvedRaftAccount> = {
   id: RAFT_CHANNEL_ID,
-  meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
+  meta: {
+    id: RAFT_CHANNEL_ID,
+    label: "Raft",
+    selectionLabel: "Raft (CLI wake bridge)",
+    docsPath: "/channels/raft",
+    docsLabel: "raft",
+    blurb: "Raft CLI wake bridge for human and agent collaboration.",
+    order: 72,
+  },
   capabilities: {
     chatTypes: ["direct"],
   },
