@@ -1,9 +1,9 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
-  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../infra/sqlite-worker-operation-admission.js";
+import { observeSqliteWorkerAdmissionFinish } from "../infra/sqlite-worker-operation-settlement.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import type { AgentDeletionJournalAuthority } from "./agent-deletion-journal.types.js";
 import { withAgentProvenancePublication } from "./agent-provenance-publication.js";

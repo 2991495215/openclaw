@@ -22,10 +22,10 @@ import {
 import { SQLITE_WORKER_MAX_MESSAGE_BYTES } from "../sqlite-worker-contract.js";
 import {
   deferSqliteWorkerCommitReceipt,
-  observeSqliteWorkerAdmissionFinish,
   observeSqliteWorkerCommittedFacts,
   type SqliteWorkerAdmissionFactory,
 } from "../sqlite-worker-operation-admission.js";
+import { observeSqliteWorkerAdmissionFinish } from "../sqlite-worker-operation-settlement.js";
 import type { SessionBindingRecord } from "./session-binding.types.js";
 
 type CurrentConversationBindingPublication = {

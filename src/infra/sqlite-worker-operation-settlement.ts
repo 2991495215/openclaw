@@ -85,6 +85,21 @@ export type RetainedWorkerTransactionAdmission = {
   readonly settled: Promise<SqliteWorkerOperationSettlement>;
 };
 
+/** Observe each finish after the previously installed handler, including failure. */
+export function observeSqliteWorkerAdmissionFinish(
+  admission: { finish(): void },
+  observer: () => void,
+): void {
+  const finish = admission.finish.bind(admission);
+  admission.finish = () => {
+    try {
+      finish();
+    } finally {
+      observer();
+    }
+  };
+}
+
 export function deferSqliteWorkerNativeCommitReceipt(
   owner: SqliteWorkerOperationContext,
   database: DatabaseSync | PostgresSqlConnection,
