@@ -364,7 +364,6 @@ export function withAuthProfileCredentialWrite<T>(
     const publication = authProfileCredentialPublication.begin({ identity, assertCurrent() {} });
     let failed = false;
     const managed = stageSqliteTransactionState(sqlPublicationAnchor(db), {
-      stage() {},
       commit() {
         if (failed) {
           publication.finish(false);
