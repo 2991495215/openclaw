@@ -122,12 +122,14 @@ jobs:
 
       - name: Authenticate Docker to Vercel Container Registry
         env:
+          GH_TOKEN: ${{ github.token }}
           VERCEL_CLI: ${{ steps.vercel_cli.outputs.cli }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
           VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
+          node scripts/release-tooling-identity.mjs verify-env --require-active-parent-run
           "${VERCEL_CLI}" vcr login docker \
             --project "${VERCEL_PROJECT_ID}" \
             --scope "${VERCEL_SCOPE}" \
@@ -163,6 +165,7 @@ jobs:
       - name: Run custom-image Sandbox smoke
         id: sandbox_smoke
         env:
+          GH_TOKEN: ${{ github.token }}
           VERCEL_AUTH_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_CLI: ${{ steps.vercel_cli.outputs.cli }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
@@ -175,6 +178,7 @@ jobs:
           retry_deadline=$((SECONDS + 600))
           attempt=1
           while true; do
+            node scripts/release-tooling-identity.mjs verify-env --require-active-parent-run
             set +e
             output="$(
               "${VERCEL_CLI}" sandbox run \

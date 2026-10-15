@@ -481,6 +481,8 @@ function main() {
   if (!values.version || !values["target-image"]) {
     throw new Error("--version and --target-image are required.");
   }
+  const beforeMutation = () =>
+    verifyReleaseToolingIdentityFromEnvironment(process.env, { requireActiveParentRun: true });
   if (values["promote-aliases"]) {
     if (values["source-ref"]) {
       throw new Error("--promote-aliases cannot be combined with --source-ref.");
@@ -491,7 +493,7 @@ function main() {
         targetImage: values["target-image"],
         version: values.version,
       },
-      { beforeMutation: verifyReleaseToolingIdentityFromEnvironment },
+      { beforeMutation },
     );
     console.log(`Promoted ${result.channel} aliases for ${result.targetImage}:${result.version}.`);
     return;
@@ -506,7 +508,7 @@ function main() {
       targetImage: values["target-image"],
       version: values.version,
     },
-    { beforeMutation: verifyReleaseToolingIdentityFromEnvironment },
+    { beforeMutation },
   );
   console.log(
     `Published ${plan.copies.length} immutable ${plan.channel} tags to ${plan.targetImage}.`,

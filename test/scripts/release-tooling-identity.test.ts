@@ -27,44 +27,116 @@ function protectedIdentity(
 }
 
 describe("release tooling identity", () => {
-  it("verifies the complete mutation-boundary identity from environment state", () => {
-    const runGh = vi.fn((args: string[]) => {
-      if (args[1]?.includes("/compare/")) {
-        return JSON.stringify({ status: "identical" });
-      }
-      if (args[1]?.includes("/actions/runs/")) {
-        return JSON.stringify({
-          event: "workflow_dispatch",
-          head_branch: "main",
-          head_sha: SHA,
-          id: Number(PARENT_RUN_ID),
-          path: ".github/workflows/openclaw-release-publish.yml@refs/heads/main",
-          repository: { full_name: "openclaw/openclaw" },
-          run_attempt: Number(PARENT_RUN_ATTEMPT),
-        });
-      }
-      throw new Error(`Unexpected gh call: ${args.join(" ")}`);
-    });
+  it.each([
+    [false, "in_progress", null],
+    [false, "completed", "success"],
+    [true, "in_progress", null],
+  ] as const)(
+    "verifies environment identity with active policy %s and status %s",
+    (requireActiveParentRun, status, conclusion) => {
+      const runGh = vi.fn((args: string[]) => {
+        if (args[1]?.includes("/compare/")) {
+          return JSON.stringify({ status: "identical" });
+        }
+        if (args[1]?.includes("/actions/runs/")) {
+          return JSON.stringify({
+            event: "workflow_dispatch",
+            head_branch: "main",
+            head_sha: SHA,
+            id: Number(PARENT_RUN_ID),
+            path: ".github/workflows/openclaw-release-publish.yml@refs/heads/main",
+            repository: { full_name: "openclaw/openclaw" },
+            run_attempt: Number(PARENT_RUN_ATTEMPT),
+            status,
+            conclusion,
+          });
+        }
+        throw new Error(`Unexpected gh call: ${args.join(" ")}`);
+      });
 
-    expect(
+      expect(
+        verifyReleaseToolingIdentityFromEnvironment(
+          {
+            GITHUB_REPOSITORY: "openclaw/openclaw",
+            RELEASE_PUBLISH_RUN_ATTEMPT: PARENT_RUN_ATTEMPT,
+            RELEASE_PUBLISH_RUN_ID: PARENT_RUN_ID,
+            RELEASE_TOOLING_ALLOW_PREVALIDATED_REF: "false",
+            RELEASE_TOOLING_FULL_REF: "refs/heads/main",
+            RELEASE_TOOLING_REF: "main",
+            RELEASE_TOOLING_SHA: SHA,
+          },
+          { requireActiveParentRun, runGh },
+        ),
+      ).toEqual({
+        fullRef: "refs/heads/main",
+        ref: "main",
+        route: "main",
+        sha: SHA,
+      });
+    },
+  );
+
+  it.each([
+    ["completed", "success"],
+    ["completed", "failure"],
+    ["completed", "cancelled"],
+    ["queued", null],
+    ["in_progress", "success"],
+    ["in_progress", undefined],
+    [undefined, null],
+  ])("rejects inactive parent state %s/%s for VCR mutations", (status, conclusion) => {
+    const runGh = (args: string[]) =>
+      JSON.stringify(
+        args[1]?.includes("/compare/")
+          ? { status: "ahead" }
+          : {
+              event: "workflow_dispatch",
+              head_branch: "main",
+              head_sha: SHA,
+              id: Number(PARENT_RUN_ID),
+              path: ".github/workflows/openclaw-release-publish.yml@refs/heads/main",
+              repository: { full_name: "openclaw/openclaw" },
+              run_attempt: Number(PARENT_RUN_ATTEMPT),
+              status,
+              conclusion,
+            },
+      );
+    expect(() =>
       verifyReleaseToolingIdentityFromEnvironment(
         {
           GITHUB_REPOSITORY: "openclaw/openclaw",
           RELEASE_PUBLISH_RUN_ATTEMPT: PARENT_RUN_ATTEMPT,
           RELEASE_PUBLISH_RUN_ID: PARENT_RUN_ID,
-          RELEASE_TOOLING_ALLOW_PREVALIDATED_REF: "false",
           RELEASE_TOOLING_FULL_REF: "refs/heads/main",
           RELEASE_TOOLING_REF: "main",
           RELEASE_TOOLING_SHA: SHA,
         },
-        { runGh },
+        { requireActiveParentRun: true, runGh },
       ),
-    ).toEqual({
-      fullRef: "refs/heads/main",
-      ref: "main",
-      route: "main",
-      sha: SHA,
-    });
+    ).toThrow("parent run is not active");
+  });
+
+  it.each([
+    [undefined, undefined],
+    [PARENT_RUN_ID, undefined],
+    [undefined, PARENT_RUN_ATTEMPT],
+  ])("requires complete active parent binding %s/%s", (runId, runAttempt) => {
+    expect(() =>
+      verifyReleaseToolingIdentityFromEnvironment(
+        {
+          GITHUB_REPOSITORY: "openclaw/openclaw",
+          RELEASE_PUBLISH_RUN_ATTEMPT: runAttempt,
+          RELEASE_PUBLISH_RUN_ID: runId,
+          RELEASE_TOOLING_FULL_REF: "refs/heads/main",
+          RELEASE_TOOLING_REF: "main",
+          RELEASE_TOOLING_SHA: SHA,
+        },
+        {
+          requireActiveParentRun: true,
+          runGh: () => JSON.stringify({ status: "identical" }),
+        },
+      ),
+    ).toThrow("run id and attempt must be provided together");
   });
 
   it("rejects ambiguous mutation-boundary prevalidated-ref policy", () => {

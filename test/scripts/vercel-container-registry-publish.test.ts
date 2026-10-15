@@ -573,8 +573,16 @@ describe("Vercel Container Registry publishing", () => {
     const authenticateVercel = reusablePublish.steps?.find(
       (step) => step.name === "Authenticate Docker to Vercel Container Registry",
     );
+    const activeGuard =
+      "node scripts/release-tooling-identity.mjs verify-env --require-active-parent-run";
+    const authenticateRun = authenticateVercel?.run ?? "";
+    expect(authenticateVercel?.env?.GH_TOKEN).toBe("${{ github.token }}");
     expect(authenticateVercel?.env?.VERCEL_CLI).toBe("${{ steps.vercel_cli.outputs.cli }}");
     expect(authenticateVercel?.run).toContain('"${VERCEL_CLI}" vcr login docker');
+    expect(authenticateRun.indexOf(activeGuard)).toBeGreaterThan(-1);
+    expect(authenticateRun.indexOf(activeGuard)).toBeLessThan(
+      authenticateRun.indexOf('"${VERCEL_CLI}" vcr login docker'),
+    );
     expect(JSON.stringify(reusablePublish)).not.toContain("npx --yes");
     expect(JSON.stringify(reusablePublish)).not.toContain("docker-channel-promote.mjs");
     const copyIndex = reusablePublish.steps?.findIndex(
@@ -592,6 +600,9 @@ describe("Vercel Container Registry publishing", () => {
     expect(reusablePublish.steps?.[copyIndex ?? -1]?.env?.GH_TOKEN).toBe("${{ github.token }}");
     expect(reusablePublish.steps?.[promoteIndex ?? -1]?.env?.GH_TOKEN).toBe("${{ github.token }}");
     const smokeRun = reusablePublish.steps?.[smokeIndex ?? -1]?.run ?? "";
+    expect(reusablePublish.steps?.[smokeIndex ?? -1]?.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(smokeRun.indexOf(activeGuard)).toBeGreaterThan(smokeRun.indexOf("while true; do"));
+    expect(smokeRun.indexOf(activeGuard)).toBeLessThan(smokeRun.indexOf("set +e"));
     expect(smokeRun).toContain("sandbox run \\\n");
     expect(smokeRun).toContain("image_not_ready");
     expect(smokeRun).toContain("retry_deadline");

@@ -203,6 +203,7 @@ export function validateReleaseToolingIdentity({
 
 export function validateReleasePublishParentRun({
   identity,
+  requireActiveParentRun = false,
   releasePublishRunAttempt,
   releasePublishRunId,
   repository,
@@ -241,6 +242,9 @@ export function validateReleasePublishParentRun({
   if (workflowFullRef && workflowFullRef !== identity.fullRef) {
     fail("release publish parent run workflow full ref does not match trusted tooling.");
   }
+  if (requireActiveParentRun && (run?.status !== "in_progress" || run?.conclusion !== null)) {
+    fail("release publish parent run is not active.");
+  }
 }
 
 function parseJson(raw, label) {
@@ -263,6 +267,7 @@ function runReleaseToolingGh(args) {
 
 export function verifyReleaseToolingIdentity({
   allowPrevalidatedRef = false,
+  requireActiveParentRun = false,
   releasePublishRunAttempt,
   releasePublishRunId,
   repository,
@@ -303,6 +308,7 @@ export function verifyReleaseToolingIdentity({
     });
     validateParentRunIfRequested({
       identity: validated,
+      requireActiveParentRun,
       releasePublishRunAttempt,
       releasePublishRunId,
       repository: normalizedRepository,
@@ -335,6 +341,7 @@ export function verifyReleaseToolingIdentity({
     });
     validateParentRunIfRequested({
       identity: validated,
+      requireActiveParentRun,
       releasePublishRunAttempt,
       releasePublishRunId,
       repository: normalizedRepository,
@@ -368,6 +375,7 @@ export function verifyReleaseToolingIdentity({
   });
   validateParentRunIfRequested({
     identity: validated,
+    requireActiveParentRun,
     releasePublishRunAttempt,
     releasePublishRunId,
     repository: normalizedRepository,
@@ -376,13 +384,17 @@ export function verifyReleaseToolingIdentity({
   return validated;
 }
 
-export function verifyReleaseToolingIdentityFromEnvironment(env = process.env, { runGh } = {}) {
+export function verifyReleaseToolingIdentityFromEnvironment(
+  env = process.env,
+  { requireActiveParentRun = false, runGh } = {},
+) {
   const allowPrevalidatedRef = env.RELEASE_TOOLING_ALLOW_PREVALIDATED_REF ?? "false";
   if (allowPrevalidatedRef !== "true" && allowPrevalidatedRef !== "false") {
     fail("RELEASE_TOOLING_ALLOW_PREVALIDATED_REF must be true or false.");
   }
   return verifyReleaseToolingIdentity({
     allowPrevalidatedRef: allowPrevalidatedRef === "true",
+    requireActiveParentRun,
     releasePublishRunAttempt: env.RELEASE_PUBLISH_RUN_ATTEMPT,
     releasePublishRunId: env.RELEASE_PUBLISH_RUN_ID,
     repository: env.GITHUB_REPOSITORY,
@@ -395,12 +407,13 @@ export function verifyReleaseToolingIdentityFromEnvironment(env = process.env, {
 
 function validateParentRunIfRequested({
   identity,
+  requireActiveParentRun,
   releasePublishRunAttempt,
   releasePublishRunId,
   repository,
   runGh,
 }) {
-  if (!releasePublishRunId && !releasePublishRunAttempt) {
+  if (!releasePublishRunId && !releasePublishRunAttempt && !requireActiveParentRun) {
     return;
   }
   if (!releasePublishRunId || !releasePublishRunAttempt) {
@@ -417,6 +430,7 @@ function validateParentRunIfRequested({
   }
   validateReleasePublishParentRun({
     identity,
+    requireActiveParentRun,
     releasePublishRunAttempt,
     releasePublishRunId,
     repository,
@@ -473,10 +487,14 @@ function parseArgs(argv) {
 
 function main(argv = process.argv.slice(2)) {
   if (argv[0] === "verify-env") {
-    if (argv.length !== 1) {
-      fail("usage: release-tooling-identity.mjs verify-env");
+    const requireActiveParentRun = argv.length === 2 && argv[1] === "--require-active-parent-run";
+    if (argv.length !== 1 && !requireActiveParentRun) {
+      fail("usage: release-tooling-identity.mjs verify-env [--require-active-parent-run]");
     }
-    process.stdout.write(`${JSON.stringify(verifyReleaseToolingIdentityFromEnvironment())}\n`);
+    const identity = verifyReleaseToolingIdentityFromEnvironment(process.env, {
+      requireActiveParentRun,
+    });
+    process.stdout.write(`${JSON.stringify(identity)}\n`);
     return;
   }
   const options = parseArgs([...argv]);
