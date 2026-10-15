@@ -1,12 +1,5 @@
-import {
-  buildCanonicalSentMessageHookContext,
-  createInternalHookEvent,
-  fireAndForgetHook,
-  toInternalMessageSentContext,
-  toPluginMessageContext,
-  toPluginMessageSentEvent,
-  triggerInternalHook,
-} from "openclaw/plugin-sdk/hook-runtime";
+import { dispatchMessageSentHooks } from "openclaw/plugin-sdk/channel-outbound";
+import { buildCanonicalSentMessageHookContext } from "openclaw/plugin-sdk/hook-runtime";
 import { getGlobalHookRunner } from "openclaw/plugin-sdk/plugin-runtime";
 
 type EmitMessageSentHookParams = {
@@ -39,28 +32,10 @@ export function emitTelegramMessageSentHooks(params: EmitMessageSentHookParams):
     isGroup: params.isGroup,
     groupId: params.groupId,
   });
-  if (enabled) {
-    fireAndForgetHook(
-      Promise.resolve(
-        hookRunner!.runMessageSent(
-          toPluginMessageSentEvent(canonical),
-          toPluginMessageContext(canonical),
-        ),
-      ),
-      "telegram: message_sent plugin hook failed",
-    );
-  }
-  if (params.sessionKeyForInternalHooks) {
-    fireAndForgetHook(
-      triggerInternalHook(
-        createInternalHookEvent(
-          "message",
-          "sent",
-          params.sessionKeyForInternalHooks,
-          toInternalMessageSentContext(canonical),
-        ),
-      ),
-      "telegram: message:sent internal hook failed",
-    );
-  }
+  dispatchMessageSentHooks(
+    canonical,
+    enabled ? hookRunner : undefined,
+    params.sessionKeyForInternalHooks,
+    "telegram",
+  );
 }

@@ -356,6 +356,16 @@ channel-specific post-send effects and callback-only transport targets.
 for queued sends, `afterCommit` runs after queue acknowledgment. Keep effects
 at the boundary they require rather than leaving them only in a legacy dispatcher.
 
+## Sent-message observers
+
+`dispatchMessageSentHooks(canonical, hookRunner, internalSessionKey, logPrefix, logger?)`
+dispatches prepared plugin `message_sent` and internal `message:sent` observations.
+Pass a runner only when its sent hook is enabled. Callers own when they capture
+that selection and should skip canonical-context construction when neither
+observer is enabled. The internal routing key is independent of the canonical
+context's optional plugin session correlation. The optional logger observes
+best-effort dispatch failures; omitting it retains verbose hook logging.
+
 ## Durable sends
 
 Runtime send helpers also live on `channel-outbound`:
