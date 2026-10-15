@@ -883,6 +883,7 @@ describe("ChannelsPage lifecycle", () => {
   it.each([
     ["Save & Publish", "source replacement", 200],
     ["Import from Relays", "disconnect", 200],
+    ["Import from Relays", "same-client reconnect", 200],
     ["Import from Relays", "replacement form", 200],
     ["Save & Publish", "credential/client replacement", 401],
     ["Import from Relays", "credential/client replacement", 401],
@@ -910,6 +911,10 @@ describe("ChannelsPage lifecycle", () => {
         case "disconnect":
           gateway.emit({ phase: "stopped" });
           break;
+        case "same-client reconnect":
+          gateway.emit({ phase: "stopped" });
+          gateway.emit({ phase: "connected" });
+          break;
         case "replacement form":
           expect(profileButton(page, "Cancel").disabled).toBe(false);
           profileButton(page, "Cancel").click();
@@ -929,7 +934,10 @@ describe("ChannelsPage lifecycle", () => {
         await settle();
         await editProfileName(page, "Fresh draft");
       }
-      if (retirement === "credential/client replacement") {
+      if (
+        retirement === "credential/client replacement" ||
+        retirement === "same-client reconnect"
+      ) {
         await vi.advanceTimersByTimeAsync(0);
         // Reconnection refreshes the new client before the retired request settles.
         refresh.mockClear();
