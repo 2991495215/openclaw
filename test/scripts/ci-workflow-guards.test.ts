@@ -7458,25 +7458,25 @@ it("isolates release credentials and verifies trusted AppImage and signing tools
       }),
     ).toBe(expected);
   }
-  for (const [qualified, enabled, signed, signsWhenQualified] of [
+  for (const [enabled, signed, signsWhenQualified] of [
     ["true", "failure", false],
     ["true", "skipped", false],
     ["true", "success", true],
     ["false", "skipped", true],
-  ].flatMap((scenario) =>
-    ["success", "failure", "skipped", "cancelled"].map((result) => [result, ...scenario]),
-  )) {
-    expect(
-      runInNewContext(linux.jobs.sign_desktop.if.replace(/^\$\{\{|\}\}$/gu, ""), {
-        always: () => true,
-        vars: { OPENCLAW_RELEASE_WINDOWS_SIGNED: enabled },
-        needs: {
-          validate_release: { outputs: { desktop_test_bundles: "false" } },
-          qualify_windows: { result: qualified },
-          sign_windows: { result: signed },
-        },
-      }),
-    ).toBe(qualified === "success" && signsWhenQualified);
+  ]) {
+    for (const qualified of ["success", "failure", "skipped", "cancelled"]) {
+      expect(
+        runInNewContext(linux.jobs.sign_desktop.if.replace(/^\$\{\{|\}\}$/gu, ""), {
+          always: () => true,
+          vars: { OPENCLAW_RELEASE_WINDOWS_SIGNED: enabled },
+          needs: {
+            validate_release: { outputs: { desktop_test_bundles: "false" } },
+            qualify_windows: { result: qualified },
+            sign_windows: { result: signed },
+          },
+        }),
+      ).toBe(qualified === "success" && signsWhenQualified);
+    }
   }
   const desktopSigningJob = linux.jobs.sign_desktop;
   const desktopSigningSteps = desktopSigningJob.steps as WorkflowStep[];
