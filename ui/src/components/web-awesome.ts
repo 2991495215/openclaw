@@ -4,33 +4,6 @@ import "@awesome.me/webawesome/dist/components/dropdown/dropdown.js";
 import "@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js";
 import { occludeNativeBrowserSurface } from "../lib/native-overlay-occlusion.ts";
 
-export function trackDropdownKeyboardDismissal(
-  event: KeyboardEvent,
-  focusDurableTrigger?: () => void,
-) {
-  // Web Awesome hides on Tab without restoring its trigger. Transient menus
-  // use a hidden trigger, so move focus first and let native Tab continue.
-  if (event.key === "Tab") {
-    focusDurableTrigger?.();
-  }
-}
-
-/** Web Awesome exposes checkbox items only. Preserve its roving-focus item
- * while restoring radio semantics for choices where exactly one value wins. */
-export function syncDropdownItemRadio(element: Element | undefined, checked: boolean) {
-  if (!(element instanceof HTMLElement) || element.localName !== "wa-dropdown-item") {
-    return;
-  }
-  const item = element as HTMLElement & { updateComplete?: Promise<unknown> };
-  void Promise.resolve(item.updateComplete).then(() => {
-    if (!item.isConnected) {
-      return;
-    }
-    item.setAttribute("role", "menuitemradio");
-    item.setAttribute("aria-checked", String(checked));
-  });
-}
-
 // Web Awesome labels its trigger but leaves the internal menu unnamed. Copy
 // the host label, or reference the trigger, when the popup enters the a11y tree.
 function labelDropdownMenu(dropdown: HTMLElement) {

@@ -2,7 +2,7 @@
 
 import "@awesome.me/webawesome/dist/components/popup/popup.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { syncDropdownItemRadio, trackDropdownKeyboardDismissal } from "./web-awesome.ts";
+import "./web-awesome.ts";
 
 type DropdownElement = HTMLElement & { readonly updateComplete: Promise<unknown> };
 const domRoots = ["light", "shadow"] as const;
@@ -159,32 +159,6 @@ describe("Web Awesome adapters", () => {
     } finally {
       stopCanceling();
     }
-  });
-
-  it("restores the durable trigger before native Tab navigation", async () => {
-    const durableTrigger = document.createElement("button");
-    document.body.append(durableTrigger);
-    const { dropdown } = await createDropdown();
-    dropdown.addEventListener("keydown", (event) =>
-      trackDropdownKeyboardDismissal(event, () => durableTrigger.focus()),
-    );
-
-    dropdown.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
-
-    expect(document.activeElement).toBe(durableTrigger);
-  });
-
-  it("restores radio semantics after a dropdown item updates", async () => {
-    const item = document.createElement("wa-dropdown-item") as DropdownElement;
-    item.setAttribute("type", "normal");
-    document.body.append(item);
-
-    syncDropdownItemRadio(item, true);
-    await rendered(item);
-    await Promise.resolve();
-
-    expect(item.getAttribute("role")).toBe("menuitemradio");
-    expect(item.getAttribute("aria-checked")).toBe("true");
   });
 });
 
