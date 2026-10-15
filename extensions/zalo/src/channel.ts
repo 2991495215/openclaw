@@ -10,7 +10,6 @@ import {
 import type { ChannelAccountSnapshot } from "openclaw/plugin-sdk/channel-contract";
 import {
   buildChannelConfigSchema,
-  buildChannelMetaFromManifest,
   createChatChannelPlugin,
   type ChannelPlugin,
 } from "openclaw/plugin-sdk/channel-core";
@@ -48,7 +47,6 @@ import {
   chunkTextForOutbound,
   sanitizeAssistantVisibleText,
 } from "openclaw/plugin-sdk/text-chunking";
-import pluginPackage from "../package.json" with { type: "json" };
 import {
   inspectZaloAccount,
   isZaloAccountConfigured,
@@ -65,6 +63,18 @@ import { collectRuntimeConfigAssignments, secretTargetRegistryEntries } from "./
 import { resolveZaloOutboundSessionRoute } from "./session-route.js";
 import { createZaloSetupWizardProxy, zaloSetupContract } from "./setup-core.js";
 import { collectZaloStatusIssues } from "./status-issues.js";
+
+const meta = {
+  id: "zalo",
+  label: "Zalo",
+  selectionLabel: "Zalo (Bot API)",
+  docsPath: "/channels/zalo",
+  docsLabel: "zalo",
+  blurb: "Vietnam-focused messaging platform with Bot API.",
+  aliases: ["zl"],
+  order: 80,
+  quickstartAllowFrom: true,
+};
 
 function normalizeZaloMessagingTarget(raw: string): string | undefined {
   const trimmed = raw?.trim();
@@ -192,7 +202,7 @@ export const zaloPlugin: ChannelPlugin<ResolvedZaloAccount, ZaloProbeResult> =
   createChatChannelPlugin({
     base: {
       id: "zalo",
-      meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
+      meta,
       setupContract: zaloSetupContract,
       setupWizard: zaloSetupWizard,
       capabilities: {

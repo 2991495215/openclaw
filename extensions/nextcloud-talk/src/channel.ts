@@ -1,8 +1,5 @@
 import { describeWebhookAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
-import {
-  buildChannelMetaFromManifest,
-  createChatChannelPlugin,
-} from "openclaw/plugin-sdk/channel-core";
+import { createChatChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { createLoggedPairingApprovalNotifier } from "openclaw/plugin-sdk/channel-pairing";
 import {
   createAllowlistProviderRouteAllowlistWarningCollector,
@@ -14,7 +11,6 @@ import {
   createDefaultChannelRuntimeState,
 } from "openclaw/plugin-sdk/status-helpers";
 import { sanitizeAssistantVisibleText } from "openclaw/plugin-sdk/text-chunking";
-import pluginPackage from "../package.json" with { type: "json" };
 import { isNextcloudTalkAccountConfigured, type ResolvedNextcloudTalkAccount } from "./accounts.js";
 import { nextcloudTalkApprovalAuth } from "./approval-auth.js";
 import { probeNextcloudTalkBotResponseFeature } from "./bot-preflight.js";
@@ -42,6 +38,18 @@ import { collectRuntimeConfigAssignments, secretTargetRegistryEntries } from "./
 import { resolveNextcloudTalkOutboundSessionRoute } from "./session-route.js";
 import { nextcloudTalkSetupContract } from "./setup-core.js";
 import { nextcloudTalkSetupWizard } from "./setup-surface.js";
+
+const meta = {
+  id: "nextcloud-talk",
+  label: "Nextcloud Talk",
+  selectionLabel: "Nextcloud Talk (self-hosted)",
+  docsPath: "/channels/nextcloud-talk",
+  docsLabel: "nextcloud-talk",
+  blurb: "Self-hosted chat via Nextcloud Talk webhook bots.",
+  aliases: ["nc-talk", "nc"],
+  order: 65,
+  quickstartAllowFrom: true,
+};
 
 const collectNextcloudTalkSecurityWarnings =
   createAllowlistProviderRouteAllowlistWarningCollector<ResolvedNextcloudTalkAccount>({
@@ -75,7 +83,7 @@ export const nextcloudTalkPlugin: ChannelPlugin<ResolvedNextcloudTalkAccount> =
   createChatChannelPlugin({
     base: {
       id: "nextcloud-talk",
-      meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
+      meta,
       setupWizard: nextcloudTalkSetupWizard,
       capabilities: {
         chatTypes: ["direct", "group"],

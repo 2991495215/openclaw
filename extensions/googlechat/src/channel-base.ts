@@ -4,9 +4,8 @@ import {
   adaptScopedAccountAccessor,
   createScopedChannelConfigAdapter,
 } from "openclaw/plugin-sdk/channel-config-helpers";
-import { buildChannelMetaFromManifest, type ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
-import pluginPackage from "../package.json" with { type: "json" };
 import {
   type GoogleChatConfigAccessorAccount,
   inspectGoogleChatAccount,
@@ -21,6 +20,20 @@ import { googlechatSetupContract } from "./setup-core.js";
 import { googlechatSetupWizard } from "./setup-surface.js";
 
 export const GOOGLECHAT_CHANNEL_ID = "googlechat" as const;
+
+const googlechatMeta = {
+  id: GOOGLECHAT_CHANNEL_ID,
+  label: "Google Chat",
+  selectionLabel: "Google Chat (Chat API)",
+  docsPath: "/channels/googlechat",
+  docsLabel: "googlechat",
+  blurb: "Google Workspace Chat app with HTTP webhook.",
+  aliases: ["gchat", "google-chat"],
+  order: 55,
+  detailLabel: "Google Chat",
+  systemImage: "message.badge",
+  markdownCapable: true,
+};
 
 export const formatGoogleChatAllowFromEntry = (entry: string) =>
   normalizeLowercaseStringOrEmpty(
@@ -61,7 +74,7 @@ const googleChatConfigAdapter = createScopedChannelConfigAdapter<
 
 export const googlechatSetupPlugin: ChannelPlugin<ResolvedGoogleChatAccount> = {
   id: GOOGLECHAT_CHANNEL_ID,
-  meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
+  meta: { ...googlechatMeta },
   setupContract: googlechatSetupContract,
   setupWizard: googlechatSetupWizard,
   capabilities: {

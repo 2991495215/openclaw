@@ -6,11 +6,7 @@ import {
   createScopedChannelConfigAdapter,
   createScopedDmSecurityResolver,
 } from "openclaw/plugin-sdk/channel-config-helpers";
-import {
-  buildChannelMetaFromManifest,
-  createChatChannelPlugin,
-  type ChannelPlugin,
-} from "openclaw/plugin-sdk/channel-core";
+import { createChatChannelPlugin, type ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { identityEntryAuthenticationClassifier } from "openclaw/plugin-sdk/channel-ingress-runtime";
 import {
   createAllowlistProviderOpenWarningCollector,
@@ -26,7 +22,6 @@ import {
   createComputedAccountStatusAdapter,
   createDefaultChannelRuntimeState,
 } from "openclaw/plugin-sdk/status-helpers";
-import pluginPackage from "../package.json" with { type: "json" };
 import {
   listIrcAccountIds,
   resolveDefaultIrcAccountId,
@@ -52,6 +47,19 @@ import { collectRuntimeConfigAssignments, secretTargetRegistryEntries } from "./
 import { ircSetupContract } from "./setup-core.js";
 import { ircSetupWizard } from "./setup-surface.js";
 import type { CoreConfig, IrcProbe } from "./types.js";
+
+const meta = {
+  id: "irc",
+  label: "IRC",
+  selectionLabel: "IRC (Server + Nick)",
+  docsPath: "/channels/irc",
+  docsLabel: "irc",
+  blurb: "classic IRC networks; host, nick, channels.",
+  order: 80,
+  detailLabel: "IRC",
+  systemImage: "number",
+  markdownCapable: true,
+};
 
 function normalizePairingTarget(raw: string): string {
   const normalized = normalizeIrcAllowEntry(raw);
@@ -157,15 +165,10 @@ const collectIrcSecurityWarnings = (params: { account: ResolvedIrcAccount; cfg: 
 export const ircPlugin: ChannelPlugin<ResolvedIrcAccount, IrcProbe> = createChatChannelPlugin({
   base: {
     id: "irc",
-    meta: buildChannelMetaFromManifest({
-      ...pluginPackage.openclaw.channel,
-      blurb: "classic IRC networks; host, nick, channels.",
-      order: 80,
-      aliases: undefined,
-      systemImage: "number",
-      markdownCapable: true,
+    meta: {
+      ...meta,
       quickstartAllowFrom: true,
-    }),
+    },
     setupContract: ircSetupContract,
     setupWizard: ircSetupWizard,
     capabilities: {

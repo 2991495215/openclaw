@@ -1,5 +1,11 @@
-import { buildCanonicalSentMessageHookContext } from "../../hooks/message-hook-mappers.js";
-import { dispatchMessageSentHooks } from "../../hooks/message-sent.js";
+import { fireAndForgetHook } from "../../hooks/fire-and-forget.js";
+import { createInternalHookEvent, triggerInternalHook } from "../../hooks/internal-hooks.js";
+import {
+  buildCanonicalSentMessageHookContext,
+  toInternalMessageSentContext,
+  toPluginMessageContext,
+  toPluginMessageSentEvent,
+} from "../../hooks/message-hook-mappers.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import type { DeliveryMirror } from "./mirror.js";
@@ -50,11 +56,29 @@ export function createMessageSentEmitter(params: {
       isGroup: params.isGroup,
       groupId: params.groupId,
     });
-    dispatchMessageSentHooks(
-      canonical,
-      hasMessageSentHooks ? params.hookRunner : undefined,
-      canEmitInternalHook ? params.sessionKeyForInternalHooks : undefined,
-      params.logPrefix,
+    if (hasMessageSentHooks) {
+      fireAndForgetHook(
+        params.hookRunner!.runMessageSent(
+          toPluginMessageSentEvent(canonical),
+          toPluginMessageContext(canonical),
+        ),
+        `${params.logPrefix}: message_sent plugin hook failed`,
+        warn,
+      );
+    }
+    if (!canEmitInternalHook) {
+      return;
+    }
+    fireAndForgetHook(
+      triggerInternalHook(
+        createInternalHookEvent(
+          "message",
+          "sent",
+          params.sessionKeyForInternalHooks!,
+          toInternalMessageSentContext(canonical),
+        ),
+      ),
+      `${params.logPrefix}: message:sent internal hook failed`,
       warn,
     );
   };

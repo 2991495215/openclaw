@@ -1,7 +1,6 @@
-import { buildChannelMetaFromManifest, type ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
+import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { defineChannelSetupContract } from "openclaw/plugin-sdk/channel-setup";
 import { patchTopLevelChannelConfigSection } from "openclaw/plugin-sdk/setup";
-import pluginPackage from "../package.json" with { type: "json" };
 import {
   listA2aChannelAccountIds,
   resolveA2aChannelAccount,
@@ -12,9 +11,19 @@ import type { ResolvedA2aChannelAccount } from "./types.js";
 
 export const A2A_CHANNEL_ID = "a2a" as const;
 
+const a2aChannelRuntimeMeta = {
+  id: A2A_CHANNEL_ID,
+  label: "A2A",
+  selectionLabel: "A2A (Agent-to-Agent Protocol)",
+  docsPath: "/channels/a2a",
+  docsLabel: "a2a",
+  blurb: "Connect external agents through the A2A v1.0 protocol.",
+  order: 75,
+};
+
 export const a2aChannelSetupPlugin = {
   id: A2A_CHANNEL_ID,
-  meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
+  meta: a2aChannelRuntimeMeta,
   capabilities: { chatTypes: ["direct"] },
   reload: { configPrefixes: ["channels.a2a"] },
   configSchema: a2aPluginConfigSchema,

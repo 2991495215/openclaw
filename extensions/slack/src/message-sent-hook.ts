@@ -1,5 +1,12 @@
-import { dispatchMessageSentHooks } from "openclaw/plugin-sdk/channel-outbound";
-import { buildCanonicalSentMessageHookContext } from "openclaw/plugin-sdk/hook-runtime";
+import {
+  buildCanonicalSentMessageHookContext,
+  createInternalHookEvent,
+  fireAndForgetHook,
+  toInternalMessageSentContext,
+  toPluginMessageContext,
+  toPluginMessageSentEvent,
+  triggerInternalHook,
+} from "openclaw/plugin-sdk/hook-runtime";
 import { getGlobalHookRunner } from "openclaw/plugin-sdk/plugin-runtime";
 
 type EmitSlackMessageSentHookParams = Pick<
@@ -30,10 +37,28 @@ export function emitSlackMessageSentHooks(params: EmitSlackMessageSentHookParams
     isGroup: params.isGroup,
     groupId: params.groupId,
   });
-  dispatchMessageSentHooks(
-    canonical,
-    enabled ? hookRunner : undefined,
-    params.sessionKeyForInternalHooks,
-    "slack",
-  );
+  if (enabled) {
+    fireAndForgetHook(
+      Promise.resolve(
+        hookRunner!.runMessageSent(
+          toPluginMessageSentEvent(canonical),
+          toPluginMessageContext(canonical),
+        ),
+      ),
+      "slack: message_sent plugin hook failed",
+    );
+  }
+  if (params.sessionKeyForInternalHooks) {
+    fireAndForgetHook(
+      triggerInternalHook(
+        createInternalHookEvent(
+          "message",
+          "sent",
+          params.sessionKeyForInternalHooks,
+          toInternalMessageSentContext(canonical),
+        ),
+      ),
+      "slack: message:sent internal hook failed",
+    );
+  }
 }

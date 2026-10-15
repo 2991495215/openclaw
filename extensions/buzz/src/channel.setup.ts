@@ -1,6 +1,5 @@
 import { describeAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
-import { buildChannelMetaFromManifest, type ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
-import pluginPackage from "../package.json" with { type: "json" };
+import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { BuzzConfigSchema } from "./config-schema.js";
 import { buzzSetupContract } from "./setup-core.js";
 import { buzzSetupWizard } from "./setup-surface.js";
@@ -13,7 +12,16 @@ import {
 
 export const buzzSetupPlugin: ChannelPlugin<ResolvedBuzzAccount> = {
   id: "buzz",
-  meta: buildChannelMetaFromManifest(pluginPackage.openclaw.channel),
+  meta: {
+    id: "buzz",
+    label: "Buzz",
+    selectionLabel: "Buzz",
+    docsPath: "/channels/buzz",
+    docsLabel: "buzz",
+    blurb: "Connect OpenClaw agents to Buzz team rooms.",
+    markdownCapable: true,
+    order: 56,
+  },
   capabilities: { chatTypes: ["group"], threads: true },
   reload: { configPrefixes: ["channels.buzz"], accountScopedRestart: true },
   configSchema: BuzzConfigSchema,
