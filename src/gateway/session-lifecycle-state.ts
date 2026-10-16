@@ -39,6 +39,7 @@ const restartRecoveryLog = createSubsystemLogger("main-session-restart-recovery"
 type LifecyclePhase = "start" | "end" | "error";
 
 type LifecycleEventLike = Pick<AgentEventPayload, "ts" | "sessionId"> & {
+  seq?: AgentEventPayload["seq"];
   controlUiVisible?: boolean;
   isHeartbeat?: boolean;
   contextClaimId?: string;

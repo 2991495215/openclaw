@@ -22,25 +22,21 @@ export function createWorkerInferenceDrainService(
       let started = false;
       const release = () => drain?.release();
       return {
-        assertReserved: () => {},
+        drained: completed.promise,
+        hasWork: () => drain?.hasWork() ?? false,
         release,
-        accept: () => ({
-          drained: completed.promise,
-          hasWork: () => drain?.hasWork() ?? false,
-          release,
-          start: () => {
-            if (started) {
-              return;
-            }
-            started = true;
-            try {
-              drain = startDrain(sessionId);
-              void drain.drained.then(completed.resolve, completed.reject);
-            } catch (error) {
-              completed.reject(error);
-            }
-          },
-        }),
+        start: () => {
+          if (started) {
+            return;
+          }
+          started = true;
+          try {
+            drain = startDrain(sessionId);
+            void drain.drained.then(completed.resolve, completed.reject);
+          } catch (error) {
+            completed.reject(error);
+          }
+        },
       };
     },
     captureSessionCancellation: () => ({ runIds: [], cancel: async () => [] }),
@@ -105,7 +101,9 @@ export function createWorkerInferenceServiceStub(): WorkerEnvironmentServiceCont
     readPreparedPoolSummary: unexpected,
     readReadyWorkerTarget: unexpected,
     get: () => undefined,
+    inventoryVersion: unexpected,
     readMachineShape: unexpected,
+    machineShapeVersion: unexpected,
     supportsExecutionMode: unexpected,
     readProviderDisplayId: unexpected,
     listMachineOptions: unexpected,

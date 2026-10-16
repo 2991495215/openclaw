@@ -36,6 +36,7 @@ import { createSessionRowProjectionRevisions } from "./session-row-projection-re
 import {
   createSessionRowTopology,
   prepareSessionRowTopologySources,
+  type SessionRowTopologyInvalidation,
 } from "./session-row-projection-topology.js";
 import { createSessionRowProjectionTranscriptUpdates } from "./session-row-projection-transcript.js";
 import * as rowScope from "./session-row-scope.js";
@@ -67,8 +68,8 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
     assertActive: () => assertActive(),
   });
   const rowFacts = rowMembership.createSessionRowFactsReadiness(rows, () => projection);
-  let topologyDirty = true,
-    disposed = false;
+  let topologyDirty: SessionRowTopologyInvalidation | undefined = { cfg };
+  let disposed = false;
   const registryRead = rowScope.createSessionRowRegistryRead({
     env,
     stores: () => stores,
@@ -98,7 +99,7 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
     },
     hasWork: () => needsMaterialization(),
     refresh: () => refreshBatch(),
-    needsYield: () => dirty.size > 0 || topologyDirty,
+    needsYield: () => dirty.size > 0 || Boolean(topologyDirty),
     // Adopt published catalog reads without waiting for an in-flight renewal.
     idle: () => (catalog.isRefreshing ? yieldSessionListWork() : Promise.resolve()),
     runAsOwner: inOwnerContext,
@@ -261,8 +262,7 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
     profileCatalogPath,
     discovery: discoveryRead,
     run: inOwnerContext,
-    state: () => ({ cfg, stores, disposed, dirty: topologyDirty }),
-    config: () => params.getConfig?.() ?? cfg,
+    state: () => ({ stores, disposed, dirty: topologyDirty }),
     rows,
     byStore,
     byAgent,
@@ -283,8 +283,7 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
       scope = nextScope;
       recents.reset();
       revisions.publishSelection();
-      // Config changes during this read are picked up by a subsequent publication.
-      topologyDirty = false;
+      topologyDirty = undefined;
     },
     prepareExactRows: (queries) => prepareExactRows(queries),
   });
@@ -312,6 +311,9 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
       (change.scope === "config-presentation" || change.scope === "config-profiles")
     ) {
       cfg = inOwnerContext(() => params.getConfig?.() ?? cfg);
+      if (topologyDirty) {
+        topologyDirty = { cfg };
+      }
     }
     epoch++;
     const identityRevision = metadata.current.identityProjection?.revision;
@@ -324,7 +326,9 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
     placementFacts.invalidateChange(change);
     if ("all" in change) {
       if (isSessionStoreTopologyChange(change) || change.scope === "config") {
-        topologyDirty = true;
+        topologyDirty = {
+          cfg: inOwnerContext(() => params.getConfig?.() ?? cfg),
+        };
       }
       if (change.scope === "catalog" || change.scope === "config") {
         catalog.invalidate();
@@ -351,6 +355,9 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
         }
       }
     } else if (!presentationOnly) {
+      if (topologyDirty) {
+        topologyDirty = { cfg: topologyDirty.cfg };
+      }
       rowScope.visitSessionRowPublicationTargets(change, {
         matching,
         scope,
@@ -445,7 +452,8 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
     state: () => ({
       cfg,
       disposed,
-      topologyDirty: topologyDirty || !profiles.isUserProfileCatalogReady(profileCatalogPath),
+      topologyDirty:
+        Boolean(topologyDirty) || !profiles.isUserProfileCatalogReady(profileCatalogPath),
       registryPrepared: Boolean(inOwnerContext(subagents.snapshotIdentity)),
     }),
     runAsOwner: inOwnerContext,
@@ -584,11 +592,9 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
   await inOwnerContext(async () => {
     stop.push((await profiles.prepareUserProfileCatalog({ env })).release);
     await ensureSessionGroupCatalog();
-    for (;;) {
+    for (let pending = true; pending;) {
       await refreshBatch();
-      if (disposed || !topologyDirty) {
-        return;
-      }
+      pending = !disposed && Boolean(topologyDirty);
     }
   }).catch((error: unknown) => {
     dispose();
@@ -601,7 +607,7 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
       membership,
       runInOwner: inOwnerContext,
       isActive: () => !disposed,
-      topologyDirty: () => topologyDirty,
+      topologyDirty: () => Boolean(topologyDirty),
       topology,
       lookup,
       stores: () => stores,
@@ -617,7 +623,7 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
         scope,
         stores,
         disposed,
-        topologyDirty,
+        topologyDirty: Boolean(topologyDirty),
         registryPrepared: !disposed && Boolean(inOwnerContext(subagents.snapshotIdentity)),
       }),
       lookup,

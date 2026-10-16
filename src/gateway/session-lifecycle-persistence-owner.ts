@@ -138,8 +138,11 @@ export function createSessionLifecyclePersistenceOwner() {
       if (preparedPersistence) {
         return preparedPersistence;
       }
-      if (isDefinitiveRunLifecycle({ phase: params.event.data?.phase, data: params.event.data })) {
-        // Only the original runtime event may reuse its eager definitive write.
+      if (
+        params.event.seq !== undefined &&
+        isDefinitiveRunLifecycle({ phase: params.event.data?.phase, data: params.event.data })
+      ) {
+        // Sequenced runtime events reuse their eager write; direct Stop writes have none.
         return Promise.reject(createAgentRunStaleLifecycleError());
       }
       const authority = terminalEventAuthority(params.event);

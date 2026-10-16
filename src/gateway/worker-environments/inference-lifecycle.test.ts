@@ -67,7 +67,7 @@ describe("worker inference manager", () => {
       const instance = makeManager(async () => DONE, store);
       await accept(instance, { sink: sink.sink });
       await entered.promise;
-      const drain = instance.reserveSessionDrain(REQUEST.sessionId).accept();
+      const drain = instance.reserveSessionDrain(REQUEST.sessionId);
       const joined =
         failureKind === "outcome-unknown"
           ? expect(drain.drained).rejects.toBe(failure)
@@ -312,7 +312,7 @@ describe("worker inference manager", () => {
       await accept(instance, { sink: sink.sink });
       await entered.promise;
 
-      const drain = instance.reserveSessionDrain(REQUEST.sessionId).accept();
+      const drain = instance.reserveSessionDrain(REQUEST.sessionId);
       const rejected = expect(drain.drained).rejects.toBe(failure);
       drain.start();
       const cancelled = instance.cancel({ identity: IDENTITY, request: CANCEL });
@@ -339,7 +339,7 @@ describe("worker inference manager", () => {
     });
     await accept(instance);
     await entered.promise;
-    const drain = instance.reserveSessionDrain(REQUEST.sessionId).accept();
+    const drain = instance.reserveSessionDrain(REQUEST.sessionId);
     const rejected = expect(drain.drained).rejects.toBe(failure);
     drain.start();
     provider.reject(failure);
@@ -350,7 +350,7 @@ describe("worker inference manager", () => {
   });
 
   it("retains a provider captured by a drain inside synchronous executor entry", async () => {
-    type AcceptedDrain = ReturnType<ReturnType<Manager["reserveSessionDrain"]>["accept"]>;
+    type AcceptedDrain = ReturnType<Manager["reserveSessionDrain"]>;
     const failure = new Error("provider failed after reentrant drain acceptance");
     const provider = createDeferred<WorkerInferenceTerminalOutcome>();
     const entered = createDeferred<AcceptedDrain>();
@@ -358,7 +358,7 @@ describe("worker inference manager", () => {
     const complete = vi.spyOn(store, "complete");
     let drain: AcceptedDrain | undefined;
     const instance: Manager = makeManager(async () => {
-      drain = instance.reserveSessionDrain(REQUEST.sessionId).accept();
+      drain = instance.reserveSessionDrain(REQUEST.sessionId);
       drain.start();
       entered.resolve(drain);
       return await provider.promise;
@@ -405,9 +405,7 @@ describe("worker inference manager", () => {
     const sink = createSink();
     await accept(instance, { sink: sink.sink });
     const signal = await entered.promise;
-    const reservation = instance.reserveSessionDrain(REQUEST.sessionId);
-    reservation.assertReserved();
-    const drain = reservation.accept();
+    const drain = instance.reserveSessionDrain(REQUEST.sessionId);
     let cancellationSettled = false;
     const cancelled = instance.cancel({ identity: IDENTITY, request: CANCEL });
     void cancelled.then(() => {
@@ -465,7 +463,7 @@ describe("worker inference manager", () => {
       }
     };
     assertCurrent();
-    const drain = instance.reserveSessionDrain(REQUEST.sessionId).accept();
+    const drain = instance.reserveSessionDrain(REQUEST.sessionId);
     const drained = Promise.allSettled([drain.drained]);
     try {
       current = false;
@@ -494,13 +492,13 @@ describe("worker inference manager", () => {
       entered.resolve();
       return await provider.promise;
     }, store);
-    const previous = instance.reserveSessionDrain(REQUEST.sessionId).accept();
+    const previous = instance.reserveSessionDrain(REQUEST.sessionId);
     previous.start();
     await previous.drained;
     previous.release();
     await accept(instance);
     await entered.promise;
-    const current = instance.reserveSessionDrain(REQUEST.sessionId).accept();
+    const current = instance.reserveSessionDrain(REQUEST.sessionId);
     const replacementRequest = { ...REQUEST, runId: "replacement", turnId: "replacement" };
     const start = () =>
       instance.start({
@@ -575,7 +573,7 @@ describe("worker inference manager", () => {
     }
     other.launch();
     const otherSignal = await otherEntered.promise;
-    const drain = instance.reserveSessionDrain(REQUEST.sessionId).accept();
+    const drain = instance.reserveSessionDrain(REQUEST.sessionId);
     const drained = Promise.allSettled([drain.drained]);
     const stopping = instance.stop();
     const stopped = Promise.allSettled([stopping]);
@@ -708,7 +706,7 @@ describe("worker inference manager", () => {
         sink: sink.sink,
       });
       await entered.promise;
-      const drain = instance.reserveSessionDrain(REQUEST.sessionId).accept();
+      const drain = instance.reserveSessionDrain(REQUEST.sessionId);
       const stopping = stopBeforeStart ? instance.stop() : undefined;
       const settled = vi.fn();
       const joined = drain.drained.then(settled);

@@ -9,6 +9,10 @@ import { SessionRowFactsPending } from "./session-row-prepared-read.js";
 import * as records from "./session-row-projection-record.js";
 import { prepareSessionRowScopes } from "./session-row-scope.js";
 
+export type SessionRowTopologyInvalidation = {
+  cfg: records.Inputs["cfg"];
+};
+
 export async function prepareSessionRowTopologySources() {
   const env = cloneEnvWithPlatformSemantics(process.env);
   env.OPENCLAW_STATE_DIR = resolveStateDir(env);
@@ -29,11 +33,9 @@ export function createSessionRowTopology(owner: {
   run: <T>(operation: () => T) => T;
   state: () => {
     disposed: boolean;
-    dirty: boolean;
-    cfg: records.Inputs["cfg"];
+    dirty: SessionRowTopologyInvalidation | undefined;
     stores: Map<string, records.SessionRowStore>;
   };
-  config: () => records.Inputs["cfg"];
   rows: Map<string, records.Row>;
   byStore: Map<string, Set<string>>;
   byAgent: ReadonlyMap<string, ReadonlySet<string>>;
@@ -64,7 +66,7 @@ export function createSessionRowTopology(owner: {
         if (current.disposed || !current.dirty) {
           return;
         }
-        const nextConfig = owner.config();
+        const nextConfig = current.dirty.cfg;
         const prepared = await owner.discovery.readWithCurrentAdmission();
         const discovery = { env: owner.env, snapshot: prepared.snapshot };
         while (!owner.state().disposed) {
@@ -77,7 +79,9 @@ export function createSessionRowTopology(owner: {
             });
             await storeRead.loadCombinedStore(nextConfig, discovery, (load, scopes) => {
               prepared.assertCurrent();
-              if (owner.state().disposed) {
+              const latest = owner.state();
+              // A cold store cannot replay writes that arrived before its inventory was admitted.
+              if (latest.disposed || latest.dirty !== current.dirty) {
                 return;
               }
               const loaded = load();

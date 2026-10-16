@@ -22,7 +22,8 @@ import * as workspaceGitBase from "./workspace-git-base.js";
 const sourceAdmission = vi.hoisted(() =>
   vi.fn<typeof import("./repository-project-admission.js").prepareRepositoryWorkerProjectSource>(),
 );
-vi.mock("./repository-project-admission.js", () => ({
+vi.mock("./repository-project-admission.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./repository-project-admission.js")>()),
   prepareRepositoryWorkerProjectSource: sourceAdmission,
 }));
 

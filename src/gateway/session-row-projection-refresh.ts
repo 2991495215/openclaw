@@ -369,11 +369,12 @@ export function createSessionRowRefresh(
     return preparation;
   }
   async function refreshBatch() {
-    for (
-      let pending = exactPreparationsIdle;
-      pending && !owner.state().disposed;
-      pending = exactPreparationsIdle
-    ) {
+    await prepareInputs(true, true);
+    if (owner.state().disposed) {
+      return;
+    }
+    const pending = exactPreparationsIdle;
+    if (pending) {
       const state = owner.state();
       if (
         !state.topologyDirty &&
@@ -395,9 +396,7 @@ export function createSessionRowRefresh(
         }
       }
       await pending.promise;
-    }
-    await prepareInputs(true, true);
-    if (owner.state().disposed) {
+      // Foreground work can publish new inputs while held; the next batch prepares them.
       return;
     }
     const selected = new Set<string>();

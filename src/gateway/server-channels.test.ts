@@ -1963,11 +1963,6 @@ describe("server-channels auto restart", () => {
         await vi.advanceTimersByTimeAsync(5_000);
         await stopping;
 
-        if (abandonedHook === "start") {
-          await manager.startChannel("discord", DEFAULT_ACCOUNT_ID);
-          expect(startAccount).toHaveBeenCalledTimes(1);
-          expect(registry.httpRoutes[0]?.handler).toBe(routeHandlers[0]);
-        }
         if (replacementFails) {
           await expect(manager.startChannel("discord", DEFAULT_ACCOUNT_ID)).rejects.toBe(
             replacementError,

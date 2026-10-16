@@ -19,8 +19,7 @@ describe("worker inference lifecycle caller", () => {
         const startFailure = new Error("selected lifecycle boundary failed");
         const drainFailure = new Error("worker drain persistence failed");
         const releaseFailure = new Error("worker drain release failed");
-        const refusal = new Error("worker drain acceptance refused");
-        const unacceptedRelease = vi.fn();
+        const refusal = new Error("worker drain acquisition refused");
         const release = vi.fn(() => {
           if (failureMode === "start-drain-release") {
             throw releaseFailure;
@@ -35,17 +34,13 @@ describe("worker inference lifecycle caller", () => {
         const workerService = createWorkerInferenceServiceStub();
         registerWorkerInferenceSessionControl(workerService, {
           hasSession: () => true,
-          reserveSessionDrain: () => ({
-            assertReserved: () => {},
-            release: unacceptedRelease,
-            accept: () => {
-              if (failureMode === "refusal") {
-                entered.resolve();
-                throw refusal;
-              }
-              return { drained: drained.promise, hasWork: () => true, start, release };
-            },
-          }),
+          reserveSessionDrain: () => {
+            if (failureMode === "refusal") {
+              entered.resolve();
+              throw refusal;
+            }
+            return { drained: drained.promise, hasWork: () => true, start, release };
+          },
           captureSessionCancellation: () => ({ runIds: [], cancel: async () => [] }),
           resolveSessionTargetForRunId: () => undefined,
         });
@@ -107,12 +102,10 @@ describe("worker inference lifecycle caller", () => {
           }
           if (failureMode === "refusal") {
             expect(result.error).toBe(refusal);
-            expect(unacceptedRelease).toHaveBeenCalledOnce();
             expect(start).not.toHaveBeenCalled();
             expect(release).not.toHaveBeenCalled();
           } else {
             expect(start).toHaveBeenCalledOnce();
-            expect(unacceptedRelease).not.toHaveBeenCalled();
             expect(release).toHaveBeenCalledOnce();
             if (failureMode === "start") {
               expect(result.error).toBe(startFailure);
