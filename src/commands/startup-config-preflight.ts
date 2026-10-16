@@ -155,6 +155,13 @@ async function prepareStartupConfig(
         return result(read);
       }
     }
+    const { initializeNativeOpenClawStateDatabase } = await import("../state/openclaw-state-db.js");
+    await beforeStatePreparation(read.snapshot);
+    assertLeaseCurrent();
+    // Native clients can create a version-zero catalog before the first Gateway.
+    // Finish that producer's bootstrap after read admission releases its snapshot,
+    // before webhook history or other runtime tables are consumed.
+    initializeNativeOpenClawStateDatabase({ env });
     const { HISTORICAL_WEBHOOK_CHANNELS, recordUnwrittenWebhookCompletion } =
       await import("./doctor/shared/legacy-webhook-pins.js");
     const webhookCompletion = read.snapshot.sourceConfig.meta?.migrations?.webhookListeners;
