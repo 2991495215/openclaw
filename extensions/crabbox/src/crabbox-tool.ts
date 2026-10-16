@@ -6,6 +6,7 @@ import type {
   OpenClawPluginApi,
   OpenClawPluginToolContext,
 } from "openclaw/plugin-sdk/plugin-entry";
+import { isStringArray } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { jsonResult } from "openclaw/plugin-sdk/tool-results";
 
 const CRABBOX_TOOL_PARAMETERS = {
@@ -172,11 +173,7 @@ export function createCrabboxTool({ context, gateway }: CrabboxToolOptions): Any
       }
       if (action === "exec") {
         const argv = params.argv;
-        if (
-          !Array.isArray(argv) ||
-          argv.length === 0 ||
-          !argv.every((arg) => typeof arg === "string")
-        ) {
+        if (!isStringArray(argv) || argv.length === 0) {
           throw new Error("argv must be a non-empty array of strings");
         }
         const input = readStringParam(params, "input", { trim: false, allowEmpty: true });

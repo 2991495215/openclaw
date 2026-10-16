@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { mergeMissing } from "openclaw/plugin-sdk/runtime-doctor-migrations";
 import { asNullableRecord, isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { ensureRecord } from "openclaw/plugin-sdk/string-normalization-runtime";
 
 const ELEVENLABS_API_KEY_ENV = "ELEVENLABS_API_KEY";
 const PROFILE_CANDIDATES = [".profile", ".zprofile", ".zshrc", ".bashrc"] as const;
@@ -17,16 +18,6 @@ const LEGACY_TALK_FIELD_KEYS = [
 type JsonRecord = Record<string, unknown>;
 
 export const ELEVENLABS_TALK_PROVIDER_ID = "elevenlabs";
-
-function ensureRecord(root: JsonRecord, key: string): JsonRecord {
-  const existing = asNullableRecord(root[key]);
-  if (existing) {
-    return existing;
-  }
-  const next: JsonRecord = {};
-  root[key] = next;
-  return next;
-}
 
 function isBlockedObjectKey(key: string): boolean {
   return key === "__proto__" || key === "prototype" || key === "constructor";

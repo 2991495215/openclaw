@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
-import { timestampMsToIsoString } from "openclaw/plugin-sdk/number-runtime";
+import {
+  floorPositiveFiniteNumber,
+  resolveIntegerOption,
+  timestampMsToIsoString,
+} from "openclaw/plugin-sdk/number-runtime";
 import type {
   OpenClawPluginNodeHostCommand,
   OpenClawPluginNodeInvokePolicy,
@@ -15,8 +19,9 @@ import {
   isRecord,
   normalizeOptionalString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { truncateWithMarker } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/temp-path";
-import { safeParseJson, truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
+import { safeParseJson } from "openclaw/plugin-sdk/text-utility-runtime";
 import {
   materializeWindowsSpawnProgram,
   resolveWindowsSpawnProgram,
@@ -297,7 +302,10 @@ export function formatCodexCliSessions(params: {
 
 async function listLocalCodexCliSessions(paramsJSON?: string | null): Promise<string> {
   const params = parseJsonRecord(paramsJSON);
-  const limit = normalizeLimit(params.limit);
+  const limit = resolveIntegerOption(params.limit, DEFAULT_SESSION_LIMIT, {
+    min: 1,
+    max: MAX_SESSION_LIMIT,
+  });
   const filter = typeof params.filter === "string" ? params.filter.trim().toLowerCase() : "";
   const codexHome = resolveCodexAppServerUserHomeDir();
   const summaries = await readHistorySessions(codexHome);
@@ -363,7 +371,10 @@ async function resumeLocalCodexCliSession(
       sessionId,
       prompt,
       cwd: typeof params.cwd === "string" && params.cwd.trim() ? params.cwd.trim() : undefined,
-      timeoutMs: normalizeTimeoutMs(params.timeoutMs),
+      timeoutMs: Math.min(
+        60 * 60_000,
+        floorPositiveFiniteNumber(params.timeoutMs) ?? DEFAULT_RESUME_TIMEOUT_MS,
+      ),
       codexHome,
       assertCurrent,
       signal: context?.signal,
@@ -465,7 +476,7 @@ async function readHistorySessions(
     };
     entry.messageCount += 1;
     if (typeof parsed.text === "string" && parsed.text.trim()) {
-      entry.lastMessage = truncateText(parsed.text.trim(), 140);
+      entry.lastMessage = truncateWithMarker(parsed.text.trim(), 140);
     }
     if (typeof parsed.ts === "number") {
       entry.updatedAt = timestampMsToIsoString(parsed.ts * 1000) ?? entry.updatedAt;
@@ -519,7 +530,7 @@ async function readSessionFileSummary(file: string): Promise<CodexCliSessionSumm
     const messageText = readResponseItemMessageText(parsed);
     if (messageText) {
       messageCount += 1;
-      lastMessage = truncateText(messageText, 140);
+      lastMessage = truncateWithMarker(messageText, 140);
     }
   });
   if (!result.ok || result.lineCount === 0) {
@@ -634,25 +645,6 @@ async function readFileMtimeIso(file: string): Promise<string | undefined> {
   } catch {
     return undefined;
   }
-}
-
-function normalizeLimit(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value)
-    ? Math.min(MAX_SESSION_LIMIT, Math.max(1, Math.floor(value)))
-    : DEFAULT_SESSION_LIMIT;
-}
-
-function normalizeTimeoutMs(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.min(60 * 60_000, Math.floor(value))
-    : DEFAULT_RESUME_TIMEOUT_MS;
-}
-
-function truncateText(value: string, max: number): string {
-  if (value.length <= max) {
-    return value;
-  }
-  return `${truncateUtf16Safe(value, Math.max(0, max - 3))}...`;
 }
 
 function readNodeId(node: CodexCliSessionNodeInfo): string {

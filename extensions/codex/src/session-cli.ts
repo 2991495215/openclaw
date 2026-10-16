@@ -11,6 +11,7 @@ import type {
   SessionsCatalogListParams,
 } from "openclaw/plugin-sdk/session-catalog";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { shellEscape } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { sanitizeTerminalText } from "openclaw/plugin-sdk/text-chunking";
 import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
 import {
@@ -109,7 +110,7 @@ function sessionStatus(session: CodexSessionCatalogSession): string {
 }
 
 function quoteShellArgument(value: string): string {
-  return `'${singleLineTerminalText(value).replaceAll("'", `'"'"'`)}'`;
+  return shellEscape(singleLineTerminalText(value));
 }
 
 function formatHostIdentity(host: CodexSessionCatalogHost): string {
