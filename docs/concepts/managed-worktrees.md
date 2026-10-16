@@ -54,9 +54,11 @@ metadata and ignored-file provisioning are not mounted or copied into it.
 On Btrfs, APFS, and ReFS, new private checkouts with a committed `pnpm-lock.yaml`
 can reuse installed dependencies. OpenClaw prepares the dependencies once in a
 disposable sandbox, then clones the prepared checkout for each session. After the
-Gateway is ready, it prepares the default session base for configured agent
-repositories in the background. A session arriving during preparation waits for
-the same build; later checkouts arrive with `node_modules`. Other selected commits
+Gateway is ready, it prepares the default session base for agent repositories
+with sandbox mode `all` or `non-main` in the background. Agents with sandbox mode
+`off` skip background dependency preparation; creator-role-required sandboxes
+still prepare dependencies on first use. A session arriving during preparation
+waits for the same build; later checkouts arrive with `node_modules`. Other selected commits
 still prepare their dependencies on first use. Shutdown cancels preparation and
 waits for the disposable installer to be removed.
 The private checkout storage must support filesystem acceleration, and
@@ -126,6 +128,12 @@ See [Configuration reference](/gateway/config-runtime#worktreeroot) for the opti
 The policy is: **squashed/merged first, then by age including unsaved data**. Cleanup prefers branches merged into the repository's default branch, then branches detected as squash-landed, then idle checkouts ordered from oldest to newest by last use. Manual worktrees, moved branches, nested repositories, and unreadable contents do not exempt a managed checkout from the cap. When possible, OpenClaw snapshots dirty contents before purging the checkout, but snapshot failure does not block cap eviction. Commit or otherwise back up work you need to retain.
 
 Creation reserves a persisted slot before preparing files. Name and owner checks happen at that reservation; materialization, ignored-file provisioning, and setup then run independently of other creates. Publication atomically replaces the pending slot with a live record. Concurrent requests for the same owner wait and reuse its completed checkout. Capacity admission waits for an in-progress creation when its slot prevents admission; pending checkouts are never eviction candidates.
+
+Full Git checkout materialization can continue beyond five minutes while Git
+reports progress. Five minutes without output stops the checkout with a retryable
+error; cancellation still stops it immediately. A single large file or a silent
+object lookup can still reach the idle timeout. Registration and other Git
+operations retain their existing execution deadlines.
 
 Repository-backed creation discovers unmanaged Git branches and checkout paths before waiting for capacity admission. Reservation still checks current managed names, owners, and pending slots under the allocation lease. Git enforces branch and path conflicts when creating the checkout, including external changes after discovery. Each admission retry refreshes its Git inventory.
 
