@@ -105,7 +105,6 @@ function looksLikeWindowsPathPrefix(prefix: string): boolean {
  * Attempts to parse potentially incomplete JSON during streaming.
  * Always returns a valid object, even if the JSON is incomplete.
  *
- * @param partialJson The partial JSON string from streaming
  * @returns Parsed object or empty object if parsing fails
  */
 export function parseStreamingJson(partialJson: string | undefined): Record<string, unknown> {

@@ -193,7 +193,6 @@ export async function resolveProviderEntryApiKeyAuth(params: {
   return undefined;
 }
 
-/** Resolves the credential that should be used for one provider request. */
 export async function resolveApiKeyForProviderCore(input: {
   provider: string;
   cfg?: OpenClawConfig;

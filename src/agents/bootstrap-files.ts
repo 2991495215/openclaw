@@ -272,7 +272,6 @@ async function resolveIneligibleAutomaticMemoryFiles(params: {
   );
 }
 
-/** Resolves hook-adjusted, session-filtered bootstrap files for a run. */
 type BootstrapFileResolutionParams = {
   bootstrapUserProfileId?: string;
   workspaceDir: string;

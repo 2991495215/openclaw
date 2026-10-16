@@ -22,7 +22,6 @@ const TTS_PROVIDER_CONFIG_RESERVED_KEYS = new Set([
   "timeoutMs",
 ]);
 
-/** Normalizes configured TTS provider ids for startup plugin selection. */
 function normalizeConfiguredSpeechProviderIdForStartup(value: unknown): string | undefined {
   const normalized = normalizeOptionalLowercaseString(value);
   return normalized === "edge" ? "microsoft" : normalized;

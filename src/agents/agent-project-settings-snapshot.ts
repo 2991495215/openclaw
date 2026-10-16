@@ -35,7 +35,6 @@ function sanitizeAgentSettingsSnapshot(settings: AgentSettingsSnapshot): AgentSe
   return sanitized;
 }
 
-/** Merge enabled bundle settings for one embedded-agent workspace. */
 export function loadEnabledBundleAgentSettingsSnapshot(params: {
   cwd: string;
   cfg?: OpenClawConfig;
@@ -122,7 +121,6 @@ export function loadEnabledBundleAgentSettingsSnapshot(params: {
   });
 }
 
-/** Resolves the configured project-settings trust policy for embedded agents. */
 export function resolveEmbeddedAgentProjectSettingsPolicy(
   cfg?: OpenClawConfig,
 ): EmbeddedAgentProjectSettingsPolicy {

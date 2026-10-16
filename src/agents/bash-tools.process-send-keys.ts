@@ -26,7 +26,6 @@ export async function writeProcessStdin(stdin: ManagedRunStdin, data: string | B
   });
 }
 
-/** Encode and write requested key data into a running process session. */
 export async function handleProcessSendKeys(params: {
   sessionId: string;
   session: ProcessSession;

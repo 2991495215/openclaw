@@ -89,7 +89,6 @@ export function isKnownEnvApiKeyMarker(value: string): boolean {
   return listKnownEnvApiKeyMarkers().has(trimmed) && !isAwsSdkAuthMarker(trimmed);
 }
 
-/** Build the persisted OAuth marker for one provider id. */
 export function resolveOAuthApiKeyMarker(providerId: string): string {
   return `${OAUTH_API_KEY_MARKER_PREFIX}${providerId.trim()}`;
 }

@@ -10,7 +10,6 @@ type StartupTaskResult =
   | { status: "ran" }
   | { status: "failed"; reason: string };
 
-/** Startup task descriptor used by gateway startup side-effect runners. */
 export type StartupTask = {
   source: string;
   agentId?: string;

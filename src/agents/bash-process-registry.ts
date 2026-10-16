@@ -17,9 +17,9 @@ import { createDeferredCore, type Deferred } from "../shared/deferred.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { clampWithDefault, readEnvInt } from "./bash-tools.shared.js";
 
-const DEFAULT_JOB_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const MIN_JOB_TTL_MS = 60 * 1000; // 1 minute
-const MAX_JOB_TTL_MS = 3 * 60 * 60 * 1000; // 3 hours
+const DEFAULT_JOB_TTL_MS = 30 * 60 * 1000;
+const MIN_JOB_TTL_MS = 60 * 1000;
+const MAX_JOB_TTL_MS = 3 * 60 * 60 * 1000;
 const DEFAULT_PENDING_OUTPUT_CHARS = 30_000;
 const MAX_FINISHED_SESSION_COUNT = 50;
 const MAX_FINISHED_SESSION_OUTPUT_CHARS = 2_000_000;

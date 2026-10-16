@@ -1,4 +1,3 @@
-// Memory Core plugin module owns consolidation preimages and operator summaries.
 import { createHash } from "node:crypto";
 import { updateDreamsFile } from "./dreaming-dreams-file.js";
 import {

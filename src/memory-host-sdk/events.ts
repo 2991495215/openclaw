@@ -1,4 +1,3 @@
-// Memory host event helpers append and read persisted memory host events.
 import path from "node:path";
 import {
   listStoredMemoryHostEvents,

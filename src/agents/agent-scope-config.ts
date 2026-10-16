@@ -386,7 +386,6 @@ export function resolveMutableAgentEntry(
   return undefined;
 }
 
-/** Resolves merged config for one agent id. */
 export function resolveAgentConfig(
   cfg: OpenClawConfig,
   agentId: string,

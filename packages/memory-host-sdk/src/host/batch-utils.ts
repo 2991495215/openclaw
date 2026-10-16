@@ -1,8 +1,6 @@
 import type { SsrFPolicy } from "./openclaw-runtime-network.js";
 import type { RemoteEmbeddingRequestAuth } from "./remote-http.js";
 
-// Common HTTP and grouping helpers for remote embedding batch clients.
-
 /** Minimal HTTP client config needed by batch providers. */
 export type BatchHttpClientConfig = {
   baseUrl?: string;

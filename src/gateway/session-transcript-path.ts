@@ -10,7 +10,6 @@ const transcriptUpdateStorePaths = new WeakMap<
   string | undefined
 >();
 
-/** Resolve a transcript file path into a stable comparison key. */
 export function resolveTranscriptPathForComparison(value: string | undefined): string | undefined {
   const trimmed = normalizeOptionalString(value);
   if (!trimmed) {

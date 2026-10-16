@@ -9,7 +9,6 @@ import type { PluginManifestRegistry } from "../plugins/manifest-registry.js";
 /** Codex app-server `mcp_servers` config map. */
 export type CodexMcpServersConfig = Record<string, Record<string, unknown>>;
 
-/** Loaded Codex thread-config patch plus diagnostics and cache metadata. */
 export type CodexBundleMcpThreadConfig = {
   configPatch?: {
     mcp_servers: CodexMcpServersConfig;
@@ -23,7 +22,6 @@ export type CodexBundleMcpThreadConfig = {
   userStaticServerNames: string[];
 };
 
-/** Inputs used to load a Codex bundle-MCP thread config patch. */
 export type LoadCodexBundleMcpThreadConfigParams = {
   workspaceDir: string;
   agentId?: string;

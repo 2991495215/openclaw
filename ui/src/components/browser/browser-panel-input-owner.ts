@@ -71,7 +71,6 @@ type BrowserPanelDrawingGesture = {
   stroke: AnnotationStroke;
 };
 
-/** Owns pointer, keyboard, annotation, and inspection input for the browser surface. */
 export class BrowserPanelInputOwner {
   elements: { stage?: HTMLElement; input?: HTMLTextAreaElement; overlay?: HTMLCanvasElement } = {};
   // An annotation stroke belongs to one pointer until that owner or the panel lifecycle ends.

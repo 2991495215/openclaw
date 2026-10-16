@@ -11,14 +11,12 @@ function recordUsesConfigPathActivation(plugin: InstalledPluginIndexRecord): boo
   return plugin.compat.includes(CONFIG_PATH_ACTIVATION_COMPAT_CODE);
 }
 
-/** True when an index still has config-path activation records missing startup metadata. */
 export function hasMissingConfigPathActivationMetadata(index: InstalledPluginIndex): boolean {
   return index.plugins.some(
     (plugin) => recordUsesConfigPathActivation(plugin) && plugin.startup.configPaths === undefined,
   );
 }
 
-/** True when a record migrated config-path activation startup metadata. */
 export function hasConfigPathActivationMetadataMigration(params: {
   previous: InstalledPluginIndexRecord;
   current: InstalledPluginIndexRecord;

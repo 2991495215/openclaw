@@ -570,7 +570,6 @@ openclaw-appearance-background .settings-background-preview .session-background_
   max-width: 60%;
 }
 
-/* Rows that carry only a control (action/button rows) hug the right edge. */
 .settings-row > .settings-row__control:only-child {
   margin-left: auto;
 }

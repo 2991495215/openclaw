@@ -153,7 +153,6 @@ export function createLiveHookRegistryFacade(
   };
 }
 
-/** Get the registry view that backs global hook dispatch. */
 export function getGlobalHookRunnerRegistry(): TrustedPolicyHookRunnerRegistry | null {
   return resolveHookRegistry(hookRunnerGlobalState)
     ? createLiveHookRegistryFacade(hookRunnerGlobalState)

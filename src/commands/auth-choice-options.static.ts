@@ -47,7 +47,6 @@ export const GENERIC_PROVIDER_AUTH_CHOICES: ReadonlyArray<AuthChoice> = [
   "apiKey",
 ];
 
-/** Format static auth-choice values for Commander help/validation text. */
 export function formatStaticAuthChoiceChoicesForCli(): string {
   return [
     ...CORE_AUTH_CHOICE_OPTIONS.map((opt) => opt.value),

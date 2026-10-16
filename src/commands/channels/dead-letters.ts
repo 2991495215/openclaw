@@ -26,7 +26,6 @@ function resolveScope(options: ChannelsDeadLettersOptions) {
   return { channelId, accountId };
 }
 
-/** List retained ingress failures for one channel account. */
 export async function channelsDeadLettersListCommand(
   options: ChannelsDeadLettersOptions,
   runtime: RuntimeEnv = defaultRuntime,

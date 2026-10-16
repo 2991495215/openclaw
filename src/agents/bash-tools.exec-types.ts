@@ -63,7 +63,6 @@ export type ExecProcessOutcome =
       reason: string;
     };
 
-/** Runtime defaults passed into exec/process tool factories. */
 export type ExecToolDefaults = {
   hasCronTool?: boolean;
   host?: ExecTarget;

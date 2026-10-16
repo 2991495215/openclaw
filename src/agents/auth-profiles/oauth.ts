@@ -317,7 +317,6 @@ function resolveRuntimeAuthProfile(params: {
   };
 }
 
-/** Resolve a selected auth profile into the provider API key string. */
 export async function resolveApiKeyForProfile(
   params: ResolveApiKeyForProfileParams,
 ): Promise<ResolveApiKeyForProfileResult | null> {

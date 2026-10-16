@@ -272,7 +272,6 @@ function resolveModelConfig(params: {
   });
 }
 
-/** Resolves the effective runtime policy for an agent/model/provider selection. */
 export function resolveModelRuntimePolicy(
   params: {
     config?: OpenClawConfig;

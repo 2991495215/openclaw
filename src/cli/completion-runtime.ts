@@ -401,7 +401,6 @@ async function resolveCompletionProfileWritePath(profilePath: string): Promise<s
   return path.join(await fs.realpath(targetDir), path.basename(targetPath));
 }
 
-/** Resolves the shell startup profile path that should contain the OpenClaw completion block. */
 export function resolveCompletionProfilePath(
   shell: CompletionShell,
   options: {
@@ -497,7 +496,6 @@ export async function isCompletionInstalled(
 }
 
 /**
- * Check if the profile uses the slow dynamic completion pattern.
  * Returns true if profile has `source <(openclaw completion ...)` instead of cached file.
  */
 export async function usesSlowDynamicCompletion(

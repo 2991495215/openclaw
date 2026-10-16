@@ -96,7 +96,6 @@ export type PluginRegistryDoctorMigrationParams = LoadInstalledPluginIndexParams
     readConfig?: () => Promise<OpenClawConfig> | OpenClawConfig;
   };
 
-/** Decide whether Doctor should migrate the plugin registry in this environment. */
 export function preflightPluginRegistryDoctorMigration(
   params: PluginRegistryDoctorMigrationParams = {},
 ): PluginRegistryDoctorMigrationPreflight {

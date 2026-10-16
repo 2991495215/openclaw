@@ -1003,7 +1003,6 @@ export interface ExtensionAPI {
   /** Register a custom renderer for CustomMessageEntry. */
   registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
 
-  /** Send a custom message to the session. */
   sendMessage<T = unknown>(
     message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
     options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
@@ -1254,7 +1253,6 @@ export interface ExtensionRuntime
 /** Host runtime with required worker-backed persistence capabilities. */
 export interface ExtensionRuntimeV2 extends ExtensionRuntimeState, ExtensionActionsV2 {}
 
-/** Loaded extension with all registered items. */
 export interface Extension {
   path: string;
   resolvedPath: string;

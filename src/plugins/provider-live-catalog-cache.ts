@@ -49,7 +49,6 @@ export async function getCachedLiveCatalogValue<T>(params: {
   load: (signal?: AbortSignal) => Promise<T>;
   /** Cancels this consumer; admitted metadata loads finish within their own deadline. */
   signal?: AbortSignal;
-  /** Optional predicate for values that are healthy enough to retain. */
   shouldCache?: (value: T) => boolean;
   /** Successful-value cache lifetime in milliseconds; defaults to a short discovery TTL. */
   ttlMs?: number;

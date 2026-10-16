@@ -8,7 +8,6 @@ type ManifestBackedRecord = Pick<
   "bundleFormat" | "format" | "manifestPath"
 >;
 
-/** True when the bundle format permits omitting its manifest file. */
 export function isOptionalPluginManifestFile(record: ManifestBackedRecord): boolean {
   return record.format === "bundle" && record.bundleFormat === "claude";
 }

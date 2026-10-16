@@ -13,7 +13,6 @@ type ResolvePluginProviders = typeof import("./providers.runtime.js").resolvePlu
 
 export { resolveProviderPluginChoice, runProviderModelSelectedHook, resolvePluginSetupProvider };
 
-/** Runtime wrapper for registered model provider discovery. */
 export function resolvePluginProviders(
   params: Parameters<ResolvePluginProviders>[0],
   preparedInstallRecords?: Record<string, PluginInstallRecord>,

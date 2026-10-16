@@ -524,9 +524,6 @@ export async function buildPreparedModelCatalogSnapshot(
   }
 }
 
-/**
- * Check if a model supports image input based on its catalog entry.
- */
 export function modelSupportsVision(entry: ModelCatalogEntry | undefined): boolean {
   return modelCatalogEntrySupportsInput(entry, "image");
 }
