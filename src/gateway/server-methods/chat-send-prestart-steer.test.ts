@@ -162,7 +162,6 @@ test.for(["accepted", "unavailable", "rejected"] as const)(
           resolved: { provider: "openai", model: "gpt-test" },
           fallback: { exhausted: false, attempts: [] },
           autoCompactionCount: 0,
-          didLogHeartbeatStrip: false,
         },
       };
     });
@@ -406,7 +405,6 @@ test("queues a fresh follow-up while stopped preparation still owns the reply sl
         resolved: { provider: "openai", model: "gpt-test" },
         fallback: { exhausted: false, attempts: [] },
         autoCompactionCount: 0,
-        didLogHeartbeatStrip: false,
       },
     };
   });

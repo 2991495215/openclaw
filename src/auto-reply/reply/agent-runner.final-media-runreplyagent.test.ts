@@ -193,7 +193,6 @@ describe("runReplyAgent final MEDIA replies", () => {
         resolved: { provider: "anthropic", model: "claude" },
         fallback: { exhausted: false, attempts: [] },
         autoCompactionCount: 0,
-        didLogHeartbeatStrip: false,
       },
     } satisfies AgentTurnExecutionResult);
 
@@ -235,7 +234,6 @@ describe("runReplyAgent final MEDIA replies", () => {
       }
       const commonParams = {
         isHeartbeat: false,
-        didLogHeartbeatStrip: false,
         blockStreamingEnabled: false,
         blockReplyPipeline: null,
         replyToMode: "all" as const,

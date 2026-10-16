@@ -45,7 +45,6 @@ function createPresentation(
       normalizePayload: options.normalizeMediaPaths ?? (async (payload) => payload),
     },
     directBlockDeliveries: [],
-    heartbeatState: { didLogStrip: false },
   });
 }
 

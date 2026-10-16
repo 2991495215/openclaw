@@ -381,15 +381,16 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
   ) {
     assertPreparationActive();
     // Keyless runs use an incarnation-unique sessionId lane; session-key lanes can be shared.
-    const cleared = sessionKey
-      ? (await import("./queue/cleanup.js")).clearSessionLifecycleLanes({
-          keys: [sessionKey],
-          agentId,
-          sessionKey,
-          assertCurrent: assertPreparationActive,
-        })
-      : clearCommandLane(sessionLaneKey);
-    logVerbose(`Cleared ${cleared} queued command(s) before interrupting ${sessionLaneKey}`);
+    if (sessionKey) {
+      (await import("./queue/cleanup.js")).clearSessionLifecycleLanes({
+        keys: [sessionKey],
+        agentId,
+        sessionKey,
+        assertCurrent: assertPreparationActive,
+      });
+    } else {
+      clearCommandLane(sessionLaneKey);
+    }
   }
   const agentHarnessPolicy = useFastReplyRuntime
     ? undefined

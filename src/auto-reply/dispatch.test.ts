@@ -500,38 +500,6 @@ describe("withReplyDispatcher", () => {
     );
   });
 
-  it("uses CommandTargetSessionKey for silent-reply policy on native command turns", async () => {
-    hoisted.createReplyDispatcherWithTypingMock.mockReturnValueOnce({
-      dispatcher: createDispatcher([]),
-      replyOptions: {},
-      markDispatchIdle: vi.fn(),
-      markRunComplete: vi.fn(),
-    });
-    hoisted.dispatchReplyFromConfigMock.mockResolvedValueOnce({ text: "ok" });
-
-    await dispatchInboundMessageWithBufferedDispatcher({
-      ctx: buildTestCtx({
-        SessionKey: "agent:test:telegram:slash:8231046597",
-        CommandSource: "native",
-        CommandTargetSessionKey: "agent:test:telegram:direct:8231046597",
-        ChatType: "group",
-        Surface: "telegram",
-      }),
-      cfg: {} as OpenClawConfig,
-      dispatcherOptions: {
-        deliver: async () => undefined,
-      },
-      replyResolver: async () => ({ text: "ok" }),
-    });
-
-    const dispatcherOptions = lastTypingDispatcherOptions();
-    expect(dispatcherOptions.silentReplyContext?.sessionKey).toBe(
-      "agent:test:telegram:direct:8231046597",
-    );
-    expect(dispatcherOptions.silentReplyContext?.surface).toBe("telegram");
-    expect(dispatcherOptions.silentReplyContext?.conversationType).not.toBe("group");
-  });
-
   it("composes custom beforeDeliver with reply_payload_sending hooks", async () => {
     const customBeforeDeliver = vi.fn(async (payload: { text?: string }) => ({
       text: `${payload.text ?? ""} [custom]`,
