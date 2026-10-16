@@ -191,6 +191,7 @@ async function runDoctorConfigPreflightOperation(
     }
   }
   let postConvergenceStateConfig: OpenClawConfig | undefined;
+  let pluginConvergenceWarnings: string[] = [];
   if (stateDirMigrations) {
     const refreshed = await prepareDoctorMigrationPlugins({
       cfg: automaticConfigRepair?.config ?? baseConfig,
@@ -207,9 +208,10 @@ async function runDoctorConfigPreflightOperation(
           inspection,
         ),
     });
-    configSnapshotRead = refreshed;
+    pluginConvergenceWarnings = refreshed.warnings;
+    configSnapshotRead = refreshed.snapshotRead;
     pluginMetadata.invalidate();
-    snapshot = refreshed.snapshot;
+    snapshot = refreshed.snapshotRead.snapshot;
     baseConfig = snapshot.sourceConfig ?? snapshot.config ?? {};
     automaticConfigRepair = planAdmittedConfigRepair(snapshot);
     // Core migrations use the validated runtime projection; plugins retain source locators.
@@ -342,6 +344,7 @@ async function runDoctorConfigPreflightOperation(
   return {
     snapshot,
     baseConfig,
+    ...(pluginConvergenceWarnings.length > 0 ? { warnings: pluginConvergenceWarnings } : {}),
     ...(deferredPluginMigrations.length > 0 ? { deferredPluginMigrations } : {}),
     ...(modelBillingRouteMigrationSource ? { modelBillingRouteMigrationSource } : {}),
     ...(configSnapshotRead.pluginMetadataSnapshot

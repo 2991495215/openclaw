@@ -17,6 +17,13 @@ Before a significant update, [create a verified backup](#before-updating-create-
 Automatic config copies and migration recovery originals are not a full-state
 backup.
 
+OpenClaw.app runs plugin convergence through the selected runtime's Doctor while
+the app owns Gateway activation. This aligns managed official npm plugins with the new
+core before plugin migrations, repairs host peer links, and refreshes the plugin
+registry. Unavailable replacements remain nonblocking: the app's recovery
+diagnostics include the remaining version or peer-link warning and the exact
+repair command. Retry Gateway setup in the app to repeat this owned repair.
+
 ## Upgrading very old versions
 
 For installations older than June 2026, upgrade to **`2026.9.5` first**, run its
