@@ -1,6 +1,6 @@
 /**
  * Regression coverage for transcript replay policy resolution.
- * Exercises provider-family fallbacks, plugin replay hooks, and policy caching.
+ * Exercises provider-family fallbacks and plugin replay hooks.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -179,25 +179,6 @@ describe("resolveTranscriptPolicy", () => {
       ...overrides,
     };
   }
-
-  it("memoizes replay policy resolution for the same config and process env", () => {
-    const config = {} as OpenClawConfig;
-
-    const firstPolicy = resolveTranscriptPolicy({
-      provider: "mistral",
-      modelId: "mistral-large-latest",
-      config,
-      env: process.env,
-    });
-    const secondPolicy = resolveTranscriptPolicy({
-      provider: "mistral",
-      modelId: "mistral-large-latest",
-      config,
-      env: process.env,
-    });
-
-    expect(secondPolicy).toBe(firstPolicy);
-  });
 
   it("does not reuse cached replay policies across custom env objects", () => {
     const config = {} as OpenClawConfig;

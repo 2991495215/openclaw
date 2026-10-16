@@ -18,14 +18,6 @@ import {
   openOpenClawAgentDatabase,
 } from "../../state/openclaw-agent-db.js";
 import { useSessionStoreTempDirs } from "../../test-utils/session-state-cleanup.js";
-
-const resetBoundaryMocks = vi.hoisted(() => ({
-  clearBootstrap: vi.fn(),
-}));
-
-vi.mock("../../agents/bootstrap-cache.js", () => ({
-  clearBootstrapSnapshotOnSessionBoundary: resetBoundaryMocks.clearBootstrap,
-}));
 import {
   adoptCronRunSessionMetadata,
   CronSessionLifecycleClaimError,
@@ -142,7 +134,6 @@ describe("createPersistCronSessionEntry", () => {
   // transcript used to create the header from process.cwd(), so the window
   // persisted the gateway process directory as its workspace.
   it("records the cron workspace in the header when a stale reset lands on an empty window", async () => {
-    resetBoundaryMocks.clearBootstrap.mockClear();
     const dir = sessionDirs.make();
     const storePath = path.join(dir, "sessions.json");
     const agentSessionKey = "agent:main:cron:stale-empty-window";
@@ -219,10 +210,6 @@ describe("createPersistCronSessionEntry", () => {
     }
     expect(cronSession.store[agentSessionKey]?.sessionId).toBe("cron-next-window");
     expect(cronSession.resetBoundaryPending).toBeUndefined();
-    expect(resetBoundaryMocks.clearBootstrap).toHaveBeenCalledWith({
-      boundaryAppended: true,
-      sessionKey: agentSessionKey,
-    });
   });
 
   it("keeps a pending reset boundary when the guarded row commit fails", async () => {

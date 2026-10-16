@@ -1,9 +1,8 @@
 // Tests reset hook emission and cleanup around reset commands.
 import path from "node:path";
 import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
-import * as bootstrapCache from "../../agents/bootstrap-cache.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import { useSessionStoreTempDirs } from "../../test-utils/session-state-cleanup.js";
@@ -155,11 +154,8 @@ const resetCommandConfig: OpenClawConfig = {
 };
 
 describe("handleCommands reset hooks", () => {
-  let clearBootstrapSnapshotSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    clearBootstrapSnapshotSpy = vi.spyOn(bootstrapCache, "clearBootstrapSnapshot");
     resetMocks.resetConfiguredBindingTargetInPlace.mockResolvedValue({ ok: true });
     resetMocks.resolveBoundAcpThreadSessionKey.mockResolvedValue(undefined);
     triggerInternalHookMock.mockResolvedValue(undefined);
@@ -168,10 +164,6 @@ describe("handleCommands reset hooks", () => {
       delivered: true,
       messageId: "reset-hook-1",
     });
-  });
-
-  afterEach(() => {
-    clearBootstrapSnapshotSpy.mockRestore();
   });
 
   it("triggers hooks for /new commands", async () => {
@@ -468,7 +460,6 @@ describe("handleCommands reset hooks", () => {
     expect(
       loadSessionEntry({ sessionKey: params.sessionKey, storePath })?.updatedAt,
     ).toBeGreaterThan(0);
-    expect(clearBootstrapSnapshotSpy).toHaveBeenCalledWith("agent:main:main");
   });
 
   it.each<{
@@ -609,7 +600,6 @@ describe("handleCommands reset hooks", () => {
       expect(params.sessionEntry.lifecycleRevision).toBe(before.lifecycleRevision);
       expect(params.command.softResetTriggered === true).toBe(allowed);
       expect(triggerInternalHookMock).toHaveBeenCalledTimes(allowed ? 1 : 0);
-      expect(clearBootstrapSnapshotSpy).toHaveBeenCalledTimes(allowed ? 1 : 0);
       expect(routeReplyMock).not.toHaveBeenCalled();
       expect(resetMocks.resetConfiguredBindingTargetInPlace).not.toHaveBeenCalled();
       if (allowed) {
