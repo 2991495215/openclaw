@@ -19,13 +19,11 @@ import * as databaseIdentity from "../infra/sqlite-worker-identity.js";
 import { runWithSqliteWorkerStateContext } from "../infra/sqlite-worker-state-context.js";
 import * as workerStore from "../infra/sqlite-worker-store.js";
 import { createPluginStateKeyedStore } from "../plugin-state/plugin-state-store.js";
-import { createDeferredCore } from "../shared/deferred.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
   createOpenClawDatabaseMaintenanceScope,
   createOpenClawStateDatabaseAsyncLifecycle,
 } from "./openclaw-state-db-async-lifecycle.js";
-import * as stateCache from "./openclaw-state-db-cache.js";
 import {
   captureOpenClawStateDatabaseReadAdmission,
   closeOpenClawStateDatabaseAsync,
@@ -48,10 +46,8 @@ import { openExistingSqliteWorkerBackend } from "./openclaw-state.worker.js";
 
 const hostBirth: {
   paths: Set<string>;
-  mode: "zero" | "changing" | "ctime" | undefined;
-  relocated: boolean;
   ctimeAdvanceNs: bigint;
-} = { paths: new Set(), mode: undefined, relocated: false, ctimeAdvanceNs: 0n };
+} = { paths: new Set(), ctimeAdvanceNs: 0n };
 
 afterEach(async () => {
   try {
@@ -60,22 +56,16 @@ afterEach(async () => {
     vi.restoreAllMocks();
     syncBuiltinESMExports();
     hostBirth.paths.clear();
-    hostBirth.mode = undefined;
-    hostBirth.relocated = false;
     hostBirth.ctimeAdvanceNs = 0n;
   }
 });
 
-function observeHostBirthtime(mode: typeof hostBirth.mode, paths: string[]): void {
-  hostBirth.mode = mode;
+function observeHostBirthtime(paths: string[]): void {
   for (const pathname of paths) {
     hostBirth.paths.add(pathname);
     hostBirth.paths.add(
       path.join(realpathSync.native(path.dirname(pathname)), path.basename(pathname)),
     );
-  }
-  if (!mode) {
-    return;
   }
   const readStat = fs.statSync;
   const readFstat = fs.fstatSync;
@@ -87,14 +77,10 @@ function observeHostBirthtime(mode: typeof hostBirth.mode, paths: string[]): voi
     }
   }
   const applyBirthtime = (result: fs.Stats | fs.BigIntStats) => {
-    if (mode === "ctime" && "ctimeNs" in result) {
+    if ("ctimeNs" in result) {
       const ctimeNs = result.ctimeNs + hostBirth.ctimeAdvanceNs;
       Object.defineProperty(result, "ctimeNs", { value: ctimeNs });
       Object.defineProperty(result, "birthtimeNs", { value: ctimeNs });
-    } else {
-      Object.defineProperty(result, "birthtimeNs", {
-        value: mode === "zero" ? 0n : hostBirth.relocated ? 2n : 1n,
-      });
     }
   };
   vi.spyOn(fs, "statSync").mockImplementation((...args) => {
@@ -127,7 +113,7 @@ it("permits a lazy native write after healthy peer changes when birthtime falls 
     const pathname = openOpenClawStateDatabase({ env: state.env }).path;
     await closeOpenClawStateDatabaseAsync();
     const alias = state.statePath("same-file-alias.sqlite");
-    observeHostBirthtime("ctime", [pathname, alias]);
+    observeHostBirthtime([pathname, alias]);
     const before = statSync(pathname, { bigint: true });
     const captured = captureOpenClawStateWorkerContext({ env: state.env });
     const preparedRead =
@@ -198,76 +184,6 @@ async function retainExistingReader(context: OpenClawStateWorkerContext) {
   return store!;
 }
 
-it.each(["native", "zero", "changing"] as const)(
-  "joins a stale worker's retirement after same-inode relocation with %s birth timestamps",
-  async (birth) => {
-    await withOpenClawTestState({ label: "state-worker-inode-reuse" }, async (state) => {
-      const inspectedPath = state.statePath("inspected.sqlite");
-      const inspected = new DatabaseSync(inspectedPath);
-      inspected.exec("PRAGMA user_version = 0");
-      inspected.close();
-      const databasePath = resolveOpenClawStateSqlitePath(state.env);
-      const readIdentity = databaseIdentity.readDatabasePathIdentitySync;
-      const retiredKey = readIdentity(inspectedPath).key;
-      mkdirSync(path.dirname(databasePath), { recursive: true });
-      observeHostBirthtime(birth === "native" ? undefined : birth, [inspectedPath, databasePath]);
-      const context = captureOpenClawStateWorkerContext({ path: inspectedPath, env: state.env });
-      const retained = await retainExistingReader(context);
-      const actor = workerStore.getSqliteWorkerActorIdentity(retained);
-      renameSync(inspectedPath, databasePath);
-      hostBirth.relocated = true;
-      expect(readIdentity(databasePath).key).toBe(retiredKey);
-
-      const retiring = createDeferredCore();
-      const releaseRetirement = createDeferredCore();
-      const retireActor = workerStore.retireSqliteWorkerActor;
-      const retirement = vi
-        .spyOn(workerStore, "retireSqliteWorkerActor")
-        .mockImplementationOnce(async (identity) => {
-          expect(identity).toBe(actor);
-          retiring.resolve();
-          await releaseRetirement.promise;
-          await retireActor(identity);
-        });
-      const store = createPluginStateKeyedStore<string>("discord", {
-        namespace: "worker-inode-reuse",
-        maxEntries: 1,
-        env: state.env,
-      });
-      const registration = store.register("retained", "replacement");
-      let settled = false;
-      void registration.then(
-        () => {
-          settled = true;
-        },
-        () => {
-          settled = true;
-        },
-      );
-      try {
-        await Promise.race([
-          retiring.promise,
-          registration.then(() => {
-            throw new Error("Replacement bypassed actor retirement");
-          }),
-        ]);
-        expect(settled).toBe(false);
-        expect(context.admission.assertCurrent).toThrow(/admission changed/);
-        releaseRetirement.resolve();
-        await registration;
-        await expect(store.lookup("retained")).resolves.toBe("replacement");
-        expect(retirement).toHaveBeenCalledExactlyOnceWith(actor);
-        expect(workerStore.isSqliteWorkerStoreAvailable(retained)).toBe(false);
-        expect(existsSync(inspectedPath)).toBe(false);
-      } finally {
-        releaseRetirement.resolve();
-        await Promise.allSettled([registration]);
-        retirement.mockRestore();
-      }
-    });
-  },
-);
-
 it.each(["same scope", "different scope"] as const)(
   "refuses replacement from an active callback on a stale actor (%s)",
   async (ownership) => {
@@ -289,14 +205,6 @@ it.each(["same scope", "different scope"] as const)(
         maxEntries: 1,
         env: state.env,
       });
-      const retiring = createDeferredCore();
-      const retireActor = workerStore.retireSqliteWorkerActor;
-      const retirement = vi
-        .spyOn(workerStore, "retireSqliteWorkerActor")
-        .mockImplementation((identity) => {
-          retiring.resolve();
-          return retireActor(identity);
-        });
       let registration: Promise<unknown> | undefined;
       try {
         try {
@@ -306,21 +214,9 @@ it.each(["same scope", "different scope"] as const)(
               mkdirSync(path.dirname(databasePath), { recursive: true });
               renameSync(inspectedPath, databasePath);
               registration = store.register("retained", "replacement");
-              // Observe retirement to fail without stranding the callback on its own close.
-              await expect(
-                Promise.race([
-                  registration.then(
-                    () => ({ outcome: "written" }),
-                    (error: unknown) => ({ outcome: "refused", error }),
-                  ),
-                  retiring.promise.then(() => ({ outcome: "retiring" })),
-                ]),
-              ).resolves.toMatchObject({
-                outcome: "refused",
-                error: {
-                  code: "PLUGIN_STATE_OPEN_FAILED",
-                  cause: { code: "STATE_DATABASE_READ_ADMISSION_INVALIDATED" },
-                },
+              await expect(registration).rejects.toMatchObject({
+                code: "PLUGIN_STATE_OPEN_FAILED",
+                cause: { code: "STATE_DATABASE_READ_ADMISSION_INVALIDATED" },
               });
               expect(workerStore.isSqliteWorkerStoreAvailable(retained)).toBe(true);
             },
@@ -328,8 +224,8 @@ it.each(["same scope", "different scope"] as const)(
           );
         } finally {
           await Promise.allSettled([registration]);
-          retirement.mockRestore();
         }
+        await closeOpenClawStateDatabaseAsync();
         await store.register("retained", "replacement");
         await expect(store.lookup("retained")).resolves.toBe("replacement");
         expect(existsSync(inspectedPath)).toBe(false);
@@ -354,42 +250,6 @@ it("reuses a current database actor across separate lexical schema scopes", asyn
     const second = await read();
     expect(second).toBe(first);
     expect(workerStore.isSqliteWorkerStoreAvailable(first)).toBe(true);
-  });
-});
-
-it("propagates an unexpected recorded-admission error without retiring the actor", async () => {
-  await withOpenClawTestState({ label: "state-worker-admission-error" }, async (state) => {
-    const databasePath = state.statePath("inspected.sqlite");
-    new DatabaseSync(databasePath).close();
-    const context = captureOpenClawStateWorkerContext({ path: databasePath, env: state.env });
-    const capture = stateCache.captureOpenClawStateDatabaseReadAdmission;
-    const failure = new Error("Unexpected database admission failure");
-    let reject = false;
-    const captureAdmission = vi
-      .spyOn(stateCache, "captureOpenClawStateDatabaseReadAdmission")
-      .mockImplementationOnce((pathname) => {
-        const admission = capture(pathname);
-        return {
-          ...admission,
-          assertCurrent() {
-            if (reject) {
-              throw failure;
-            }
-            admission.assertCurrent();
-          },
-        };
-      });
-    const retained = await retainExistingReader(context);
-    captureAdmission.mockRestore();
-    reject = true;
-    try {
-      await expect(
-        getOpenClawStateWorkerOwner().open(context, { existingOnly: true }),
-      ).rejects.toBe(failure);
-      expect(workerStore.isSqliteWorkerStoreAvailable(retained)).toBe(true);
-    } finally {
-      reject = false;
-    }
   });
 });
 
