@@ -165,6 +165,8 @@ final class GatewayProcessManager {
     let childSupervisor: GatewayChildSupervisor
     var runtimePreparationTask: Task<Void, Never>?
     var runtimePreparationAttempted = false
+    /// Completed Doctor work; automatic update reconciliation still checks the owned child.
+    var repairedAppHostedRuntimeBuildID: String?
     var bundledUpdateTask: Task<BundledRuntimeUpdateResult, Error>?
     var bundledUpdateTaskID: UUID?
     var hostingChangeTask: Task<Void, Error>?

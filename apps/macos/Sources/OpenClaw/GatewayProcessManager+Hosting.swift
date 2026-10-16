@@ -341,6 +341,8 @@ extension GatewayProcessManager {
             }
             guard self.isCurrentGatewayStart(startGeneration) else { return }
             let environment = try self.appHostedEnvironment(runtime: runtime)
+            try await self.repairAppHostedRuntimeBeforeStart(
+                runtime: runtime, pin: pin, generation: startGeneration, environment: environment)
             try OpenClawConfigFile.ensureAppHostedGatewayAuth(environment: environment)
             let pid = try await self.childSupervisor.start(
                 configuration: .init(
@@ -610,6 +612,19 @@ extension GatewayProcessManager {
             generation: updateGeneration,
             selection: (hosting, port, allowUnconfigured),
             expectedService: custody) { return completion(activation) }
+        if source == .recovery, hosting == .app, preservedRuntime == nil,
+           self.desiredActive, case .running = self.status,
+           let buildID = self.repairedAppHostedRuntimeBuildID,
+           self.childSupervisor.processIdentifier != nil,
+           let child = self.childSupervisor.configuration,
+           child.port == port, child.allowUnconfigured == allowUnconfigured,
+           try runtime.manifest().buildId == buildID,
+           (try? BundledRuntime(root: child.executable.deletingLastPathComponent()).manifest().buildId) == buildID
+        {
+            // First startup already joined Doctor and this build's health. Explicit Retry
+            // still reaches repair, while automatic reconciliation keeps the healthy child.
+            return completion(.ready)
+        }
         return try await self.repairPreparedBundledRuntime(
             runtime: runtime, source: source, expectedService: custody, preservedRuntime: preservedRuntime)
     }

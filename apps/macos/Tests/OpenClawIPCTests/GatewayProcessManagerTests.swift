@@ -38,6 +38,100 @@ struct GatewayProcessManagerTests {
         }
     }
 
+    @Test(arguments: [false, true], [false, true])
+    func `new bundle completes Doctor before its first child launch`(
+        doctorFails: Bool, seedExists: Bool) async throws
+    {
+        let root = try makeFirstRunTempDirForTests()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let port = try self.availableGatewayPort()
+        try await self.withLaunchAgentEnvironment(port: port, homeDirectory: root, defaults: [
+            lastLaunchedAppVersionKey: nil,
+            "openclaw.lastLaunchedRuntimeBuildID": nil,
+            postAppUpdateReceiptKey: nil,
+        ]) {
+            let state = AppProfile.current.stateDirectoryURL()
+            let runtimeDirectory = state.appendingPathComponent("runtime")
+            let current = runtimeDirectory.appendingPathComponent("current")
+            let oldBuild = "startup-old-" + UUID().uuidString.lowercased()
+            let oldRoot = runtimeDirectory.appendingPathComponent(oldBuild)
+            let oldApp = root.appendingPathComponent("Old.app")
+            _ = try makeBundledRuntimeTestBundle(
+                at: oldApp, builtAt: "2026-08-27T00:00:00.000Z", buildID: oldBuild, command: "unused")
+            try FileManager.default.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
+            let previous = try? FileManager.default.destinationOfSymbolicLink(atPath: current.path)
+            try #require(previous != nil || !FileManager.default.fileExists(atPath: current.path))
+            let config = state.appendingPathComponent("openclaw.json")
+            let priorConfig = try? Data(contentsOf: config)
+            let receipt = state.appendingPathComponent("startup-doctor-" + UUID().uuidString)
+            defer {
+                try? FileManager.default.removeItem(at: current)
+                if let previous {
+                    try? FileManager.default.createSymbolicLink(atPath: current.path, withDestinationPath: previous)
+                }
+                try? FileManager.default.removeItem(at: oldRoot)
+                try? FileManager.default.removeItem(at: receipt)
+                if let priorConfig { try? priorConfig.write(to: config) } else {
+                    try? FileManager.default.removeItem(at: config)
+                }
+            }
+            if previous != nil { try FileManager.default.removeItem(at: current) }
+            if seedExists {
+                try FileManager.default.copyItem(
+                    at: oldApp.appendingPathComponent("Contents/Resources/runtime"), to: oldRoot)
+                try FileManager.default.createSymbolicLink(atPath: current.path, withDestinationPath: oldBuild)
+            } else {
+                #expect(try BundledRuntime.seeded() == nil)
+            }
+            #expect(PostAppUpdateReceiptStore.pendingForLaunch(
+                currentVersion: "2026.8.1", currentRuntimeBuildID: oldBuild, onboardingSeen: false) == nil)
+            let app = root.appendingPathComponent("New.app")
+            let doctorScript = """
+            [ "$2" = --fix ] && [ "$3" = --non-interactive ] || exit 92
+            printf '%s\\n' "$0" > '\(receipt.path)'
+            \(doctorFails ? "echo 'Plugin repair failed. Retry the update.' >&2" : ":")
+            printf '%s\\n' 'OPENCLAW_UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH={"status":"\(doctorFails ? "error" : "ok")"}'
+            exit \(doctorFails ? 1 : 0)
+            """
+            // Both bundles have the same version and commit; only the runtime build identity changes.
+            _ = try makeBundledRuntimeTestBundle(
+                at: app, builtAt: "2026-08-27T00:00:01.000Z", buildID: "startup-new",
+                command: "unused", doctorScript: doctorScript)
+            let runtime = try BundledRuntime.resolve(bundle: #require(Bundle(url: app)))
+            var launches = 0
+            var repairedBeforeLaunch = false
+            let supervisor = GatewayChildSupervisor { _ in
+                launches += 1
+                repairedBeforeLaunch = (try? String(contentsOf: receipt, encoding: .utf8)) ==
+                    runtime.executable.path + "\n"
+                // Stop at the process-launch boundary: readiness is covered by the existing transport fixtures.
+                throw GatewayHostingError(message: "Fixture reached child launch")
+            }
+            let manager = GatewayProcessManager(childSupervisor: supervisor)
+            let appState = AppStateStore.shared
+            let paused = appState.isPaused
+            let onboarded = appState.onboardingSeen
+            appState.isPaused = false
+            // A completed seed and the prior launch marker independently identify the upgrade.
+            appState.onboardingSeen = !seedExists
+            defer {
+                appState.isPaused = paused
+                appState.onboardingSeen = onboarded
+            }
+            manager.desiredActive = true
+            await manager.startAppHostedGateway(startGeneration: manager.gatewayStartGeneration, runtime: runtime)
+            #expect((try? String(contentsOf: receipt, encoding: .utf8)) == runtime.executable.path + "\n")
+            #expect(launches == (doctorFails ? 0 : 1))
+            if doctorFails {
+                #expect(manager.lastFailureReason?.contains("Plugin repair failed. Retry the update.") == true)
+            } else {
+                #expect(repairedBeforeLaunch)
+                #expect(manager.lastFailureReason == "Fixture reached child launch")
+            }
+            #expect(!supervisor.isActive)
+        }
+    }
+
     @Test func `colliding profile ports cannot attach another profile gateway`() {
         let first = AppProfile(environment: ["OPENCLAW_PROFILE": "p1402"])
         let second = AppProfile(environment: ["OPENCLAW_PROFILE": "p2380"])
@@ -403,6 +497,7 @@ struct GatewayProcessManagerTests {
         mode: String,
         port: Int? = nil,
         homeDirectory: URL? = nil,
+        defaults: [String: Any?] = [:],
         _ body: () async throws -> T) async throws -> T
     {
         let isolatedHome = try homeDirectory ?? makeTempDirForTests()
@@ -421,7 +516,8 @@ struct GatewayProcessManagerTests {
         ]
         return try await TestIsolation.withIsolatedState(
             launchAgentHomeDirectory: isolatedHome,
-            env: environment)
+            env: environment,
+            defaults: defaults)
         {
             // Service ownership reads must stay inside this fixture's home, even without an explicit plist.
             try #require(LaunchAgentPlist.homeDirectoryURL.standardizedFileURL == isolatedHome
@@ -434,6 +530,7 @@ struct GatewayProcessManagerTests {
         mode: String = "local",
         port: Int? = nil,
         homeDirectory: URL? = nil,
+        defaults: [String: Any?] = [:],
         statusPayload: String? =
             #"{"ok":true,"service":{"loaded":false,"runtimeIntent":{"status":"known","stored":false,"revision":"absent"}}}"#,
         statusPayloads: [String]? = nil,
@@ -443,7 +540,9 @@ struct GatewayProcessManagerTests {
     {
         let marker = FileManager.default.temporaryDirectory
             .appendingPathComponent("openclaw-launchagent-marker-\(UUID().uuidString)")
-        return try await self.withGatewayConfig(mode: mode, port: port, homeDirectory: homeDirectory) {
+        return try await self.withGatewayConfig(
+            mode: mode, port: port, homeDirectory: homeDirectory, defaults: defaults)
+        {
             GatewayLaunchAgentManager.setTestingDisableLaunchAgentMarkerURL(marker)
             GatewayLaunchAgentManager.setTestingInterceptDaemonCommands(true) { arguments in
                 if commandDelayNanoseconds > 0 {

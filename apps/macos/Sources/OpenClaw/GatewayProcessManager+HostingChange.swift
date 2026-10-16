@@ -198,6 +198,9 @@ extension GatewayProcessManager {
                         },
                         statusHandler: { self.appendLog("[gateway] \($0)\n") })
                     if !output.isEmpty { self.appendLog("[gateway] recovery diagnostics: \(output.suffix(4000))\n") }
+                    if change.previous == .app, preservedRuntime == nil {
+                        self.repairedAppHostedRuntimeBuildID = try runtime.manifest().buildId
+                    }
                     if preservedRuntime != nil, change.previous == .service {
                         if let error = try await GatewayLaunchAgentManager.runDaemonCommand(
                             ["start"],

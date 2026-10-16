@@ -358,7 +358,10 @@ closes the host lifeline and waits for graceful shutdown before forcing an
 unresponsive process group to exit.
 
 After an app update, including a rebuild with the same public version, the app
-starts an app-hosted Gateway from the new bundle immediately, then prepares its
+repairs the profile through the new bundle's Doctor before starting its first
+app-hosted Gateway. This also applies when the previous app quit before its
+background seed finished. Fresh profiles and ordinary same-build launches skip
+this update repair. The Gateway then starts from the new bundle and prepares its
 persistent runtime after health succeeds. A background service waits for the
 new seed to warm before switching. An existing loose Bun seed is retained as
 the previous build while the app prepares the standalone payload in a new build
@@ -366,11 +369,13 @@ directory. The managed terminal shim
 is rewritten to execute `runtime/current/openclaw`; operator-managed commands
 are preserved. Configuration and user data stay in the existing profile.
 Runtime retention is not a rollback of database migrations or user state.
-The app drains its producer and runs Doctor through the selected runtime before
-restarting the Gateway. App hosting can use the new bundle for this step without
+The app drains any existing producer and runs Doctor through the selected runtime before
+starting the replacement Gateway. App hosting can use the new bundle for this step without
 waiting for a persistent seed. Doctor owns core migrations and configured plugin host-link
 repair; the app owns service publication and activation. Required repair refusals
 keep recovery pending and restore the previous service when native custody permits.
+Automatic update reconciliation reuses the completed repair while that build's
+app-owned Gateway remains healthy; an explicit **Retry** runs repair again.
 If Doctor cleanup cannot be confirmed, the app keeps the Gateway stopped and recovery
 pending; preserve the reported custody diagnostics before retrying.
 Conditional plugin warnings remain visible, with their pending repair records retained.

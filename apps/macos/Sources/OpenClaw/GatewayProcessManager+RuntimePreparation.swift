@@ -1,6 +1,53 @@
 import Foundation
 
 extension GatewayProcessManager {
+    func repairAppHostedRuntimeBeforeStart(
+        runtime: BundledRuntime,
+        pin: GatewayLaunchAgentManager.RuntimeIntent?,
+        generation: UInt64,
+        environment: [String: String]) async throws
+    {
+        guard pin?.status != .migrationPending,
+              let buildID = try runtime.manifest().buildId,
+              self.repairedAppHostedRuntimeBuildID != buildID
+        else { return }
+        let previous = try? BundledRuntime.seeded()
+        let pending = PostAppUpdateReceiptStore.pending(
+            currentVersion: GatewayEnvironment.appVersionString(), currentRuntimeBuildID: buildID)
+        let changedBuild = previous.map { $0.root.lastPathComponent != buildID } ?? false
+        let unseenBuild = PostAppUpdateReceiptStore.hasUnseenRuntimeBuild(
+            buildID, onboardingSeen: AppStateStore.shared.onboardingSeen)
+        guard changedBuild || unseenBuild || pending?.coreUpdate == .gateway || pending?.gatewayUpdateIncomplete == true
+        else { return }
+        let port = GatewayEnvironment.gatewayPort()
+        let hosting = self.gatewayHosting
+        let allowUnconfigured = self.hostsLocalGatewayWithRemotePrimary
+        let custody = try await ManagedNodeGatewayMigration.captureServiceCustody(requireService: false)
+        guard custody.runtimePin == pin, custody.definition.plist == nil else {
+            throw GatewayHostingError(message: GatewayLaunchAgentManager.runtimePinSelectionChanged)
+        }
+        // The new bundle must repair fetched-plugin peers before its first Gateway loads them.
+        // Durable seeding remains background work after health; Doctor can run in place.
+        let output = try await CLIInstaller.repairBundledGateway(
+            runtime: runtime,
+            environment: environment,
+            expectedServiceAuthority: custody.serviceAuthority(),
+            checkCurrent: {
+                let current = try await ManagedNodeGatewayMigration.captureServiceCustody(requireService: false)
+                guard self.isCurrentGatewayStart(generation), !Task.isCancelled, !AppStateStore.shared.isPaused
+                else { throw CancellationError() }
+                guard current == custody, self.installation == .managed, self.gatewayHosting == hosting,
+                      GatewayEnvironment.gatewayPort() == port,
+                      self.hostsLocalGatewayWithRemotePrimary == allowUnconfigured
+                else {
+                    throw GatewayHostingError(message: GatewayLaunchAgentManager.runtimePinSelectionChanged)
+                }
+            },
+            statusHandler: { self.appendLog("[gateway] \($0)\n") })
+        if !output.isEmpty { self.appendLog("[gateway] recovery diagnostics: \(output.suffix(4000))\n") }
+        self.repairedAppHostedRuntimeBuildID = buildID
+    }
+
     func preparePersistentRuntimeAfterHealth() {
         guard !self.isTerminating, !self.runtimePreparationAttempted, self.runtimePreparationTask == nil
         else { return }

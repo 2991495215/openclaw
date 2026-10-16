@@ -6,7 +6,8 @@ func makeBundledRuntimeTestBundle(
     builtAt: String,
     buildID: String? = nil,
     command: String,
-    warmScript: String = "") throws -> URL
+    warmScript: String = "",
+    doctorScript: String? = nil) throws -> URL
 {
     let info: [String: Any] = [
         "CFBundleIdentifier": "ai.openclaw.mac.debug",
@@ -30,6 +31,7 @@ func makeBundledRuntimeTestBundle(
     try FileManager.default.createDirectory(
         at: runtime.appendingPathComponent("runtime/lib"),
         withIntermediateDirectories: true)
+    let doctorCase = doctorScript.map { "doctor)\n\($0)\n;;" } ?? ""
     // A real child process protects command/profile/lifecycle behavior; release proof uses the compiled executable.
     try """
     #!/bin/sh
@@ -46,6 +48,7 @@ func makeBundledRuntimeTestBundle(
         while IFS= read -r line; do :; done
         ;;
       */dist/extensions/browser/setup-entry.js) exit 0 ;;
+      \(doctorCase)
       *) printf '%s\\n' "$OPENCLAW_PROFILE" "$OPENCLAW_SQLITE_LIBRARY" "$@" ;;
     esac
 
