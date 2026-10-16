@@ -35,6 +35,7 @@ import {
   type SessionPendingInputPage,
 } from "./session-accessor.sqlite-pending-inputs.js";
 import {
+  prepareSqliteScope,
   resolveSqliteSessionKey,
   resolveSqliteWriteAdmissionScope,
   toDatabaseOptions,
@@ -59,6 +60,7 @@ import {
   isFinalInputCompletion,
   parseSessionPendingInputMessage,
 } from "./session-pending-input-value.js";
+import { captureSessionStoreReadTarget } from "./session-store-read-target.js";
 import { readMessageIdempotencyKey } from "./transcript-message-identity.js";
 import { captureSessionTranscriptStorageEnvironment } from "./transcript-target-binding.js";
 
@@ -617,7 +619,7 @@ export {
   readSessionPendingInput,
 } from "./session-pending-input-history.js";
 
-/** Prepare evidence; only the later synchronous claim may spend recovered host custody. */
+/** Bind the physical target; only the synchronous claim spends the recovered owner. */
 export async function prepareSessionPendingInputDedupeRecovery(
   scope: PendingInputScope,
   runId: string,
@@ -629,13 +631,34 @@ export async function prepareSessionPendingInputDedupeRecovery(
   if (!claim) {
     return undefined;
   }
-  const source = await readPendingInputSource(scope, `${runId}:user`, true);
-  return source
-    ? () => {
-        source.assertCurrent();
-        return claim(source.path, source.snapshot);
-      }
-    : undefined;
+  const memory = captureSessionActorStorageOwner(scope, { assertCurrent() {}, authorize() {} });
+  if (memory) {
+    const source = await readPendingInputSource(scope, `${runId}:user`, true);
+    return source
+      ? () => {
+          source.assertCurrent();
+          return claim(source.path, source.snapshot);
+        }
+      : undefined;
+  }
+  const captured = {
+    ...scope,
+    env: captureSessionTranscriptStorageEnvironment(scope.env ?? process.env),
+  };
+  const target = captureSessionStoreReadTarget(
+    captured,
+    "Recovered input changed its captured database owner",
+  );
+  const resolved = await prepareSqliteScope(captured);
+  const { identity, assertCurrent } = target.resolve(resolved);
+  if (!identity.key.startsWith("file:")) {
+    return undefined;
+  }
+  assertCurrent();
+  return () => {
+    assertCurrent();
+    return claim(identity.canonicalPath);
+  };
 }
 
 /** Read one admitted source for explicit retry comparison; this never authorizes replay. */

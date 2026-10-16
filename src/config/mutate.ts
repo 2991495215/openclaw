@@ -11,7 +11,6 @@ import {
   applyConfigEnvVars,
   cloneEnvWithPlatformSemantics,
   createConfigRuntimeEnvBase,
-  getPublishedConfigRuntimeEnvState,
   withConfigReadEnvChanges,
 } from "./config-env-vars.js";
 import {
@@ -176,14 +175,6 @@ type ConfigMutationOwnership = Pick<
   ConfigWriteOptions,
   "expectedConfigPath" | "ownedConfigPathForWrite" | "assertConfigPathForWrite"
 >;
-
-function assertManagedRuntimeEnvGeneration(generation: number): void {
-  if (getPublishedConfigRuntimeEnvState().generation !== generation) {
-    throw new ConfigMutationConflictError(
-      "active config environment changed while preparing write",
-    );
-  }
-}
 
 function assertBaseHashMatches(snapshot: ConfigFileSnapshot, expectedHash?: string): string | null {
   const currentHash = resolveConfigSnapshotHash(snapshot) ?? null;
@@ -584,7 +575,6 @@ async function tryWriteIncludeOwnedConfigMutation(params: {
               runtimeConfigToWrite,
               params.writeOptions?.runtimeRefresh,
             );
-            assertManagedRuntimeEnvGeneration(runtimeEnvBaseline.generation);
           } else {
             runtimePreflightResult = await preflightRuntimeSnapshotWrite({
               nextSourceConfig: runtimeConfigToWrite,
@@ -631,9 +621,6 @@ async function tryWriteIncludeOwnedConfigMutation(params: {
             assertConfigPathForWrite: () => {
               assertScopedOwner();
               assertConfigPathForWrite();
-              if (runtimeEnvBaseline) {
-                assertManagedRuntimeEnvGeneration(runtimeEnvBaseline.generation);
-              }
             },
             assertOwnerForRollback: assertScopedOwner,
             beforeCommit: params.writeOptions?.beforeCommit,
@@ -649,9 +636,6 @@ async function tryWriteIncludeOwnedConfigMutation(params: {
           let restorePostWriteEnv: (() => void) | undefined;
           try {
             assertPostCommitCurrent();
-            if (runtimeEnvBaseline) {
-              assertManagedRuntimeEnvGeneration(runtimeEnvBaseline.generation);
-            }
             if (
               params.writeOptions?.skipRuntimeSnapshotRefresh &&
               !hadRuntimeSnapshot &&
@@ -711,11 +695,6 @@ async function tryWriteIncludeOwnedConfigMutation(params: {
                 afterWrite: params.afterWrite,
               });
             };
-            // A managed listener may accept this write and advance its own environment
-            // generation. Check the prepared generation before that owned transition.
-            if (runtimeEnvBaseline) {
-              assertManagedRuntimeEnvGeneration(runtimeEnvBaseline.generation);
-            }
             await finalizeRuntimeSnapshotWrite({
               assertCurrent: assertPostCommitCurrent,
               nextSourceConfig: refreshedSnapshot.sourceConfig,

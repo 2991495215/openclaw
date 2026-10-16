@@ -169,27 +169,18 @@ async function streamPreparedProjection(
     return false;
   }
   for (let offset = 0; offset < activeRows.length; offset += ACTIVE_ROWS_PER_CHUNK) {
-    if (
-      !(
-        await postAndWait(port, {
-          type: "active-chunk",
-          rows: activeRows.slice(offset, offset + ACTIVE_ROWS_PER_CHUNK),
-          sessionId: plan.sessionId,
-        })
-      ).accepted
-    ) {
-      return false;
-    }
+    await postAndWait(port, {
+      type: "active-chunk",
+      rows: activeRows.slice(offset, offset + ACTIVE_ROWS_PER_CHUNK),
+      sessionId: plan.sessionId,
+    });
   }
   for (let offset = 0; offset < ftsRows.length;) {
     const end = takeFtsChunkEnd(ftsRows, offset);
     const chunk = encodeFtsChunk(ftsRows.slice(offset, end));
-    const reply = await postAndWait(port, { type: "fts-chunk", chunk, sessionId: plan.sessionId }, [
+    await postAndWait(port, { type: "fts-chunk", chunk, sessionId: plan.sessionId }, [
       chunk.textBytes.buffer,
     ]);
-    if (!reply.accepted) {
-      return false;
-    }
     offset = end;
   }
   return (

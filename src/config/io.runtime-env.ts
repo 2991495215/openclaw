@@ -15,14 +15,10 @@ export function maybeLoadDotEnvForConfig(env: NodeJS.ProcessEnv): void {
 }
 
 export function resolveManagedRuntimeEnvBaseline(): {
-  generation: number;
   sourceConfig: OpenClawConfig;
 } {
-  // Accepted restart candidates publish env before the runtime snapshot advances.
-  // Managed writes must stay on that publication generation to avoid mixed env refs.
   const published = getPublishedConfigRuntimeEnvState();
   return {
-    generation: published.generation,
     sourceConfig: published.sourceConfig ?? getRuntimeConfigSourceSnapshot() ?? {},
   };
 }

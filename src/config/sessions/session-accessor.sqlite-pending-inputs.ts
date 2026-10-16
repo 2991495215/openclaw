@@ -286,17 +286,17 @@ export function withSessionPendingInputRelocation<T>(
 /** Registration owns disposition even after operational cancellation; this check performs no SQL. */
 export function hasRegisteredSessionPendingInputOwner(
   databasePath: string,
-  row: Pick<
-    SessionPendingInputRow,
-    "input_id" | "session_key" | "session_id" | "lifecycle_generation"
-  >,
+  // Display reconciliation may hold an older page from before this exact input was recovered.
+  row: Pick<SessionPendingInputRow, "input_id" | "session_key" | "session_id"> &
+    Partial<Pick<SessionPendingInputRow, "lifecycle_generation">>,
 ): boolean {
   const owner = owners.live.get(row.input_id);
   return (
     owner?.workerDatabasePath === databasePath &&
     owner.sessionId === row.session_id &&
     owner.sessionKey === row.session_key &&
-    owner.lifecycleGeneration === row.lifecycle_generation &&
+    (row.lifecycle_generation === undefined ||
+      owner.lifecycleGeneration === row.lifecycle_generation) &&
     (owner.settling || isAgentEventLifecycleGenerationCurrent(owner.lifecycleGeneration))
   );
 }
@@ -420,7 +420,7 @@ export function writeSessionInputCompletion(
   return outcome;
 }
 
-/** Capture the exact host owner before reading; claim it once in the consuming frame. */
+/** Claim the exact committed host owner once in the consuming frame. */
 export function prepareCurrentSessionPendingInputDedupeRecovery(
   scope: Pick<ResolvedTranscriptScope, "sessionId" | "sessionKey">,
   runId: string,
@@ -441,28 +441,34 @@ export function prepareCurrentSessionPendingInputDedupeRecovery(
   assertSessionPendingInputLifetimeCurrent(owner);
   return (
     path: string,
-    snapshot: { current: boolean; pending?: SessionPendingInputRow },
+    snapshot?: { current: boolean; pending?: SessionPendingInputRow },
   ): boolean => {
     assertPendingInputOwnerCurrent(owner);
-    const row = snapshot.pending;
     if (
       owners.current.getStore() !== owner ||
       recoveredDedupeOwners.has(owner) ||
       owner.consumed ||
-      owner.workerDatabasePath !== path ||
-      !snapshot.current ||
-      !row ||
-      row.input_id !== owner.inputId ||
-      row.run_id !== runId ||
-      row.session_key !== owner.sessionKey ||
-      row.session_id !== owner.sessionId ||
-      row.lifecycle_generation !== owner.lifecycleGeneration ||
-      row.message_json !== owner.messageJson ||
-      row.state !== "queued" ||
-      row.consumed_event_id != null ||
-      !hasRegisteredSessionPendingInputOwner(path, row)
+      owner.workerDatabasePath !== path
     ) {
       return false;
+    }
+    if (snapshot) {
+      const row = snapshot.pending;
+      if (
+        !snapshot.current ||
+        !row ||
+        row.input_id !== owner.inputId ||
+        row.run_id !== runId ||
+        row.session_key !== owner.sessionKey ||
+        row.session_id !== owner.sessionId ||
+        row.lifecycle_generation !== owner.lifecycleGeneration ||
+        row.message_json !== owner.messageJson ||
+        row.state !== "queued" ||
+        row.consumed_event_id != null ||
+        !hasRegisteredSessionPendingInputOwner(path, row)
+      ) {
+        return false;
+      }
     }
     recoveredDedupeOwners.add(owner);
     return true;

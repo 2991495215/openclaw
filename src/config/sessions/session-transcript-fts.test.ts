@@ -282,9 +282,9 @@ describe("exact session transcript FTS ownership", () => {
       db.prepare("DELETE FROM session_transcript_fts WHERE message_id='target-1'").run();
       markSessionTranscriptIndexDirtyInTransaction(db, "target");
       const plan = prepareSessionTranscriptProjection(db, "target")!;
-      for (const claimId of [-1, -2]) {
+      for (const interrupted of [true, false]) {
         db.exec("BEGIN");
-        expect(claimPreparedSessionTranscriptProjectionInTransaction(db, plan, claimId)).toBe(true);
+        expect(claimPreparedSessionTranscriptProjectionInTransaction(db, plan)).toBe(true);
         db.exec("COMMIT");
         let more = true;
         while (more) {
@@ -303,13 +303,11 @@ describe("exact session transcript FTS ownership", () => {
         db.exec("BEGIN");
         appendPreparedSessionTranscriptProjectionChunkInTransaction(db, {
           sessionId: "target",
-          activeRows: claimId === -1 ? [] : plan.activeRows,
-          ftsRows: claimId === -1 ? plan.ftsRows.slice(0, 1) : plan.ftsRows,
+          activeRows: interrupted ? [] : plan.activeRows,
+          ftsRows: interrupted ? plan.ftsRows.slice(0, 1) : plan.ftsRows,
         });
-        if (claimId === -2) {
-          expect(finalizePreparedSessionTranscriptProjectionInTransaction(db, plan, claimId)).toBe(
-            true,
-          );
+        if (!interrupted) {
+          expect(finalizePreparedSessionTranscriptProjectionInTransaction(db, plan)).toBe(true);
         }
         db.exec("COMMIT");
       }

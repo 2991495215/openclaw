@@ -24,6 +24,17 @@ fragments, and keeps engine schema versions in lockstep. See
 for catalog equivalence and the portable v22 identity columns.
 
 The Gateway process is the single owner of every OpenClaw database and its state.
+Config health patches compare their original persisted row rather than ordering
+observations through a supersession registry. The comparison rejects changes
+committed after that row was read; overlapping observations may still publish
+an older healthy fingerprint or diagnostic last. The next observation refreshes
+those facts. Recovery retains source-file and caller checks at filesystem effects.
+Shared worker clients likewise use their admitted actor and current command
+authority without a second hot-rebind classifier. Unsupported live relocation
+requires explicit close/reopen; original-path refusal and native settlement stay.
+Transcript snapshots retain their history source rather than borrowing an unrelated
+prepared executor. Reads within a transcript lock still use its existing worker
+and FIFO queue, including accepted append preparation and read-your-writes.
 Its workers and native handles share that ownership. Committed write receipts
 invalidate in-process row caches before their next use; a cache without complete
 writer coverage must use a direct read instead. Runtime reads do not probe foreign
@@ -180,6 +191,23 @@ Closing a connection clears its prepared statements and row caches. Confirmed cl
 retains the physical database's completed validation facts for later opens in the
 same process. Explicit retirement closes the host identity descriptor only after
 all sibling native handles have drained, preserving their POSIX locks.
+
+The shared-state handle cache publishes already-admitted handles directly. It
+does not keep a second schema-facts projection or repeat version admission on
+warm reads. Synchronous read scopes still preserve snapshot and row-cache
+semantics; native opens, migration, repair, and corruption recovery own validation.
+
+Transcript projection rebuilds serialize complete prepare, chunk-publication, and
+finalization passes through one FIFO per canonical database path. Direct and
+scheduled callers share it; different databases remain parallel. Final source
+comparison and bounded append catch-up remain, without persisted claim nonces.
+Chunk acknowledgments still provide backpressure, and shutdown joins accepted
+work and native cleanup.
+
+Durable pending-input history checks current registered owners inside its existing
+writer FIFO and conditionally updates only selected queued, unconsumed rows.
+Acknowledged receipts supply the changed IDs; no separate protection bitmap or
+custody re-admission is needed. The memory backend retains its existing behavior.
 
 Shared-state commands load their registered domain directly. The remaining command
 runtime loads only when an operation needs it, so workers serving registered

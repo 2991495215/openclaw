@@ -10,8 +10,10 @@ import { isGatewayExternallySupervised } from "../../infra/gateway-supervision.j
 import { isPathInside } from "../../infra/path-guards.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import { resolveRuntimeWorkerUrl } from "../../infra/runtime-worker-url.js";
+import { resolveDatabasePathKey } from "../../infra/sqlite-worker-identity.js";
 import { recordWorkerMessage } from "../../infra/worker-message-metrics.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { runQueuedStoreWrite, type StoreWriterQueue } from "../../shared/store-writer-queue.js";
 import { AgentDatabaseExecutionAdmissionClosedError } from "../../state/agent-database-admission-error.js";
 import {
   borrowOpenClawAgentDatabase,
@@ -45,13 +47,13 @@ import type {
   ProjectionPublisher,
   TranscriptProjectionPublicationOperations,
 } from "./session-transcript-projection-publication.worker.js";
+import type { PreparedSessionTranscriptProjectionMetadata } from "./session-transcript-projection-rebuild.js";
 import {
   appendPreparedProjectionChunk,
   claimPreparedSessionTranscriptProjection,
   finalizePreparedProjection,
   readTranscriptIndexBacklog,
   runProjectionWrite,
-  type ActivePreparedProjection,
   type ReconcileDatabaseOptions,
 } from "./session-transcript-projection-writer.js";
 import {
@@ -83,6 +85,7 @@ type RunningReconcile = {
 };
 
 const runningReconciles = new Map<string, RunningReconcile>();
+const projectionRebuildQueues = new Map<string, StoreWriterQueue>();
 
 export type SessionTranscriptReconcileResult = {
   reconciledSessions: number;
@@ -154,9 +157,17 @@ async function reconcilePreparedTranscriptIndexes(
   execution?: OpenClawAgentDatabaseExecution,
 ): Promise<PreparedReconcileResult> {
   let reconciledSessions = 0;
+  const storePath = resolveDatabasePathKey(resolveOpenClawAgentSqlitePath(params));
   while (true) {
     operation.signal.throwIfAborted();
-    const result = await reconcilePreparedTranscriptIndexesPass(params, operation, execution);
+    // One plan owner per database; bounded SQL writes still release their writer between chunks.
+    const result = await runQueuedStoreWrite({
+      queues: projectionRebuildQueues,
+      storePath,
+      label: "Session transcript projection rebuild",
+      signal: operation.signal,
+      fn: () => reconcilePreparedTranscriptIndexesPass(params, operation, execution),
+    });
     reconciledSessions += result.reconciledSessions;
     if (!result.yielded) {
       return { reconciledSessions, pending: result.pending };
@@ -255,7 +266,7 @@ async function reconcilePreparedTranscriptIndexesPass(
     let outcome: Result<ReconcilePassResult, unknown>;
     try {
       const value = await new Promise<ReconcilePassResult>((resolve, reject) => {
-        let active: ActivePreparedProjection | undefined;
+        let active: PreparedSessionTranscriptProjectionMetadata | undefined;
         let reconciledSessions = 0;
         let settled = false;
         const settle = (finish: () => void) => {
@@ -330,7 +341,7 @@ async function reconcilePreparedTranscriptIndexesPass(
               recordWorkerMessage("admission", "to_worker");
               return;
             }
-            if (!active || active.plan.sessionId !== message.sessionId) {
+            if (!active || active.sessionId !== message.sessionId) {
               throw new Error(
                 "session transcript reconcile worker sent a chunk for no active plan",
               );

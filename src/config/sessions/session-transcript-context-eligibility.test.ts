@@ -205,8 +205,7 @@ it("keeps a prepared projection unpublished after a same-sequence rewrite", asyn
           event: { ...entries[2], message: { ...entries[2].message, excludeFromContext: false } },
         },
       ]);
-      const claimId = -1;
-      expect(claimPreparedSessionTranscriptProjectionInTransaction(db, plan, claimId)).toBe(true);
+      expect(claimPreparedSessionTranscriptProjectionInTransaction(db, plan)).toBe(true);
       deletePreparedSessionTranscriptProjectionChunkInTransaction(db, {
         sessionId,
         maxRowsPerTable: 512,
@@ -216,9 +215,7 @@ it("keeps a prepared projection unpublished after a same-sequence rewrite", asyn
         activeRows: plan.activeRows,
         ftsRows: plan.ftsRows,
       });
-      expect(finalizePreparedSessionTranscriptProjectionInTransaction(db, plan, claimId)).toBe(
-        false,
-      );
+      expect(finalizePreparedSessionTranscriptProjectionInTransaction(db, plan)).toBe(false);
     }, scope);
     expect(() => readActiveTranscriptStats(scope)).toThrow(
       SessionTranscriptProjectionUnavailableError,
@@ -247,9 +244,8 @@ it.each(["interrupted", "rewrite", "delete"])(
       if (!plan) {
         throw new Error("missing prepared projection");
       }
-      const claimId = -1;
       runOpenClawAgentWriteTransaction(() => {
-        expect(claimPreparedSessionTranscriptProjectionInTransaction(db, plan, claimId)).toBe(true);
+        expect(claimPreparedSessionTranscriptProjectionInTransaction(db, plan)).toBe(true);
         expect(
           deletePreparedSessionTranscriptProjectionChunkInTransaction(db, {
             sessionId,
@@ -283,9 +279,7 @@ it.each(["interrupted", "rewrite", "delete"])(
           } else {
             replaceSqliteTranscriptEventsInTransaction(database, scope, []);
           }
-          expect(finalizePreparedSessionTranscriptProjectionInTransaction(db, plan, claimId)).toBe(
-            false,
-          );
+          expect(finalizePreparedSessionTranscriptProjectionInTransaction(db, plan)).toBe(false);
         }, scope);
       }
       await waitForSessionTranscriptIndexReconcile(scope);

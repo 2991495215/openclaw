@@ -2730,10 +2730,11 @@ phases, including those still waiting for foreground admission. Schemas, stored
 bytes, retention, SDK signatures, and update behavior are unchanged.
 
 Transcript preparation carries that selected physical owner into history reads.
-Admitted delta, watermark, and anchor reads borrow the same prepared execution
-as exact-path reads. Inside a matching transcript write lock, they join its
-settlement queue and read through its existing worker, retaining generation and
-physical-file checks without waiting on independent history-reader custody.
+Delta, watermark, and anchor reads use the history owner's WAL snapshots without
+borrowing an unrelated prepared executor. Inside a matching transcript write lock,
+they join its settlement queue and read through its existing worker, retaining
+that lock's authority and physical-file checks without waiting on an independent
+history reader.
 Anchor reads with synchronous acceptance use the reserved discovery lane when
 their sequence selection requires a history reader, so eviction and failure
 cleanup remain safe while writer admission is held.
@@ -3904,13 +3905,14 @@ aliases. Cold path binding retires vanished aliases while preserving live hardli
 warm admission checks use the retained identity maps rather than polling the
 filesystem. Reuse and command admission check the actor's known opening-path
 binding even after its original client closes. An entry retains the lifecycle
-owner's physical path admission separately from the original caller's schema scope.
-Each matching actor is checked separately from the caller. A current actor can serve
-a new schema scope, but an ended caller scope still rejects with its original error.
-Each requesting caller still needs complete live admission. A retired secondary
-alias closes only its client, so healthy peers can continue while
-that client's callbacks settle. Losing the actor's opening path requires its active
-work to settle before replacement. A lazy actor retains its admitted device/inode
+owner's actor and original schema scope, without a second database-admission
+projection or proactive invalidation classifier. A current actor can serve a new
+schema scope, but an ended caller scope still rejects with its original error.
+Each requesting caller still needs complete live admission. Unsupported live
+relocation refuses at the actor's original-path boundary rather than automatically
+rebinding during a request. Explicit close/reopen or restart selects its replacement
+after accepted callbacks settle. Actual actor retirement, failed cleanup retry and
+healthy peer callback settlement remain owned and awaited. A lazy actor retains its admitted device/inode
 key until its first writable native open. Birth time is not a long-lived incarnation
 token: Node can report ctime or zero, and healthy metadata updates can change it.
 The generic broker's supplied file-key contract is unchanged; lifecycle admission
@@ -4472,6 +4474,28 @@ cached facts, failing closed when those facts are unavailable, mismatched, or
 legacy. Committed Claw writes and database lifecycle events update or invalidate
 those facts. Prepared tool construction consumes the same facts within its
 captured scope; opening another handle does not refresh them.
+
+Async config readers capture their config path, working directory, and environment
+before preparation. They retain caller-held authority without fencing later
+ambient selector or environment-publication changes. Include writes likewise use
+their selected environment while preserving current writer and file checks.
+Prepared config recovery reuses its original validated plan rather than rebuilding
+and comparing a second plan. Current health and caller authority, the original
+source/backup identity and bytes, and checks before forensic archival and final
+file replacement remain. Unsupported overlapping ambient config changes are
+best effort and take effect on the next reload or restart.
+
+Config health observations retain their original database and caller authority,
+without a process-local supersession or continuation registry. The worker compares
+the original persisted row when applying a patch, refusing changes committed
+after that read. Overlapping observations may publish an older healthy fingerprint,
+warning, or diagnostic last; the next observation refreshes those facts. Observation
+does not replace config or backup bytes or change the promoted-good fingerprint.
+Recovery compares original config and backup bytes plus available
+file identity before archival and immediately before mutation; explicit prepared
+recovery requires that identity. Confirmed file commits remain successful when
+ordinary health admission closes afterward. Warning-cache recovery is published
+only after the owning transaction commits, not after a rolled-back nested write.
 
 Reply dispatch prepares the machine-owned TTS preference path through the existing
 shared-state reader and carries it through eligibility checks, delivery callbacks,
@@ -5411,12 +5435,11 @@ so reset sessions remain untouched. Durable delivery and transcript append
 retain their own effect-time generation checks. Delivery errors record a warning
 without rereading the generation solely to classify the log message.
 
-Raw and visible transcript deltas, watermarks, pre-reset Memory capture, and final context
-validation borrow an already-prepared agent executor when one exists for the
-captured physical store. The reader captures its generation before yielding and
-joins the existing writer FIFO; replacement or retirement refuses the read instead
-of selecting a successor. Sources without an eligible prepared executor retain
-their read-only history owner, including offline inspection.
+Raw and visible transcript deltas, watermarks, pre-reset Memory capture, and final
+context validation retain the selected physical history source. Retirement of an
+unrelated prepared executor does not invalidate a completed snapshot. Source
+revocation, cancellation, and current disclosure or mutation authority remain
+checked by the consuming owner.
 Touched-file scans retain one physical source through all pages; each next
 snapshot reads current committed rows and keeps the existing cursor reset behavior.
 Admission and projection consume one deferred snapshot, reusing admitted facts
@@ -5424,7 +5447,7 @@ across unchanged transactions. Pre-reset Memory capture preserves reset windows,
 raw fallback, and the existing byte and message limits. Codex history keeps lazy
 evidence projection in its plugin worker and validates the resulting version or
 admitted input through the retained source before disclosure. Alias revocation
-remains registered until borrowed execution and cleanup settle.
+remains registered until the history read and cleanup settle.
 Inside a transcript write lock, matching reads use that lock's retained worker
 and settlement queue. Asynchronous append preparation drains its own reads before
 committing; cancelled or closed read scopes cannot dispatch later work.
@@ -5574,23 +5597,28 @@ for durable stores. Pages retain the 20-item and payload byte limits, ordering,
 and consumed-input filtering. Prompt context reads its bounded page in one
 statement without the public history list's unused total count or snapshot
 envelope. SQL measures stored byte sizes before projecting message payloads.
-Stale interruption commits through the agent writer,
-which rereads candidates under its transaction and asks the live host custody
-owner at transaction and commit admission. Those host checks perform no SQL;
-an aborted but registered owner retains the right to finish cancelled. Confirmed
+Stale interruption selects currently unowned inputs inside the existing physical
+writer FIFO, which also contains committed owner registration. One conditional
+worker update changes only the selected queued, unconsumed inputs and returns
+the changed IDs. There is no protection bitmap or transaction/commit custody
+handshake; an aborted but registered owner retains the right to finish cancelled.
+Display planning checks the current registered owner even when its page predates
+recovery of that input under a newer generation. Confirmed
 commit receipts update the returned page even if ordinary result delivery fails,
 and accepted work settles before database custody is released. Incognito reads
 use the memory actor. This
 changes no schema, retention, durability, configuration, or update behavior.
 
-Submitted-input comparison and inbound dedupe recovery use bounded source reads
-in the same history worker and pending-input operation family. The host captures
+Submitted-input comparison uses bounded source reads in the same history worker
+and pending-input operation family. The host captures
 the physical store before preparation yields. Reads preserve original collected
 source bytes and refuse stale transcript projections without rebuilding them.
 These bytes are comparison evidence, never replay authority. Chat admission
 prepares fresh evidence under its existing writer barrier; completion delivery
-rechecks its requester after the read. Inbound dedupe spends a recovered source
-only once, after checking the current host owner in the consuming callback.
+rechecks its requester after the read. Durable inbound dedupe resolves its captured
+physical target and spends the exact committed host owner once in the consuming
+callback, without rereading that owner's pending row. Consumption, current
+authority, and one-shot checks remain. Memory recovery retains its snapshot checks.
 The completion SDK already returns a promise. Schemas, stored bytes, retention,
 and update behavior are unchanged.
 

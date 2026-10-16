@@ -5,7 +5,6 @@ import type {
   getSqliteWorkerActorIdentity,
   SqliteWorkerStore,
 } from "../infra/sqlite-worker-store.js";
-import type { OpenClawStateDatabaseReadAdmission } from "./openclaw-state-db-async-lifecycle.js";
 import type { OpenClawStateWorkerContext } from "./openclaw-state-worker-context.types.js";
 import type {
   OpenClawStateWorkerOperations,
@@ -25,7 +24,6 @@ export type OpeningAdmission = {
 export type Entry = {
   source: ReturnType<typeof captureRuntimeWorkerSource>;
   context: OpenClawStateWorkerContext;
-  databaseAdmission: OpenClawStateDatabaseReadAdmission;
   opening: Promise<Store | undefined>;
   openingAdmission: OpeningAdmission;
   existingOnly: boolean;

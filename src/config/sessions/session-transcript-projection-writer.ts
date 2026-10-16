@@ -1,4 +1,3 @@
-import { randomInt } from "node:crypto";
 import { setImmediate as yieldToGateway } from "node:timers/promises";
 import { executeSqliteQueryTakeFirstSync } from "../../infra/kysely-sync.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
@@ -53,10 +52,6 @@ export type ReconcileDatabaseOptions = OpenClawAgentDatabaseOptions & {
   env: NodeJS.ProcessEnv;
   path: string;
   assertCurrent?: () => void;
-};
-export type ActivePreparedProjection = {
-  claimId: number;
-  plan: PreparedSessionTranscriptProjectionMetadata;
 };
 type ProjectionStatus = TranscriptProjectionPublicationOperations["preflight"]["output"];
 type ProjectionRows = Parameters<
@@ -116,12 +111,11 @@ export async function claimPreparedSessionTranscriptProjection(
   databaseOptions: ReconcileDatabaseOptions,
   plan: PreparedSessionTranscriptProjectionMetadata,
   publication?: ProjectionPublisher,
-): Promise<ActivePreparedProjection | undefined> {
-  const claimId = -randomInt(1, 2 ** 47);
+): Promise<PreparedSessionTranscriptProjectionMetadata | undefined> {
   const claimed = publication
-    ? await publication.execute({ type: "claim", input: { plan, claimId } })
+    ? await publication.execute({ type: "claim", input: { plan } })
     : await runProjectionWrite(databaseOptions, "sessions.transcript-index.claim", (database) =>
-        claimPreparedSessionTranscriptProjectionInTransaction(database.db, plan, claimId),
+        claimPreparedSessionTranscriptProjectionInTransaction(database.db, plan),
       );
   if (!claimed) {
     return undefined;
@@ -143,7 +137,7 @@ export async function claimPreparedSessionTranscriptProjection(
         );
     await yieldToGateway();
   }
-  return { claimId, plan };
+  return plan;
 }
 
 function decodeFtsChunk(chunk: EncodedTranscriptFtsChunk) {
@@ -160,13 +154,13 @@ function decodeFtsChunk(chunk: EncodedTranscriptFtsChunk) {
 
 export async function appendPreparedProjectionChunk(
   databaseOptions: ReconcileDatabaseOptions,
-  active: ActivePreparedProjection,
+  plan: PreparedSessionTranscriptProjectionMetadata,
   rows: { activeRows: ProjectionRows["activeRows"] } | { ftsChunk: EncodedTranscriptFtsChunk },
   publication?: ProjectionPublisher,
 ): Promise<void> {
   const input = {
     ...("activeRows" in rows ? rows : { ftsRows: decodeFtsChunk(rows.ftsChunk) }),
-    sessionId: active.plan.sessionId,
+    sessionId: plan.sessionId,
   };
   if (publication) {
     await publication.execute({ type: "appendChunk", input });
@@ -184,11 +178,11 @@ export async function appendPreparedProjectionChunk(
 
 export async function finalizePreparedProjection(
   databaseOptions: ReconcileDatabaseOptions,
-  active: ActivePreparedProjection,
+  plan: PreparedSessionTranscriptProjectionMetadata,
   publication?: ProjectionPublisher,
 ): Promise<boolean> {
   if (publication) {
-    const result = await publication.execute({ type: "finalize", input: active });
+    const result = await publication.execute({ type: "finalize", input: { plan } });
     publishUnchangedSessionTranscriptReceipts(result.transcriptPublication);
     if (result.sessionKey !== undefined) {
       sessionChanges.emit({
@@ -204,11 +198,7 @@ export async function finalizePreparedProjection(
     databaseOptions,
     "sessions.transcript-index.finalize",
     (database) => {
-      const finalized = finalizePreparedSessionTranscriptProjectionInTransaction(
-        database.db,
-        active.plan,
-        active.claimId,
-      );
+      const finalized = finalizePreparedSessionTranscriptProjectionInTransaction(database.db, plan);
       const session =
         finalized &&
         executeSqliteQueryTakeFirstSync(
@@ -216,7 +206,7 @@ export async function finalizePreparedProjection(
           getSessionKysely(database.db)
             .selectFrom("session_windows")
             .select("session_key")
-            .where("session_id", "=", active.plan.sessionId),
+            .where("session_id", "=", plan.sessionId),
         );
       if (session) {
         publishUnchangedSessionTranscriptAuthority(database, session.session_key);

@@ -349,7 +349,6 @@ function projectionTailFitsCatchUpBounds(
 export function claimPreparedSessionTranscriptProjectionInTransaction(
   db: DatabaseSync,
   plan: PreparedSessionTranscriptProjectionMetadata,
-  claimId: number,
 ): boolean {
   const kysely = getProjectionKysely(db);
   const claim = {
@@ -358,7 +357,7 @@ export function claimPreparedSessionTranscriptProjectionInTransaction(
     indexed_seq: -1,
     leaf_event_id: null,
     needs_rebuild: 1,
-    updated_at: claimId,
+    updated_at: Date.now(),
   };
   const result = executeSqliteQuerySync(
     db,
@@ -536,7 +535,6 @@ function prepareProjectionTailCatchUp(
 export function finalizePreparedSessionTranscriptProjectionInTransaction(
   db: DatabaseSync,
   plan: PreparedSessionTranscriptProjectionMetadata,
-  claimId: number,
 ): boolean {
   const snapshot = readProjectionSourceSnapshot(db, plan.sessionId);
   const exactSnapshot = sourceSnapshotMatches(snapshot, plan);
@@ -565,8 +563,7 @@ export function finalizePreparedSessionTranscriptProjectionInTransaction(
         updated_at: Date.now(),
       })
       .where("session_id", "=", finalPlan.sessionId)
-      .where("needs_rebuild", "!=", 0)
-      .where("updated_at", "=", claimId),
+      .where("needs_rebuild", "!=", 0),
   );
   return Number(result.numAffectedRows ?? 0n) > 0;
 }

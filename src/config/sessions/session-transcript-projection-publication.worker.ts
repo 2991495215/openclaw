@@ -34,7 +34,7 @@ import {
 
 export type TranscriptProjectionRebuildOperations = {
   claim: {
-    input: { plan: PreparedSessionTranscriptProjectionMetadata; claimId: number };
+    input: { plan: PreparedSessionTranscriptProjectionMetadata };
     output: boolean;
   };
   deleteChunk: {
@@ -46,7 +46,7 @@ export type TranscriptProjectionRebuildOperations = {
     output: void;
   };
   finalize: {
-    input: { plan: PreparedSessionTranscriptProjectionMetadata; claimId: number };
+    input: { plan: PreparedSessionTranscriptProjectionMetadata };
     output: {
       finalized: boolean;
       sessionKey?: string;
@@ -116,11 +116,7 @@ export function bindSqliteWorkerBackend(_input: undefined, context: SqliteWorker
         () => {
           switch (command.type) {
             case "claim":
-              return claimPreparedSessionTranscriptProjectionInTransaction(
-                db,
-                command.input.plan,
-                command.input.claimId,
-              );
+              return claimPreparedSessionTranscriptProjectionInTransaction(db, command.input.plan);
             case "deleteChunk":
               return deletePreparedSessionTranscriptProjectionChunkInTransaction(db, command.input);
             case "appendChunk":
@@ -129,7 +125,6 @@ export function bindSqliteWorkerBackend(_input: undefined, context: SqliteWorker
               const finalized = finalizePreparedSessionTranscriptProjectionInTransaction(
                 db,
                 command.input.plan,
-                command.input.claimId,
               );
               const session = finalized
                 ? executeSqliteQueryTakeFirstSync(

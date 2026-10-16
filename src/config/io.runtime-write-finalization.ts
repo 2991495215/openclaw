@@ -61,49 +61,31 @@ export async function finalizeCommittedConfigWrite(params: {
   let envAfterCanonicalRead: Record<string, string | undefined>;
   let canonicalReadFailure: ConfigRuntimeRefreshError | null = null;
   try {
-    let stableEnvGeneration = !deferRuntimeActivation;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const baseline = resolveManagedRuntimeEnvBaseline();
-      if (deferRuntimeActivation) {
-        replaceEnvSnapshot(
-          io.env,
-          createConfigRuntimeEnvBase(baseline.sourceConfig, process.env, {
-            preservedKeys: GATEWAY_CONFIG_SELECTION_ENV_KEYS,
-          }),
-        );
-        envBeforeCanonicalRead = snapshotEnv(io.env);
-      }
-      canonicalRead = await io.readConfigFileSnapshotForWrite();
-      const freshSnapshot = canonicalRead.snapshot;
-      if (freshSnapshot.exists && freshSnapshot.valid) {
-        canonicalSourceConfig = freshSnapshot.sourceConfig;
-        canonicalRuntimeConfig = freshSnapshot.config;
-        canonicalPersistedHash = expectDefined(
-          freshSnapshot.hash,
-          "canonical config snapshot hash",
-        );
-      } else {
-        // An invalid or vanished reread means a concurrent edit beat us to the
-        // file; runtime keeps the just-written config, but that divergence must
-        // be recorded or the on-disk config silently stops matching runtime.
-        const issueSummary = formatConfigIssueSummary(freshSnapshot.issues);
-        io.logger.warn(
-          `Config (${io.configPath}): canonical reread after write was ${
-            freshSnapshot.exists ? "invalid" : "missing"
-          }; runtime keeps the written config${issueSummary ? `: ${issueSummary}` : ""}`,
-        );
-      }
-      if (
-        !deferRuntimeActivation ||
-        resolveManagedRuntimeEnvBaseline().generation === baseline.generation
-      ) {
-        stableEnvGeneration = true;
-        break;
-      }
+    const baseline = resolveManagedRuntimeEnvBaseline();
+    if (deferRuntimeActivation) {
+      replaceEnvSnapshot(
+        io.env,
+        createConfigRuntimeEnvBase(baseline.sourceConfig, process.env, {
+          preservedKeys: GATEWAY_CONFIG_SELECTION_ENV_KEYS,
+        }),
+      );
+      envBeforeCanonicalRead = snapshotEnv(io.env);
     }
-    if (!stableEnvGeneration) {
-      canonicalReadFailure = new ConfigRuntimeRefreshError(
-        "the active config environment changed during every canonical reread",
+    canonicalRead = await io.readConfigFileSnapshotForWrite();
+    const freshSnapshot = canonicalRead.snapshot;
+    if (freshSnapshot.exists && freshSnapshot.valid) {
+      canonicalSourceConfig = freshSnapshot.sourceConfig;
+      canonicalRuntimeConfig = freshSnapshot.config;
+      canonicalPersistedHash = expectDefined(freshSnapshot.hash, "canonical config snapshot hash");
+    } else {
+      // An invalid or vanished reread means a concurrent edit beat us to the
+      // file; runtime keeps the just-written config, but that divergence must
+      // be recorded or the on-disk config silently stops matching runtime.
+      const issueSummary = formatConfigIssueSummary(freshSnapshot.issues);
+      io.logger.warn(
+        `Config (${io.configPath}): canonical reread after write was ${
+          freshSnapshot.exists ? "invalid" : "missing"
+        }; runtime keeps the written config${issueSummary ? `: ${issueSummary}` : ""}`,
       );
     }
   } catch (error) {

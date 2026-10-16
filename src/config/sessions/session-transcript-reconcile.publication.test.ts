@@ -64,6 +64,26 @@ afterEach(async () => {
   clearRuntimeConfigSnapshot();
 });
 
+it("reconciles one dirty projection once for concurrent callers", async () => {
+  const { options, scope, database } = await fixture();
+  await expect(
+    Promise.all([
+      reconcileSessionTranscriptIndexes(options),
+      reconcileSessionTranscriptIndexes(options),
+    ]),
+  ).resolves.toEqual([{ reconciledSessions: 1 }, { reconciledSessions: 0 }]);
+  expect(
+    database.db
+      .prepare(
+        "SELECT needs_rebuild, active_message_count FROM session_transcript_index_state WHERE session_id = ?",
+      )
+      .get(scope.sessionId),
+  ).toEqual({ needs_rebuild: 0, active_message_count: 1 });
+  expect(database.db.prepare("SELECT message_id, text FROM session_transcript_fts").all()).toEqual([
+    { message_id: "message-0", text: "projection message 0" },
+  ]);
+});
+
 it("publishes a cold compressed multi-chunk branch without host data SQL", async () => {
   const { options, scope, database } = await fixture();
   const activeMessages = Array.from({ length: 520 }, (_, index) => ({

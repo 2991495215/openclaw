@@ -56,19 +56,13 @@ async function prepareDirtyProjection(label: string) {
 }
 
 function publishPreparedBase(params: {
-  claimId: number;
   databaseOptions: { agentId: string; env: NodeJS.ProcessEnv };
   plan: PreparedSessionTranscriptProjection;
   sessionId: string;
 }) {
   expect(
     runOpenClawAgentWriteTransaction(
-      (database) =>
-        claimPreparedSessionTranscriptProjectionInTransaction(
-          database.db,
-          params.plan,
-          params.claimId,
-        ),
+      (database) => claimPreparedSessionTranscriptProjectionInTransaction(database.db, params.plan),
       params.databaseOptions,
     ),
   ).toBe(true);
@@ -93,9 +87,9 @@ describe("session transcript projection append catch-up", () => {
       database.db
         .prepare("DELETE FROM session_windows WHERE session_id = ?")
         .run(fixture.scope.sessionId);
-      expect(
-        claimPreparedSessionTranscriptProjectionInTransaction(database.db, fixture.plan, -41),
-      ).toBe(false);
+      expect(claimPreparedSessionTranscriptProjectionInTransaction(database.db, fixture.plan)).toBe(
+        false,
+      );
     }, fixture.databaseOptions);
   });
 
@@ -130,9 +124,7 @@ describe("session transcript projection append catch-up", () => {
           );
         }, fixture.databaseOptions);
       }
-      const claimId = -41;
       publishPreparedBase({
-        claimId,
         databaseOptions: fixture.databaseOptions,
         plan: fixture.plan,
         sessionId: fixture.scope.sessionId,
@@ -140,11 +132,7 @@ describe("session transcript projection append catch-up", () => {
       expect(
         runOpenClawAgentWriteTransaction(
           (database) =>
-            finalizePreparedSessionTranscriptProjectionInTransaction(
-              database.db,
-              fixture.plan,
-              claimId,
-            ),
+            finalizePreparedSessionTranscriptProjectionInTransaction(database.db, fixture.plan),
           fixture.databaseOptions,
         ),
       ).toBe(false);
@@ -156,7 +144,7 @@ describe("session transcript projection append catch-up", () => {
     },
   );
 
-  it.each(["append", "reset", "branch", "generation", "claim"])(
+  it.each(["append", "reset", "branch", "generation"])(
     "finalizes only an append-only source change (%s)",
     async (label) => {
       const fixture = await prepareDirtyProjection(label);
@@ -177,21 +165,13 @@ describe("session transcript projection append catch-up", () => {
           }
         }, fixture.databaseOptions);
       }
-      const claimId = -44;
       publishPreparedBase({
-        claimId,
         databaseOptions: fixture.databaseOptions,
         plan: fixture.plan,
         sessionId: fixture.scope.sessionId,
       });
       runOpenClawAgentWriteTransaction((database) => {
-        if (label === "claim") {
-          database.db
-            .prepare(
-              "UPDATE session_transcript_index_state SET updated_at = ? WHERE session_id = ?",
-            )
-            .run(claimId - 1, fixture.scope.sessionId);
-        } else if (label === "generation") {
+        if (label === "generation") {
           rotateTranscriptGenerationInTransaction(database, fixture.scope.sessionId);
         } else if (label !== "append") {
           appendTranscriptEventInTransaction(
@@ -209,11 +189,7 @@ describe("session transcript projection append catch-up", () => {
           );
         }
         expect(
-          finalizePreparedSessionTranscriptProjectionInTransaction(
-            database.db,
-            fixture.plan,
-            claimId,
-          ),
+          finalizePreparedSessionTranscriptProjectionInTransaction(database.db, fixture.plan),
         ).toBe(label === "append");
       }, fixture.databaseOptions);
       if (label === "append") {

@@ -2953,52 +2953,6 @@ describe("config io write", () => {
   );
 
   itWithHome(
-    "rolls back a managed root write when canonical rereads exhaust env generations",
-    async (home) => {
-      const configPath = configPathForHome(home);
-      const initialConfig = { gateway: { mode: "local", port: 18789 } } satisfies OpenClawConfig;
-      const initialRaw = formatConfig(initialConfig);
-      await fs.mkdir(path.dirname(configPath), { recursive: true });
-      await fs.writeFile(configPath, initialRaw, "utf-8");
-
-      const readFileSync = fsNode.readFileSync.bind(fsNode);
-      let generationChanges = 0;
-      const readSpy = vi.spyOn(fsNode, "readFileSync").mockImplementation((target, options) => {
-        const result = readFileSync(target, options);
-        if (String(target) === configPath && String(result).includes("19001")) {
-          generationChanges += 1;
-          initializePublishedConfigRuntimeEnv(initialConfig);
-        }
-        return result;
-      });
-      const unsubscribe = registerConfigWriteListener(() => {}, {
-        ownsRuntimeActivationFor: configPath,
-        preCommitRuntimePreflight: async (sourceConfig) => ({
-          runtimeConfig: sourceConfig,
-          compareConfig: sourceConfig,
-        }),
-      });
-
-      try {
-        await withEnvAsync({ OPENCLAW_CONFIG_PATH: configPath }, async () => {
-          setRuntimeConfigSnapshot(initialConfig, initialConfig);
-          initializePublishedConfigRuntimeEnv(initialConfig);
-
-          await expect(
-            writeConfigFile({ gateway: { mode: "local", port: 19001 } }),
-          ).rejects.toThrow("active config environment changed during every canonical reread");
-        });
-      } finally {
-        unsubscribe();
-        readSpy.mockRestore();
-      }
-
-      expect(generationChanges).toBeGreaterThanOrEqual(3);
-      await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(initialRaw);
-    },
-  );
-
-  itWithHome(
     "uses injected filesystem operations when rolling back ownership loss",
     async (home) => {
       const configPath = configPathForHome(home);
