@@ -499,7 +499,7 @@ Use `isLoopbackHost(host)` when a plugin must accept only the local machine. It 
     | `plugin-sdk/file-access-runtime` | Private-local after July 2026; Safe local-file, path-containment, temp-root, media-source path, directory-durability, and borrowed-handle I/O: `readFileHandleBounded` reads through EOF under a byte cap; `readFileWindowFully` fills a positional buffer through short reads; `writeFileWindowFully` completes short writes without truncation, synchronization, or rollback; `sha256File` streams a bounded SHA-256 digest from a path or borrowed handle. Borrowed handles stay open. `tempFile` creates an owned temporary child directory for staging; its default cleanup checks directory identity before removal. `resolvePathPrefixSync` observes an existing prefix with symlinks resolved and raw missing suffix, following physical symlink traversal without authorizing later access. |
     | `plugin-sdk/heartbeat-runtime` | Private-local after July 2026; Heartbeat wake, event, and visibility helpers |
     | `plugin-sdk/expect-runtime` | Private-local after July 2026; Required-value assertion helper for provable runtime invariants |
-    | `plugin-sdk/number-runtime` | Private-local after July 2026; Numeric coercion, bounds, and positive-number flooring |
+    | `plugin-sdk/number-runtime` | Private-local after July 2026; Numeric coercion helper |
     | `plugin-sdk/secure-random-runtime` | Private-local after July 2026; Secure token/UUID helpers |
     | `plugin-sdk/system-event-runtime` | Focused system event enqueue, snapshot inspection, and consumption helpers; preserve each snapshot's opaque event ID when consuming selected entries |
     | `plugin-sdk/transport-ready-runtime` | Private-local after July 2026; Transport readiness wait helper |
@@ -516,7 +516,7 @@ Use `isLoopbackHost(host)` when a plugin must accept only the local machine. It 
     | `plugin-sdk/response-limit-runtime` | Private-local after July 2026; Byte-, idle-, and deadline-bounded response-body readers without the broad media runtime surface |
     | `plugin-sdk/session-binding-runtime` | Private-local after July 2026; Current conversation binding state without configured binding routing or pairing stores |
     | `plugin-sdk/context-visibility-runtime` | Private-local after July 2026; Context visibility resolution and supplemental context filtering without broad config/security imports |
-    | `plugin-sdk/string-coerce-runtime` | Browser-safe primitive coercion, record and string-array guards, whitespace normalization, Date-valid timestamps, and UTF-16 truncation |
+    | `plugin-sdk/string-coerce-runtime` | Browser-safe primitive coercion, whitespace normalization, Date-valid timestamps, and UTF-16 truncation |
     | `plugin-sdk/html-entity-runtime` | Private-local after July 2026; Single-pass semicolon-terminated HTML5 entity decoding without broad text utilities |
     | `plugin-sdk/text-grapheme` | Private official-plugin facade for `findGraphemeChunkEnd`. The publication builder bundles the shared pure normalization implementation so plugins preserve grapheme boundaries on supported hosts that predate this SDK binding. |
     | `plugin-sdk/text-utility-runtime` | Private-local after July 2026; Low-level text and path helpers, including budget-aware grapheme chunk selection, UTF-8 prefix truncation, and five-entity HTML escaping |
