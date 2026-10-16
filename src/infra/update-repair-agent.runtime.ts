@@ -131,7 +131,7 @@ async function withRepairResources<T>(run: () => Promise<T>): Promise<T> {
       scheduler.signal.throwIfAborted();
       return host.run(() =>
         resources.run(async () => {
-          const { captureRuntimeConfigAsyncReader } = await import("../config/io.runtime.js");
+          const { captureRuntimeConfigAsyncReader } = await import("../config/io.js");
           await captureRuntimeConfigAsyncReader()();
           return run();
         }),
@@ -180,7 +180,7 @@ async function withRepairResources<T>(run: () => Promise<T>): Promise<T> {
 export async function prepareUpdateRepairInference(signal: AbortSignal, timeoutMs: number) {
   return withRepairResources(async () => {
     signal.throwIfAborted();
-    const { getRuntimeConfig } = await import("../config/io.runtime.js");
+    const { getRuntimeConfig } = await import("../config/io.js");
     signal.throwIfAborted();
     const config = getRuntimeConfig();
     const { selectUpdateRepairInference } = await import("./update-repair-inference.js");
