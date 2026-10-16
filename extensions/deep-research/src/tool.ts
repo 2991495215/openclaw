@@ -52,7 +52,7 @@ export function createResearchTool(api: OpenClawPluginApi, context: OpenClawPlug
       };
       const invoke = async (
         name: string,
-        args: Record<string, unknown>,
+        toolArgs: Record<string, unknown>,
         workSignal: AbortSignal,
       ) => {
         assertCurrent();
@@ -62,7 +62,7 @@ export function createResearchTool(api: OpenClawPluginApi, context: OpenClawPlug
             "tools.invoke",
             {
               name,
-              args,
+              args: toolArgs,
               sessionKey: context.sessionKey,
               agentId: context.agentId,
             },
