@@ -77,7 +77,7 @@ export type AgentDatabaseNativeGeneration = {
   failure(): "open-refused" | "native" | undefined;
   isPrepared(): boolean;
   getPendingPreparation(): Promise<void> | undefined;
-  captureClaim(): AgentDatabaseGenerationClaim;
+  captureClaim(assertBorrowed: () => void): AgentDatabaseGenerationClaim;
   run<T>(
     source: AgentDatabaseRequestExecutionSource,
     operation: (scope: AgentDatabaseExecutionScope) => Promise<T>,

@@ -185,7 +185,7 @@ describe("session transcript visible cursor SDK", () => {
       signal,
     );
     const refused = expect(reading).rejects.toThrow(
-      "Agent database execution generation was replaced",
+      "Agent database execution lost its native owner",
     );
     const source: AgentDatabaseRequestExecutionSource = {
       assertCurrent: () => execution.assertCurrent(),

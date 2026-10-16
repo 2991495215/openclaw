@@ -262,7 +262,7 @@ it("reopens a native generation lost between operations before dispatch", async 
   const replacement = execution.capturePreparedGenerationClaim();
   expect(replacement?.identity).toBe(claim.identity);
   expect(replacement?.incarnation).not.toBe(claim.incarnation);
-  expect(() => claim.assertCurrent()).toThrow("Agent database execution generation was replaced");
+  expect(() => claim.assertCurrent()).toThrow("Agent database execution lost its native owner");
   expect(
     await execution.runExisting(source, (scope) =>
       scope.execute({ type: "session.entry.read", input: { sessionKeys: ["still-healthy"] } }),

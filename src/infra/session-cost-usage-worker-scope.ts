@@ -3,14 +3,13 @@ import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
 import {
   acquireHistoryDatabaseResource,
   armDatabaseWorkerIdleRetirement,
-  clearClosedDatabaseCustody,
   costReadLane,
   costRefreshLane,
   historyClearTimeout,
   pruneHistoryDatabases,
   refreshDatabaseWorkerPressureSubscription,
-  releaseRetiredDatabaseCustody,
   rotateDatabaseWorkers,
+  settleSessionHistoryWorkerEviction,
   type HistoryDatabaseResource,
   type SessionCostWorkerLane,
   type SessionDatabaseCleanup,
@@ -56,7 +55,7 @@ export async function withSessionCostUsageWorkerDatabases<T>(
   }
   const pending = new Set<Promise<UsageCostWorkerResult>>();
   const cleanups = new Set<SessionDatabaseCleanup>();
-  const lanes = new Map<SessionCostWorkerLane, { nativeThrough: number; failedThrough: number }>();
+  const lanes = new Set<SessionCostWorkerLane>();
   let phase: "open" | "closing" | "closed" = "open";
   const assertCurrent = () => {
     if (phase === "closed" || [...resources].some((resource) => resource.revoked)) {
@@ -67,13 +66,8 @@ export async function withSessionCostUsageWorkerDatabases<T>(
     while (pending.size > 0) {
       await Promise.allSettled(pending);
     }
-    for (const [lane, custody] of lanes) {
-      if (custody.nativeThrough > lane.retiredSequence) {
-        await lane.rotation;
-      }
-      if (custody.failedThrough > lane.retiredSequence) {
-        await rotateDatabaseWorkers(lane);
-      }
+    for (const lane of lanes) {
+      await lane.rotation;
     }
   };
   const retainCleanup = (close: () => Promise<void>): (() => void) => {
@@ -122,8 +116,7 @@ export async function withSessionCostUsageWorkerDatabases<T>(
       throw new WorkerTaskError("Session usage database scope is closing", "unavailable");
     }
     const lane = input.operation.kind === "refresh" ? costRefreshLane : costReadLane;
-    const custody = lanes.get(lane) ?? { nativeThrough: 0, failedThrough: 0 };
-    lanes.set(lane, custody);
+    lanes.add(lane);
     const controller = new AbortController();
     const signal = runOptions.signal
       ? AbortSignal.any([controller.signal, runOptions.signal])
@@ -140,8 +133,9 @@ export async function withSessionCostUsageWorkerDatabases<T>(
     refreshDatabaseWorkerPressureSubscription();
     const hostEffects = new Set<Promise<WorkerTaskResponse>>();
     const onRequest = runOptions.onRequest;
-    let sequence = 0;
+    let dispatched = false;
     let executionSettled = false;
+    let retirement: Promise<void> | undefined;
     const task = (async (): Promise<UsageCostWorkerResult> => {
       try {
         const reply = await runWithSqliteDatabaseAdmissionTurn(
@@ -161,10 +155,10 @@ export async function withSessionCostUsageWorkerDatabases<T>(
                 assertCurrent();
                 signal.throwIfAborted();
                 runOptions.beforeDispatch?.();
-                sequence = ++lane.nativeSequence;
-                custody.nativeThrough = sequence;
+                dispatched = true;
+                lane.native = true;
                 for (const resource of resources) {
-                  resource.nativeSequences.set(lane, sequence);
+                  resource.nativeLanes.add(lane);
                 }
                 return { ...input, databases: [...resources].map((resource) => resource.database) };
               },
@@ -173,8 +167,8 @@ export async function withSessionCostUsageWorkerDatabases<T>(
                 signal,
                 onExecutionSettled: ({ retired }) => {
                   executionSettled = true;
-                  if (retired && sequence > 0) {
-                    releaseRetiredDatabaseCustody(lane, sequence);
+                  if (retired && dispatched) {
+                    retirement = rotateDatabaseWorkers(lane);
                   }
                 },
                 onRequest: onRequest
@@ -207,15 +201,17 @@ export async function withSessionCostUsageWorkerDatabases<T>(
         if (!reply.ok) {
           throw new UsageCostWorkerReplyError(reply.error);
         }
-        clearClosedDatabaseCustody(lane, sequence, reply.closedDatabases);
+        await retirement;
+        for (const database of reply.closedDatabases) {
+          await settleSessionHistoryWorkerEviction(lane, database);
+        }
         signal.throwIfAborted();
         assertCurrent();
         return reply.value;
       } catch (error) {
-        if (sequence > 0 && !executionSettled) {
-          custody.failedThrough = Math.max(custody.failedThrough, sequence);
+        if (dispatched && (!executionSettled || retirement)) {
           try {
-            await rotateDatabaseWorkers(lane);
+            await (retirement ?? rotateDatabaseWorkers(lane));
           } catch (cleanupError) {
             throw withSqliteWorkerCleanupFailure(
               toErrorObject(error, "Usage cost worker failed"),
@@ -273,7 +269,7 @@ export async function withSessionCostUsageWorkerDatabases<T>(
       resource.pending--;
     }
     pruneHistoryDatabases();
-    for (const lane of lanes.keys()) {
+    for (const lane of lanes) {
       armDatabaseWorkerIdleRetirement(lane);
     }
   }

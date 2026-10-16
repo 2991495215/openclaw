@@ -134,6 +134,14 @@ the actor. Cold owners still prepare their database identity first. Captured
 session reads constrain the same physical file; actual input writes retain FIFO
 admission and current authority checks.
 
+Foreground transcript, history, discovery, and usage readers share one physical
+database resource owner. It retains pending reads, cached native readers, and
+accepted host writes until their actual cleanup completes. Pool rotation clears
+native-reader membership before queued inputs resume; qualified idle readers can
+close an individual database without restarting their worker. Usage cleanup still
+joins accepted host writes after worker exit. Reader reuse and normal shutdown
+settlement do not require per-dispatch sequence or retirement watermarks.
+
 Managed writes publish committed facts before their public observers. Private
 receipts distinguish explicit absence from incomplete coverage and preserve known
 commits independently of reply delivery. See

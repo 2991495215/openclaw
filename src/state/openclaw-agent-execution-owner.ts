@@ -44,7 +44,6 @@ import { createAgentDatabaseNativeGeneration } from "./openclaw-agent-execution-
 import {
   type AgentDatabaseExecutionPreparedTarget,
   assertBorrowedAgentDatabaseFileIdentity,
-  captureBorrowedAgentDatabaseGenerationClaim,
   captureNativeAgentDatabaseExecutionIdentity,
   supportsAgentDatabaseExecutionScope,
 } from "./openclaw-agent-execution-scope.js";
@@ -422,8 +421,13 @@ export function createAgentDatabaseExecution(
         cleanup?.assertCurrentHost();
         assertReferenceCurrent();
       };
-      const captureGenerationClaim = () =>
-        captureBorrowedAgentDatabaseGenerationClaim(assertBorrowed, () => generation);
+      const captureGenerationClaim = () => {
+        assertBorrowed();
+        if (!generation) {
+          throw new Error("Agent database execution has no admitted generation");
+        }
+        return generation.captureClaim(assertBorrowed);
+      };
       const borrowed: OpenClawAgentDatabaseExecution = {
         agentId,
         path: borrowedPath,

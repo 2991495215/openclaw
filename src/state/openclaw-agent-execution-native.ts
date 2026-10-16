@@ -601,7 +601,7 @@ export function createAgentDatabaseNativeGeneration(
         }
       })();
     },
-    captureClaim() {
+    captureClaim(assertBorrowed) {
       assertCurrent();
       const captured = nativeIdentity;
       if (!captured) {
@@ -611,6 +611,7 @@ export function createAgentDatabaseNativeGeneration(
         identity: captured.physicalIdentity,
         incarnation: captured.incarnation,
         assertCurrent() {
+          assertBorrowed();
           assertCurrent();
         },
       };

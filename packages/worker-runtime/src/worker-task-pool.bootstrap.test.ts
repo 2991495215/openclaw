@@ -62,7 +62,10 @@ afterEach(async () => {
 });
 
 function createPool(
-  options: Pick<WorkerTaskPoolOptions<string>, "maxWorkers" | "prepareWorker"> & {
+  options: Pick<
+    WorkerTaskPoolOptions<string>,
+    "maxWorkers" | "prepareWorker" | "onRotationComplete"
+  > & {
     requiresReady?: false;
   } = {},
 ) {
@@ -107,6 +110,7 @@ function createPool(
       workerUrl: new URL("file:///synthetic-worker.mjs"),
       maxWorkers: options.maxWorkers ?? 1,
       prepareWorker: options.prepareWorker,
+      onRotationComplete: options.onRotationComplete,
       idleTimeoutMs: 0,
     },
     host,
@@ -124,6 +128,37 @@ function createPool(
     },
   };
 }
+
+it("publishes retired resources before dispatching queued successor input", async () => {
+  let nativeReader = false;
+  const { pool, workers } = createPool({
+    onRotationComplete: () => {
+      nativeReader = false;
+    },
+  });
+  const first = pool.run(() => {
+    nativeReader = true;
+    return "first";
+  }, {});
+  workers[0]!.ready();
+  workers[0]!.reply();
+  await first;
+  const rotating = pool.rotate();
+  let previousReader: boolean | undefined;
+  const successor = pool.run(() => {
+    previousReader = nativeReader;
+    nativeReader = true;
+    return "successor";
+  }, {});
+  await rotating;
+  const worker = workers.at(-1)!;
+  worker.ready();
+  worker.reply();
+  await expect(successor).resolves.toBe("successor");
+  expect(workers[0]!.threadId).toBe(-1);
+  expect(previousReader).toBe(false);
+  expect(nativeReader).toBe(true);
+});
 
 it.each(["error", "exit", "constructor"] as const)(
   "rejects one bootstrap cohort after %s and retries only after rotation",
