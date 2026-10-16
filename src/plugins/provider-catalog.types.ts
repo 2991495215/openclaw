@@ -3,7 +3,7 @@ import type {
   UnifiedModelCatalogKind,
 } from "@openclaw/model-catalog-core/model-catalog-types";
 import type { ModelCatalogEntry } from "../agents/model-catalog.types.js";
-import type { ProviderAuthResolver } from "../agents/models-config.providers.secret-helpers.js";
+import type { ProviderAuthResolver } from "../agents/provider-auth-resolver.types.js";
 import type { ModelProviderConfig } from "../config/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ProviderCatalogOutcome } from "./provider-catalog-outcome.js";
