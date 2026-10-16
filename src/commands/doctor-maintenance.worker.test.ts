@@ -13,8 +13,6 @@ import {
   autoMigrateLegacyStateDir,
   resetAutoMigrateLegacyStateDirForTest,
 } from "../infra/state-migrations.state-dir.js";
-import * as updateState from "../infra/update-candidate-state.js";
-import { readUpdateDatabaseGenerations } from "../infra/update-database-generations.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db-cache.js";
 import { OPENCLAW_STATE_SCHEMA_VERSION } from "../state/openclaw-state-db-contract.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
@@ -119,7 +117,7 @@ describe("Doctor maintenance with shared-state workers", () => {
       },
     );
   });
-  it.each(["resident-worker", "historical-contender", "receipt-unchanged"] as const)(
+  it.each(["resident-worker", "historical-contender"] as const)(
     "drains and reacquires maintenance around implicit legacy-root relocation: %s",
     async (scenario) => {
       await withOpenClawTestState(
@@ -158,24 +156,11 @@ describe("Doctor maintenance with shared-state workers", () => {
               OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1",
             },
             async () => {
-              const databasePath = path.join(legacy, "state", "openclaw.sqlite");
-              const databaseGenerations = scenario.startsWith("receipt-")
-                ? readUpdateDatabaseGenerations([databasePath])
-                : undefined;
-              if (databaseGenerations) {
-                vi.spyOn(updateState, "readUpdateDatabaseGenerationsIsolated").mockImplementation(
-                  async (paths) => readUpdateDatabaseGenerations(paths),
-                );
-              }
-              const admittedGenerations = databaseGenerations
-                ? readUpdateDatabaseGenerations([databasePath])
-                : undefined;
               const log = vi.fn();
               const maintenance = await beginDoctorMaintenance({
                 options: { repair: true, nonInteractive: true },
                 root: null,
                 runtime: { log, error() {}, exit() {} },
-                databaseGenerations,
               });
               try {
                 await maintenance!.run(async () => {
@@ -225,18 +210,6 @@ describe("Doctor maintenance with shared-state workers", () => {
                     input: { relayId: "doctor" },
                   }),
                 ).toEqual(relayRecord(2));
-              }
-              if (databaseGenerations) {
-                // The published updater retains old path keys; relocation must not certify
-                // their missing generations as eligible for automatic restoration.
-                expect(maintenance!.databaseWrites).toEqual({
-                  unchanged: false,
-                  fromGenerations: admittedGenerations,
-                  generations: readUpdateDatabaseGenerations([databasePath]),
-                });
-                expect(maintenance!.databaseWrites?.generations[databasePath]).not.toBe(
-                  databaseGenerations[databasePath],
-                );
               }
             },
           );

@@ -431,7 +431,6 @@ export async function beginDoctorMaintenance(params: DoctorMaintenanceParams) {
     deadline: () => stopDeadline,
     assertCurrent: assertCallerCurrent,
     assertReadCurrent: () => assertUpdateAdmissionReadCurrent?.(),
-    settle,
     warn,
   });
   try {
@@ -643,9 +642,6 @@ export async function beginDoctorMaintenance(params: DoctorMaintenanceParams) {
     serviceUpdateVerdict,
     warnings,
     failureFacts,
-    get databaseWrites() {
-      return state.receipt;
-    },
     run: <T>(operation: () => T) => state.run(operation),
     releaseState: async () => throwSettledFailure(await settle(() => state.release())),
     async repairSqliteNoCow(paths: readonly string[]) {

@@ -4,10 +4,7 @@ import { resolveStateDir } from "../config/paths.js";
 import { formatErrorMessage, toErrorObject } from "../infra/errors.js";
 import { createSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker.js";
 import type { AgentDatabaseMigrationTarget } from "../infra/state-migrations.media-persistence-targets.js";
-import {
-  createUpdateDoctorDatabaseWriteCapture,
-  DoctorMaintenanceRefusalError,
-} from "../infra/update-doctor-result.js";
+import { DoctorMaintenanceRefusalError } from "../infra/update-doctor-result.js";
 import { hasCommandProcessCleanupError } from "../process/exec-result.js";
 import {
   createOpenClawDatabaseMaintenanceScope,
@@ -30,10 +27,9 @@ export async function createDoctorMaintenanceState(options: {
   deadline: () => number | undefined;
   assertCurrent?: () => void;
   assertReadCurrent: () => void;
-  settle: <T>(operation: () => Promise<T>) => Promise<T>;
   warn: (message: string) => void;
 }) {
-  const { params, env, settle } = options;
+  const { params, env } = options;
   const { resolveLegacyStateConfigPath, resolvePendingLegacyStateDirMigrationPaths } =
     await import("../infra/state-migrations.state-dir.js");
   let resources: OpenClawDatabaseMaintenanceScope | undefined;
@@ -48,15 +44,7 @@ export async function createDoctorMaintenanceState(options: {
         OPENCLAW_CONFIG_PATH: resolveLegacyStateConfigPath(legacy.source),
       }
     : env;
-  let captureAdmitted = false;
   let liveAuthorityReadsAdmitted = false;
-  const capture = createUpdateDoctorDatabaseWriteCapture(params.databaseGenerations, {
-    env: selectedEnv,
-    root: params.root ?? undefined,
-    signal: options.signal,
-    assertCurrent: () => owner!.assertCurrent(options.assertCurrent),
-    warn: options.warn,
-  });
   const closeResources = async (agentRoot?: string | null) => {
     const drainRoot =
       agentRoot === null
@@ -131,13 +119,6 @@ export async function createDoctorMaintenanceState(options: {
         : new AggregateError(failures, "Doctor maintenance resource cleanup failed.");
     }
   };
-  const settleCapture = async () => {
-    if (owner && capture && captureAdmitted) {
-      // Settle the original receipt keys before their canonical path can change.
-      await settle(() => capture.settle());
-      captureAdmitted = false;
-    }
-  };
   const enterResources = async (acquired: NonNullable<typeof owner>) => {
     // Transfer can retire the source owner before caller revalidation runs.
     owner = acquired;
@@ -168,10 +149,6 @@ export async function createDoctorMaintenanceState(options: {
       owner = undefined;
       throw error;
     }
-    if (capture && !captureAdmitted) {
-      await settle(() => resources!.run(() => capture.admit()));
-      captureAdmitted = true;
-    }
   };
   const assertOwnerCurrent = (databasePath?: string) => {
     const assertCurrent = () => {
@@ -197,9 +174,6 @@ export async function createDoctorMaintenanceState(options: {
     },
     get resources() {
       return resources;
-    },
-    get receipt() {
-      return owner ? undefined : capture?.receipt;
     },
     run<T>(operation: () => T): T {
       // Cancellation stops read-only inspections; admitted writers retain their resource scope.
@@ -255,7 +229,6 @@ export async function createDoctorMaintenanceState(options: {
       // resources predating this scope before moving the owned state root.
       await closeResources(sourceDir);
       await owner!.run(() => closeOpenClawStateDatabaseByPathAsync(sourceDatabase));
-      await settleCapture();
       // In-tree locks cannot survive a path rename. Service stop custody remains held.
       await owner!.release();
       owner = undefined;
@@ -300,7 +273,7 @@ export async function createDoctorMaintenanceState(options: {
           });
         });
       } finally {
-        // Restoration and update receipts use a fresh scope for the new file identity.
+        // Reacquire a fresh scope for the repaired file identity.
         await enterResources(owner!);
       }
     },
@@ -334,7 +307,6 @@ export async function createDoctorMaintenanceState(options: {
       } catch (error) {
         operationError = toErrorObject(error, "SQLite reclamation failed.");
       }
-      // Keep the original write-capture baseline until final maintenance release.
       try {
         await enterResources(owner!);
       } catch (error) {
@@ -405,16 +377,8 @@ export async function createDoctorMaintenanceState(options: {
         await closeResources();
       } catch (error) {
         // Uncertain command cleanup or a still-open scope can keep writing: retain
-        // process ownership and publish no receipt.
+        // process ownership until its accepted work settles.
         if (hasCommandProcessCleanupError(error) || resources || inspections) {
-          throw error;
-        }
-        failures.push(error);
-      }
-      try {
-        await settleCapture();
-      } catch (error) {
-        if (hasCommandProcessCleanupError(error)) {
           throw error;
         }
         failures.push(error);

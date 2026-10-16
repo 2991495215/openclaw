@@ -52,7 +52,6 @@ const maintenance = vi.hoisted(() => ({
   serviceUpdateVerdict: undefined,
   warnings: [],
   failureFacts: [],
-  databaseWrites: undefined,
   run: <T>(operation: () => T): T => operation(),
   finish: vi.fn(),
   releaseState: vi.fn(),
@@ -192,70 +191,49 @@ describe("Doctor refused-migration maintenance outcome", () => {
     },
   );
 
-  it.each(["runtime exit"])(
-    "settles %s failure before forwarding database write proof",
-    async (kind) => {
-      const resultPath = createUpdatePostInstallDoctorResultPath();
-      await withOpenClawTestState(
-        {
-          scenario: "minimal",
-          env: { OPENCLAW_UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH: resultPath },
-        },
-        async (state) => {
-          await state.writeConfig({ gateway: { mode: "local" } });
-          const databaseGenerations = { [state.statePath("state/openclaw.sqlite")]: null };
-          const databaseWrites = { unchanged: false, generations: databaseGenerations };
-          let released = false;
-          const release = vi.fn(async () => {
-            released = true;
-          });
-          vi.mocked(doctorMaintenance.beginDoctorMaintenance).mockResolvedValueOnce({
-            ...maintenance,
-            get databaseWrites() {
-              return released ? databaseWrites : undefined;
-            },
-            release,
-          });
-          const failure =
-            kind === "runtime exit"
-              ? new ExitError(130)
-              : new Error("injected post-migration Doctor failure");
-          mocks.runContributions.mockImplementationOnce(async (ctx) => {
-            if (kind === "runtime exit") {
-              ctx.runtime.exit(130);
-            } else {
-              throw failure;
-            }
-          });
-          const runtime = { log: vi.fn(), error: vi.fn(), exit: vi.fn() };
-          const work = runDoctorHealthFlow(
+  it("settles runtime exit before publishing the classified Doctor failure", async () => {
+    const resultPath = createUpdatePostInstallDoctorResultPath();
+    await withOpenClawTestState(
+      {
+        scenario: "minimal",
+        env: { OPENCLAW_UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH: resultPath },
+      },
+      async (state) => {
+        await state.writeConfig({ gateway: { mode: "local" } });
+        const databaseGenerations = { [state.statePath("state/openclaw.sqlite")]: null };
+        const release = vi.fn();
+        vi.mocked(doctorMaintenance.beginDoctorMaintenance).mockResolvedValueOnce({
+          ...maintenance,
+          release,
+        });
+        const failure = new ExitError(130);
+        mocks.runContributions.mockImplementationOnce(async (ctx) => {
+          ctx.runtime.exit(130);
+        });
+        const runtime = { log: vi.fn(), error: vi.fn(), exit: vi.fn() };
+        await expect(
+          runDoctorHealthFlow(
             runtime,
             { repair: true, nonInteractive: true },
             { inputHash: hashConfigRaw(null), assertCurrent() {}, databaseGenerations },
-          );
-          if (kind === "runtime exit") {
-            await expect(work).rejects.toEqual(failure);
-          } else {
-            await expect(work).rejects.toBe(failure);
-          }
-          expect(runtime.exit).not.toHaveBeenCalled();
-          expect(maintenance.finish).toHaveBeenCalledExactlyOnceWith(undefined, undefined, failure);
-          expect(release).toHaveBeenCalledOnce();
-          expect(mocks.outro).not.toHaveBeenCalled();
-          expect(runtime.error).toHaveBeenCalledWith(
-            expect.stringContaining("Check the reported service state"),
-          );
-          expect(doctorMaintenance.beginDoctorMaintenance).toHaveBeenCalledWith(
-            expect.objectContaining({ databaseGenerations }),
-          );
-          await expect(consumeUpdatePostInstallDoctorResult(resultPath)).resolves.toMatchObject({
-            status: "error",
-            databaseWrites,
-          });
-        },
-      );
-    },
-  );
+          ),
+        ).rejects.toEqual(failure);
+        expect(runtime.exit).not.toHaveBeenCalled();
+        expect(maintenance.finish).toHaveBeenCalledExactlyOnceWith(undefined, undefined, failure);
+        expect(release).toHaveBeenCalledOnce();
+        expect(mocks.outro).not.toHaveBeenCalled();
+        expect(runtime.error).toHaveBeenCalledWith(
+          expect.stringContaining("Check the reported service state"),
+        );
+        expect(release.mock.invocationCallOrder[0]!).toBeLessThan(
+          mocks.writeUpdatePostInstallDoctorResult.mock.invocationCallOrder[0]!,
+        );
+        await expect(consumeUpdatePostInstallDoctorResult(resultPath)).resolves.toMatchObject({
+          status: "error",
+        });
+      },
+    );
+  });
 
   it.each(["success", "validation", "conflict", "missing-receipt"] as const)(
     "uses the latest receipt for maintenance-time token recovery (%s)",

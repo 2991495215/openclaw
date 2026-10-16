@@ -204,20 +204,22 @@ it.each([
   "intervening",
   "post-migration-write",
   "schema-neutral-write",
+  "current-schema-neutral-write",
   "config-refused",
 ] as const)(
   "restores pre-migration databases only before settled activation: %s",
   async (scenario) => {
     const gitInstall = scenario === "git" || scenario === "git-edited";
+    const currentNoReceipt = scenario === "current-schema-neutral-write";
+    const schemaNeutral = scenario === "schema-neutral-write" || currentNoReceipt;
     const outsideWrite =
       scenario === "git-edited" ||
       scenario === "intervening" ||
       scenario === "post-migration-write" ||
       scenario === "schema-neutral-write";
     const preservesMigrated = outsideWrite && scenario !== "git-edited";
-    const candidateSchemas =
-      scenario === "schema-neutral-write" ? { state: 15, agent: 21 } : { state: 18, agent: 23 };
-    const migratedVersions = scenario === "schema-neutral-write" ? [15, 21] : [18, 23];
+    const candidateSchemas = schemaNeutral ? { state: 15, agent: 21 } : { state: 18, agent: 23 };
+    const migratedVersions = schemaNeutral ? [15, 21] : [18, 23];
     const initialFailure =
       scenario === "package" ||
       scenario === "exited-writer" ||
@@ -279,7 +281,7 @@ it.each([
     let retainedSnapshotDirectory = "";
     const doctorEvidence = path.join(base, "doctor-observed.json");
     const initialDoctor = path.join(base, "initial-doctor.json");
-    // Model package IPC with real fingerprints and physical maintenance custody.
+    // Preserve the tagged admitting-only receipt dialect; the current variant emits none.
     const source = `
     import assert from 'node:assert/strict';
     import fs from 'node:fs';
@@ -312,7 +314,7 @@ it.each([
       const custody=await acquireCustody('sqlite-maintenance');
       try {
         const expected=input.databaseGenerations;
-        const fromGenerations=expected && readUpdateDatabaseGenerations(Object.keys(expected));
+        const fromGenerations=expected && ${!currentNoReceipt} && readUpdateDatabaseGenerations(Object.keys(expected));
         const unchanged=expected && isDeepStrictEqual(fromGenerations,expected);
         let result;
         if (${!initialFailure} && !fs.existsSync(${JSON.stringify(initialDoctor)})) {
@@ -324,7 +326,14 @@ it.each([
             try { db.exec("BEGIN; ALTER TABLE payload ADD COLUMN migrated TEXT; UPDATE payload SET value='candidate' WHERE rowid IN (7,42); PRAGMA user_version=" + ${JSON.stringify(migratedVersions)}[index] + '; COMMIT;'); }
             finally { db.close(); }
           }
-          if (${scenario !== "schema-neutral-write"}) {
+          if (${currentNoReceipt}) {
+            for (const file of files) {
+              const db = new DatabaseSync(file);
+              try { db.exec("INSERT INTO payload(rowid,value) VALUES(99,'during-doctor')"); }
+              finally { db.close(); }
+            }
+          }
+          if (${!schemaNeutral}) {
             fs.mkdirSync(${JSON.stringify(path.dirname(missing))},{recursive:true});
             const created = new DatabaseSync(${JSON.stringify(missing)});
             created.exec('PRAGMA user_version=23'); created.close();
@@ -333,7 +342,7 @@ it.each([
           result=${JSON.stringify(scenario === "verification" ? { status: "ok" } : { status: "error", maintenanceRefusal: { kind: "data-at-risk", reason: "incomplete-migration" } })};
           process.exitCode=${scenario === "verification" ? 0 : 1};
         }
-        if(expected) result.databaseWrites={unchanged,fromGenerations,generations:readUpdateDatabaseGenerations(Object.keys(expected))};
+        if(expected && ${!currentNoReceipt}) result.databaseWrites={unchanged,fromGenerations,generations:readUpdateDatabaseGenerations(Object.keys(expected))};
         fs.writeFileSync(process.env.OPENCLAW_UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH,JSON.stringify(result));
       } finally {
         await custody.release();
@@ -656,10 +665,30 @@ it.each([
         await expect(laterDoctor()).rejects.toThrow();
         return "failed";
       }
-      expect({ shared: readDatabase(shared), agent: readDatabase(agent) }).toEqual(before);
+      if (currentNoReceipt) {
+        for (const file of [shared, agent]) {
+          expect(readDatabase(file).rows).toEqual([
+            { rowid: 7, value: "candidate" },
+            { rowid: 42, value: "candidate" },
+            { rowid: 99, value: "during-doctor" },
+          ]);
+        }
+      } else {
+        expect({ shared: readDatabase(shared), agent: readDatabase(agent) }).toEqual(before);
+      }
       await expect(fs.stat(missing)).rejects.toMatchObject({ code: "ENOENT" });
       await startService();
-      expect(await readServing()).toEqual(servedBefore);
+      if (currentNoReceipt) {
+        expect(await readServing()).toMatchObject({
+          version: "1.0.0",
+          databases: [readDatabase(shared), readDatabase(agent)].map(({ version, rows }) => ({
+            version,
+            rows,
+          })),
+        });
+      } else {
+        expect(await readServing()).toEqual(servedBefore);
+      }
       recordUpdateRunVerification(
         run.runId,
         {
@@ -683,12 +712,14 @@ it.each([
       return "healthy";
     });
     verification.mockImplementation(async ({ result }) => {
-      if (!restores && !preservesMigrated) {
+      if (!restores && !preservesMigrated && !currentNoReceipt) {
         result.verification = { serviceRunning: false, readyz: false, settled: false };
         return { ok: false, score: 0, summary: "Candidate activation failed after writing state" };
       }
       if (preservesMigrated) {
         expect(await readServing()).toMatchObject({ version: "2.0.0" });
+      } else if (currentNoReceipt) {
+        expect(await readServing()).toMatchObject({ version: "1.0.0" });
       } else {
         expect(await readServing()).toEqual(servedBefore);
       }
@@ -911,6 +942,46 @@ it.each([
           await finalize();
         } catch (error) {
           finishFailure = error;
+        }
+        if (currentNoReceipt) {
+          expect(finishFailure).toBeInstanceOf(UpdateCommandFailure);
+          assert(finishFailure instanceof UpdateCommandFailure);
+          expect(finishFailure.result.reason).not.toBe("state-migrated-no-rollback");
+          expect(finishFailure.result.steps).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ name: "package rollback", exitCode: 0 }),
+            ]),
+          );
+          expect(finishFailure.result.steps.some((step) => step.name === "database rollback")).toBe(
+            false,
+          );
+          expect(databaseBackup?.migration).toBeUndefined();
+          expect(databaseBackup?.restoreRefusal).toBeUndefined();
+          expect(restart).toHaveBeenCalledOnce();
+          expect(observedStart).toHaveBeenCalledOnce();
+          expect(starts).toEqual(["1.0.0", "1.0.0"]);
+          expect(
+            JSON.parse(await fs.readFile(path.join(packageRoot, "package.json"), "utf8")),
+          ).toMatchObject({ version: "1.0.0" });
+          for (const file of [shared, agent]) {
+            expect(readDatabase(file).version).toBe(file === shared ? 15 : 21);
+            expect(readDatabase(file).columns).toContain("migrated");
+            expect(readDatabase(file).rows).toEqual([
+              { rowid: 7, value: "candidate" },
+              { rowid: 42, value: "candidate" },
+              { rowid: 99, value: "during-doctor" },
+            ]);
+            await expect(fs.stat(`${file}.migrated-${run.runId}`)).rejects.toMatchObject({
+              code: "ENOENT",
+            });
+            const snapshot = path.join(retainedSnapshotDirectory, buildBackupArchivePath("", file));
+            expect(readDatabase(snapshot)).toEqual(file === shared ? before.shared : before.agent);
+          }
+          expect(getUpdateRun(run.runId, { env })).toMatchObject({
+            status: "rolled-back",
+            verification: { serviceRunning: true, runningVersion: "1.0.0", versionMatch: true },
+          });
+          return;
         }
         expect(
           JSON.parse(await fs.readFile(doctorEvidence, "utf8")).map(

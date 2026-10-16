@@ -2,15 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
-import { readUpdateDatabaseGenerations } from "../infra/update-database-generations.js";
 import { closeOpenClawAgentDatabaseByPathAsync } from "../state/openclaw-agent-db-lifecycle.js";
 import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
-import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createDoctorMaintenanceState } from "./doctor-maintenance-state.js";
 
-it("drains an admitted custom agent outside the state root and retains original write capture", async () => {
+it("drains an admitted custom agent outside the state root without closing unrelated state", async () => {
   await withOpenClawTestState({ scenario: "external-service", layout: "split" }, async (state) => {
     const pathname = state.path("custom-agent", "openclaw-agent.sqlite");
     const seeded = openOpenClawAgentDatabase({ agentId: "main", path: pathname, env: state.env });
@@ -25,21 +23,17 @@ it("drains an admitted custom agent outside the state root and retains original 
 
     const unrelatedEnv = { ...state.env, OPENCLAW_STATE_DIR: state.path("unrelated-state") };
     const unrelated = openOpenClawAgentDatabase({ agentId: "other", env: unrelatedEnv });
-    const sharedPath = resolveOpenClawStateSqlitePath(state.env);
-    const generations = readUpdateDatabaseGenerations([sharedPath, pathname]);
     const controller = new AbortController();
     const maintenance = await createDoctorMaintenanceState({
       params: {
         root: null,
         options: { repair: true, nonInteractive: true },
         runtime: { log: vi.fn(), error: vi.fn(), exit: vi.fn() },
-        databaseGenerations: generations,
       },
       env: state.env,
       signal: controller.signal,
       deadline: () => undefined,
       assertReadCurrent() {},
-      settle: (operation) => operation(),
       warn: vi.fn(),
     });
     try {
@@ -73,10 +67,6 @@ it("drains an admitted custom agent outside the state root and retains original 
       } finally {
         observed.close();
       }
-      expect(maintenance.receipt).toBeUndefined();
-      await maintenance.release();
-      expect(maintenance.receipt).toMatchObject({ unchanged: false });
-      expect(maintenance.receipt?.generations[pathname]).not.toBe(generations[pathname]);
     } finally {
       await maintenance.release();
       await closeOpenClawAgentDatabaseByPathAsync(unrelated.path, "other");

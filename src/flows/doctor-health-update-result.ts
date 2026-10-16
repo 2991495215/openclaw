@@ -45,7 +45,6 @@ export async function publishDoctorUpdateResult(params: {
       ...(updateResult.capture.deferredInspectionCheckIds
         ? { deferredInspectionCheckIds: updateResult.capture.deferredInspectionCheckIds }
         : {}),
-      ...(maintenance?.databaseWrites ? { databaseWrites: maintenance.databaseWrites } : {}),
       ...(updateResult.capture.fileWrites
         ? { configFileWrites: updateResult.capture.fileWrites }
         : {}),

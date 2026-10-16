@@ -11,7 +11,6 @@ export function createDoctorMaintenanceFixture(overrides: Partial<DoctorMaintena
     signal: new AbortController().signal,
     warnings: [],
     failureFacts: [],
-    databaseWrites: undefined,
     serviceUpdateVerdict: undefined,
     run: <T>(operation: () => T): T => operation(),
     releaseState: vi.fn(async () => {}),

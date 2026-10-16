@@ -1,7 +1,4 @@
 import "./doctor-maintenance.settlement.test-support.js";
-import fs from "node:fs";
-import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
 import { UpdateFinalizationLifecycle } from "../cli/update-cli/update-finalization-lifecycle.js";
 import { GatewayServiceStopUnsafeError } from "../daemon/service-inspection-error.js";
@@ -10,8 +7,6 @@ import { collectNestedErrorCandidates } from "../infra/error-graph-internal.js";
 import { GATEWAY_SERVICE_STOP_TIMEOUT_MS } from "../infra/gateway-shutdown-budget.js";
 import { GatewayStateOwnerContentionError } from "../infra/gateway-state-owner.js";
 import { DoctorUnreadableStateDatabaseError } from "../infra/state-repair-message.js";
-import * as updateState from "../infra/update-candidate-state.js";
-import { readUpdateDatabaseGenerations } from "../infra/update-database-generations.js";
 import {
   collectUpdateDoctorFailureFacts,
   consumeUpdatePostInstallDoctorResult,
@@ -27,177 +22,17 @@ import { withCommandProcessScope } from "../process/exec-spawn.js";
 import { defaultRuntime } from "../runtime.js";
 import { OpenClawAgentDatabaseLeaseActiveError } from "../state/openclaw-agent-db-lease.js";
 import { beginDoctorMaintenance } from "./doctor-maintenance.js";
-import * as nocow from "./doctor-sqlite-nocow.js";
 
 const settlement = await import("./doctor-maintenance.settlement.test-support.js");
 const { begin, boundary, cleanupBarrier, root, tempDirs } = settlement;
 
-it("refuses rollback attribution for writes preceding Doctor admission", async () => {
-  vi.spyOn(updateState, "readUpdateDatabaseGenerationsIsolated").mockImplementation(async (paths) =>
-    readUpdateDatabaseGenerations(paths),
-  );
-  const pathname = path.join(settlement.tempDirs.make("doctor-write-receipt-"), "agent.sqlite");
-  const missing = `${pathname}.missing`;
-  const seed = new DatabaseSync(pathname);
-  seed.exec("CREATE TABLE evidence(value INTEGER); INSERT INTO evidence VALUES (1)");
-  seed.close();
-  const databaseGenerations = readUpdateDatabaseGenerations([pathname, missing]);
-  const foreign = new DatabaseSync(pathname);
-  foreign.exec("INSERT INTO evidence VALUES (99)");
-  foreign.close();
-  const admitted = readUpdateDatabaseGenerations([pathname, missing]);
-  const maintenance = await beginDoctorMaintenance({
-    root: null,
-    options: { repair: true, nonInteractive: true },
-    runtime: { log: boundary.log, error: vi.fn(), exit: vi.fn() },
-    databaseGenerations,
-  });
-  expect(maintenance?.databaseWrites).toBeUndefined();
-  await maintenance!.releaseState();
-  const receipt = maintenance!.databaseWrites;
-  expect(receipt).toEqual({
-    unchanged: false,
-    fromGenerations: admitted,
-    generations: readUpdateDatabaseGenerations([pathname, missing]),
-  });
-  expect(receipt?.generations[pathname]).not.toBe(databaseGenerations[pathname]);
-  const later = new DatabaseSync(pathname);
-  later.exec("INSERT INTO evidence VALUES (100)");
-  later.close();
+it("refuses NOCOW repair after maintenance custody is released", async () => {
+  const maintenance = await begin();
   await maintenance!.release();
-  expect(maintenance!.databaseWrites).toEqual(receipt);
-  expect(readUpdateDatabaseGenerations([pathname])[pathname]).not.toBe(
-    receipt?.generations[pathname],
-  );
-});
-
-it("refuses automatic restore after a NOCOW physical replacement during Doctor maintenance", async () => {
-  vi.spyOn(updateState, "readUpdateDatabaseGenerationsIsolated").mockImplementation(async (paths) =>
-    readUpdateDatabaseGenerations(paths),
-  );
-  const pathname = path.join(settlement.tempDirs.make("doctor-nocow-receipt-"), "agent.sqlite");
-  const seed = new DatabaseSync(pathname);
-  seed.exec("CREATE TABLE evidence(value INTEGER); INSERT INTO evidence VALUES (1)");
-  seed.close();
-  const generations = readUpdateDatabaseGenerations([pathname]);
-  const rewrite = vi.spyOn(nocow, "repairDoctorSqliteNoCow").mockImplementation(async () => {
-    expect(boundary.close).toHaveBeenCalled();
-    fs.copyFileSync(pathname, `${pathname}.new`);
-    fs.renameSync(`${pathname}.new`, pathname);
-    return { changes: ["NOCOW rewrite complete"], warnings: [] };
-  });
-  const maintenance = await beginDoctorMaintenance({
-    root: null,
-    options: { repair: true, nonInteractive: true },
-    runtime: { log: boundary.log, error: vi.fn(), exit: vi.fn() },
-    databaseGenerations: generations,
-  });
-  await maintenance!.repairSqliteNoCow([pathname]);
-  await maintenance!.release();
-  expect(rewrite).toHaveBeenCalledOnce();
-  // Independent SQLite writers are not excluded during the rewrite, so even this
-  // Doctor-owned replacement cannot be attributed and must not be auto-restored.
-  expect(maintenance!.databaseWrites).toEqual({
-    unchanged: false,
-    fromGenerations: generations,
-    generations: readUpdateDatabaseGenerations([pathname]),
-  });
-  expect(maintenance!.databaseWrites?.generations[pathname]).not.toBe(generations[pathname]);
-  expect(maintenance!.warnings).not.toContain("NOCOW rewrite complete");
-  await expect(maintenance!.repairSqliteNoCow([pathname])).rejects.toThrow(
+  await expect(maintenance!.repairSqliteNoCow(["/synthetic/store.sqlite"])).rejects.toThrow(
     "original live maintenance owner",
   );
 });
-
-it("keeps fingerprint failures advisory and publishes no database write proof", async () => {
-  vi.spyOn(updateState, "readUpdateDatabaseGenerationsIsolated").mockImplementation(async (paths) =>
-    readUpdateDatabaseGenerations(paths),
-  );
-  const pathname = path.join(settlement.tempDirs.make("doctor-write-proof-unavailable-"), "db");
-  fs.mkdirSync(pathname);
-  const maintenance = await beginDoctorMaintenance({
-    root: null,
-    options: { repair: true, nonInteractive: true },
-    runtime: { log: boundary.log, error: vi.fn(), exit: vi.fn() },
-    databaseGenerations: { [pathname]: null },
-  });
-  await expect(maintenance!.finish({})).resolves.toBeUndefined();
-  expect(maintenance!.databaseWrites).toBeUndefined();
-  expect(maintenance!.warnings).toContainEqual(
-    expect.stringContaining("Database write verification is unavailable"),
-  );
-  await maintenance!.release();
-});
-
-it.each([
-  { phase: "admission", cleanup: "uncertain" },
-  { phase: "receipt", cleanup: "forced" },
-  { phase: "receipt", cleanup: "uncertain" },
-] as const)(
-  "joins database $phase workers before releasing state custody ($cleanup)",
-  async ({ phase, cleanup }) => {
-    const barrier = cleanupBarrier();
-    const databaseGenerations = { "/synthetic/doctor-state/state/openclaw.sqlite": null };
-    let reads = 0;
-    vi.spyOn(updateState, "readUpdateDatabaseGenerationsIsolated").mockImplementation(async () => {
-      reads++;
-      if (reads === (phase === "admission" ? 1 : 2)) {
-        barrier.retain();
-      }
-      return databaseGenerations;
-    });
-    let maintenance: Awaited<ReturnType<typeof beginDoctorMaintenance>>;
-    const work = (async () => {
-      maintenance = await beginDoctorMaintenance({
-        root,
-        options: { repair: true, nonInteractive: true },
-        runtime: { log: boundary.log, error: vi.fn(), exit: vi.fn() },
-        databaseGenerations,
-      });
-      await maintenance!.finish({});
-    })().catch((error: unknown) => error);
-    try {
-      await Promise.race([
-        barrier.joining,
-        work.then(() => {
-          throw new Error("Database custody ended before fingerprint worker cleanup joined");
-        }),
-      ]);
-      expect(boundary.release).not.toHaveBeenCalled();
-      if (phase === "admission") {
-        expect(boundary.stop).toHaveBeenCalledTimes(1);
-      }
-      expect(boundary.resume).not.toHaveBeenCalled();
-      expect(boundary.restart).not.toHaveBeenCalled();
-      expect(maintenance?.databaseWrites).toBeUndefined();
-    } finally {
-      barrier.cleanup.resolve(cleanup);
-      await work;
-    }
-    const error = await work;
-    if (cleanup === "forced") {
-      expect(error).toBeUndefined();
-      expect(boundary.release).toHaveBeenCalledOnce();
-      expect(boundary.restart).toHaveBeenCalledOnce();
-      expect(maintenance?.databaseWrites).toEqual({
-        unchanged: true,
-        fromGenerations: databaseGenerations,
-        generations: databaseGenerations,
-      });
-      return;
-    }
-    expect(hasCommandProcessCleanupError(error)).toBe(true);
-    expect(maintenance?.databaseWrites).toBeUndefined();
-    if (maintenance) {
-      await expect(maintenance.release()).rejects.toSatisfy(hasCommandProcessCleanupError);
-      await expect(maintenance.releaseState()).rejects.toSatisfy(hasCommandProcessCleanupError);
-    }
-    expect(boundary.release).not.toHaveBeenCalled();
-    expect(boundary.resume).not.toHaveBeenCalled();
-    expect(boundary.complete).not.toHaveBeenCalled();
-    expect(boundary.restart).not.toHaveBeenCalled();
-  },
-);
 
 it("restores the stopped Gateway before reporting a settled state-owner release failure", async () => {
   const failure = new Error("settled state-owner release failed");
@@ -239,7 +74,6 @@ it("retains state custody when the resource scope cannot close", async () => {
   expect(boundary.release).not.toHaveBeenCalled();
   expect(boundary.restart).not.toHaveBeenCalled();
   expect(boundary.health).not.toHaveBeenCalled();
-  expect(maintenance!.databaseWrites).toBeUndefined();
 });
 
 it("restores the Gateway after a transient resource close failure settles on retry", async () => {

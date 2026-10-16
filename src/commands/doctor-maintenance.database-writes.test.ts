@@ -2,8 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { restoreFailedUpdateDatabases } from "../cli/update-cli/update-command-database-backup.js";
 import { recordUpdateDatabaseWrites } from "../cli/update-cli/update-command-database-receipts.js";
-import type { UpdateDatabaseBackup } from "../infra/update-database-backup.js";
-import { readUpdateDatabaseGenerations } from "../infra/update-database-generations.js";
+import { createUpdateDatabaseBackup } from "../infra/update-database-backup.js";
 import type { UpdateRunResult } from "../infra/update-runner-types.js";
 import {
   closeOpenClawStateDatabaseAsync,
@@ -12,83 +11,91 @@ import {
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { beginDoctorMaintenance } from "./doctor-maintenance.js";
 
-it("refuses rollback attribution for a foreign write during Doctor maintenance", async () => {
-  await withOpenClawTestState(
-    { scenario: "external-service", label: "doctor-foreign-write" },
-    async (state) => {
-      openOpenClawStateDatabase();
-      await closeOpenClawStateDatabaseAsync();
-      const pathname = state.path("agent.sqlite");
-      const seed = new DatabaseSync(pathname);
-      seed.exec("CREATE TABLE evidence(value INTEGER); INSERT INTO evidence VALUES (1)");
-      seed.close();
-      const databaseGenerations = readUpdateDatabaseGenerations([pathname]);
-      const maintenance = await beginDoctorMaintenance({
-        root: null,
-        options: { repair: true, nonInteractive: true },
-        runtime: { log() {}, error() {}, exit() {} },
-        databaseGenerations,
-      });
-      try {
-        expect(maintenance).toBeDefined();
-        expect(maintenance!.databaseWrites).toBeUndefined();
-        // A raw SQLite connection does not participate in Gateway ownership.
-        // Doctor never opens this database or owns this writer's transaction.
-        const foreign = new DatabaseSync(pathname);
+it.each(["unchanged", "before-admission", "during-maintenance"] as const)(
+  "checks current data at final restore without a Doctor receipt (%s)",
+  async (change) => {
+    await withOpenClawTestState(
+      { scenario: "external-service", label: "doctor-final-restore" },
+      async (state) => {
+        openOpenClawStateDatabase();
+        await closeOpenClawStateDatabaseAsync();
+        const pathname = state.path("agent.sqlite");
+        const seed = new DatabaseSync(pathname);
         try {
-          foreign.exec("INSERT INTO evidence VALUES (99)");
+          seed.exec("CREATE TABLE evidence(value INTEGER); INSERT INTO evidence VALUES (1)");
         } finally {
-          foreign.close();
+          seed.close();
         }
-        await maintenance!.releaseState();
-        const receipt = maintenance!.databaseWrites;
-        expect(receipt?.generations[pathname]).not.toBe(databaseGenerations[pathname]);
-        expect(receipt?.unchanged).toBe(false);
-
-        const backup: UpdateDatabaseBackup = {
-          directory: state.path("retained-snapshots"),
-          databases: [],
-          missingPaths: [],
-          sourcePaths: [pathname],
-          sourceGenerations: databaseGenerations,
-          warnings: [],
-        };
-        recordUpdateDatabaseWrites(backup, receipt, {
-          name: "doctor",
-          command: "doctor --fix",
-          cwd: state.stateDir,
-          durationMs: 0,
-          exitCode: 1,
+        const backup = await createUpdateDatabaseBackup({
+          backupRoot: state.path("retained-snapshots"),
+          stateDir: state.stateDir,
+          config: {},
+          env: state.env,
+          additionalPaths: [pathname],
+          preserveSourceArtifacts: true,
         });
-        expect(backup.restoreRefusal).toContain("the writer is unknown");
-        const result: UpdateRunResult = {
-          status: "error",
-          mode: "npm",
-          steps: [],
-          durationMs: 0,
+        expect(backup.databases.some((entry) => entry.path === pathname)).toBe(true);
+        expect(backup.sourceGenerations[pathname]).toEqual(expect.any(String));
+        const append = () => {
+          // This writer deliberately does not participate in Gateway maintenance.
+          const foreign = new DatabaseSync(pathname);
+          try {
+            foreign.exec("INSERT INTO evidence VALUES (99)");
+          } finally {
+            foreign.close();
+          }
         };
-        expect(
-          await restoreFailedUpdateDatabases({
+        if (change === "before-admission") {
+          append();
+        }
+        const maintenance = await beginDoctorMaintenance({
+          root: null,
+          options: { repair: true, nonInteractive: true },
+          runtime: { log() {}, error() {}, exit() {} },
+        });
+        try {
+          expect(maintenance).toBeDefined();
+          if (change === "during-maintenance") {
+            append();
+          }
+          await maintenance!.releaseState();
+          recordUpdateDatabaseWrites(backup, undefined, {
+            name: "doctor",
+            command: "doctor --fix",
+            cwd: state.stateDir,
+            durationMs: 0,
+            exitCode: 1,
+          });
+          const result: UpdateRunResult = {
+            status: "error",
+            mode: "npm",
+            steps: [],
+            durationMs: 0,
+          };
+          const restored = await restoreFailedUpdateDatabases({
             backup,
             result,
-            runId: "foreign-write",
+            runId: "final-restore",
             env: state.env,
             assertCurrent() {},
-          }),
-        ).toBe(false);
-        expect(result.reason).toBe("state-migrated-no-rollback");
-        expect(result.steps[0]?.stderrTail).toContain("run openclaw doctor from the candidate");
-        const preserved = new DatabaseSync(pathname, { readOnly: true });
-        try {
-          expect(preserved.prepare("SELECT value FROM evidence WHERE value = 99").get()).toEqual({
-            value: 99,
           });
+          expect(restored).toBe(change === "unchanged");
+          if (change !== "unchanged") {
+            expect(result.reason).toBe("state-migrated-no-rollback");
+            expect(backup.restoreRefusal).toContain(pathname);
+          }
+          const preserved = new DatabaseSync(pathname, { readOnly: true });
+          try {
+            expect(preserved.prepare("SELECT value FROM evidence ORDER BY value").all()).toEqual(
+              change === "unchanged" ? [{ value: 1 }] : [{ value: 1 }, { value: 99 }],
+            );
+          } finally {
+            preserved.close();
+          }
         } finally {
-          preserved.close();
+          await maintenance?.release();
         }
-      } finally {
-        await maintenance?.release();
-      }
-    },
-  );
-});
+      },
+    );
+  },
+);

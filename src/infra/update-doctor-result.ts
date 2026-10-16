@@ -7,17 +7,12 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { z } from "zod";
 import { ConfigMutationConflictError } from "../config/mutation-conflict.js";
-import { hasCommandProcessCleanupError } from "../process/exec-result.js";
 import { collectNestedErrorCandidates } from "./error-graph-internal.js";
-import { formatErrorMessage } from "./errors.js";
 import {
   resolvePreferredOpenClawTmpDir,
   type ResolvePreferredOpenClawTmpDirOptions,
 } from "./tmp-openclaw-dir.js";
-import type {
-  UpdateDatabaseGenerations,
-  UpdateDatabaseWriteReceipt,
-} from "./update-database-generations.js";
+import type { UpdateDatabaseGenerations } from "./update-database-generations.js";
 import {
   UpdateDoctorConfigChangeSchema,
   UpdateDoctorConfigWriteRefusalSchema,
@@ -176,79 +171,6 @@ export type UpdateDoctorWriteAuthority = {
     ref?: import("./update-recovery-baseline-capture.js").UpdateRecoveryBaselineRef;
   };
 };
-
-/** Receipts describe the caller's existing maintenance interval without owning its lifecycle. */
-export function createUpdateDoctorDatabaseWriteCapture(
-  input: UpdateDatabaseGenerations | undefined,
-  options: {
-    env: NodeJS.ProcessEnv;
-    root?: string;
-    signal: AbortSignal;
-    assertCurrent?: () => void;
-    warn: (message: string) => void;
-  },
-) {
-  if (!input) {
-    return undefined;
-  }
-  let expectedGenerations: UpdateDatabaseGenerations | undefined = { ...input };
-  let fromGenerations: UpdateDatabaseGenerations | undefined;
-  let unchanged = true;
-  let receipt: UpdateDatabaseWriteReceipt | undefined;
-  const read = async () => {
-    if (!expectedGenerations) {
-      return undefined;
-    }
-    let generations: UpdateDatabaseGenerations;
-    try {
-      const { readUpdateDatabaseGenerationsIsolated } = await import("./update-candidate-state.js");
-      generations = await readUpdateDatabaseGenerationsIsolated(
-        Object.keys(expectedGenerations),
-        options,
-      );
-    } catch (error) {
-      if (hasCommandProcessCleanupError(error)) {
-        throw error;
-      }
-      options.assertCurrent?.();
-      expectedGenerations = undefined;
-      receipt = undefined;
-      options.warn(
-        `Database write verification is unavailable; automatic database restoration cannot be confirmed: ${formatErrorMessage(error)}`,
-      );
-      return undefined;
-    }
-    options.assertCurrent?.();
-    return generations;
-  };
-  return {
-    get receipt() {
-      return receipt;
-    },
-    async admit() {
-      receipt = undefined;
-      const generations = await read();
-      if (generations && expectedGenerations) {
-        fromGenerations ??= generations;
-        // Earlier receipts or another process's writes must never become our baseline.
-        unchanged &&= Object.entries(expectedGenerations).every(
-          ([pathname, generation]) => generations[pathname] === generation,
-        );
-      }
-    },
-    async settle() {
-      const generations = await read();
-      if (generations && expectedGenerations) {
-        // Maintenance excludes Gateway writers, not independent SQLite writers.
-        // Without transaction attribution, even Doctor-time changes are unknown.
-        unchanged &&= Object.entries(expectedGenerations).every(
-          ([pathname, generation]) => generations[pathname] === generation,
-        );
-        receipt = { unchanged, fromGenerations, generations };
-      }
-    },
-  };
-}
 
 const doctorConfigWrites = new AsyncLocalStorage<{
   capture: DoctorConfigCapture;
