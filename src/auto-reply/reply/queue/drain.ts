@@ -4,7 +4,6 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { MediaImageLayout } from "../../../agents/embedded-agent-runner/run/prompt-image-metadata.js";
 import { runAgentHarnessBeforeMessageWriteHook } from "../../../agents/harness/hook-helpers.js";
-import { runOutsidePreparedModelRuntimePluginGenerationScope } from "../../../agents/prepared-model-runtime-generation-scope.js";
 import { normalizeChatType } from "../../../channels/chat-type.js";
 import { resolveSessionStorePathCore } from "../../../config/sessions.js";
 import { readSessionEntryReadOnlyInWorker } from "../../../config/sessions/session-entry-read-runtime.js";
@@ -15,8 +14,8 @@ import {
 import {
   getGatewayRestartDrainSignal,
   isGatewayRestartDrainError,
+  isGatewayRestartDraining,
   runWithGatewayDetachedWorkContinuation,
-  waitForGatewayRestartFenceSettlement,
 } from "../../../process/gateway-work-admission.js";
 import { defaultRuntime } from "../../../runtime.js";
 import {
@@ -65,14 +64,12 @@ import {
   trimSummaryElisionsToCap,
 } from "./state.js";
 import { consumeQueueSummaryDelivery } from "./summary-consumption.js";
-import { FollowupRunDeferredError, isFollowupRunAborted, type FollowupRun } from "./types.js";
-
-type InternalFollowupRun = FollowupRun & {
-  /** Keep admission state out of the public plugin-facing FollowupRun contract. */
-  currentTurnImagesPrepared?: true;
-  /** Admission-owned layout; fact indexes are relative to this run's media array. */
-  mediaImageLayout?: MediaImageLayout;
-};
+import {
+  FollowupRunDeferredError,
+  isFollowupRunAborted,
+  type FollowupRun,
+  type InternalFollowupRun,
+} from "./types.js";
 
 // Persists the most recent runFollowup callback per queue key so that
 // enqueueFollowupRun can restart a drain that finished and deleted the queue.
@@ -227,7 +224,7 @@ function renderCollectItemPrompt(item: FollowupRun, idx: number, prompt: string)
 }
 
 function collectQueuedPromptMedia(
-  items: FollowupRun[],
+  items: InternalFollowupRun[],
 ): Pick<FollowupRun, "images" | "imageOrder" | "media"> &
   Pick<InternalFollowupRun, "currentTurnImagesPrepared" | "mediaImageLayout"> {
   const images: NonNullable<FollowupRun["images"]> = [];
@@ -238,12 +235,11 @@ function collectQueuedPromptMedia(
   const currentTurnImagesPrepared = items.every(hasPreparedCurrentTurnImages);
   for (const item of items) {
     const mediaOffset = media.length;
-    const internalItem = item as InternalFollowupRun;
     images.push(...(item.images ?? []));
     imageOrder.push(...(item.imageOrder ?? []));
     if (currentTurnImagesPrepared) {
       const itemSlots: MediaImageLayout["slots"] =
-        internalItem.mediaImageLayout?.slots ?? item.imageOrder?.map((kind) => ({ kind })) ?? [];
+        item.mediaImageLayout?.slots ?? item.imageOrder?.map((kind) => ({ kind })) ?? [];
       mediaImageSlots.push(
         ...itemSlots.map((slot) =>
           slot.factIndex === undefined
@@ -252,7 +248,7 @@ function collectQueuedPromptMedia(
         ),
       );
       suppressedFactIndexes.push(
-        ...(internalItem.mediaImageLayout?.suppressedFactIndexes ?? []).map(
+        ...(item.mediaImageLayout?.suppressedFactIndexes ?? []).map(
           (factIndex) => factIndex + mediaOffset,
         ),
       );
@@ -343,7 +339,7 @@ function createCollectUserTurnTranscriptRecorder(items: FollowupRun[]) {
     );
     const timestamp = messages.reduce<number | undefined>((latest, message) => {
       const candidate = message?.timestamp;
-      return typeof candidate === "number" && (latest === undefined || candidate > latest)
+      return candidate !== undefined && (latest === undefined || candidate > latest)
         ? candidate
         : latest;
     }, undefined);
@@ -890,7 +886,7 @@ export function scheduleFollowupDrain(
   const drainQueuedFollowups = async (): Promise<void> => {
     drainStarted = true;
     let waitingForSteer = false;
-    let databaseAdmissionClosed = false;
+    let waitingForFreshKick = false;
     try {
       const collectState = { forceIndividualCollect: false };
       while (queue.items.length > 0 || queue.droppedCount > 0) {
@@ -1044,17 +1040,14 @@ export function scheduleFollowupDrain(
       }
     } catch (err) {
       queue.lastEnqueuedAt = Date.now();
-      // A closing or retired database cannot serve this drain. Keep the input
-      // for a fresh owner signal or restart recovery, without a retry loop.
-      databaseAdmissionClosed = err instanceof AgentDatabaseExecutionAdmissionClosedError;
-      if (!(err instanceof FollowupRunDeferredError)) {
-        if (isGatewayRestartDrainError(err)) {
-          // A reversible signal fence may reopen. One-way abort synchronously
-          // retires the queue above; rollback leaves it here for normal retry.
-          await waitForGatewayRestartFenceSettlement();
-        } else {
-          defaultRuntime.error?.(`followup queue drain failed for ${key}: ${String(err)}`);
-        }
+      const restartDrainError = isGatewayRestartDrainError(err);
+      // Closed admission waits for a normal queue kick or restart recovery.
+      // A rolled-back restart does not need a separate automatic wakeup.
+      waitingForFreshKick =
+        err instanceof AgentDatabaseExecutionAdmissionClosedError ||
+        (restartDrainError && isGatewayRestartDraining());
+      if (!(err instanceof FollowupRunDeferredError) && !restartDrainError) {
+        defaultRuntime.error?.(`followup queue drain failed for ${key}: ${String(err)}`);
       }
     } finally {
       // A recovery or explicit clear can replace this generation while its
@@ -1070,28 +1063,23 @@ export function scheduleFollowupDrain(
         } else if (!hasPendingQueueWork) {
           FOLLOWUP_QUEUES.delete(key);
           clearFollowupDrainCallback(key);
-        } else if (!databaseAdmissionClosed || queue.rescheduleRequested) {
+        } else if (!waitingForFreshKick || queue.rescheduleRequested) {
           scheduleFollowupDrain(key, effectiveRunFollowup);
         }
       }
     }
   };
   // Queue drains outlive their enqueue request across debounce and retries.
-  // Give the detached chain its own root so inherited request admission cannot go stale.
-  // Queued turns re-admit on the generation current at drain time: the detached
-  // drain runs outside any ambient prepared-generation scope, so a parked turn
-  // never inherits the predecessor run's replaced generation. The drain also owns
-  // a fresh async work scope: drained turns run tracked agent work that must keep
-  // working after the triggering request's scope has closed.
-  void runWithGatewayDetachedWorkContinuation(
-    () => runOutsidePreparedModelRuntimePluginGenerationScope(drainQueuedFollowups),
-    "session:followup-drain",
-  ).catch((err: unknown) => {
-    // Once entered, the drain's finally alone owns rescheduling.
-    if (!drainStarted && FOLLOWUP_QUEUES.get(key) === queue) {
-      queue.draining = false;
-    }
-    defaultRuntime.error?.(`followup queue drain admission failed for ${key}: ${String(err)}`);
-  });
+  // The detached root and fresh async scope keep tracked work alive after
+  // the triggering request's scope closes, and join it at ordinary shutdown.
+  void runWithGatewayDetachedWorkContinuation(drainQueuedFollowups, "session:followup-drain").catch(
+    (err: unknown) => {
+      // Once entered, the drain's finally alone owns rescheduling.
+      if (!drainStarted && FOLLOWUP_QUEUES.get(key) === queue) {
+        queue.draining = false;
+      }
+      defaultRuntime.error?.(`followup queue drain admission failed for ${key}: ${String(err)}`);
+    },
+  );
 }
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

@@ -68,7 +68,7 @@ describe("typing persistence bug fix", () => {
   });
 
   it("keeps timer ticks behind an unfinished initial typing request", async () => {
-    const pending = createDeferred<void>();
+    const pending = createDeferred();
     onReplyStartSpy.mockReturnValueOnce(pending.promise);
 
     await controller.startTypingLoop();
