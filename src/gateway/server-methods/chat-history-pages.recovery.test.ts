@@ -133,9 +133,11 @@ describe("historical page recovery context", () => {
           (message) => readRunFailureNotice(message)?.runId === "startup-run",
         );
         expect(failure).toBeDefined();
-        expect(failure?.content).toContain(title);
-        expect(failure?.content).not.toContain(diagnostic);
-        expect(failure?.details).toEqual({ diagnostic: expect.stringContaining(diagnostic) });
+        expect(failure).toHaveProperty("content", expect.stringContaining(title));
+        expect(failure).toHaveProperty("content", expect.not.stringContaining(diagnostic));
+        expect(failure).toHaveProperty("details", {
+          diagnostic: expect.stringContaining(diagnostic),
+        });
         const notice = readRunFailureNotice(failure);
         expect(notice?.summary).toContain(title);
         expect(notice?.summary).toContain(diagnostic);
