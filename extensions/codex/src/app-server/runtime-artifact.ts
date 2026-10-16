@@ -8,6 +8,7 @@ import { isPathInside, sha256File } from "openclaw/plugin-sdk/file-access-runtim
 import { resolveGlobalSingleton } from "openclaw/plugin-sdk/global-singleton";
 import { resolveWindowsExecutablePath } from "openclaw/plugin-sdk/windows-spawn";
 import type { CodexAppServerClient, CodexAppServerRuntimeIdentity } from "./client.js";
+import { CODEX_APP_SERVER_COMMAND_SOURCES } from "./config-contracts.shared.js";
 import type { CodexAppServerStartOptions } from "./config.js";
 import { isCodexAppServerProxyLaunch } from "./launch-args.js";
 import { resolvePackagedCodexNativeCommand } from "./managed-binary.js";
@@ -633,7 +634,7 @@ function validateFilesystemDescriptorShape(descriptor: CodexRuntimeFilesystemDes
   }
   if (
     descriptor.commandSource !== undefined &&
-    !["managed", "resolved-managed", "config", "env"].includes(descriptor.commandSource)
+    !CODEX_APP_SERVER_COMMAND_SOURCES.some((source) => source === descriptor.commandSource)
   ) {
     throw new Error("Invalid Codex runtime command source");
   }

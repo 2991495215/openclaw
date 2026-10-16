@@ -40,6 +40,7 @@ import {
   type AcceptedSessionSpawn,
   type AgentHarnessToolExecutionSnapshot,
 } from "openclaw/plugin-sdk/agent-harness-tool-runtime";
+import type { ReplyToMode } from "openclaw/plugin-sdk/config-contracts";
 import { emitTrustedDiagnosticEvent } from "openclaw/plugin-sdk/diagnostic-runtime";
 import type { RemoteWorkspaceFileReader } from "openclaw/plugin-sdk/file-access-runtime";
 import {
@@ -100,7 +101,7 @@ type CodexDynamicToolHookContext = CodexDynamicToolHookContextBase & {
   currentMessagingTarget?: string;
   currentMessageId?: string | number;
   currentThreadId?: string;
-  replyToMode?: "off" | "first" | "all" | "batched";
+  replyToMode?: ReplyToMode;
   hasRepliedRef?: { value: boolean };
   sourceReplyDeliveryMode?: EmbeddedRunAttemptParams["sourceReplyDeliveryMode"];
 };

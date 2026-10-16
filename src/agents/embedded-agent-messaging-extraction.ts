@@ -10,6 +10,7 @@ import {
 import type { ReplyMediaAttachment } from "../auto-reply/reply-payload.js";
 import { getChannelPlugin, normalizeChannelId } from "../channels/plugins/index.js";
 import type { ChannelMessageActionName } from "../channels/plugins/types.public.js";
+import type { ReplyToMode } from "../config/types.base.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isDeliveredCurrentSourceReply } from "../infra/outbound/source-reply-mirror.js";
 import { normalizeTargetForProvider } from "../infra/outbound/target-normalization.js";
@@ -230,7 +231,7 @@ export function extractMessagingToolSend(
     currentMessagingTarget?: string;
     currentThreadId?: string;
     currentMessageId?: string | number;
-    replyToMode?: "off" | "first" | "all" | "batched";
+    replyToMode?: ReplyToMode;
     hasRepliedRef?: { value: boolean };
   },
 ): MessagingToolSend | undefined {

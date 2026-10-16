@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   UPDATE_NPM_ERROR_CODES,
+  UPDATE_INSTALLATION_METHODS,
+  UPDATE_ROLLBACK_STATUSES,
   UPDATE_RUN_DRIVER_LIMIT,
   UPDATE_RUN_PHASES,
   UPDATE_RUN_STATUSES,
@@ -140,7 +142,7 @@ export const UpdateFailureFactSchema = z.object({
 });
 
 const UpdateRollbackOutcomeSchema = z.object({
-  status: z.enum(["not-needed", "not-attempted", "succeeded", "failed"]),
+  status: z.enum(UPDATE_ROLLBACK_STATUSES),
   reason: z.string().max(512),
 });
 
@@ -270,10 +272,7 @@ export const UpdateRunRecordSchema = z.object({
     kind: z.enum(["package", "git"]).optional(),
     version: text.optional(),
     sha: text.optional(),
-    installationMethod: z
-      .enum(["git-checkout", "npm-global", "pnpm-global", "bun-global", "managed-service", "ocm"])
-      .nullable()
-      .optional(),
+    installationMethod: z.enum(UPDATE_INSTALLATION_METHODS).nullable().optional(),
   }),
   before: version,
   after: version,

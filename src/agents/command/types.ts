@@ -8,6 +8,7 @@ import type {
 } from "../../auto-reply/get-reply-options.types.js";
 import type { ReplyPayload } from "../../auto-reply/reply-payload.js";
 import type { ChannelOutboundTargetMode } from "../../channels/plugins/types.public.js";
+import type { ReplyToMode } from "../../config/types.base.js";
 import type { GatewayUiCommandTarget } from "../../gateway/ui-command-target.types.js";
 import type { ImageContent as LlmImageContent } from "../../llm/types.js";
 import type { MediaFact } from "../../media/media-facts.js";
@@ -52,7 +53,7 @@ export type AgentRunContext = {
   currentThreadTs?: string;
   currentInboundAudio?: boolean;
   senderId?: string | null;
-  replyToMode?: "off" | "first" | "all" | "batched";
+  replyToMode?: ReplyToMode;
   hasRepliedRef?: { value: boolean };
 };
 

@@ -1,6 +1,7 @@
 import { formatCliCommand } from "../../../cli/command-format.js";
 import {
   isRecord,
+  LEGACY_TTS_PROVIDER_KEYS,
   visitAgentConfigScopes,
   visitChannelEntries,
 } from "./legacy-config-record-shared.js";
@@ -12,7 +13,7 @@ export function findRetiredConfigUpgradeRequirement(
     return undefined;
   }
   const retired: string[] = [];
-  const checkKeys = (scope: unknown, configPath: string, keys: string[]) => {
+  const checkKeys = (scope: unknown, configPath: string, keys: readonly string[]) => {
     if (!isRecord(scope)) {
       return;
     }
@@ -137,7 +138,7 @@ export function findRetiredConfigUpgradeRequirement(
   const beforeDiscord = retired.length;
   visitChannelEntries(config, "discord", (scope, configPath) => {
     const voice = isRecord(scope.voice) ? scope.voice : {};
-    checkKeys(voice.tts, `${configPath}.voice.tts`, ["openai", "elevenlabs", "microsoft", "edge"]);
+    checkKeys(voice.tts, `${configPath}.voice.tts`, LEGACY_TTS_PROVIDER_KEYS);
     for (const [guildId, guild] of Object.entries(isRecord(scope.guilds) ? scope.guilds : {})) {
       const guildChannels = isRecord(guild) && isRecord(guild.channels) ? guild.channels : {};
       checkEntryKeys(guildChannels, `${configPath}.guilds.${guildId}.channels`, [

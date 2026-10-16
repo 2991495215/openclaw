@@ -1,6 +1,7 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { resolveAgentAssistantTurnId } from "../../../../packages/agent-core/src/tool-execution-context.js";
 import type { SourceReplyDeliveryMode } from "../../../auto-reply/get-reply-options.types.js";
+import type { ReplyToMode } from "../../../config/types.base.js";
 import {
   isDeliveredMessageToolOnlySourceReplyResult,
   resolveMessageToolSourceReplyFinal,
@@ -26,7 +27,7 @@ type MessageToolTerminalRoute = Omit<
 > & {
   sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
   currentMessageId?: string | number;
-  replyToMode?: "off" | "first" | "all" | "batched";
+  replyToMode?: ReplyToMode;
   hasRepliedRef?: { value: boolean };
 };
 

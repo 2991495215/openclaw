@@ -29,7 +29,7 @@ const REALTIME_VOICE_CONSULT_QUESTION_STOPWORDS = new Set([
   "you",
 ]);
 
-const DEFAULT_REALTIME_VOICE_CONSULT_QUESTION_KEYS = ["question", "prompt", "query", "task"];
+export const DEFAULT_REALTIME_VOICE_CONSULT_QUESTION_KEYS = ["question", "prompt", "query", "task"];
 const DEFAULT_REALTIME_VOICE_SPEAKABLE_RESULT_KEYS = ["text", "result", "output", "error"];
 const DEFAULT_REALTIME_VOICE_SPEAKABLE_RESULT_MAX_CHARS = 1_800;
 

@@ -27,7 +27,15 @@ export type MentionSource =
   | "command_bypass"
   | "none";
 
-export type InboundSourceModality = "text" | "voice" | "audio" | "image" | "video" | "document";
+export const INBOUND_SOURCE_MODALITIES = [
+  "text",
+  "voice",
+  "audio",
+  "image",
+  "video",
+  "document",
+] as const;
+export type InboundSourceModality = (typeof INBOUND_SOURCE_MODALITIES)[number];
 
 export const INTERNAL_TURN_SOURCES = [
   "heartbeat",

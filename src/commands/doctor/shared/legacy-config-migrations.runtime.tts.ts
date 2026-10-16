@@ -6,9 +6,12 @@ import {
 } from "../../../config/legacy.shared.js";
 import { mergeMissing } from "../../../config/merge-missing.js";
 import { isBlockedObjectKey } from "../../../infra/prototype-keys.js";
-import { moveLegacyConfigKey, visitAgentEntries } from "./legacy-config-record-shared.js";
+import {
+  LEGACY_TTS_PROVIDER_KEYS,
+  moveLegacyConfigKey,
+  visitAgentEntries,
+} from "./legacy-config-record-shared.js";
 
-const LEGACY_TTS_PROVIDER_KEYS = ["openai", "elevenlabs", "microsoft", "edge"] as const;
 const CHANNEL_ROOT_TTS_UNSUPPORTED_IDS = new Set(["discord"]);
 
 function isLegacyEdgeProviderId(value: unknown): boolean {
