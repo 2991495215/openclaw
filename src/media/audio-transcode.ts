@@ -1,6 +1,7 @@
 import path from "node:path";
 import { tempWorkspaceSync, withTempWorkspace } from "@openclaw/fs-safe/temp";
 import { basenameFromAnyPath } from "@openclaw/media-core/file-name";
+import { coerceErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import { writeExternalFileWithinRoot } from "../infra/fs-safe.js";
 import { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
 import { runCommandWithTimeout } from "../process/exec.js";
@@ -169,7 +170,7 @@ export async function transcodeAudioBuffer(params: {
     }
     return { ok: true, buffer: tmp.read(`out.${target}`) };
   } catch (err) {
-    return { ok: false, reason: "transcoder-failed", detail: (err as Error).message };
+    return { ok: false, reason: "transcoder-failed", detail: coerceErrorMessage(err) };
   } finally {
     tmp.cleanup();
   }
@@ -181,16 +182,12 @@ function normalizeContainerExt(ext: string): string | undefined {
 }
 
 async function runAfconvert(args: string[], timeoutMs: number): Promise<string | undefined> {
-  try {
-    const result = await runCommandWithTimeout(["/usr/bin/afconvert", ...args], {
-      maxOutputBytes: 1024,
-      timeoutMs,
-    });
-    if (result.termination === "timeout") {
-      return `timeout-${timeoutMs}ms`;
-    }
-    return result.code === 0 ? undefined : `exit-${result.code ?? "unknown"}`;
-  } catch (err) {
-    return err instanceof Error ? err.message : String(err);
+  const result = await runCommandWithTimeout(["/usr/bin/afconvert", ...args], {
+    maxOutputBytes: 1024,
+    timeoutMs,
+  });
+  if (result.termination === "timeout") {
+    return `timeout-${timeoutMs}ms`;
   }
+  return result.code === 0 ? undefined : `exit-${result.code ?? "unknown"}`;
 }
