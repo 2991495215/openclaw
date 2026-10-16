@@ -128,7 +128,7 @@ afterEach(() => {
 });
 
 describe("authenticated GitHub identity sync", () => {
-  it("adopts trusted Factory account metadata through the canonical profile worker and preserves a chosen name", async () => {
+  it("adopts trusted Enterprise GitHub account metadata through the canonical profile worker and preserves a chosen name", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const params: Parameters<typeof createAuthenticatedGitHubIdentitySync>[0] = {
         authResult: { ok: true, method: "trusted-proxy", user: "github:ghe.example.test:101" },
@@ -139,7 +139,7 @@ describe("authenticated GitHub identity sync", () => {
       const sync = createAuthenticatedGitHubIdentitySync(params);
       assert(sync);
       const result = await sync();
-      expect(result.factory).toEqual({ accountId: 101, login: "ada" });
+      expect(result.enterprise).toEqual({ accountId: 101, login: "ada" });
       expect(getUserProfileListItem(result.profileId)).toMatchObject({ displayName: "Ada" });
       setDisplayName(result.profileId, "Chosen name");
       const nextSync = createAuthenticatedGitHubIdentitySync({

@@ -40,13 +40,13 @@ export type CachedGitHubIdentityBinding = { accountId: number; email: string } |
 
 export type StoredGitHubIdentity = { accountId: number; login: string };
 
-export type FactoryGitHubIdentity = StoredGitHubIdentity & {
+export type EnterpriseGitHubIdentity = StoredGitHubIdentity & {
   host: string;
   verifiedEmail?: string;
 };
 export type UserProfileGitHubAttribution = Map<
   string,
-  StoredGitHubIdentity | FactoryGitHubIdentity | null
+  StoredGitHubIdentity | EnterpriseGitHubIdentity | null
 >;
 
 export type UserProfileGitHubAttributionRead = {

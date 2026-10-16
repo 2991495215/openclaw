@@ -1,18 +1,18 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { executeSqliteQuerySync } from "../infra/kysely-sync.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
-import { parseFactoryGitHubPrincipal } from "../shared/factory-github-principal.js";
+import { parseEnterpriseGitHubPrincipal } from "../shared/enterprise-github-principal.js";
 import { normalizeVerifiedEmail } from "../shared/verified-email.js";
 import { normalizeGitHubLogin } from "../utils/github-login.js";
 import { tableHasColumn } from "./openclaw-state-db-schema-helpers.js";
 import { userProfilesDb } from "./user-profiles-internal.js";
-import type { FactoryGitHubIdentity } from "./user-profiles.types.js";
+import type { EnterpriseGitHubIdentity } from "./user-profiles.types.js";
 
-export function selectFactoryGitHubIdentities(
+export function selectEnterpriseGitHubIdentities(
   db: EngineConnection,
   profileIds?: readonly string[],
   host?: string,
-): Map<string, FactoryGitHubIdentity> {
+): Map<string, EnterpriseGitHubIdentity> {
   if (
     profileIds?.length === 0 ||
     !tableHasColumn(db, "user_profile_identities", "verified_email_json")
@@ -46,10 +46,10 @@ export function selectFactoryGitHubIdentities(
         ),
     ).rows.map((row) => [row.email, row]),
   );
-  const identities = new Map<string, FactoryGitHubIdentity>();
+  const identities = new Map<string, EnterpriseGitHubIdentity>();
   const ambiguous = new Set<string>();
   for (const row of rows) {
-    const principal = parseFactoryGitHubPrincipal(`${row.provider}:${row.subject}`);
+    const principal = parseEnterpriseGitHubPrincipal(`${row.provider}:${row.subject}`);
     const accountId = principal?.accountId ?? Number.NaN;
     const login = row.canonical_login ? normalizeGitHubLogin(row.canonical_login) : undefined;
     let proof: unknown;
@@ -94,7 +94,7 @@ export function selectFactoryGitHubIdentities(
 }
 
 /** Saved consent survives explicit merge chains even when credit needs fresh sign-in. */
-export function selectFactoryGitHubProfileIdsForMerge(
+export function selectEnterpriseGitHubProfileIdsForMerge(
   db: EngineConnection,
   profileIds: readonly string[],
 ): Set<string> {

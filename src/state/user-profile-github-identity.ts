@@ -16,13 +16,13 @@ import type { OpenClawStateReadCommand } from "./openclaw-state-read.types.js";
 import { captureOpenClawStateWorkerContext } from "./openclaw-state-worker-context.js";
 import { deleteUserPreference, selectUserPreferenceValues } from "./user-preferences.store.js";
 import {
+  selectEnterpriseGitHubIdentities,
+  selectEnterpriseGitHubProfileIdsForMerge,
+} from "./user-profile-enterprise-github-identity.js";
+import {
   captureUserProfileAuthorityRead,
   publishUserProfileAuthorityChange,
 } from "./user-profile-events.js";
-import {
-  selectFactoryGitHubIdentities,
-  selectFactoryGitHubProfileIdsForMerge,
-} from "./user-profile-factory-github-identity.js";
 import type { UserProfileMutationContext } from "./user-profile-mutation.js";
 import {
   selectProfileDisplayEntries,
@@ -40,7 +40,7 @@ import type {
   UserProfileGitHubAttribution,
   UserProfileGitHubAttributionRead,
   UserProfileRoleAuthority,
-  FactoryGitHubIdentity,
+  EnterpriseGitHubIdentity,
 } from "./user-profiles.types.js";
 
 const GITHUB_PROVIDER = "github";
@@ -184,6 +184,10 @@ export function selectProfileAccessEntries(
     return rows;
   }
   const identities = selectStoredGitHubIdentities(db, profileIds);
+  const githubIdentities = projectUserProfileGitHubIdentities(
+    identities,
+    selectEnterpriseGitHubIdentities(db, profileIds),
+  );
   return rows.map(([id, row]) => {
     const identity = identities.get(id);
     const accounts = identity?.accounts;
@@ -194,9 +198,9 @@ export function selectProfileAccessEntries(
             ...row,
             githubAccountIds: accounts.map(({ accountId }) => accountId),
             githubLogin: identity?.primary?.login ?? null,
-            githubIdentity: identity?.primary ? projectGitHubIdentity(identity.primary) : null,
+            githubIdentity: githubIdentities.get(id) ?? null,
           }
-        : row,
+        : { ...row, githubIdentity: githubIdentities.get(id) ?? null },
     ];
   });
 }
@@ -254,14 +258,23 @@ export function selectUserProfileGitHubIdentities(
   db: EngineConnection,
   profileIds?: readonly string[],
 ): Map<string, UserProfileGitHubIdentity> {
+  return projectUserProfileGitHubIdentities(
+    selectStoredGitHubIdentities(db, profileIds),
+    selectEnterpriseGitHubIdentities(db, profileIds),
+  );
+}
+
+function projectUserProfileGitHubIdentities(
+  publicIdentities: ReturnType<typeof selectStoredGitHubIdentities>,
+  enterpriseIdentities: Map<string, EnterpriseGitHubIdentity>,
+): Map<string, UserProfileGitHubIdentity> {
   const identities = new Map<string, UserProfileGitHubIdentity>();
-  const publicIdentities = selectStoredGitHubIdentities(db, profileIds);
   for (const [profileId, { primary }] of publicIdentities) {
     if (primary) {
       identities.set(profileId, projectGitHubIdentity(primary));
     }
   }
-  for (const [profileId, identity] of selectFactoryGitHubIdentities(db, profileIds)) {
+  for (const [profileId, identity] of enterpriseIdentities) {
     if (!publicIdentities.has(profileId)) {
       identities.set(profileId, {
         host: identity.host,
@@ -313,15 +326,15 @@ function resolveUserProfileGitHubAttributionInDatabase(
   );
   const canonicalIds = [...new Set(canonicalBySource.values())];
   const identities = selectStoredGitHubIdentities(db, canonicalIds);
-  const factory =
+  const enterprise =
     host !== "github.com"
-      ? selectFactoryGitHubIdentities(db, canonicalIds, host)
-      : new Map<string, FactoryGitHubIdentity>();
+      ? selectEnterpriseGitHubIdentities(db, canonicalIds, host)
+      : new Map<string, EnterpriseGitHubIdentity>();
   const preferences = selectUserPreferenceValues(db, canonicalIds, GIT_COAUTHOR_PREFERENCE_KEY);
   return {
     identities: new Map(
       [...canonicalBySource].map(([sourceId, canonicalId]) => {
-        const enterpriseIdentity = factory.get(canonicalId);
+        const enterpriseIdentity = enterprise.get(canonicalId);
         const identity =
           host !== "github.com"
             ? enterpriseIdentity?.verifiedEmail
@@ -430,12 +443,12 @@ export function prepareUserProfileGitHubMerge(
     (survivingSourceProfileId
       ? identities.get(survivingSourceProfileId)?.primary?.accountId
       : undefined);
-  const factoryIdentities = selectFactoryGitHubProfileIdsForMerge(db, sourceProfileIds);
+  const enterpriseIdentities = selectEnterpriseGitHubProfileIdsForMerge(db, sourceProfileIds);
   for (const sourceProfileId of sourceProfileIds) {
     const sourceIdentity = identities.get(sourceProfileId)?.primary;
     // Retained enterprise accounts keep consent even while merged bindings need fresh sign-in.
     if (
-      !factoryIdentities.has(sourceProfileId) &&
+      !enterpriseIdentities.has(sourceProfileId) &&
       (!sourceIdentity || sourceIdentity.accountId !== survivingAccountId)
     ) {
       deleteUserPreference(db, sourceProfileId, GIT_COAUTHOR_PREFERENCE_KEY);

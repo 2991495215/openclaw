@@ -27,7 +27,7 @@ import { identifiedClient } from "./server-methods/sessions-sharing.test-support
 import type { RespondFn } from "./server-methods/types.js";
 import { usersHandlers } from "./server-methods/users.js";
 
-function factorySync(email?: string, host = "ghe.example.test") {
+function enterpriseSync(email?: string, host = "ghe.example.test") {
   return expectDefined(
     createAuthenticatedGitHubIdentitySync({
       authResult: { ok: true, method: "trusted-proxy", user: `github:${host}:101` },
@@ -39,7 +39,7 @@ function factorySync(email?: string, host = "ghe.example.test") {
         ...(email ? { "x-factory-github-email": email } : {}),
       },
     }),
-    "Factory identity sync",
+    "Enterprise GitHub identity sync",
   );
 }
 
@@ -62,11 +62,11 @@ it.each(["ghe.example.test", "code.example.test"])(
         });
         const profile = ensureProfileForEmail(principal);
         setUserPreferences(profile.id, { [GIT_COAUTHOR_PREFERENCE_KEY]: true });
-        const sync = factorySync("ada@enterprise.example", host);
+        const sync = enterpriseSync("ada@enterprise.example", host);
         expect((await sync()).profileId).toBe(profile.id);
         const client = {
           ...identifiedClient(profile.id),
-          connId: "factory-credit",
+          connId: "enterprise-credit",
           authenticatedGitHubIdentitySync: sync,
         };
         const respond = vi.fn<RespondFn>();
@@ -88,10 +88,28 @@ it.each(["ghe.example.test", "code.example.test"])(
           }),
         });
         expect(validateUsersSelfResult(respond.mock.calls[0]?.[1])).toBe(true);
+        respond.mockClear();
+        await expectDefined(
+          usersHandlers["users.list"],
+          "users.list handler",
+        )({ ...request, client });
+        expect(respond).toHaveBeenCalledWith(true, {
+          profiles: expect.arrayContaining([
+            expect.objectContaining({
+              id: profile.id,
+              githubIdentity: expect.objectContaining({ host, login: "enterprise-ada" }),
+            }),
+          ]),
+        });
+        expect(JSON.stringify(respond.mock.calls[0]?.[1])).not.toContain("ada@enterprise.example");
         expect((await prepareUserProfileRoleAuthority(profile.id))?.githubLogin).toBeNull();
         expect(getUserProfileListItem(publicProfile.id).githubIdentity?.login).toBe("public-ada");
-        const scope = { agentId: "main", env: state.env, sessionKey: "agent:main:factory-credit" };
-        await upsertSessionEntryCore(scope, { sessionId: "factory-credit", updatedAt: 1 });
+        const scope = {
+          agentId: "main",
+          env: state.env,
+          sessionKey: "agent:main:enterprise-credit",
+        };
+        await upsertSessionEntryCore(scope, { sessionId: "enterprise-credit", updatedAt: 1 });
         for (const id of [profile.id, publicProfile.id]) {
           recordSessionParticipant(scope, {
             identity: { type: "profile", id },
@@ -113,7 +131,7 @@ it.each(["ghe.example.test", "code.example.test"])(
           row: {
             request_id: "enterprise-credit",
             agent_id: "main",
-            session_id: "factory-credit",
+            session_id: "enterprise-credit",
             session_key: scope.sessionKey,
             branch: "work",
             title: "Prepared change",
@@ -142,12 +160,12 @@ it.each(["ghe.example.test", "code.example.test"])(
         expect(prepared.isCurrent()).toBe(false);
         expect(() => content.assertAction()).toThrow("contributor credit changed");
         expect(await resolveGitCoauthorAttribution(params)).toBeUndefined();
-        await factorySync("ada@enterprise.example", host)();
+        await enterpriseSync("ada@enterprise.example", host)();
         expect(getUserPreferences(profile.id, [GIT_COAUTHOR_PREFERENCE_KEY])).toEqual({
           [GIT_COAUTHOR_PREFERENCE_KEY]: false,
         });
         setUserPreferences(profile.id, { [GIT_COAUTHOR_PREFERENCE_KEY]: true });
-        await factorySync(undefined, host)();
+        await enterpriseSync(undefined, host)();
         expect(getUserProfileListItem(profile.id).githubIdentity?.login).toBe("enterprise-ada");
         expect(await resolveGitCoauthorAttribution(params)).toBeUndefined();
         expect(getUserPreferences(profile.id, [GIT_COAUTHOR_PREFERENCE_KEY])).toEqual({
@@ -175,14 +193,14 @@ it("requires fresh sign-in after historical evidence or a principal alias move w
       JSON.stringify({ email: "old@example.test", profileId: profile.id }),
     );
     expect(getUserProfileListItem(profile.id).githubIdentity).toBeNull();
-    await factorySync("ada@enterprise.example")();
+    await enterpriseSync("ada@enterprise.example")();
     expect(getUserProfileListItem(profile.id).githubIdentity?.login).toBe("enterprise-ada");
     const other = ensureProfileForEmail("other@example.test");
     linkEmail(principal, other.id);
     expect(getUserProfileListItem(other.id).githubIdentity).toBeNull();
     linkEmail(principal, profile.id);
     expect(getUserProfileListItem(profile.id).githubIdentity).toBeNull();
-    await factorySync("ada@enterprise.example")();
+    await enterpriseSync("ada@enterprise.example")();
     expect(getUserProfileListItem(profile.id).githubIdentity?.login).toBe("enterprise-ada");
     expect(getUserProfileListItem(profile.id).emails).not.toContain("ada@enterprise.example");
     expect(getUserPreferences(profile.id, [GIT_COAUTHOR_PREFERENCE_KEY])).toEqual({});
@@ -196,20 +214,23 @@ it.each([1, 2])(
       { scenario: "minimal", prepareProfileCatalog: true },
       async (state) => {
         await captureRuntimeConfigAsyncReader()();
-        const source = await factorySync("ada@enterprise.example")();
+        const source = await enterpriseSync("ada@enterprise.example")();
         if (hostCount === 2) {
-          const secondary = await factorySync("ada@other.example", "code.example.test")();
+          const secondary = await enterpriseSync("ada@other.example", "code.example.test")();
           await mergeCanonicalUserProfiles(secondary.profileId, source.profileId);
-          await factorySync("ada@other.example", "code.example.test")();
+          await enterpriseSync("ada@other.example", "code.example.test")();
         }
         setUserPreferences(source.profileId, { [GIT_COAUTHOR_PREFERENCE_KEY]: false });
         const target = ensureProfileForEmail("survivor@example.test");
         const scope = {
           agentId: "main",
           env: state.env,
-          sessionKey: "agent:main:merged-factory-credit",
+          sessionKey: "agent:main:merged-enterprise-credit",
         };
-        await upsertSessionEntryCore(scope, { sessionId: "merged-factory-credit", updatedAt: 1 });
+        await upsertSessionEntryCore(scope, {
+          sessionId: "merged-enterprise-credit",
+          updatedAt: 1,
+        });
         recordSessionParticipant(scope, {
           identity: { type: "profile", id: source.profileId },
           promptedAt: 1,
@@ -231,7 +252,7 @@ it.each([1, 2])(
             config: { gateway: { github: { host: "ghe.example.test" } } },
           }),
         ).toBeUndefined();
-        expect((await factorySync("ada@enterprise.example")()).profileId).toBe(finalTarget.id);
+        expect((await enterpriseSync("ada@enterprise.example")()).profileId).toBe(finalTarget.id);
         expect(
           await resolveGitCoauthorAttribution({
             ...scope,
@@ -248,13 +269,13 @@ it("retains a public primary identity and host-selected credit after linking an 
     { scenario: "minimal", prepareProfileCatalog: true },
     async (state) => {
       await captureRuntimeConfigAsyncReader()();
-      const enterprise = await factorySync("ada@enterprise.example")();
+      const enterprise = await enterpriseSync("ada@enterprise.example")();
       const publicProfile = syncGitHubIdentity({
         identity: { accountId: 101, login: "public-ada" },
         authenticationAlias: { kind: "email", email: "public@example.test" },
       });
       await mergeCanonicalUserProfiles(enterprise.profileId, publicProfile.id);
-      expect((await factorySync("ada@enterprise.example")()).profileId).toBe(publicProfile.id);
+      expect((await enterpriseSync("ada@enterprise.example")()).profileId).toBe(publicProfile.id);
       expect(getUserProfileListItem(publicProfile.id).githubIdentity).toEqual({
         login: "public-ada",
         profileUrl: "https://github.com/public-ada",
@@ -263,9 +284,9 @@ it("retains a public primary identity and host-selected credit after linking an 
       const scope = {
         agentId: "main",
         env: state.env,
-        sessionKey: "agent:main:mixed-factory-credit",
+        sessionKey: "agent:main:mixed-enterprise-credit",
       };
-      await upsertSessionEntryCore(scope, { sessionId: "mixed-factory-credit", updatedAt: 1 });
+      await upsertSessionEntryCore(scope, { sessionId: "mixed-enterprise-credit", updatedAt: 1 });
       recordSessionParticipant(scope, {
         identity: { type: "profile", id: publicProfile.id },
         promptedAt: 1,

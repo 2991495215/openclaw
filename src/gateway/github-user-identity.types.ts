@@ -2,6 +2,6 @@
 type AuthenticatedGitHubIdentitySyncResult = {
   profileId: string;
   updatedAt: number;
-  factory?: { accountId: number; login: string; avatarUrl?: string };
+  enterprise?: { accountId: number; login: string; avatarUrl?: string };
 };
 export type AuthenticatedGitHubIdentitySync = () => Promise<AuthenticatedGitHubIdentitySyncResult>;

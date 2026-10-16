@@ -1,7 +1,7 @@
 import { GATEWAY_OWNER_PROFILE_ID } from "../../packages/gateway-protocol/src/schema/user-profile-constants.js";
 import { executeSqliteQuerySync, executeSqliteQueryTakeFirstSync } from "../infra/kysely-sync.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
-import { parseFactoryGitHubPrincipal } from "../shared/factory-github-principal.js";
+import { parseEnterpriseGitHubPrincipal } from "../shared/enterprise-github-principal.js";
 import { normalizeVerifiedEmail } from "../shared/verified-email.js";
 import { normalizeGitHubLogin } from "../utils/github-login.js";
 import { ensureProfileForEmailInDatabase } from "./user-profile-email.kernel.js";
@@ -19,8 +19,8 @@ import { userProfilesDb } from "./user-profiles-internal.js";
 import { ensureUserProfilesSchema, UserProfileOwnerError } from "./user-profiles-schema.js";
 import { normalizeInitialDisplayName } from "./user-profiles.js";
 
-/** Only current authenticated Factory metadata can establish this host-scoped credit binding. */
-function applyFactoryGitHubIdentity(
+/** Only current authenticated Enterprise GitHub metadata can establish this host-scoped credit binding. */
+function applyEnterpriseGitHubIdentity(
   db: EngineConnection,
   params: {
     profileId: string;
@@ -32,7 +32,7 @@ function applyFactoryGitHubIdentity(
   if (params.profileId === GATEWAY_OWNER_PROFILE_ID) {
     throw new UserProfileOwnerError("merge");
   }
-  const principal = parseFactoryGitHubPrincipal(params.principal);
+  const principal = parseEnterpriseGitHubPrincipal(params.principal);
   const accountId = principal?.accountId ?? Number.NaN;
   const provider = principal ? `github:${principal.host}` : "";
   const login = normalizeGitHubLogin(params.metadata.login);
@@ -49,11 +49,11 @@ function applyFactoryGitHubIdentity(
     binding?.profile_id !== params.profileId ||
     !binding.binding_id
   ) {
-    throw new Error("Factory GitHub identity is invalid");
+    throw new Error("Enterprise GitHub identity is invalid");
   }
   const email = normalizeVerifiedEmail(params.metadata.email);
   if (params.metadata.email !== undefined && !email) {
-    throw new Error("Factory verified email is invalid");
+    throw new Error("Enterprise GitHub verified email is invalid");
   }
   // Historical payloads and moved aliases cannot confer credit. Reauthentication writes this binding.
   const proof = JSON.stringify({
@@ -112,7 +112,7 @@ function applyFactoryGitHubIdentity(
 }
 
 /** Creation, display adoption, and verified credit settle in the profile writer's transaction. */
-export function ensureFactoryGitHubProfile(
+export function ensureEnterpriseGitHubProfile(
   principal: string,
   name: string,
   metadata: { login: string; email?: string },
@@ -143,7 +143,7 @@ export function ensureFactoryGitHubProfile(
         options.mutation?.publish(profile.id);
         publishUserProfilesChange(db, profile.id);
       }
-      const identityUpdatedAt = applyFactoryGitHubIdentity(db, {
+      const identityUpdatedAt = applyEnterpriseGitHubIdentity(db, {
         profileId: profile.id,
         principal,
         metadata,
@@ -156,6 +156,6 @@ export function ensureFactoryGitHubProfile(
       };
     },
     options,
-    { operationLabel: "user-profiles.factory-github-identity" },
+    { operationLabel: "user-profiles.enterprise-github-identity" },
   );
 }

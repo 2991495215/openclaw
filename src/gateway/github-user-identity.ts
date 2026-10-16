@@ -8,12 +8,12 @@ import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
 import type { GatewayAuthConfig, GatewayTrustedProxyConfig } from "../config/types.gateway.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
-import { parseFactoryGitHubPrincipal } from "../shared/factory-github-principal.js";
+import { parseEnterpriseGitHubPrincipal } from "../shared/enterprise-github-principal.js";
 import { createLazyPromise, getOrCreatePromise } from "../shared/lazy-promise.js";
 import { normalizeVerifiedEmail } from "../shared/verified-email.js";
 import { resolveCanonicalCachedGitHubIdentity } from "../state/user-profile-reads.js";
 import {
-  ensureCanonicalFactoryGitHubProfile,
+  ensureCanonicalEnterpriseGitHubProfile,
   ensureCanonicalUserProfileForEmail,
   syncCanonicalGitHubIdentity,
 } from "../state/user-profile-writes.js";
@@ -307,8 +307,8 @@ function cloudflareAccessAssertion(params: {
   return principal && assertion ? { assertion, principal } : undefined;
 }
 
-/** A Factory principal is authoritative only after trusted-proxy admission. */
-export function resolveTrustedFactoryGitHubAccountId(params: {
+/** An Enterprise GitHub principal is authoritative only after trusted-proxy admission. */
+export function resolveTrustedEnterpriseGitHubAccountId(params: {
   authResult: Pick<GatewayAuthResult, "ok" | "method" | "user">;
   authConfig?: GatewayAuthConfig;
   config?: OpenClawConfig;
@@ -322,20 +322,20 @@ export function resolveTrustedFactoryGitHubAccountId(params: {
   ) {
     return undefined;
   }
-  const principal = parseFactoryGitHubPrincipal(params.authResult.user ?? "");
+  const principal = parseEnterpriseGitHubPrincipal(params.authResult.user ?? "");
   return principal?.host === resolveConfiguredGitHubHost(params.config)
     ? principal.accountId
     : undefined;
 }
 
 /** Metadata is accepted only from the same trusted hop that asserted the immutable account. */
-export function resolveTrustedFactoryGitHubMetadata(params: {
+export function resolveTrustedEnterpriseGitHubMetadata(params: {
   authResult: Pick<GatewayAuthResult, "ok" | "method" | "user">;
   authConfig?: GatewayAuthConfig;
   config?: OpenClawConfig;
   requestHeaders?: IncomingHttpHeaders;
 }) {
-  const accountId = resolveTrustedFactoryGitHubAccountId(params);
+  const accountId = resolveTrustedEnterpriseGitHubAccountId(params);
   if (!accountId) {
     return undefined;
   }
@@ -394,24 +394,24 @@ export function createAuthenticatedGitHubIdentitySync(params: {
     params.assertCurrent?.();
     return cached;
   };
-  const factory = resolveTrustedFactoryGitHubMetadata(params);
-  if (factory) {
+  const enterprise = resolveTrustedEnterpriseGitHubMetadata(params);
+  if (enterprise) {
     return createLazyPromise(async () => {
       params.assertCurrent?.();
-      const profile = await ensureCanonicalFactoryGitHubProfile(
+      const profile = await ensureCanonicalEnterpriseGitHubProfile(
         params.authResult.user!,
-        factory.name ?? factory.login,
+        enterprise.name ?? enterprise.login,
         options,
-        { login: factory.login, email: factory.email },
+        { login: enterprise.login, email: enterprise.email },
       );
       params.assertCurrent?.();
       return {
         profileId: profile.id,
         updatedAt: profile.updatedAt,
-        factory: {
-          accountId: factory.accountId,
-          login: factory.login,
-          ...(factory.avatarUrl ? { avatarUrl: factory.avatarUrl } : {}),
+        enterprise: {
+          accountId: enterprise.accountId,
+          login: enterprise.login,
+          ...(enterprise.avatarUrl ? { avatarUrl: enterprise.avatarUrl } : {}),
         },
       };
     });
