@@ -1051,9 +1051,9 @@ describe("combined security review entry point", () => {
     );
     expect(lines).toHaveLength(4);
     expect(
-      lines.slice(0, -1).every((line) =>
-        line.includes(`GitHub notice publication failed Request: ${diagnostic}`),
-      ),
+      lines
+        .slice(0, -1)
+        .every((line) => line.includes(`GitHub notice publication failed Request: ${diagnostic}`)),
     ).toBe(true);
     expect(result.stderr).not.toMatch(/private-response-body|fixture-token|private-header/u);
   });
