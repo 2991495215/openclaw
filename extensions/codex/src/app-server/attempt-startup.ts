@@ -146,10 +146,6 @@ export async function startCodexAttemptThread(params: {
   let startupClientForAbandonedRequestCleanup: CodexAppServerClient | undefined;
   let releaseStartupResourcesOnTimeout: (() => Promise<void>) | undefined;
   const startupAbandonController = new AbortController();
-  // Set during abort dispatch, before either retirement below runs, when the
-  // abandoned work was a wait for another client's exit: this client has written
-  // no thread state, so peers may keep using it. Timeouts still retire it in onTimeout.
-  let startupAbandonedBeforeThreadWrite = false;
   const abandonStartupAcquire = () => startupAbandonController.abort();
   params.signal.addEventListener("abort", abandonStartupAcquire, { once: true });
   try {
@@ -476,15 +472,9 @@ export async function startCodexAttemptThread(params: {
                 }),
               }) satisfies Parameters<typeof startOrResumeThread>[0];
             try {
-              const startupThread = await startOrResumeThread({
-                ...buildThreadLifecycleParams(
-                  startupAbandonController.signal,
-                  reserveStartupThread,
-                ),
-                onPrewriteHandoffCancelled: () => {
-                  startupAbandonedBeforeThreadWrite = true;
-                },
-              });
+              const startupThread = await startOrResumeThread(
+                buildThreadLifecycleParams(startupAbandonController.signal, reserveStartupThread),
+              );
               try {
                 // Fresh starts reach here unreserved; resumes reserved before
                 // thread/resume so their early notifications are already buffered.
@@ -577,7 +567,6 @@ export async function startCodexAttemptThread(params: {
               }
               startupClientLease?.();
               if (
-                !startupAbandonedBeforeThreadWrite &&
                 shouldRetireCodexStartupClient(
                   startupAttemptError,
                   params.spawnedBy,
@@ -679,9 +668,7 @@ export async function startCodexAttemptThread(params: {
     if (shouldRetireCodexStartupClient(error, params.spawnedBy, startupAbandonController.signal)) {
       releaseSharedClientLease?.();
       releaseSharedClientLease = undefined;
-      if (!startupAbandonedBeforeThreadWrite) {
-        await closeCodexStartupClientBestEffort(startupClientForAbandonedRequestCleanup);
-      }
+      await closeCodexStartupClientBestEffort(startupClientForAbandonedRequestCleanup);
       startupClientForAbandonedRequestCleanup = undefined;
     }
     throw error;
