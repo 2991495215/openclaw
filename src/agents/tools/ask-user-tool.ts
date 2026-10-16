@@ -512,8 +512,8 @@ export function createAskUserTool(params: {
           registerPendingAgentQuestion({
             questionId,
             sessionKey,
-            questions: normalized.questions.map(({ questionId: id, ...question }) => ({
-              ...question,
+            questions: normalized.questions.map(({ questionId: id, ...questionFields }) => ({
+              ...questionFields,
               id,
             })),
             gatewayCall: params.gatewayCall,

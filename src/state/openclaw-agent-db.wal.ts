@@ -1,5 +1,5 @@
-import { createSessionWorkerExecutionSource } from "../config/sessions/session-worker-execution-source.js";
 import { registerSqliteWalWorkerMaintenance } from "../infra/sqlite-wal-write-admission.js";
+import { createSqliteWorkerOperationAdmission } from "../infra/sqlite-worker-operation-admission.js";
 import type { OpenClawAgentDatabase } from "./openclaw-agent-db-contract.js";
 import { readOpenClawAgentDatabaseIdentity } from "./openclaw-agent-db-identity.js";
 import { agentDatabaseLifecycle, retainAgentDatabase } from "./openclaw-agent-db-lifecycle.js";
@@ -56,10 +56,19 @@ export function registerOpenClawAgentWalMaintenance(
           const execution = captureOpenClawAgentDatabaseExecution(options, { expectedIdentity });
           try {
             const result = await execution.runExisting(
-              createSessionWorkerExecutionSource(
+              {
                 assertCurrent,
-                "Agent WAL maintenance authority expired",
-              ),
+                createAdmission: (binding) => () => ({
+                  nativeLocations: binding.nativeLocations,
+                  admission: createSqliteWorkerOperationAdmission((authority, grant) => {
+                    binding.authorize(authority);
+                    assertCurrent();
+                    if (!grant()) {
+                      throw new Error("Agent WAL maintenance authority expired");
+                    }
+                  }, binding.attachment),
+                }),
+              },
               (worker) => worker.execute({ type: "database.walMaintenance", input: request }),
             );
             assertCurrent();

@@ -66,11 +66,11 @@ export function createGatewayQuestionLifecycle(params: {
         let result: QuestionWaitAnswerResult | undefined;
         if (delivery.hasSubscriber) {
           const first = await Promise.race([
-            delivery.waitForDelivery(params.signal).then((result) => ({
+            delivery.waitForDelivery(params.signal).then((deliveryResult) => ({
               kind: "delivery" as const,
-              result,
+              result: deliveryResult,
             })),
-            answer.then((result) => ({ kind: "answer" as const, result })),
+            answer.then((answerResult) => ({ kind: "answer" as const, result: answerResult })),
           ]);
           params.signal?.throwIfAborted();
           if (first.kind === "answer") {
