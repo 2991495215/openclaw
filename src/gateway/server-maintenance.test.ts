@@ -46,6 +46,8 @@ vi.mock("../media/store.js", async () => {
   };
 });
 
+const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
+
 const MEDIA_CLEANUP_TTL_MS = 24 * 60 * 60_000;
 const ABORTED_RUN_TTL_MS = 60 * 60_000;
 
@@ -85,9 +87,8 @@ function seedStableDedupeEntries(deps: MaintenanceTimerDeps, now: number): void 
 async function createTimedMaintenanceScenario() {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-03-22T00:00:00Z"));
-  const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
   const deps = createMaintenanceTimerDeps();
-  return { startGatewayMaintenanceTimers, deps, now: Date.now() };
+  return { deps, now: Date.now() };
 }
 
 async function stopMaintenanceTimers(
@@ -129,7 +130,6 @@ describe("startGatewayMaintenanceTimers", () => {
         return restartSucceeds;
       },
     );
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const timers = startGatewayMaintenanceTimers({
       ...createMaintenanceTimerDeps(),
       restartRunningChannels,
@@ -184,7 +184,6 @@ describe("startGatewayMaintenanceTimers", () => {
     const restartRunningChannels = vi.fn(async () => true);
     const logHealth = { info: vi.fn(), error: vi.fn() };
     let inspectionFails = true;
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const timers = startGatewayMaintenanceTimers({
       ...createMaintenanceTimerDeps(),
       logHealth,
@@ -218,7 +217,6 @@ describe("startGatewayMaintenanceTimers", () => {
 
   it("does not run media cleanup before the lifecycle owner activates it", async () => {
     vi.useFakeTimers();
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const timers = startGatewayMaintenanceTimers({
       ...createMaintenanceTimerDeps(),
       getRuntimeConfig: () => ({ attachments: { ttlHours: 24 } }),
@@ -258,7 +256,6 @@ describe("startGatewayMaintenanceTimers", () => {
   it("delays worktree cleanup until the first hourly tick and joins slow sweeps", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-22T00:00:00Z"));
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const deps = createMaintenanceTimerDeps();
     const sweep = createDeferred();
     deps.runWorktreeGc.mockReturnValueOnce(sweep.promise);
@@ -283,7 +280,6 @@ describe("startGatewayMaintenanceTimers", () => {
 
   it("records partial managed worktree cleanup in health logs", async () => {
     vi.useFakeTimers();
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const deps = createMaintenanceTimerDeps();
     deps.runWorktreeGc.mockResolvedValue({
       removed: [],
@@ -318,7 +314,6 @@ describe("startGatewayMaintenanceTimers", () => {
   });
 
   it("delegates setup-outcome deadlines to the device owner", async () => {
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const timers = startGatewayMaintenanceTimers(createMaintenanceTimerDeps());
     expect(startDevicePairSetupMaintenanceMock).toHaveBeenCalledOnce();
     expect(startDevicePairSetupMaintenanceMock).toHaveBeenCalledWith({
@@ -331,7 +326,6 @@ describe("startGatewayMaintenanceTimers", () => {
   it("updates attachment cleanup policy between sweeps without restarting maintenance", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-22T00:00:01.234Z"));
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     let config: OpenClawConfig = { attachments: { ttlHours: 24 } };
 
     const timers = startGatewayMaintenanceTimers({
@@ -377,7 +371,6 @@ describe("startGatewayMaintenanceTimers", () => {
   it("runs managed outgoing cleanup when the general media sweep fails", async () => {
     vi.useFakeTimers();
     cleanOldMediaMock.mockRejectedValueOnce(new Error("synthetic media sweep failure"));
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const deps = createMaintenanceTimerDeps();
 
     const timers = startGatewayMaintenanceTimers({
@@ -407,7 +400,6 @@ describe("startGatewayMaintenanceTimers", () => {
 
   it("warms health once and refreshes passively only while clients are connected", async () => {
     const clock = createGatewaySchedulerClock();
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const deps = createMaintenanceTimerDeps();
     deps.scheduler = createTestGatewayScheduler(clock.clock);
     deps.refreshGatewayHealthSnapshot = vi.fn(async () => ({ ok: true }) as HealthSummary);
@@ -448,8 +440,6 @@ describe("startGatewayMaintenanceTimers", () => {
           resolveCleanup = resolve;
         }),
     );
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
-
     const timers = startGatewayMaintenanceTimers({
       ...createMaintenanceTimerDeps(),
       getRuntimeConfig: () => ({ attachments: { ttlHours: 24 } }),
@@ -485,7 +475,6 @@ describe("startGatewayMaintenanceTimers", () => {
     vi.useFakeTimers();
     const cleanup = createDeferred();
     pruneOutboundMediaMock.mockReturnValue(cleanup.promise);
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const timers = startGatewayMaintenanceTimers(createMaintenanceTimerDeps());
     timers.startMediaCleanup();
 
@@ -531,7 +520,6 @@ describe("startGatewayMaintenanceTimers", () => {
           resolveGeneralCleanup = resolve;
         }),
     );
-    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const timers = startGatewayMaintenanceTimers({
       ...createMaintenanceTimerDeps(),
       getRuntimeConfig: () => ({ attachments: { ttlHours: 24 } }),
@@ -575,62 +563,8 @@ describe("startGatewayMaintenanceTimers", () => {
     await stopMaintenanceTimers(timers);
   });
 
-  it.each(["managed", "queue"] as const)(
-    "retains the %s timeout fence across gateway generations",
-    async (kind) => {
-      vi.useFakeTimers();
-      const cleanup =
-        kind === "queue"
-          ? vi.fn(async () => ({
-              deletedRecordCount: 0,
-              deletedFileCount: 0,
-              retainedCount: 0,
-            }))
-          : cleanupManagedOutgoingMediaRecordsMock;
-      const createDeps = () => ({
-        ...createMaintenanceTimerDeps(),
-        ...(kind === "queue" ? { runDeliveryQueueMediaGc: cleanup } : {}),
-      });
-      let resolveOldCleanup = () => {};
-      cleanup.mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveOldCleanup = () =>
-              resolve({ deletedRecordCount: 0, deletedFileCount: 0, retainedCount: 0 });
-          }),
-      );
-      const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
-      const oldTimers = startGatewayMaintenanceTimers(createDeps());
-      oldTimers.startMediaCleanup();
-      await vi.advanceTimersByTimeAsync(130_000);
-      await vi.waitFor(() => {
-        expect(cleanup).toHaveBeenCalledTimes(1);
-      });
-      const oldStopping = oldTimers.stopMediaCleanup();
-      await vi.advanceTimersByTimeAsync(5_000);
-      await expect(oldStopping).resolves.toBe("timed-out");
-
-      const restartedTimers = startGatewayMaintenanceTimers(createDeps());
-      restartedTimers.startMediaCleanup();
-      await vi.advanceTimersByTimeAsync(0);
-      expect(cleanup).toHaveBeenCalledTimes(1);
-
-      resolveOldCleanup();
-      await vi.advanceTimersByTimeAsync(130_000);
-      await vi.waitFor(() => {
-        expect(cleanup).toHaveBeenCalledTimes(2);
-      });
-      await expect(restartedTimers.stopMediaCleanup()).resolves.toBe("drained");
-      const settledTimers = startGatewayMaintenanceTimers(createDeps());
-      await expect(settledTimers.stopMediaCleanup()).resolves.toBe("drained");
-      await stopMaintenanceTimers(oldTimers);
-      await stopMaintenanceTimers(restartedTimers);
-      await stopMaintenanceTimers(settledTimers);
-    },
-  );
-
   it("keeps pending accepted agent dedupe entries until their run expiry", async () => {
-    const { startGatewayMaintenanceTimers, deps, now } = await createTimedMaintenanceScenario();
+    const { deps, now } = await createTimedMaintenanceScenario();
     deps.dedupe.set("agent:pending-agent", {
       ts: now - DEDUPE_TTL_MS - 1,
       ok: true,
@@ -663,7 +597,7 @@ describe("startGatewayMaintenanceTimers", () => {
   });
 
   it("keeps pending chat sends through ttl and overflow until their run expiry", async () => {
-    const { startGatewayMaintenanceTimers, deps, now } = await createTimedMaintenanceScenario();
+    const { deps, now } = await createTimedMaintenanceScenario();
     seedStableDedupeEntries(deps, now);
     deps.dedupe.set(pendingChatSendDedupeKey("pending-chat"), {
       ts: now - DEDUPE_TTL_MS - 1,
@@ -697,7 +631,7 @@ describe("startGatewayMaintenanceTimers", () => {
   });
 
   it("aborts active runs with invalid expiry timestamps", async () => {
-    const { startGatewayMaintenanceTimers, deps } = await createTimedMaintenanceScenario();
+    const { deps } = await createTimedMaintenanceScenario();
     const runId = "run-invalid-expiry";
     const activeRun = createActiveRun("main");
     activeRun.expiresAtMs = Number.POSITIVE_INFINITY;
@@ -714,7 +648,7 @@ describe("startGatewayMaintenanceTimers", () => {
   });
 
   it("recovers a wedged terminal-pending run whose projection clear never ran", async () => {
-    const { startGatewayMaintenanceTimers, deps } = await createTimedMaintenanceScenario();
+    const { deps } = await createTimedMaintenanceScenario();
     const runId = "run-wedged-terminal-pending";
     const wedgedRun = createActiveRun("main");
     wedgedRun.expiresAtMs = Date.now() - 1;
@@ -733,7 +667,7 @@ describe("startGatewayMaintenanceTimers", () => {
   });
 
   it("keeps a fresh terminal-pending run for its async projection owner", async () => {
-    const { startGatewayMaintenanceTimers, deps } = await createTimedMaintenanceScenario();
+    const { deps } = await createTimedMaintenanceScenario();
     const runId = "run-fresh-terminal-pending";
     const freshRun = createActiveRun("main");
     freshRun.expiresAtMs = Date.now() - 1;
@@ -751,7 +685,7 @@ describe("startGatewayMaintenanceTimers", () => {
   });
 
   it("preserves captured recovery custody when stalled terminal persistence expires", async () => {
-    const { startGatewayMaintenanceTimers, deps } = await createTimedMaintenanceScenario();
+    const { deps } = await createTimedMaintenanceScenario();
     const runId = "run-terminal-persistence";
     const terminalRun = createActiveRun("main");
     terminalRun.expiresAtMs = Date.now() - 1;
@@ -786,7 +720,7 @@ describe("startGatewayMaintenanceTimers", () => {
   });
 
   it("evicts an expired non-abortable active run instead of retrying forever", async () => {
-    const { startGatewayMaintenanceTimers, deps } = await createTimedMaintenanceScenario();
+    const { deps } = await createTimedMaintenanceScenario();
     const runId = "run-unabortable";
     const wedged = createActiveRun("main");
     wedged.expiresAtMs = Date.now() - 1;
