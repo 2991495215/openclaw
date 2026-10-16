@@ -52,6 +52,7 @@ final class GatewayProcessManager {
     private(set) var log: String = ""
     private(set) var environmentStatus: GatewayEnvironmentStatus = .checking
     private(set) var existingGatewayDetails: String?
+    var bundleRelocationStatus: String?
     var lastFailureReason: String?
     var nodeMigrationFailure: String?
     var nodeMigrationVersionUpdated = false

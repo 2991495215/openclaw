@@ -31,6 +31,12 @@ On a fresh profile, the **app hosts the Gateway** as a child process by running
 quits. An existing Gateway on the configured port is attached instead of
 duplicated. Existing independently managed installations keep their lifecycle.
 
+If you move or rename the app while its first Gateway is still running from the
+bundle, the app restarts that Gateway so lazy runtime loads use valid paths. It
+uses the warmed persistent runtime when ready, otherwise the bundle at its new
+location. The Connection window shows the move and restart status. Gateways
+already running from the persistent runtime do not need a restart.
+
 Before launching an app-hosted Gateway, the app saves a local authentication
 token when neither configuration nor the child environment supplies credentials
 and token authentication is selected or implicit. Existing credentials, secret

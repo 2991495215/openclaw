@@ -38,6 +38,123 @@ struct GatewayProcessManagerTests {
         }
     }
 
+    @Test(arguments: [false, true])
+    func `moving a live bundle drains its child before launching from the seed or new path`(
+        warmed: Bool) async throws
+    {
+        let root = try makeFirstRunTempDirForTests()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let port = try self.availableGatewayPort()
+        try await self.withLaunchAgentEnvironment(port: port, homeDirectory: root, defaults: [
+            GatewayHosting.defaultsKey: GatewayHosting.app.rawValue,
+        ]) {
+            let app = root.appendingPathComponent("Original.app")
+            let buildID = "move-" + UUID().uuidString.lowercased()
+            _ = try makeBundledRuntimeTestBundle(
+                at: app, builtAt: "2026-08-27T00:00:00.000Z", buildID: buildID, command: "unused")
+            let original = app.appendingPathComponent("Contents/Resources/runtime/openclaw")
+            let directory = AppProfile.current.stateDirectoryURL().appendingPathComponent("runtime")
+            let current = directory.appendingPathComponent("current")
+            let seed = directory.appendingPathComponent(buildID)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let previous = try? FileManager.default.destinationOfSymbolicLink(atPath: current.path)
+            try #require(previous != nil || !FileManager.default.fileExists(atPath: current.path))
+            defer {
+                try? FileManager.default.removeItem(at: current)
+                if let previous {
+                    try? FileManager.default.createSymbolicLink(atPath: current.path, withDestinationPath: previous)
+                }
+                try? FileManager.default.removeItem(at: seed)
+            }
+            if previous != nil { try FileManager.default.removeItem(at: current) }
+            if warmed {
+                try FileManager.default.copyItem(at: original.deletingLastPathComponent(), to: seed)
+                try BundledRuntime(root: seed).recordWarmed(buildID: buildID)
+                try FileManager.default.createSymbolicLink(atPath: current.path, withDestinationPath: buildID)
+            }
+            let exited = AsyncTestGate()
+            var launches: [URL] = []
+            let supervisor = GatewayChildSupervisor { configuration in
+                launches.append(configuration.executable)
+                if launches.count > 1 {
+                    // Stop at the child-launch boundary; existing readiness fixtures cover health.
+                    throw GatewayHostingError(message: "Fixture reached relocated child launch")
+                }
+                return .init(
+                    waitUntilStarted: { 4242 },
+                    wait: { await exited.wait()
+                        return "fixture stopped"
+                    },
+                    terminate: { exited.open() })
+            }
+            let manager = GatewayProcessManager(childSupervisor: supervisor)
+            let paused = AppStateStore.shared.isPaused
+            AppStateStore.shared.isPaused = false
+            defer { AppStateStore.shared.isPaused = paused }
+            manager.desiredActive = true
+            manager.repairedAppHostedRuntimeBuildID = buildID
+            _ = try await supervisor.start(configuration: .init(
+                executable: original, environment: [:], logPath: root.appendingPathComponent("gateway.log").path,
+                port: port, allowUnconfigured: false), onEvent: { _ in })
+            let moved = root.appendingPathComponent("Renamed.app")
+            try FileManager.default.moveItem(at: app, to: moved)
+            await manager.restartRelocatedBundledGatewayIfNeeded(bundle: #require(Bundle(url: moved)))
+
+            #expect(launches == [
+                original,
+                warmed
+                    ? seed.appendingPathComponent("openclaw")
+                    : moved.appendingPathComponent("Contents/Resources/runtime/openclaw"),
+            ])
+            #expect(manager.lastFailureReason == "Fixture reached relocated child launch")
+            #expect(manager.desiredActive)
+            #expect(!supervisor.isActive)
+            #expect(manager.bundleRelocationStatus?.contains("App moved.") == true)
+            #expect(!manager.hostingChangeInProgress)
+            manager.desiredActive = false
+            await supervisor.stop()
+            await manager.waitForStartupAttempt()
+        }
+    }
+
+    @Test(arguments: ["unmoved", "seed", "paused", "stopped"])
+    func `bundle relocation leaves unrelated or inactive children alone`(scenario: String) async throws {
+        let root = try makeFirstRunTempDirForTests()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = root.appendingPathComponent("Current.app")
+        _ = try makeBundledRuntimeTestBundle(
+            at: app, builtAt: "2026-08-27T00:00:00.000Z", command: "unused")
+        let bundle = try #require(Bundle(url: app))
+        try await self.withLaunchAgentEnvironment(defaults: [GatewayHosting.defaultsKey: GatewayHosting.app.rawValue]) {
+            let exited = AsyncTestGate()
+            let supervisor = GatewayChildSupervisor { _ in
+                .init(
+                    waitUntilStarted: { 4242 },
+                    wait: { await exited.wait()
+                        return "fixture stopped"
+                    },
+                    terminate: { exited.open() })
+            }
+            let manager = GatewayProcessManager(childSupervisor: supervisor)
+            let original = scenario == "unmoved"
+                ? BundledRuntime.currentBundleURL(bundle).appendingPathComponent("Contents/Resources/runtime/openclaw")
+                : URL(fileURLWithPath: scenario == "seed" ? "/fixture/runtime/build/openclaw"
+                    : "/fixture/Original.app/Contents/Resources/runtime/openclaw")
+            _ = try await supervisor.start(configuration: .init(
+                executable: original, environment: [:], logPath: "/unused/gateway.log", port: 29871,
+                allowUnconfigured: false), onEvent: { _ in })
+            let paused = AppStateStore.shared.isPaused
+            AppStateStore.shared.isPaused = scenario == "paused"
+            defer { AppStateStore.shared.isPaused = paused }
+            manager.desiredActive = scenario != "stopped"
+            await manager.restartRelocatedBundledGatewayIfNeeded(bundle: bundle)
+            #expect(supervisor.processIdentifier == 4242)
+            #expect(supervisor.configuration?.executable == original)
+            #expect(manager.bundleRelocationStatus == nil)
+            await supervisor.stop()
+        }
+    }
+
     @Test(arguments: [false, true], [false, true])
     func `new bundle completes Doctor before its first child launch`(
         doctorFails: Bool, seedExists: Bool) async throws
