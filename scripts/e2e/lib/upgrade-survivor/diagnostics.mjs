@@ -70,6 +70,7 @@ const pluginPolicyLogs = [
   "webhooks-only-policy/baseline-runtime.out",
   "webhooks-only-policy/candidate-runtime.out",
 ];
+const repairProgressCases = ["progress-repair", "progress-quiet", "progress-migrated"];
 const repairProgressLogs = [
   "phase.txt",
   "progress-cell.json",
@@ -1591,6 +1592,122 @@ function capturePackageIntegrity(observationRoot) {
   }
 }
 
+function captureRepairProgressProbe(artifactRoot) {
+  return Object.fromEntries(
+    repairProgressCases.map((name) => {
+      try {
+        const files = boundedList(
+          fs
+            .readdirSync(ownedPath(artifactRoot, name))
+            .filter((file) => /^probe-[0-9]+-[0-9]+[.]json$/u.test(file)),
+        );
+        const records = files.map((file) => {
+          const text = readOwned(artifactRoot, name + "/" + file, "repair progress probe", 4096);
+          if (text === null) {
+            throw new Error();
+          }
+          return text;
+        });
+        return [name, records];
+      } catch (error) {
+        if (error.code !== "ENOENT") {
+          omissions["repair progress probe"] ??= reasons[3];
+        }
+        return [name, null];
+      }
+    }),
+  );
+}
+
+// Private records retain process coordinates for diagnosis. The host publishes
+// only closed role/decision groups and bounded counts, never process data or paths.
+function publishedRepairProgressProbe(snapshot) {
+  const roles = new Set(["doctor", "other", "integrity", "finalizer", "launcher", "runtime"]);
+  const gates = new Set([
+    "loaded",
+    "no-entry",
+    "package-not-found",
+    "lifecycle-entry",
+    "identity-mismatch",
+    "entry-check",
+    "entry-mismatch",
+    "identity-admitted",
+    "doctor-package-check",
+    "not-integrity",
+    "doctor-ancestor-missing",
+    "finalizer-ancestor-missing",
+    "hold-armed",
+    "integrity-observed",
+    "already-held",
+    "held",
+    "released",
+  ]);
+  return Object.fromEntries(
+    repairProgressCases.map((name) => {
+      const unknown = { availability: "unknown", groups: [] };
+      if (snapshot?.[name] == null) {
+        return [name, unknown];
+      }
+      try {
+        const records = boundedList(snapshot[name]);
+        const groups = new Map();
+        for (const text of records) {
+          if (typeof text !== "string" || Buffer.byteLength(text) > 4096) {
+            throw new Error();
+          }
+          const record = JSON.parse(text);
+          if (!roles.has(record?.role) || !gates.has(record?.gate)) {
+            throw new Error();
+          }
+          const key = record.role + ":" + record.gate;
+          const group = groups.get(key) ?? {
+            role: record.role,
+            gate: record.gate,
+            contexts: 0,
+            preloadPresent: 0,
+            selectorPresent: 0,
+            identityMatched: 0,
+            entryHashMatched: 0,
+            identityUnknown: 0,
+            entryHashUnknown: 0,
+            nativePhases: { opening: 0, checking: 0, closing: 0 },
+          };
+          for (const field of [
+            "preloadPresent",
+            "selectorPresent",
+            "identityMatched",
+            "entryHashMatched",
+          ]) {
+            const value = record[field];
+            if (typeof value !== "boolean" && !(field.endsWith("Matched") && value === null)) {
+              throw new Error();
+            }
+            group[field] += Number(value === true);
+          }
+          group.identityUnknown += Number(record.identityMatched === null);
+          group.entryHashUnknown += Number(record.entryHashMatched === null);
+          for (const phase of ["opening", "checking", "closing"]) {
+            const count = record.nativePhases?.[phase];
+            if (!Number.isInteger(count) || count < 0 || count > 65_535) {
+              throw new Error();
+            }
+            group.nativePhases[phase] += count;
+          }
+          group.contexts++;
+          groups.set(key, group);
+        }
+        return [
+          name,
+          records.length ? { availability: "observed", groups: [...groups.values()] } : unknown,
+        ];
+      } catch {
+        omissions["repair progress probe"] = reasons[3];
+        return [name, unknown];
+      }
+    }),
+  );
+}
+
 async function capture(artifactRoot, phase, exitStatus, signal = "", observationRoot = "") {
   const report = {
     ...phaseResult(phase, Number(exitStatus), signal || null),
@@ -1606,6 +1723,7 @@ async function capture(artifactRoot, phase, exitStatus, signal = "", observation
         : readOwned(artifactRoot, name, name);
   }
   const stateRoot = process.env.OPENCLAW_STATE_DIR;
+  report.repairProgressProbe = captureRepairProgressProbe(artifactRoot);
   report.packageIntegrity = capturePackageIntegrity(observationRoot);
   report.pluginIdentity = await pluginIdentities(stateRoot, artifactRoot);
   report.migration = captureMigrationEvidence(stateRoot, artifactRoot, observationRoot);
@@ -1860,6 +1978,13 @@ function publishedSuccessSummary(artifactRoot, sanitize) {
     ...(pluginPolicy ? { pluginPolicy } : {}),
     ...(nativeAssignments ? { nativeAssignments } : {}),
     ...(packageActivationRecovery ? { packageActivationRecovery } : {}),
+    ...(snapshot.scenario === "repair-progress"
+      ? {
+          repairProgressProbe: publishedRepairProgressProbe(
+            captureRepairProgressProbe(artifactRoot),
+          ),
+        }
+      : {}),
     timings,
     phases: boundedList(snapshot.phases).map((event) => {
       if (
@@ -2043,6 +2168,7 @@ export function publishDiagnostics(
     "successful update plugins",
     "plugin identity",
     "package integrity",
+    "repair progress probe",
     ...["doctor", "sessions", "archives", "sibling"].map((section) => `migration-${section}`),
     "session migration",
     ...Object.values(migrationLabels),
@@ -2110,6 +2236,7 @@ export function publishDiagnostics(
     report.config.sha256 = snapshot.config.sha256;
   }
   report.postCore = publishedPostCore(snapshot.postCore, sanitize);
+  report.repairProgressProbe = publishedRepairProgressProbe(snapshot.repairProgressProbe);
   report.packageIntegrity = { availability: "unavailable" };
   if (snapshot.packageIntegrity?.availability === "captured") {
     try {

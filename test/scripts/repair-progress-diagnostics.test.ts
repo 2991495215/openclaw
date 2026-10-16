@@ -48,6 +48,24 @@ it("publishes bounded redacted progress evidence after failure and success", () 
     write(`progress-repair/${name}.json`, JSON.stringify(evidence));
   }
   write("progress-repair/fixture.json", JSON.stringify({ privatePackageInventory: true }));
+  const probe = {
+    role: "integrity",
+    gate: "doctor-ancestor-missing",
+    preloadPresent: true,
+    selectorPresent: true,
+    identityMatched: true,
+    entryHashMatched: true,
+    nativePhases: { opening: 1, checking: 1, closing: 1 },
+    pid: 123,
+    ppid: 122,
+    threadId: 0,
+    argv: ["PRIVATE_PROBE_ARGV"],
+    identityPath: "/private/probe/identity",
+    token: secret,
+  };
+  write("progress-repair/probe-123-0.json", JSON.stringify(probe));
+  write("progress-repair/probe-124-0.json", JSON.stringify({ ...probe, pid: 124 }));
+  write("progress-quiet/probe-125-0.json", "x".repeat(4097));
   write("incognito-before.stdout", "PRIVATE_CHAT_FIXTURE");
   write("durable-after.stdout", "PRIVATE_CHAT_FIXTURE");
   write(
@@ -86,6 +104,10 @@ it("publishes bounded redacted progress evidence after failure and success", () 
     },
   );
   expect(captured.status, captured.stderr).toBe(0);
+  const rawFile = path.join(artifacts, "diagnostics/raw.json");
+  const privateSnapshot = JSON.parse(fs.readFileSync(rawFile, "utf8"));
+  expect(privateSnapshot.repairProgressProbe["progress-repair"]).toHaveLength(2);
+  expect(JSON.parse(privateSnapshot.repairProgressProbe["progress-repair"][0]).ppid).toBe(122);
   for (const outcome of ["failed", "passed"] as const) {
     const destination = path.join(root, outcome);
     publishDiagnostics(artifacts, destination, redactSensitiveText, outcome);
@@ -94,6 +116,29 @@ it("publishes bounded redacted progress evidence after failure and success", () 
       "utf8",
     );
     const report = JSON.parse(text);
+    expect(report.repairProgressProbe["progress-repair"]).toEqual({
+      availability: "observed",
+      groups: [
+        {
+          role: "integrity",
+          gate: "doctor-ancestor-missing",
+          contexts: 2,
+          preloadPresent: 2,
+          selectorPresent: 2,
+          identityMatched: 2,
+          entryHashMatched: 2,
+          identityUnknown: 0,
+          entryHashUnknown: 0,
+          nativePhases: { opening: 2, checking: 2, closing: 2 },
+        },
+      ],
+    });
+    for (const name of ["progress-quiet", "progress-migrated"]) {
+      expect(report.repairProgressProbe[name]).toEqual({ availability: "unknown", groups: [] });
+    }
+    expect(text).not.toContain("PRIVATE_PROBE_ARGV");
+    expect(text).not.toContain("/private/probe/identity");
+    expect(JSON.stringify(report.repairProgressProbe)).not.toMatch(/pid|threadId|token/u);
     expect(report.logs["progress-repair.stdout"]).toContain('"status":"ok"');
     expect(report.logs["progress-repair.stderr"]).toContain("bounded progress line");
     expect(
@@ -122,5 +167,27 @@ it("publishes bounded redacted progress evidence after failure and success", () 
     if (outcome === "failed") {
       expect(report.exitStatus).toBe(124);
     }
+  }
+  // The host revalidates even a forged private capture; invalid facts cannot be
+  // interpreted as zero work or supply a public omission reason.
+  const invalidRecords = [
+    [JSON.stringify({ ...probe, gate: secret })],
+    [JSON.stringify({ ...probe, preloadPresent: secret })],
+    [JSON.stringify({ ...probe, nativePhases: { opening: 0, checking: 65_536, closing: 0 } })],
+    [JSON.stringify({ ...probe, token: "x".repeat(4097) })],
+    Array.from({ length: 129 }, () => JSON.stringify(probe)),
+  ];
+  for (const [index, records] of invalidRecords.entries()) {
+    privateSnapshot.repairProgressProbe["progress-repair"] = records;
+    fs.writeFileSync(rawFile, JSON.stringify(privateSnapshot));
+    const destination = path.join(root, "invalid-" + index);
+    publishDiagnostics(artifacts, destination, redactSensitiveText);
+    const report = JSON.parse(fs.readFileSync(path.join(destination, "failure.json"), "utf8"));
+    expect(report.repairProgressProbe["progress-repair"]).toEqual({
+      availability: "unknown",
+      groups: [],
+    });
+    expect(report.omissions["repair progress probe"]).toBe("invalid observation; omitted");
+    expect(JSON.stringify(report)).not.toContain(secret);
   }
 });
