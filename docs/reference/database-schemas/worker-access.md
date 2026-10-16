@@ -3980,8 +3980,9 @@ table absence without opening a transaction. Pending-input staging reads each
 entry, membership set, and pending row once inside its write transaction, then
 returns the persisted row with its commit receipt. The host installs custody
 from that postimage after settlement. Preparation before external work remains
-separate from mutation, and transaction and commit grants still check live
-authority. Completion validates its retained outcome with one read.
+separate from mutation. Durable pending-input writes check live authority in the
+final commit grant; no intermediate transaction grant repeats that check.
+Completion validates its retained outcome with one read.
 
 These command and read consolidations change no schema version, stored data,
 durability, retention, or permission contract. Existing installations require
@@ -5599,7 +5600,7 @@ same agent executor. The host captures the physical source before awaiting
 preparation, applies message hooks outside the transaction, and publishes custody
 only after native commit acknowledgment within the writer FIFO. The worker
 compares the staging snapshot and exact run, request, session, and lifecycle
-identities; transaction and commit grants recheck the live host owner. Lost
+identities; the final commit grant rechecks the live host owner. Lost
 responses reconcile native receipts, and uncertain outcomes never replay.
 Finishing immediately revokes execution while the same owner protects history
 custody until its disposition settles. Recorder and database cleanup owners join
@@ -5611,7 +5612,8 @@ synchronous completion adapter and immediate transaction semantics until the nex
 Plugin SDK major; it warns on use. Plugin-supplied legacy callbacks remain accepted.
 Confirmed worker receipts publish custody under the current owner
 without rereading a native handle's mutation revision: an independent committed
-write does not invalidate that receipt. Schemas, stored
+write does not invalidate that receipt. Typed actor receipts are consumed directly;
+the generic worker boundary decodes its tagged receipt once. Schemas, stored
 bytes, retention, and update behavior are unchanged.
 
 A missing resident row gets a bounded worker sharing read before history treats

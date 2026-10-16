@@ -292,8 +292,6 @@ function createReadTransport(
   onChunkAsync?: OpenClawStateReadOptions["onChunkAsync"],
   awaitedOnly = false,
 ) {
-  // Capture nested input before the read owner can yield during snapshot preparation.
-  const capturedCommand = structuredClone(command);
   type ReadTask = ReturnType<ReadPool["startTask"]>;
   const tasks = new Map<ReadTask, { retire: boolean }>();
   let closed = false;
@@ -363,7 +361,7 @@ function createReadTransport(
       const request: OpenClawStateReadRequest = {
         context: {
           databaseEngineInput: context.databaseEngineInput,
-          environment: { ...context.environment },
+          environment: context.environment,
           existingSchemaPath: context.existingSchemaPath,
           stateIntegrity: context.stateIntegrity,
         },
@@ -372,7 +370,7 @@ function createReadTransport(
         checkFreshAdmission,
         expectedIdentity,
         snapshotRoot,
-        command: { ...readCommand },
+        command: readCommand,
       };
       const pool = readPool(state, ownsAdmission(), awaitedOnly);
       // Maintenance reuses this reader; standalone inspection releases it before metadata loads.
@@ -471,7 +469,7 @@ function createReadTransport(
       source.context,
       source.location,
       source.checkFreshAdmission,
-      capturedCommand,
+      command,
       authority,
       source.expectedIdentity,
       source.snapshotRoot,

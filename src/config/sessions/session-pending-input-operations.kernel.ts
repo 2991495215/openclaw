@@ -168,7 +168,6 @@ export function mutatePendingInput(
             "Pending input settlement lost its accepted owner",
           );
         }
-        withoutSqliteDatabaseWriteScope(current.db, () => admit("transaction", grant));
         const schema = getAdmittedSqliteSchemaFacts(current.db);
         if (input.kind === "stage") {
           if (!schema?.tables.has("session_pending_inputs")) {

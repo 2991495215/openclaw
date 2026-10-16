@@ -228,18 +228,15 @@ it("shares transaction rows without retaining stale custody and returns the pers
     );
     expect(grants).toMatchObject([
       {
-        stage: "transaction",
+        stage: "commit",
         facts: {
           candidate: undefined,
           authority: {
             entry: { sessionId: scope.sessionId },
             members: [{ identityId: "new-member" }],
           },
+          receipt: { stagedInput: { input_id: "cohort-input", state: "queued" } },
         },
-      },
-      {
-        stage: "commit",
-        facts: { receipt: { stagedInput: { input_id: "cohort-input", state: "queued" } } },
       },
     ]);
 
@@ -492,42 +489,39 @@ it("retains cancellation disposition custody while accepted processing completio
   });
 });
 
-it.each(["transaction", "commit"] as const)(
-  "refuses a staging grant when the run ends at %s without publishing input custody",
-  async (phase) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
-      const fixture = createFixture();
-      let current = true;
-      let revoked = false;
-      const spy = probe.admission(admission, (request, grant, callback) => {
-        const facts = request.facts;
-        if (
-          request.stage === phase &&
-          isRecord(facts) &&
-          isRecord(facts.publication) &&
-          facts.publication.kind === "pending-input-settlement-custody"
-        ) {
-          current = false;
-          revoked = true;
-        }
-        callback(request, grant);
-      });
-      try {
-        await expect(
-          fixture.stage("ended", () => {
-            if (!current) {
-              throw new SessionPendingInputCustodyError("Synthetic run ended during admission");
-            }
-          }),
-        ).rejects.toBeInstanceOf(SessionPendingInputCustodyError);
-        expect(revoked).toBe(true);
-        expect(fixture.pending()).toEqual([]);
-      } finally {
-        spy.mockRestore();
+it("refuses a staging commit when the run ends without publishing input custody", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    const fixture = createFixture();
+    let current = true;
+    let revoked = false;
+    const spy = probe.admission(admission, (request, grant, callback) => {
+      const facts = request.facts;
+      if (
+        request.stage === "commit" &&
+        isRecord(facts) &&
+        isRecord(facts.publication) &&
+        facts.publication.kind === "pending-input-settlement-custody"
+      ) {
+        current = false;
+        revoked = true;
       }
+      callback(request, grant);
     });
-  },
-);
+    try {
+      await expect(
+        fixture.stage("ended", () => {
+          if (!current) {
+            throw new SessionPendingInputCustodyError("Synthetic run ended during admission");
+          }
+        }),
+      ).rejects.toBeInstanceOf(SessionPendingInputCustodyError);
+      expect(revoked).toBe(true);
+      expect(fixture.pending()).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
 
 it("rejects a worker-side request-hash mismatch with the original custody error class", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
@@ -564,7 +558,7 @@ it("refuses processing completion when the admitted lifecycle changes during the
     const spy = probe.admission(admission, (request, grant, callback) => {
       const facts = request.facts;
       if (
-        request.stage === "transaction" &&
+        request.stage === "commit" &&
         isRecord(facts) &&
         isRecord(facts.publication) &&
         isRecord(facts.publication.receipt) &&

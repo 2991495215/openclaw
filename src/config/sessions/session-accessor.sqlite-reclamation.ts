@@ -247,7 +247,7 @@ function reclaimSqliteRowsInTransaction(
         return {
           archivedTranscripts,
           deleted: true,
-          deletedEntry: structuredClone(entry),
+          deletedEntry: entry,
           ...(entry.sessionId ? { deletedSessionId: entry.sessionId } : {}),
         };
       },

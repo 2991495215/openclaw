@@ -206,7 +206,7 @@ it("joins captured domain cleanup before retiring its pool and execution generat
 });
 
 it.each(["workerPlacements.changeSnapshot", "agentDeletionJournal.status"] as const)(
-  "captures and charges selectors before queued dispatch (%s)",
+  "dispatches selectors and charges their queued bytes (%s)",
   async (type) => {
     const { pathname, options } = source();
     const selector = "选择🦞".repeat(512);
@@ -216,11 +216,6 @@ it.each(["workerPlacements.changeSnapshot", "agentDeletionJournal.status"] as co
         : { type, agentId: selector };
     const expected = structuredClone(command);
     const transport = captureOpenClawStateReadSource().createTransport(command);
-    if (command.type === "workerPlacements.changeSnapshot") {
-      command.profileIds.splice(0);
-    } else {
-      command.agentId = "different agent before preparation";
-    }
     const dispatch = createDeferredCore();
     const task = queueTask(dispatch.promise);
     const read = transport.startRead(

@@ -23,6 +23,7 @@ import {
   readPendingInputMutationReceipt,
   type PendingInputCustodyGrant,
   type PendingInputMutation,
+  type PendingInputMutationReceipt,
   type PendingInputRead,
 } from "./session-pending-input-operations.types.js";
 import { captureSessionStoreReadTarget } from "./session-store-read-target.js";
@@ -258,7 +259,7 @@ export async function preparePendingInputStore(
               },
             };
             let expectedState: ReturnType<typeof buildRestartRecoveryExpectedState> | undefined;
-            let receipt: ReturnType<typeof readPendingInputMutationReceipt>;
+            let receipt: PendingInputMutationReceipt | undefined;
             const outcome = await runSessionActorCommand(
               inputActor.actor,
               authority,
@@ -281,10 +282,7 @@ export async function preparePendingInputStore(
                   authority,
                   {
                     committed(commit) {
-                      receipt = readPendingInputMutationReceipt(
-                        commit.value.pendingInputReceipt,
-                        input,
-                      );
+                      receipt = commit.value.pendingInputReceipt;
                       if (!receipt) {
                         throw new Error("Input actor omitted its committed custody receipt");
                       }
@@ -308,20 +306,7 @@ export async function preparePendingInputStore(
             return receipt;
           }
           let admitted: SessionWorkerReceiptAdmission | undefined;
-          const readReceipt = (facts: unknown) => readPendingInputMutationReceipt(facts, input);
           let committedFacts: PendingInputCustodyGrant | undefined;
-          const checkGrant = (stage: "transaction" | "commit", facts: unknown) => {
-            if (
-              !isRecord(facts) ||
-              !isRecord(facts.publication) ||
-              facts.publication.kind !== "pending-input-settlement-custody"
-            ) {
-              return;
-            }
-            // SAFETY: The paired kernel sends bounded row facts, never host authority.
-            committedFacts = facts.publication as PendingInputCustodyGrant;
-            guard(stage, committedFacts);
-          };
           return withSessionEntryWorker(
             options,
             identity?.key.slice(5),
@@ -331,7 +316,7 @@ export async function preparePendingInputStore(
                 const receipt = await settleSessionWorkerReceipt(
                   () => worker.execute({ type: "session.pendingInputs.mutate", input }),
                   () => admitted,
-                  readReceipt,
+                  readPendingInputMutationReceipt,
                   "Pending input has no confirmed native completion and commit receipt",
                   "Pending input native commitment is unknown; do not replay",
                 );
@@ -347,20 +332,18 @@ export async function preparePendingInputStore(
               return result;
             },
             (admission, retained, facts) => {
-              checkGrant("commit", facts);
               if (
                 !isRecord(facts) ||
                 !isRecord(facts.publication) ||
-                !readReceipt(facts.publication.receipt)
+                facts.publication.kind !== "pending-input-settlement-custody"
               ) {
                 throw new Error("Pending input commit omitted its exact receipt");
               }
+              // SAFETY: The paired kernel sends bounded row facts, never host authority.
+              committedFacts = facts.publication as PendingInputCustodyGrant;
+              guard("commit", committedFacts);
               admitted = { admission, retained };
             },
-            undefined,
-            undefined,
-            undefined,
-            (facts) => checkGrant("transaction", facts),
           );
         })(),
       );
