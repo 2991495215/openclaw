@@ -3,10 +3,10 @@ import {
   resolveConfiguredGitHubHost,
 } from "../agents/github-host.js";
 import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
+import { sha256Hex } from "../infra/crypto-digest.js";
 import { runGitReadOperation } from "../infra/git-read-cache.js";
 import { prepareControlUiSessionPrRead } from "./control-ui-session-pr-read.js";
 import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
-import { factoryGitHubRequestDigest } from "./factory-github-proof.js";
 import { gitHubPublicApi, type ControlUiGitHubSessionIdentity } from "./github-public-api.js";
 import { prepareGatewayProjectGitHubIdentity } from "./project-github-identity.js";
 import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
@@ -126,7 +126,7 @@ export async function withControlUiSessionGitHubRead<T>(
             sessionKey: session.params.sessionKey,
             sessionId,
             lifecycleRevision: session.lifecycleRevision ?? null,
-            requestDigest: factoryGitHubRequestDigest(requestUrl),
+            requestDigest: sha256Hex(requestUrl),
           },
         },
         assertCurrent,

@@ -95,6 +95,10 @@ export function asPositiveSafeInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
+export function asPositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 /** Conservative upper bound for Node timer delays. */
 export const MAX_TIMER_TIMEOUT_MS = 2_147_000_000;
 /** Timer bound expressed in whole seconds for env/config inputs. */

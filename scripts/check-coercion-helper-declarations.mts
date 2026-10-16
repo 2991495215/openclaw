@@ -102,6 +102,7 @@ export const CANONICAL_COERCION_HELPER_OWNERS = [
       "asFiniteNumberInRange",
       "asNonNegativeFiniteNumber",
       "asPositiveFiniteNumber",
+      "asPositiveInteger",
       "asPositiveSafeInteger",
       "asSafeIntegerInRange",
       "clampTimerTimeoutMs",

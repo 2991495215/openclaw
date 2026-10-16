@@ -3,6 +3,7 @@ import {
   asFiniteNumberInRange,
   asNonNegativeFiniteNumber,
   asPositiveFiniteNumber,
+  asPositiveInteger,
   asSafeIntegerInRange,
   addTimerTimeoutGraceMs,
   clampPositiveTimerTimeoutMs,
@@ -31,6 +32,19 @@ import {
 } from "./number-coercion.js";
 
 describe("number-coercion", () => {
+  test.each([
+    [1, 1],
+    [2 ** 53, 2 ** 53],
+    [0, undefined],
+    [-1, undefined],
+    [1.5, undefined],
+    [Number.NaN, undefined],
+    [Number.POSITIVE_INFINITY, undefined],
+    ["1", undefined],
+  ])("asPositiveInteger preserves ordinary integer input %j", (input, expected) => {
+    expect(asPositiveInteger(input)).toBe(expected);
+  });
+
   test("signed finite helpers preserve finite fractional values", () => {
     expect(asPositiveFiniteNumber(0.5)).toBe(0.5);
     expect(asPositiveFiniteNumber(0)).toBeUndefined();
