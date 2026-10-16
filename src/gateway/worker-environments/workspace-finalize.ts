@@ -2,10 +2,6 @@ import type {
   WorkerWorkspaceQuiescence,
   WorkerWorkspaceReconcileResult,
 } from "./tunnel-contract.js";
-import {
-  createWorkspaceReconcileMetrics,
-  type WorkspaceReconcileMetrics,
-} from "./workspace-hash-memo.js";
 import type { WorkerWorkspaceApplyResult } from "./workspace-reconcile.js";
 
 export class WorkerWorkspaceFinalFenceError extends Error {
@@ -16,14 +12,6 @@ export class WorkerWorkspaceFinalFenceError extends Error {
     this.name = "WorkerWorkspaceFinalFenceError";
     this.reclaimDisposition = reclaimDisposition;
   }
-}
-
-/** Runs one reconciliation with shared metrics. */
-export async function runInstrumentedWorkspaceReconcile(
-  run: (metrics: WorkspaceReconcileMetrics) => Promise<WorkerWorkspaceReconcileResult>,
-): Promise<WorkerWorkspaceReconcileResult> {
-  const metrics = createWorkspaceReconcileMetrics();
-  return await run(metrics);
 }
 
 /** Rechecks both owners after renewing the remote quiescence lease. */
