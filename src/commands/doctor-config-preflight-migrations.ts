@@ -44,10 +44,8 @@ export async function prepareDoctorMigrationPlugins(params: {
     convergence.deferredPlugins ?? [],
     convergence.migrationInspection,
   );
-  const refreshed = await params.readRefreshedSnapshot();
-  assertPreflightConfigUnchanged(params.snapshotRead.snapshot, refreshed.snapshot);
   return {
-    snapshotRead: refreshed,
+    snapshotRead: await params.readRefreshedSnapshot(),
     warnings: convergence.warnings ?? [],
   };
 }

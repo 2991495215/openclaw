@@ -411,7 +411,7 @@ describe("doctor config flow", () => {
       authProfilesRepaired: false,
     }));
 
-    const result = await runConfig({ config: {}, repair: true });
+    await using result = await runConfig({ config: {}, repair: true });
     expect(result.warnings).toContain(warning);
   });
 
