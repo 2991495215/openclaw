@@ -320,7 +320,7 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
     ]);
   }
   const runtimeContextTokens =
-    typeof ctxTokens === "number" && Number.isFinite(ctxTokens) && ctxTokens > 0
+    ctxTokens !== undefined && Number.isFinite(ctxTokens) && ctxTokens > 0
       ? Math.floor(ctxTokens)
       : undefined;
   const resolvedContextTokens =
@@ -417,9 +417,8 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
     }
   }
 
-  if (compactionCount !== undefined && sessionKey) {
-    activeSessionEntry =
-      completion?.current() ?? activeSessionStore?.[sessionKey] ?? activeSessionEntry;
+  if (!completion && compactionCount !== undefined && sessionKey) {
+    activeSessionEntry = activeSessionStore?.[sessionKey] ?? activeSessionEntry;
   }
   activeSessionEntry = completion?.current() ?? activeSessionEntry;
 

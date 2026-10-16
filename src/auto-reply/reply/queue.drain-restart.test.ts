@@ -3,10 +3,6 @@ import { importFreshModule } from "openclaw/plugin-sdk/test-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import {
-  getPreparedModelRuntimePluginGeneration,
-  withPreparedModelRuntimePluginGenerationScope,
-} from "../../agents/prepared-model-runtime-generation-scope.js";
-import {
   beginGatewayRestartSignalAdmission,
   GatewayDrainingError,
   getActiveGatewayRootWorkCount,
@@ -166,34 +162,22 @@ describe("followup queue drain restart after idle window", () => {
     let suspensionStarted = false;
     let subordinateAdmissionClosed: boolean | undefined;
     let activeRootCountDuringDrain: number | undefined;
-    let generationDuringDrain: unknown;
-    const predecessorGeneration = {
-      remoteCatalog: null,
-      configuredCatalogEntries: [],
-      inlineProviderModels: [],
-      pluginMetadataSnapshot: {} as never,
-    };
-
     try {
-      await withPreparedModelRuntimePluginGenerationScope(predecessorGeneration, () =>
-        parent.run(async () => {
-          expect(getPreparedModelRuntimePluginGeneration()).toBe(predecessorGeneration);
-          enqueueFollowupRun(key, createRun({ prompt: "detached" }), defaults);
-          scheduleFollowupDrain(key, async () => {
-            await parentReleased.promise;
-            const suspension = tryBeginGatewaySuspendAdmission(() => {});
-            suspensionStarted = suspension !== null;
-            try {
-              generationDuringDrain = getPreparedModelRuntimePluginGeneration();
-              subordinateAdmissionClosed = isGatewaySubordinateWorkAdmissionClosed();
-              activeRootCountDuringDrain = getActiveGatewayRootWorkCount();
-            } finally {
-              suspension?.rollback();
-              drained.resolve();
-            }
-          });
-        }),
-      );
+      await parent.run(async () => {
+        enqueueFollowupRun(key, createRun({ prompt: "detached" }), defaults);
+        scheduleFollowupDrain(key, async () => {
+          await parentReleased.promise;
+          const suspension = tryBeginGatewaySuspendAdmission(() => {});
+          suspensionStarted = suspension !== null;
+          try {
+            subordinateAdmissionClosed = isGatewaySubordinateWorkAdmissionClosed();
+            activeRootCountDuringDrain = getActiveGatewayRootWorkCount();
+          } finally {
+            suspension?.rollback();
+            drained.resolve();
+          }
+        });
+      });
 
       parent.release();
       parentReleased.resolve();
@@ -202,7 +186,6 @@ describe("followup queue drain restart after idle window", () => {
       expect(suspensionStarted).toBe(true);
       expect(subordinateAdmissionClosed).toBe(false);
       expect(activeRootCountDuringDrain).toBe(1);
-      expect(generationDuringDrain).toBeUndefined();
       await vi.waitFor(() => expect(getActiveGatewayRootWorkCount()).toBe(0));
     } finally {
       parent.release();
@@ -341,7 +324,7 @@ describe("followup queue drain restart after idle window", () => {
     expect(getExistingFollowupQueue(key)).toBeUndefined();
   });
 
-  it("resumes a queued followup after a restart-signal fence rolls back", async () => {
+  it("waits for a normal drain kick after a restart signal rolls back", async () => {
     const firstFailed =
       createDeferred<NonNullable<ReturnType<typeof beginGatewayRestartSignalAdmission>>>();
     const delivered = createDeferred();
@@ -367,8 +350,12 @@ describe("followup queue drain restart after idle window", () => {
     expect(attempts).toBe(1);
     expect(getExistingFollowupQueue(key)?.items).toHaveLength(1);
     expect(signal.rollback()).toBe(true);
-    await vi.waitFor(() => expect(attempts).toBe(2));
+    await vi.waitFor(() => expect(getActiveGatewayRootWorkCount()).toBe(0));
+    expect(attempts).toBe(1);
+    expect(getExistingFollowupQueue(key)?.draining).toBe(false);
+    kickFollowupDrainIfIdle(key);
     await delivered.promise;
+    expect(attempts).toBe(2);
     await vi.waitFor(() => expect(getActiveGatewayRootWorkCount()).toBe(0));
     expect(getExistingFollowupQueue(key)).toBeUndefined();
   });

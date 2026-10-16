@@ -1,8 +1,8 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import type { MediaImageLayout } from "../../agents/embedded-agent-runner/run/prompt-image-metadata.js";
 import type { EmbeddedFullAccessBlockedReason } from "../../agents/embedded-agent-runner/types.js";
 import { updateAmbientTranscriptWatermark } from "../../config/sessions/ambient-transcript-watermark.js";
 import { isImageMediaFact, type MediaFact } from "../../media/media-facts.js";
-import type { UserTurnInput } from "../../sessions/user-turn-transcript.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import type { MsgContext, TemplateContext } from "../templating.js";
 import type { ElevatedLevel } from "../thinking.js";
@@ -16,7 +16,7 @@ export function buildPersistedMediaImageLayout(params: {
   ctxMediaCount: number;
   imageOrder?: readonly ("inline" | "offloaded")[];
   imageSourceIndexes?: readonly (number | undefined)[];
-}): NonNullable<UserTurnInput["mediaImageLayout"]> | undefined {
+}): MediaImageLayout | undefined {
   const describedAttachmentIndexes = new Set(
     params.ctx.MediaUnderstanding?.flatMap((output) =>
       output.kind === "image.description" ? [output.attachmentIndex] : [],
