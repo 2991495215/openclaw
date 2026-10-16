@@ -26,7 +26,7 @@ describe("Control UI cached output identity", () => {
         "export const answer = 42;\n" + "// Cached identity leaves content unchanged.\n".repeat(32);
       const assets = [
         { fileName: assetName, source: Buffer.from(source) },
-        ...createControlUiPrecompressedAssetVariants(assetName, source),
+        ...(await createControlUiPrecompressedAssetVariants(assetName, source)),
       ];
       expect(assets.map((asset) => asset.fileName)).toEqual([
         assetName,
