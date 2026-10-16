@@ -24,6 +24,14 @@ import { observeConfigSnapshotSync } from "./io.observe.js";
 import { normalizeConfigIoDeps } from "./io.read-helpers.js";
 import type { ConfigIoFactoryOptions } from "./io.types.js";
 
+const realFs = { ...fs, promises: { ...fs.promises } };
+const fsSpies: Array<{ mockRestore: () => void }> = [];
+afterEach(() => {
+  for (const spy of fsSpies.splice(0).reverse()) {
+    spy.mockRestore();
+  }
+});
+
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
   afterEach(async () => {
     clearPluginMetadataLifecycleCaches();
@@ -176,40 +184,54 @@ describe("prepared config recovery", () => {
       const readError = Object.assign(new Error("backup device unavailable"), { code: "EIO" });
       let armed = false;
       const isBackup = (target: fs.PathLike | number) => String(target).endsWith(".bak");
-      const { root, configPath, original, backup, io } = fixture({
-        fs: {
-          ...fs,
-          readFileSync: ((target: fs.PathOrFileDescriptor, options?: unknown) => {
-            if (armed && isBackup(target) && phase === "sync-read") {
-              throw readError;
-            }
-            return fs.readFileSync(target, options as Parameters<typeof fs.readFileSync>[1]);
-          }) as typeof fs.readFileSync,
-          statSync: ((target: fs.PathLike, options?: { throwIfNoEntry?: boolean }) => {
-            if (armed && isBackup(target) && phase === "sync-stat") {
-              throw readError;
-            }
-            return fs.statSync(target, options);
-          }) as typeof fs.statSync,
-          promises: {
-            ...fs.promises,
-            readFile: ((target: fs.PathLike, options?: unknown) =>
-              armed && isBackup(target) && phase === "async-read"
-                ? Promise.reject(readError)
-                : fs.promises.readFile(
-                    target,
-                    options as Parameters<typeof fs.promises.readFile>[1],
-                  )) as typeof fs.promises.readFile,
-            stat: ((target: fs.PathLike) =>
-              armed && isBackup(target) && phase === "async-stat"
-                ? Promise.reject(readError)
-                : fs.promises.stat(target)) as typeof fs.promises.stat,
-          },
-        },
-      });
+      fsSpies.push(
+        vi.spyOn(fs, "readFileSync").mockImplementation(((
+          target: fs.PathOrFileDescriptor,
+          options?: unknown,
+        ) => {
+          if (armed && isBackup(target) && phase === "sync-read") {
+            throw readError;
+          }
+          return realFs.readFileSync(target, options as Parameters<typeof fs.readFileSync>[1]);
+        }) as typeof fs.readFileSync),
+      );
+      fsSpies.push(
+        vi.spyOn(fs, "statSync").mockImplementation(((
+          target: fs.PathLike,
+          options?: { throwIfNoEntry?: boolean },
+        ) => {
+          if (armed && isBackup(target) && phase === "sync-stat") {
+            throw readError;
+          }
+          return realFs.statSync(target, options);
+        }) as typeof fs.statSync),
+      );
+      fsSpies.push(
+        vi
+          .spyOn(fs.promises, "readFile")
+          .mockImplementation(((target: fs.PathLike, options?: unknown) =>
+            armed && isBackup(target) && phase === "async-read"
+              ? Promise.reject(readError)
+              : realFs.promises.readFile(
+                  target,
+                  options as Parameters<typeof fs.promises.readFile>[1],
+                )) as typeof fs.promises.readFile),
+      );
+      fsSpies.push(
+        vi
+          .spyOn(fs.promises, "stat")
+          .mockImplementation(((target: fs.PathLike) =>
+            armed && isBackup(target) && phase === "async-stat"
+              ? Promise.reject(readError)
+              : realFs.promises.stat(target)) as typeof fs.promises.stat),
+      );
+      const { root, configPath, original, backup, io } = fixture();
       const plan = await recovery(io);
       armed = true;
       await expect(plan.apply()).rejects.toBe(readError);
+      for (const spy of fsSpies.splice(0).reverse()) {
+        spy.mockRestore();
+      }
       expect(fs.readFileSync(configPath, "utf8")).toBe(original);
       expect(fs.readFileSync(`${configPath}.bak`, "utf8")).toBe(backup);
       expect(clobberFiles(root)).toEqual([]);
@@ -289,27 +311,30 @@ describe("prepared config recovery", () => {
       const { root, configPath, backup, env } = fixture();
       const backupPath = `${configPath}.bak`;
       const statError = Object.assign(new Error("EACCES: stat denied"), { code: "EACCES" });
+      fsSpies.push(
+        vi
+          .spyOn(fs.promises, "stat")
+          .mockImplementation(((target: fs.PathLike) =>
+            target === backupPath
+              ? Promise.reject(statError)
+              : realFs.promises.stat(target)) as typeof fs.promises.stat),
+      );
+      fsSpies.push(
+        vi.spyOn(fs, "statSync").mockImplementation(((
+          target: fs.PathLike,
+          options?: { throwIfNoEntry?: boolean },
+        ) => {
+          if (target === backupPath) {
+            throw statError;
+          }
+          return realFs.statSync(target, options);
+        }) as typeof fs.statSync),
+      );
       const io = createConfigIO({
         env,
         configPath,
         homedir: () => root,
         logger: { warn: vi.fn(), error: vi.fn() },
-        fs: {
-          ...fs,
-          promises: {
-            ...fs.promises,
-            stat: ((target: fs.PathLike) =>
-              target === backupPath
-                ? Promise.reject(statError)
-                : fs.promises.stat(target)) as typeof fs.promises.stat,
-          },
-          statSync: ((target: fs.PathLike, options?: { throwIfNoEntry?: boolean }) => {
-            if (target === backupPath) {
-              throw statError;
-            }
-            return fs.statSync(target, options);
-          }) as typeof fs.statSync,
-        },
       });
 
       const recovered =
@@ -400,28 +425,24 @@ describe("prepared config recovery", () => {
           : undefined;
       const changedPath = `${configPath}.bak`;
       const concurrentRaw = '{ "gateway": { "mode": "local", "port": 18721 } }\n';
+      fsSpies.push(
+        vi.spyOn(fs.promises, "writeFile").mockImplementation(async (pathname, data, options) => {
+          await realFs.promises.writeFile(pathname, data, options);
+          if (typeof pathname === "string" && pathname.startsWith(`${configPath}.clobbered.`)) {
+            if (lease) {
+              lease.release();
+            } else {
+              await realFs.promises.writeFile(changedPath, concurrentRaw);
+            }
+          }
+        }),
+      );
       const io = createConfigIO({
         configPath,
         env,
         observe: false,
         homedir: () => root,
         logger: { warn: vi.fn(), error: vi.fn() },
-        fs: {
-          ...fs,
-          promises: {
-            ...fs.promises,
-            writeFile: async (pathname, data, options) => {
-              await fs.promises.writeFile(pathname, data, options);
-              if (typeof pathname === "string" && pathname.startsWith(`${configPath}.clobbered.`)) {
-                if (lease) {
-                  lease.release();
-                } else {
-                  await fs.promises.writeFile(changedPath, concurrentRaw);
-                }
-              }
-            },
-          },
-        },
       });
       const plan = await recovery(io);
       await expect(plan.apply(lease?.heartbeat)).rejects.toThrow(
@@ -441,20 +462,16 @@ describe("prepared config recovery", () => {
 
   it("defers prepared recovery when the forensic snapshot cannot be written", async () => {
     const warn = vi.fn();
+    fsSpies.push(
+      vi.spyOn(fs.promises, "writeFile").mockImplementation(async (target, data, options) => {
+        if (typeof target === "string" && target.includes(".clobbered.")) {
+          throw Object.assign(new Error("snapshot disk full"), { code: "ENOSPC" });
+        }
+        return realFs.promises.writeFile(target, data, options);
+      }),
+    );
     const { root, configPath, original, backup, io } = fixture({
       logger: { warn, error: vi.fn() },
-      fs: {
-        ...fs,
-        promises: {
-          ...fs.promises,
-          writeFile: async (target, data, options) => {
-            if (typeof target === "string" && target.includes(".clobbered.")) {
-              throw Object.assign(new Error("snapshot disk full"), { code: "ENOSPC" });
-            }
-            return fs.promises.writeFile(target, data, options);
-          },
-        },
-      },
     });
     const plan = await recovery(io);
 
@@ -467,24 +484,20 @@ describe("prepared config recovery", () => {
 
   it("rejects failed replacement while retaining the original and its clobbered snapshot", async () => {
     const { root, configPath, original, env } = fixture();
+    fsSpies.push(
+      vi.spyOn(fs.promises, "rename").mockImplementation(async (source, target) => {
+        if (target === configPath) {
+          throw Object.assign(new Error("recovery replacement denied"), { code: "EACCES" });
+        }
+        await realFs.promises.rename(source, target);
+      }),
+    );
     const io = createConfigIO({
       configPath,
       env,
       observe: false,
       homedir: () => root,
       logger: { warn: vi.fn(), error: vi.fn() },
-      fs: {
-        ...fs,
-        promises: {
-          ...fs.promises,
-          rename: async (source, target) => {
-            if (target === configPath) {
-              throw Object.assign(new Error("recovery replacement denied"), { code: "EACCES" });
-            }
-            await fs.promises.rename(source, target);
-          },
-        },
-      },
     });
     const plan = await recovery(io);
     await expect(plan.apply()).rejects.toThrow("recovery replacement denied");

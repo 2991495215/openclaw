@@ -2,7 +2,7 @@
 import fsNode from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useConfigCliIntegrationHarness } from "../cli/config-cli.integration.test-harness.js";
 import { createPreUpdateConfigSnapshot } from "./backup-rotation.js";
 import { withExecutor } from "./config-executor.test-support.js";
@@ -15,6 +15,13 @@ import { createConfigIO } from "./io.factory.js";
 import { withTempHome } from "./test-helpers.js";
 
 const { runRegisteredConfigCommand, withConfigFileHarness } = useConfigCliIntegrationHarness();
+const realFs = { ...fsNode };
+const fsSpies: Array<{ mockRestore: () => void }> = [];
+afterEach(() => {
+  for (const spy of fsSpies.splice(0).reverse()) {
+    spy.mockRestore();
+  }
+});
 
 async function expectRegularFile(filePath: string): Promise<void> {
   expect((await fs.stat(filePath)).isFile()).toBe(true);
@@ -179,40 +186,47 @@ describe("config backup rotation", () => {
               atRevocation = readBackups();
             }
           };
+          fsSpies.push(
+            vi.spyOn(fsNode, "openSync").mockImplementation((target, flags, mode) => {
+              const fd = realFs.openSync(target, flags, mode);
+              if (backupPaths.includes(String(target))) {
+                openBackupPaths.set(fd, target);
+              }
+              return fd;
+            }),
+          );
+          fsSpies.push(
+            vi.spyOn(fsNode, "closeSync").mockImplementation((fd) => {
+              realFs.closeSync(fd);
+              openBackupPaths.delete(fd);
+            }),
+          );
+          fsSpies.push(
+            vi.spyOn(fsNode, "unlinkSync").mockImplementation((target) => {
+              realFs.unlinkSync(target);
+              afterMutation("unlink", target);
+            }),
+          );
+          fsSpies.push(
+            vi.spyOn(fsNode, "renameSync").mockImplementation((source, destination) => {
+              realFs.renameSync(source, destination);
+              afterMutation("rename", destination);
+            }),
+          );
+          fsSpies.push(
+            vi.spyOn(fsNode, "fchmodSync").mockImplementation((fd, mode) => {
+              realFs.fchmodSync(fd, mode);
+              const target = openBackupPaths.get(fd);
+              if (target !== undefined) {
+                afterMutation("fchmod", target);
+              }
+            }),
+          );
           const io = createConfigIO({
             env,
             homedir: () => home,
             observe: false,
             pluginValidation: "skip",
-            fs: {
-              ...fsNode,
-              openSync: (target, flags, mode) => {
-                const fd = fsNode.openSync(target, flags, mode);
-                if (backupPaths.includes(String(target))) {
-                  openBackupPaths.set(fd, target);
-                }
-                return fd;
-              },
-              closeSync: (fd) => {
-                fsNode.closeSync(fd);
-                openBackupPaths.delete(fd);
-              },
-              unlinkSync: (target) => {
-                fsNode.unlinkSync(target);
-                afterMutation("unlink", target);
-              },
-              renameSync: (source, destination) => {
-                fsNode.renameSync(source, destination);
-                afterMutation("rename", destination);
-              },
-              fchmodSync: (fd, mode) => {
-                fsNode.fchmodSync(fd, mode);
-                const target = openBackupPaths.get(fd);
-                if (target !== undefined) {
-                  afterMutation("fchmod", target);
-                }
-              },
-            },
           });
           const { snapshot, writeOptions } = await io.readConfigFileSnapshotForWrite();
 

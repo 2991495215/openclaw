@@ -1,4 +1,4 @@
-import type fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { err, ok } from "@openclaw/normalization-core/result";
@@ -152,7 +152,7 @@ export async function writeConfigFileFromContext(
     options = { ...options, baseSnapshot: snapshot };
   }
   if (options.baseSnapshot) {
-    assertBaseSnapshotStillCurrent(snapshot, configPath, deps.fs);
+    assertBaseSnapshotStillCurrent(snapshot, configPath, fs);
   }
 
   const {
@@ -302,7 +302,7 @@ export async function writeConfigFileFromContext(
   );
 
   options.assertConfigPathForWrite?.();
-  await deps.fs.promises.mkdir(path.dirname(configPath), { recursive: true, mode: 0o700 });
+  await fs.promises.mkdir(path.dirname(configPath), { recursive: true, mode: 0o700 });
   const tildeRestoredOutputConfig = restoreAuthoredTildePathsForWrite(
     persistCandidate,
     snapshot.parsed,
@@ -329,13 +329,12 @@ export async function writeConfigFileFromContext(
     typeof snapshot.raw === "string" ? Buffer.byteLength(snapshot.raw, "utf-8") : null;
   const sizeBaselineBytes = resolveConfigSizeBaselineBytes({
     raw: snapshot.raw,
-    json5: deps.json5,
     lastTouchedVersionOverride: options.lastTouchedVersionOverride,
     env: deps.env,
   });
   const nextBytes = Buffer.byteLength(json, "utf-8");
   const previousStat = snapshot.exists
-    ? await deps.fs.promises.stat(configPath).catch(() => null)
+    ? await fs.promises.stat(configPath).catch(() => null)
     : null;
   const hasMetaBefore = hasConfigMeta(snapshot.parsed);
   const gatewayModeBefore = resolveGatewayMode(snapshot.resolved);
@@ -441,7 +440,7 @@ export async function writeConfigFileFromContext(
     const rejectedPath = `${configPath}.rejected.${formatConfigArtifactTimestamp(new Date().toISOString())}`;
     // Only the completed exclusive create proves this payload is available for inspection.
     options.assertConfigPathForWrite?.();
-    const rejectedSave = await deps.fs.promises
+    const rejectedSave = await fs.promises
       .writeFile(rejectedPath, json, { encoding: "utf-8", mode: 0o600, flag: "wx" })
       .then(ok, err);
     const saveDetail = rejectedSave.ok
@@ -490,7 +489,7 @@ export async function writeConfigFileFromContext(
   try {
     options.assertConfigPathForWrite?.();
     if (options.baseSnapshot) {
-      assertBaseSnapshotStillCurrent(snapshot, configPath, deps.fs);
+      assertBaseSnapshotStillCurrent(snapshot, configPath, fs);
     }
     options.assertConfigPathForWrite?.();
     await cronOwnerRefusal?.recheck();
@@ -503,7 +502,7 @@ export async function writeConfigFileFromContext(
     });
     const writeGuard = createConfigFileWriteGuard(
       configPath,
-      deps.fs,
+      fs,
       options.assertConfigPathForWrite,
       {
         snapshot,
@@ -523,7 +522,7 @@ export async function writeConfigFileFromContext(
         configPath,
         previousSnapshot: snapshot,
         committedHash: publication.phase === "removed" ? hashConfigRaw(null) : nextHash,
-        fsModule: deps.fs,
+        fsModule: fs,
         stateDirectory,
         ...writeGuard.captureRollbackProof(assertCurrent),
         withPublication: (publish, didMutate) =>
@@ -535,7 +534,7 @@ export async function writeConfigFileFromContext(
       });
     await using preparedFile = await prepareConfigFileWrite({
       configPath,
-      dirMode: readExistingStateRootMode(path.dirname(configPath), stateDirectory.path, deps.fs),
+      dirMode: readExistingStateRootMode(path.dirname(configPath), stateDirectory.path, fs),
       content: json,
       previousRaw: snapshot.raw,
       fsModule: writeGuard.fileSystem,
@@ -566,7 +565,7 @@ export async function writeConfigFileFromContext(
     await appendWriteAudit(
       result.method,
       undefined,
-      await deps.fs.promises.stat(configPath).catch(() => null),
+      await fs.promises.stat(configPath).catch(() => null),
     );
     options.assertConfigPathForWrite?.();
     if (

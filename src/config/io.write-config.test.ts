@@ -53,6 +53,13 @@ import type { ConfigFileSnapshot, OpenClawConfig } from "./types.openclaw.js";
 import { withConfigWriteLock } from "./write-lock.js";
 
 const CONFIG_CLOBBER_SNAPSHOT_LIMIT = 32;
+const realFs = { ...fsNode, promises: { ...fsNode.promises } };
+const fsSpies: Array<{ mockRestore: () => void }> = [];
+afterEach(() => {
+  for (const spy of fsSpies.splice(0).reverse()) {
+    spy.mockRestore();
+  }
+});
 
 // Mock the plugin manifest registry so we can register a fake channel whose
 // AJV JSON Schema carries a `default` value.  This lets the #56772 regression
@@ -705,42 +712,41 @@ describe("config io write", () => {
         const name = path.basename(String(file));
         return name.startsWith(`${configBasename}.`) && name.endsWith(".tmp");
       };
-      const crashingFs: typeof fsNode = {
-        ...fsNode,
-        promises: {
-          ...fsNode.promises,
-          open: async (file, ...rest) => {
-            const handle = await fsNode.promises.open(file, ...rest);
-            if (isStagedConfigTemp(file)) {
-              stagedHandles.add(handle);
-              if (failure === "chmod") {
-                handle.chmod = async () => {
-                  throw writeError;
-                };
-              }
+      fsSpies.push(
+        vi.spyOn(fsNode.promises, "open").mockImplementation(async (file, ...rest) => {
+          const handle = await realFs.promises.open(file, ...rest);
+          if (isStagedConfigTemp(file)) {
+            stagedHandles.add(handle);
+            if (failure === "chmod") {
+              handle.chmod = async () => {
+                throw writeError;
+              };
             }
-            return handle;
-          },
-          writeFile: async (target, data, options) => {
-            const isRecovery =
-              typeof target === "string" ? target === configPath : stagedHandles.has(target);
-            if (failure === "write" && isRecovery) {
-              await fsNode.promises.writeFile(target, "", options);
-              throw writeError;
-            }
-            return fsNode.promises.writeFile(target, data, options);
-          },
-          rename: async (source, destination) => {
-            if (failure === "rename" && destination === configPath) {
-              throw writeError;
-            }
-            return fsNode.promises.rename(source, destination);
-          },
-        },
-      };
+          }
+          return handle;
+        }),
+      );
+      fsSpies.push(
+        vi.spyOn(fsNode.promises, "writeFile").mockImplementation(async (target, data, options) => {
+          const isRecovery =
+            typeof target === "string" ? target === configPath : stagedHandles.has(target);
+          if (failure === "write" && isRecovery) {
+            await realFs.promises.writeFile(target, "", options);
+            throw writeError;
+          }
+          return realFs.promises.writeFile(target, data, options);
+        }),
+      );
+      fsSpies.push(
+        vi.spyOn(fsNode.promises, "rename").mockImplementation(async (source, destination) => {
+          if (failure === "rename" && destination === configPath) {
+            throw writeError;
+          }
+          return realFs.promises.rename(source, destination);
+        }),
+      );
       const warn = vi.fn();
       const io = createHomeConfigIO(home, {
-        fs: crashingFs,
         env: { VITEST: "true" } as NodeJS.ProcessEnv,
         logger: { warn, error: vi.fn() },
       });
@@ -796,19 +802,15 @@ describe("config io write", () => {
     const chmodError = Object.assign(new Error("EPERM: chmod denied"), { code: "EPERM" });
     const warn = vi.fn();
     const chmod = fsNode.promises.chmod.bind(fsNode.promises);
+    fsSpies.push(
+      vi.spyOn(fsNode.promises, "chmod").mockImplementation(async (target, mode) => {
+        if (target === configPath) {
+          throw chmodError;
+        }
+        return await chmod(target, mode);
+      }),
+    );
     const io = createHomeConfigIO(home, {
-      fs: {
-        ...fsNode,
-        promises: {
-          ...fsNode.promises,
-          chmod: async (target, mode) => {
-            if (target === configPath) {
-              throw chmodError;
-            }
-            return await chmod(target, mode);
-          },
-        },
-      },
       env: { VITEST: "true" } as NodeJS.ProcessEnv,
       logger: { warn, error: vi.fn() },
     });
@@ -876,23 +878,21 @@ describe("config io write", () => {
         const { configPath, raw: originalRaw } = await writeConfigFixture(home, original);
         const previousPayload = "previous rejected payload\n";
         const warn = vi.fn();
+        fsSpies.push(
+          vi
+            .spyOn(fsNode.promises, "writeFile")
+            .mockImplementation(async (target, data, options) => {
+              if (typeof target === "string" && target.includes(".rejected.")) {
+                if (outcome === "EEXIST") {
+                  await realFs.promises.writeFile(target, previousPayload);
+                }
+              }
+              return realFs.promises.writeFile(target, data, options);
+            }),
+        );
         const io = createHomeConfigIO(home, {
           env: { VITEST: "true" } as NodeJS.ProcessEnv,
           logger: { warn, error: vi.fn() },
-          fs: {
-            ...fsNode,
-            promises: {
-              ...fsNode.promises,
-              writeFile: async (target, data, options) => {
-                if (typeof target === "string" && target.includes(".rejected.")) {
-                  if (outcome === "EEXIST") {
-                    await fs.writeFile(target, previousPayload);
-                  }
-                }
-                return fsNode.promises.writeFile(target, data, options);
-              },
-            },
-          },
         });
         const baseSnapshot = createExistingConfigSnapshot(configPath, original, originalRaw);
         const preflight = vi.fn(async () => {
@@ -2681,27 +2681,30 @@ describe("config io write", () => {
       await writeConfigJson(includePath, { logging: { level: "info" } });
       let renameDenied = false;
       let includeChanged = false;
-      const io = createFastConfigIO(home, {
-        configPath,
-        fs: {
-          ...fsNode,
-          renameSync: (source, destination) => {
-            if (destination !== configPath) {
-              return fsNode.renameSync(source, destination);
-            }
-            renameDenied = true;
-            throw Object.assign(new Error("rename denied"), { code: "EPERM" });
-          },
-          readSync: new Proxy(fsNode.readSync, {
+      fsSpies.push(
+        vi.spyOn(fsNode, "renameSync").mockImplementation((source, destination) => {
+          if (destination !== configPath) {
+            return realFs.renameSync(source, destination);
+          }
+          renameDenied = true;
+          throw Object.assign(new Error("rename denied"), { code: "EPERM" });
+        }),
+      );
+      fsSpies.push(
+        vi.spyOn(fsNode, "readSync").mockImplementation(
+          new Proxy(realFs.readSync, {
             apply(target, thisArg, args) {
               if (renameDenied && !includeChanged) {
-                fsNode.writeFileSync(includePath, JSON.stringify({ logging: { level: "debug" } }));
+                realFs.writeFileSync(includePath, JSON.stringify({ logging: { level: "debug" } }));
                 includeChanged = true;
               }
               return Reflect.apply(target, thisArg, args);
             },
           }),
-        },
+        ),
+      );
+      const io = createFastConfigIO(home, {
+        configPath,
       });
       const nextConfig = {
         $include: "included.json",
@@ -2734,14 +2737,13 @@ describe("config io write", () => {
           await writeConfigJson(includePath, { level: "info" });
         }
         const denied = Object.assign(new Error("rename denied"), { code: "EPERM" });
+        fsSpies.push(
+          vi.spyOn(fsNode, "renameSync").mockImplementation(() => {
+            throw denied;
+          }),
+        );
         const io = createFastConfigIO(home, {
           configPath,
-          fs: {
-            ...fsNode,
-            renameSync: () => {
-              throw denied;
-            },
-          },
         });
         const prepared =
           publication !== "ordinary" ? await io.readConfigFileSnapshotForWrite() : undefined;
@@ -2776,50 +2778,40 @@ describe("config io write", () => {
             }),
           );
         };
-        const rename =
-          publication === "prepared-runtime"
-            ? vi.spyOn(fsNode, "renameSync").mockImplementation(() => {
-                throw denied;
-              })
-            : undefined;
-        try {
-          await withEnvAsync(
-            {
-              OPENCLAW_CONFIG_PATH: configPath,
-              OPENCLAW_STATE_DIR: path.dirname(configPath),
-              OPENCLAW_TEST_FAST: "1",
-            },
-            async () => {
-              if (publication.startsWith("executor-")) {
-                const root = path.join(await fs.realpath(home), "package");
-                await fs.mkdir(root);
-                const databasePath = path.join(home, "control", "managed-update-handoffs.sqlite");
-                createManagedHandoffLeaseDatabase(databasePath)(true, () => undefined);
-                const existingAuthority = {
-                  ...captureManagedUpdateLeaseDatabaseIdentity(databasePath),
-                  installKey: root,
-                };
-                await withUpdateCommandExecutor(
-                  "config-write-fallback",
-                  async (executor) => {
-                    const fence = await executor.enter(root);
-                    await withConfigWriteLock(
-                      configPath,
-                      () => assertWriteOutcome(),
-                      io.env,
-                      fence.assertCurrent,
-                    );
-                  },
-                  { existingAuthority },
-                );
-              } else {
-                await assertWriteOutcome();
-              }
-            },
-          );
-        } finally {
-          rename?.mockRestore();
-        }
+        await withEnvAsync(
+          {
+            OPENCLAW_CONFIG_PATH: configPath,
+            OPENCLAW_STATE_DIR: path.dirname(configPath),
+            OPENCLAW_TEST_FAST: "1",
+          },
+          async () => {
+            if (publication.startsWith("executor-")) {
+              const root = path.join(await fs.realpath(home), "package");
+              await fs.mkdir(root);
+              const databasePath = path.join(home, "control", "managed-update-handoffs.sqlite");
+              createManagedHandoffLeaseDatabase(databasePath)(true, () => undefined);
+              const existingAuthority = {
+                ...captureManagedUpdateLeaseDatabaseIdentity(databasePath),
+                installKey: root,
+              };
+              await withUpdateCommandExecutor(
+                "config-write-fallback",
+                async (executor) => {
+                  const fence = await executor.enter(root);
+                  await withConfigWriteLock(
+                    configPath,
+                    () => assertWriteOutcome(),
+                    io.env,
+                    fence.assertCurrent,
+                  );
+                },
+                { existingAuthority },
+              );
+            } else {
+              await assertWriteOutcome();
+            }
+          },
+        );
         if (layout === "include") {
           expect(await readPersistedConfig(includePath)).toEqual({ level: "info" });
         }
@@ -2849,19 +2841,18 @@ describe("config io write", () => {
         async (executor) => {
           const fence = await executor.enter(root, { preflight: true });
           let revoked = false;
+          fsSpies.push(
+            vi.spyOn(fsNode, "renameSync").mockImplementation((source, destination) => {
+              if (destination !== configPath) {
+                return realFs.renameSync(source, destination);
+              }
+              releaseUpdateCommandPreflightForHandoff(fence);
+              revoked = true;
+              throw primaryError;
+            }),
+          );
           const io = createFastConfigIO(home, {
             configPath,
-            fs: {
-              ...fsNode,
-              renameSync: (source, destination) => {
-                if (destination !== configPath) {
-                  return fsNode.renameSync(source, destination);
-                }
-                releaseUpdateCommandPreflightForHandoff(fence);
-                revoked = true;
-                throw primaryError;
-              },
-            },
           });
           const priorAudit = listConfigAuditRecordsForTests({ env: io.env, homedir: () => home });
           const failure = await io
@@ -2998,68 +2989,65 @@ describe("config io write", () => {
     },
   );
 
-  itWithHome(
-    "uses injected filesystem operations when rolling back ownership loss",
-    async (home) => {
-      const configPath = configPathForHome(home);
-      const otherConfigPath = path.join(home, ".openclaw", "other.json");
-      const initialConfig = { gateway: { mode: "local", port: 18789 } } satisfies OpenClawConfig;
-      const initialRaw = formatConfig(initialConfig);
-      await fs.mkdir(path.dirname(configPath), { recursive: true });
-      await fs.writeFile(configPath, initialRaw, "utf-8");
-      const env = {
-        OPENCLAW_CONFIG_PATH: configPath,
-        OPENCLAW_TEST_FAST: "1",
-      } as NodeJS.ProcessEnv;
-      const readFile = fsNode.promises.readFile.bind(fsNode.promises);
-      const rename = fsNode.renameSync;
-      let committed = false;
-      let rollbackReadUsedInjectedFs = false;
-      const injectedFs = {
-        ...fsNode,
-        promises: { ...fsNode.promises },
-        renameSync: (from, to) => {
-          rename(from, to);
-          if (!committed && to === configPath) {
-            committed = true;
-            env.OPENCLAW_CONFIG_PATH = otherConfigPath;
-          }
-        },
-      } satisfies typeof fsNode;
-      vi.spyOn(injectedFs.promises, "readFile").mockImplementation(async (target, options) => {
+  itWithHome("rolls back ownership loss through the filesystem owner", async (home) => {
+    const configPath = configPathForHome(home);
+    const otherConfigPath = path.join(home, ".openclaw", "other.json");
+    const initialConfig = { gateway: { mode: "local", port: 18789 } } satisfies OpenClawConfig;
+    const initialRaw = formatConfig(initialConfig);
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await fs.writeFile(configPath, initialRaw, "utf-8");
+    const env = {
+      OPENCLAW_CONFIG_PATH: configPath,
+      OPENCLAW_TEST_FAST: "1",
+    } as NodeJS.ProcessEnv;
+    const readFile = fsNode.promises.readFile.bind(fsNode.promises);
+    const rename = fsNode.renameSync;
+    let committed = false;
+    let rollbackReadUsedOwner = false;
+    fsSpies.push(
+      vi.spyOn(fsNode, "renameSync").mockImplementation((from, to) => {
+        rename(from, to);
+        if (!committed && to === configPath) {
+          committed = true;
+          env.OPENCLAW_CONFIG_PATH = otherConfigPath;
+        }
+      }),
+    );
+    fsSpies.push(
+      vi.spyOn(fsNode.promises, "readFile").mockImplementation(async (target, options) => {
         if (committed && target === configPath) {
-          rollbackReadUsedInjectedFs = true;
+          rollbackReadUsedOwner = true;
         }
         return await readFile(target, options);
-      });
-      const io = createConfigIO({ env, fs: injectedFs, homedir: () => home, logger: silentLogger });
-      const prepared = await io.readConfigFileSnapshotForWrite();
-      const priorAudit = listConfigAuditRecordsForTests({ env: io.env, homedir: () => home });
+      }),
+    );
+    const io = createConfigIO({ env, homedir: () => home, logger: silentLogger });
+    const prepared = await io.readConfigFileSnapshotForWrite();
+    const priorAudit = listConfigAuditRecordsForTests({ env: io.env, homedir: () => home });
 
-      const pending = io.writeConfigFile(
-        { gateway: { mode: "local", port: 19001 } },
-        {
-          baseSnapshot: prepared.snapshot,
-          ...prepared.writeOptions,
-        },
-      );
-      await expect(pending).rejects.toThrow("config path changed since last load");
-      const failure = await pending.catch((error: unknown) => error);
-      expect(failure).toMatchObject({
-        name: "ConfigWritePostCommitError",
-        configPath,
-        rollbackStatus: "restored",
-        cause: expect.any(ConfigMutationConflictError),
-      });
-      expect(failure).toHaveProperty("cause.retryable", false);
+    const pending = io.writeConfigFile(
+      { gateway: { mode: "local", port: 19001 } },
+      {
+        baseSnapshot: prepared.snapshot,
+        ...prepared.writeOptions,
+      },
+    );
+    await expect(pending).rejects.toThrow("config path changed since last load");
+    const failure = await pending.catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      name: "ConfigWritePostCommitError",
+      configPath,
+      rollbackStatus: "restored",
+      cause: expect.any(ConfigMutationConflictError),
+    });
+    expect(failure).toHaveProperty("cause.retryable", false);
 
-      expect(rollbackReadUsedInjectedFs).toBe(true);
-      await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(initialRaw);
-      expect(listConfigAuditRecordsForTests({ env: io.env, homedir: () => home })).toEqual(
-        priorAudit,
-      );
-    },
-  );
+    expect(rollbackReadUsedOwner).toBe(true);
+    await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(initialRaw);
+    expect(listConfigAuditRecordsForTests({ env: io.env, homedir: () => home })).toEqual(
+      priorAudit,
+    );
+  });
 
   it("persists explicit default-valued paths through the exported write wrapper", async () => {
     mockLoadPluginManifestRegistry.mockReturnValue({

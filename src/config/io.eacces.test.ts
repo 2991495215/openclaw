@@ -7,32 +7,37 @@ import { withEnvAsync } from "../test-utils/env.js";
 import { createConfigIO, resetConfigRuntimeState, writeConfigFile } from "./io.js";
 import type { OpenClawConfig } from "./types.openclaw.js";
 
-function makeUnreadableConfigFs(configPath: string): typeof fsNode {
+function mockUnreadableConfig(configPath: string) {
   const eacces = Object.assign(new Error(`EACCES: permission denied, open '${configPath}'`), {
     code: "EACCES",
   });
-  const readFileSync = ((target: fsNode.PathOrFileDescriptor, options?: unknown) => {
+  const realReadFileSync = fsNode.readFileSync;
+  const realReadFile = fsNode.promises.readFile;
+  const readFileSync = vi.spyOn(fsNode, "readFileSync").mockImplementation(((
+    target: fsNode.PathOrFileDescriptor,
+    options?: unknown,
+  ) => {
     if (target === configPath) {
       throw eacces;
     }
-    return fsNode.readFileSync(target, options as never);
-  }) as typeof fsNode.readFileSync;
-  const readFile = ((target: unknown, options?: unknown) => {
+    return realReadFileSync(target, options as never);
+  }) as typeof fsNode.readFileSync);
+  const readFile = vi.spyOn(fsNode.promises, "readFile").mockImplementation(((
+    target: unknown,
+    options?: unknown,
+  ) => {
     if (target === configPath) {
       return Promise.reject(eacces);
     }
-    return fsNode.promises.readFile(target as never, options as never);
-  }) as typeof fsNode.promises.readFile;
-  return {
-    ...fsNode,
-    readFileSync,
-    promises: { ...fsNode.promises, readFile },
-  } as typeof fsNode;
+    return realReadFile(target as never, options as never);
+  }) as typeof fsNode.promises.readFile);
+  return [readFileSync, readFile];
 }
 
 describe("config write guard after unreadable config", () => {
   const tempRoots: string[] = [];
   afterEach(() => {
+    vi.restoreAllMocks();
     while (tempRoots.length > 0) {
       const root = tempRoots.pop();
       if (root) {
@@ -56,9 +61,9 @@ describe("config write guard after unreadable config", () => {
     const liveBytes = `${JSON.stringify(liveConfig, null, 2)}\n`;
     fsNode.writeFileSync(configPath, liveBytes, { mode: 0o600 });
 
+    const readSpies = mockUnreadableConfig(configPath);
     const io = createConfigIO({
       configPath,
-      fs: makeUnreadableConfigFs(configPath),
       homedir: () => home,
       env: {},
       observe: false,
@@ -75,6 +80,9 @@ describe("config write guard after unreadable config", () => {
         reasons: expect.arrayContaining(["unreadable-config-before-write"]),
       },
     );
+    for (const spy of readSpies) {
+      spy.mockRestore();
+    }
     expect(fsNode.readFileSync(configPath, "utf-8")).toBe(liveBytes);
     const rejectedArtifacts = fsNode
       .readdirSync(stateDir)

@@ -1,4 +1,4 @@
-import type fs from "node:fs";
+import fs from "node:fs";
 import { isStateDatabaseReadAdmissionInvalidatedError } from "../state/openclaw-state-db-async-lifecycle.js";
 import {
   enqueueConfigAuditRecord,
@@ -109,7 +109,7 @@ export async function observeConfigSnapshot(
         throw superseded;
       }
     });
-    const stat = await deps.fs.promises.stat(snapshot.path).catch(() => null);
+    const stat = await fs.promises.stat(snapshot.path).catch(() => null);
     if (!health.isCurrent()) {
       return;
     }
@@ -122,9 +122,7 @@ export async function observeConfigSnapshot(
     const backupPath = `${snapshot.path}.bak`;
     const initialEntry = readConfigHealthEntry(healthState, snapshot.path);
     const backupBaseline =
-      initialEntry.lastKnownGood ??
-      (await readConfigFingerprintForPath(deps, backupPath)) ??
-      undefined;
+      initialEntry.lastKnownGood ?? (await readConfigFingerprintForPath(backupPath)) ?? undefined;
     if (!health.isCurrent()) {
       return;
     }
@@ -146,7 +144,7 @@ export async function observeConfigSnapshot(
       return;
     }
     const backup =
-      (baseline?.hash ? baseline : null) ?? (await readConfigFingerprintForPath(deps, backupPath));
+      (baseline?.hash ? baseline : null) ?? (await readConfigFingerprintForPath(backupPath));
     if (!health.isCurrent()) {
       return;
     }
@@ -178,13 +176,13 @@ export function observeConfigSnapshotSync(
     return;
   }
   supersedeConfigHealthObservations(deps, snapshot.path);
-  const stat = deps.fs.statSync(snapshot.path, { throwIfNoEntry: false }) ?? null;
+  const stat = fs.statSync(snapshot.path, { throwIfNoEntry: false }) ?? null;
   const current = createObservedFingerprint(snapshot, stat);
   const healthState = readConfigHealthStateFromStore(deps);
   const backupPath = `${snapshot.path}.bak`;
   const initialEntry = readConfigHealthEntry(healthState, snapshot.path);
   const backupBaseline =
-    initialEntry.lastKnownGood ?? readConfigFingerprintForPathSync(deps, backupPath) ?? undefined;
+    initialEntry.lastKnownGood ?? readConfigFingerprintForPathSync(backupPath) ?? undefined;
   const { entry, baseline, suspicious } = resolveObservation({
     snapshot,
     current,
@@ -202,8 +200,7 @@ export function observeConfigSnapshotSync(
   if (entry.lastObservedSuspiciousSignature === signature) {
     return;
   }
-  const backup =
-    (baseline?.hash ? baseline : null) ?? readConfigFingerprintForPathSync(deps, backupPath);
+  const backup = (baseline?.hash ? baseline : null) ?? readConfigFingerprintForPathSync(backupPath);
   deps.logger.warn(`Config observe anomaly: ${snapshot.path} (${suspicious.join(", ")})`);
   enqueueConfigAuditRecord({
     env: deps.env,

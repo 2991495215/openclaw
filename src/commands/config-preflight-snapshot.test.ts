@@ -170,17 +170,19 @@ it.each([
       env: process.env,
       readSnapshot: async () => {
         if (phase === "full config read") {
-          const reader = createConfigIO({
-            configPath,
-            observe: false,
-            fs: {
-              ...fs,
-              readFileSync() {
-                throw Object.assign(new Error("configuration read failed: EIO"), { code: "EIO" });
-              },
-            },
+          const readFileSync = fs.readFileSync;
+          const read = vi.spyOn(fs, "readFileSync").mockImplementation((target, options) => {
+            if (target === configPath) {
+              throw Object.assign(new Error("configuration read failed: EIO"), { code: "EIO" });
+            }
+            return readFileSync(target, options);
           });
-          return { snapshot: await reader.readConfigFileSnapshot() };
+          try {
+            const reader = createConfigIO({ configPath, observe: false });
+            return { snapshot: await reader.readConfigFileSnapshot() };
+          } finally {
+            read.mockRestore();
+          }
         }
         throw failure;
       },

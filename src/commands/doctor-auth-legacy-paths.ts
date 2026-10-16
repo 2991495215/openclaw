@@ -233,7 +233,7 @@ export function assertNoRetiredOAuthSidecarsBeforeConfigRecovery(params: {
     observe: false,
     shellEnvFallback: "defer",
   });
-  const raw = readConfigFileIfPresent(context.deps, context.configPath);
+  const raw = readConfigFileIfPresent(context.configPath);
   if (raw !== undefined) {
     inspectConfigJsonRootSuffixWithContext(context, raw, (candidate) => {
       assertNoRetiredStateFiles(

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { collectNestedErrorCandidates } from "../infra/error-graph-internal.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { OpenClawStateOwnershipError } from "../infra/sqlite-lifecycle-errors.js";
@@ -149,7 +150,7 @@ async function readConfigSnapshotWithPreparation(
   try {
     const raw = await deps.measure(
       "config.snapshot.read.file",
-      () => sourceRaw ?? readConfigFileIfPresent(deps, configPath),
+      () => sourceRaw ?? readConfigFileIfPresent(configPath),
     );
     if (raw === undefined) {
       const config = coerceConfig(applyImplicitAgentRosterDefaults({}));
@@ -183,9 +184,7 @@ async function readConfigSnapshotWithPreparation(
     const rawHash = await deps.measure("config.snapshot.read.hash", () => hashConfigRaw(raw));
     fallbackRaw = raw;
     fallbackHash = rawHash;
-    const parsedRes = await deps.measure("config.snapshot.read.parse", () =>
-      parseConfigJson5(raw, deps.json5),
-    );
+    const parsedRes = await deps.measure("config.snapshot.read.parse", () => parseConfigJson5(raw));
     if (!parsedRes.ok) {
       return await finalizeReadConfigSnapshotInternalResult(deps, {
         snapshot: invalidSourceSnapshot(
@@ -637,15 +636,15 @@ export async function readSourceConfigBestEffortFromContext(
 ): Promise<OpenClawConfig> {
   const { deps, configPath } = context;
   maybeLoadDotEnvForConfig(deps.env);
-  if (!deps.fs.existsSync(configPath)) {
+  if (!fs.existsSync(configPath)) {
     return {};
   }
   // Best-effort legitimizes the fallback value, not the silence: consumers
   // (update-channel selection, doctor lint) act on the result, so each
   // degradation records why the real config was not used.
   try {
-    const raw = deps.fs.readFileSync(configPath, "utf-8");
-    const parsed = parseConfigJson5(raw, deps.json5);
+    const raw = fs.readFileSync(configPath, "utf-8");
+    const parsed = parseConfigJson5(raw);
     if (!parsed.ok) {
       deps.logger.warn(
         `Config (${configPath}): best-effort read ignored unparseable config: ${parsed.error}`,

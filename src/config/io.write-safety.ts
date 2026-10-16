@@ -1,4 +1,4 @@
-import type fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import {
   replaceFileAtomicSync,
@@ -13,7 +13,6 @@ import { isRecord } from "../utils.js";
 import { hashConfigIncludeRaw } from "./includes.js";
 import { stampConfigWriteMetadata } from "./io.meta.js";
 import { hashConfigRaw, parseConfigJson5 } from "./io.read-helpers.js";
-import type { NormalizedConfigIoDeps } from "./io.read.types.js";
 import type { ConfigWriteOptions } from "./io.types.js";
 import { ConfigMutationConflictError } from "./mutation-conflict.js";
 import type { ConfigFileSnapshot, OpenClawConfig } from "./types.js";
@@ -151,7 +150,7 @@ export type ConfigFileWriteRollbackProof = {
 };
 
 type ConfigPermissionHardeningParams = {
-  deps: Pick<NormalizedConfigIoDeps, "fs"> & { logger: Pick<typeof console, "warn"> };
+  deps: { logger: Pick<typeof console, "warn"> };
   configPath: string;
   context: string;
 };
@@ -169,7 +168,7 @@ export async function chmodConfigBestEffort(
   params: ConfigPermissionHardeningParams,
 ): Promise<void> {
   try {
-    await params.deps.fs.promises.chmod?.(params.configPath, 0o600);
+    await fs.promises.chmod(params.configPath, 0o600);
   } catch (error) {
     params.deps.logger.warn(formatConfigPermissionHardeningWarning({ ...params, error }));
   }
@@ -177,7 +176,7 @@ export async function chmodConfigBestEffort(
 
 export function chmodConfigBestEffortSync(params: ConfigPermissionHardeningParams): void {
   try {
-    params.deps.fs.chmodSync?.(params.configPath, 0o600);
+    fs.chmodSync(params.configPath, 0o600);
   } catch (error) {
     params.deps.logger.warn(formatConfigPermissionHardeningWarning({ ...params, error }));
   }
@@ -575,7 +574,6 @@ export function formatConfigArtifactTimestamp(ts: string): string {
 
 export function resolveConfigSizeBaselineBytes(params: {
   raw: string | null;
-  json5: { parse: (value: string) => unknown };
   lastTouchedVersionOverride?: string;
   env?: NodeJS.ProcessEnv;
 }): number | null {
@@ -583,7 +581,7 @@ export function resolveConfigSizeBaselineBytes(params: {
     return null;
   }
   const rawBytes = Buffer.byteLength(params.raw, "utf-8");
-  const parsed = parseConfigJson5(params.raw, params.json5);
+  const parsed = parseConfigJson5(params.raw);
   if (!parsed.ok || !isRecord(parsed.parsed)) {
     return rawBytes;
   }

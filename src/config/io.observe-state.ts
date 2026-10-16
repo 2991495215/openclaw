@@ -1,4 +1,4 @@
-import type fs from "node:fs";
+import fs from "node:fs";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type {
   ConfigHealthEntry,
@@ -11,10 +11,7 @@ import {
   parseConfigJson5,
   resolveGatewayMode,
 } from "./io.read-helpers.js";
-import type { NormalizedConfigIoDeps } from "./io.read.types.js";
 import { resolveConfigStatMetadata } from "./io.write-safety.js";
-
-type ConfigFingerprintDeps = Pick<NormalizedConfigIoDeps, "fs" | "json5">;
 
 export function readConfigHealthEntry(
   state: ConfigHealthState,
@@ -45,11 +42,10 @@ export function createConfigHealthFingerprint(params: {
 }
 
 function createConfigFingerprintFromRead(params: {
-  deps: ConfigFingerprintDeps;
   raw: string;
   stat: fs.Stats | null;
 }): ConfigHealthFingerprint {
-  const parsed = parseConfigJson5(params.raw, params.deps.json5);
+  const parsed = parseConfigJson5(params.raw);
   return createConfigHealthFingerprint({
     raw: params.raw,
     parsed: parsed.ok ? parsed.parsed : {},
@@ -58,31 +54,29 @@ function createConfigFingerprintFromRead(params: {
 }
 
 export async function readConfigFingerprintForPath(
-  deps: ConfigFingerprintDeps,
   configPath: string,
 ): Promise<ConfigHealthFingerprint | null> {
   try {
-    const raw = await deps.fs.promises.readFile(configPath, "utf-8");
-    const stat = await deps.fs.promises.stat(configPath).catch(() => null);
-    return createConfigFingerprintFromRead({ deps, raw, stat });
+    const raw = await fs.promises.readFile(configPath, "utf-8");
+    const stat = await fs.promises.stat(configPath).catch(() => null);
+    return createConfigFingerprintFromRead({ raw, stat });
   } catch {
     return null;
   }
 }
 
 export function readConfigFingerprintForPathSync(
-  deps: ConfigFingerprintDeps,
   configPath: string,
 ): ConfigHealthFingerprint | null {
   try {
-    const raw = deps.fs.readFileSync(configPath, "utf-8");
+    const raw = fs.readFileSync(configPath, "utf-8");
     let stat: fs.Stats | null = null;
     try {
-      stat = deps.fs.statSync(configPath, { throwIfNoEntry: false }) ?? null;
+      stat = fs.statSync(configPath, { throwIfNoEntry: false }) ?? null;
     } catch {
       // Metadata is diagnostic only; readable backup bytes remain authoritative.
     }
-    return createConfigFingerprintFromRead({ deps, raw, stat });
+    return createConfigFingerprintFromRead({ raw, stat });
   } catch {
     return null;
   }

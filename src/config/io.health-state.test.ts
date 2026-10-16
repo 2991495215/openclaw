@@ -161,16 +161,15 @@ describe("config health-state warnings", () => {
     }
     const entered = createDeferredCore();
     const release = createDeferredCore();
-    const normalized = normalizeConfigIoDeps(options);
-    const realStat = normalized.fs.promises.stat.bind(normalized.fs.promises);
-    const stat = vi.spyOn(normalized.fs.promises, "stat").mockImplementation(async (...args) => {
+    const realStat = fs.promises.stat.bind(fs.promises);
+    const stat = vi.spyOn(fs.promises, "stat").mockImplementation(async (...args) => {
       if (path.resolve(String(args[0])) === configPath) {
         entered.resolve();
         await release.promise;
       }
       return realStat(...args);
     });
-    const pending = createConfigIO({ ...options, fs: normalized.fs }).readConfigFileSnapshot();
+    const pending = createConfigIO(options).readConfigFileSnapshot();
     try {
       await entered.promise;
       await closeOpenClawStateDatabaseAsync();

@@ -31,6 +31,13 @@ import {
 } from "./validation.js";
 
 const ledger = vi.hoisted(() => ({ pendingReadsOutsideWrites: 0 }));
+const realFs = { ...fs };
+const fsSpies: Array<{ mockRestore: () => void }> = [];
+afterEach(() => {
+  for (const spy of fsSpies.splice(0).reverse()) {
+    spy.mockRestore();
+  }
+});
 vi.mock("../infra/kysely-sync.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../infra/kysely-sync.js")>();
   return {
@@ -219,25 +226,24 @@ describe("config IO with deferred plugin migrations", () => {
       using contender = new DatabaseSync(databasePath);
       contender.exec("PRAGMA busy_timeout = 0");
       let publicationChecked = false;
+      fsSpies.push(
+        vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+          if (to === configPath) {
+            try {
+              expect(() => contender.exec("BEGIN IMMEDIATE")).toThrow("database is locked");
+              publicationChecked = true;
+            } finally {
+              if (contender.isTransaction) {
+                contender.exec("ROLLBACK");
+              }
+            }
+          }
+          realFs.renameSync(from, to);
+        }),
+      );
       const resumedIo = createConfigIO({
         ...ioOptions,
         deferredPluginMigrations: [stronger],
-        fs: {
-          ...fs,
-          renameSync: (from, to) => {
-            if (to === configPath) {
-              try {
-                expect(() => contender.exec("BEGIN IMMEDIATE")).toThrow("database is locked");
-                publicationChecked = true;
-              } finally {
-                if (contender.isTransaction) {
-                  contender.exec("ROLLBACK");
-                }
-              }
-            }
-            fs.renameSync(from, to);
-          },
-        },
       });
       await resumedIo.writeConfigFile(
         { gateway: { mode: "local", port: 18790 } },

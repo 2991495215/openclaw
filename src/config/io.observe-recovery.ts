@@ -1,7 +1,8 @@
-import type fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { replaceFileAtomic, replaceFileAtomicSync } from "@openclaw/fs-safe/atomic";
+import JSON5 from "json5";
 import { root } from "../infra/fs-safe.js";
 import { readExistingStateRootMode } from "../infra/private-dir-mode.js";
 import {
@@ -52,7 +53,7 @@ import {
 } from "./recovery-policy.js";
 import type { ConfigFileSnapshot } from "./types.openclaw.js";
 
-type ObserveRecoveryDeps = Pick<NormalizedConfigIoDeps, "fs" | "json5" | "env" | "homedir"> & {
+type ObserveRecoveryDeps = Pick<NormalizedConfigIoDeps, "env" | "homedir"> & {
   logger: Pick<typeof console, "warn">;
 };
 
@@ -84,11 +85,11 @@ function createRecoveryCommitEffect(params: {
       readExistingStateRootMode(
         path.dirname(params.configPath),
         resolveStateDir(params.deps.env, params.deps.homedir),
-        params.deps.fs,
+        fs,
       ) ?? 0o700,
     mode: 0o600,
     tempPrefix: path.basename(params.configPath),
-    fileSystem: params.deps.fs,
+    fileSystem: fs,
   };
   return {
     sync: () => {
@@ -106,10 +107,10 @@ function createRecoveryCommitEffect(params: {
             copyFallbackOnPermissionError: false,
             fileSystem: {
               promises: {
-                ...params.deps.fs.promises,
+                ...fs.promises,
                 rename: (source: fs.PathLike, destination: fs.PathLike) => {
                   assertCurrent();
-                  return params.deps.fs.promises.rename(source, destination);
+                  return fs.promises.rename(source, destination);
                 },
               },
             },
@@ -118,12 +119,9 @@ function createRecoveryCommitEffect(params: {
   };
 }
 
-function parseBackupConfigRaw(
-  deps: ObserveRecoveryDeps,
-  backupRaw: string,
-): { parsed: unknown } | null {
+function parseBackupConfigRaw(backupRaw: string): { parsed: unknown } | null {
   try {
-    return { parsed: deps.json5.parse(backupRaw) };
+    return { parsed: JSON5.parse(backupRaw) };
   } catch {
     return null;
   }
@@ -299,13 +297,12 @@ function* planSuspiciousConfigRead(
   }
   const backupPath = `${configPath}.bak`;
   // Missing backups cannot recover config; avoid opening the health worker just to confirm that.
-  if (yield createConfigBackupMissingEffect(deps, backupPath)) {
+  if (yield createConfigBackupMissingEffect(backupPath)) {
     return null;
   }
   // Explicit preparation will recheck these identities before publishing a replacement.
   // Ordinary recovery uses stat only as optional diagnostic metadata.
   const stat = (yield createConfigRecoveryStatEffect(
-    deps,
     configPath,
     requireIdentity,
   )) as fs.Stats | null;
@@ -326,14 +323,14 @@ function* planSuspiciousConfigRead(
   const entry = readConfigHealthEntry(healthSnapshot.state, configPath);
   let backupRaw: string | null = null;
   if (!entry.lastKnownGood) {
-    backupRaw = (yield createConfigBackupReadEffect(deps, backupPath)) as string | null;
+    backupRaw = (yield createConfigBackupReadEffect(backupPath)) as string | null;
   }
   const backupBaseline =
     entry.lastKnownGood ??
     (backupRaw
       ? createConfigHealthFingerprint({
           raw: backupRaw,
-          parsed: parseBackupConfigRaw(deps, backupRaw)?.parsed ?? {},
+          parsed: parseBackupConfigRaw(backupRaw)?.parsed ?? {},
           stat: null,
         })
       : undefined);
@@ -346,11 +343,11 @@ function* planSuspiciousConfigRead(
   if (suspicious.length === 0 || entry.lastObservedSuspiciousSignature === suspiciousSignature) {
     return null;
   }
-  backupRaw ??= (yield createConfigBackupReadEffect(deps, backupPath)) as string | null;
+  backupRaw ??= (yield createConfigBackupReadEffect(backupPath)) as string | null;
   if (!backupRaw) {
     return null;
   }
-  const backupParse = parseBackupConfigRaw(deps, backupRaw);
+  const backupParse = parseBackupConfigRaw(backupRaw);
   // Reject ineligible backup bytes before migration and validation; a stale healthy
   // fingerprint cannot make them recoverable.
   if (!backupParse || !resolveGatewayMode(backupParse.parsed)) {
@@ -367,7 +364,6 @@ function* planSuspiciousConfigRead(
   }
   const preparedCandidate = prepared.candidate;
   const backupStat = (yield createConfigRecoveryStatEffect(
-    deps,
     backupPath,
     requireIdentity,
   )) as fs.Stats | null;
@@ -390,8 +386,8 @@ function* planSuspiciousConfigRead(
         [configPath, raw, stat],
         [backupPath, backupRaw, backupStat],
       ] as const) {
-        const actualRaw = createConfigBackupReadEffect(deps, pathname).sync();
-        const actualStat = createConfigRecoveryStatEffect(deps, pathname, true).sync();
+        const actualRaw = createConfigBackupReadEffect(pathname).sync();
+        const actualStat = createConfigRecoveryStatEffect(pathname, true).sync();
         if (
           actualRaw !== expectedRaw ||
           !actualStat ||
@@ -539,7 +535,7 @@ export async function promoteConfigSnapshotToLastKnownGoodCore(params: {
   if (!healthSnapshot) {
     return false;
   }
-  const stat = await deps.fs.promises.stat(snapshot.path).catch(() => null);
+  const stat = await fs.promises.stat(snapshot.path).catch(() => null);
   const now = new Date().toISOString();
   const current = createConfigHealthFingerprint({
     raw: snapshot.raw,
@@ -621,11 +617,11 @@ export async function recoverConfigFromLastKnownGoodCore(params: {
     return false;
   }
   const lastGoodPath = `${snapshot.path}.last-good`;
-  const backupRaw = await deps.fs.promises.readFile(lastGoodPath, "utf-8").catch(() => null);
+  const backupRaw = await fs.promises.readFile(lastGoodPath, "utf-8").catch(() => null);
   if (!backupRaw || hashConfigRaw(backupRaw) !== promoted.hash) {
     return false;
   }
-  const backupParse = parseBackupConfigRaw(deps, backupRaw);
+  const backupParse = parseBackupConfigRaw(backupRaw);
   if (!backupParse) {
     return false;
   }
@@ -648,7 +644,7 @@ export async function recoverConfigFromLastKnownGoodCore(params: {
     return false;
   }
   const now = new Date().toISOString();
-  const stat = await deps.fs.promises.stat(snapshot.path).catch(() => null);
+  const stat = await fs.promises.stat(snapshot.path).catch(() => null);
   const current = createConfigHealthFingerprint({
     raw: snapshot.raw,
     parsed: snapshot.parsed,

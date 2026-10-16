@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { replaceFileAtomic } from "@openclaw/fs-safe/atomic";
 import { readExistingStateRootMode } from "../infra/private-dir-mode.js";
@@ -12,10 +13,7 @@ import { resolveIsConfigReadOnly, resolveStateDir } from "./paths.js";
 import type { ConfigFileSnapshot } from "./types.js";
 import { validateConfigObjectWithPlugins } from "./validation.js";
 
-function findJsonRootSuffix(
-  raw: string,
-  json5: { parse: (value: string) => unknown },
-): { raw: string; parsed: unknown } | null {
+function findJsonRootSuffix(raw: string): { raw: string; parsed: unknown } | null {
   if (/^\s*(?:\{|\[)/.test(raw)) {
     return null;
   }
@@ -26,7 +24,7 @@ function findJsonRootSuffix(
     const line = raw.slice(offset, lineEnd);
     if (/^\s*(?:\{|\[)/.test(line)) {
       const candidate = raw.slice(offset);
-      const parsed = parseConfigJson5(candidate, json5);
+      const parsed = parseConfigJson5(candidate);
       return parsed.ok ? { raw: candidate, parsed: parsed.parsed } : null;
     }
     offset = lineEnd;
@@ -39,7 +37,7 @@ export function inspectConfigJsonRootSuffixWithContext(
   raw: string,
   assertRecoveryCandidate?: (config: unknown) => void,
 ) {
-  const suffixRecovery = findJsonRootSuffix(raw, context.deps.json5);
+  const suffixRecovery = findJsonRootSuffix(raw);
   if (!suffixRecovery) {
     return null;
   }
@@ -109,11 +107,11 @@ export async function recoverConfigFromJsonRootSuffixWithContext(
       readExistingStateRootMode(
         path.dirname(context.configPath),
         resolveStateDir(context.deps.env, context.deps.homedir),
-        context.deps.fs,
+        fs,
       ) ?? 0o700,
     mode: 0o600,
     tempPrefix: path.basename(context.configPath),
-    fileSystem: context.deps.fs,
+    fileSystem: fs,
   });
   context.deps.logger.warn(
     `Config auto-stripped non-JSON prefix: ${context.configPath} (original saved as ${clobberedPath})`,

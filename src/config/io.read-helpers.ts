@@ -48,12 +48,9 @@ export function hashConfigRevision(
   return revision.digest("hex");
 }
 
-export function readConfigFileIfPresent(
-  deps: Pick<NormalizedConfigIoDeps, "fs">,
-  configPath: string,
-): string | undefined {
+export function readConfigFileIfPresent(configPath: string): string | undefined {
   try {
-    return deps.fs.readFileSync(configPath, "utf-8");
+    return fs.readFileSync(configPath, "utf-8");
   } catch (error) {
     // existsSync also hides inaccessible parents; only ENOENT establishes absence.
     if (hasErrnoCode(error, "ENOENT")) {
@@ -118,8 +115,6 @@ export function resolveConfigPathForDeps(deps: NormalizedConfigIoDeps): string {
 export function normalizeConfigIoDeps(overrides: ConfigIoDeps = {}): NormalizedConfigIoDeps {
   const env = overrides.env ?? process.env;
   return {
-    fs: overrides.fs ?? fs,
-    json5: overrides.json5 ?? JSON5,
     env,
     lowerPrecedenceEnv: overrides.lowerPrecedenceEnv ?? {},
     homedir: overrides.homedir ?? (() => resolveRequiredHomeDir(env, os.homedir)),
@@ -134,12 +129,9 @@ export function normalizeConfigIoDeps(overrides: ConfigIoDeps = {}): NormalizedC
   };
 }
 
-export function parseConfigJson5(
-  raw: string,
-  json5: { parse: (value: string) => unknown } = JSON5,
-): ParseConfigJson5Result {
+export function parseConfigJson5(raw: string): ParseConfigJson5Result {
   try {
-    return { ok: true, parsed: parseJsonWithJson5Fallback(raw, json5) };
+    return { ok: true, parsed: parseJsonWithJson5Fallback(raw, JSON5) };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -227,7 +219,7 @@ export function resolveConfigIncludesForRead(
     parsed,
     configPath,
     {
-      readFile: (candidate) => deps.fs.readFileSync(candidate, "utf-8"),
+      readFile: (candidate) => fs.readFileSync(candidate, "utf-8"),
       onLexicalPath: recordIncludeWatchPath,
       onIncludeResolved,
       readFileWithGuards: ({ includePath, resolvedPath, rootRealDir }) => {
@@ -236,7 +228,6 @@ export function resolveConfigIncludesForRead(
             includePath,
             resolvedPath,
             rootRealDir,
-            ioFs: deps.fs,
             onResolvedPath: (canonicalPath) => {
               recordIncludeWatchPath(canonicalPath);
               recordIncludeTarget(resolvedPath, canonicalPath);
@@ -259,7 +250,7 @@ export function resolveConfigIncludesForRead(
           throw error;
         }
       },
-      parseJson: (raw) => deps.json5.parse(raw),
+      parseJson: (raw) => JSON5.parse(raw),
     },
     { allowedRoots },
   );

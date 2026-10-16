@@ -3,7 +3,6 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import JSON5 from "json5";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { prepareLegacyConfigMigrationRuntime } from "../commands/doctor/shared/legacy-config-migrate.test-support.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
@@ -37,6 +36,13 @@ import { createConfigIoWorkerFixture } from "./io.worker.test-support.js";
 import type { ConfigFileSnapshot } from "./types.js";
 
 type ObserveRecoveryDeps = Parameters<typeof maybeRecoverSuspiciousConfigRead>[0]["deps"];
+const realFs = { ...fs, promises: { ...fs.promises } };
+const fsSpies: Array<{ mockRestore: () => void }> = [];
+afterEach(() => {
+  for (const spy of fsSpies.splice(0).reverse()) {
+    spy.mockRestore();
+  }
+});
 const approveRecoveryCandidate = <T extends { raw: string; parsed: unknown }>(candidate: T) => ({
   ok: true as const,
   candidate,
@@ -158,8 +164,6 @@ describe("config observe recovery", () => {
       warn,
       error,
       io: createConfigIO({
-        fs,
-        json5: JSON5,
         env,
         homedir: () => fixtureHome,
         configPath,
@@ -211,8 +215,6 @@ describe("config observe recovery", () => {
     const configPath = path.join(fixtureHome, ".openclaw", "openclaw.json");
     return {
       deps: {
-        fs,
-        json5: JSON5,
         env: {} as NodeJS.ProcessEnv,
         homedir: () => fixtureHome,
         logger: { warn },
@@ -230,31 +232,23 @@ describe("config observe recovery", () => {
       await seedConfigBackup(configPath, recoverableTelegramConfig);
       const clobbered = await writeClobberedUpdateChannel(configPath);
       const error = Object.assign(new Error("EPERM: chmod denied"), { code: "EPERM" });
-      const failingFs: ObserveRecoveryDeps["fs"] =
+      const chmod =
         mode === "async"
-          ? {
-              ...fs,
-              promises: {
-                ...fs.promises,
-                chmod: async (target, permissions) => {
-                  if (target === configPath) {
-                    throw error;
-                  }
-                  await fs.promises.chmod(target, permissions);
-                },
-              },
-            }
-          : {
-              ...fs,
-              chmodSync: (target, permissions) => {
-                if (target === configPath) {
-                  throw error;
-                }
-                fs.chmodSync(target, permissions);
-              },
-            };
+          ? vi.spyOn(fs.promises, "chmod").mockImplementation(async (target, permissions) => {
+              if (target === configPath) {
+                throw error;
+              }
+              await realFs.promises.chmod(target, permissions);
+            })
+          : vi.spyOn(fs, "chmodSync").mockImplementation((target, permissions) => {
+              if (target === configPath) {
+                throw error;
+              }
+              realFs.chmodSync(target, permissions);
+            });
+      fsSpies.push(chmod);
       const input = {
-        deps: { ...deps, fs: failingFs },
+        deps,
         configPath,
         ...clobbered,
         prepareBackup: approveRecoveryCandidate,
@@ -626,30 +620,25 @@ describe("config observe recovery", () => {
       await fsp.chmod(configPath, 0o644);
     }
     const copyError = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
-    const failingFs: ObserveRecoveryDeps["fs"] =
+    const rename =
       mode === "async"
-        ? {
-            ...deps.fs,
-            promises: {
-              ...deps.fs.promises,
-              rename: (source, target) =>
-                target === configPath
-                  ? Promise.reject(copyError)
-                  : deps.fs.promises.rename(source, target),
-            },
-          }
-        : {
-            ...deps.fs,
-            renameSync: (source, target) => {
-              if (target === configPath) {
-                throw copyError;
-              }
-              return deps.fs.renameSync(source, target);
-            },
-          };
-    const recover = async (recoveryDeps: ObserveRecoveryDeps) => {
+        ? vi
+            .spyOn(fs.promises, "rename")
+            .mockImplementation((source, target) =>
+              target === configPath
+                ? Promise.reject(copyError)
+                : realFs.promises.rename(source, target),
+            )
+        : vi.spyOn(fs, "renameSync").mockImplementation((source, target) => {
+            if (target === configPath) {
+              throw copyError;
+            }
+            return realFs.renameSync(source, target);
+          });
+    fsSpies.push(rename);
+    const recover = async () => {
       const input = {
-        deps: recoveryDeps,
+        deps,
         configPath,
         ...clobbered,
         prepareBackup: approveRecoveryCandidate,
@@ -665,7 +654,7 @@ describe("config observe recovery", () => {
         await work.drain();
       }
     };
-    const recovered = await recover({ ...deps, fs: failingFs });
+    const recovered = await recover();
 
     expect((recovered.parsed as { gateway?: { mode?: string } }).gateway?.mode).toBe("local");
     await expect(fsp.readFile(configPath, "utf-8")).resolves.toBe(clobbered.raw);
@@ -683,7 +672,8 @@ describe("config observe recovery", () => {
       restoreErrorCode: "EACCES",
       restoreErrorMessage: "EACCES: permission denied",
     });
-    const retryResult = await recover(deps);
+    rename.mockRestore();
+    const retryResult = await recover();
     expect((retryResult.parsed as { gateway?: { mode?: string } }).gateway?.mode).toBe("local");
     await expect(fsp.readFile(configPath, "utf-8")).resolves.not.toBe(clobbered.raw);
     const retryEvents = await readObserveEvents(auditPath);
@@ -869,8 +859,6 @@ describe("config observe recovery", () => {
     const first = createTestConfigIO(home, vi.fn(), { env });
     const secondPath = path.join(home, ".openclaw", "second.json");
     const options = {
-      fs,
-      json5: JSON5,
       env,
       homedir: () => home,
       logger: { warn: vi.fn(), error: vi.fn() },
@@ -908,8 +896,8 @@ describe("config observe recovery", () => {
     const readFingerprint = configObserveState.readConfigFingerprintForPath;
     const spy = vi
       .spyOn(configObserveState, "readConfigFingerprintForPath")
-      .mockImplementation(async (deps, candidatePath) => {
-        const result = await readFingerprint(deps, candidatePath);
+      .mockImplementation(async (candidatePath) => {
+        const result = await readFingerprint(candidatePath);
         if (candidatePath === `${first.configPath}.bak`) {
           entered.resolve();
           await release.promise;

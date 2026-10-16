@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import { isMainThread } from "node:worker_threads";
+import JSON5 from "json5";
 import { loadDotEnvAsync } from "../infra/dotenv.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { withSynchronousArtifactPreservingStateSnapshot } from "../state/openclaw-state-db-readonly.js";
@@ -74,9 +76,9 @@ function* loadConfigWithEffects(
     });
     envBeforeRead = snapshotEnv(deps.env);
     const exists = yield* resolveConfigIoEffect({
-      sync: () => deps.fs.existsSync(configPath),
+      sync: () => fs.existsSync(configPath),
       async: () =>
-        deps.fs.promises.access(configPath).then(
+        fs.promises.access(configPath).then(
           () => true,
           () => false,
         ),
@@ -108,10 +110,10 @@ function* loadConfigWithEffects(
       });
     }
     const raw = yield* resolveConfigIoEffect({
-      sync: () => deps.fs.readFileSync(configPath, "utf-8"),
-      async: () => deps.fs.promises.readFile(configPath, "utf-8"),
+      sync: () => fs.readFileSync(configPath, "utf-8"),
+      async: () => fs.promises.readFile(configPath, "utf-8"),
     });
-    const parsed = deps.json5.parse(raw);
+    const parsed = JSON5.parse(raw);
     const readResolution = resolveConfigForRead(
       resolveConfigIncludesForRead(parsed, configPath, deps),
       deps.env,
