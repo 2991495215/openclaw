@@ -44,7 +44,8 @@ vi.mock("../cli/command-config-resolution.js", () => ({
   },
 }));
 
-vi.mock("./config-validation.js", () => ({
+vi.mock("./config-validation.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./config-validation.js")>()),
   requireValidConfigFileSnapshot: (runtime: unknown) =>
     mocks.requireValidConfigFileSnapshot(runtime),
 }));
