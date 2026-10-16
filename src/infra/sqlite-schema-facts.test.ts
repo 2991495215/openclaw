@@ -451,7 +451,7 @@ describe("admitted SQLite schema facts", () => {
       installSqliteTempTrackingSchema(writer, tracking);
       const committed = revision();
       writer.exec(
-        'BEGIN; INSERT OR REPLACE INTO temp.local_status VALUES (1,1,0,0,NULL,0); UPDATE "temp".local_status SET sibling_write_revision=2; COMMIT',
+        'BEGIN; INSERT OR REPLACE INTO temp.local_status VALUES (1,1,0,NULL); UPDATE "temp".local_status SET sibling_write_revision=2; COMMIT',
       );
       expect(revision()).toBe(committed);
       writer.exec("BEGIN; INSERT INTO original VALUES (2); ROLLBACK");

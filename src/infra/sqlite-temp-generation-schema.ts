@@ -65,8 +65,7 @@ function prepareTranscriptIndexSchema(schema: SqliteTempTrackingSchema): {
   const index = quoteSqliteIdentifier(schema.pendingIndex);
   const statusTable = `${status} (
     id INTEGER PRIMARY KEY CHECK (id = 1), sibling_write_revision INTEGER NOT NULL,
-    schema_version INTEGER NOT NULL, complete INTEGER NOT NULL, after_session TEXT,
-    completed_traversals INTEGER NOT NULL
+    complete INTEGER NOT NULL, after_session TEXT
   ) STRICT`;
   const pendingTable = `${pending} (session_id TEXT PRIMARY KEY, state INTEGER NOT NULL) STRICT`;
   const pendingIndex = `${index} ON ${pending}(state, session_id)`;
@@ -104,7 +103,7 @@ function prepareTranscriptIndexSchema(schema: SqliteTempTrackingSchema): {
   // Update before the conflict-free insert preserves an outer INSERT OR REPLACE policy.
   const createSql = (existingTriggers: ReadonlySet<string>) => `
     CREATE TEMP TABLE IF NOT EXISTS ${statusTable};
-    INSERT OR IGNORE INTO temp.${status} VALUES (1, -1, -1, 0, NULL, 0);
+    INSERT OR IGNORE INTO temp.${status} VALUES (1, -1, 0, NULL);
     UPDATE temp.${status} SET sibling_write_revision = -1;
     CREATE TEMP TABLE IF NOT EXISTS ${pendingTable};
     CREATE INDEX IF NOT EXISTS temp.${pendingIndex};
