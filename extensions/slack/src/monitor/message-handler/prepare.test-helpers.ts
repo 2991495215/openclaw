@@ -105,7 +105,9 @@ export function createMissingChannelInfoBotCtx(params?: {
   groupDmEnabled?: boolean;
   ownerId?: string;
 }) {
-  const conversationsInfo = vi.fn().mockRejectedValue(new Error("missing_scope"));
+  const conversationsInfo = vi
+    .fn<App["client"]["conversations"]["info"]>()
+    .mockRejectedValue(new Error("missing_scope"));
   const members = vi.fn().mockResolvedValue({
     members: params?.ownerId ? [params.ownerId] : [],
     response_metadata: { next_cursor: "" },
