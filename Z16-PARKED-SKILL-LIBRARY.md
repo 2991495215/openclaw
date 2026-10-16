@@ -12,15 +12,17 @@ files, including type-only edges conservatively. It reaches 211 changed files.
 Restoring the shared owners also requires restoring connected consumers and
 SDK/test/registration changes so removed exports are not left in use.
 
-The landing branch restores these connected changes to main snapshot
-5462f7f146436a50a56354dd39f8405eaeb5b60f. Only the independent LM Studio model-list
-normalization and sandbox hash-helper ownership cut remain in the landing PR.
+The landing branch restores 354 of 355 changed paths to main snapshot
+5462f7f146436a50a56354dd39f8405eaeb5b60f, verified byte-for-byte. The follow-up
+main-object AST/alias graph reaches 14,203 files, including sandbox/hash: that
+helper is restored too. Only the independent LM Studio compatibility-list
+shallow-copy removal remains in the landing PR (1 added/1 removed, 0 net LOC).
 No timeout, assertion, retry, skip, SDK budget, or security boundary was relaxed.
 
 The original helper-family inventory and provenance decisions remain useful,
 but parked candidates are not claimed as landed. Phase E standalone session
 memory backend, its factory, registry, expiry, federation and tests are protected.
 
-Coordinator decision: one exact iPad Rust-download job rerun is allowed. A repeat
-DNS failure is diagnosed infrastructure and may use the native admin exception.
-Previously matched unrelated-PR/scheduled-main failures remain inherited.
+The coordinator authorized one exact iPad Rust-download DNS job rerun; it passed
+in run38825262926 attempt2/job116785668269. No second rerun. Previously matched
+unrelated-PR/scheduled-main failures retain their accepted inherited attribution.
