@@ -108,7 +108,6 @@ try {
     PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
     OPENCLAW_STATE_DIR: path.join(home, "state"),
     OPENCLAW_CONFIG_PATH: path.join(home, "openclaw.json"),
-    OPENCLAW_NO_RESPAWN: "1",
   };
   const launch = (args) =>
     execFileSync("/usr/bin/sandbox-exec", [...sandboxArgs, ...args], {

@@ -387,6 +387,10 @@ static void check_sandbox(const char *outside) {
 }
 
 int main(int argc, char **argv) {
+  if (getenv("OPENCLAW_NO_RESPAWN")) {
+    fputs("unexpected respawn override", stderr);
+    return 97;
+  }
   char root[PATH_MAX], mode[64] = "valid", file[PATH_MAX], outside[PATH_MAX] = "";
   realpath(argv[0], root); *strrchr(root, '/') = 0;
   snprintf(file, sizeof(file), "%s/proof-case", root);
