@@ -5,9 +5,22 @@ import {
   asOptionalRecord,
   filterStringRecord,
   isStringRecord,
+  isStringArray,
 } from "./record-coerce.js";
 
 describe("record-coerce", () => {
+  it.each([
+    { value: [], expected: true },
+    { value: ["", " ", "value"], expected: true },
+    { value: new Array(2), expected: true },
+    { value: ["value", 1], expected: false },
+    { value: "value", expected: false },
+    { value: { 0: "value", length: 1 }, expected: false },
+    { value: null, expected: false },
+  ])("checks string arrays without normalizing entries", ({ value, expected }) => {
+    expect(isStringArray(value)).toBe(expected);
+  });
+
   it("keeps record coercion behavior for optional and nullable variants", () => {
     expect(asOptionalRecord({ ok: true })).toEqual({ ok: true });
     expect(asOptionalRecord(null)).toBeUndefined();

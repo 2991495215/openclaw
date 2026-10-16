@@ -1,3 +1,4 @@
+import { floorPositiveFiniteNumber as normalizePositiveInt } from "openclaw/plugin-sdk/number-runtime";
 import {
   buildManifestModelProviderConfig,
   readManifestProviderDefaultModelRef,
@@ -48,13 +49,6 @@ interface VeniceModelSpec {
 interface VeniceModel {
   id: string;
   model_spec?: VeniceModelSpec;
-}
-
-function normalizePositiveInt(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return undefined;
-  }
-  return Math.floor(value);
 }
 
 function resolveApiMaxCompletionTokens(params: {

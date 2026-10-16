@@ -6,6 +6,7 @@ import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
+import { collapseWhitespace as sanitizeAgentIdentityLine } from "@openclaw/normalization-core/string-normalization";
 import type { IdentityConfig } from "../config/types.base.js";
 import { DEFAULT_IDENTITY_FILENAME } from "./workspace-bootstrap-policy.js";
 
@@ -44,9 +45,7 @@ const IDENTITY_PLACEHOLDER_VALUES = new Set([
   "workspace-relative path, http(s) url, or data uri",
 ]);
 
-export function sanitizeAgentIdentityLine(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
-}
+export { sanitizeAgentIdentityLine };
 
 export function normalizeIdentityForFile(
   identity: IdentityConfig | undefined,

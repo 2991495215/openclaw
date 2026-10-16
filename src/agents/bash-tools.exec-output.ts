@@ -3,6 +3,7 @@
  * Keeps no-output placeholders and warning placement consistent across exec
  * progress, polling, and completion surfaces.
  */
+import { collapseWhitespace as normalizeNotifyOutput } from "@openclaw/normalization-core/string-normalization";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import type { TerminationReason } from "../process/supervisor/types.js";
 
@@ -52,10 +53,7 @@ export function appendExecTimeoutRetryGuidance(
 
 const DEFAULT_NOTIFY_SNIPPET_CHARS = 180;
 
-/** Normalizes notification snippets to a compact single-line form. */
-export function normalizeNotifyOutput(value: string) {
-  return value.replace(/\s+/g, " ").trim();
-}
+export { normalizeNotifyOutput };
 
 export function compactNotifyOutput(value: string, maxChars = DEFAULT_NOTIFY_SNIPPET_CHARS) {
   const normalized = normalizeNotifyOutput(value);

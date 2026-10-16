@@ -1,3 +1,4 @@
+import { floorPositiveFiniteNumber as normalizeOptionalPositiveInteger } from "@openclaw/normalization-core/number-coercion";
 import { truncateUtf16Safe, truncateWithMarker } from "@openclaw/normalization-core/utf16-slice";
 import type {
   JsonValue,
@@ -19,11 +20,7 @@ export function normalizePositiveInteger(value: number | undefined, fallback: nu
   return normalizeOptionalPositiveInteger(value) ?? fallback;
 }
 
-export function normalizeOptionalPositiveInteger(value: number | undefined): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.floor(value)
-    : undefined;
-}
+export { normalizeOptionalPositiveInteger };
 
 export function shellQuoteArgs(args: readonly string[]): string {
   return args.map((arg) => shellQuoteArg(arg, process.platform)).join(" ");

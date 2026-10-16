@@ -39,9 +39,11 @@ export {
   asOptionalRecord,
   filterStringRecord,
   isRecord,
+  isStringArray,
   readStringField,
 } from "../../packages/normalization-core/src/record-coerce.js";
 export {
+  collapseWhitespace,
   filterStringEntries,
   normalizeAtHashSlug,
   normalizeHyphenSlug,

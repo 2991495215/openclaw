@@ -70,6 +70,7 @@ export const CANONICAL_COERCION_HELPER_OWNERS = [
     file: "packages/normalization-core/src/string-normalization.ts",
     kind: "function",
     names: [
+      "collapseWhitespace",
       "containsAsciiControlCharacter",
       "filterStringEntries",
       "normalizeArrayBackedTrimmedStringList",
@@ -107,6 +108,7 @@ export const CANONICAL_COERCION_HELPER_OWNERS = [
       "clampTimerTimeoutMs",
       "clampPositiveTimerTimeoutMs",
       "finiteSecondsToTimerSafeMilliseconds",
+      "floorPositiveFiniteNumber",
       "isFutureDateTimestampMs",
       "nonNegativeSecondsToSafeMilliseconds",
       "parseDateFirstTimestampMs",
@@ -150,6 +152,7 @@ export const CANONICAL_COERCION_HELPER_OWNERS = [
       "filterStringRecord",
       "isRecord",
       "isStringRecord",
+      "isStringArray",
       "readStringField",
     ],
   },
