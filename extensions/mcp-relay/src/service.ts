@@ -6,8 +6,8 @@ import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { WebSocket, type RawData } from "openclaw/plugin-sdk/websocket-runtime";
 import { ownsGrant, type RelayCaller } from "./caller.js";
 import { RelayConsent } from "./consent.js";
-import type { GatewayRequest } from "./gateway-request.js";
 import { GrantBindings, isRetiredBindingError } from "./grant-bindings.js";
+import type { createOperations } from "./operations.js";
 import {
   capResult,
   codeHash,
@@ -47,12 +47,7 @@ type ServiceOptions = {
   gateway: { name: string; version: string };
   controlUiIngress?: GatewayControlUiIngressFactoryV2;
   config: () => ConfigSnapshot;
-  operations: (
-    op: string,
-    params: unknown,
-    assertAuthority: () => void,
-    request: GatewayRequest,
-  ) => Promise<unknown>;
+  operations: ReturnType<typeof createOperations>;
   socketFactory?: (url: string) => RelaySocket;
   random?: () => number;
 };
@@ -562,7 +557,7 @@ export class RelayService {
           }
         },
       );
-      return op === "status" && isRecord(result) ? { ...result, ui: this.#uiStatus() } : result;
+      return op === "status" ? { ...result, ui: this.#uiStatus() } : result;
     }
     if (
       !isRecord(params) ||

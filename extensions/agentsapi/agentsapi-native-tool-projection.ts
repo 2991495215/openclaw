@@ -189,7 +189,7 @@ export class AgentsApiNativeToolProjection {
       !state ||
       state.terminal ||
       state.recoveredPartial ||
-      state.item.type !== "command_execution" ||
+      !state.tool.commandBearing ||
       !event.delta
     ) {
       return;
@@ -212,13 +212,10 @@ export class AgentsApiNativeToolProjection {
           toolCallId: id,
           phase: "delta",
           name: state.tool.name,
-          title:
-            typeof state.tool.args.command === "string"
-              ? state.tool.args.command
-              : "Command output",
+          title: state.tool.args.command ?? "Command output",
           output: delta.length > remaining ? `${text}\n...(truncated)...` : text,
           status: "running",
-          ...(typeof state.tool.args.cwd === "string" ? { cwd: state.tool.args.cwd } : {}),
+          ...(state.tool.args.cwd != null ? { cwd: state.tool.args.cwd } : {}),
         },
       });
     }
@@ -376,12 +373,12 @@ export class AgentsApiNativeToolProjection {
     }
     const commandFacts = commandBearing
       ? {
-          title: typeof args.command === "string" ? args.command : "Command output",
+          title: args.command ?? "Command output",
           ...(!savedItemUnavailable && item.exit_code != null ? { exitCode: item.exit_code } : {}),
           ...(!savedItemUnavailable && item.duration_ms != null
             ? { durationMs: item.duration_ms }
             : {}),
-          ...(typeof args.cwd === "string" ? { cwd: args.cwd } : {}),
+          ...(args.cwd != null ? { cwd: args.cwd } : {}),
         }
       : undefined;
     const presentationOutput =

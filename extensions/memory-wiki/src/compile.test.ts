@@ -5,7 +5,8 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { compileMemoryWikiVault, refreshMemoryWikiIndexesAfterImport } from "./compile.js";
 import { loadMemoryWikiCompiledCache, readMemoryWikiDashboardState } from "./compiled-cache.js";
-import { renderWikiMarkdown } from "./markdown.js";
+import { loadMemoryWikiVaultIdentity, resolveMemoryWikiVaultSourceGeneration } from "./log.js";
+import { parseWikiMarkdown, renderWikiMarkdown } from "./markdown.js";
 import { createMemoryWikiTestHarness } from "./test-helpers.js";
 
 function writePage(targetPath: string, markdown: Parameters<typeof renderWikiMarkdown>[0]) {
@@ -433,5 +434,135 @@ describe("compileMemoryWikiVault", () => {
     const after = await fs.readFile(entityPath, "utf8");
     expect(after).toContain(notesLine);
     expect(after).toContain("<!-- openclaw:wiki:related:start -->");
+  });
+
+  it("publishes written pages in stable order without retaining removed Related prose", async () => {
+    const { rootDir, config } = await createVault({ rootDir: nextCaseRoot(), initialize: true });
+    for (const relativePath of [
+      "sources/z.md",
+      "sources/a.md",
+      "entities/z.md",
+      "entities/a.md",
+      "concepts/a.md",
+    ]) {
+      await writePage(path.join(rootDir, relativePath), {
+        frontmatter: {
+          pageType: relativePath.startsWith("sources/") ? "source" : "entity",
+          sourceType: "chatgpt-export",
+          title: "Twin",
+          questions: ["Why?"],
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        body:
+          "# Twin\n\n- [Twin](../sources/a.md)\n\n## Related\n\n" +
+          "<!-- openclaw:wiki:related:start -->\nObsolete managed prose.\n" +
+          "<!-- openclaw:wiki:related:end -->\n",
+      });
+    }
+    const malformedPath = path.join(rootDir, "sources", "malformed.md");
+    const malformed = "---\ntitle: [unfinished\n---\n# Malformed\n";
+    await fs.writeFile(malformedPath, malformed);
+    const reportPath = path.join(rootDir, "reports", "open-questions.md");
+    await writePage(reportPath, {
+      frontmatter: {
+        title: "Open Questions",
+        status: "review",
+        owner: "Human editor",
+        questions: ["Unicode 中文 🦀 \ud800"],
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      body: "# Open Questions\n\n## Notes\n\nHuman notes stay.\n",
+    });
+
+    // Preserve the malformed source, but exercise both writer families on healthy pages.
+    const result = await compileMemoryWikiVault(config);
+    const snapshot = await expectCompiledCache(config);
+    expect(result.pageCounts).toEqual({
+      source: 2,
+      entity: 2,
+      concept: 1,
+      synthesis: 0,
+      report: 9,
+    });
+    expect(result.frontmatterErrors).toEqual([
+      { relativePath: "sources/malformed.md", message: expect.any(String) },
+    ]);
+    await expect(fs.readFile(malformedPath, "utf8")).resolves.toBe(malformed);
+    expect(
+      result.pages.filter((page) => page.title === "Twin").map((page) => page.relativePath),
+    ).toEqual(["sources/a.md", "sources/z.md", "entities/a.md", "entities/z.md", "concepts/a.md"]);
+    expect(result.pages.find((page) => page.relativePath === "entities/a.md")?.linkTargets).toEqual(
+      ["sources/a.md"],
+    );
+    expect(snapshot.dashboards.overview.totalPages).toBe(14);
+    expect(
+      snapshot.dashboards.overview.clusters
+        .find((cluster) => cluster.key === "entity")
+        ?.items.map((item) => item.pagePath),
+    ).toEqual(["entities/a.md", "entities/z.md"]);
+    expect(
+      snapshot.dashboards.overview.clusters
+        .flatMap((cluster) => cluster.items)
+        .find((item) => item.pagePath === "entities/a.md")?.snippet,
+    ).toBeUndefined();
+    expect(
+      snapshot.dashboards.importInsights.clusters
+        .flatMap((cluster) => cluster.items)
+        .map((item) => item.pagePath),
+    ).toEqual(["sources/a.md", "sources/z.md"]);
+    expect(snapshot.digest.pages.filter((page) => page.kind === "report")).toHaveLength(9);
+    expect(
+      snapshot.digest.pages.find((page) => page.path === "reports/open-questions.md"),
+    ).toMatchObject({
+      id: "report.open-questions",
+      title: "Open Questions",
+      questions: ["Unicode 中文 🦀 \ud800"],
+    });
+    const report = await fs.readFile(reportPath, "utf8");
+    expect(report).toContain("Unicode 中文 🦀 \uFFFD");
+    expect(report).toContain("Human notes stay.");
+    expect(parseWikiMarkdown(report).frontmatter).toMatchObject({
+      status: "review",
+      owner: "Human editor",
+    });
+    const identity = await loadMemoryWikiVaultIdentity(rootDir);
+    expect(identity.compiledCacheSourceGeneration).toBe(
+      await resolveMemoryWikiVaultSourceGeneration(rootDir),
+    );
+    await expect(fs.readFile(path.join(rootDir, "index.md"), "utf8")).resolves.toContain(
+      "- Total pages: 14",
+    );
+    await expect(fs.readFile(path.join(rootDir, "reports", "index.md"), "utf8")).resolves.toContain(
+      "[Open Questions](open-questions.md)",
+    );
+
+    const stableReportPath = path.join(rootDir, "reports", "privacy-review.md");
+    const stableReport = await fs.readFile(stableReportPath, "utf8");
+    const unchanged = await compileMemoryWikiVault(config);
+    expect(unchanged.updatedFiles).not.toContain(stableReportPath);
+    await expect(fs.readFile(stableReportPath, "utf8")).resolves.toBe(stableReport);
+  });
+
+  it("rejects unwritten external edits even when dashboards are refreshed", async () => {
+    const { rootDir, config } = await createVault({ rootDir: nextCaseRoot(), initialize: true });
+    const sourcePath = path.join(rootDir, "sources", "edited.md");
+    await fs.writeFile(sourcePath, "# Before\n", "utf8");
+    const readFile = fs.readFile.bind(fs);
+    let edited = false;
+    vi.spyOn(fs, "readFile").mockImplementation(async (...args: Parameters<typeof fs.readFile>) => {
+      const value = await readFile(...args);
+      if (args[0] === sourcePath && !edited) {
+        edited = true;
+        await fs.writeFile(sourcePath, "# After\n", "utf8");
+      }
+      return value;
+    });
+
+    await expect(compileMemoryWikiVault(config, { sourcePageWrites: "preserve" })).rejects.toThrow(
+      "vault changed while its compiled cache was being published",
+    );
+    expect(edited).toBe(true);
+    await expect(loadMemoryWikiCompiledCache(config)).resolves.toBeNull();
+    await expect(fs.readFile(sourcePath, "utf8")).resolves.toBe("# After\n");
   });
 });

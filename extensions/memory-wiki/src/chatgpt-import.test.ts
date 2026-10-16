@@ -426,7 +426,7 @@ describe("ChatGPT import rollback recovery", () => {
     ).resolves.toBe(edited);
   });
 
-  it("does not touch targets again after the persisted process-restart fence", async () => {
+  it("keeps finalized targets untouched after a compile conflict and on the next rollback", async () => {
     const stateDir = await createTempDir("memory-wiki-chatgpt-finalizing-state-");
     const { rootDir, config } = await createVault({ initialize: true });
     let crashAfterFence = true;
@@ -493,12 +493,16 @@ describe("ChatGPT import rollback recovery", () => {
       }
       return await Reflect.apply(realWriteFile, fs, args);
     });
-    const result = await rollbackChatGptImportRun({
-      config,
-      runId: "chatgpt-finalizing",
-    });
-
+    await expect(rollbackChatGptImportRun({ config, runId: "chatgpt-finalizing" })).rejects.toThrow(
+      "vault changed while its compiled cache was being published",
+    );
     expect(savedAfterRead).toBe(true);
+    await expect(realReadFile(targetPath, "utf8")).resolves.toBe(afterCompilerRead);
+    expect(
+      (await getMemoryWikiImportRunStateStore().read(rootDir, "chatgpt-finalizing"))?.rolledBackAt,
+    ).toBeUndefined();
+
+    const result = await rollbackChatGptImportRun({ config, runId: "chatgpt-finalizing" });
     expect(result.alreadyRolledBack).toBe(false);
     expect(
       rootControl.moves.mock.calls.some(([from, to]) => from === targetPath || to === targetPath),

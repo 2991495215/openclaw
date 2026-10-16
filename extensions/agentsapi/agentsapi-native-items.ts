@@ -12,10 +12,11 @@ import type { AgentsApiItem } from "./agentsapi-client.js";
 
 export type AgentsApiNativeTool = {
   name: string;
-  args: Record<string, unknown>;
   meta?: string;
-  commandBearing: boolean;
-};
+} & (
+  | { commandBearing: true; args: Pick<AgentsApiItem, "command" | "cwd"> }
+  | { commandBearing: false; args: Record<string, unknown> }
+);
 
 export type AgentsApiNativeToolOutcome = {
   status: "running" | "completed" | "failed" | "cancelled" | "unknown";
@@ -29,34 +30,36 @@ export function agentsApiNativeTool(
   item: AgentsApiItem,
   params: AgentHarnessAttemptParamsV2,
 ): AgentsApiNativeTool | undefined {
-  let name: string;
-  let args: Record<string, unknown>;
+  let tool: AgentsApiNativeTool;
   if (item.type === "command_execution") {
-    name = "bash";
-    args = {
-      ...(item.command !== undefined ? { command: item.command } : {}),
-      ...(item.cwd != null ? { cwd: item.cwd } : {}),
+    tool = {
+      name: "bash",
+      args: {
+        ...(item.command !== undefined ? { command: item.command } : {}),
+        ...(item.cwd != null ? { cwd: item.cwd } : {}),
+      },
+      commandBearing: true,
     };
   } else if (item.type === "mcp_call") {
-    name = item.server_label ? `${item.server_label}.${item.name ?? "mcp"}` : (item.name ?? "mcp");
-    args =
-      asOptionalRecord(item.arguments) ??
-      (item.arguments === undefined ? {} : { arguments: item.arguments });
+    tool = {
+      name: item.server_label ? `${item.server_label}.${item.name ?? "mcp"}` : (item.name ?? "mcp"),
+      args:
+        asOptionalRecord(item.arguments) ??
+        (item.arguments === undefined ? {} : { arguments: item.arguments }),
+      commandBearing: false,
+    };
   } else if (item.type === "web_search_call") {
-    name = "web_search";
-    args = item.action ?? {};
+    tool = { name: "web_search", args: item.action ?? {}, commandBearing: false };
   } else {
     return undefined;
   }
-  const meta = inferToolMetaFromArgs(name, args, {
+  const meta = inferToolMetaFromArgs(tool.name, tool.args, {
     detailMode: params.toolProgressDetail === "raw" ? "raw" : "explain",
   });
-  return {
-    name,
-    args,
-    ...(meta ? { meta } : {}),
-    commandBearing: item.type === "command_execution",
-  };
+  if (meta) {
+    tool.meta = meta;
+  }
+  return tool;
 }
 
 export function agentsApiNativeToolOutcome(

@@ -43,10 +43,7 @@ export function createPrometheusMetricStore() {
   // Reuse the scrape workspace; render overwrites it, and reset releases it.
   const parts: string[] = [];
 
-  const canCreateSeries = <T>(map: Map<string, T>, key: string): boolean => {
-    if (map.has(key)) {
-      return true;
-    }
+  const canCreateSeries = (): boolean => {
     if (counters.size + gauges.size + histograms.size < MAX_PROMETHEUS_SERIES) {
       return true;
     }
@@ -59,12 +56,12 @@ export function createPrometheusMetricStore() {
       return;
     }
     const key = metricKey(name, labels);
-    if (!canCreateSeries(counters, key)) {
-      return;
-    }
     const existing = counters.get(key);
     if (existing) {
       existing.value += amount;
+      return;
+    }
+    if (!canCreateSeries()) {
       return;
     }
     counters.set(key, { help, name, prefix: `${name}${formatLabels(labels)} `, value: amount });
@@ -75,12 +72,12 @@ export function createPrometheusMetricStore() {
       return;
     }
     const key = metricKey(name, labels);
-    if (!canCreateSeries(gauges, key)) {
-      return;
-    }
     const existing = gauges.get(key);
     if (existing) {
       existing.value = value;
+      return;
+    }
+    if (!canCreateSeries()) {
       return;
     }
     gauges.set(key, { help, name, prefix: `${name}${formatLabels(labels)} `, value });
@@ -91,12 +88,12 @@ export function createPrometheusMetricStore() {
       return;
     }
     const key = metricKey(name, labels);
-    if (!canCreateSeries(counters, key)) {
-      return;
-    }
     const existing = counters.get(key);
     if (existing) {
       existing.value = Math.max(existing.value, value);
+      return;
+    }
+    if (!canCreateSeries()) {
       return;
     }
     counters.set(key, { help, name, prefix: `${name}${formatLabels(labels)} `, value });
@@ -121,11 +118,12 @@ export function createPrometheusMetricStore() {
       return;
     }
     const key = metricKey(name, labels);
-    if (!canCreateSeries(histograms, key)) {
-      return;
-    }
     let sample = histograms.get(key);
     if (!sample) {
+      if (!canCreateSeries()) {
+        return;
+      }
+      const formattedLabels = formatLabels(labels);
       sample = {
         buckets,
         // Labels and bounds are fixed for this series; reset releases the prepared text.
@@ -136,8 +134,8 @@ export function createPrometheusMetricStore() {
         count: 0,
         help,
         name,
-        sumPrefix: `${name}_sum${formatLabels(labels)} `,
-        countPrefix: `${name}_count${formatLabels(labels)} `,
+        sumPrefix: `${name}_sum${formattedLabels} `,
+        countPrefix: `${name}_count${formattedLabels} `,
         sum: 0,
       };
       histograms.set(key, sample);

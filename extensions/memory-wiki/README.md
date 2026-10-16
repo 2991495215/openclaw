@@ -151,6 +151,11 @@ reports still receive their normal template.
 
 Key beliefs can live in structured `claims` frontmatter with per-claim evidence, confidence, and status. Compile also persists a machine-readable snapshot in OpenClaw plugin state so agent/runtime consumers do not have to scrape markdown pages.
 
+If a source changes during compilation, compile can report that the vault changed
+instead of publishing a mixed snapshot. Keep the edit and compile again. If import
+rollback reports this after finalizing its targets, rerun rollback; it rebuilds
+derived output without repeating source recovery moves.
+
 When `render.createBacklinks` is enabled, compile adds repeatable `## Related` blocks to pages. Those blocks list source pages, pages that reference the current page, and nearby pages that share the same source ids.
 
 When `render.createDashboards` is enabled, compile also maintains report dashboards under `reports/` for open questions, contradictions, low-confidence pages, and stale pages.

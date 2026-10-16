@@ -84,7 +84,7 @@ type WikiPageSummaryScanResult =
   | { status: "invalid-frontmatter"; error: WikiPageFrontmatterError }
   | { status: "ignored" };
 
-const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+export const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const MAX_WIKI_SEGMENT_BYTES = 240;
 const MAX_WIKI_FILENAME_COMPONENT_BYTES = 255;
 const FS_SAFE_PINNED_WRITE_TEMP_SUFFIX = ".00000000-0000-4000-8000-000000000000.fallback.tmp";
@@ -486,6 +486,16 @@ export function scanWikiPageSummary(params: {
       },
     };
   }
+  return projectWikiPageSummary({ ...params, kind, parsed });
+}
+
+export function projectWikiPageSummary(
+  params: Parameters<typeof scanWikiPageSummary>[0] & {
+    kind: WikiPageKind;
+    parsed: ParsedWikiMarkdown;
+  },
+): Extract<WikiPageSummaryScanResult, { status: "valid" }> {
+  const { kind, parsed } = params;
   const title =
     (typeof parsed.frontmatter.title === "string" && parsed.frontmatter.title.trim()) ||
     extractTitleFromMarkdown(parsed.body) ||

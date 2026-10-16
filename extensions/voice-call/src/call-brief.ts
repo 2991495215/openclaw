@@ -49,8 +49,7 @@ const voicemailDefaults = [
   },
 ];
 
-export function resolveCallVoicemailMessage(call: CallRecord): string {
-  const brief = readBrief(call);
+function renderCallVoicemailMessage(brief: CallBrief | undefined): string {
   if (brief?.voicemailMessage) {
     return brief.voicemailMessage;
   }
@@ -69,9 +68,13 @@ export function resolveCallVoicemailMessage(call: CallRecord): string {
   return `${defaults.greeting} ${reason} ${defaults.retry}`;
 }
 
+export function resolveCallVoicemailMessage(call: CallRecord): string {
+  return renderCallVoicemailMessage(readBrief(call));
+}
+
 export function buildCallVoicemailSpeechInstructions(call: CallRecord): string {
   const brief = readBrief(call);
-  const message = resolveCallVoicemailMessage(call);
+  const message = renderCallVoicemailMessage(brief);
   return [
     "Owner instruction for this call: leave this voicemail now, then stop speaking.",
     "Do not call tools or add details from the task, context, or conversation.",
@@ -139,8 +142,8 @@ export function buildCallBriefInstructions(call: CallRecord): string {
   }
   lines.push(
     voicemailManagedByHost
-      ? `Do not leave a voicemail message yourself or speak over a machine greeting. The host will play this exact message after detecting the greeting's end if configured to leave a message; otherwise the host ends the call: ${resolveCallVoicemailMessage(call)}`
-      : `If voicemail answers, leave only this message: ${resolveCallVoicemailMessage(call)}`,
+      ? `Do not leave a voicemail message yourself or speak over a machine greeting. The host will play this exact message after detecting the greeting's end if configured to leave a message; otherwise the host ends the call: ${renderCallVoicemailMessage(brief)}`
+      : `If voicemail answers, leave only this message: ${renderCallVoicemailMessage(brief)}`,
   );
   if (ownerInstructions.length) {
     lines.push("Current owner instructions (most recent last):", ...ownerInstructions);

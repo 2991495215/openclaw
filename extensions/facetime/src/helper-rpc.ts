@@ -225,8 +225,8 @@ export class FaceTimeHelperSocketServer {
     authDeadline.unref?.();
     this.#authDeadlineTimers.set(socket, authDeadline);
     let buffer = "";
-    socket.on("data", (chunk) => {
-      buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    socket.on("data", (chunk: string) => {
+      buffer += chunk;
       while (true) {
         const newline = buffer.search(/\r?\n/);
         if (newline < 0) {
