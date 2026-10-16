@@ -1,4 +1,4 @@
-import { createMemo, createRenderEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { hasOperatorAdminAccess } from "../app/operator-access.ts";
 import { registerMcpEnglish } from "../i18n/locales/en-mcp.ts";
 import { resolveEditableSnapshotConfig } from "../lib/config/config-state-model.ts";
@@ -30,7 +30,7 @@ import {
   SettingsSection,
   SettingsStatus,
 } from "./solid/settings-ui.tsx";
-import { WizardLogin, WizardLoginController } from "./wizard-login-controller.tsx";
+import { createWizardLogin, WizardLogin } from "./wizard-login-controller.tsx";
 
 registerMcpEnglish();
 
@@ -73,29 +73,26 @@ export function McpServersCard(props: McpServersCardProps) {
     return state;
   };
   let active = true;
-  const login = new WizardLoginController(
-    { requestUpdate: invalidate },
-    {
-      getClient: () => context.gateway.snapshot.client ?? null,
-      getAgentId: () => null,
-      onClose: () => login.reset(),
-      requestFailedMessage: () => t("mcpServers.signInFailed"),
-      sessionExpiredMessage: () => t("mcpServers.signInExpired"),
-    },
-  );
+  const login = createWizardLogin({
+    getClient: () => context.gateway.snapshot.client ?? null,
+    getAgentId: () => null,
+    onClose: () => login.reset(),
+    requestFailedMessage: () => t("mcpServers.signInFailed"),
+    sessionExpiredMessage: () => t("mcpServers.signInExpired"),
+  });
   void context.runtimeConfig.ensureLoaded().catch((error: unknown) => {
     state.message = { kind: "error", text: formatUiError(error) };
     invalidate();
   });
   const hello = createMemo(() => gateway.read().snapshot.hello);
-  createRenderEffect(hello, () => {
+  // A new transport retires the previous sign-in before another interaction can start one.
+  createEffect(hello, () => {
     login.reset();
   });
   const stopSelection = context.agentSelection.subscribe(() => login.reset());
   onCleanup(() => {
     active = false;
     stopSelection();
-    login.reset();
   });
 
   const mutationBlockedReason = (): string | null => {
@@ -108,10 +105,7 @@ export function McpServersCard(props: McpServersCardProps) {
     }
     return null;
   };
-  const canMutate = () => {
-    revision();
-    return mutationBlockedReason() === null && login.runner.state.phase === "idle";
-  };
+  const canMutate = () => mutationBlockedReason() === null && login.state().phase === "idle";
   const signIn = (server: McpServerSummary) => {
     if (
       state.busy ||
@@ -138,13 +132,17 @@ export function McpServersCard(props: McpServersCardProps) {
     state.busy = true;
     state.message = null;
     invalidate();
-    const result = await patchMcpServers(context.runtimeConfig, options);
-    state.busy = false;
-    state.message = result.ok
-      ? { kind: "success", text: options.successText }
-      : { kind: "error", text: result.error };
-    invalidate();
-    return result.ok;
+    try {
+      await patchMcpServers(context.runtimeConfig, options);
+      state.message = { kind: "success", text: options.successText };
+      return true;
+    } catch (error) {
+      state.message = { kind: "error", text: formatUiError(error) };
+      return false;
+    } finally {
+      state.busy = false;
+      invalidate();
+    }
   };
   const addServer = async (form: McpServerForm) => {
     if (!MCP_SERVER_NAME_PATTERN.test(form.name)) {
@@ -234,7 +232,7 @@ export function McpServersCard(props: McpServersCardProps) {
           <Show when={view().message}>
             {(message) => (
               <div
-                class={`mcp-server-message mcp-server-message--${message().kind}`}
+                class={["mcp-server-message", `mcp-server-message--${message().kind}`]}
                 role={message().kind === "error" ? "alert" : "status"}
               >
                 {message().text}
@@ -357,7 +355,6 @@ export function McpServersCard(props: McpServersCardProps) {
       </div>
       <WizardLogin
         controller={login}
-        revision={revision}
         options={{ doneMessage: t("mcpServers.authenticationSaved") }}
       />
     </openclaw-mcp-servers-card>

@@ -8,6 +8,7 @@ import {
   restoreConfigResolutionFacts,
 } from "../config/resolution-facts.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import { installDatabaseEngineSelection } from "../infra/database-engine/context.js";
 import { serveWorkerTasks } from "../infra/worker-task-server.js";
 import type { Model } from "../llm/types.js";
 import { withRemoteModelCatalogSnapshot } from "../model-catalog/remote-overlay.js";
@@ -20,7 +21,6 @@ import {
   type NativeReferenceProgress,
 } from "../plugins/plugin-native-reference.js";
 import { withPluginSourceCaptureDirectory } from "../plugins/plugin-package-metadata-capture.js";
-import { captureProviderCatalogExpiries } from "../plugins/provider-catalog-expiry.js";
 import { planRuntimePluginDiscovery } from "../plugins/provider-discovery.js";
 import { restorePreparedSyntheticAuthFacts } from "../plugins/provider-synthetic-auth.js";
 import { manifestPluginResolvesRuntimeModelCatalogAugment } from "../plugins/providers.js";
@@ -414,14 +414,17 @@ async function runCatalogRequest(
       staticOwner.staticProviderIds = staticProviderIds;
     }
     catalogGeneration = staticOwner.pluginGeneration;
-    const { value: source, providerExpiries } = await captureProviderCatalogExpiries(
-      () =>
-        prepareAgentCatalogSource(exactAgentFacts, catalogGeneration, "live", false, {
-          authStore,
-          providerDiscoveryProviderIds: request.providerIds,
-          providerDiscoveryTimeoutMs: PREPARED_MODEL_CATALOG_WORKER_TIMEOUT_MS,
-        }),
-      { refresh: request.refresh },
+    const source = await prepareAgentCatalogSource(
+      exactAgentFacts,
+      catalogGeneration,
+      "live",
+      false,
+      {
+        authStore,
+        refresh: request.refresh,
+        providerDiscoveryProviderIds: request.providerIds,
+        providerDiscoveryTimeoutMs: PREPARED_MODEL_CATALOG_WORKER_TIMEOUT_MS,
+      },
     );
     const facts = await prepareFullCatalogFacts(
       exactAgentFacts,
@@ -476,7 +479,7 @@ async function runCatalogRequest(
       generationFingerprint,
       snapshot: facts.modelCatalog,
       runtimeModels,
-      providerExpiries,
+      providerExpiries: source.providerExpiries ?? new Map(),
       configuredRuntimeModels: facts.configuredRuntimeModels,
       credentials: catalogCredentials,
       providerAuthLabels:
@@ -550,6 +553,9 @@ function isWorkerRequest(value: unknown): value is PreparedModelWorkerRequest {
 
 if (parentPort) {
   const data = workerData as PreparedModelCatalogWorkerData;
+  if (data.databaseEngineSelection) {
+    installDatabaseEngineSelection(data.databaseEngineSelection);
+  }
   // Evicting another workspace recaptures native ESM graphs that Node cannot unload.
   // Keep each workspace's current context within this inventory-owned worker lifetime.
   const contexts = new Map<

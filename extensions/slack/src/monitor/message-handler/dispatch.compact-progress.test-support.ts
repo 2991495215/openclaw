@@ -1,6 +1,6 @@
 import type { GetReplyOptions } from "openclaw/plugin-sdk/reply-runtime";
-import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
 import { expect, vi } from "vitest";
+import { requireRecord } from "./dispatch.preview.test-support.js";
 import type { PreparedSlackMessage } from "./types.js";
 
 export type SlackReplyOptionEvent =
@@ -124,19 +124,6 @@ export async function emitCompactProgressScenario(reply: GetReplyOptions) {
 
 export const THREAD_TS = "thread-1";
 
-export function createSlackPlatformError(
-  error: string,
-  details?: { needed?: string; provided?: string },
-) {
-  // Mirrors @slack/web-api 7.18.0 platformErrorFromResult: message plus structured result data.
-  return Object.assign(new Error(`An API error occurred: ${error}`), {
-    code: "slack_webapi_platform_error",
-    data: { ok: false, error, ...details },
-  });
-}
-
-export const requireRecord = createRequireRecord("object", "label-not-object");
-
 export function expectRecordFields(
   record: Record<string, unknown>,
   fields: Record<string, unknown>,
@@ -152,14 +139,6 @@ export function requireMockCall(mock: unknown, index: number, label: string): un
     throw new Error(`missing ${label} call ${index + 1}`);
   }
   return call;
-}
-
-export function expectMockCallArgFields(
-  mock: unknown,
-  index: number,
-  fields: Record<string, unknown>,
-) {
-  expectRecordFields(requireRecord(requireMockCall(mock, index, "call")[0], "params"), fields);
 }
 
 export function planUpdate(title: string) {

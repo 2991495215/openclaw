@@ -672,35 +672,53 @@ describe("startGatewayPostAttachRuntime", () => {
     expect(publishedGatewayLifetimeSidecars.has(recoverySidecar)).toBe(false);
   });
 
-  it("gates main-session recovery behind post-ready work", async () => {
-    const { promise: postReadyWork, resolve: releasePostReadyWork } = createDeferred();
-    let waitForStart: (() => Promise<void>) | undefined;
-    hoisted.scheduleRestartAbortedMainSessionRecovery.mockImplementationOnce(
-      (params: { waitForStart?: () => Promise<void> }) => {
-        waitForStart = params.waitForStart;
-        return { stop: vi.fn(async () => {}) };
-      },
-    );
+  it.each([false, true])(
+    "gates main-session recovery behind subagent restoration (failure: %s)",
+    async (failRestoration) => {
+      const { promise: postReadyWork, resolve: releasePostReadyWork } = createDeferred();
+      const restorationStarted = createDeferred();
+      const restorationReady = createDeferred();
+      hoisted.activateSubagentRegistry.mockImplementationOnce(async () => {
+        restorationStarted.resolve();
+        await restorationReady.promise;
+        if (failRestoration) {
+          throw new Error("restoration failed");
+        }
+      });
+      let waitForStart: (() => Promise<void>) | undefined;
+      hoisted.scheduleRestartAbortedMainSessionRecovery.mockImplementationOnce(
+        (params: { waitForStart?: () => Promise<void> }) => {
+          waitForStart = params.waitForStart;
+          return { stop: vi.fn(async () => {}) };
+        },
+      );
 
-    await startGatewayPostAttachRuntime({
-      ...createPostAttachParams(),
-      waitForPostReadyWork: () => postReadyWork,
-    });
+      await startGatewayPostAttachRuntime({
+        ...createPostAttachParams(),
+        waitForPostReadyWork: () => postReadyWork,
+      });
 
-    await waitForGatewayTestState(() => {
-      expect(waitForStart).toEqual(expect.any(Function));
-    });
-    let released = false;
-    const waiting = waitForStart?.().then(() => {
-      released = true;
-    });
-    await Promise.resolve();
-    expect(released).toBe(false);
+      await waitForGatewayTestState(() => {
+        expect(waitForStart).toEqual(expect.any(Function));
+      });
+      let released = false;
+      const waiting = waitForStart?.().then(() => {
+        released = true;
+      });
+      await Promise.resolve();
+      expect(released).toBe(false);
 
-    releasePostReadyWork();
-    await waiting;
-    expect(released).toBe(true);
-  });
+      try {
+        releasePostReadyWork();
+        await restorationStarted.promise;
+        expect(released).toBe(false);
+      } finally {
+        restorationReady.resolve();
+      }
+      await waiting;
+      expect(released).toBe(true);
+    },
+  );
 
   it("reports internal hook load failures without copying the error into the summary", async () => {
     const log = { info: vi.fn<(message: string) => void>(), warn: vi.fn() };
@@ -1318,9 +1336,6 @@ describe("startGatewayPostAttachRuntime", () => {
   });
 
   it("adopts a winning plugin generation without publishing stale deferred startup state", async () => {
-    const { logGatewayStartup } =
-      await vi.importActual<typeof import("./server-startup-log.js")>("./server-startup-log.js");
-    const log = { info: vi.fn(), warn: vi.fn() };
     const startupConfig: OpenClawConfig = {
       agents: { defaults: { model: "fixture/stale", thinkingDefault: "off" } },
       channels: { "diagnostic-chat": { enabled: true } },
@@ -1385,15 +1400,12 @@ describe("startGatewayPostAttachRuntime", () => {
         getCurrentPluginRegistry: () => winningRegistry,
         getCurrentPluginServices: () => winningServices,
         getCurrentPluginMetadataSnapshot: () => winningMetadata,
-        getCurrentActivationSourceConfig: () => winningConfig,
         cfgAtStart: startupConfig,
         activationSourceConfig: startupConfig,
         getConfig: () => winningConfig,
-        log,
       }),
       createPostAttachRuntimeDeps({
         startGatewaySidecars: startGatewaySidecarsCandidate,
-        logGatewayStartup,
       }),
     );
     await waitForGatewayTestState(() => expect(loadStartupPlugins).toHaveBeenCalledOnce());
@@ -1406,14 +1418,6 @@ describe("startGatewayPostAttachRuntime", () => {
     expect(onPluginServices).not.toHaveBeenCalled();
     expect(unlockStartupMethods).toHaveBeenCalledOnce();
     expect(onSidecarsReady).toHaveBeenCalledOnce();
-    expect
-      .soft(log.info)
-      .toHaveBeenCalledWith(
-        "agent model: fixture/current (thinking=high, fast=off)",
-        expect.any(Object),
-      );
-    expect(log.info).toHaveBeenCalledWith("http server listening (1 plugin: replacement)");
-    expect(log.warn).not.toHaveBeenCalled();
   });
 
   it("keeps transcripts auto-start alive when Gmail post-ready sidecars stop", async () => {

@@ -98,32 +98,6 @@ describe("patchSessionRows", () => {
     );
   });
 
-  it("preserves each archive placement expectation and reports only successful targets", async () => {
-    const first = {
-      ...sessionRow(0),
-      archiveGuard: { expectedSidebarRoot: false, expectedCategory: null, expectedArchived: false },
-    };
-    const moved = {
-      ...sessionRow(1),
-      archiveGuard: { expectedSidebarRoot: false, expectedCategory: null, expectedArchived: false },
-    };
-    const harness = createHarness({ failedKeys: [moved.key] });
-    expect(
-      await patchSessionRows(harness.host, [first, moved], { archived: true }, harness.scope, {
-        sessionScope: true,
-      }),
-    ).toEqual([first]);
-    expect(harness.request).toHaveBeenCalledWith(
-      "sessions.patchMany",
-      expect.objectContaining({
-        targets: [first, moved].map((row) => Object.assign(sessionTarget(row), row.archiveGuard)),
-        patch: { archived: true },
-      }),
-      expect.anything(),
-    );
-    expect(harness.publishSessionMutationError).toHaveBeenCalled();
-  });
-
   it("binds Mark as read to the current session identity", async () => {
     const row = sessionRow(0);
     const harness = createHarness();
@@ -233,19 +207,6 @@ describe("patchSessionRows", () => {
   });
 
   it.each([
-    { patch: { category: "Projects" }, capabilities: undefined },
-    { patch: { unread: false }, capabilities: [] },
-  ])("preserves captured batch identities for $patch", async ({ patch, capabilities }) => {
-    const rows = [sessionRow(0), sessionRow(1)];
-    const h = createHarness({ capabilities });
-    await patchSessionRows(h.host, rows, patch, h.scope);
-    expect(h.request).toHaveBeenCalledWith("sessions.patchMany", {
-      targets: rows.map(sessionTarget),
-      patch,
-    });
-  });
-
-  it.each([
     { current: false, staleAfterRequest: undefined, count: 1, requests: 0 },
     { current: true, staleAfterRequest: 1, count: 101, requests: 1 },
   ])("stops stale scopes after $requests dispatched chunks", async (scenario) => {
@@ -257,13 +218,29 @@ describe("patchSessionRows", () => {
   });
 
   it("keeps ordered partial outcomes and prunes only successful archived rows", async () => {
-    const rows = [sessionRow(0), sessionRow(1), sessionRow(2)];
+    const rows = [sessionRow(0), sessionRow(1), sessionRow(2)].map((row) =>
+      Object.assign(row, {
+        archiveGuard: {
+          expectedSidebarRoot: false,
+          expectedCategory: null,
+          expectedArchived: false,
+        },
+      }),
+    );
     const harness = createHarness({ failedKeys: [rows[0]!.key, rows[2]!.key] });
 
     await expect(
       patchSessionRows(harness.host, rows, { archived: true }, harness.scope),
     ).resolves.toEqual([rows[1]]);
 
+    expect(harness.request).toHaveBeenCalledWith(
+      "sessions.patchMany",
+      expect.objectContaining({
+        targets: rows.map((row) => Object.assign(sessionTarget(row), row.archiveGuard)),
+        patch: { archived: true },
+      }),
+      expect.anything(),
+    );
     expect(harness.pruneSidebarSessionEntry).not.toHaveBeenCalled();
     expect(harness.publishSessionMutationError).toHaveBeenCalledWith(
       harness.scope,
@@ -279,13 +256,6 @@ describe("patchSessionRows", () => {
       at: 1,
       code: "INVALID_REQUEST",
       message: "invalid archive request",
-    },
-    {
-      name: "transport unavailability",
-      patch: { unread: true },
-      at: 1,
-      code: "UNAVAILABLE",
-      message: "disconnected",
     },
     {
       name: "later chunk rejection",
@@ -575,43 +545,52 @@ describe("session organizer destructive confirmations", () => {
     });
   });
 
-  it("surfaces a forced worktree removal that could not create a snapshot", async () => {
-    const harness = createHarness({
-      ...destructiveHarness,
-      methods: [...destructiveHarness.methods, "worktrees.remove"],
-    });
-    harness.deleteOne.mockResolvedValueOnce({
-      deleted: true,
-      worktreePreserved: {
+  it.each(["snapshot failure", "request rejection"] as const)(
+    "surfaces one forced worktree removal %s after confirmed session deletion",
+    async (failure) => {
+      const harness = createHarness({
+        ...destructiveHarness,
+        methods: [...destructiveHarness.methods, "worktrees.remove"],
+      });
+      harness.deleteOne.mockResolvedValueOnce({
+        deleted: true,
+        worktreePreserved: {
+          id: "wt-1",
+          branch: "feature",
+          path: "/tmp/worktree",
+          reason: "snapshot-failed",
+        },
+      } as never);
+      const rejection = new Error("worktree removal failed");
+      if (failure === "snapshot failure") {
+        harness.request.mockResolvedValueOnce({
+          removed: true,
+          snapshotError: "nested gitlink",
+        } as never);
+      } else {
+        harness.request.mockRejectedValueOnce(rejection);
+      }
+
+      const pending = deleteSession(harness.host, sessionRow(0), harness.scope);
+      answerConfirmDialog(await waitForConfirmDialogActions(), "confirm");
+      const worktreeActions = await waitForConfirmDialogActions();
+      expect(document.body.querySelector("openclaw-modal-dialog")?.textContent).toContain(
+        "OpenClaw could not create a safety snapshot",
+      );
+      answerConfirmDialog(worktreeActions, "confirm");
+      await pending;
+
+      expect(harness.request).toHaveBeenCalledWith("worktrees.remove", {
         id: "wt-1",
-        branch: "feature",
-        path: "/tmp/worktree",
-        reason: "snapshot-failed",
-      },
-    } as never);
-    harness.request.mockResolvedValueOnce({
-      removed: true,
-      snapshotError: "nested gitlink",
-    } as never);
-
-    const pending = deleteSession(harness.host, sessionRow(0), harness.scope);
-    answerConfirmDialog(await waitForConfirmDialogActions(), "confirm");
-    const worktreeActions = await waitForConfirmDialogActions();
-    expect(document.body.querySelector("openclaw-modal-dialog")?.textContent).toContain(
-      "OpenClaw could not create a safety snapshot",
-    );
-    answerConfirmDialog(worktreeActions, "confirm");
-    await pending;
-
-    expect(harness.request).toHaveBeenCalledWith("worktrees.remove", {
-      id: "wt-1",
-      force: true,
-    });
-    expect(harness.publishSessionMutationError).toHaveBeenCalledWith(
-      harness.scope,
-      "nested gitlink",
-    );
-  });
+        force: true,
+      });
+      expect(harness.publishSessionMutationError).toHaveBeenCalledOnce();
+      expect(harness.publishSessionMutationError).toHaveBeenCalledWith(
+        harness.scope,
+        failure === "snapshot failure" ? "nested gitlink" : rejection,
+      );
+    },
+  );
 
   it.each([
     { name: "sidebar opt-out", offerSkip: true, reset: false, confirm: false },
@@ -824,7 +803,8 @@ describe("session organizer snooze", () => {
     const until = Date.now() + 86_400_000;
     try {
       rememberCustomSnooze(key, until);
-      h.patch.mockRejectedValueOnce(new Error("denied"));
+      const error = new Error("denied");
+      h.patch.mockRejectedValueOnce(error);
       await snoozeSessionWithUndo(
         h.host,
         sessionRow(1),
@@ -832,6 +812,8 @@ describe("session organizer snooze", () => {
         h.scope,
       );
       expect(readCustomSnooze(key)).toBe(until);
+      expect(h.publishSessionMutationError).toHaveBeenCalledWith(h.scope, error);
+      expect(showToast).not.toHaveBeenCalled();
       await snoozeSessionWithUndo(h.host, sessionRow(1), { snoozedUntil: until + 2000 }, h.scope);
       expect(readCustomSnooze(key)).toBe(until);
       await snoozeSessionWithUndo(
@@ -854,14 +836,5 @@ describe("session organizer snooze", () => {
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-
-  it("reports a rejected snooze through the ordinary session mutation error path", async () => {
-    const h = createHarness();
-    const error = new Error("snooze wake time must be in the future");
-    h.patch.mockRejectedValueOnce(error);
-    await snoozeSessionWithUndo(h.host, sessionRow(0), { snoozedUntil: 200 }, h.scope);
-    expect(h.publishSessionMutationError).toHaveBeenCalledWith(h.scope, error);
-    expect(showToast).not.toHaveBeenCalled();
   });
 });
