@@ -520,51 +520,40 @@ export function createSubagentResumeReader(params: {
         }
       };
       void runWithGatewayDetachedWorkContinuation(async () => {
-        try {
-          let observed = entry;
-          let check: ReturnType<typeof resolveSubagentRunOrphanReason> = orphanCheck;
-          while (isReadCurrent()) {
-            let reason: SubagentRunOrphanReason | null;
-            if (check === null || typeof check === "string") {
-              reason = check;
-            } else {
-              reason = (await check.read(assertCurrent)).orphanReason;
-            }
-            if (!isReadCurrent()) {
-              return;
-            }
-            const current = subagentRuns.get(runId)!;
-            const latestCheck = resolveSubagentRunOrphanReason({
-              entry: current,
-              includeStaleUnended: source === "restore",
-            });
-            if (current !== observed) {
-              observed = current;
-              check = latestCheck;
-              continue;
-            }
-            params.resume(
-              runId,
-              current,
-              source,
-              latestCheck === null || typeof latestCheck === "string" ? latestCheck : reason,
-              isHostCurrent,
-            );
+        let observed = entry;
+        let check: ReturnType<typeof resolveSubagentRunOrphanReason> = orphanCheck;
+        while (isReadCurrent()) {
+          let reason: SubagentRunOrphanReason | null;
+          if (check === null || typeof check === "string") {
+            reason = check;
+          } else {
+            reason = (await check.read(assertCurrent)).orphanReason;
+          }
+          if (!isReadCurrent()) {
             return;
           }
-        } catch (error) {
-          failed(error);
-          throw error;
-        } finally {
-          release();
+          const current = subagentRuns.get(runId)!;
+          const latestCheck = resolveSubagentRunOrphanReason({
+            entry: current,
+            includeStaleUnended: source === "restore",
+          });
+          if (current !== observed) {
+            observed = current;
+            check = latestCheck;
+            continue;
+          }
+          params.resume(
+            runId,
+            current,
+            source,
+            latestCheck === null || typeof latestCheck === "string" ? latestCheck : reason,
+            isHostCurrent,
+          );
+          return;
         }
-      }, "subagents:resume-session-read").catch((error: unknown) => {
-        try {
-          failed(error);
-        } finally {
-          release();
-        }
-      });
+      }, "subagents:resume-session-read")
+        .catch(failed)
+        .finally(release);
     } catch (error) {
       release();
       params.warn("subagent session read deferred before resume", { runId, error });

@@ -1206,7 +1206,7 @@ src/agents/embedded-agent-runner/message-visibility.ts	1
 src/agents/embedded-agent-runner/model.configured-fallback.ts	1
 src/agents/embedded-agent-runner/model.configured-overrides.ts	1
 src/agents/embedded-agent-runner/model.provider-hooks.ts	8
-src/agents/embedded-agent-runner/model.registry-resolution.ts	3
+src/agents/embedded-agent-runner/model.registry-resolution.ts	2
 src/agents/embedded-agent-runner/model.ts	3
 src/agents/embedded-agent-runner/openrouter-model-capabilities.ts	2
 src/agents/embedded-agent-runner/replay-history.ts	16
@@ -1221,7 +1221,6 @@ src/agents/embedded-agent-runner/run/attempt-normalization.ts	1
 src/agents/embedded-agent-runner/run/attempt-prompt-build.ts	1
 src/agents/embedded-agent-runner/run/attempt-prompt-helpers.ts	4
 src/agents/embedded-agent-runner/run/attempt-prompt-submit.ts	2
-src/agents/embedded-agent-runner/run/attempt-queue-message.ts	1
 src/agents/embedded-agent-runner/run/attempt-session-prepare.ts	2
 src/agents/embedded-agent-runner/run/attempt-sessions-yield.ts	1
 src/agents/embedded-agent-runner/run/attempt-setup.ts	1
@@ -1253,7 +1252,7 @@ src/agents/embedded-agent-runner/thinking-replay-repair.ts	1
 src/agents/embedded-agent-runner/thinking.ts	19
 src/agents/embedded-agent-runner/tool-call-argument-decoding.ts	3
 src/agents/embedded-agent-runner/tool-result-char-estimator.ts	7
-src/agents/embedded-agent-runner/tool-result-context-guard.ts	7
+src/agents/embedded-agent-runner/tool-result-context-guard.ts	5
 src/agents/embedded-agent-runner/tool-result-truncation.ts	8
 src/agents/embedded-agent-runner/tool-schema-runtime.ts	1
 src/agents/embedded-agent-runner/transcript-rewrite.ts	1
