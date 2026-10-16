@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { ExecProcessOutcome } from "../agents/bash-tools.exec-types.js";
 import type { EmbeddedAgentExecutionPhase } from "../agents/embedded-agent-runner/execution-phase.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { pluginInstanceInvocation } from "../plugins/plugin-instance-invocation.js";
+import type { ExecProcessFailureKind } from "../process/exec-process-failure.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { notifyListeners, registerListener } from "../shared/listeners.js";
 import type { TalkBrain, TalkEventType, TalkMode, TalkTransport } from "../talk/talk-events.js";
@@ -566,7 +566,7 @@ type DiagnosticExecProcessCompletedEvent = DiagnosticBaseEvent & {
   exitCode?: number;
   exitSignal?: string;
   timedOut?: boolean;
-  failureKind?: Extract<ExecProcessOutcome, { status: "failed" }>["failureKind"];
+  failureKind?: ExecProcessFailureKind;
 };
 
 type DiagnosticExecApprovalFollowupSuppressedEvent = DiagnosticBaseEvent & {
