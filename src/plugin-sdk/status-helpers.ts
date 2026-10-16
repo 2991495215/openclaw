@@ -7,8 +7,8 @@ import {
   resolveChannelAccountState,
 } from "../channels/status/account-state.js";
 import {
-  buildBaseChannelStatusSummary,
-  buildProbeChannelStatusSummary,
+  buildBaseChannelStatusSummary as buildSharedBaseChannelStatusSummary,
+  buildProbeChannelStatusSummary as buildSharedProbeChannelStatusSummary,
 } from "../channels/status/summary.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 // Preserve the shipped Plugin SDK name while the implementation stays canonical.
@@ -169,7 +169,20 @@ export function createDefaultChannelRuntimeState<T extends Record<string, unknow
   };
 }
 
-export { buildBaseChannelStatusSummary, buildProbeChannelStatusSummary };
+// Preserve these SDK generics' record constraint; passive summaries also accept arbitrary objects.
+export function buildBaseChannelStatusSummary<TExtra extends StatusSnapshotExtra>(
+  snapshot: Parameters<typeof buildSharedBaseChannelStatusSummary>[0],
+  extra?: TExtra,
+) {
+  return buildSharedBaseChannelStatusSummary(snapshot, extra);
+}
+
+export function buildProbeChannelStatusSummary<TExtra extends Record<string, unknown>>(
+  snapshot: Parameters<typeof buildSharedProbeChannelStatusSummary>[0],
+  extra?: TExtra,
+) {
+  return buildSharedProbeChannelStatusSummary(snapshot, extra);
+}
 
 /** Build webhook channel summaries with a stable default mode. */
 export function buildWebhookChannelStatusSummary<TExtra extends StatusSnapshotExtra>(

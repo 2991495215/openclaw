@@ -142,7 +142,7 @@ export function registerMatrixPreviewDeliveryTests(harness: PreviewDeliveryHarne
     },
   );
 
-  it("preserves accepted replacement receipts and retries failed preview redaction", async () => {
+  it("preserves accepted replacement receipts when preview redaction fails", async () => {
     const { dispatch, redactEventMock } = createStreamingHarness({ streaming: "partial" });
     const { deliver, opts, finish } = await dispatch();
 
@@ -170,10 +170,7 @@ export function registerMatrixPreviewDeliveryTests(harness: PreviewDeliveryHarne
     });
     expect(editMessageMatrixMock).not.toHaveBeenCalled();
     await finish();
-    expect(mockCalls(redactEventMock, "redactEvent").map(([, id]) => id)).toEqual([
-      "$draft1",
-      "$draft1",
-    ]);
+    expect(mockCalls(redactEventMock, "redactEvent").map(([, id]) => id)).toEqual(["$draft1"]);
   });
 
   it.each([

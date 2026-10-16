@@ -208,9 +208,14 @@ export function createFinalizableDraftLifecycle<TMessageId, TUpdate = string>(
   ): Promise<void> => {
     const owner = messageIdOwner ? { ...params, ...messageIdOwner } : params;
     return serializeCleanup(async () => {
-      const messageId = await takeMessageIdAfterStop({ ...owner, stopForClear });
+      await stopForClear();
+      const messageId = owner.readMessageId();
+      if (!owner.isValidMessageId(messageId)) {
+        owner.clearMessageId();
+      }
       await drainDeletes(messageId);
       if (owner.isValidMessageId(messageId)) {
+        // A failed DELETE leaves a visible message whose receipt must remain available.
         await deleteRetired(messageId, owner);
       }
     });
