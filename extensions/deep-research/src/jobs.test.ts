@@ -515,8 +515,14 @@ describe("research recovery fault injection", () => {
     const request = vi
       .mocked(runtime.gateway.request)
       .mockImplementation(async (_method, params, options) => {
-        const action = (params?.request as { action?: string }).action;
-        if (action === "describe") return descriptor;
+        const requestInput = params?.request;
+        const action =
+          requestInput && typeof requestInput === "object" && "action" in requestInput
+            ? requestInput.action
+            : undefined;
+        if (action === "describe") {
+          return descriptor;
+        }
         if (action === "start") {
           startSignal = options?.signal;
           admitted.resolve();
@@ -543,9 +549,15 @@ describe("research recovery fault injection", () => {
     const resumed = await reopened.run(await reopened.get(entry.key, context), context);
     expect(resumed.state).toBe("completed");
     expect(
-      request.mock.calls.filter(
-        ([, params]) => (params?.request as { action?: string }).action === "start",
-      ),
+      request.mock.calls.filter(([, params]) => {
+        const requestInput = params?.request;
+        return (
+          requestInput &&
+          typeof requestInput === "object" &&
+          "action" in requestInput &&
+          requestInput.action === "start"
+        );
+      }),
     ).toHaveLength(1);
   });
 

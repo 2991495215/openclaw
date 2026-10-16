@@ -157,7 +157,9 @@ it.each(["policy", "router-refusal", "host-abort"] as const)(
             // Provider HTTP/auth contracts are exercised separately by Google's fixtures.
             acceptedHandlerSettlement = startSettled.promise;
             startEntered.resolve(options.signal);
-            if (scenario === "host-abort") await releaseReceipt.promise;
+            if (scenario === "host-abort") {
+              await releaseReceipt.promise;
+            }
             try {
               options.respond(true, {
                 version: 1,
