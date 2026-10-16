@@ -1,20 +1,14 @@
 import { mergeMissing } from "openclaw/plugin-sdk/runtime-doctor-migrations";
-import { asNullableRecord, isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import {
+  asNonArrayRecord,
+  asNullableRecord,
+  isRecord,
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 
 type JsonRecord = Record<string, unknown>;
 
 const LEGACY_PATH = "models.bedrockDiscovery";
 const TARGET_PATH = "plugins.entries.amazon-bedrock.config.discovery";
-
-function ensureRecord(root: JsonRecord, key: string): JsonRecord {
-  const existing = root[key];
-  if (isRecord(existing)) {
-    return existing;
-  }
-  const next: JsonRecord = {};
-  root[key] = next;
-  return next;
-}
 
 function resolveLegacyBedrockDiscoveryConfig(raw: unknown): JsonRecord | undefined {
   if (!isRecord(raw)) {
@@ -42,7 +36,7 @@ export function migrateAmazonBedrockLegacyConfig<T>(raw: T): { config: T; change
   }
 
   const nextRoot = structuredClone(raw) as JsonRecord;
-  const models = ensureRecord(nextRoot, "models");
+  const models = (nextRoot.models = asNonArrayRecord(nextRoot.models));
   delete models.bedrockDiscovery;
   pruneEmptyModelsRoot(nextRoot);
 
@@ -52,10 +46,10 @@ export function migrateAmazonBedrockLegacyConfig<T>(raw: T): { config: T; change
     return { config: nextRoot as T, changes };
   }
 
-  const plugins = ensureRecord(nextRoot, "plugins");
-  const entries = ensureRecord(plugins, "entries");
-  const entry = ensureRecord(entries, "amazon-bedrock");
-  const config = ensureRecord(entry, "config");
+  const plugins = (nextRoot.plugins = asNonArrayRecord(nextRoot.plugins));
+  const entries = (plugins.entries = asNonArrayRecord(plugins.entries));
+  const entry = (entries["amazon-bedrock"] = asNonArrayRecord(entries["amazon-bedrock"]));
+  const config = (entry.config = asNonArrayRecord(entry.config));
   const existing = asNullableRecord(config.discovery) ?? undefined;
 
   if (!existing) {
