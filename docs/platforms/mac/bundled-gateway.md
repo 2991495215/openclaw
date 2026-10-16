@@ -378,6 +378,8 @@ Automatic update reconciliation reuses the completed repair while that build's
 app-owned Gateway remains healthy; an explicit **Retry** runs repair again.
 If Doctor cleanup cannot be confirmed, the app keeps the Gateway stopped and recovery
 pending; preserve the reported custody diagnostics before retrying.
+Quitting during repair asks Doctor to cancel its work and release database ownership
+before forcing it to stop if cleanup does not finish.
 Conditional plugin warnings remain visible, with their pending repair records retained.
 It verifies health before removing old builds. A paused Gateway stays paused.
 Seeded installations never run npm self-update; update OpenClaw.app to update

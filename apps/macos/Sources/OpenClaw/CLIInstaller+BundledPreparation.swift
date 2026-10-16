@@ -62,6 +62,7 @@ extension CLIInstaller {
                 "OPENCLAW_UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH": "-",
             ]) { _, policy in policy },
             timeout: self.managedUpdateTimeout,
+            cancellationPolicy: .waitForSignalCleanup,
             beforeSpawn: { expectedServiceAuthority.currentError() })
         try await checkCurrent()
         return try self.bundledDoctorDiagnostics(response)
