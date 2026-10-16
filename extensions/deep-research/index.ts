@@ -50,7 +50,7 @@ export default definePluginEntry({
           },
         }),
       },
-      { names: ["deep_research"], optional: true, workspaceAccess: false },
+      { names: ["deep_research"], workspaceAccess: false },
     );
   },
 });
