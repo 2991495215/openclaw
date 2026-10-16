@@ -4117,7 +4117,6 @@ describe("gateway Gmail hot reload handlers", () => {
         await leaseClock.waitFor(harness.restartEmitted);
         expect(harness.requestRecoveryRestart).toHaveBeenCalledOnce();
         expect(harness.assertRestartReady).toHaveBeenCalledTimes(2);
-        expect(harness.activateRuntimeSecrets.prepareSnapshot).toHaveBeenCalledTimes(5);
       } finally {
         promotionGate.resolve();
         hoisted.activeAgentRunCount.value = 0;

@@ -222,7 +222,6 @@ export function startManagedGatewayConfigReloader(
         break;
       }
     } catch (error) {
-      failedRestartPlan = plan;
       restartLifecycle.settle("rejected");
       throw error;
     }
@@ -278,7 +277,6 @@ export function startManagedGatewayConfigReloader(
       transactionOwnership.commitRuntimeEnv();
       restartLifecycle.settle("committed");
     } catch (error) {
-      failedRestartPlan = plan;
       restartTransaction?.settle("rejected");
       restartLifecycle.settle("rejected");
       transactionOwnership.rollbackRuntimeEnv();

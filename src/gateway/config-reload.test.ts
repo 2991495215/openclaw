@@ -2227,16 +2227,19 @@ describe("startGatewayConfigReloader", () => {
   );
 
   it("caps missing-file retries and skips reload after retry budget is exhausted", async () => {
+    const { clock, scheduler } = createConfigReloadTestClock();
     const readSnapshot = vi
       .fn<() => Promise<ConfigFileSnapshot>>()
       .mockResolvedValue(makeSnapshot({ exists: false, raw: null, hash: "missing" }));
-    const { watcher, onHotReload, onRestart, log, reloader } = createReloaderHarness(readSnapshot);
+    const { watcher, onHotReload, onRestart, log, reloader } = createReloaderHarness(readSnapshot, {
+      scheduler,
+    });
     await reloader.ready;
 
     watcher.emit("unlink");
-    await flushReload(reloader);
-    await flushReload(reloader, 150);
-    await flushReload(reloader, 150);
+    await clock.advanceBy(0);
+    await clock.advanceBy(150);
+    await clock.advanceBy(150);
 
     expect(readSnapshot).toHaveBeenCalledTimes(3);
     expect(onHotReload).not.toHaveBeenCalled();
