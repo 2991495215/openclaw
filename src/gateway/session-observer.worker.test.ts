@@ -12,6 +12,7 @@ import { targetDiscoveryLane } from "../config/sessions/session-transcript-worke
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { sessionChanges } from "../sessions/session-row-changes.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import { unregisterOpenClawAgentDatabase } from "../state/openclaw-agent-db-registry.js";
 import {
   closeOpenClawAgentDatabaseByPathAsync,
   openOpenClawAgentDatabase,
@@ -73,7 +74,11 @@ async function withObserver(
   useDefaultStore = false,
 ) {
   await withOpenClawTestState({ label: "observer-worker" }, async ({ env, path }) => {
-    const database = openOpenClawAgentDatabase({ agentId: "main", env });
+    const database = openOpenClawAgentDatabase({
+      agentId: "main",
+      env,
+      ...(useDefaultStore ? {} : { path: path("original.sqlite") }),
+    });
     writeSessionEntry(database, key, {
       sessionId: "session-id",
       lifecycleRevision: "life-a",
@@ -156,6 +161,9 @@ async function withObserver(
         },
         replaceStore: async () => {
           const storePath = path("replacement.sqlite");
+          unregisterOpenClawAgentDatabase({ agentId: "main", path: database.path, env });
+          cfg.session.store = storePath;
+          setRuntimeConfigSnapshot(cfg);
           await replaceSessionEntry(
             { agentId: "main", sessionKey: key, storePath, env },
             {
@@ -164,8 +172,14 @@ async function withObserver(
               updatedAt: 1,
             },
           );
-          cfg.session.store = storePath;
-          setRuntimeConfigSnapshot(cfg);
+          await projection.withPreparedExactRows(
+            () => [{ key, agentId: "main" }],
+            (read) => {
+              expect(read.describe({ key, agentId: "main" })?.storeTarget.storePath).toBe(
+                storePath,
+              );
+            },
+          );
         },
       });
     } finally {
@@ -316,7 +330,9 @@ it.for(["rewrite", "close"] as const)(
       });
       try {
         await expect(observer.getCompanionSnapshotAsync(key, "main")).rejects.toThrow(
-          /changed|revoked|closed|current|admission/i,
+          change === "close"
+            ? "Session row projection is no longer active"
+            : /changed|revoked|closed|current|admission/i,
         );
         expect(intercepted).toHaveBeenCalledOnce();
       } finally {

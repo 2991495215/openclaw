@@ -41,8 +41,10 @@ export function observeSessionRowBackfill(
       completed.resolve();
     }
   };
-  const publish = records.publishTranscriptFields;
-  const spy = vi.spyOn(records, "publishTranscriptFields").mockImplementation((...args) => {
+  const original = records.publishTranscriptFields;
+  const spy = vi.spyOn(records, "publishTranscriptFields");
+  const publish = spy.getMockImplementation() ?? original;
+  spy.mockImplementation((...args) => {
     try {
       const changed = publish(...args);
       const [row] = args;
