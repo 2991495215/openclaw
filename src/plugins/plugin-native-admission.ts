@@ -27,7 +27,6 @@ import {
   createPluginNativeReferenceValidator,
   linkPluginNativeReference,
 } from "./plugin-native-reference.js";
-import { retainPluginNativeRoot } from "./plugin-native-root-lease.js";
 import { resolvePluginModulePackageRoot } from "./plugin-package-metadata-capture.js";
 import { createPluginSourceAdmissionPublisher } from "./plugin-source-admission-store.js";
 import type {
@@ -81,46 +80,6 @@ export type PluginNativeRecovery = {
   dispose(): void;
   disposeAsync(): Promise<void>;
 };
-/** Native roots cross a worker boundary as independently owned leases, never cache authority. */
-export type PluginNativeRecoverySnapshot = {
-  receipt: NativeReceipt;
-  references: Map<string, PluginNativeArtifactFact>;
-  namespaces: Map<string, PluginNativeNamespaceFact>;
-  directories: Map<string, string>;
-  roots: NativeSnapshot[];
-};
-const recoverySnapshots = new WeakMap<object, () => PluginNativeRecoverySnapshot>();
-
-export function snapshotPluginNativeRecovery(
-  recovery: PluginNativeRecovery,
-): PluginNativeRecoverySnapshot {
-  const snapshot = recoverySnapshots.get(recovery);
-  if (!snapshot) {
-    throw new Error("Native recovery is not owned by plugin admission");
-  }
-  return snapshot();
-}
-
-export function isOwnedPluginNativeRecovery(value: object): value is PluginNativeRecovery {
-  return recoverySnapshots.has(value);
-}
-
-export function restorePluginNativeRecovery(
-  snapshot: PluginNativeRecoverySnapshot,
-): PluginNativeRecovery {
-  for (const root of snapshot.roots) {
-    if (!snapshotOwners.has(root)) {
-      snapshotOwners.set(root, new Set());
-    }
-  }
-  return createNativeRecovery(
-    snapshot.receipt,
-    snapshot.references,
-    snapshot.namespaces,
-    snapshot.directories,
-    snapshot.roots,
-  );
-}
 // Recovery custody contains copied paths and native roots, never the retired registry or instance.
 function createNativeRecovery(
   receipt: NativeReceipt,
@@ -151,7 +110,7 @@ function createNativeRecovery(
       return owners.size === 0;
     });
   };
-  const recovery: PluginNativeRecovery = {
+  return {
     receipt: { ...receipt },
     references,
     namespaces,
@@ -194,20 +153,6 @@ function createNativeRecovery(
       await Promise.all(release().map((root) => root.disposeAsync()));
     },
   };
-  recoverySnapshots.set(recovery, () => {
-    if (disposed) {
-      throw new Error("Plugin native recovery has been disposed");
-    }
-    const leases = roots.map(retainPluginNativeRoot);
-    return {
-      receipt: { ...receipt },
-      references: structuredClone(references),
-      namespaces: structuredClone(namespaces),
-      directories: new Map(directories),
-      roots: leases,
-    };
-  });
-  return recovery;
 }
 
 function isNativeArtifact(
@@ -400,9 +345,7 @@ export function createPluginNativeAdmission(
       nativeNamespaces: Object.fromEntries([...used].map((id) => [id, state.namespaces.get(id)!])),
     });
     const unchanged = isDeepStrictEqual(state.receipts.get(key), next);
-    if (!unchanged) {
-      state.receipts.set(key, next);
-    }
+    state.receipts.set(key, next);
     if (!owner || !publishAdmission) {
       return;
     }

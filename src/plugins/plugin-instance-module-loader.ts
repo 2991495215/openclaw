@@ -217,10 +217,8 @@ export function bindPluginInstanceModuleLoader(params: PluginInstanceModuleLoade
   const reusedArtifact = retained?.artifact;
   let artifact: PluginGenerationArtifact;
   try {
-    params.preparedArtifact?.attachModuleSource(moduleSource);
     artifact =
       reusedArtifact ??
-      params.preparedArtifact?.artifact ??
       capturePluginGenerationArtifact(
         params.rootDir,
         params.standalone ? params.source : undefined,

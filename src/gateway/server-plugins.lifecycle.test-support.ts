@@ -84,24 +84,18 @@ async function installChannelBindingRuntimeLoader(proof: ChannelBindingProof) {
     .spyOn(loaderModule, "createPluginModuleLoader")
     .mockImplementation((loaderOptions) => {
       const load = createLoader(loaderOptions);
-      const observedLoad: typeof load = Object.assign(
-        (modulePath: Parameters<typeof load>[0], owner: Parameters<typeof load>[1]) => {
-          if (!owner && modulePath === resolveRuntime.mock.results.at(-1)?.value?.resolvedPath) {
-            observation.resolvedTargets.push(modulePath);
-            return {
-              createPluginRuntime: (
-                ...args: Parameters<typeof fullRuntime.createPluginRuntime>
-              ) => {
-                observation.factoryCalls += 1;
-                return fullRuntime.createPluginRuntime(...args);
-              },
-            };
-          }
-          return load(modulePath, owner);
-        },
-        { prepare: (...args: Parameters<typeof load.prepare>) => load.prepare(...args) },
-      );
-      return observedLoad;
+      return (modulePath, owner) => {
+        if (!owner && modulePath === resolveRuntime.mock.results.at(-1)?.value?.resolvedPath) {
+          observation.resolvedTargets.push(modulePath);
+          return {
+            createPluginRuntime: (...args: Parameters<typeof fullRuntime.createPluginRuntime>) => {
+              observation.factoryCalls += 1;
+              return fullRuntime.createPluginRuntime(...args);
+            },
+          };
+        }
+        return load(modulePath, owner);
+      };
     });
   return () => {
     loaderSpy.mockRestore();

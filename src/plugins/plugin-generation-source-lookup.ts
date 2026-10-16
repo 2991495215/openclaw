@@ -20,17 +20,6 @@ import {
 } from "./plugin-package-metadata-capture.js";
 import type { PluginNativeArtifactFact } from "./plugin-source-admission.types.js";
 import type { PluginCapturedSourceFact } from "./plugin-source-verification.js";
-// These owner-defined operations copy captured source trees; their cost scales with
-// package size and filesystem latency rather than the ordinary method deadline.
-const sourceCaptureOperations = new WeakSet<object>();
-export function markPluginSourceCaptureOperation<T extends () => unknown>(operation: T): T {
-  sourceCaptureOperations.add(operation);
-  return operation;
-}
-export function isPluginSourceCaptureOperation(operation: object): boolean {
-  return sourceCaptureOperations.has(operation);
-}
-
 type SourceCustody = {
   source: PluginRecoverySource;
   files: ReadonlyMap<string, PluginCapturedSourceFact>;
@@ -53,19 +42,9 @@ export async function withPluginGenerationSourceCustody<T>(run: () => Promise<T>
   if (sourceCustody.getStore()) {
     return await run();
   }
-  const scope = createPluginGenerationSourceCustody();
-  try {
-    return await scope.run(run);
-  } finally {
-    await scope.disposeAsync();
-  }
-}
-
-/** A preparation worker retains this same owner across its sequential loader tasks. */
-export function createPluginGenerationSourceCustody() {
-  const scope = {
+  await using scope = {
     sources: new Map<string, SourceCustody>(),
-    async disposeAsync() {
+    async [Symbol.asyncDispose]() {
       const results = await Promise.allSettled(
         [...this.sources.values()].map(({ source }) => source.disposeAsync()),
       );
@@ -75,13 +54,9 @@ export function createPluginGenerationSourceCustody() {
       if (errors.length) {
         throw new AggregateError(errors, "Plugin source custody cleanup failed");
       }
-      this.sources.clear();
     },
   };
-  return {
-    run: <T>(run: () => T): T => sourceCustody.run(scope, run),
-    disposeAsync: () => scope.disposeAsync(),
-  };
+  return await sourceCustody.run(scope, run);
 }
 
 /** Bind scoped file custody around an instance's independently constructed module graph. */
@@ -179,27 +154,6 @@ function getCapturedSource(
   return sources.get(lexical) ?? sources.get(canonicalSource(rootDir, sourceRoot, lexical));
 }
 
-export type PluginRecoverySourceResolverSnapshot = {
-  rootDir: string;
-  sourceRoot: string;
-  sources: ReadonlyMap<string, string>;
-};
-const recoverySourceResolvers = new WeakMap<object, PluginRecoverySourceResolverSnapshot>();
-
-/** Transfer only immutable lookup facts, never a call back into a retired source owner. */
-export function snapshotPluginRecoverySourceResolver(
-  resolve: object,
-): PluginRecoverySourceResolverSnapshot | undefined {
-  const snapshot = recoverySourceResolvers.get(resolve);
-  return snapshot && { ...snapshot, sources: new Map(snapshot.sources) };
-}
-
-export function restorePluginRecoverySourceResolver(
-  snapshot: PluginRecoverySourceResolverSnapshot,
-) {
-  return createRecoverySourceResolver(snapshot.rootDir, snapshot.sourceRoot, snapshot.sources);
-}
-
 // A recovery resolver outlives its producer. Its closure contains copied path
 // facts, never the producer's availability callback or live captured graph.
 function createRecoverySourceResolver(
@@ -207,16 +161,13 @@ function createRecoverySourceResolver(
   sourceRoot: string,
   sources: ReadonlyMap<string, string>,
 ) {
-  const snapshot = { rootDir, sourceRoot, sources: new Map(sources) };
-  const resolve = (source: string) => {
-    const captured = getCapturedSource(snapshot.sources, rootDir, sourceRoot, source);
+  return (source: string) => {
+    const captured = getCapturedSource(sources, rootDir, sourceRoot, source);
     if (!captured) {
       throw new Error("Plugin recovery entry is outside its captured source package");
     }
     return captured;
   };
-  recoverySourceResolvers.set(resolve, snapshot);
-  return resolve;
 }
 
 export type PluginRecoverySource = {
@@ -287,7 +238,7 @@ function copyRecoverySource({
       sourceCapture,
       resolve: createRecoverySourceResolver(rootDir, sourceRoot, copiedSources),
       native,
-      fork: markPluginSourceCaptureOperation(() => {
+      fork() {
         if (disposed) {
           throw new Error("Plugin source recovery has been disposed");
         }
@@ -299,7 +250,7 @@ function copyRecoverySource({
           sources: copiedSources,
           native: native?.fork(),
         });
-      }),
+      },
       dispose() {
         if (!disposed) {
           disposed = true;
@@ -369,7 +320,7 @@ export function createPluginGenerationSourceLookup({
       assertModuleAvailable(captured);
       return captured;
     },
-    captureRecoverySource: markPluginSourceCaptureOperation(() => {
+    captureRecoverySource: () => {
       for (const captured of new Set(capturedPaths.values())) {
         assertModuleAvailable(captured);
       }
@@ -381,7 +332,7 @@ export function createPluginGenerationSourceLookup({
         sources: new Map(capturedPaths),
         native: captureNativeRecovery?.(),
       });
-    }),
+    },
   };
 }
 
