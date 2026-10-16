@@ -65,7 +65,7 @@ export function readContextEngineAssemblyBudget(
   ) {
     return undefined;
   }
-  return snapshot.tokenBudget ?? undefined;
+  return snapshot.tokenBudget;
 }
 
 export function resolveContextEngineCompletionRuntimeContext(
