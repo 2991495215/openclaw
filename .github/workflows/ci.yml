@@ -5273,10 +5273,31 @@ jobs:
 
       - *select_xcode_step
 
-      - *plain_node_setup_step
+      - name: Setup Node environment for native resources
+        id: node-env
+        uses: ./.ci-harness/.github/actions/setup-node-env
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache-mode: *cache_mode
+          install-bun: "false"
+          # Historical targets keep their original workspace installation contract.
+          install-deps: ${{ env.HISTORICAL_TARGET == 'true' && 'true' || 'false' }}
 
       - *apple_mermaid_cache_key
       - *apple_mermaid_cache_restore
+
+      - name: Install native asset dependencies
+        if: env.HISTORICAL_TARGET != 'true'
+        env:
+          CI: "true"
+        run: >-
+          pnpm install --frozen-lockfile --prefer-offline --optional
+          --filter '@openclaw/mermaid-renderer...'
+          --filter '@openclaw/gateway-protocol...'
+          --config.ignore-scripts=false
+          --config.engine-strict=false
+          --config.enable-pre-post-scripts=true
+          --config.side-effects-cache=true
 
       - name: Identify iOS native cache inputs
         id: ios-cache-inputs
