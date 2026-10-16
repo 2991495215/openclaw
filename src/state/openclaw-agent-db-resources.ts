@@ -43,7 +43,7 @@ const resources = resolveGlobalSingleton(
   () => ({
     active: new Set<AgentDatabaseResource>(),
     closing: new Map<AgentDatabaseResource, Promise<void> | undefined>(),
-    selections: new Set<AgentDatabaseCloseSelection>(),
+    selections: new Map<AgentDatabaseCloseSelection, Promise<unknown> | undefined>(),
   }),
 );
 
@@ -57,7 +57,9 @@ export function isAgentDatabaseClosing(
   target: Pick<OpenClawAgentDatabaseAsyncResource, "agentId" | "path">,
 ): boolean {
   const owned = { agentId: normalizeAgentId(target.agentId), path: path.resolve(target.path) };
-  return [...resources.selections].some((selection) => matchesAgentDatabaseClose(selection, owned));
+  return [...resources.selections.keys()].some((selection) =>
+    matchesAgentDatabaseClose(selection, owned),
+  );
 }
 
 export { matchesAgentDatabaseReadCandidatePath };
@@ -169,7 +171,9 @@ export function assertAgentDatabaseResourceAdmission(
   owned: Parameters<typeof matchesAgentDatabaseClose>[1],
 ): void {
   if (
-    [...resources.selections].some((selection) => matchesAgentDatabaseClose(selection, owned)) ||
+    [...resources.selections.keys()].some((selection) =>
+      matchesAgentDatabaseClose(selection, owned),
+    ) ||
     [...resources.closing.keys()].some(
       (closing) =>
         (closing.path === owned.path ||
@@ -298,12 +302,15 @@ export async function withAgentDatabaseCloseFence<T>(
   close: (resourcePaths: readonly string[]) => Promise<T>,
 ): Promise<T> {
   const ownedSelection = { ...selection };
-  resources.selections.add(ownedSelection);
+  resources.selections.set(ownedSelection, undefined);
   try {
     const resourcePaths = [...new Set([...resources.active, ...resources.closing.keys()])]
       .filter((resource) => matchesAgentDatabaseClose(ownedSelection, resource))
       .map((resource) => resource.path);
-    return await close(resourcePaths);
+    const operation = close(resourcePaths);
+    // Teardown joins the real native close, without a separate completion mirror.
+    resources.selections.set(ownedSelection, operation);
+    return await operation;
   } finally {
     resources.selections.delete(ownedSelection);
   }

@@ -1,6 +1,8 @@
 import os from "node:os";
 import path from "node:path";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import { afterEach, expect, it, vi } from "vitest";
+import { settleSqliteTestAgentCloses } from "../../test/sqlite-test-lifecycle.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import {
   closeOpenClawAgentDatabaseByPath,
@@ -412,6 +414,8 @@ it.each(["complete", "native-failure"] as const)(
     const selection = { agentId: held.agentId, path: held.path };
     const closing = drainAgentDatabaseResources(selection, closeNative);
     const outcomes = Promise.allSettled([closing]);
+    const observedCloseStates: boolean[] = [];
+    let observing: Promise<void> | undefined;
     try {
       expect(isAgentDatabaseClosing(held)).toBe(true);
       expect(held.revoke).toHaveBeenCalledOnce();
@@ -422,10 +426,15 @@ it.each(["complete", "native-failure"] as const)(
       await nativeEntered.promise;
       expect(isAgentDatabaseClosing(held)).toBe(true);
       expect(() => registerKnown(held)).toThrow("are closing");
+      observing = settleSqliteTestAgentCloses().then(() => {
+        observedCloseStates.push(isAgentDatabaseClosing(held));
+      });
+      await nextTurn();
     } finally {
       resourceGate.resolve();
       nativeGate.resolve();
       await outcomes;
+      await observing;
     }
     expect(await outcomes).toEqual(
       ending === "complete"
@@ -433,6 +442,7 @@ it.each(["complete", "native-failure"] as const)(
         : [{ status: "rejected", reason: failure }],
     );
     expect(isAgentDatabaseClosing(held)).toBe(false);
+    expect(observedCloseStates).toEqual([false]);
     const successor = resource("captured-close.sqlite");
     registerKnown(successor);
     expect(successor.revoke).not.toHaveBeenCalled();
