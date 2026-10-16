@@ -12,6 +12,7 @@ export async function handleGoogleResearch(
 ) {
   const { params, respond, sessionAccessAuthority: authority } = options;
   let startReturned = false;
+  let receipt: Extract<ResearchAdapterReply, { ok: false }>["handle"];
   try {
     if (!authority) {
       throw new Error("Research requires current session authority.");
@@ -53,6 +54,9 @@ export async function handleGoogleResearch(
       },
     );
     startReturned = input.action === "start";
+    if ("handle" in value) {
+      receipt = value.handle;
+    }
     authority.assertCurrent();
     const reply: ResearchAdapterReply = { version: 1, ok: true, value };
     respond(true, reply);
@@ -71,6 +75,9 @@ export async function handleGoogleResearch(
             version: 1,
             ok: false,
             state: startReturned ? "indeterminate" : "blocked",
+            // A handle is not authority. Preserve a known receipt without publishing
+            // report content; every reconciliation must pass fresh host/profile fences.
+            ...(receipt ? { handle: receipt } : {}),
             reason: startReturned
               ? "Google research returned a submission, but authority changed before delivery. Do not repeat the start request."
               : "Google research is unavailable under the current configuration or session authority.",

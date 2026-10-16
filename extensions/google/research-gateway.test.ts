@@ -161,7 +161,40 @@ describe("registered Google managed-research RPC", () => {
       }),
     );
     const response = await entry.request({ version: 1, action: "start", question: "River" });
-    expect(response).toMatchObject({ ok: false, state: "indeterminate" });
+    expect(response).toMatchObject({
+      ok: false,
+      state: "indeterminate",
+      handle: { interactionId: "research-fixture", profileId: "google:research" },
+    });
     expect(JSON.stringify(response)).not.toContain("Do not publish.");
+  });
+  it("preserves the receipt when session membership is refreshing after acceptance", async () => {
+    mockPinnedHostnameResolution();
+    vi.spyOn(authRuntime, "resolveApiKeyForProvider").mockResolvedValue({
+      mode: "api-key",
+      apiKey: "synthetic-google-key",
+      profileId: "google:research",
+      source: "profile",
+    });
+    const entry = fixture({ enabled: true, profileId: "google:research" });
+    const fetch = vi.fn().mockImplementation(async () => {
+      entry.current.mockImplementationOnce(() => {
+        throw Object.assign(new Error("Session access is refreshing"), {
+          error: {
+            code: "UNAVAILABLE",
+            retryable: true,
+            details: { code: "SESSION_ACCESS_REFRESHING" },
+          },
+        });
+      });
+      return jsonResponse({ id: "research-fixture", status: "in_progress" });
+    });
+    vi.stubGlobal("fetch", fetch);
+    expect(await entry.request({ version: 1, action: "start", question: "River" })).toMatchObject({
+      ok: false,
+      state: "indeterminate",
+      handle: { interactionId: "research-fixture", profileId: "google:research" },
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
