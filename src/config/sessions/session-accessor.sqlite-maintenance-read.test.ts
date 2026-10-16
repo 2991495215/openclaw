@@ -171,7 +171,11 @@ it.for(["transcript backfill", "usage rollup", "new entry", "protection removal"
                   sessionId: sessionKey,
                   sessionEntry: { sessionId: sessionKey, updatedAt },
                 }),
-              ).resolves.toEqual({ lastMessagePreview: "Synthetic backfill preview" });
+              ).resolves.toEqual({
+                lastMessagePreview: "Synthetic backfill preview",
+                terminalModel: null,
+                indexedSeq: expect.any(Number),
+              });
             } else if (overlap === "usage rollup") {
               await expect(
                 usage!.writeRollup([

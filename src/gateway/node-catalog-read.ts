@@ -33,13 +33,7 @@ export async function readKnownNodeCatalog(
   const pairing = await readDevicePairingNodeSnapshot();
   const revision = readNodeCatalogRevision(registry);
   let prepared = preparedCatalogs.get(registry);
-  if (
-    !prepared ||
-    prepared.pairing !== pairing ||
-    prepared.revision !== revision ||
-    // Connection policy can revoke a client before the transport unregisters it.
-    prepared.connectedNodes.some((node) => node.client.invalidated === true)
-  ) {
+  if (!prepared || prepared.pairing !== pairing || prepared.revision !== revision) {
     prepared = {
       pairing,
       revision,

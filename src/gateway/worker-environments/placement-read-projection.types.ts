@@ -17,15 +17,15 @@ export type WorkerEnvironmentPlacementFacts = Pick<
   | "attachedSessionIds"
 > & { inference?: "worker" };
 
-export type WorkerSessionPlacementProjection = {
-  placements: ReadonlyMap<string, WorkerSessionPlacementRecord>;
+export type WorkerSessionPlacementProjection = Readonly<{
+  placements: ReadonlyMap<string, Readonly<WorkerSessionPlacementRecord>>;
   moves: ReadonlyMap<string, WorkerPlacementMoveIntent>;
   pendingResults: ReadonlyMap<string, WorkerWorkspacePendingResult>;
   workspaceJournalOwnerSessionIds: ReadonlySet<string>;
   workspaceResultReconcilingSessionIds: ReadonlySet<string>;
   workspaceRecoveryPendingSessionIds: ReadonlySet<string>;
   environments: ReadonlyMap<string, WorkerEnvironmentPlacementFacts>;
-};
+}>;
 
 export type WorkerPlacementConflictBinding = {
   placement: Pick<
@@ -35,10 +35,10 @@ export type WorkerPlacementConflictBinding = {
   claim: WorkerSessionTurnClaim;
 };
 
-export type WorkerSessionPlacementReadResult = {
+export type WorkerSessionPlacementReadResult = Readonly<{
   projection: WorkerSessionPlacementProjection;
   conflictSessionIds: ReadonlySet<string>;
-};
+}>;
 
 export type WorkerPlacementRecoveryCandidate = {
   sessionId: string;

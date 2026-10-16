@@ -12,7 +12,7 @@ import {
   validateSessionsGroupsUpdateParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { formatErrorMessage } from "../../infra/errors.js";
-import { ADMIN_SCOPE } from "../method-scopes.js";
+import { ADMIN_SCOPE, hasGatewayAdminScope } from "../operator-scopes.js";
 import { ensureSessionGroupCatalog, readSessionGroupCatalog } from "../session-group-catalog.js";
 import { filterMutableSessionGroupRecords } from "../session-group-defaults-access.js";
 import {
@@ -135,8 +135,7 @@ export const sessionGroupHandlers: GatewayRequestHandlers = {
         return;
       }
       let cwd = params.cwd;
-      const clientScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
-      if (cwd && !clientScopes.includes(ADMIN_SCOPE)) {
+      if (cwd && !hasGatewayAdminScope(client)) {
         const containment = await resolveWorkspacePathContainment(cwd, context.getRuntimeConfig());
         if (
           !containment ||

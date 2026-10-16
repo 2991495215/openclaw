@@ -150,13 +150,11 @@ export function resolveChatSendOriginatingRoute(params: {
   );
   const hasLegacyChannelPeerShape =
     !isChannelScopedSession &&
-    typeof sessionScopeParts[1] === "string" &&
+    sessionScopeParts[1] !== undefined &&
     sessionChannelHint === routeChannelCandidate;
   const isFromWebchatClient = isWebchatClient(params.client);
   const isFromGatewayCliClient = isGatewayCliClient(params.client);
-  const hasClientMetadata =
-    (typeof params.client?.mode === "string" && params.client.mode.trim().length > 0) ||
-    (typeof params.client?.id === "string" && params.client.id.trim().length > 0);
+  const hasClientMetadata = Boolean(params.client?.mode?.trim() || params.client?.id?.trim());
   const configuredMainKey = (params.mainKey ?? "main").trim().toLowerCase();
   const isConfiguredMainSessionScope =
     normalizedSessionScopeHead.length > 0 && normalizedSessionScopeHead === configuredMainKey;

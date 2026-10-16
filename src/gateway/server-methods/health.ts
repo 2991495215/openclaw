@@ -7,6 +7,7 @@ import { getStatusSummary } from "../../status/summary.js";
 import { buildContextEngineHealthSummary } from "../health/context-engine.js";
 import { buildDeliveryQueueHealthSummary } from "../health/delivery-queue.js";
 import type { ChannelHealthSummary, HealthSummary } from "../health/types.js";
+import { hasGatewayAdminScope } from "../operator-scopes.js";
 import { createGatewayServerActiveWorkInspectors } from "../server-active-work.js";
 import type { ChannelRuntimeSnapshot } from "../server-channel-runtime.types.js";
 import { HEALTH_REFRESH_INTERVAL_MS } from "../server-constants.js";
@@ -54,8 +55,7 @@ export const healthHandlers: GatewayRequestHandlers = {
   health: async ({ respond, context, params, client }) => {
     const { getHealthCache, refreshHealthSnapshot, logHealth } = context;
     const wantsProbe = params?.probe === true;
-    const scopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
-    const includeSensitive = scopes.includes(ADMIN_SCOPE);
+    const includeSensitive = hasGatewayAdminScope(client);
     const now = Date.now();
     const cached = getHealthCache();
     let cachedDiffersFromRuntime = false;

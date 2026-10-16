@@ -25,7 +25,10 @@ import {
   runOpenClawAgentWriteTransaction,
 } from "../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { backfillSessionRowTranscriptFields } from "./session-row-transcript-backfill.js";
+import {
+  backfillSessionRowTranscriptFields,
+  presentSessionRowTranscriptFields,
+} from "./session-row-transcript-backfill.js";
 import { backfillSessionRowTranscriptFieldsInDatabase } from "./session-row-transcript-backfill.worker.js";
 
 const generateConversationLabelWithFallback = vi.hoisted(() => vi.fn());
@@ -121,6 +124,8 @@ describe("session row transcript backfill", () => {
           try {
             await expect(backfillSessionRowTranscriptFields(params)).resolves.toEqual({
               lastMessagePreview: "Found the slow query",
+              terminalModel: null,
+              indexedSeq: expect.any(Number),
             });
             for (const statement of hostSql.calls) {
               expect(statement).not.toHaveBeenCalled();
@@ -199,7 +204,24 @@ describe("session row transcript backfill", () => {
             await withColdStore(params, async () => {
               const hostSql = observeHostDataSql();
               try {
-                await expect(backfillSessionRowTranscriptFields(params)).resolves.toEqual(
+                const fields = await backfillSessionRowTranscriptFields(params);
+                if (storage === "unavailable" || storage === "absent") {
+                  expect(fields).toBeUndefined();
+                } else {
+                  expect(fields).toEqual({
+                    lastMessagePreview: alias || storage === "current" ? preview : null,
+                    terminalModel:
+                      storage === "hidden rewrite" || silentRewrite
+                        ? null
+                        : {
+                            runId: "terminal-run",
+                            modelProvider: "unit-test",
+                            model: alias ? "same" : "fallback",
+                          },
+                    indexedSeq: expect.any(Number),
+                  });
+                }
+                expect(fields ? presentSessionRowTranscriptFields(params, fields) : {}).toEqual(
                   storage === "media-only rewrite"
                     ? { fallbackModel: { provider: "unit-test", model: "fallback" } }
                     : storage === "current"
@@ -387,6 +409,8 @@ describe("session row transcript backfill", () => {
       expect(readFacts()?.transcriptPreview).toBeUndefined();
       await expect(backfillSessionRowTranscriptFields(params)).resolves.toEqual({
         lastMessagePreview: "Found the slow query",
+        terminalModel: null,
+        indexedSeq: expect.any(Number),
       });
 
       await withColdStore(params, async () => {
@@ -429,6 +453,8 @@ describe("session row transcript backfill", () => {
       expect(readFacts()?.transcriptPreview).toBeUndefined();
       await expect(backfillSessionRowTranscriptFields(params)).resolves.toEqual({
         lastMessagePreview: "Imported next",
+        terminalModel: null,
+        indexedSeq: expect.any(Number),
       });
       expect(readFacts()?.transcriptPreview).toBe("Imported next");
     });
@@ -494,7 +520,11 @@ describe("session row transcript backfill", () => {
     await withSession(
       async (params) => {
         await sessionAccessor.patchSessionEntryCore(params, () => ({ displayName: "My title" }));
-        await expect(backfillSessionRowTranscriptFields(params)).resolves.toEqual({});
+        await expect(backfillSessionRowTranscriptFields(params)).resolves.toEqual({
+          lastMessagePreview: null,
+          terminalModel: null,
+          indexedSeq: expect.any(Number),
+        });
         expect(sessionAccessor.loadSessionEntry(params)?.displayName).toBe("My title");
         expect(generateConversationLabelWithFallback).not.toHaveBeenCalled();
       },

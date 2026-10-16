@@ -1,8 +1,4 @@
-import {
-  getPluginRuntimeGeneration,
-  PluginRuntimeApplicationError,
-  type PluginRuntimeApplication,
-} from "../plugins/lifecycle.js";
+import { PluginRuntimeApplicationError } from "../plugins/lifecycle.js";
 import type { GatewayReloadPlan } from "./config-reload-plan.js";
 import { PluginAdmittedWorkTimeoutError } from "./server-plugin-reload-cleanup.js";
 import { GatewayConfigReloadSupersededError } from "./server-reload-contracts.js";
@@ -17,104 +13,43 @@ export function isConfigReloadSuperseded(error: unknown): boolean {
   return cause instanceof GatewayConfigReloadSupersededError;
 }
 
-/**
- * Retain a failed automatic drain until its generation or pending settings settle,
- * and schedule the replacement again once the failed plugins' work settles.
- */
+/** Retry a timed-out automatic drain once its exact plugin instances become idle. */
 export function createConfigPluginDrainTracker(params: {
   signal: AbortSignal;
   onWorkSettled: () => void;
 }) {
-  let failure:
-    | {
-        error: PluginRuntimeApplicationError;
-        paths: readonly string[];
-        observation: AbortController;
-        retriesWhenIdle: boolean;
-        reported: boolean;
-      }
-    | undefined;
-  const clear = () => {
-    failure?.observation.abort();
-    failure = undefined;
+  let observation: AbortController | undefined;
+  const cancel = () => {
+    observation?.abort();
+    observation = undefined;
   };
-  const hasPendingFailure = (plan?: GatewayReloadPlan) =>
-    failure?.paths.some((failedPath) =>
-      plan?.changedPaths.some(
-        (path) =>
-          path === failedPath ||
-          path.startsWith(`${failedPath}.`) ||
-          failedPath.startsWith(`${path}.`),
-      ),
-    ) ?? false;
   return {
-    assertCanApply(plan: GatewayReloadPlan) {
-      if (failure && failure.error.details.generation !== getPluginRuntimeGeneration()) {
-        clear();
-      }
-      if (
-        plan.reloadPlugins &&
-        failure &&
-        !plan.pluginLifecycle?.waitForDrain &&
-        hasPendingFailure(plan)
-      ) {
-        // Publishing this candidate would expose plugin settings whose replacement never committed.
-        throw failure.error;
-      }
-    },
+    cancel,
     recordFailure(plan: GatewayReloadPlan, error: unknown) {
       if (
         !plan.pluginLifecycle &&
         error instanceof PluginRuntimeApplicationError &&
         error.details.phase === "drain" &&
         !error.details.committed &&
-        !isConfigReloadSuperseded(error)
+        error.cause instanceof PluginAdmittedWorkTimeoutError
       ) {
-        clear();
-        const timeout =
-          error.cause instanceof PluginAdmittedWorkTimeoutError ? error.cause : undefined;
-        const current = {
-          error,
-          paths: plan.reloadPluginPaths ?? [],
-          observation: new AbortController(),
-          retriesWhenIdle: timeout !== undefined,
-          reported: false,
-        };
-        failure = current;
-        if (!timeout) {
-          return;
-        }
-        // The rolled-back generation keeps serving and accepting work. Retry a timed-out
-        // drain when it would pass immediately; other drain failures need an operator.
-        const signal = AbortSignal.any([params.signal, current.observation.signal]);
-        void Promise.all(timeout.instances.map((instance) => instance.waitForIdle(signal))).then(
+        cancel();
+        observation = new AbortController();
+        const signal = AbortSignal.any([params.signal, observation.signal]);
+        // The rolled-back generation keeps accepting work. Observe its calls and
+        // cleanup too, so idle settlement can retry without another config edit.
+        void Promise.all(
+          error.cause.instances.map((instance) => instance.waitForIdle(signal)),
+        ).then(
           () => {
-            if (failure === current) {
-              clear();
+            if (!signal.aborted) {
+              cancel();
               params.onWorkSettled();
             }
           },
           () => {},
         );
       }
-    },
-    applied(plan?: GatewayReloadPlan, runtime?: PluginRuntimeApplication) {
-      // Clear reverted settings only after the candidate applies, including unrelated plugin edits.
-      if (!plan?.reloadPlugins || runtime || !hasPendingFailure(plan)) {
-        clear();
-      }
-    },
-    shouldReport(error: unknown) {
-      if (!failure || error !== failure.error) {
-        return true;
-      }
-      const report = !failure.reported;
-      failure.reported = true;
-      return report;
-    },
-    /** Whether the deferring failure clears itself once its timed-out work settles. */
-    retriesWhenIdle() {
-      return failure?.retriesWhenIdle ?? false;
     },
   };
 }

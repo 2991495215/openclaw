@@ -673,11 +673,12 @@ export function startGatewayConfigReloader(
           assertInvokerOwned,
           candidate,
         );
+        pluginDrain.cancel();
         settleRuntimeApplication();
         return completeApplication();
       }
       await commitReloadBaseline();
-      pluginDrain.applied();
+      pluginDrain.cancel();
       publishedSource?.commit?.();
       opts.onConfigRevisionApplied?.(nextConfigRevisionHash);
       settleRuntimeApplication();
@@ -732,7 +733,7 @@ export function startGatewayConfigReloader(
       return completeApplication();
     }
 
-    pluginDrain.assertCanApply(plan);
+    pluginDrain.cancel();
     // No-op plans also publish the runtime snapshot before its applied receipt.
     const applyRuntime = isNoopGatewayReloadPlan(plan) ? opts.onNoopConfigCommit : opts.onHotReload;
     await opts.onConfigChange?.(plan, nextConfig);
@@ -752,7 +753,6 @@ export function startGatewayConfigReloader(
       typeof applicationStatus === "object" && applicationStatus.status === "applied"
         ? applicationStatus.runtime
         : undefined;
-    pluginDrain.applied(plan, runtime);
     if (runtime) {
       completedPluginApplication = {
         runtime,
@@ -1096,14 +1096,8 @@ export function startGatewayConfigReloader(
       }
       if (superseded) {
         opts.log.info(`config reload superseded: ${String(err)}`);
-      } else if (pluginDrain.shouldReport(err)) {
-        opts.log.error(`config reload failed: ${String(err)}`);
       } else {
-        opts.log.info(
-          pluginDrain.retriesWhenIdle()
-            ? "config reload deferred: retries when the failed plugin's work settles"
-            : "config reload deferred: retry the failed plugin reload with --wait",
-        );
+        opts.log.error(`config reload failed: ${String(err)}`);
       }
     } finally {
       if (activeConfigCandidate === attemptedCandidate) {

@@ -587,7 +587,7 @@ it.for(["ready", "readiness failure"])(
   async (mode, { signal }) => {
     const reads = vi
       .spyOn(transcriptBackfill, "backfillSessionRowTranscriptFields")
-      .mockResolvedValue({});
+      .mockResolvedValue({ lastMessagePreview: null, terminalModel: null, indexedSeq: null });
     const rows = new Map<string, EntryRow>(
       ["first", "second"].map((key) => [
         key,

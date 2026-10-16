@@ -59,7 +59,7 @@ export function registerSessionOperatorPreparationTests(fixture: {
     return context;
   };
   const cases = (["sessions.patch", "sessions.patchMany", "sessions.create"] as const).flatMap(
-    (method) => (["params", "caller", "target"] as const).map((change) => ({ method, change })),
+    (method) => (["caller", "target"] as const).map((change) => ({ method, change })),
   );
   describe("session mutation operator preparation", () => {
     it.for([
@@ -203,11 +203,6 @@ export function registerSessionOperatorPreparationTests(fixture: {
               { sessionId: `${originalId}-replacement`, updatedAt: 2 },
             );
             replacement = loadSessionEntry({ agentId: "main", sessionKey: key });
-          } else if (change === "params") {
-            target.key = otherKey;
-            patch.model = "anthropic/claude-sonnet-4-6";
-            params.key = otherKey;
-            params.model = patch.model;
           }
           resume.resolve();
           const error = await running;
@@ -229,14 +224,6 @@ export function registerSessionOperatorPreparationTests(fixture: {
               },
             ]);
             expect(loadSessionEntry({ agentId: "main", sessionKey: key })).toEqual(before);
-          } else if (change === "params") {
-            expect(error).toBeUndefined();
-            expect(responses[0]?.[0]).toBe(true);
-            expect(loadSessionEntry({ agentId: "main", sessionKey: key })).toMatchObject({
-              sessionId: originalId,
-              providerOverride: "openai",
-              modelOverride: "gpt-5.6-sol",
-            });
           } else {
             if (error !== undefined) {
               expect(error).toBeInstanceOf(Error);

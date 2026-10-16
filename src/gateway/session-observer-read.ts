@@ -1,29 +1,35 @@
-import { isDeepStrictEqual } from "node:util";
-import { prepareSessionStoreTargetInventory } from "../config/sessions/session-store-target-inventory.js";
+import { captureSessionTranscriptStorageEnvironment } from "../config/sessions/transcript-target-binding.js";
 import type { SessionObserverDeps, SessionObserverRead } from "./session-observer-model.js";
 import { defaultPersistDigest } from "./session-observer-model.js";
+import { withReadySessionRows } from "./session-row-prepared-read.js";
 import { captureSessionMutationRouting } from "./session-sharing-preparation.js";
-import { withGatewaySessionStoreTarget } from "./session-utils-store-lookup.js";
-import {
-  withQualifiedGatewaySessionStoreTarget,
-  type GatewaySessionStoreSelection,
-} from "./session-utils-store-retained.js";
-import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
-import type { GatewaySessionStoreTargetWithStore } from "./session-utils-store.types.js";
 
-/** One observation retains its physical sources; every read still fetches current rows. */
+/** Display facts belong to the projection; digest writes retain their original physical target. */
 export function captureSessionObserverRead(
-  deps: Pick<SessionObserverDeps, "getConfig" | "readSession" | "persistDigest">,
+  deps: Pick<
+    SessionObserverDeps,
+    "getConfig" | "getSessionRowProjection" | "readSession" | "persistDigest"
+  >,
   sessionKey: string,
   agentId: string,
 ): SessionObserverRead {
   const cfg = deps.getConfig();
   const routing = captureSessionMutationRouting(cfg, undefined, [{ sessionKey, agentId }]);
-  const inventory = prepareSessionStoreTargetInventory(cfg, [agentId]);
-  let target: GatewaySessionStoreTargetWithStore | undefined;
-  let selection: GatewaySessionStoreSelection | undefined;
+  const env = captureSessionTranscriptStorageEnvironment(process.env);
+  const projection = deps.getSessionRowProjection?.();
+  const query = { key: sessionKey, agentId };
+  let captured = projection?.capture(query);
+  let target: Parameters<typeof defaultPersistDigest>[0]["target"];
   const assertCurrent = () => {
     routing(deps.getConfig());
+    if (
+      !deps.readSession &&
+      (!projection ||
+        deps.getSessionRowProjection?.() !== projection ||
+        (captured && !projection.isCurrent(captured)))
+    ) {
+      throw new Error("Session observer source changed during observation");
+    }
   };
   const reader: SessionObserverRead = {
     assertCurrent,
@@ -34,47 +40,27 @@ export function captureSessionObserverRead(
         assertCurrent();
         return consume(entry);
       }
-      const consumeRead = (
-        loaded: GatewaySessionStoreTargetWithStore,
-        assertReadCurrent: () => void,
-        selected?: GatewaySessionStoreSelection,
-      ) => {
-        assertCurrent();
-        assertReadCurrent();
-        if (
-          target &&
-          (!isDeepStrictEqual(target.capturedReadSources, loaded.capturedReadSources) ||
-            !isDeepStrictEqual(target.capturedReadSource, loaded.capturedReadSource) ||
-            target.canonicalKey !== loaded.canonicalKey)
-        ) {
-          throw new Error("Session observer source changed during observation");
-        }
-        // Keep only locators between reads; acceptance retains the live reader and writer FIFO.
-        target = { ...loaded, store: {} };
-        selection ??= selected;
-        return consume(findCanonicalStoreMatch(loaded.store, loaded.storeKeys)?.entry);
-      };
-      if (selection) {
-        return withQualifiedGatewaySessionStoreTarget({
-          target: selection.target,
-          logicalStorePath: selection.logicalStorePath,
-          env: selection.env,
-          preparedSource: selection.source,
-          includeMembership: false,
-          consume: (loaded, _members, assertReadCurrent) => consumeRead(loaded, assertReadCurrent),
-        });
+      if (!projection) {
+        throw new Error("Session observer requires its session row projection");
       }
-      return withGatewaySessionStoreTarget(
-        {
-          cfg: inventory.config,
-          env: inventory.env,
-          key: sessionKey,
-          agentId,
-          projection: "full",
-          ordered: true,
+      return withReadySessionRows(
+        projection,
+        () => [query],
+        (read) => {
+          assertCurrent();
+          const record = read.describe(query, captured);
+          if (record) {
+            captured ??= projection.capture(query);
+            target ??= {
+              agentId: record.agentId,
+              storePath: record.storeTarget.storePath,
+              readSource: read.readSource(record),
+              target: { canonicalKey: record.key, storeKeys: [record.key] },
+              env,
+            };
+          }
+          return consume(record?.entry);
         },
-        (loaded, _members, assertReadCurrent, _related, selected) =>
-          consumeRead(loaded, assertReadCurrent, selected),
       );
     },
     async persist(params) {
@@ -83,7 +69,7 @@ export function captureSessionObserverRead(
         return deps.persistDigest(params);
       }
       if (!target) {
-        // Legacy event admission is synchronous; its asynchronous write still prepares the source.
+        // Legacy event adapters still prepare the original writer target before persistence.
         await reader.withRead(() => undefined);
         assertCurrent();
       }
@@ -93,13 +79,7 @@ export function captureSessionObserverRead(
       return defaultPersistDigest({
         ...params,
         storePath: target.storePath,
-        target: {
-          agentId: target.agentId,
-          storePath: target.storePath,
-          readSource: target.capturedReadSource,
-          target: { canonicalKey: target.canonicalKey, storeKeys: target.storeKeys },
-          env: inventory.env,
-        },
+        target,
         stillCurrent: () => {
           assertCurrent();
           return params.stillCurrent?.() !== false;

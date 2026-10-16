@@ -442,6 +442,54 @@ describe("recipient publication lifetimes", () => {
     },
   );
 
+  it("publishes to a ready viewer without waiting for another viewer's refreshed access", async ({
+    signal,
+  }) => {
+    const recipientEntered = createDeferred();
+    const releaseRecipient = createDeferred();
+    const grant = new AbortController();
+    let refreshing = false;
+    const broadcastToConnIds = vi.fn();
+    active = createTestControlUiSessionPrSubscriptions({
+      scheduler,
+      broadcastToConnIds,
+      prepareRead: async (connId) => async () => {
+        if (connId === "waiting" && refreshing) {
+          recipientEntered.resolve();
+          await releaseRecipient.promise;
+        }
+        if (connId === "waiting" && grant.signal.aborted) {
+          return undefined;
+        }
+        return {
+          ...target,
+          assertCurrent: () => {
+            if (connId === "waiting") {
+              grant.signal.throwIfAborted();
+            }
+          },
+        };
+      },
+      load: async () => (refreshing ? changed : READY),
+    });
+    await active.replace("ready", ["shared"]);
+    await active.replace("waiting", ["shared"]);
+    broadcastToConnIds.mockClear();
+    refreshing = true;
+    const poll = active.pollNow();
+    try {
+      await withinTest(recipientEntered.promise, signal);
+      expect(broadcastToConnIds).toHaveBeenCalledExactlyOnceWith(...publication("ready"));
+      grant.abort(new Error("Recipient access retired"));
+      releaseRecipient.resolve();
+      await poll;
+      expect(broadcastToConnIds).toHaveBeenCalledExactlyOnceWith(...publication("ready"));
+    } finally {
+      releaseRecipient.resolve();
+      await poll;
+    }
+  });
+
   it("checks the recipient's prepared authority when another watcher joins before send", async () => {
     vi.useFakeTimers();
     const recipientEntered = createDeferred();

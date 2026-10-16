@@ -471,7 +471,7 @@ it.each(["catalog", "archive"] as const)(
           if (params.sessionKey === target.sessionKey) {
             await completion.promise;
           }
-          return { lastMessagePreview: "Enriched", fallbackModel: undefined };
+          return { lastMessagePreview: "Enriched", terminalModel: null, indexedSeq: null };
         });
       if (change === "catalog") {
         replaceSessionEntrySync(

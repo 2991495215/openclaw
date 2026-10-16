@@ -229,24 +229,32 @@ describe("worker placement read cache", () => {
       });
       const claimed = await reader.readProjection([identity.sessionId]);
       expect(claimed.placements.get(identity.sessionId)?.turnClaim?.claimId).toBe("claim");
-      // A warm read must still return independent placement and nested claim snapshots.
-      const warm = await reader.readProjection([identity.sessionId]);
-      warm.placements.get(identity.sessionId)!.state = "requested";
-      warm.placements.get(identity.sessionId)!.turnClaim!.claimId = "caller-change";
+      // A warm reader in another store sees the same committed claim.
       expect(
         (await writer.readProjection([identity.sessionId])).placements.get(identity.sessionId),
       ).toMatchObject({ state: "local", turnClaim: { claimId: "claim" } });
-      await writer.releaseTurnIfOwned(claim);
+      const runtimeRefresh = await reader.prepareRuntimeRefresh(identity.sessionId);
+      try {
+        runtimeRefresh.placement!.state = "requested";
+        runtimeRefresh.placement!.turnClaim!.claimId = "public-caller-change";
+        expect(
+          (await reader.readProjection([identity.sessionId])).placements.get(identity.sessionId),
+        ).toMatchObject({ state: "local", turnClaim: { claimId: "claim" } });
+        runtimeRefresh.assertCurrent();
+        await writer.releaseTurnIfOwned(claim);
+        expect(() => runtimeRefresh.assertCurrent()).toThrow("placement authority changed");
+      } finally {
+        runtimeRefresh.release();
+      }
       expect(
         (await reader.readProjection([identity.sessionId])).placements.get(identity.sessionId),
       ).toMatchObject({ state: "local", turnClaim: null });
       expect(reads).toHaveBeenCalledTimes(preloaded ? 0 : 1);
-      // Returned snapshots cannot mutate the next reader's facts.
-      claimed.placements.get(identity.sessionId)!.state = "requested";
-      expect(
-        (await reader.readProjection([identity.sessionId])).placements.get(identity.sessionId)
-          ?.state,
-      ).toBe("local");
+      // Later claims publish a new version without rewriting the captured facts.
+      expect(claimed.placements.get(identity.sessionId)).toMatchObject({
+        state: "local",
+        turnClaim: { claimId: "claim" },
+      });
     },
   );
 

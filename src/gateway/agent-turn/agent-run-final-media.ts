@@ -11,7 +11,6 @@ import { hasSqliteWorkerOutcomeUnknown } from "../../infra/sqlite-worker-contrac
 import { assertExistingDatabaseIdentity } from "../../infra/sqlite-worker-identity.js";
 import { registerOpenClawAgentDatabaseAsyncResource } from "../../state/openclaw-agent-db-resources.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
-import { executeOpenClawStateWorker } from "../../state/openclaw-state-worker-store.js";
 import {
   attachManagedOutgoingMediaToMessage,
   removeManagedOutgoingMediaBlocks,
@@ -27,6 +26,7 @@ import {
   publishAssistantTranscriptRewrite,
 } from "../server-methods/chat-transcript-persistence.js";
 import { withGatewaySessionEntry } from "../session-utils-store.js";
+import { createPlacementReadStore } from "../worker-environments/placement-read-store.js";
 import { prepareSessionPlacementRead } from "../worker-environments/placement-turn-authority.js";
 
 /** Materialize one visible agent final before its Gateway run releases custody. */
@@ -74,13 +74,11 @@ export async function finalizeAgentRunMedia(
     const placement = await prepareSessionPlacementRead(
       state.admission.databasePath,
       reply.sessionId,
-      async () => {
-        const records = await executeOpenClawStateWorker(state, {
-          type: "workerPlacements.read",
-          input: { sessionIds: [reply.sessionId] },
-        });
-        return records[0];
-      },
+      () =>
+        createPlacementReadStore({
+          path: state.admission.databasePath,
+          withWorkspaceResultConflict: (record) => record,
+        }).getAsync(reply.sessionId),
     );
     releasePlacement = placement.release;
     assertCurrent();

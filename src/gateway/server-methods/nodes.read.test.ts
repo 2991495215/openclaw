@@ -164,6 +164,13 @@ describe("node read projections", () => {
       expect(renamed.displayName).toBe("Renamed node");
       expect(await read()).toBe(renamed);
 
+      client.invalidated = true;
+      await read();
+      expect(registry.get(paired.deviceId)).toBeUndefined();
+      await expect(
+        registry.invoke({ nodeId: paired.deviceId, command: "system.run" }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "PAIRING_CHANGED" } });
+
       registry.unregister(client.connId);
       const offline = await read();
       expect(offline).toMatchObject({ connected: false, displayName: "Renamed node" });

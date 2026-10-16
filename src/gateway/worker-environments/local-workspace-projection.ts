@@ -183,11 +183,7 @@ async function runLocalWorkspaceProjection<T>(
       workerAuthority,
     );
   }
-  const operations = projectionOperations(
-    { ...owner, assertCurrent, workerAuthority },
-    store,
-    previous,
-  );
+  const operations = projectionOperations({ ...owner, assertCurrent, workerAuthority }, store);
   const { quiesceLocalWorkspace, parseLocalWorkspacePausedRuntimes } =
     await import("../../agents/sandbox/local-workspace-quiescence.js");
   const quiescence =

@@ -17,7 +17,7 @@ import { managedWorktrees, WorktreeSnapshotError } from "../../agents/worktrees/
 import type { ManagedWorktreeService } from "../../agents/worktrees/service.js";
 import type { ManagedWorktreeRecord } from "../../agents/worktrees/types.js";
 import { resolveRecordedProjectRoot } from "../../projects/project-registry.js";
-import { ADMIN_SCOPE } from "../operator-scopes.js";
+import { ADMIN_SCOPE, hasGatewayAdminScope } from "../operator-scopes.js";
 import { requestGatewayWorktreeMaintenance } from "../worktree-maintenance.js";
 import {
   captureLocalStateMutationGuard,
@@ -100,8 +100,7 @@ async function resolveAuthorizedRepoRoot(
   repoRoot: string,
   opts: Parameters<GatewayRequestHandlers[string]>[0],
 ): Promise<string | undefined> {
-  const scopes = Array.isArray(opts.client?.connect.scopes) ? opts.client.connect.scopes : [];
-  if (scopes.includes(ADMIN_SCOPE)) {
+  if (hasGatewayAdminScope(opts.client)) {
     return repoRoot;
   }
   const containment = await resolveWorkspacePathContainment(

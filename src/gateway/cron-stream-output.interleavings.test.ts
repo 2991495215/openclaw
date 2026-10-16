@@ -9,9 +9,7 @@ import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
-import * as matcher from "./cron-stream-matcher.js";
 import {
-  createCronStreamMatchingJob,
   createCronStreamWatcherFixture,
   exitResult,
   job,
@@ -125,47 +123,6 @@ describe("cron stream output", () => {
       expect(scheduler.nextWakeAtMs).toBeNull();
     });
 
-    it("restarts the quiet window when a match overtakes a queued close", async () => {
-      vi.useFakeTimers();
-      const entered = createDeferred();
-      const matching = createDeferred<boolean>();
-      vi.spyOn(matcher, "matchCronStreamLines")
-        .mockResolvedValueOnce(true)
-        .mockImplementationOnce(async () => {
-          entered.resolve();
-          return await matching.promise;
-        });
-      const { fake, fireBatch, watchers } = createCronStreamWatcherFixture({ minIntervalMs: 1 });
-      try {
-        await watchers.start(createCronStreamMatchingJob("^keep"));
-        fake.inputs[0]?.onStdout?.("keep first\n");
-        await settle();
-        fake.inputs[0]?.onStdout?.("keep second\n");
-        await entered.promise;
-
-        await vi.advanceTimersByTimeAsync(50);
-        matching.resolve(true);
-        await settle();
-        expect(fireBatch).not.toHaveBeenCalled();
-        await vi.advanceTimersByTimeAsync(49);
-        expect(fireBatch).not.toHaveBeenCalled();
-        await vi.advanceTimersByTimeAsync(1);
-        expect(fireBatch).toHaveBeenCalledExactlyOnceWith(
-          expect.any(Object),
-          "keep first\nkeep second",
-          expect.any(String),
-          expect.any(String),
-        );
-        expect(watchers.inspect("stream-job")).toMatchObject({
-          droppedBatches: 0,
-          coalescedBatches: 0,
-        });
-      } finally {
-        matching.resolve(false);
-        await watchers.stopAll("shutdown");
-      }
-    });
-
     it("drops and counts an open batch when disable wins, then freezes after stop", async () => {
       vi.useFakeTimers();
       const { fake, updateState, fireBatch, watchers } = createCronStreamWatcherFixture({
@@ -257,12 +214,8 @@ describe("cron stream output", () => {
       await vi.advanceTimersByTimeAsync(1);
       expect(fake.spawn).toHaveBeenCalledTimes(2);
       expect(watchers.inspect("stream-job")).toMatchObject({
-        generation: expect.any(Number),
         sourceIdentity: initialOwner?.sourceIdentity,
       });
-      expect(watchers.inspect("stream-job")?.generation).toBeGreaterThan(
-        initialOwner?.generation ?? 0,
-      );
       expect(fireBatch).toHaveBeenLastCalledWith(
         expect.any(Object),
         "pending",

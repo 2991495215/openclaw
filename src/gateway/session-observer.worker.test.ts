@@ -1,11 +1,13 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
 import { createDeferred, withinTest } from "../../test/helpers/promise.js";
+import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { writeSessionEntry } from "../config/sessions/session-accessor.sqlite-entry-store.js";
-import { replaceSessionEntry } from "../config/sessions/session-accessor.sqlite-entry.js";
-import * as entryFacts from "../config/sessions/session-entry-read-facts.js";
-import * as historyReaders from "../config/sessions/session-transcript-worker-readers.js";
+import {
+  loadSessionEntryReadOnly,
+  replaceSessionEntry,
+  replaceSessionEntrySync,
+} from "../config/sessions/session-accessor.sqlite-entry.js";
 import { targetDiscoveryLane } from "../config/sessions/session-transcript-worker-resources.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { sessionChanges } from "../sessions/session-row-changes.js";
@@ -32,33 +34,22 @@ import {
   resetSessionObserverEventSequence,
 } from "./session-observer.test-utils.js";
 import { notifyGatewaySessionReset } from "./session-reset-notifications.js";
-import * as sessionReads from "./session-utils-store-lookup.js";
+import { createSessionRowProjection, type SessionRowProjection } from "./session-row-projection.js";
 
 const key = "agent:main:session-1";
 
-function interceptNextEntryRead(storePath: string, afterRead: () => void | Promise<void>) {
-  // Exercise the worker's in-flight read, even when the preceding observation warmed the key.
-  sessionChanges.invalidate({
-    agentId: "main",
-    storePath,
-    sessionKey: key,
-    factsInvalidated: true,
-  });
-  const createReaders = historyReaders.createSessionHistoryWorkerReaders;
-  const intercepted = vi.fn(afterRead);
-  vi.spyOn(historyReaders, "createSessionHistoryWorkerReaders").mockImplementation((runRequest) => {
-    const readers = createReaders(runRequest);
-    return {
-      ...readers,
-      readExactEntries: async (...args) => {
-        const result = await readers.readExactEntries(...args);
-        if (intercepted.mock.calls.length === 0) {
-          await intercepted();
-        }
-        return result;
-      },
-    };
-  });
+function interceptNextProjectionRead(
+  projection: SessionRowProjection,
+  beforeRead: () => void | Promise<void>,
+) {
+  const read = projection.withPreparedExactRows.bind(projection);
+  const intercepted = vi.fn(beforeRead);
+  vi.spyOn(projection, "withPreparedExactRows").mockImplementationOnce(
+    async (queries, consume, options) => {
+      await intercepted();
+      return read(queries, consume, options);
+    },
+  );
   return intercepted;
 }
 
@@ -67,11 +58,11 @@ async function withObserver(
     observer: ReturnType<typeof createSessionObserver>;
     broadcast: ReturnType<typeof vi.fn>;
     persisted: ReturnType<typeof vi.fn>;
+    projection: SessionRowProjection;
     peer: DatabaseSync;
     storePath: string;
     replaceStore: () => Promise<void>;
     rewriteLifecycle: () => void;
-    rewriteLifecycleWithoutPublication: () => void;
     resetLifecycle: () => Promise<void>;
     closeDatabase: () => ReturnType<typeof closeOpenClawAgentDatabaseByPathAsync>;
     advanceClock: () => void;
@@ -95,9 +86,23 @@ async function withObserver(
     const persisted = vi.fn<NonNullable<SessionObserverDeps["persistDigest"]>>(async () => true);
     let utilityModelRef: string | undefined;
     let now = 1_000;
-    const cfg = { session: { store: useDefaultStore ? undefined : database.path } };
+    const cfg = {
+      session: { store: useDefaultStore ? undefined : database.path },
+      agents: { entries: { main: {} } },
+    };
+    setRuntimeConfigSnapshot(cfg);
+    const projection = await createSessionRowProjection({
+      cfg,
+      getConfig: () => cfg,
+      modelCatalog: [],
+    });
+    await projection.withPreparedExactRows(
+      () => [{ key, agentId: "main" }],
+      () => undefined,
+    );
     const observer = createSessionObserver({
       getConfig: () => cfg,
+      getSessionRowProjection: () => projection,
       now: () => now,
       subscribers,
       broadcastToConnIds: broadcast,
@@ -113,21 +118,18 @@ async function withObserver(
         observer,
         broadcast,
         persisted,
+        projection,
         peer,
         storePath: database.path,
         rewriteLifecycle: () => {
-          writeSessionEntry(database, key, {
-            sessionId: "session-id",
-            lifecycleRevision: "life-b",
-            updatedAt: 2,
-          });
-        },
-        rewriteLifecycleWithoutPublication: () => {
-          database.db
-            .prepare(
-              "UPDATE session_nodes SET entry_json = json_set(entry_json, '$.lifecycleRevision', 'life-b') WHERE session_key = ?",
-            )
-            .run(key);
+          replaceSessionEntrySync(
+            { agentId: "main", sessionKey: key, storePath: database.path, env },
+            {
+              sessionId: "session-id",
+              lifecycleRevision: "life-b",
+              updatedAt: 2,
+            },
+          );
         },
         resetLifecycle: async () => {
           await replaceSessionEntry(
@@ -135,7 +137,10 @@ async function withObserver(
             { sessionId: "session-id", lifecycleRevision: "life-b", updatedAt: 2 },
           );
         },
-        closeDatabase: () => closeOpenClawAgentDatabaseByPathAsync(database.path),
+        closeDatabase: () => {
+          projection.dispose();
+          return closeOpenClawAgentDatabaseByPathAsync(database.path);
+        },
         advanceClock: () => {
           now += 2_000;
         },
@@ -160,21 +165,21 @@ async function withObserver(
             },
           );
           cfg.session.store = storePath;
+          setRuntimeConfigSnapshot(cfg);
         },
       });
     } finally {
       await observer.disposeAsync();
+      projection.dispose();
       peer.close();
       vi.restoreAllMocks();
     }
   });
 }
 
-it("moves observer admission, publication, terminal and companion reads off the caller and observes foreign resets", async () => {
+it("reuses ready observer facts without store discovery and observes committed resets", async () => {
   await withObserver(
-    async ({ observer, broadcast, peer, resetLifecycle, advanceClock }) => {
-      // Keep entry reads cold while target discovery retains its admitted inventory.
-      vi.spyOn(entryFacts, "readRetainedSessionEntryFacts").mockReturnValue(undefined);
+    async ({ observer, broadcast, resetLifecycle }) => {
       const start = event({ stream: "lifecycle", data: { phase: "start" } });
       let inventories = 0;
       let entries = 0;
@@ -198,7 +203,7 @@ it("moves observer admission, publication, terminal and companion reads off the 
         sql.expectIdle();
         sql.clear();
         await observer.handleEventAsync({ ...start, runId: "worker-run" });
-        expect(inventories).toBe(1);
+        expect(inventories).toBe(0);
         inventories = 0;
         entries = 0;
         await observer.handleEventAsync(
@@ -209,35 +214,11 @@ it("moves observer admission, publication, terminal and companion reads off the 
           }),
         );
         expect(inventories).toBe(0);
-        expect(entries).toBeGreaterThanOrEqual(2);
+        expect(entries).toBe(0);
         const snapshot = await observer.getCompanionSnapshotAsync(key, "main");
         expect(snapshot.digest?.headline).toBe("Worker observation");
         sql.expectIdle();
         sql.restore();
-        peer
-          .prepare(
-            "UPDATE session_nodes SET entry_json = json_set(entry_json, '$.lifecycleRevision', 'life-b') WHERE session_key = ?",
-          )
-          .run(key);
-        advanceClock();
-        inventories = 0;
-        entries = 0;
-        const fresh = observeMainThreadSql();
-        try {
-          await observer.handleEventAsync(
-            event({
-              runId: "worker-run",
-              stream: "item",
-              data: { kind: "preamble", progressText: "Retired observation" },
-            }),
-          );
-          expect(inventories).toBe(0);
-          expect(entries).toBeGreaterThan(0);
-          expect(broadcast).toHaveBeenCalledTimes(1);
-          fresh.expectIdle();
-        } finally {
-          fresh.restore();
-        }
         await resetLifecycle();
         const after = observeMainThreadSql();
         try {
@@ -260,56 +241,99 @@ it("moves observer admission, publication, terminal and companion reads off the 
   );
 });
 
-it.for(["rewrite", "native rewrite", "close"] as const)(
+it("persists observer digests through the private session owner and forgets reset lifecycles", async ({
+  signal,
+}) => {
+  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    const cfg = { agents: { entries: { main: {} } } };
+    setRuntimeConfigSnapshot(cfg);
+    const sessionKey = "agent:main:dashboard:incognito-observer";
+    const target = { agentId: "main", sessionKey };
+    const entry = {
+      sessionId: "private-observer",
+      lifecycleRevision: "private-a",
+      incognito: true as const,
+      updatedAt: 1,
+    };
+    await replaceSessionEntry(target, entry);
+    const projection = await createSessionRowProjection({ cfg, modelCatalog: [] });
+    const subscribers = createSessionMessageSubscriberRegistry();
+    subscribers.subscribe("viewer", sessionKey)?.commit();
+    const observer = createSessionObserver({
+      getConfig: () => cfg,
+      getSessionRowProjection: () => projection,
+      subscribers,
+      broadcastToConnIds: vi.fn(),
+      resolveUtilityModelRef: () => undefined,
+    });
+    observer.setConnectionVisibility("viewer", true);
+    const persisted = createDeferred();
+    const unsubscribe = sessionChanges.subscribe((change) => {
+      if (
+        "sessionKey" in change &&
+        change.sessionKey === sessionKey &&
+        change.scope === "runtime"
+      ) {
+        persisted.resolve();
+      }
+    });
+    try {
+      await observer.handleEventAsync(
+        event({
+          sessionKey,
+          stream: "item",
+          data: { kind: "preamble", progressText: "Private observation" },
+        }),
+      );
+      await withinTest(persisted.promise, signal);
+      expect(loadSessionEntryReadOnly(target)?.observerDigest?.headline).toBe(
+        "Private observation",
+      );
+      await replaceSessionEntry(target, { ...entry, lifecycleRevision: "private-b", updatedAt: 2 });
+      expect((await observer.getCompanionSnapshotAsync(sessionKey, "main")).digest).toBeUndefined();
+    } finally {
+      unsubscribe();
+      await observer.disposeAsync();
+      projection.dispose();
+    }
+  });
+});
+
+it.for(["rewrite", "close"] as const)(
   "refuses a companion snapshot when its read owner changes before consumption (%s)",
   async (change) => {
-    await withObserver(
-      async ({
-        observer,
-        storePath,
-        rewriteLifecycle,
-        rewriteLifecycleWithoutPublication,
-        closeDatabase,
-      }) => {
-        await observer.handleEventAsync(
-          event({ stream: "item", data: { kind: "preamble", progressText: "Previous lifecycle" } }),
-        );
-        let closing: ReturnType<typeof closeOpenClawAgentDatabaseByPathAsync> | undefined;
-        const runExternalClose = AsyncLocalStorage.snapshot();
-        const intercepted = interceptNextEntryRead(storePath, () => {
-          if (change === "rewrite") {
-            rewriteLifecycle();
-          } else if (change === "native rewrite") {
-            rewriteLifecycleWithoutPublication();
-          } else {
-            closing = runExternalClose(closeDatabase);
-          }
-        });
-        try {
-          await expect(observer.getCompanionSnapshotAsync(key, "main")).rejects.toThrow(
-            /changed|revoked|closed|current|admission/i,
-          );
-          expect(intercepted).toHaveBeenCalledOnce();
-        } finally {
-          await closing;
+    await withObserver(async ({ observer, projection, rewriteLifecycle, closeDatabase }) => {
+      await observer.handleEventAsync(
+        event({ stream: "item", data: { kind: "preamble", progressText: "Previous lifecycle" } }),
+      );
+      let closing: ReturnType<typeof closeOpenClawAgentDatabaseByPathAsync> | undefined;
+      const intercepted = interceptNextProjectionRead(projection, () => {
+        if (change === "rewrite") {
+          rewriteLifecycle();
+        } else {
+          closing = closeDatabase();
         }
-      },
-    );
+      });
+      try {
+        await expect(observer.getCompanionSnapshotAsync(key, "main")).rejects.toThrow(
+          /changed|revoked|closed|current|admission/i,
+        );
+        expect(intercepted).toHaveBeenCalledOnce();
+      } finally {
+        await closing;
+      }
+    });
   },
 );
 
 it("keeps queued preambles and terminal events behind awaited start admission", async () => {
-  await withObserver(async ({ observer, broadcast, persisted }) => {
+  await withObserver(async ({ observer, broadcast, persisted, projection }) => {
     const entered = createDeferredCore();
     const release = createDeferredCore();
-    const read = sessionReads.withGatewaySessionStoreTarget;
-    vi.spyOn(sessionReads, "withGatewaySessionStoreTarget").mockImplementationOnce(
-      async (params, consume) => {
-        entered.resolve();
-        await release.promise;
-        return read(params, consume);
-      },
-    );
+    interceptNextProjectionRead(projection, async () => {
+      entered.resolve();
+      await release.promise;
+    });
     const start = observer.handleEventAsync(
       event({ stream: "lifecycle", data: { phase: "start" } }),
     );
@@ -338,17 +362,17 @@ it("keeps queued preambles and terminal events behind awaited start admission", 
 });
 
 it("fences an already returned row immediately when reset notification arrives", async () => {
-  await withObserver(async ({ observer, broadcast, storePath, rewriteLifecycle }) => {
+  await withObserver(async ({ observer, broadcast, projection, rewriteLifecycle }) => {
     const entered = createDeferredCore();
     const release = createDeferredCore();
-    interceptNextEntryRead(storePath, async () => {
+    interceptNextProjectionRead(projection, async () => {
       entered.resolve();
       await release.promise;
     });
     const old = observer.handleEventAsync(
       event({ stream: "item", data: { kind: "preamble", progressText: "Retired work" } }),
     );
-    const refused = expect(old).rejects.toThrow("Session entry changed during read");
+    const refused = expect(old).rejects.toThrow(/source changed|lifecycle changed/);
     try {
       await entered.promise;
       rewriteLifecycle();

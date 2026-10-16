@@ -14,7 +14,7 @@ import {
   admitLocalWorkspaceSourcePaths,
   selectLocalWorkspaceCanonicalPaths,
 } from "./local-workspace-inventory.js";
-import type { LocalWorkspaceStore, LocalWorkspaceProjection } from "./local-workspace-store.js";
+import type { LocalWorkspaceStore } from "./local-workspace-store.js";
 import type { LocalWorkspaceOwner } from "./local-workspace-types.js";
 import { AcceptedWorkspacePublicationIndeterminateError } from "./workspace-accepted-publication.js";
 import { captureWorkspaceSnapshot } from "./workspace-manifest-worker.js";
@@ -63,14 +63,10 @@ async function assertOwnedDirectory(directory: string) {
   }
 }
 
-export function projectionOperations(
-  owner: LocalWorkspaceOwner,
-  store: LocalWorkspaceStore,
-  initialRow: LocalWorkspaceProjection | undefined,
-) {
+export function projectionOperations(owner: LocalWorkspaceOwner, store: LocalWorkspaceStore) {
   const signal = store.signal;
-  let row = initialRow;
   const selectCurrent = (assertCurrent: () => void) => {
+    const row = store.get();
     if (!row) {
       throw new Error("Local workspace binding is missing");
     }
@@ -86,7 +82,7 @@ export function projectionOperations(
         "Local sandbox workspace belongs to a different session incarnation; pending edits were preserved",
       );
     }
-    if (row.projection_path !== projectionPath(owner) || store.get()?.revision !== row.revision) {
+    if (row.projection_path !== projectionPath(owner)) {
       throw new Error("Local workspace binding changed");
     }
     return row;
@@ -102,7 +98,7 @@ export function projectionOperations(
     },
   };
   const update = async (patch: Parameters<typeof store.update>[1]) => {
-    row = await store.update(current(), patch, owner.workerAuthority);
+    await store.update(current(), patch, owner.workerAuthority);
   };
   const sourcePath = (target: Direction) =>
     target === "canonical" ? current().projection_path : owner.worktree.path;
@@ -294,7 +290,7 @@ export function projectionOperations(
     sandbox: SandboxConfig;
     allocation: WorktreeAllocationGuard;
   }) => {
-    if (!row) {
+    if (!store.get()) {
       const baseCommit = await requireGit(
         owner.worktree.path,
         ["rev-parse", "--verify", "HEAD^{commit}"],
@@ -306,7 +302,7 @@ export function projectionOperations(
         assertCurrent: owner.assertCurrent,
       });
       owner.assertCurrent();
-      row = await store.create(
+      await store.create(
         {
           worktree_id: owner.worktree.id,
           agent_id: owner.agentId,
@@ -401,7 +397,7 @@ export function projectionOperations(
     workerAuthority,
     canonicalPaths,
     prepare,
-    reuse: async () => (row?.baseline_ref ? await prepare() : undefined),
+    reuse: async () => (store.get()?.baseline_ref ? await prepare() : undefined),
     synchronize,
     settle,
     recover,

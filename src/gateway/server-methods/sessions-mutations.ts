@@ -21,7 +21,7 @@ import { isPluginJsonValue } from "../../plugins/host-hooks.js";
 import { runExclusiveSessionLifecycleMutation } from "../../sessions/session-lifecycle-admission.js";
 import { resolveCurrentUserProfileDisplay } from "../current-user-profile-display.js";
 import { captureGatewayOperatorRunAuthority } from "../operator-run-authority.js";
-import { ADMIN_SCOPE } from "../operator-scopes.js";
+import { ADMIN_SCOPE, hasGatewayAdminScope } from "../operator-scopes.js";
 import { resolveOperatorSessionCreation } from "../session-creation-provenance.js";
 import { prepareSessionFastModePresentation } from "../session-fast-mode-presentation.js";
 import {
@@ -85,13 +85,12 @@ function createSessionPatchHandler(
         request = { many: false, params };
       }
       const inputPatch = request.many ? request.params.patch : request.params;
-      const scopes = Array.isArray(client?.connect.scopes) ? client.connect.scopes : [];
       if (
         (inputPatch.permissionMode === "full" ||
           inputPatch.sandboxMode !== undefined ||
           inputPatch.nativeRuntimeConsent !== undefined) &&
         client !== null &&
-        !scopes.includes(ADMIN_SCOPE)
+        !hasGatewayAdminScope(client)
       ) {
         respond(
           false,
@@ -103,14 +102,14 @@ function createSessionPatchHandler(
       let targets: SessionPatchTargetIdentity[];
       let patch: Parameters<typeof executeSessionPatchMutations>[0]["patch"];
       if (request.many) {
-        targets = structuredClone(request.params.targets);
-        patch = structuredClone(request.params.patch);
+        targets = request.params.targets;
+        patch = request.params.patch;
       } else {
         const key = requireSessionKey(request.params.key, respond);
         if (!key) {
           return;
         }
-        const singlePatch = structuredClone({ ...request.params, key });
+        const singlePatch = { ...request.params, key };
         patch = singlePatch;
         targets = [singlePatch];
       }
@@ -522,8 +521,7 @@ export const sessionMutationHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
-    const scopes = Array.isArray(client?.connect.scopes) ? client.connect.scopes : [];
-    if (!scopes.includes(ADMIN_SCOPE)) {
+    if (!hasGatewayAdminScope(client)) {
       respond(
         false,
         undefined,

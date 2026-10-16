@@ -9,6 +9,7 @@ import {
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { subscribePlacementChanges } from "./placement-authority-owner.js";
 import { createPlacementLifecycleWorkerOps } from "./placement-lifecycle-store.js";
+import type { WorkerPlacementMoveIntent } from "./placement-move-intent.types.js";
 import type { WorkerSessionPlacementProjection } from "./placement-read-projection.types.js";
 import { readPublishedPlacementProjection } from "./placement-read-publication.js";
 import { createPlacementReadStore } from "./placement-read-store.js";
@@ -43,6 +44,7 @@ import { waitForPlacementTurnClaimRelease } from "./placement-turn-wait.js";
 import { createPlacementWorkspaceJournalWorkerOps } from "./placement-workspace-journal-store.js";
 import { createPlacementWorkspaceReservationOps } from "./placement-workspace-reservation.js";
 import { createPlacementWorkspaceResultReader } from "./placement-workspace-result-store.js";
+import type { WorkerWorkspacePendingResult } from "./placement-workspace-result.types.js";
 import {
   projectWorkspaceResultConflict,
   type WorkerWorkspaceResultConflict,
@@ -183,7 +185,13 @@ export function createWorkerSessionPlacementStore(
       );
     },
 
-    async prepareRuntimeRefresh(sessionIdInput: string) {
+    async prepareRuntimeRefresh(sessionIdInput: string): Promise<{
+      placement: WorkerSessionPlacementRecord | undefined;
+      move: WorkerPlacementMoveIntent | undefined;
+      pendingResult: WorkerWorkspacePendingResult | undefined;
+      assertCurrent: (this: void) => void;
+      release: (this: void) => void;
+    }> {
       const sessionId = required(sessionIdInput, "session id");
       const { value: projection, ...observation } = await preparePlacementAuthorityRead(
         path,
@@ -191,9 +199,12 @@ export function createWorkerSessionPlacementStore(
         () => store.readProjection([sessionId], { current: true }),
       );
       return {
-        placement: projection.placements.get(sessionId),
-        move: projection.moves.get(sessionId),
-        pendingResult: projection.pendingResults.get(sessionId),
+        // SDK callers own mutable selected values; internal projections borrow facts.
+        ...structuredClone({
+          placement: projection.placements.get(sessionId),
+          move: projection.moves.get(sessionId),
+          pendingResult: projection.pendingResults.get(sessionId),
+        }),
         ...observation,
       };
     },

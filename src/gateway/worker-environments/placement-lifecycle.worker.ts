@@ -30,7 +30,7 @@ import {
 import {
   ensureLocal,
   find,
-  getRequired,
+  fromRow,
   query,
   readWorkerPlacementsInDatabase,
   readWorkerPlacementsForReconcileInDatabase,
@@ -172,7 +172,7 @@ function startWorkerPlacementDispatch(
     }
   }
   // The local predecessor keeps its claim until the dispatch barrier drains it.
-  const result = executeSqliteQuerySync(
+  const row = executeSqliteQuerySync(
     db,
     query(db)
       .updateTable("worker_session_placements")
@@ -195,12 +195,13 @@ function startWorkerPlacementDispatch(
       })
       .where("session_id", "=", current.sessionId)
       .where("state", "=", current.state)
-      .where("transition_generation", "=", current.generation),
-  );
-  if (result.numAffectedRows !== 1n) {
+      .where("transition_generation", "=", current.generation)
+      .returningAll(),
+  ).rows[0];
+  if (!row) {
     throw new Error(`Session ${identity.sessionId} placement changed during dispatch barrier`);
   }
-  return getRequired(db, identity.sessionId);
+  return fromRow(row);
 }
 
 export const placementLifecycleOperations = {

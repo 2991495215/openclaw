@@ -108,14 +108,6 @@ export async function prepareAgentRunDispatch(
     });
     return undefined;
   }
-  if (
-    params.abortForLifecycleRotation({
-      sessionKey: params.resolvedSessionKey,
-      agentId: params.activeSessionAgentId,
-    })
-  ) {
-    return undefined;
-  }
   if (params.restoredCronContinuationIdentity && !params.restoredCronContinuation) {
     params.io.emitAcceptance([
       false,
@@ -378,10 +370,6 @@ export async function prepareAgentRunDispatch(
         preparedModelRuntimeLease = dispatchRuntimeLease;
       },
     });
-    const publishedAdmission = revalidateAdmission();
-    if (publishedAdmission !== true) {
-      return publishedAdmission;
-    }
     const runtimeLease = dispatchRuntimeLease;
     if (!publishedRuntime || !runtimeLease) {
       throw new Error(`published reply runtime missing for ${params.activeSessionAgentId}`);
@@ -420,10 +408,6 @@ export async function prepareAgentRunDispatch(
       preparedModelRuntimeLease = await acquireRuntime(workspaceOverride);
       await runtimeLease[Symbol.asyncDispose]();
       preparedModelRuntime = { preparedModelRuntimeLease };
-      const runtimeAdmission = revalidateAdmission();
-      if (runtimeAdmission !== true) {
-        return runtimeAdmission;
-      }
       replyDispatchRuntime = Object.freeze({
         ...replyDispatchRuntime,
         pluginGeneration: preparedModelRuntimeLease.pluginGeneration,
@@ -464,10 +448,6 @@ export async function prepareAgentRunDispatch(
       },
     });
     followupCompletion = subagentAdmission.followupCompletion;
-    const registrationAdmission = revalidateAdmission();
-    if (registrationAdmission !== true) {
-      return registrationAdmission;
-    }
   } catch (err) {
     return rejectPreaccept(resolveAgentRunAdmissionError(ErrorCodes.UNAVAILABLE, err));
   }
@@ -488,10 +468,6 @@ export async function prepareAgentRunDispatch(
         sessionKey: recoverySessionKey,
         storePath: lifecycleStorePath,
       });
-      const recoveryRevalidation = revalidateAdmission();
-      if (recoveryRevalidation !== true) {
-        return recoveryRevalidation;
-      }
     } catch (err) {
       return rejectPreaccept(errorShape(ErrorCodes.UNAVAILABLE, formatForLog(err)));
     }

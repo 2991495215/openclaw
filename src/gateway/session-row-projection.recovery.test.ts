@@ -211,7 +211,7 @@ it("refreshes previews after reconciliation without metadata mutation or clean-r
     // Model the optional reader's unavailable result without racing automatic reconciliation.
     const previewRead = vi
       .spyOn(transcriptBackfill, "backfillSessionRowTranscriptFields")
-      .mockResolvedValue({});
+      .mockResolvedValue(undefined);
     const transcriptUpdates = vi.fn();
     const stop = onInternalSessionTranscriptUpdate(transcriptUpdates);
     try {

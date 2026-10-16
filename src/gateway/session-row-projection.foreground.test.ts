@@ -1,6 +1,7 @@
 import { StatementSync } from "node:sqlite";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { afterEach, expect, it, vi } from "vitest";
+import { withinTest } from "../../test/helpers/promise.js";
 import { observeSqliteReadSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { ACTIVITY_SUMMARY_FORMAT_REVISION } from "../config/sessions/activity-summary.js";
@@ -223,11 +224,13 @@ it("retains transcript previews across metadata edits and consumes committed app
       touchSessionEntry: false,
       updateMode: "none",
     });
+    clearStoredSessionRowTranscriptForTest(scope);
     const initial = observeSessionRowBackfill([scope.sessionKey]);
     const backfill = vi.spyOn(transcriptBackfill, "backfillSessionRowTranscriptFields");
     const projection = await createSessionRowProjection({ cfg, modelCatalog: [] });
     try {
       await initial;
+      expect(backfill).toHaveBeenCalledTimes(1);
       backfill.mockClear();
       for (let edit = 0; edit < 10; edit++) {
         await sessions.patchSessionEntryCore(scope, () => ({
@@ -270,7 +273,7 @@ it("retains transcript previews across metadata edits and consumes committed app
   });
 });
 
-it("reuses an unknown preview until a committed transcript watermark changes", async () => {
+it("reuses a completed legacy preview until a committed transcript changes", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     const cfg = { agents: { entries: { main: {} } } };
     setRuntimeConfigSnapshot(cfg);
@@ -293,7 +296,6 @@ it("reuses an unknown preview until a committed transcript watermark changes", a
     const projection = await createSessionRowProjection({ cfg, modelCatalog: [] });
     try {
       await initial;
-      expect(projection.capture(query)?.retainedDatabaseFacts?.transcriptPreview).toBeUndefined();
       expect(backfill).toHaveBeenCalledTimes(1);
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
@@ -332,46 +334,68 @@ it("reuses an unknown preview until a committed transcript watermark changes", a
   });
 });
 
-it("keeps a committed append preview when an older background read finishes", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async () => {
-    const cfg = { agents: { entries: { main: {} } } };
-    const scope = {
-      agentId: "main",
-      sessionKey: "agent:main:preview-receipt",
-      sessionId: "preview-receipt",
-    };
-    const query = { agentId: scope.agentId, key: scope.sessionKey };
-    sessions.replaceSessionEntrySync(scope, { sessionId: scope.sessionId, updatedAt: 1 });
-    await sessions.persistSessionTranscriptTurn(scope, {
-      config: cfg,
-      messages: [{ message: { role: "user", content: "Older preview" } }],
-      touchSessionEntry: false,
-      updateMode: "none",
-    });
-    clearStoredSessionRowTranscriptForTest(scope);
-    const backfill = holdBackfillPublication();
-    const projection = await createSessionRowProjection({ cfg, modelCatalog: [] });
-    try {
-      expect((await backfill.prepared).lastMessagePreview).toBe("Older preview");
+it.for(["receipt", "invalidated legacy facts"] as const)(
+  "keeps a committed append preview when an older background read finishes (%s)",
+  async (mode, { signal }) => {
+    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      const cfg = { agents: { entries: { main: {} } } };
+      const scope = {
+        agentId: "main",
+        sessionKey: "agent:main:preview-receipt",
+        sessionId: "preview-receipt",
+      };
+      const query = { agentId: scope.agentId, key: scope.sessionKey };
+      sessions.replaceSessionEntrySync(scope, { sessionId: scope.sessionId, updatedAt: 1 });
       await sessions.persistSessionTranscriptTurn(scope, {
         config: cfg,
-        messages: [{ message: { role: "assistant", content: "Committed preview" } }],
+        messages: [{ message: { role: "user", content: "Older preview" } }],
         touchSessionEntry: false,
+        updateMode: "none",
       });
-      await projection.ensureMaterialized();
-      expect(projection.snapshot(query, { includeLastMessage: true }).row?.lastMessagePreview).toBe(
-        "Committed preview",
-      );
-      await backfill.publish();
-      expect(projection.snapshot(query, { includeLastMessage: true }).row?.lastMessagePreview).toBe(
-        "Committed preview",
-      );
-    } finally {
-      projection.dispose();
-      await backfill.close();
-    }
-  });
-});
+      clearStoredSessionRowTranscriptForTest(scope);
+      const backfill = holdBackfillPublication(signal);
+      const projection = await createSessionRowProjection({ cfg, modelCatalog: [] });
+      try {
+        expect((await backfill.prepared)?.lastMessagePreview).toBe("Older preview");
+        await sessions.persistSessionTranscriptTurn(scope, {
+          config: cfg,
+          messages: [
+            { message: { role: "assistant", content: "Committed preview" } },
+            ...(mode === "invalidated legacy facts"
+              ? [{ message: { role: "assistant", content: "Hidden append", display: false } }]
+              : []),
+          ],
+          touchSessionEntry: false,
+        });
+        if (mode === "invalidated legacy facts") {
+          // Fresh legacy facts have no summary watermark and still need a bounded tail read.
+          sessionChanges.emit({ ...scope, factsInvalidated: true });
+        }
+        await projection.ensureMaterialized();
+        if (mode === "receipt") {
+          expect(
+            projection.snapshot(query, { includeLastMessage: true }).row?.lastMessagePreview,
+          ).toBe("Committed preview");
+        }
+        await backfill.publish();
+        if (mode === "invalidated legacy facts") {
+          const refreshed = observeSessionRowBackfill([scope.sessionKey], projection);
+          await backfill.publishAvailable();
+          await withinTest(refreshed, signal);
+        }
+        expect(
+          projection.snapshot(query, { includeLastMessage: true }).row?.lastMessagePreview,
+        ).toBe("Committed preview");
+        expect(transcriptBackfill.backfillSessionRowTranscriptFields).toHaveBeenCalledTimes(
+          mode === "receipt" ? 1 : 2,
+        );
+      } finally {
+        projection.dispose();
+        await backfill.close();
+      }
+    });
+  },
+);
 
 it("keeps pending Worker metadata, membership, and summary facts across optional publication", ({
   signal,
