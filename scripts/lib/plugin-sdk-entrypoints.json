@@ -270,6 +270,7 @@
   "realtime-voice-playback",
   "realtime-voice-provider",
   "meeting-page-script-runtime",
+  "meeting-config",
   "meeting-runtime",
   "transcripts",
   "media-understanding",

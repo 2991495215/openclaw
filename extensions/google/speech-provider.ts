@@ -6,7 +6,11 @@ import type {
   SpeechProviderPlugin,
   SpeechSynthesisRequest,
 } from "openclaw/plugin-sdk/speech-core";
-import { createSpeechDirectiveParser, retryAsync } from "openclaw/plugin-sdk/speech-provider";
+import {
+  createSpeechDirectiveParser,
+  removeUndefinedProperties,
+  retryAsync,
+} from "openclaw/plugin-sdk/speech-provider";
 import {
   asOptionalRecord,
   normalizeOptionalString,
@@ -162,6 +166,8 @@ export function buildGoogleSpeechProvider(): SpeechProviderPlugin {
     parseDirectiveToken,
     resolveTalkConfig: ({ baseTtsConfig, talkProviderConfig }) => {
       const base = normalizeGoogleTtsProviderConfig(baseTtsConfig);
+      const model = normalizeOptionalString(talkProviderConfig.modelId);
+      const voice = normalizeOptionalString(talkProviderConfig.voiceId);
       return {
         ...base,
         ...(talkProviderConfig.apiKey === undefined
@@ -172,25 +178,21 @@ export function buildGoogleSpeechProvider(): SpeechProviderPlugin {
                 path: "talk.providers.google.apiKey",
               }),
             }),
-        ...(normalizeOptionalString(talkProviderConfig.baseUrl) == null
-          ? {}
-          : { baseUrl: normalizeOptionalString(talkProviderConfig.baseUrl) }),
-        ...(normalizeOptionalString(talkProviderConfig.modelId) == null
-          ? {}
-          : { model: normalizeGoogleTtsModel(talkProviderConfig.modelId) }),
-        ...(normalizeOptionalString(talkProviderConfig.voiceId) == null
-          ? {}
-          : { voiceName: normalizeGoogleTtsVoiceName(talkProviderConfig.voiceId) }),
+        ...removeUndefinedProperties({
+          baseUrl: normalizeOptionalString(talkProviderConfig.baseUrl),
+          model: model ? normalizeGoogleTtsModel(model) : undefined,
+          voiceName: voice ? normalizeGoogleTtsVoiceName(voice) : undefined,
+        }),
       };
     },
-    resolveTalkOverrides: ({ params }) => ({
-      ...(normalizeOptionalString(params.voiceId) == null
-        ? {}
-        : { voiceName: normalizeGoogleTtsVoiceName(params.voiceId) }),
-      ...(normalizeOptionalString(params.modelId) == null
-        ? {}
-        : { model: normalizeGoogleTtsModel(params.modelId) }),
-    }),
+    resolveTalkOverrides: ({ params }) => {
+      const voice = normalizeOptionalString(params.voiceId);
+      const model = normalizeOptionalString(params.modelId);
+      return removeUndefinedProperties({
+        voiceName: voice ? normalizeGoogleTtsVoiceName(voice) : undefined,
+        model: model ? normalizeGoogleTtsModel(model) : undefined,
+      });
+    },
     listVoices: async () => GOOGLE_PREBUILT_VOICES.map((voice) => ({ id: voice, name: voice })),
     // Retained for synchronous SDK consumers through 2026-12-31.
     isConfigured,

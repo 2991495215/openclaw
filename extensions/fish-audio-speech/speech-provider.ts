@@ -9,13 +9,13 @@ import type {
 import {
   MAX_AUDIO_BYTES,
   createSpeechDirectiveParser,
+  removeUndefinedProperties,
   resolveSpeechProviderApiKey,
 } from "openclaw/plugin-sdk/speech-provider";
 import {
   asBoolean,
   asFiniteNumberInRange,
   asOptionalRecord,
-  filterStringRecord,
   normalizeOptionalString as trimToUndefined,
   parseBooleanValue,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -93,7 +93,7 @@ function readProviderConfig(config: SpeechProviderConfig) {
 }
 
 function readOverrides(overrides: SpeechProviderOverrides | undefined): FishAudioOverrides {
-  const raw = asOptionalRecord(overrides) ?? {};
+  const raw = overrides ?? {};
   return {
     model: trimToUndefined(raw.model ?? raw.modelId)
       ? normalizeModel(raw.model ?? raw.modelId)
@@ -253,7 +253,7 @@ export function buildFishAudioSpeechProvider(): SpeechProviderPlugin {
                 path: "talk.providers.fish-audio.apiKey",
               }),
             }),
-        ...filterStringRecord({
+        ...removeUndefinedProperties({
           baseUrl: trimToUndefined(talkProviderConfig.baseUrl)
             ? normalizeFishAudioBaseUrl(trimToUndefined(talkProviderConfig.baseUrl))
             : undefined,
@@ -264,23 +264,18 @@ export function buildFishAudioSpeechProvider(): SpeechProviderPlugin {
           latency: trimToUndefined(talkProviderConfig.latency)
             ? normalizeLatency(talkProviderConfig.latency)
             : undefined,
+          speed: asFiniteNumberInRange(talkProviderConfig.speed, { min: 0.5, max: 2 }),
         }),
-        ...(asFiniteNumberInRange(talkProviderConfig.speed, { min: 0.5, max: 2 }) == null
-          ? {}
-          : { speed: asFiniteNumberInRange(talkProviderConfig.speed, { min: 0.5, max: 2 }) }),
       };
     },
-    resolveTalkOverrides: ({ params }) => ({
-      ...filterStringRecord({
+    resolveTalkOverrides: ({ params }) =>
+      removeUndefinedProperties({
         model: trimToUndefined(params.modelId ?? params.model)
           ? normalizeModel(params.modelId ?? params.model)
           : undefined,
         referenceId: resolveReferenceId(params),
+        speed: asFiniteNumberInRange(params.speed, { min: 0.5, max: 2 }),
       }),
-      ...(asFiniteNumberInRange(params.speed, { min: 0.5, max: 2 }) == null
-        ? {}
-        : { speed: asFiniteNumberInRange(params.speed, { min: 0.5, max: 2 }) }),
-    }),
     listVoices: async (req) => {
       const config = readProviderConfig(req.providerConfig ?? {});
       const apiKey = resolveApiKey(trimToUndefined(req.apiKey) ?? config.apiKey);

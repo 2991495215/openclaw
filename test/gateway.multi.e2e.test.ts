@@ -150,12 +150,27 @@ describe("gateway multi-instance e2e", () => {
     async () => {
       const manager = await createOpenClawTestInstance({
         name: "cron-passive-manager",
-        config: { cron: { enabled: false }, plugins: { enabled: false } },
+        config: {
+          agents: { defaults: { model: "openai/gpt-4.1" } },
+          cron: { enabled: false },
+          plugins: { enabled: false },
+        },
         env: { OPENCLAW_SKIP_CRON: "0" },
       });
       let managerClient: GatewayClient | undefined;
       await runQaGatewayFixture(
         async () => {
+          // The isolated canary needs a stored account at cron.add admission.
+          await manager.state.writeAuthProfiles({
+            version: 1,
+            profiles: {
+              "openai:cron-fixture": {
+                type: "api_key",
+                provider: "openai",
+                key: "synthetic-cron-inference-key",
+              },
+            },
+          });
           await manager.startGateway();
           managerClient = await connectGatewayStatusClient(manager);
           const canary = await managerClient.request<{ id: string }>("cron.add", {
