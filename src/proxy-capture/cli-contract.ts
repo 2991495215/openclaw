@@ -1,41 +1,8 @@
 import { z } from "zod";
+import { CaptureEventSchema, CaptureQueryPresetSchema } from "./capture-schema.js";
 import type { AsyncDebugProxyCaptureStore } from "./store.types.js";
 
 const text = z.string();
-const event = z
-  .object({
-    sessionId: text.min(1),
-    ts: z.number().finite(),
-    sourceScope: z.literal("openclaw"),
-    sourceProcess: text,
-    protocol: z.enum(["http", "https", "sse", "ws", "wss", "connect"]),
-    direction: z.enum(["outbound", "inbound", "local"]),
-    kind: z.enum([
-      "connect",
-      "tls-handshake",
-      "request",
-      "response",
-      "ws-open",
-      "ws-frame",
-      "ws-close",
-      "error",
-      "retry-link",
-    ]),
-    flowId: text,
-    method: text.optional(),
-    host: text.optional(),
-    path: text.optional(),
-    status: z.number().optional(),
-    closeCode: z.number().optional(),
-    contentType: text.optional(),
-    headersJson: text.optional(),
-    dataText: text.optional(),
-    dataBlobId: text.optional(),
-    dataSha256: text.optional(),
-    errorText: text.optional(),
-    metaJson: text.optional(),
-  })
-  .strict();
 
 export const debugProxyCaptureWriteCommandSchema = z.discriminatedUnion("type", [
   z
@@ -60,13 +27,13 @@ export const debugProxyCaptureWriteCommandSchema = z.discriminatedUnion("type", 
       input: z.object({ sessionId: text.min(1), endedAt: z.number().finite() }).strict(),
     })
     .strict(),
-  z.object({ type: z.literal("capture.recordEvent"), input: event }).strict(),
+  z.object({ type: z.literal("capture.recordEvent"), input: CaptureEventSchema }).strict(),
   z
     .object({
       type: z.literal("capture.recordEventWithPayload"),
       input: z
         .object({
-          event,
+          event: CaptureEventSchema,
           payload: z
             .object({
               data: text.nullable().optional(),
@@ -104,14 +71,7 @@ export const debugProxyCliCommandSchema = z.discriminatedUnion("type", [
       type: z.literal("capture.queryPreset"),
       input: z
         .object({
-          preset: z.enum([
-            "double-sends",
-            "retry-storms",
-            "cache-busting",
-            "ws-duplicate-frames",
-            "missing-ack",
-            "error-bursts",
-          ]),
+          preset: CaptureQueryPresetSchema,
           sessionId: text.optional(),
         })
         .strict(),

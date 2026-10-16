@@ -10,7 +10,7 @@ import { resolveStateDir } from "../config/paths.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { getCommandPositionalsWithRootOptions } from "../infra/cli-root-options.js";
 import { isTruthyEnvValue } from "../infra/env.js";
-import { PROXY_ENV_KEYS as CLI_PROXY_ENV_KEYS } from "../infra/net/proxy-env-keys.js";
+import { PROXY_ENV_KEYS as CLI_PROXY_ENV_KEYS } from "../infra/net/proxy-env.js";
 import { tryProcessCwd } from "../infra/safe-cwd.js";
 import type {
   resolveManifestCommandAliasOwner,

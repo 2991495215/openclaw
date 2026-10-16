@@ -3,7 +3,15 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 // Proxy environment helpers mirror undici EnvHttpProxyAgent selection while
 // adding OpenClaw NO_PROXY CIDR/wildcard bypass checks.
 import { readTrimmedStringAlias } from "../../utils/string-readers.js";
-import { PROXY_ENV_KEYS } from "./proxy-env-keys.js";
+
+export const PROXY_ENV_KEYS = [
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+] as const;
 
 /** Return whether any supported proxy environment variable is non-blank. */
 export function hasProxyEnvConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
