@@ -1,0 +1,223 @@
+import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
+import { expect, it, vi } from "vitest";
+import { prepareSystemAgentRunAdmission } from "../agents/admitted-run-context.js";
+import { createCodingToolsGatewayCaller } from "../agents/agent-tools.caller.js";
+import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
+import {
+  createAdmittedGatewayToolCallerIdentity,
+  withGatewayToolCallerIdentity,
+} from "../agents/tools/gateway-caller-context.js";
+import { setRuntimeConfigSnapshot } from "../config/config.js";
+import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { createTestPluginServiceScheduler } from "../plugin-sdk/plugin-test-api.js";
+import { clearPluginLoaderCache } from "../plugins/loader.test-fixtures.js";
+import {
+  disposePluginRegistryInstances,
+  resetPluginRuntimeStateForTest,
+  setActivePluginRegistry,
+} from "../plugins/runtime.js";
+import { bindGatewayContextResolver } from "../plugins/runtime/gateway-request-scope.js";
+import { bindPluginToolCallbacks } from "../plugins/tool-factory-runtime.js";
+import { setPluginToolMeta } from "../plugins/tool-metadata.js";
+import { drainGlobalSingletonLifecycleState } from "../shared/global-singleton.js";
+import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { createGatewayMethodRegistry } from "./methods/registry.js";
+import { captureGatewayOperatorRunAuthority } from "./operator-run-authority.js";
+import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
+import { createOperatorClient } from "./server-plugin-in-process-dispatch.test-support.js";
+import { loadGatewayPlugins } from "./server-plugins.js";
+import { bindSessionRowProjection } from "./session-row-projection-access.js";
+import { createSessionRowProjection } from "./session-row-projection.js";
+
+it("authorizes the real research tool-to-provider route and rejects a newly denied tool", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    clearPluginLoaderCache();
+    resetPluginRuntimeStateForTest();
+    const sessionKey = "agent:main:dashboard:research-route";
+    const sessionId = "research-route-generation";
+    const storePath = state.path("sessions.json");
+    let cfg: OpenClawConfig = {
+      agents: { defaults: { workspace: state.workspaceDir }, entries: { main: {} } },
+      session: { store: storePath },
+      plugins: {
+        allow: ["deep-research", "google"],
+        entries: {
+          "deep-research": { enabled: true },
+          google: {
+            enabled: true,
+            config: { research: { enabled: true, profileId: "google:fixture" } },
+          },
+        },
+      },
+    };
+    await state.writeConfig(cfg);
+    setRuntimeConfigSnapshot(cfg);
+    const client = createOperatorClient({
+      profileName: "research-owner",
+      scopes: ["operator.write"],
+    });
+    assert.ok(client.authenticatedUserProfile);
+    await upsertSessionEntryCore(
+      { agentId: "main", sessionKey, storePath },
+      {
+        sessionId,
+        updatedAt: 1,
+        createdActor: {
+          type: "human",
+          source: "profile",
+          id: client.authenticatedUserProfile.profileId,
+        },
+      },
+    );
+    const projection = await createSessionRowProjection({ cfg, modelCatalog: [] });
+    const context = bindSessionRowProjection(
+      createDirectChatContext({ getRuntimeConfig: () => cfg }),
+      () => projection,
+    );
+    context.resolveGatewayContext = () => context;
+    const source = new AbortController();
+    const captured = await captureGatewayOperatorRunAuthority({
+      client,
+      context,
+      sourceAuthority: {
+        signal: source.signal,
+        assertCurrent: () => source.signal.throwIfAborted(),
+      },
+    });
+    assert.ok(captured);
+    const prepared = prepareSystemAgentRunAdmission(
+      cfg,
+      "research-route-run",
+      "main",
+      "research-route-test",
+      undefined,
+      captured.authority,
+    );
+    const admitted = await prepared.admit("embedded");
+    bindGatewayContextResolver(admitted, () => context);
+    const caller = createAdmittedGatewayToolCallerIdentity({
+      admittedRunContext: admitted,
+      agentId: "main",
+      sessionKey,
+      approvalSignals: [source.signal],
+    });
+    assert.ok(caller);
+    const scheduler = createTestPluginServiceScheduler();
+    let loaded: Awaited<ReturnType<typeof loadGatewayPlugins>> | undefined;
+    let stopService: (() => Promise<void>) | undefined;
+    const network = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("Unexpected research activation network request"));
+    try {
+      loaded = await loadGatewayPlugins({
+        cfg,
+        autoEnabledReasons: {},
+        baseMethods: [],
+        pluginIds: ["deep-research", "google"],
+        workspaceDir: state.workspaceDir,
+        loadIntent: "startup",
+        resolveGatewayContext: () => context,
+        env: {
+          ...process.env,
+          OPENCLAW_BUNDLED_PLUGINS_DIR: fileURLToPath(new URL("../../extensions", import.meta.url)),
+        },
+      });
+      const registry = loaded.pluginRegistry;
+      setActivePluginRegistry(registry);
+      const descriptor = registry.gatewayMethodDescriptors.find(
+        (item) => item.name === "google.research.v1",
+      );
+      assert.ok(descriptor);
+      const providerHandler = registry.gatewayHandlers["google.research.v1"];
+      assert.ok(providerHandler);
+      const handler = vi.fn(providerHandler);
+      context.getGatewayMethodRegistry = () =>
+        createGatewayMethodRegistry(
+          registry.gatewayMethodDescriptors.map((item) =>
+            item === descriptor ? { ...item, handler } : item,
+          ),
+          registry,
+        );
+      const registration = registry.tools.find((entry) => entry.pluginId === "deep-research");
+      const service = registry.services.find(
+        (entry) => entry.pluginId === "deep-research",
+      )?.service;
+      assert.ok(registration && service?.apiVersion === 2);
+      const serviceContext = {
+        scheduler,
+        config: cfg,
+        stateDir: state.stateDir,
+        logger: { info() {}, warn() {}, error() {}, debug() {} },
+      };
+      stopService = async () => {
+        await service.stop?.(serviceContext);
+      };
+      await service.start(serviceContext);
+      const created = registration.factory({
+        config: cfg,
+        agentId: "main",
+        sessionKey,
+        sessionId,
+        assertInvocationCurrent: () => source.signal.throwIfAborted(),
+      });
+      assert.ok(created && !Array.isArray(created));
+      setPluginToolMeta(created, { pluginId: "deep-research", optional: registration.optional });
+      const bound = bindPluginToolCallbacks(registration, registry, created);
+      const wrap = createCodingToolsGatewayCaller({
+        options: { config: cfg, agentId: "main", sessionKey },
+        agentId: "main",
+        sessionKey,
+        capabilityProfile: await prepareConversationCapabilityProfile({
+          config: cfg,
+          agentId: "main",
+          sessionKey,
+          sessionId,
+        }),
+        tools: [bound],
+      });
+      const tool = wrap(bound);
+      const invoke = () =>
+        withGatewayToolCallerIdentity(caller, () =>
+          tool.execute("capabilities", { action: "capabilities" }),
+        );
+      const allowed = await invoke();
+      expect(allowed.details).toMatchObject({
+        managed: { version: 1, ok: true, value: { kind: "managed-research", provider: "google" } },
+      });
+      expect(handler).toHaveBeenCalledOnce();
+      expect(handler.mock.calls[0]?.[0].client?.internal?.operatorRunAuthority?.source).toBe(
+        captured.authority.source,
+      );
+      expect(handler.mock.calls[0]?.[0].sessionAccessAuthority?.target).toMatchObject({
+        agentId: "main",
+        sessionKey,
+        sessionId,
+      });
+      // The already-built tool retains its admitted policy. Current resource policy
+      // must still deny the cross-plugin RPC before the provider handler runs.
+      cfg = { ...cfg, tools: { deny: ["deep_research"] } };
+      setRuntimeConfigSnapshot(cfg);
+      await projection.ensureMaterialized();
+      const denied = await invoke();
+      expect(denied.details).toMatchObject({ managed: { available: false } });
+      expect(handler).toHaveBeenCalledOnce();
+      expect(network).not.toHaveBeenCalled();
+    } finally {
+      await stopService?.();
+      await scheduler.stop();
+      loaded?.retireGatewayRuntimeBindings();
+      prepared.close();
+      captured.release();
+      projection.dispose();
+      if (loaded) {
+        await disposePluginRegistryInstances(loaded.pluginRegistry);
+      }
+      network.mockRestore();
+      resetPluginRuntimeStateForTest();
+      clearPluginLoaderCache();
+      await drainGlobalSingletonLifecycleState();
+    }
+  });
+});
