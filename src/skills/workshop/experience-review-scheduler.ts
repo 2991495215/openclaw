@@ -307,7 +307,6 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
       pending.candidate = candidate;
       pendingBySession.set(key, pending);
       arm(key, pending, EXPERIENCE_REVIEW_IDLE_MS);
-      log.debug(`experience review scheduled: session=${sessionKey} iterations=${iterations}`);
     },
     clear(): void {
       for (const pending of pendingBySession.values()) {
