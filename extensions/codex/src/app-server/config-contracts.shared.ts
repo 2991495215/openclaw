@@ -12,13 +12,7 @@ export type OpenClawExecPolicyForCodexAppServer = {
   touched: boolean;
 };
 
-export const CODEX_APP_SERVER_COMMAND_SOURCES = [
-  "managed",
-  "resolved-managed",
-  "config",
-  "env",
-] as const;
-export type CodexAppServerCommandSource = (typeof CODEX_APP_SERVER_COMMAND_SOURCES)[number];
+export type CodexAppServerCommandSource = "managed" | "resolved-managed" | "config" | "env";
 export type CodexPluginDestructivePolicy = boolean | "auto" | "ask";
 export type CodexPluginDestructiveApprovalMode = "allow" | "deny" | "auto" | "ask";
 

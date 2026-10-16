@@ -42,7 +42,6 @@ import {
   SLACK_SESSION_LINK_ACTION_ID,
 } from "../../reply-action-ids.js";
 import { truncateSlackText } from "../../truncate.js";
-import type { SlackMessageEvent } from "../../types.js";
 import {
   authorizeSlackSystemEventSender,
   resolveSlackCommandIngress,
@@ -277,7 +276,7 @@ function buildSlackApprovalTerminalBlocks(params: {
 async function authorizeSlackBlockAction(params: SlackBlockActionContext): Promise<
   | {
       allowed: true;
-      channelType?: NonNullable<SlackMessageEvent["channel_type"]>;
+      channelType?: "im" | "mpim" | "channel" | "group";
     }
   | { allowed: false }
 > {
@@ -552,7 +551,7 @@ async function dispatchSlackPluginInteraction(
 
 async function resolveSlackBlockActionCommandAuthorized(
   params: SlackBlockActionContext & {
-    auth: { channelType?: NonNullable<SlackMessageEvent["channel_type"]>; channelName?: string };
+    auth: { channelType?: "im" | "mpim" | "channel" | "group"; channelName?: string };
   },
 ): Promise<boolean> {
   const commandsAllowFrom = params.ctx.cfg.commands?.allowFrom;
@@ -624,7 +623,7 @@ async function resolveSlackBlockActionCommandAuthorized(
 async function enqueueSlackBlockActionEvent(
   params: SlackBlockActionContext & {
     teamId?: string;
-    auth: { channelType?: NonNullable<SlackMessageEvent["channel_type"]> };
+    auth: { channelType?: "im" | "mpim" | "channel" | "group" };
   },
 ): Promise<void> {
   const targetKind = params.auth.channelType === "im" ? "user" : "channel";

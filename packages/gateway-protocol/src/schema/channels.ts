@@ -1,6 +1,6 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
-import { TALK_AGENT_CONTROL_MODES, TALK_TRANSPORTS } from "../talk-vocabulary.js";
+import { TALK_AGENT_CONTROL_MODES } from "../talk-vocabulary.js";
 import { closedObject } from "./closed-object.js";
 import { NonEmptyString, SecretInputSchema } from "./primitives.js";
 import { GatewayEventLoopHealthSchema } from "./runtime-vitals.js";
@@ -45,7 +45,12 @@ export const TtsSpeakParamsSchema = closedObject({
 const TalkModeSchema = stringLiteralUnion(["realtime", "stt-tts", "transcription"]);
 
 /** Transport families; browser clients branch on this value to choose setup flow. */
-const TalkTransportSchema = stringLiteralUnion(TALK_TRANSPORTS);
+const TalkTransportSchema = stringLiteralUnion([
+  "webrtc",
+  "provider-websocket",
+  "gateway-relay",
+  "managed-room",
+]);
 
 const TalkBrainSchema = stringLiteralUnion(["agent-consult", "direct-tools", "none"]);
 
