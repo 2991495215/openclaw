@@ -140,7 +140,6 @@ suite.define(() => {
     {
       issuer: "public",
       profile: linkedGitHubProfile,
-      description: "public GitHub noreply address",
     },
     {
       issuer: "enterprise",
@@ -153,11 +152,10 @@ suite.define(() => {
           avatarUrl: "https://ghe.example.test/avatars/u/583231",
         },
       },
-      description: "verified enterprise email address",
     },
   ])(
     "shows $issuer sign-in verification separately from explicit Git co-author credit",
-    async ({ profile, description }) => {
+    async ({ profile }) => {
       await suite.withPage(
         {
           ...(captureUiProof
@@ -227,11 +225,10 @@ suite.define(() => {
           expect(avatarRequests).toEqual([avatarUrl]);
           await expect(githubRow).toContainText("Verified from your GitHub-backed sign-in");
           await screenshot(page, "09-github-identity-linked.png");
-          await expect(coauthorRow).toContainText(description);
-          if (profile.githubIdentity.profileUrl.startsWith("https://ghe.example.test/")) {
-            await expect(coauthorRow).toContainText("visible in commit history");
-            await expect(coauthorRow).not.toContainText("noreply");
-          }
+          // A public primary can also hold enterprise credit after explicit profile linking.
+          await expect(coauthorRow).toContainText("public GitHub noreply address");
+          await expect(coauthorRow).toContainText("verified enterprise email address");
+          await expect(coauthorRow).toContainText("visible in commit history");
           await expect(coauthorRow).toContainText("future commits only");
           const toggle = coauthorRow.getByRole("switch", { name: "Git co-author credit" });
           await expect(toggle).toBeEnabled();

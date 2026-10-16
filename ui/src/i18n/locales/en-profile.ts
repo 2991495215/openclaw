@@ -54,9 +54,7 @@ const enProfile = {
         "GitHub-backed sign-in through Cloudflare Access or Tailscale Serve provides this identity.",
       gitCoauthor: "Git co-author credit",
       gitCoauthorDescription:
-        "Adds this account's public GitHub noreply address to commits created from shared sessions. Turning it off affects future commits only.",
-      gitCoauthorEnterpriseDescription:
-        "Adds this account's verified enterprise email address to commits created from shared sessions. The address is visible in commit history. Turning it off affects future commits only.",
+        "Adds this profile's public GitHub noreply address or verified enterprise email address to shared-session commits, depending on the publishing host. The enterprise address is visible in commit history. Turning it off affects future commits only.",
       gitCoauthorUnavailable:
         "Available after your GitHub-backed sign-in is verified. Refresh to retry.",
       ownerGitCoauthorDescription:

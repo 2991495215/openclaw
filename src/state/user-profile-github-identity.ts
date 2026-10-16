@@ -19,7 +19,10 @@ import {
   captureUserProfileAuthorityRead,
   publishUserProfileAuthorityChange,
 } from "./user-profile-events.js";
-import { selectFactoryGitHubIdentities } from "./user-profile-factory-github-identity.js";
+import {
+  selectFactoryGitHubIdentities,
+  selectFactoryGitHubProfileIdsForMerge,
+} from "./user-profile-factory-github-identity.js";
 import type { UserProfileMutationContext } from "./user-profile-mutation.js";
 import {
   selectProfileDisplayEntries,
@@ -427,9 +430,14 @@ export function prepareUserProfileGitHubMerge(
     (survivingSourceProfileId
       ? identities.get(survivingSourceProfileId)?.primary?.accountId
       : undefined);
+  const factoryIdentities = selectFactoryGitHubProfileIdsForMerge(db, sourceProfileIds);
   for (const sourceProfileId of sourceProfileIds) {
     const sourceIdentity = identities.get(sourceProfileId)?.primary;
-    if (!sourceIdentity || sourceIdentity.accountId !== survivingAccountId) {
+    // Retained enterprise accounts keep consent even while merged bindings need fresh sign-in.
+    if (
+      !factoryIdentities.has(sourceProfileId) &&
+      (!sourceIdentity || sourceIdentity.accountId !== survivingAccountId)
+    ) {
       deleteUserPreference(db, sourceProfileId, GIT_COAUTHOR_PREFERENCE_KEY);
     }
   }

@@ -189,12 +189,11 @@ export function IdentitySection(props: IdentitySectionProps) {
         <SettingsToggleRow
           title={t("profilePage.identity.gitCoauthor")}
           description={
+            // Publication selects its host independently of the displayed primary account.
             isOwnerProfile()
               ? t("profilePage.identity.ownerGitCoauthorDescription")
               : props.profile.githubIdentity
-                ? props.profile.githubIdentity.host
-                  ? t("profilePage.identity.gitCoauthorEnterpriseDescription")
-                  : t("profilePage.identity.gitCoauthorDescription")
+                ? t("profilePage.identity.gitCoauthorDescription")
                 : t("profilePage.identity.gitCoauthorUnavailable")
           }
           checked={Boolean(props.profile.githubIdentity && props.gitCoauthorEnabled)}
