@@ -12,7 +12,7 @@ const readRegistryMock = vi.hoisted(() =>
 );
 const tempDirs = createTempDirTracker();
 
-vi.mock("./plugin-registry.js", () => ({
+vi.mock("../plugins/runtime/runtime-registry-loader.js", () => ({
   ensurePluginRegistryLoaded: ensurePluginRegistryLoadedMock,
 }));
 

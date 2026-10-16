@@ -79,7 +79,6 @@ type ExperienceReviewSchedulerDeps = {
 
 type PendingExperienceReview = {
   candidate: ExperienceReviewCandidate;
-  generation: number;
   timer?: ExperienceReviewTimer;
 };
 
@@ -147,15 +146,14 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
     if (pending.timer) {
       clearTimer(pending.timer);
     }
-    const generation = ++pending.generation;
     const timerCallback = () => {
-      if (pendingBySession.get(key) !== pending || pending.generation !== generation) {
+      if (pendingBySession.get(key) !== pending) {
         return;
       }
       pending.timer = undefined;
       void (async () => {
         const active = await deps.isSystemActive();
-        if (pendingBySession.get(key) !== pending || pending.generation !== generation) {
+        if (pendingBySession.get(key) !== pending) {
           return;
         }
         if (active || reviewInFlight) {
@@ -175,7 +173,7 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
         } else {
           log.warn(`skill experience review failed: ${formatErrorMessage(error)}`);
         }
-        if (pendingBySession.get(key) === pending && pending.generation === generation) {
+        if (pendingBySession.get(key) === pending) {
           pendingBySession.delete(key);
         }
       });
@@ -271,20 +269,11 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
         usedSkills: params.usedSkills ? [...params.usedSkills] : undefined,
         turnAborted: !params.event.success,
       };
-      const pending = existing ?? { candidate, generation: 0 };
+      const pending = existing ?? { candidate };
       pending.candidate = candidate;
       pendingBySession.set(key, pending);
       arm(key, pending, EXPERIENCE_REVIEW_IDLE_MS);
       log.debug(`experience review scheduled: session=${sessionKey} iterations=${iterations}`);
-    },
-    clear(): void {
-      for (const pending of pendingBySession.values()) {
-        if (pending.timer) {
-          clearTimer(pending.timer);
-        }
-      }
-      pendingBySession.clear();
-      iterationsBySession.clear();
     },
   };
 }

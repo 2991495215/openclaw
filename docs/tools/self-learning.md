@@ -35,8 +35,9 @@ so work the agent already saved is not reviewed again.
 Reading or viewing a learned skill does not queue an extra review; those turns
 count toward the same 10-iteration threshold.
 
-A queued review starts after 30 seconds with no agent or reply run active; later
-activity in the same session restarts that wait. Reviews run one at a time.
+A queued review normally starts after 30 seconds with no agent or reply run active;
+later activity in the same session restarts that wait on a best-effort basis.
+Reviews run one at a time.
 The foreground reply never waits for a review. Once started, the review keeps
 its original completed-turn snapshot while later turns continue. Resetting the
 conversation or changing its permissions cancels the review. Before changing a

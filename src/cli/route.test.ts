@@ -20,7 +20,7 @@ vi.mock("./program/config-guard.js", () => ({
   ensureConfigReady: ensureConfigReadyMock,
 }));
 
-vi.mock("./plugin-registry.js", () => ({
+vi.mock("../plugins/runtime/runtime-registry-loader.js", () => ({
   ensurePluginRegistryLoaded: ensurePluginRegistryLoadedMock,
 }));
 
