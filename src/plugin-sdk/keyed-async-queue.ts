@@ -28,7 +28,7 @@ export function enqueueKeyedTask<T, TKey>(params: KeyedAsyncTask<T, TKey>): Prom
   const keys = "keys" in params ? params.keys : [params.key];
   const previous =
     "keys" in params
-      ? Promise.allSettled(keys.map((key) => params.tails.get(key)))
+      ? Promise.allSettled(keys.map((key) => params.tails.get(key) ?? Promise.resolve()))
       : (params.tails.get(params.key) ?? Promise.resolve()).catch(() => undefined);
   const current = previous.then(params.task).finally(() => {
     params.hooks?.onSettle?.();
