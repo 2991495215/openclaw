@@ -691,10 +691,9 @@ function consumeRecoveryAdmission(params: {
   const consumed: Readonly<{
     accepted: boolean;
     token?: ExecutionIdentityAdmissionToken;
-  }> =
-    typeof params.admission?.consume === "function"
-      ? params.admission.consume(params.runId)
-      : Object.freeze({ accepted: false });
+  }> = params.admission
+    ? params.admission.consume(params.runId)
+    : Object.freeze({ accepted: false });
   const token = consumed.token;
   if (!token) {
     return consumed;
@@ -717,9 +716,6 @@ function admitPreparedAgentRun(params: {
   runtimeInstanceId?: string;
   recovery?: ExecutionIdentityRecoveryAdmission;
 }): AdmittedRunContext {
-  if (params.operationalRunInstance.runId !== params.facts.runId) {
-    throw new Error("operational run instance disagrees with prepared admission");
-  }
   const operationalRunInstance = params.operationalRunInstance;
   const admitted = {
     operationalRunInstance,

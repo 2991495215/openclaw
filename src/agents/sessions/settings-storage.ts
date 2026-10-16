@@ -1,6 +1,7 @@
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { replaceFileAtomicSync } from "@openclaw/fs-safe/atomic";
+import { hasErrnoCode } from "../../infra/errors.js";
 import { acquireFileLockSyncWithRetry } from "../../infra/file-lock-sync.js";
 import { resolveJsonSaveTarget } from "../../infra/json-file.js";
 import type { ThinkingBudgets, Transport } from "../../llm/types.js";
@@ -136,21 +137,15 @@ export class FileSettingsStorage implements SettingsStorage {
 
   readSettingsScope(scope: SettingsScope): string | undefined {
     const path = this.paths[scope];
-    // Observe ownership before absence: a first writer may commit between probes.
-    // Existing lock names and reclaim guards still go through the canonical lock checks.
-    if (
-      !lstatSync(`${path}.lock`, { throwIfNoEntry: false }) &&
-      !lstatSync(`${path}.lock.reclaim`, { throwIfNoEntry: false }) &&
-      !existsSync(path)
-    ) {
+    try {
+      // Atomic replacement makes old/new snapshots safe; overlapping first writes may read defaults.
+      return readFileSync(path, "utf-8");
+    } catch (error) {
+      if (!hasErrnoCode(error, "ENOENT")) {
+        throw error;
+      }
       return undefined;
     }
-    let content: string | undefined;
-    this.withLock(scope, (current) => {
-      content = current;
-      return undefined;
-    });
-    return content;
   }
 
   withLock(scope: SettingsScope, fn: (current: string | undefined) => string | undefined): void {

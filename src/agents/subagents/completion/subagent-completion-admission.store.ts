@@ -207,12 +207,12 @@ export async function admitSubagentCompletionDelivery(params: {
         }
       },
       async commit(planned, authority) {
-        const input = structuredClone({
+        const input = {
           writeId: randomUUID(),
           expected: planned.expected,
           subagent: planned.subagent,
           queueEntry: planned.queueEntry,
-        });
+        };
         const receipt = await runSubagentRegistryWorkerWrite(params.context, () => ({
           kind: "completion",
           writeId: input.writeId,
@@ -328,10 +328,10 @@ async function mutateCompletion(
         options.onPublished?.();
       },
       async commit(planned, authority) {
-        const input = structuredClone({
+        const input = {
           writeId: randomUUID(),
           mutation: planned.mutation,
-        });
+        };
         const receipt = await runSubagentRegistryWorkerWrite(context, () => ({
           kind: "completion",
           writeId: input.writeId,

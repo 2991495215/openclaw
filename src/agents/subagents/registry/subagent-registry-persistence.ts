@@ -51,7 +51,6 @@ import type { SubagentRegistryWrite } from "./subagent-registry.store.types.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import {
   bindSubagentRunRuntimeKey,
-  copySubagentRunRuntimeOwner,
   getSubagentRunRuntimeKey,
   getSubagentRunIdentity,
   isQueuedSubagentRunRekey,
@@ -231,8 +230,6 @@ export async function runSubagentRegistryWorkerWrite<T>(
       {
         assertCurrent: write.assertCurrent,
         createAdmission: () => {
-          let phase: "waiting" | "transaction" | "commit" = "waiting";
-          const eventPhases = new Map<number, "transaction" | "commit">();
           const authorityName =
             write.kind === "registry" ? "Queued registry write" : "Subagent completion write";
           admission = createSqliteWorkerOperationAdmission((request, grant) => {
@@ -250,15 +247,7 @@ export async function runSubagentRegistryWorkerWrite<T>(
               typeof facts.eventIndex === "number"
             ) {
               const event = write.terminalEvents?.[facts.eventIndex];
-              if (
-                !event ||
-                phase !== "transaction" ||
-                !(
-                  (request.stage === "transaction" && !eventPhases.has(facts.eventIndex)) ||
-                  (request.stage === "commit" &&
-                    eventPhases.get(facts.eventIndex) === "transaction")
-                )
-              ) {
+              if (!event) {
                 throw new Error("Subagent terminal event admission requested out of order");
               }
               write.assertCurrent();
@@ -266,24 +255,16 @@ export async function runSubagentRegistryWorkerWrite<T>(
               if (!grant()) {
                 throw new Error("Subagent terminal event admission expired");
               }
-              eventPhases.set(facts.eventIndex, request.stage);
               return;
             }
-            if (
-              facts !== write.writeId ||
-              !(
-                (phase === "waiting" && request.stage === "transaction") ||
-                (phase === "transaction" && request.stage === "commit")
-              )
-            ) {
+            if (facts !== write.writeId) {
               throw new Error(`${authorityName} authority requested out of order`);
             }
             write.assertCurrent();
             if (!grant()) {
               throw new Error(`${authorityName} authority expired`);
             }
-            phase = request.stage === "transaction" ? "transaction" : "commit";
-            commitGranted = phase === "commit";
+            commitGranted ||= request.stage === "commit";
           });
           return {
             admission,
@@ -324,12 +305,7 @@ function commitRows<T>(
   authority: SubagentRegistryWriteAuthority,
 ): Promise<SubagentRunMutationReceipt<T>> {
   return runSubagentRegistryWorkerWrite(context, () => {
-    const postimages = new Map(
-      [...(planned.postimages ?? [])].map(
-        ([runId, row]) =>
-          [runId, row ? copySubagentRunRuntimeOwner(row, structuredClone(row)) : null] as const,
-      ),
-    );
+    const postimages = planned.postimages ?? new Map<string, SubagentRunRecord | null>();
     const values = [...postimages.values()].flatMap((row) =>
       row ? [bindSubagentRunRecord(row)] : [],
     );

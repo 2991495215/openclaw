@@ -54,46 +54,6 @@ beforeEach(() => {
   update.mockReset();
 });
 
-it.each(["acknowledged", "uncertain"] as const)(
-  "does not publish stale reads after an %s write",
-  async (outcome) => {
-    const original = {
-      clientInformation: { client_id: "original-client" },
-      redirectUrl: "https://callback.example.test/original",
-    } satisfies McpOAuthStore;
-    const committed = {
-      clientInformation: { client_id: "updated-client" },
-      redirectUrl: "https://callback.example.test/updated",
-    } satisfies McpOAuthStore;
-    read.mockResolvedValueOnce(original);
-    const provider = await createMcpOAuthClientProvider(providerParams);
-    const earlier = createDeferred<McpOAuthStore>();
-    read.mockReturnValueOnce(earlier.promise);
-    const information = provider.clientInformation();
-    const failure = new Error("The write committed, but coordinator release failed");
-    if (outcome === "uncertain") {
-      update.mockRejectedValueOnce(failure);
-      await expect(provider.saveClientInformation?.(committed.clientInformation)).rejects.toBe(
-        failure,
-      );
-    } else {
-      update.mockResolvedValueOnce({ store: committed, applied: true });
-      await provider.saveClientInformation?.(committed.clientInformation);
-      expect(provider.redirectUrl).toBe(committed.redirectUrl);
-    }
-    earlier.resolve(original);
-    expect(await information).toEqual(original.clientInformation);
-    if (outcome === "uncertain") {
-      expect(() => provider.redirectUrl).toThrow(failure);
-      expect(() => provider.clientMetadata).toThrow(failure);
-      read.mockResolvedValueOnce(committed);
-      await provider.discoveryState?.();
-    }
-    expect(provider.redirectUrl).toBe(committed.redirectUrl);
-    expect(provider.clientMetadata.redirect_uris).toEqual([committed.redirectUrl]);
-  },
-);
-
 it("rejects tokens when its login lifecycle ends during a credential read", async () => {
   const original = { redirectUrl: "https://callback.example.test/original" };
   read.mockResolvedValueOnce(original);

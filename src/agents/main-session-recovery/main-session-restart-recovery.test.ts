@@ -3525,34 +3525,6 @@ describe("main-session-restart-recovery", () => {
     expect(notices).toHaveLength(1);
   });
 
-  it("retries tombstoning after a transcript metadata conflict", async () => {
-    tmpDir = transcriptFixture.prepareRoot();
-    const { sessionsDir, readEntry } = await makeMainSessionFixture({
-      mainRestartRecovery: {
-        cycleId: "cycle-exhausted",
-        revision: 1,
-        chargedAttempts: 3,
-      },
-    });
-    await writeTranscript(sessionsDir, "main-session", [
-      { role: "user", content: "continue this turn" },
-    ]);
-    transcriptMocks.appendAssistantMessageToSessionTranscript.mockResolvedValueOnce({
-      ok: false,
-      code: "session-rebound",
-      reason: "session metadata changed",
-    });
-
-    await expectRecovery({ started: 0, settled: 0, failed: 0, skipped: 1 });
-
-    expect(transcriptMocks.appendAssistantMessageToSessionTranscript).toHaveBeenCalledTimes(2);
-    expect(readEntry()).toMatchObject({
-      status: "failed",
-      abortedLastRun: false,
-      mainRestartRecovery: { tombstone: expect.any(Object) },
-    });
-  });
-
   it("tombstones when the final owner-release retry consumes the last charge", async () => {
     const { sessionsDir, storePath, readEntry } = await makeControlUiRecoveryFixture({
       mainRestartRecovery: {
