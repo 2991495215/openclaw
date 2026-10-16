@@ -5290,7 +5290,7 @@ jobs:
 
       - *select_xcode_step
 
-      - name: Setup Node environment for native resources
+      - name: Setup Node environment
         id: node-env
         uses: ./.ci-harness/.github/actions/setup-node-env
         with:
