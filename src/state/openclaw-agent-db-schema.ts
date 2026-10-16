@@ -17,12 +17,10 @@ import {
   type SqliteIntegrityDiagnostics,
   type SqliteIntegrityOperation,
 } from "../infra/sqlite-integrity.js";
-import { runSqliteSchemaReadSnapshotSync } from "../infra/sqlite-pinned-read-snapshot.js";
 import {
   admitSqliteSchema,
   getAdmittedSqliteSchemaFacts,
   isSqliteSchemaAdmissionCold,
-  runSqliteReadOperationSync,
 } from "../infra/sqlite-schema-facts.js";
 import { migrateSqliteSchemaToStrictInTransaction } from "../infra/sqlite-strict.js";
 import { runSqliteImmediateTransactionSync } from "../infra/sqlite-transaction.js";
@@ -66,11 +64,9 @@ import { registerOpenClawAgentDatabase } from "./openclaw-agent-db-registry.js";
 import {
   getOpenClawAgentMigrationSchema,
   assertExistingAgentSchemaOwner,
-  assertCurrentAgentSchemaMetadata,
   assertOpenClawAgentCurrentRuntimeSchema,
   assertOpenClawAgentSchemaContains,
   assertSupportedAgentSchemaVersion,
-  assertCanonicalAgentPersistenceVersion,
   assertAgentSchemaVersion,
   finishAgentSchemaMigration,
   hasPendingCurrentVersionAgentDatabaseMigration,
@@ -95,13 +91,8 @@ import {
 import { migrateSessionNodesAndWindows } from "./openclaw-agent-db-session-nodes-migration.js";
 import { migrateAgentStorageInTransaction } from "./openclaw-agent-db-storage-migration.js";
 import {
-  adoptOpenClawAgentDatabaseSchema,
-  getOpenClawAgentDatabaseValidation,
   hasRevokedOpenClawAgentDatabaseValidation,
   type OpenClawAgentDatabaseValidation,
-  invalidateOpenClawAgentDatabaseSchema,
-  invalidateOpenClawAgentDatabaseValidation,
-  publishOpenClawAgentDatabaseSchema,
   setOpenClawAgentDatabaseValidation,
 } from "./openclaw-agent-db-validation-cache.js";
 import {
@@ -232,60 +223,6 @@ export function* agentDatabaseIntegrityBeforeMutationSteps(
     yield* sqliteIntegrityCheckSteps(database, pathname, diagnostics);
   }
   return hasPendingCurrentVersionMigration;
-}
-
-/** Re-admit the retained connection without replacing its native generation or lease. */
-export function refreshOpenClawAgentDatabaseSchema(
-  database: OpenClawAgentDatabase,
-  assertCurrent: () => void,
-) {
-  const { db, agentId, path: pathname } = database;
-  assertCurrent();
-  if (db.isTransaction) {
-    throw new Error("Agent schema admission requires a settled writer");
-  }
-  try {
-    const reused = runSqliteReadOperationSync(db, () => {
-      assertSupportedAgentSchemaVersion(db, pathname);
-      assertCurrentAgentSchemaMetadata(readExistingAgentSchemaMeta(db), agentId, pathname);
-      const validation = getOpenClawAgentDatabaseValidation(database);
-      return validation && adoptOpenClawAgentDatabaseSchema(database) ? validation : undefined;
-    });
-    if (reused) {
-      return reused;
-    }
-    const validation = getOpenClawAgentDatabaseValidation(database);
-    invalidateOpenClawAgentDatabaseSchema(database);
-    const convergence = runSqliteIntegrityOperationSync(
-      agentDatabaseIntegrityBeforeMutationSteps(
-        db,
-        agentId,
-        pathname,
-        undefined,
-        undefined,
-        Boolean(validation),
-      ),
-      assertCurrent,
-    );
-    assertCanonicalAgentPersistenceVersion(db, pathname);
-    if (convergence) {
-      ensureAgentSchema(db, agentId, pathname);
-    }
-    // Integrity admission or same-version repair already checked the runtime schema.
-    return runSqliteSchemaReadSnapshotSync(db, () => {
-      admitSqliteSchema(db);
-      assertCanonicalSessionValidationSchema(db);
-      assertCurrent();
-      if (!validation) {
-        return setOpenClawAgentDatabaseValidation(database);
-      }
-      publishOpenClawAgentDatabaseSchema(database);
-      return validation;
-    });
-  } catch (error) {
-    invalidateOpenClawAgentDatabaseValidation(pathname);
-    throw error;
-  }
 }
 
 type AgentSchemaMutationGuard = <T>(run: () => T) => T;
