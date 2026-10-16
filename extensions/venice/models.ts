@@ -1,3 +1,4 @@
+import { asPositiveFiniteNumber } from "openclaw/plugin-sdk/number-runtime";
 import {
   buildManifestModelProviderConfig,
   readManifestProviderDefaultModelRef,
@@ -50,27 +51,22 @@ interface VeniceModel {
   model_spec?: VeniceModelSpec;
 }
 
-function normalizePositiveInt(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return undefined;
-  }
-  return Math.floor(value);
-}
-
 function resolveApiMaxCompletionTokens(params: {
   apiModel: VeniceModel;
   knownMaxTokens?: number;
 }): number | undefined {
-  const raw = normalizePositiveInt(params.apiModel.model_spec?.maxCompletionTokens);
+  const raw = Math.floor(
+    asPositiveFiniteNumber(params.apiModel.model_spec?.maxCompletionTokens) ?? 0,
+  );
   if (!raw) {
     return undefined;
   }
-  const contextWindow = normalizePositiveInt(params.apiModel.model_spec?.availableContextTokens);
+  const contextWindow = asPositiveFiniteNumber(params.apiModel.model_spec?.availableContextTokens);
   const knownMaxTokens =
     params.knownMaxTokens === undefined ? undefined : Math.floor(params.knownMaxTokens);
   const hardCap = knownMaxTokens ?? VENICE_DISCOVERY_HARD_MAX_TOKENS;
   const fallbackContextWindow = knownMaxTokens ?? VENICE_DEFAULT_CONTEXT_WINDOW;
-  return Math.min(raw, contextWindow ?? fallbackContextWindow, hardCap);
+  return Math.min(raw, Math.floor(contextWindow ?? fallbackContextWindow), hardCap);
 }
 
 function projectVeniceModels(
@@ -124,8 +120,9 @@ function projectVeniceModels(
         reasoning: isReasoning,
         input: hasVision ? ["text", "image"] : ["text"],
         cost: liveCost ?? VENICE_DEFAULT_COST,
-        contextWindow:
-          normalizePositiveInt(apiSpec?.availableContextTokens) ?? VENICE_DEFAULT_CONTEXT_WINDOW,
+        contextWindow: Math.floor(
+          asPositiveFiniteNumber(apiSpec?.availableContextTokens) ?? VENICE_DEFAULT_CONTEXT_WINDOW,
+        ),
         maxTokens: apiMaxTokens ?? VENICE_DEFAULT_MAX_TOKENS,
         compat: {
           supportsUsageInStreaming: false,

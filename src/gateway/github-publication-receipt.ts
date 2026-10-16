@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import type {
@@ -85,16 +85,14 @@ export function digestGitHubPublicationRequest(params: {
   title?: string;
   body?: string;
 }): string {
-  return createHash("sha256")
-    .update(
-      JSON.stringify({
-        sessionId: params.sessionId,
-        idempotencyKey: params.idempotencyKey,
-        title: params.title ?? null,
-        body: params.body ?? null,
-      }),
-    )
-    .digest("hex");
+  return sha256Hex(
+    JSON.stringify({
+      sessionId: params.sessionId,
+      idempotencyKey: params.idempotencyKey,
+      title: params.title ?? null,
+      body: params.body ?? null,
+    }),
+  );
 }
 
 export function projectGitHubPublicationResult(

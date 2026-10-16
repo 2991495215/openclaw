@@ -9,7 +9,10 @@ import {
 import { resolveApiKeyForProvider } from "openclaw/plugin-sdk/provider-auth-runtime";
 import { resolveConfiguredSecretInputString } from "openclaw/plugin-sdk/secret-input-runtime";
 import { formatCliCommand } from "openclaw/plugin-sdk/setup-tools";
-import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
+import {
+  asOptionalRecord,
+  normalizeOptionalString,
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 import {
   LMSTUDIO_DEFAULT_API_KEY_ENV_VAR,
   LMSTUDIO_LOCAL_API_KEY_PLACEHOLDER,
@@ -46,10 +49,9 @@ export function buildLmstudioAuthHeaders(
   return Object.keys(headers).length > 0 ? headers : undefined;
 }
 
-function sanitizeLmstudioStringHeaders(headers: unknown): Record<string, string> | undefined {
-  if (!headers || typeof headers !== "object" || Array.isArray(headers)) {
-    return undefined;
-  }
+function sanitizeLmstudioStringHeaders(
+  headers: Record<string, unknown>,
+): Record<string, string> | undefined {
   const next: Record<string, string> = {};
   for (const [headerName, headerValue] of Object.entries(headers)) {
     const normalized = normalizeOptionalString(headerValue);
@@ -129,8 +131,8 @@ export async function resolveLmstudioProviderHeaders(params: {
   headers?: unknown;
   path?: string;
 }): Promise<Record<string, string> | undefined> {
-  const headerInputs = params.headers;
-  if (!headerInputs || typeof headerInputs !== "object" || Array.isArray(headerInputs)) {
+  const headerInputs = asOptionalRecord(params.headers);
+  if (!headerInputs) {
     return undefined;
   }
 
