@@ -390,7 +390,7 @@ export function buildExternalRunFailureReply(
     return buildUnclassifiedReply(options.includeDetails === true);
   }
   const codexAppServerFailure =
-    resolveSessionStartupErrorPresentation(normalizedMessage)?.message ??
+    resolveSessionStartupErrorPresentation(normalizedMessage)?.channelMessage ??
     renderCodexAppServerFailureCopy(normalizedMessage);
   if (codexAppServerFailure) {
     return { text: codexAppServerFailure, isGenericRunnerFailure: false };

@@ -19,43 +19,53 @@ async function captureDiagnosticProof(page: Page, name: string) {
 
 suite.define(() => {
   it("keeps restored startup diagnostics behind details", async () => {
-    await suite.withPage({ viewport: { height: 900, width: 1280 } }, async ({ page }) => {
-      const sessionKey = "agent:main:main";
-      const content =
-        "Conversation context is unavailable. Refresh and try again. If it still fails, start a new conversation with the context you need.";
-      const diagnostic = "thread not loaded: synthetic-thread";
-      await installMockGateway(page, {
-        sessionKey,
-        historyMessages: [
-          {
-            role: "custom",
-            customType: "run-failed-before-reply",
-            content,
-            details: { diagnostic },
-            __openclaw: { id: "failure-notice", seq: 1, runId: "failed-run" },
+    await suite.withPage(
+      {
+        viewport: { height: 900, width: 1280 },
+        permissions: ["clipboard-read", "clipboard-write"],
+      },
+      async ({ page }) => {
+        const sessionKey = "agent:main:main";
+        const content =
+          "Conversation context is unavailable. Refresh and try again. If it still fails, start a new conversation with the context you need.";
+        const diagnostic = "thread not loaded: synthetic-thread";
+        await installMockGateway(page, {
+          sessionKey,
+          historyMessages: [
+            {
+              role: "custom",
+              customType: "run-failed-before-reply",
+              content,
+              details: { diagnostic },
+              openclawRunError: { runId: "failed-run", summary: `${content}\n\n${diagnostic}` },
+              __openclaw: { id: "failure-notice", seq: 1, runId: "failed-run" },
+            },
+          ],
+          sessionInfo: {
+            key: sessionKey,
+            kind: "direct",
+            status: "failed",
+            hasActiveRun: false,
+            lastRunId: "failed-run",
+            lastRunError: content,
           },
-        ],
-        sessionInfo: {
-          key: sessionKey,
-          kind: "direct",
-          status: "failed",
-          hasActiveRun: false,
-          lastRunId: "failed-run",
-          lastRunError: content,
-        },
-      });
-      await page.goto(controlUiSessionUrl(suite.server.baseUrl, sessionKey));
-      const alert = page.locator(".chat-error");
-      await alert.waitFor();
-      await expect
-        .poll(() => alert.locator(".chat-composer-neighbor-card__copy span").isVisible())
-        .toBe(true);
-      expect(await page.getByText(diagnostic, { exact: true }).isVisible()).toBe(false);
-      await alert.locator("summary").click();
-      expect(await alert.getByLabel("Error details", { exact: true }).textContent()).toContain(
-        diagnostic,
-      );
-    });
+        });
+        await page.goto(controlUiSessionUrl(suite.server.baseUrl, sessionKey));
+        const alert = page.locator(".chat-run-failure");
+        await alert.waitFor();
+        await expect.poll(() => alert.locator(".chat-run-failure__summary").isVisible()).toBe(true);
+        expect(await alert.getByLabel("Error details", { exact: true }).isVisible()).toBe(false);
+        await alert.locator("summary").click();
+        expect(await alert.getByLabel("Error details", { exact: true }).textContent()).toContain(
+          diagnostic,
+        );
+        await alert.getByRole("button", { name: "Copy error", exact: true }).click();
+        await expect
+          .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+          .toContain(diagnostic);
+        await captureDiagnosticProof(page, "restored-startup-canonical-details");
+      },
+    );
   });
 
   it("keeps startup recovery visible for request errors in the topbar", async () => {
