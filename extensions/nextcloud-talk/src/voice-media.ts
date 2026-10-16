@@ -11,7 +11,7 @@ type IsoBmffTrack = {
   sampleEntryTypes: string[];
 };
 
-type IsoBmffInspection = "audio-only-aac" | "video" | "ambiguous" | "not-isobmff";
+type IsoBmffInspection = "audio-only-aac" | "ambiguous" | "not-isobmff";
 
 type Box = {
   type: string;
@@ -168,9 +168,6 @@ async function inspectIsoBmff(filePath: string, expectedSize: number): Promise<I
     await inspectBoxes({ handle, start: 0, end: stat.size, depth: 0, state });
     if (state.tracks.length === 0) {
       return "ambiguous";
-    }
-    if (state.tracks.some((track) => track.handlerType === "vide")) {
-      return "video";
     }
     return state.tracks.every(
       (track) =>
