@@ -883,7 +883,6 @@ suite.define(() => {
       const gateway = await installMockGateway(page, {
         featureCapabilities: ["talk-session-close-disposition"],
         historyMessages: [TALK_READY_HISTORY_MESSAGE],
-        featureCapabilities: ["talk-session-close-disposition"],
         methodResponses: {
           "talk.client.create": {
             provider: "openai",
