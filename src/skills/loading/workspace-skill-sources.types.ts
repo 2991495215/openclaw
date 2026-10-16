@@ -27,12 +27,21 @@ export type WorkspaceSkillSourceRequest = {
   status?: { skillCardKey?: string };
 };
 
+export const WORKSPACE_SKILL_SOURCE_TIERS = [
+  "extra",
+  "bundled",
+  "workshop",
+  "managed",
+  "personal",
+  "workspace",
+] as const;
+
 export type WorkspaceSkillSource = {
   dir: string;
   source: string;
   /** Prepared diagnostic provenance, preserved when roots cross hosts. */
   worktree?: boolean;
-  tier: "extra" | "bundled" | "workshop" | "managed" | "personal" | "workspace";
+  tier: (typeof WORKSPACE_SKILL_SOURCE_TIERS)[number];
   rejectHardlinks?: boolean;
   /** Original root precedence, retained when discovery is split between hosts. */
   order?: number;

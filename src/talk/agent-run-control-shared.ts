@@ -9,11 +9,10 @@ import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
+import { TALK_AGENT_CONTROL_MODES as REALTIME_VOICE_AGENT_CONTROL_MODES } from "../../packages/gateway-protocol/src/talk-vocabulary.js";
 import { isStringOption, readTrimmedStringAlias } from "../utils/string-readers.js";
 import type { RealtimeVoiceTool } from "./provider-types.js";
 import type { TalkEvent } from "./talk-events.js";
-
-const REALTIME_VOICE_AGENT_CONTROL_MODES = ["status", "steer", "cancel", "followup"] as const;
 
 export type RealtimeVoiceAgentControlMode = (typeof REALTIME_VOICE_AGENT_CONTROL_MODES)[number];
 

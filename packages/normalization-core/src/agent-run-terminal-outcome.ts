@@ -4,7 +4,7 @@ export const AGENT_RUN_ABORTED_STOP_REASON = "aborted" as const;
 export const AGENT_RUN_RESTART_ABORT_STOP_REASON = "restart" as const;
 export const AGENT_RUN_SUPERSEDED_STOP_REASON = "superseded" as const;
 
-const AGENT_RUN_TIMEOUT_PHASES = [
+export const AGENT_RUN_TIMEOUT_PHASES = [
   "queue",
   "preflight",
   "provider",

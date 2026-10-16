@@ -32,6 +32,7 @@ import {
   readWithCanonicalSessionAdmission,
 } from "./session-canonical-key.js";
 import { validateCanonicalSessionRowEntry } from "./session-canonical-row.js";
+import type { SessionGenerationEntry } from "./session-delivery-generation.types.js";
 import { parseSqliteSessionEntryRecord } from "./session-entry-json.js";
 import {
   attachSessionEntrySnapshots,
@@ -292,9 +293,7 @@ export function readSessionChildEntriesInDatabase(
 export function readSessionEntryGenerationInDatabase(
   database: OpenClawAgentDatabaseReader,
   sessionKey: string,
-):
-  | Pick<SessionEntry, "sessionId" | "lifecycleRevision" | "permissionMode" | "toolOverrides">
-  | undefined {
+): SessionGenerationEntry | undefined {
   const row = getExactSessionEntryQueries(database.db).canonical(sessionKey, "list", false);
   const entry = row && parseReadableSessionEntryData(database, row, "list");
   if (!entry) {

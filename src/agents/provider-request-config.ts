@@ -8,6 +8,7 @@ import { assertSecretInputResolved } from "../config/types.secrets.js";
 import type { PinnedDispatcherPolicy } from "../infra/net/ssrf.js";
 import type { Api } from "../llm/types.js";
 import type { PluginMetadataSnapshotOwnerMaps } from "../plugins/plugin-metadata-snapshot.types.js";
+import { TLS_SECRET_FIELDS } from "../secrets/provider-request-secret-fields.js";
 import {
   type ProviderRequestCapabilities,
   type ProviderRequestCapability,
@@ -453,7 +454,7 @@ function toTlsConnectOptions(
     return undefined;
   }
   const next: Record<string, unknown> = {};
-  for (const key of ["ca", "cert", "key", "passphrase"] as const) {
+  for (const key of TLS_SECRET_FIELDS) {
     if (tls[key]) {
       next[key] = tls[key];
     }

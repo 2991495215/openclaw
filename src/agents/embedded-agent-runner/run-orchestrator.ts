@@ -63,6 +63,7 @@ import {
 import { prepareAgentPromptProjects } from "../prompt-projects.js";
 import { settleFailedRequesterRun, settleRequesterRun } from "../requester-run-settlement.js";
 import { resolveAgentRunErrorLifecycleFields } from "../run-termination.js";
+import { waitForSessionMaintenance } from "../session-maintenance/coordinator.js";
 import { withRequiredSessionPlacement } from "../session-placement-admission.js";
 import { resolveSessionPlacementTurnSettlementAssertion } from "../session-placement-forced-terminal-settlement.js";
 import {
@@ -73,7 +74,6 @@ import {
 import { SessionManager } from "../sessions/session-manager.js";
 import { redactRunIdentifier } from "../workspace-run.js";
 import { runEmbeddedAgentViaCliBackendIfEligible } from "./cli-backend-dispatch.js";
-import { waitForDeferredTurnMaintenanceForSession } from "./context-engine-maintenance.js";
 import { resolveGlobalLane, resolveSessionLane } from "./lanes.js";
 import { log } from "./logger.js";
 import { createEmbeddedAgentPluginRuntimeRefresh } from "./plugin-runtime-refresh.js";
@@ -228,7 +228,7 @@ async function runEmbeddedAgentForSession(
     if (!params.sessionManager || params.sessionManager.getSessionTarget()) {
       params.replyOperation?.markWaitingForDeferredMaintenance();
       try {
-        await waitForDeferredTurnMaintenanceForSession(params.sessionKey);
+        await waitForSessionMaintenance(params.sessionKey);
         // Maintenance can finish while its transcript projection is still rebuilding.
         // Settle that projection before the next attempt reads the bounded history.
         await waitForSessionTranscriptProjection(runSessionTarget, laneController.abortSignal);

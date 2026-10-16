@@ -1,5 +1,6 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
+import { TALK_AGENT_CONTROL_MODES } from "../talk-vocabulary.js";
 import { closedObject } from "./closed-object.js";
 import { NonEmptyString, SecretInputSchema } from "./primitives.js";
 import { GatewayEventLoopHealthSchema } from "./runtime-vitals.js";
@@ -53,7 +54,7 @@ const TalkTransportSchema = stringLiteralUnion([
 
 const TalkBrainSchema = stringLiteralUnion(["agent-consult", "direct-tools", "none"]);
 
-const TalkAgentControlModeSchema = stringLiteralUnion(["status", "steer", "cancel", "followup"]);
+const TalkAgentControlModeSchema = stringLiteralUnion(TALK_AGENT_CONTROL_MODES);
 
 const TalkEventTypeSchema = stringLiteralUnion([
   "session.started",

@@ -74,7 +74,7 @@ export class PreparedModelRuntimeAuthPublicationOwner {
     invalidatedOwners: readonly PreparedModelRuntimeOwner[],
     profileSetChanged = false,
   ): PreparedModelRuntimeAuthTransaction {
-    this.#events.push([...invalidatedOwners]);
+    this.#events.push(invalidatedOwners);
     const transaction =
       this.#transaction ??
       (this.#transaction = {

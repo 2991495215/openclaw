@@ -59,7 +59,7 @@ const MIN_REALISTIC_RUN_TIMESTAMP_MS = Date.UTC(2020, 0, 1);
 export function hasSubagentRunEnded<T extends { execution: { endedAt?: number } }>(
   entry: T,
 ): entry is T & { execution: T["execution"] & { endedAt: number } } {
-  return typeof entry.execution.endedAt === "number" && Number.isFinite(entry.execution.endedAt);
+  return Number.isFinite(entry.execution.endedAt);
 }
 
 export function isYieldedSubagentRun(entry: SubagentRunRecord): boolean {
@@ -81,11 +81,7 @@ export function isStaleUnendedSubagentRun(
   }
   // Creation bounds stale admission, but must not become a displayed execution start.
   const startedAt = getSubagentSessionStartedAt(entry) ?? entry.createdAt;
-  if (
-    typeof startedAt !== "number" ||
-    !Number.isFinite(startedAt) ||
-    startedAt < MIN_REALISTIC_RUN_TIMESTAMP_MS
-  ) {
+  if (!Number.isFinite(startedAt) || startedAt < MIN_REALISTIC_RUN_TIMESTAMP_MS) {
     return false;
   }
   const durationMs = resolveSubagentRunDurationMs(entry.runTimeoutSeconds);

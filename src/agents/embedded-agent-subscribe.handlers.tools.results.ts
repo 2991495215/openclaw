@@ -15,6 +15,7 @@ import type {
 import type { ExecApprovalDecision } from "../infra/exec-approvals.js";
 import { parseJsonMessageParam } from "../infra/outbound/message-action-params.js";
 import { hasReplyPayloadContent } from "../interactive/payload.js";
+import { TERMINATION_REASONS } from "../process/supervisor/types.js";
 import { createLazyImportLoader } from "../shared/lazy-promise.js";
 import { hasTopLevelShellControlOperator, splitShellArgs } from "../utils/shell-argv.js";
 import type { ApplyPatchSummary } from "./apply-patch.js";
@@ -64,14 +65,7 @@ export function isMiddlewareToolResultError(result: unknown): boolean {
   return readRecordField(asOptionalObjectRecord(result)?.details)?.middlewareError === true;
 }
 
-const PROCESS_TERMINATION_REASONS = new Set([
-  "manual-cancel",
-  "overall-timeout",
-  "no-output-timeout",
-  "spawn-error",
-  "signal",
-  "exit",
-]);
+const PROCESS_TERMINATION_REASONS = new Set<string>(TERMINATION_REASONS);
 
 function readSafeProcessSessionId(value: unknown): string | undefined {
   const sessionId = readStringValue(value)?.trim();

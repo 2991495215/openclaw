@@ -1,6 +1,7 @@
 // Preserve one failed update as bounded diagnostics across the updater's fresh CLI handoff.
 import fs from "node:fs/promises";
 import { z } from "zod";
+import { UPDATE_PLUGIN_RESULT_STATUSES } from "../../packages/gateway-protocol/src/update-run-vocabulary.js";
 import { sanitizeForLog } from "../../packages/terminal-core/src/ansi.js";
 import { readFileDescriptorBounded } from "../infra/boundary-file-read.js";
 import { UpdateDoctorLintFindingSchema } from "../infra/update-doctor-lint-schema.js";
@@ -69,7 +70,7 @@ const createUpdateFailureSchema = <T extends z.ZodRawShape>(stepFields: T) =>
             .object({
               plugins: z
                 .object({
-                  status: z.enum(["ok", "warning", "skipped", "error"]),
+                  status: z.enum(UPDATE_PLUGIN_RESULT_STATUSES),
                   reason: z.string().optional(),
                   sync: z.object({ errors: z.array(z.string()) }).optional(),
                   npm: z

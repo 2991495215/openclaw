@@ -24,6 +24,7 @@ import {
 import { resolveSkillTelemetrySourceValue } from "./source.js";
 import { resolveAllowedSkillSymlinkTargetRealPaths } from "./symlink-targets.js";
 import { resolveWorkspaceSkillDirectories } from "./workspace-skill-roots.js";
+import { WORKSPACE_SKILL_SOURCE_TIERS } from "./workspace-skill-sources.types.js";
 import type {
   WorkspaceSkillSourcePlan,
   WorkspaceSkillSources,
@@ -277,9 +278,7 @@ export function loadWorkspaceSkillSourceEntries(
         left.skill.name.localeCompare(right.skill.name, "en") ||
         left.skill.source.localeCompare(right.skill.source, "en"),
     );
-  return ["extra", "bundled", "workshop", "managed", "personal", "workspace"].flatMap(
-    (tier) => grouped.get(tier) ?? [],
-  );
+  return WORKSPACE_SKILL_SOURCE_TIERS.flatMap((tier) => grouped.get(tier) ?? []);
 }
 
 export function loadExecutionSkillEntries(

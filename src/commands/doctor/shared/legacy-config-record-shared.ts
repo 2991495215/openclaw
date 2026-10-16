@@ -5,6 +5,7 @@ type JsonRecord = Record<string, unknown>;
 
 export type { JsonRecord };
 export { isRecord };
+export const LEGACY_TTS_PROVIDER_KEYS = ["openai", "elevenlabs", "microsoft", "edge"] as const;
 
 export function someAgentEntry(
   value: unknown,

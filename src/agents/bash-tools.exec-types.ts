@@ -17,23 +17,15 @@ import type {
 import type { ExecAutoReviewer, ExecAutoReviewTranscript } from "../infra/exec-auto-review.js";
 import type { SafeBinProfileFixture } from "../infra/exec-safe-bin-policy.js";
 import type { PluginHookChannelContext } from "../plugins/hook-types.js";
+import type { ExecProcessFailureKind } from "../process/exec-process-failure.js";
 import type { TerminationReason } from "../process/supervisor/types.js";
 import type { SecretStoreExecEnvironment } from "../secrets/store/secret-store.js";
+import type { ToolApprovalReview } from "../shared/tool-approval-reviews.js";
 import type { OperationalRunInstanceRef } from "./admitted-run-context.js";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import type { EmbeddedFullAccessBlockedReason } from "./embedded-agent-runner/types.js";
 import type { ExecReviewerConfig } from "./exec-auto-reviewer.js";
 import type { PreparedGitHubToolEnvironment } from "./github-tool-identity.types.js";
-
-/** Failure categories used to explain exec process exits. */
-type ExecProcessFailureKind =
-  | "shell-command-not-found"
-  | "shell-not-executable"
-  | "overall-timeout"
-  | "no-output-timeout"
-  | "signal"
-  | "aborted"
-  | "runtime-error";
 
 export type ExecExitFailureKind = Exclude<ExecProcessFailureKind, "runtime-error">;
 
@@ -217,13 +209,7 @@ export type ExecElevatedDefaults = {
 };
 
 /** One model-backed approval review recorded on an exec tool call. */
-export type ExecToolApprovalReview = {
-  id: string;
-  label: string;
-  status: "in_progress" | "approved" | "denied" | "timed_out" | "aborted";
-  riskLevel?: string;
-  rationale?: string;
-};
+export type ExecToolApprovalReview = Omit<ToolApprovalReview, "userAuthorization">;
 
 /** Structured details returned by exec tool calls. */
 export type ExecToolDetails = {

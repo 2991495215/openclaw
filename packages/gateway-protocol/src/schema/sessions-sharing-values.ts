@@ -1,14 +1,11 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
+import { SESSION_VISIBILITY_VALUES } from "./sessions-sharing-constants.js";
+import { stringLiteralUnion } from "./string-literal-union.js";
 
 export { SESSION_VISIBILITY_VALUES } from "./sessions-sharing-constants.js";
 
-export const SessionVisibilitySchema = Type.Union([
-  Type.Literal("shared"),
-  Type.Literal("read-only"),
-  Type.Literal("suggest"),
-  Type.Literal("draft"),
-]);
+export const SessionVisibilitySchema = stringLiteralUnion(SESSION_VISIBILITY_VALUES);
 
 export const SessionSharingRoleSchema = Type.Union([
   Type.Literal("admin"),
