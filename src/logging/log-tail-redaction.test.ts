@@ -58,7 +58,6 @@ describe("readConfiguredLogTail redaction", () => {
   });
 });
 
-
 async function withPemLog(content: string, run: (file: string) => Promise<void>) {
   const dir = tempDirs.make("openclaw-log-tail-pem-");
   const file = path.join(dir, "configured.log");

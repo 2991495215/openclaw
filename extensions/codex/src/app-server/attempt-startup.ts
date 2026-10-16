@@ -477,7 +477,10 @@ export async function startCodexAttemptThread(params: {
               }) satisfies Parameters<typeof startOrResumeThread>[0];
             try {
               const startupThread = await startOrResumeThread({
-                ...buildThreadLifecycleParams(startupAbandonController.signal, reserveStartupThread),
+                ...buildThreadLifecycleParams(
+                  startupAbandonController.signal,
+                  reserveStartupThread,
+                ),
                 onPrewriteHandoffCancelled: () => {
                   startupAbandonedBeforeThreadWrite = true;
                 },
