@@ -22,6 +22,7 @@ import {
 } from "./update-candidate-state.diagnostics.js";
 import {
   UpdateCandidateSnapshotInventorySchema,
+  UpdateCandidateStateSnapshotSchema,
   collectStateDatabasePaths,
   readUpdateCandidateStateInventoryInProcess,
   snapshotUpdateCandidateState,
@@ -254,8 +255,16 @@ describe("snapshot inventory", () => {
       }),
     );
     expect((await fs.readFile(shared)).equals(sourceDatabase)).toBe(true);
-    if (change === "added file") {
+    if (change === "added file" || change === "locator symlink") {
       expect(snapshot.code, snapshot.stderr.toString("utf8")).toBe(0);
+      if (change === "locator symlink") {
+        const copied = UpdateCandidateStateSnapshotSchema.parse(
+          JSON.parse(snapshot.stdout.toString("utf8")),
+        );
+        const admitted = path.join(targetStateDir, initial.relative);
+        expect(copied.pluginPaths[locator]).toBe(admitted);
+        expect((await fs.stat(path.join(admitted, "payload.bin"))).size).toBe(4096);
+      }
     } else {
       expect(snapshot.code, "snapshot must refuse uninventoried bytes").not.toBe(0);
       expect(snapshot.stderr.toString("utf8")).toContain("changed after snapshot inventory");

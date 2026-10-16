@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import { sameFileIdentity } from "@openclaw/fs-safe/advanced";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { z } from "zod";
@@ -200,16 +199,6 @@ export const UpdateCandidatePluginPlanSchema = z.object({
   warnings: z.array(z.string()),
   stateDir: z.string(),
   installRecordsHash: z.string().nullable(),
-  configInstallRecordsHash: z.string(),
-  configLoadPaths: z.array(z.string()),
-  bindings: z.array(
-    z.object({
-      source: z.string(),
-      real: z.string().nullable(),
-      dev: z.string().nullable(),
-      ino: z.string().nullable(),
-    }),
-  ),
   pluginPaths: z.record(z.string(), z.string()),
   recordPaths: z.record(
     z.string(),
@@ -296,7 +285,6 @@ export async function prepareUpdateCandidatePlugins(
     .catch((error: unknown) => ignoreMissingUpdateCandidateFile(error) ?? sourceRoot);
   const project = (source: string) =>
     resolveUpdateCandidatePluginPath(canonicalStateRoot, targetStateDir, source);
-  const bindings: UpdateCandidatePluginPlan["bindings"] = [];
   const locators: Array<{
     source: string;
     real: string;
@@ -331,11 +319,9 @@ export async function prepareUpdateCandidatePlugins(
     if (!stat) {
       // Keep a missing locator private and missing; candidate validation owns the failure.
       pluginPaths[source] = project(source);
-      bindings.push({ source, real: null, dev: null, ino: null });
       continue;
     }
     const real = await fs.realpath(source);
-    bindings.push({ source, real, dev: stat.dev.toString(), ino: stat.ino.toString() });
     const bundled = bundledRedirects.get(real);
     if (bundled) {
       pluginPaths[source] = bundled;
@@ -412,11 +398,7 @@ export async function prepareUpdateCandidatePlugins(
           if (!locator) {
             continue;
           }
-          const projected = pluginPaths[resolve(locator)];
-          if (!projected) {
-            throw new Error("Plugin record locator was not inventoried");
-          }
-          locations[key] = projected;
+          locations[key] = pluginPaths[resolve(locator)];
         }
         return [id, locations];
       },
@@ -427,9 +409,6 @@ export async function prepareUpdateCandidatePlugins(
     warnings,
     stateDir: sourceRoot,
     installRecordsHash: copied ? installRecordsHash(copied.records) : null,
-    configInstallRecordsHash: installRecordsHash(params.config.plugins?.installs ?? {}),
-    configLoadPaths: [...(params.config.plugins?.load?.paths ?? [])],
-    bindings,
     pluginPaths,
     recordPaths,
     aliases,
@@ -437,7 +416,7 @@ export async function prepareUpdateCandidatePlugins(
   };
 }
 
-/** Rebind admitted paths only; newer records or locator owners require a fresh inventory. */
+/** Rebind the frozen projection; copied registry records must match its inventory. */
 export async function copyUpdateCandidatePlugins(
   plan: UpdateCandidatePluginPlan,
   params: UpdateCandidatePluginProjectionParams & {
@@ -454,32 +433,11 @@ export async function copyUpdateCandidatePlugins(
   if ((copied ? installRecordsHash(copied.records) : null) !== plan.installRecordsHash) {
     throw new Error("Plugin install records changed after snapshot inventory");
   }
-  if (
-    installRecordsHash(params.config.plugins?.installs ?? {}) !== plan.configInstallRecordsHash ||
-    !isDeepStrictEqual(params.config.plugins?.load?.paths ?? [], plan.configLoadPaths)
-  ) {
-    throw new Error("Configured plugin locators changed after snapshot inventory");
-  }
-  const assertBindings = async () => {
-    for (const binding of plan.bindings) {
-      const stat = await statPluginLocator(binding.source);
-      const real = stat ? await fs.realpath(binding.source) : null;
-      if (
-        real !== binding.real ||
-        (stat?.dev.toString() ?? null) !== binding.dev ||
-        (stat?.ino.toString() ?? null) !== binding.ino
-      ) {
-        throw new Error(`Plugin locator changed after snapshot inventory: ${binding.source}`);
-      }
-    }
-  };
   const rebase = (file: string) =>
     relocateRuntimePath(file, [
       { sourceRoot: plan.trees.privateRoot, destinationRoot: targetStateDir },
     ]);
-  await assertBindings();
   await copyUpdateCandidatePluginTrees(plan.trees, params);
-  await assertBindings();
   for (const entry of plan.aliases) {
     const alias = rebase(entry.alias);
     const target = rebase(entry.target);
