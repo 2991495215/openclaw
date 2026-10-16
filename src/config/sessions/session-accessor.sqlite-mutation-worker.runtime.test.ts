@@ -145,7 +145,7 @@ it("keeps idle collection after buffered admission replies and cancels it for th
       {
         type: "close",
         operationId: ++operationId,
-        coordination,
+        stateDatabasePath: coordination.databasePath,
       } satisfies SqliteReclamationWorkerCloseRequest,
       [],
     );

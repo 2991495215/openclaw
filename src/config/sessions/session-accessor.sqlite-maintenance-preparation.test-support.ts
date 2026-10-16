@@ -288,7 +288,7 @@ export function registerSessionMaintenancePreparationTests() {
         });
         let current = true;
         const published = vi.fn();
-        const sql = observeHostDataSql();
+        let sql = observeHostDataSql();
         const first = runSqliteSessionReclamation({
           plan,
           onWorkerResult: published,
@@ -316,7 +316,10 @@ export function registerSessionMaintenancePreparationTests() {
           continueFirst.resolve();
           expect(await firstOutcome).toEqual({ kind: "failed", error: cancelled });
           expect(published).not.toHaveBeenCalled();
+          expect(sql.queries).toEqual([]);
+          sql.restore();
           expect(loadSessionEntry(stale)?.archivedAt).toBeUndefined();
+          sql = observeHostDataSql();
           second = runSqliteSessionReclamation({ plan });
           await expect(second).resolves.toMatchObject({
             kind: "maintenance-plan",
@@ -334,7 +337,7 @@ export function registerSessionMaintenancePreparationTests() {
     },
   );
   it.runIf(process.platform !== "win32")(
-    "joins the prepared native owner on path replacement before rejecting its caller",
+    "rejects path replacement and joins the prepared native owner on ordinary close",
     async ({ signal }) => {
       await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
         const { stale, database, plan, archivedEntries } = maintenancePreparationFixture(state);
@@ -358,11 +361,11 @@ export function registerSessionMaintenancePreparationTests() {
               return;
             }
             const close = native.store.close.bind(native.store);
-            closeNative = close;
             vi.spyOn(native.store, "close").mockImplementation(async () => {
               await close();
               nativeClosed = true;
             });
+            closeNative = native.store.close.bind(native.store);
             prepared.resolve();
             await continuePreparation.promise;
           },
@@ -400,7 +403,8 @@ export function registerSessionMaintenancePreparationTests() {
           expect(originalError).toMatchObject({
             message: "SQLite database file identity changed before existing-only open",
           });
-          expect(result.nativeClosed).toBe(true);
+          await expectDefined(closeNative, "prepared native owner close")();
+          expect(nativeClosed).toBe(true);
           expect(await fs.readFile(database.path)).toEqual(successorBytes);
           expect(sql.queries).toEqual([]);
         } finally {

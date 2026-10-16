@@ -370,14 +370,22 @@ export function createOpenClawAgentDatabaseAdmissionOwner(
     operation: (database: OpenClawAgentDatabase) => T | Promise<T>,
     startup?: OpenClawAgentDatabaseStartupAdmission,
   ): Promise<T> {
+    const env = cloneEnvWithPlatformSemantics(inputOptions.env ?? process.env);
+    const agentId = normalizeAgentId(inputOptions.agentId);
+    const options = {
+      ...inputOptions,
+      agentId,
+      env,
+      path: resolveOpenClawAgentSqlitePath({ ...inputOptions, agentId, env }),
+    };
     // Native compatibility callers retain their lexical admission. Workers prepare
     // through their request lifetime before reserving the foreground writer once.
     const run = () =>
       startup
-        ? runAgentDatabaseAdmission(inputOptions, withAdmission, operation, startup)
+        ? runAgentDatabaseAdmission(options, withAdmission, operation, startup)
         : withAdmission((assertCurrent, validation, integrityRevoked) =>
             runAgentDatabaseAdmission(
-              inputOptions,
+              options,
               (admitted) => Promise.resolve(admitted(assertCurrent)),
               operation,
               { assertCurrent, validation, integrityRevoked },
@@ -388,17 +396,12 @@ export function createOpenClawAgentDatabaseAdmissionOwner(
   }
 
   async function runAgentDatabaseAdmission<T>(
-    inputOptions: OpenClawAgentDatabaseOptions,
+    options: OpenClawAgentDatabaseOptions & { path: string; env: NodeJS.ProcessEnv },
     withAdmission: OpenClawAgentDatabaseWriteAdmission,
     operation: (database: OpenClawAgentDatabase) => T | Promise<T>,
     startup: OpenClawAgentDatabaseStartupAdmission,
   ): Promise<T> {
-    const options = {
-      ...inputOptions,
-      env: cloneEnvWithPlatformSemantics(inputOptions.env ?? process.env),
-    };
-    const agentId = normalizeAgentId(options.agentId);
-    const pathname = resolveOpenClawAgentSqlitePath({ ...options, agentId });
+    const { agentId, path: pathname } = options;
     assertAgentDatabaseWriteAllowed(pathname);
     if (cache.terminal.peek(pathname)) {
       await revalidateAgentDatabaseTerminalOpenAsync(pathname);

@@ -458,6 +458,7 @@ it.each(["missing", "replacement"] as const)(
   async (kind) => {
     const { root, pathname, read, value, workerRead } = fixture();
     const previous = read(({ db }) => db);
+    const expectedIdentity = readDatabasePathIdentitySync(pathname).key;
     if (kind === "missing") {
       fs.rmSync(pathname);
       expect(await workerRead({ type: "agentDatabaseRegistry.read" })).toMatchObject({
@@ -472,6 +473,20 @@ it.each(["missing", "replacement"] as const)(
       replacement.close();
       fs.renameSync(pathname, path.join(root, "previous.sqlite"));
       fs.renameSync(replacementPath, pathname);
+      const refused = await worker.read({
+        context: { environment: { OPENCLAW_STATE_DIR: root } },
+        databasePath: pathname,
+        location: pathname,
+        checkFreshAdmission: false,
+        expectedIdentity,
+        command: { type: "nodeHost.config" },
+      });
+      expect(refused).toMatchObject({
+        ok: false,
+        sourceAdmitted: undefined,
+        message: "SQLite database file identity changed before existing-only open",
+      });
+      expect(refused).not.toHaveProperty("row");
       expect(value()).toBe(7);
       const snapshot = path.join(root, "snapshot.sqlite");
       fs.copyFileSync(pathname, snapshot);

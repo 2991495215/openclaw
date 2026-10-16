@@ -536,6 +536,7 @@ test("file warnings retain rejected native admission releases without attributin
     expect(records).toHaveLength(3);
     const workerRecords = records.filter((record) => record.workerThreadId === workers[0]?.id);
     expect(workerRecords).toHaveLength(2);
+    // Preparation and mutation each own one request-scoped writer grant.
     expect(
       workerRecords.map((record) => ({
         id: record.reclamationAdmissionId,
@@ -543,7 +544,7 @@ test("file warnings retain rejected native admission releases without attributin
       })),
     ).toEqual([
       { id: 1, cause: "worker-release" },
-      { id: 2, cause: "worker-release" },
+      { id: 1, cause: "worker-release" },
     ]);
     for (const record of workerRecords) {
       expect(record).toMatchObject({

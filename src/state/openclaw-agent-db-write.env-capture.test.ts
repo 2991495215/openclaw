@@ -97,7 +97,18 @@ vi.mock("../infra/sqlite-integrity-worker.js", () => ({
   assertSqliteIntegrityInWorker: boundary.integrity,
 }));
 vi.mock("../infra/sqlite-integrity.js", () => ({
-  runSqliteIntegrityCheckSync: vi.fn(),
+  runSqliteIntegrityOperationSync: vi.fn(
+    (operation: SqliteIntegrityOperation<OpenClawAgentDatabase>, beforeResume?: () => void) => {
+      beforeResume?.();
+      let step = operation.next();
+      while (!step.done) {
+        // The fixture's native check remains mocked; authority still gates every resume.
+        beforeResume?.();
+        step = operation.next();
+      }
+      return step.value;
+    },
+  ),
 }));
 vi.mock("../infra/sqlite-wal-write-admission.js", () => ({
   registerDeferredSqliteWalWriteAdmission: vi.fn(),

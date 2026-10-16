@@ -650,13 +650,17 @@ describe("session accessor readonly listing", () => {
       .run(invalidSessionKey);
     const migrationInvalidAgentId = "migration-invalid";
     const migrationInvalidSessionKey = "agent:migration-invalid:main";
-    await upsertSessionEntryCore(
-      { agentId: migrationInvalidAgentId, env, sessionKey: migrationInvalidSessionKey },
-      { sessionId: "migration-invalid-session", updatedAt: 1 },
-    );
-    const invalidDatabase = openOpenClawAgentDatabase({ agentId: migrationInvalidAgentId, env });
-    invalidDatabase.db.exec("PRAGMA user_version = 999;");
-    const invalidStorePath = invalidDatabase.path;
+    const invalidStorePath = resolveOpenClawAgentSqlitePath({
+      agentId: migrationInvalidAgentId,
+      env,
+    });
+    fs.mkdirSync(path.dirname(invalidStorePath), { recursive: true });
+    const invalidDatabase = openNodeSqliteDatabase(invalidStorePath);
+    try {
+      invalidDatabase.exec("PRAGMA user_version = 999;");
+    } finally {
+      invalidDatabase.close();
+    }
     const missingAgentId = "missing";
     const missingStorePath = resolveOpenClawAgentSqlitePath({ agentId: missingAgentId, env });
     const unreadableAgentId = "unreadable";

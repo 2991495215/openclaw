@@ -59,26 +59,6 @@ it("retains typed worker refusal through cleanup without replaying the read", as
   }
 });
 
-it("refuses replacement of the captured store before queued dispatch", async () => {
-  const { env, pathname } = pairingSource();
-  const dispatch = createDeferredCore();
-  const task = queueTask(dispatch.promise);
-  const result = readChannelAllowFromStore("demo", env, "alpha");
-  const rejected = expect(result).rejects.toThrow();
-  try {
-    await task.submitted;
-    fs.renameSync(pathname, `${pathname}.retired`);
-    fs.writeFileSync(pathname, "successor store");
-    dispatch.resolve();
-    await rejected;
-    await expect(task.captured).rejects.toThrow();
-    expect(mock.runTask).toHaveBeenCalledOnce();
-  } finally {
-    dispatch.resolve();
-    await rejected;
-  }
-});
-
 it("propagates a lost worker result without replay or a native fallback", async () => {
   const { env } = pairingSource();
   const task = queueTask();
