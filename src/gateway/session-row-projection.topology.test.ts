@@ -24,10 +24,10 @@ import {
   openOpenClawAgentDatabase,
   resolveOpenClawAgentSqlitePath,
 } from "../state/openclaw-agent-db.js";
-import { applyOpenClawDatabaseVerificationResults } from "../state/openclaw-database-verify.impl.js";
 import * as stateReads from "../state/openclaw-state-db-readonly.js";
 import {
   closeOpenClawStateDatabaseByPathAsync,
+  confirmOpenClawStateDatabaseIntegrity,
   openOpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
@@ -507,25 +507,9 @@ it.for(["dispose", "source", "integrity confirmation"] as const)(
         if (change === "dispose") {
           projection.dispose();
         } else if (change === "integrity confirmation") {
-          await applyOpenClawDatabaseVerificationResults({
-            env: state.env,
-            targets: [
-              {
-                kind: "state",
-                label: "OpenClaw state database",
-                path: verifiedDatabase!.path,
-                check: "quick",
-              },
-            ],
-            results: [
-              {
-                path: verifiedDatabase!.path,
-                ok: false,
-                error: "stale terminal result",
-                terminal: true,
-              },
-            ],
-          });
+          await expect(
+            confirmOpenClawStateDatabaseIntegrity(verifiedDatabase!.path),
+          ).resolves.toMatchObject({ status: "healthy" });
           expect(verifiedDatabase!.db.isOpen).toBe(false);
         } else {
           const database = openOpenClawStateDatabase({ env: state.env });

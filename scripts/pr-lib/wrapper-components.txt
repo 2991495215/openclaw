@@ -1846,7 +1846,6 @@ src/state/openclaw-database-preflight.messages.ts
 src/state/openclaw-database-preflight.ts
 src/state/openclaw-database-seal-schema.ts
 src/state/openclaw-database-verify.impl.ts
-src/state/openclaw-database-verify.ts
 src/state/openclaw-quarantine-error.ts
 src/state/openclaw-quarantine-store.ts
 src/state/openclaw-state-db-additive-columns.ts

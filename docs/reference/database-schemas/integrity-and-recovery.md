@@ -93,7 +93,8 @@ scan. Missing, malformed, stale, or nonmatching seals take the normal full
 validation path. Killing a writer, changing the file externally, changing its
 schema identity, or restoring a different physical file prevents seal reuse.
 The seven-day limit is checked on admission; it does not introduce a daily
-runtime scan or a new timer.
+runtime scan or a new timer. Already admitted physical databases do not queue
+another post-ready integrity scan; Doctor and explicit verification remain available.
 
 Before the first write after admission, the owner unlinks the seal. Explicit
 maintenance also invalidates it before checkpointing or rewriting a database.
@@ -449,9 +450,9 @@ fresh state. The released quarantine schema retains its old integrity-receipt
 table, but runtime no longer reads or writes those rows; clean-close proof lives
 only in the adjacent seal files.
 
-Background verification errors retain the original name and message and append bounded Node `code` and SQLite `errcode` values from up to eight cause-chain nodes. These diagnostics do not change the verdict: I/O failures remain inconclusive, while proven corruption is reconfirmed by the database owner before quarantine. A generic `disk I/O error` (`errcode=10`) does not establish disk exhaustion.
+Native integrity-worker errors retain the original name and message and append bounded Node `code` and SQLite `errcode` values from up to eight cause-chain nodes. These diagnostics do not change the verdict: I/O failures remain inconclusive, while integrity confirmation distinguishes proven corruption from transient failures. A generic `disk I/O error` (`errcode=10`) does not establish disk exhaustion.
 
-The background verifier retains its child through native exit and IPC disconnect,
+The integrity worker retains its child through native exit and IPC disconnect,
 including when sending work fails. Failed native launches settle after closure
 without requiring an exit event. If the operating system refuses a termination
 request, the verifier logs the failure and keeps waiting for native exit; an
@@ -923,7 +924,7 @@ the underlying database error.
 
 ### A database is quarantined after integrity verification failed
 
-The background verifier proved the file is corrupt, and every open now fails fast instead of rescanning. Restore the database from a backup or repair it, then run `openclaw doctor --fix` to clear the quarantine record. Doctor reports an explicit error if the quarantine record itself cannot be cleared; rerun it until it reports clean.
+A recorded corruption refusal makes opens fail fast instead of rescanning. Restore the database from a backup or repair it, then run `openclaw doctor --fix` to clear the quarantine record. Doctor reports an explicit error if the quarantine record itself cannot be cleared; rerun it until it reports clean.
 
 If an agent database cannot be repaired by `doctor --fix`, stop the Gateway, back up
 the database and its SQLite sidecars, and run
