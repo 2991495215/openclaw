@@ -426,6 +426,7 @@ export async function maybeRestartService(params: {
     return verification.ok ? ("ok" as const) : undefined;
   };
 
+  const expectedIdentity = activation.expectedGatewayIdentity ?? activation.result.after;
   if (!activation.shouldRestart) {
     if (!activation.opts.json) {
       defaultRuntime.log(theme.muted("Gateway: updater restart skipped (--no-restart)."));
@@ -435,7 +436,8 @@ export async function maybeRestartService(params: {
         await verifyUpdatedGateway({
           ...activation,
           purpose: "package-replacement",
-          expectedVersion: normalizeOptionalString(activation.result.after?.version),
+          expectedVersion: normalizeOptionalString(expectedIdentity?.version),
+          expectedBuildId: normalizeOptionalString(expectedIdentity?.buildId),
           waitForStartup: false,
         });
       } catch (error) {
@@ -464,7 +466,6 @@ export async function maybeRestartService(params: {
   }
 
   try {
-    const expectedIdentity = activation.expectedGatewayIdentity ?? activation.result.after;
     let expectedGatewayVersion = normalizeOptionalString(expectedIdentity?.version);
     const expectedGatewayBuildId = normalizeOptionalString(expectedIdentity?.buildId);
     const canVerifyUpdatedGatewayByVersion =
@@ -667,12 +668,8 @@ export async function maybeRestartService(params: {
       // The installed CLI owns restart retries; observe its final health result
       // without another native mutation.
       const healthy = await verifyRestartedGateway(
-        normalizeOptionalString(
-          (activation.expectedGatewayIdentity ?? activation.result.after)?.version,
-        ),
-        normalizeOptionalString(
-          (activation.expectedGatewayIdentity ?? activation.result.after)?.buildId,
-        ),
+        normalizeOptionalString(expectedIdentity?.version),
+        normalizeOptionalString(expectedIdentity?.buildId),
         { requireRunningService: true, recoverHealth: false },
       );
       return healthy ?? (await failed("restart-health-failed"));
