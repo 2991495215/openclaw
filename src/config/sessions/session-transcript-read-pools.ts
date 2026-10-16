@@ -13,6 +13,11 @@ import type {
 } from "./session-transcript-worker.types.js";
 
 const workerUrl = resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.sessionTranscript);
+// V8's default young generation lets each idle reader keep ~60 MiB of nursery.
+export const SESSION_TRANSCRIPT_WORKER_LIMITS = {
+  maxOldGenerationSizeMb: 512,
+  maxYoungGenerationSizeMb: 32,
+};
 
 export function createSessionTranscriptReadPool<Input extends SessionTranscriptWorkerInput>(
   maxWorkers: number,
@@ -25,7 +30,7 @@ export function createSessionTranscriptReadPool<Input extends SessionTranscriptW
       ensureSqliteLibrarySelected();
       return { options: {} };
     },
-    workerOptions: { resourceLimits: { maxOldGenerationSizeMb: 512 } },
+    workerOptions: { resourceLimits: SESSION_TRANSCRIPT_WORKER_LIMITS },
     maxWorkers,
     sharedCompute,
   });
@@ -40,7 +45,7 @@ export function createSessionTranscriptHistoryPool(
     SessionTranscriptWorkerReply<SessionHistoryWorkerInput["kind"]>
   >({
     workerUrl,
-    workerOptions: { resourceLimits: { maxOldGenerationSizeMb: 512 } },
+    workerOptions: { resourceLimits: SESSION_TRANSCRIPT_WORKER_LIMITS },
     maxWorkers,
     idleTimeoutMs: 0,
     prepareWorker: () => {

@@ -43,7 +43,10 @@ import type {
   SessionStoreTargetReadResult,
   SessionStoreTargetInventoryResult,
 } from "./session-store-target-inventory.js";
-import { createSessionTranscriptHistoryPool } from "./session-transcript-read-pools.js";
+import {
+  createSessionTranscriptHistoryPool,
+  SESSION_TRANSCRIPT_WORKER_LIMITS,
+} from "./session-transcript-read-pools.js";
 import type { SessionHistoryWorkerInput } from "./session-transcript-worker.types.js";
 import { captureSessionTranscriptStorageEnvironment } from "./transcript-target-binding.js";
 
@@ -52,7 +55,7 @@ const workerUrl = resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.sessionTrans
 function createUsageCostPool(kind: "read" | "refresh") {
   return new WorkerTaskPool<UsageCostWorkerInput, UsageCostWorkerReply>({
     workerUrl,
-    workerOptions: { resourceLimits: { maxOldGenerationSizeMb: 512 } },
+    workerOptions: { resourceLimits: SESSION_TRANSCRIPT_WORKER_LIMITS },
     // A retired task releases lane-wide database custody, which requires one native worker.
     workerClass: kind === "refresh" ? "writer" : "singleton",
     // Host writes can wait for a writer-held shared-compute reader; neither usage lane may hold its permit.
