@@ -1,6 +1,6 @@
 import { throwSqliteLifecycleErrors } from "../../infra/sqlite-lifecycle-errors.js";
 import type { DatabasePathIdentity } from "../../infra/sqlite-worker-identity.js";
-import { RetainedAsyncWork } from "../../shared/retained-async-work.js";
+import { AsyncWorkScope } from "../../shared/async-work-scope.js";
 import { registerOpenClawStateDatabaseAsyncResource } from "../../state/openclaw-state-db-cache.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
@@ -12,17 +12,51 @@ const lifetimes = new Map<string, ReturnType<typeof createLifetime>>();
 
 function createLifetime({ admission }: OpenClawStateWorkerContext) {
   const key = admission.identity.canonicalPath;
-  const work = new RetainedAsyncWork();
+  let work = new AsyncWorkScope();
+  const scopes = new Set([work]);
+  let gateways = 0;
+  let closing = false;
+  const drain = (scope: AsyncWorkScope) =>
+    AsyncWorkScope.runWhenAllIdle(
+      () => [scope],
+      async () => {
+        await scope.drain();
+        scopes.delete(scope);
+      },
+    );
   const owner = {
     retainGateway() {
-      return work.retain();
+      if (closing) {
+        work = new AsyncWorkScope();
+        scopes.add(work);
+        closing = false;
+      }
+      gateways += 1;
+      let released = false;
+      let pending: Promise<void> | undefined;
+      const beginClose = () => {
+        if (!released) {
+          released = true;
+          if (--gateways === 0) {
+            closing = true;
+            pending = drain(work);
+          }
+        }
+      };
+      return {
+        beginClose,
+        drain: () => {
+          beginClose();
+          return pending ?? Promise.resolve();
+        },
+      };
     },
     run<T>(run: () => Promise<T>): Promise<T> {
-      if (work.isClosing) {
+      if (closing) {
         return Promise.reject(new Error("Sandbox registry admission is closed"));
       }
       // Accepted removal owns its persistence signal across scheduler cancellation.
-      return work.scope.track(run);
+      return work.track(run);
     },
   };
   const unregister = registerOpenClawStateDatabaseAsyncResource({
@@ -32,10 +66,13 @@ function createLifetime({ admission }: OpenClawStateWorkerContext) {
         identity.key === admission.identity.key ||
         identity.canonicalPath === admission.identity.canonicalPath
       ) {
-        await work.close();
-        if (work.hasOwners) {
+        closing = true;
+        await Promise.all([...scopes].map(drain));
+        if (gateways > 0) {
           // Read admission may retire while the Gateway still owns the close prelude.
-          work.reopen();
+          work = new AsyncWorkScope();
+          scopes.add(work);
+          closing = false;
         } else {
           lifetimes.delete(key);
           unregister();

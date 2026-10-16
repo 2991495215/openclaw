@@ -379,11 +379,15 @@ vi.mock("../../infra/gateway-owner-lease.js", async (original) => ({
 vi.mock("../../../packages/gateway-protocol/src/index.js", async () => {
   const { ErrorCodes, errorShape } =
     await import("../../../packages/gateway-protocol/src/schema/error-codes.js");
-  const { validateUpdateRunResult: validateResult } =
+  const { validateUpdateRunResult: validateResult, validateUpdateReportParams } =
     await import("../../../packages/gateway-protocol/src/validator-registry.js");
+  const { formatValidationErrors } =
+    await import("../../../packages/gateway-protocol/src/validation-errors.js");
   return {
     ErrorCodes,
     errorShape,
+    formatValidationErrors,
+    validateUpdateReportParams,
     validateUpdateRunResult: validateResult,
     validateUpdateRunsGetParams: () => true,
     validateUpdateRunsListParams: () => true,
@@ -421,7 +425,8 @@ vi.mock("../../infra/update-managed-service-handoff.js", async () => ({
   cancelManagedServiceUpdateHandoff: cancelManagedServiceUpdateHandoffMock,
 }));
 
-vi.mock("./validation.js", () => ({
+vi.mock("./validation.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./validation.js")>()),
   assertValidParams: () => true,
 }));
 

@@ -4,8 +4,7 @@ import {
   hasSqliteWorkerOutcomeUnknown,
   SqliteWorkerError,
 } from "../../infra/sqlite-worker-contract.js";
-import { trackAsyncWork } from "../../shared/async-work-scope.js";
-import { RetainedAsyncWork } from "../../shared/retained-async-work.js";
+import { AsyncWorkScope, trackAsyncWork } from "../../shared/async-work-scope.js";
 import { registerOpenClawStateDatabaseAsyncResource } from "../../state/openclaw-state-db-cache.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
@@ -40,17 +39,13 @@ type MutationAuthority = { validating: boolean };
 const mutationAuthority = new AsyncLocalStorage<MutationAuthority>();
 
 function createLifetime({ admission }: OpenClawStateWorkerContext) {
+  let work = new AsyncWorkScope();
+  const scopes = new Set([work]);
+  let gateways = 0;
+  let closing = false;
   let retired = false;
   let uncertain = false;
   const cleanupFailures = new Map<object, unknown>();
-  const work = new RetainedAsyncWork(() => {
-    if (cleanupFailures.size > 0) {
-      throw new AggregateError(
-        [...cleanupFailures.values()],
-        "Managed worktree cleanup remains unsettled",
-      );
-    }
-  });
   const revisions = new Map<string, Map<WorktreeRegistryField, RegistryRevision>>();
   const selectRevisions = (changes: readonly WorktreeRegistryChange[]) => {
     const selected = new Set<RegistryRevision>();
@@ -71,11 +66,25 @@ function createLifetime({ admission }: OpenClawStateWorkerContext) {
     }
     return [...selected];
   };
+  const drain = (scope: AsyncWorkScope) =>
+    AsyncWorkScope.runWhenAllIdle(
+      () => [scope],
+      async () => {
+        await scope.drain();
+        if (cleanupFailures.size > 0) {
+          throw new AggregateError(
+            [...cleanupFailures.values()],
+            "Managed worktree cleanup remains unsettled",
+          );
+        }
+        scopes.delete(scope);
+      },
+    );
   const owner = {
     assertRegistryAdmission(settlement = false) {
       const operation = current.getStore();
       if (
-        work.isClosing &&
+        closing &&
         !settlement &&
         (!operation?.active ||
           operation.context.admission.coordinationKey !== admission.coordinationKey)
@@ -173,14 +182,38 @@ function createLifetime({ admission }: OpenClawStateWorkerContext) {
       };
     },
     retainGateway() {
-      return work.retain();
+      if (closing) {
+        work = new AsyncWorkScope();
+        scopes.add(work);
+        closing = false;
+      }
+      gateways += 1;
+      let released = false;
+      let pending: Promise<void> | undefined;
+      const beginClose = () => {
+        if (!released) {
+          released = true;
+          if (--gateways === 0) {
+            closing = true;
+            pending = drain(work);
+            void pending.catch(() => {});
+          }
+        }
+      };
+      return {
+        beginClose,
+        drain: () => {
+          beginClose();
+          return pending ?? Promise.resolve();
+        },
+      };
     },
     run<T>(run: () => Promise<T>, acceptedParent = false): Promise<T> {
-      if (work.isClosing && !acceptedParent) {
+      if (closing && !acceptedParent) {
         return Promise.reject(new Error("Managed worktree run-end admission is closed"));
       }
       // Accepted persistence owns this scope, independently of scheduler cancellation.
-      return work.scope.track(run);
+      return work.track(run);
     },
   };
   const unregister = registerOpenClawStateDatabaseAsyncResource({
@@ -190,7 +223,8 @@ function createLifetime({ admission }: OpenClawStateWorkerContext) {
         identity.key === admission.identity.key ||
         identity.canonicalPath === admission.identity.canonicalPath
       ) {
-        await work.close();
+        closing = true;
+        await Promise.all([...scopes].map(drain));
         retired = true;
         lifetimes.delete(admission.coordinationKey);
         unregister();
