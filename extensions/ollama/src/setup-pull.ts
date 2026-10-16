@@ -1,4 +1,4 @@
-import { formatErrorMessage, toErrorObject } from "openclaw/plugin-sdk/error-runtime";
+import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime";
 import type { WizardPrompter } from "openclaw/plugin-sdk/setup";
 import { fetchWithSsrFGuard } from "openclaw/plugin-sdk/ssrf-runtime";
@@ -33,10 +33,7 @@ async function readOllamaPullChunkWithIdleTimeout(
   reader: ReadableStreamDefaultReader<Uint8Array>,
 ): Promise<ReadableStreamReadResult<Uint8Array>> {
   return await raceWithTimeout(
-    () =>
-      reader.read().catch((error: unknown) => {
-        throw toErrorObject(error, "Non-Error rejection");
-      }),
+    () => reader.read(),
     OLLAMA_PULL_STREAM_IDLE_TIMEOUT_MS,
     () => {
       void reader.cancel().catch(() => undefined);
@@ -97,30 +94,35 @@ async function pullOllamaModelCore(params: {
         if (!line.trim()) {
           return undefined;
         }
+        let chunk: OllamaPullChunk | null;
         try {
-          const chunk = JSON.parse(line) as OllamaPullChunk;
-          if (chunk.error) {
-            return { ok: false, message: `Download failed: ${chunk.error}` };
-          }
-          if (!chunk.status || chunk.status === "success") {
-            return chunk.status ? { ok: true } : undefined;
-          }
-          if (chunk.total && chunk.completed !== undefined) {
-            layers.set(chunk.status, { total: chunk.total, completed: chunk.completed });
-            const totals = { total: 0, completed: 0 };
-            for (const layer of layers.values()) {
-              totals.total += layer.total;
-              totals.completed += layer.completed;
-            }
-            params.onStatus?.(
-              chunk.status,
-              totals.total > 0 ? Math.round((totals.completed / totals.total) * 100) : null,
-            );
-          } else {
-            params.onStatus?.(chunk.status, null);
-          }
+          chunk = JSON.parse(line) as OllamaPullChunk | null;
         } catch {
           // Ignore malformed streaming lines from Ollama.
+          return undefined;
+        }
+        if (chunk?.error) {
+          return { ok: false, message: `Download failed: ${chunk.error}` };
+        }
+        if (!chunk || typeof chunk.status !== "string" || !chunk.status) {
+          return undefined;
+        }
+        if (chunk.status === "success") {
+          return { ok: true };
+        }
+        if (chunk.total && chunk.completed !== undefined) {
+          layers.set(chunk.status, { total: chunk.total, completed: chunk.completed });
+          const totals = { total: 0, completed: 0 };
+          for (const layer of layers.values()) {
+            totals.total += layer.total;
+            totals.completed += layer.completed;
+          }
+          params.onStatus?.(
+            chunk.status,
+            totals.total > 0 ? Math.round((totals.completed / totals.total) * 100) : null,
+          );
+        } else {
+          params.onStatus?.(chunk.status, null);
         }
         return undefined;
       };
