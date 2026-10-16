@@ -154,7 +154,6 @@ export const modelsHandlers: GatewayRequestHandlers = {
                   })
                 : undefined;
             const publish = () => {
-              assertCurrent();
               const currentConfig = context.getRuntimeConfig();
               const projected =
                 scope && params.view !== "provider-config"

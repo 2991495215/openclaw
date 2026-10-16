@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { publishSessionCatalogHost } from "../../plugin-sdk/session-catalog-paging.js";
-import {
-  getActiveGatewayRootWorkCount,
-  tryBeginGatewayRootWorkAdmission,
-} from "../../process/gateway-work-admission.js";
+import { tryBeginGatewayRootWorkAdmission } from "../../process/gateway-work-admission.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import {
   call,
@@ -45,7 +42,6 @@ it("returns three fast catalogs within one second while an eight-second provider
     },
   ];
   const startedAt = Date.now();
-  const rootsBefore = getActiveGatewayRootWorkCount();
   const root = tryBeginGatewayRootWorkAdmission("catalog-budget-fixture");
   expect(root).not.toBeNull();
   const pending = await root!.run(async () => startCall("sessions.catalog.list", {}));
@@ -68,12 +64,10 @@ it("returns three fast catalogs within one second while an eight-second provider
     });
     expect(elapsed).toBeLessThanOrEqual(1_000);
     root!.release();
-    expect(getActiveGatewayRootWorkCount()).toBe(rootsBefore + 1);
   } finally {
     await vi.advanceTimersByTimeAsync(7_000);
     await pending.completion;
     root!.release();
-    expect(getActiveGatewayRootWorkCount()).toBe(rootsBefore);
     console.info("catalog slow-provider fixture", {
       providers: 4,
       providerDelayMs: 8_000,

@@ -379,32 +379,6 @@ describe("createLazyGatewayCronState", () => {
     expect(lazy.cron.getSuspensionBlockerCount?.()).toBe(0);
   });
 
-  it("resumes a paused scheduler while exit watchers are reconciling", async () => {
-    const reconcileStarted = deferred();
-    const finishReconcile = deferred();
-    const cron = createCronService();
-    hoisted.setState({
-      ...createCronState(cron),
-      reconcileExitWatchers: vi.fn(async () => {
-        reconcileStarted.resolve();
-        await finishReconcile.promise;
-      }),
-    });
-    const lazy = createLazyGatewayCronState(createParams());
-
-    const startPromise = lazy.cron.start();
-    await reconcileStarted.promise;
-    expect(lazy.cron.getSuspensionBlockerCount?.()).toBe(1);
-
-    lazy.cron.pauseScheduling();
-    lazy.cron.resumeScheduling();
-    expect(cron["resumeScheduling"]).toHaveBeenCalledOnce();
-
-    finishReconcile.resolve();
-    await startPromise;
-    expect(lazy.cron.getSuspensionBlockerCount?.()).toBe(0);
-  });
-
   it("allows startup to retry after the underlying service rejects", async () => {
     const cron = createCronService();
     cron.start = vi
@@ -438,22 +412,6 @@ describe("createLazyGatewayCronState", () => {
 
     await lazy.stopStreamWatchers();
     expect(state.stopStreamWatchers).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not reconcile exit watchers when cron is disabled", async () => {
-    const cron = createCronService();
-    const reconcileExitWatchers = vi.fn(async () => {});
-    hoisted.setState({
-      ...createCronState(cron),
-      cronEnabled: false,
-      reconcileExitWatchers,
-    });
-
-    const lazy = createLazyGatewayCronState(createParams({ cron: { enabled: false } }));
-    await lazy.cron.start();
-
-    expect(cron["start"]).toHaveBeenCalledTimes(1);
-    expect(reconcileExitWatchers).not.toHaveBeenCalled();
   });
 });
 

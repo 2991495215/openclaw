@@ -69,16 +69,14 @@ describe("createLifecycleEventBroadcastHandler", () => {
       name: "missing capture followed by a successor",
       captured: false,
       projection: true,
-      delivered: false,
     },
-    { name: "current capture", captured: true, projection: true, delivered: true },
-    { name: "no-projection fallback", captured: false, projection: false, delivered: true },
+    { name: "current capture", captured: true, projection: true },
+    { name: "no-projection fallback", captured: false, projection: false },
   ])("keeps lifecycle publication identity for $name", async (scenario) => {
     const prepared = createDeferred();
     const query = { key: "agent:main:late-successor", agentId: "main" };
     const original = { ...query, entry: { sessionId: "original", lifecycleRevision: "first" } };
     let current = scenario.captured ? original : undefined;
-    let generation = 0;
     const snapshot = vi.fn(() => ({
       row: current ? { ...current.entry, key: query.key, kind: "direct" } : null,
     }));
@@ -93,10 +91,6 @@ describe("createLifecycleEventBroadcastHandler", () => {
         return consume(projection);
       }) satisfies SessionRowProjection["withPreparedExactRows"],
       isCurrent: (record: typeof original) => record === current,
-      observeGeneration: (() => {
-        const observed = generation;
-        return { isCurrent: () => generation === observed, dispose() {} };
-      }) satisfies SessionRowProjection["observeGeneration"],
       snapshot,
       describe: () => {
         const row = snapshot().row;
@@ -111,22 +105,49 @@ describe("createLifecycleEventBroadcastHandler", () => {
       chatAbortControllers: new Map(),
       getSessionRowProjection: () => (scenario.projection ? projection : undefined),
     });
-    const pending = handler({ sessionKey: query.key, agentId: query.agentId, reason: "updated" });
+    const pending = handler({
+      sessionKey: query.key,
+      agentId: query.agentId,
+      reason: "swarm-note",
+      label: "Original label",
+      displayName: "Original display name",
+      parentSessionKey: "agent:main:original-parent",
+      swarmGroupId: "original-swarm",
+      kind: "log",
+      text: "Original activity",
+    });
     if (scenario.projection) {
       expect(broadcastToConnIds).not.toHaveBeenCalled();
     }
     if (!scenario.captured) {
-      generation += 1;
       current = { ...query, entry: { sessionId: "successor", lifecycleRevision: "next" } };
     }
     prepared.resolve();
     await pending;
-    if (!scenario.delivered) {
-      expect(broadcastToConnIds).not.toHaveBeenCalled();
+    expect(broadcastToConnIds).toHaveBeenCalledOnce();
+    const payload = broadcastToConnIds.mock.calls[0]?.[1];
+    expect(payload).toMatchObject({ sessionKey: query.key });
+    if (scenario.projection && !scenario.captured) {
+      expect(payload).toMatchObject({
+        session: { sessionId: "successor", lifecycleRevision: "next" },
+        label: null,
+        displayName: null,
+      });
+      for (const field of ["reason", "phase", "text"]) {
+        expect(payload).not.toHaveProperty(field);
+      }
+      expect(payload).not.toHaveProperty("swarmGroupId", "original-swarm");
+      expect(payload).not.toHaveProperty("parentSessionKey", "agent:main:original-parent");
     } else {
-      expect(broadcastToConnIds).toHaveBeenCalledOnce();
-      const payload = broadcastToConnIds.mock.calls[0]?.[1];
-      expect(payload).toMatchObject({ sessionKey: query.key, reason: "updated" });
+      expect(payload).toMatchObject({
+        reason: "swarm-note",
+        label: "Original label",
+        displayName: "Original display name",
+        parentSessionKey: "agent:main:original-parent",
+        swarmGroupId: "original-swarm",
+        kind: "log",
+        text: "Original activity",
+      });
       if (scenario.projection) {
         expect(payload).toMatchObject({
           session: { sessionId: "original", lifecycleRevision: "first" },

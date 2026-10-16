@@ -1229,7 +1229,11 @@ export function buildGatewayCronService(params: {
     if (lifecycleChanged()) {
       return;
     }
-    await reconcileStreamWatchers();
+    // Persisted on-exit jobs have no change event to arm their children.
+    await Promise.all([
+      cronEnabled ? reconcileExitWatchers() : undefined,
+      reconcileStreamWatchers(),
+    ]);
     if (lifecycleChanged()) {
       return;
     }

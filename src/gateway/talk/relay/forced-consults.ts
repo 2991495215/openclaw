@@ -65,6 +65,9 @@ function completeForcedTerminalProviderResult(
     }
   };
   const completion = completeAfterToolResultSubmissions(session, [submission], () => {
+    if (session.forcedTerminalProviderResults.get(callId) !== terminal) {
+      return;
+    }
     clearTerminal();
     onAccepted();
   });
@@ -84,7 +87,6 @@ export function submitRelayAgentControlProviderResults(
     return undefined;
   }
   const providerResult = result.providerResult;
-  const epoch = session.toolResultEpoch;
   const callIds = [...session.activeAgentToolCalls.keys()];
   const activeCallIds = callIds.filter((callId) => !session.pendingFinalToolResults.has(callId));
   const submissions: Array<void | Promise<void>> = callIds
@@ -93,7 +95,7 @@ export function submitRelayAgentControlProviderResults(
   const toolResultOptions = suppressedToolResultOptions(session);
   let providerResponseStarted = toolResultOptions === undefined && submissions.length > 0;
   const finalizeAgentCall = (callId: string, forcedConsult?: RealtimeVoiceForcedConsultHandle) => {
-    if (session.toolResultEpoch !== epoch) {
+    if (session.toolCalls.isAgentCompleted(callId) || session.toolCalls.hasCancelled(callId)) {
       return;
     }
     if (forcedConsult) {
@@ -118,15 +120,9 @@ export function submitRelayAgentControlProviderResults(
       const terminal: ForcedTerminalProviderResult = {
         result: providerResult,
         options: toolResultOptions,
-        turnId,
-        epoch,
       };
       session.forcedTerminalProviderResults.set(callId, terminal);
-      const drained = drainForcedTerminalProviderResultsAfterPending(
-        session,
-        forcedConsult,
-        terminal,
-      );
+      const drained = submitForcedTerminalProviderResults(session, forcedConsult, terminal);
       const tracked = completeForcedTerminalProviderResult(session, callId, terminal, drained, () =>
         finalizeAgentCall(callId, forcedConsult),
       );
@@ -201,72 +197,30 @@ export function scheduleForcedAgentConsult(session: RelaySession, question: stri
   });
 }
 
-function drainForcedTerminalProviderResults(
+function submitForcedTerminalProviderResults(
   session: RelaySession,
   handle: RealtimeVoiceForcedConsultHandle,
   terminal: ForcedTerminalProviderResult,
 ): void | Promise<void> {
-  const isCurrent = () =>
-    relaySessions.get(session.id) === session &&
-    session.toolResultEpoch === terminal.epoch &&
-    session.forcedTerminalProviderResults.get(handle.id) === terminal;
-  if (!isCurrent()) {
-    return;
-  }
-  const callIds = () =>
-    terminal.nativeCallIds ?? session.harness.forcedConsults.nativeCallIds(handle);
-  const submitPending = () =>
-    callIds()
-      .filter((callId) => !session.toolCalls.isProviderCompleted(callId))
-      .map((callId) =>
-        submitFinalProviderToolResult({
-          session,
-          callId,
-          result: terminal.result,
-          options: terminal.options,
-        }),
-      )
-      .filter((submission): submission is Promise<void> => submission !== undefined);
-  if (terminal.nativeCallIds) {
-    const submissions = submitPending();
-    if (submissions.length === 0) {
-      return;
-    }
-    return Promise.allSettled(submissions).then(async () => {
-      if (isCurrent()) {
-        await Promise.allSettled(submitPending());
+  // Each later native call submits its own terminal from onToolCall; this owner
+  // joins the calls already present instead of rescanning future provider waves.
+  const submissions = session.harness.forcedConsults.nativeCallIds(handle).map((providerCallId) => {
+    const callId = session.relayToolCallIdsByProviderId.get(providerCallId) ?? providerCallId;
+    const submit = () => {
+      if (session.forcedTerminalProviderResults.get(handle.id) !== terminal) {
+        return;
       }
-    });
-  }
-  const drainDynamic = (): void | Promise<void> => {
-    if (!isCurrent()) {
-      return;
-    }
-    const submissions = submitPending();
-    if (submissions.length === 0) {
-      return;
-    }
-    return Promise.all(submissions).then(drainDynamic);
-  };
-  return drainDynamic();
-}
-
-function drainForcedTerminalProviderResultsAfterPending(
-  session: RelaySession,
-  handle: RealtimeVoiceForcedConsultHandle,
-  terminal: ForcedTerminalProviderResult,
-): void | Promise<void> {
-  const pending = (terminal.nativeCallIds ?? session.harness.forcedConsults.nativeCallIds(handle))
-    .map((callId) => session.pendingProviderToolResults.get(callId))
-    .filter((submission): submission is Promise<void> => submission !== undefined);
-  if (pending.length === 0) {
-    return drainForcedTerminalProviderResults(session, handle, terminal);
-  }
-  return Promise.allSettled(pending).then(() => {
-    if (relaySessions.get(session.id) === session && session.toolResultEpoch === terminal.epoch) {
-      return drainForcedTerminalProviderResults(session, handle, terminal);
-    }
+      return submitFinalProviderToolResult({
+        session,
+        callId,
+        result: terminal.result,
+        options: terminal.options,
+      });
+    };
+    const pending = session.pendingProviderToolResults.get(callId);
+    return pending ? pending.then(submit, submit) : submit();
   });
+  return completeAfterToolResultSubmissions(session, submissions, () => {});
 }
 
 export function submitRealtimeAgentConsultWorkingResponse(
@@ -277,14 +231,13 @@ export function submitRealtimeAgentConsultWorkingResponse(
   if (!session.bridge.bridge.supportsToolResultContinuation) {
     return;
   }
-  const epoch = session.toolResultEpoch;
   const submission = session.bridge.submitToolResult(
     resolveRelayProviderToolCallId(session, callId),
     buildRealtimeVoiceAgentConsultWorkingResponse("person"),
     { willContinue: true },
   );
   const completion = completeAfterToolResultSubmissions(session, [submission], () => {
-    if (session.toolResultEpoch !== epoch) {
+    if (session.toolCalls.isAgentCompleted(callId) || session.toolCalls.hasCancelled(callId)) {
       return;
     }
     broadcastToOwner(session, {
@@ -322,25 +275,13 @@ export function submitForcedTalkRealtimeRelayToolResult(
       "OpenClaw cancelled this consult before completion. Do not restart it.",
     );
     const existing = session.forcedTerminalProviderResults.get(forcedConsult.id);
-    const terminal: ForcedTerminalProviderResult =
-      existing?.epoch === session.toolResultEpoch
-        ? existing
-        : {
-            result: providerResult,
-            options: suppressedToolResultOptions(session),
-            turnId,
-            epoch: session.toolResultEpoch,
-          };
+    const terminal: ForcedTerminalProviderResult = existing ?? {
+      result: providerResult,
+      options: suppressedToolResultOptions(session),
+    };
     session.forcedTerminalProviderResults.set(forcedConsult.id, terminal);
-    const drained = drainForcedTerminalProviderResultsAfterPending(
-      session,
-      forcedConsult,
-      terminal,
-    );
+    const drained = submitForcedTerminalProviderResults(session, forcedConsult, terminal);
     return completeForcedTerminalProviderResult(session, callId, terminal, drained, () => {
-      if (session.toolResultEpoch !== terminal.epoch) {
-        return;
-      }
       session.harness.forcedConsults.markCancelled(forcedConsult);
       clearRelayAgentToolCall(session, callId);
       session.toolCalls.deleteCancelled(callId);
@@ -379,15 +320,10 @@ export function submitForcedTalkRealtimeRelayToolResult(
   const terminal: ForcedTerminalProviderResult = {
     result: providerResult,
     options: providerOptions,
-    turnId,
-    epoch: session.toolResultEpoch,
   };
   session.forcedTerminalProviderResults.set(forcedConsult.id, terminal);
-  const submission = drainForcedTerminalProviderResults(session, forcedConsult, terminal);
+  const submission = submitForcedTerminalProviderResults(session, forcedConsult, terminal);
   return completeForcedTerminalProviderResult(session, callId, terminal, submission, () => {
-    if (session.toolResultEpoch !== terminal.epoch) {
-      return;
-    }
     session.harness.forcedConsults.markDelivered(forcedConsult);
     clearRelayAgentToolCall(session, callId);
     if (!session.toolCalls.markAgentCompleted([callId])) {

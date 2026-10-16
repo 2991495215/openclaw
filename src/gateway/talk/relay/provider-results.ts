@@ -87,15 +87,16 @@ export function submitFinalProviderToolResult(params: {
   options?: RealtimeVoiceToolResultOptions;
   onAccepted?: () => void;
 }): void | Promise<void> {
-  const epoch = params.session.toolResultEpoch;
+  const cancelled = params.session.toolCalls.hasCancelled(params.callId);
+  const isCurrent = () =>
+    relaySessions.get(params.session.id) === params.session &&
+    !params.session.toolCalls.isAgentCompleted(params.callId);
+  if (!isCurrent()) {
+    return;
+  }
   const providerCallId = resolveRelayProviderToolCallId(params.session, params.callId);
   if (params.session.toolCalls.isProviderCompleted(providerCallId)) {
-    if (
-      relaySessions.get(params.session.id) === params.session &&
-      params.session.toolResultEpoch === epoch
-    ) {
-      params.onAccepted?.();
-    }
+    params.onAccepted?.();
     return;
   }
   const pending = params.session.pendingProviderToolResults.get(params.callId);
@@ -106,17 +107,13 @@ export function submitFinalProviderToolResult(params: {
     params.session.bridge.submitToolResult(providerCallId, params.result, params.options);
   const working = params.session.pendingWorkingToolResults.get(params.callId);
   const submitAfterWorking = async () => {
-    if (relaySessions.get(params.session.id) !== params.session) {
+    if (!isCurrent()) {
       return false;
     }
-    if (params.session.toolResultEpoch !== epoch) {
-      if (!params.session.toolCalls.hasCancelled(params.callId)) {
-        return false;
-      }
+    if (params.session.toolCalls.hasCancelled(params.callId) !== cancelled) {
       // The browser already considers this final submitted while it waits behind
       // the provider's working-result acknowledgement. Finish the cancelled call
       // here so the provider is not left waiting for a terminal result.
-      const cancellationEpoch = params.session.toolResultEpoch;
       await params.session.bridge.submitToolResult(
         providerCallId,
         buildRealtimeVoiceAgentCancelProviderResult(
@@ -124,10 +121,7 @@ export function submitFinalProviderToolResult(params: {
         ),
         suppressedToolResultOptions(params.session),
       );
-      if (
-        relaySessions.get(params.session.id) !== params.session ||
-        params.session.toolResultEpoch !== cancellationEpoch
-      ) {
+      if (!isCurrent()) {
         return false;
       }
       if (
@@ -136,7 +130,6 @@ export function submitFinalProviderToolResult(params: {
       ) {
         return false;
       }
-      params.session.toolCalls.deleteCancelled(params.callId);
       return false;
     }
     await submit();
@@ -144,15 +137,13 @@ export function submitFinalProviderToolResult(params: {
   };
   const submission = working ? working.then(submitAfterWorking, submitAfterWorking) : submit();
   const accept = () => {
-    if (params.session.toolResultEpoch !== epoch) {
+    if (!isCurrent() || params.session.toolCalls.hasCancelled(params.callId) !== cancelled) {
       return;
     }
     if (!params.session.toolCalls.markProviderCompleted([providerCallId])) {
       return;
     }
-    if (relaySessions.get(params.session.id) === params.session) {
-      params.onAccepted?.();
-    }
+    params.onAccepted?.();
   };
   if (!submission) {
     accept();

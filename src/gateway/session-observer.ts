@@ -118,7 +118,6 @@ export function createSessionObserver(deps: SessionObserverDeps): SessionObserve
   });
   const work = createSessionObserverWork({
     deps,
-    readSession,
     companionReader,
     handleEventSteps,
     canPublish: (state, session) =>

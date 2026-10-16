@@ -84,9 +84,6 @@ type TalkRealtimeRelayEvent = TalkRealtimeRelayEventData & { talkEvent?: TalkEve
 export type ForcedTerminalProviderResult = {
   result: unknown;
   options?: RealtimeVoiceToolResultOptions;
-  turnId: string;
-  epoch: number;
-  nativeCallIds?: readonly string[];
 };
 
 export type RelayAgentControlProviderSubmission = {
@@ -97,7 +94,6 @@ export type RelayAgentControlProviderSubmission = {
 export class TalkRealtimeRelayOutputOwnership {
   mode: "turn-bound" | "exact-response" = "turn-bound";
   phase: "unowned" | "owned" | "cancelling" | "discarding" = "unowned";
-  outputGeneration = 0;
   turnId?: string;
   responseId?: string;
   drain?: { promise: Promise<void>; resolve: () => void };
@@ -111,10 +107,6 @@ export class TalkRealtimeRelayOutputOwnership {
 
   get discarding(): boolean {
     return this.phase === "discarding";
-  }
-
-  isDiscarding(generation: number): boolean {
-    return this.discarding && this.outputGeneration === generation;
   }
 
   get suppressingOutput(): boolean {
@@ -182,18 +174,7 @@ export class TalkRealtimeRelayOutputOwnership {
     return cancelled ? "cancelled" : "completed";
   }
 
-  /** Resume input without releasing the unconfirmed provider response's output ownership. */
-  completeCancellationLocally(): number | undefined {
-    if (this.phase !== "cancelling") {
-      return undefined;
-    }
-    this.phase = "discarding";
-    this.drain?.resolve();
-    return ++this.outputGeneration;
-  }
-
   resetContinuity(): void {
-    this.outputGeneration += 1;
     this.cancelledTerminal = undefined;
     this.drain?.resolve();
     Object.assign(this, { phase: "unowned" as const, turnId: undefined, responseId: undefined });
@@ -291,11 +272,8 @@ export type RelaySession = {
   // A final result must wait until the provider accepts its continuation result;
   // otherwise async bridges can observe final-before-working ordering.
   pendingWorkingToolResults: Map<string, Promise<void>>;
-  // Keep a forced terminal result open while late matching native ids join it.
-  // Delivery/cancellation closes the state only after every current id accepts.
+  // Late native calls consume this result directly while the root submission is pending.
   forcedTerminalProviderResults: Map<string, ForcedTerminalProviderResult>;
-  // Turn cancellation invalidates async acceptance callbacks from the prior turn.
-  toolResultEpoch: number;
   voiceConfig?: OpenClawConfig;
   voiceSessionSource?: ClientVoiceSessionSource;
   voiceSessionCreated: boolean;
@@ -492,7 +470,6 @@ export function resetTalkRealtimeRelayContinuity(
   session: RelaySession,
   reason = "session.continuity.reset",
 ): TalkEvent | undefined {
-  session.toolResultEpoch += 1;
   const retiredCallIds = new Set<string>([
     ...session.activeAgentToolCalls.keys(),
     ...session.toolCalls.cancelledCallIds(),

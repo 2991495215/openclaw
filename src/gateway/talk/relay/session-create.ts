@@ -508,13 +508,19 @@ export function createTalkRealtimeRelaySession(
               : buildAlreadyDeliveredToolResult();
             return submitFinalProviderToolResult({
               session: relay,
-              callId: providerCallId,
+              callId: relayCallId,
               result,
               options: suppressedToolResultOptions(relay),
             });
           }
-          if (relay.forcedTerminalProviderResults.has(forcedConsult.handle.id)) {
-            return relay.pendingFinalToolResults.get(forcedConsult.handle.id);
+          const terminal = relay.forcedTerminalProviderResults.get(forcedConsult.handle.id);
+          if (terminal) {
+            return submitFinalProviderToolResult({
+              session: relay,
+              callId: relayCallId,
+              result: terminal.result,
+              options: terminal.options,
+            });
           }
           return submitRealtimeAgentConsultWorkingResponse(relay, relayCallId);
         }
@@ -648,7 +654,6 @@ export function createTalkRealtimeRelaySession(
     pendingProviderToolResults: new Map(),
     pendingWorkingToolResults: new Map(),
     forcedTerminalProviderResults: new Map(),
-    toolResultEpoch: 0,
     ...(params.cfg ? { voiceConfig: params.cfg } : {}),
     voiceSessionCreated: false,
     voiceTranscriptSeq: 0,

@@ -176,23 +176,6 @@ export function createLazyGatewayCronState(
           resolved.state.cron.pauseScheduling();
           resolved.schedulingPaused = true;
         }
-        // Arm process watchers for jobs loaded from the store at startup (no
-        // change event fires for already-persisted jobs).
-        try {
-          if (resolved.state.cronEnabled) {
-            await Promise.all([
-              resolved.state.reconcileExitWatchers(),
-              resolved.state.reconcileStreamWatchers(),
-            ]);
-          }
-        } catch (err) {
-          resolved.phase = startCancelled() ? "stopped" : "started";
-          throw err;
-        }
-        if (startCancelled()) {
-          await stopResolvedCron(resolved);
-          return;
-        }
         resolved.phase = "started";
       })();
       resolved.startPromise = startPromise;

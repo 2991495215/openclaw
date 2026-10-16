@@ -167,6 +167,98 @@ test("scope search reaches beyond 200 sessions and four agents with bounded matc
   });
 });
 
+test.each(["matched", "excluded"] as const)(
+  "scope search joins harmless %s session updates without repeating its transcript read",
+  async (updatedSession) => {
+    await withSearchState(async () => {
+      const owner = ensureProfileForEmail("busy-search@example.test").id;
+      const context = requestContext({ agents: { entries: { main: {} } } });
+      setRuntimeConfigSnapshot(context.getRuntimeConfig());
+      const key = await seed("main", "target", owner, "needle");
+      const excludedKey = await seed("main", "subagent:busy", owner, "Background activity");
+      const updatedKey = updatedSession === "matched" ? key : excludedKey;
+      const read = transcriptSearch.searchSessionTranscripts;
+      let updates = 0;
+      const spy = vi
+        .spyOn(transcriptSearch, "searchSessionTranscripts")
+        .mockImplementation(async (...args) => {
+          const result = await read(...args);
+          await upsertSessionEntryCore(
+            { agentId: "main", sessionKey: updatedKey },
+            { displayName: "Updated title", totalTokens: ++updates },
+          );
+          return result;
+        });
+      const result = await search(context, identifiedClient(owner), {
+        query: "needle",
+        scope: paletteScope,
+      });
+      expect(result.ok, result.error?.message).toBe(true);
+      expect(result.payload).toMatchObject({
+        results: [{ sessionKey: key, snippet: "needle" }],
+        sessions: [{ key, displayName: updatedSession === "matched" ? "Updated title" : "target" }],
+      });
+      expect(result.payload?.results).toHaveLength(1);
+      expect(spy).toHaveBeenCalledOnce();
+    });
+  },
+);
+
+test.each(["membership", "lifecycle", "refresh"] as const)(
+  "scope search rejects a changed %s without repeating its transcript read",
+  async (change) => {
+    await withSearchState(async () => {
+      const owner = ensureProfileForEmail("changing-search@example.test").id;
+      const context = requestContext({ agents: { entries: { main: {} } } });
+      setRuntimeConfigSnapshot(context.getRuntimeConfig());
+      const key = await seed("main", "target", owner, "needle");
+      await initializeSessionReadContext(context);
+      const projection = expectDefined(getSessionRowProjection(context), "search projection");
+      const ensureMaterialized = projection.ensureMaterialized;
+      const refresh = vi.spyOn(projection, "ensureMaterialized");
+      const read = transcriptSearch.searchSessionTranscripts;
+      const spy = vi
+        .spyOn(transcriptSearch, "searchSessionTranscripts")
+        .mockImplementationOnce(async (...args) => {
+          const result = await read(...args);
+          if (change === "membership") {
+            await seed("main", "added", owner, "needle");
+          } else if (change === "refresh") {
+            await upsertSessionEntryCore({ agentId: "main", sessionKey: key }, { totalTokens: 1 });
+            // Work arriving as the one joined refresh settles must not trigger another search.
+            refresh.mockImplementationOnce(async () => {
+              await ensureMaterialized();
+              await upsertSessionEntryCore(
+                { agentId: "main", sessionKey: key },
+                { totalTokens: 2 },
+              );
+              expect(projection.needsMaterialization).toBe(true);
+            });
+          } else {
+            await replaceSessionEntry(
+              { agentId: "main", sessionKey: key },
+              { sessionId: "replacement", updatedAt: Date.now(), visibility: "shared" },
+            );
+          }
+          return result;
+        });
+      const result = await search(context, identifiedClient(owner), {
+        query: "needle",
+        scope: paletteScope,
+      });
+      expect(result).toMatchObject({
+        ok: false,
+        error: {
+          code: "UNAVAILABLE",
+          message: "Session search scope changed while reading; retry the request",
+        },
+      });
+      expect(result.payload).toBeUndefined();
+      expect(spy).toHaveBeenCalledOnce();
+    });
+  },
+);
+
 test("scope authorizes and applies membership before the hit limit, and empty scope never widens", async () => {
   await withSearchState(async () => {
     const owner = ensureProfileForEmail("search-viewer@example.test").id;
@@ -456,8 +548,15 @@ test("search discards hits and page metadata when sharing is revoked during its 
           query: "needle",
           ...(scoped ? { scope: {} } : { sessionKeys: [key] }),
         });
-        expect(response.ok).toBe(true);
-        expect(response.payload).toEqual({ results: [], ...(scoped ? { sessions: [] } : {}) });
+        expect(response).toMatchObject({
+          ok: false,
+          error: {
+            code: "UNAVAILABLE",
+            message: "Session search scope changed while reading; retry the request",
+          },
+        });
+        expect(response.payload).toBeUndefined();
+        expect(spy).toHaveBeenCalledOnce();
       } finally {
         spy.mockRestore();
       }
@@ -508,9 +607,14 @@ test("search prepares the full scope and rechecks visibility while materializing
         return prepare(queries, consume, options);
       },
     );
-    expect(await search(context, client, params)).toMatchObject({
-      ok: true,
-      payload: { results: [], sessions: [] },
+    const revoked = await search(context, client, params);
+    expect(revoked).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNAVAILABLE",
+        message: "Session search scope changed while reading; retry the request",
+      },
     });
+    expect(revoked.payload).toBeUndefined();
   });
 });

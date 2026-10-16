@@ -416,9 +416,10 @@ it("does not write a dormant predecessor digest into a replacement store", async
 
 it("joins the worker-backed persistence of a legacy event adapter", async () => {
   await withObserver(async ({ observer, peer }) => {
-    observer.handleEvent(
+    const returned = observer.handleEvent(
       event({ stream: "item", data: { kind: "preamble", progressText: "Legacy admission" } }),
     );
+    expect(returned).toBeUndefined();
     const disposal = observer.disposeAsync();
     const afterClose = event({
       stream: "item",
@@ -469,7 +470,7 @@ it("lets the publisher finish its nested write before persisting the background 
     let disposal: Promise<void> | undefined;
     try {
       await runOpenClawAgentWriteAdmission(options, async () => {
-        harness.observer.handleEvent(
+        await harness.observer.handleEventAsync(
           event({ stream: "item", data: { kind: "preamble", progressText: "Reviewing" } }),
         );
         expect(persistDigest).toHaveBeenCalledOnce();

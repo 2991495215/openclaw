@@ -211,7 +211,7 @@ describe("sessions.search gateway method", () => {
     });
   });
 
-  it("hides a retired session whose visibility changes while its transcript is searched", async () => {
+  it("rejects a retired search page when visibility changes during its transcript read", async () => {
     await withOpenClawTestState(profileState, async () => {
       const { viewer, other } = await useRestrictedSearchMetadata("view");
       using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
@@ -239,7 +239,15 @@ describe("sessions.search gateway method", () => {
         viewer.id,
       );
 
-      expect(respond).toHaveBeenCalledWith(true, { results: [] });
+      expect(respond).toHaveBeenCalledExactlyOnceWith(
+        false,
+        undefined,
+        expect.objectContaining({
+          code: "UNAVAILABLE",
+          message: "Session search scope changed while reading; retry the request",
+        }),
+      );
+      expect(searchSessionTranscriptsMock).toHaveBeenCalledOnce();
     });
   });
 

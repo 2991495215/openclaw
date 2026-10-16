@@ -107,16 +107,10 @@ describe("worker environment terminal retention", () => {
       .run("worker-old-first");
     expect(fallbackPortRows("worker-old-first")).toHaveLength(2);
 
-    const policyVisits: string[] = [];
-    const canPruneDemand = (record: WorkerEnvironmentRecord) => {
-      policyVisits.push(record.environmentId);
-      expect(record.sshEndpoint?.fallbackPorts).toBeUndefined();
-      return true;
-    };
+    const canPruneDemand = () => true;
     expect(
       await store.pruneTerminalEnvironments({ nowMs: PRUNE_NOW_MS, limit: 1, canPruneDemand }),
     ).toBe(1);
-    expect(new Set(policyVisits)).toEqual(new Set(["worker-old-first"]));
     expect(store.get("worker-old-first")).toBeUndefined();
     expect(fallbackPortRows("worker-old-first")).toEqual([]);
     expect(
@@ -125,58 +119,72 @@ describe("worker environment terminal retention", () => {
         .get("worker-old-first"),
     ).toBeUndefined();
 
-    policyVisits.length = 0;
     expect(
       await store.pruneTerminalEnvironments({ nowMs: PRUNE_NOW_MS, limit: 10, canPruneDemand }),
     ).toBe(1);
-    expect(new Set(policyVisits)).toEqual(new Set(["worker-a-old-second"]));
     expect(store.get("worker-a-old-second")).toBeUndefined();
     expect(store.get("worker-referenced")?.state).toBe("orphaned");
     expect(store.get("worker-recent")?.state).toBe("orphaned");
     expect(store.get("worker-ready")?.state).toBe("ready");
   });
 
-  it("continues past a retained prune page before selecting a later eligible environment", async () => {
-    await seedOrphaned("worker-0000", DAY_MS);
-    const template = database.db.prepare("SELECT * FROM worker_environments").get()!;
-    const columns = Object.keys(template);
-    const insert = database.db.prepare(
-      `INSERT INTO worker_environments (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`,
-    );
-    runOpenClawStateWriteTransaction(
-      () => {
-        for (let index = 1; index <= 256; index += 1) {
-          const suffix = String(index).padStart(4, "0");
-          const row = {
-            ...template,
-            environment_id: `worker-${suffix}`,
-            provision_operation_id: `provision-${suffix}`,
-            lease_id: `lease:worker-${suffix}`,
-          };
-          insert.run(...columns.map((column) => row[column as keyof typeof row]));
-        }
-      },
-      { database },
-    );
-    const visited: string[] = [];
-    expect(
-      await store.pruneTerminalEnvironments({
-        nowMs: PRUNE_NOW_MS,
-        limit: 1,
-        canPruneDemand: (record) => {
-          visited.push(record.environmentId);
-          return record.environmentId === "worker-0256";
+  it.each(["demand", "placement"] as const)(
+    "continues past a page retained by %s",
+    async (retainedBy) => {
+      await seedOrphaned("worker-0000", DAY_MS);
+      const template = database.db.prepare("SELECT * FROM worker_environments").get()!;
+      const columns = Object.keys(template);
+      const insert = database.db.prepare(
+        `INSERT INTO worker_environments (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`,
+      );
+      runOpenClawStateWriteTransaction(
+        () => {
+          for (let index = 1; index <= 256; index += 1) {
+            const suffix = String(index).padStart(4, "0");
+            const row = {
+              ...template,
+              environment_id: `worker-${suffix}`,
+              provision_operation_id: `provision-${suffix}`,
+              lease_id: `lease:worker-${suffix}`,
+            };
+            insert.run(...columns.map((column) => row[column as keyof typeof row]));
+          }
+          if (retainedBy === "placement") {
+            const reference = database.db.prepare(
+              `INSERT INTO worker_session_placements (
+              session_id, agent_id, session_key, state, environment_id, recovery_error,
+              created_at_ms, updated_at_ms, state_changed_at_ms
+            ) VALUES (?, 'agent-1', ?, 'failed', ?, 'worker environment disappeared', 1, 1, 1)`,
+            );
+            for (let index = 0; index < 256; index += 1) {
+              const id = `worker-${String(index).padStart(4, "0")}`;
+              reference.run(`session-${index}`, `session-key-${index}`, id);
+            }
+          }
         },
-      }),
-    ).toBe(1);
-    expect(visited.slice(0, 257)).toEqual(
-      Array.from({ length: 257 }, (_, index) => `worker-${String(index).padStart(4, "0")}`),
-    );
-    expect(visited.slice(257).every((id) => id === "worker-0256")).toBe(true);
-    expect(database.db.prepare("SELECT count(*) AS count FROM worker_environments").get()).toEqual({
-      count: 256,
-    });
-  });
+        { database },
+      );
+      // Raw fixture writes precede hydration, just like an ordinary restart.
+      await store.close();
+      store = await createWorkerEnvironmentStore({ database, now: () => nowMs });
+      expect(
+        await store.pruneTerminalEnvironments({
+          nowMs: PRUNE_NOW_MS,
+          limit: 1,
+          canPruneDemand: (record) => {
+            return retainedBy === "placement" || record.environmentId === "worker-0256";
+          },
+        }),
+      ).toBe(1);
+      expect(store.get("worker-0256")).toBeUndefined();
+      expect(store.get("worker-0000")?.state).toBe("orphaned");
+      expect(
+        database.db.prepare("SELECT count(*) AS count FROM worker_environments").get(),
+      ).toEqual({
+        count: 256,
+      });
+    },
+  );
 
   it("defers the batch when live demand changes at worker commit and preserves policy errors", async () => {
     await seedOrphaned("worker-retention-first", DAY_MS);

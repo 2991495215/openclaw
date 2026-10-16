@@ -22,7 +22,6 @@ export type SessionObserverEventSteps = Generator<
 /** The observer's accepted work settles independently of scheduler cancellation. */
 export function createSessionObserverWork(params: {
   deps: SessionObserverDeps;
-  readSession: NonNullable<SessionObserverDeps["readSession"]>;
   companionReader: ReturnType<typeof createSessionObserverCompanionSnapshotReader>;
   handleEventSteps: (
     event: SessionObserverEvent,
@@ -37,7 +36,6 @@ export function createSessionObserverWork(params: {
   let disposed = false;
   let closing = false;
   let disposal: Promise<void> | undefined;
-  let nativeEvent = false;
   const acceptedWork = new AsyncWorkScope();
   let eventTail = Promise.resolve();
   const pending = new Set<{ scopeKey: string; current: boolean }>();
@@ -86,29 +84,7 @@ export function createSessionObserverWork(params: {
     if (disposal) {
       return;
     }
-    if (!params.deps.readSession) {
-      void runInDetachedAsyncContext(() => handleEventAsync(event, settledError)).catch(
-        reportError,
-      );
-      return;
-    }
-    const reader =
-      event.sessionKey && event.agentId
-        ? captureSessionObserverRead(params.deps, event.sessionKey, event.agentId)
-        : undefined;
-    const steps = params.handleEventSteps(event, settledError, reader);
-    nativeEvent = true;
-    try {
-      let next = steps.next();
-      while (!next.done) {
-        if ("work" in next.value) {
-          throw new Error("Synchronous observer event unexpectedly yielded");
-        }
-        next = steps.next(params.readSession(next.value.sessionKey, next.value.agentId));
-      }
-    } finally {
-      nativeEvent = false;
-    }
+    void runInDetachedAsyncContext(() => handleEventAsync(event, settledError)).catch(reportError);
   }
 
   async function handleEventAsync(
@@ -145,7 +121,6 @@ export function createSessionObserverWork(params: {
             }
             next = await source.withRead((session) => {
               assertCurrent();
-              source.assertCurrent();
               return steps.next(session);
             });
           }
@@ -206,12 +181,9 @@ export function createSessionObserverWork(params: {
       agentId: string,
       consume: (session: SessionEntry | undefined) => T,
     ) {
-      return reader
-        ? reader.withRead((session) => {
-            reader.assertCurrent();
-            return consume(session);
-          })
-        : captureSessionObserverRead(params.deps, sessionKey, agentId).withRead(consume);
+      return (reader ?? captureSessionObserverRead(params.deps, sessionKey, agentId)).withRead(
+        consume,
+      );
     },
     refreshAfterReset(
       sessionKey: string,
@@ -234,7 +206,6 @@ export function createSessionObserverWork(params: {
         try {
           await reader.withRead((session) => {
             assertCurrent();
-            reader.assertCurrent();
             consume(session);
           });
         } finally {
@@ -248,17 +219,12 @@ export function createSessionObserverWork(params: {
       this: void,
       state: SessionObserverState,
       publish: () => void,
-    ): Promise<void> | undefined {
+    ): Promise<void> {
       const consume = (session: SessionEntry | undefined) => {
         if (params.canPublish(state, session)) {
           publish();
         }
       };
-      if (nativeEvent) {
-        state.reader?.assertCurrent();
-        consume(params.readSession(state.sessionKey, state.agentId));
-        return undefined;
-      }
       const reader =
         state.reader ?? captureSessionObserverRead(params.deps, state.sessionKey, state.agentId);
       return acceptedWork.track(() => reader.withRead(consume)).catch(reportError);
@@ -278,7 +244,6 @@ export function createSessionObserverWork(params: {
         async (assertCurrent) =>
           reader.withRead((session) => {
             assertCurrent();
-            reader.assertCurrent();
             return params.companionReader.read(target, session);
           }),
       );

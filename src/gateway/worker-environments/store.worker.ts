@@ -2,7 +2,6 @@ import {
   deferSqliteWorkerCommitReceipt,
   requestSqliteWorkerOperationAdmission,
 } from "../../infra/sqlite-worker-operation-admission.js";
-import { requireOpenClawStateDatabaseIdentity } from "../../state/openclaw-state-db-cache.js";
 import {
   runOpenClawStateWriteTransaction,
   type OpenClawStateDatabase,
@@ -22,12 +21,11 @@ import type {
   WorkerEnvironmentMutationInput,
   WorkerEnvironmentMutationMethods,
 } from "./store.types.js";
-import { pruneObservedTerminalWorkerEnvironments } from "./terminal-environment-retention.js";
+import { pruneTerminalWorkerEnvironments } from "./terminal-environment-retention.js";
 
 type Method = keyof WorkerEnvironmentMutationMethods | "initialize";
 type Input<Name extends Method> = {
   nowMs?: number;
-  publicationIncarnation: string;
 } & (Name extends keyof WorkerEnvironmentMutationMethods
   ? { input: WorkerEnvironmentMutationInput<Name> }
   : unknown);
@@ -65,13 +63,7 @@ function mutation<Name extends Method, Result>(
         const receipt = {
           result,
           changed,
-          publication: createWorkerEnvironmentReceipt(
-            {
-              identity: requireOpenClawStateDatabaseIdentity({ db }).key,
-              incarnation: input.publicationIncarnation,
-            },
-            facts,
-          ),
+          publication: createWorkerEnvironmentReceipt(facts),
         };
         deferSqliteWorkerCommitReceipt(db, receipt);
         requestSqliteWorkerOperationAdmission({
@@ -199,11 +191,10 @@ export const workerEnvironmentOperations = {
   ),
   "workerEnvironments.pruneTerminalEnvironments": mutation(
     "pruneTerminalEnvironments",
-    ({ input: { approved } }, { db, touch }) => {
-      for (const row of approved) {
-        touch(row.environment_id);
-      }
-      return pruneObservedTerminalWorkerEnvironments(db, approved);
+    ({ input }, { db, touch }) => {
+      const deleted = pruneTerminalWorkerEnvironments(db, input);
+      deleted.forEach(touch);
+      return deleted.length;
     },
   ),
 } satisfies WorkerOperationHandlers;

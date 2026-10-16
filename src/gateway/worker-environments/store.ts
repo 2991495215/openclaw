@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { publishSqliteCommittedState } from "../../infra/sqlite-post-commit.js";
 import {
@@ -21,6 +22,7 @@ import {
   selectPreparedEnvironmentReservations,
 } from "./prepared-environment-store.js";
 import type { WorkerEnvironmentSessionIdentity } from "./session-attachment.js";
+import { isTerminalWorkerEnvironmentState } from "./state.js";
 import { WorkerEnvironmentInventoryClosedError } from "./store-errors.js";
 import { workerEnvironmentProjections } from "./store-projection.js";
 import { readWorkerEnvironmentReceipt } from "./store-receipt.js";
@@ -30,8 +32,6 @@ import type { WorkerEnvironmentPruneInput } from "./store-write-types.js";
 import type {
   WorkerEnvironmentCommitAdmission,
   WorkerEnvironmentMutationMethods,
-  WorkerEnvironmentPruneCursor,
-  WorkerEnvironmentPrunePage,
 } from "./store.types.js";
 
 export type {
@@ -113,7 +113,7 @@ export async function createWorkerEnvironmentStore(
   }
   function mutate<Key extends keyof Operations>(
     type: Key,
-    input: Omit<Operations[Key]["input"], "publicationIncarnation">,
+    input: Operations[Key]["input"],
     assertCurrent: () => void = () => {},
     revocationId?: string,
   ): Promise<Operations[Key]["output"]["result"]> {
@@ -124,7 +124,6 @@ export async function createWorkerEnvironmentStore(
     const captured = structuredClone({
       ...input,
       nowMs: options.now?.(),
-      publicationIncarnation: owner.incarnation,
     });
     const operation = owner.enqueue(async () => {
       const token = {};
@@ -153,11 +152,7 @@ export async function createWorkerEnvironmentStore(
           throw new Error("Worker environment mutation has no commit admission");
         }
         context.admission.assertCurrent();
-        const facts = readWorkerEnvironmentReceipt(
-          receipt.publication,
-          { identity: context.admission.identity.key, incarnation: owner.incarnation },
-          committedIds,
-        );
+        const facts = readWorkerEnvironmentReceipt(receipt.publication, committedIds);
         const revision = commitSequence;
         publishSqliteCommittedState({
           installFacts() {
@@ -451,61 +446,70 @@ export async function createWorkerEnvironmentStore(
       return mutate("workerEnvironments.touchSessionAttachment", { input }, assertCurrent);
     },
     async pruneTerminalEnvironments(input: WorkerEnvironmentPruneInput = {}) {
-      assertActive();
+      await ready();
       const nowMs = input.nowMs ?? now();
+      const limit = input.limit ?? 256;
+      if (!Number.isSafeInteger(nowMs) || nowMs < 0) {
+        throw new Error("Worker environment prune timestamp must be a non-negative safe integer");
+      }
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+        throw new Error("Worker environment prune limit must be between 1 and 1000");
+      }
+      const cutoffMs = Math.max(0, nowMs - 7 * 24 * 60 * 60 * 1_000);
       const canPruneDemand = input.canPruneDemand;
-      const approved: WorkerEnvironmentPrunePage["candidates"] = [];
-      let cursor: WorkerEnvironmentPruneCursor | undefined;
-      for (;;) {
-        const reply = await executeExistingOpenClawStateRead(
-          { path: pathname },
-          {
-            type: "workerEnvironments.pruneCandidates",
-            input: { nowMs, limit: input.limit, cursor },
-          },
+      const candidates = owner
+        .list()
+        .filter(
+          (record) =>
+            isTerminalWorkerEnvironmentState(record.state) &&
+            record.stateChangedAtMs <= cutoffMs &&
+            !(record.state === "orphaned" && record.preparation !== null),
+        )
+        .toSorted(
+          (left, right) =>
+            left.stateChangedAtMs - right.stateChangedAtMs ||
+            Buffer.compare(Buffer.from(left.environmentId), Buffer.from(right.environmentId)),
         );
-        assertActive();
-        if (!reply || !reply.ok || reply.type !== "workerEnvironments.pruneCandidates") {
-          throw new Error("Worker environment retention candidates could not be read");
-        }
-        const page = reply.page;
-        for (const candidate of page.candidates) {
-          if (canPruneDemand?.(candidate.record, nowMs) ?? true) {
-            approved.push(candidate);
-          }
-          if (approved.length === page.limit) {
-            break;
-          }
-        }
-        if (approved.length === page.limit || !page.nextCursor) {
-          break;
-        }
-        cursor = page.nextCursor;
-      }
-      if (!approved.length) {
-        return 0;
-      }
       const demandChanged = new Error("Worker environment demand changed during retention");
-      try {
-        return await mutate(
-          "workerEnvironments.pruneTerminalEnvironments",
-          {
-            input: { approved: approved.map((candidate) => candidate.observed) },
-          },
-          () => {
-            for (const candidate of approved) {
-              if (!(canPruneDemand?.(candidate.record, nowMs) ?? true)) {
-                throw demandChanged;
-              }
-            }
-          },
-        );
-      } catch (error) {
-        if (error === demandChanged) {
-          return 0;
+      let deleted = 0;
+      for (let offset = 0; offset < candidates.length && deleted < limit; offset += 256) {
+        const approved = candidates
+          .slice(offset, offset + 256)
+          .filter((record) => canPruneDemand?.(record, nowMs) ?? true);
+        if (!approved.length) {
+          continue;
         }
-        throw error;
+        try {
+          deleted += await mutate(
+            "workerEnvironments.pruneTerminalEnvironments",
+            {
+              input: {
+                environmentIds: approved.map((record) => record.environmentId),
+                cutoffMs,
+                limit: limit - deleted,
+              },
+            },
+            () => {
+              for (const record of approved) {
+                const current = owner.get(record.environmentId);
+                // Missing is idempotent, including this operation's published deletion receipt.
+                if (
+                  current &&
+                  (current !== record || !(canPruneDemand?.(current, nowMs) ?? true))
+                ) {
+                  throw demandChanged;
+                }
+              }
+            },
+          );
+        } catch (error) {
+          if (error === demandChanged) {
+            return deleted;
+          }
+          throw error;
+        }
       }
+      return deleted;
     },
   };
   return store;

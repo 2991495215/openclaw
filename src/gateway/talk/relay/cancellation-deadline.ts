@@ -12,27 +12,27 @@ const STALE_OUTPUT_FENCE_MAX_MS = 30_000;
  */
 export function scheduleRelayCancellationDeadline(
   session: RelaySession,
-  params: { turnId: string; reason: string; terminalEpoch: number },
+  params: { turnId: string; reason: string },
 ): void {
+  const drain = session.outputOwnership.drain;
   setTimeout(() => {
     if (
       relaySessions.get(session.id) !== session ||
-      session.toolResultEpoch !== params.terminalEpoch ||
+      session.outputOwnership.drain !== drain ||
       session.outputOwnership.phase !== "cancelling"
     ) {
       return;
     }
-    const fenceId = session.outputOwnership.completeCancellationLocally();
-    if (fenceId === undefined) {
-      return;
-    }
+    session.outputOwnership.phase = "discarding";
+    drain?.resolve();
     session.context.logGateway.warn(
       `talk relay: provider did not confirm output cancellation within ${TURN_BOUND_CANCELLATION_DRAIN_MS}ms; keeping the session open and discarding stale output (reason=${params.reason}, turnId=${params.turnId})`,
     );
     setTimeout(() => {
       if (
         relaySessions.get(session.id) === session &&
-        session.outputOwnership.isDiscarding(fenceId)
+        session.outputOwnership.drain === drain &&
+        session.outputOwnership.discarding
       ) {
         session.failSession("Realtime provider never ended a cancelled response. Reconnecting.");
       }

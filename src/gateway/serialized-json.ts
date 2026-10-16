@@ -47,12 +47,9 @@ export class SerializedJsonArray {
 
   materialize(): unknown[] {
     const { bytes } = this;
-    const value: unknown = JSON.parse(
+    const value: unknown[] = JSON.parse(
       Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("utf8"),
     );
-    if (!Array.isArray(value)) {
-      throw new TypeError("Serialized history JSON must contain an array");
-    }
     return value;
   }
 

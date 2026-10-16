@@ -393,7 +393,8 @@ it("isolates catalog owners and model overrides while a cold provider is pending
   });
 });
 
-it("retains successful readiness after a provider failure and refreshes on config publication", async () => {
+it("retains advisory readiness until its TTL and across a failed refresh", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
   let cfg: OpenClawConfig = { plugins: { enabled: false } };
   const context = { getRuntimeConfig: () => cfg };
   const readiness = vi.fn(async () => true);
@@ -418,12 +419,16 @@ it("retains successful readiness after a provider failure and refreshes on confi
   readiness.mockRejectedValue(new Error("synthetic provider unavailable"));
   cfg = { ...cfg };
   expect((await read()).response).toBe(first.response);
+  expect(readiness).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect((await read()).response).toBe(first.response);
   await new Promise<void>((resolve) => {
     setImmediate(resolve);
   });
   expect((await read()).response).toBe(first.response);
   readiness.mockResolvedValue(false);
   cfg = { ...cfg };
+  await vi.advanceTimersByTimeAsync(30_000);
   expect((await read()).response).toBe(first.response);
   await new Promise<void>((resolve) => {
     setImmediate(resolve);
@@ -469,6 +474,7 @@ it("retries failed cold discovery before the client's warming window expires", a
 it.each(["speech", "realtime", "transcription"] as const)(
   "isolates cold %s readiness failures and retains the recovered warm snapshot",
   async (kind) => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     let cfg: OpenClawConfig = {
       plugins: {
         enabled: false,
@@ -533,6 +539,7 @@ it.each(["speech", "realtime", "transcription"] as const)(
     });
     brokenReadiness.mockResolvedValue(true);
     cfg = { ...cfg };
+    await vi.advanceTimersByTimeAsync(30_000);
     await read();
     await new Promise<void>((resolve) => {
       setImmediate(resolve);
@@ -544,6 +551,7 @@ it.each(["speech", "realtime", "transcription"] as const)(
     });
     brokenReadiness.mockRejectedValue(new Error("provider unavailable again"));
     cfg = { ...cfg };
+    await vi.advanceTimersByTimeAsync(30_000);
     expect((await read()).response).toBe(recovered.response);
     await new Promise<void>((resolve) => {
       setImmediate(resolve);

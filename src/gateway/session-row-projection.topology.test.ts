@@ -30,7 +30,10 @@ import {
   closeOpenClawStateDatabaseByPathAsync,
   openOpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
+import { ensureProfileForEmail } from "../state/user-profiles.js";
+import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { createGatewayConnectionState } from "./server-connection-state.js";
 import { chatHistoryHandlers } from "./server-methods/chat-history-handler.js";
 import {
   requestContext,
@@ -41,9 +44,11 @@ import {
   createTranscriptUpdateBroadcastHandler,
 } from "./server-session-events.js";
 import { retainSessionListForegroundWork } from "./session-projection-work.js";
+import { createSessionRowEventPeer } from "./session-row-event.test-support.js";
 import { bindSessionRowProjection } from "./session-row-projection-access.js";
 import { ready } from "./session-row-projection-record.js";
 import { createSessionRowProjection } from "./session-row-projection.js";
+import { rolePolicyConfig } from "./session-sharing.test-utils.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -256,10 +261,14 @@ it("publishes an initially unseen retired-agent event from its default store", a
       ]);
       expect(broadcastToConnIds).toHaveBeenCalledWith(
         "sessions.changed",
-        expect.objectContaining({ sessionKey: query.key, reason: "reactivated" }),
+        expect.objectContaining({
+          sessionKey: query.key,
+          session: expect.objectContaining({ sessionId: "retired-original" }),
+        }),
         new Set(["subscriber"]),
         expect.anything(),
       );
+      expect(broadcastToConnIds.mock.calls[0]?.[1]).not.toHaveProperty("reason");
     } finally {
       projection.dispose();
     }
@@ -342,8 +351,19 @@ it("admits a committed update without host SQL while a marker awaits prepared me
       release.resolve();
       await Promise.all(tasks);
       expect(
-        broadcastToConnIds.mock.calls.filter(([name]) => name === "session.message"),
-      ).toHaveLength(2);
+        broadcastToConnIds.mock.calls.map(([name, payload]) => [name, payload.sessionKey]),
+      ).toEqual(
+        expect.arrayContaining([
+          ["session.message", known.sessionKey],
+          ["sessions.changed", markerScope.sessionKey],
+        ]),
+      );
+      expect(broadcastToConnIds).toHaveBeenCalledTimes(2);
+      const markerPayload = broadcastToConnIds.mock.calls.find(
+        ([name]) => name === "sessions.changed",
+      )?.[1];
+      expect(markerPayload).toHaveProperty("phase", "message");
+      expect(markerPayload).not.toHaveProperty("message");
     } finally {
       release.resolve();
       await Promise.allSettled(tasks);
@@ -361,109 +381,189 @@ it.for([
   { kind: "marker", change: "dispose" },
   { kind: "marker", change: "alias-reset" },
 ] as const)(
-  "keeps an unknown $kind event with its original generation across $change",
+  "publishes only current authorized state for an unknown $kind event across $change",
   async ({ kind, change }, { signal }) => {
-    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
-      let cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
-      setRuntimeConfigSnapshot(cfg);
-      const projection = await createSessionRowProjection({
-        cfg,
-        getConfig: () => cfg,
-        modelCatalog: [],
-      });
-      const { entered, release } = holdTopologyRead();
-      const storePath = path.join(state.root, "deferred-events.sqlite");
-      cfg = { ...cfg, session: { store: storePath } };
-      setRuntimeConfigSnapshot(cfg);
-      const query = { agentId: "main", key: "agent:main:deferred-event" };
-      const scope = { agentId: query.agentId, sessionKey: query.key, storePath };
-      const entry = { sessionId: "event-original", lifecycleRevision: "original", updatedAt: 1 };
-      replaceSessionEntrySync(scope, entry);
-      let alias: string | undefined;
-      if (change === "alias-reset") {
-        const target = resolveSqliteTargetFromSessionStorePath(storePath, {
-          agentId: query.agentId,
+    await withOpenClawTestState(
+      { scenario: "minimal", prepareProfileCatalog: true },
+      async (state) => {
+        const profiles = [
+          ensureProfileForEmail("owner@unknown-event.test"),
+          ensureProfileForEmail("viewer@unknown-event.test"),
+        ];
+        let cfg: OpenClawConfig = { ...rolePolicyConfig(), agents: { entries: { main: {} } } };
+        setRuntimeConfigSnapshot(cfg);
+        const projection = await createSessionRowProjection({
+          cfg,
+          getConfig: () => cfg,
+          modelCatalog: [],
         });
-        const aliasDirectory = path.join(state.root, "source-alias");
-        symlinkSync(
-          path.dirname(target.path),
-          aliasDirectory,
-          process.platform === "win32" ? "junction" : "dir",
-        );
-        alias = path.join(aliasDirectory, path.basename(target.path));
-        openOpenClawAgentDatabase({ agentId: query.agentId, path: alias });
-      }
-      sessionChanges.emit({ all: true, scope: "config" });
-      expect(projection.capture(query)).toBeUndefined();
-      const broadcastToConnIds = vi.fn();
-      const params = {
-        broadcastToConnIds,
-        sessionEventSubscribers: { getAll: () => new Set(["subscriber"]) },
-        sessionMessageSubscribers: { get: () => new Set<string>() },
-        chatAbortControllers: new Map(),
-        getSessionRowProjection: () => projection,
-      };
-      const pending =
-        kind === "lifecycle"
-          ? createLifecycleEventBroadcastHandler(params)({
-              sessionKey: query.key,
-              agentId: query.agentId,
-              reason: "reactivated",
-            })
-          : createTranscriptUpdateBroadcastHandler(params)({
-              sessionFile: formatSqliteSessionFileMarker({ ...scope, sessionId: entry.sessionId }),
-              message: { role: "assistant", content: [{ type: "text", text: "Original event" }] },
-              messageSeq: 1,
-            });
-      const settled = Promise.allSettled([pending]);
-      try {
-        await withinTest(
-          awaitGateBeforeSettlement(
-            entered.promise,
-            pending,
-            "Event did not await original topology",
-          ),
-          signal,
-        );
-        if (change === "same-id-reset") {
-          const next = {
-            ...entry,
-            sessionId: entry.sessionId,
-            lifecycleRevision: "replacement",
-            updatedAt: 2,
-          };
-          replaceSessionEntrySync(scope, next);
-          expect(loadSessionEntry(scope)).toMatchObject(next);
-        } else if (change === "delete") {
-          await deleteSessionEntryLifecycle({
+        const connection = createGatewayConnectionState({
+          scheduler: createTestGatewayScheduler(),
+          bootId: "unknown-event",
+          cfg,
+          getRuntimeConfig: () => cfg,
+        });
+        const peers = profiles.map((profile, index) => {
+          const peer = createSessionRowEventPeer(profile, `unknown-event-${index}`, Date.now());
+          connection.clients.add(peer.client);
+          connection.sessionEventSubscribers.subscribe(peer.client.connId);
+          return peer;
+        });
+        const detach = connection.attachSessionRowProjection(projection);
+        const { entered, release } = holdTopologyRead();
+        const storePath = path.join(state.root, "deferred-events.sqlite");
+        cfg = { ...cfg, session: { store: storePath } };
+        setRuntimeConfigSnapshot(cfg);
+        const query = { agentId: "main", key: "agent:main:deferred-event" };
+        const scope = { agentId: query.agentId, sessionKey: query.key, storePath };
+        const entry = {
+          sessionId: "event-original",
+          lifecycleRevision: "original",
+          updatedAt: 1,
+          visibility: "shared" as const,
+          createdActor: { type: "human" as const, source: "profile" as const, id: profiles[0]!.id },
+        };
+        replaceSessionEntrySync(scope, entry);
+        let alias: string | undefined;
+        if (change === "alias-reset") {
+          const target = resolveSqliteTargetFromSessionStorePath(storePath, {
             agentId: query.agentId,
-            storePath,
-            archiveTranscript: false,
-            target: { canonicalKey: query.key, storeKeys: [query.key] },
           });
-          expect(loadSessionEntry(scope)).toBeUndefined();
-        } else if (change === "dispose") {
-          projection.dispose();
-        } else if (change === "alias-reset") {
-          expect(alias).toBeDefined();
-          replaceSessionEntrySync(
-            { ...scope, storePath: alias },
-            {
-              ...entry,
-              lifecycleRevision: "alias-reset",
-              updatedAt: 2,
-            },
+          const aliasDirectory = path.join(state.root, "source-alias");
+          symlinkSync(
+            path.dirname(target.path),
+            aliasDirectory,
+            process.platform === "win32" ? "junction" : "dir",
           );
+          alias = path.join(aliasDirectory, path.basename(target.path));
+          openOpenClawAgentDatabase({ agentId: query.agentId, path: alias });
         }
-        release.resolve();
-        await settled;
-        expect(broadcastToConnIds).not.toHaveBeenCalled();
-      } finally {
-        release.resolve();
-        await settled;
-        projection.dispose();
-      }
-    });
+        sessionChanges.emit({ all: true, scope: "config" });
+        expect(projection.capture(query)).toBeUndefined();
+        const broadcastToConnIds = vi.fn(connection.broadcastToConnIds);
+        const params = {
+          broadcastToConnIds,
+          sessionEventSubscribers: connection.sessionEventSubscribers,
+          sessionMessageSubscribers: connection.sessionMessageSubscribers,
+          chatAbortControllers: new Map(),
+          getSessionRowProjection: () => projection,
+        };
+        const pending =
+          kind === "lifecycle"
+            ? createLifecycleEventBroadcastHandler(params)({
+                sessionKey: query.key,
+                agentId: query.agentId,
+                reason: "swarm-note",
+                label: "Original event label",
+                displayName: "Original event display name",
+                parentSessionKey: "agent:main:original-event-parent",
+                swarmGroupId: "original-event-swarm",
+                kind: "log",
+                text: "Original event activity",
+              })
+            : createTranscriptUpdateBroadcastHandler(params)({
+                sessionFile: formatSqliteSessionFileMarker({
+                  ...scope,
+                  sessionId: entry.sessionId,
+                }),
+                message: { role: "assistant", content: [{ type: "text", text: "Original event" }] },
+                messageId: "original-event-message",
+                runId: "original-event-run",
+                messageSeq: 1,
+              });
+        const settled = Promise.allSettled([pending]);
+        try {
+          await withinTest(
+            awaitGateBeforeSettlement(
+              entered.promise,
+              pending,
+              "Event did not await original topology",
+            ),
+            signal,
+          );
+          if (change === "same-id-reset") {
+            const next = {
+              ...entry,
+              sessionId: entry.sessionId,
+              lifecycleRevision: "replacement",
+              updatedAt: 2,
+              label: "Current label",
+              visibility: "draft" as const,
+            };
+            replaceSessionEntrySync(scope, next);
+            expect(loadSessionEntry(scope)).toMatchObject(next);
+          } else if (change === "delete") {
+            await deleteSessionEntryLifecycle({
+              agentId: query.agentId,
+              storePath,
+              archiveTranscript: false,
+              target: { canonicalKey: query.key, storeKeys: [query.key] },
+            });
+            expect(loadSessionEntry(scope)).toBeUndefined();
+          } else if (change === "dispose") {
+            projection.dispose();
+          } else if (change === "alias-reset") {
+            expect(alias).toBeDefined();
+            replaceSessionEntrySync(
+              { ...scope, storePath: alias },
+              {
+                ...entry,
+                lifecycleRevision: "alias-reset",
+                updatedAt: 2,
+                label: "Current label",
+                visibility: "draft",
+              },
+            );
+          }
+          release.resolve();
+          await settled;
+          if (change === "delete" || change === "dispose") {
+            expect(broadcastToConnIds).not.toHaveBeenCalled();
+            expect(peers[0]!.send).not.toHaveBeenCalled();
+          } else {
+            await pending;
+            expect(peers[0]!.send).toHaveBeenCalledOnce();
+            const frame = JSON.parse(peers[0]!.send.mock.calls[0]![0]);
+            expect(frame).toMatchObject({
+              event: "sessions.changed",
+              payload: {
+                sessionKey: query.key,
+                label: "Current label",
+                session: {
+                  sessionId: entry.sessionId,
+                  lifecycleRevision: change === "alias-reset" ? "alias-reset" : "replacement",
+                  visibility: "draft",
+                },
+              },
+            });
+            if (kind === "marker") {
+              expect(frame.payload).toHaveProperty("phase", "message");
+            } else {
+              expect(frame.payload).not.toHaveProperty("phase");
+            }
+            for (const field of [
+              "reason",
+              "message",
+              "messageId",
+              "messageSeq",
+              "runId",
+              "text",
+              "storePath",
+            ]) {
+              expect(frame.payload).not.toHaveProperty(field);
+            }
+            expect(peers[0]!.send.mock.calls[0]![0]).not.toMatch(/Original event|original-event/);
+          }
+          expect(peers[1]!.send).not.toHaveBeenCalled();
+        } finally {
+          release.resolve();
+          await settled;
+          detach();
+          await connection.mentionInbox.dispose();
+          projection.dispose();
+        }
+      },
+    );
   },
 );
 

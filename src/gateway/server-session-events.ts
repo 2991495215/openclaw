@@ -54,7 +54,6 @@ import {
 
 type SessionEventSubscribers = Pick<SessionEventSubscriberRegistry, "getAll">;
 type SessionMessageSubscribers = Pick<SessionMessageSubscriberRegistry, "get">;
-type GenerationObservation = ReturnType<SessionRowProjection["observeGeneration"]>;
 
 function hasCompleteTranscriptTarget(update: InternalSessionTranscriptUpdate): boolean {
   return Boolean(
@@ -120,10 +119,13 @@ export function createTranscriptUpdateBroadcastHandler(params: {
     if (agentScope === null) {
       return Promise.resolve();
     }
-    const markerObservation =
-      projection && legacyMarker && !hasCompleteTranscriptTarget(update) && !markerCaptured
-        ? projection.observeGeneration(legacyMarker)
-        : undefined;
+    const unboundMarker = Boolean(
+      projection &&
+      legacyMarker &&
+      !hasCompleteTranscriptTarget(update) &&
+      !markerCaptured &&
+      !lifecycleRevision,
+    );
     // Raw global is per-agent storage identity; its qualified aliases must share a lane.
     const laneKey =
       sessionKey && agentScope?.[1]
@@ -208,12 +210,11 @@ export function createTranscriptUpdateBroadcastHandler(params: {
           agentScope,
           projection,
           markerCaptured,
-          markerObservation,
+          unboundMarker,
           sessionKey ? undefined : joinQueue,
         );
       } finally {
         keyReady.resolve(undefined);
-        markerObservation?.dispose();
       }
     });
     const settled = task.then(
@@ -259,7 +260,7 @@ async function handleTranscriptUpdateBroadcast(
   capturedAgentScope: SessionEventAgentScope | undefined,
   projection: SessionRowProjection | undefined,
   markerCaptured: ReturnType<SessionRowProjection["capture"]>,
-  markerObservation: GenerationObservation | undefined,
+  unboundMarker: boolean,
   joinQueue?: (key: string) => Promise<void>,
 ): Promise<void> {
   const legacyMarker = parseSqliteSessionFileMarker(update.sessionFile);
@@ -318,16 +319,7 @@ async function handleTranscriptUpdateBroadcast(
     return;
   }
   const publicationStorePath = targetStorePath ?? compatibleLegacyMarker?.storePath;
-  const markerOwner = compatibleLegacyMarker
-    ? projection?.capture({
-        agentId: compatibleLegacyMarker.agentId,
-        key: sessionKey,
-        storePath: compatibleLegacyMarker.storePath,
-      })
-    : undefined;
-  const markerIsCurrent = () =>
-    (!markerCaptured || projection?.isCurrent(markerCaptured)) &&
-    (!markerObservation || (markerOwner && markerObservation.isCurrent(markerOwner)));
+  const markerIsCurrent = () => !markerCaptured || projection?.isCurrent(markerCaptured);
   if (!markerIsCurrent()) {
     return;
   }
@@ -363,18 +355,15 @@ async function handleTranscriptUpdateBroadcast(
   if (connIds.size === 0) {
     if (
       !hasSessionChangeReceivers(connIds) ||
-      (update.message !== undefined &&
+      (!unboundMarker &&
+        update.message !== undefined &&
         // This probe checks visibility only; it does not publish sender labels.
         projectChatDisplayMessage(update.message, { resolveCronJobName: () => undefined }))
     ) {
       return;
     }
   }
-  const lifecycleRevision =
-    normalizeOptionalString(update.lifecycleRevision) ??
-    (markerObservation
-      ? normalizeOptionalString(markerOwner?.entry?.lifecycleRevision)
-      : undefined);
+  const lifecycleRevision = normalizeOptionalString(update.lifecycleRevision);
   const lifecycleIsCurrent = () => {
     if (!lifecycleRevision) {
       return true;
@@ -429,7 +418,7 @@ async function handleTranscriptUpdateBroadcast(
       }
       message = undefined;
     }
-  } else if (message !== undefined && messageSeq === undefined) {
+  } else if (!unboundMarker && message !== undefined && messageSeq === undefined) {
     // Updates from raw transcript events may not carry seq; fall back to the
     // current transcript line count for cursor-compatible live history.
     const updateStorePath = publicationStorePath;
@@ -542,7 +531,9 @@ async function handleTranscriptUpdateBroadcast(
       if (projected?.deferredAssistantError) {
         return;
       }
-      const historyReset = message === undefined || projected?.requiresHistoryReset;
+      // A newly discovered row cannot own an old marker's payload; clients reread its history.
+      const historyReset =
+        unboundMarker || message === undefined || projected?.requiresHistoryReset;
       if (!historyReset && projected?.payload) {
         params.broadcastToConnIds("session.message", projected.payload, connIds, broadcastOptions);
         return;
@@ -661,72 +652,72 @@ export function createLifecycleEventBroadcastHandler(params: {
       });
     // Capacity acquisition and release can both occur before row preparation settles.
     const capacityState =
-      event.reason === "run-capacity"
+      event.reason === "run-capacity" && (!projection || captured)
         ? readActiveState({
             key: captured?.key ?? event.sessionKey,
             sessionId: captured?.entry?.sessionId,
           })
         : undefined;
-    const observation = !captured ? projection?.observeGeneration(query) : undefined;
-    try {
-      // Committed lifecycle publications settle with the Gateway, not their producer's scope.
-      await runOutsideAsyncWorkScope(() =>
-        withPreparedEventRow(projection, query, (read, ancestors) => {
-          const current = captured ?? projection?.capture(query);
-          if (
-            params.getSessionRowProjection?.() !== projection ||
-            (projection && (!current || !projection.isCurrent(current))) ||
-            (observation && (!current || !observation.isCurrent(current)))
-          ) {
-            return;
-          }
-          const record = read?.describe(query);
-          const sessionRow = record && read?.present(record);
-          const activeRunState = capacityState ?? (sessionRow ? readActiveState(sessionRow) : null);
-          params.broadcastToConnIds(
-            "sessions.changed",
-            {
-              sessionKey: event.sessionKey,
-              ...(eventAgentId ? { agentId: eventAgentId } : {}),
-              reason: event.reason,
-              ...(event.catalogChanged ? { catalogChanged: true } : {}),
-              parentSessionKey: event.parentSessionKey,
-              label: event.label,
-              displayName: event.displayName,
-              ts: Date.now(),
-              ...buildGatewaySessionSnapshot({
-                sessionRow,
-                includeSession: true,
-                agentId: eventAgentId,
-                label: event.label,
-                displayName: event.displayName,
-                parentSessionKey: event.parentSessionKey,
-                activeRunState,
-              }),
-              ...(event.swarmGroupId
-                ? {
-                    swarmGroupId: event.swarmGroupId,
-                    kind: event.kind,
-                    text: event.text,
-                  }
-                : {}),
-            },
-            connIds,
-            {
-              dropIfSlow: true,
-              ...(read && projection
-                ? {
-                    prepareSessionProjection: prepareSessionEventProjection(projection, read, {
-                      ancestors,
-                    }),
-                  }
-                : {}),
-            },
-          );
-        }),
-      );
-    } finally {
-      observation?.dispose();
-    }
+    // Without an original row, publish current state rather than replay old lifecycle effects.
+    const boundEvent = projection && !captured ? undefined : event;
+    // Committed lifecycle publications settle with the Gateway, not their producer's scope.
+    await runOutsideAsyncWorkScope(() =>
+      withPreparedEventRow(projection, query, (read, ancestors) => {
+        const current = captured ?? projection?.capture(query);
+        if (
+          params.getSessionRowProjection?.() !== projection ||
+          (projection && (!current || !projection.isCurrent(current)))
+        ) {
+          return;
+        }
+        const record = read?.describe(query);
+        const sessionRow = record && read?.present(record);
+        const activeRunState = capacityState ?? (sessionRow ? readActiveState(sessionRow) : null);
+        params.broadcastToConnIds(
+          "sessions.changed",
+          {
+            sessionKey: event.sessionKey,
+            ...(eventAgentId ? { agentId: eventAgentId } : {}),
+            ...(boundEvent ? { reason: boundEvent.reason } : {}),
+            ...(event.catalogChanged ? { catalogChanged: true } : {}),
+            ...(boundEvent
+              ? {
+                  parentSessionKey: boundEvent.parentSessionKey,
+                  label: boundEvent.label,
+                  displayName: boundEvent.displayName,
+                }
+              : {}),
+            ts: Date.now(),
+            ...buildGatewaySessionSnapshot({
+              sessionRow,
+              includeSession: true,
+              agentId: eventAgentId,
+              label: boundEvent?.label,
+              displayName: boundEvent?.displayName,
+              parentSessionKey: boundEvent?.parentSessionKey,
+              activeRunState,
+            }),
+            ...(boundEvent?.swarmGroupId
+              ? {
+                  swarmGroupId: boundEvent.swarmGroupId,
+                  kind: boundEvent.kind,
+                  text: boundEvent.text,
+                }
+              : {}),
+          },
+          connIds,
+          {
+            dropIfSlow: true,
+            ...(read && projection
+              ? {
+                  prepareSessionProjection: prepareSessionEventProjection(projection, read, {
+                    ancestors,
+                  }),
+                }
+              : {}),
+          },
+        );
+      }),
+    );
   };
 }

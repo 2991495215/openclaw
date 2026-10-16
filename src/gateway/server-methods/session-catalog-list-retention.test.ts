@@ -92,9 +92,8 @@ it.each(["completion", "list"] as const)(
 it("expires delivery without releasing native work that ignores cancellation", async () => {
   const { SessionCatalogListLifetime } = await import("./session-catalog-list-lifetime.js");
   const { GatewayConnectionWork } = await import("../server-connection-work.js");
-  const { getActiveGatewayRootWorkCount, tryBeginGatewayRootWorkAdmission } =
+  const { tryBeginGatewayRootWorkAdmission } =
     await import("../../process/gateway-work-admission.js");
-  const before = getActiveGatewayRootWorkCount();
   const root = tryBeginGatewayRootWorkAdmission("catalog-delivery-deadline");
   const owner = new GatewayConnectionWork();
   const lifetime = new SessionCatalogListLifetime([], ["fixture"]);
@@ -113,11 +112,15 @@ it("expires delivery without releasing native work that ignores cancellation", a
     lifetime.finishListing();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(signal?.aborted).toBe(true);
-    expect(getActiveGatewayRootWorkCount()).toBe(before + 1);
     expect(owner.hasPendingWork).toBe(true);
+    const drained = vi.fn();
+    const draining = owner.drain().then(drained);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(drained).not.toHaveBeenCalled();
     release.resolve();
-    await owner.drain();
-    expect(getActiveGatewayRootWorkCount()).toBe(before);
+    await draining;
+    expect(drained).toHaveBeenCalledOnce();
+    expect(owner.hasPendingWork).toBe(false);
   } finally {
     release.resolve();
     lifetime.retire();

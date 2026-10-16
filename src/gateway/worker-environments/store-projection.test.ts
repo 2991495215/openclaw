@@ -90,24 +90,25 @@ function acquireProjection() {
 
 it("requires complete exact-key receipts before replacing environment authority", () => {
   const owner = acquireProjection();
-  const source = { identity: "environment-store", incarnation: owner.incarnation };
   owner.install(facts(environment, true), owner.nextSequence(), false);
-  const deletion = createWorkerEnvironmentReceipt(source, facts(undefined));
+  const deletion = createWorkerEnvironmentReceipt(facts(undefined));
+  const absence = { environment: null, credential: null, attachment: null };
   for (const invalid of [
-    { ...deletion, facts: new Map() },
-    { ...deletion, source: { ...source, identity: "another-store" } },
-    { ...deletion, source: { ...source, incarnation: "retired-owner" } },
-    { ...deletion, facts: new Map([[environment.environmentId, { kind: "unknown" }]]) },
-    {
-      ...deletion,
-      facts: new Map([
-        [environment.environmentId, { kind: "postimage", value: { environment: null } }],
-      ]),
-    },
+    new Map(),
+    new Map([...deletion, ["extra-environment", absence]]),
+    new Map([["another-environment", absence]]),
+    new Map([[environment.environmentId, undefined]]),
+    new Map([[environment.environmentId, { environment: null }]]),
+    ...(["environment", "credential", "attachment"] as const).map(
+      (field) =>
+        new Map([
+          [environment.environmentId, { ...absence, [field]: { environmentId: "another-owner" } }],
+        ]),
+    ),
   ]) {
     expect(() =>
       owner.install(
-        readWorkerEnvironmentReceipt(invalid, source, [environment.environmentId]),
+        readWorkerEnvironmentReceipt(invalid, [environment.environmentId]),
         owner.nextSequence(),
         false,
       ),
@@ -116,7 +117,7 @@ it("requires complete exact-key receipts before replacing environment authority"
     expect(owner.credential(environment.environmentId)).toEqual(credential);
   }
   owner.install(
-    readWorkerEnvironmentReceipt(deletion, source, [environment.environmentId]),
+    readWorkerEnvironmentReceipt(deletion, [environment.environmentId]),
     owner.nextSequence(),
     false,
   );

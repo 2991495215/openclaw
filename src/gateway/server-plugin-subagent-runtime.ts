@@ -188,7 +188,7 @@ export function createGatewaySubagentRuntime(
             PLUGIN_SUBAGENT_SESSION_MESSAGES_MAX_LIMIT,
             Math.max(1, Math.floor(params.limit)),
           );
-    const payload = await dispatchGatewayMethodInProcess<{ messages?: unknown[] }>(
+    return await dispatchGatewayMethodInProcess<{ messages: unknown[] }>(
       "sessions.get",
       {
         key: params.sessionKey,
@@ -201,7 +201,6 @@ export function createGatewaySubagentRuntime(
           : {}),
       },
     );
-    return { messages: Array.isArray(payload?.messages) ? payload.messages : [] };
   };
 
   const subagentRuntime: PluginRuntime["subagent"] = {

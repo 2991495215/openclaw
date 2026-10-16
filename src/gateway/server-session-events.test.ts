@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred, withTestTimeout } from "../../test/helpers/promise.js";
 import { SessionTranscriptProjectionUnavailableError } from "../config/sessions/session-transcript-projection-error.js";
 import {
-  createGatewayBroadcaster,
   createHandler,
   createTranscriptUpdateBroadcastHandler,
   emitAssistantTranscriptUpdate,
@@ -13,16 +12,13 @@ import {
   loadGatewaySessionEntryReadOnlyMock,
   loadGatewaySessionRowMock,
   ownerGoal,
-  projectChatDisplayMessageMock,
   readSessionMessageByIdAsyncMock,
   readSessionMessageCountAsyncMock,
   resolveEmbeddedAgentSessionProgressStateMock,
   runtimeConfigState,
   sessionRow,
   storedMessage,
-  subscribePluginSessionsChanged,
 } from "./server-session-events.test-support.js";
-import { GatewayClientRegistry } from "./server/client-registry.js";
 import { createSessionRowProjectionFixture } from "./session-row-projection.test-support.js";
 
 describe("createTranscriptUpdateBroadcastHandler", () => {
@@ -310,11 +306,19 @@ describe("createTranscriptUpdateBroadcastHandler", () => {
     const earlierReadEntered = createDeferred();
     const releaseEarlierRead = createDeferred();
     const markerReadEntered = createDeferred();
-    const releaseMarkerRead = createDeferred<number>();
-    readSessionMessageCountAsyncMock.mockImplementation(async () => {
-      markerReadEntered.resolve();
-      return await releaseMarkerRead.promise;
-    });
+    const releaseMarkerRead = createDeferred();
+    const prepareRows = projection.withPreparedExactRows.bind(projection);
+    let heldMarkerRead = false;
+    vi.spyOn(projection, "withPreparedExactRows").mockImplementation(
+      async (queries, consume, options) => {
+        if (keyedAfterResolution && !heldMarkerRead) {
+          heldMarkerRead = true;
+          markerReadEntered.resolve();
+          await releaseMarkerRead.promise;
+        }
+        return prepareRows(queries, consume, options);
+      },
+    );
     readSessionMessageByIdAsyncMock.mockImplementation(async (_scope, id: string) => {
       if (id === "earlier") {
         earlierReadEntered.resolve();
@@ -331,7 +335,11 @@ describe("createTranscriptUpdateBroadcastHandler", () => {
       getSessionRowProjection: () => projection,
     });
     const tasks: Promise<void>[] = [];
-    const messages = () => broadcastToConnIds.mock.calls.map((call) => call[1]?.messageId);
+    const messages = () =>
+      broadcastToConnIds.mock.calls.map(([event, payload]) => [
+        event,
+        event === "session.message" ? payload.messageId : payload.sessionKey,
+      ]);
     try {
       if (hasEarlierKeyedUpdate) {
         tasks.push(
@@ -349,7 +357,7 @@ describe("createTranscriptUpdateBroadcastHandler", () => {
           ...(markerAgentId ? { agentId: markerAgentId } : {}),
           message: { role: "assistant", content: "marker" },
           messageId: "marker",
-          ...(keyedAfterResolution ? {} : { messageSeq: 2 }),
+          messageSeq: 2,
         }),
       );
       await withTestTimeout(membershipEntered.promise, 2_000, "Marker readiness did not start");
@@ -387,25 +395,32 @@ describe("createTranscriptUpdateBroadcastHandler", () => {
       });
       tasks.push(independent);
       await withTestTimeout(independent, 2_000, "Unrelated key stalled behind marker readiness");
-      expect(messages()).toEqual(["independent"]);
+      expect(messages()).toEqual([["session.message", "independent"]]);
       releaseMembership.resolve();
       await withTestTimeout(markerResolved.promise, 2_000, "Marker key did not resolve");
       if (hasEarlierKeyedUpdate) {
-        expect(messages()).toEqual(["independent"]);
+        expect(messages()).toEqual([["session.message", "independent"]]);
       }
       releaseEarlierRead.resolve();
-      releaseMarkerRead.resolve(2);
+      releaseMarkerRead.resolve();
       await Promise.all(tasks);
       expect(messages()).toEqual([
-        "independent",
-        ...(hasEarlierKeyedUpdate ? ["earlier"] : []),
-        "marker",
-        "later",
+        ["session.message", "independent"],
+        ...(hasEarlierKeyedUpdate ? [["session.message", "earlier"]] : []),
+        ["sessions.changed", "global"],
+        ["session.message", "later"],
       ]);
+      const marker = broadcastToConnIds.mock.calls.find(
+        ([event]) => event === "sessions.changed",
+      )?.[1];
+      expect(marker).toMatchObject({ phase: "message", session: { sessionId: "sess-main" } });
+      for (const field of ["message", "messageId", "messageSeq", "runId"]) {
+        expect(marker).not.toHaveProperty(field);
+      }
     } finally {
       releaseMembership.resolve();
       releaseEarlierRead.resolve();
-      releaseMarkerRead.resolve(2);
+      releaseMarkerRead.resolve();
       await Promise.allSettled(tasks);
       projection.dispose();
     }
@@ -824,38 +839,6 @@ describe("createTranscriptUpdateBroadcastHandler", () => {
       senderIsOwner: true,
     });
   });
-  it("publishes message-phase changes to plugins without websocket subscribers", async () => {
-    const received = vi.fn();
-    const unsubscribe = subscribePluginSessionsChanged(received);
-    const { broadcastToConnIds } = createGatewayBroadcaster({
-      clients: new GatewayClientRegistry(),
-    });
-    const handler = createTranscriptUpdateBroadcastHandler({
-      broadcastToConnIds,
-      sessionEventSubscribers: { getAll: () => new Set() },
-      sessionMessageSubscribers: { get: () => new Set() },
-      chatAbortControllers: new Map(),
-    });
-    projectChatDisplayMessageMock.mockReturnValueOnce(undefined).mockReturnValueOnce(undefined);
-
-    try {
-      await handler({
-        sessionFile: "/tmp/sess-main.jsonl",
-        sessionKey: "agent:main:main",
-        message: { role: "toolResult", content: [] },
-        messageId: "message-1",
-        messageSeq: 1,
-      });
-      expect(received).toHaveBeenCalledOnce();
-      expect(received).toHaveBeenCalledWith({
-        sessionKey: "agent:main:main",
-        phase: "message",
-      });
-    } finally {
-      unsubscribe();
-    }
-  });
-
   it("reads the canonical message through the target's explicit store", async () => {
     loadAccessorSessionEntryReadOnlyMock.mockReturnValue({
       sessionId: "sess-main",

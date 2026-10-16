@@ -410,7 +410,6 @@ export function createGatewayChatMetadataRuntime(params: {
           `prepared chat metadata is unavailable for agent "${agentId}"`,
         );
       }
-      await withCurrentReadAuthority(authority, () => {});
       if (readParams.includeModels === false) {
         assertPreparedAgentCurrent(agent);
         return {
@@ -445,17 +444,15 @@ export function createGatewayChatMetadataRuntime(params: {
           requesterProfileId: draft?.owner ?? readParams.requesterProfileId,
         }),
       );
-      const acpMeta = await withCurrentReadAuthority(authority, () =>
-        prepareSessionAcpMeta({ ...readParams, sessionEntry }, deps.getConfig()),
+      const acpMeta = await prepareSessionAcpMeta(
+        { ...readParams, sessionEntry },
+        deps.getConfig(),
       );
-      const runtimeOwnership = await withCurrentReadAuthority(authority, () =>
-        readSessionRuntimeOwnershipAsync({
-          ...readParams,
-          sessionEntry,
-          config: deps.getConfig(),
-        }),
-      );
-      await withCurrentReadAuthority(authority, () => {});
+      const runtimeOwnership = await readSessionRuntimeOwnershipAsync({
+        ...readParams,
+        sessionEntry,
+        config: deps.getConfig(),
+      });
       return {
         isCurrent: projection.isCurrent,
         read: () =>
