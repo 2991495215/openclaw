@@ -2,7 +2,10 @@ import { expectDefined } from "@openclaw/normalization-core";
 import type { JSX } from "@solidjs/web";
 import { createMemo, createSignal, Show } from "solid-js";
 import { vi } from "vitest";
-import type { SolidController, SolidControllerHost } from "../../../lit/solid-controller-host.ts";
+import type {
+  SolidController,
+  SolidControllerHost,
+} from "../../../lib/reactive/solid-controller-host.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { flush } from "../../../test-helpers/solid-settle.ts";
 import { createTestTranscript } from "../chat-view.test-helpers.ts";
@@ -55,6 +58,7 @@ function Content(props: { value: NativeContent }) {
       <Show when={search()}>
         {(value) => (
           <TranscriptSearch
+            revision={value()}
             state={getTranscriptState(value().paneId)}
             requestUpdate={value().requestUpdate}
             onClose={() =>
@@ -234,7 +238,7 @@ export function numberedContentRows(length: number): TestContentRow[] {
   }));
 }
 
-export function mcpRangeRows(appContent: unknown): TestContentRow[] {
+export function mcpRangeRows(appContent: JSX.Element): TestContentRow[] {
   return Array.from({ length: 24 }, (_, index) => ({
     kind: "content" as const,
     key: `row:${index}`,

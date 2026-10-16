@@ -846,8 +846,16 @@ console.log("relocated session card renders with bundled fonts");
       } else {
         // Each launch boots both helpers; shared chunks pull unrelated runtime
         // exports into startup before the durable worker gate can open.
+        // The anchor's lineage writer retains the shared lazy schema catalogs.
         expect(files.toSorted()).toEqual(
-          [`dist/${relay}.${extension}`, `dist/${anchor}.${extension}`].toSorted(),
+          [
+            `dist/${relay}.${extension}`,
+            `dist/${anchor}.${extension}`,
+            "dist/assets/sqlite-schema/sqlite-agent-catalogs.json",
+            "dist/assets/sqlite-schema/sqlite-daemon-catalogs.json",
+            "dist/assets/sqlite-schema/sqlite-memory-catalogs.json",
+            "dist/assets/sqlite-schema/sqlite-state-catalogs.json",
+          ].toSorted(),
         );
         expect(imports).toEqual([]);
       }
