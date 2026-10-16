@@ -20,6 +20,7 @@ import { startTranscripts } from "./capture.js";
 import { clearTranscriptCapturesForTest } from "./capture.test-support.js";
 import { getTranscriptLibrary, listTranscriptLibrary } from "./library.js";
 import type { TranscriptStartRequest } from "./provider-types.js";
+import type { TranscriptsStore } from "./store.js";
 import { summarizeTranscripts, type TranscriptsSummary } from "./summary.js";
 
 const { complete, select, loadRuntime } = vi.hoisted(() => ({

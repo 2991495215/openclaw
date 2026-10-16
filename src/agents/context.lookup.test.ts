@@ -26,13 +26,14 @@ const state = vi.hoisted(() => {
   };
 });
 
-vi.mock("../config/config.js", () => ({
+vi.mock("../config/config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../config/config.js")>()),
   getRuntimeConfig: () => {
-    const config = state.loadConfig();
-    if (!config) {
+    const prepared = state.loadConfig();
+    if (!prepared) {
       throw new Error("Runtime config is not prepared");
     }
-    return config;
+    return prepared;
   },
   getRuntimeConfigSnapshot: state.loadConfig,
 }));

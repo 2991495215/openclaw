@@ -59,6 +59,7 @@ const observation = {
   taskReads: new Map<number, () => RetainedOutcome<unknown>>(),
   releaseContexts: new Map<number, string | undefined>(),
   snapshots: new Set<() => { workers: number; activeTasks: number; pendingTasks: number }>(),
+  nativeSources: new WeakSet<object>(),
 };
 
 type NativeSubscription =
@@ -114,7 +115,8 @@ vi.mock("./worker-native-lifecycle.js", async (importOriginal) => {
       ...args: Parameters<typeof actual.captureRetainedNativeWorkerSource>
     ) {
       const source = actual.captureRetainedNativeWorkerSource(...args);
-      if (!vi.isMockFunction(source.create)) {
+      if (!observation.nativeSources.has(source)) {
+        observation.nativeSources.add(source);
         const create = source.create.bind(source);
         vi.spyOn(source, "create").mockImplementation((...createArgs) =>
           observeNativeReplies(create(...createArgs)),
@@ -235,6 +237,7 @@ function releaseReplyGate(gate: ReplyGate | undefined): void {
 }
 
 beforeEach(() => {
+  observation.nativeSources = new WeakSet();
   observation.tasks = 0;
   observation.admitted = [];
   observation.allocated = [];
