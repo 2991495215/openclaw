@@ -392,18 +392,16 @@ function createReplayClaim() {
   return { commit, release, inboundDeduper };
 }
 describe("matrix monitor handler pairing account scope", () => {
-  it("logs inbound message length without a content preview", async () => {
+  it("logs inbound UTF-16 length without a message preview", async () => {
     const logVerboseMessage = vi.fn();
     const { handler } = createMatrixHandlerTestHarness({ logVerboseMessage });
 
-    await receiveText(handler, {
-      eventId: "$event-preview",
-      body: `${"x".repeat(199)}🚀tail`,
-    });
+    await receiveText(handler, { eventId: "$event-preview", body: `${"x".repeat(199)}🚀tail` });
 
     expect(logVerboseMessage).toHaveBeenCalledWith(
       "matrix inbound: room=!room:example.org from=@user:example.org chars=205",
     );
+    expect(logVerboseMessage).not.toHaveBeenCalledWith(expect.stringContaining("x".repeat(199)));
   });
 
   it.each(["main", "per-channel-peer"])(

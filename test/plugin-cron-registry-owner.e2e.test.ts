@@ -364,6 +364,8 @@ describe("plugin cron registry ownership e2e", () => {
                 {
                   baseUrl: `${server.baseUrl}/v1`,
                   api: "openai-responses" as const,
+                  // Cron admission classifies auth before the provider runtime loads.
+                  auth: route === "cron" ? "api-key" : undefined,
                   apiKey: `${id}:fixture`,
                   request: { allowPrivateNetwork: true },
                   models: [

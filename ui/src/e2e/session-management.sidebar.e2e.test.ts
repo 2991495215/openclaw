@@ -134,8 +134,10 @@ suite.define(() => {
       await page.goto(controlUiSessionUrl(suite.server.baseUrl, parentKey));
       const parent = page.locator(`[data-session-key="${parentKey}"]`);
       await parent.waitFor({ state: "visible", timeout: 10_000 });
-      // Active descendants reveal their branch; explicitly collapse it for this contract.
-      await parent.getByRole("button", { name: "Hide 4 child sessions for Plan release" }).click();
+      // Children that already exist at load stay collapsed; only new children reveal.
+      const initialToggle = parent.locator("[data-child-session-toggle]");
+      await initialToggle.waitFor();
+      expect(await initialToggle.getAttribute("aria-expanded")).toBe("false");
       await expect.poll(() => page.locator(".sidebar-recent-session--child").count()).toBe(0);
       // Delegated work keeps the idle parent's ring visible even with children collapsed.
       await expect
@@ -829,7 +831,7 @@ suite.define(() => {
         suite,
         page,
         "sidebar-session-dropped-into-pinned.png",
-        page.locator('openclaw-session-menu > wa-dropdown [part="menu"]'),
+        page.locator("openclaw-session-menu .session-menu__panel"),
         [page.getByRole("menuitem", { name: "Unpin session" })],
       );
     } finally {
