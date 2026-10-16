@@ -1,5 +1,4 @@
 /**
- * Auth profile path resolution.
  * Centralizes canonical shared SQLite and cross-agent OAuth refresh lock paths.
  */
 import path from "node:path";
@@ -169,7 +168,6 @@ export async function reloadSharedAuthStoreOwnership(
   return ownership;
 }
 
-/** Resolve the canonical shared auth database path. */
 export function resolveSharedAuthStorePath(env: NodeJS.ProcessEnv = process.env): string {
   if (resolveSharedAuthStoreOwnership(env).location === "state-db") {
     return resolveOpenClawStateSqlitePath(env);

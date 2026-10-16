@@ -204,9 +204,7 @@ async function findOwnedPackageRoot(params: {
       if (parsed.name === params.policy.packageName) {
         return await fs.realpath(directory);
       }
-    } catch {
-      // Continue through parent package scopes.
-    }
+    } catch {}
     const parent = path.dirname(directory);
     if (parent === directory) {
       return undefined;

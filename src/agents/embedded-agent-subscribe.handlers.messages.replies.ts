@@ -1,6 +1,3 @@
-/**
- * Owns pending assistant reply directives and tool-media handoff.
- */
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
 import type { ReplyDirectiveParseResult } from "../auto-reply/reply/reply-directives.js";

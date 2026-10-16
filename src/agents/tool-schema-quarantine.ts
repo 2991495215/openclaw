@@ -1,5 +1,4 @@
 /**
- * Runtime tool-schema quarantine logging.
  *
  * Model providers can reject unsupported schema shapes, so runtime projection
  * reports quarantined tools with trusted diagnostics before the model call.

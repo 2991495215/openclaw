@@ -23,7 +23,6 @@ function normalizePositiveInt(value: unknown): number | null {
   return int > 0 ? int : null;
 }
 
-/** Resolve the effective context window and source for one provider/model. */
 export function resolveContextWindowInfo(params: {
   cfg: OpenClawConfig | undefined;
   provider: string;
@@ -75,7 +74,6 @@ type ContextWindowGuardResult = ContextWindowInfo & {
   shouldBlock: boolean;
 };
 
-/** Derive warning/block floors from the resolved model context window. */
 function resolveContextWindowGuardThresholds(contextWindowTokens: number) {
   const tokens = normalizePositiveInt(contextWindowTokens) ?? 0;
   return {
@@ -90,7 +88,6 @@ function resolveContextWindowGuardThresholds(contextWindowTokens: number) {
   };
 }
 
-/** Format a non-blocking low-context warning message. */
 export function formatContextWindowWarningMessage(params: {
   provider: string;
   modelId: string;
@@ -113,7 +110,6 @@ export function formatContextWindowWarningMessage(params: {
   );
 }
 
-/** Format a blocking context-window guard message. */
 export function formatContextWindowBlockMessage(params: {
   guard: ContextWindowGuardResult;
   runtimeBaseUrl?: string | null;
@@ -137,7 +133,6 @@ export function formatContextWindowBlockMessage(params: {
   );
 }
 
-/** Evaluate whether the resolved context window should warn or block. */
 export function evaluateContextWindowGuard(params: {
   info: ContextWindowInfo;
   warnBelowTokens?: number;

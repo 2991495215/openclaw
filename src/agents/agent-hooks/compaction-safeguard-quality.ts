@@ -1,4 +1,3 @@
-/** Quality contract, fallback, and audit helpers for compaction safeguard summaries. */
 import { localeLowercasePreservingWhitespace } from "@openclaw/normalization-core/string-coerce";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
@@ -87,7 +86,6 @@ function resolveExactIdentifierSectionInstruction(
   return STRICT_EXACT_IDENTIFIERS_INSTRUCTION;
 }
 
-/** Build the required structured summary instructions for compaction. */
 export function buildCompactionStructureInstructions(
   customInstructions?: string,
   summarizationInstructions?: CompactionSummarizationInstructions,
@@ -368,7 +366,6 @@ export function buildStructuredFallbackSummary(previousSummary: string | undefin
   );
 }
 
-/** Appends a bounded post-compaction section to an existing summary. */
 export function appendSummarySection(summary: string, section: string): string {
   if (!section) {
     return summary;

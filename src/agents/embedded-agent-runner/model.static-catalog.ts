@@ -286,7 +286,6 @@ export function createBundledStaticCatalogModelResolver(
   };
 }
 
-/** Resolves one bundled static-catalog model row for provider/model lookup. */
 export function resolveBundledStaticCatalogModel(
   params: BundledStaticCatalogLookup &
     Parameters<typeof createBundledStaticCatalogModelResolver>[0],
@@ -624,8 +623,6 @@ export function createBundledProviderStaticCatalogContextResolver(
 }
 
 /**
- * Resolves one bundled provider static-catalog model row for provider/model lookup.
- *
  * Some bundled providers expose their canonical offline rows through
  * `providerCatalogEntry` instead of manifest `modelCatalog`. This keeps the
  * skip-discovery fallback aligned with model list/inspect without running live

@@ -1,5 +1,4 @@
 /**
- * Owner display settings for prompt rendering.
  *
  * Owner ids are rendered raw; no config or secret is required.
  */

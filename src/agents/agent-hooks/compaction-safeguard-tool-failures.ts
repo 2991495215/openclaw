@@ -1,4 +1,3 @@
-/** Collects failed tool results and renders the bounded Tool Failures summary section. */
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { normalizeAcceptedSessionSpawnResult } from "../accepted-session-spawn.js";
 import { collectTextContentBlocks } from "../content-blocks.js";

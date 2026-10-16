@@ -1,4 +1,3 @@
-/** Validate guest JavaScript before execution. */
 import { parseCodeModeScriptSyntax } from "./code-mode-script-syntax.js";
 import {
   CODE_MODE_SHELL_SOURCE_ERROR,

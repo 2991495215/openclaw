@@ -99,7 +99,6 @@ export type StreamBlockState = {
 /** A response-ending answer and the message index its reply payload belongs to. */
 export type CompletedAssistantAnswer = { assistant: AssistantMessage; messageIndex: number };
 
-/** Mutable subscription state shared by embedded-agent event handlers. */
 export type EmbeddedAgentSubscribeState = {
   assistantTexts: string[];
   answerSegments: Array<{
@@ -247,7 +246,6 @@ export type EmbeddedAgentSubscribeState = {
   lastAssistant?: AssistantMessage;
 };
 
-/** Handler context bundling params, mutable state, emitters, and helper hooks. */
 export type EmbeddedAgentSubscribeContext = {
   params: SubscribeEmbeddedAgentSessionParams;
   state: EmbeddedAgentSubscribeState;

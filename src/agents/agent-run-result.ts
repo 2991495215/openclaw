@@ -1,4 +1,3 @@
-/** Agent-run result projections shared by execution owners and diagnostic probes. */
 import {
   getReplyPayloadMetadata,
   isReplyPayloadTerminalContent,

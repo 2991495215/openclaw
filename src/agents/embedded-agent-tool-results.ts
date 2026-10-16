@@ -365,9 +365,7 @@ export function extractToolErrorMessage(result: unknown): string | undefined {
       if (fromJson) {
         return fromJson;
       }
-    } catch {
-      // Fall through to status/text fallback.
-    }
+    } catch {}
   }
   const fromStatus = extractErrorField(record.details) ?? extractErrorField(record);
   if (fromStatus) {

@@ -333,9 +333,7 @@ function stringifyToolPayload(payload: unknown): string {
     if (typeof encoded === "string") {
       return encoded;
     }
-  } catch {
-    // Fall through to String(payload) for non-serializable values.
-  }
+  } catch {}
   return String(payload);
 }
 

@@ -1,6 +1,5 @@
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 /**
- * Tool policy audit logging helpers.
  * Emits bounded, sanitized logs when allow/deny policy filters remove tools or
  * block sandbox tool execution.
  */
@@ -143,7 +142,6 @@ function matchedPolicyRules(params: {
   return [...rules].toSorted();
 }
 
-/** Log tools removed by an allow/deny policy filter step. */
 export function auditToolPolicyFilter(params: {
   stepLabel: string;
   policy: ToolPolicyLike;
@@ -181,7 +179,6 @@ export function auditToolPolicyFilter(params: {
   }
 }
 
-/** Log a sandbox tool blocked by policy before execution. */
 export function auditSandboxToolPolicyBlock(params: {
   toolName: string;
   ruleType: "allow" | "deny";

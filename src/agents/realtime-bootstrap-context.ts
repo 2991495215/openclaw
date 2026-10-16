@@ -1,5 +1,4 @@
 /**
- * Realtime bootstrap context loader.
  *
  * Voice/realtime sessions use this to inject selected profile files into model
  * instructions with deterministic ordering and a hard character budget.

@@ -1,4 +1,3 @@
-/** Shared prompt policy for immediate and asynchronous commitments. */
 export function buildPromisedWorkPromptSection(): string[] {
   return [
     "## Promised Work",

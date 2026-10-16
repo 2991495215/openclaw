@@ -137,7 +137,6 @@ function pushConfiguredAgentModelRuntimeIds(
   }
 }
 
-/** Options for collecting configured agent harness runtimes. */
 export type ConfiguredAgentHarnessRuntimeOptions = {
   includeImplicitRuntimePreferences?: boolean;
 };

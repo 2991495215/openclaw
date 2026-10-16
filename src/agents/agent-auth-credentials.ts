@@ -1,4 +1,3 @@
-/** Converts auth-profile credentials into agent runtime credential maps. */
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { asDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
@@ -20,7 +19,6 @@ type AgentOAuthCredential = {
   expires: number;
 };
 
-/** Credential value shape consumed by agent runtimes after auth-profile normalization. */
 type AgentCredential = ApiKeyCredential | AgentOAuthCredential;
 export type AgentCredentialMap = Record<string, AgentCredential>;
 

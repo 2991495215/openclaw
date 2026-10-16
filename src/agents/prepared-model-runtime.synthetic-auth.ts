@@ -1,4 +1,3 @@
-/** Synthetic-auth provider ref selection and prepared-catalog resolution for model-runtime builds. */
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ProviderSyntheticAuthResult } from "../plugins/provider-external-auth.types.js";

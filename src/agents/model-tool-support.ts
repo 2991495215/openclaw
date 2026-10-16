@@ -1,6 +1,4 @@
 /**
- * Model capability helper for tool-use support.
- *
  * Provider catalogs can opt a model out via `compat.supportsTools === false`;
  * absent metadata remains permissive for older catalog entries.
  */

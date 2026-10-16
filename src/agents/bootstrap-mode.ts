@@ -1,5 +1,3 @@
-// Bootstrap mode resolver for deciding whether a run gets full, limited, or no
-// workspace bootstrap files.
 export type BootstrapMode = "full" | "limited" | "none";
 export type BootstrapContextRunKind = "default" | "heartbeat" | "cron";
 
@@ -7,7 +5,6 @@ export function isHeartbeatLifecycleRunKind(runKind: BootstrapContextRunKind | u
   return runKind === "heartbeat";
 }
 
-/** Resolve the bootstrap mode for one agent run. */
 export function resolveBootstrapMode(params: {
   bootstrapPending: boolean;
   runKind?: BootstrapContextRunKind;

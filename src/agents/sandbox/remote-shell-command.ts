@@ -1,4 +1,3 @@
-/** Shared remote-shell quoting, workdir validation, and directory contracts. */
 export function shellEscape(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }

@@ -1,5 +1,4 @@
 /**
- * Effective tool inventory contract types.
  * Shared by agent/session tool inventory resolvers and UI/API callers that
  * present enabled tools grouped by source.
  */
@@ -17,7 +16,6 @@ export type {
 
 export type EffectiveToolSource = ToolsEffectiveEntry["source"];
 
-/** Inputs for resolving the effective tool inventory in a session/runtime context. */
 export type ResolveEffectiveToolInventoryParams = {
   cfg: OpenClawConfig;
   conversationCapabilityProfile?: ResolvedConversationCapabilityProfile;
