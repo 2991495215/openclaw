@@ -15,11 +15,11 @@ import {
   formatLocalAudioSelection,
   inspectLocalAudioSelection,
 } from "../media-understanding/local-audio.js";
+import { PROVIDER_CATALOG_ORDERS } from "../plugins/provider-catalog.types.js";
 import type { ProviderCatalogOrder, ProviderPlugin } from "../plugins/types.js";
 import { buildWorkspaceSkillStatus } from "../skills/discovery/status.js";
 import type { HealthCheckContext, HealthFinding } from "./health-checks.js";
 
-const PROVIDER_CATALOG_ORDERS = ["simple", "profile", "paired", "late"] as const;
 const PROVIDER_CATALOG_ORDER_SET = new Set<ProviderCatalogOrder>(PROVIDER_CATALOG_ORDERS);
 
 export function detectUnavailableSkills(cfg: OpenClawConfig, workspaceDir: string) {

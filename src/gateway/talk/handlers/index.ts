@@ -15,6 +15,7 @@ import {
   validateTalkConfigParams,
   validateTalkSpeakParams,
 } from "../../../../packages/gateway-protocol/src/index.js";
+import { TALK_TRANSPORTS } from "../../../../packages/gateway-protocol/src/talk-vocabulary.js";
 import { AgentSelectionRequiredError } from "../../../agents/agent-scope.js";
 import { getRuntimeAuthProfileStoreCredentialsRevision } from "../../../agents/auth-profiles/runtime-snapshots.js";
 import { projectConfigOntoRuntimeSourceSnapshot } from "../../../config/config.js";
@@ -592,7 +593,7 @@ async function buildTalkCatalog(
   ]);
   return {
     modes: ["realtime", "stt-tts", "transcription"],
-    transports: ["webrtc", "provider-websocket", "gateway-relay", "managed-room"],
+    transports: [...TALK_TRANSPORTS],
     brains: ["agent-consult", "direct-tools", "none"],
     speech: {
       ...(activeSpeechProvider ? { activeProvider: activeSpeechProvider } : {}),
