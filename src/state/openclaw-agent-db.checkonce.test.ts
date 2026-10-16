@@ -3,7 +3,10 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { observeSqliteReadSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { openNodeSqliteDatabase, requireNodeSqlite } from "../infra/node-sqlite.js";
-import { readSqliteDatabaseCleanClose } from "../infra/sqlite-database-admission.js";
+import {
+  readSqliteDatabaseCleanClose,
+  readSqliteDatabaseIntegrityVerification,
+} from "../infra/sqlite-database-admission.js";
 import { SQLITE_IDLE_HANDLE_TTL_MS } from "../infra/sqlite-handle-lifecycle.js";
 import { runSqliteSchemaReadSnapshotSync } from "../infra/sqlite-pinned-read-snapshot.js";
 import { admitSqliteSchema, getAdmittedSqliteSchemaFacts } from "../infra/sqlite-schema-facts.js";
@@ -142,6 +145,8 @@ it("reuses live agent admission and its seal after writer idle retirement", asyn
     try {
       const first = openOpenClawAgentDatabase(options);
       const firstNative = first.db;
+      const verification = readSqliteDatabaseIntegrityVerification(first.path);
+      expect(verification).toEqual({ verifiedAt: expect.any(Number) });
       using quarantine = openNodeSqliteDatabase(resolveQuarantineStorePath(env), {
         readOnly: true,
       });
@@ -162,6 +167,7 @@ it("reuses live agent admission and its seal after writer idle retirement", asyn
         const reopened = openOpenClawAgentDatabase(options);
         expect(reopened.db === firstNative).toBe(false);
         expect(reopened.db.isOpen).toBe(true);
+        expect(readSqliteDatabaseIntegrityVerification(reopened.path)).toEqual(verification);
         expect(validationStatements(observation.queries)).toEqual([]);
       } finally {
         observation.restore();

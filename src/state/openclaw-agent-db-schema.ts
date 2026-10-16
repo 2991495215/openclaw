@@ -20,6 +20,7 @@ import {
 import {
   admitSqliteSchema,
   getAdmittedSqliteSchemaFacts,
+  invalidateSqliteSchemaFacts,
   isSqliteSchemaAdmissionCold,
 } from "../infra/sqlite-schema-facts.js";
 import { migrateSqliteSchemaToStrictInTransaction } from "../infra/sqlite-strict.js";
@@ -292,7 +293,9 @@ function applyAgentSchema(
       runSqliteImmediateTransactionSync(
         db,
         () => {
-          revokeSqliteDatabaseAdmissions(db);
+          // Refresh ownership/version under the writer lock without revoking the
+          // physical integrity proof established before this schema transaction.
+          invalidateSqliteSchemaFacts(db);
           return applyAgentSchema(
             db,
             agentId,
