@@ -21,7 +21,6 @@ type Box = {
 
 type InspectionState = {
   boxCount: number;
-  sawFtyp: boolean;
   tracks: IsoBmffTrack[];
 };
 
@@ -122,9 +121,6 @@ async function inspectBoxes(params: {
       throw new Error("ISO-BMFF box count exceeded");
     }
     const box = await readBox(params.handle, offset, params.end);
-    if (params.depth === 0 && box.type === "ftyp") {
-      params.state.sawFtyp = true;
-    }
     if (box.type === "trak") {
       const track: IsoBmffTrack = { sampleEntryTypes: [] };
       await inspectBoxes({
@@ -168,13 +164,9 @@ async function inspectIsoBmff(filePath: string, expectedSize: number): Promise<I
     if (firstHeader.toString("ascii", 4, 8) !== "ftyp") {
       return "not-isobmff";
     }
-    const firstBox = await readBox(handle, 0, stat.size);
-    if (firstBox.type !== "ftyp") {
-      return "ambiguous";
-    }
-    const state: InspectionState = { boxCount: 0, sawFtyp: false, tracks: [] };
+    const state: InspectionState = { boxCount: 0, tracks: [] };
     await inspectBoxes({ handle, start: 0, end: stat.size, depth: 0, state });
-    if (!state.sawFtyp || state.tracks.length === 0) {
+    if (state.tracks.length === 0) {
       return "ambiguous";
     }
     if (state.tracks.some((track) => track.handlerType === "vide")) {
