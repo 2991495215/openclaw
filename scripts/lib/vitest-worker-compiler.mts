@@ -30,6 +30,7 @@ import {
   vitestWorkerDeclarationEntries,
   vitestWorkerRuntimeAssets,
 } from "./vitest-worker-declarations.mts";
+import { createWindowsSecurityHelperBuildPlugin } from "./windows-security-helper-build-plugin.mts";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(import.meta.url);
@@ -325,7 +326,7 @@ async function compileVitestWorkerArtifacts(directory: string): Promise<void> {
         outDir,
         clean: false,
         logLevel: config.logLevel,
-        plugins: config.plugins,
+        plugins: [config.plugins, createWindowsSecurityHelperBuildPlugin(root, "", recordInput)],
       });
     }
     reportPhase("managed handoff compiled");

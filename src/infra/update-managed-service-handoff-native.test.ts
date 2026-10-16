@@ -115,12 +115,48 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("managed handoff native staging", () => {
-  it("preserves the single-file stage outside FreeBSD", async () => {
+  it("preserves the single-file stage on Linux", async () => {
     await withMockedPlatform("linux", async () => {
       const files = stageManagedHandoffRuntime(destination);
       expect(files).toEqual([path.join(destination, "runtime", "managed-handoff-runtime.mjs")]);
       expect(fs.readFileSync(files[0]!)).toEqual(runtimeBytes);
       expect(createRequireMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("keeps the Windows permission helper beside the staged runtime after package replacement", async () => {
+    const helper = path.join(root, "windows-security-helper.exe");
+    const helperBytes = Buffer.from([0x4d, 0x5a, 0x90, 0x00]);
+    write(helper, helperBytes);
+    await withMockedPlatform("win32", async () => {
+      const files = stageManagedHandoffRuntime(destination);
+      expect(files).toEqual([
+        path.join(destination, "runtime", "managed-handoff-runtime.mjs"),
+        path.join(destination, "runtime", "windows-security-helper.exe"),
+      ]);
+      fs.unlinkSync(helper);
+      fs.unlinkSync(path.join(root, "managed-handoff-runtime.mjs"));
+      expect(fs.readFileSync(files[0]!)).toEqual(runtimeBytes);
+      const stagedHelper = new URL("./windows-security-helper.exe", pathToFileURL(files[0]!));
+      expect(fs.lstatSync(stagedHelper).isFile()).toBe(true);
+      expect(fs.readFileSync(stagedHelper)).toEqual(helperBytes);
+      expect(createRequireMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("refuses a missing Windows permission helper", async () => {
+    await withMockedPlatform("win32", async () => {
+      expect(() => stageManagedHandoffRuntime(destination)).toThrow("ENOENT");
+    });
+  });
+
+  it.skipIf(!supportsPosixFiles)("refuses a Windows permission helper symlink", async () => {
+    const helper = path.join(root, "windows-security-helper.exe");
+    const substitute = path.join(root, "substitute.exe");
+    write(substitute, Buffer.from([0x4d, 0x5a]));
+    fs.symlinkSync(substitute, helper);
+    await withMockedPlatform("win32", async () => {
+      expect(() => stageManagedHandoffRuntime(destination)).toThrow("regular package file");
     });
   });
 

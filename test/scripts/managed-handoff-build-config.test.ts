@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -15,6 +15,10 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "tsdown";
 import { afterEach, expect, it, vi } from "vitest";
+import {
+  collectPackageDistImportErrors,
+  collectPackageDistImports,
+} from "../../scripts/lib/package-dist-imports.mjs";
 import { withUpdateCommandExecutor } from "../../src/cli/update-cli/update-command-executor.js";
 import {
   resolvePackageActivationHelper,
@@ -28,6 +32,7 @@ import { createPackageSwapFixture } from "../../src/infra/package-update-swap.te
 import { resolveRuntimeWorkerUrl } from "../../src/infra/runtime-worker-url.js";
 import { MANAGED_HANDOFF_RUNTIME_ENTRY } from "../../src/infra/update-managed-service-handoff-runtime-assets.js";
 import { stageManagedHandoffRuntime } from "../../src/infra/update-managed-service-handoff-runtime.js";
+import { WORKER_BUNDLE_WINDOWS_SECURITY_HELPER_PATH } from "../../src/shared/worker-bundle-hash.js";
 import { resolveTestNodeExecPath } from "../../src/test-utils/node-process.js";
 import buildConfigs from "../../tsdown.config.ts";
 import {
@@ -160,6 +165,28 @@ it.each(
   // Use the production graph unchanged, not the invocation compiler's extra plugins.
   const { bundles } = await build({ ...config, config: false, outDir, logLevel: "silent" });
   try {
+    const helper = WORKER_BUNDLE_WINDOWS_SECURITY_HELPER_PATH;
+    const files = bundles.flatMap(({ chunks }) => chunks.map(({ fileName }) => `dist/${fileName}`));
+    const imports = collectPackageDistImports({
+      files,
+      readText: (file) => readFileSync(path.join(outDir, file.slice("dist/".length)), "utf8"),
+    });
+    expect(imports).toContainEqual({
+      importerPath: `dist/${runtimeEntry}`,
+      importedPath: `dist/${helper}`,
+    });
+    expect(collectPackageDistImportErrors({ files, imports })).toEqual([]);
+    expect(
+      collectPackageDistImportErrors({
+        files: files.filter((file) => file !== `dist/${helper}`),
+        imports,
+      }),
+    ).toContain(`dist/${runtimeEntry} imports missing dist/${helper}`);
+    expect(lstatSync(path.join(outDir, helper)).isFile()).toBe(true);
+    const sha256 = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
+    expect(sha256(path.join(outDir, helper))).toBe(
+      sha256(path.resolve("node_modules/@openclaw/fs-safe/dist", helper)),
+    );
     const modules = bundles.flatMap(({ chunks }) =>
       chunks.flatMap((chunk) => (chunk.type === "chunk" ? chunk.moduleIds : [])),
     );
@@ -214,7 +241,9 @@ it.each(
                 ),
               ),
             ]
-          : [];
+          : process.platform === "win32"
+            ? [path.join(directory, "runtime", helper)]
+            : [];
       expect(staged.toSorted()).toEqual([entry, ...nativeAssets].toSorted());
       if (process.platform === "freebsd") {
         const privateModules = path.join(directory, "runtime", "node_modules");
@@ -227,7 +256,9 @@ it.each(
       expect(readdirSync(path.dirname(entry))).toEqual(
         process.platform === "freebsd"
           ? [MANAGED_HANDOFF_RUNTIME_ENTRY, "node_modules"]
-          : [MANAGED_HANDOFF_RUNTIME_ENTRY],
+          : process.platform === "win32"
+            ? [MANAGED_HANDOFF_RUNTIME_ENTRY, helper]
+            : [MANAGED_HANDOFF_RUNTIME_ENTRY],
       );
     } else {
       const base = path.join(realpathSync(directory), "literal-$HOME-`id`-'quoted'");

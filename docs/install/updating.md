@@ -35,6 +35,12 @@ backup.
 
 **Updates always work** (`openclaw update` finishes best effort everywhere). Changes to update, Doctor, service lifecycle, migrations, plugin loading: state their update behavior. Installed updater runs first, can't be patched; candidate fixes key on markers shipped drivers set; existing operator state = input. Recoverable hiccups → recorded warnings; back up before mutating, let rollback restore it; refuse only for named data risk with previous Gateway kept running. Timeouts and budgets: generous, derived from measured state, sized for slow hardware. Proof: published-driver × candidate cell.
 
+Sealed updater runtimes include the pinned Windows permission helper beside their
+JavaScript entrypoints. Windows managed handoffs preserve that helper when staging
+the runtime outside the installation, so replacing the package does not remove it.
+This staging behavior belongs to the installed updater; a candidate package cannot
+repair an older updater's staging code.
+
 Post-activation schema verification preserves agent databases Doctor holds after
 deletion. These stores may keep an older schema without failing the update;
 Doctor's held-store warning remains visible. Configured agents required by the
