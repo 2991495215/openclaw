@@ -735,7 +735,7 @@ it.each(
     expectMaintenanceArchived(f);
     await own(
       probe.expectHealthy({
-        executor: cold && owner === "replacement" ? 1 : 0,
+        executor: 0,
         reclamation: cold ? 1 : 0,
         other: 0,
       }),
@@ -802,7 +802,8 @@ it("revalidates expired proof before the maintenance finalizer commits", async (
   await expect(work).resolves.toMatchObject({ capped: 1 });
   retained.expectExpired(database);
   expectMaintenanceArchived(f);
-  await own(probe.expectHealthy({ executor: 1, reclamation: 1, other: 0 }));
+  // The queued writer reuses the reclamation worker's completed physical validation.
+  await own(probe.expectHealthy({ executor: 0, reclamation: 1, other: 0 }));
 });
 
 it("rechecks maintenance lifetime after cold finalizer admission", async () => {
