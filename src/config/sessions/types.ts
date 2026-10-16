@@ -16,6 +16,7 @@ import type { SessionGoal } from "../../../packages/gateway-protocol/src/schema/
 import type { SessionObserverDigest } from "../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { SessionAgentStatus } from "../../../packages/gateway-protocol/src/session-agent-status.js";
 import type { SessionCommunicationPolicy } from "../../../packages/gateway-protocol/src/session-communication.js";
+import type { PreemptiveCompactionRoute as SessionContextBudgetStatusRoute } from "../../agents/embedded-agent-runner/run/preemptive-compaction.types.js";
 import type { ChatType } from "../../channels/chat-type.js";
 import type {
   CronScheduledToolCallerOrigin,
@@ -155,12 +156,6 @@ type AcpSessionBinding = {
   acpAgentId: string;
   agentSessionId: string;
 };
-
-type SessionContextBudgetStatusRoute =
-  | "fits"
-  | "compact_only"
-  | "truncate_tool_results_only"
-  | "compact_then_truncate";
 
 export type SessionContextBudgetStatus = {
   schemaVersion: 1;
