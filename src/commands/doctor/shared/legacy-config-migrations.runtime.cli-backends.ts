@@ -1,4 +1,3 @@
-// Doctor-only migration for the retired CLI backend adapter config DSL.
 import { getRecord, type LegacyConfigMigrationSpec } from "../../../config/legacy.shared.js";
 
 const CLI_BACKENDS_PLUGIN_GUIDE = "https://docs.openclaw.ai/plugins/cli-backend-plugins";

@@ -1,4 +1,3 @@
-// Shared transient image payloads extracted from inbound file attachments.
 import type { ImageContent } from "../llm/types.js";
 
 export type ExtractedFileImage = ImageContent & {

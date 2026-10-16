@@ -1,4 +1,3 @@
-/** Strict dotted-path get/set/delete helpers for secrets migration targets. */
 import { isDeepStrictEqual } from "node:util";
 import { isBlockedObjectKey } from "../infra/prototype-keys.js";
 import type { ConcreteConfigPathSegment } from "../shared/dot-path.js";

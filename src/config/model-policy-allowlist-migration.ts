@@ -1,4 +1,3 @@
-// Shared legacy model allowlist detection for runtime, doctor, and config writes.
 import { isRecord } from "../utils.js";
 import { createModelPolicyRefValidator } from "./model-policy-ref.js";
 import type { OpenClawConfig } from "./types.openclaw.js";

@@ -1,4 +1,3 @@
-/** Shared sender identity helpers for authorization checks. */
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,

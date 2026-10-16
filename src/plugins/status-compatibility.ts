@@ -1,4 +1,3 @@
-/** Lightweight formatting contract for plugin compatibility notices. */
 import type { PluginCompatCode } from "./compat/registry.js";
 
 export type PluginCompatibilityNotice = {

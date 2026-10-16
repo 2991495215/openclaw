@@ -1,4 +1,3 @@
-// Invalidates installed plugin index entries after activation metadata changes.
 import { hasConfigPathActivationMetadataMigration } from "./installed-plugin-index-config-path-scope.js";
 import { hashJson } from "./installed-plugin-index-hash.js";
 import {

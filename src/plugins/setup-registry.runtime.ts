@@ -1,4 +1,3 @@
-/** Metadata lookup helpers for plugin setup CLI backend descriptors. */
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isInstalledPluginEnabled } from "./installed-plugin-index.js";

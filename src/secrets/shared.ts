@@ -1,4 +1,3 @@
-/** Shared parsing helpers for secrets migration/runtime code. */
 import { normalizeStringEntries } from "@openclaw/normalization-core/string-normalization";
 export { resolvePositiveTimerTimeoutMs as normalizePositiveTimerMs } from "@openclaw/normalization-core/number-coercion";
 export { isRecord } from "@openclaw/normalization-core/record-coerce";

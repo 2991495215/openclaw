@@ -43,9 +43,7 @@ function decodeTranscriptCursor(value: string): TranscriptCursor {
     ) {
       return { revision: parsed.revision, end: parsed.end };
     }
-  } catch {
-    // Reject malformed cursors below.
-  }
+  } catch {}
   throw new Error("invalid Beam transcript cursor");
 }
 

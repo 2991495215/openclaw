@@ -1,4 +1,3 @@
-// Reads provider thinking policy from a prepared or active runtime registry.
 import { matchesProviderPluginRef } from "./provider-registry-shared.js";
 import type {
   ProviderDefaultThinkingPolicyContext,

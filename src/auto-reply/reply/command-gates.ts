@@ -1,4 +1,3 @@
-// Applies command feature gates before command handlers execute.
 import { redactIdentifier } from "@openclaw/normalization-core/node-crypto";
 import { formatCommandOwnerHint } from "../../commands/doctor-command-owner.js";
 import {

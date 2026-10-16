@@ -1,4 +1,3 @@
-// Root-bounded directory walking facade for explicit plugin SDK consumers.
 import { root, type RootWalkEntry, type RootWalkOptions } from "@openclaw/fs-safe/root";
 
 export type { RootWalkEntry, RootWalkOptions } from "@openclaw/fs-safe/root";

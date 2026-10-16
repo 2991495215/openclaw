@@ -279,7 +279,6 @@ export async function sendMessageMSTeams(
       return sendTextWithMedia(ctx, messageText, finalMediaUrl, params);
     }
 
-    // Group chat or channel: upload to configured SharePoint storage.
     try {
       const siteId = requireMSTeamsSharePointSiteId(sharePointSiteId);
       log.debug?.("uploading to SharePoint for native file card", {

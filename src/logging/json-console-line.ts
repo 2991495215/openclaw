@@ -1,4 +1,3 @@
-// Shared JSON console envelope formatting for captured and pre-capture diagnostics.
 import { stripVTControlCharacters } from "node:util";
 import { readLoggingConfig } from "./config.js";
 import type { LogLevel } from "./levels.js";

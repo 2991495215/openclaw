@@ -1,6 +1,3 @@
-// Private runtime barrel for the bundled Microsoft Teams extension.
-// Keep this barrel thin and aligned with the local extension surface.
-
 export { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 export { mergeAllowlist, summarizeMapping } from "openclaw/plugin-sdk/allow-from";
 export type {

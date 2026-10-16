@@ -1,4 +1,3 @@
-// Declarative CLI command catalog for startup policy and fast-path routing.
 import { hasFlag } from "./argv.js";
 import { PASSIVE_STARTUP_POLICY } from "./command-catalog-policies.js";
 import type { CliCommandCatalogEntry } from "./command-catalog-types.js";

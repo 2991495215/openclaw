@@ -27,7 +27,6 @@ type InstallTrackingRule = {
   matcher: PathMatcher;
 };
 
-/** Provenance lookup for trusted plugin load paths and install records. */
 type PluginProvenanceIndex = {
   loadPathMatcher: PathMatcher;
   installRules: Map<string, InstallTrackingRule>;
@@ -78,7 +77,6 @@ function formatPluginInspectCommand(pluginId: string): string {
   return `openclaw plugins inspect ${quoteCliArg(pluginId)}`;
 }
 
-/** Builds provenance matchers from configured load paths and install records. */
 export function buildProvenanceIndex(params: {
   normalizedLoadPaths: string[];
   env: NodeJS.ProcessEnv;

@@ -1,4 +1,3 @@
-// Mirrors successful outbound payloads into the configured session transcript.
 import { resolveSessionLane } from "../../agents/embedded-agent-runner/lanes.js";
 import {
   getOwnedSessionTranscriptWriterFence,

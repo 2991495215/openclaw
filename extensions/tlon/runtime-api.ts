@@ -1,6 +1,3 @@
-// Private runtime barrel for the bundled Tlon extension.
-// Keep this barrel thin and aligned with the local extension surface.
-
 export type { ReplyPayload } from "openclaw/plugin-sdk/reply-runtime";
 export type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 export type { RuntimeEnv } from "openclaw/plugin-sdk/runtime";

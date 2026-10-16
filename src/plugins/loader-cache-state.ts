@@ -1,6 +1,5 @@
 import { LruCache } from "../infra/lru-cache.js";
 
-/** Small registry cache with reentry detection and per-key warning memory. */
 export class PluginLoaderCacheState<T> {
   readonly #registryCache: LruCache<T>;
   readonly #inFlightLoads = new Set<string>();

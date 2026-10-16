@@ -41,7 +41,6 @@ export const stateSchemaHealthCheck: HealthCheck = {
   },
 };
 
-// Non-mutating health-check runner used by `openclaw doctor --lint`.
 export interface DoctorLintRunOptions {
   readonly checks?: readonly HealthCheck[];
   readonly skipIds?: ReadonlySet<string> | readonly string[];

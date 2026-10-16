@@ -1,4 +1,3 @@
-// ACP session binding helpers — conversation and thread bindings for spawned sessions.
 import {
   resolveAcpSessionCwd,
   resolveAcpThreadSessionDetailLines,

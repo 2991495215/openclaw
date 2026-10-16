@@ -41,9 +41,7 @@ export function resolveBundledSkillsDir(
     if (fs.existsSync(sibling)) {
       return sibling;
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
 
   // npm/dev: resolve `<packageRoot>/skills` relative to this module.
   try {
@@ -74,9 +72,7 @@ export function resolveBundledSkillsDir(
       }
       current = next;
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
 
   return undefined;
 }

@@ -40,6 +40,5 @@ export function buildPowerShellFailureCause(error: unknown): Error {
 
 export function buildEncodedPowerShellArgs(command: string): string[] {
   const encodedCommand = Buffer.from(command, "utf16le").toString("base64");
-  // Canonical argv for non-interactive encoded one-shots.
   return ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encodedCommand];
 }

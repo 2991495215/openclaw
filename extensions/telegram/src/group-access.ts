@@ -28,7 +28,6 @@ export const evaluateTelegramGroupBaseAccess = (params: {
   enforceAllowOverride: boolean;
   requireSenderForAllowOverride: boolean;
 }): TelegramGroupBaseAccessResult => {
-  // Check enabled flags for both groups and DMs
   if (params.groupConfig?.enabled === false) {
     return { allowed: false, reason: "group-disabled" };
   }

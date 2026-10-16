@@ -11,10 +11,8 @@ import {
 import { resolveUserPath } from "../utils.js";
 import { resolveActivePluginInstallDir } from "./install-root-context.js";
 
-/** Encodes arbitrary input as a safe plugin install filename. */
 export { safeDirName as safePluginInstallFileName };
 
-/** Encodes a plugin id for use as an install directory name. */
 export function encodePluginInstallDirName(pluginId: string): string {
   const trimmed = pluginId.trim();
   if (!trimmed.includes("/")) {
@@ -25,7 +23,6 @@ export function encodePluginInstallDirName(pluginId: string): string {
   return `@${safePathSegmentHashed(trimmed)}`;
 }
 
-/** Validates a plugin id for install path safety. */
 export function validatePluginId(pluginId: string): string | null {
   const trimmed = pluginId.trim();
   if (!trimmed) {
@@ -79,7 +76,6 @@ export function matchesExpectedPluginId(params: {
   );
 }
 
-/** Resolves the default directory for path-installed plugin extensions. */
 export function resolveDefaultPluginExtensionsDir(
   env: NodeJS.ProcessEnv = process.env,
   homedir?: () => string,
@@ -87,7 +83,6 @@ export function resolveDefaultPluginExtensionsDir(
   return resolveActivePluginInstallDir("extensions", env, homedir);
 }
 
-/** Resolves the default directory for managed npm plugin installs. */
 export function resolveDefaultPluginNpmDir(
   env: NodeJS.ProcessEnv = process.env,
   homedir?: () => string,
@@ -95,7 +90,6 @@ export function resolveDefaultPluginNpmDir(
   return resolveActivePluginInstallDir("npm", env, homedir);
 }
 
-/** Encodes an npm package name into a managed npm project directory name. */
 function encodePluginNpmProjectDirName(packageName: string): string {
   const trimmed = packageName.trim();
   if (!trimmed) {
@@ -104,13 +98,11 @@ function encodePluginNpmProjectDirName(packageName: string): string {
   return safePathSegmentHashed(trimmed);
 }
 
-/** Resolves the directory containing managed npm plugin projects. */
 export function resolvePluginNpmProjectsDir(npmDir?: string): string {
   const npmBase = npmDir ? resolveUserPath(npmDir) : resolveDefaultPluginNpmDir();
   return path.join(npmBase, "projects");
 }
 
-/** Resolves the managed npm project directory for a package name. */
 export function resolvePluginNpmProjectDir(params: {
   packageName: string;
   npmDir?: string;
@@ -128,7 +120,6 @@ const PLUGIN_NPM_GENERATION_KEY_DIR_NAME_PATTERN = new RegExp(
   "u",
 );
 
-/** Resolves the managed npm artifact-generation project directory prefix for a package. */
 export function resolvePluginNpmGenerationProjectDirPrefix(packageName: string): string {
   return `${encodePluginNpmProjectDirName(packageName)}${PLUGIN_NPM_GENERATION_PROJECT_SEPARATOR}`;
 }
@@ -186,13 +177,11 @@ export function isPluginNpmProjectDir(params: {
   );
 }
 
-/** Encodes a package generation fingerprint into a compact project directory suffix. */
 function encodePluginNpmGenerationKeyDirName(generationKey: string): string {
   const digest = createHash("sha256").update(generationKey).digest("hex");
   return `g-${digest.slice(0, PLUGIN_NPM_GENERATION_KEY_HASH_CHARS)}`;
 }
 
-/** Resolves an artifact-generation-specific managed npm project directory. */
 export function resolvePluginNpmGenerationProjectDir(params: {
   packageName: string;
   generationKey: string;
@@ -206,7 +195,6 @@ export function resolvePluginNpmGenerationProjectDir(params: {
   );
 }
 
-/** Resolves the installed node_modules package directory for a managed npm plugin. */
 export function resolvePluginNpmPackageDir(params: {
   packageName: string;
   npmDir?: string;
@@ -218,7 +206,6 @@ export function resolvePluginNpmPackageDir(params: {
   );
 }
 
-/** Resolves the default directory for git-installed plugins. */
 export function resolveDefaultPluginGitDir(
   env: NodeJS.ProcessEnv = process.env,
   homedir?: () => string,
@@ -226,7 +213,6 @@ export function resolveDefaultPluginGitDir(
   return resolveActivePluginInstallDir("git", env, homedir);
 }
 
-/** Resolves the safe install directory for one plugin id. */
 export function resolvePluginInstallDir(pluginId: string, extensionsDir?: string): string {
   const extensionsBase = extensionsDir
     ? resolveUserPath(extensionsDir)

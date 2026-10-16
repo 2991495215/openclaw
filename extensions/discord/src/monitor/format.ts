@@ -19,7 +19,6 @@ export function resolveDiscordSystemLocation(params: {
 
 export function formatDiscordReactionEmoji(emoji: { id?: string | null; name?: string | null }) {
   if (emoji.id && emoji.name) {
-    // Custom guild emoji in Discord-renderable form.
     return `<:${emoji.name}:${emoji.id}>`;
   }
   if (emoji.id) {

@@ -1,4 +1,3 @@
-/** Worker-backed auth-profile selection and native provider identity. */
 import {
   embeddedAgentLog,
   resolveDefaultAgentDir,

@@ -1,4 +1,3 @@
-// Retained artifact and extracted-source provenance for official ClawHub Claws.
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";

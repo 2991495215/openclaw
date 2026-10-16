@@ -1,4 +1,3 @@
-/** Encodes and decodes generated Windows launcher scripts (`.cmd` / `.vbs`). */
 import iconv from "iconv-lite";
 import {
   resolveWindowsOemCodePage,

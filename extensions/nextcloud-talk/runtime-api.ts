@@ -1,6 +1,3 @@
-// Private runtime barrel for the bundled Nextcloud Talk extension.
-// Keep this barrel thin and aligned with the local extension surface.
-
 export type { AllowlistMatch } from "openclaw/plugin-sdk/allow-from";
 export type { ChannelGroupContext } from "openclaw/plugin-sdk/channel-contract";
 export { logInboundDrop } from "openclaw/plugin-sdk/channel-inbound";

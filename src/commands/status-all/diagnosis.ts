@@ -1,4 +1,3 @@
-// Appends the read-only diagnosis section for `openclaw status --all`.
 // Every line that can include logs, config, or connection details is redacted before display.
 
 import { redactSensitiveUrlLikeString } from "@openclaw/net-policy/redact-sensitive-url";

@@ -1,4 +1,3 @@
-/** Transactional LaunchAgent installation, staging, rollback, and removal. */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { isCurrentProcessInsideLaunchdService } from "./launchd-current-service.js";

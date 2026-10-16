@@ -1,4 +1,3 @@
-/** Stale-state notice text, coalescing keys, and watcher eligibility. */
 import { createInboundDebouncer } from "../auto-reply/inbound-debounce.js";
 import {
   assertSessionEventTargetCurrent,

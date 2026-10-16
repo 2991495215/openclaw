@@ -1,10 +1,8 @@
-// Exposes archive extraction helpers after applying fs-safe defaults.
 import {
   extractArchive as extractArchiveWithFsSafe,
   type ExtractArchiveOptions,
 } from "@openclaw/fs-safe/archive";
 
-// Archive extraction facade for size limits, staged writes, and traversal checks.
 export {
   ARCHIVE_LIMIT_ERROR_CODE,
   ArchiveLimitError,

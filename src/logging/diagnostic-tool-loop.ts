@@ -1,4 +1,3 @@
-/** Tool-loop diagnostic logging and trusted tool.loop event emission. */
 import {
   areDiagnosticsEnabledForProcess,
   emitInternalDiagnosticEvent as emitDiagnosticEvent,

@@ -1,9 +1,3 @@
-/**
- * Top-level `openclaw onboard` command entrypoint.
- *
- * It validates global setup flags, performs optional reset handling, and then
- * routes to interactive or non-interactive onboarding.
- */
 import path from "node:path";
 import { formatCliCommand } from "../cli/command-format.js";
 import { readConfigFileSnapshot, resolveGatewayPort } from "../config/config.js";
@@ -454,7 +448,6 @@ function wantsClassicInteractiveSetup(opts: OnboardOptions): boolean {
   );
 }
 
-/** Runs the onboard command after normalizing legacy flags and setup mode. */
 export async function setupWizardCommand(
   opts: OnboardOptions,
   runtime: RuntimeEnv = defaultRuntime,

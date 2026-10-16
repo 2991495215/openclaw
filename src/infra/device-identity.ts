@@ -1,4 +1,3 @@
-// Gateway/device Ed25519 identity API backed by canonical shared SQLite state.
 import crypto from "node:crypto";
 import {
   assertNoPendingLegacyIdentity,

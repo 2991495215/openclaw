@@ -1,4 +1,3 @@
-// Reconciles adapter progress results with hook-bearing final delivery results.
 import { resolveReceiptSourceId } from "../../channels/message/receipt.js";
 import type { OutboundDeliveryResult } from "./deliver-types.js";
 import { createDeliveryPlacementEvidenceRecorder } from "./delivery-placement-evidence.js";

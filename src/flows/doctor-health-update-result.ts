@@ -1,4 +1,3 @@
-// Publishes a Doctor pass's outcome to the updater that launched it.
 import type { beginDoctorMaintenance } from "../commands/doctor-maintenance.js";
 import { retainCurrentDeferredPluginMigrationWarnings } from "../infra/deferred-plugin-migration-warnings.js";
 import { formatUpdateDoctorConfigChange } from "../infra/update-doctor-config.js";

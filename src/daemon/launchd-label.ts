@@ -1,4 +1,3 @@
-/** Resolves the one effective launchd label shared by lifecycle and diagnostics. */
 import { sanitizeForLog } from "../../packages/terminal-core/src/ansi.js";
 import { resolveGatewayLaunchAgentLabel } from "./constants.js";
 

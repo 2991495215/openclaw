@@ -29,7 +29,6 @@ export function resolvePluginSourceRoots(params: {
   return { stock, global, workspace };
 }
 
-// Shared env-aware key inputs for plugin loader registry reuse.
 export function resolvePluginCacheInputs(params: {
   workspaceDir?: string;
   loadPaths?: readonly string[];

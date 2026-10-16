@@ -1,4 +1,3 @@
-// Channel setup fallback helpers for the empty-discovery-buckets recovery path.
 import type { ChannelChoice } from "../commands/onboard-types.js";
 import { t } from "../wizard/i18n/index.js";
 import type { WizardPrompter } from "../wizard/prompts.js";

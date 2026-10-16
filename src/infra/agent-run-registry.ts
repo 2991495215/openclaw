@@ -1,4 +1,3 @@
-// Owns process-local agent run context, ownership, and projection state.
 import { randomUUID } from "node:crypto";
 import { composeSessionSourceAssertion } from "../config/sessions/session-source-authority.js";
 import { registerListener } from "../shared/listeners.js";

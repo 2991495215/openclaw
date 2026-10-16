@@ -11,7 +11,6 @@ import type {
   HealthRepairEffect,
 } from "./health-checks.js";
 
-// Repair runner for structured doctor health checks; carries config between checks.
 interface DoctorRepairRunOptions {
   readonly checks?: readonly DoctorHealthCheck[];
   readonly dryRun?: boolean;

@@ -1,4 +1,3 @@
-/** Public singleton facade for the ACP session manager control plane. */
 import { AcpSessionManager } from "./manager.core.js";
 import { disposeAcpSessionManagerInstance } from "./manager.lifecycle.js";
 

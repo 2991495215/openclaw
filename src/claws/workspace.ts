@@ -1,4 +1,3 @@
-// Creates Claw-owned bootstrap and supporting files inside the new agent workspace.
 import { realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { coerceErrorMessage } from "@openclaw/normalization-core/error-coercion";

@@ -1,7 +1,3 @@
-/**
- * Creates and configures stdio-backed Codex app-server transports, including
- * Windows spawn normalization and environment filtering.
- */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-registration";
@@ -27,7 +23,6 @@ const RUNTIME_INJECTION_ENVIRONMENT_KEYS = new Set([
   "LD_PRELOAD",
 ]);
 
-/** Resolves the concrete command/argv/shell settings used to spawn Codex app-server. */
 export function resolveCodexAppServerSpawnInvocation(
   options: CodexAppServerStartOptions,
   env: NodeJS.ProcessEnv,
@@ -124,7 +119,6 @@ export function withCodexAppServerGitConfig(
   };
 }
 
-/** Spawns the Codex app-server process and returns the shared transport interface. */
 export async function createStdioTransport(
   options: CodexAppServerStartOptions,
   baseEnv: NodeJS.ProcessEnv = process.env,

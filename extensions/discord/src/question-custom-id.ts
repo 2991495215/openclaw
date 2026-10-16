@@ -1,4 +1,3 @@
-// Discord-private ask_user component envelope.
 import type { ComponentData } from "./internal/discord.js";
 
 const QUESTION_RECORD_ID_PATTERN = /^ask_[a-f0-9]{32}$/u;

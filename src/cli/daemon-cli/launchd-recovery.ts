@@ -1,5 +1,4 @@
 import { assertNoSystemLaunchDaemonOwnership } from "../../daemon/launchd-system.js";
-// macOS LaunchAgent recovery helper for daemon lifecycle commands.
 import {
   formatLaunchAgentGuiSessionError,
   launchAgentPlistExists,

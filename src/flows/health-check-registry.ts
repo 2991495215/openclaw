@@ -1,6 +1,5 @@
 import type { HealthCheck, HealthFinding } from "./health-checks.js";
 
-// Process-local registry populated by core and plugin doctor checks.
 const REGISTRY = new Map<string, HealthCheck>();
 
 class HealthCheckRegistrationError extends Error {
