@@ -186,6 +186,12 @@ export function captureConfigHealthStateStore(
           loggedHealthWriteFailures.delete(databasePath);
         }
       } catch (error) {
+        if (
+          error instanceof OpenClawStateOwnershipError ||
+          findStartupMaintenanceRequiredError(error)
+        ) {
+          throw error;
+        }
         assertCurrent();
         handleHealthWriteFailure(deps, databasePath, error);
       }

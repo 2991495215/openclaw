@@ -6,6 +6,7 @@ import * as healthState from "../config/io.health-state.js";
 import type { ConfigHealthState } from "../config/io.health-state.types.js";
 import { createConfigIO } from "../config/io.js";
 import { hashConfigRaw } from "../config/io.read-helpers.js";
+import { ConfigMutationConflictError } from "../config/mutation-conflict.js";
 import { writeOpenClawConfig } from "../config/test-helpers.js";
 import * as safeFs from "../infra/fs-safe.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
@@ -80,7 +81,7 @@ it.skipIf(process.platform === "win32")(
   },
 );
 
-it("keeps the last-known-good file when a newer observation supersedes promotion", async () => {
+it("refuses promotion when the captured config source changes", async () => {
   await withDoctorConfigPreflightHome(async (home) => {
     const { configPath, options, io } = await createFixture(home);
     try {
@@ -113,7 +114,9 @@ it("keeps the last-known-good file when a newer observation supersedes promotion
         };
         return directory;
       });
-      const promoted = await io.promoteConfigSnapshotToLastKnownGood(older);
+      await expect(io.promoteConfigSnapshotToLastKnownGood(older)).rejects.toBeInstanceOf(
+        ConfigMutationConflictError,
+      );
       expect(observedNewer).toBe(true);
       expect(expectedHealth?.entries?.[configPath]?.lastKnownGood?.hash).toBe(
         hashConfigRaw(newerRaw),
@@ -121,7 +124,6 @@ it("keeps the last-known-good file when a newer observation supersedes promotion
       expect(fs.readFileSync(`${configPath}.last-good`, "utf8")).toBe(good.raw);
       expect(fs.readFileSync(configPath, "utf8")).toBe(newerRaw);
       expect(healthState.readConfigHealthStateFromStore(options)).toEqual(expectedHealth);
-      expect(promoted).toBe(false);
       await closeOpenClawStateDatabaseAsync();
       expect(healthState.readConfigHealthStateFromStore(options)).toEqual(expectedHealth);
     } finally {
