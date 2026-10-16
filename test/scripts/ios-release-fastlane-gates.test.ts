@@ -1302,7 +1302,7 @@ puts JSON.generate(results)
       expect(
         entry.lifecycle
           .filter(([operation]) => operation !== "create")
-          .every(([, id]) => privateIds.includes(id)),
+          .every(([, id]) => id !== undefined && privateIds.includes(id)),
         entry.scenario,
       ).toBe(true);
     }
