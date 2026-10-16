@@ -21,7 +21,7 @@ function createPresentedReadMarkerPane(params: Parameters<typeof createTestChatP
     connectionEpoch: state.connectionEpoch,
     sessionKey: state.sessionKey,
     requestAgentId: undefined,
-    sessionInfo: null,
+    sessionInfo: undefined,
   });
   return fixture;
 }
