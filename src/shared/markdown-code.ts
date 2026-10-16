@@ -1,5 +1,3 @@
-// Markdown code spans/fences that survive embedded backticks.
-
 function longestBacktickRun(value: string): number {
   let longest = 0;
   let current = 0;

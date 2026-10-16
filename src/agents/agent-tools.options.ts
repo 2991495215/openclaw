@@ -35,7 +35,6 @@ import type {
 } from "./tool-search.js";
 import type { CronCreatorToolAllowlistEntry, CronToolsAllowCaptureRef } from "./tools/cron-tool.js";
 
-/** Public options for building one plugin-owned agent tool surface. */
 export type OpenClawCodingToolsOptions = {
   agentId?: string;
   /** Retained policy owner; execution identity remains agentId/runSessionKey. */

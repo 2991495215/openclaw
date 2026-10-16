@@ -1,4 +1,3 @@
-// Canonical provider/model reference parsing and provider-id normalization.
 //
 // Split from the `provider-model-shared` barrel, which also value-loads replay
 // policy, endpoint, and catalog-compat helpers. Doctor contract closures

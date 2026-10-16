@@ -1,4 +1,3 @@
-// Pure plugin config cleanup shared by doctor repair and full uninstall flows.
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   mergePluginConfigUninstallActions,

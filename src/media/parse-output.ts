@@ -509,7 +509,7 @@ export function splitMediaOutput(
       : [];
   let markdownImageIndex = 0;
 
-  let lineOffset = 0; // Track character offset for code-block checking
+  let lineOffset = 0;
   // Line offsets and scanner spans advance in source order.
   let codeBlockIndex = 0;
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 2) {

@@ -1,4 +1,3 @@
-// Assistant visible text helpers strip hidden reasoning and control marker text.
 import {
   projectPlainTextToolCallBlocks,
   stripPlainTextToolCallBlocks,

@@ -1,4 +1,3 @@
-// Context-engine registry owns engine registration, resolution, compatibility, and quarantine.
 import type { OpenClawConfig } from "../config/types.js";
 import { runPluginCleanup } from "../plugins/plugin-instance-scope.js";
 import type {

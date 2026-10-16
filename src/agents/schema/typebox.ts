@@ -1,6 +1,4 @@
 /**
- * Shared TypeBox schema helpers for agent tools.
- *
  * Tool definitions use these helpers for channel targets and common optional
  * numeric fields so provider-facing schemas stay consistent.
  */
@@ -32,14 +30,12 @@ export function executionTitleSchema(options: { required?: boolean } = {}) {
   return options.required ? schema : Type.Optional(schema);
 }
 
-/** Builds a schema for one outbound channel target. */
 export function channelTargetSchema(options?: { description?: string }) {
   return Type.String({
     description: options?.description ?? CHANNEL_TARGET_DESCRIPTION,
   });
 }
 
-/** Builds a schema for multiple outbound channel targets. */
 export function channelTargetsSchema(options?: { description?: string }) {
   return Type.Array(
     channelTargetSchema({ description: options?.description ?? CHANNEL_TARGETS_DESCRIPTION }),
@@ -60,7 +56,6 @@ type NumberSchemaOptions = {
   exclusiveMaximum?: number;
 };
 
-/** Builds an optional finite number schema with caller-provided metadata. */
 export function optionalFiniteNumberSchema(options: NumberSchemaOptions = {}) {
   return Type.Optional(Type.Number(options));
 }
@@ -69,12 +64,10 @@ function optionalIntegerSchema(minimum: number, options: IntegerSchemaOptions) {
   return Type.Optional(Type.Integer({ minimum, ...options }));
 }
 
-/** Builds an optional positive integer schema. */
 export function optionalPositiveIntegerSchema(options: IntegerSchemaOptions = {}) {
   return optionalIntegerSchema(1, options);
 }
 
-/** Builds an optional non-negative integer schema. */
 export function optionalNonNegativeIntegerSchema(options: IntegerSchemaOptions = {}) {
   return optionalIntegerSchema(0, options);
 }

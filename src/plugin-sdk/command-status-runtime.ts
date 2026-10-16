@@ -1,6 +1,3 @@
-/**
- * Lazy runtime SDK subpath for command status reply generation.
- */
 import { createLazyRuntimeMethodBinder, createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 
 type CommandStatusRuntime = typeof import("./command-status.runtime.js");

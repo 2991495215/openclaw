@@ -2,11 +2,6 @@ import path from "node:path";
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 export { AVATAR_MAX_BYTES } from "./avatar-limits.js";
 
-/**
- * Shared avatar source policy for config validation, agent identity loading,
- * gateway uploads, and Control UI rendering hints.
- */
-
 // Local avatar serving intentionally excludes formats handled only as MIME fallbacks:
 // callers may recognize BMP/TIFF MIME types, but local inline serving stays on
 // the smaller browser-safe extension set below.

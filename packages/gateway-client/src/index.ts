@@ -1,5 +1,3 @@
-// Public gateway-client package surface: connection client, device auth,
-// readiness helpers, event-loop readiness, and timeout utilities.
 export * from "./client.js";
 export * from "./chat-stream-message.js";
 export * from "./run-recovery-text.js";

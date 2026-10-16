@@ -2,7 +2,6 @@ import {
   scanReasoningTags,
   stripReasoningTagsFromMarkdown,
 } from "../../../packages/markdown-core/src/reasoning-tags.js";
-// Reasoning tag helpers find and remove model reasoning tag blocks from text.
 import { findFinalTagMatches, stripFinalTags } from "./final-tags.js";
 export type ReasoningTagMode = "strict" | "preserve";
 export type ReasoningTagTrim = "none" | "start" | "both";

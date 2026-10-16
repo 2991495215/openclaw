@@ -1,4 +1,3 @@
-// GLM <tool_call>exec<arg_key> payload recognition for assistant-visible stripping.
 import { skipWhitespace } from "../../../packages/tool-call-repair/src/grammar.js";
 import { parseXmlTagAt, type ParsedToolCallTag } from "./xml-tag-at.js";
 

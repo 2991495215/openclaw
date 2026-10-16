@@ -1,4 +1,3 @@
-/** Explicit model reasoning-effort compatibility metadata. */
 import { asOptionalObjectRecord } from "@openclaw/normalization-core/record-coerce";
 
 /** Minimal model fields needed to resolve OpenAI reasoning effort compatibility. */

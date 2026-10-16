@@ -1,5 +1,4 @@
 /**
- * Process-local singleton helpers for registries, caches, and SDK-visible shared state.
  * Keys must be symbols so unrelated modules cannot collide on `globalThis` property names.
  */
 const GLOBAL_SINGLETON_RESETS_KEY = Symbol.for("openclaw.globalSingletonLifecycleResets");

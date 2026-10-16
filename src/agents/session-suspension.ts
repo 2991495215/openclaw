@@ -14,7 +14,7 @@ import type { FailoverReason } from "./failover/signal.js";
 
 const log = createSubsystemLogger("session-suspension");
 
-const DEFAULT_QUOTA_SUSPENSION_RESUME_MS = 30 * 60 * 1000; // 30 min
+const DEFAULT_QUOTA_SUSPENSION_RESUME_MS = 30 * 60 * 1000;
 
 type SessionSuspensionRuntimeState = {
   suspensionWriteChain: Promise<void>;

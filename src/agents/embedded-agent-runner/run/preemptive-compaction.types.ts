@@ -1,6 +1,3 @@
-/**
- * Route chosen before a model call when context pressure may require compaction or truncation.
- */
 export type PreemptiveCompactionRoute =
   | "fits"
   | "compact_only"

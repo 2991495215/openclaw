@@ -1,7 +1,5 @@
 import { stylePromptHint, stylePromptMessage } from "./prompt-style.js";
 
-// Pure prompt parameter styler used by interactive prompts and tests.
-
 /** Minimal select-like params accepted by the prompt styler. */
 type SelectParamsLike = {
   message: string;

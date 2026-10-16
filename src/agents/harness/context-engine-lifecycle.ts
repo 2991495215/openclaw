@@ -426,7 +426,6 @@ export async function finalizeHarnessContextEngineTurn(
     sessionManager?: unknown;
     config?: OpenClawConfig;
     warn: (message: string) => void;
-    /** True when this turn belongs to a heartbeat run. */
     isHeartbeat?: boolean;
     modelContextWindow?: number;
     turnCandidate?: {

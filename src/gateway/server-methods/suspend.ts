@@ -1,4 +1,3 @@
-// Gateway RPC handlers for cooperative, host-neutral process suspension.
 import {
   ErrorCodes,
   errorShape,

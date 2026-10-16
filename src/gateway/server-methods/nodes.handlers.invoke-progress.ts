@@ -1,4 +1,3 @@
-// Gateway RPC handler for ordered node invocation progress.
 import {
   ErrorCodes,
   errorShape,

@@ -1,4 +1,3 @@
-/** Runtime media-understanding dependencies used by ACP reply dispatch. */
 export { applyMediaUnderstanding } from "../../media-understanding/apply.js";
 export { MediaAttachmentCache } from "../../media-understanding/attachments.js";
 export {
