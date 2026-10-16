@@ -124,6 +124,14 @@ export async function emitCompactProgressScenario(reply: GetReplyOptions) {
 
 export const THREAD_TS = "thread-1";
 
+export const HUMAN_THREAD_REPLY = {
+  accountId: "default",
+  channelId: "C123",
+  threadTs: THREAD_TS,
+  messageTs: "171234.568",
+  userId: "U_HUMAN",
+};
+
 export function expectRecordFields(
   record: Record<string, unknown>,
   fields: Record<string, unknown>,

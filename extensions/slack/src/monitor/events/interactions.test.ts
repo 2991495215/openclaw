@@ -4,8 +4,10 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeSlackApprovalAction } from "../../approval-actions.js";
 import type { SlackInteractiveHandlerContext } from "../../interactive-dispatch.js";
 import {
+  actionBody,
   approvalButtonBlocks,
   approvalContextOptions,
+  blockActionAuthorizationCases,
   createContext,
   createModalPickerStateValues,
   singleButtonBlocks,
@@ -211,35 +213,6 @@ function interactionInputs(payload: Record<string, unknown>) {
     throw new Error("Expected interaction inputs");
   }
   return payload.inputs.map((input) => requireRecord(input, "interaction input"));
-}
-
-type ActionBody = Parameters<ReturnType<ReturnType<typeof createContext>["getHandler"]>>[0]["body"];
-function actionBody(
-  message: Omit<NonNullable<ActionBody["message"]>, "ts">,
-  {
-    userId = "U123",
-    channelId = "C1",
-    ts = "100.200",
-    threadTs,
-    container = true,
-    ...extra
-  }: {
-    userId?: string;
-    channelId?: string;
-    ts?: string;
-    threadTs?: string;
-    container?: boolean;
-  } & Pick<ActionBody, "team" | "trigger_id" | "response_url"> = {},
-): ActionBody {
-  return {
-    user: { id: userId },
-    channel: { id: channelId },
-    ...(container
-      ? { container: { channel_id: channelId, message_ts: ts, thread_ts: threadTs } }
-      : {}),
-    message: { ts, ...message },
-    ...extra,
-  };
 }
 
 describe("registerSlackInteractionEvents", () => {
@@ -1619,110 +1592,44 @@ describe("registerSlackInteractionEvents", () => {
     },
   );
 
-  it.each([
-    {
-      name: "blocks channel block actions when sender is outside configured global allowFrom",
-      overrides: { allowFrom: ["U_OWNER"] },
-      senderId: "U_ATTACKER",
-      channelId: "C1",
-      timestamp: "250.251",
-      allowed: false,
-    },
-    {
-      name: "allows channel block actions when channel users allowlist authorizes the sender",
-      overrides: {
-        allowFrom: ["U_OWNER"],
-        channelsConfig: { C1: { users: ["U_ALLOWED"] } },
-      },
-      senderId: "U_ALLOWED",
-      channelId: "C1",
-      timestamp: "260.261",
-      allowed: true,
-    },
-    {
-      name: "blocks wildcard global allowFrom from bypassing configured channel users",
-      overrides: {
-        allowFrom: ["*"],
-        channelsConfig: { C1: { users: ["U_ALLOWED"] } },
-      },
-      senderId: "U_ATTACKER",
-      channelId: "C1",
-      timestamp: "270.271",
-      allowed: false,
-    },
-    {
-      name: "keeps channel block actions open when no allowlists are configured",
-      overrides: { allowFrom: [] },
-      senderId: "U_ANYONE",
-      channelId: "C1",
-      timestamp: "305.306",
-      allowed: true,
-    },
-    {
-      name: "blocks DM block actions when sender is not in allowFrom",
-      overrides: { dmPolicy: "allowlist" as const, allowFrom: ["U_OWNER"] },
-      senderId: "U_ATTACKER",
-      channelId: "D222",
-      timestamp: "301.302",
-      allowed: false,
-    },
-    {
-      name: "blocks MPIM block actions when sender is outside configured allowFrom",
-      overrides: {
-        allowFrom: ["U_OWNER"],
-        resolveChannelName: async () => ({ name: "group-dm", type: "mpim" as const }),
-      },
-      senderId: "U_ATTACKER",
-      channelId: "G_MPIM",
-      timestamp: "311.312",
-      allowed: false,
-    },
-    {
-      name: "allows MPIM block actions when sender is in configured allowFrom",
-      overrides: {
-        allowFrom: ["U_OWNER"],
-        resolveChannelName: async () => ({ name: "group-dm", type: "mpim" as const }),
-      },
-      senderId: "U_OWNER",
-      channelId: "G_MPIM",
-      timestamp: "313.314",
-      allowed: true,
-    },
-  ])("$name", async ({ overrides, senderId, channelId, timestamp, allowed }) => {
-    enqueueSystemEventMock.mockClear();
-    const { app, getHandler } = setupInteractions(overrides);
-    const handler = getHandler();
+  it.each(blockActionAuthorizationCases)(
+    "$name",
+    async ({ overrides, senderId, channelId, timestamp, allowed }) => {
+      enqueueSystemEventMock.mockClear();
+      const { app, getHandler } = setupInteractions(overrides);
+      const handler = getHandler();
 
-    const ack = vi.fn().mockResolvedValue(undefined);
-    const respond = vi.fn().mockResolvedValue(undefined);
-    await handler({
-      ack,
-      respond,
-      body: actionBody(
-        { blocks: [{ type: "actions", block_id: "verify_block", elements: [] }] },
-        { userId: senderId, channelId, ts: timestamp, container: false },
-      ),
-      action: {
-        type: "button",
-        action_id: "openclaw:verify",
-        block_id: "verify_block",
-      },
-    });
+      const ack = vi.fn().mockResolvedValue(undefined);
+      const respond = vi.fn().mockResolvedValue(undefined);
+      await handler({
+        ack,
+        respond,
+        body: actionBody(
+          { blocks: [{ type: "actions", block_id: "verify_block", elements: [] }] },
+          { userId: senderId, channelId, ts: timestamp, container: false },
+        ),
+        action: {
+          type: "button",
+          action_id: "openclaw:verify",
+          block_id: "verify_block",
+        },
+      });
 
-    expect(ack).toHaveBeenCalled();
-    if (allowed) {
-      expect(enqueueSystemEventMock).toHaveBeenCalledTimes(1);
-      expect(app.client.chat.update).toHaveBeenCalledTimes(1);
-      expect(respond).not.toHaveBeenCalled();
-      return;
-    }
-    expect(enqueueSystemEventMock).not.toHaveBeenCalled();
-    expect(app.client.chat.update).not.toHaveBeenCalled();
-    expect(respond).toHaveBeenCalledWith({
-      text: "You are not authorized to use this control.",
-      response_type: "ephemeral",
-    });
-  });
+      expect(ack).toHaveBeenCalled();
+      if (allowed) {
+        expect(enqueueSystemEventMock).toHaveBeenCalledTimes(1);
+        expect(app.client.chat.update).toHaveBeenCalledTimes(1);
+        expect(respond).not.toHaveBeenCalled();
+        return;
+      }
+      expect(enqueueSystemEventMock).not.toHaveBeenCalled();
+      expect(app.client.chat.update).not.toHaveBeenCalled();
+      expect(respond).toHaveBeenCalledWith({
+        text: "You are not authorized to use this control.",
+        response_type: "ephemeral",
+      });
+    },
+  );
 
   it("ignores malformed action payloads after ack and logs warning", async () => {
     const { app, getHandler, runtimeLog } = setupInteractions();

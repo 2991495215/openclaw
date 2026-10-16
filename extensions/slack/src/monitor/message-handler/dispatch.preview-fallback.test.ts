@@ -25,6 +25,7 @@ import type { SlackSendResult } from "../../send.js";
 import { getSlackSessionRuns } from "../session-run-targets.js";
 import {
   FAILED_COMMAND_ITEM,
+  HUMAN_THREAD_REPLY,
   THREAD_TS,
   buildPreparedSlackMessage,
   checkpoint,
@@ -52,13 +53,6 @@ import {
 const FINAL_REPLY_TEXT = "final answer";
 const STREAM_MESSAGE_TS = "171234.567";
 const SAME_TEXT = "same reply";
-const HUMAN_THREAD_REPLY = {
-  accountId: "default",
-  channelId: "C123",
-  threadTs: THREAD_TS,
-  messageTs: "171234.568",
-  userId: "U_HUMAN",
-};
 
 const getGlobalHookRunnerMock = vi.hoisted(() => vi.fn());
 const createSlackDraftStreamMock = vi.fn();
