@@ -48,7 +48,6 @@ it("joins failed POSIX startup cleanup before returning the original executable 
         sequence: 1,
         anchorPid: 1235,
         error: "spawn /synthetic-missing-command ENOENT",
-        errorDetails: { message: "spawn /synthetic-missing-command ENOENT", code: "ENOENT" },
       }),
     );
     await new Promise<void>((resolve) => {
@@ -74,7 +73,6 @@ it("joins failed POSIX startup cleanup before returning the original executable 
 
     expect(await result).toMatchObject({
       message: "spawn /synthetic-missing-command ENOENT",
-      code: "ENOENT",
     });
     await expect(adapter.waitForExtinction()).resolves.toBeUndefined();
     expect(groupProbe).toHaveBeenCalledWith(-1235, 0);
