@@ -213,7 +213,7 @@ function holdReclamationValidation(databasePath?: string) {
   };
 }
 
-test("sessions.delete admits unrelated same-store patches during Worker validation", async ({
+test("sessions.delete settles queued same-store patches after Worker validation", async ({
   signal,
 }) => {
   const targetKey = "agent:main:validation-delete";
@@ -271,12 +271,12 @@ test("sessions.delete admits unrelated same-store patches during Worker validati
     const patch = validation.own(
       rpcReq(ws, "sessions.patch", { key: unrelatedKey, label: "progressed" }),
     );
-    await expect(patch).resolves.toMatchObject({ ok: true });
-    expect(loadSessionEntry({ sessionKey: unrelatedKey, storePath })?.label).toBe("progressed");
     expect(admissionSettled).toBe(false);
     expect(Atomics.load(gate, 2)).toBe(0);
 
     validation.release();
+    await expect(patch).resolves.toMatchObject({ ok: true });
+    expect(loadSessionEntry({ sessionKey: unrelatedKey, storePath })?.label).toBe("progressed");
     await expect(deletion).resolves.toMatchObject({ ok: true, payload: { deleted: true } });
     await expect(admission).resolves.toBe("deleted session cannot accept new work");
     expect(loadSessionEntry({ sessionKey: targetKey, storePath })).toBeUndefined();

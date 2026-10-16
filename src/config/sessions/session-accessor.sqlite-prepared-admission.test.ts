@@ -658,7 +658,7 @@ it.each(
     ([false, true] as const).map((cold) => ({ owner, cold })),
   ),
 )(
-  "keeps $owner maintenance commits after validation without blocking writers (cold: $cold)",
+  "settles $owner maintenance and queued writes after validation (cold: $cold)",
   async ({ owner, cold }) => {
     const f = maintenanceFixture();
     const probe = observeWorkerAdmission(f.databasePath, cold ? "cold" : "warm");
@@ -721,12 +721,11 @@ it.each(
           }),
         }),
       );
-      // Validation has no writer permit; the finalizer acquires it for its native commit.
-      await later;
       expect(preparationWriterRan).toBe(true);
-      expect(loadSessionEntryReadOnly(f.input)?.label).toBe("foreground");
       expect(loadSessionEntryReadOnly(f.stale)?.sessionId).toBe("old");
       probe.release.resolve();
+      await later;
+      expect(loadSessionEntryReadOnly(f.input)?.label).toBe("foreground");
       await work;
     } else {
       await work;
@@ -782,7 +781,7 @@ it("revalidates expired proof before the maintenance finalizer commits", async (
   retained.expectExpired(database);
   expect(loadSessionEntryReadOnly(f.stale)?.sessionId).toBe("old");
   expect(loadTranscriptEventsSync(f.stale)).toEqual(f.events);
-  await own(
+  const later = own(
     applySessionEntryReplacements({
       storePath: f.databasePath,
       sessionKeys: [f.input.sessionKey],
@@ -796,9 +795,10 @@ it("revalidates expired proof before the maintenance finalizer commits", async (
       }),
     }),
   );
-  expect(loadSessionEntryReadOnly(f.input)?.label).toBe("foreground");
   expect(loadSessionEntryReadOnly(f.stale)?.sessionId).toBe("old");
   probe.release.resolve();
+  await later;
+  expect(loadSessionEntryReadOnly(f.input)?.label).toBe("foreground");
   await expect(work).resolves.toMatchObject({ capped: 1 });
   retained.expectExpired(database);
   expectMaintenanceArchived(f);

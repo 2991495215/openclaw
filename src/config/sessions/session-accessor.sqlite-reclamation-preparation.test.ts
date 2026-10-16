@@ -84,7 +84,7 @@ afterEach(async () => {
   tempDirs.cleanup();
 });
 
-test("commits foreground replacement while cold reclamation holds native integrity", async () => {
+test("settles queued foreground replacement after cold reclamation integrity", async () => {
   const fixture = createFixture(["victim", "foreground"]);
   vi.stubEnv("OPENCLAW_STATE_DIR", fixture.options.env.OPENCLAW_STATE_DIR);
   await closeOpenClawAgentDatabaseByPathAsync(fixture.database.path);
@@ -107,6 +107,7 @@ test("commits foreground replacement while cold reclamation holds native integri
       settled = true;
     },
   );
+  let replacement: Promise<unknown> | undefined;
   try {
     expect(
       await Promise.race([
@@ -118,7 +119,7 @@ test("commits foreground replacement while cold reclamation holds native integri
       ]),
     ).toBe("native integrity");
     expect(Atomics.load(new Int32Array(counts), 0)).toBe(1);
-    await applySessionEntryReplacements({
+    replacement = applySessionEntryReplacements({
       storePath: fixture.database.path,
       sessionKeys: [fixture.scopes[1]!.sessionKey],
       skipMaintenance: true,
@@ -132,14 +133,11 @@ test("commits foreground replacement while cold reclamation holds native integri
         }),
       }),
     });
-    expect(loadSessionEntryReadOnly(fixture.scopes[1]!)).toMatchObject({
-      sessionId: "foreground",
-      label: "foreground committed",
-    });
     expect(loadSessionEntryReadOnly(fixture.scopes[0]!)).toMatchObject({ sessionId: "victim" });
     expect(settled).toBe(false);
     Atomics.store(new Int32Array(release), 0, 1);
     Atomics.notify(new Int32Array(release), 0);
+    await replacement;
     await expect(work).resolves.toMatchObject({
       kind: "lifecycle-artifacts",
       value: { removedEntries: 1 },
@@ -152,7 +150,7 @@ test("commits foreground replacement while cold reclamation holds native integri
   } finally {
     Atomics.store(new Int32Array(release), 0, 1);
     Atomics.notify(new Int32Array(release), 0);
-    await Promise.allSettled([work]);
+    await Promise.allSettled([work, replacement]);
     await closeOpenClawAgentDatabaseByPathAsync(fixture.database.path);
   }
   expect(spawned).toHaveLength(1);

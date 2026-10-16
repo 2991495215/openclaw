@@ -287,10 +287,9 @@ it.each([
         ),
       );
       await yieldToEventLoop();
-      // Both archive reads and cold integrity validation release writer admission;
-      // transaction ordering resumes only when the reclaimer requests its write.
+      // The earlier writer runs first; cold verification retains the next grant.
       expect(laterWriterRan).toBe(true);
-      expect(followingWriterRan).toBe(true);
+      expect(followingWriterRan).toBe(false);
       expect(isSessionLifecycleMutationActive(storePath, [oldSessionId])).toBe(true);
       if (outcome === "protected") {
         // A peer connection can refresh the live entry while its worker validates.
