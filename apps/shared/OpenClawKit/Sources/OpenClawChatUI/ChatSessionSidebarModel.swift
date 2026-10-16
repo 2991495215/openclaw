@@ -647,8 +647,10 @@ public enum ChatSessionSidebarModel {
     }
 
     static func isRunning(_ session: OpenClawChatSessionEntry) -> Bool {
-        session.hasActiveRun == true ||
-            session.status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "running"
+        let status = session.status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // Terminal status wins over stale liveness, matching the Gateway run-state owner.
+        if let status, status != "queued", status != "running" { return false }
+        return session.hasActiveRun ?? (status == "running" || status == "queued")
     }
 
     static func isNewer(

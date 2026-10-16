@@ -31,7 +31,7 @@ struct ChatSessionSidebarRowFacts {
             self.runIDs = Set(session.activeRunIds ?? [])
             self.runtimeMs = session.runtimeMs
             self.startedAt = session.startedAt
-            self.running = ChatSessionSidebarRowFacts.isRunning(session)
+            self.running = ChatSessionSidebarModel.isRunning(session)
         }
     }
 
@@ -73,11 +73,11 @@ struct ChatSessionSidebarRowFacts {
         }
         let hasError = request == nil && declaration == nil && failed != nil
         // The native cache retains run facts; disconnected rows must not animate stale activity.
-        let ownRun = isConnected && !session.isArchived && Self.isRunning(session)
+        let ownRun = isConnected && !session.isArchived && ChatSessionSidebarModel.isRunning(session)
         // ui/src/components/app-sidebar-session-tree.ts:166: the summary flag
         // includes an own queued run; only an idle parent proves unloaded child work.
         let childrenRun = isConnected && (rows.dropFirst().contains {
-            Self.isRunning($0) || $0.hasActiveSubagentRun == true
+            ChatSessionSidebarModel.isRunning($0) || $0.hasActiveSubagentRun == true
         } || (!session.isArchived && !ownRun && session.hasActiveSubagentRun == true))
         let running = ownRun || childrenRun
         // ui/src/components/session-leading-indicator.ts:70: questions stop the ring;
@@ -176,7 +176,7 @@ struct ChatSessionSidebarRowFacts {
         _ session: OpenClawChatSessionEntry, sampledAt: Date, now: Date, isConnected: Bool = true) -> String?
     {
         let duration = session.runtimeMs.map {
-            $0 + (isConnected && Self.isRunning(session) && !session.isArchived
+            $0 + (isConnected && ChatSessionSidebarModel.isRunning(session) && !session.isArchived
                 ? max(0, now.timeIntervalSince(sampledAt) * 1000) : 0)
         } ?? session.startedAt.flatMap { start in
             (session.endedAt ?? (isConnected ? now.timeIntervalSince1970 * 1000 : nil)).map { $0 - start }
@@ -197,12 +197,6 @@ struct ChatSessionSidebarRowFacts {
         "lock": "lock.fill",
         "hourglass": "circle",
     ]
-
-    static func isRunning(_ row: OpenClawChatSessionEntry) -> Bool {
-        // src/shared/session-run-state.ts: terminal status wins, then explicit liveness.
-        if let status = row.status, status != "queued", status != "running" { return false }
-        return row.hasActiveRun ?? (row.status == "running" || row.status == "queued")
-    }
 
     private static func terminalBadge(_ status: String?) -> Badge? {
         // ui/src/styles/layout.css:2413: read terminal children keep their status color.
