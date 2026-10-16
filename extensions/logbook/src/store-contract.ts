@@ -41,7 +41,6 @@ export type LogbookOperations = {
   resetRunningBatches: Operation<undefined, void>;
   resetErrorBatches: Operation<undefined, number>;
   nextPendingBatch: Operation<undefined, LogbookBatch | null>;
-  batchFrames: Operation<{ batchId: number }, LogbookFrame[]>;
   sampledBatchFrames: Operation<{ batchId: number }, LogbookFrame[]>;
   replaceObservations: Operation<
     { batchId: number; day: string; segments: LogbookObservationInput[] },
@@ -72,3 +71,19 @@ export type LogbookOperations = {
   saveStandup: Operation<{ day: string; text: string }, void>;
   pruneFrames: Operation<{ olderThanMs: number }, number>;
 };
+
+const writeOperations = new Set<keyof LogbookOperations>([
+  "insertFrame",
+  "createBatch",
+  "setBatchStatus",
+  "resetRunningBatches",
+  "resetErrorBatches",
+  "replaceObservations",
+  "replaceCardsInWindow",
+  "saveStandup",
+  "pruneFrames",
+]);
+
+export function isLogbookWriteOperation(type: keyof LogbookOperations): boolean {
+  return writeOperations.has(type);
+}

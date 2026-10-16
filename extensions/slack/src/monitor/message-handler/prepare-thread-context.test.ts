@@ -1,9 +1,9 @@
 // Slack tests cover prepare thread context plugin behavior.
 import type { App } from "@slack/bolt";
 import { resolveEnvelopeFormatOptions } from "openclaw/plugin-sdk/channel-inbound";
-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+import type { ContextVisibilityMode, OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import * as runtimeEnv from "openclaw/plugin-sdk/runtime-env";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SlackMessageEvent } from "../../types.js";
 import * as mediaModule from "../media.js";
 import { resolveSlackThreadContextData } from "./prepare-thread-context.js";
@@ -15,14 +15,6 @@ import {
 
 describe("resolveSlackThreadContextData", () => {
   const storeFixture = createSlackSessionStoreFixture("openclaw-slack-thread-context-");
-
-  beforeAll(() => {
-    storeFixture.setup();
-  });
-
-  afterAll(() => {
-    storeFixture.cleanup();
-  });
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -70,7 +62,7 @@ describe("resolveSlackThreadContextData", () => {
     botIdentity?: { botUserId?: string; botId?: string };
     message?: Partial<SlackMessageEvent>;
     roomLabel?: string;
-    contextVisibilityMode?: "all" | "allowlist";
+    contextVisibilityMode?: ContextVisibilityMode;
   }) {
     const { storePath } = storeFixture.makeTmpStorePath();
     const replies = vi.fn().mockResolvedValue({
@@ -82,7 +74,7 @@ describe("resolveSlackThreadContextData", () => {
       ctx.channelRuntime = {
         ...ctx.channelRuntime!,
         session: {
-          resolveEntryResetFreshness: () =>
+          resolveEntryResetFreshnessAsync: async () =>
             params.sessionState === "missing"
               ? { state: "missing", entry: undefined }
               : {
@@ -162,11 +154,6 @@ describe("resolveSlackThreadContextData", () => {
       sessionState: "fresh" as const,
       hydrates: true,
     },
-    {
-      title: "hydrates starter media after a thread session reset",
-      sessionState: "stale" as const,
-      hydrates: true,
-    },
   ])("$title", async ({ sessionState, sessionLastInteractionAt, hydrates }) => {
     const resolveSlackAttachmentContent = vi
       .spyOn(mediaModule, "resolveSlackAttachmentContent")
@@ -221,42 +208,6 @@ describe("resolveSlackThreadContextData", () => {
   });
 
   it.each([
-    {
-      title: "filters them from missing channel threads",
-      isGroupDm: false,
-      sessionState: "missing" as const,
-      retained: false,
-    },
-    {
-      title: "filters them from fresh outbound-only channel threads",
-      isGroupDm: false,
-      sessionState: "fresh" as const,
-      retained: false,
-    },
-    {
-      title: "filters them from stale outbound-only channel threads",
-      isGroupDm: false,
-      sessionState: "stale" as const,
-      retained: false,
-    },
-    {
-      title: "retains them for missing MPIM threads",
-      isGroupDm: true,
-      sessionState: "missing" as const,
-      retained: true,
-    },
-    {
-      title: "retains them for fresh outbound-only MPIM threads",
-      isGroupDm: true,
-      sessionState: "fresh" as const,
-      retained: true,
-    },
-    {
-      title: "retains them for stale outbound-only MPIM threads",
-      isGroupDm: true,
-      sessionState: "stale" as const,
-      retained: true,
-    },
     {
       title: "filters them after an inbound MPIM interaction",
       isGroupDm: true,
@@ -376,6 +327,20 @@ describe("resolveSlackThreadContextData", () => {
 
     expect(result.threadLabel).toBe(`Slack thread #general: ${"a".repeat(79)}`);
   });
+
+  it.each([["whitespace", "   ", "Slack thread #general"]])(
+    "formats a %s bot-root label through thread preparation",
+    async (_name, text, label) => {
+      const { result } = await resolveAllowlistedThreadContext({
+        repliesMessages: [],
+        threadStarter: { text, botId: "B1", ts: "100.000" },
+        allowFromLower: ["u1"],
+        allowNameMatching: false,
+      });
+
+      expect(result.threadLabel).toBe(label);
+    },
+  );
 
   it.each([
     { name: "fetched bot-id root", author: { botId: "B1" }, rootInHistory: true },

@@ -15,7 +15,17 @@ import {
   SetupInferenceActivationRejectionSchema,
   SetupInferenceFailureStatusSchema,
 } from "./setup-inference.js";
+import { withSince } from "./since.js";
 import { WizardAnswerSchema, WizardStartResultSchema, WizardStepSchema } from "./wizard.js";
+
+export {
+  SystemAgentSetupAutoParamsSchema,
+  SystemAgentSetupAutoCandidateSchema,
+  SystemAgentSetupAutoResultSchema,
+  type SystemAgentSetupAutoParams,
+  type SystemAgentSetupAutoCandidate,
+  type SystemAgentSetupAutoResult,
+} from "./setup-inference.js";
 
 export const SystemAgentWizardCancelSchema = closedObject({
   /** The visible step this action belongs to; stale controls must not affect a newer step. */
@@ -398,17 +408,7 @@ export const SystemAgentSetupActivateParamsSchema = closedObject({
   modelTarget: Type.Optional(Type.Literal("utility")),
   /** Agent that owns the verified and persisted inference route. */
   agentId: Type.Optional(NonEmptyString),
-  kind: Type.Union([
-    Type.Literal("existing-model"),
-    Type.Literal("openai-api-key"),
-    Type.Literal("anthropic-api-key"),
-    Type.Literal("claude-cli"),
-    Type.Literal("codex-cli"),
-    Type.Literal("gemini-cli"),
-    ProviderAutoSetupInferenceKind,
-    SavedAuthSetupInferenceKind,
-    Type.Literal("api-key"),
-  ]),
+  kind: Type.Union([...SetupInferenceKind.anyOf, Type.Literal("api-key")]),
   /** Exact detected model for this route; prevents detect/activate drift. */
   modelRef: Type.Optional(NonEmptyString),
   /** Manual step only: opaque provider-auth choice returned by detection. */
@@ -447,18 +447,30 @@ export const SystemAgentSetupActivateResultSchema = closedObject({
 
 /** Starts one provider-owned interactive login as a gateway wizard session. */
 export const SystemAgentSetupAuthStartParamsSchema = closedObject({
+  expectedOwnerId: Type.Optional(withSince("2026.9.9", Type.String({ minLength: 1 }))),
   modelTarget: Type.Optional(Type.Literal("utility")),
   /** Client-generated so cancellation remains possible if the start reply is lost. */
   sessionId: NonEmptyString,
   /** Agent that owns credentials and model selection created by this setup flow. */
   agentId: Type.Optional(NonEmptyString),
   authChoice: NonEmptyString,
+  /** Opt in to selecting the verified model when models.authLogin starts AI Setup. */
+  selectModel: Type.Optional(Type.Literal(true)),
   workspace: Type.Optional(Type.String()),
   /** Fresh-install opt-in for native provider conversation discovery. */
   nativeSessionCatalogsEnabled: Type.Optional(Type.Boolean()),
 });
 
 export const SystemAgentSetupAuthStartResultSchema = WizardStartResultSchema;
+
+/** Enable a runtime with agent-scoped consent in the same config write. */
+export const SystemAgentSetupRuntimeStartParamsSchema = closedObject({
+  sessionId: NonEmptyString,
+  agentId: NonEmptyString,
+  runtimeId: NonEmptyString,
+  configPatch: Type.Record(Type.String(), Type.Unknown()),
+});
+export const SystemAgentSetupRuntimeStartResultSchema = WizardStartResultSchema;
 
 // Wire types derive directly from local schema consts so public d.ts graphs never
 // pull in the ProtocolSchemas registry.
@@ -488,4 +500,11 @@ export type SystemAgentSetupActivateStartParams = Static<
 >;
 export type SystemAgentSetupActivateStartResult = Static<
   typeof SystemAgentSetupActivateStartResultSchema
+>;
+
+export type SystemAgentSetupRuntimeStartParams = Static<
+  typeof SystemAgentSetupRuntimeStartParamsSchema
+>;
+export type SystemAgentSetupRuntimeStartResult = Static<
+  typeof SystemAgentSetupRuntimeStartResultSchema
 >;
