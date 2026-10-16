@@ -125,14 +125,18 @@ An interrupted operation without a recorded receipt is not automatically
 repeated. A managed submission with no recoverable remote handle is
 `indeterminate`; inspect the provider account instead of starting it again.
 Do not create a new idempotency key as an automatic retry for such a job.
+Explicitly identified router refusals (session refresh, current tool policy,
+startup, or pairing) pause the job for a fresh authorized resume. Unclassified
+RPC failures and timeouts do not prove that a submission was never sent.
 
 Cancellation intent is persisted before stopping local work. Once a managed start
 is admitted, cancellation waits for its receipt and then cancels that handle; it
-does not discard the receipt by aborting the local request. If only the parent tool
-signal stops, the admitted create still records its receipt while service and
-conversation authority remain valid, then pauses for an explicit resume/cancel.
-Service shutdown or actual authority retirement can still leave an indeterminate
-submission. Managed cancellation
+does not discard the receipt by aborting the local request. If only the feature's parent tool signal stops and the host transport still
+returns a receipt, the feature records it while service and conversation authority
+remain valid, then pauses for an explicit resume/cancel. Host-scoped cancellation
+is not bypassed: it can abort the RPC and lose the receipt even when the feature's
+own signal argument remains active. Such transport loss, service shutdown, or
+actual authority retirement can leave an indeterminate submission. Managed cancellation
 is confirmed only by a terminal provider response; an HTTP success or aborted
 local request does not prove the remote job stopped. A paused cancellation must
 be resumed to reconcile it. Provider completion can win the cancellation race;

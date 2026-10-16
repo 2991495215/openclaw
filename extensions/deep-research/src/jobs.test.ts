@@ -687,4 +687,62 @@ describe("research recovery fault injection", () => {
     expect(result.result?.report).toContain("Global research deadline exhausted");
     expect(runtime.llm.complete).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    { gatewayCode: "UNAVAILABLE", details: { code: "SESSION_ACCESS_REFRESHING" }, retryable: true },
+    { gatewayCode: "FORBIDDEN", details: { code: "SESSION_ACCESS_CHANGED" }, retryable: false },
+    {
+      gatewayCode: "FORBIDDEN",
+      details: { code: "SESSION_RESOURCE_TOOL_POLICY" },
+      retryable: false,
+    },
+    { gatewayCode: "UNAVAILABLE", details: { code: "PAIRING_CHANGED" }, retryable: true },
+    { gatewayCode: "UNAVAILABLE", details: { reason: "startup-sidecars" }, retryable: true },
+  ])("pauses an explicitly identified router refusal: $details", async (refusal) => {
+    const { jobs, runtime, context } = await fixture();
+    const request = vi
+      .mocked(runtime.gateway.request)
+      .mockResolvedValueOnce(descriptor)
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Router refused request"), {
+          name: "GatewayClientRequestError",
+          ...refusal,
+        }),
+      )
+      .mockResolvedValueOnce(descriptor)
+      .mockResolvedValueOnce(completed);
+    const job = await jobs.start(
+      { question: "River", engine: "google" },
+      "router-refusal",
+      context,
+    );
+    expect(job).toMatchObject({ state: "paused" });
+    expect(job.handle).toBeUndefined();
+    expect((await jobs.run(job, context)).state).toBe("completed");
+    expect(request).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not infer never-sent from an unclassified retryable protocol error", async () => {
+    const { jobs, runtime, context, readStore } = await fixture();
+    const request = vi
+      .mocked(runtime.gateway.request)
+      .mockResolvedValueOnce(descriptor)
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Unknown transport outcome"), {
+          name: "GatewayClientRequestError",
+          gatewayCode: "UNAVAILABLE",
+          retryable: true,
+          details: { code: "UNKNOWN" },
+        }),
+      );
+    await expect(
+      jobs.start({ question: "River", engine: "google" }, "unknown-router-outcome", context),
+    ).rejects.toThrow("Unknown transport outcome");
+    const [entry] = await readStore().entries();
+    assert.ok(entry);
+    expect(entry.value.state).toBe("indeterminate");
+    expect((await jobs.run(await jobs.get(entry.key, context), context)).state).toBe(
+      "indeterminate",
+    );
+    expect(request).toHaveBeenCalledTimes(2);
+  });
 });

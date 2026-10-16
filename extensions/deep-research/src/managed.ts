@@ -1,9 +1,11 @@
+import { isGatewayClientRequestError } from "openclaw/plugin-sdk/gateway-runtime";
 import type {
   OpenClawPluginApi,
   OpenClawPluginToolContext,
 } from "openclaw/plugin-sdk/plugin-entry";
 import {
   researchAdapterReplySchema,
+  type ResearchAdapterReply,
   type ResearchAdapterRequest,
   type ResearchAdapterSnapshot,
 } from "openclaw/plugin-sdk/research-adapter-contract";
@@ -23,18 +25,58 @@ export function assertManagedRequest(request: ResearchRequest) {
   }
 }
 
+/** These structured router refusals occur before this write-route handler. The
+ * provider reports endpoint outcomes inside successful RPC envelopes instead.
+ * Transport failures, timeouts and unclassified protocol errors remain ambiguous. */
+function refusedBeforeProviderDispatch(error: unknown) {
+  if (!isGatewayClientRequestError(error) || !error.details || typeof error.details !== "object") {
+    return false;
+  }
+  const code = "code" in error.details ? error.details.code : undefined;
+  if (
+    error.gatewayCode === "FORBIDDEN" &&
+    (code === "SESSION_ACCESS_CHANGED" || code === "SESSION_RESOURCE_TOOL_POLICY")
+  ) {
+    return true;
+  }
+  return (
+    error.gatewayCode === "UNAVAILABLE" &&
+    error.retryable &&
+    (code === "SESSION_ACCESS_REFRESHING" ||
+      code === "PAIRING_CHANGED" ||
+      ("reason" in error.details && error.details.reason === "startup-sidecars"))
+  );
+}
+
 export function managedClient(api: OpenClawPluginApi, context: OpenClawPluginToolContext<2>) {
-  return async (request: ResearchAdapterRequest, signal: AbortSignal) => {
+  return async (
+    request: ResearchAdapterRequest,
+    signal: AbortSignal,
+  ): Promise<ResearchAdapterReply> => {
     signal.throwIfAborted();
     context.assertInvocationCurrent();
-    const response = parseValue(
-      researchAdapterReplySchema,
-      await api.runtime.gateway.request(
+    let raw: unknown;
+    try {
+      raw = await api.runtime.gateway.request(
         "google.research.v1",
         { sessionKey: context.sessionKey, agentId: context.agentId, request },
         { signal },
-      ),
-    );
+      );
+    } catch (error) {
+      signal.throwIfAborted();
+      context.assertInvocationCurrent();
+      if (request.action === "start" && refusedBeforeProviderDispatch(error)) {
+        return {
+          version: 1,
+          ok: false,
+          state: "blocked",
+          reason:
+            "Gateway refused this request before provider dispatch; resume with fresh session authority.",
+        };
+      }
+      throw error;
+    }
+    const response = parseValue(researchAdapterReplySchema, raw);
     signal.throwIfAborted();
     context.assertInvocationCurrent();
     return response;

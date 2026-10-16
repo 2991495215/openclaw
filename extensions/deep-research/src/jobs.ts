@@ -295,8 +295,9 @@ export class ResearchJobs {
             await save();
             return job;
           }
-          // Once admitted, cancellation or parent abort waits for the receipt.
-          // Service shutdown and host authority retirement still fence this work.
+          // Feature cancellation waits for the admitted receipt. Parent-only abort
+          // can retain a receipt only if host transport still returns it; ambient
+          // host cancellation, service shutdown and authority retirement still fence it.
           invocationSignal.throwIfAborted();
           const response = await client(
             {
