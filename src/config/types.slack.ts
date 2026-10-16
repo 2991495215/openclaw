@@ -1,9 +1,7 @@
-import type {
-  ChannelStreamingConfig,
-  ChannelStreamingProgressConfig,
-  ReplyToMode,
-} from "./types.base.js";
-import type { ChannelBotLoopProtectionConfig } from "./types.bot-loop-protection.js";
+import type { z } from "zod";
+import type { SlackConfigSchema } from "../../extensions/slack/config-api.js";
+import type { SchemaContract } from "../../packages/gateway-protocol/src/schema-contract.js";
+import type { ChannelStreamingConfig, ChannelStreamingProgressConfig } from "./types.base.js";
 import type {
   ChannelBotInteractionConfig,
   ChannelExecApprovalConfig,
@@ -11,47 +9,21 @@ import type {
   CommonChannelGroupConfig,
   CommonChannelMessagingConfig,
 } from "./types.channel-messaging-common.js";
-import type { ChannelImplicitMentionsConfig } from "./types.implicit-mentions.js";
-import type { ProviderCommandsConfig } from "./types.messages.js";
-import type { SecretInput } from "./types.secrets.js";
 
-export type SlackDmConfig = {
-  /** If false, ignore all incoming Slack DMs. Default: true. */
-  enabled?: boolean;
-  /** If true, allow group DMs (default: false). */
-  groupEnabled?: boolean;
-  /** Optional allowlist for group DM channels (ids or slugs). */
-  groupChannels?: Array<string | number>;
-};
+type SchemaSlackAccount = SchemaContract<
+  NonNullable<NonNullable<z.input<typeof SlackConfigSchema>["accounts"]>[string]>
+>;
+type SchemaSlackChannel = NonNullable<NonNullable<SchemaSlackAccount["channels"]>[string]>;
 
-export type SlackChannelConfig = Omit<CommonChannelGroupConfig, "allowFrom"> & {
-  /** Override mention gating in threads started by this bot; omitted preserves implicit mention policy. */
-  requireMentionInBotThreads?: boolean;
-  /**
-   * Ignore room messages that mention another user or user group but not this bot.
-   * Requires a resolved bot user ID. Default: false.
-   */
-  ignoreOtherMentions?: boolean;
-  /** Override Slack reply/thread behavior for this channel. */
-  replyToMode?: ReplyToMode;
-  /** Allow bot-authored messages to trigger replies (default: true). Set to "mentions" to only allow bot messages that @mention this bot. */
-  allowBots?: boolean | "mentions";
-  /** Sliding-window bot-pair loop guard for accepted bot-authored Slack messages. */
-  botLoopProtection?: ChannelBotLoopProtectionConfig;
-  /** Allowlist of users that can invoke the bot in this channel. */
-  users?: Array<string | number>;
-  /** Slack presence polling and agent wake mode for this channel. */
-  presenceEvents?: SlackPresenceEventsConfig;
-};
+export type SlackDmConfig = NonNullable<SchemaSlackAccount["dm"]>;
 
-type SlackPresenceEventsConfig = {
-  /** Presence wake mode. Default: off. */
-  mode?: "off" | "auto" | "on";
-  /** Override the default presence-event guidance. Empty omits guidance. Maximum: 20,000 characters. */
-  prompt?: string;
-};
+export type SlackChannelConfig = Omit<SchemaSlackChannel, "tools" | "toolsBySender"> &
+  Pick<CommonChannelGroupConfig, "tools" | "toolsBySender">;
 
-export type SlackReactionNotificationMode = "off" | "own" | "all" | "allowlist";
+export type SlackReactionNotificationMode = NonNullable<
+  SchemaSlackAccount["reactionNotifications"]
+>;
+
 // DO NOT REMOVE OR CHANGE THE COMPACT STYLE WITHOUT APPROVAL FROM SJF OR PASHPASHPASH.
 export type SlackStreamingProgressConfig = ChannelStreamingProgressConfig & {
   /** Slack progress presentation. "compact" keeps one editable text draft. Default: "card". */
@@ -63,47 +35,15 @@ export type SlackChannelStreamingConfig = ChannelStreamingConfig<SlackStreamingP
 export type SlackExecApprovalConfig = ChannelExecApprovalConfig;
 export type SlackCapabilitiesConfig = string[];
 
-export type SlackActionConfig = {
-  reactions?: boolean;
-  messages?: boolean;
-  pins?: boolean;
-  search?: boolean;
-  permissions?: boolean;
-  memberInfo?: boolean;
-  channelInfo?: boolean;
-  emojiList?: boolean;
-};
+export type SlackActionConfig = NonNullable<SchemaSlackAccount["actions"]>;
 
-export type SlackSlashCommandConfig = {
-  /** Enable handling for the configured slash command (default: false). */
-  enabled?: boolean;
-  /** Slash command name (default: "openclaw"). */
-  name?: string;
-  /** Session key prefix for slash commands (default: "slack:slash"). */
-  sessionPrefix?: string;
-  /** Reply ephemerally (default: true). */
-  ephemeral?: boolean;
-};
+export type SlackSlashCommandConfig = NonNullable<SchemaSlackAccount["slashCommand"]>;
 
-export type SlackThreadConfig = {
-  /** Scope for thread history context (thread|channel). Default: thread. */
-  historyScope?: "thread" | "channel";
-  /** If true, thread sessions inherit the parent channel transcript. Default: false. */
-  inheritParent?: boolean;
-  /** Maximum number of thread messages to fetch as context when starting a new thread session (default: 20). Set to 0 to disable thread history fetching. */
-  initialHistoryLimit?: number;
-};
+export type SlackThreadConfig = NonNullable<SchemaSlackAccount["thread"]>;
 
-export type SlackRelayConfig = {
-  /** Full relay websocket URL, including the route path. */
-  url?: string;
-  /** Bearer token used to authenticate the gateway websocket to the Slack relay. */
-  authToken?: SecretInput;
-  /** Gateway destination id registered with openclaw-slack-router. */
-  gatewayId?: string;
-};
+export type SlackRelayConfig = NonNullable<SchemaSlackAccount["relay"]>;
 
-export type SlackAccountConfig = Omit<
+type SlackCommonConfig = Omit<
   CommonChannelMessagingConfig<
     SlackCapabilitiesConfig,
     string | number,
@@ -111,11 +51,15 @@ export type SlackAccountConfig = Omit<
     SlackChannelStreamingConfig
   >,
   "groupAllowFrom"
+>;
+
+export type SlackAccountConfig = Omit<
+  SchemaSlackAccount,
+  keyof SlackCommonConfig | "channels" | "execApprovals"
 > &
+  SlackCommonConfig &
   ChannelBotInteractionConfig &
   ChannelReactionConfig<SlackReactionNotificationMode, never, string, true> & {
-    /** Post a room-specific introduction when joining a group. Default: true. */
-    joinIntro?: boolean;
     /** @deprecated Doctor-only legacy input. */
     identity?: "bot" | "user";
     /** @deprecated Doctor-only legacy input. */
@@ -124,49 +68,8 @@ export type SlackAccountConfig = Omit<
       serverPingTimeout?: number;
       pingPongLoggingEnabled?: boolean;
     };
-    /** Slack author identity. Default: bot. */
-    postAs?: "bot" | "user";
-    /** Slack connection mode (socket|http|relay). Default: socket. */
-    mode?: "socket" | "http" | "relay";
-    /** Relay-delivered Slack event source. Used when mode is "relay". */
-    relay?: SlackRelayConfig;
-    /** Slack signing secret (required for HTTP mode). */
-    signingSecret?: SecretInput;
-    /** Slack Events API webhook path (default: /slack/events). */
-    webhookPath?: string;
-    /** Slack-native exec approval delivery + approver authorization. */
-    execApprovals?: SlackExecApprovalConfig;
-    /** Override native command registration for Slack (bool or "auto"). */
-    commands?: ProviderCommandsConfig;
-    botToken?: SecretInput;
-    appToken?: SecretInput;
-    userToken?: SecretInput;
-    /** If true, restrict user token to read operations only. Default: true. */
-    userTokenReadOnly?: boolean;
-    /** Default mention requirement for channel messages (default: true). */
-    requireMention?: boolean;
-    /** Override mention gating in threads started by this bot; omitted preserves implicit mention policy. */
-    requireMentionInBotThreads?: boolean;
-    /** Implicit mention policy for replies, quotes, and participated threads. */
-    implicitMentions?: ChannelImplicitMentionsConfig;
-    /** Pass through Slack chat.postMessage link unfurl control. Default: false. */
-    unfurlLinks?: boolean;
-    /** Pass through Slack chat.postMessage media unfurl control. Omitted by default. */
-    unfurlMedia?: boolean;
-    /**
-     * Optional per-chat-type reply threading overrides.
-     * Example: { direct: "all", group: "first", channel: "off" }.
-     */
-    replyToModeByChatType?: Partial<Record<"direct" | "group" | "channel", ReplyToMode>>;
-    thread?: SlackThreadConfig;
-    /** Poll Slack presence and wake the routed agent on away-to-active transitions. Default: off. */
-    presenceEvents?: SlackPresenceEventsConfig;
-    actions?: SlackActionConfig;
-    slashCommand?: SlackSlashCommandConfig;
-    dm?: SlackDmConfig;
     channels?: Record<string, SlackChannelConfig>;
-    /** Reaction emoji added while processing a reply (e.g. "hourglass_flowing_sand"). Removed when done. Useful as a typing indicator fallback when assistant mode is not enabled. */
-    typingReaction?: string;
+    execApprovals?: SlackExecApprovalConfig;
   };
 
 export type SlackConfig = {
