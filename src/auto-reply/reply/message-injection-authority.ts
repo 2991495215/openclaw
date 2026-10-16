@@ -1,10 +1,10 @@
-import { KeyedAsyncQueue } from "../../plugin-sdk/keyed-async-queue.js";
+import { enqueueKeyedTask } from "../../plugin-sdk/keyed-async-queue.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 
 const injectionQueues = resolveGlobalSingleton(
   Symbol.for("openclaw.messageInjectionQueues"),
-  () => new WeakMap<object, KeyedAsyncQueue>(),
+  () => new WeakMap<object, Promise<void>>(),
 );
 
 type MessageInjectionAdmission = <T>(consume: () => T) => Promise<T>;
@@ -83,21 +83,15 @@ export function enqueueMessageInjection<T>(
   backend: object,
   run: (release: () => void) => Promise<T>,
 ): Promise<T> {
-  let queue = injectionQueues.get(backend);
-  if (!queue) {
-    queue = new KeyedAsyncQueue();
-    injectionQueues.set(backend, queue);
-  }
   const result = createDeferredCore<T>();
-  void queue
-    .enqueue(
-      "input",
-      () =>
-        new Promise<void>((release) => {
-          void run(release).then(result.resolve, result.reject).finally(release);
-        }),
-    )
-    .catch(result.reject);
+  void enqueueKeyedTask({
+    tails: injectionQueues,
+    key: backend,
+    task: () =>
+      new Promise<void>((release) => {
+        void run(release).then(result.resolve, result.reject).finally(release);
+      }),
+  }).catch(result.reject);
   return result.promise;
 }
 

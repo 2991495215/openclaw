@@ -1,3 +1,4 @@
+import { enqueueKeyedTask } from "openclaw/plugin-sdk/keyed-async-queue";
 import { getTelegramSequentialConstraints } from "./sequential-key.js";
 
 export function createTelegramSequentializer() {
@@ -8,21 +9,6 @@ export function createTelegramSequentializer() {
   ): Promise<void> => {
     const constraints = getTelegramSequentialConstraints(ctx);
     const keys = Array.isArray(constraints) ? constraints : [constraints];
-    const previous = keys.map((key) => tails.get(key)).filter((tail) => tail !== undefined);
-    const task = Promise.all(previous).then(next);
-    const tail = task.catch(() => undefined);
-    // Reserve all keys before yielding, including keys whose previous work is still waiting.
-    for (const key of keys) {
-      tails.set(key, tail);
-    }
-    try {
-      await task;
-    } finally {
-      for (const key of keys) {
-        if (tails.get(key) === tail) {
-          tails.delete(key);
-        }
-      }
-    }
+    await enqueueKeyedTask({ tails, keys, task: next });
   };
 }
