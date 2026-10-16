@@ -36,6 +36,8 @@ function setupContext(): GoogleResearchContext {
     agentId: "researcher",
     signal: new AbortController().signal,
     assertCurrent: vi.fn(),
+    prepareAccount: async () => {},
+    recordReceipt: async () => {},
   };
 }
 

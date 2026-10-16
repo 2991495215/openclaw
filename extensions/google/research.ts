@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import { resolveApiKeyForProvider } from "openclaw/plugin-sdk/provider-auth-runtime";
 import { readProviderJsonResponse } from "openclaw/plugin-sdk/provider-http";
@@ -25,6 +26,10 @@ export type GoogleResearchContext = {
   agentId: string;
   signal: AbortSignal;
   assertCurrent: () => void;
+  /** Provider owner binds the selected credential before any HTTP effect. */
+  prepareAccount: (identity: string) => Promise<void>;
+  /** Record an accepted native handle before normalizing or publishing its report. */
+  recordReceipt: (handle: GoogleResearchHandle) => Promise<void>;
 };
 
 export type GoogleResearchCitation = {
@@ -412,6 +417,10 @@ export async function executeGoogleResearch(
   }
   let attempted = false;
   try {
+    context.assertCurrent();
+    await context.prepareAccount(createHash("sha256").update(auth.apiKey).digest("hex"));
+    context.assertCurrent();
+
     const { response, release } = await fetchWithSsrFGuard({
       url,
       init: {
@@ -464,6 +473,8 @@ export async function executeGoogleResearch(
         throw new Error("Mismatched interaction ID.");
       }
       handle = { interactionId, profileId };
+      await context.recordReceipt(handle);
+      context.assertCurrent();
       return normalizeInteraction(interaction, handle);
     } finally {
       await release();
