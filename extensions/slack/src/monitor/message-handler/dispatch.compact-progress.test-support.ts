@@ -1,4 +1,7 @@
 import type { GetReplyOptions } from "openclaw/plugin-sdk/reply-runtime";
+import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
+import { expect, vi } from "vitest";
+import type { PreparedSlackMessage } from "./types.js";
 
 export type SlackReplyOptionEvent =
   | {
@@ -117,4 +120,225 @@ export async function emitCompactProgressScenario(reply: GetReplyOptions) {
     explanation: "Finishing the checklist.",
     steps: [{ step: "Verify", status: "completed" }],
   });
+}
+
+export const THREAD_TS = "thread-1";
+
+export function createSlackPlatformError(
+  error: string,
+  details?: { needed?: string; provided?: string },
+) {
+  // Mirrors @slack/web-api 7.18.0 platformErrorFromResult: message plus structured result data.
+  return Object.assign(new Error(`An API error occurred: ${error}`), {
+    code: "slack_webapi_platform_error",
+    data: { ok: false, error, ...details },
+  });
+}
+
+export const requireRecord = createRequireRecord("object", "label-not-object");
+
+export function expectRecordFields(
+  record: Record<string, unknown>,
+  fields: Record<string, unknown>,
+) {
+  for (const [key, value] of Object.entries(fields)) {
+    expect(record[key]).toEqual(value);
+  }
+}
+
+export function requireMockCall(mock: unknown, index: number, label: string): unknown[] {
+  const call = (mock as { mock?: { calls?: unknown[][] } }).mock?.calls?.[index];
+  if (!call) {
+    throw new Error(`missing ${label} call ${index + 1}`);
+  }
+  return call;
+}
+
+export function expectMockCallArgFields(
+  mock: unknown,
+  index: number,
+  fields: Record<string, unknown>,
+) {
+  expectRecordFields(requireRecord(requireMockCall(mock, index, "call")[0], "params"), fields);
+}
+
+export function planUpdate(title: string) {
+  return { type: "plan_update", title };
+}
+
+export function taskUpdate(
+  id: unknown,
+  title: string,
+  status: "pending" | "in_progress" | "complete" | "error",
+  extra?: Record<string, unknown>,
+) {
+  return { type: "task_update", id, title, status, ...extra };
+}
+
+export function contentTaskId(prefix: string) {
+  return expect.stringMatching(new RegExp(`^${prefix}_[a-f0-9]{8}_1$`, "u"));
+}
+
+export function preamble(
+  progressText: string,
+  itemId: string,
+  phase?: string,
+): SlackReplyOptionEvent {
+  return { kind: "item", itemKind: "preamble", progressText, itemId, phase };
+}
+
+export function checkpoint(run: () => Promise<void>): {
+  kind: "checkpoint";
+  run: () => Promise<void>;
+} {
+  return { kind: "checkpoint", run };
+}
+
+export function ttsPayload(spokenText = "Spoken answer", visibleTextAlreadyDelivered?: boolean) {
+  return {
+    mediaUrl: "https://example.com/tts.mp3",
+    audioAsVoice: true,
+    spokenText,
+    ttsSupplement: {
+      spokenText,
+      ...(visibleTextAlreadyDelivered ? { visibleTextAlreadyDelivered: true } : {}),
+    },
+  };
+}
+
+const noop = () => {};
+export const noopAsync = async () => {};
+export function createNativeStreamSession() {
+  return {
+    channel: "C123",
+    threadTs: THREAD_TS,
+    stopped: false,
+    delivered: true,
+    pendingText: "",
+  };
+}
+
+export function createDraftStreamStub() {
+  return {
+    update: vi.fn(),
+    flush: vi.fn(noopAsync),
+    clear: vi.fn(noopAsync),
+    discardPending: vi.fn(noopAsync),
+    seal: vi.fn(noopAsync),
+    stop: vi.fn(noop),
+    forceNewMessage: vi.fn(),
+    dropDetachedMessages: vi.fn(noopAsync),
+    finalizeMessage: vi.fn(async (_messageId: string, editFinal: () => Promise<void>) => {
+      await editFinal();
+      return true;
+    }),
+    messageId: (): string | undefined => "171234.567",
+    channelId: () => "C123",
+  };
+}
+
+export function draftUpdateTexts(draftStream: ReturnType<typeof createDraftStreamStub>): string[] {
+  return draftStream.update.mock.calls.map(([update]) => {
+    if (typeof update === "string") {
+      return update;
+    }
+    return requireRecord(update, "draft update").text as string;
+  });
+}
+
+export function expectLastDraftUpdateText(
+  draftStream: ReturnType<typeof createDraftStreamStub>,
+  expected: string,
+) {
+  expect(draftUpdateTexts(draftStream).at(-1)).toBe(expected);
+}
+
+export function buildPreparedSlackMessage(
+  params:
+    | {
+        cfg?: Record<string, unknown>;
+        accountConfig?: Record<string, unknown>;
+        ctxPayload?: Record<string, unknown>;
+        message?: Partial<PreparedSlackMessage["message"]>;
+        replyToMode?: "off" | "first" | "all" | "batched";
+        isDirectMessage?: boolean;
+        route?: Partial<PreparedSlackMessage["route"]>;
+        setSlackSessionStatus?: PreparedSlackMessage["ctx"]["setSlackSessionStatus"];
+        typingReaction?: string;
+        ackReactionMessageTs?: string;
+        ackReactionPromise?: Promise<boolean> | null;
+        relayIdentity?: { username?: string; iconUrl?: string; iconEmoji?: string };
+        turnAdoptionLifecycle?: object;
+        dispatchReplyFromConfig?: unknown;
+        eventScope?: {
+          teamId: string;
+          client: Record<string, unknown>;
+        };
+      }
+    | undefined,
+  chat: {
+    postMessage: (...args: unknown[]) => Promise<unknown>;
+    update: (...args: unknown[]) => Promise<unknown>;
+  },
+) {
+  const routeSessionKey = params?.route?.sessionKey ?? "agent:agent-1:slack:C123";
+  const mainSessionKey = params?.route?.mainSessionKey ?? "main";
+  const lastRoutePolicy =
+    params?.route?.lastRoutePolicy ?? (routeSessionKey === mainSessionKey ? "main" : "session");
+  const message = {
+    channel: "C123",
+    ts: "171234.111",
+    thread_ts: THREAD_TS,
+    user: "U123",
+    ...params?.message,
+  };
+
+  return {
+    ctx: {
+      cfg: params?.cfg ?? {},
+      runtime: {},
+      botToken: "xoxb-test",
+      app: { client: { chat } },
+      teamId: "T1",
+      botUserId: "U_OPENCLAW",
+      botId: "B_OPENCLAW",
+      textLimit: 4000,
+      typingReaction: params?.typingReaction ?? "",
+      historyLimit: 0,
+      allowFrom: [],
+      dispatchReplyFromConfig: params?.dispatchReplyFromConfig,
+      setSlackSessionStatus: params?.setSlackSessionStatus ?? (async () => true),
+    },
+    account: {
+      accountId: "default",
+      config: params?.accountConfig ?? {},
+    },
+    relayIdentity: params?.relayIdentity,
+    turnAdoptionLifecycle: params?.turnAdoptionLifecycle,
+    eventScope: params?.eventScope,
+    message,
+    route: {
+      agentId: "agent-1",
+      accountId: "default",
+      mainSessionKey,
+      sessionKey: routeSessionKey,
+      lastRoutePolicy,
+      ...params?.route,
+    },
+    channelConfig: null,
+    replyTarget: `channel:${message.channel}`,
+    ctxPayload: {
+      MessageThreadId: THREAD_TS,
+      ...params?.ctxPayload,
+    },
+    turn: {
+      record: {},
+    },
+    replyToMode: params?.replyToMode ?? "all",
+    isDirectMessage: params?.isDirectMessage ?? false,
+    isRoomish: false,
+    ackReactionValue: "eyes",
+    ackReactionMessageTs: params?.ackReactionMessageTs,
+    ackReactionPromise: params?.ackReactionPromise ?? null,
+  } as never;
 }

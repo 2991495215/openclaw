@@ -7,6 +7,7 @@ import {
   approvalButtonBlocks,
   approvalContextOptions,
   createContext,
+  createModalPickerStateValues,
   singleButtonBlocks,
 } from "./interactions.test-support.js";
 
@@ -2519,106 +2520,7 @@ describe("registerSlackInteractionEvents", () => {
           callback_id: "openclaw:routing_form",
           private_metadata: JSON.stringify({ userId: "U444" }),
           state: {
-            values: {
-              env_block: {
-                env_select: {
-                  type: "static_select",
-                  selected_option: {
-                    text: plainText("Production"),
-                    value: "prod",
-                  },
-                },
-              },
-              assignee_block: {
-                assignee_select: {
-                  type: "users_select",
-                  selected_user: "U900",
-                },
-              },
-              channel_block: {
-                channel_select: {
-                  type: "channels_select",
-                  selected_channel: "C900",
-                },
-              },
-              convo_block: {
-                convo_select: {
-                  type: "conversations_select",
-                  selected_conversation: "G900",
-                },
-              },
-              date_block: {
-                date_select: {
-                  type: "datepicker",
-                  selected_date: "2026-02-16",
-                },
-              },
-              time_block: {
-                time_select: {
-                  type: "timepicker",
-                  selected_time: "12:45",
-                },
-              },
-              datetime_block: {
-                datetime_select: {
-                  type: "datetimepicker",
-                  selected_date_time: 1_771_632_300,
-                },
-              },
-              radio_block: {
-                radio_select: {
-                  type: "radio_buttons",
-                  selected_option: {
-                    text: plainText("Blue"),
-                    value: "blue",
-                  },
-                },
-              },
-              checks_block: {
-                checks_select: {
-                  type: "checkboxes",
-                  selected_options: [
-                    { text: plainText("A"), value: "a" },
-                    { text: plainText("B"), value: "b" },
-                  ],
-                },
-              },
-              number_block: {
-                number_input: {
-                  type: "number_input",
-                  value: "42.5",
-                },
-              },
-              email_block: {
-                email_input: {
-                  type: "email_text_input",
-                  value: "team@openclaw.ai",
-                },
-              },
-              url_block: {
-                url_input: {
-                  type: "url_text_input",
-                  value: "https://docs.openclaw.ai",
-                },
-              },
-              richtext_block: {
-                richtext_input: {
-                  type: "rich_text_input",
-                  rich_text_value: {
-                    type: "rich_text",
-                    elements: [
-                      {
-                        type: "rich_text_section",
-                        elements: [
-                          { type: "text", text: "Ship this now" },
-                          { type: "text", text: "with canary metrics" },
-                        ],
-                      },
-                    ],
-                  },
-                },
-              },
-            },
+            values: createModalPickerStateValues(),
           },
         },
       },

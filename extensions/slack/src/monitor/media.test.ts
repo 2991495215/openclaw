@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
@@ -10,11 +11,7 @@ import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
 import { createOpenClawTestState, type OpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SlackFile } from "../types.js";
-import {
-  resolveSlackAttachmentContent,
-  resolveSlackMedia,
-  SLACK_MEDIA_READ_IDLE_TIMEOUT_MS,
-} from "./media.js";
+import { resolveSlackAttachmentContent, resolveSlackMedia } from "./media.js";
 import { resolveSlackMessageContent } from "./message-handler/prepare-content.js";
 import { resolveSlackThreadStarter } from "./thread.js";
 
@@ -153,51 +150,62 @@ function getRequestHeader(callIndex: number, headerName: string): string | null 
   return new Headers(init?.headers).get(headerName);
 }
 
-async function expectPrivateDownloadRedirect(params: {
-  location: string;
-  redirectedUrl: string;
-  secondAuthorization: string | null;
-}) {
-  mockFetch
-    .mockResolvedValueOnce(
-      new Response(null, {
-        status: 302,
-        headers: { location: params.location },
-      }),
-    )
-    .mockResolvedValueOnce(
-      new Response(Buffer.from("image data"), {
-        status: 200,
-        headers: { "content-type": "image/jpeg" },
-      }),
-    );
-
-  const result = await resolveSlackMedia({
-    files: [{ url_private_download: "https://files.slack.com/download.jpg", name: "test.jpg" }],
-    token: "xoxb-test-token",
-    maxBytes: 1024 * 1024,
-  });
-
-  expectSlackMediaResult(result);
-  expect(mockFetch).toHaveBeenCalledTimes(2);
-  expect(requireMockCall(mockFetch, 0, "fetch")[0]).toBe("https://files.slack.com/download.jpg");
-  expect(requireMockCall(mockFetch, 1, "fetch")[0]).toBe(params.redirectedUrl);
-  expect(getRequestHeader(0, "Authorization")).toBe("Bearer xoxb-test-token");
-  expect(getRequestHeader(1, "Authorization")).toBe(params.secondAuthorization);
-}
-
 describe("resolveSlackMedia", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("strips Authorization on cross-origin redirects for private downloads", async () => {
-    await expectPrivateDownloadRedirect({
-      location: "https://downloads.slack-edge.com/presigned-url?sig=abc123",
-      redirectedUrl: "https://downloads.slack-edge.com/presigned-url?sig=abc123",
-      secondAuthorization: null,
-    });
-  });
+  it.each([
+    ["cross-origin", "https://downloads.slack-edge.com/presigned-url?sig=abc123", null],
+    ["same-origin", "https://files.slack.com/redirected.txt", "Bearer xoxb-test-token"],
+  ] as const)(
+    "preserves private download authorization rules on %s redirects",
+    async (_kind, target, auth) => {
+      const events: string[] = [];
+      const cancel = vi.fn(() => {
+        events.push("cancel redirect");
+      });
+      mockFetch
+        .mockResolvedValueOnce(
+          new Response(new ReadableStream<Uint8Array>({ cancel }), {
+            status: 302,
+            headers: { location: target },
+          }),
+        )
+        .mockImplementationOnce(async () => {
+          events.push("fetch target");
+          return new Response("redirected media", {
+            status: 200,
+            headers: { "content-type": "text/plain" },
+          });
+        });
+
+      const result = expectSlackMediaResult(
+        await resolveSlackMedia({
+          files: [
+            { url_private_download: "https://files.slack.com/download.txt", name: "test.txt" },
+          ],
+          token: "xoxb-test-token",
+          maxBytes: 1024,
+        }),
+      );
+
+      expect(result).toHaveLength(1);
+      const saved = expectDefined(result[0], "saved redirect media");
+      await expect(fs.readFile(saved.path, "utf8")).resolves.toBe("redirected media");
+      expect(saved).toMatchObject({ contentType: "text/plain", fileName: "test.txt" });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+        "https://files.slack.com/download.txt",
+        target,
+      ]);
+      expect(mockFetch.mock.calls.map(([, init]) => init?.redirect)).toEqual(["manual", "manual"]);
+      expect(getRequestHeader(0, "Authorization")).toBe("Bearer xoxb-test-token");
+      expect(getRequestHeader(1, "Authorization")).toBe(auth);
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(events).toEqual(["cancel redirect", "fetch target"]);
+    },
+  );
 
   it("rejects files.info refresh URLs that escape the GovSlack trust plane", async () => {
     const client = {
@@ -287,7 +295,7 @@ describe("resolveSlackMedia", () => {
     },
   );
 
-  it("passes bounded media download timeouts while preserving Slack auth", async () => {
+  it("forwards the default media read-idle timeout while preserving Slack auth", async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(Buffer.from("image data"), {
         status: 200,
@@ -306,7 +314,7 @@ describe("resolveSlackMedia", () => {
       requireMockCall(saveRemoteMediaMock, 0, "saveRemoteMedia")[0],
       "saveRemoteMedia options",
     ) as { readIdleTimeoutMs?: number; requestInit?: RequestInit };
-    expect(fetchOptions.readIdleTimeoutMs).toBe(SLACK_MEDIA_READ_IDLE_TIMEOUT_MS);
+    expect(fetchOptions.readIdleTimeoutMs).toBe(60_000);
     expect(fetchOptions.requestInit?.signal).toBeInstanceOf(AbortSignal);
     expect(new Headers(fetchOptions.requestInit?.headers).get("Authorization")).toBe(
       "Bearer xoxb-test-token",
@@ -321,7 +329,15 @@ describe("resolveSlackMedia", () => {
       (_input, init) =>
         new Promise<never>((_resolve, reject) => {
           const signal = expectDefined(init?.signal, "guarded request signal");
-          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          signal.addEventListener(
+            "abort",
+            () => {
+              const reason: unknown = signal.reason;
+              assert(reason instanceof Error);
+              reject(reason);
+            },
+            { once: true },
+          );
           started.resolve();
         }),
     );

@@ -5,6 +5,7 @@ import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SlackActionContext } from "./action-runtime.js";
 import { handleSlackAction, slackActionRuntime } from "./action-runtime.js";
+import { actionThreadTargetCases } from "./action-runtime.test-support.js";
 import { sendSlackMessage as sendSlackMessageThroughPublicOwner } from "./actions.js";
 import { parseSlackBlocksInput } from "./blocks-input.js";
 import { registerSlackInstallationState } from "./installation-identity-state.js";
@@ -742,72 +743,11 @@ describe("handleSlackAction", () => {
     expect(editSlackMessage).toHaveBeenCalledWith("C123", "123.456", "", { cfg, blocks });
   });
 
-  it.each<{
-    name: string;
-    to: string;
-    currentChannelId: string;
-    currentMessagingTarget?: string;
-    replyToMode?: "all" | "first" | "off";
-    patch?: { threadTs?: string | null; topLevel?: true };
-    expectedThreadTs?: string;
-  }>([
-    {
-      name: "matching channel",
-      to: "channel:C123",
-      currentChannelId: "C123",
-      expectedThreadTs: "1111111111.111111",
-    },
-    {
-      name: "matching DM user",
-      to: "user:U123",
-      currentChannelId: "slack:U123",
-      expectedThreadTs: "1111111111.111111",
-    },
-    {
-      name: "routable DM with native channel",
-      to: "user:U123",
-      currentChannelId: "D123",
-      currentMessagingTarget: "user:U123",
-      expectedThreadTs: "1111111111.111111",
-    },
-    {
-      name: "topLevel true",
-      to: "channel:C123",
-      currentChannelId: "C123",
-      patch: { topLevel: true },
-    },
-    {
-      name: "threadTs null",
-      to: "channel:C123",
-      currentChannelId: "C123",
-      patch: { threadTs: null },
-    },
-    {
-      name: "first without reply reference",
-      to: "#c123",
-      currentChannelId: "C123",
-      replyToMode: "first",
-    },
-    { name: "threading off", to: "channel:C123", currentChannelId: "C123", replyToMode: "off" },
-    { name: "different channel", to: "channel:C999", currentChannelId: "C123" },
-    {
-      name: "explicit thread override",
-      to: "channel:C123",
-      currentChannelId: "C123",
-      patch: { threadTs: "9999999999.999999" },
-      expectedThreadTs: "9999999999.999999",
-    },
-    {
-      name: "bare channel target",
-      to: "C123",
-      currentChannelId: "C123",
-      expectedThreadTs: "1111111111.111111",
-    },
-  ])("selects message thread for $name", async (testCase) => {
-    const cfg = slackConfig();
+  it.each(actionThreadTargetCases)("selects message thread for $name", async (testCase) => {
+    const threadConfig = slackConfig();
     await handleSlackAction(
       { action: "sendMessage", to: testCase.to, content: "Reply", ...testCase.patch },
-      cfg,
+      threadConfig,
       {
         currentChannelId: testCase.currentChannelId,
         currentMessagingTarget: testCase.currentMessagingTarget,
@@ -817,7 +757,7 @@ describe("handleSlackAction", () => {
     );
     expect(sendSlackMessage).toHaveBeenCalledOnce();
     expectSlackSendCall(0, testCase.to, "Reply", {
-      cfg,
+      cfg: threadConfig,
       mediaUrl: undefined,
       threadTs: testCase.expectedThreadTs,
       blocks: undefined,
@@ -827,7 +767,7 @@ describe("handleSlackAction", () => {
   it.each(["#c123", "channel:C123"])(
     "consumes the first reply after explicit thread delivery to %s",
     async (to) => {
-      const cfg = slackConfig({ replyToMode: "first" });
+      const threadConfig = slackConfig({ replyToMode: "first" });
       const context = createReplyToFirstContext();
       const hasRepliedRef = context.hasRepliedRef;
 
@@ -838,19 +778,19 @@ describe("handleSlackAction", () => {
           content: "Explicit",
           threadTs: "9999999999.999999",
         },
-        cfg,
+        threadConfig,
         context,
       );
 
       expect(sendSlackMessage).toHaveBeenCalledOnce();
       expectSlackSendCall(0, to, "Explicit", {
-        cfg,
+        cfg: threadConfig,
         mediaUrl: undefined,
         threadTs: "9999999999.999999",
         blocks: undefined,
       });
       expect(hasRepliedRef.value).toBe(true);
-      await sendSecondMessageAndExpectNoThread({ cfg, context });
+      await sendSecondMessageAndExpectNoThread({ cfg: threadConfig, context });
     },
   );
 

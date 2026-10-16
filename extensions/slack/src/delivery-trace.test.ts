@@ -25,6 +25,8 @@ import type { ReplyDispatchKind, ReplyPayload } from "openclaw/plugin-sdk/reply-
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { mergeSlackAccountConfig } from "./accounts.js";
 import {
+  NATIVE_SCENARIOS,
+  type SlackTraceScenarioName,
   BLOCKS_FINAL_PRESENTATION,
   BLOCKS_FINAL_TEXT,
   SHORT_FINAL_TEXT,
@@ -191,24 +193,6 @@ const TEAM_ID = "T0TRACE";
 // Matches the harness epoch (2026-01-01T00:00:00Z → 1767225600) so the inbound
 // ts is plausible under the fake clock; the normalizer canonicalizes it anyway.
 const INBOUND_TS = "1767225600.000100";
-
-type SlackTraceScenarioName =
-  | "streaming-happy-native"
-  | "short-final-native-rejection"
-  | "final-blocks-and-text"
-  | "pending-preview-without-final"
-  | "progress-compact-commentary"
-  | "progress-session-card"
-  | "progress-native-unified"
-  | "native-prose-then-exec-failed"
-  | "preview-exec-failed-then-prose";
-
-const NATIVE_SCENARIOS = new Set<SlackTraceScenarioName>([
-  "streaming-happy-native",
-  "short-final-native-rejection",
-  "final-blocks-and-text",
-  "native-prose-then-exec-failed",
-]);
 
 const NATIVE_PROGRESS_NARRATION =
   "I’m checking the native Slack stream before applying the focused patch.";
@@ -687,7 +671,7 @@ describe("slack delivery trace goldens", () => {
         setup: (recorder, client) =>
           setupSlackTrace(
             recorder,
-            mode === "partial" ? "cancel-mid-stream" : "progress-compact-commentary",
+            mode === "partial" ? "pending-preview-without-final" : "progress-compact-commentary",
             (prepared) => {
               if (mode !== "partial") {
                 prepared.account.config.streaming = {
@@ -918,7 +902,7 @@ describe("slack delivery trace goldens", () => {
   for (const scenarioName of [
     "short-final-native-rejection",
     "final-blocks-and-text",
-    "cancel-mid-stream",
+    "pending-preview-without-final",
     "progress-compact-commentary",
     "progress-native-unified",
     "native-prose-then-exec-failed",
