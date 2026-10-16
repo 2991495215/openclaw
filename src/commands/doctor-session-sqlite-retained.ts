@@ -231,7 +231,14 @@ export async function prepareRetainedSessionImport(
         if (current?.isFile() && current.size > 0) {
           continue;
         }
-        if (resolveVerifiedSessionSource(source, sourceVerification.resolvedTarget, params.env)) {
+        if (
+          resolveVerifiedSessionSource(
+            source,
+            sourceVerification.resolvedTarget,
+            params.env,
+            sourceVerification.verification,
+          )
+        ) {
           continue;
         }
       } catch (error) {
