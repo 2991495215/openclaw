@@ -24,6 +24,7 @@ import type {
   CronToolsAllowExecTargetRequirement,
 } from "../../cron/scheduled-tool-policy.js";
 import type { ChannelRouteRef } from "../../plugin-sdk/channel-route.js";
+import type { PluginJsonValue as SessionPluginJsonValue } from "../../plugins/host-hook-json.js";
 import type { SessionBoardFace } from "../../shared/session-types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { TtsAutoMode } from "../types.tts.js";
@@ -194,13 +195,7 @@ type SessionPluginDebugEntry = {
   lines: string[];
 };
 
-export type SessionPluginJsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | SessionPluginJsonValue[]
-  | { [key: string]: SessionPluginJsonValue };
+export type { SessionPluginJsonValue };
 
 type SessionPluginNextTurnInjection = {
   id: string;

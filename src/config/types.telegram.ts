@@ -9,6 +9,7 @@ import type {
   ChannelReactionConfig,
   CommonChannelGroupConfig,
   CommonChannelMessagingConfig,
+  MultiAccountChannelConfig,
 } from "./types.channel-messaging-common.js";
 import type { ProviderCommandsConfig } from "./types.messages.js";
 import type { SecretInput } from "./types.secrets.js";
@@ -169,8 +170,4 @@ export type TelegramDirectConfig = Omit<CommonChannelGroupConfig, "requireMentio
   autoTopicLabel?: AutoTopicLabelConfig;
 };
 
-export type TelegramConfig = {
-  accounts?: Record<string, TelegramAccountConfig>;
-  /** Optional default account id when multiple accounts are configured. */
-  defaultAccount?: string;
-} & TelegramAccountConfig;
+export type TelegramConfig = MultiAccountChannelConfig<TelegramAccountConfig>;
