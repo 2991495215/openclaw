@@ -45,5 +45,6 @@ PY
 DYLD_FRAMEWORK_PATH="$host_platform/Library/Frameworks:$host_platform/Library/PrivateFrameworks" \
 DYLD_LIBRARY_PATH="$host_build:$host_platform/usr/lib" \
 node "$host_repo/scripts/test-macos-native.mts" app-host "$host_app" "$host_tests" \
-  'BundledRecoveryCompositionTests/`ordinary retry`' 'BundledRecoveryCompositionTests/relaunch'
+  'BundledRecoveryCompositionTests/`ordinary retry`' 'BundledRecoveryCompositionTests/relaunch' \
+  'GatewayProcessManagerTests.*moving a live bundle|GatewayProcessManagerTests.*bundle relocation leaves'
 rm -rf "$host_root"

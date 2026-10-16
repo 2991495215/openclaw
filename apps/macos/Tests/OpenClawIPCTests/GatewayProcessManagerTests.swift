@@ -42,6 +42,7 @@ struct GatewayProcessManagerTests {
     func `moving a live bundle drains its child before launching from the seed or new path`(
         warmed: Bool) async throws
     {
+        guard BundledRuntime.isBundledApp else { return }
         let root = try makeFirstRunTempDirForTests()
         defer { try? FileManager.default.removeItem(at: root) }
         let port = try self.availableGatewayPort()
@@ -98,14 +99,15 @@ struct GatewayProcessManagerTests {
                 port: port, allowUnconfigured: false), onEvent: { _ in })
             let moved = root.appendingPathComponent("Renamed.app")
             try FileManager.default.moveItem(at: app, to: moved)
-            await manager.restartRelocatedBundledGatewayIfNeeded(bundle: #require(Bundle(url: moved)))
+            let movedBundle = try #require(Bundle(url: moved))
+            await manager.restartRelocatedBundledGatewayIfNeeded(bundle: movedBundle)
 
-            #expect(launches == [
+            #expect(launches.map { $0.resolvingSymlinksInPath() } == [
                 original,
                 warmed
                     ? seed.appendingPathComponent("openclaw")
                     : moved.appendingPathComponent("Contents/Resources/runtime/openclaw"),
-            ])
+            ].map { $0.resolvingSymlinksInPath() })
             #expect(manager.lastFailureReason == "Fixture reached relocated child launch")
             #expect(manager.desiredActive)
             #expect(!supervisor.isActive)
@@ -119,6 +121,7 @@ struct GatewayProcessManagerTests {
 
     @Test(arguments: ["unmoved", "seed", "paused", "stopped"])
     func `bundle relocation leaves unrelated or inactive children alone`(scenario: String) async throws {
+        guard BundledRuntime.isBundledApp else { return }
         let root = try makeFirstRunTempDirForTests()
         defer { try? FileManager.default.removeItem(at: root) }
         let app = root.appendingPathComponent("Current.app")
