@@ -202,7 +202,7 @@ export function mutateCronJobsInWorker(
               !current ||
               !isDeepStrictEqual(
                 {
-                  ...structuredClone(current),
+                  ...current,
                   state: projectCronJobStateThroughStorageCodec(current.state),
                 },
                 preconditionJob,
