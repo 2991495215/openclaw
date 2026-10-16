@@ -92,6 +92,7 @@ export class GitHubStatusPublicationError extends Error {
 export class GitHubNoticePublicationError extends Error {
   constructor(cause) {
     super(cause.message, { cause });
+    requestDiagnostics.set(this, requestDiagnostics.get(cause));
   }
 }
 

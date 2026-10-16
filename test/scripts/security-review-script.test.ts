@@ -852,6 +852,7 @@ describe("combined security review entry point", () => {
       status: 500,
       requestId: "ABCD:1234",
     });
+    expect(result.stderr.match(/GitHub status publication failed/gu)).toHaveLength(3);
     expect(result.stderr.trim().split("\n")).toHaveLength(4);
     expect(
       result.stderr
@@ -1025,7 +1026,11 @@ describe("combined security review entry point", () => {
     const result = evaluate({
       [`GET ${pullPath}`]: { ...pr, changed_files: 1 },
       [`GET ${pullPath}/files`]: [files[0]],
-      [`POST ${commentPath}`]: { httpError: 500 },
+      [`POST ${commentPath}`]: {
+        httpError: 500,
+        message: "private-response-body fixture-token",
+        headers: { "x-github-request-id": "ABCD:1234", "x-private-debug": "private-header" },
+      },
       [rolePath]: { role_name: "read" },
     });
     expect(result.status).toBe(1);
@@ -1034,7 +1039,23 @@ describe("combined security review entry point", () => {
       result.requests.filter((entry) => entry.method === "POST" && entry.path === commentPath),
     ).toHaveLength(4);
     expect(result.combined).not.toContain("success");
-    expect(result.stderr).toContain("recovery budget exhausted");
+    const diagnostic = JSON.stringify({
+      method: "POST",
+      path: commentPath,
+      status: 500,
+      requestId: "ABCD:1234",
+    });
+    const lines = result.stderr.trim().split("\n");
+    expect(lines.at(-1)).toBe(
+      `GitHub API recovery budget exhausted; security review remains incomplete. Request: ${diagnostic}`,
+    );
+    expect(lines).toHaveLength(4);
+    expect(
+      lines.slice(0, -1).every((line) =>
+        line.includes(`GitHub notice publication failed Request: ${diagnostic}`),
+      ),
+    ).toBe(true);
+    expect(result.stderr).not.toMatch(/private-response-body|fixture-token|private-header/u);
   });
 
   it("recovers rate-limited notice writes instead of treating them as missing permissions", () => {
