@@ -5,6 +5,7 @@ import { DEPRECATION_MARKING_COMPAT_RECORDS } from "./deprecation-marking.js";
 import { MEDIA_LEGACY_PROJECTION_COMPAT_RECORD } from "./media-legacy-projection.js";
 import { MENTION_INBOX_COMPAT_RECORD } from "./mention-inbox-record.js";
 import { MODEL_ACCOUNT_CONNECT_COMPAT_RECORD } from "./model-account-connect-record.js";
+import { PLUGIN_SDK_PRIVATE_RUNTIME_EXPORT_COMPAT_RECORD } from "./plugin-sdk-private-runtime-export-record.js";
 import { PLUGIN_SDK_REMOVED_EXPORT_RECORDS } from "./plugin-sdk-removed-export-records.js";
 import {
   BUNDLED_ONLY_PUBLIC_PLUGIN_SDK_SUBPATH_RECORDS,
@@ -39,6 +40,7 @@ export const PLUGIN_COMPAT_RECORDS = [
   ...AGENT_LIST_RUNTIME_PROJECTION_COMPAT_RECORDS,
   WATCHED_SESSIONS_COMPAT_RECORD,
   PROGRESS_RECEIPT_HANDOFF_COMPAT_RECORD,
+  PLUGIN_SDK_PRIVATE_RUNTIME_EXPORT_COMPAT_RECORD,
   {
     code: "plugin-sdk-session-header-link",
     status: "deprecated",
