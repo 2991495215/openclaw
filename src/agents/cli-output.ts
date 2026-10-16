@@ -1,8 +1,3 @@
-/**
- * Parses output from CLI-backed model providers. It supports plain text, JSON,
- * JSONL streaming, Claude stream-json dialects, usage metadata, and tool event
- * reconstruction.
- */
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import type {
   CliBackendConfig,

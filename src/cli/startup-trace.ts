@@ -1,4 +1,3 @@
-// Shared startup tracing for the entry wrapper and CLI dispatcher.
 import process from "node:process";
 import { isForegroundGatewayRunArgv } from "../../gateway-run-argv.mjs";
 import type { OpenClawConfig } from "../config/types.openclaw.js";

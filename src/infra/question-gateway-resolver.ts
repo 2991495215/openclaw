@@ -1,4 +1,3 @@
-// Resolves runtime-authored question choices through the Gateway.
 import type {
   QuestionGetResult,
   QuestionResolveResult,

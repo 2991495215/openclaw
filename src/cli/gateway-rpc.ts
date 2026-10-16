@@ -1,4 +1,3 @@
-// Lazy gateway RPC facade and shared Commander options for CLI subcommands.
 import type { Command } from "commander";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createLazyImportLoader } from "../shared/lazy-promise.js";

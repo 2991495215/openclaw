@@ -1,4 +1,3 @@
-// Gateway service command registration shared by `gateway` and legacy `daemon` CLIs.
 import { Option, type Command } from "commander";
 import { isGatewayServiceEnv } from "../../daemon/constants.js";
 import { isGatewayExternallySupervised } from "../../infra/gateway-supervision.js";

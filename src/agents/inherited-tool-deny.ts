@@ -1,6 +1,3 @@
-/**
- * Normalizes inherited tool allow/deny lists and ACP compatibility errors.
- */
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import { createToolPolicyMatcher } from "./tool-policy-match.js";
 import { normalizeToolPolicyName } from "./tool-policy-shared.js";

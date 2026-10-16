@@ -1,4 +1,3 @@
-// Device pairing runtime commands for gateway and loopback-local fallback operations.
 import { coerceErrorMessage as normalizeErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import {
   normalizeLowercaseStringOrEmpty,

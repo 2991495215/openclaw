@@ -1,4 +1,3 @@
-// Static auth-choice option definitions used before provider manifests are loaded.
 import type { AuthChoice, AuthChoiceGroupId } from "./onboard-types.js";
 
 export type AuthChoiceOption = {

@@ -1,6 +1,3 @@
-/**
- * Ordered credential resolution for one provider request.
- */
 import { formatCliCommand } from "../cli/command-format.js";
 import { resolveMergedModelProviderConfig } from "../config/model-provider-config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";

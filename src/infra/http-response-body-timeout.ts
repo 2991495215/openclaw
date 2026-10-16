@@ -1,4 +1,3 @@
-// Applies idle and overall deadlines to fetch response-body reads.
 import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
 import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
 

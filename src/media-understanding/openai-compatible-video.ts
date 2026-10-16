@@ -1,4 +1,3 @@
-// Core facade for shared OpenAI-compatible video request helpers.
 import {
   buildOpenAiCompatibleVideoRequestBody,
   coerceOpenAiCompatibleVideoText,

@@ -1,4 +1,3 @@
-// Runs startup update checks and optional auto-update handoff.
 import { createHash, randomUUID } from "node:crypto";
 import {
   asDateTimestampMs,

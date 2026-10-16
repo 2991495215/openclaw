@@ -1,4 +1,3 @@
-// Shared root CLI failure formatting with debug stack gating and recovery hints.
 import { isForegroundGatewayRunArgv } from "../../gateway-run-argv.mjs";
 import { isInvalidConfigError } from "../config/io.invalid-config.js";
 import { isGatewayTransportError } from "../gateway/transport-error.js";

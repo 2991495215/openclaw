@@ -1,4 +1,3 @@
-// Owns core preparation and sync/async orchestration for config validation.
 import {
   listChannelIdsForOwnershipMigration,
   listChannelIdsForOwnershipMigrationAsync,

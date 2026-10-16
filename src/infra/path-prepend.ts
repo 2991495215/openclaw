@@ -1,4 +1,3 @@
-// Prepends directories to PATH while preserving existing order.
 import path from "node:path";
 import {
   normalizeStringEntries,

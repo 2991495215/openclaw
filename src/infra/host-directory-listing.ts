@@ -1,4 +1,3 @@
-// Directory-only host browsing shared by the Gateway and node-host runtimes.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

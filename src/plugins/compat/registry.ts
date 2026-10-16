@@ -1,4 +1,3 @@
-// Plugin compatibility registry exposes known plugin compatibility metadata to doctor/update flows.
 import { PLUGIN_COMPAT_RECORDS } from "./registry-records.js";
 import type { PluginCompatRecord } from "./types.js";
 

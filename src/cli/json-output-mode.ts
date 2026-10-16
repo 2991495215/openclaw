@@ -1,4 +1,3 @@
-// Early JSON-output detection and console-log routing for parseable CLI stdout.
 import { withNoteOutput } from "../../packages/terminal-core/src/note-output.js";
 import { loggingState } from "../logging/state.js";
 import { isConfigSetJsonParseOnly } from "./config-output-mode.js";

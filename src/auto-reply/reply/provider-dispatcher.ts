@@ -1,4 +1,3 @@
-// Dispatch adapters that bridge provider reply resolution into inbound dispatchers.
 import {
   dispatchInboundMessageWithBufferedDispatcher,
   dispatchInboundMessageWithDispatcher,

@@ -1,4 +1,3 @@
-// Doctor detection and cleanup for stale global plugin-runtime symlinks.
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";

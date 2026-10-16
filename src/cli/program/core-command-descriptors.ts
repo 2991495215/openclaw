@@ -1,4 +1,3 @@
-// Core root-command descriptor catalog used for help placeholders and lazy registration.
 import { isConfigMachineOutput } from "../config-output-mode.js";
 import { isDoctorMachineOutput } from "../doctor-output-mode.js";
 import { hasMachineOutputOption } from "../machine-output-argv.js";

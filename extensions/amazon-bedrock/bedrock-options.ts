@@ -1,7 +1,3 @@
-/**
- * Stream option extensions and prompt-cache policy for Amazon Bedrock models.
- * Provider registration and runtime streaming share these contracts.
- */
 import type { CachePointBlock } from "@aws-sdk/client-bedrock-runtime";
 import type {
   CacheRetention,

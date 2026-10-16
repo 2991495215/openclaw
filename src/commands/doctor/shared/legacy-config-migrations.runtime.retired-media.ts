@@ -1,4 +1,3 @@
-// Media and voice compatibility migrations retired from canonical runtime config.
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { getRecord } from "../../../config/legacy.shared.js";
 import {

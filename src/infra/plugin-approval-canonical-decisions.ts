@@ -1,4 +1,3 @@
-// Canonical plugin approval decisions used by approval runtimes and typed surfaces.
 import type { ExecApprovalDecision } from "./exec-approvals.js";
 import { resolvePluginApprovalRequestAllowedDecisions } from "./plugin-approvals.js";
 

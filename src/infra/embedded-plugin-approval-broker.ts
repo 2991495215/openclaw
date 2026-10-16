@@ -1,4 +1,3 @@
-// Provides the process-local plugin approval path used by embedded TUI runs.
 import { randomUUID } from "node:crypto";
 import { createDeferredCore } from "../shared/deferred.js";
 import { notifyListeners, registerListener } from "../shared/listeners.js";

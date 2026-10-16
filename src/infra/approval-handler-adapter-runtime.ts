@@ -1,4 +1,3 @@
-// Builds lazy native approval runtime adapters.
 import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import type {

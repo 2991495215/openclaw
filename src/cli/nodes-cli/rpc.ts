@@ -1,4 +1,3 @@
-// Gateway RPC helpers for node CLI commands, including lazy runtime loading and option parsing.
 import { randomUUID } from "node:crypto";
 import {
   parseStrictFiniteNumber,

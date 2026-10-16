@@ -1,4 +1,3 @@
-// Gateway live state factory.
 // Combines mutable runtime handles with startup-resolved services for request contexts.
 import type { PluginServicesHandle } from "../plugins/services.js";
 import type { createControlUiSessionPullRequestSubscriptions } from "./control-ui-session-pr-subscriptions.js";

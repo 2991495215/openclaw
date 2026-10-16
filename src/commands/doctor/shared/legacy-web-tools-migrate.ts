@@ -1,4 +1,3 @@
-// Legacy web tool config migrations into plugin-owned provider config.
 import { ensureRecord } from "../../../config/legacy.shared.js";
 import { mergeMissing } from "../../../config/merge-missing.js";
 import { isBlockedObjectKey } from "../../../infra/prototype-keys.js";

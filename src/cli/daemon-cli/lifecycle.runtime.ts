@@ -1,4 +1,3 @@
-// Lazy runtime barrel for Gateway service lifecycle command implementations.
 export {
   runDaemonRestart,
   runDaemonStart,

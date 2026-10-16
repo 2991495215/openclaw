@@ -1,4 +1,3 @@
-// Ordered Gateway startup task runner.
 // Used for best-effort side effects that should not abort the server.
 import { formatErrorMessage } from "../infra/errors.js";
 

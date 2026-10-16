@@ -1,4 +1,3 @@
-// Top-level legacy config migration runner used before full config validation.
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";

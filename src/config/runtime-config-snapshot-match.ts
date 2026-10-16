@@ -1,4 +1,3 @@
-// Config-snapshot comparison: byte-stable serialization plus resolution provenance.
 import { isDeepStrictEqual } from "node:util";
 import { getConfigResolutionFacts, serializeConfigResolutionFacts } from "./resolution-facts.js";
 import type { OpenClawConfig } from "./types.js";

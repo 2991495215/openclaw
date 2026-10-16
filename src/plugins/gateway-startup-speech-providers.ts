@@ -1,4 +1,3 @@
-// Collects startup speech provider metadata from plugin manifests.
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
 import { listAgentEntries, withAgentRosterFactsBatch } from "../agents/agent-scope-config.js";
