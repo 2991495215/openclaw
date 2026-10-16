@@ -78,6 +78,7 @@ jobs:
               "scripts/lint-swift.sh",
               "scripts/run-swiftlint.mts",
               "scripts/lib/check-limits.mts",
+              ":(exclude)apps/ios/fastlane/metadata/",
               ":(exclude)apps/ios/README.md",
               ":(exclude)apps/ios/AGENTS.md",
               ":(exclude)apps/ios/DESIGN.md",

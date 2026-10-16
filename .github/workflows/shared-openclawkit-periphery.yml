@@ -73,6 +73,7 @@ jobs:
               "scripts/ios-write-swift-filelist.mts",
               "scripts/ios-write-version-xcconfig.sh",
               "test/scripts/periphery-intersection.test.ts",
+              ":(exclude)apps/ios/fastlane/metadata/",
               ":(exclude)apps/ios/README.md",
               ":(exclude)apps/ios/AGENTS.md",
               ":(exclude)apps/ios/DESIGN.md",
