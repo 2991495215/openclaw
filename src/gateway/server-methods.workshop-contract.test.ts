@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { closeSkillsWatchers } from "../skills/runtime/refresh.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
@@ -49,7 +49,9 @@ async function dispatch(
     respond,
   });
   expect(respond).toHaveBeenCalledOnce();
-  const [ok, payload, error] = respond.mock.calls[0];
+  const response = respond.mock.calls[0];
+  assert.isDefined(response);
+  const [ok, payload, error] = response;
   return { ok, payload, error };
 }
 

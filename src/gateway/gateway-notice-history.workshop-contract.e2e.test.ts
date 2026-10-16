@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { text as readText } from "node:stream/consumers";
-import { expect, it } from "vitest";
+import { assert, expect, it } from "vitest";
 import { writeOpenAiResponsesText } from "../../test/helpers/openai-responses-sse.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { withServer } from "../plugin-sdk/test-helpers/http-test-server.js";
@@ -33,7 +33,7 @@ it(
         OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1",
       },
     });
-    let gateway: { client: GatewayClient; server: GatewayServer } | undefined;
+    let gateway: { client: GatewayClient; server: Pick<GatewayServer, "close"> } | undefined;
     const requests: Array<{ input?: Array<{ role?: string; content?: unknown }> }> = [];
     const providerErrors: unknown[] = [];
     const runId = `skill-workshop-review:${randomUUID()}`;
@@ -171,31 +171,34 @@ it(
           } finally {
             database.close();
           }
-          gateway = await startGatewayWithClient({
+          const active = await startGatewayWithClient({
             cfg: config,
             configPath: state.configPath,
             token,
             scopes: ["operator.admin", "operator.read", "operator.write"],
           });
+          gateway = active;
           for (const [index, sessionKey] of keys.entries()) {
-            const history = await gateway.client.request<{
+            const history = await active.client.request<{
               messages: Array<{ content?: unknown; openclawDeliveryMirror?: unknown }>;
             }>("chat.history", { sessionKey, limit: 20 });
             const notices = history.messages.filter(
               (message) => message.openclawDeliveryMirror !== undefined,
             );
             expect(notices).toHaveLength(1);
-            expect(notices[0].openclawDeliveryMirror).toEqual(marker);
-            expect(JSON.stringify(notices[0].content)).toContain(
+            const notice = notices[0];
+            assert.isDefined(notice);
+            expect(notice.openclawDeliveryMirror).toEqual(marker);
+            expect(JSON.stringify(notice.content)).toContain(
               JSON.stringify(noticeText).slice(1, -1),
             );
-            const accepted = await gateway.client.request<{ runId: string }>("agent", {
+            const accepted = await active.client.request<{ runId: string }>("agent", {
               sessionKey,
               message: "Continue with one acknowledgement.",
               deliver: false,
               idempotencyKey: randomUUID(),
             });
-            const completed = await gateway.client.request(
+            const completed = await active.client.request(
               "agent.wait",
               { runId: accepted.runId, timeoutMs: 45_000 },
               { timeoutMs: 50_000 },

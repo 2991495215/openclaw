@@ -4,7 +4,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { handleGatewayRequest } from "../gateway/server-methods.js";
@@ -117,7 +117,9 @@ async function changes() {
     respond,
   });
   expect(respond).toHaveBeenCalledOnce();
-  expect(respond.mock.calls[0][0]).toBe(true);
+  const response = respond.mock.calls[0];
+  assert.isDefined(response);
+  expect(response[0]).toBe(true);
   return Value.Parse(
     Type.Object({
       changes: Type.Array(
@@ -132,7 +134,7 @@ async function changes() {
         }),
       ),
     }),
-    respond.mock.calls[0][1],
+    response[1],
   );
 }
 
@@ -639,7 +641,14 @@ function changeField(details: unknown, key: "id" | "versionId"): string {
   if (!change || typeof change !== "object" || !(key in change)) {
     throw new Error(`Expected change ${key}`);
   }
-  const value = change[key];
+  const value =
+    key === "id"
+      ? "id" in change
+        ? change.id
+        : undefined
+      : "versionId" in change
+        ? change.versionId
+        : undefined;
   if (typeof value !== "string") {
     throw new Error(`Expected string change ${key}`);
   }

@@ -19,6 +19,7 @@ import { cleanupSessionStateForTest } from "../../test-utils/session-state-clean
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import type { CommandDispatchParams } from "./commands-types.js";
 import { handleCommands } from "./commands.js";
+import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
 
 const REVIEW_ID = "0b6a4a52-1f43-4f0e-9d55-3c1d8e1f7a10";
 const SAVED_VERSION = "20260101T000000000Z-patch";
@@ -96,7 +97,7 @@ function paramsFor(body: string): CommandDispatchParams {
       surface: INTERNAL_MESSAGE_CHANNEL,
       ownerList: [],
     },
-    directives: {},
+    directives: parseInlineSessionDirectives(""),
     elevated: { enabled: true, allowed: true, failures: [] },
     agentId: "main",
     agentDir: state.agentDir(),

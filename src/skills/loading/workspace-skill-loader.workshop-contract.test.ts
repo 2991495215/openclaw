@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { withEnvAsync } from "../../test-utils/env.js";
 import { closeSkillsWatchers } from "../runtime/refresh.js";
@@ -40,15 +40,15 @@ describe("Workshop discovery contract", () => {
           path.join(home, ".openclaw", "skills"),
           path.join(home, ".agents", "skills"),
           path.join(workspace, "skills"),
-        ];
+        ] as const;
         const config = {
           plugins: { enabled: false },
           agents: { entries: { main: { agentDir } } },
           skills: { load: { watch: false, extraDirs: [roots[0]] } },
         };
         for (let winner = 0; winner < roots.length; winner++) {
-          for (let tier = 0; tier <= winner; tier++) {
-            await writeSkill(roots[tier], `precedence-${winner}`, `tier-${tier}-winner-${winner}`);
+          for (const [tier, root] of roots.slice(0, winner + 1).entries()) {
+            await writeSkill(root, `precedence-${winner}`, `tier-${tier}-winner-${winner}`);
           }
         }
         const options = {
@@ -60,20 +60,28 @@ describe("Workshop discovery contract", () => {
         };
         const skills = loadWorkspaceSkills(workspace, options);
         const snapshot = await buildSkillSnapshot(workspace, options);
-        for (let winner = 0; winner < roots.length; winner++) {
+        for (const [winner, root] of roots.entries()) {
           expect(
             skills.find((entry) => entry.skill.name === `precedence-${winner}`)?.skill,
           ).toMatchObject({
             description: `tier-${winner}-winner-${winner}`,
-            filePath: path.join(roots[winner], `precedence-${winner}`, "SKILL.md"),
+            filePath: path.join(root, `precedence-${winner}`, "SKILL.md"),
           });
           expect(snapshot.prompt).toContain(`tier-${winner}-winner-${winner}`);
           for (let loser = 0; loser < winner; loser++) {
             expect(snapshot.prompt).not.toContain(`tier-${loser}-winner-${winner}`);
           }
         }
-        // P4: Workshop instructions retain an actionable absolute path even under an isolated HOME.
-        expect(snapshot.prompt).toContain(path.join(roots[2], "precedence-2", "SKILL.md"));
+        // P4: Absolute and home-compacted locations must resolve to the agent's Workshop skill.
+        const location = snapshot.prompt.match(
+          /<name>precedence-2<\/name>\s*<description>[^<]*<\/description>\s*<location>([^<]+)<\/location>/,
+        )?.[1];
+        assert.isDefined(location);
+        const resolvedLocation = location.startsWith("~/")
+          ? path.join(home, location.slice(2))
+          : location;
+        expect(path.isAbsolute(resolvedLocation)).toBe(true);
+        expect(resolvedLocation).toBe(path.join(roots[2], "precedence-2", "SKILL.md"));
       },
     );
   });

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setImmediate as nextTurn } from "node:timers/promises";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, assert, expect, it, vi } from "vitest";
 import { wrapToolWithBeforeToolCallHook } from "../agents/agent-tools.before-tool-call.js";
 import { runAgentEndSideEffectsAsync } from "../agents/harness/agent-end-side-effects.js";
 import { createReadTool } from "../agents/sessions/tools/read.js";
@@ -51,7 +51,9 @@ async function dispatch(config: OpenClawConfig, method: string, params: Record<s
     respond,
   });
   expect(respond).toHaveBeenCalledOnce();
-  const [ok, payload, error] = respond.mock.calls[0];
+  const response = respond.mock.calls[0];
+  assert.isDefined(response);
+  const [ok, payload, error] = response;
   expect({ ok, error }).toEqual({ ok: true, error: undefined });
   return payload;
 }
@@ -224,8 +226,10 @@ it("L6/Y1/Y2: Gateway usage protects read skills, and post-turn cleanup is daily
     });
     const versions = await fs.readdir(path.join(root, ".archive", "stale"));
     expect(versions).toHaveLength(1);
+    const version = versions[0];
+    assert.isDefined(version);
     expect(
-      await fs.readFile(path.join(root, ".archive", "stale", versions[0], "SKILL.md"), "utf8"),
+      await fs.readFile(path.join(root, ".archive", "stale", version, "SKILL.md"), "utf8"),
     ).toContain("stale procedure");
     await finishTurn(config, otherAgentId);
     await expect(fs.stat(otherFile)).rejects.toMatchObject({ code: "ENOENT" });

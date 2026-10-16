@@ -4,7 +4,7 @@ import type { ServerResponse } from "node:http";
 import path from "node:path";
 import { text as readText } from "node:stream/consumers";
 import { setTimeout as delay } from "node:timers/promises";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   writeOpenAiResponsesSse,
   writeOpenAiResponsesText,
@@ -108,7 +108,7 @@ const createdSkill =
 async function withReview(
   actions: Action[],
   run: (fixture: {
-    gateway: { client: GatewayClient; server: GatewayServer };
+    gateway: { client: GatewayClient; server: Pick<GatewayServer, "close"> };
     sessionKey: string;
     skillFile: string;
     createdFile: string;
@@ -162,7 +162,7 @@ async function withReview(
   const sends: ChannelOutboundPayloadContext[] = [];
   const eventsAtSend: string[][] = [];
   const replyHooks = { count: 0 };
-  let gateway: { client: GatewayClient; server: GatewayServer } | undefined;
+  let gateway: { client: GatewayClient; server: Pick<GatewayServer, "close"> } | undefined;
   let mode: "foreground" | "review" | "replay" = "foreground";
   let remaining = 0;
   let serial = 0;
@@ -259,12 +259,13 @@ async function withReview(
             workshop: { autonomous: { mode: "auto", channelNotices: Boolean(options.channel) } },
           },
         } satisfies OpenClawConfig;
-        gateway = await startGatewayWithClient({
+        const active = await startGatewayWithClient({
           cfg: config,
           configPath: state.configPath,
           token,
           scopes: ["operator.admin", "operator.read", "operator.write"],
         });
+        gateway = active;
         if (options.channel) {
           const channel = options.channel;
           const renderPresentation: NonNullable<ChannelOutboundAdapter["renderPresentation"]> = ({
@@ -302,7 +303,6 @@ async function withReview(
             ]),
           );
         }
-        const active = gateway;
         const registry = captureActivePluginRegistrySnapshot().activeRegistry;
         if (!registry) {
           throw new Error("Gateway plugin registry was not initialized");
@@ -469,12 +469,16 @@ describe("Workshop review through the real Gateway", () => {
             (change) => change.actor === "review" && change.sessionKey === fixture.sessionKey,
           ),
         ).toBe(true);
-        const runId = changes[0].runId;
+        const firstChange = changes[0];
+        assert.isDefined(firstChange);
+        const runId = firstChange.runId;
         expect(runId).toMatch(/^skill-workshop-review:[0-9a-f-]{36}$/);
         const text =
           '💾 Learned: updated `contract-release` (check the generation and receipt); created `contract-created` (reuse the receipt). Say "undo" to revert this skill change.';
-        expect(JSON.stringify(notices[0].content)).toContain(JSON.stringify(text).slice(1, -1));
-        expect(notices[0].openclawDeliveryMirror).toEqual({
+        const notice = notices[0];
+        assert.isDefined(notice);
+        expect(JSON.stringify(notice.content)).toContain(JSON.stringify(text).slice(1, -1));
+        expect(notice.openclawDeliveryMirror).toEqual({
           kind: "skill-workshop-change",
           agentId: "main",
           runId,
@@ -508,9 +512,9 @@ describe("Workshop review through the real Gateway", () => {
         );
         await fixture.replay();
         expect(fixture.replayRequests).toHaveLength(1);
-        const replayAssistants = fixture.replayRequests[0].input?.filter(
-          (item) => item.role === "assistant",
-        );
+        const replayRequest = fixture.replayRequests[0];
+        assert.isDefined(replayRequest);
+        const replayAssistants = replayRequest.input?.filter((item) => item.role === "assistant");
         expect(JSON.stringify(replayAssistants)).not.toContain("💾 Learned:");
         const undo = () =>
           fixture.gateway.client.request<{ status: string; changes: Change[] }>(
@@ -548,8 +552,11 @@ describe("Workshop review through the real Gateway", () => {
         expect(
           results
             .flatMap((result) => result.changes)
-            .map((change) => [change.skillName, change.action])
-            .toSorted(),
+            .map((change) => [change.skillName, change.action] as const)
+            .toSorted(
+              ([leftName, leftAction], [rightName, rightAction]) =>
+                leftName.localeCompare(rightName) || leftAction.localeCompare(rightAction),
+            ),
         ).toEqual([
           ["contract-created", "archive"],
           ["contract-release", "restore"],
@@ -707,7 +714,9 @@ describe("Workshop review through the real Gateway", () => {
           } else {
             const notices = await waitForNotice(fixture.history);
             expect(notices).toHaveLength(1);
-            expect(notices[0].openclawDeliveryMirror).not.toMatchObject({
+            const notice = notices[0];
+            assert.isDefined(notice);
+            expect(notice.openclawDeliveryMirror).not.toMatchObject({
               kind: "skill-workshop-change",
             });
           }
@@ -715,7 +724,9 @@ describe("Workshop review through the real Gateway", () => {
             fixture.sends,
             await fixture.failure.findText("skill workshop notice delivery failed"),
           ).toHaveLength(1);
-          const runId = (await fixture.changes())[0].runId;
+          const firstChange = (await fixture.changes())[0];
+          assert.isDefined(firstChange);
+          const runId = firstChange.runId;
           expect(fixture.sends[0]).toMatchObject({
             to: "4321",
             payload: {
@@ -740,7 +751,9 @@ describe("Workshop review through the real Gateway", () => {
               },
             },
           });
-          expect(fixture.eventsAtSend[0].join("\n")).toContain(
+          const eventsAtSend = fixture.eventsAtSend[0];
+          assert.isDefined(eventsAtSend);
+          expect(eventsAtSend.join("\n")).toContain(
             "skill_workshop action=restore name=contract-release version=",
           );
           expect(peekSystemEvents(fixture.sessionKey).join("\n")).toContain(
