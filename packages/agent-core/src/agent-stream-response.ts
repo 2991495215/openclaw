@@ -3,14 +3,23 @@ import {
   createEmptyTransportUsage,
   replaceCompactionReplayOwnerContent,
 } from "@openclaw/ai/transports";
-import { PROVIDER_FAILURE_WITH_OUTPUT_ERROR_CODE } from "@openclaw/llm-core";
+import {
+  appendTextDeltaToAssistantMessage,
+  PROVIDER_FAILURE_WITH_OUTPUT_ERROR_CODE,
+} from "@openclaw/llm-core";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
+  ThinkingContent,
   Context,
   ToolResultMessage,
 } from "@openclaw/llm-core";
+import {
+  appendAssistantThinking,
+  readAssistantThinkingAppend,
+} from "@openclaw/llm-core/event-stream";
 import { uuidv7 } from "./harness/session/uuid.js";
+import { copyInternalToolResultState } from "./internal-hooks.js";
 import {
   type AgentCoreStreamRuntimeDeps,
   resolveAgentCoreStreamFn,
@@ -18,14 +27,17 @@ import {
 } from "./runtime-deps.js";
 import { createStreamSteering } from "./stream-steering.js";
 import { normalizeCoreContextMessages } from "./turn-interruption.js";
+import { withToolResultContentSource } from "./turn-taint.js";
 import type {
   AgentContext,
   AgentEvent,
   AgentLoopConfig,
   AgentMessage,
   AgentToolCall,
+  AgentToolResult,
   StreamFn,
   ToolLoopIntervention,
+  ToolResultContentSource,
 } from "./types.js";
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
@@ -38,6 +50,7 @@ export type AsyncToolBatchScheduling = {
 
 export type ExecutedToolCallBatch = {
   messages: ToolResultMessage[];
+  terminalToolCallIds: string[];
   steeringMessages: AgentMessage[];
   terminate: boolean;
   terminateRun: boolean;
@@ -57,20 +70,164 @@ function resolveAssistantMessageUpdate(
   if (event.type !== "text_delta") {
     return currentMessage;
   }
-  const content = [...currentMessage.content];
-  const currentContent = content[event.contentIndex];
-  content[event.contentIndex] =
-    currentContent?.type === "text"
-      ? { ...currentContent, text: currentContent.text + event.delta }
-      : { type: "text", text: event.delta };
-  return { ...currentMessage, content };
+  return appendTextDeltaToAssistantMessage(currentMessage, event.contentIndex, event.delta);
+}
+
+// Batch only append-owned updates. Snapshot text can replace content or change
+// phase; reasoning requires the producer's mutation fact for the same block.
+async function* coalesceStreamDeltas(
+  source: AsyncIterable<AssistantMessageEvent>,
+  signal: AbortSignal,
+  close: () => void,
+): AsyncGenerator<AssistantMessageEvent> {
+  type Delta = Extract<AssistantMessageEvent, { type: "text_delta" | "thinking_delta" }>;
+  const iterator = source[Symbol.asyncIterator]();
+  let next: Promise<IteratorResult<AssistantMessageEvent>> | undefined;
+  let pending: Delta | undefined;
+  let thinking: ThinkingContent | undefined;
+  let thinkingText = "";
+  let thinkingBefore = "";
+  let thinkingSignature: string | undefined;
+  let thinkingRedacted: boolean | undefined;
+  let deadline: Promise<undefined> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let wake: (() => void) | undefined;
+  let ended = false;
+  const projectBatch = (batch: Delta): Delta => {
+    if (batch.type !== "thinking_delta") {
+      return batch;
+    }
+    // The batch owns this projection and its append fact. Reusing the mutable
+    // provider block loses the combined append and makes rendering rescan it.
+    const block: ThinkingContent = {
+      type: "thinking",
+      thinking: thinkingBefore,
+      thinkingSignature,
+      redacted: thinkingRedacted,
+    };
+    appendAssistantThinking(block, batch.delta);
+    return {
+      ...batch,
+      partial: {
+        ...batch.partial,
+        content: batch.partial.content.with(batch.contentIndex, block),
+      },
+    };
+  };
+  const clearDeadline = () => {
+    clearTimeout(timer);
+    timer = undefined;
+    deadline = undefined;
+    wake = undefined;
+  };
+  const onAbort = () => wake?.();
+  signal.addEventListener("abort", onAbort);
+  try {
+    while (true) {
+      next ??= iterator.next();
+      const result = deadline ? await Promise.race([next, deadline]) : await next;
+      if (!result) {
+        const batch = pending;
+        pending = undefined;
+        clearDeadline();
+        if (batch) {
+          yield projectBatch(batch);
+        }
+        continue;
+      }
+      next = undefined;
+      if (result.done) {
+        ended = true;
+        if (pending) {
+          clearDeadline();
+          yield projectBatch(pending);
+        }
+        return;
+      }
+      const event = result.value;
+      const block =
+        event.type === "thinking_delta" ? event.partial.content[event.contentIndex] : undefined;
+      const append =
+        block?.type === "thinking" ? readAssistantThinkingAppend(block, thinkingText) : undefined;
+      const batchable =
+        !signal.aborted &&
+        ((event.type === "text_delta" && !event.partial) ||
+          (event.type === "thinking_delta" &&
+            block?.type === "thinking" &&
+            append === event.delta));
+      if (
+        batchable &&
+        pending?.type === event.type &&
+        pending.contentIndex === event.contentIndex &&
+        (event.type === "text_delta" ||
+          (block?.type === "thinking" &&
+            block === thinking &&
+            block.thinkingSignature === thinkingSignature &&
+            block.redacted === thinkingRedacted))
+      ) {
+        pending = { ...event, delta: pending.delta + event.delta };
+        if (block?.type === "thinking") {
+          thinkingText = block.thinking;
+        }
+        continue;
+      }
+      if (pending) {
+        const batch = pending;
+        pending = undefined;
+        clearDeadline();
+        yield projectBatch(batch);
+      }
+      if (!batchable || signal.aborted) {
+        if (block?.type === "thinking") {
+          thinkingText = block.thinking;
+        }
+        yield event;
+        continue;
+      }
+      pending = event;
+      thinking = block?.type === "thinking" ? block : undefined;
+      thinkingBefore = thinkingText;
+      thinkingText = thinking?.thinking ?? "";
+      thinkingSignature = thinking?.thinkingSignature;
+      thinkingRedacted = thinking?.redacted;
+      deadline = new Promise<undefined>((resolve) => {
+        wake = () => resolve(undefined);
+        timer = setTimeout(wake, 32);
+      });
+    }
+  } catch (error) {
+    if (pending) {
+      yield projectBatch(pending);
+    }
+    throw error;
+  } finally {
+    clearDeadline();
+    signal.removeEventListener("abort", onAbort);
+    // A timed flush may leave next() pending. Abort before returning the
+    // iterator so an early consumer failure cannot wait on provider I/O.
+    if (!ended) {
+      close();
+    }
+    const returned = iterator.return?.();
+    if (next) {
+      // Custom streams can ignore abort. Their pending read must not hold a
+      // failed consumer open; return() will finish when that read settles.
+      void returned?.catch(() => {});
+    } else {
+      await returned;
+    }
+  }
 }
 
 function removeNonExecutableToolCalls(message: AssistantMessage): AssistantMessage {
   if (message.stopReason === "toolUse") {
     return message;
   }
-  const content = message.content.filter((item) => item.type !== "toolCall" || item.async);
+  const failed = message.stopReason === "aborted" || message.stopReason === "error";
+  // Executed async calls already own earlier fragments; a failed tail cannot admit another call.
+  const content = message.content.filter(
+    (item) => item.type !== "toolCall" || (!failed && item.async),
+  );
   return content.length === message.content.length
     ? message
     : replaceCompactionReplayOwnerContent(message, content);
@@ -86,6 +243,36 @@ function ensureToolTurnIdentity(message: AssistantMessage): AssistantMessage {
   }
   // message_end persists this local identity before any tool can execute.
   return { ...message, turnId: uuidv7() };
+}
+
+export async function emitToolResultMessage(
+  finalized: {
+    toolCall: AgentToolCall;
+    result: AgentToolResult<unknown>;
+    isError: boolean;
+    resultContentSource?: ToolResultContentSource;
+  },
+  emit: AgentEventSink,
+): Promise<ToolResultMessage> {
+  const message = copyInternalToolResultState(
+    finalized.result,
+    withToolResultContentSource(
+      {
+        role: "toolResult",
+        toolCallId: finalized.toolCall.id,
+        toolName: finalized.toolCall.name,
+        content: finalized.result.content ?? [],
+        details: finalized.result.details,
+        isError: finalized.isError,
+        timestamp: Date.now(),
+      },
+      finalized.resultContentSource,
+    ),
+  );
+  await emit({ type: "message_start", message });
+  const event = { type: "message_end" as const, message };
+  await emit(event);
+  return event.message;
 }
 
 export async function streamAgentResponse(
@@ -161,11 +348,25 @@ export async function streamAgentResponse(
   let admissions = Promise.resolve();
   let executionFailure: { error: unknown } | undefined;
   const emitToolEvent: AgentEventSink = async (event) => {
-    if (event.type === "message_end" && event.message.role === "toolResult") {
-      context.messages.push(event.message);
-      newMessages.push(event.message);
+    if (event.type !== "message_end" || event.message.role !== "toolResult") {
+      await emit(event);
+      return;
     }
-    await emit(event);
+    const message = event.message;
+    const contextIndex = context.messages.push(message) - 1;
+    const newIndex = newMessages.push(message) - 1;
+    try {
+      await emit(event);
+    } finally {
+      if (event.message !== message && event.message.role === "toolResult") {
+        if (context.messages[contextIndex] === message) {
+          context.messages[contextIndex] = event.message;
+        }
+        if (newMessages[newIndex] === message) {
+          newMessages[newIndex] = event.message;
+        }
+      }
+    }
   };
   const enqueueTools = (message: AssistantMessage) => {
     if (message.stopReason === "error" || message.stopReason === "aborted") {
@@ -236,18 +437,6 @@ export async function streamAgentResponse(
                 message,
                 message.content.slice(committedContentCount),
               );
-        const updatePartial = async (message: AssistantMessage) => {
-          const fragment = remainingFragment(message);
-          if (partialIndex === undefined) {
-            partialIndex = context.messages.length;
-            context.messages.push(fragment);
-            await emit({ type: "message_start", message: { ...fragment } });
-          } else {
-            context.messages[partialIndex] = fragment;
-          }
-          return fragment;
-        };
-
         const commitFragment = async (message: AssistantMessage) => {
           if (partialIndex === undefined) {
             context.messages.push(message);
@@ -261,12 +450,16 @@ export async function streamAgentResponse(
           await emit({ type: "message_end", message });
         };
 
-        for await (const event of response) {
+        for await (const event of coalesceStreamDeltas(response, executionSignal, () => {
+          executionAbort.abort(new Error("Model stream consumption closed"));
+        })) {
           switch (event.type) {
             case "start": {
               const message = event.partial;
               partialMessage = message;
-              await updatePartial(message);
+              partialIndex = context.messages.length;
+              context.messages.push(message);
+              await emit({ type: "message_start", message: { ...message } });
               break;
             }
 
@@ -285,7 +478,14 @@ export async function streamAgentResponse(
                 if (event.contentIndex < committedContentCount) {
                   break;
                 }
-                const fragment = await updatePartial(message);
+                const fragment = remainingFragment(message);
+                if (partialIndex === undefined) {
+                  partialIndex = context.messages.length;
+                  context.messages.push(fragment);
+                  await emit({ type: "message_start", message: { ...fragment } });
+                } else {
+                  context.messages[partialIndex] = fragment;
+                }
                 const fragmentEvent = {
                   ...event,
                   contentIndex: event.contentIndex - committedContentCount,
@@ -306,9 +506,14 @@ export async function streamAgentResponse(
                 ) {
                   const prefix = prepareAssistantMessage(
                     ensureToolTurnIdentity({
-                      ...replaceCompactionReplayOwnerContent(
-                        message,
-                        message.content.slice(committedContentCount, event.contentIndex + 1),
+                      // Persistence takes ownership and freezes nested values. Detach the
+                      // completed prefix from the provider's still-mutable stream, after
+                      // replay checkpoints have been reindexed using original block identity.
+                      ...structuredClone(
+                        replaceCompactionReplayOwnerContent(
+                          message,
+                          message.content.slice(committedContentCount, event.contentIndex + 1),
+                        ),
                       ),
                       ...(streamedTurnId ? { turnId: streamedTurnId } : {}),
                       stopReason: "toolUse",
@@ -349,10 +554,18 @@ export async function streamAgentResponse(
             // Record one provider terminal, with its original usage, after tool outcomes settle.
             await executions;
           }
+          const tail = remainingFragment(result);
           const finalMessage = prepareAssistantMessage(
             ensureToolTurnIdentity(
               removeNonExecutableToolCalls({
-                ...remainingFragment(result),
+                ...tail,
+                // The provider stop covers the whole response. Its calls were committed
+                // with earlier fragments, so a call-free tail is the response's end.
+                ...(committedContentCount > 0 &&
+                tail.stopReason === "toolUse" &&
+                !tail.content.some((item) => item.type === "toolCall")
+                  ? { stopReason: "stop" as const }
+                  : {}),
                 ...(streamedTurnId ? { turnId: streamedTurnId } : {}),
                 ...(outputLimit && signal?.aborted
                   ? { stopReason: "aborted" }
