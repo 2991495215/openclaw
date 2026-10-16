@@ -1,7 +1,6 @@
 /**
- * Optional Anthropic request/usage JSONL diagnostics.
- * Redacts payload content before writing and stores digests for correlation
- * without persisting raw secret-bearing request bodies.
+ * Optional content-free Anthropic request/usage JSONL diagnostics.
+ * Stores request digests and numeric usage without message, tool, or error content.
  */
 import crypto from "node:crypto";
 import path from "node:path";
@@ -21,7 +20,6 @@ type PayloadLogStage = "request" | "usage";
 type PayloadLogEvent = AgentTraceBase & {
   ts: string;
   stage: PayloadLogStage;
-  payload?: unknown;
   usage?: unknown;
   error?: string;
   payloadDigest?: string;
@@ -29,22 +27,6 @@ type PayloadLogEvent = AgentTraceBase & {
 
 const writers = new Map<string, QueuedFileWriter>();
 const log = createSubsystemLogger("agent/anthropic-payload");
-
-function formatError(error: unknown): string | undefined {
-  const message =
-    error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
-  if (message !== undefined) {
-    const redacted = redactAgentDiagnosticPayload(message);
-    return typeof redacted === "string" ? redacted : message;
-  }
-  if (typeof error === "number" || typeof error === "boolean" || typeof error === "bigint") {
-    return String(error);
-  }
-  if (error && typeof error === "object") {
-    return safeJsonStringify(redactAgentDiagnosticPayload(error)) ?? "unknown error";
-  }
-  return undefined;
-}
 
 function digest(value: unknown): string | undefined {
   // Hash the redacted payload so repeated requests can be correlated even when
@@ -106,14 +88,12 @@ export function createAnthropicPayloadLogger(
         return streamFn(model, context, options);
       }
       const nextOnPayload = (payload: unknown) => {
-        // Forward the original payload to the provider hook, but persist only
-        // the redacted diagnostic copy.
+        // Preserve the existing digest without persisting the diagnostic payload.
         const redactedPayload = redactAgentDiagnosticPayload(payload);
         record({
           ...base,
           ts: new Date().toISOString(),
           stage: "request",
-          payload: redactedPayload,
           payloadDigest: digest(redactedPayload),
         });
         return options?.onPayload?.(payload, model);
@@ -126,22 +106,32 @@ export function createAnthropicPayloadLogger(
 
   const recordUsage: AnthropicPayloadLogger["recordUsage"] = (messages, error) => {
     const usage = findLastAssistantUsage(messages);
-    const errorMessage = formatError(error);
+    const errorMessage = error === undefined || error === null ? undefined : "request_failed";
     if (!usage && !errorMessage) {
       return;
     }
+    const usageCounters = usage
+      ? Object.fromEntries(
+          Object.entries(usage).filter(
+            ([key, value]) =>
+              ["input", "output", "cacheRead", "cacheWrite", "totalTokens"].includes(key) &&
+              typeof value === "number" &&
+              Number.isFinite(value),
+          ),
+        )
+      : undefined;
     record({
       ...base,
       ts: new Date().toISOString(),
       stage: "usage",
-      ...(usage ? { usage: redactAgentDiagnosticPayload(usage) } : {}),
+      ...(usageCounters ? { usage: usageCounters } : {}),
       error: errorMessage,
     });
     if (usage) {
       log.info("anthropic usage", {
         runId: params.runId,
         sessionId: params.sessionId,
-        usage,
+        usage: usageCounters,
       });
     }
   };
