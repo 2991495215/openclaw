@@ -17,9 +17,9 @@ import {
   resolveWorkspaceStateIdentity,
 } from "./workspace-state-identity.js";
 import {
+  readWorkspaceStateReceipt,
   withWorkspaceStatePublication,
   workspaceStatePublication,
-  workspaceStateReceiptResult,
 } from "./workspace-state-publication.js";
 import {
   assertCanonicalIntegerTimestamp,
@@ -119,7 +119,7 @@ async function runWorkspaceStateOperation<
             if (
               typeof expiryResult === "string" &&
               accepted.committed &&
-              workspaceStateReceiptResult(accepted.committed.facts) === expiryResult
+              readWorkspaceStateReceipt(accepted.committed.facts).result === expiryResult
             ) {
               retireWorkspaceFileCache(expiryResult);
             }
@@ -285,8 +285,8 @@ export async function deleteWorkspaceState(
   } = {},
 ): Promise<void> {
   const capturedPlan = structuredClone(plan);
-  const publish = (facts: unknown) => {
-    const result = workspaceStateReceiptResult(facts);
+  const publish = (facts: Record<string, unknown>) => {
+    const result = facts.result;
     if (
       !isRecord(result) ||
       result.kind !== "workspace-deleted" ||
@@ -311,10 +311,9 @@ export async function deleteWorkspaceState(
             });
           },
           onCommitted: (facts) => {
-            if (isRecord(facts)) {
-              publication?.committed(facts.receipt);
-            }
-            publish(facts);
+            const committed = readWorkspaceStateReceipt(facts);
+            publication?.committed(committed.receipt);
+            publish(committed);
           },
         },
       );
