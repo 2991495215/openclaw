@@ -1,12 +1,10 @@
 /** Process-lifetime MCP clients owned by the headless node host. */
 import { isDeepStrictEqual } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import {
   ErrorCode,
   ListToolsResultSchema,
   type CallToolResult,
-  type ListToolsResult,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { formatErrorMessage } from "@openclaw/normalization-core/error-coercion";
@@ -55,29 +53,17 @@ const NODE_MCP_CONNECT_CONCURRENCY = 6;
 const NODE_MCP_RETRY_INITIAL_MS = 250;
 const NODE_MCP_RETRY_MAX_MS = 60_000;
 
-type NodeHostMcpClient = {
-  onclose?: () => void;
-  connect(
-    transport: Transport,
-    options: { signal: AbortSignal; timeout: number; maxTotalTimeout: number },
-  ): Promise<void>;
-  request(
-    request: { method: "tools/list"; params?: { cursor?: string } },
-    resultSchema: typeof ListToolsResultSchema,
-    options?: { timeout?: number; maxTotalTimeout?: number; signal?: AbortSignal },
-  ): Promise<ListToolsResult>;
+// The SDK's declared union also covers explicitly selected compatibility schemas.
+// This owner always uses its default CallToolResultSchema.
+type NodeHostMcpClient = Omit<Client, "callTool"> & {
   callTool(
-    params: { name: string; arguments?: Record<string, unknown> },
+    params: Parameters<Client["callTool"]>[0],
     resultSchema?: undefined,
-    options?: { timeout?: number; signal?: AbortSignal },
+    options?: Parameters<Client["callTool"]>[2],
   ): Promise<CallToolResult>;
-  close(): Promise<void>;
 };
 
-type NodeHostMcpTransport = Pick<
-  NonNullable<ReturnType<typeof resolveMcpTransport>>,
-  "transport" | "transportType" | "connectionTimeoutMs" | "requestTimeoutMs" | "detachStderr"
->;
+type NodeHostMcpTransport = NonNullable<ReturnType<typeof resolveMcpTransport>>;
 
 type NodeHostMcpSession = NodeHostMcpTransport & {
   client: NodeHostMcpClient;
@@ -118,10 +104,7 @@ export class NodeHostMcpError extends Error {
 export type NodeHostMcpManager = Awaited<ReturnType<typeof startNodeHostMcpManager>>;
 
 type NodeHostMcpManagerDeps = {
-  createClient?: (serverName: string, options: { onToolsChanged: () => void }) => NodeHostMcpClient;
-  resolveTransport?: (serverName: string, config: McpServerConfig) => NodeHostMcpTransport | null;
   onDescriptorsChanged?: () => void;
-  warn?: (message: string) => void;
   signal?: AbortSignal;
 };
 
@@ -218,24 +201,6 @@ export async function startNodeHostMcpManager(
   servers: Record<string, McpServerConfig> | undefined,
   deps: NodeHostMcpManagerDeps = {},
 ) {
-  const warn = deps.warn ?? ((message: string) => console.warn(message));
-  const createClient =
-    deps.createClient ??
-    ((_serverName, options) =>
-      new Client(
-        { name: "openclaw-node-host", version: VERSION },
-        {
-          jsonSchemaValidator: createMcpJsonSchemaValidator(),
-          listChanged: {
-            tools: {
-              autoRefresh: false,
-              debounceMs: 0,
-              onChanged: () => options.onToolsChanged(),
-            },
-          },
-        },
-      ) as NodeHostMcpClient);
-  const resolveTransport = deps.resolveTransport ?? resolveMcpTransport;
   const descriptors: NodePluginToolDescriptor[] = [];
   const connectionAdmission = pLimit(NODE_MCP_CONNECT_CONCURRENCY);
   const lifecycleAbortController = new AbortController();
@@ -268,7 +233,7 @@ export async function startNodeHostMcpManager(
     );
     const next = buildNodeMcpToolDescriptors(listedTools);
     if (next.length < listedTools.length) {
-      warn(
+      console.warn(
         `node host MCP catalog bounded: published ${next.length} of ${listedTools.length} tools`,
       );
     }
@@ -373,15 +338,25 @@ export async function startNodeHostMcpManager(
       let resolved: NodeHostMcpTransport | null | undefined;
       let session: NodeHostMcpSession | undefined;
       try {
-        resolved = resolveTransport(state.serverName, state.config);
+        resolved = resolveMcpTransport(state.serverName, state.config);
         if (!resolved) {
           states.delete(state.serverName);
           throw new Error("invalid or unsupported transport");
         }
         let onToolsChanged = () => {};
-        const client = createClient(state.serverName, {
-          onToolsChanged: () => onToolsChanged(),
-        });
+        const client = new Client(
+          { name: "openclaw-node-host", version: VERSION },
+          {
+            jsonSchemaValidator: createMcpJsonSchemaValidator(),
+            listChanged: {
+              tools: {
+                autoRefresh: false,
+                debounceMs: 0,
+                onChanged: () => onToolsChanged(),
+              },
+            },
+          },
+        ) as NodeHostMcpClient;
         const createdSession: NodeHostMcpSession = {
           ...resolved,
           client,
@@ -449,7 +424,7 @@ export async function startNodeHostMcpManager(
       await connectAndList(state, lifecycleSignal);
     } catch (error) {
       if (!closed && !lifecycleSignal.aborted) {
-        warn(
+        console.warn(
           `node host MCP server "${state.serverName}" reconnect failed: ${formatMcpError(error)}`,
         );
         scheduleRetry(state);
@@ -471,7 +446,7 @@ export async function startNodeHostMcpManager(
       if (closed || lifecycleSignal.aborted || state.current !== session) {
         return;
       }
-      warn(
+      console.warn(
         `node host MCP server "${state.serverName}" tool refresh failed: ${formatMcpError(error)}`,
       );
       invalidateCurrent(state, session);
@@ -500,14 +475,14 @@ export async function startNodeHostMcpManager(
   const tasks = Array.from(states.values(), (state) => async () => {
     if (state.config.auth === "oauth" || state.config.oauth) {
       states.delete(state.serverName);
-      warn(`node host MCP server "${state.serverName}" skipped: OAuth is not supported`);
+      console.warn(`node host MCP server "${state.serverName}" skipped: OAuth is not supported`);
       return;
     }
     try {
       await connectAndList(state, lifecycleSignal);
     } catch (error) {
       if (!lifecycleSignal.aborted) {
-        warn(`node host MCP server "${state.serverName}" failed: ${formatMcpError(error)}`);
+        console.warn(`node host MCP server "${state.serverName}" failed: ${formatMcpError(error)}`);
       }
     }
   });

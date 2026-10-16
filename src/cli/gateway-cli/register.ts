@@ -399,15 +399,12 @@ export function registerGatewayCli(program: Command) {
       .action(
         gatewayAction(async (opts, command) => {
           const rpcOpts = resolveGatewayRpcOptionsWithLocalPort(opts, command);
-          await runGatewaySuspend(
-            {
-              rpcOpts,
-              requestId: opts.requestId,
-              waitSeconds: opts.wait,
-              json: Boolean(rpcOpts.json),
-            },
-            { callGateway: callGatewayReadOnlyCli, runtime: defaultRuntime },
-          );
+          await runGatewaySuspend({
+            rpcOpts,
+            requestId: opts.requestId,
+            waitSeconds: opts.wait,
+            json: Boolean(rpcOpts.json),
+          });
         }, "Gateway suspend failed"),
       ),
   );
@@ -420,10 +417,11 @@ export function registerGatewayCli(program: Command) {
       .action(
         gatewayAction(async (suspensionId, opts, command) => {
           const rpcOpts = resolveGatewayRpcOptionsWithLocalPort(opts, command);
-          await runGatewayResume(
-            { rpcOpts, suspensionId: String(suspensionId), json: Boolean(rpcOpts.json) },
-            { callGateway: callGatewayReadOnlyCli, runtime: defaultRuntime },
-          );
+          await runGatewayResume({
+            rpcOpts,
+            suspensionId: String(suspensionId),
+            json: Boolean(rpcOpts.json),
+          });
         }, "Gateway resume failed"),
       ),
   );

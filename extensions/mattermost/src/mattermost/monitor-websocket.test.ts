@@ -3,14 +3,26 @@ import { once } from "node:events";
 import net from "node:net";
 import type { AddressInfo } from "node:net";
 import { expectDefined } from "@openclaw/normalization-core";
-import { WebSocket, WebSocketServer } from "openclaw/plugin-sdk/websocket-runtime";
+import { type ClientOptions, WebSocketServer } from "openclaw/plugin-sdk/websocket-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeEnv } from "../../runtime-api.js";
-import {
-  createMattermostConnectOnce,
-  type MattermostWebSocketFactory,
-} from "./monitor-websocket.js";
+import { createMattermostConnectOnce } from "./monitor-websocket.js";
 import { runWithReconnect } from "./reconnect.js";
+
+const socketHost = vi.hoisted(() => ({
+  create: vi.fn<(url: string, options: ClientOptions) => unknown>(),
+}));
+
+vi.mock("openclaw/plugin-sdk/websocket-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/websocket-runtime")>();
+  function WebSocket(url: string, options: ClientOptions) {
+    return socketHost.create(url, options) ?? new actual.WebSocket(url, options);
+  }
+  return {
+    ...actual,
+    WebSocket,
+  };
+});
 
 function countMatching<T>(items: readonly T[], predicate: (item: T) => boolean): number {
   let count = 0;
@@ -22,7 +34,7 @@ function countMatching<T>(items: readonly T[], predicate: (item: T) => boolean):
   return count;
 }
 
-class FakeWebSocket implements ReturnType<MattermostWebSocketFactory> {
+class FakeWebSocket {
   public readonly sent: string[] = [];
   public pingCalls = 0;
   public closeCalls = 0;
@@ -119,13 +131,13 @@ function createConnection(
   socket: FakeWebSocket,
   options: Partial<Parameters<typeof createMattermostConnectOnce>[0]> = {},
 ) {
+  socketHost.create.mockReturnValue(socket);
   return createMattermostConnectOnce({
     wsUrl: "wss://example.invalid/api/v4/websocket",
     botToken: "token",
     runtime: testRuntime(),
     nextSeq: () => 1,
     onPosted: async () => {},
-    webSocketFactory: () => socket,
     ...options,
   });
 }
@@ -163,9 +175,18 @@ async function startStalledWebSocketHandshakeServer(): Promise<{
 describe("mattermost websocket monitor", () => {
   beforeEach(() => {
     vi.useRealTimers();
+    socketHost.create.mockReset();
   });
 
   it("backs off across attempts when authentication never completes", async () => {
+    socketHost.create.mockImplementation(() => {
+      const socket = new FakeWebSocket();
+      queueMicrotask(() => {
+        socket.emitOpen();
+        socket.emitClose(1006);
+      });
+      return socket;
+    });
     const connectOnce = createMattermostConnectOnce({
       wsUrl: "wss://example.invalid/api/v4/websocket",
       botToken: "revoked-token",
@@ -175,14 +196,6 @@ describe("mattermost websocket monitor", () => {
         return () => seq++;
       })(),
       onPosted: async () => {},
-      webSocketFactory: () => {
-        const socket = new FakeWebSocket();
-        queueMicrotask(() => {
-          socket.emitOpen();
-          socket.emitClose(1006);
-        });
-        return socket;
-      },
     });
 
     const connectErrors: string[] = [];
@@ -242,7 +255,24 @@ describe("mattermost websocket monitor", () => {
   it("retries when first attempt errors before open and next attempt succeeds", async () => {
     const patches: Array<Record<string, unknown>> = [];
     const sockets: FakeWebSocket[] = [];
-
+    socketHost.create.mockImplementation(() => {
+      const socket = new FakeWebSocket();
+      const attempt = sockets.length;
+      sockets.push(socket);
+      queueMicrotask(() => {
+        if (attempt === 0) {
+          socket.emitError(new Error("boom"));
+          socket.emitClose(1006, "connection refused");
+          return;
+        }
+        socket.emitOpen();
+        expect(patches).not.toContainEqual(expect.objectContaining({ lifecycle: "ready" }));
+        socket.emitMessage(authOkFrame(1));
+        expect(patches).toContainEqual(expect.objectContaining({ lifecycle: "ready" }));
+        socket.emitClose(1000);
+      });
+      return socket;
+    });
     const connectOnce = createMattermostConnectOnce({
       wsUrl: "wss://example.invalid/api/v4/websocket",
       botToken: "token",
@@ -254,24 +284,6 @@ describe("mattermost websocket monitor", () => {
       onPosted: async () => {},
       statusSink: (patch) => {
         patches.push(patch as Record<string, unknown>);
-      },
-      webSocketFactory: () => {
-        const socket = new FakeWebSocket();
-        const attempt = sockets.length;
-        sockets.push(socket);
-        queueMicrotask(() => {
-          if (attempt === 0) {
-            socket.emitError(new Error("boom"));
-            socket.emitClose(1006, "connection refused");
-            return;
-          }
-          socket.emitOpen();
-          expect(patches).not.toContainEqual(expect.objectContaining({ lifecycle: "ready" }));
-          socket.emitMessage(authOkFrame(1));
-          expect(patches).toContainEqual(expect.objectContaining({ lifecycle: "ready" }));
-          socket.emitClose(1000);
-        });
-        return socket;
       },
     });
 
@@ -634,6 +646,13 @@ describe("mattermost websocket monitor", () => {
 
   it("returns control to reconnect after a stalled handshake", async () => {
     const stalledServer = await startStalledWebSocketHandshakeServer();
+    const { WebSocket } = await vi.importActual<
+      typeof import("openclaw/plugin-sdk/websocket-runtime")
+    >("openclaw/plugin-sdk/websocket-runtime");
+    socketHost.create.mockImplementation((url, options) => {
+      expect(options.handshakeTimeout).toBe(30_000);
+      return new WebSocket(url, { ...options, handshakeTimeout: 200 });
+    });
 
     const runtime = testRuntime();
     const reconnectDelays: number[] = [];
@@ -644,13 +663,6 @@ describe("mattermost websocket monitor", () => {
       runtime,
       nextSeq: () => 1,
       onPosted: async () => {},
-      webSocketFactory: (url, options) => {
-        expect(options.handshakeTimeout).toBe(30_000);
-        return new WebSocket(url, {
-          ...options,
-          handshakeTimeout: 200,
-        }) as ReturnType<MattermostWebSocketFactory>;
-      },
     });
 
     const abort = new AbortController();

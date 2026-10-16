@@ -138,10 +138,7 @@ function isOperatorCriticalSubtitle(session: SidebarRecentSession): boolean {
 }
 
 export class SidebarSessionProjection {
-  constructor(
-    private readonly now: () => number = () => Date.now(),
-    private readonly host?: { readonly isConnected: boolean; requestUpdate(): void },
-  ) {}
+  constructor(private readonly host?: { readonly isConnected: boolean; requestUpdate(): void }) {}
 
   // Record frame admission only; owner.updated can precede child DOM bindings.
   private publishedSessionPresentation = "";
@@ -645,7 +642,7 @@ export class SidebarSessionProjection {
         this.revision += 1;
         this.host?.requestUpdate();
       },
-      Math.max(0, deadline - this.now()),
+      Math.max(0, deadline - Date.now()),
     );
   }
 
@@ -695,7 +692,7 @@ export class SidebarSessionProjection {
       return;
     }
     const held = this.heldSubtitles.get(session.key);
-    const now = this.now();
+    const now = Date.now();
     const replacing = held !== undefined && held.value.subtitle !== value.subtitle;
     if (
       replacing &&

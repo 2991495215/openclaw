@@ -1,5 +1,5 @@
 // Mattermost tests cover monitor.inbound system event plugin behavior.
-import { EventEmitter, once } from "node:events";
+import { once } from "node:events";
 import fs from "node:fs/promises";
 import { createServer } from "node:http";
 import os from "node:os";
@@ -23,47 +23,19 @@ import {
   setRuntimeConfigSnapshot,
 } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import type { PluginRuntime } from "openclaw/plugin-sdk/runtime-store";
-import { WebSocketServer } from "openclaw/plugin-sdk/websocket-runtime";
+import { type ClientOptions, WebSocketServer } from "openclaw/plugin-sdk/websocket-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MattermostPost } from "./client.js";
 import type { MattermostEventPayload } from "./monitor-websocket.js";
 import { registerMattermostBlockProgressTests } from "./monitor.block-progress.test-support.js";
+import { FakeWebSocket } from "./monitor.inbound-system-event.test-support.js";
 import { monitorMattermostProvider } from "./monitor.js";
 import { registerMattermostPreviewDeliveryTests } from "./monitor.preview-delivery.test-support.js";
 import { registerMattermostPreviewPolicyTests } from "./monitor.preview-policy.test-support.js";
 import type { OpenClawConfig, ReplyPayload, RuntimeEnv } from "./runtime-api.js";
 
-class FakeWebSocket extends EventEmitter<{
-  open: [];
-  message: [Buffer];
-  pong: [Buffer];
-  close: [number, Buffer];
-  error: [unknown];
-}> {
-  send(_data: string): void {}
-  ping(): void {}
-  close(): void {}
-  terminate(): void {
-    this.emitClose(1000);
-  }
-  get openListenerCount(): number {
-    return this.listenerCount("open");
-  }
-  emitOpen(): void {
-    this.emit("open");
-  }
-  async emitMessage(payload: unknown): Promise<void> {
-    const buffer = Buffer.from(JSON.stringify(payload), "utf8");
-    await Promise.all(
-      this.listeners("message").map((listener) => Promise.resolve(listener(buffer))),
-    );
-  }
-  emitClose(code: number, reason = ""): void {
-    this.emit("close", code, Buffer.from(reason, "utf8"));
-  }
-}
-
 const mockState = vi.hoisted(() => ({
+  createWebSocket: vi.fn<(url: string, options: ClientOptions) => unknown>(),
   abortController: undefined as AbortController | undefined,
   createReplyDispatcherWithTyping: vi.fn(),
   createMattermostClient: vi.fn(),
@@ -85,6 +57,17 @@ const mockState = vi.hoisted(() => ({
   sendMessageMattermost: vi.fn(),
   updateMattermostPost: vi.fn(),
 }));
+
+vi.mock("openclaw/plugin-sdk/websocket-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/websocket-runtime")>();
+  function WebSocket(url: string, options: ClientOptions) {
+    return mockState.createWebSocket(url, options) ?? new actual.WebSocket(url, options);
+  }
+  return {
+    ...actual,
+    WebSocket,
+  };
+});
 
 vi.mock("openclaw/plugin-sdk/plugin-runtime", async (importOriginal) => ({
   ...(await importOriginal<typeof import("openclaw/plugin-sdk/plugin-runtime")>()),
@@ -436,11 +419,11 @@ function startTestMonitor(
   socket: FakeWebSocket,
   runtime: RuntimeEnv = testRuntime(),
 ): Promise<void> {
+  mockState.createWebSocket.mockReturnValue(socket);
   return monitorMattermostProvider({
     config,
     runtime,
     abortSignal: abortController.signal,
-    webSocketFactory: () => socket,
   });
 }
 
@@ -528,6 +511,7 @@ async function receivePost(
 describe("mattermost inbound user posts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockState.createWebSocket.mockReset();
     mockState.abortController = undefined;
     mockState.ingressQueue = undefined;
     mockState.progressDrafts.length = 0;
@@ -578,12 +562,11 @@ describe("mattermost inbound user posts", () => {
     });
     const socket = new FakeWebSocket();
     const abort = new AbortController();
-    const socketFactory = vi.fn(() => socket);
+    const socketFactory = mockState.createWebSocket.mockReturnValue(socket);
     const monitor = monitorMattermostProvider({
       config: cfg,
       runtime: testRuntime(),
       abortSignal: abort.signal,
-      webSocketFactory: socketFactory,
     });
     await vi.waitFor(() => expect(socket.openListenerCount).toBeGreaterThan(0));
     socket.emitOpen();
@@ -744,7 +727,7 @@ describe("mattermost inbound user posts", () => {
   it("does not open a websocket after slash startup fails", async () => {
     const unregisterInteractions = vi.fn();
     const statusSink = vi.fn();
-    const webSocketFactory = vi.fn(() => new FakeWebSocket());
+    const webSocketFactory = mockState.createWebSocket.mockReturnValue(new FakeWebSocket());
     const failure = new Error("Mattermost slash setup failed");
     mockState.registerPluginHttpRoute.mockReturnValueOnce(unregisterInteractions);
     mockState.registerMattermostMonitorSlashCommands.mockRejectedValueOnce(failure);
@@ -754,7 +737,6 @@ describe("mattermost inbound user posts", () => {
         runtime: testRuntime(),
         abortSignal: new AbortController().signal,
         statusSink,
-        webSocketFactory,
       }),
     ).rejects.toThrow(failure.message);
     expect(unregisterInteractions).toHaveBeenCalledOnce();

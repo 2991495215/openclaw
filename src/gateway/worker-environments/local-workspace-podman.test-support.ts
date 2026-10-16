@@ -20,7 +20,7 @@ export async function proveRequiredPodmanWorkspace(
   verifyCleanup: (body: () => Promise<void>) => Promise<void>,
 ) {
   const [
-    { insertRegistryWorktree },
+    { insertRegistryWorktree, updateRegistryWorktree },
     { upsertSessionEntryCore },
     { resolveSandboxContext },
     { removeSandboxContainer },
@@ -47,8 +47,7 @@ export async function proveRequiredPodmanWorkspace(
     await import("../../agents/worktrees/service.js");
   const { captureGitHubPublicationWorkspaceSnapshot } =
     await import("../github-publication-git-transport.js");
-  let now = Date.now();
-  const service = new ManagedWorktreeService({ now: () => now });
+  const service = new ManagedWorktreeService();
   owner.worktree.repoFingerprint = (
     await service.resolveRepositoryIdentity(owner.worktree.path)
   ).fingerprint;
@@ -440,7 +439,9 @@ export async function proveRequiredPodmanWorkspace(
     expect(
       (await service.remove({ id: owner.worktree.id, reason: "live-proof-retention" })).removed,
     ).toBe(true);
-    now += SNAPSHOT_RETENTION_MS + 1;
+    await updateRegistryWorktree(process.env, owner.worktree.id, {
+      removedAt: Date.now() - SNAPSHOT_RETENTION_MS - 1,
+    });
     expect((await service.gc()).snapshotsPruned).toBe(1);
     expect(await readLocalWorkspaceProjection(owner.worktree.id)).toBeUndefined();
     await expect(fs.stat(sandbox.workspaceDir)).rejects.toMatchObject({ code: "ENOENT" });

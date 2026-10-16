@@ -1,12 +1,9 @@
 /* @vitest-environment jsdom */
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { DesktopClient } from "./desktop-client.ts";
 import { DesktopMobileKeyboard } from "./desktop-mobile-keyboard.ts";
-
-type RfbConstructor = NonNullable<ConstructorParameters<typeof DesktopClient>[0]>;
-type RfbClient = InstanceType<RfbConstructor>;
 
 class FakeSocket extends EventTarget {
   readonly url: string;
@@ -19,7 +16,7 @@ class FakeSocket extends EventTarget {
 
 function createFakeRfb() {
   const instances: FakeRfb[] = [];
-  class FakeRfb extends EventTarget implements RfbClient {
+  class FakeRfb extends EventTarget {
     background = "";
     viewOnly = false;
     scaleViewport = false;
@@ -36,8 +33,15 @@ function createFakeRfb() {
       instances.push(this);
     }
   }
-  return { Rfb: FakeRfb as RfbConstructor, instances };
+  vi.doMock("@novnc/novnc", () => ({ default: FakeRfb }));
+  vi.stubGlobal("WebSocket", FakeSocket);
+  return { Rfb: FakeRfb, instances };
 }
+
+afterEach(() => {
+  vi.doUnmock("@novnc/novnc");
+  vi.unstubAllGlobals();
+});
 
 describe("DesktopClient", () => {
   it.each([
@@ -47,8 +51,8 @@ describe("DesktopClient", () => {
   ])(
     "reconciles keyboard focus snapshots only when trusted=$trusted, held=$held",
     async ({ trusted, held }) => {
-      const { Rfb } = createFakeRfb();
-      const client = new DesktopClient(Rfb, (url) => new FakeSocket(url) as unknown as WebSocket);
+      createFakeRfb();
+      const client = new DesktopClient();
       const target = document.createElement("div");
       const canvas = document.createElement("canvas");
       target.append(canvas);
@@ -109,8 +113,8 @@ describe("DesktopClient", () => {
   it.each(["blur", "reset", "replacement", "view-only"])(
     "does not restore old keyboard modifiers after %s",
     async (transition) => {
-      const { Rfb } = createFakeRfb();
-      const client = new DesktopClient(Rfb, (url) => new FakeSocket(url) as unknown as WebSocket);
+      createFakeRfb();
+      const client = new DesktopClient();
       const target = document.createElement("div");
       const canvas = document.createElement("canvas");
       target.append(canvas);
@@ -167,9 +171,13 @@ describe("DesktopClient", () => {
     "opens a socket after the RFB loader only while the operation remains current (%s)",
     async (remainsCurrent) => {
       const { Rfb, instances } = createFakeRfb();
-      const loaded = createDeferred<RfbConstructor>();
-      const createSocket = vi.fn((url: string) => new FakeSocket(url) as unknown as WebSocket);
-      const client = new DesktopClient(undefined, createSocket, () => loaded.promise);
+      const loaded = createDeferred<typeof Rfb>();
+      const createSocket = vi.fn(function (url: string) {
+        return new FakeSocket(url);
+      });
+      vi.doMock("@novnc/novnc", async () => ({ default: await loaded.promise }));
+      vi.stubGlobal("WebSocket", createSocket);
+      const client = new DesktopClient();
       let current = true;
       const pending = client.connect({
         wsUrl: "ws://control.example.test/desktop/observe",
@@ -205,13 +213,17 @@ describe("DesktopClient", () => {
     ["http://control.example.test/chat", "ws://control.example.test/desktop/observe?token=abc"],
     ["https://control.example.test/chat", "wss://control.example.test/desktop/observe?token=abc"],
   ])("resolves relative observer URLs against %s", async (gatewayUrl, expectedUrl) => {
-    const { Rfb, instances } = createFakeRfb();
+    const { instances } = createFakeRfb();
     const sockets: FakeSocket[] = [];
-    const client = new DesktopClient(Rfb, (url) => {
-      const socket = new FakeSocket(url);
-      sockets.push(socket);
-      return socket as unknown as WebSocket;
-    });
+    vi.stubGlobal(
+      "WebSocket",
+      vi.fn(function (url: string) {
+        const socket = new FakeSocket(url);
+        sockets.push(socket);
+        return socket;
+      }),
+    );
+    const client = new DesktopClient();
     const target = document.createElement("div");
 
     await client.connect({
@@ -229,9 +241,15 @@ describe("DesktopClient", () => {
   });
 
   it("propagates RFB options and disconnects through the returned handle", async () => {
-    const { Rfb, instances } = createFakeRfb();
+    const { instances } = createFakeRfb();
     const socket = new FakeSocket("ws://control.example.test/desktop/observe");
-    const client = new DesktopClient(Rfb, () => socket as unknown as WebSocket);
+    vi.stubGlobal(
+      "WebSocket",
+      vi.fn(function () {
+        return socket;
+      }),
+    );
+    const client = new DesktopClient();
     const target = document.createElement("div");
     const canvas = document.createElement("canvas");
     const onKeyDown = vi.fn();
@@ -283,8 +301,8 @@ describe("DesktopClient", () => {
   ])(
     "gates Match at the authenticated controller boundary ($canResize/$viewOnly)",
     async ({ canResize, viewOnly, resizes }) => {
-      const { Rfb, instances } = createFakeRfb();
-      const client = new DesktopClient(Rfb, (url) => new FakeSocket(url) as unknown as WebSocket);
+      const { instances } = createFakeRfb();
+      const client = new DesktopClient();
       const handle = await client.connect({
         target: document.createElement("div"),
         wsUrl: "ws://control.example.test/desktop/observe",
@@ -317,8 +335,8 @@ describe("DesktopClient", () => {
   it.each(["disableInput", "disconnect", "securityfailure", "stale", "onConnect"] as const)(
     "never re-enables resizing after %s",
     async (transition) => {
-      const { Rfb, instances } = createFakeRfb();
-      const client = new DesktopClient(Rfb, (url) => new FakeSocket(url) as unknown as WebSocket);
+      const { instances } = createFakeRfb();
+      const client = new DesktopClient();
       let current = true;
       const handle = await client.connect({
         target: document.createElement("div"),
@@ -352,10 +370,16 @@ describe("DesktopClient", () => {
     { clean: true, close: { code: 4000, reason: "control-taken" } },
     { clean: false, close: undefined },
   ])("preserves RFB clean=$clean with socket close $close", async ({ clean, close }) => {
-    const { Rfb, instances } = createFakeRfb();
+    const { instances } = createFakeRfb();
     const socket = new FakeSocket("ws://control.example.test/desktop/observe");
     const onDisconnect = vi.fn();
-    const client = new DesktopClient(Rfb, () => socket as unknown as WebSocket);
+    vi.stubGlobal(
+      "WebSocket",
+      vi.fn(function () {
+        return socket;
+      }),
+    );
+    const client = new DesktopClient();
 
     const handle = await client.connect({
       wsUrl: "ws://control.example.test/desktop/observe",
@@ -385,9 +409,15 @@ describe("DesktopClient", () => {
     ["CR", "é\rΩ", ["é", "Enter", "Ω"]],
     ["blank lines", "\n\r\n\r", ["Enter", "Enter", "Enter"]],
   ] as const)("sends %s text line breaks as single Enter presses", async (_name, text, keys) => {
-    const { Rfb } = createFakeRfb();
+    createFakeRfb();
     const socket = new FakeSocket("ws://control.example.test/desktop/observe");
-    const client = new DesktopClient(Rfb, () => socket as unknown as WebSocket);
+    vi.stubGlobal(
+      "WebSocket",
+      vi.fn(function () {
+        return socket;
+      }),
+    );
+    const client = new DesktopClient();
     const target = document.createElement("div");
     const canvas = document.createElement("canvas");
     const events: KeyboardEvent[] = [];

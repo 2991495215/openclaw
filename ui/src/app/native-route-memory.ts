@@ -14,8 +14,8 @@ type StoredNativeRoute = {
   search: string;
 };
 
-function readStoredRoute(storage?: Storage): StoredNativeRoute | null {
-  const store = storage ?? getSafeLocalStorage();
+function readStoredRoute(): StoredNativeRoute | null {
+  const store = getSafeLocalStorage();
   if (!store) {
     return null;
   }
@@ -53,14 +53,8 @@ function restorableSearch(search: string): string {
   return filtered ? `?${filtered}` : "";
 }
 
-export function persistRoute(
-  routeId: RouteId,
-  pathname: string,
-  search: string,
-  storage?: Storage,
-  nativeHost = isNativeWebChromeHost(),
-): void {
-  const store = nativeHost ? (storage ?? getSafeLocalStorage()) : null;
+export function persistRoute(routeId: RouteId, pathname: string, search: string): void {
+  const store = isNativeWebChromeHost() ? getSafeLocalStorage() : null;
   if (!store) {
     return;
   }
@@ -78,13 +72,16 @@ export function considerRouteRestore(
   routeId: RouteId,
   pathname: string,
   search: string,
-  storage?: Storage,
-  nativeHost = isNativeWebChromeHost(),
 ): StoredNativeRoute | null {
-  if (!nativeHost || routeId !== "chat" || !pathname.endsWith("/chat") || search !== "") {
+  if (
+    !isNativeWebChromeHost() ||
+    routeId !== "chat" ||
+    !pathname.endsWith("/chat") ||
+    search !== ""
+  ) {
     return null;
   }
-  const stored = readStoredRoute(storage);
+  const stored = readStoredRoute();
   if (
     !stored ||
     (stored.routeId === routeId && stored.pathname === pathname && stored.search === search)

@@ -1,20 +1,27 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, assert, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import * as gitExec from "../../infra/git-exec.js";
 import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.js";
 import { requireGit } from "./git.js";
+import { deferWorktreeCleanup } from "./registry-retirement.js";
 import { getRegistryWorktree } from "./registry.test-support.js";
 import { isWorktreeRepositoryCorruptionError } from "./removal-errors.js";
 import { resolveRepository } from "./repository-paths.js";
 import { IDLE_GC_MS, ManagedWorktreeService } from "./service.js";
 import {
+  ageManagedWorktreeFixture,
   materializeManagedWorktreeFixture,
   materializeManagedWorktreeFixtures,
   useManagedWorktreeTestRepository,
 } from "./service.test-support.js";
+
+let fixtureEpoch = Date.now();
+beforeEach(() => {
+  fixtureEpoch = Date.now();
+});
 
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) => {
   afterEach(async () => {
@@ -24,6 +31,18 @@ const tempDirs = useAutoCleanupTempDirTracker((cleanup) => {
   });
 });
 const initializeRepository = useManagedWorktreeTestRepository();
+
+async function setRetryDeadline(env: NodeJS.ProcessEnv, id: string, retryAt: number) {
+  const observed = getRegistryWorktree(env, id)!;
+  expect(observed.gcRetry).toBeDefined();
+  expect(
+    await deferWorktreeCleanup(env, {
+      observed,
+      reason: observed.gcProtection!,
+      retry: { ...observed.gcRetry!, retryAt },
+    }),
+  ).toBe(true);
+}
 
 it.each([
   ["error: invalid object 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa for 'file'", true],
@@ -72,7 +91,7 @@ it("backs off shared-repository snapshots after a missing-object failure", async
     repoRoot,
     repoFingerprint: (await resolveRepository(repoRoot)).fingerprint,
     names: ["broken-a", "broken-b"],
-    now: 1,
+    now: fixtureEpoch + 1,
     ownerKind: "session",
   });
   await requireGit(repoRoot, ["remote", "set-url", "origin", path.join(root, "unavailable")]);
@@ -82,16 +101,19 @@ it("backs off shared-repository snapshots after a missing-object failure", async
     await fs.writeFile(path.join(record.path, "missing.txt"), "omitted blob\n");
   }
   const hour = 60 * 60_000;
-  let now = IDLE_GC_MS + 2;
+  for (const record of records) {
+    await ageManagedWorktreeFixture(env, record.id, IDLE_GC_MS + 1);
+  }
   const commands = [
     vi.spyOn(gitExec, "executeGitCommand"),
     vi.spyOn(gitExec, "executeGitCommandBytes"),
     vi.spyOn(gitExec, "executeGitCommandBuffered"),
   ];
   const gc = (retryDeferred = false) =>
-    new ManagedWorktreeService({ env, now: () => now, getConfig: () => ({}) }).gc({
+    new ManagedWorktreeService({ env, getConfig: () => ({}) }).gc({
       retryDeferred,
     });
+  const firstStarted = Date.now();
   const initialStarted = performance.now();
   const first = await gc();
   const initial = {
@@ -100,7 +122,14 @@ it("backs off shared-repository snapshots after a missing-object failure", async
     rssBytes: process.memoryUsage().rss,
   };
   await closeOpenClawStateDatabaseAsync();
-  now += hour;
+  const failed = records.find((record) => getRegistryWorktree(env, record.id)?.gcRetry)!;
+  const firstRetry = getRegistryWorktree(env, failed.id)?.gcRetry;
+  assert(firstRetry);
+  expect(firstRetry).toMatchObject({ stage: "repository-corrupt", attempts: 1 });
+  expect(firstRetry.retryAt).toBeGreaterThanOrEqual(firstStarted + 2 * hour);
+  expect(firstRetry.retryAt).toBeLessThanOrEqual(Date.now() + 2 * hour);
+  await setRetryDeadline(env, failed.id, Date.now() + hour);
+  const retainedRetry = getRegistryWorktree(env, failed.id)?.gcRetry;
   for (const command of commands) {
     command.mockClear();
   }
@@ -123,28 +152,30 @@ it("backs off shared-repository snapshots after a missing-object failure", async
     "has missing or corrupt Git objects",
   );
   expect(first.issues.map((issue) => issue.reason).join("\n")).toMatch(/repair/i);
-  const failed = records.find((record) => getRegistryWorktree(env, record.id)?.gcRetry)!;
-  expect(getRegistryWorktree(env, failed.id)?.gcRetry).toMatchObject({
-    stage: "repository-corrupt",
-    attempts: 1,
-    retryAt: now + hour,
-  });
+  expect(getRegistryWorktree(env, failed.id)?.gcRetry).toEqual(retainedRetry);
   expect(second.deferredCount).toBe(2);
 
-  now += hour;
+  await setRetryDeadline(env, failed.id, Date.now() - 1);
+  const secondStarted = Date.now();
   expect((await gc()).failedCount).toBe(1);
   expect(getRegistryWorktree(env, failed.id)?.gcRetry).toMatchObject({
     attempts: 2,
-    retryAt: now + 4 * hour,
   });
+  expect(getRegistryWorktree(env, failed.id)?.gcRetry?.retryAt).toBeGreaterThanOrEqual(
+    secondStarted + 4 * hour,
+  );
+  expect(getRegistryWorktree(env, failed.id)?.gcRetry?.retryAt).toBeLessThanOrEqual(
+    Date.now() + 4 * hour,
+  );
   const healthy = await materializeManagedWorktreeFixture({
     env,
     stateDir,
     repoRoot: source,
     name: "healthy",
-    now: 1,
+    now: fixtureEpoch + 1,
     ownerKind: "session",
   });
+  await ageManagedWorktreeFixture(env, healthy.id, IDLE_GC_MS + 1);
   expect((await gc()).removed).toEqual([healthy.id]);
   await requireGit(repoRoot, ["remote", "set-url", "origin", source]);
   expect((await gc(true)).removed.toSorted()).toEqual(
@@ -153,7 +184,6 @@ it("backs off shared-repository snapshots after a missing-object failure", async
   for (const record of records) {
     const restored = await new ManagedWorktreeService({
       env,
-      now: () => now,
       getConfig: () => ({}),
     }).restore({
       id: record.id,
@@ -192,8 +222,11 @@ it.each(["promised", "promised-retry", "unpromised", "checksum", "byte-limited"]
       stateDir: root,
       names: ["partial-a", "partial-b"],
       ownerKind: "session",
-      now: 1,
+      now: fixtureEpoch + 1,
     });
+    for (const record of records) {
+      await ageManagedWorktreeFixture(env, record.id, IDLE_GC_MS + 1);
+    }
     for (const record of records) {
       await fs.writeFile(path.join(record.path, "README.md"), "retained changes\n");
       await fs.writeFile(path.join(record.path, "missing.txt"), "omitted blob\n");
@@ -202,7 +235,6 @@ it.each(["promised", "promised-retry", "unpromised", "checksum", "byte-limited"]
       // Persist the snapshot failure before explicitly retrying with an offline remote.
       await new ManagedWorktreeService({
         env,
-        now: () => IDLE_GC_MS + 2,
         getConfig: () => ({}),
       }).gc();
     }
@@ -265,7 +297,6 @@ it.each(["promised", "promised-retry", "unpromised", "checksum", "byte-limited"]
     try {
       const service = new ManagedWorktreeService({
         env,
-        now: () => IDLE_GC_MS + 2,
         getConfig: () => ({}),
       });
       const result = await service.gc({ retryDeferred: damage === "promised-retry" });
@@ -323,7 +354,7 @@ it("records an admitted deletion timeout after its caller cancels and loses sess
     stateDir,
     repoRoot,
     name: "cancelled",
-    now: 1,
+    now: fixtureEpoch + 1,
   });
   const controller = new AbortController();
   let current = true;
@@ -374,12 +405,12 @@ it("persists timeout backoff across restart and retries only when due or explici
     stateDir,
     repoRoot,
     name: "timed-out",
-    now: 1,
+    now: fixtureEpoch + 1,
     ownerKind: "session",
   });
   await fs.writeFile(path.join(record.path, "README.md"), "retained changes\n");
   const hour = 60 * 60_000;
-  let now = IDLE_GC_MS + 2;
+  await ageManagedWorktreeFixture(env, record.id, IDLE_GC_MS + 1);
   let attempts = 0;
   let fail = true;
   const execute = gitExec.executeGitCommandBytes;
@@ -401,34 +432,41 @@ it("persists timeout backoff across restart and retries only when due or explici
     }
     return await execute(cwd, args, options);
   });
-  const gc = () => new ManagedWorktreeService({ env, now: () => now, getConfig: () => ({}) }).gc();
+  const gc = () => new ManagedWorktreeService({ env, getConfig: () => ({}) }).gc();
+  const firstStarted = Date.now();
   expect((await gc()).outcome).toBe("partial");
   const first = getRegistryWorktree(env, record.id)?.gcRetry;
   expect(first).toEqual({
     stage: "snapshot",
     elapsedMs: expect.any(Number),
     attempts: 1,
-    retryAt: now + 2 * hour,
+    retryAt: expect.any(Number),
   });
+  expect(first?.retryAt).toBeGreaterThanOrEqual(firstStarted + 2 * hour);
+  expect(first?.retryAt).toBeLessThanOrEqual(Date.now() + 2 * hour);
   expect(await fs.readFile(path.join(record.path, "README.md"), "utf8")).toBe("retained changes\n");
 
   await closeOpenClawStateDatabaseAsync();
-  now += hour;
   expect((await gc()).outcome).toBe("deferred");
   expect(attempts).toBe(1);
   expect(getRegistryWorktree(env, record.id)?.gcRetry).toEqual(first);
 
-  now += hour;
+  await setRetryDeadline(env, record.id, Date.now() - 1);
+  const secondStarted = Date.now();
   expect((await gc()).outcome).toBe("partial");
   expect(attempts).toBe(2);
   expect(getRegistryWorktree(env, record.id)?.gcRetry).toMatchObject({
     attempts: 2,
-    retryAt: now + 4 * hour,
   });
+  expect(getRegistryWorktree(env, record.id)?.gcRetry?.retryAt).toBeGreaterThanOrEqual(
+    secondStarted + 4 * hour,
+  );
+  expect(getRegistryWorktree(env, record.id)?.gcRetry?.retryAt).toBeLessThanOrEqual(
+    Date.now() + 4 * hour,
+  );
   fail = false;
   const retried = await new ManagedWorktreeService({
     env,
-    now: () => now,
     getConfig: () => ({}),
   }).gc({
     retryDeferred: true,
@@ -438,7 +476,6 @@ it("persists timeout backoff across restart and retries only when due or explici
   expect(getRegistryWorktree(env, record.id)?.gcRetry).toBeUndefined();
   const restored = await new ManagedWorktreeService({
     env,
-    now: () => now,
     getConfig: () => ({}),
   }).restore({
     id: record.id,

@@ -1,6 +1,7 @@
 // Doctor memory schema tests exercise registered agent databases through the repair path.
 import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { note } from "../../packages/terminal-core/src/note.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
@@ -17,6 +18,11 @@ import {
   openOpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import { noteDoctorAgentMemorySchemaHealth } from "./doctor-agent-memory-schema.js";
+
+vi.mock("../../packages/terminal-core/src/note.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../packages/terminal-core/src/note.js")>()),
+  note: vi.fn(),
+}));
 
 const tempDirs: string[] = [];
 
@@ -92,7 +98,7 @@ describe("doctor agent memory schema repair", () => {
     recreateUnreleasedInlineMemoryMetadata(databasePath);
     // Model an external schema edit that leaves the prior clean-close marker behind.
     fs.writeFileSync(sealPath, staleSeal);
-    await noteDoctorAgentMemorySchemaHealth({ env, shouldRepair: false }, { note: vi.fn() });
+    await noteDoctorAgentMemorySchemaHealth({ env, shouldRepair: false });
     expect(fs.readFileSync(sealPath)).toEqual(staleSeal);
 
     const sqlite = await import("../infra/node-sqlite.js");
@@ -108,10 +114,7 @@ describe("doctor agent memory schema repair", () => {
         return nativeOpen(pathname, options);
       });
     try {
-      const report = await noteDoctorAgentMemorySchemaHealth(
-        { env, shouldRepair: true },
-        { note: vi.fn() },
-      );
+      const report = await noteDoctorAgentMemorySchemaHealth({ env, shouldRepair: true });
       expect(sealPresentBeforeOpen).toBe(false);
       expect(report.repaired).toEqual([]);
       expect(report.warnings.join(" ")).toContain("synthetic maintenance native open failed");
@@ -169,9 +172,9 @@ describe("doctor agent memory schema repair", () => {
         await newerAdmission.catch(() => {});
       });
     try {
-      await expect(
-        noteDoctorAgentMemorySchemaHealth({ env, shouldRepair: true }, { note: vi.fn() }),
-      ).rejects.toThrow(/maintenance lease.*was lost/iu);
+      await expect(noteDoctorAgentMemorySchemaHealth({ env, shouldRepair: true })).rejects.toThrow(
+        /maintenance lease.*was lost/iu,
+      );
       expect(repair.mock.calls.map(([options]) => options.pathname)).toEqual([databasePath]);
       expect(inspectedPaths).not.toContain(laterPath);
       expect(close.mock.calls.some(([pathname]) => pathname === laterPath)).toBe(false);
@@ -197,18 +200,15 @@ describe("doctor agent memory schema repair", () => {
   it("is idempotent on a second doctor fix run", async () => {
     const { databasePath, env } = createRegisteredAgentDatabase();
     recreateUnreleasedInlineMemoryMetadata(databasePath);
-    await noteDoctorAgentMemorySchemaHealth({ env, shouldRepair: true }, { note: vi.fn() });
+    await noteDoctorAgentMemorySchemaHealth({ env, shouldRepair: true });
     const options = { agentId: "worker-1", env };
     const admitted = openOpenClawAgentDatabase(options);
-    const writeNote = vi.fn();
+    vi.mocked(note).mockClear();
 
-    const report = await noteDoctorAgentMemorySchemaHealth(
-      { env, shouldRepair: true },
-      { note: writeNote },
-    );
+    const report = await noteDoctorAgentMemorySchemaHealth({ env, shouldRepair: true });
 
     expect(report).toEqual({ repaired: [], warnings: [] });
-    expect(writeNote).not.toHaveBeenCalled();
+    expect(note).not.toHaveBeenCalled();
     expect(admitted.db.isOpen).toBe(true);
     expect(openOpenClawAgentDatabase(options)).toBe(admitted);
   });
@@ -239,10 +239,7 @@ describe("doctor agent memory schema repair", () => {
           }),
         );
       try {
-        const report = await noteDoctorAgentMemorySchemaHealth(
-          { env, shouldRepair: true },
-          { note: vi.fn() },
-        );
+        const report = await noteDoctorAgentMemorySchemaHealth({ env, shouldRepair: true });
         expect(report.warnings).toEqual([]);
         expect(report.repaired.map((repair) => repair.path)).toEqual(
           change === "already-repaired" ? [] : [databasePath, laterPath],
@@ -304,10 +301,7 @@ describe("doctor agent memory schema repair", () => {
         });
       }
       try {
-        const report = await noteDoctorAgentMemorySchemaHealth(
-          { env, shouldRepair: true },
-          { note: vi.fn() },
-        );
+        const report = await noteDoctorAgentMemorySchemaHealth({ env, shouldRepair: true });
         expect(report.warnings).toEqual([]);
         expect(report.repaired.map((repair) => repair.path)).toEqual(
           timing === "before-doctor" ? [peerPath] : [databasePath, peerPath],

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarSessionProjection } from "./app-sidebar-session-projection.ts";
 import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
 
@@ -6,6 +6,8 @@ type ProjectionInput = Parameters<SidebarSessionProjection["project"]>[0];
 
 const connectionIdentity = {};
 const listSource = {};
+
+afterEach(() => vi.restoreAllMocks());
 
 function sessionRow(
   key: string,
@@ -243,7 +245,8 @@ describe("SidebarSessionProjection running subtitle hold", () => {
 
   it("floors ambient subtitle replacement at the minimum display time", () => {
     let clock = 0;
-    const projection = new SidebarSessionProjection(() => clock);
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const projection = new SidebarSessionProjection();
     const running = sessionRow("running", { hasActiveRun: true, activeRunIds: ["run-one"] });
     projection.project(narrationInput(running, "First activity"));
 
@@ -258,7 +261,8 @@ describe("SidebarSessionProjection running subtitle hold", () => {
 
   it("lets operator-critical text replace a held subtitle immediately", () => {
     let clock = 0;
-    const projection = new SidebarSessionProjection(() => clock);
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const projection = new SidebarSessionProjection();
     const running = sessionRow("running", { hasActiveRun: true, activeRunIds: ["run-one"] });
     projection.project(narrationInput(running, "Ambient activity"));
 

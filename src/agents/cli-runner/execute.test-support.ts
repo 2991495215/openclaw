@@ -1,15 +1,19 @@
 /** Test doubles and setup for CLI execution supervisor and event seams. */
-import { vi, type Mock } from "vitest";
-import type { enqueueSessionEventForHost } from "../../auto-reply/reply/session-event-handoff.js";
-import type { getProcessSupervisor } from "../../process/supervisor/index.js";
+import { beforeEach, vi, type Mock } from "vitest";
+import * as sessionEvents from "../../auto-reply/reply/session-event-handoff.js";
+import * as nodeCliRuntime from "../../gateway/node-agent-cli-runtime.js";
+import * as processSupervisor from "../../process/supervisor/index.js";
 import { withTestRunAdmission } from "../admitted-run-context.test-support.js";
-import { executeDeps } from "./execute-deps.js";
+import * as execApprovals from "../bash-tools.exec-approval-request.js";
+import * as helpers from "./helpers.js";
 import type { PreparedCliRunContext } from "./types.js";
 export { buildCliExecLogLine } from "./execute-logging.js";
 
-type ProcessSupervisor = ReturnType<typeof getProcessSupervisor>;
+type ProcessSupervisor = ReturnType<typeof processSupervisor.getProcessSupervisor>;
 type SupervisorSpawnFn = ProcessSupervisor["spawn"];
-type EnqueueSessionEventFn = typeof enqueueSessionEventForHost;
+type EnqueueSessionEventFn = typeof sessionEvents.enqueueSessionEventForHost;
+const invokeNodeClaudeCliRun = nodeCliRuntime.invokeNodeClaudeCliRun;
+const writeCliSystemPromptFile = helpers.writeCliSystemPromptFile;
 
 /** Encloses a logical test run, including retries, in the admission preparation normally owns. */
 export function wrapPreparedCliRunWithTestAdmission<Args extends unknown[], T>(
@@ -28,8 +32,54 @@ export function wrapPreparedCliRunWithTestAdmission<Args extends unknown[], T>(
   };
 }
 
-export function setCliRunnerExecuteTestDeps(overrides: Partial<typeof executeDeps>): void {
-  Object.assign(executeDeps, overrides);
+export function setCliRunnerExecuteTestDeps(overrides: {
+  getProcessSupervisor?: typeof processSupervisor.getProcessSupervisor;
+  captureSessionEventTarget?: typeof sessionEvents.captureSessionEventTargetForHost;
+  enqueueSessionEvent?: typeof sessionEvents.enqueueSessionEventForHost;
+  invokeNodeClaudeCliRun?: typeof nodeCliRuntime.invokeNodeClaudeCliRun;
+  registerExecApprovalRequestForHostOrThrow?: typeof execApprovals.registerExecApprovalRequestForHostOrThrow;
+  resolveRegisteredExecApprovalDecision?: typeof execApprovals.resolveRegisteredExecApprovalDecision;
+  writeCliSystemPromptFile?: typeof helpers.writeCliSystemPromptFile;
+}): void {
+  if (overrides.getProcessSupervisor) {
+    vi.spyOn(processSupervisor, "getProcessSupervisor").mockImplementation(
+      overrides.getProcessSupervisor,
+    );
+  }
+  if (overrides.captureSessionEventTarget) {
+    vi.spyOn(sessionEvents, "captureSessionEventTargetForHost").mockImplementation(
+      overrides.captureSessionEventTarget,
+    );
+  }
+  if (overrides.enqueueSessionEvent) {
+    vi.spyOn(sessionEvents, "enqueueSessionEventForHost").mockImplementation(
+      overrides.enqueueSessionEvent,
+    );
+  }
+  if (overrides.invokeNodeClaudeCliRun) {
+    vi.spyOn(nodeCliRuntime, "invokeNodeClaudeCliRun").mockImplementation(
+      overrides.invokeNodeClaudeCliRun === nodeCliRuntime.invokeNodeClaudeCliRun
+        ? invokeNodeClaudeCliRun
+        : overrides.invokeNodeClaudeCliRun,
+    );
+  }
+  if (overrides.registerExecApprovalRequestForHostOrThrow) {
+    vi.spyOn(execApprovals, "registerExecApprovalRequestForHostOrThrow").mockImplementation(
+      overrides.registerExecApprovalRequestForHostOrThrow,
+    );
+  }
+  if (overrides.resolveRegisteredExecApprovalDecision) {
+    vi.spyOn(execApprovals, "resolveRegisteredExecApprovalDecision").mockImplementation(
+      overrides.resolveRegisteredExecApprovalDecision,
+    );
+  }
+  if (overrides.writeCliSystemPromptFile) {
+    vi.spyOn(helpers, "writeCliSystemPromptFile").mockImplementation(
+      overrides.writeCliSystemPromptFile === helpers.writeCliSystemPromptFile
+        ? writeCliSystemPromptFile
+        : overrides.writeCliSystemPromptFile,
+    );
+  }
 }
 
 export const supervisorSpawnMock = vi.fn<SupervisorSpawnFn>();
@@ -40,78 +90,80 @@ export const enqueueSessionEventMock = vi.fn<EnqueueSessionEventFn>(() => ({
   settled: Promise.resolve({ status: "completed", executionStarted: true, delivered: false }),
 }));
 
-setCliRunnerExecuteTestDeps({
-  getProcessSupervisor: () => {
-    const activeRuns = new Map<string, Awaited<ReturnType<SupervisorSpawnFn>>>();
-    return {
-      acquireScopeCleanup: vi.fn(() => {
-        throw new Error("CLI execution fixture does not own a cleanup scope");
-      }),
-      spawn: async (params: Parameters<SupervisorSpawnFn>[0]) => {
-        let stdoutDelivered = false;
-        let stderrDelivered = false;
-        // Supervisor tests sometimes return captured output even when streaming
-        // was requested; replay it through callbacks once to match production.
-        const wrappedParams = {
-          ...params,
-          ...(params.mode === "child" && params.resolveArgs
-            ? { argv: [...params.argv, ...params.resolveArgs()] }
-            : {}),
-          onStdout: params.onStdout
-            ? (chunk: string) => {
-                stdoutDelivered = true;
-                params.onStdout?.(chunk);
+beforeEach(() =>
+  setCliRunnerExecuteTestDeps({
+    getProcessSupervisor: () => {
+      const activeRuns = new Map<string, Awaited<ReturnType<SupervisorSpawnFn>>>();
+      return {
+        acquireScopeCleanup: vi.fn(() => {
+          throw new Error("CLI execution fixture does not own a cleanup scope");
+        }),
+        spawn: async (params: Parameters<SupervisorSpawnFn>[0]) => {
+          let stdoutDelivered = false;
+          let stderrDelivered = false;
+          // Supervisor tests sometimes return captured output even when streaming
+          // was requested; replay it through callbacks once to match production.
+          const wrappedParams = {
+            ...params,
+            ...(params.mode === "child" && params.resolveArgs
+              ? { argv: [...params.argv, ...params.resolveArgs()] }
+              : {}),
+            onStdout: params.onStdout
+              ? (chunk: string) => {
+                  stdoutDelivered = true;
+                  params.onStdout?.(chunk);
+                }
+              : undefined,
+            onStderr: params.onStderr
+              ? (chunk: string) => {
+                  stderrDelivered = true;
+                  params.onStderr?.(chunk);
+                }
+              : undefined,
+          };
+          const managedRun = await supervisorSpawnMock(wrappedParams);
+          if (!managedRun) {
+            // A defeated or reset once-mock returns undefined; fail loudly instead
+            // of letting the run wedge into an opaque test timeout.
+            throw new Error(
+              "supervisorSpawnMock returned no managed run; a test consumed or reset the mock implementation",
+            );
+          }
+          activeRuns.set(params.runId ?? managedRun.runId, managedRun);
+          const wait = managedRun.wait;
+          return {
+            ...managedRun,
+            wait: async () => {
+              const exit = await wait();
+              if (params.captureOutput === false) {
+                // Production streams stdout/stderr through callbacks; replay captured
+                // output once so tests cover streaming and captured-output paths.
+                if (!stdoutDelivered && exit.stdout) {
+                  params.onStdout?.(exit.stdout);
+                }
+                if (!stderrDelivered && exit.stderr) {
+                  params.onStderr?.(exit.stderr);
+                }
               }
-            : undefined,
-          onStderr: params.onStderr
-            ? (chunk: string) => {
-                stderrDelivered = true;
-                params.onStderr?.(chunk);
-              }
-            : undefined,
-        };
-        const managedRun = await supervisorSpawnMock(wrappedParams);
-        if (!managedRun) {
-          // A defeated or reset once-mock returns undefined; fail loudly instead
-          // of letting the run wedge into an opaque test timeout.
-          throw new Error(
-            "supervisorSpawnMock returned no managed run; a test consumed or reset the mock implementation",
-          );
-        }
-        activeRuns.set(params.runId ?? managedRun.runId, managedRun);
-        const wait = managedRun.wait;
-        return {
-          ...managedRun,
-          wait: async () => {
-            const exit = await wait();
-            if (params.captureOutput === false) {
-              // Production streams stdout/stderr through callbacks; replay captured
-              // output once so tests cover streaming and captured-output paths.
-              if (!stdoutDelivered && exit.stdout) {
-                params.onStdout?.(exit.stdout);
-              }
-              if (!stderrDelivered && exit.stderr) {
-                params.onStderr?.(exit.stderr);
-              }
-            }
-            return exit;
-          },
-        };
-      },
-      cancel: vi.fn((runId: string, reason?: Parameters<ProcessSupervisor["cancel"]>[1]) => {
-        activeRuns.get(runId)?.cancel(reason);
-      }),
-      cancelScope: vi.fn(),
-    };
-  },
-  captureSessionEventTarget: async (agentId, sessionKey) => ({
-    agentId,
-    sessionKey,
-    sessionId: sessionKey,
-    generation: "test",
+              return exit;
+            },
+          };
+        },
+        cancel: vi.fn((runId: string, reason?: Parameters<ProcessSupervisor["cancel"]>[1]) => {
+          activeRuns.get(runId)?.cancel(reason);
+        }),
+        cancelScope: vi.fn(),
+      };
+    },
+    captureSessionEventTarget: async (agentId, sessionKey) => ({
+      agentId,
+      sessionKey,
+      sessionId: sessionKey,
+      generation: "test",
+    }),
+    enqueueSessionEvent: (text, options) => enqueueSessionEventMock(text, options),
   }),
-  enqueueSessionEvent: (text, options) => enqueueSessionEventMock(text, options),
-});
+);
 
 type MockRunExit = {
   reason:

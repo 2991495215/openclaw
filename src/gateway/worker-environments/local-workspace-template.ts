@@ -190,7 +190,6 @@ export async function prepareLocalWorkspaceTemplate(params: LocalWorkspaceTempla
   };
   const record = await prepareWorktreeTemplate({
     env: params.env,
-    now: Date.now,
     options: guard,
     cacheKey: digest(`sandbox-v1\n${commonDir}\n${params.templateRoot}\n${identity.key}`),
     contentKey: digest(`${params.baseCommit}\n${digest(lockfile.stdout)}\n${identity.key}`),

@@ -187,8 +187,8 @@ export const whatsappPlugin: ChannelPlugin<ResolvedWhatsAppAccount> =
         },
       },
       heartbeat: {
-        checkReady: async ({ cfg, accountId, deps }) =>
-          await checkWhatsAppHeartbeatReady({ cfg, accountId: accountId ?? undefined, deps }),
+        checkReady: async ({ cfg, accountId }) =>
+          await checkWhatsAppHeartbeatReady({ cfg, accountId: accountId ?? undefined }),
         sendTyping: async ({ cfg, to, accountId }) => {
           await sendTypingWhatsApp(to, {
             cfg,

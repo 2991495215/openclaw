@@ -50,7 +50,6 @@ describe("managed Btrfs checkout selection", () => {
       const destination = path.join(worktreeRoot, name);
       const result = await addManagedWorktree({
         env: { ...process.env, OPENCLAW_STATE_DIR: path.join(root, "state") },
-        now: Date.now,
         enabled: true,
         repoRoot: repo,
         commonDir: path.join(repo, ".git"),
@@ -140,7 +139,6 @@ describe("managed Btrfs checkout selection", () => {
       const destination = path.join(worktreeRoot, `checkout-${index}`);
       const result = await addManagedWorktree({
         env: { ...process.env, OPENCLAW_STATE_DIR: path.join(root, "state") },
-        now: Date.now,
         enabled: true,
         repoRoot: repo,
         commonDir: path.join(repo, ".git"),

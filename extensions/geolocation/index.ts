@@ -19,8 +19,6 @@ export default definePluginEntry({
     const store = createGeolocationDatabaseStore({
       stateDir: resolveStateDir(),
       settings,
-      now: () => new Date(),
-      fetchImpl: fetch,
       logger: api.logger,
     });
     const lookup = createGeolocationLookup({

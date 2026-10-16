@@ -43,10 +43,8 @@ async function serviceFixture() {
   const root = tempDirs.make("worktree-registry-publication-");
   const repoRoot = await initializeRepository(root);
   const env = { ...process.env, OPENCLAW_STATE_DIR: path.join(root, "state") };
-  const now = vi.fn(() => 1_700_000_000_000);
   const service = new ManagedWorktreeService({
     env,
-    now,
     getConfig: () => ({ worktreeAcceleration: false }),
   });
   const params = {
@@ -56,7 +54,7 @@ async function serviceFixture() {
     ownerKind: "session" as const,
     ownerId: "registry-owner",
   };
-  return { env, now, service, params };
+  return { env, service, params };
 }
 
 function holdPublication(type: "worktrees.insert" | "worktrees.update", afterCommit = false) {
@@ -145,10 +143,8 @@ describe("managed worktree registry worker reads", () => {
     const root = tempDirs.make("worktree-registry-unavailable-");
     const repo = await initializeRepository(root);
     const env = { ...process.env, OPENCLAW_STATE_DIR: path.join(root, "state") };
-    const now = 1_700_000_000_000;
     const service = new ManagedWorktreeService({
       env,
-      now: () => now,
       getConfig: () => ({ worktreeAcceleration: false }),
     });
     const created = await service.create({
@@ -159,12 +155,14 @@ describe("managed worktree registry worker reads", () => {
     await fs.rm(created.path, { recursive: true, force: true });
     expect(await service.listRegistryRecords()).toEqual([created]);
     expect(getRegistryWorktree(env, created.id)?.removedAt).toBeUndefined();
+    const beforeList = Date.now();
     expect(await service.list()).toEqual([]);
-    expect(getRegistryWorktree(env, created.id)?.removedAt).toBe(now);
+    expect(getRegistryWorktree(env, created.id)?.removedAt).toBeGreaterThanOrEqual(beforeList);
+    expect(getRegistryWorktree(env, created.id)?.removedAt).toBeLessThanOrEqual(Date.now());
   });
 
   it("creates, resolves, lists, and publishes activity without caller-thread registry SQL", async () => {
-    const { env, now, service, params } = await serviceFixture();
+    const { env, service, params } = await serviceFixture();
     await service.listRegistryRecords();
     const { db } = openOpenClawStateDatabase({ env });
     const sql = observeHostDataSql();
@@ -188,11 +186,15 @@ describe("managed worktree registry worker reads", () => {
       });
       expect(selected?.record).toEqual(record);
       expect(await service.list()).toEqual([record]);
-      now.mockReturnValue(record.lastActiveAt + 1);
-      expect(await service.acquire(record.id)).toMatchObject({
+      await updateRegistryWorktree(env, record.id, { lastActiveAt: record.lastActiveAt - 1 });
+      const beforeAcquire = Date.now();
+      const acquired = await service.acquire(record.id);
+      expect(acquired).toMatchObject({
         id: record.id,
-        lastActiveAt: now(),
       });
+      expect(acquired.lastActiveAt).toBeGreaterThanOrEqual(beforeAcquire);
+      expect(acquired.lastActiveAt).toBeLessThanOrEqual(Date.now());
+      expect(acquired.lastActiveAt).toBeGreaterThan(record.lastActiveAt - 1);
       await service.release(record.id);
       expect(registryQueries()).toEqual([]);
     } finally {
@@ -203,9 +205,14 @@ describe("managed worktree registry worker reads", () => {
   it.each(["create", "activity"] as const)(
     "awaits %s acknowledgement and never replays its committed lost reply",
     async (kind) => {
-      const { env, now, service, params } = await serviceFixture();
+      const { env, service, params } = await serviceFixture();
       const existing = kind === "activity" ? await service.create(params) : undefined;
-      now.mockReturnValue(now() + 1);
+      if (existing) {
+        await updateRegistryWorktree(env, existing.id, {
+          lastActiveAt: existing.lastActiveAt - 1,
+        });
+      }
+      const beforePublication = Date.now();
       const publication = holdPublication(existing ? "worktrees.update" : "worktrees.insert", true);
       let settled = false;
       const pending = (existing ? service.acquire(existing.id) : service.create(params)).finally(
@@ -221,9 +228,15 @@ describe("managed worktree registry worker reads", () => {
         );
         const id = listRegistryWorktrees(env)[0]!.id;
         expect(settled).toBe(false);
-        expect(getRegistryWorktree(env, id)).toMatchObject({ id, lastActiveAt: now() });
+        const published = getRegistryWorktree(env, id)!;
+        expect(published).toMatchObject({ id });
+        expect(published.lastActiveAt).toBeGreaterThanOrEqual(beforePublication);
+        expect(published.lastActiveAt).toBeLessThanOrEqual(Date.now());
+        if (existing) {
+          expect(published.lastActiveAt).toBeGreaterThan(existing.lastActiveAt - 1);
+        }
         publication.release();
-        expect(await pending).toMatchObject({ id, lastActiveAt: now() });
+        expect(await pending).toMatchObject({ id, lastActiveAt: published.lastActiveAt });
         expect(publication.writes()).toBe(1);
         expect(await service.listRegistryRecords()).toHaveLength(1);
       } finally {
@@ -240,7 +253,7 @@ describe("managed worktree registry worker reads", () => {
   it.each(["replacement", "retained lock", "checkout lease", "caller"] as const)(
     "preserves registry and checkout on refused publication (%s)",
     async (kind) => {
-      const { env, now, service, params } = await serviceFixture();
+      const { env, service, params } = await serviceFixture();
       const existing =
         kind === "replacement" || kind === "retained lock"
           ? await service.create(params)
@@ -248,7 +261,10 @@ describe("managed worktree registry worker reads", () => {
       if (existing && kind === "retained lock") {
         await service.acquire(existing.id);
       }
-      now.mockReturnValue(now() + 1);
+      if (existing) {
+        existing.lastActiveAt -= 1;
+        await updateRegistryWorktree(env, existing.id, { lastActiveAt: existing.lastActiveAt });
+      }
       let current = true;
       const publication = holdPublication(existing ? "worktrees.update" : "worktrees.insert");
       const pending = existing

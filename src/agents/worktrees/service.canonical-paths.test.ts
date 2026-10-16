@@ -23,7 +23,11 @@ import * as worktreeGit from "./git.js";
 import { listGitWorktrees } from "./git.js";
 import { getRegistryWorktree } from "./registry.test-support.js";
 import { IDLE_GC_MS, ManagedWorktreeService, SNAPSHOT_RETENTION_MS } from "./service.js";
-import { useManagedWorktreeTestRepository } from "./service.test-support.js";
+import {
+  ageManagedWorktreeFixture,
+  expireManagedWorktreeSnapshotFixture,
+  useManagedWorktreeTestRepository,
+} from "./service.test-support.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -277,7 +281,6 @@ describe("configured managed worktree root", () => {
   let repo: string;
   let stateDir: string;
   let worktreeRoot: string | undefined;
-  let now: number;
   let service: ManagedWorktreeService;
 
   beforeEach(async () => {
@@ -285,10 +288,8 @@ describe("configured managed worktree root", () => {
     repo = await initializeRepository(root);
     stateDir = path.join(root, "state");
     worktreeRoot = undefined;
-    now = Date.now();
     service = new ManagedWorktreeService({
       env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
-      now: () => now,
       getConfig: () => ({ worktreeRoot }),
     });
   });
@@ -356,7 +357,10 @@ describe("configured managed worktree root", () => {
     );
     await fs.mkdir(path.dirname(unrelated), { recursive: true });
     await fs.writeFile(unrelated, "unrelated data\n");
-    now = Math.max(restored.lastActiveAt, successor.lastActiveAt) + IDLE_GC_MS + 1;
+    const env = { ...process.env, OPENCLAW_STATE_DIR: stateDir };
+    for (const record of [restored, successor]) {
+      await ageManagedWorktreeFixture(env, record.id, IDLE_GC_MS + 1);
+    }
 
     const result = await service.gc();
     expect(result.removed.toSorted()).toEqual([original.id, successor.id].toSorted());
@@ -605,15 +609,14 @@ describe("ManagedWorktreeService allocation and orphan preservation", () => {
   });
 
   it("preserves unreadable checkout metadata without blocking later cleanup", async () => {
-    let now = Date.now();
-    service = new ManagedWorktreeService({ env, now: () => now });
+    service = new ManagedWorktreeService({ env });
     const expired = await service.create({
       repoRoot: repo,
       name: "expired-snapshot",
       baseRef: "HEAD",
     });
     await service.remove({ id: expired.id, reason: "retention" });
-    now += SNAPSHOT_RETENTION_MS + 1;
+    await expireManagedWorktreeSnapshotFixture(env, expired.id, SNAPSHOT_RETENTION_MS);
 
     const fingerprint = path.join(stateDir, "worktrees", "fingerprint");
     const target = path.join(fingerprint, "a-broken-checkout");

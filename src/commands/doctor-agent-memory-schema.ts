@@ -165,11 +165,10 @@ async function repairDoctorAgentMemorySchemas(
   return { repaired, warnings };
 }
 
-export async function noteDoctorAgentMemorySchemaHealth(
-  params: { env?: NodeJS.ProcessEnv; shouldRepair: boolean },
-  deps: { note?: typeof note } = {},
-): Promise<DoctorAgentMemorySchemaReport> {
-  const writeNote = deps.note ?? note;
+export async function noteDoctorAgentMemorySchemaHealth(params: {
+  env?: NodeJS.ProcessEnv;
+  shouldRepair: boolean;
+}): Promise<DoctorAgentMemorySchemaReport> {
   if (!params.shouldRepair) {
     return { repaired: [], warnings: [] };
   }
@@ -198,7 +197,7 @@ export async function noteDoctorAgentMemorySchemaHealth(
   }
 
   if (report.repaired.length > 0) {
-    writeNote(
+    note(
       report.repaired
         .map((repair) => {
           const changes = [
@@ -216,7 +215,7 @@ export async function noteDoctorAgentMemorySchemaHealth(
     );
   }
   if (report.warnings.length > 0) {
-    writeNote(report.warnings.map((warning) => `- ${warning}`).join("\n"), "Doctor warnings");
+    note(report.warnings.map((warning) => `- ${warning}`).join("\n"), "Doctor warnings");
   }
   return report;
 }

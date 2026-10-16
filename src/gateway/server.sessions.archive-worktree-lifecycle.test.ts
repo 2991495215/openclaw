@@ -19,11 +19,13 @@ import {
 } from "../agents/embedded-agent-runner/runs.js";
 import { createEmbeddedRunHandle } from "../agents/embedded-agent-runner/runs.test-support.js";
 import { WORKTREE_MUTATION_LEASE_SCOPE } from "../agents/worktrees/capacity-contract.js";
+import { updateRegistryWorktree } from "../agents/worktrees/registry.js";
 import { getRegistryWorktree } from "../agents/worktrees/registry.test-support.js";
 import { acquireWorktreeRunLease } from "../agents/worktrees/run-lease.js";
 import {
   managedWorktrees,
   ManagedWorktreeService,
+  SNAPSHOT_RETENTION_MS,
   WorktreeSnapshotError,
 } from "../agents/worktrees/service.js";
 import {
@@ -959,7 +961,10 @@ test.each(["expired", "source-missing"] as const)(
       { skipMaintenance: true },
     );
     if (failure === "expired") {
-      await new ManagedWorktreeService({ now: () => Date.now() + 31 * 24 * 60 * 60 * 1000 }).gc();
+      await updateRegistryWorktree(process.env, worktree.id, {
+        removedAt: Date.now() - SNAPSHOT_RETENTION_MS - 1,
+      });
+      await new ManagedWorktreeService().gc();
     } else if (failure === "source-missing") {
       await fs.rename(workspace, `${workspace}-offline`);
     }

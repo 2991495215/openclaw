@@ -29,7 +29,6 @@ describe("worktree template custody", () => {
     env = { ...process.env, OPENCLAW_STATE_DIR: path.join(root, "state") };
     params = {
       env,
-      now: () => 100,
       options,
       cacheKey: "repository-volume",
       contentKey: "commit-1",
@@ -94,14 +93,14 @@ describe("worktree template custody", () => {
       if (!left || !right) {
         throw new Error("Both callers must acquire the prepared template");
       }
-      await collectWorktreeTemplates(env, 101, options);
+      await collectWorktreeTemplates(env, Date.now() + 1, options);
       expect(await fs.readFile(path.join(left.path, "source"), "utf8")).toBe("source");
       expect(await prepareWorktreeTemplate({ ...params, contentKey: "commit-2" })).toBeUndefined();
       await left.release();
-      await collectWorktreeTemplates(env, 101, options);
+      await collectWorktreeTemplates(env, Date.now() + 1, options);
       expect(await listTemplatesAsync(env)).toHaveLength(1);
       await right.release();
-      await collectWorktreeTemplates(env, 101, options);
+      await collectWorktreeTemplates(env, Date.now() + 1, options);
       expect(await listTemplatesAsync(env)).toEqual([]);
       await expect(fs.access(left.path)).rejects.toMatchObject({ code: "ENOENT" });
     },
@@ -151,7 +150,7 @@ describe("worktree template custody", () => {
       expect(prepared?.status).toBe("ready");
       expect(await fs.readFile(path.join(prepared!.path, "source"), "utf8")).toBe("source");
       await prepared?.release();
-      await collectWorktreeTemplates(env, 101, options);
+      await collectWorktreeTemplates(env, Date.now() + 1, options);
       expect(await listTemplatesAsync(env)).toEqual([]);
     },
   );
@@ -231,7 +230,7 @@ describe("worktree template custody", () => {
       ).rejects.toBe(error);
       const [record] = await listTemplatesAsync(env);
       expect(record?.status).toBe("preparing");
-      await collectWorktreeTemplates(env, 101, options);
+      await collectWorktreeTemplates(env, Date.now() + 1, options);
       expect(await listTemplatesAsync(env)).toHaveLength(uncertain ? 1 : 0);
       if (uncertain) {
         expect(await prepareWorktreeTemplate(params)).toBeUndefined();
@@ -246,7 +245,7 @@ describe("worktree template custody", () => {
     const failure = new CommandProcessCleanupError();
     vi.spyOn(fs, "rm").mockRejectedValueOnce(failure);
     const onError = vi.fn();
-    await collectWorktreeTemplates(env, 101, options, onError);
+    await collectWorktreeTemplates(env, Date.now() + 1, options, onError);
     expect(onError).toHaveBeenCalledWith(failure, prepared?.id);
     expect((await listTemplatesAsync(env))[0]?.status).toBe("preparing");
     expect(await prepareWorktreeTemplate(params)).toBeUndefined();
@@ -264,7 +263,7 @@ describe("worktree template custody", () => {
         },
       }),
     ).rejects.toBe(failure);
-    await collectWorktreeTemplates(env, 101, options);
+    await collectWorktreeTemplates(env, Date.now() + 1, options);
     expect((await listTemplatesAsync(env))[0]).toMatchObject({
       id: prepared?.id,
       status: "preparing",
@@ -298,7 +297,7 @@ describe("worktree template custody", () => {
         prepareWorktreeTemplate({ ...params, options: { ...options, signal: controller.signal } }),
       ).rejects.toMatchObject({ code: "OPENCLAW_STATE_LEASE_ABORTED" });
       handoff.mockRestore();
-      await collectWorktreeTemplates(env, 101, options);
+      await collectWorktreeTemplates(env, Date.now() + 1, options);
       expect(await listTemplatesAsync(env)).toEqual([]);
     },
   );

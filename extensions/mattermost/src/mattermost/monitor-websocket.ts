@@ -7,31 +7,13 @@ import {
   resolveDebugProxySettings,
 } from "openclaw/plugin-sdk/proxy-capture";
 import { rawDataToString } from "openclaw/plugin-sdk/webhook-ingress";
-import { type ClientOptions, type RawData, WebSocket } from "openclaw/plugin-sdk/websocket-runtime";
+import { type RawData, WebSocket } from "openclaw/plugin-sdk/websocket-runtime";
 import { z } from "zod";
 import { MattermostPostSchema, type MattermostPost } from "./client.js";
 import type { ChannelAccountSnapshot, RuntimeEnv } from "./runtime-api.js";
 
 export type MattermostEventPayload = z.infer<typeof MattermostEventPayloadSchema>;
 
-type MattermostWebSocketLike = {
-  on(event: "open", listener: () => void): void;
-  on(event: "message", listener: (data: RawData) => void | Promise<void>): void;
-  on(event: "pong", listener: (data: Buffer) => void): void;
-  on(event: "close", listener: (code: number, reason: Buffer) => void): void;
-  on(event: "error", listener: (err: unknown) => void): void;
-  ping(): void;
-  send(data: string): void;
-  close(): void;
-  terminate(): void;
-};
-
-type MattermostWebSocketClientOptions = Pick<ClientOptions, "handshakeTimeout" | "maxPayload">;
-
-export type MattermostWebSocketFactory = (
-  url: string,
-  options: MattermostWebSocketClientOptions,
-) => MattermostWebSocketLike;
 // Mattermost events can include double-encoded post props plus server/plugin metadata.
 // Keep channel-compatible headroom while bounding ws's 100 MiB default before parsing.
 const MATTERMOST_WEBSOCKET_MAX_PAYLOAD_BYTES = 16 * 1024 * 1024;
@@ -110,7 +92,6 @@ type CreateMattermostConnectOnceOpts = {
   nextSeq: () => number;
   onPosted: (rawEvent: string) => Promise<void>;
   onReaction?: (payload: MattermostEventPayload) => Promise<void>;
-  webSocketFactory?: MattermostWebSocketFactory;
   /**
    * Called periodically to check whether the bot account has been modified
    * (e.g. disabled then re-enabled) since the WebSocket was opened.
@@ -124,18 +105,9 @@ type CreateMattermostConnectOnceOpts = {
   pongTimeoutMs?: number;
 };
 
-const defaultMattermostWebSocketFactory: MattermostWebSocketFactory = (url, options) => {
-  const agent = createDebugProxyWebSocketAgent(resolveDebugProxySettings());
-  return new WebSocket(url, {
-    ...options,
-    ...(agent ? { agent } : {}),
-  }) as MattermostWebSocketLike;
-};
-
 export function createMattermostConnectOnce(
   opts: CreateMattermostConnectOnceOpts,
 ): () => Promise<void> {
-  const webSocketFactory = opts.webSocketFactory ?? defaultMattermostWebSocketFactory;
   const healthCheckIntervalMs = opts.healthCheckIntervalMs ?? 30_000;
   const pingIntervalMs = opts.pingIntervalMs ?? 30_000;
   const pongTimeoutMs = opts.pongTimeoutMs ?? 10_000;
@@ -152,9 +124,11 @@ export function createMattermostConnectOnce(
         meta: { subsystem: "mattermost-websocket", ...event.meta },
       }).catch(() => {});
     };
-    const ws = webSocketFactory(opts.wsUrl, {
+    const agent = createDebugProxyWebSocketAgent(resolveDebugProxySettings());
+    const ws = new WebSocket(opts.wsUrl, {
       maxPayload: MATTERMOST_WEBSOCKET_MAX_PAYLOAD_BYTES,
       handshakeTimeout: MATTERMOST_WEBSOCKET_HANDSHAKE_TIMEOUT_MS,
+      ...(agent ? { agent } : {}),
     });
     const onAbort = () => ws.terminate();
     opts.abortSignal?.addEventListener("abort", onAbort, { once: true });
@@ -301,7 +275,7 @@ export function createMattermostConnectOnce(
           scheduleProtocolPing();
         });
 
-        ws.on("message", async (data) => {
+        const handleMessage = async (data: RawData) => {
           const raw = rawDataToString(data);
           captureEvent({
             direction: "inbound",
@@ -348,6 +322,9 @@ export function createMattermostConnectOnce(
             );
             ws.terminate();
           }
+        };
+        ws.on("message", (data) => {
+          void handleMessage(data);
         });
 
         ws.on("close", (code, reason) => {

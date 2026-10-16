@@ -39,7 +39,6 @@ async function snapshot() {
 async function create(onPromptReady: (commit: string) => Promise<void>) {
   return await addManagedWorktree({
     env: process.env,
-    now: Date.now,
     enabled: false,
     repoRoot: repo,
     commonDir: path.join(repo, ".git"),

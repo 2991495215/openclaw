@@ -34,6 +34,7 @@ import {
   resetSystemEventsForTest,
 } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import * as processSupervisor from "../../process/supervisor/index.js";
 import {
   recordSessionStateEventAsync,
   registerSessionStateWatch,
@@ -82,7 +83,6 @@ async function enqueueGuardedCliWatchdog(params: {
   const { testing: cliBackends } = await import("../../agents/cli-backends.test-support.js");
   const { prepareCliRunContext } = await import("../../agents/cli-runner/prepare.js");
   const { runPreparedCliAgent } = await import("../../agents/cli-runner.js");
-  const { executeDeps } = await import("../../agents/cli-runner/execute-deps.js");
   const { resolveSessionFilePathCore, resolveSessionFilePathOptions, resolveSessionStorePathCore } =
     await import("../../config/sessions/paths.js");
   const sessionTarget = {
@@ -113,8 +113,9 @@ async function enqueueGuardedCliWatchdog(params: {
     ],
   });
   let receipt: ReturnType<typeof enqueueSessionEventForHost> | undefined;
-  const enqueue = executeDeps.enqueueSessionEvent;
-  const observer = vi.spyOn(executeDeps, "enqueueSessionEvent").mockImplementation((...args) => {
+  const enqueue = sessionEventHandoff.enqueueSessionEventForHost;
+  const observer = vi.spyOn(sessionEventHandoff, "enqueueSessionEventForHost");
+  observer.mockImplementation((...args) => {
     params.diagnostic.target = {
       tools: describeToolCap(args[1].expectedTarget?.toolsAllow),
       settings: args[1].expectedTarget?.settings,
@@ -122,7 +123,7 @@ async function enqueueGuardedCliWatchdog(params: {
     receipt = enqueue(...args);
     return receipt;
   });
-  const supervisor = vi.spyOn(executeDeps, "getProcessSupervisor").mockReturnValue({
+  const supervisor = vi.spyOn(processSupervisor, "getProcessSupervisor").mockReturnValue({
     acquireScopeCleanup: () => async () => {},
     spawn: async () => ({
       runId,

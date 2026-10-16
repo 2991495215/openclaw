@@ -6,52 +6,36 @@ import * as noOutputPolicy from "./no-output-timeout-policy.js";
 const HOST_SUSPEND_TICK_THRESHOLD_MS = 45_000;
 const WATCHDOG_TICK_MS = 1_000;
 
-export type CliWatchdogClock = {
-  now: () => number;
-  setTimeout: (callback: () => void, delayMs: number) => () => void;
-};
-
-export const defaultCliWatchdogClock: CliWatchdogClock = {
-  now: () => Date.now(),
-  setTimeout: (callback, delayMs) => {
-    const timer = setTimeout(callback, delayMs);
-    return () => clearTimeout(timer);
-  },
-};
-
-export function createCliPluginWatchdog(
-  params: {
-    provider: string;
-    model: string;
-    sessionId: string;
-    lane: string | undefined;
-    overallTimeoutMs: number | undefined;
-    noOutputTimeoutMs: number | undefined;
-    useResume: boolean;
-    getActiveAskUserDeadline?: () => number | undefined;
-    activeToolCount: () => number;
-    backgroundTaskCount: () => number;
-    compactionActive: () => boolean;
-    hasObservedActivity: () => boolean;
-    hasReplayUnsafeActivity: () => boolean;
-    onNoOutputTimeout: (error: FailoverError) => void;
-    onOverallTimeout: () => void;
-  },
-  clock: CliWatchdogClock = defaultCliWatchdogClock,
-) {
+export function createCliPluginWatchdog(params: {
+  provider: string;
+  model: string;
+  sessionId: string;
+  lane: string | undefined;
+  overallTimeoutMs: number | undefined;
+  noOutputTimeoutMs: number | undefined;
+  useResume: boolean;
+  getActiveAskUserDeadline?: () => number | undefined;
+  activeToolCount: () => number;
+  backgroundTaskCount: () => number;
+  compactionActive: () => boolean;
+  hasObservedActivity: () => boolean;
+  hasReplayUnsafeActivity: () => boolean;
+  onNoOutputTimeout: (error: FailoverError) => void;
+  onOverallTimeout: () => void;
+}) {
   const noOutputTimeoutMs = params.noOutputTimeoutMs;
   const overallTimeoutMs = params.overallTimeoutMs;
-  let lastOutputAtMs = clock.now();
+  let lastOutputAtMs = Date.now();
   let noOutputDeadlineMs = 0;
   let overallActiveRemainingMs = overallTimeoutMs;
-  let timer: (() => void) | undefined;
-  let lastTickAtMs = clock.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let lastTickAtMs = Date.now();
   let scheduledTickAtMs = lastTickAtMs;
   let disposed = false;
 
   const dispose = () => {
     disposed = true;
-    timer?.();
+    clearTimeout(timer);
     timer = undefined;
   };
 
@@ -59,7 +43,7 @@ export function createCliPluginWatchdog(
     if (disposed || (noOutputTimeoutMs === undefined && overallTimeoutMs === undefined)) {
       return;
     }
-    const nowMs = clock.now();
+    const nowMs = Date.now();
     const nextDelayMs = Math.min(
       noOutputTimeoutMs === undefined ? Number.POSITIVE_INFINITY : noOutputDeadlineMs - nowMs,
       overallActiveRemainingMs === undefined
@@ -71,14 +55,14 @@ export function createCliPluginWatchdog(
     if (timer !== undefined && scheduledTickAtMs <= nextTickAtMs) {
       return;
     }
-    timer?.();
+    clearTimeout(timer);
     scheduledTickAtMs = nextTickAtMs;
-    timer = clock.setTimeout(tick, nextTickAtMs - nowMs);
+    timer = setTimeout(tick, nextTickAtMs - nowMs);
   };
 
   const tick = () => {
     timer = undefined;
-    const nowMs = clock.now();
+    const nowMs = Date.now();
     const elapsedMs = Math.max(0, nowMs - lastTickAtMs);
     lastTickAtMs = nowMs;
     const suspendedMs =
@@ -158,7 +142,7 @@ export function createCliPluginWatchdog(
 
   return {
     noteOutput: () => {
-      lastOutputAtMs = clock.now();
+      lastOutputAtMs = Date.now();
       reset();
     },
     reset,

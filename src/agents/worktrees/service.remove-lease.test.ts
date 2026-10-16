@@ -13,7 +13,10 @@ import { getRegistryWorktree } from "./registry.test-support.js";
 import { acquireWorktreeRunLease } from "./run-lease.js";
 import { hasLiveWorktreeRunLease, testing as runLeaseTesting } from "./run-lease.test-support.js";
 import { classifyWorktreeRemovalError, IDLE_GC_MS, ManagedWorktreeService } from "./service.js";
-import { useManagedWorktreeTestRepository } from "./service.test-support.js";
+import {
+  ageManagedWorktreeFixture,
+  useManagedWorktreeTestRepository,
+} from "./service.test-support.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -27,7 +30,6 @@ describe("ManagedWorktreeService removal against a live run lease", () => {
   let root: string;
   let repo: string;
   let env: NodeJS.ProcessEnv;
-  let now: number;
   let service: ManagedWorktreeService;
 
   beforeEach(async () => {
@@ -36,8 +38,7 @@ describe("ManagedWorktreeService removal against a live run lease", () => {
     repo = await initializeRepository(root);
     env = { ...process.env, OPENCLAW_STATE_DIR: path.join(root, "openclaw-state") };
     setRuntimeConfigSnapshot({}, {});
-    now = 1_700_000_000_000;
-    service = new ManagedWorktreeService({ env, now: () => now });
+    service = new ManagedWorktreeService({ env });
   });
 
   afterEach(async () => {
@@ -116,6 +117,7 @@ describe("ManagedWorktreeService removal against a live run lease", () => {
     await fs.mkdir(nested);
     await git(nested, "init", "-b", "main");
 
+    const beforeRemoval = Date.now();
     const result = await service.remove({
       id: created.id,
       reason: "manual-delete",
@@ -128,7 +130,9 @@ describe("ManagedWorktreeService removal against a live run lease", () => {
         "nested git repositories cannot be snapshotted losslessly",
       ),
     });
-    expect(getRegistryWorktree(env, created.id)?.removedAt).toBe(now);
+    const removedAt = getRegistryWorktree(env, created.id)?.removedAt;
+    expect(removedAt).toBeGreaterThanOrEqual(beforeRemoval);
+    expect(removedAt).toBeLessThanOrEqual(Date.now());
     await expect(fs.stat(created.path)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -146,7 +150,7 @@ describe("ManagedWorktreeService removal against a live run lease", () => {
 
   it("skips idle garbage collection for a worktree with a live run lease", async () => {
     const created = await createSessionWorktree();
-    now += IDLE_GC_MS + 1;
+    await ageManagedWorktreeFixture(env, created.id, IDLE_GC_MS + 1);
     const lease = await acquireWorktreeRunLease(created.id, { env });
 
     const skipped = await service.gc();

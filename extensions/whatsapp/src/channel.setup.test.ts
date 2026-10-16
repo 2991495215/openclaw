@@ -19,6 +19,7 @@ import {
 } from "./setup-test-helpers.js";
 
 const hoisted = vi.hoisted(() => ({
+  getActiveWebListener: vi.fn(),
   loginWeb: vi.fn(async () => {}),
   hasWebCredsSync: vi.fn(() => false),
   readWebAuthState: vi.fn(async (): Promise<"linked" | "not-linked" | "unstable"> => "not-linked"),
@@ -31,6 +32,11 @@ const hoisted = vi.hoisted(() => ({
   resolveWhatsAppAuthDir: vi.fn(() => ({
     authDir: "/tmp/openclaw-whatsapp-test",
   })),
+}));
+
+// mock-isolation: Setup readiness uses a fixture listener, not the live WhatsApp runtime.
+vi.mock("./channel-runtime-loader.js", () => ({
+  loadWhatsAppChannelRuntime: async () => ({ getActiveWebListener: hoisted.getActiveWebListener }),
 }));
 
 vi.mock("./login.js", () => ({
@@ -315,6 +321,8 @@ describe("whatsapp setup wizard", () => {
   });
 
   it("heartbeat readiness uses configured defaultAccount for active listener checks", async () => {
+    hoisted.readWebAuthExistsForDecision.mockResolvedValueOnce({ outcome: "stable", exists: true });
+    hoisted.getActiveWebListener.mockImplementation((accountId?: string) => accountId === "work");
     const result = await checkWhatsAppHeartbeatReady({
       cfg: {
         channels: {
@@ -328,13 +336,6 @@ describe("whatsapp setup wizard", () => {
           },
         },
       } as OpenClawConfig,
-      deps: {
-        readWebAuthExistsForDecision: async () => ({
-          outcome: "stable" as const,
-          exists: true,
-        }),
-        hasActiveWebListener: (accountId?: string) => accountId === "work",
-      },
     });
 
     expect(result).toEqual({ ok: true, reason: "ok" });
@@ -343,19 +344,13 @@ describe("whatsapp setup wizard", () => {
   it("heartbeat readiness honors the channel disable flag", async () => {
     const result = await checkWhatsAppHeartbeatReady({
       cfg: { channels: { whatsapp: { enabled: false } } } as OpenClawConfig,
-      deps: {
-        readWebAuthExistsForDecision: async () => ({
-          outcome: "stable" as const,
-          exists: true,
-        }),
-        hasActiveWebListener: () => true,
-      },
     });
 
     expect(result).toEqual({ ok: false, reason: "whatsapp-disabled" });
   });
 
   it("heartbeat readiness returns unstable when auth state timing is unresolved", async () => {
+    hoisted.readWebAuthExistsForDecision.mockResolvedValueOnce({ outcome: "unstable" });
     const result = await checkWhatsAppHeartbeatReady({
       cfg: {
         channels: {
@@ -368,10 +363,6 @@ describe("whatsapp setup wizard", () => {
           },
         },
       } as OpenClawConfig,
-      deps: {
-        readWebAuthExistsForDecision: async () => ({ outcome: "unstable" as const }),
-        hasActiveWebListener: () => true,
-      },
     });
 
     expect(result).toEqual({ ok: false, reason: WHATSAPP_AUTH_UNSTABLE_CODE });

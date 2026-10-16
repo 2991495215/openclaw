@@ -56,7 +56,6 @@ describe("repository source profile creation", () => {
   async function profileTarget(destination: string) {
     return {
       env,
-      now: Date.now,
       enabled: false,
       repoRoot: repo,
       commonDir: await git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"),

@@ -5,12 +5,20 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { configureFsSafeNative, getFsSafeNativeConfig } from "@openclaw/fs-safe/config";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveGeolocationSettings } from "./config.js";
 import { createGeolocationDatabaseStore } from "./database-store.js";
 
 const created: string[] = [];
 const now = new Date("2026-01-03T00:00:00Z");
+const fetchMock = vi.fn<typeof fetch>();
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(now);
+  fetchMock.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
+});
 
 async function tempStateDir(): Promise<string> {
   // Realpath first: macOS tmp is a symlink and the store compares resolved paths.
@@ -49,6 +57,8 @@ function chunkedResponse(
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
   await Promise.all(created.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
@@ -179,18 +189,18 @@ function createStore(
     warn?: (message: string) => void;
   } = {},
 ) {
+  const fetchImpl =
+    typeof body === "function"
+      ? body
+      : async () => {
+          await downloaded?.();
+          return jsonResponse(body);
+        };
+  fetchMock.mockImplementationOnce(fetchImpl).mockImplementation(fetchImpl);
   return createGeolocationDatabaseStore({
     stateDir,
     settings: resolveGeolocationSettings({ databaseUrl }),
-    now: () => now,
     logger: warn ? { info: () => {}, warn } : undefined,
-    fetchImpl:
-      typeof body === "function"
-        ? body
-        : async () => {
-            await downloaded?.();
-            return jsonResponse(body);
-          },
   });
 }
 

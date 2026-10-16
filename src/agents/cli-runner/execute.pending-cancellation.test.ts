@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
+import * as nodeCliRuntime from "../../gateway/node-agent-cli-runtime.js";
 import { createProcessAdapterEvents } from "../../process/supervisor/adapters/process-events.js";
+import * as processSupervisor from "../../process/supervisor/index.js";
 import { createProcessSupervisor } from "../../process/supervisor/supervisor.js";
 import { createTestAdmittedRunContext } from "../admitted-run-context.test-support.js";
+import * as execApprovals from "../bash-tools.exec-approval-request.js";
 import * as failoverErrors from "../failover-error.js";
 import { CLI_PARTIAL_OUTPUT_REJECTED_ERROR_CODE } from "../failover/error.js";
-import { executeDeps } from "./execute-deps.js";
 import { executePreparedCliRun as executePreparedCliRunImpl } from "./execute.js";
 import {
   setCliRunnerExecuteTestDeps,
@@ -134,7 +136,7 @@ function createRunContext(params: {
 }
 
 describe("CLI execution cancellation", () => {
-  const restoreProcessSupervisor = executeDeps.getProcessSupervisor;
+  const restoreProcessSupervisor = processSupervisor.getProcessSupervisor;
   let supervisor: ReturnType<typeof createProcessSupervisor>;
 
   beforeEach(() => {
@@ -201,7 +203,7 @@ describe("CLI execution cancellation", () => {
   it("does not start approval after a node response races with cancellation", async () => {
     const controller = new AbortController();
     const invokeNode = vi
-      .spyOn(executeDeps, "invokeNodeClaudeCliRun")
+      .spyOn(nodeCliRuntime, "invokeNodeClaudeCliRun")
       .mockImplementation(async () => {
         controller.abort();
         return {
@@ -215,10 +217,10 @@ describe("CLI execution cancellation", () => {
         };
       });
     const registerApproval = vi
-      .spyOn(executeDeps, "registerExecApprovalRequestForHostOrThrow")
+      .spyOn(execApprovals, "registerExecApprovalRequestForHostOrThrow")
       .mockRejectedValue(new Error("approval registration failed after cancellation"));
     const resolveApproval = vi
-      .spyOn(executeDeps, "resolveRegisteredExecApprovalDecision")
+      .spyOn(execApprovals, "resolveRegisteredExecApprovalDecision")
       .mockResolvedValue("deny");
     const context = createRunContext({
       runId: "run-node-cancelled-approval",
@@ -410,7 +412,7 @@ describe("CLI execution cancellation", () => {
   });
 
   it("passes plugin-owned system prompts without writing temporary files or exposing prompt argv", async () => {
-    const writeCliSystemPromptFile = vi.spyOn(executeDeps, "writeCliSystemPromptFile");
+    const writeCliSystemPromptFile = vi.spyOn(cliHelpers, "writeCliSystemPromptFile");
     const context = createRunContext({ runId: "plugin-native-system-prompt" });
     context.preparedBackend.backend.command = "/bin/sh";
     context.preparedBackend.backend.output = "jsonl";

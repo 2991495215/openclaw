@@ -180,7 +180,6 @@ export type PreparedWorktreeTemplate = WorktreeTemplateRecord & {
 /** Source and sandbox templates share persisted build and reader custody. */
 export async function prepareWorktreeTemplate(params: {
   env: NodeJS.ProcessEnv;
-  now: () => number;
   options: WorktreeFilesystemOptions & Pick<WorktreeAllocationGuard, "waitBudget">;
   cacheKey: string;
   contentKey: string;
@@ -291,7 +290,7 @@ export async function prepareWorktreeTemplate(params: {
           ) {
             setWorktreePreparationTemplate("warm", { reason: "ready" });
             if (!hasReaders) {
-              await markTemplateReadyAsync(params.env, existing.id, params.now(), assertCurrent);
+              await markTemplateReadyAsync(params.env, existing.id, Date.now(), assertCurrent);
             }
             return retained;
           }
@@ -328,8 +327,8 @@ export async function prepareWorktreeTemplate(params: {
           sourceCommit: params.sourceCommit,
           contentKey: params.contentKey,
           status: "preparing",
-          createdAt: params.now(),
-          lastUsedAt: params.now(),
+          createdAt: Date.now(),
+          lastUsedAt: Date.now(),
         };
         await reserveTemplateAsync(params.env, record, assertCurrent);
         retained = await retainWorktreeTemplate(params.env, record, assertCurrent);
@@ -340,7 +339,7 @@ export async function prepareWorktreeTemplate(params: {
         await fs.mkdir(directory, { recursive: true });
         setWorktreePreparationTemplate("cold", { reason: "template-build" });
         await params.prepare(record, options);
-        await markTemplateReadyAsync(params.env, id, params.now(), assertCurrent);
+        await markTemplateReadyAsync(params.env, id, Date.now(), assertCurrent);
         setWorktreePreparationTemplate("cold", { reason: "ready" });
         return { ...retained, status: "ready" };
       },

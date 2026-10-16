@@ -1,11 +1,20 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
+import { hostname } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
-import { insertRegistryWorktree } from "./registry.js";
+import { runOpenClawStateWriteTransaction } from "../../state/openclaw-state-db.js";
+import { insertRegistryWorktree, updateRegistryWorktree } from "./registry.js";
+import { admitWorktreeRunLeaseInDatabase } from "./run-lease-store.kernel.js";
+import {
+  markTemplateReadyAsync,
+  releaseTemplateReaderAsync,
+  retainTemplateReaderAsync,
+} from "./template-registry-async.js";
 import type { ManagedWorktreeOwnerKind, ManagedWorktreeRecord } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -156,4 +165,73 @@ export async function materializeManagedWorktreeFixture(
 ): Promise<ManagedWorktreeRecord> {
   const { name, ...shared } = params;
   return (await materializeManagedWorktreeFixtures({ ...shared, names: [name] }))[0]!;
+}
+
+export async function addLeasedWorktreeFixture(
+  env: NodeJS.ProcessEnv,
+  root: string,
+  id: string,
+  now: number,
+): Promise<void> {
+  await insertRegistryWorktree(env, {
+    id,
+    name: id,
+    repoFingerprint: "0123456789abcdef",
+    repoRoot: root,
+    path: root,
+    branch: `openclaw/${id}`,
+    baseRef: "HEAD",
+    ownerKind: "session",
+    ownerId: id,
+    createdAt: now,
+    lastActiveAt: now,
+  });
+  runOpenClawStateWriteTransaction(
+    ({ db }) =>
+      admitWorktreeRunLeaseInDatabase(db, {
+        worktreeId: id,
+        token: id,
+        pid: process.pid,
+        startTime: null,
+        now,
+      }),
+    { env },
+  );
+}
+
+export async function expireManagedWorktreeSnapshotFixture(
+  env: NodeJS.ProcessEnv,
+  id: string,
+  retentionMs: number,
+): Promise<void> {
+  await updateRegistryWorktree(env, id, { removedAt: Date.now() - retentionMs - 1 });
+}
+
+export async function ageManagedWorktreeFixture(
+  env: NodeJS.ProcessEnv,
+  id: string,
+  ageMs: number,
+): Promise<void> {
+  await updateRegistryWorktree(env, id, { lastActiveAt: Date.now() - ageMs });
+}
+
+export async function ageManagedWorktreeTemplateFixture(
+  env: NodeJS.ProcessEnv,
+  id: string,
+  ageMs: number,
+): Promise<boolean> {
+  const key = randomUUID();
+  const retained = await retainTemplateReaderAsync(
+    env,
+    { id, key, owner: { pid: process.pid, host: hostname(), startedAt: null }, unpublish: true },
+    () => {},
+  );
+  if (!retained) {
+    throw new Error(`Cannot age unavailable or busy fixture template ${id}`);
+  }
+  try {
+    return await markTemplateReadyAsync(env, id, Date.now() - ageMs, () => {});
+  } finally {
+    await releaseTemplateReaderAsync(env, key, () => {});
+  }
 }

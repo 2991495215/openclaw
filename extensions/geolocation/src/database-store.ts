@@ -30,8 +30,6 @@ export type GeolocationDatabase = {
 type StoreDeps = {
   stateDir: string;
   settings: GeolocationSettings;
-  now: () => Date;
-  fetchImpl: typeof fetch;
   logger?: { info: (msg: string) => void; warn: (msg: string) => void };
 };
 
@@ -52,11 +50,11 @@ async function readFileAge(file: string, now: Date): Promise<number | undefined>
 }
 
 async function downloadDatabase(deps: StoreDeps, target: string): Promise<Reader<CityResponse>> {
-  const urls = expandDatabaseUrls(deps.settings.databaseUrl, deps.now());
+  const urls = expandDatabaseUrls(deps.settings.databaseUrl, new Date());
   const failures: string[] = [];
   for (const url of urls) {
     try {
-      const response = await deps.fetchImpl(url, {
+      const response = await fetch(url, {
         signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
       });
       if (!response.ok) {
@@ -115,7 +113,7 @@ export function createGeolocationDatabaseStore(deps: StoreDeps) {
   let inFlight: Promise<GeolocationDatabase> | undefined;
 
   const openFromDisk = async (): Promise<GeolocationDatabase> => {
-    const age = await readFileAge(target, deps.now());
+    const age = await readFileAge(target, new Date());
     let downloaded: Reader<CityResponse> | undefined;
     if (age === undefined) {
       downloaded = await downloadDatabase(deps, target);
@@ -131,14 +129,14 @@ export function createGeolocationDatabaseStore(deps: StoreDeps) {
       }
     }
     const reader = downloaded ?? new Reader<CityResponse>(await fs.readFile(target));
-    opened = { reader, loadedAt: deps.now().getTime() };
+    opened = { reader, loadedAt: Date.now() };
     return { lookup: (ip: string) => reader.get(ip) };
   };
 
   return {
     async load(): Promise<GeolocationDatabase> {
       const current = opened;
-      if (current && deps.now().getTime() - current.loadedAt <= deps.settings.refreshMs) {
+      if (current && Date.now() - current.loadedAt <= deps.settings.refreshMs) {
         return { lookup: (ip: string) => current.reader.get(ip) };
       }
       // One download at a time: concurrent first lookups must not each fetch.

@@ -1,6 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createNonExitingRuntimeEnv } from "../../test-utils/plugin-runtime-env.js";
 import { runGatewayResume, runGatewaySuspend } from "./suspend-cli.js";
+
+const { callGateway, runtime, sleep } = vi.hoisted(() => ({
+  callGateway: vi.fn(),
+  runtime: { log: vi.fn(), writeJson: vi.fn(), exit: vi.fn() },
+  sleep: vi.fn(),
+}));
+vi.mock("../gateway-rpc.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../gateway-rpc.js")>()),
+  callGatewayFromCliWithTransport: callGateway,
+}));
+vi.mock("../../runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../runtime.js")>()),
+  defaultRuntime: runtime,
+}));
+vi.mock("node:timers/promises", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:timers/promises")>()),
+  setTimeout: sleep,
+}));
+
+beforeEach(() => {
+  vi.resetAllMocks();
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
 
 const readyResult = {
   status: "ready" as const,
@@ -19,19 +44,18 @@ const busyResult = {
 };
 
 describe("gateway suspend CLI", () => {
-  beforeEach(() => vi.clearAllMocks());
-  afterEach(() => vi.unstubAllEnvs());
-
   it("prints a ready lease without exposing remote credentials in the resume hint", async () => {
-    const callGateway = vi.fn(async () => readyResult);
-    const runtime = createNonExitingRuntimeEnv();
+    callGateway.mockResolvedValue(readyResult);
     const rpcOpts = { url: "wss://gateway.example:19444", token: "opaque-credential" };
 
-    await runGatewaySuspend({ rpcOpts, waitSeconds: 0 }, { callGateway, runtime });
+    await runGatewaySuspend({ rpcOpts, waitSeconds: 0 });
 
-    expect(callGateway).toHaveBeenCalledWith("gateway.suspend.prepare", rpcOpts, {
-      requestId: expect.stringMatching(/^cli-[0-9a-f]{8}$/u),
-    });
+    expect(callGateway).toHaveBeenCalledWith(
+      "gateway.suspend.prepare",
+      rpcOpts,
+      { requestId: expect.stringMatching(/^cli-[0-9a-f]{8}$/u) },
+      { defaultTimeoutMs: 10_000, sharedStateMode: "read-only" },
+    );
     expect(callGateway).toHaveBeenCalledOnce();
     expect(runtime.log).toHaveBeenCalledWith("Gateway suspension prepared.");
     expect(runtime.log).toHaveBeenCalledWith("Suspension ID: suspension-1");
@@ -42,14 +66,11 @@ describe("gateway suspend CLI", () => {
   });
 
   it("rejects whitespace-only wait before acquiring a lease", async () => {
-    const callGateway = vi.fn(async () => readyResult);
+    callGateway.mockResolvedValue(readyResult);
 
-    await expect(
-      runGatewaySuspend(
-        { rpcOpts: {}, waitSeconds: " \t\n" },
-        { callGateway, runtime: createNonExitingRuntimeEnv() },
-      ),
-    ).rejects.toThrow("--wait must be a non-negative number of seconds");
+    await expect(runGatewaySuspend({ rpcOpts: {}, waitSeconds: " \t\n" })).rejects.toThrow(
+      "--wait must be a non-negative number of seconds",
+    );
     expect(callGateway).not.toHaveBeenCalled();
   });
 
@@ -73,45 +94,31 @@ describe("gateway suspend CLI", () => {
     async ({ rpcOpts, profile, container, command }) => {
       vi.stubEnv("OPENCLAW_PROFILE", profile);
       vi.stubEnv("OPENCLAW_CONTAINER_HINT", container);
-      const runtime = createNonExitingRuntimeEnv();
-
-      await runGatewaySuspend(
-        { rpcOpts },
-        { callGateway: vi.fn(async () => readyResult), runtime },
-      );
+      callGateway.mockResolvedValue(readyResult);
+      await runGatewaySuspend({ rpcOpts });
 
       expect(runtime.log).toHaveBeenCalledWith(`Resume with: ${command}`);
     },
   );
 
   it("reports blockers without polling when --wait is omitted", async () => {
-    const callGateway = vi.fn(async () => busyResult);
+    callGateway.mockResolvedValue(busyResult);
 
-    await expect(
-      runGatewaySuspend(
-        { rpcOpts: {}, requestId: "host-operation" },
-        { callGateway, runtime: createNonExitingRuntimeEnv() },
-      ),
-    ).rejects.toThrow(
+    await expect(runGatewaySuspend({ rpcOpts: {}, requestId: "host-operation" })).rejects.toThrow(
       "Gateway suspension is busy (active-work; 1 active).\nBlockers:\n- 1 active request\nRetry later or use --wait <seconds>.",
     );
     expect(callGateway).toHaveBeenCalledOnce();
   });
 
   it("polls with one stable request id until the Gateway is ready", async () => {
-    const callGateway = vi
-      .fn()
-      .mockResolvedValueOnce(busyResult)
-      .mockResolvedValueOnce(readyResult);
+    callGateway.mockResolvedValueOnce(busyResult).mockResolvedValueOnce(readyResult);
     let now = 1_000;
-    const sleep = vi.fn(async (delayMs: number) => {
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    sleep.mockImplementation(async (delayMs: number) => {
       now += delayMs;
     });
 
-    await runGatewaySuspend(
-      { rpcOpts: {}, requestId: "host-operation", waitSeconds: "2" },
-      { callGateway, runtime: createNonExitingRuntimeEnv(), nowMs: () => now, sleep },
-    );
+    await runGatewaySuspend({ rpcOpts: {}, requestId: "host-operation", waitSeconds: "2" });
 
     expect(sleep).toHaveBeenCalledExactlyOnceWith(200);
     expect(callGateway).toHaveBeenCalledTimes(2);
@@ -122,12 +129,8 @@ describe("gateway suspend CLI", () => {
   });
 
   it("emits the latest busy result and exits nonzero in JSON mode", async () => {
-    const runtime = createNonExitingRuntimeEnv();
-
-    await runGatewaySuspend(
-      { rpcOpts: { json: true }, requestId: "host-operation", json: true },
-      { callGateway: vi.fn(async () => busyResult), runtime },
-    );
+    callGateway.mockResolvedValue(busyResult);
+    await runGatewaySuspend({ rpcOpts: { json: true }, requestId: "host-operation", json: true });
 
     expect(runtime.writeJson).toHaveBeenCalledWith({
       ...busyResult,
@@ -138,21 +141,15 @@ describe("gateway suspend CLI", () => {
 
   it("never issues another prepare after a sleep overshoots the deadline", async () => {
     let now = 1_000;
-    const callGateway = vi.fn(async () => busyResult);
+    callGateway.mockResolvedValue(busyResult);
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    sleep.mockImplementation(async () => {
+      // A lagging clock can wake far past the advertised --wait window.
+      now += 10_000;
+    });
 
     await expect(
-      runGatewaySuspend(
-        { rpcOpts: {}, requestId: "host-operation", waitSeconds: "0.2" },
-        {
-          callGateway,
-          runtime: createNonExitingRuntimeEnv(),
-          nowMs: () => now,
-          sleep: async () => {
-            // A lagging clock can wake far past the advertised --wait window.
-            now += 10_000;
-          },
-        },
-      ),
+      runGatewaySuspend({ rpcOpts: {}, requestId: "host-operation", waitSeconds: "0.2" }),
     ).rejects.toThrow(
       "Gateway suspension is busy (active-work; 1 active).\nBlockers:\n- 1 active request\nTimed out waiting for the Gateway to become idle.",
     );
@@ -169,15 +166,15 @@ describe("gateway resume CLI", () => {
         "No matching suspension was held (lease already expired or resumed); gateway is running.",
     },
   ])("prints the resumed=$resumed outcome", async ({ resumed, message }) => {
-    const runtime = createNonExitingRuntimeEnv();
-    const callGateway = vi.fn(async () => ({ ok: true, status: "running", resumed }));
+    callGateway.mockResolvedValue({ ok: true, status: "running", resumed });
 
-    await runGatewayResume({ rpcOpts: {}, suspensionId: "suspension-1" }, { callGateway, runtime });
+    await runGatewayResume({ rpcOpts: {}, suspensionId: "suspension-1" });
 
     expect(callGateway).toHaveBeenCalledExactlyOnceWith(
       "gateway.suspend.resume",
       {},
       { suspensionId: "suspension-1" },
+      { defaultTimeoutMs: 10_000, sharedStateMode: "read-only" },
     );
     expect(runtime.log).toHaveBeenCalledExactlyOnceWith(message);
   });

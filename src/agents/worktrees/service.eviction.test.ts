@@ -121,7 +121,6 @@ describe("managed worktree cap eviction", () => {
               env,
               record,
               reason: "idle-age",
-              now: Date.now,
               getConfig: () => config,
               guard: {
                 ...guard,
@@ -176,7 +175,6 @@ describe("managed worktree cap eviction", () => {
             env,
             record,
             reason: "idle-age",
-            now: Date.now,
             getConfig: () => config,
             guard,
           }),

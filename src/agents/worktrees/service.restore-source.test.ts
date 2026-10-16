@@ -24,6 +24,8 @@ import type {
   WorktreeSourceStage,
 } from "./types.js";
 
+afterEach(() => vi.restoreAllMocks());
+
 const execFileAsync = promisify(execFile);
 const git = async (cwd: string, ...args: string[]) =>
   (await execFileAsync("git", ["-C", cwd, ...args])).stdout.trim();
@@ -35,7 +37,6 @@ let owner: ManagedWorktreeService;
 let removed: ManagedWorktreeRecord;
 let oldSnapshot: string;
 let provisionedMode: number;
-let now: number;
 let allocationDepth: number;
 let checkoutDepth: number;
 let snapshotFailure: Error | undefined;
@@ -59,7 +60,7 @@ function unwindSource(failure: Error): WorktreeSourceStage {
 }
 
 function restoredRecord() {
-  const record = { ...removed, lastActiveAt: now };
+  const record = { ...removed, lastActiveAt: expect.any(Number) };
   delete record.removedAt;
   return record;
 }
@@ -76,10 +77,8 @@ beforeEach(async () => {
   const root = directories.make("openclaw-restore-source-");
   repo = await initialize(root);
   env = { ...process.env, OPENCLAW_STATE_DIR: path.join(root, "state") };
-  now = 10;
   owner = new ManagedWorktreeService({
     env,
-    now: () => now,
     getConfig: () => ({ worktreeAcceleration: false }),
   });
   await fs.writeFile(path.join(repo, ".gitignore"), "local.env\n");
@@ -89,11 +88,9 @@ beforeEach(async () => {
   await fs.writeFile(path.join(repo, "local.env"), "restored provisioned content", { mode: 0o600 });
   provisionedMode = (await fs.stat(path.join(repo, "local.env"))).mode & 0o7777;
   const created = await owner.create({ repoRoot: repo, name: "restored", baseRef: "HEAD" });
-  now = 30;
   await owner.remove({ id: created.id, reason: "initial capture" });
   removed = getRegistryWorktree(env, created.id)!;
   oldSnapshot = await git(repo, "rev-parse", removed.snapshotRef!);
-  now = 40;
   allocationDepth = checkoutDepth = 0;
   events.length = 0;
   snapshotFailure = undefined;
@@ -152,6 +149,7 @@ it.each(["captured", "failed"] as const)(
     if (snapshotOutcome === "failed") {
       snapshotFailure = captureFailure;
     }
+    const beforeRestore = Date.now();
     const failure = await owner
       .createWithOutcome({
         repoRoot: repo,
@@ -164,6 +162,10 @@ it.each(["captured", "failed"] as const)(
         (error: unknown) => error,
       );
     expect(rollback).toHaveBeenCalledExactlyOnceWith(restoredRecord(), withRollback);
+    const restoredAt = rollback.mock.calls[0]![0].lastActiveAt;
+    expect(restoredAt).toBeGreaterThanOrEqual(beforeRestore);
+    expect(restoredAt).toBeLessThanOrEqual(Date.now());
+    expect(restoredAt).toBeGreaterThan(removed.lastActiveAt);
     const snapshotCalls = vi
       .mocked(gitWorker.runGitWorkerOperation)
       .mock.calls.filter(([command]) => command.type === "worktree.snapshot");
@@ -179,7 +181,9 @@ it.each(["captured", "failed"] as const)(
     const record = getRegistryWorktree(env, removed.id);
     if (snapshotOutcome === "captured") {
       expect(failure).toBe(sourceFailure);
-      expect(record).toMatchObject({ removedAt: now, snapshotRef: removed.snapshotRef });
+      expect(record).toMatchObject({ snapshotRef: removed.snapshotRef });
+      expect(record?.removedAt).toBeGreaterThanOrEqual(beforeRestore);
+      expect(record?.removedAt).toBeLessThanOrEqual(Date.now());
       expect(await git(repo, "rev-parse", removed.snapshotRef!)).not.toBe(oldSnapshot);
       expect(await getRegistryWorktreeProvisionedState(env, removed.id)).toEqual([
         { path: "local.env", mode: provisionedMode, chunks: 1 },
@@ -258,9 +262,11 @@ it.each(["unacknowledged restore", "live checkout"] as const)(
 it("still permits discarding a fresh preparation when its first snapshot fails", async () => {
   const fresh = await owner.create({ repoRoot: repo, name: "fresh", baseRef: "HEAD" });
   snapshotFailure = new Error("First preparation snapshot failed");
+  const beforeRollback = Date.now();
   await owner.rollbackPreparation(fresh, withRollback);
   await expect(fs.stat(fresh.path)).rejects.toMatchObject({ code: "ENOENT" });
-  expect(getRegistryWorktree(env, fresh.id)).toMatchObject({ removedAt: now });
+  expect(getRegistryWorktree(env, fresh.id)?.removedAt).toBeGreaterThanOrEqual(beforeRollback);
+  expect(getRegistryWorktree(env, fresh.id)?.removedAt).toBeLessThanOrEqual(Date.now());
   expect(getRegistryWorktree(env, fresh.id)?.snapshotRef).toBeUndefined();
   expect(events).toContain("checkout-removed");
 });

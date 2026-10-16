@@ -14,12 +14,14 @@ export type PresentationBinding = {
 
 export type PresentationValue = boolean | PresentationBinding;
 
-/** Owns subscriptions while a directive follows a retained surface's presentation. */
-abstract class PresentationAsyncDirective extends AsyncDirective {
+/** Child lifecycles follow presentation even when their retained parent parks renders. */
+class PresentationDirective extends AsyncDirective {
   private binding?: PresentationBinding;
-  private readonly handlePresentationChange = () => this.presentationChanged(this.binding);
+  private readonly handlePresentationChange = () => this.presentationChanged();
+  private value: PresentationValue = false;
+  private project: (presented: boolean) => unknown = () => nothing;
 
-  protected updatePresentation(value: PresentationValue): void {
+  private updatePresentation(value: PresentationValue): void {
     const previousOwner = this.binding?.owner;
     this.binding = typeof value === "boolean" ? undefined : value;
     if (previousOwner !== this.binding?.owner) {
@@ -33,8 +35,6 @@ abstract class PresentationAsyncDirective extends AsyncDirective {
     }
   }
 
-  protected abstract presentationChanged(binding?: PresentationBinding): void;
-
   protected override disconnected(): void {
     this.binding?.owner.removeEventListener(
       PRESENTATION_CHANGED_EVENT,
@@ -46,13 +46,8 @@ abstract class PresentationAsyncDirective extends AsyncDirective {
     this.binding?.owner.addEventListener(PRESENTATION_CHANGED_EVENT, this.handlePresentationChange);
     this.handlePresentationChange();
   }
-}
 
-/** Child lifecycles follow presentation even when their retained parent parks renders. */
-class PresentationDirective extends PresentationAsyncDirective {
-  private value: PresentationValue = false;
-  private project: (presented: boolean) => unknown = () => nothing;
-  protected override presentationChanged() {
+  private presentationChanged() {
     // Restore with the parent's next commit so connection and layout props arrive together.
     // Only explicit navigation previews may reuse the warmed child's previous props.
     if (typeof this.value !== "boolean" && (!this.value.isPresented() || this.value.preview?.())) {
@@ -78,14 +73,10 @@ class PresentationDirective extends PresentationAsyncDirective {
 
 const presentation = directive(PresentationDirective);
 
-export function livePresentation(value: PresentationValue, inverted = false) {
-  return presentation(value, (presented) => live(inverted ? !presented : presented));
+export function livePresentation(value: PresentationValue) {
+  return presentation(value, (presented) => live(presented));
 }
 
 export function presentedContent(value: PresentationValue, content: unknown) {
   return presentation(value, (presented) => (presented ? content : nothing));
-}
-
-export function presentedProperty<T>(value: PresentationValue, shown: T, hidden: T) {
-  return presentation(value, (presented) => live(presented ? shown : hidden));
 }

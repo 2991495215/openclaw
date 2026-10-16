@@ -8,7 +8,6 @@ import { createDeferred, withTestTimeout } from "../../test/helpers/promise.js";
 import { runQaGatewayFixture } from "../../test/helpers/qa-gateway-cleanup.js";
 import { testing } from "../agents/cli-backends.test-support.js";
 import * as cliLiveSessions from "../agents/cli-runner/cli-live-session-registry.js";
-import { executeDeps } from "../agents/cli-runner/execute-deps.js";
 import { cliBackendLog } from "../agents/cli-runner/log.js";
 import type {
   CliBackendExecuteContext,
@@ -24,6 +23,37 @@ import {
   type WatchdogFixture,
 } from "./server.cli-watchdog.test-support.js";
 import * as gatewayFixture from "./test-helpers.e2e.js";
+
+const watchdogClockForTest = vi.hoisted(
+  (): { current?: ReturnType<typeof createWatchdogClock> } => ({}),
+);
+
+vi.mock("../agents/cli-runner/execute-plugin-watchdog.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../agents/cli-runner/execute-plugin-watchdog.js")>();
+  return {
+    ...actual,
+    createCliPluginWatchdog(params: Parameters<typeof actual.createCliPluginWatchdog>[0]) {
+      const clock = watchdogClockForTest.current;
+      if (!clock) {
+        return actual.createCliPluginWatchdog(params);
+      }
+      const watchdog = clock.run(() =>
+        actual.createCliPluginWatchdog({
+          ...params,
+          onNoOutputTimeout: (error) => clock.native(() => params.onNoOutputTimeout(error)),
+          onOverallTimeout: () => clock.native(() => params.onOverallTimeout()),
+        }),
+      );
+      // Only synchronous watchdog work uses manual time; the live Gateway stays on native timers.
+      return {
+        reset: () => clock.run(watchdog.reset),
+        noteOutput: () => clock.run(watchdog.noteOutput),
+        dispose: () => clock.run(watchdog.dispose),
+      };
+    },
+  };
+});
 
 type WatchdogCase = {
   name: string;
@@ -133,7 +163,6 @@ async function runWatchdogCase(
   const nativeRoot = state.path("receipts", testCase.behavior);
   const sessionKey = `agent:main:freeze-${randomUUID()}`;
   const clock = createWatchdogClock();
-  const realClock = executeDeps.watchdogClock;
   let orderedOutputAt: number | undefined;
   let abortedAt: number | undefined;
   let thawedAt: number | undefined;
@@ -201,7 +230,7 @@ async function runWatchdogCase(
   signal.addEventListener("abort", abortWaits, { once: true });
   return await runQaGatewayFixture(
     async () => {
-      executeDeps.watchdogClock = clock;
+      watchdogClockForTest.current = clock;
       await Promise.all([
         fs.mkdir(proof, { recursive: true }),
         fs.mkdir(nativeRoot, { recursive: true }),
@@ -556,7 +585,7 @@ async function runWatchdogCase(
       } finally {
         // Restore observation hooks after every owner has had its cleanup attempt.
         signal.removeEventListener("abort", abortWaits);
-        executeDeps.watchdogClock = realClock;
+        watchdogClockForTest.current = undefined;
         testing.resetDepsForTest();
         capability.mockRestore();
         log.mockRestore();

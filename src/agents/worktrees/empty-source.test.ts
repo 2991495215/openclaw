@@ -14,9 +14,12 @@ import {
   closeOpenClawStateDatabaseForTest,
 } from "../../state/openclaw-state-db.js";
 import * as stateLease from "../../state/openclaw-state-lease.js";
+import * as gcArtifacts from "./gc-artifacts.js";
 import { requireGit, runGit } from "./git.js";
+import { updateRegistryWorktree } from "./registry.js";
 import { getRegistryWorktree } from "./registry.test-support.js";
 import { ManagedWorktreeService, SNAPSHOT_RETENTION_MS } from "./service.js";
+import { expireManagedWorktreeSnapshotFixture } from "./service.test-support.js";
 
 const identity = {
   GIT_AUTHOR_NAME: "OpenClaw Test",
@@ -38,7 +41,6 @@ describe("empty managed workspaces", () => {
   );
   let root: string;
   let env: NodeJS.ProcessEnv;
-  let now: number;
   let service: ManagedWorktreeService;
 
   function create(name: string) {
@@ -50,11 +52,9 @@ describe("empty managed workspaces", () => {
     vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
     vi.stubEnv("GIT_CONFIG_GLOBAL", gitNullConfigPath());
     env = { ...process.env, OPENCLAW_STATE_DIR: path.join(root, "state") };
-    now = 1_700_000_000_000;
     setRuntimeConfigSnapshot({});
     service = new ManagedWorktreeService({
       env,
-      now: () => now,
       getConfig: () => ({ worktreeAcceleration: false }),
     });
   });
@@ -191,15 +191,24 @@ describe("empty managed workspaces", () => {
     const created = await create("retained");
     await fs.writeFile(path.join(created.path, "draft.txt"), "Restorable work\n");
     await service.remove({ id: created.id, reason: "archive" });
-    now += SNAPSHOT_RETENTION_MS;
+    const collect = gcArtifacts.collectRetiredWorktreeArtifacts;
+    const retentionBoundary = vi
+      .spyOn(gcArtifacts, "collectRetiredWorktreeArtifacts")
+      .mockImplementationOnce(async (params) => {
+        // Set the persisted fixture at the service's real retention cutoff, not its lease clock.
+        await updateRegistryWorktree(env, created.id, { removedAt: params.expiresBefore });
+        return await collect({ ...params, records: await service.listRegistryRecords() });
+      });
     expect((await service.gc()).snapshotsPruned).toBe(0);
+    expect(retentionBoundary).toHaveBeenCalledTimes(1);
+    retentionBoundary.mockRestore();
     expect(fsSync.existsSync(created.repoRoot)).toBe(true);
     const restored = await service.restore({ id: created.id });
     expect(await fs.readFile(path.join(restored.path, "draft.txt"), "utf8")).toBe(
       "Restorable work\n",
     );
     await service.remove({ id: created.id, reason: "archive-again" });
-    now += SNAPSHOT_RETENTION_MS + 1;
+    await expireManagedWorktreeSnapshotFixture(env, created.id, SNAPSHOT_RETENTION_MS);
     const unavailableLease = vi
       .spyOn(stateLease, "withOpenClawStateLeaseAsync")
       .mockRejectedValue(new Error("allocation lease unavailable"));
@@ -230,7 +239,7 @@ describe("empty managed workspaces", () => {
     await service.remove({ id: created.id, reason: "archive" });
     const marker = path.join(created.repoRoot, "keep.txt");
     await fs.writeFile(marker, "Keep this unowned source file\n");
-    now += SNAPSHOT_RETENTION_MS + 1;
+    await expireManagedWorktreeSnapshotFixture(env, created.id, SNAPSHOT_RETENTION_MS);
     expect((await service.gc()).snapshotsPruned).toBe(0);
     expect(getRegistryWorktree(env, created.id)?.snapshotRef).toBeDefined();
     expect(await fs.readFile(marker, "utf8")).toBe("Keep this unowned source file\n");

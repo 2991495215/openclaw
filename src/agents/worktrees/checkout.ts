@@ -35,7 +35,6 @@ const btrfsCheckoutMeasurements = new Map<string, { gitMs?: number; useTemplate?
 type CheckoutOptions = WorktreeFilesystemOptions & {
   waitBudget?: WorktreeWaitBudget;
   env: NodeJS.ProcessEnv;
-  now: () => number;
   enabled: boolean;
   repoRoot: string;
   commonDir: string;
@@ -150,7 +149,6 @@ async function prepareTemplate(options: CheckoutOptions, measurementKey: string)
         .digest("hex");
       const record = await prepareWorktreeTemplate({
         env: options.env,
-        now: options.now,
         options,
         cacheKey,
         contentKey,

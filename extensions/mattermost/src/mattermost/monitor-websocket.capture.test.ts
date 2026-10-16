@@ -4,7 +4,16 @@ import { createMattermostConnectOnce } from "./monitor-websocket.js";
 
 const captureHost = vi.hoisted(() => ({
   capture: vi.fn<typeof import("openclaw/plugin-sdk/proxy-capture").captureWsEventAsync>(),
+  socket: undefined as EventEmitter | undefined,
 }));
+
+vi.mock("openclaw/plugin-sdk/websocket-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/websocket-runtime")>();
+  function WebSocket() {
+    return captureHost.socket;
+  }
+  return { ...actual, WebSocket };
+});
 
 vi.mock("openclaw/plugin-sdk/proxy-capture", async (importOriginal) => ({
   ...(await importOriginal<typeof import("openclaw/plugin-sdk/proxy-capture")>()),
@@ -28,6 +37,7 @@ describe("Mattermost websocket capture", () => {
         close: vi.fn(),
         terminate: vi.fn(),
       });
+      captureHost.socket = socket;
       const onPosted = vi.fn(async () => {});
       const statusSink = vi.fn();
       const runtime = { log: vi.fn(), error: vi.fn(), exit: vi.fn() };
@@ -38,7 +48,6 @@ describe("Mattermost websocket capture", () => {
         onPosted,
         statusSink,
         runtime,
-        webSocketFactory: () => socket,
       })();
       const posted = JSON.stringify({ event: "posted", data: { post: '{"id":"post-1"}' } });
       try {
