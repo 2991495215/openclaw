@@ -296,7 +296,8 @@ async function cloneGitCheckoutTransactionally(
     }
   }
 
-  const runOperation = async (): Promise<GitCheckoutResult> => {
+  let operationFailure: { error: unknown } | undefined;
+  try {
     result = await runUpdateStep({
       name: "git-clone",
       argv: ["git", "clone", GIT_CLONE_BLOB_FILTER, UPSTREAM_REPOSITORY_URL, stagingDir],
@@ -381,65 +382,55 @@ async function cloneGitCheckoutTransactionally(
       await publish();
     }
     return { checkoutDir: targetDir, step: result };
-  };
-  let outcome: { result: GitCheckoutResult } | { error: unknown };
-  try {
-    outcome = { result: await runOperation() };
   } catch (error) {
-    outcome = { error };
+    operationFailure = { error };
     if (hasCommandProcessCleanupError(error)) {
       cleanupStaging = false;
     }
-  }
-  let cleanupOutcome: { ok: true } | { ok: false; error: unknown } = { ok: true };
-  // The container does not confer ownership of a replaced repository child.
-  // Only completed publication permits that child to be absent at cleanup.
-  if (cleanupStaging) {
-    // Ordinary diagnostic failures do not replace publication or the operation error.
-    try {
-      await cleanupUpdateTemporaryDirectory({
-        directory: storageRoot,
-        root: targetDir,
-        name: "git-clone-staging-cleanup",
-        canRemove: async () =>
-          (await ownsDirectory(storageRoot, storageIdentity)) &&
-          (await ownsDirectory(stagingDir, stagingIdentity, published)),
-        onWarning: async (warning) => {
-          if (result && warning.advisory) {
-            result.warnings = [...(result.warnings ?? []), warning.advisory.message];
-          }
-          try {
-            await reportUpdateStepCompletion(params.progress, { ...warning, index: 0, total: 0 });
-          } catch (error) {
-            if (hasCommandProcessCleanupError(error)) {
-              throw error;
+    throw error;
+  } finally {
+    // The container does not confer ownership of a replaced repository child.
+    // Only completed publication permits that child to be absent at cleanup.
+    if (cleanupStaging) {
+      // Ordinary diagnostic failures do not replace publication or the operation error.
+      try {
+        await cleanupUpdateTemporaryDirectory({
+          directory: storageRoot,
+          root: targetDir,
+          name: "git-clone-staging-cleanup",
+          canRemove: async () =>
+            (await ownsDirectory(storageRoot, storageIdentity)) &&
+            (await ownsDirectory(stagingDir, stagingIdentity, published)),
+          onWarning: async (warning) => {
+            if (result && warning.advisory) {
+              result.warnings = [...(result.warnings ?? []), warning.advisory.message];
             }
-            // Settled diagnostic failures leave the operation outcome unchanged.
-          }
-        },
-      });
-    } catch (error) {
-      cleanupOutcome = { ok: false, error };
+            try {
+              await reportUpdateStepCompletion(params.progress, { ...warning, index: 0, total: 0 });
+            } catch (error) {
+              if (hasCommandProcessCleanupError(error)) {
+                throw error;
+              }
+              // Settled diagnostic failures leave the operation outcome unchanged.
+            }
+          },
+        });
+      } catch (error) {
+        if (
+          operationFailure &&
+          operationFailure.error !== error &&
+          hasCommandProcessCleanupError(error)
+        ) {
+          throw new AggregateError(
+            [operationFailure.error, error],
+            "Git clone and cleanup progress both failed",
+            { cause: operationFailure.error },
+          );
+        }
+        throw error;
+      }
     }
   }
-  if (!cleanupOutcome.ok) {
-    if (
-      "error" in outcome &&
-      outcome.error !== cleanupOutcome.error &&
-      hasCommandProcessCleanupError(cleanupOutcome.error)
-    ) {
-      throw new AggregateError(
-        [outcome.error, cleanupOutcome.error],
-        "Git clone and cleanup progress both failed",
-        { cause: outcome.error },
-      );
-    }
-    throw cleanupOutcome.error;
-  }
-  if ("error" in outcome) {
-    throw outcome.error;
-  }
-  return outcome.result;
 }
 
 export async function ensureGitCheckout(params: {

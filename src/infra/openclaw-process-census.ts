@@ -27,11 +27,6 @@ const workerEntrypoints = Object.values(runtimeProcessEntrypoints).flatMap((entr
   `dist/${entry.distWorkerPath}`,
 ]);
 
-type ProcessArtifactCustody =
-  | { kind: "holder" }
-  | { kind: "non-holder" }
-  | { kind: "unresolved"; reason: string };
-
 function isStandardSystemdUserManager(command: ProcessCommand | undefined): boolean {
   return (
     command !== undefined &&
@@ -68,23 +63,23 @@ function isStandardSystemdLoginProcess(
   );
 }
 
-function classifyProcessArtifactCustody(
+function processHoldsOpenClawArtifacts(
   command: ProcessCommand | undefined,
   pid: number,
   cwd: string | undefined,
   parentCommand: ProcessCommand | undefined,
-): ProcessArtifactCustody {
+): boolean {
   try {
     const argv = command && "argv" in command ? command.argv : [];
     if ([...argv, cwd ?? ""].some(referencesRetainedArtifact)) {
-      return { kind: "holder" };
+      return true;
     }
     if (!command) {
       throw new Error("process command is unavailable");
     }
     // The command reader admits these only for observed foreign UIDs or kernel/dead processes.
     if ("argvUnavailable" in command || command.argv.length === 0) {
-      return { kind: "non-holder" };
+      return false;
     }
     const { serviceMarker } = command;
     const options = {
@@ -96,7 +91,7 @@ function classifyProcessArtifactCustody(
     };
     const identity = classifyOpenClawArgv(argv, options);
     if (identity.kind === "openclaw") {
-      return { kind: "holder" };
+      return true;
     }
     if (identity.kind === "unclassified" && identity.cause !== "runtime-syntax") {
       throw new Error(identity.reason);
@@ -114,18 +109,18 @@ function classifyProcessArtifactCustody(
         (command.uid !== inspectorUid ||
           isStandardSystemdLoginProcess(command, parentCommand, inspectorUid))
       ) {
-        return { kind: "non-holder" };
+        return false;
       }
       throw new Error("working directory is unavailable");
     }
     if (typeof position !== "number" && position.kind === "not-runtime") {
-      return { kind: "non-holder" };
+      return false;
     }
     let scripts: Record<string, unknown> = {};
     if (typeof position !== "number") {
       const pkg = readProcessPackageIdentity(cwd, true);
       if (pkg.name === "openclaw") {
-        return { kind: "holder" };
+        return true;
       }
       scripts = pkg.scripts;
     }
@@ -152,12 +147,14 @@ function classifyProcessArtifactCustody(
         throw new Error(evidence.reason);
       }
       if (evidence.kind === "openclaw") {
-        return { kind: "holder" };
+        return true;
       }
     }
-    return { kind: "non-holder" };
+    return false;
   } catch (error) {
-    return { kind: "unresolved", reason: error instanceof Error ? error.message : String(error) };
+    throw new Error(
+      `Could not classify PID ${pid}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -307,16 +304,13 @@ export function inspectOtherOpenClawProcesses(handoff?: HandoffReferences) {
         }
         continue;
       }
-      const custody = classifyProcessArtifactCustody(
+      const holdsArtifacts = processHoldsOpenClawArtifacts(
         command,
         pid,
         directories.get(pid),
         byPid.get(command?.ppid ?? 0)?.command,
       );
-      if (custody.kind === "unresolved") {
-        throw new Error(`Could not classify PID ${pid}: ${custody.reason}`);
-      }
-      if (custody.kind === "holder") {
+      if (holdsArtifacts) {
         result.matchingPids.push(pid);
       }
     }
