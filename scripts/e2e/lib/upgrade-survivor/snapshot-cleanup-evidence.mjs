@@ -106,6 +106,14 @@ export function summarizeSnapshotCleanupEvidence(root) {
   // Critical facts lead; repeated paths, inventories and unselected rows stay private.
   const result = {
     version: 2,
+    // These counts explain pre-fault admission only; they never satisfy the
+    // selected operation, refusal, or native-custody assertions below.
+    observations: {
+      doctors: records.doctors.length,
+      doctorResults: records.doctors.filter((row) => row.result).length,
+      nativeRequests: records.natives.length,
+      requiredRequests: records.natives.filter((row) => row.binding).length,
+    },
     fault: fault && {
       pid: fault.pid,
       threadId: fault.threadId,

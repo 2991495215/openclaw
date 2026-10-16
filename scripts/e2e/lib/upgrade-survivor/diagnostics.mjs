@@ -70,6 +70,13 @@ const pluginPolicyLogs = [
   "webhooks-only-policy/baseline-runtime.out",
   "webhooks-only-policy/candidate-runtime.out",
 ];
+const snapshotCleanupDiagnosticLogs = [
+  "snapshot-cleanup-diagnostic.json",
+  "install-baseline.stderr",
+  "install-candidate.stderr",
+  "candidate-doctor.stdout",
+  "candidate-doctor.stderr",
+];
 const snapshotCleanupLogs = [
   "update.stdout",
   "update.stderr",
@@ -87,6 +94,7 @@ const snapshotCleanupLogs = [
 ];
 const logNames = [
   ...snapshotCleanupLogs,
+  ...snapshotCleanupDiagnosticLogs,
   "baseline-install.log",
   "baseline-companion.json",
   "install.log",
@@ -1881,7 +1889,12 @@ function publishedSuccessSummary(artifactRoot, sanitize) {
           : []),
         ...(snapshot.scenario === "dreaming-cron-doctor" ? ["dreaming-cron-proof.json"] : []),
         ...(snapshot.scenario === "cron-owner-doctor" ? ["cron-owner-proof.json"] : []),
-        ...(snapshot.scenario === "snapshot-cleanup-refusal" ? snapshotCleanupLogs : []),
+        ...(["snapshot-cleanup-refusal", "snapshot-cleanup-diagnostic"].includes(snapshot.scenario)
+          ? snapshotCleanupLogs
+          : []),
+        ...(snapshot.scenario === "snapshot-cleanup-diagnostic"
+          ? snapshotCleanupDiagnosticLogs
+          : []),
         ...(snapshot.scenario === "legacy-operator-state" &&
         snapshot.updateRestartMode === "manual" &&
         ["2026.9.3", "2026.9.4"].includes(snapshot.baseline.version)

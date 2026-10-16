@@ -767,6 +767,7 @@ export function requiredPrepublishPluginPackagesForLanes(
       scenario === "abandoned-update" ||
       scenario === "backup-schedule" ||
       scenario === "snapshot-cleanup-refusal" ||
+      scenario === "snapshot-cleanup-diagnostic" ||
       scenario === "custom-plugin-siblings" ||
       scenario === "projects-doctor" ||
       scenario === "channel-owner-policy" ||

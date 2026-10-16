@@ -13,6 +13,7 @@ import {
 import { createSnapshotAcquisitionRecorder } from "../../scripts/e2e/lib/upgrade-survivor/snapshot-cleanup-evidence.mjs";
 import {
   assertSnapshotCleanupRefusal,
+  assertSnapshotDoctorCaptureRefusal,
   bindSnapshotRuntimeIdentity,
   readSnapshotProcessIdentity,
   writeSnapshotCleanupEvidence,
@@ -728,6 +729,16 @@ function refusalRecords(artifacts: string) {
 }
 
 describe("snapshot cleanup refusal evidence", () => {
+  it("keeps Doctor capture evidence separate from released updater acceptance", () => {
+    const artifacts = tempDirs.make("snapshot-doctor-only-");
+    refusalRecords(artifacts);
+    fs.rmSync(join(artifacts, "snapshot-cleanup-driver.json"));
+    fs.rmSync(join(artifacts, "update.stdout"));
+    expect(() => assertSnapshotDoctorCaptureRefusal(artifacts)).not.toThrow();
+    expect(existsSync(join(artifacts, "snapshot-cleanup-proof.json"))).toBe(false);
+    expect(existsSync(join(artifacts, "snapshot-cleanup-result.json"))).toBe(false);
+    expect(() => assertSnapshotCleanupRefusal(artifacts, { exitCode: 1, signal: null })).toThrow();
+  });
   it.each(["selected", "other-source", "other-mode"])(
     "observes real allocation for %s native request",
     (kind) => {
@@ -1078,9 +1089,12 @@ describe("snapshot cleanup refusal evidence", () => {
 });
 
 // Exercise the existing private capture -> host-redaction publication boundary.
-it.each(["failed", "timeout", "passed"] as const)(
+it.each(["failed", "timeout", "passed", "unselected", "diagnostic"] as const)(
   "publishes snapshot-cell diagnostics after %s",
   (outcome) => {
+    const unselected = outcome === "unselected" || outcome === "diagnostic";
+    const scenario =
+      outcome === "diagnostic" ? "snapshot-cleanup-diagnostic" : "snapshot-cleanup-refusal";
     const root = tempDirs.make("snapshot-proof-artifacts-");
     const artifacts = join(root, "artifacts");
     mkdirSync(artifacts);
@@ -1103,6 +1117,23 @@ it.each(["failed", "timeout", "passed"] as const)(
       status: "error",
       failedDoctorStep: true,
     });
+    if (unselected) {
+      fs.rmSync(join(artifacts, "snapshot-cleanup-copy-" + f.fault.native.key + ".json"));
+      write("snapshot-cleanup-doctor-99.json", { ...f.doctor, result: { status: "ok" } });
+      write("snapshot-cleanup-native-" + "f".repeat(64) + ".json", {
+        ...f.native,
+        key: "f".repeat(64),
+        binding: undefined,
+        operationId: undefined,
+        source: "private-unselected-source",
+      });
+      write("snapshot-cleanup-result.json", {
+        exitCode: 0,
+        signal: null,
+        status: "ok",
+        failedDoctorStep: false,
+      });
+    }
     for (let index = 0; index < 120; index++) {
       write("snapshot-cleanup-attempts-" + (200 + index) + "-0.json", {
         pid: 200 + index,
@@ -1116,8 +1147,21 @@ it.each(["failed", "timeout", "passed"] as const)(
         ],
       });
     }
+    if (outcome === "diagnostic") {
+      fs.rmSync(join(artifacts, "snapshot-cleanup-result.json"));
+      fs.rmSync(join(artifacts, "update.stdout"));
+    }
     writeSnapshotCleanupEvidence(artifacts);
-    write("update.stdout", { status: "error", reason: "fixture failure before fault" });
+    if (outcome === "diagnostic") {
+      write("snapshot-cleanup-diagnostic.json", {
+        kind: "standalone-packaged-doctor-diagnostic",
+        publishedUpdaterAcceptance: false,
+        observations: { selectedFaults: 0, requiredRequests: 1 },
+        failure: "Authorization: Bearer diagnostic-fixture-token",
+      });
+    } else {
+      write("update.stdout", { status: "error", reason: "fixture failure before fault" });
+    }
     const probePhases = [
       "service-probe-install",
       "service-probe-reload",
@@ -1136,7 +1180,7 @@ it.each(["failed", "timeout", "passed"] as const)(
       status: "passed",
       baseline: { spec: "openclaw@2026.9.7", version: "2026.9.7" },
       candidate: { kind: "tarball", version: "2026.9.8" },
-      scenario: "snapshot-cleanup-refusal",
+      scenario,
       installedVersion: "2026.9.7",
       candidateInstallMode: "npm",
       updateRestartMode: "manual",
@@ -1149,7 +1193,7 @@ it.each(["failed", "timeout", "passed"] as const)(
         resolve("scripts/e2e/lib/upgrade-survivor/diagnostics.mjs"),
         "capture",
         artifacts,
-        "snapshot-cleanup-refusal",
+        scenario,
         outcome === "passed" ? "0" : outcome === "timeout" ? "124" : "1",
       ],
       {
@@ -1174,7 +1218,17 @@ it.each(["failed", "timeout", "passed"] as const)(
     if (outcome !== "passed") {
       expect(report.exitStatus).toBe(outcome === "timeout" ? 124 : 1);
     }
-    expect(JSON.parse(report.logs["update.stdout"]).reason).toBe("fixture failure before fault");
+    if (outcome === "diagnostic") {
+      expect(report.logs["update.stdout"]).toBeNull();
+      expect(JSON.parse(report.logs["snapshot-cleanup-diagnostic.json"])).toMatchObject({
+        kind: "standalone-packaged-doctor-diagnostic",
+        publishedUpdaterAcceptance: false,
+        observations: { selectedFaults: 0, requiredRequests: 1 },
+      });
+      expect(text).not.toContain("diagnostic-fixture-token");
+    } else {
+      expect(JSON.parse(report.logs["update.stdout"]).reason).toBe("fixture failure before fault");
+    }
     for (const phase of probePhases) {
       expect(JSON.parse(report.logs[phase + ".stdout"]).unitSha256).toBe("c".repeat(64));
       expect(report.logs[phase + ".stderr"]).toBe("synthetic probe diagnostic");
@@ -1182,29 +1236,58 @@ it.each(["failed", "timeout", "passed"] as const)(
     }
     const evidence = report.logs["snapshot-cleanup-evidence.json"];
     expect(Buffer.byteLength(JSON.stringify(evidence))).toBeLessThanOrEqual(8 * 1024);
-    expect(JSON.parse(evidence)).toMatchObject({
-      version: 2,
-      overflow: false,
-      unknown: [],
-      inventoryOmitted: true,
-      fault: {
-        pid: 101,
-        terminalRefusal: true,
-        groupIncompleteAtRefusal: true,
-        failure: { channel: "process.send", resultSha256: "e".repeat(64) },
-      },
-      custody: {
-        transport: "ipc",
-        ipcRequestId: 2,
-        childStart: "125",
-        stopCount: 1,
-        close: { code: null, signal: "SIGKILL" },
-      },
-      doctor: { pid: 99, result: { status: "error" } },
-      outer: { status: "error", exitCode: 1, failedDoctorStep: true },
-      acquisitions: { selected: 1, unselectedBefore: 80, unselectedAfter: 40, unknown: 0 },
-      candidate: { sha256: "b".repeat(64) },
+    const observed = JSON.parse(evidence);
+    expect(observed.observations).toEqual({
+      doctors: 1,
+      doctorResults: 1,
+      nativeRequests: unselected ? 2 : 1,
+      requiredRequests: 1,
     });
+    if (unselected) {
+      expect(observed.fault).toBeUndefined();
+      expect(observed.custody).toBeUndefined();
+      expect(observed.doctor).toBeUndefined();
+      if (outcome === "diagnostic") {
+        expect(observed.outer).toBeUndefined();
+        expect(observed.unknown).toContain("outer-result");
+      } else {
+        expect(observed.outer).toEqual({
+          exitCode: 0,
+          signal: null,
+          status: "ok",
+          failedDoctorStep: false,
+        });
+      }
+      expect(observed.acquisitions.unknown).toBe(121);
+      expect(observed.unknown).toContain("selected-fault");
+      expect(observed.unknown).toContain("native-request-binding");
+      expect(observed.unknown).toContain("doctor-result");
+      expect(text).not.toContain("private-unselected-source");
+    } else {
+      expect(observed).toMatchObject({
+        version: 2,
+        overflow: false,
+        unknown: [],
+        inventoryOmitted: true,
+        fault: {
+          pid: 101,
+          terminalRefusal: true,
+          groupIncompleteAtRefusal: true,
+          failure: { channel: "process.send", resultSha256: "e".repeat(64) },
+        },
+        custody: {
+          transport: "ipc",
+          ipcRequestId: 2,
+          childStart: "125",
+          stopCount: 1,
+          close: { code: null, signal: "SIGKILL" },
+        },
+        doctor: { pid: 99, result: { status: "error" } },
+        outer: { status: "error", exitCode: 1, failedDoctorStep: true },
+        acquisitions: { selected: 1, unselectedBefore: 80, unselectedAfter: 40, unknown: 0 },
+        candidate: { sha256: "b".repeat(64) },
+      });
+    }
     expect(report.omissions?.["snapshot-cleanup-evidence.json"]).toBeUndefined();
     expect(text).not.toContain("snapshot-fixture-token");
     expect(text).not.toContain("privatePackageInventory");

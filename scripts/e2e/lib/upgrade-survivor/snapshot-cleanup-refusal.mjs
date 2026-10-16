@@ -215,9 +215,9 @@ function installFault() {
   }
   const selected = [];
   const persist = (request) => {
-    if (request.binding) {
-      writeJson(nativeReceipt(artifacts, request), request);
-    }
+    // Keep unbound requests private too: no fault must not erase whether the
+    // packaged observer saw requests at all or only failed their caller binding.
+    writeJson(nativeReceipt(artifacts, request), request);
   };
   const observer =
     isMainThread && role === "doctor"
@@ -238,14 +238,13 @@ function installFault() {
             site.sha256 = expected.files[relative].sha256;
           },
           onRequest(request) {
-            if (!request.binding) {
-              return;
-            }
             assert(
               !fs.existsSync(nativeReceipt(artifacts, request)),
               "Capture request reused an existing observation key",
             );
-            selected.push(request);
+            if (request.binding) {
+              selected.push(request);
+            }
             persist(request);
           },
           onUpdate: persist,
@@ -326,25 +325,10 @@ export function writeSnapshotCleanupEvidence(artifacts) {
   writeJson(path.join(artifacts, "snapshot-cleanup-evidence.json"), summary);
 }
 
-export function assertSnapshotCleanupRefusal(artifacts, updateResult, updateFailure) {
-  if (!updateResult) {
-    throw updateFailure ?? new Error("Published update did not settle before the fault proof");
-  }
-  const stdout = fs.readFileSync(path.join(artifacts, "update.stdout"), "utf8");
-  const result = JSON.parse(stdout.slice(stdout.indexOf("{")));
-  writeJson(path.join(artifacts, "snapshot-cleanup-result.json"), {
-    exitCode: updateResult.exitCode,
-    signal: updateResult.signal,
-    status: result.status,
-    failedDoctorStep:
-      result.steps?.some(
-        (step) =>
-          step.name === "openclaw doctor" && Number.isInteger(step.exitCode) && step.exitCode > 0,
-      ) === true,
-  });
+// The real Doctor and published updater share capture admission and native custody.
+// The updater separately owns its released-driver/public-step requirements.
+export function assertSnapshotDoctorCaptureRefusal(artifacts) {
   const fixture = readJson(path.join(artifacts, fixtureName));
-  const driver = readJson(path.join(artifacts, "snapshot-cleanup-driver.json"));
-  assert.equal(driver.identity.commit, fixture.baseline.commit);
   const receipts = fs
     .readdirSync(artifacts)
     .filter((file) => /^snapshot-cleanup-copy-[0-9a-f]{64}\.json$/u.test(file))
@@ -411,6 +395,42 @@ export function assertSnapshotCleanupRefusal(artifacts, updateResult, updateFail
     true,
     "The failed attempt was published as a snapshot",
   );
+  // Source-family hashes were compared at the producer refusal boundary,
+  // before any independent updater rollback/restore policy runs.
+  assert.equal(
+    observed.retainedAtRefusal,
+    true,
+    "Unresolved private scratch was not retained at refusal",
+  );
+  assertSnapshotFailureCustody(selected, observed);
+  assert.equal(fs.existsSync(selected.stagingRoot), false);
+  assert(
+    !fs.existsSync(observed.staging),
+    "Unpublished staging still exists after Doctor settlement",
+  );
+  return { fixture, observed, selected, acquisitions };
+}
+
+export function assertSnapshotCleanupRefusal(artifacts, updateResult, updateFailure) {
+  if (!updateResult) {
+    throw updateFailure ?? new Error("Published update did not settle before the fault proof");
+  }
+  const stdout = fs.readFileSync(path.join(artifacts, "update.stdout"), "utf8");
+  const result = JSON.parse(stdout.slice(stdout.indexOf("{")));
+  writeJson(path.join(artifacts, "snapshot-cleanup-result.json"), {
+    exitCode: updateResult.exitCode,
+    signal: updateResult.signal,
+    status: result.status,
+    failedDoctorStep:
+      result.steps?.some(
+        (step) =>
+          step.name === "openclaw doctor" && Number.isInteger(step.exitCode) && step.exitCode > 0,
+      ) === true,
+  });
+  const { fixture, observed, selected, acquisitions } =
+    assertSnapshotDoctorCaptureRefusal(artifacts);
+  const driver = readJson(path.join(artifacts, "snapshot-cleanup-driver.json"));
+  assert.equal(driver.identity.commit, fixture.baseline.commit);
   assert(
     Number.isInteger(updateResult.exitCode) && updateResult.exitCode > 0,
     "Updater swallowed the copy refusal and returned success",
@@ -424,19 +444,6 @@ export function assertSnapshotCleanupRefusal(artifacts, updateResult, updateFail
   );
   const publicOutput = stdout + fs.readFileSync(path.join(artifacts, "update.stderr"), "utf8");
   assert(publicOutput.includes(refusal), "Published updater omitted the candidate capture refusal");
-  // Source-family hashes were compared at the producer refusal boundary,
-  // before the installed updater's independent rollback/restore policy runs.
-  assert.equal(
-    observed.retainedAtRefusal,
-    true,
-    "Unresolved private scratch was not retained at refusal",
-  );
-  assertSnapshotFailureCustody(selected, observed);
-  assert.equal(fs.existsSync(selected.stagingRoot), false);
-  assert(
-    !fs.existsSync(observed.staging),
-    "Unpublished staging still exists after updater settlement",
-  );
   const compact = summarizeSnapshotCleanupEvidence(artifacts);
   assert.equal(compact.overflow, false, "Critical snapshot evidence overflow");
   assert.deepEqual(compact.unknown, [], "Critical snapshot evidence remains unobserved");
