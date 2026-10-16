@@ -55,7 +55,6 @@ export function createPromptBuildToolPolicy<
   });
   let baseline = captureBaseline();
   let toolsAllow: string[] | undefined;
-  let decisionIsCurrent: (() => boolean) | undefined;
   const current = {
     activeToolNames: [...baseline.activeToolNames],
     callableToolNames: [...baseline.activeToolNames],
@@ -69,18 +68,17 @@ export function createPromptBuildToolPolicy<
       applyPromptBuildToolsAllow({
         ...params,
         baseline,
-        toolsAllow: decisionIsCurrent ? [] : toolsAllow,
+        toolsAllow,
       }),
     );
     params.onApplied?.(current);
     return current;
   };
-  const apply = (nextToolsAllow: string[] | undefined, nextDecisionIsCurrent?: () => boolean) => {
+  const apply = (nextToolsAllow: string[] | undefined, decisionPrunesTools = false) => {
     const modelFacingToolsBefore = current.effectiveTools.length;
-    toolsAllow = nextToolsAllow;
-    decisionIsCurrent = nextDecisionIsCurrent;
+    toolsAllow = decisionPrunesTools ? [] : nextToolsAllow;
     const applied = applyCurrent();
-    if (decisionIsCurrent) {
+    if (decisionPrunesTools) {
       logDecisionToolPrefilter({
         effect: "applied",
         modelFacingToolsBefore,
@@ -95,22 +93,6 @@ export function createPromptBuildToolPolicy<
     // The session baseline includes client tools and survives prompt-level pruning.
     // Read its latest permission generation, not the previous turn's restricted surface.
     hasBaselineTools: () => baseline.activeToolNames.length > 0,
-    prepareForDispatch: <T>(prepareRestoredPrompt: () => Promise<T>): Promise<T> | undefined => {
-      if (!decisionIsCurrent || decisionIsCurrent()) {
-        return undefined;
-      }
-      // Drop only the optional Decision cap. The current host generation and
-      // independent prompt-hook cap still own what is permitted.
-      const modelFacingToolsBefore = current.effectiveTools.length;
-      decisionIsCurrent = undefined;
-      applyCurrent();
-      logDecisionToolPrefilter({
-        effect: "restored",
-        modelFacingToolsBefore,
-        modelFacingToolsAfter: current.effectiveTools.length,
-      });
-      return prepareRestoredPrompt();
-    },
     refresh: () => {
       // A late hook must filter this generation, never restore retained callable
       // entries from the catalog that the permission owner has just revoked.

@@ -227,6 +227,14 @@ describe("provider request admission", () => {
           },
         ],
       });
+      // Publish changed request inputs through the loop's continuation contract.
+      session.agent.prepareNextTurnWithContext = async ({ context }) => ({
+        context: {
+          ...context,
+          systemPrompt: session.agent.state.systemPrompt,
+          tools: session.agent.state.tools,
+        },
+      });
       if (syntheticAssistant) {
         session.agent.transformContext = async (messages) =>
           messages.some((message) => message.role === "toolResult")
@@ -396,11 +404,6 @@ describe("provider request admission", () => {
           toolResultAggregateMaxChars: cap * 4,
           toolResultPromptProjectionState: projectionState,
           onModelRequest: streamGuards.onModelRequest,
-          preparePrimaryModelRequest: () =>
-            Promise.resolve(() => ({
-              systemPrompt: session.agent.state.systemPrompt,
-              tools: session.agent.state.tools,
-            })),
           promptActiveSession: (prompt, options) => session.prompt(prompt, options),
         });
         const pendingPrecheck = guards.takePendingMidTurnPrecheckRequest();

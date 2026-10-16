@@ -3,7 +3,6 @@ import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { evaluateDecisionInRegistry } from "../../../decisions/runtime.js";
 import { getPluginRegistryForContext } from "../../../plugins/runtime/gateway-request-scope.js";
 import { isDecisionAssistanceEligible } from "../../decision-assistance.js";
-import { resolveDecisionModelSetting } from "../../decision-model-setting.js";
 import type { AgentMessage } from "../../runtime/index.js";
 import { prepareDecisionContext, type DecisionContextFacts } from "./attempt-decision-context.js";
 
@@ -35,7 +34,6 @@ type EvaluateAttemptDecisionToolPrefilterParams = {
 export type DecisionPrefilterResult = {
   shouldPruneTools: boolean;
   restrictionApplied?: boolean;
-  isCurrent?: () => boolean;
   status: "proposed" | "retained" | "skipped" | "unavailable";
   reason: string;
   context?: DecisionContextFacts;
@@ -85,17 +83,6 @@ export async function evaluateAttemptDecisionToolPrefilter(
   if (context.facts.contextChars + promptBuildChars > MAX_DECISION_TEXT_CHARS) {
     return skip("prompt-build-context-too-large", context.facts);
   }
-  const selection = resolveDecisionModelSetting(config, params.agentId);
-  const isCurrent = () => {
-    params.signal.throwIfAborted();
-    params.assertActive();
-    const current = readConfig();
-    const currentSelection = resolveDecisionModelSetting(current, params.agentId);
-    return (
-      currentSelection?.provider === selection?.provider &&
-      currentSelection?.model === selection?.model
-    );
-  };
   const outcome = await evaluateDecisionInRegistry(
     {
       state: {
@@ -141,15 +128,18 @@ export async function evaluateAttemptDecisionToolPrefilter(
     getPluginRegistryForContext(),
     config,
     undefined,
-    isCurrent,
+    () => {
+      params.signal.throwIfAborted();
+      params.assertActive();
+      return true;
+    },
     () => isDecisionAssistanceEligible(readConfig(), params.agentId),
   );
+  params.signal.throwIfAborted();
+  params.assertActive();
   const facts = {
     context: context.facts,
   };
-  if (!isCurrent()) {
-    return { shouldPruneTools: false, status: "retained", reason: "selection-changed", ...facts };
-  }
   if (outcome.status === "unavailable") {
     return { shouldPruneTools: false, status: "unavailable", reason: outcome.reason, ...facts };
   }
@@ -167,6 +157,6 @@ export async function evaluateAttemptDecisionToolPrefilter(
     };
   }
   return needsTools?.type === "boolean" && needsTools.probabilityTrue < 0.35
-    ? { shouldPruneTools: true, isCurrent, status: "proposed", reason: "conversational", ...facts }
+    ? { shouldPruneTools: true, status: "proposed", reason: "conversational", ...facts }
     : { shouldPruneTools: false, status: "retained", reason: "action-or-uncertain", ...facts };
 }

@@ -102,8 +102,8 @@ describe("applyPromptBuildToolsAllow", () => {
   );
 
   it.each(["structured", "code"] as const)(
-    "withdraws only the Decision cap from the latest permitted %s generation",
-    async (mode) => {
+    "retains the Decision cap over the latest permitted %s generation",
+    (mode) => {
       const control = "exec";
       const fixture = createSession(
         mode === "structured" ? ["read", "write", "message"] : [control, "message"],
@@ -136,8 +136,7 @@ describe("applyPromptBuildToolsAllow", () => {
         codeModeControlsEnabled: mode === "code",
         forceToolNames: ["message", "denied"],
       });
-      let current = true;
-      policy.apply(["read"], () => current);
+      policy.apply(undefined, true);
       expect(policy.current.tools.map((t) => t.name)).toEqual(["message"]);
       expect(logDecisionToolPrefilter).toHaveBeenCalledExactlyOnceWith({
         effect: "applied",
@@ -158,26 +157,15 @@ describe("applyPromptBuildToolsAllow", () => {
         mode === "structured" ? ["read", "message", "other"] : [control, "message"],
       );
       policy.refresh();
-      current = false;
-      const prepare = vi.fn(async () => {});
-      await policy.prepareForDispatch(prepare);
-      expect(prepare).toHaveBeenCalledOnce();
-      expect(logDecisionToolPrefilter).toHaveBeenLastCalledWith({
-        effect: "restored",
-        modelFacingToolsBefore: 1,
-        modelFacingToolsAfter: 2,
-      });
-      expect(policy.current.tools).toEqual([freshRead, freshMessage]);
-      expect(policy.current.callableToolNames).toContain("read");
+      expect(policy.current.tools).toEqual([freshMessage]);
+      expect(policy.current.callableToolNames).not.toContain("read");
       expect(policy.current.callableToolNames).not.toContain("write");
       expect(policy.current.callableToolNames).not.toContain("other");
       expect(policy.current.callableToolNames).not.toContain("denied");
       if (catalogRef) {
-        expect(catalogRef.current?.entries.map((e) => e.tool)).toEqual([freshRead]);
+        expect(catalogRef.current?.entries).toEqual([]);
       }
-      expect(policy.prepareForDispatch(prepare)).toBeUndefined();
-      expect(prepare).toHaveBeenCalledOnce();
-      expect(logDecisionToolPrefilter).toHaveBeenCalledTimes(2);
+      expect(logDecisionToolPrefilter).toHaveBeenCalledTimes(1);
     },
   );
 

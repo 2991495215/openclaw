@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
-  it("retires a late update canceled after durable append and before its checkpoint", async () => {
+  it("retires a permission update canceled after durable append and before its checkpoint", async () => {
     const model = {
       ...testModel,
       provider: "anthropic",
@@ -44,7 +44,7 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
     const input = createBaseInput();
     const routeKey = "anthropic/claude-opus-5/anthropic-messages";
     const pinnedPrompt = "## Tools\nOnly approved tools are available.";
-    const restoredPrompt = "## Tools\nThe canceled tool restoration is available.";
+    const refreshedPrompt = "## Tools\nThe canceled permission update is available.";
     const prepare = (systemPrompt: string) =>
       prepareSessionSystemPrompt({
         state: input.sessionPromptState,
@@ -59,6 +59,17 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
     prepare(pinnedPrompt).commit();
     await persist();
     session.setBaseSystemPrompt(pinnedPrompt);
+    const setPreparation = installAttemptPermissionPrompt({
+      activeSession: session,
+      attempt: { model },
+      runAbortSignal: new AbortController().signal,
+      setActiveSessionSystemPrompt: (prompt) => {
+        session.setBaseSystemPrompt(prompt);
+        return prompt;
+      },
+      prepareSystemPromptUpdate: prepare,
+    });
+    setPreparation(async () => () => refreshedPrompt);
     const append = sessionManager.appendCustomMessageEntryAsync.bind(sessionManager);
     const interruptedAppend = vi
       .spyOn(sessionManager, "appendCustomMessageEntryAsync")
@@ -75,13 +86,6 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
       prependContext: undefined,
       appendContext: undefined,
       persistToolResultProjections: persist,
-      preparePrimaryModelRequest: () => {
-        const projection = prepare(restoredPrompt);
-        return Promise.resolve(() => ({
-          systemPrompt: projection.systemPrompt,
-          promptUpdate: { update: projection.update, commit: projection.commit },
-        }));
-      },
       promptActiveSession: (prompt, options) => session.prompt(prompt, options),
     });
     interruptedAppend.mockRestore();
@@ -96,7 +100,7 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
       expect.objectContaining({
         type: "custom_message",
         customType: "openclaw.system-update",
-        content: expect.stringContaining("canceled tool restoration"),
+        content: expect.stringContaining("canceled permission update"),
       }),
     );
 
@@ -133,12 +137,12 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
     });
     expect(requests).toHaveLength(1);
     expect(requests[0]?.systemPrompt).toBe(pinnedPrompt);
-    expect(JSON.stringify(requests[0])).not.toContain("canceled tool restoration");
+    expect(JSON.stringify(requests[0])).not.toContain("canceled permission update");
     expect(sessionManager.getBranch()).toContainEqual(
       expect.objectContaining({
         type: "custom_message",
         customType: "openclaw.system-update",
-        content: expect.stringContaining("canceled tool restoration"),
+        content: expect.stringContaining("canceled permission update"),
       }),
     );
   });
@@ -338,7 +342,7 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
     },
   );
 
-  it("retains a late prompt update through a tool round with session-owned history", async () => {
+  it("retains a permission prompt update through a tool round with session-owned history", async () => {
     const model = {
       ...testModel,
       provider: "anthropic",
@@ -369,7 +373,7 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
         },
       };
     };
-    const pinnedPrompt = "## Tools\nNo tools are selected.";
+    const pinnedPrompt = "## Tools\nThe read tool is available.";
     session.setBaseSystemPrompt(pinnedPrompt);
     const prepare = (systemPrompt: string) =>
       prepareSessionSystemPrompt({
@@ -384,6 +388,17 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
       );
     prepare(pinnedPrompt).commit();
     await persist();
+    const setPreparation = installAttemptPermissionPrompt({
+      activeSession: session,
+      attempt: { model },
+      runAbortSignal: new AbortController().signal,
+      setActiveSessionSystemPrompt: (prompt) => {
+        session.setBaseSystemPrompt(prompt);
+        return prompt;
+      },
+      prepareSystemPromptUpdate: prepare,
+    });
+    setPreparation(async () => () => "## Tools\nOnly the read tool is permitted.");
     const baseConvert = session.agent.convertToLlm;
     session.agent.convertToLlm = (messages) =>
       baseConvert(
@@ -414,25 +429,12 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
         ),
       );
     });
-    let restore = true;
     await submitEmbeddedAttemptPrompt({
       ...input,
       activeSession: session,
       prependContext: undefined,
       appendContext: undefined,
       persistToolResultProjections: persist,
-      preparePrimaryModelRequest: () => {
-        if (!restore) {
-          return undefined;
-        }
-        restore = false;
-        const projection = prepare("## Tools\nThe read tool is available.");
-        return Promise.resolve(() => ({
-          tools: session.agent.state.tools,
-          systemPrompt: projection.systemPrompt,
-          promptUpdate: { update: projection.update, commit: projection.commit },
-        }));
-      },
       promptActiveSession: (prompt, options) => session.prompt(prompt, options),
     });
     expect(requests).toHaveLength(2);
@@ -440,7 +442,7 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
     expect(requests[0]?.messages.at(-1)).toMatchObject({
       role: "user",
       operatorMessage: { turnScoped: false },
-      content: expect.stringContaining("The read tool is available."),
+      content: expect.stringContaining("Only the read tool is permitted."),
     });
     expect(requests[1]?.messages.slice(0, requests[0]!.messages.length)).toEqual(
       requests[0]?.messages,
@@ -456,91 +458,30 @@ describe("submitEmbeddedAttemptPrompt foreground dispatch", () => {
     ).toHaveLength(1);
   });
 
-  it("restores only foreground dispatch and keeps compaction out of restoration", async () => {
+  it("rechecks authority after awaiting persistence, before dispatch", async () => {
     const { activeSession } = createSession();
-    const captures: Context[] = [];
-    const stream: StreamFn = (_model, context) => {
-      captures.push(context);
-      return createAssistantResultStream(createAssistant(testModel, []));
-    };
+    const stream = vi.fn<StreamFn>();
     activeSession.agent.streamFn = stream;
-    const restoredTools = [
-      { name: "message", description: "required", parameters: { type: "object" as const } },
-    ];
-    let changed = false;
-    const prepare = vi.fn(() =>
-      changed
-        ? Promise.resolve(() => ({ tools: restoredTools, systemPrompt: "restored" }))
-        : undefined,
-    );
-    await submitEmbeddedAttemptPrompt({
-      ...createBaseInput(),
-      activeSession,
-      preparePrimaryModelRequest: prepare,
-      promptActiveSession: async (_prompt, options) => {
-        const request = (systemPrompt: string) =>
-          activeSession.agent.streamFn(testModel, { messages: [], tools: [], systemPrompt }, {});
-        await request("preflight");
-        expect(prepare).not.toHaveBeenCalled();
-        options?.preflightResult?.(true);
-        await request("filtered");
-        prepare.mockClear();
-        changed = true;
-        activeSession.isCompacting = true;
-        await request("compaction");
-        expect(prepare).not.toHaveBeenCalled();
-        activeSession.isCompacting = false;
-        await request("filtered");
-      },
-    });
-    expect(captures.map(({ tools, systemPrompt }) => ({ tools, systemPrompt }))).toEqual([
-      { tools: [], systemPrompt: "preflight" },
-      { tools: [], systemPrompt: "filtered" },
-      { tools: [], systemPrompt: "compaction" },
-      { tools: restoredTools, systemPrompt: "restored" },
-    ]);
-    expect(prepare).toHaveBeenCalledOnce();
-    expect(activeSession.agent.streamFn).toBe(stream);
+    const admission = prepareSystemAgentRunAdmission({}, "prompt-persistence", "main", "prompt");
+    try {
+      const admitted = await admission.admit("embedded");
+      await expect(
+        submitEmbeddedAttemptPrompt({
+          ...createBaseInput(),
+          activeSession,
+          assertHostActive: resolveAdmittedRunActiveAssertion(admitted),
+          persistToolResultProjections: async () => {
+            admission.close();
+          },
+          promptActiveSession: async (_prompt, options) => {
+            options?.preflightResult?.(true);
+            await activeSession.agent.streamFn(testModel, { messages: [] }, {});
+          },
+        }),
+      ).rejects.toThrow("admitted run authority is no longer active");
+      expect(stream).not.toHaveBeenCalled();
+    } finally {
+      admission.close();
+    }
   });
-
-  it.each(["restoration", "persistence"] as const)(
-    "rechecks authority after awaiting %s, before dispatch",
-    async (boundary) => {
-      const { activeSession } = createSession();
-      const stream = vi.fn<StreamFn>();
-      activeSession.agent.streamFn = stream;
-      const admission = prepareSystemAgentRunAdmission({}, "prompt-restoration", "main", "prompt");
-      const reader = vi.fn(() => ({ tools: [], systemPrompt: "restored" }));
-      try {
-        const admitted = await admission.admit("embedded");
-        await expect(
-          submitEmbeddedAttemptPrompt({
-            ...createBaseInput(),
-            activeSession,
-            assertHostActive: resolveAdmittedRunActiveAssertion(admitted),
-            preparePrimaryModelRequest:
-              boundary === "restoration"
-                ? async () => {
-                    admission.close();
-                    return reader;
-                  }
-                : undefined,
-            persistToolResultProjections: async () => {
-              if (boundary === "persistence") {
-                admission.close();
-              }
-            },
-            promptActiveSession: async (_prompt, options) => {
-              options?.preflightResult?.(true);
-              await activeSession.agent.streamFn(testModel, { messages: [] }, {});
-            },
-          }),
-        ).rejects.toThrow("admitted run authority is no longer active");
-        expect(reader).not.toHaveBeenCalled();
-        expect(stream).not.toHaveBeenCalled();
-      } finally {
-        admission.close();
-      }
-    },
-  );
 });
