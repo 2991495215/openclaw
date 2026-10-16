@@ -1,8 +1,5 @@
+import { collapseWhitespace as normalizeReefMessageText } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { bodyHash as hashMessageBody } from "../protocol/index.js";
-
-function normalizeReefMessageText(text: string): string {
-  return text.trim().replace(/\s+/gu, " ");
-}
 
 export function reefMessageTextHash(text: string): string {
   return hashMessageBody({ text: normalizeReefMessageText(text) });

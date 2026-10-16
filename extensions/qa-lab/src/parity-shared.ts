@@ -1,14 +1,13 @@
-import { createHash } from "node:crypto";
+import { sha256Hex as sha256 } from "openclaw/plugin-sdk/crypto-runtime";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { collapseWhitespace as normalizeTextForParity } from "openclaw/plugin-sdk/string-normalization-runtime";
+
+export { normalizeTextForParity };
 
 type ParityToolCallShape = {
   argsHash: string;
   tool: string;
 };
-
-function sha256(value: string) {
-  return createHash("sha256").update(value).digest("hex");
-}
 
 function normalizeForStableHash(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -47,10 +46,6 @@ function compareToolCallShape(
     }
   }
   return undefined;
-}
-
-export function normalizeTextForParity(text: string) {
-  return text.replace(/\s+/gu, " ").trim();
 }
 
 type ParityToolResultShape = {

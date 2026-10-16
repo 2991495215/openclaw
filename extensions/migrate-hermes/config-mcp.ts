@@ -8,6 +8,7 @@ import {
   normalizeOptionalString,
   parseBooleanValue,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { isStringArray } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { mcpValueHasEnvReferences, resolveMcpEnvReferences } from "./config-env.js";
 import { sanitizeName } from "./helpers.js";
 
@@ -22,7 +23,7 @@ function readToolFilterList(value: unknown): string[] | undefined {
   if (typeof value === "string") {
     return value.trim() ? [value.trim()] : [];
   }
-  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
+  if (!isStringArray(value)) {
     return undefined;
   }
   return [...new Set(value.map((entry) => entry.trim()).filter(Boolean))];

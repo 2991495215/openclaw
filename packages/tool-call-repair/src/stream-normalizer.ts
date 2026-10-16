@@ -1,3 +1,4 @@
+import { asIntegerInRange } from "@openclaw/normalization-core/number-coercion";
 import { asOptionalObjectRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   isOffsetInProtectedRanges,
@@ -90,8 +91,7 @@ type SuppressingPendingState = {
 type PendingState = CandidatePendingState | SuppressingPendingState;
 
 function eventContentIndex(event: Record<string, unknown>): number {
-  const index = event.contentIndex;
-  return typeof index === "number" && Number.isInteger(index) && index >= 0 ? index : 0;
+  return asIntegerInRange(event.contentIndex, { min: 0 }) ?? 0;
 }
 
 function isTextStreamEvent(event: Record<string, unknown>): boolean {
