@@ -9,10 +9,13 @@ import {
 } from "./record-coerce.js";
 
 describe("record-coerce", () => {
+  const sparseStrings: string[] = [];
+  sparseStrings.length = 2;
+
   it.each([
     { value: [], expected: true },
     { value: ["", " ", "value"], expected: true },
-    { value: new Array(2), expected: true },
+    { value: sparseStrings, expected: true },
     { value: ["value", 1], expected: false },
     { value: "value", expected: false },
     { value: { 0: "value", length: 1 }, expected: false },
