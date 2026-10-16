@@ -37,7 +37,7 @@ export function observeRepairProgressIntegrity(onIntegrity) {
 
 // Observe only native phase sends; preserve their payload, callback, return and errors.
 export function observeRepairProgressPhases(onPhase) {
-  const send = process.send;
+  const send = process.send?.bind(process);
   if (!send) {
     return () => {};
   }

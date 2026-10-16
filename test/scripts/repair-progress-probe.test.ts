@@ -38,7 +38,10 @@ const dirs = useAutoCleanupTempDirTracker(afterEach);
 
 it("observes only native phase sends without changing IPC forwarding or errors", () => {
   const original = Object.getOwnPropertyDescriptor(process, "send");
-  const send = vi.fn(() => false);
+  const send = vi.fn(function (this: NodeJS.Process) {
+    expect(this).toBe(process);
+    return false;
+  });
   process.send = send;
   const observed = vi.fn();
   const restore = observeRepairProgressPhases(observed);
