@@ -1,17 +1,29 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { expect, it, vi, type Mock } from "vitest";
+import { expect, it, onTestFinished, vi, type Mock } from "vitest";
 import type { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { readTriageUpdateFailure } from "../../commands/triage-update.js";
 import { readReleasedTriageUpdateFailure } from "../../commands/triage-update.released-reader.test-support.js";
+import {
+  createDeferredConfiguredPluginRepairDoctorResult,
+  UPDATE_POST_INSTALL_DOCTOR_ADVISORY_EXIT_CODE,
+  UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH_ENV,
+  writeUpdatePostInstallDoctorResult,
+} from "../../infra/update-doctor-result.js";
 import { writeTriageUpdateFailure } from "../../infra/update-failure-report-artifact.js";
 import { prepareUpdateFailureReport } from "../../infra/update-failure-report-prepare.js";
 import {
   renderUpdateRunReport,
   updateRunReportInputFromResult,
 } from "../../infra/update-run-report.js";
+import { updateRunStepsFromResultStep } from "../../infra/update-run-step.js";
 import type { UpdateRunResult } from "../../infra/update-runner-types.js";
-import { completePostCorePluginUpdate } from "./update-command-fresh-doctor.js";
+import type { CommandOptions } from "../../process/exec.js";
+import { defaultRuntime } from "../../runtime.js";
+import {
+  completePostCorePluginUpdate,
+  runUpdateFinalizationDoctorInFreshProcess,
+} from "./update-command-fresh-doctor.js";
 
 export function registerFreshDoctorDiagnosticTests({
   mocks,
@@ -26,6 +38,218 @@ export function registerFreshDoctorDiagnosticTests({
   tempDirs: ReturnType<typeof useAutoCleanupTempDirTracker>;
   updateOptions: Parameters<typeof completePostCorePluginUpdate>[0];
 }): void {
+  it.each([
+    "success",
+    "advisory",
+    "exit",
+    "timeout",
+    "post-plugin-exit",
+    "post-plugin-timeout",
+    "operator-trace-success",
+    "operator-trace-exit",
+  ] as const)(
+    "records fresh Doctor sections while respecting operator trace visibility (%s)",
+    async (outcome) => {
+      const phase = outcome.startsWith("post-plugin-") ? "post-plugin" : "pre-plugin";
+      const operatorTrace = outcome.startsWith("operator-trace-");
+      const succeeded = outcome.endsWith("success");
+      vi.stubEnv("OPENCLAW_GATEWAY_STARTUP_TRACE", operatorTrace ? "1" : undefined);
+      vi.mocked(defaultRuntime.error).mockClear();
+      const stderrWrite = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+      onTestFinished(() => stderrWrite.mockRestore());
+      const stderr = [
+        "[gateway] startup trace: doctor.config-flow 4100.0ms total=4200.0ms start=100.0ms\n",
+        "real Doctor warning\n",
+        "[gateway] startup trace: doctor.contribution.doctor:plugins 2500.0ms total=6800.0ms start=4300.0ms\n",
+        "[gateway] startup trace: doctor.contributions 2600.0ms total=6900.0ms start=4300.0ms",
+      ].join("");
+      let traceEnv: string | undefined;
+      mocks.command.mockImplementationOnce(async (_command, _args, options: CommandOptions) => {
+        traceEnv = options.env?.OPENCLAW_GATEWAY_STARTUP_TRACE;
+        const bytes = Buffer.from(stderr);
+        for (let offset = 0; offset < bytes.length; offset += 11) {
+          options.onOutputChunk?.(bytes.subarray(offset, offset + 11), "stderr");
+        }
+        if (outcome === "advisory") {
+          await writeUpdatePostInstallDoctorResult({
+            resultPath: options.env![UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH_ENV]!,
+            result: {
+              ...createDeferredConfiguredPluginRepairDoctorResult(["Plugin repair deferred"]),
+              deferredInspectionCheckIds: ["core/doctor/new-target-inspection"],
+            },
+          });
+        }
+        if (!succeeded) {
+          throw Object.assign(new Error("Doctor did not finish"), {
+            failed: true,
+            exitCode:
+              outcome === "advisory"
+                ? UPDATE_POST_INSTALL_DOCTOR_ADVISORY_EXIT_CODE
+                : outcome.endsWith("exit")
+                  ? 23
+                  : undefined,
+            timedOut: outcome.endsWith("timeout"),
+            stderr,
+          });
+        }
+        return { stdout: "", stderr };
+      });
+      const onDoctorStep = vi.fn();
+      const pending = runUpdateFinalizationDoctorInFreshProcess({
+        ...updateOptions,
+        phase,
+        onDoctorStep,
+        root: tempDirs.make("fresh-doctor-sections-"),
+      });
+      if (phase === "post-plugin") {
+        await expect(pending).resolves.toMatchObject({ reason: "doctor-advisory" });
+      } else if (succeeded || outcome === "advisory") {
+        await pending;
+      } else {
+        await expect(pending).rejects.toThrow("Updated pre-plugin Doctor failed");
+      }
+
+      expect(traceEnv).toBe("1");
+      expect(onDoctorStep).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          name: `${phase} doctor`,
+          deferredInspectionCheckIds:
+            outcome === "advisory" ? ["core/doctor/new-target-inspection"] : null,
+          exitCode: succeeded
+            ? 0
+            : outcome === "advisory"
+              ? UPDATE_POST_INSTALL_DOCTOR_ADVISORY_EXIT_CODE
+              : outcome.endsWith("exit")
+                ? 23
+                : null,
+          durationMs: expect.any(Number),
+          diagnostics: [
+            "Doctor sections: config-flow 4.1 s, contributions 2.6 s; slowest contributions: plugins 2.5 s",
+          ],
+        }),
+      );
+      const step = onDoctorStep.mock.calls[0]![0];
+      expect(updateRunStepsFromResultStep(step)[0]?.status).toBe(
+        succeeded || outcome === "advisory" || phase === "post-plugin" ? "completed" : "failed",
+      );
+      const printed = stderrWrite.mock.calls.map(([chunk]) => String(chunk)).join("");
+      expect(printed).toContain("real Doctor warning");
+      if (operatorTrace) {
+        expect(printed).toContain("[gateway] startup trace:");
+      } else {
+        expect(printed).not.toContain("[gateway] startup trace:");
+      }
+      expect(defaultRuntime.error).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["info", "warning", "error"] as const)(
+    "retains inline fallback %s findings without suppressing readiness errors",
+    async (severity) => {
+      vi.stubEnv("OPENCLAW_UPDATE_PARENT_RUNS_POST_ACTIVATION_INSPECTIONS", "reported-checks");
+      mocks.command.mockImplementationOnce(async (_command, _args, options: CommandOptions) => {
+        await fs.writeFile(
+          options.env![UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH_ENV]!,
+          JSON.stringify({ status: "ok" }),
+        );
+        return { stdout: "", stderr: "" };
+      });
+      const finding = {
+        checkId: "core/doctor/command-owner",
+        severity,
+        message: "Fixture inspection finding",
+      };
+      mocks.runUtf8.mockResolvedValueOnce({
+        code: 1,
+        signal: null,
+        killed: false,
+        termination: "exit",
+        stdout: JSON.stringify({ ok: false, checksRun: 1, findings: [finding] }),
+        stderr: "",
+      });
+      const { pluginUpdate } = await completePostCorePluginUpdate(updateOptions);
+      expect(mocks.runUtf8).toHaveBeenCalledWith(
+        expect.arrayContaining(["--all", "--severity-min", "info"]),
+        expect.any(Object),
+      );
+      expect(pluginUpdate.status).toBe(
+        severity === "error" ? "error" : severity === "warning" ? "warning" : "ok",
+      );
+      expect(pluginUpdate.doctorLint?.doctorLintFindings).toEqual([finding]);
+      expect(pluginUpdate.doctorLint?.deferredInspectionCheckIds).toEqual(
+        severity === "error" ? undefined : [],
+      );
+    },
+  );
+
+  it.each([
+    { label: "missing receipt", selectors: undefined, deferred: true, changed: true, all: true },
+    { label: "invalid receipt", selectors: [" "], deferred: true, changed: true, all: true },
+    { label: "empty receipt", selectors: [], deferred: true, changed: true, all: false },
+    {
+      label: "selected receipt",
+      selectors: ["core/doctor/hooks-model"],
+      deferred: true,
+      changed: true,
+      all: false,
+    },
+    { label: "inline Doctor", selectors: undefined, deferred: false, changed: true, all: false },
+    { label: "no fresh Doctor", selectors: undefined, deferred: true, changed: false, all: false },
+  ])(
+    "falls back to inline inspection only for an unusable deferred $label",
+    async ({ selectors, deferred, changed, all }) => {
+      vi.stubEnv(
+        "OPENCLAW_UPDATE_PARENT_RUNS_POST_ACTIVATION_INSPECTIONS",
+        deferred ? "reported-checks" : "0",
+      );
+      if (changed) {
+        mocks.command.mockImplementationOnce(async (_command, _args, options: CommandOptions) => {
+          await fs.writeFile(
+            options.env![UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH_ENV]!,
+            JSON.stringify({ status: "ok", deferredInspectionCheckIds: selectors }),
+          );
+          return { stdout: "", stderr: "" };
+        });
+      }
+      const result = await completePostCorePluginUpdate({
+        ...updateOptions,
+        pluginUpdate: { ...updateOptions.pluginUpdate, changed },
+      });
+      expect(result.pluginUpdate.status).toBe("ok");
+      expect(result.pluginUpdate.doctorLint?.deferredInspectionCheckIds).toEqual(
+        all ? [] : undefined,
+      );
+      expect(mocks.runUtf8).toHaveBeenCalledExactlyOnceWith(
+        all ? expect.arrayContaining(["--all"]) : expect.not.arrayContaining(["--all"]),
+        expect.objectContaining({
+          env: expect.objectContaining({
+            OPENCLAW_UPDATE_IN_PROGRESS: "1",
+            OPENCLAW_UPDATE_POST_CORE_CONVERGENCE: "1",
+          }),
+        }),
+      );
+    },
+  );
+
+  it("records an untraced Doctor once with explicitly unknown deferred selectors", async () => {
+    mocks.command.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    const onDoctorStep = vi.fn();
+    await runUpdateFinalizationDoctorInFreshProcess({
+      ...updateOptions,
+      phase: "pre-plugin",
+      root: tempDirs.make("fresh-doctor-untraced-"),
+      onDoctorStep,
+    });
+    expect(onDoctorStep).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        name: "pre-plugin doctor",
+        exitCode: 0,
+        deferredInspectionCheckIds: null,
+      }),
+    );
+    expect(onDoctorStep.mock.calls[0]?.[0].diagnostics).toBeUndefined();
+  });
+
   it("captures an explicitly reported missing-module failure after long warnings for current and released readers", async () => {
     const root = tempDirs.make("post-plugin-validation-command-");
     const stateDir = path.join(root, "state");

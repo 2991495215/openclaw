@@ -15,6 +15,7 @@ import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js"
 import { noteDiskSpace } from "../../commands/doctor-disk-space.js";
 import * as diskSpace from "../../infra/disk-space.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
+import type { UpdateStepResult } from "../../infra/update-step-result.js";
 import { setLoggerOverride, resetLogger } from "../../logging/logger.js";
 import { defaultRuntime } from "../../runtime.js";
 import { createUpdateCliBaseSnapshot } from "./update-cli-config.test-support.js";
@@ -60,6 +61,7 @@ it("forwards held Doctor child progress before completion without replay or JSON
   const root = dirs.make("fresh-doctor-progress-");
   vi.stubEnv("OPENCLAW_STATE_DIR", path.join(root, "state"));
   vi.stubEnv("OPENCLAW_LOG_LEVEL", "info");
+  vi.stubEnv("OPENCLAW_GATEWAY_STARTUP_TRACE", undefined);
   setLoggerOverride({ level: "silent", consoleLevel: "info", file: path.join(root, "log") });
   const entryPath = path.join(root, "doctor.mjs");
   // This real Doctor contribution renders a panel but does not add result warnings.
@@ -76,6 +78,8 @@ it("forwards held Doctor child progress before completion without replay or JSON
   expect(panel).toContain("CRITICAL: only 50 MB free");
   const heartbeat =
     "SQLite integrity check still running: /private/fixture/chat-store.sqlite (6.0 GiB, 10s elapsed, phase=checking).";
+  const sectionTrace =
+    "[gateway] startup trace: doctor.config-flow 1500.0ms total=1500.0ms start=0.0ms";
   await fs.writeFile(
     entryPath,
     [
@@ -83,6 +87,9 @@ it("forwards held Doctor child progress before completion without replay or JSON
       'const release = awaitRelease("doctor", "finish");',
       'process.stdout.write("password=fixture-private\\n");',
       "process.stdout.write(" + JSON.stringify(panel) + ");",
+      'if (process.env.OPENCLAW_GATEWAY_STARTUP_TRACE === "1") process.stderr.write(' +
+        JSON.stringify(sectionTrace + "\n") +
+        ");",
       "process.stderr.write(" + JSON.stringify(heartbeat + "\n") + ");",
       "await release;",
     ].join("\n"),
@@ -101,7 +108,9 @@ it("forwards held Doctor child progress before completion without replay or JSON
   const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
   const log = vi.spyOn(defaultRuntime, "log").mockImplementation(() => {});
   const error = vi.spyOn(defaultRuntime, "error").mockImplementation(() => {});
+  const steps: UpdateStepResult[] = [];
   const operation = runUpdateFinalizationDoctorInFreshProcess({
+    onDoctorStep: (step) => steps.push(step),
     phase: "pre-plugin",
     root,
     entryPath,
@@ -127,6 +136,11 @@ it("forwards held Doctor child progress before completion without replay or JSON
   expect(emitted).not.toContain("chat-store");
   expect(emitted).toContain("CRITICAL: only 50 MB free");
   expect(emitted).toContain("Free up disk space immediately to avoid data loss.");
+  expect(emitted).not.toContain("[gateway] startup trace:");
+  expect(steps.find((step) => step.name === "pre-plugin doctor")).toMatchObject({
+    exitCode: 0,
+    diagnostics: ["Doctor sections: config-flow 1.5 s"],
+  });
   expect(log.mock.calls.flat().join("\n")).not.toContain(heartbeat);
   expect(error.mock.calls.flat().join("\n")).not.toContain(heartbeat);
   expect(stdout).not.toHaveBeenCalled();

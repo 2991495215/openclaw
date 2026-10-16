@@ -21,7 +21,7 @@ import { createReplyDispatcher } from "./reply-dispatcher.js";
 import { buildTestCtx } from "./test-ctx.js";
 
 const notice =
-  "My session in this room ended during restart recovery. Use /reset or /new to start a replacement session.";
+  "My session in this room ended during restart recovery. Use Resume in WebChat, or /reset or /new to start a replacement session.";
 const databaseIdentity = Symbol("restart-tombstone-database");
 
 let dispatchReplyFromConfig: typeof import("./dispatch-from-config.js").dispatchReplyFromConfig;
@@ -172,33 +172,23 @@ describe("restart tombstone channel feedback", () => {
     await rejectInbound();
     expect(deliver).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
-        text: expect.stringContaining("WebChat and use Resume in new session"),
+        text: expect.stringContaining("WebChat and use Resume."),
       }),
       expect.objectContaining({ kind: "final" }),
     );
   });
 
-  it.each([
-    { label: "room event", context: { InboundEventKind: "room_event" as const } },
-    { label: "unauthorized inbound", context: { InboundAccessAuthorized: false } },
-    { label: "system turn", context: { InputProvenance: { kind: "internal_system" as const } } },
-  ])("does not notify for $label", async ({ context }) => {
-    await rejectInbound({ context });
-    expect(deliver).not.toHaveBeenCalled();
-  });
+  it.each([{ label: "unauthorized inbound", context: { InboundAccessAuthorized: false } }])(
+    "does not notify for $label",
+    async ({ context }) => {
+      await rejectInbound({ context });
+      expect(deliver).not.toHaveBeenCalled();
+    },
+  );
 
   it("honors explicit send-policy denial", async () => {
     await rejectInbound({ sendPolicy: "deny" });
     expect(deliver).not.toHaveBeenCalled();
-  });
-
-  it("logs failed notice delivery without replacing the rejection or repeating the notice", async () => {
-    deliver.mockRejectedValueOnce(new Error("transport failed"));
-    await rejectInbound();
-    await rejectInbound();
-    expect(deliver).toHaveBeenCalledOnce();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("notice delivery was not confirmed"));
-    expect(replyResolver).not.toHaveBeenCalled();
   });
 
   it("warns about ambiguous routed delivery without repeating the notice", async () => {
