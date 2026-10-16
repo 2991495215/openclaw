@@ -1,4 +1,5 @@
 import { hasNonEmptyString as isNonEmptyString } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { isStringArray } from "openclaw/plugin-sdk/string-normalization-runtime";
 import type { IMessageRpcClient } from "../client.js";
 import type { IMessagePayload } from "./types.js";
 
@@ -100,10 +101,7 @@ function extractAuthoritativeRecoveryProjection(
   if (typeof entry.chat_name === "string") {
     projection.chat_name = entry.chat_name;
   }
-  if (
-    Array.isArray(entry.participants) &&
-    entry.participants.every((participant) => typeof participant === "string")
-  ) {
+  if (isStringArray(entry.participants)) {
     projection.participants = entry.participants;
   }
 

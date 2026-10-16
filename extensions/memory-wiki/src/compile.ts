@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { runTasksWithConcurrency } from "openclaw/plugin-sdk/concurrency-runtime";
+import { canAccess } from "openclaw/plugin-sdk/file-access-runtime";
 import { retryTransientMemoryRead } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import {
   replaceManagedMarkdownBlock,
@@ -1144,11 +1145,7 @@ async function hasMissingWikiIndexes(rootDir: string): Promise<boolean> {
     ...WIKI_PAGE_GROUPS.map((group) => path.join(rootDir, group.dir, "index.md")),
   ];
   for (const filePath of required) {
-    const exists = await fs
-      .access(filePath)
-      .then(() => true)
-      .catch(() => false);
-    if (!exists) {
+    if (!(await canAccess(filePath))) {
       return true;
     }
   }

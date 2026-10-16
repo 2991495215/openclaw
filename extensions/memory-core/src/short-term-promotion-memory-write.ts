@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { sha256Hex as hashMemoryContent } from "openclaw/plugin-sdk/crypto-runtime";
 import { extractErrorCode } from "openclaw/plugin-sdk/error-runtime";
 import {
   resolvePathPrefixSync,
@@ -132,9 +132,7 @@ async function writeExistingMemoryInPlace(params: {
   }
 }
 
-export function hashMemoryContent(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
-}
+export { hashMemoryContent };
 
 export async function commitMemoryContent(
   params: MemoryFileCommit & { workspaceDir?: string },

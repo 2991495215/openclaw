@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { sha256Hex as hashAccountSid } from "openclaw/plugin-sdk/crypto-runtime";
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 import { getSmsRuntime } from "./runtime.js";
 import { resolveTwilioMessageSid } from "./twilio.js";
@@ -61,10 +62,6 @@ function resolveDeliveryStatus(form: Record<string, string>): string {
   return normalizeDeliveryStatus(
     firstTrimmed(form, "MessageStatus") || firstTrimmed(form, "SmsStatus"),
   );
-}
-
-function hashAccountSid(accountSid: string): string {
-  return createHash("sha256").update(accountSid).digest("hex");
 }
 
 function fingerprintObservation(params: {

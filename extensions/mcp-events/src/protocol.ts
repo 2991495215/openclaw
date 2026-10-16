@@ -1,5 +1,6 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { IncomingHttpHeaders } from "node:http";
+import { sha256Hex } from "openclaw/plugin-sdk/crypto-runtime";
 import {
   validateJsonSchemaValue,
   type JsonSchemaObject,
@@ -98,7 +99,7 @@ export function canonicalArguments(value: Record<string, unknown>): string {
 }
 
 export function identityHash(parts: readonly string[]): string {
-  return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
+  return sha256Hex(JSON.stringify(parts));
 }
 
 export function createSigningSecret(): string {

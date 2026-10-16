@@ -14,6 +14,7 @@ import {
 } from "openclaw/plugin-sdk/realtime-voice";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/runtime-env";
 import { formatErrorMessage } from "openclaw/plugin-sdk/ssrf-runtime";
+import { collapseWhitespaceLower as normalizeControlSpeechText } from "openclaw/plugin-sdk/string-normalization-runtime";
 import {
   DISCORD_CONTINUOUS_CLOCK_BYTES,
   DISCORD_CONTINUOUS_ACTIVE,
@@ -45,10 +46,6 @@ type RealtimeExactSpeechState =
       output?: DiscordRealtimeOutput;
       direct?: { clock: BigInt64Array; epoch: bigint };
     };
-
-function normalizeControlSpeechText(text: string): string {
-  return text.toLowerCase().replace(/\s+/g, " ").trim();
-}
 
 export type DiscordRealtimePlaybackPort = Pick<
   DiscordRealtimePlayback<unknown>,

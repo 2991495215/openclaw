@@ -2,6 +2,7 @@ import {
   normalizeStringEntries,
   normalizeStringEntriesLower,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { isStringArray } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { getPolicyPath } from "../policy-value.js";
 export { readBooleanPath as readPolicyBoolean } from "../policy-state-helpers.js";
 
@@ -11,7 +12,7 @@ export function readPolicyStringArray(
   options: { readonly lowercase?: boolean } = {},
 ): readonly string[] | undefined {
   const current = getPolicyPath(policy, path);
-  if (!Array.isArray(current) || !current.every((entry) => typeof entry === "string")) {
+  if (!isStringArray(current)) {
     return undefined;
   }
   return options.lowercase === false
