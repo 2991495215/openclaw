@@ -207,14 +207,12 @@ describe("transcodeAudioBuffer", () => {
   ])("normalizes $detail and cleans its workspace", async ({ failure, detail }) => {
     vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
     let workspaceDir: string | undefined;
-    runCommandWithTimeoutMock.mockImplementationOnce(async (args: string[]) => {
-      const outputPath = args.at(-1);
-      if (!outputPath) {
-        throw new Error("missing afconvert output path");
-      }
-      workspaceDir = path.dirname(outputPath);
-      throw failure;
+    __setFsSafeTestHooksForTest({
+      beforeFileStoreSyncPrivateWrite: (filePath) => {
+        workspaceDir = path.dirname(filePath);
+      },
     });
+    runCommandWithTimeoutMock.mockRejectedValueOnce(failure);
 
     await expect(
       transcodeAudioBuffer({
