@@ -8,10 +8,8 @@ import {
   type ModelDataMediaInputConfig,
   type ModelDataRawPricingTier,
   type ModelDataThinkingLevelMap,
-  type ModelRoutingMaxPrice,
-  type ModelRoutingPercentiles,
-  type ModelRoutingSortConfig,
 } from "../../llm-core/src/model-data.js";
+import type { OpenRouterRouting } from "../../llm-core/src/types.js";
 
 // Tier capacity is separate from the model's full context window. Leave room
 // below the observed serving boundary for output and tool-round growth.
@@ -83,19 +81,7 @@ export type ModelCatalogCompatConfig = {
 
 /** OpenRouter routing preferences copied into request metadata. */
 export type ModelCatalogOpenRouterRouting = {
-  allow_fallbacks?: boolean;
-  require_parameters?: boolean;
-  data_collection?: "deny" | "allow";
-  zdr?: boolean;
-  enforce_distillable_text?: boolean;
-  order?: string[];
-  only?: string[];
-  ignore?: string[];
-  quantizations?: string[];
-  sort?: string | ModelRoutingSortConfig;
-  max_price?: ModelRoutingMaxPrice;
-  preferred_min_throughput?: number | ModelRoutingPercentiles;
-  preferred_max_latency?: number | ModelRoutingPercentiles;
+  [Key in keyof OpenRouterRouting]: OpenRouterRouting[Key];
 };
 
 export type ModelCatalogVercelGatewayRouting = {
