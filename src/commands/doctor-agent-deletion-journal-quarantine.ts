@@ -7,6 +7,7 @@ import { writeTextAtomic } from "../infra/json-files.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import { isSqliteCorruptionError } from "../infra/sqlite-error-diagnostics.js";
 import { SQLITE_SIDECAR_SUFFIXES } from "../infra/sqlite-files.js";
+import { invalidateSqliteSchemaFacts } from "../infra/sqlite-schema-facts.js";
 import { prepareSqliteReadOnlyLocation } from "../infra/sqlite-snapshot-source.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { hasSqliteFileFamily } from "../state/agent-deletion-discovery.js";
@@ -109,6 +110,7 @@ export async function quarantineAgentDeletionJournal(params: {
           if (!inspection) {
             const snapshot = await prepareSqliteReadOnlyLocation(target.path, {
               preserveSourceArtifacts: true,
+              requireCleanup: true,
             });
             try {
               inspection = await reader.inspect(input, undefined, snapshot.location);

@@ -299,7 +299,7 @@ export function initializeNativeOpenClawStateConnection(
       if (!isUninitializedNativeStartupDatabase(db)) {
         return;
       }
-      assertSqliteIntegrity(db, pathname);
+      assertStateDatabaseIntegrityOnce(db, pathname);
       initializeCanonicalSchema(db, pathname, env, initialization);
     } finally {
       clearNodeSqliteKyselyCacheForDatabase(db);

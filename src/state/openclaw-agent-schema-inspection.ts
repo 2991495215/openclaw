@@ -42,8 +42,7 @@ export type AgentSchemaInspectionInput = {
   inspectOwnership?: boolean;
   requireStartupMigrationReadiness?: boolean;
   deferRuntimeIntegrity?: boolean;
-  startupIntegrityStateDir?: string;
-  startupIntegrityVerification?: ReturnType<typeof readOpenClawAgentIntegrityVerification>;
+  startupIntegrityVerification?: { verifiedAt: number };
   inspectEmptyStore?: boolean;
 };
 
