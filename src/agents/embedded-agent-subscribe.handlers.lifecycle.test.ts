@@ -122,7 +122,7 @@ describe("embedded lifecycle", () => {
       expect(warnMeta(ctx)).not.toHaveProperty("error");
       expect(warnMeta(ctx)).not.toHaveProperty("rawErrorPreview");
       expect(warnMeta(ctx)).not.toHaveProperty("providerErrorMessagePreview");
-      expect(JSON.stringify(ctx.log.warn.mock.calls)).not.toContain(
+      expect(JSON.stringify(vi.mocked(ctx.log.warn).mock.calls)).not.toContain(
         "synthetic-private-tool-output",
       );
       expect(JSON.stringify(onAgentEvent.mock.calls)).not.toContain(secret);
@@ -144,7 +144,7 @@ describe("embedded lifecycle", () => {
     expect(warnMeta(ctx).consoleMessage).toContain(
       "embedded run agent end: runId=run-1 isError=true model=claude sonnet 4 provider=anthropic]8;;https://evil.test failoverReason=",
     );
-    expect(JSON.stringify(ctx.log.warn.mock.calls)).not.toContain("connection refused");
+    expect(JSON.stringify(vi.mocked(ctx.log.warn).mock.calls)).not.toContain("connection refused");
     for (const control of ["\n", "\r", "\t", "\u001b", "\u009b"]) {
       expect(warnMeta(ctx).consoleMessage).not.toContain(control);
     }

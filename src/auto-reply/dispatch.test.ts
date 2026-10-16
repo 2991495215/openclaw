@@ -98,15 +98,6 @@ function createDispatcher(record: string[]): ReplyDispatcher {
   };
 }
 
-function lastTypingDispatcherOptions(): Parameters<CreateReplyDispatcherWithTypingFn>[0] {
-  const calls = hoisted.createReplyDispatcherWithTypingMock.mock.calls;
-  const [options] = calls[calls.length - 1] ?? [];
-  if (!options) {
-    throw new Error("expected createReplyDispatcherWithTyping call");
-  }
-  return options as Parameters<CreateReplyDispatcherWithTypingFn>[0];
-}
-
 function requireReplyDispatcherOptions(index = 0): Parameters<CreateReplyDispatcherFn>[0] {
   const call = hoisted.createReplyDispatcherMock.mock.calls[index];
   if (!call) {
