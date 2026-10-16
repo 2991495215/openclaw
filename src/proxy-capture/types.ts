@@ -1,9 +1,14 @@
 import type { z } from "zod";
 import type { SchemaContract } from "../../packages/gateway-protocol/src/schema-contract.js";
-import type { CaptureEventSchema, CaptureQueryPresetSchema } from "./capture-schema.js";
+import type {
+  debugProxyCaptureWriteCommandSchema,
+  debugProxyCliCommandSchema,
+} from "./cli-contract.js";
 
 // Shared debug-proxy capture schema. These records back the SQLite store, CLI
 // reports, and runtime capture events for HTTP/SSE/websocket traffic.
+type CaptureWriteCommand = z.input<typeof debugProxyCaptureWriteCommandSchema>;
+type CaptureCliCommand = z.input<typeof debugProxyCliCommandSchema>;
 export type CaptureProtocol = CaptureEventRecord["protocol"];
 
 export type CaptureDirection = CaptureEventRecord["direction"];
@@ -37,9 +42,14 @@ export type SharedCaptureBlobRecord = Omit<CaptureBlobRecord, "path"> & {
   path?: never;
 };
 
-export type CaptureEventRecord = SchemaContract<z.input<typeof CaptureEventSchema>>;
+export type CaptureEventRecord = SchemaContract<
+  Extract<CaptureWriteCommand, { type: "capture.recordEvent" }>["input"]
+>;
 
-export type CaptureQueryPreset = z.input<typeof CaptureQueryPresetSchema>;
+export type CaptureQueryPreset = Extract<
+  CaptureCliCommand,
+  { type: "capture.queryPreset" }
+>["input"]["preset"];
 
 export type CaptureQueryRow = Record<string, string | number | null>;
 
