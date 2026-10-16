@@ -1,6 +1,6 @@
 import { isStringOption } from "../utils/string-readers.js";
 import { INTERNAL_WAKE_TRANSCRIPT_PROMPTS } from "./heartbeat.js";
-import type { MsgContext } from "./templating.js";
+import { INTERNAL_TURN_SOURCES, type MsgContext } from "./templating.js";
 
 type InternalTurnContext = Pick<
   MsgContext,
@@ -39,13 +39,7 @@ function legacyInternalTurnSource(value: string | undefined): MsgContext["Intern
 
 /** Fold shipped SDK source labels at ingress; runtime channels describe transport only. */
 export function normalizeInternalTurnContext(ctx: InternalTurnContext): void {
-  const source = isStringOption(ctx.InternalTurnSource, [
-    "heartbeat",
-    "cron",
-    "exec",
-    "event",
-    "progress-card-refresh",
-  ] as const)
+  const source = isStringOption(ctx.InternalTurnSource, INTERNAL_TURN_SOURCES)
     ? ctx.InternalTurnSource
     : legacyInternalTurnSource(ctx.Provider);
   if (source) {

@@ -1,5 +1,20 @@
 export const UPDATE_RUN_DRIVER_LIMIT = 8;
 
+export const IMMUTABLE_ACTIVATION_PHASES = [
+  "prepared",
+  "draining",
+  "stopping",
+  "stopped",
+  "publishing",
+  "starting",
+  "verifying",
+  "rollback-stopping",
+  "rollback-publishing",
+  "rollback-starting",
+  "rolled-back",
+  "recovery-required",
+] as const;
+
 export const UPDATE_RUN_PHASES = [
   "requested",
   "staging",

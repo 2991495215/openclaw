@@ -15,25 +15,19 @@ import {
   logDecisionEvaluation,
   type DecisionEvaluationFacts,
 } from "./diagnostics.js";
-import type {
-  DecisionBatch,
-  DecisionOutcome,
-  DecisionProviderV1,
-  DecisionRuntimeV1,
-  ProviderFailureReason,
-  UnavailableReason,
+import {
+  PROVIDER_FAILURE_REASONS,
+  type DecisionBatch,
+  type DecisionOutcome,
+  type DecisionProviderV1,
+  type DecisionRuntimeV1,
+  type ProviderFailureReason,
+  type UnavailableReason,
 } from "./types.js";
 import { DecisionContractError, validateDecisionResult } from "./validation.js";
 
 type Options = Parameters<DecisionRuntimeV1["evaluate"]>[1];
-const FAILURE_REASONS = new Set<ProviderFailureReason>([
-  "credentials-unavailable",
-  "authentication",
-  "rate-limited",
-  "transport",
-  "unsupported-input",
-  "invalid-response",
-]);
+const FAILURE_REASONS = new Set<ProviderFailureReason>(PROVIDER_FAILURE_REASONS);
 const MAX_CONCURRENT = 4;
 const COOLDOWN_MS = 10_000;
 const MAX_RETRY_AFTER_MS = 60_000;

@@ -1,3 +1,4 @@
+import { AGENT_RUN_TIMEOUT_PHASES } from "@openclaw/normalization-core/agent-run-terminal-outcome";
 import { Type, type Static } from "typebox";
 import { GATEWAY_CLIENT_IDS, GATEWAY_CLIENT_MODES } from "../client-info.js";
 import { closedObject } from "./closed-object.js";
@@ -441,9 +442,7 @@ const WorkerLiveLifecycleTerminalCommonProperties = {
   endedAt: LiveIntegerSchema,
   stopReason: Type.Optional(WorkerIdentifierSchema),
   yielded: Type.Optional(Type.Literal(true)),
-  timeoutPhase: Type.Optional(
-    Type.Enum(["queue", "preflight", "provider", "post_turn", "gateway_draining"]),
-  ),
+  timeoutPhase: Type.Optional(Type.Enum(AGENT_RUN_TIMEOUT_PHASES)),
   providerStarted: Type.Optional(Type.Boolean()),
   aborted: Type.Optional(Type.Boolean()),
   toolErrorSummary: OptionalLiveTextSchema,

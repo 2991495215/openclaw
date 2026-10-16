@@ -1,5 +1,6 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
+import { IMMUTABLE_ACTIVATION_PHASES } from "../update-run-vocabulary.js";
 import { closedObject } from "./closed-object.js";
 import { NonEmptyString } from "./primitives.js";
 // Gateway Protocol schema module defines protocol validation shapes.
@@ -153,20 +154,7 @@ const UpdateImmutableInstallSchema = closedObject({
   activation: Type.Optional(
     closedObject({
       operationId: ImmutableOperationId,
-      phase: stringLiteralUnion([
-        "prepared",
-        "draining",
-        "stopping",
-        "stopped",
-        "publishing",
-        "starting",
-        "verifying",
-        "rollback-stopping",
-        "rollback-publishing",
-        "rollback-starting",
-        "rolled-back",
-        "recovery-required",
-      ]),
+      phase: stringLiteralUnion(IMMUTABLE_ACTIVATION_PHASES),
       previousSha: ImmutableGenerationSha,
       candidateSha: ImmutableGenerationSha,
       failure: Type.Optional(NonEmptyString),

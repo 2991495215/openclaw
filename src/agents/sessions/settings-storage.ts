@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { replaceFileAtomicSync } from "@openclaw/fs-safe/atomic";
 import { acquireFileLockSyncWithRetry } from "../../infra/file-lock-sync.js";
 import { resolveJsonSaveTarget } from "../../infra/json-file.js";
-import type { ThinkingBudgets, Transport } from "../../llm/types.js";
+import type { ModelThinkingLevel, ThinkingBudgets, Transport } from "../../llm/types.js";
 import { CONFIG_DIR_NAME } from "../package-metadata.js";
 
 interface CompactionSettings {
@@ -73,7 +73,7 @@ export interface Settings {
   lastChangelogVersion?: string;
   defaultProvider?: string;
   defaultModel?: string;
-  defaultThinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  defaultThinkingLevel?: ModelThinkingLevel;
   transport?: TransportSetting; // default: "auto"
   steeringMode?: "all" | "one-at-a-time";
   followUpMode?: "all" | "one-at-a-time";

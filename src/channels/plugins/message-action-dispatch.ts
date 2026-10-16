@@ -18,9 +18,12 @@ import {
   resolveExactCurrentConversationMatch,
   type CurrentConversationMatch,
 } from "./message-action-current-conversation.js";
+import { isFencedProviderReadAction } from "./message-action-names.js";
 import { resolveChannelPluginRegistration } from "./registry.js";
 import type { ChannelMessageActionContext, ChannelMessageActionName } from "./types.js";
 import type { AnyChannelPlugin as ChannelPlugin } from "./types.plugin.js";
+
+export { isFencedProviderReadAction } from "./message-action-names.js";
 
 declare const serverOwnedConversationReadOrigin: unique symbol;
 
@@ -140,29 +143,6 @@ type MessageActionReadEnforcement =
       kind: "host-exact-current";
       pluginTrust: "bundled" | "external";
     };
-
-// Context retrieval only. The broader conversation-read class also contains mutations.
-const FENCED_PROVIDER_READ_ACTIONS: ReadonlySet<string> = new Set<ChannelMessageActionName>([
-  "read",
-  "search",
-  "reactions",
-  "list-pins",
-  "thread-list",
-  "channel-info",
-  "permissions",
-  "member-info",
-  "role-info",
-  "emoji-list",
-  "channel-list",
-  "voice-status",
-  "event-list",
-  "sticker-search",
-  "download-file",
-]);
-
-export function isFencedProviderReadAction(action: string): action is ChannelMessageActionName {
-  return FENCED_PROVIDER_READ_ACTIONS.has(action);
-}
 
 const SCHEDULED_MESSAGE_WRITE_POLICIES = new Map<string, "operator" | "provider">([
   ["channel-edit", "operator"],

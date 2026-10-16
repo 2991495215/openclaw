@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import { IMMUTABLE_ACTIVATION_PHASES } from "../../packages/gateway-protocol/src/update-run-vocabulary.js";
 import { ImmutableRecoveryRuntimeReferenceSchema } from "./package-update-activation-immutable-recovery-schema.js";
 import { packageActivationIdentitySchema } from "./package-update-activation-schema.js";
 import { ImmutableProtectionSnapshotSchema } from "./update-immutable-protection-schema.js";
@@ -81,20 +82,7 @@ export const ImmutablePreparedGenerationSchema = generation.extend({
   schemaVersions: z.record(z.string().min(1).max(256), z.number().int().nonnegative()).optional(),
 });
 
-const ImmutableActivationPhaseSchema = z.enum([
-  "prepared",
-  "draining",
-  "stopping",
-  "stopped",
-  "publishing",
-  "starting",
-  "verifying",
-  "rollback-stopping",
-  "rollback-publishing",
-  "rollback-starting",
-  "rolled-back",
-  "recovery-required",
-]);
+const ImmutableActivationPhaseSchema = z.enum(IMMUTABLE_ACTIVATION_PHASES);
 const authority = z.strictObject({
   databasePath: absolutePath,
   databaseIdentity: packageActivationIdentitySchema,

@@ -69,6 +69,29 @@ export const CHANNEL_MESSAGE_ACTION_NAMES = [
  */
 export type ChannelMessageActionName = (typeof CHANNEL_MESSAGE_ACTION_NAMES)[number];
 
+// Context retrieval only. The broader conversation-read class also contains mutations.
+const FENCED_PROVIDER_READ_ACTIONS: ReadonlySet<string> = new Set<ChannelMessageActionName>([
+  "read",
+  "search",
+  "reactions",
+  "list-pins",
+  "thread-list",
+  "channel-info",
+  "permissions",
+  "member-info",
+  "role-info",
+  "emoji-list",
+  "channel-list",
+  "voice-status",
+  "event-list",
+  "sticker-search",
+  "download-file",
+]);
+
+export function isFencedProviderReadAction(action: string): action is ChannelMessageActionName {
+  return FENCED_PROVIDER_READ_ACTIONS.has(action);
+}
+
 const MESSAGE_TOOL_SEND_ACTIONS = new Set([
   "send",
   "thread-reply",

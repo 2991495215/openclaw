@@ -2,7 +2,7 @@ import {
   WORKER_PROTOCOL_MAX_INFERENCE_PAYLOAD_BYTES,
   type WorkerInferenceErrorReason,
   type WorkerInferenceEventFrame,
-  type WorkerInferenceStartParams,
+  type WorkerInferenceCancelParams,
   type WorkerInferenceTerminalFrame,
   type WorkerInferenceTerminalOutcome,
   validateWorkerInferenceTerminalFrame,
@@ -10,7 +10,7 @@ import {
 import { boundedJsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 
 type WorkerInferenceFrameContext = {
-  request: Pick<WorkerInferenceStartParams, "runEpoch" | "sessionId" | "runId" | "turnId">;
+  request: WorkerInferenceCancelParams;
   seq: number;
 };
 
