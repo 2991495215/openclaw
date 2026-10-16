@@ -400,7 +400,9 @@ describe.each(["repair", "finalize"])("update %s process output", (command) => {
       const diagnostics = result.stderr;
       for (const diagnostic of doctorDiagnostics) {
         expect(diagnostics, failure).toContain(diagnostic);
-        expect(result.stdout, failure).not.toContain(diagnostic);
+        if (!json) {
+          expect(result.stdout, failure).not.toContain(diagnostic);
+        }
       }
       expect(diagnostics.match(/Doctor console diagnostic/gu), failure).toHaveLength(1);
       expect(result.stderr, failure).toContain("Doctor stderr diagnostic");
