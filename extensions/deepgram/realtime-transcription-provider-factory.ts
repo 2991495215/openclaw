@@ -9,7 +9,6 @@ import type {
 import { normalizeResolvedSecretInputString } from "openclaw/plugin-sdk/secret-input";
 import {
   asOptionalRecord as readRecord,
-  collapseWhitespace,
   normalizeOptionalString,
   parseBooleanValue as readBoolean,
   parseFiniteNumber as readFiniteNumber,
@@ -160,7 +159,7 @@ function createDeepgramRealtimeTranscriptionSession(
   let openedOnce = false;
 
   const joinTranscript = (left: string, right: string) =>
-    collapseWhitespace(left && right ? `${left} ${right}` : left || right);
+    (left && right ? `${left} ${right}` : left || right).replace(/\s+/g, " ").trim();
 
   const clearFinalizeFallback = () => {
     if (finalizeFallbackTimer) {
