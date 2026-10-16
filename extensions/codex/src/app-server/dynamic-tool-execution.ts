@@ -12,6 +12,7 @@ import {
 import {
   addSafeTimeoutDelayGraceMs,
   addTimerTimeoutGraceMs,
+  asFiniteNumberInRange,
   parseStrictNonNegativeInteger,
 } from "openclaw/plugin-sdk/number-runtime";
 import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
@@ -532,15 +533,8 @@ function readTimeoutSecondsAsMs(value: unknown): number | undefined {
 function readDynamicToolTimeoutSecondsAsMs(value: unknown): number | undefined {
   // Model-facing timeoutSeconds schemas use integers. Reject malformed
   // fractions instead of silently shortening the caller's budget.
-  if (
-    typeof value !== "number" ||
-    !Number.isFinite(value) ||
-    !Number.isInteger(value) ||
-    value <= 0
-  ) {
-    return undefined;
-  }
-  return value * 1000;
+  const seconds = asFiniteNumberInRange(value, { min: 1 });
+  return seconds !== undefined && Number.isInteger(seconds) ? seconds * 1000 : undefined;
 }
 
 function readPositiveFiniteTimeoutMs(value: unknown): number | undefined {

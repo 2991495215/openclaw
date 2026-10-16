@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
-import { timestampMsToIsoString } from "openclaw/plugin-sdk/number-runtime";
+import { resolveIntegerOption, timestampMsToIsoString } from "openclaw/plugin-sdk/number-runtime";
 import type {
   OpenClawPluginNodeHostCommand,
   OpenClawPluginNodeInvokePolicy,
@@ -297,7 +297,10 @@ export function formatCodexCliSessions(params: {
 
 async function listLocalCodexCliSessions(paramsJSON?: string | null): Promise<string> {
   const params = parseJsonRecord(paramsJSON);
-  const limit = normalizeLimit(params.limit);
+  const limit = resolveIntegerOption(params.limit, DEFAULT_SESSION_LIMIT, {
+    min: 1,
+    max: MAX_SESSION_LIMIT,
+  });
   const filter = typeof params.filter === "string" ? params.filter.trim().toLowerCase() : "";
   const codexHome = resolveCodexAppServerUserHomeDir();
   const summaries = await readHistorySessions(codexHome);
@@ -634,12 +637,6 @@ async function readFileMtimeIso(file: string): Promise<string | undefined> {
   } catch {
     return undefined;
   }
-}
-
-function normalizeLimit(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value)
-    ? Math.min(MAX_SESSION_LIMIT, Math.max(1, Math.floor(value)))
-    : DEFAULT_SESSION_LIMIT;
 }
 
 function normalizeTimeoutMs(value: unknown): number {
