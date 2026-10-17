@@ -174,6 +174,29 @@ export function buildPresenceSummary(options: {
   const include = params.include ?? [];
   const locations = options.locations ?? new Map<string, PresenceLocation>();
   const observations = collectObservations(options.presence, options.nodes);
+  const base: PresenceQueryResult = {
+    observedAt,
+    status: "ok",
+    people: [],
+    totalPeople: 0,
+    truncated: false,
+  };
+  const action = params.action ?? "list";
+  if (action === "device") {
+    const devices = projectDevices(
+      observations.filter((observation) => observation.deviceId === params.deviceId),
+      include,
+      locations,
+    );
+    return {
+      ...base,
+      status: devices.length ? "ok" : "not-found",
+      devices,
+      ...(devices.length
+        ? {}
+        : { message: "No connected device matches that presence device ID." }),
+    };
+  }
   const groups = groupPresenceUsers(observations.map(({ entry }) => entry)).users;
   const people: PresencePerson[] = groups
     .map((group): PresencePerson => {
@@ -207,33 +230,12 @@ export function buildPresenceSummary(options: {
       return person;
     })
     .toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-  const base: PresenceQueryResult = {
-    observedAt,
-    status: "ok",
-    people: [],
-    totalPeople: 0,
-    truncated: false,
-  };
-  const action = params.action ?? "list";
   const sharedDevices = () =>
     projectDevices(
       observations.filter(({ entry }) => !entry.user),
       include,
       locations,
     );
-  if (action === "device") {
-    const devices = projectDevices(observations, include, locations).filter(
-      (device) => device.id === params.deviceId,
-    );
-    return {
-      ...base,
-      status: devices.length ? "ok" : "not-found",
-      devices,
-      ...(devices.length
-        ? {}
-        : { message: "No connected device matches that presence device ID." }),
-    };
-  }
   let matches = people;
   if (action === "person") {
     const selector = params.person?.trim() ?? "";
