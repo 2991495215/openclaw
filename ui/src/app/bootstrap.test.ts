@@ -4,6 +4,8 @@ import { CONTROL_UI_BASE_PATH_ATTRIBUTE } from "../../../src/gateway/control-ui-
 import { createDeferred } from "../../../test/helpers/promise.js";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
 import { routeIdFromPath } from "../app-routes.ts";
+import { buildCatalogSessionKey } from "../lib/sessions/catalog-key.ts";
+import type { ChatRouteData } from "../pages/chat/session-route-data.ts";
 import {
   isDefaultChatLanding,
   startModelSetupFirstRunRedirectAfterLocation,
@@ -34,20 +36,53 @@ describe("bootstrapApplication", () => {
     saveSettings(previousSettings);
   });
 
-  it.each(["chat", "dashboard"])(
+  it.each(["chat", "dashboard"] as const)(
     "gives the initial %s transcript priority over bulk reads",
     async (face) => {
       window.history.replaceState({}, "", `/${face}/main/mission-control-12345678`);
       const runtime = bootstrapApplication();
       const read = vi.fn(async () => {});
+      const route = runtime.router.getRoute(face)!;
+      let data: ChatRouteData = { kind: "session", sessionKey: "agent:main:selected", face };
+      const loader = vi.spyOn(route, "loader").mockImplementation(async () => data);
+      const component = vi.spyOn(route, "component").mockResolvedValue({ renderSolid: () => null });
       try {
         runtime.context.connectionBootstrap.synchronize({ client: {}, connected: true });
         const pending = runtime.context.connectionBootstrap.run("bulk", read, { background: true });
         expect(read).not.toHaveBeenCalled();
-        runtime.context.connectionBootstrap.setForegroundRoute(null);
+        await runtime.router.navigate(face, runtime.context);
+        expect(read).not.toHaveBeenCalled();
+        data = { kind: "ambiguous", shortId: "abc123", candidates: [], truncated: false, face };
+        await runtime.router.revalidate(runtime.context, face);
         await pending;
         expect(read).toHaveBeenCalledOnce();
+
+        data = { kind: "session", sessionKey: "agent:main:selected", face };
+        await runtime.router.revalidate(runtime.context, face);
+        const catalogRead = vi.fn(async () => {});
+        const catalogPending = runtime.context.connectionBootstrap.run(
+          "catalog-bulk",
+          catalogRead,
+          {
+            background: true,
+          },
+        );
+        expect(catalogRead).not.toHaveBeenCalled();
+        data = {
+          kind: "session",
+          sessionKey: buildCatalogSessionKey(
+            { catalogId: "shared", hostId: "host", threadId: "thread" },
+            "main",
+          ),
+          face,
+        };
+        await runtime.router.revalidate(runtime.context, face);
+        await catalogPending;
+        expect(catalogRead).toHaveBeenCalledOnce();
       } finally {
+        loader.mockRestore();
+        component.mockRestore();
+        runtime.router.stop();
         runtime.stop();
       }
     },
