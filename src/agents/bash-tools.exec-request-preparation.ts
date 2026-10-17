@@ -263,10 +263,7 @@ export function createExecRequestPreparation(params: {
       return execParams;
     }
     const hookRunner = getGlobalHookRunner();
-    if (
-      !hookRunner?.hasHooks("resolve_exec_env") ||
-      typeof hookRunner.runResolveExecEnv !== "function"
-    ) {
+    if (!hookRunner?.hasHooks("resolve_exec_env")) {
       resolvedExecEnvPreparedStates.set(execParams, {});
       return execParams;
     }
