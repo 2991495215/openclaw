@@ -187,9 +187,7 @@ export function messageOverflowRef(expanded: boolean, forwarded: boolean) {
     // fonts loaded after this retained message's original render.
     onFontsLoaded = update;
     document.fonts?.addEventListener("loadingdone", onFontsLoaded);
-    if (typeof ResizeObserver === "function") {
-      resizeObserver = new ResizeObserver(update);
-      resizeObserver.observe(element);
-    }
+    resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(element);
   };
 }

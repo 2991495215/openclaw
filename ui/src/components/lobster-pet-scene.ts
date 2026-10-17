@@ -183,12 +183,8 @@ export class LobsterComposerGeometry {
 
   connect() {
     this.active = true;
-    if (typeof ResizeObserver !== "undefined") {
-      // ResizeObserver runs after layout; keep collision lanes current for this paint.
-      this.resize = new ResizeObserver(() => this.measure());
-    } else {
-      window.addEventListener("resize", this.scheduleMeasure);
-    }
+    // ResizeObserver runs after layout; keep collision lanes current for this paint.
+    this.resize = new ResizeObserver(() => this.measure());
     const composer = this.host.parentElement;
     const root = composer?.closest(".new-session-page__draft") ?? composer;
     if (root) {
@@ -230,7 +226,6 @@ export class LobsterComposerGeometry {
     this.mutation?.disconnect();
     this.mutation = null;
     this.observed = [];
-    window.removeEventListener("resize", this.scheduleMeasure);
   }
 
   readonly scheduleMeasure = () => {
@@ -295,12 +290,10 @@ export class LobsterComposerGeometry {
       const label = editor.getAttribute("aria-label") ?? editor.placeholder;
       const fontSize = Number.parseFloat(style.fontSize) || 16;
       let textWidth = label.length * fontSize * 0.65;
-      if (typeof CanvasRenderingContext2D !== "undefined") {
-        const context = document.createElement("canvas").getContext("2d");
-        if (context) {
-          context.font = style.font;
-          textWidth = context.measureText(label).width;
-        }
+      const context = document.createElement("canvas").getContext("2d");
+      if (context) {
+        context.font = style.font;
+        textWidth = context.measureText(label).width;
       }
       placeholderRight += Math.min(
         editorBox.width,

@@ -42,10 +42,7 @@ export function isWidgetFrameInteractable(frame: HTMLIFrameElement): boolean {
   if (!frame.isConnected) {
     return false;
   }
-  const visible =
-    typeof frame.checkVisibility === "function"
-      ? frame.checkVisibility()
-      : frame.getClientRects().length > 0;
+  const visible = frame.checkVisibility();
   if (!visible) {
     return false;
   }

@@ -18,7 +18,7 @@ export function mobileNavLayoutMediaQuery(): string {
 }
 
 export function isMobileNavLayout(): boolean {
-  return globalThis.matchMedia?.(mobileNavLayoutMediaQuery()).matches ?? false;
+  return globalThis.matchMedia(mobileNavLayoutMediaQuery()).matches;
 }
 
 function hasNativeShellClass(): boolean {

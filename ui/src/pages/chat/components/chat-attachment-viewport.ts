@@ -23,10 +23,6 @@ export function observeChatAttachmentViewport(
   onVisible: () => void,
   onHidden?: () => void,
 ): () => void {
-  if (typeof IntersectionObserver !== "function") {
-    onVisible();
-    return () => undefined;
-  }
   const observer = new IntersectionObserver(
     (entries) => {
       const entry = entries.at(-1);

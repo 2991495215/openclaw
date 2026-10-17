@@ -388,9 +388,7 @@ function createApprovalPage(context: ApplicationContext, props: ApprovalPageProp
       return;
     }
     heading?.focus({ preventScroll: true });
-    if (typeof heading?.scrollIntoView === "function") {
-      heading.scrollIntoView({ behavior: "auto", block: "center", inline: "nearest" });
-    }
+    heading?.scrollIntoView({ behavior: "auto", block: "center", inline: "nearest" });
   }
 
   function clearPollTimer() {

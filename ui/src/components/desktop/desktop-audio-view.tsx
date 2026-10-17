@@ -11,7 +11,6 @@ export type DesktopAudioState =
   | "starting"
   | "playing"
   | "blocked"
-  | "unsupported"
   | "error";
 registerEnglishCatalog(registerDesktopEnglish);
 
@@ -22,8 +21,7 @@ export function DesktopAudioControl(props: {
   onToggle: () => void;
 }) {
   const active = () => props.state === "playing" || props.state === "starting";
-  const unavailable = () =>
-    ["unavailable", "setup-unavailable", "unsupported", "error"].includes(props.state);
+  const unavailable = () => ["unavailable", "setup-unavailable", "error"].includes(props.state);
   const setupUnavailable = () => props.state === "setup-unavailable";
   const disabled = () => !props.connected || unavailable() || props.state === "connecting";
   const label = () =>
@@ -32,15 +30,13 @@ export function DesktopAudioControl(props: {
         ? "desktop.audio.reconnect"
         : props.state === "unavailable" || setupUnavailable()
           ? "desktop.audio.unavailable"
-          : props.state === "unsupported"
-            ? "desktop.audio.unsupported"
-            : props.state === "error"
-              ? "desktop.audio.failed"
-              : props.state === "connecting"
-                ? "desktop.audio.connecting"
-                : active()
-                  ? "desktop.audio.mute"
-                  : "desktop.audio.unmute",
+          : props.state === "error"
+            ? "desktop.audio.failed"
+            : props.state === "connecting"
+              ? "desktop.audio.connecting"
+              : active()
+                ? "desktop.audio.mute"
+                : "desktop.audio.unmute",
     );
   const control = () => (
     <button
@@ -106,11 +102,9 @@ export function DesktopAudioNotice(props: { state: DesktopAudioState }) {
   const message = () =>
     props.state === "blocked"
       ? t("desktop.audio.blocked")
-      : props.state === "unsupported"
-        ? t("desktop.audio.unsupported")
-        : props.state === "error"
-          ? t("desktop.audio.failed")
-          : null;
+      : props.state === "error"
+        ? t("desktop.audio.failed")
+        : null;
   return (
     <>
       {message() && (

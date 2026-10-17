@@ -197,9 +197,7 @@ function TabGroupView<T extends SolidPanelTabStripTab>(props: PanelTabStripProps
     // Label text can overflow without changing its observed width.
     const mutationObserver = new MutationObserver(schedule);
     mutationObserver.observe(group, { childList: true, characterData: true, subtree: true });
-    if (typeof ResizeObserver === "function") {
-      resizeObserver = new ResizeObserver(schedule);
-    }
+    resizeObserver = new ResizeObserver(schedule);
     schedule();
     return () => {
       disposed = true;

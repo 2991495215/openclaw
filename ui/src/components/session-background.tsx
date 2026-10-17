@@ -56,12 +56,9 @@ export const SessionBackground = defineSolidBridge<Props>(
     const notify = () => setRevision((value) => value + 1);
     const [image, setImage] = createSignal<string>();
     let imageElement: HTMLImageElement | undefined;
-    const accessibility =
-      typeof matchMedia === "function"
-        ? matchMedia(
-            "(forced-colors: active), (prefers-contrast: more), (prefers-reduced-transparency: reduce)",
-          )
-        : null;
+    const accessibility = matchMedia(
+      "(forced-colors: active), (prefers-contrast: more), (prefers-reduced-transparency: reduce)",
+    );
     let request: BackgroundImageRequest | null = null;
     let failedIdentity: string | null = null;
     let surfaceElement: HTMLElement | null = null;
@@ -85,7 +82,7 @@ export const SessionBackground = defineSolidBridge<Props>(
     };
     const currentIdentity = () => {
       const source = currentSource();
-      return context() && props.presented && !accessibility?.matches && source?.kind === "custom"
+      return context() && props.presented && !accessibility.matches && source?.kind === "custom"
         ? backgroundImageReadIdentity(context()!, source.assetId)
         : null;
     };
@@ -158,11 +155,10 @@ export const SessionBackground = defineSolidBridge<Props>(
       releaseImage();
       notify();
     };
-    const stopAccessibility =
-      accessibility && listen(accessibility, "change", accessibilityChanged);
+    const stopAccessibility = listen(accessibility, "change", accessibilityChanged);
     onCleanup(() => {
       observer.disconnect();
-      stopAccessibility?.();
+      stopAccessibility();
       releaseImage();
       surfaceElement?.removeAttribute("data-background-custom");
       surfaceElement?.removeAttribute("data-background-painted");
@@ -179,7 +175,7 @@ export const SessionBackground = defineSolidBridge<Props>(
       revision();
       const source = currentSource();
       const fullBleed = preference()?.presentation === "full-bleed";
-      const visible = props.presented && !accessibility?.matches;
+      const visible = props.presented && !accessibility.matches;
       // Direct Solid mounts compute before the bridge host inherits its palette.
       if (visible && source?.kind === "custom" && host.isConnected) {
         const key = backgroundPaletteKey(host);

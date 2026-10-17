@@ -53,12 +53,7 @@ function resetContentScroll(target: EventTarget | null) {
       if (!content) {
         continue;
       }
-      if (typeof content.scrollTo === "function") {
-        content.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      } else {
-        content.scrollTop = 0;
-        content.scrollLeft = 0;
-      }
+      content.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
   });
 }

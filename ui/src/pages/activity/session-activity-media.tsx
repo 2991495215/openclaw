@@ -348,16 +348,14 @@ export function ActivitySessionMedia(props: ActivitySessionMediaProps) {
   );
   onSettled(() => {
     // Visibility is required before transcript discovery; never fall back to an eager scan.
-    if (typeof IntersectionObserver !== "undefined") {
-      observer = new IntersectionObserver(
-        (entries) => {
-          visible = entries.some((observation) => observation.isIntersecting);
-          refresh();
-        },
-        { rootMargin: "200px" },
-      );
-      observer.observe(host);
-    }
+    observer = new IntersectionObserver(
+      (entries) => {
+        visible = entries.some((observation) => observation.isIntersecting);
+        refresh();
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(host);
     return () => {
       disposed = true;
       observer?.disconnect();
