@@ -1,3 +1,4 @@
+import "./server-startup-module-mocks.test-support.js";
 import assert from "node:assert/strict";
 import { afterEach, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promise.js";
@@ -11,7 +12,6 @@ import { sqliteWorkerOwnerProbe as probe } from "../infra/sqlite-worker-owner-pr
 import { createGatewayUpdateLifecycle } from "../infra/update-check-lifecycle.js";
 import { refreshRemoteModelCatalog } from "../model-catalog/remote-refresh.js";
 import { readRemoteModelCatalog } from "../model-catalog/remote-store.js";
-import { createHookRunner } from "../plugins/hooks.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import {
   handleSessionStateSessionDeleted,
@@ -26,6 +26,7 @@ import { connectUserModelAccount, readUserModelAuthProfile } from "../state/user
 import "../test-utils/prepare-compiled-subprocesses.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { createGatewayMetadataCloseFixture } from "./server-close.metadata.test-support.js";
+import { installGatewaySubagentModuleLoad } from "./server-startup-module-mocks.test-support.js";
 import { runGatewayStartupObservers } from "./server-startup-observers.js";
 import {
   withLocalWorkspaceStore,
@@ -47,11 +48,18 @@ async function prepareClosingGateway(signal: AbortSignal) {
   const fixture = await createGatewayMetadataCloseFixture(name);
   const release = createDeferredCore();
   const pending: Promise<unknown>[] = [];
+  const startupModuleRestorers: Array<() => void> = [];
   cleanups.push(async () => {
     release.resolve();
-    await Promise.allSettled(pending);
-    vi.restoreAllMocks();
-    await fixture.cleanup();
+    try {
+      await Promise.allSettled(pending);
+      vi.restoreAllMocks();
+      await fixture.cleanup();
+    } finally {
+      for (const restore of startupModuleRestorers.toReversed()) {
+        restore();
+      }
+    }
   });
   const port = await fixture.reservePort();
   const server = await fixture.start(port);
@@ -72,6 +80,7 @@ async function prepareClosingGateway(signal: AbortSignal) {
     shared,
     accepted,
     release,
+    startupModuleRestorers,
     track,
     trackConnection<T>(run: () => Promise<T>) {
       return track(kernel.connectionWork.track(run));
@@ -165,12 +174,21 @@ it("joins notice cleanup and upstream deletion after close prelude", async ({ si
   );
   context.holdCommand("sessionState.sweep");
   const logs = { info() {}, warn() {}, error() {} };
+  await installGatewaySubagentModuleLoad(
+    async () => {},
+    async () => {},
+    context.startupModuleRestorers,
+  );
+  const sentinel = vi
+    .spyOn(await import("./server-update-sentinel.js"), "prepareLatestUpdateRestartSentinel")
+    .mockResolvedValue(null);
+  context.startupModuleRestorers.push(() => sentinel.mockRestore());
   // Startup tracks the original promise without lending its connection scope to storage.
   const operation = Promise.resolve().then(() =>
     runGatewayStartupObservers({
       registry: createEmptyPluginRegistry(),
       resolveGatewayContext: () => undefined,
-      loadSubagentRegistryActivation: async () => () => {},
+      restartSentinelEnv: fixture.state.env,
       signal: kernel.connectionWork.signal,
       port,
       config: fixture.config,
@@ -179,8 +197,6 @@ it("joins notice cleanup and upstream deletion after close prelude", async ({ si
       isClosing: () => kernel.lifecycle.closePreludeStarted,
       log: logs,
       logHooks: logs,
-      createHookRunner,
-      refreshLatestUpdateRestartSentinel: async () => {},
     }),
   );
   const sweeping = context.trackConnection(() => operation);

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { expect, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
-import { createHookRunner } from "../plugins/hooks.js";
 import type { createPluginRegistryOwner } from "../plugins/runtime.js";
 import type { OpenClawPluginApi } from "../plugins/types.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
@@ -15,6 +14,10 @@ import type {
 } from "../transcripts/provider-types.js";
 import type { reloadGatewayPlugins } from "./server-plugin-reload.js";
 import type { createGatewayPluginRuntimeGeneration } from "./server-plugin-runtime-generation.js";
+import {
+  installGatewayStartupModuleMocks,
+  installGatewaySubagentModuleLoad,
+} from "./server-startup-module-mocks.test-support.js";
 import { startGatewayPostAttachRuntime } from "./server-startup-post-attach.js";
 
 export async function startTranscriptReloadFixtureSidecars(
@@ -31,12 +34,24 @@ export async function startTranscriptReloadFixtureSidecars(
 ) {
   const { runtime } = fixture;
   const startupWork = new AsyncWorkScope();
+  const startupModuleRestorers: Array<() => void> = [];
   const sidecars = runtime.runtimeState.gatewayLifetimeSidecars;
   cleanups.push(async () => {
-    startupWork.beginClose();
-    await sidecars.stop().catch(() => {});
-    await startupWork.drain();
+    try {
+      startupWork.beginClose();
+      await sidecars.stop().catch(() => {});
+      await startupWork.drain();
+    } finally {
+      for (const restore of startupModuleRestorers.toReversed()) {
+        restore();
+      }
+    }
   });
+  await installGatewaySubagentModuleLoad(
+    async () => {},
+    async () => {},
+    startupModuleRestorers,
+  );
   const config = fixture.getConfig();
   const unusedRecovery = async (): Promise<never> => {
     throw new Error("unexpected main-session recovery");
@@ -84,23 +99,24 @@ export async function startTranscriptReloadFixtureSidecars(
         return startupWork.track(() => operation);
       },
     },
-    {
-      createHookRunner,
-      logGatewayStartup: () => {},
-      refreshLatestUpdateRestartSentinel: async () => null,
-      createGatewayUpdateCheck: () => ({
-        initialize: async () => ({
-          root: null,
-          status: { root: null, installKind: "unknown", packageManager: "unknown" },
-          installReceipt: null,
+    installGatewayStartupModuleMocks(
+      {
+        logGatewayStartup: () => {},
+        refreshLatestUpdateRestartSentinel: async () => null,
+        createGatewayUpdateCheck: () => ({
+          initialize: async () => ({
+            root: null,
+            status: { root: null, installKind: "unknown", packageManager: "unknown" },
+            installReceipt: null,
+          }),
+          start: () => {},
+          stop: async () => {},
         }),
-        start: () => {},
-        stop: async () => {},
-      }),
-      startGatewaySidecars: async () => 0,
-      warmSystemCa: async () => {},
-      loadSubagentRegistryActivation: () => () => {},
-    },
+        startGatewaySidecars: async () => 0,
+        warmSystemCa: async () => {},
+      },
+      startupModuleRestorers,
+    ),
   );
   cleanups.push(async () => {
     await startup.stopGatewayUpdateCheck();

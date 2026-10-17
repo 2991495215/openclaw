@@ -1,22 +1,30 @@
 import { expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { PluginHookHandlerMap } from "../plugins/hook-types.js";
-import { createHookRunner } from "../plugins/hooks.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import * as gatewayWorkAdmission from "../process/gateway-work-admission.js";
 import { tryBeginGatewaySuspendAdmission } from "../process/gateway-work-admission.js";
 import { GatewayConnectionWork } from "./server-connection-work.js";
+import {
+  installGatewayHookModuleLoad,
+  installGatewaySubagentModuleLoad,
+  type GatewayStartupModuleMocks,
+} from "./server-startup-module-mocks.test-support.js";
 import type { startGatewayPostAttachRuntime } from "./server-startup-post-attach.js";
 import type { GatewayPostReadySidecarHandle } from "./server-startup-sidecar-scheduler.js";
 
 type PostAttachParams = Parameters<typeof startGatewayPostAttachRuntime>[0];
-type PostAttachRuntimeDeps = NonNullable<Parameters<typeof startGatewayPostAttachRuntime>[1]>;
+type PostAttachRuntimeDeps = GatewayStartupModuleMocks;
 
 export function registerGatewayStartupAdmissionTests(params: {
-  start: typeof startGatewayPostAttachRuntime;
+  start: (
+    params: PostAttachParams,
+    runtimeDeps?: PostAttachRuntimeDeps,
+  ) => ReturnType<typeof startGatewayPostAttachRuntime>;
   createParams: (overrides?: Partial<PostAttachParams>) => PostAttachParams;
   createRuntimeDeps: (overrides?: Partial<PostAttachRuntimeDeps>) => PostAttachRuntimeDeps;
+  startupModuleRestorers: Array<() => void>;
 }): void {
   it("does not activate restored recovery when close begins during activation loading", async () => {
     let closeStarted = false;
@@ -32,7 +40,15 @@ export function registerGatewayStartupAdmissionTests(params: {
     const postReadySidecar = { stop: vi.fn(async () => {}) };
     const workerSidecar = { stop: vi.fn(async () => {}) };
     const unlockStartupMethods = vi.fn();
-    const activateSubagentRegistry = vi.fn();
+    const activateSubagentRegistry = vi.fn(async () => {});
+    await installGatewaySubagentModuleLoad(
+      async () => {
+        markRecoveryLoadStarted?.();
+        await recoveryLoadReady;
+      },
+      activateSubagentRegistry,
+      params.startupModuleRestorers,
+    );
     const onPluginServices = vi.fn();
     const onGatewayLifetimeSidecars = vi.fn<PostAttachParams["onGatewayLifetimeSidecars"]>();
     const publishedConnectionDependentSidecars = new Set<GatewayPostReadySidecarHandle>();
@@ -69,11 +85,6 @@ export function registerGatewayStartupAdmissionTests(params: {
             return 1;
           },
         ),
-        loadSubagentRegistryActivation: vi.fn(async () => {
-          markRecoveryLoadStarted?.();
-          await recoveryLoadReady;
-          return activateSubagentRegistry;
-        }),
       }),
     );
 
@@ -116,13 +127,22 @@ export function registerGatewayStartupAdmissionTests(params: {
         handler: gatewayStart,
         source: "startup-suspension-test",
       });
-      const hookRunner = createHookRunner(pluginRegistry);
       const postReadyWork = createDeferred();
       const hookLoadStarted = createDeferred();
       const releaseHookLoad = createDeferred();
       const connectionWork = new GatewayConnectionWork();
       const refresh = vi.fn(async () => null);
       const sidecarsReady = vi.fn();
+      // The subagent row isolates recovery admission; the hook row owns hook admission.
+      if (stage === "subagent") {
+        pluginRegistry.typedHooks.length = 0;
+      }
+      await installGatewayHookModuleLoad(async () => {
+        hookLoadStarted.resolve();
+        if (stage === "gateway_start") {
+          await releaseHookLoad.promise;
+        }
+      }, params.startupModuleRestorers);
       const trackStartupWork: PostAttachParams["trackStartupWork"] = (run) => {
         const operation = Promise.resolve().then(() => run(connectionWork.signal));
         return connectionWork.track(() => operation);
@@ -138,14 +158,6 @@ export function registerGatewayStartupAdmissionTests(params: {
           }),
           params.createRuntimeDeps({
             refreshLatestUpdateRestartSentinel: refresh,
-            createHookRunner: async () => {
-              hookLoadStarted.resolve();
-              if (stage === "gateway_start") {
-                await releaseHookLoad.promise;
-                return hookRunner;
-              }
-              return createHookRunner(createEmptyPluginRegistry());
-            },
           }),
         ),
       );

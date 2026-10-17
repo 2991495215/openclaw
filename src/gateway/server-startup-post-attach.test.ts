@@ -2,6 +2,7 @@
  * Gateway post-attach startup task tests.
  */
 import "./server-worker-free.test-support.js";
+import "./server-startup-module-mocks.test-support.js";
 import fs from "node:fs";
 import { performance } from "node:perf_hooks";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,7 +19,6 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { currentUpdateCheckLifecycle } from "../infra/update-check-lifecycle.js";
 import type { PluginHookGatewayContext } from "../plugins/hook-gateway.types.js";
 import type { PluginHookHandlerMap } from "../plugins/hook-types.js";
-import { createHookRunner } from "../plugins/hooks.js";
 import { createMockPluginRegistry } from "../plugins/hooks.test-fixtures.js";
 import { registerPluginHttpRoute } from "../plugins/http-registry.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
@@ -55,6 +55,11 @@ import { createMockGatewayRecoveryRuntime } from "./server-recovery-runtime.test
 import { registerGatewayStartupAdmissionTests } from "./server-startup-admission.test-support.js";
 import { restartSentinelMocks } from "./server-startup-background.test-support.js";
 import "./server-startup-outcomes.test-support.js";
+import {
+  installGatewayStartupModuleMocks,
+  installGatewayHookModuleLoad,
+  type GatewayStartupModuleMocks,
+} from "./server-startup-module-mocks.test-support.js";
 import { markGatewayStartupMainSessionOrphans } from "./server-startup-observers.js";
 import { registerGatewayStartupReadinessTests } from "./server-startup-readiness.test-support.js";
 import { transcriptSidecarMocks } from "./server-startup-transcripts.test-support.js";
@@ -257,7 +262,7 @@ const {
 const { STARTUP_UNAVAILABLE_GATEWAY_METHODS } = await import("./methods/core-method-policy.js");
 
 type PostAttachParams = Parameters<typeof startGatewayPostAttachRuntimeImpl>[0];
-type PostAttachRuntimeDeps = NonNullable<Parameters<typeof startGatewayPostAttachRuntimeImpl>[1]>;
+type PostAttachRuntimeDeps = GatewayStartupModuleMocks;
 type SidecarPublisher = NonNullable<PostAttachParams["onGatewayLifetimeSidecars"]>;
 type SidecarHandle = Parameters<SidecarPublisher>[number];
 type GatewaySidecarsParams = Parameters<typeof startGatewaySidecarsImpl>[0];
@@ -266,6 +271,7 @@ const publishedConnectionDependentSidecars = new Set<SidecarHandle>();
 const publishedGatewayLifetimeSidecars = new Set<SidecarHandle>();
 const publishedPostReadySidecars = new Set<SidecarHandle>();
 const transferredSidecars = new Set<SidecarHandle>();
+const startupModuleRestorers: Array<() => void> = [];
 let testState: OpenClawTestState;
 
 function adoptSidecars(target: Set<SidecarHandle>, sidecars: ReadonlyArray<SidecarHandle>): void {
@@ -397,7 +403,7 @@ function startGatewayPostAttachRuntime(
         params.onPostReadySidecars,
       ),
     },
-    runtimeDeps,
+    runtimeDeps ? installGatewayStartupModuleMocks(runtimeDeps, startupModuleRestorers) : undefined,
   );
 }
 async function waitForGatewayTestState<T>(
@@ -522,7 +528,13 @@ describe("startGatewayPostAttachRuntime", () => {
   });
 
   afterEach(async () => {
-    await cleanupGatewayTestState();
+    try {
+      await cleanupGatewayTestState();
+    } finally {
+      for (const restore of startupModuleRestorers.splice(0).toReversed()) {
+        restore();
+      }
+    }
   });
 
   it("drains tracked sidecars and resets fixture state after the first cleanup failure", async () => {
@@ -1123,7 +1135,7 @@ describe("startGatewayPostAttachRuntime", () => {
 
   it("logs deferred gateway update check startup failures without failing ready", async () => {
     const log = { info: vi.fn(), warn: vi.fn() };
-    const createGatewayUpdateCheck = vi.fn(async () => {
+    const createGatewayUpdateCheck = vi.fn(() => {
       throw new Error("boom");
     });
 
@@ -3251,6 +3263,7 @@ describe("startGatewayPostAttachRuntime", () => {
     start: startGatewayPostAttachRuntime,
     createParams: createPostAttachParams,
     createRuntimeDeps: createPostAttachRuntimeDeps,
+    startupModuleRestorers,
   });
 
   it("retains gateway_start loading until close can retire plugin metadata", async () => {
@@ -3262,11 +3275,14 @@ describe("startGatewayPostAttachRuntime", () => {
       handler: gatewayStart,
       source: "startup-lifetime-test",
     });
-    const hookRunner = createHookRunner(pluginRegistry);
     const hookLoadStarted = createDeferred();
     const releaseHookLoad = createDeferred();
     const connectionWork = new GatewayConnectionWork();
     const retirePluginMetadata = vi.fn();
+    await installGatewayHookModuleLoad(async () => {
+      hookLoadStarted.resolve();
+      await releaseHookLoad.promise;
+    }, startupModuleRestorers);
     const trackStartupWork: PostAttachParams["trackStartupWork"] = (run) => {
       const operation = Promise.resolve().then(() => run(connectionWork.signal));
       return connectionWork.track(() => operation);
@@ -3279,13 +3295,7 @@ describe("startGatewayPostAttachRuntime", () => {
           isClosing: () => connectionWork.isClosing,
           trackStartupWork,
         }),
-        createPostAttachRuntimeDeps({
-          createHookRunner: async () => {
-            hookLoadStarted.resolve();
-            await releaseHookLoad.promise;
-            return hookRunner;
-          },
-        }),
+        createPostAttachRuntimeDeps(),
       ),
     );
 
@@ -3324,14 +3334,18 @@ describe("startGatewayPostAttachRuntime", () => {
       { hookName: "gateway_start", pluginId: "other-gateway", handler: otherStart },
     ]);
 
-    const selectHooks = (registry: Parameters<typeof createHookRunner>[0] = other) =>
-      createHookRunner(registry);
-
+    const hooks = await import("../plugins/hooks.js");
+    const selectHooks: typeof hooks.createHookRunner = (registry = other, options) =>
+      hooks.createHookRunner(registry, options);
+    // mock-isolation: Retain the captured hook owner and supply a decoy default registry.
+    vi.doMock("../plugins/hooks.js", () => ({ ...hooks, createHookRunner: selectHooks }));
+    startupModuleRestorers.push(() => {
+      // mock-isolation: Restore the captured hook namespace without replacing its owner.
+      vi.doMock("../plugins/hooks.js", () => hooks);
+    });
     await startGatewayPostAttachRuntime(
       createPostAttachParams({ pluginRegistry: owned }),
-      createPostAttachRuntimeDeps({
-        createHookRunner: selectHooks,
-      }),
+      createPostAttachRuntimeDeps(),
     );
 
     await waitForGatewayTestState(() => {
@@ -3349,10 +3363,13 @@ describe("startGatewayPostAttachRuntime", () => {
       const runGatewayStart = vi.fn<
         (event: PluginHookGatewayStartEvent, ctx: PluginHookGatewayContext) => Promise<void>
       >(async () => {});
-      const hookRunner = {
-        hasHooks: vi.fn((hookName: string) => hookName === "gateway_start"),
-        runGatewayStart,
-      };
+      const pluginRegistry = createEmptyPluginRegistry();
+      pluginRegistry.typedHooks.push({
+        hookName: "gateway_start",
+        pluginId: "lifetime-context",
+        handler: runGatewayStart,
+        source: "lifetime-context",
+      });
       const initialCron = createCronHost();
       const depsCron = closing === "close" ? initialCron : createCronHost();
       let currentCron = initialCron;
@@ -3366,17 +3383,12 @@ describe("startGatewayPostAttachRuntime", () => {
           hooks: { internal: { enabled: false } },
           plugins: { entries: { demo: { enabled: true } } },
         } as never,
-        pluginRegistry: {
-          ...createPostAttachParams().pluginRegistry,
-          typedHooks: [{ hookName: "gateway_start" }],
-        } as never,
+        pluginRegistry,
         deps: { cron: depsCron } as never,
         getCronService: closing === "restart" ? () => currentCron : undefined,
       });
 
-      const runtimeDeps = createPostAttachRuntimeDeps({
-        createHookRunner: vi.fn(async () => hookRunner as never),
-      });
+      const runtimeDeps = createPostAttachRuntimeDeps();
       await startGatewayPostAttachRuntime(params, runtimeDeps);
 
       await Promise.all(startupWork);
@@ -3416,13 +3428,11 @@ function createPostAttachRuntimeDeps(
   overrides: Partial<PostAttachRuntimeDeps> = {},
 ): PostAttachRuntimeDeps {
   return {
-    createHookRunner: vi.fn(createHookRunner),
     logGatewayStartup: hoisted.logGatewayStartup,
     refreshLatestUpdateRestartSentinel: restartSentinelMocks.prepareLatestUpdateRestartSentinel,
     createGatewayUpdateCheck: hoisted.createGatewayUpdateCheck,
     startGatewaySidecars: vi.fn(async () => 0),
     warmSystemCa: vi.fn(async () => {}),
-    loadSubagentRegistryActivation: vi.fn(async () => hoisted.activateSubagentRegistry),
     ...overrides,
   };
 }

@@ -1,3 +1,4 @@
+import "./server-startup-module-mocks.test-support.js";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
