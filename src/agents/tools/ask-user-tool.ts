@@ -30,8 +30,7 @@ import {
 } from "./ask-user-tool-normalization.js";
 import { type AnyAgentTool, ToolInputError, textResult } from "./common.js";
 import {
-  createGatewayQuestionCanceller,
-  createQuestionPromptLifetime,
+  createGatewayQuestionLifecycle,
   readQuestionRejection,
   type GatewayQuestionCall,
 } from "./gateway-question-lifecycle.js";
@@ -502,51 +501,29 @@ export function createAskUserTool(params: {
                 questionId: id,
                 questions: normalized.questions,
                 send,
-                signal: prompt.signal,
+                signal: question.signal,
               })
           : undefined,
       );
-      using prompt = createQuestionPromptLifetime(signal);
-      let registered = false;
-      const cancelPendingQuestion = createGatewayQuestionCanceller({
+      using question = createGatewayQuestionLifecycle({
         gatewayCall,
         questionId,
-        beforeCancel: prompt.close,
+        signal,
+        delivery,
       });
-      const cancelOnAbort = () => {
-        prompt.close();
-        delivery.release();
-        void cancelPendingQuestion("run-abort");
-      };
-      const finishWait = async (waitResult: QuestionWaitAnswerResult) => {
-        const result =
-          waitResult.status === "pending"
-            ? ((await cancelPendingQuestion("wait-timeout")) ?? waitResult)
-            : waitResult;
-        if (result.status === "answered") {
-          return answeredResult(normalized.questions, result.answers);
-        }
-        if (
-          result.status === "pending" ||
-          result.status === "expired" ||
-          result.status === "cancelled"
-        ) {
-          return noAnswerResult(result.status);
-        }
-        throw new Error("question.waitAnswer returned an invalid status");
-      };
+      let registered = false;
       try {
         state.claim = withAgentQuestionAnswerAuthority(questionAuthority, () =>
           registerPendingAgentQuestion({
             questionId,
             sessionKey,
-            questions: normalized.questions.map(({ questionId: id, ...question }) => ({
-              ...question,
+            questions: normalized.questions.map(({ questionId: id, ...questionFields }) => ({
+              ...questionFields,
               id,
             })),
             gatewayCall: params.gatewayCall,
             onCancel: () => {
-              prompt.close();
+              question.close();
               if (
                 askUserQuestions.get(questionId) === state &&
                 state.phase.kind !== "reserved" &&
@@ -581,65 +558,52 @@ export function createAskUserTool(params: {
           throw new Error("question.request returned an unexpected question id");
         }
         if (state.claim.isCancellationRequested()) {
-          const answered = await cancelPendingQuestion("superseded-input");
+          const answered = await question.cancel("superseded-input");
           return answered
             ? answeredResult(normalized.questions, answered.answers)
             : noAnswerResult("cancelled");
         }
-        signal?.addEventListener("abort", cancelOnAbort, { once: true });
-        if (signal?.aborted) {
-          cancelOnAbort();
-          signal.throwIfAborted();
-        }
-        const answerPromise = gatewayCall(
-          "question.waitAnswer",
-          { timeoutMs: timeoutMs + QUESTION_RPC_GRACE_MS },
-          { id: questionId, timeoutMs, includeResolutionId: true },
-          signal ? { signal } : undefined,
-        ).finally(prompt.close) as Promise<QuestionWaitAnswerResult>;
-        state.claim.setAnswer(answerPromise);
-        delivery.markReady();
-        if (delivery.hasSubscriber) {
-          const promptDeliveryPromise = delivery.waitForDelivery(signal);
-          const first = await Promise.race([
-            promptDeliveryPromise.then((result) => ({
-              kind: "delivery" as const,
-              result,
-            })),
-            answerPromise.then((result) => ({ kind: "answer" as const, result })),
-          ]);
-          signal?.throwIfAborted();
-          if (first.kind === "answer") {
-            return await finishWait(first.result);
+        const claim = state.claim;
+        const result = await question.wait(() => {
+          const answer = gatewayCall(
+            "question.waitAnswer",
+            { timeoutMs: timeoutMs + QUESTION_RPC_GRACE_MS },
+            { id: questionId, timeoutMs, includeResolutionId: true },
+            signal ? { signal } : undefined,
+          ).finally(question.close) as Promise<QuestionWaitAnswerResult>;
+          claim.setAnswer(answer);
+          return answer;
+        });
+        if (result.status === "delivery-error") {
+          if (
+            isReplyDispatchDeliveryError(result.error) &&
+            result.error.outcome === "failed-deliver"
+          ) {
+            const details = { status: "delivery_failed" as const };
+            return {
+              ...textResult(
+                `The prompt became visible, but its controls failed to deliver. The question was cancelled; no retry/fallback should be sent.\n\n${JSON.stringify(details, null, 2)}`,
+                details,
+              ),
+              terminate: true,
+            };
           }
-          const deliveryResult = first.result;
-          if (deliveryResult.error !== undefined) {
-            const answered = await cancelPendingQuestion("prompt-delivery-failed");
-            if (answered) {
-              return answeredResult(normalized.questions, answered.answers);
-            }
-            if (
-              isReplyDispatchDeliveryError(deliveryResult.error) &&
-              deliveryResult.error.outcome === "failed-deliver"
-            ) {
-              const details = { status: "delivery_failed" as const };
-              return {
-                ...textResult(
-                  `The prompt became visible, but its controls failed to deliver. The question was cancelled; no retry/fallback should be sent.\n\n${JSON.stringify(details, null, 2)}`,
-                  details,
-                ),
-                terminate: true,
-              };
-            }
-            throw new Error("ask_user prompt delivery failed", { cause: deliveryResult.error });
-          }
+          throw new Error("ask_user prompt delivery failed", { cause: result.error });
         }
-        const result = await answerPromise;
-        signal?.throwIfAborted();
-        return await finishWait(result);
+        if (result.status === "answered") {
+          return answeredResult(normalized.questions, result.answers);
+        }
+        if (
+          result.status === "pending" ||
+          result.status === "expired" ||
+          result.status === "cancelled"
+        ) {
+          return noAnswerResult(result.status);
+        }
+        throw new Error("question.waitAnswer returned an invalid status");
       } catch (error) {
         if (registered || readQuestionRejection(error)?.reason !== "QUESTION_ID_IN_USE") {
-          const answered = await cancelPendingQuestion(
+          const answered = await question.cancel(
             signal?.aborted ? "run-abort" : registered ? "tool-error" : "registration-failed",
           );
           if (!signal?.aborted && answered) {
@@ -647,9 +611,6 @@ export function createAskUserTool(params: {
           }
         }
         throw error;
-      } finally {
-        signal?.removeEventListener("abort", cancelOnAbort);
-        delivery.release();
       }
     },
   };

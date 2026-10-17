@@ -4,7 +4,6 @@ import { GatewayClientRequestError } from "../../../packages/gateway-client/src/
 import {
   validateSecretsStoreListResult,
   type QuestionRequestQuestion,
-  type QuestionWaitAnswerResult,
   type SecretsStoreListResult,
 } from "../../../packages/gateway-protocol/src/index.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -20,8 +19,7 @@ import { beginAskUserPromptDelivery } from "./ask-user-tool.js";
 import { type AnyAgentTool, readToolStringParam, ToolInputError } from "./common.js";
 import {
   awaitGatewayQuestionAnswer,
-  createGatewayQuestionCanceller,
-  createQuestionPromptLifetime,
+  createGatewayQuestionLifecycle,
   readQuestionRejection,
   type GatewayQuestionCall,
 } from "./gateway-question-lifecycle.js";
@@ -269,7 +267,6 @@ export function createSecretsTool(params: {
         throw new ToolInputError(`Unknown secrets action: ${action}`);
       }
       const request = normalizeSecretsRequestParams(input);
-      using prompt = createQuestionPromptLifetime(signal);
       const delivery = beginAskUserPromptDelivery({
         toolCallId,
         sessionKey: params.sessionKey,
@@ -286,23 +283,19 @@ export function createSecretsTool(params: {
                   questions: request.questions,
                   config: params.config,
                   send: publishOwnPrompt,
-                  signal: prompt.signal,
+                  signal: question.signal,
                 }),
             }
           : {}),
       });
       const timeoutMs = request.timeoutSeconds * 1_000;
       let registered = false;
-      const cancelPendingQuestion = createGatewayQuestionCanceller({
+      using question = createGatewayQuestionLifecycle({
         gatewayCall: questionGatewayCall,
         questionId: delivery.questionId,
-        beforeCancel: prompt.close,
+        signal,
+        delivery,
       });
-      const cancelOnAbort = () => {
-        prompt.close();
-        delivery.release();
-        void cancelPendingQuestion("run-abort");
-      };
       try {
         signal?.throwIfAborted();
         const registration = asNullableRecord(
@@ -330,42 +323,20 @@ export function createSecretsTool(params: {
         if (registration?.id !== delivery.questionId) {
           throw new Error("question.request returned an unexpected question id");
         }
-        signal?.addEventListener("abort", cancelOnAbort, { once: true });
-        if (signal?.aborted) {
-          cancelOnAbort();
-          signal.throwIfAborted();
-        }
-        const answerPromise = awaitGatewayQuestionAnswer({
-          gatewayCall: questionGatewayCall,
-          questionId: delivery.questionId,
-          timeoutMs,
-          ...(signal ? { signal } : {}),
-        }).finally(prompt.close);
-        delivery.markReady();
-        let questionResult: QuestionWaitAnswerResult | undefined;
-        if (delivery.hasSubscriber) {
-          const first = await Promise.race([
-            delivery.waitForDelivery(signal).then((result) => ({
-              kind: "delivery" as const,
-              result,
-            })),
-            answerPromise.then((result) => ({ kind: "answer" as const, result })),
-          ]);
-          if (first.kind === "delivery" && first.result.error !== undefined) {
-            questionResult = await cancelPendingQuestion("prompt-delivery-failed");
-            signal?.throwIfAborted();
-            if (!questionResult) {
-              throw new Error("credential-request prompt delivery failed", {
-                cause: first.result.error,
-              });
-            }
-          }
-        }
-        questionResult ??= await answerPromise;
-        if (questionResult.status === "pending") {
-          questionResult = (await cancelPendingQuestion("wait-timeout")) ?? questionResult;
-        }
+        const questionResult = await question.wait(() =>
+          awaitGatewayQuestionAnswer({
+            gatewayCall: questionGatewayCall,
+            questionId: delivery.questionId,
+            timeoutMs,
+            ...(signal ? { signal } : {}),
+          }).finally(question.close),
+        );
         signal?.throwIfAborted();
+        if (questionResult.status === "delivery-error") {
+          throw new Error("credential-request prompt delivery failed", {
+            cause: questionResult.error,
+          });
+        }
         // Cancellation can lose to a committed answer; validate every recovered marker here too.
         if (questionResult.status === "answered") {
           if (questionResult.answers.answers.secret_value?.[0] !== "stored") {
@@ -373,14 +344,7 @@ export function createSecretsTool(params: {
           }
           return await storedSecretResult(request.name, storeProvider, gatewayCall, signal);
         }
-        if (
-          questionResult.status === "pending" ||
-          questionResult.status === "expired" ||
-          questionResult.status === "cancelled"
-        ) {
-          return noSecretAnswerResult(questionResult.status);
-        }
-        throw new Error("question.waitAnswer returned an invalid status");
+        return noSecretAnswerResult(questionResult.status);
       } catch (error) {
         const reason = readQuestionRejection(error)?.reason;
         const registrationRefused =
@@ -389,14 +353,11 @@ export function createSecretsTool(params: {
           reason === "QUESTION_REQUESTER_INACTIVE";
         // A lost reply can leave a pending request, but a refused ID is not ours to cancel.
         if (registered || !registrationRefused) {
-          await cancelPendingQuestion(
+          await question.cancel(
             signal?.aborted ? "run-abort" : registered ? "tool-error" : "registration-failed",
           );
         }
         throw error;
-      } finally {
-        signal?.removeEventListener("abort", cancelOnAbort);
-        delivery.release();
       }
     },
   };

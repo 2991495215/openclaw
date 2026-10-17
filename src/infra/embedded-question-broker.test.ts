@@ -11,7 +11,7 @@ import {
   createAdmittedGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
 } from "../agents/tools/gateway-caller-context.js";
-import { createGatewayQuestionCanceller } from "../agents/tools/gateway-question-lifecycle.js";
+import { createGatewayQuestionLifecycle } from "../agents/tools/gateway-question-lifecycle.js";
 import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
@@ -210,11 +210,17 @@ describe("EmbeddedQuestionBroker", () => {
     const broker = createBroker();
     const request = broker.request(requestParams());
     broker.resolve({ id: request.id, answers: { answers: { destination: ["Staging"] } } });
-    const cancel = createGatewayQuestionCanceller({
+    using question = createGatewayQuestionLifecycle({
       questionId: request.id,
       gatewayCall: (method, _options, params, extra) => broker.call(method, params, extra),
+      delivery: {
+        hasSubscriber: false,
+        markReady() {},
+        waitForDelivery: async () => ({}),
+        release() {},
+      },
     });
-    expect(await cancel("tool-timeout")).toEqual({
+    expect(await question.cancel("tool-timeout")).toEqual({
       status: "answered",
       answers: { answers: { destination: ["Staging"] } },
     });

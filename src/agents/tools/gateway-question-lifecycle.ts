@@ -24,6 +24,75 @@ export function createQuestionPromptLifetime(signal?: AbortSignal) {
   };
 }
 
+type GatewayQuestionDelivery = {
+  hasSubscriber: boolean;
+  markReady(): void;
+  waitForDelivery(signal?: AbortSignal): Promise<{ error?: unknown }>;
+  release(): void;
+};
+
+/** Callers retain registration policy and close publication on their exact answer promise. */
+export function createGatewayQuestionLifecycle(params: {
+  gatewayCall: GatewayQuestionCall;
+  questionId: string;
+  signal?: AbortSignal;
+  delivery: GatewayQuestionDelivery;
+}) {
+  const prompt = createQuestionPromptLifetime(params.signal);
+  const cancel = createGatewayQuestionCanceller({
+    gatewayCall: params.gatewayCall,
+    questionId: params.questionId,
+    beforeCancel: prompt.close,
+  });
+  const delivery = params.delivery;
+  const onAbort = () => {
+    prompt.close();
+    delivery.release();
+    void cancel("run-abort");
+  };
+  return {
+    ...prompt,
+    cancel,
+    [Symbol.dispose]() {
+      params.signal?.removeEventListener("abort", onAbort);
+      prompt.close();
+      delivery.release();
+    },
+    async wait(startAnswer: () => Promise<QuestionWaitAnswerResult>) {
+      params.signal?.addEventListener("abort", onAbort, { once: true });
+      if (params.signal?.aborted) {
+        onAbort();
+        params.signal.throwIfAborted();
+      }
+      const answer = startAnswer();
+      delivery.markReady();
+      let result: QuestionWaitAnswerResult | undefined;
+      if (delivery.hasSubscriber) {
+        const first = await Promise.race([
+          delivery.waitForDelivery(params.signal).then((deliveryResult) => ({
+            kind: "delivery" as const,
+            result: deliveryResult,
+          })),
+          answer.then((answerResult) => ({ kind: "answer" as const, result: answerResult })),
+        ]);
+        params.signal?.throwIfAborted();
+        if (first.kind === "answer") {
+          result = first.result;
+        } else if (first.result.error !== undefined) {
+          const recovered = await cancel("prompt-delivery-failed");
+          return recovered ?? { status: "delivery-error" as const, error: first.result.error };
+        }
+      }
+      result ??= await answer;
+      params.signal?.throwIfAborted();
+      if (result.status === "pending") {
+        result = (await cancel("wait-timeout")) ?? result;
+      }
+      return result;
+    },
+  };
+}
+
 const TERMINAL_QUESTION_ERROR_REASONS = new Set([
   "QUESTION_ALREADY_TERMINAL",
   "QUESTION_NOT_FOUND",
@@ -71,7 +140,7 @@ export async function awaitGatewayQuestionAnswer(params: {
  * caller's timeout and this cancel makes the Gateway reject it as terminal; the
  * recovery read returns that answer so a submitted response is never discarded.
  */
-export function createGatewayQuestionCanceller(params: {
+function createGatewayQuestionCanceller(params: {
   gatewayCall: GatewayQuestionCall;
   questionId: string;
   beforeCancel?: () => void;

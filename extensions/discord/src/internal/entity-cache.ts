@@ -1,4 +1,5 @@
 import { GatewayDispatchEvents } from "discord-api-types/v10";
+import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
 import { getGuild, getGuildMember } from "./api.guild.js";
 import { getChannel } from "./api.messages.js";
 import { getUser } from "./api.users.js";
@@ -100,9 +101,7 @@ export class DiscordEntityCache {
     const value = await fetcher();
     this.maybeSweepExpired(now);
     this.entries.set(key, { expiresAt: now + DEFAULT_REST_CACHE_TTL_MS, value });
-    if (this.entries.size > DEFAULT_MAX_ENTRIES) {
-      this.entries.delete(this.entries.keys().next().value!);
-    }
+    pruneMapToMaxSize(this.entries, DEFAULT_MAX_ENTRIES);
     return value;
   }
 
