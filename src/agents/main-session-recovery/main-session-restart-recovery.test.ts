@@ -157,7 +157,10 @@ import {
   commitMainSessionRecovery,
 } from "./main-session-recovery-store.js";
 import { dispatchRestartRecoveryUntilStarted } from "./main-session-restart-dispatch-start.js";
-import { readStartupRecoveryWarning } from "./main-session-restart-recovery-diagnostics.js";
+import {
+  readStartupRecoveryWarning,
+  recordStartupRecoveryStoreResult,
+} from "./main-session-restart-recovery-diagnostics.js";
 import {
   createRestartRecoveryStoreFixture,
   mainSessionEntry,
@@ -2764,19 +2767,21 @@ describe("main-session-restart-recovery", () => {
     const databasePath = path.join(tmpDir, "agents", "main", "agent", "openclaw-agent.sqlite");
     await fs.mkdir(path.dirname(databasePath), { recursive: true });
     await fs.writeFile(databasePath, "not a sqlite database");
-
-    await expect(markStartupOrphanedMainSessionsForRecovery({})).resolves.toEqual({
-      marked: 0,
-      skipped: 0,
-      failedTargets: [
-        {
-          agentId: "main",
-          storePath: path.join(tmpDir, "agents", "main", "sessions", "sessions.json"),
-        },
-      ],
-    });
-    expect(readStartupRecoveryWarning()).toBeDefined();
-    expect(callGateway).not.toHaveBeenCalled();
+    const target = {
+      agentId: "main",
+      storePath: path.join(tmpDir, "agents", "main", "sessions", "sessions.json"),
+    };
+    try {
+      await expect(markStartupOrphanedMainSessionsForRecovery({})).resolves.toEqual({
+        marked: 0,
+        skipped: 0,
+        failedTargets: [target],
+      });
+      expect(readStartupRecoveryWarning()).toBeDefined();
+      expect(callGateway).not.toHaveBeenCalled();
+    } finally {
+      recordStartupRecoveryStoreResult({ target, outcome: { ok: true } });
+    }
   });
 
   it("preserves a live session after delayed stale registration", async () => {
@@ -3408,6 +3413,15 @@ describe("main-session-restart-recovery", () => {
         await recovery.stop();
         attempts.restore();
         replacementSpy.mockRestore();
+        for (const agentId of ["main", "worker"]) {
+          recordStartupRecoveryStoreResult({
+            target: {
+              agentId,
+              storePath: path.join(tmpDir, "agents", agentId, "sessions", "sessions.json"),
+            },
+            outcome: { ok: true },
+          });
+        }
         rotateAgentEventLifecycleGeneration();
       }
     },

@@ -234,10 +234,7 @@ async function recoverExpectedRestartRecovery(
     gatewayRuntime: GatewayRecoveryRuntime;
   },
 ): Promise<RecoveryCounts> {
-  const expected = {
-    ...params.expectedTarget,
-    claim: params.expectedTarget.claim && { ...params.expectedTarget.claim },
-  };
+  const expected = params.expectedTarget;
   const current = await prepareExpectedRestartRecoveryCurrent({
     expected,
     storePath: params.storePath,

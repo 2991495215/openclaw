@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { assertSessionEntryCurrentAdmission } from "../../../config/sessions/session-entry-current-admission.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
@@ -52,7 +51,6 @@ import type { SubagentRegistryWrite } from "./subagent-registry.store.types.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import {
   bindSubagentRunRuntimeKey,
-  copySubagentRunRuntimeOwner,
   getSubagentRunRuntimeKey,
   getSubagentRunIdentity,
   isQueuedSubagentRunRekey,
@@ -318,12 +316,7 @@ function commitRows<T>(
   authority: SubagentRegistryWriteAuthority,
 ): Promise<SubagentRunMutationReceipt<T>> {
   return runSubagentRegistryWorkerWrite(context, () => {
-    const postimages = new Map(
-      [...(planned.postimages ?? [])].map(
-        ([runId, row]) =>
-          [runId, row ? copySubagentRunRuntimeOwner(row, structuredClone(row)) : null] as const,
-      ),
-    );
+    const postimages = planned.postimages ?? new Map<string, SubagentRunRecord | null>();
     const values = [...postimages.values()].flatMap((row) =>
       row ? [bindSubagentRunRecord(row)] : [],
     );
@@ -331,7 +324,7 @@ function commitRows<T>(
       writeId: randomUUID(),
       values,
       deleteRunIds: [...postimages].flatMap(([id, row]) => (row ? [] : [id])),
-      terminalEvents: planned.terminalEvents?.map(({ input }) => structuredClone(input)),
+      terminalEvents: planned.terminalEvents?.map(({ input }) => input),
     };
     let acknowledged = false;
     const decode = (value: unknown): SubagentRunMutationReceipt<T> => {
@@ -448,10 +441,6 @@ export async function mutateSubagentRuns<P extends SubagentRunMutation<unknown>>
       }
     }
     const planned = plan(rows);
-    if (isPromiseLike(planned)) {
-      void Promise.resolve(planned).catch(() => {});
-      throw new Error("Subagent mutation plans must remain synchronous");
-    }
     for (const [id, row] of planned.postimages ?? []) {
       if (!pending.runIds.has(id) || (row && row.runId !== id)) {
         throw new SubagentRegistryMutationRejectedError(

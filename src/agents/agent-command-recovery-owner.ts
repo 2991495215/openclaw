@@ -57,7 +57,7 @@ function refreshPreparedRecoveryOwnerTarget(
   if (!acquired || acquired.entry.sessionId !== prepared.sessionId) {
     return;
   }
-  const entry = structuredClone(acquired.entry);
+  const entry = acquired.entry;
   prepared.sessionEntry = entry;
   if (prepared.sessionStore && prepared.sessionKey) {
     prepared.sessionStore[prepared.sessionKey] = entry;

@@ -40,8 +40,7 @@ export const isCurrentRequesterSettleWakeBatch = (
         batch.every((entry) => {
           const resolve = getGatewayContextResolver(entry);
           return !resolve || Boolean(resolve());
-        })) &&
-      ownsRows()
+        }))
     );
   } catch {
     return false;

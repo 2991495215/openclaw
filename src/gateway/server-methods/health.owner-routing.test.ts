@@ -293,6 +293,9 @@ describe("Gateway status owner routing", () => {
           const restarted = await callStatus(config, ["operator.admin"]);
           expect(restarted.mock.calls[0]?.[1].startupRecoveryWarning).toBeUndefined();
         } finally {
+          if (recovery) {
+            recordStartupRecoveryStoreResult({ target, outcome: { ok: true } });
+          }
           rotateAgentEventLifecycleGeneration();
         }
       });

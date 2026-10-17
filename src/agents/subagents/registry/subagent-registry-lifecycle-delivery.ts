@@ -315,14 +315,10 @@ export const refreshFrozenResultFromSession = async (
     return false;
   }
   const stateContext = captureOpenClawStateWorkerContext();
-  const previousResultText = entry.completion?.resultText;
-  const previousCapturedAt = entry.completion?.capturedAt;
   const isCurrent = (current = getCurrentSubagentRunOwner(params.runs, entry)) =>
     current !== undefined &&
     current.pauseReason !== "sessions_yield" &&
     current.cleanupCompletedAt === undefined &&
-    current.completion?.resultText === previousResultText &&
-    current.completion?.capturedAt === previousCapturedAt &&
     !context.newerGenerationOwnsSession(current);
 
   let captured: string | undefined;
@@ -337,14 +333,9 @@ export const refreshFrozenResultFromSession = async (
   if (!trimmed) {
     return false;
   }
-  // Reply capture yields while registration can transfer session ownership.
-  // Only the exact row and generation that started capture may commit its text.
+  // Keep task ownership at the commit; unrelated completion metadata is best effort.
   assertSubagentRegistryWriteSourceCurrent(stateContext);
-  if (
-    !isCurrent() ||
-    entry.completion?.resultText !== previousResultText ||
-    entry.completion?.capturedAt !== previousCapturedAt
-  ) {
+  if (!isCurrent()) {
     return false;
   }
 
