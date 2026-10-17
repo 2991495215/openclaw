@@ -1,6 +1,4 @@
 /**
- * Channel inbound event context builder.
- *
  * Converts route, sender, command, media, and supplemental facts into finalized message context.
  */
 import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
