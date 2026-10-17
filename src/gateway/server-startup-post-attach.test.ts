@@ -220,6 +220,15 @@ vi.mock("../infra/update-startup.js", () => ({
   createGatewayUpdateCheck: hoisted.createGatewayUpdateCheck,
 }));
 
+// mock-isolation: Config publication owns the current-config producer, not external auth discovery.
+vi.mock("./server-startup-model-runtime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./server-startup-model-runtime.js")>();
+  return {
+    ...actual,
+    hydrateConfiguredExternalCliAuth: async ({ getConfig }) => getConfig(),
+  } satisfies typeof actual;
+});
+
 // mock-isolation: Sidecar scheduling does not own catalog or native-runtime preparation.
 vi.mock("../agents/prepared-model-catalog.js", () => ({
   loadProviderScopedThinkingCatalog: vi.fn(async () => []),
@@ -391,20 +400,20 @@ function startGatewayPostAttachRuntime(
   params: PostAttachParams,
   runtimeDeps?: PostAttachRuntimeDeps,
 ) {
-  return startGatewayPostAttachRuntimeImpl(
-    {
-      ...params,
-      onGatewayLifetimeSidecars: composeTrackedPublisher(
-        publishedGatewayLifetimeSidecars,
-        params.onGatewayLifetimeSidecars,
-      ),
-      onPostReadySidecars: composeTrackedPublisher(
-        publishedPostReadySidecars,
-        params.onPostReadySidecars,
-      ),
-    },
-    runtimeDeps ? installGatewayStartupModuleMocks(runtimeDeps, startupModuleRestorers) : undefined,
-  );
+  if (runtimeDeps) {
+    installGatewayStartupModuleMocks(runtimeDeps, startupModuleRestorers);
+  }
+  return startGatewayPostAttachRuntimeImpl({
+    ...params,
+    onGatewayLifetimeSidecars: composeTrackedPublisher(
+      publishedGatewayLifetimeSidecars,
+      params.onGatewayLifetimeSidecars,
+    ),
+    onPostReadySidecars: composeTrackedPublisher(
+      publishedPostReadySidecars,
+      params.onPostReadySidecars,
+    ),
+  });
 }
 async function waitForGatewayTestState<T>(
   assertion: () => T | Promise<T>,
@@ -808,17 +817,15 @@ describe("startGatewayPostAttachRuntime", () => {
       events.push("sentinel");
       return null;
     });
-    const startGatewaySidecarsInner = vi.fn(async () => {
+    const refreshChatMetadata = vi.fn(async () => {
       events.push("sidecars");
       vi.stubEnv("OPENCLAW_STATE_DIR", `${testState.stateDir}-moved`);
-      return 0;
     });
 
     await startGatewayPostAttachRuntime(
-      createPostAttachParams(),
+      createPostAttachParams({ refreshChatMetadata }),
       createPostAttachRuntimeDeps({
         refreshLatestUpdateRestartSentinel,
-        startGatewaySidecars: startGatewaySidecarsInner,
       }),
     );
 
@@ -838,39 +845,38 @@ describe("startGatewayPostAttachRuntime", () => {
     "starts logging and sidecars concurrently and waits when %s finishes first",
     async (first) => {
       const logging = createDeferred();
-      const sidecars = createDeferred<number>();
+      const sidecars = createDeferred();
       const logGatewayStartup = vi.fn(() => logging.promise);
-      const startGatewaySidecarsScoped = vi.fn(() => sidecars.promise);
+      const refreshChatMetadata = vi.fn(() => sidecars.promise);
       const returned = vi.fn();
       const runtime = startGatewayPostAttachRuntime(
-        createPostAttachParams(),
+        createPostAttachParams({ refreshChatMetadata }),
         createPostAttachRuntimeDeps({
           logGatewayStartup,
-          startGatewaySidecars: startGatewaySidecarsScoped,
         }),
       ).then(returned);
       try {
         await waitForGatewayTestState(() => {
           expect(logGatewayStartup).toHaveBeenCalledOnce();
-          expect(startGatewaySidecarsScoped).toHaveBeenCalledOnce();
+          expect(refreshChatMetadata).toHaveBeenCalledOnce();
         });
         expect(returned).not.toHaveBeenCalled();
         if (first === "logging") {
           logging.resolve();
         } else {
-          sidecars.resolve(0);
+          sidecars.resolve();
         }
         await new Promise<void>((resolve) => {
           setImmediate(resolve);
         });
         expect(returned).not.toHaveBeenCalled();
         logging.resolve();
-        sidecars.resolve(0);
+        sidecars.resolve();
         await runtime;
         expect(returned).toHaveBeenCalledOnce();
       } finally {
         logging.resolve();
-        sidecars.resolve(0);
+        sidecars.resolve();
         await runtime;
       }
     },
@@ -881,7 +887,7 @@ describe("startGatewayPostAttachRuntime", () => {
     async (failedOwner) => {
       const startupError = new Error(`startup ${failedOwner} failed`);
       const logging = createDeferred();
-      const sidecars = createDeferred<number>();
+      const sidecars = createDeferred();
       const loggingStarted = createDeferred();
       const sidecarsStarted = createDeferred();
       const completed: string[] = [];
@@ -897,7 +903,7 @@ describe("startGatewayPostAttachRuntime", () => {
         loggingStarted.resolve();
         return logged;
       });
-      const startGatewaySidecarsScoped = vi.fn(() => {
+      const refreshChatMetadata = vi.fn(() => {
         expect(getAsyncWorkSignal()).toBeUndefined();
         sidecarsStarted.resolve();
         return sidecarsCompleted;
@@ -909,14 +915,17 @@ describe("startGatewayPostAttachRuntime", () => {
       };
       const release = () => {
         logging.resolve();
-        sidecars.resolve(0);
+        sidecars.resolve();
       };
       const runtime = await trackStartupWork(() =>
         startGatewayPostAttachRuntime(
-          createPostAttachParams({ sidecarStartup: "defer", trackStartupWork }),
+          createPostAttachParams({
+            sidecarStartup: "defer",
+            trackStartupWork,
+            refreshChatMetadata,
+          }),
           createPostAttachRuntimeDeps({
             logGatewayStartup,
-            startGatewaySidecars: startGatewaySidecarsScoped,
           }),
         ),
       );
@@ -955,27 +964,23 @@ describe("startGatewayPostAttachRuntime", () => {
       hooks: { internal: { enabled: false } },
       ui: { theme: "dark" },
     } as never;
-    const startGatewaySidecarsScoped = vi.fn(
-      async (_params: Parameters<typeof startGatewaySidecarsImpl>[0]) => 0,
-    );
+    const publishedConfigs: OpenClawConfig[] = [];
+    hoisted.refreshPreparedModelRuntimeSnapshots.mockImplementationOnce(async (getConfig) => {
+      publishedConfigs.push(typeof getConfig === "function" ? await getConfig() : getConfig);
+    });
     const runtime = await startGatewayPostAttachRuntime(
       createPostAttachParams({
         sidecarStartup: "defer",
         gatewayPluginConfigAtStart: startupConfig,
         getConfig: () => currentConfig,
       }),
-      createPostAttachRuntimeDeps({ startGatewaySidecars: startGatewaySidecarsScoped }),
+      createPostAttachRuntimeDeps(),
     );
 
     await runtime.startupSettled;
 
-    expect(startGatewaySidecarsScoped).toHaveBeenCalledWith(
-      expect.objectContaining({ getModelRuntimeConfig: expect.any(Function) }),
-    );
-    const sidecarParams = startGatewaySidecarsScoped.mock.calls[0]?.[0] as
-      | { getModelRuntimeConfig?: () => unknown }
-      | undefined;
-    expect(sidecarParams?.getModelRuntimeConfig?.()).toBe(currentConfig);
+    expect(hoisted.refreshPreparedModelRuntimeSnapshots).toHaveBeenCalledOnce();
+    expect(publishedConfigs).toEqual([currentConfig]);
   });
 
   it("owns update RPC work without autonomous checks in a minimal Gateway", async () => {
@@ -1011,17 +1016,18 @@ describe("startGatewayPostAttachRuntime", () => {
       }),
       stop: vi.fn(async () => {}),
     };
-    const startGatewaySidecarsItem = vi.fn(async () => {
+    const refreshChatMetadata = vi.fn(async () => {
       events.push("sidecars");
-      return 0;
     });
 
     const result = await startGatewayPostAttachRuntime(
-      createPostAttachParams({ waitForPostReadyWork: () => postReadyWork.promise }),
+      createPostAttachParams({
+        waitForPostReadyWork: () => postReadyWork.promise,
+        refreshChatMetadata,
+      }),
       createPostAttachRuntimeDeps({
         createGatewayUpdateCheck: () => updateCheck,
         refreshLatestUpdateRestartSentinel: vi.fn(async () => null),
-        startGatewaySidecars: startGatewaySidecarsItem,
       }),
     );
     events.push("returned");
@@ -1101,13 +1107,16 @@ describe("startGatewayPostAttachRuntime", () => {
     const updateCheck = { ...hoisted.updateCheck, stop: vi.fn(() => cleanup.promise) };
     const onGatewayLifetimeSidecars = vi.fn<SidecarPublisher>();
     const result = await startGatewayPostAttachRuntime(
-      createPostAttachParams({ sidecarStartup: "defer", onGatewayLifetimeSidecars }),
-      createPostAttachRuntimeDeps({
-        createGatewayUpdateCheck: () => updateCheck,
-        startGatewaySidecars: async () => {
+      createPostAttachParams({
+        sidecarStartup: "defer",
+        onGatewayLifetimeSidecars,
+        refreshChatMetadata: async () => {
           await sidecarsReady.promise;
           throw startupError;
         },
+      }),
+      createPostAttachRuntimeDeps({
+        createGatewayUpdateCheck: () => updateCheck,
       }),
     );
     let stopped = false;
@@ -1175,7 +1184,6 @@ describe("startGatewayPostAttachRuntime", () => {
     );
     const stopControlUiBuild = vi.fn(async () => buildController.abort());
     const onGatewayLifetimeSidecars = vi.fn<SidecarPublisher>();
-    const startGatewaySidecarsPending = vi.fn(async () => 0);
     const baseParams = createPostAttachParams();
     const loadStartupPlugins = vi.fn(async () => {
       await pluginStartup;
@@ -1194,7 +1202,7 @@ describe("startGatewayPostAttachRuntime", () => {
           stop: stopControlUiBuild,
         },
       },
-      createPostAttachRuntimeDeps({ startGatewaySidecars: startGatewaySidecarsPending }),
+      createPostAttachRuntimeDeps(),
     );
 
     // Publication is synchronous, so shutdown can observe ownership even
@@ -1207,7 +1215,8 @@ describe("startGatewayPostAttachRuntime", () => {
       expect(loadStartupPlugins).toHaveBeenCalledOnce();
       expect(startControlUiBuild).toHaveBeenCalledOnce();
     });
-    expect(startGatewaySidecarsPending).not.toHaveBeenCalled();
+    expect(baseParams.startChannels).not.toHaveBeenCalled();
+    expect(hoisted.startPluginServices).not.toHaveBeenCalled();
     expect(buildSignal?.aborted).toBe(false);
 
     await stopTrackedSidecar(earlySidecar!);
@@ -1282,7 +1291,9 @@ describe("startGatewayPostAttachRuntime", () => {
           ...(attributed ? { pluginId: "startup-fixture" } : {}),
         },
       ]);
-      expect(runtimeDeps.startGatewaySidecars).not.toHaveBeenCalled();
+      expect(params.startChannels).not.toHaveBeenCalled();
+      expect(hoisted.startPluginServices).not.toHaveBeenCalled();
+      expect(hoisted.refreshPreparedModelRuntimeSnapshots).not.toHaveBeenCalled();
       expect(runtimeDeps.createGatewayUpdateCheck).not.toHaveBeenCalled();
     },
   );
@@ -1302,13 +1313,11 @@ describe("startGatewayPostAttachRuntime", () => {
       }
       return published;
     });
-    const startGatewaySidecarsEntry = vi.fn(async (params: GatewaySidecarsParams) => {
-      expect(params.pluginRegistry).toBe(loadedPluginRegistry);
-      return 0;
-    });
+    const startChannels = vi.fn(async () => {});
     const runtime = startGatewayPostAttachRuntime(
       createPostAttachParams({
         pluginRegistry: createEmptyPluginRegistry(),
+        startChannels,
         loadStartupPlugins: async () => {
           expect(onStartupPluginsLoading).toHaveBeenCalledOnce();
           return loaded;
@@ -1318,17 +1327,21 @@ describe("startGatewayPostAttachRuntime", () => {
         onStartupPluginsLoaded,
         startupTrace: trace.startupTrace,
       }),
-      createPostAttachRuntimeDeps({ startGatewaySidecars: startGatewaySidecarsEntry }),
+      createPostAttachRuntimeDeps(),
     );
     try {
       await waitForGatewayTestState(() =>
         expect(onStartupPluginsLoaded).toHaveBeenCalledWith(loaded),
       );
-      expect(startGatewaySidecarsEntry).not.toHaveBeenCalled();
+      expect(startChannels).not.toHaveBeenCalled();
+      expect(hoisted.startPluginServices).not.toHaveBeenCalled();
       expect(broadcast).not.toHaveBeenCalled();
       attachment.resolve(true);
       await runtime;
-      expect(startGatewaySidecarsEntry).toHaveBeenCalledOnce();
+      expect(startChannels).toHaveBeenCalledOnce();
+      expect(hoisted.startPluginServices).toHaveBeenCalledWith(
+        expect.objectContaining({ registry: loadedPluginRegistry }),
+      );
       expect(broadcast).toHaveBeenCalledWith(
         "plugins.changed",
         { generation: expect.any(Number) },
@@ -1373,9 +1386,16 @@ describe("startGatewayPostAttachRuntime", () => {
     } as never;
     const winningServices: PluginServicesHandle = { reload: async () => {}, stop: async () => {} };
     let startupClaimCurrent = true;
+    const publicationRegistries: unknown[] = [];
     const { promise: pluginLoadReady, resolve: releasePluginLoad } = createDeferred();
     const pluginRuntimeClaim = {
-      isCurrent: () => startupClaimCurrent,
+      isCurrent: () => {
+        const registry = getPluginRuntimeGatewayRequestScope()?.pluginRegistry;
+        if (registry) {
+          publicationRegistries.push(registry);
+        }
+        return startupClaimCurrent;
+      },
       waitForUnblocked: async () => true,
       publish: (publish: () => void) => {
         if (!startupClaimCurrent) {
@@ -1389,13 +1409,6 @@ describe("startGatewayPostAttachRuntime", () => {
     const onPluginServices = vi.fn();
     const onSidecarsReady = vi.fn();
     const unlockStartupMethods = vi.fn();
-    const startGatewaySidecarsCandidate = vi.fn(
-      async (params: Parameters<typeof startGatewaySidecarsImpl>[0]) => {
-        expect(params.pluginRegistry).toBe(winningRegistry);
-        expect(params.shouldStartPluginServices?.()).toBe(false);
-        return 0;
-      },
-    );
     const loadStartupPlugins = vi.fn(async () => {
       await pluginLoadReady;
       return { pluginRegistry: startupRegistry, gatewayMethods: ["startup.method"] };
@@ -1417,9 +1430,7 @@ describe("startGatewayPostAttachRuntime", () => {
         activationSourceConfig: startupConfig,
         getConfig: () => winningConfig,
       }),
-      createPostAttachRuntimeDeps({
-        startGatewaySidecars: startGatewaySidecarsCandidate,
-      }),
+      createPostAttachRuntimeDeps(),
     );
     await waitForGatewayTestState(() => expect(loadStartupPlugins).toHaveBeenCalledOnce());
     startupClaimCurrent = false;
@@ -1427,7 +1438,14 @@ describe("startGatewayPostAttachRuntime", () => {
     await expect(runtime.startupSettled).resolves.toBeUndefined();
 
     expect(onStartupPluginsLoaded).not.toHaveBeenCalled();
-    expect(startGatewaySidecarsCandidate).toHaveBeenCalledOnce();
+    expect(hoisted.prepareInternalHooks).toHaveBeenCalledWith(
+      winningConfig,
+      testState.workspaceDir,
+      expect.objectContaining({ failureMode: "best-effort" }),
+    );
+    expect(publicationRegistries).toEqual([winningRegistry]);
+    expect(hoisted.refreshPreparedModelRuntimeSnapshots).not.toHaveBeenCalled();
+    expect(hoisted.startPluginServices).not.toHaveBeenCalled();
     expect(onPluginServices).not.toHaveBeenCalled();
     expect(unlockStartupMethods).toHaveBeenCalledOnce();
     expect(onSidecarsReady).toHaveBeenCalledOnce();
@@ -2035,7 +2053,7 @@ describe("startGatewayPostAttachRuntime", () => {
             },
           },
         }),
-        createPostAttachRuntimeDeps({ startGatewaySidecars }),
+        createPostAttachRuntimeDeps(),
       );
       try {
         await importEntered.promise;
@@ -2515,10 +2533,7 @@ describe("startGatewayPostAttachRuntime", () => {
       waitForPostReadyWork: () => postReadyWork.promise,
       trackStartupWork,
     });
-    const runtime = await startGatewayPostAttachRuntime(
-      params,
-      createPostAttachRuntimeDeps({ startGatewaySidecars }),
-    );
+    const runtime = await startGatewayPostAttachRuntime(params, createPostAttachRuntimeDeps());
     let closing: Promise<void> | undefined;
     try {
       await vi.advanceTimersByTimeAsync(100);
@@ -2802,9 +2817,8 @@ describe("startGatewayPostAttachRuntime", () => {
       startupOrder.push("worker-ready");
       return workerSidecar;
     });
-    const startGatewaySidecarsValue = vi.fn(async () => {
+    const refreshChatMetadata = vi.fn(async () => {
       startupOrder.push("gateway-sidecars");
-      return 0;
     });
     const unavailableGatewayMethods = new Set<string>(STARTUP_UNAVAILABLE_GATEWAY_METHODS);
 
@@ -2814,10 +2828,10 @@ describe("startGatewayPostAttachRuntime", () => {
         unlockStartupMethods: createStartupMethodUnlocker(unavailableGatewayMethods),
         sidecarStartup: "defer",
         startWorkerEnvironmentRuntime,
+        refreshChatMetadata,
         onGatewayLifetimeSidecars,
       },
       createPostAttachRuntimeDeps({
-        startGatewaySidecars: startGatewaySidecarsValue,
         warmSystemCa,
       }),
     );
@@ -2826,7 +2840,7 @@ describe("startGatewayPostAttachRuntime", () => {
       expect(warmSystemCa).toHaveBeenCalledTimes(1);
     });
     expect(startWorkerEnvironmentRuntime).not.toHaveBeenCalled();
-    expect(startGatewaySidecarsValue).not.toHaveBeenCalled();
+    expect(refreshChatMetadata).not.toHaveBeenCalled();
     expect(startupOrder).toEqual(["ca-warmup"]);
 
     finishWarmup?.();
@@ -2834,13 +2848,13 @@ describe("startGatewayPostAttachRuntime", () => {
     await waitForGatewayTestState(() => {
       expect(startWorkerEnvironmentRuntime).toHaveBeenCalledTimes(1);
     });
-    expect(startGatewaySidecarsValue).not.toHaveBeenCalled();
+    expect(refreshChatMetadata).not.toHaveBeenCalled();
     expect(startupOrder).toEqual(["ca-warmup", "ca-ready", "worker-reconcile"]);
     expect([...unavailableGatewayMethods]).toEqual([...STARTUP_UNAVAILABLE_GATEWAY_METHODS]);
 
     finishReconcile?.();
     await waitForGatewayTestState(() => {
-      expect(startGatewaySidecarsValue).toHaveBeenCalledTimes(1);
+      expect(refreshChatMetadata).toHaveBeenCalledTimes(1);
     });
     expect(startupOrder).toEqual([
       "ca-warmup",
@@ -2865,6 +2879,9 @@ describe("startGatewayPostAttachRuntime", () => {
     const params = createPostAttachParams({
       onGatewayLifetimeSidecars,
       unregisterConnectionDependentSidecar,
+      refreshChatMetadata: async () => {
+        throw startupError;
+      },
     });
 
     await expect(
@@ -2876,11 +2893,7 @@ describe("startGatewayPostAttachRuntime", () => {
             return workerSidecar;
           }),
         },
-        createPostAttachRuntimeDeps({
-          startGatewaySidecars: vi.fn(async () => {
-            throw startupError;
-          }),
-        }),
+        createPostAttachRuntimeDeps(),
       ),
     ).rejects.toBe(startupError);
 
@@ -2901,7 +2914,6 @@ describe("startGatewayPostAttachRuntime", () => {
     const { promise: workerStartBlocked, resolve: releaseWorkerStart } = createDeferred();
     const { promise: workerStartReached, resolve: markWorkerStart } = createDeferred();
     const workerSidecar = { stop: vi.fn(async () => {}) };
-    const startGatewaySidecarsValue = vi.fn();
     const runtimePromise = startGatewayPostAttachRuntime(
       {
         ...createPostAttachParams(),
@@ -2913,7 +2925,7 @@ describe("startGatewayPostAttachRuntime", () => {
           return null;
         }),
       },
-      createPostAttachRuntimeDeps({ startGatewaySidecars: startGatewaySidecarsValue }),
+      createPostAttachRuntimeDeps(),
     );
 
     await workerStartReached;
@@ -2922,7 +2934,8 @@ describe("startGatewayPostAttachRuntime", () => {
     await runtimePromise;
 
     expect(workerSidecar.stop).toHaveBeenCalledOnce();
-    expect(startGatewaySidecarsValue).not.toHaveBeenCalled();
+    expect(hoisted.prepareInternalHooks).not.toHaveBeenCalled();
+    expect(hoisted.startPluginServices).not.toHaveBeenCalled();
   });
 
   it("keeps ignored deferred sidecar failure handled for direct callers", async () => {
@@ -2934,15 +2947,13 @@ describe("startGatewayPostAttachRuntime", () => {
     process.on("unhandledRejection", onUnhandledRejection);
 
     try {
-      const params = createPostAttachParams({ sidecarStartup: "defer" });
-      const runtime = await startGatewayPostAttachRuntime(
-        params,
-        createPostAttachRuntimeDeps({
-          startGatewaySidecars: vi.fn(async () => {
-            throw startupError;
-          }),
-        }),
-      );
+      const params = createPostAttachParams({
+        sidecarStartup: "defer",
+        refreshChatMetadata: async () => {
+          throw startupError;
+        },
+      });
+      const runtime = await startGatewayPostAttachRuntime(params, createPostAttachRuntimeDeps());
 
       await waitForGatewayTestState(() => {
         expect(params.log.warn).toHaveBeenCalledWith(
@@ -2965,7 +2976,6 @@ describe("startGatewayPostAttachRuntime", () => {
     const pluginLoadReady = createDeferred();
     const retireGatewayRuntimeBindings = vi.fn();
     const onStartupPluginsLoaded = vi.fn(() => true);
-    const startGatewaySidecarsValue = vi.fn(async () => 0);
     const runtime = await startGatewayPostAttachRuntime(
       createPostAttachParams({
         sidecarStartup: "defer",
@@ -2981,7 +2991,7 @@ describe("startGatewayPostAttachRuntime", () => {
         },
         onStartupPluginsLoaded,
       }),
-      createPostAttachRuntimeDeps({ startGatewaySidecars: startGatewaySidecarsValue }),
+      createPostAttachRuntimeDeps(),
     );
 
     await pluginLoadStarted.promise;
@@ -2991,12 +3001,12 @@ describe("startGatewayPostAttachRuntime", () => {
 
     expect(retireGatewayRuntimeBindings).toHaveBeenCalledOnce();
     expect(onStartupPluginsLoaded).not.toHaveBeenCalled();
-    expect(startGatewaySidecarsValue).not.toHaveBeenCalled();
+    expect(hoisted.prepareInternalHooks).not.toHaveBeenCalled();
+    expect(hoisted.startPluginServices).not.toHaveBeenCalled();
   });
 
   it("does not start the worker environment sidecar after close begins", async () => {
     const startWorkerEnvironmentRuntime = vi.fn(() => ({ stop: vi.fn() }));
-    const startGatewaySidecarsValue = vi.fn(async () => 0);
 
     const runtime = await startGatewayPostAttachRuntime(
       {
@@ -3005,11 +3015,12 @@ describe("startGatewayPostAttachRuntime", () => {
         startWorkerEnvironmentRuntime,
         isClosing: () => true,
       },
-      createPostAttachRuntimeDeps({ startGatewaySidecars: startGatewaySidecarsValue }),
+      createPostAttachRuntimeDeps(),
     );
 
     await runtime.startupSettled;
-    expect(startGatewaySidecarsValue).not.toHaveBeenCalled();
+    expect(hoisted.prepareInternalHooks).not.toHaveBeenCalled();
+    expect(hoisted.startPluginServices).not.toHaveBeenCalled();
     expect(startWorkerEnvironmentRuntime).not.toHaveBeenCalled();
   });
 
@@ -3264,6 +3275,7 @@ describe("startGatewayPostAttachRuntime", () => {
     createParams: createPostAttachParams,
     createRuntimeDeps: createPostAttachRuntimeDeps,
     startupModuleRestorers,
+    stopSidecar: stopTrackedSidecar,
   });
 
   it("retains gateway_start loading until close can retire plugin metadata", async () => {
@@ -3404,8 +3416,7 @@ describe("startGatewayPostAttachRuntime", () => {
         throw new Error("gateway_start context did not expose getCron");
       }
       expect(getCron()).toBe(initialCron);
-      const serviceGetter = vi.mocked(runtimeDeps.startGatewaySidecars).mock.calls[0]?.[0]
-        .getCronService;
+      const serviceGetter = hoisted.startPluginServices.mock.calls[0]?.[0].getCronService;
       expect(serviceGetter?.()).toBe(closing === "restart" ? initialCron : undefined);
 
       const reloadedCron = createCronHost();
@@ -3431,7 +3442,6 @@ function createPostAttachRuntimeDeps(
     logGatewayStartup: hoisted.logGatewayStartup,
     refreshLatestUpdateRestartSentinel: restartSentinelMocks.prepareLatestUpdateRestartSentinel,
     createGatewayUpdateCheck: hoisted.createGatewayUpdateCheck,
-    startGatewaySidecars: vi.fn(async () => 0),
     warmSystemCa: vi.fn(async () => {}),
     ...overrides,
   };

@@ -40,6 +40,7 @@ export async function startTranscriptReloadFixtureSidecars(
     try {
       startupWork.beginClose();
       await sidecars.stop().catch(() => {});
+      await runtime.runtimeState.postReadySidecars.stop().catch(() => {});
       await startupWork.drain();
     } finally {
       for (const restore of startupModuleRestorers.toReversed()) {
@@ -56,68 +57,66 @@ export async function startTranscriptReloadFixtureSidecars(
   const unusedRecovery = async (): Promise<never> => {
     throw new Error("unexpected main-session recovery");
   };
-  const startup = await startGatewayPostAttachRuntime(
+  installGatewayStartupModuleMocks(
     {
-      scheduler: runtime.scheduler,
-      minimalTestGateway: false,
-      cfgAtStart: config,
-      getConfig: fixture.getConfig,
-      getReadiness: () => ({ ready: true, failing: [], uptimeMs: 0 }),
-      port: 0,
-      log,
-      isNixMode: false,
-      broadcastToConnIds: vi.fn(),
-      getClientConnIds: () => new Set(),
-      gatewayPluginConfigAtStart: config,
-      activationSourceConfig: config,
-      pluginManifestRecords: [],
-      pluginRegistry: fixture.registryOwner.registry,
-      defaultWorkspaceDir: workspaceDir,
-      deps: {},
-      startChannels: async () => {},
-      mainSessionRecoveryStartupCheckedStorePaths: new Set<string>(),
-      recoveryRuntime: {
-        prepareRestartRecovery: unusedRecovery,
-        dispatchSessionMethod: unusedRecovery,
-        dispatchAgent: unusedRecovery,
-        waitForAgent: unusedRecovery,
-        sendRecoveryNotice: unusedRecovery,
-      },
-      resolveGatewayContext: () => undefined,
-      logHooks: log,
-      logChannels: log,
-      unlockStartupMethods: () => {},
-      waitForPostReadyWork,
-      pluginRuntimeClaim: fixture.owner.currentClaim(),
-      getCurrentPluginRegistry: () => fixture.registryOwner.registry,
-      getCurrentPluginServices: () => fixture.owner.currentServices() ?? null,
-      onPostReadySidecars: runtime.runtimeState.postReadySidecars.publish,
-      onGatewayLifetimeSidecars: sidecars.publish,
-      unregisterConnectionDependentSidecar: vi.fn(),
-      trackStartupWork: (run) => {
-        const operation = Promise.resolve().then(() => run(startupWork.signal));
-        return startupWork.track(() => operation);
-      },
-    },
-    installGatewayStartupModuleMocks(
-      {
-        logGatewayStartup: () => {},
-        refreshLatestUpdateRestartSentinel: async () => null,
-        createGatewayUpdateCheck: () => ({
-          initialize: async () => ({
-            root: null,
-            status: { root: null, installKind: "unknown", packageManager: "unknown" },
-            installReceipt: null,
-          }),
-          start: () => {},
-          stop: async () => {},
+      logGatewayStartup: () => {},
+      refreshLatestUpdateRestartSentinel: async () => null,
+      createGatewayUpdateCheck: () => ({
+        initialize: async () => ({
+          root: null,
+          status: { root: null, installKind: "unknown", packageManager: "unknown" },
+          installReceipt: null,
         }),
-        startGatewaySidecars: async () => 0,
-        warmSystemCa: async () => {},
-      },
-      startupModuleRestorers,
-    ),
+        start: () => {},
+        stop: async () => {},
+      }),
+      warmSystemCa: async () => {},
+    },
+    startupModuleRestorers,
   );
+  const startup = await startGatewayPostAttachRuntime({
+    scheduler: runtime.scheduler,
+    minimalTestGateway: false,
+    cfgAtStart: config,
+    getConfig: fixture.getConfig,
+    getReadiness: () => ({ ready: true, failing: [], uptimeMs: 0 }),
+    port: 0,
+    log,
+    isNixMode: false,
+    broadcastToConnIds: vi.fn(),
+    getClientConnIds: () => new Set(),
+    gatewayPluginConfigAtStart: config,
+    activationSourceConfig: config,
+    pluginManifestRecords: [],
+    pluginRegistry: fixture.registryOwner.registry,
+    defaultWorkspaceDir: workspaceDir,
+    deps: {},
+    startChannels: async () => {},
+    mainSessionRecoveryStartupCheckedStorePaths: new Set<string>(),
+    recoveryRuntime: {
+      prepareRestartRecovery: unusedRecovery,
+      dispatchSessionMethod: unusedRecovery,
+      dispatchAgent: unusedRecovery,
+      waitForAgent: unusedRecovery,
+      sendRecoveryNotice: unusedRecovery,
+    },
+    resolveGatewayContext: () => undefined,
+    logHooks: log,
+    logChannels: log,
+    unlockStartupMethods: () => {},
+    waitForPostReadyWork,
+    isClosing: () => startupWork.isClosing,
+    pluginRuntimeClaim: fixture.owner.currentClaim(),
+    getCurrentPluginRegistry: () => fixture.registryOwner.registry,
+    getCurrentPluginServices: () => fixture.owner.currentServices() ?? null,
+    onPostReadySidecars: runtime.runtimeState.postReadySidecars.publish,
+    onGatewayLifetimeSidecars: sidecars.publish,
+    unregisterConnectionDependentSidecar: vi.fn(),
+    trackStartupWork: (run) => {
+      const operation = Promise.resolve().then(() => run(startupWork.signal));
+      return startupWork.track(() => operation);
+    },
+  });
   cleanups.push(async () => {
     await startup.stopGatewayUpdateCheck();
   });

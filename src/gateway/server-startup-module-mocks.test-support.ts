@@ -1,7 +1,6 @@
 import { vi } from "vitest";
 import * as updateStartup from "../infra/update-startup.js";
 import * as startupLog from "./server-startup-log.js";
-import type { startGatewayPostAttachRuntime } from "./server-startup-post-attach.js";
 import * as updateSentinel from "./server-update-sentinel.js";
 import * as systemCa from "./system-ca-warmup.js";
 
@@ -33,9 +32,7 @@ vi.mock("./system-ca-warmup.js", async (importOriginal) => {
   };
 });
 
-type RuntimeDeps = NonNullable<Parameters<typeof startGatewayPostAttachRuntime>[1]>;
-
-export type GatewayStartupModuleMocks = RuntimeDeps & {
+export type GatewayStartupModuleMocks = {
   logGatewayStartup: (
     params: Parameters<typeof startupLog.logGatewayStartup>[0],
   ) => void | Promise<void>;
@@ -47,7 +44,7 @@ export type GatewayStartupModuleMocks = RuntimeDeps & {
 export function installGatewayStartupModuleMocks(
   mocks: GatewayStartupModuleMocks,
   restorers: Array<() => void>,
-): RuntimeDeps {
+): void {
   // Existing hoisted mocks are stable across resetModules; never implement a mock with itself.
   if (startupLog.logGatewayStartup !== mocks.logGatewayStartup) {
     const spy = vi.spyOn(startupLog, "logGatewayStartup");
@@ -69,9 +66,6 @@ export function installGatewayStartupModuleMocks(
   if (systemCa.beginMacOSSystemCaWarmupOnce !== mocks.warmSystemCa) {
     restorers.push(systemCaMock.install(mocks.warmSystemCa));
   }
-  return {
-    startGatewaySidecars: mocks.startGatewaySidecars,
-  };
 }
 
 // Gate the actual lazy import; the exported hook factory remains synchronous.

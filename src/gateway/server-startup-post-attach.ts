@@ -451,87 +451,76 @@ export async function startGatewaySidecars(
   return postReadySidecars.length;
 }
 
-type GatewayPostAttachRuntimeDeps = {
-  startGatewaySidecars: typeof startGatewaySidecars;
-};
-
-const defaultGatewayPostAttachRuntimeDeps: GatewayPostAttachRuntimeDeps = {
-  startGatewaySidecars,
-};
-
 /** Start work that depends on the HTTP server being attached and visible. */
-export async function startGatewayPostAttachRuntime(
-  params: {
-    scheduler: GatewayScheduler;
-    minimalTestGateway: boolean;
-    updateCanary?: boolean;
-    cfgAtStart: OpenClawConfig;
-    getConfig: () => OpenClawConfig;
-    port: number;
-    log: {
-      info: (msg: string) => void;
-      warn: (msg: string) => void;
-    };
-    isNixMode: boolean;
-    startupStartedAt?: number;
-    broadcastToConnIds: GatewayBroadcastToConnIdsFn;
-    broadcast?: GatewayBroadcastFn;
-    getClientConnIds: (filter?: (client: GatewayClient) => boolean) => ReadonlySet<string>;
-    broadcastPluginEvent?: import("./server-broadcast-types.js").GatewayPluginEventBroadcastFn;
-    controlUiRootLifecycle?: GatewayControlUiRootLifecycle;
-    gatewayPluginConfigAtStart: OpenClawConfig;
-    activationSourceConfig: OpenClawConfig;
-    pluginManifestRecords: readonly PluginManifestRecord[];
-    pluginMetadataSnapshot?: PluginMetadataSnapshot;
-    ambientEnvTriggers?: AmbientEnvTriggerPolicy;
+export async function startGatewayPostAttachRuntime(params: {
+  scheduler: GatewayScheduler;
+  minimalTestGateway: boolean;
+  updateCanary?: boolean;
+  cfgAtStart: OpenClawConfig;
+  getConfig: () => OpenClawConfig;
+  port: number;
+  log: {
+    info: (msg: string) => void;
+    warn: (msg: string) => void;
+  };
+  isNixMode: boolean;
+  startupStartedAt?: number;
+  broadcastToConnIds: GatewayBroadcastToConnIdsFn;
+  broadcast?: GatewayBroadcastFn;
+  getClientConnIds: (filter?: (client: GatewayClient) => boolean) => ReadonlySet<string>;
+  broadcastPluginEvent?: import("./server-broadcast-types.js").GatewayPluginEventBroadcastFn;
+  controlUiRootLifecycle?: GatewayControlUiRootLifecycle;
+  gatewayPluginConfigAtStart: OpenClawConfig;
+  activationSourceConfig: OpenClawConfig;
+  pluginManifestRecords: readonly PluginManifestRecord[];
+  pluginMetadataSnapshot?: PluginMetadataSnapshot;
+  ambientEnvTriggers?: AmbientEnvTriggerPolicy;
+  pluginRegistry: PluginRegistry;
+  defaultWorkspaceDir: string;
+  deps: CliDeps;
+  startChannels: () => Promise<void>;
+  refreshChatMetadata?: () => Promise<void>;
+  recoveryRuntime: GatewayRecoveryRuntime;
+  mainSessionRecoveryStartupCheckedStorePaths: Set<string>;
+  resolveGatewayContext: GatewayContextResolver;
+  logHooks: {
+    info: (msg: string) => void;
+    warn: (msg: string) => void;
+    error: (msg: string) => void;
+  };
+  logChannels: { info: (msg: string) => void; error: (msg: string) => void };
+  unlockStartupMethods: () => void;
+  loadStartupPlugins?: () => Awaitable<{
     pluginRegistry: PluginRegistry;
-    defaultWorkspaceDir: string;
-    deps: CliDeps;
-    startChannels: () => Promise<void>;
-    refreshChatMetadata?: () => Promise<void>;
-    recoveryRuntime: GatewayRecoveryRuntime;
-    mainSessionRecoveryStartupCheckedStorePaths: Set<string>;
-    resolveGatewayContext: GatewayContextResolver;
-    logHooks: {
-      info: (msg: string) => void;
-      warn: (msg: string) => void;
-      error: (msg: string) => void;
-    };
-    logChannels: { info: (msg: string) => void; error: (msg: string) => void };
-    unlockStartupMethods: () => void;
-    loadStartupPlugins?: () => Awaitable<{
-      pluginRegistry: PluginRegistry;
-      gatewayMethods: string[];
-      retireGatewayRuntimeBindings?: () => void;
-    }>;
-    onStartupPluginsLoading?: () => void;
-    onStartupPluginsLoaded?: (result: {
-      pluginRegistry: PluginRegistry;
-      gatewayMethods: string[];
-      retireGatewayRuntimeBindings?: () => void;
-    }) => Awaitable<boolean>;
-    pluginRuntimeClaim?: GatewayPluginRuntimeClaim;
-    getCurrentPluginRegistry?: () => PluginRegistry;
-    getCurrentPluginServices?: () => PluginServicesHandle | null;
-    getCurrentPluginMetadataSnapshot?: () => PluginMetadataSnapshot | undefined;
-    getCronService?: () => PluginServiceCronHost | null | undefined;
-    onChannelsStarted?: () => Awaitable<void>;
-    onPluginServices?: (pluginServices: PluginServicesHandle | null) => void;
-    onPostReadySidecars: (...sidecars: GatewayPostReadySidecarHandle[]) => void;
-    onGatewayLifetimeSidecars: (...sidecars: GatewayPostReadySidecarHandle[]) => void;
-    unregisterConnectionDependentSidecar: (sidecar: GatewayPostReadySidecarHandle) => void;
-    trackStartupWork: <T>(run: (signal: AbortSignal) => Promise<T>) => Promise<T>;
-    startWorkerEnvironmentRuntime?: () => Awaitable<GatewayPostReadySidecarHandle | null>;
-    onSidecarsReady?: () => void;
-    getReadiness: ReadinessChecker;
-    isClosing?: () => boolean;
-    startupTrace?: GatewayStartupTrace;
-    sidecarStartup?: GatewaySidecarStartupMode;
-    waitForPostReadyWork?: () => Promise<void>;
-    activeWorkInspectors?: Partial<GatewayActiveWorkInspectors>;
-  },
-  runtimeDeps: GatewayPostAttachRuntimeDeps = defaultGatewayPostAttachRuntimeDeps,
-) {
+    gatewayMethods: string[];
+    retireGatewayRuntimeBindings?: () => void;
+  }>;
+  onStartupPluginsLoading?: () => void;
+  onStartupPluginsLoaded?: (result: {
+    pluginRegistry: PluginRegistry;
+    gatewayMethods: string[];
+    retireGatewayRuntimeBindings?: () => void;
+  }) => Awaitable<boolean>;
+  pluginRuntimeClaim?: GatewayPluginRuntimeClaim;
+  getCurrentPluginRegistry?: () => PluginRegistry;
+  getCurrentPluginServices?: () => PluginServicesHandle | null;
+  getCurrentPluginMetadataSnapshot?: () => PluginMetadataSnapshot | undefined;
+  getCronService?: () => PluginServiceCronHost | null | undefined;
+  onChannelsStarted?: () => Awaitable<void>;
+  onPluginServices?: (pluginServices: PluginServicesHandle | null) => void;
+  onPostReadySidecars: (...sidecars: GatewayPostReadySidecarHandle[]) => void;
+  onGatewayLifetimeSidecars: (...sidecars: GatewayPostReadySidecarHandle[]) => void;
+  unregisterConnectionDependentSidecar: (sidecar: GatewayPostReadySidecarHandle) => void;
+  trackStartupWork: <T>(run: (signal: AbortSignal) => Promise<T>) => Promise<T>;
+  startWorkerEnvironmentRuntime?: () => Awaitable<GatewayPostReadySidecarHandle | null>;
+  onSidecarsReady?: () => void;
+  getReadiness: ReadinessChecker;
+  isClosing?: () => boolean;
+  startupTrace?: GatewayStartupTrace;
+  sidecarStartup?: GatewaySidecarStartupMode;
+  waitForPostReadyWork?: () => Promise<void>;
+  activeWorkInspectors?: Partial<GatewayActiveWorkInspectors>;
+}) {
   const restartSentinelContext = captureDeliveryQueueStateContext();
   // The CLI's hidden capability flag supplies this typed internal handoff.
   // Rehearsal loads plugins without resuming copied jobs, services, or notices.
@@ -739,7 +728,7 @@ export async function startGatewayPostAttachRuntime(
                 ? params.pluginMetadataSnapshot
                 : params.getCurrentPluginMetadataSnapshot?.();
               return await measureStartup(params.startupTrace, "sidecars.total", () =>
-                runtimeDeps.startGatewaySidecars({
+                startGatewaySidecars({
                   scheduler: params.scheduler,
                   restartSentinelContext,
                   cfg: startupRuntimeCurrent

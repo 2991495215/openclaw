@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { PluginHookHandlerMap } from "../plugins/hook-types.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
+import * as pluginServiceRuntime from "../plugins/services.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import * as gatewayWorkAdmission from "../process/gateway-work-admission.js";
 import { tryBeginGatewaySuspendAdmission } from "../process/gateway-work-admission.js";
@@ -25,6 +26,7 @@ export function registerGatewayStartupAdmissionTests(params: {
   createParams: (overrides?: Partial<PostAttachParams>) => PostAttachParams;
   createRuntimeDeps: (overrides?: Partial<PostAttachRuntimeDeps>) => PostAttachRuntimeDeps;
   startupModuleRestorers: Array<() => void>;
+  stopSidecar: (sidecar: GatewayPostReadySidecarHandle) => Promise<void>;
 }): void {
   it("does not activate restored recovery when close begins during activation loading", async () => {
     let closeStarted = false;
@@ -37,7 +39,13 @@ export function registerGatewayStartupAdmissionTests(params: {
       reload: vi.fn(async () => {}),
       stop: vi.fn(async () => {}),
     };
-    const postReadySidecar = { stop: vi.fn(async () => {}) };
+    const startServices = vi
+      .spyOn(pluginServiceRuntime, "startPluginServices")
+      .mockImplementation(async ({ onHandle }) => {
+        onHandle?.(pluginServices);
+        return pluginServices;
+      });
+    params.startupModuleRestorers.push(() => startServices.mockRestore());
     const workerSidecar = { stop: vi.fn(async () => {}) };
     const unlockStartupMethods = vi.fn();
     const activateSubagentRegistry = vi.fn(async () => {});
@@ -71,48 +79,56 @@ export function registerGatewayStartupAdmissionTests(params: {
         onGatewayLifetimeSidecars,
         onPostReadySidecars: (...sidecars) => {
           for (const sidecar of sidecars) {
+            const stop = vi.spyOn(sidecar, "stop");
+            params.startupModuleRestorers.push(() => stop.mockRestore());
             publishedPostReadySidecars.add(sidecar);
           }
         },
         unlockStartupMethods,
         onPluginServices,
       },
-      params.createRuntimeDeps({
-        startGatewaySidecars: vi.fn(
-          async (sidecars: Parameters<PostAttachRuntimeDeps["startGatewaySidecars"]>[0]) => {
-            sidecars.onPostReadySidecars(postReadySidecar);
-            sidecars.onPluginServices?.(pluginServices);
-            return 1;
-          },
-        ),
-      }),
+      params.createRuntimeDeps(),
     );
 
-    await runtime.startupSettled;
-    expect(activateSubagentRegistry).not.toHaveBeenCalled();
-    postReadyWork.resolve();
-    await recoveryLoadStarted;
-    closeStarted = true;
-    lifetime.abort();
-    releaseRecoveryLoad?.();
-    await Promise.allSettled(tracked);
+    try {
+      await runtime.startupSettled;
+      expect(activateSubagentRegistry).not.toHaveBeenCalled();
+      expect(startServices).toHaveBeenCalledOnce();
+      expect(publishedPostReadySidecars.size).toBe(1);
+      postReadyWork.resolve();
+      await recoveryLoadStarted;
+      closeStarted = true;
+      lifetime.abort();
+      releaseRecoveryLoad?.();
+      await Promise.allSettled(tracked);
 
-    expect(activateSubagentRegistry).not.toHaveBeenCalled();
-    expect(unlockStartupMethods).toHaveBeenCalledOnce();
-    expect(workerSidecar.stop).not.toHaveBeenCalled();
-    expect(publishedConnectionDependentSidecars.has(workerSidecar)).toBe(true);
-    expect(pluginServices.stop).not.toHaveBeenCalled();
-    expect(postReadySidecar.stop).not.toHaveBeenCalled();
-    expect(onPluginServices).toHaveBeenLastCalledWith(pluginServices);
-    for (const sidecar of publishedConnectionDependentSidecars) {
-      await sidecar.stop();
+      expect(activateSubagentRegistry).not.toHaveBeenCalled();
+      expect(unlockStartupMethods).toHaveBeenCalledOnce();
+      expect(workerSidecar.stop).not.toHaveBeenCalled();
+      expect(publishedConnectionDependentSidecars.has(workerSidecar)).toBe(true);
+      expect(pluginServices.stop).not.toHaveBeenCalled();
+      for (const sidecar of publishedPostReadySidecars) {
+        expect(sidecar.stop).not.toHaveBeenCalled();
+      }
+      expect(onPluginServices).toHaveBeenLastCalledWith(pluginServices);
+    } finally {
+      closeStarted = true;
+      lifetime.abort();
+      postReadyWork.resolve();
+      releaseRecoveryLoad?.();
+      await Promise.allSettled(tracked);
+      for (const sidecar of publishedConnectionDependentSidecars) {
+        await params.stopSidecar(sidecar);
+      }
+      for (const sidecar of publishedPostReadySidecars) {
+        await params.stopSidecar(sidecar);
+      }
+      await pluginServices.stop();
     }
-    for (const sidecar of publishedPostReadySidecars) {
-      await sidecar.stop();
-    }
-    await pluginServices.stop();
     expect(workerSidecar.stop).toHaveBeenCalledOnce();
-    expect(postReadySidecar.stop).toHaveBeenCalledOnce();
+    for (const sidecar of publishedPostReadySidecars) {
+      expect(sidecar.stop).toHaveBeenCalledOnce();
+    }
     expect(pluginServices.stop).toHaveBeenCalledOnce();
   });
 
