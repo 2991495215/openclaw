@@ -1,3 +1,4 @@
+import type { CustomMessage } from "../../../../packages/agent-core/src/harness/messages.js";
 import type { SessionAdmissionTransition } from "../../../config/sessions/session-admission-transition.types.js";
 import {
   runWithoutOwnedSessionTranscriptWrites,
@@ -10,7 +11,6 @@ import { formatErrorMessage } from "../../../infra/errors.js";
 import { adoptExecRequestSession } from "../../../infra/exec-request-context.js";
 import { getUserTurnTranscriptAdmissionOwner } from "../../../sessions/user-turn-transcript-admission.js";
 import type { AgentRunSessionTarget } from "../../run-session-target.types.js";
-import type { CustomMessage } from "../../sessions/messages.js";
 import { appendSessionTranscriptNote } from "../../sessions/session-manager-write-admission.js";
 import { TOOL_FAILURE_INSTRUCTION } from "../../tool-outcome-instructions.js";
 import type { AcceptedCompactionSuccessor } from "../compaction-successor.js";

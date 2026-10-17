@@ -1,3 +1,4 @@
+import { convertToLlm } from "../../../packages/agent-core/src/harness/messages.js";
 import { buildEmbeddedRunBlockedResult } from "../../agents/embedded-agent-runner/run/blocked-run-result.js";
 import {
   buildAgentRunBlockedUserMessage,
@@ -6,7 +7,6 @@ import {
 import { buildAgentHookContext } from "../../agents/harness/hook-context.js";
 import type { BoundAgentRunSessionTarget } from "../../agents/run-session-target.types.js";
 import type { SessionPlacementTurnParams } from "../../agents/session-placement-admission.js";
-import { convertToLlm } from "../../agents/sessions/messages.js";
 import { SessionTranscriptMessageCommittedError } from "../../agents/sessions/session-manager-message-error.js";
 import { withSessionManagerWrite } from "../../agents/sessions/session-manager-write-admission.js";
 import { SessionManager } from "../../agents/sessions/session-manager.js";

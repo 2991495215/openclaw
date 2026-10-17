@@ -25,7 +25,7 @@ export function resolveBedrockCacheRetention(
   if (policy === "nova") {
     return "none";
   }
-  if (typeof process !== "undefined" && process.env.OPENCLAW_CACHE_RETENTION === "long") {
+  if (process.env.OPENCLAW_CACHE_RETENTION === "long") {
     return "long";
   }
   return "short";
@@ -84,9 +84,7 @@ function resolveBedrockClaudeCachePolicy(
   const candidates = [modelId, modelName].map((id) => resolveClaudeModelIdentity({ id }));
   const hasClaudeRef = candidates.some((s) => s.includes("claude"));
   if (!hasClaudeRef) {
-    return typeof process !== "undefined" && process.env.AWS_BEDROCK_FORCE_CACHE === "1"
-      ? "claude-short"
-      : undefined;
+    return process.env.AWS_BEDROCK_FORCE_CACHE === "1" ? "claude-short" : undefined;
   }
   if (
     candidates.some((candidate) =>

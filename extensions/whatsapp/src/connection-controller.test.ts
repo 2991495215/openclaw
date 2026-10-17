@@ -757,6 +757,10 @@ describe("WhatsAppConnectionController", () => {
 
   it("retains connection ownership when socket close cannot be confirmed", async () => {
     let closed = false;
+    const ws = Object.assign(new EventEmitter(), {
+      close: vi.fn().mockRejectedValueOnce(new Error("websocket close failed")),
+    });
+    Object.defineProperty(ws, "isClosed", { get: () => closed });
     const sock = {
       end: vi
         .fn()
@@ -764,12 +768,7 @@ describe("WhatsAppConnectionController", () => {
         .mockImplementationOnce(async () => {
           closed = true;
         }),
-      ws: {
-        close: vi.fn().mockRejectedValueOnce(new Error("websocket close failed")),
-        get isClosed() {
-          return closed;
-        },
-      },
+      ws,
     };
     createWaSocketMock.mockResolvedValueOnce(sock as never);
     waitForWaConnectionMock.mockResolvedValueOnce(undefined);

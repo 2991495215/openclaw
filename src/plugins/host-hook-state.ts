@@ -227,17 +227,7 @@ export async function patchPluginSessionExtension(params: {
   unset?: boolean;
   assertCurrent?: () => void;
 }): Promise<{ ok: true; key: string; value?: PluginJsonValue } | { ok: false; error: string }> {
-  const namespace = params.namespace.trim();
-  const pluginId = params.pluginId.trim();
-  if (!pluginId || !namespace) {
-    return { ok: false, error: "pluginId and namespace are required" };
-  }
-  if (params.unset === true && params.value !== undefined) {
-    return { ok: false, error: "plugin session extension cannot specify both unset and value" };
-  }
-  if (params.value !== undefined && !isPluginJsonValue(params.value)) {
-    return { ok: false, error: "plugin session extension value must be JSON-compatible" };
-  }
+  const { namespace, pluginId } = params;
   if (params.unset !== true && params.value === undefined) {
     return { ok: false, error: "plugin session extension value is required unless unset is true" };
   }

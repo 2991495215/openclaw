@@ -129,12 +129,6 @@ function createNeverResolvePromise<T>(): Promise<T> {
   return new Promise<T>(() => {});
 }
 
-type SocketActivityEmitter = {
-  on?: (event: string, listener: (...args: unknown[]) => void) => void;
-  off?: (event: string, listener: (...args: unknown[]) => void) => void;
-  removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
-};
-
 async function closeWebSocketBestEffort(sock: { ws?: { close?: () => void | Promise<void> } }) {
   try {
     await sock.ws?.close?.();
@@ -991,21 +985,13 @@ export class WhatsAppConnectionController {
     }, this.params.watchdogCheckMs);
   }
 
-  private attachTransportActivityListener(sock: WASocket): (() => void) | null {
-    const ws = sock.ws as SocketActivityEmitter | undefined;
-    if (!ws || typeof ws.on !== "function") {
-      return null;
-    }
-
+  private attachTransportActivityListener(sock: WASocket): () => void {
+    const ws = sock.ws;
     const noteActivity = () => this.noteTransportActivity();
     ws.on("frame", noteActivity);
 
     return () => {
-      if (typeof ws.off === "function") {
-        ws.off("frame", noteActivity);
-        return;
-      }
-      ws.removeListener?.("frame", noteActivity);
+      ws.off("frame", noteActivity);
     };
   }
 

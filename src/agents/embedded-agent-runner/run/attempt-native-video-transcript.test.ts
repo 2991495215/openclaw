@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { readSessionTranscriptRawDelta } from "openclaw/plugin-sdk/session-transcript-runtime";
 import { afterAll, describe, expect, it } from "vitest";
+import { convertToLlm } from "../../../../packages/agent-core/src/harness/messages.js";
 import {
   appendTranscriptMessage,
   upsertSessionEntryCore,
@@ -9,7 +10,6 @@ import {
 import { buildPersistedUserTurnMessage } from "../../../sessions/user-turn-transcript.js";
 import { captureEnv, setTestEnvValue } from "../../../test-utils/env.js";
 import { useSessionStoreTempDirs } from "../../../test-utils/session-state-cleanup.js";
-import { convertToLlm } from "../../sessions/messages.js";
 import { SessionManager } from "../../sessions/session-manager.js";
 import { materializeProviderContext } from "./images.js";
 

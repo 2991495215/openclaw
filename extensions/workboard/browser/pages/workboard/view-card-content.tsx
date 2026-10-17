@@ -191,16 +191,13 @@ function labelOverflowRef(labels: () => readonly string[]) {
       labelMeasurementFrame ??= requestAnimationFrame(flushLabelMeasurements);
     };
     refresh = update;
-    const observer =
-      typeof ResizeObserver === "function"
-        ? new ResizeObserver((entries) => {
-            if (entries.some((entry) => entry.contentRect.width !== measuredWidth)) {
-              update();
-            }
-          })
-        : null;
+    const observer = new ResizeObserver((entries) => {
+      if (entries.some((entry) => entry.contentRect.width !== measuredWidth)) {
+        update();
+      }
+    });
     update();
-    observer?.observe(element);
+    observer.observe(element);
     dispose = () => {
       pendingLabelMeasurements.delete(element);
       if (pendingLabelMeasurements.size === 0 && labelMeasurementFrame !== undefined) {
@@ -208,7 +205,7 @@ function labelOverflowRef(labels: () => readonly string[]) {
         labelMeasurementFrame = undefined;
       }
       refresh = undefined;
-      observer?.disconnect();
+      observer.disconnect();
     };
   };
 }

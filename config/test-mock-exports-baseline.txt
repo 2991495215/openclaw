@@ -5659,7 +5659,6 @@
 ["src/commands/onboarding-plugin-install.test.ts","../plugins/installs.js","85d44a764a0464e0d2f100cbc93c6a6de78bdffede153370e5ca11d078497f4a",1]
 ["src/commands/onboarding-plugin-install.test.ts","../plugins/plugin-lifecycle-lease.js","c0656b35a75629b1d3e93632246ef3f2a243d21a738010aaa970636e23ebedf7",1]
 ["src/commands/onboarding-plugin-install.test.ts","../plugins/registry-refresh.js","2bce46d6d9aa0f1cca551543e6b6d85e54a251337b1ddfa5dcc84b24ac536445",1]
-["src/commands/onboarding-plugin-install.test.ts","../utils/with-timeout.js","4f0cc48935a570d026125c9149b48a13166d34cccf0aba8cf2fbc099af509dcf",1]
 ["src/commands/plugin-control-plane-cold-imports.test.ts","../agents/sandbox/docker.js","924bcd9ce784666a43ad432a9fa6e539dd488db89fa6337c42fc4deaaf109bda",1]
 ["src/commands/promos/claim.test.ts","../../agents/model-auth.js","8674632a263a25fcbf1de9db53c27892f6aa4ece575de86c55eeb8ac72e8aca0",1]
 ["src/commands/promos/claim.test.ts","../../cli/prompt.js","f02d59454dc70cd446d4b268913574580e58152ea857976ae0ea1d3e10b6dc6b",1]

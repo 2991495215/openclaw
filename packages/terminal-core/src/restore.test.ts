@@ -68,7 +68,7 @@ describe("restoreTerminalState", () => {
     expect(resume).not.toHaveBeenCalled();
   });
 
-  it("resumes paused stdin when resumeStdin is true", () => {
+  it("resumes paused stdin when explicitly requested", () => {
     const { setRawMode, resume } = setupPausedTTYStdin();
 
     restoreTerminalState("test", { resumeStdinIfPaused: true });

@@ -28,6 +28,7 @@ function installRedirectingRuntime(status: number) {
   Reflect.set(globalThis, TEST_UNDICI_RUNTIME_DEPS_KEY, {
     Agent: TestDispatcher,
     EnvHttpProxyAgent: TestDispatcher,
+    FormData,
     ProxyAgent: TestDispatcher,
     fetch: runtimeFetchMock,
   });

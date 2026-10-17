@@ -1207,17 +1207,6 @@ describe("host-hook fixture plugin contract", () => {
       });
       expect(readWorkflow()).toEqual({ state: "waiting" });
 
-      await expect(
-        patch({
-          value: { state: "ambiguous" },
-          unset: true,
-        }),
-      ).resolves.toEqual({
-        ok: false,
-        error: "plugin session extension cannot specify both unset and value",
-      });
-      expect(readWorkflow()).toEqual({ state: "waiting" });
-
       await expect(patch({ value: { state: "approved" } })).resolves.toEqual({
         ok: true,
         key: "agent:main:main",

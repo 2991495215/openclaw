@@ -9,16 +9,16 @@ function scrollViewportRef(onUpdate: (element: HTMLElement) => void) {
       return;
     }
     const update = () => onUpdate(element);
-    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(update) : null;
+    const observer = new ResizeObserver(update);
     // Ref runs before children commit. Observe their final sizes too:
     // async content can grow without resizing the scroll viewport itself.
     let frame = 0;
     const observeChildren = () => {
       update();
-      observer?.disconnect();
-      observer?.observe(element);
+      observer.disconnect();
+      observer.observe(element);
       for (const child of element.children) {
-        observer?.observe(child);
+        observer.observe(child);
       }
     };
     const childrenObserver = new MutationObserver(() => {
@@ -30,7 +30,7 @@ function scrollViewportRef(onUpdate: (element: HTMLElement) => void) {
     element.addEventListener("scroll", update, { passive: true });
     dispose = () => {
       cancelAnimationFrame(frame);
-      observer?.disconnect();
+      observer.disconnect();
       childrenObserver.disconnect();
       element.removeEventListener("scroll", update);
     };

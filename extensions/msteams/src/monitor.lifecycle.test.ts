@@ -13,6 +13,7 @@ import {
 import {
   createConfig,
   createRuntime,
+  createSdkContext,
   createStores,
   updateMSTeamsConfig,
 } from "./monitor-lifecycle.test-helpers.js";
@@ -318,7 +319,11 @@ describe("monitorMSTeamsProvider lifecycle", () => {
     }
 
     signinHandler({
-      activity: { from: { id: "29:user", aadObjectId: "aad-user" } },
+      ...createSdkContext({
+        type: "invoke",
+        name: "signin/tokenExchange",
+        from: { id: "29:user", aadObjectId: "aad-user" },
+      }),
       token: {
         connectionName: "graph",
         token: "delegated-graph-token",
@@ -397,7 +402,7 @@ describe("monitorMSTeamsProvider lifecycle", () => {
       value: { actionName: "nonFeedbackAction" },
     };
     const next = vi.fn(async () => {});
-    await messageSubmitHandler({ activity, next });
+    await messageSubmitHandler({ ...createSdkContext(activity), next });
     expect(next).toHaveBeenCalledTimes(1);
 
     const registeredHandler = createMSTeamsActivityHandler.mock.results[0]?.value;
@@ -405,12 +410,10 @@ describe("monitorMSTeamsProvider lifecycle", () => {
       throw new Error("expected registered Teams handler");
     }
     const run = vi.mocked(registeredHandler);
-    const getTeamDetails = vi.fn(async () => ({ aadGroupId: "activity-aad-group" }));
-    await activityHandler({
-      activity,
-      api: { teams: { getById: getTeamDetails } },
-      send: vi.fn(async () => undefined),
-    });
+    const getTeamDetails = vi.fn(async (_teamId: string) => ({ aadGroupId: "activity-aad-group" }));
+    const context = createSdkContext(activity);
+    context.api.teams.getById = getTeamDetails;
+    await activityHandler(context);
     expect(run).toHaveBeenCalledWith(expect.objectContaining({ activity }));
     const adaptedContext = run.mock.calls[0]?.[0] as
       | { getTeamDetails?: (teamId: string) => Promise<{ aadGroupId?: string }> }
@@ -446,9 +449,9 @@ describe("monitorMSTeamsProvider lifecycle", () => {
       throw new Error("expected file consent accept handler");
     }
 
-    expect(fileConsentHandler({ activity: { type: "invoke", name: "fileConsent/invoke" } })).toBe(
-      undefined,
-    );
+    expect(
+      fileConsentHandler(createSdkContext({ type: "invoke", name: "fileConsent/invoke" })),
+    ).toBe(undefined);
     expect(runMSTeamsFileConsentInvokeHandler).toHaveBeenCalledTimes(1);
     releaseUpload?.();
     await uploadWork;
@@ -489,15 +492,15 @@ describe("monitorMSTeamsProvider lifecycle", () => {
     });
     gateIngressAcceptThenDispatch(ingress, appendWork);
 
-    const responseWork = cardActionHandler({
-      activity: {
+    const responseWork = cardActionHandler(
+      createSdkContext({
         id: "activity-card-action",
         type: "invoke",
         name: "adaptiveCard/action",
         conversation: { id: "conversation-card-action", conversationType: "personal" },
         value: { action: { data: { action: "nonPoll" } } },
-      },
-    });
+      }),
+    );
 
     let responseSettled = false;
     void responseWork.then(() => {
@@ -548,15 +551,15 @@ describe("monitorMSTeamsProvider lifecycle", () => {
       throw new Error("expected card.action handler");
     }
 
-    const response = await cardActionHandler({
-      activity: {
+    const response = await cardActionHandler(
+      createSdkContext({
         type: "invoke",
         name: "adaptiveCard/action",
         from: { id: "29:user", aadObjectId: "aad-user" },
         conversation: { id: "19:channel@thread.tacv2", conversationType: "channel" },
         value: { action: { data: { openclawPollId: "poll-1", choices: "0" } } },
-      },
-    });
+      }),
+    );
 
     expect(response).toMatchObject({ statusCode: 200, value: "Not authorized." });
     expect(isCardActionInvokeAuthorized).toHaveBeenCalledTimes(1);
@@ -598,15 +601,15 @@ describe("monitorMSTeamsProvider lifecycle", () => {
       throw new Error("expected card.action handler");
     }
 
-    const response = await cardActionHandler({
-      activity: {
+    const response = await cardActionHandler(
+      createSdkContext({
         type: "invoke",
         name: "adaptiveCard/action",
         from: { id: "29:user", aadObjectId: "aad-user" },
         conversation: { id: "19:other@thread.tacv2", conversationType: "channel" },
         value: { action: { data: { openclawPollId: "poll-1", choices: "0" } } },
-      },
-    });
+      }),
+    );
 
     expect(response).toMatchObject({ statusCode: 200, value: "Poll not found." });
     expect(isCardActionInvokeAuthorized).toHaveBeenCalledTimes(1);

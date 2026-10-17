@@ -353,7 +353,7 @@ export async function monitorMSTeamsProvider(
   // returning nothing or letting the catch-all process it makes Teams report
   // "Unable to reach app".
   app.on("card.action", async (ctx): Promise<MSTeamsCardActionResponse> => {
-    const adaptedCtx = adaptSdkContext(ctx, app);
+    const adaptedCtx = adaptSdkContext(ctx);
     try {
       const activity = adaptedCtx.activity;
       const vote = extractMSTeamsPollVote(activity);
@@ -421,10 +421,10 @@ export async function monitorMSTeamsProvider(
 
   // Typed routes let the SDK acknowledge consent before the delayed upload work.
   app.on("file.consent.accept", (ctx) => {
-    void runMSTeamsFileConsentInvokeHandler(adaptSdkContext(ctx, app), log);
+    void runMSTeamsFileConsentInvokeHandler(adaptSdkContext(ctx), log);
   });
   app.on("file.consent.decline", (ctx) => {
-    void runMSTeamsFileConsentInvokeHandler(adaptSdkContext(ctx, app), log);
+    void runMSTeamsFileConsentInvokeHandler(adaptSdkContext(ctx), log);
   });
 
   // The SDK transport calls this public operation after validating the request token.
@@ -458,7 +458,7 @@ export async function monitorMSTeamsProvider(
   if (ssoDeps) {
     app.event("signin", (ctx) => {
       void (async () => {
-        const adaptedCtx = adaptSdkContext(ctx, app);
+        const adaptedCtx = adaptSdkContext(ctx);
         if (
           !(await isMSTeamsInvokeAuthorized({
             context: adaptedCtx,
@@ -518,7 +518,7 @@ export async function monitorMSTeamsProvider(
   // a generic `message/submitAction` invoke, so non-feedback submits must fall
   // through to the activity catch-all for other submit-action handlers.
   app.on("message.submit", async (ctx) => {
-    const consumed = await runMSTeamsFeedbackInvokeHandler(adaptSdkContext(ctx, app), handlerDeps);
+    const consumed = await runMSTeamsFeedbackInvokeHandler(adaptSdkContext(ctx), handlerDeps);
     if (!consumed) {
       const next = (ctx as { next?: () => void | Promise<void> }).next;
       await next?.call(ctx);
@@ -526,7 +526,7 @@ export async function monitorMSTeamsProvider(
   });
 
   app.on("activity", async (ctx) => {
-    const adaptedCtx = adaptSdkContext(ctx, app);
+    const adaptedCtx = adaptSdkContext(ctx);
     const activity = adaptedCtx.activity;
     // Skip invokes that have dedicated typed routes above.
     if (activity?.type === "invoke") {
@@ -640,30 +640,17 @@ function cardActionError(code: string, message: string): MSTeamsCardActionRespon
  * Adapt a new @microsoft/teams.apps SDK context to the MSTeamsTurnContext interface
  * our handlers expect. The new SDK uses reply()/send() instead of sendActivity().
  */
-function adaptSdkContext(ctx: unknown, app: MSTeamsApp): MSTeamsTurnContext {
-  const sdkCtx = (ctx ?? {}) as {
-    activity?: { id?: string; conversation?: { id?: string; conversationType?: string } };
-    reply?: (activity: unknown) => Promise<unknown>;
-    send?: (activity: unknown) => Promise<unknown>;
-    api?: MSTeamsApp["api"];
-    stream?: {
-      emit(a: unknown): void;
-      update(t: string): void;
-      close(): unknown;
-      readonly canceled: boolean;
-    };
-  };
-  if (typeof sdkCtx.reply !== "function" && typeof sdkCtx.send !== "function") {
-    // Already adapted or old-style context — pass through.
-    return ctx as MSTeamsTurnContext;
-  }
-  const conversationId = sdkCtx.activity?.conversation?.id ?? "";
-  const inboundApi = sdkCtx.api;
-  const activityApi = inboundApi ?? app.api;
-  const getTeamDetails = inboundApi
-    ? (teamId: string) => inboundApi.teams.getById(teamId)
-    : undefined;
-  const conversationType = (sdkCtx.activity?.conversation?.conversationType ?? "").toLowerCase();
+function adaptSdkContext(sdkCtx: {
+  activity: { id?: string; conversation?: { id?: string; conversationType?: string } };
+  reply(activity: unknown): Promise<unknown>;
+  send(activity: unknown): Promise<unknown>;
+  api: Pick<MSTeamsApp["api"], "teams" | "conversations">;
+  stream: NonNullable<MSTeamsTurnContext["stream"]>;
+}): MSTeamsTurnContext {
+  const conversationId = sdkCtx.activity.conversation?.id ?? "";
+  const activityApi = sdkCtx.api;
+  const getTeamDetails = (teamId: string) => activityApi.teams.getById(teamId);
+  const conversationType = (sdkCtx.activity.conversation?.conversationType ?? "").toLowerCase();
   const isThreadable = conversationType === "channel" || conversationType === "groupchat";
   // For Teams channels and group chats, use ctx.reply() so the SDK threads the
   // outbound activity to the inbound one (via replyToId + the inbound's
@@ -672,8 +659,8 @@ function adaptSdkContext(ctx: unknown, app: MSTeamsApp): MSTeamsTurnContext {
   // threaded surfaces where the visual nesting indicates context, but ugly in
   // 1:1 chat. Streaming chunks go through ctx.stream.emit/close separately.
   const sendActivity = (activity: unknown) =>
-    isThreadable ? sdkCtx.reply!(activity) : sdkCtx.send!(activity);
-  return Object.assign(Object.create(Object.getPrototypeOf(ctx)), ctx, {
+    isThreadable ? sdkCtx.reply(activity) : sdkCtx.send(activity);
+  return Object.assign(Object.create(Object.getPrototypeOf(sdkCtx)), sdkCtx, {
     sendActivity,
     sendActivities: async (activities: unknown[]) => {
       const results: unknown[] = [];

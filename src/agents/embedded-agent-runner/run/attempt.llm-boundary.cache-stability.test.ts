@@ -3,6 +3,7 @@ import { streamOpenAICompletions, streamOpenAIResponses } from "@openclaw/ai/int
 import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "@openclaw/ai/internal/shared";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { convertToLlm } from "../../../../packages/agent-core/src/harness/messages.js";
 import {
   captureAnthropicRequest,
   registerParityHostLifecycle,
@@ -42,7 +43,6 @@ import {
   createAssistantResultStream,
   testModel,
 } from "../../sessions/agent-session-loop-correctness.test-support.js";
-import { convertToLlm } from "../../sessions/messages.js";
 import { SessionManager } from "../../sessions/session-manager.js";
 import { makeAgentAssistantMessage } from "../../test-helpers/agent-message-fixtures.js";
 import { createStubTool } from "../../test-helpers/agent-tool-stubs.js";

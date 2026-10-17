@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import type { CustomMessage } from "../../../packages/agent-core/src/harness/messages.js";
 import {
   enqueueMessageInjection,
   MessageInjectionAcceptedUnconfirmedError,
@@ -35,7 +36,6 @@ import {
   takePromptCompactionRequestBudget,
   withCompactionQueuedContext,
 } from "./compaction/request-budget.js";
-import type { CustomMessage } from "./messages.js";
 import { expandPromptTemplate } from "./prompt-templates.js";
 import type { ResourceLoader } from "./resource-loader.js";
 import { withSessionManagerAppend } from "./session-manager-append-admission.js";

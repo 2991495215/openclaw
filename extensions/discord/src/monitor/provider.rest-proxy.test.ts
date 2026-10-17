@@ -64,7 +64,7 @@ const runtimeDeps = vi.hoisted(() => {
       readonly options: unknown,
     ) {}
   }
-  return { Agent, EnvHttpProxyAgent, ProxyAgent, Pool, fetch: mocks.fetch };
+  return { Agent, EnvHttpProxyAgent, FormData, ProxyAgent, Pool, fetch: mocks.fetch };
 });
 vi.mock("openclaw/plugin-sdk/proxy-capture", async (importOriginal) => ({
   ...(await importOriginal<typeof import("openclaw/plugin-sdk/proxy-capture")>()),

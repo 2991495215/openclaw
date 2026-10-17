@@ -54,7 +54,18 @@ type MSTeamsActivity = {
 type MSTeamsActivityParams = { type?: string; [key: string]: unknown };
 export type MSTeamsActivityLike = MSTeamsActivityParams | string;
 
+type TeamsStreamChunkActivity = {
+  id?: string;
+  type?: string;
+  text?: string;
+  channelData?: { streamType?: string };
+};
+
 type MSTeamsStreamer = {
+  readonly events: {
+    on(event: "chunk", handler: (activity: TeamsStreamChunkActivity) => void): number;
+    off(subscriptionId: number): void;
+  };
   emit(activity: MSTeamsActivityParams | string): void;
   update(text: string): void;
   clearText(): void;

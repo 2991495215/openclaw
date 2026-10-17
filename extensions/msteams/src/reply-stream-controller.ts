@@ -12,18 +12,6 @@ import { buildMSTeamsMessageActivity } from "./message-activity.js";
 import type { MSTeamsMonitorLogger } from "./monitor-types.js";
 import type { MSTeamsTurnContext } from "./sdk-types.js";
 
-type TeamsStreamChunkActivity = {
-  id?: string;
-  type?: string;
-  text?: string;
-  channelData?: { streamType?: string };
-};
-
-type TeamsStreamChunkEvents = {
-  on(event: "chunk", handler: (activity: TeamsStreamChunkActivity) => void): number;
-  off(subscriptionId: number): void;
-};
-
 type MSTeamsNativeDeliveryFinalization = {
   visibleReplySent: boolean;
   content?: string;
@@ -75,12 +63,12 @@ export function createTeamsReplyStreamController(params: {
   let replacementTextAwaitingAcknowledgement: { text: string; logicalText: string } | undefined;
   let deferredReplacementEntries: { kind: "payload" | "replacement"; payload: ReplyPayload }[] = [];
   let queuedFinalActivity: ReturnType<typeof finalStreamActivity> | undefined;
-  const streamEvents = (stream as { events?: TeamsStreamChunkEvents } | undefined)?.events;
+  const streamEvents = stream?.events;
   let streamChunkSubscription: number | undefined;
 
   // The SDK emits `chunk` only after Teams acknowledges a cumulative typing
   // activity. Never infer delivered text from emit(), queued bytes, or errors.
-  if (typeof streamEvents?.on === "function" && typeof streamEvents.off === "function") {
+  if (streamEvents) {
     streamChunkSubscription = streamEvents.on("chunk", (activity) => {
       const replacementAcknowledgementPending =
         replacementTextAwaitingAcknowledgement !== undefined;

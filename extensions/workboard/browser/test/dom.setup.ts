@@ -6,6 +6,17 @@ const missingPopoverMethods = (["showPopover", "hidePopover"] as const).filter(
   (method) => typeof HTMLElement.prototype[method] !== "function",
 );
 beforeEach(() => {
+  // JSDOM has no layout; geometry tests install their controlled observer.
+  if (typeof ResizeObserver !== "function") {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  }
   // The unit DOM has no top layer. Browser coverage owns native dismissal behavior.
   for (const method of missingPopoverMethods) {
     Object.defineProperty(HTMLElement.prototype, method, {
@@ -22,4 +33,5 @@ afterEach(() => {
   for (const method of missingPopoverMethods) {
     Reflect.deleteProperty(HTMLElement.prototype, method);
   }
+  vi.unstubAllGlobals();
 });

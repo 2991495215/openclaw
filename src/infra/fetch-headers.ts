@@ -6,7 +6,7 @@ export type HeadersLike = {
 };
 
 export function isHeadersLike(value: object): value is HeadersLike {
-  if (typeof Headers !== "undefined" && value instanceof Headers) {
+  if (value instanceof Headers) {
     return true;
   }
   const candidate = value as Partial<HeadersLike>;

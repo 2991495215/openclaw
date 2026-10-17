@@ -18,7 +18,7 @@ type MessageContentType = ReturnType<GetContentTypeFn>;
 
 export type MockBaileysSocket = {
   ev: EventEmitter;
-  ws: { close: ReturnType<typeof vi.fn> };
+  ws: EventEmitter & { close: ReturnType<typeof vi.fn> };
   sendPresenceUpdate: ReturnType<typeof vi.fn>;
   sendMessage: ReturnType<typeof vi.fn>;
   readMessages: ReturnType<typeof vi.fn>;
@@ -140,7 +140,7 @@ export function createMockBaileys(): {
     const ev = new EventEmitter();
     const sock: MockBaileysSocket = {
       ev,
-      ws: { close: vi.fn() },
+      ws: Object.assign(new EventEmitter(), { close: vi.fn() }),
       sendPresenceUpdate: vi.fn().mockResolvedValue(undefined),
       sendMessage: vi.fn().mockResolvedValue({ key: { id: "msg123" } }),
       readMessages: vi.fn().mockResolvedValue(undefined),

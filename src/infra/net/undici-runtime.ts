@@ -12,7 +12,7 @@ import { withUndiciErrorDiagnostics } from "./undici-error-diagnostics.js";
 export type UndiciRuntimeDeps = {
   Agent: typeof import("undici").Agent;
   EnvHttpProxyAgent: typeof import("undici").EnvHttpProxyAgent;
-  FormData?: typeof import("undici").FormData;
+  FormData: typeof import("undici").FormData;
   ProxyAgent: typeof import("undici").ProxyAgent;
   fetch: typeof import("undici").fetch;
 };
@@ -31,7 +31,7 @@ type UndiciProxyAgentOptions = ConstructorParameters<UndiciRuntimeDeps["ProxyAge
 
 /** Loads undici lazily, allowing tests to inject constructors without global side effects. */
 export function loadUndiciRuntimeDeps(): UndiciRuntimeDeps {
-  return loadUndiciModule(["Agent", "EnvHttpProxyAgent", "ProxyAgent", "fetch"]);
+  return loadUndiciModule(["Agent", "EnvHttpProxyAgent", "FormData", "ProxyAgent", "fetch"]);
 }
 
 /** Loads only the undici global-dispatcher API used by startup proxy setup. */

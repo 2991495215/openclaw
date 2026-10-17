@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { convertToLlm } from "../../../../packages/agent-core/src/harness/messages.js";
 import {
   captureAnthropicRequest,
   registerParityHostLifecycle,
@@ -6,7 +7,6 @@ import {
 import type { AgentMessage } from "../../runtime/index.js";
 import { guardSessionManager } from "../../session-tool-result-guard-wrapper.js";
 import type { AgentSession } from "../../sessions/index.js";
-import { convertToLlm } from "../../sessions/messages.js";
 import { makeAssistantMessageFixture } from "../../test-helpers/assistant-message-fixtures.js";
 import { prepareEmbeddedAttemptSessionBoundary } from "./attempt-session-prepare.js";
 import {

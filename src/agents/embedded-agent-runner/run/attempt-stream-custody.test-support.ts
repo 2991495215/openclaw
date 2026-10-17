@@ -2,6 +2,7 @@ import path from "node:path";
 import type { CompactionReplayRejection } from "@openclaw/ai/transports";
 import type { AssistantMessage, Model } from "openclaw/plugin-sdk/llm";
 import { expect, vi } from "vitest";
+import { convertToLlm } from "../../../../packages/agent-core/src/harness/messages.js";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { replaceSessionEntry } from "../../../config/sessions/session-accessor.js";
 import {
@@ -19,7 +20,6 @@ import {
   createTestSession,
   testModel,
 } from "../../sessions/agent-session-loop-correctness.test-support.js";
-import { convertToLlm } from "../../sessions/messages.js";
 import { SessionManager } from "../../sessions/session-manager.js";
 import type { EmbeddedAttemptExecutionPhaseInput } from "./attempt-execution-types.js";
 import { installEmbeddedAttemptStreamGuards } from "./attempt-stream.js";

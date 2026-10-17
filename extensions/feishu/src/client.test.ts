@@ -174,11 +174,19 @@ afterAll(() => {
   vi.resetModules();
 });
 
-it("registers through the public interceptor API and overrides the SDK User-Agent", () => {
+it("registers through the public interceptor API and overrides the SDK User-Agent", async () => {
   expect(requestInterceptorState.registered).toBeTypeOf("function");
-  const req = { headers: { "User-Agent": "oapi-node-sdk/1.0.0" } };
-  expect(requestInterceptorState.registered?.(req)).toBe(req);
-  expect(req.headers["User-Agent"]).toBe(getFeishuUserAgent());
+  const { defaultHttpInstance } =
+    await vi.importActual<typeof import("@larksuiteoapi/node-sdk")>("@larksuiteoapi/node-sdk");
+  await defaultHttpInstance.request({
+    url: `${sdkOrigin}/open-apis/test`,
+    headers: { "User-Agent": "oapi-node-sdk/1.0.0" },
+    adapter: async (req) => {
+      expect(requestInterceptorState.registered?.(req)).toBe(req);
+      expect(req.headers.get("User-Agent")).toBe(getFeishuUserAgent());
+      return { data: {}, status: 200, statusText: "OK", headers: {}, config: req };
+    },
+  });
 });
 
 describe("Feishu custom HTTPS API domains", () => {

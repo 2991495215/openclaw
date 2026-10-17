@@ -10,13 +10,6 @@ type RestoreTerminalStateOptions = {
    *
    * Default: false (safer for "cleanup then exit" call sites).
    */
-  resumeStdin?: boolean;
-
-  /**
-   * Alias for resumeStdin. Prefer this name to make the behavior explicit.
-   *
-   * Default: false.
-   */
   resumeStdinIfPaused?: boolean;
 
   /**
@@ -45,7 +38,7 @@ export function restoreTerminalState(
 ): void {
   // Docker TTY note: resuming stdin can keep a container process alive even
   // after the wizard is "done" (stdin_open: true), making installers appear hung.
-  const resumeStdin = options.resumeStdinIfPaused ?? options.resumeStdin ?? false;
+  const resumeStdin = options.resumeStdinIfPaused ?? false;
   const resetStream = options.resetStream ?? process.stdout;
   const restore = (scope: string, action: () => void) => {
     try {
@@ -57,9 +50,9 @@ export function restoreTerminalState(
   restore("progress line", clearActiveProgressLine);
 
   const stdin = process.stdin;
-  if (stdin.isTTY && typeof stdin.setRawMode === "function") {
+  if (stdin.isTTY) {
     restore("raw mode", () => stdin.setRawMode(false));
-    if (resumeStdin && typeof stdin.isPaused === "function" && stdin.isPaused()) {
+    if (resumeStdin && stdin.isPaused()) {
       restore("stdin resume", () => stdin.resume());
     }
   }

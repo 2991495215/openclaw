@@ -327,13 +327,11 @@ export function createInternalAgentTurnFacade(
 
   const dispatch = async <T = unknown>(
     request: AgentRunRequest,
-    dispatchOptions: InternalAgentTurnDispatchOptions | number = {},
+    dispatchOptions: InternalAgentTurnDispatchOptions = {},
   ): Promise<T> => {
-    const normalizedOptions =
-      typeof dispatchOptions === "number" ? { timeoutMs: dispatchOptions } : dispatchOptions;
     return unwrapGatewayMethodDispatchResponse(
       "agent",
-      await dispatchRaw(request, normalizedOptions),
+      await dispatchRaw(request, dispatchOptions),
     ) as T;
   };
 

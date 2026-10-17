@@ -1,5 +1,8 @@
 import type { Result } from "@openclaw/normalization-core/result";
-import type { BashExecutionMessage, CustomMessage } from "../../agents/sessions/messages.js";
+import type {
+  BashExecutionMessage,
+  CustomMessage,
+} from "../../../packages/agent-core/src/harness/messages.js";
 import type {
   CommittedCompactionBoundary,
   PreparedCompactionAppend,

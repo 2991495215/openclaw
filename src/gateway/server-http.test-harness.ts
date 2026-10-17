@@ -1,7 +1,7 @@
 // Gateway HTTP test harness.
 // Builds fake requests/responses and dispatches them through Gateway HTTP servers.
 import { EventEmitter } from "node:events";
-import { IncomingMessage, type ServerResponse } from "node:http";
+import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { expect, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
@@ -77,7 +77,8 @@ export function createResponse(req = new IncomingMessage(new Socket())): {
   end: ReturnType<typeof vi.fn>;
   getBody: () => string;
 } {
-  const setHeader = vi.fn();
+  const headers = new ServerResponse(req);
+  const setHeader = vi.fn(headers.setHeader.bind(headers));
   let body = "";
   const { promise: ended, resolve: resolveEnd } = createDeferred();
   const end = vi.fn((chunk?: unknown) => {
@@ -102,7 +103,8 @@ export function createResponse(req = new IncomingMessage(new Socket())): {
     headersSent: false,
     statusCode: 200,
     setHeader,
-    removeHeader: vi.fn(),
+    getHeader: headers.getHeader.bind(headers),
+    removeHeader: vi.fn(headers.removeHeader.bind(headers)),
     end,
   });
   responseEndPromises.set(res as unknown as ServerResponse, ended);

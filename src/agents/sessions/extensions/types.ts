@@ -21,6 +21,7 @@ import type {
 } from "@earendil-works/pi-tui";
 import type { ImageContent, Model, TextContent } from "openclaw/plugin-sdk/llm";
 import type { Static, TSchema } from "typebox";
+import type { CustomMessage } from "../../../../packages/agent-core/src/harness/messages.js";
 import type { Theme } from "../../modes/interactive/theme/theme.js";
 import type {
   AfterToolCallResult,
@@ -39,7 +40,6 @@ import type { EventBus } from "../event-bus.js";
 import type { ExecOptions, ExecResult } from "../exec.js";
 import type { ReadonlyFooterDataProvider } from "../footer-data-provider.js";
 import type { KeybindingsManager } from "../keybindings.js";
-import type { CustomMessage } from "../messages.js";
 import type { ModelRegistry } from "../model-registry.js";
 import type { ProviderConfig } from "../provider-config.js";
 import type {

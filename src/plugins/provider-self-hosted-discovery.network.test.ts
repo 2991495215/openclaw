@@ -50,6 +50,7 @@ describe("discovery request authority and proxy routing", () => {
     vi.stubGlobal("__OPENCLAW_TEST_UNDICI_RUNTIME_DEPS__", {
       Agent,
       EnvHttpProxyAgent,
+      FormData,
       ProxyAgent,
       fetch,
     });
@@ -84,6 +85,7 @@ describe("discovery request authority and proxy routing", () => {
     vi.stubGlobal("__OPENCLAW_TEST_UNDICI_RUNTIME_DEPS__", {
       Agent,
       EnvHttpProxyAgent,
+      FormData,
       ProxyAgent,
       fetch,
     });
@@ -144,6 +146,7 @@ describe.each([
     vi.stubGlobal("__OPENCLAW_TEST_UNDICI_RUNTIME_DEPS__", {
       Agent,
       EnvHttpProxyAgent,
+      FormData,
       ProxyAgent,
       fetch,
     });
@@ -178,6 +181,7 @@ describe.each([
     vi.stubGlobal("__OPENCLAW_TEST_UNDICI_RUNTIME_DEPS__", {
       Agent,
       EnvHttpProxyAgent,
+      FormData,
       ProxyAgent,
       fetch,
     });

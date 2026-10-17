@@ -115,7 +115,8 @@ vi.mock("../plugins/plugin-lifecycle-lease.js", () => ({
 }));
 
 const withTimeout = vi.hoisted(() => vi.fn(async <T>(promise: Promise<T>) => await promise));
-vi.mock("../utils/with-timeout.js", () => ({
+vi.mock("../infra/fs-safe.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../infra/fs-safe.js")>()),
   withTimeout,
 }));
 

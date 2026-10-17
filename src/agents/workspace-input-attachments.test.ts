@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { convertToLlm } from "../../packages/agent-core/src/harness/messages.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { stageSandboxMedia } from "../auto-reply/reply/stage-sandbox-media.js";
 import { root as fsRoot } from "../infra/fs-safe.js";
@@ -22,7 +23,6 @@ import { createRemoteShellSandboxFsBridge } from "./sandbox/remote-fs-bridge.js"
 import { createLocalRemoteShellScriptRunner } from "./sandbox/remote-fs-bridge.test-helpers.js";
 import { buildRemoteCommand } from "./sandbox/remote-shell-command.js";
 import { createRemoteShellSandboxSession } from "./sandbox/remote-shell-transport.js";
-import { convertToLlm } from "./sessions/messages.js";
 import { registerAgentWorkspaceAccess } from "./workspace-access.js";
 import { createWorkspaceAttachmentPreparer } from "./workspace-attachment-preparer.js";
 

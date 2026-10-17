@@ -1,3 +1,7 @@
+import type {
+  BashExecutionMessage,
+  CustomMessage,
+} from "../../../packages/agent-core/src/harness/messages.js";
 import {
   readActiveTranscriptEntryAnchor,
   readTranscriptMutationAtSync,
@@ -24,7 +28,6 @@ import type { Message } from "../../llm/types.js";
 import { readNestedToolActivity } from "../../sessions/nested-tool-activity.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
 import { recordModelFallbackStop } from "../model-fallback-stop.js";
-import type { BashExecutionMessage, CustomMessage } from "./messages.js";
 import { getSessionCompactionPersistenceAsync } from "./session-compaction-persistence.js";
 import { withSessionManagerAppend } from "./session-manager-append-admission.js";
 import { isOutOfTurnHistoryEntry } from "./session-manager-codec.js";

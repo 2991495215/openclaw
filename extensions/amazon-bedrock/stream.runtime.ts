@@ -1096,10 +1096,6 @@ function getBedrockModelArnRegion(modelId: string): string | undefined {
 }
 
 function getConfiguredBedrockRegion(options: BedrockOptions): string | undefined {
-  if (typeof process === "undefined") {
-    return options.region;
-  }
-
   return (
     options.region ||
     normalizeOptionalString(process.env.AWS_REGION) ||
@@ -1111,10 +1107,6 @@ function hasConfiguredBedrockProfile(options: BedrockOptions): boolean {
   if (options.profile) {
     return true;
   }
-  if (typeof process === "undefined") {
-    return false;
-  }
-
   return Boolean(process.env.AWS_PROFILE);
 }
 

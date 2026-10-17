@@ -1,4 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type {
+  BashExecutionMessage,
+  CustomMessage,
+} from "../../../packages/agent-core/src/harness/messages.js";
 import { captureRuntimeConfig } from "../../config/runtime-source-projection.js";
 import {
   resolveSqliteReadScope,
@@ -40,7 +44,6 @@ import {
   registerOpenClawStateDatabaseAsyncResource,
 } from "../../state/openclaw-state-db-cache.js";
 import { resolveOpenClawStateSqlitePath } from "../../state/openclaw-state-db.paths.js";
-import type { BashExecutionMessage, CustomMessage } from "./messages.js";
 import type { SessionManagerCore } from "./session-manager-core.js";
 import {
   captureSessionManagerIncognitoBinding,

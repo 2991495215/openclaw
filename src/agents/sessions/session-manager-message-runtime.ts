@@ -1,5 +1,9 @@
 import { collectNestedErrorCandidates } from "@openclaw/normalization-core/error-coercion";
 import type {
+  BashExecutionMessage,
+  CustomMessage,
+} from "../../../packages/agent-core/src/harness/messages.js";
+import type {
   SessionTranscriptContextVersion,
   SessionTranscriptWriteScope,
   TranscriptMessageAppendResult,
@@ -39,7 +43,6 @@ import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.pa
 import { captureOpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution.js";
 import { openOpenClawAgentSqliteWorkerStore } from "../../state/openclaw-agent-worker-store.js";
 import { recordModelFallbackStop } from "../model-fallback-stop.js";
-import type { BashExecutionMessage, CustomMessage } from "./messages.js";
 import { appendSessionManagerActor } from "./session-manager-actor-append.js";
 import { captureSessionMessageAdmission } from "./session-manager-message-admission.js";
 import { SessionTranscriptMessageCommittedError } from "./session-manager-message-error.js";

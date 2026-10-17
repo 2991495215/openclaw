@@ -46,8 +46,7 @@ export function prepareTsgoCommand(
   cwd = process.cwd(),
 ) {
   const hostResources = {
-    logicalCpuCount:
-      typeof os.availableParallelism === "function" ? os.availableParallelism() : os.cpus().length,
+    logicalCpuCount: os.availableParallelism(),
     totalMemoryBytes: os.totalmem(),
   };
   const { args: finalArgs, env } = applyLocalTsgoPolicy(

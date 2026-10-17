@@ -1,6 +1,6 @@
 import { cpus, type CpuInfo } from "node:os";
 import { monitorEventLoopDelay, performance, type ELDHistogram } from "node:perf_hooks";
-import { isMainThread, Worker } from "node:worker_threads";
+import { isMainThread } from "node:worker_threads";
 import type { Static } from "typebox";
 import type { SchemaContract } from "../../../packages/gateway-protocol/src/schema-contract.js";
 import type { GatewayEventLoopHealthSchema } from "../../../packages/gateway-protocol/src/schema/runtime-vitals.js";
@@ -201,7 +201,7 @@ export function createGatewayEventLoopHealthMonitor(
     lastWorkerCpuWindow = undefined;
     // Bun 1.4.2 silently turns native worker-counter failures into zero. Main
     // thread and host counters remain usable; do not label that worker value idle.
-    if (process.versions.bun || typeof Worker.prototype.cpuUsage !== "function") {
+    if (process.versions.bun) {
       return;
     }
     const { workers, revision } = getTrackedWorkerCpuSources();

@@ -1,5 +1,6 @@
 /** Assembles an agent session from the run owner's selected model and prepared resources. */
 import { clampThinkingLevel } from "@openclaw/ai/internal/runtime";
+import { convertToLlm } from "../../../packages/agent-core/src/harness/messages.js";
 import { sameSessionTranscriptTargetBinding } from "../../config/sessions/transcript-target-binding.js";
 import {
   SessionTranscriptWriterClaimReboundError,
@@ -27,7 +28,6 @@ import {
 import type { AgentSessionConfig } from "./agent-session-types.js";
 import { AgentSession } from "./agent-session.js";
 import type { ExtensionRunner } from "./extensions/index.js";
-import { convertToLlm } from "./messages.js";
 import { getModelRegistryRuntime } from "./model-registry-runtime.js";
 import { withSessionManagerAppend } from "./session-manager-append-admission.js";
 import { sessionManagerReadInitialContext } from "./session-manager-current-turn.js";

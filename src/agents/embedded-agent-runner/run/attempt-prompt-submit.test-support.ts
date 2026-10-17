@@ -1,10 +1,10 @@
 import type { StreamFn } from "openclaw/plugin-sdk/agent-core";
 import { onTestFinished, vi } from "vitest";
+import { convertToLlm } from "../../../../packages/agent-core/src/harness/messages.js";
 import type { ImageContent } from "../../../llm/types.js";
 import type { AgentMessage } from "../../runtime/index.js";
 import { agentSessionQueuePromptContext } from "../../sessions/agent-session-prompting.js";
 import type { AgentSession } from "../../sessions/index.js";
-import { convertToLlm } from "../../sessions/messages.js";
 import { retainEmbeddedSessionPromptState } from "../session-prompt-state.js";
 
 export const sessionId = "attempt-prompt-submit-test";

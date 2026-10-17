@@ -40,6 +40,7 @@ function stubRuntimeFetch(fetchImpl: typeof fetch, close?: () => Promise<void>):
       close = close;
     },
     EnvHttpProxyAgent: function MockEnvHttpProxyAgent() {},
+    FormData,
     ProxyAgent: function MockProxyAgent() {},
     fetch: fetchImpl,
   });

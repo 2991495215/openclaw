@@ -53,6 +53,7 @@ function useBodylessForeignResponse(params: { text: string; contentLength?: stri
   testGlobal[TEST_UNDICI_RUNTIME_DEPS_KEY] = {
     Agent: TestAgent,
     EnvHttpProxyAgent: TestEnvHttpProxyAgent,
+    FormData,
     ProxyAgent: TestProxyAgent,
     fetch: async () =>
       ({
@@ -147,6 +148,7 @@ describe("MCP HTTP fetch helpers", () => {
     testGlobal[TEST_UNDICI_RUNTIME_DEPS_KEY] = {
       Agent: TestAgent,
       EnvHttpProxyAgent: TestEnvHttpProxyAgent,
+      FormData,
       ProxyAgent: TestProxyAgent,
       fetch: async (url: string | URL | Request, init?: unknown) => {
         fetchCalls.push({ url, init });
@@ -228,6 +230,7 @@ describe("MCP HTTP fetch helpers", () => {
     testGlobal[TEST_UNDICI_RUNTIME_DEPS_KEY] = {
       Agent: TestAgent,
       EnvHttpProxyAgent: TestEnvHttpProxyAgent,
+      FormData,
       ProxyAgent: TestProxyAgent,
       fetch: async (url: string | URL | Request, init?: RequestInit) => {
         const request = new Request(url, init);
@@ -341,6 +344,7 @@ describe("MCP HTTP fetch helpers", () => {
     testGlobal[TEST_UNDICI_RUNTIME_DEPS_KEY] = {
       Agent: TestAgent,
       EnvHttpProxyAgent: TestEnvHttpProxyAgent,
+      FormData,
       ProxyAgent: TestProxyAgent,
       fetch: async (_url: string | URL | Request, init?: unknown) => {
         const signal =

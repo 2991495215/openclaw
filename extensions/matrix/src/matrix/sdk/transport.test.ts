@@ -14,6 +14,7 @@ function stubRuntimeFetch(fetchImpl: typeof fetch): void {
   (globalThis as Record<string, unknown>)[TEST_UNDICI_RUNTIME_DEPS_KEY] = {
     Agent: function MockAgent() {},
     EnvHttpProxyAgent: function MockEnvHttpProxyAgent() {},
+    FormData,
     ProxyAgent: function MockProxyAgent() {},
     fetch: fetchImpl,
   };

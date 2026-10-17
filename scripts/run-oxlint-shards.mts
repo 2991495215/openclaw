@@ -460,8 +460,7 @@ function resolveHostResources(hostResources?: HostResources) {
   return {
     totalMemoryBytes: os.totalmem(),
     memoryCapacityBytes: readProcessMemoryCapacity({}).capacityBytes,
-    logicalCpuCount:
-      typeof os.availableParallelism === "function" ? os.availableParallelism() : os.cpus().length,
+    logicalCpuCount: os.availableParallelism(),
   };
 }
 

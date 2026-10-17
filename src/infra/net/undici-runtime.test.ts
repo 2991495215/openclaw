@@ -93,6 +93,7 @@ function installUndiciRuntimeDeps(): void {
     Agent: MockAgent,
     Client: MockClient,
     EnvHttpProxyAgent: MockEnvHttpProxyAgent,
+    FormData,
     Pool: MockPool,
     ProxyAgent: MockProxyAgent,
     buildConnector: () => proxyConnect,
@@ -161,6 +162,7 @@ describe("installed dispatcher lifecycle", () => {
       const override = {
         Agent: OverrideAgent,
         EnvHttpProxyAgent: OverrideAgent,
+        FormData,
         ProxyAgent: OverrideAgent,
         fetch() {},
       };

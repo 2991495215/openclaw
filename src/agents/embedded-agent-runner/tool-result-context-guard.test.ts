@@ -3,9 +3,9 @@ import { Agent, type AgentMessage } from "openclaw/plugin-sdk/agent-core";
 import { createAssistantMessageEventStream, type Message } from "openclaw/plugin-sdk/llm";
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
+import { convertToLlm } from "../../../packages/agent-core/src/harness/messages.js";
 import type { ContextEngine } from "../../context-engine/types.js";
 import { sanitizeToolUseResultPairing } from "../session-transcript-repair.js";
-import { convertToLlm } from "../sessions/messages.js";
 import {
   castAgentMessage,
   makeAgentAssistantMessage,

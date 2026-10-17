@@ -62,6 +62,7 @@ it.each([
   vi.stubGlobal("__OPENCLAW_TEST_UNDICI_RUNTIME_DEPS__", {
     Agent: function MockAgent() {},
     EnvHttpProxyAgent: function MockEnvHttpProxyAgent() {},
+    FormData,
     ProxyAgent: function MockProxyAgent() {},
     fetch: runtimeFetch,
   });

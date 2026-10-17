@@ -120,6 +120,42 @@ test("webchat session mutations follow operator scope policy", async () => {
   ws.close();
 });
 
+test("sessions.pluginPatch rejects ambiguous changes without changing stored extension state", async () => {
+  const { storePath } = await createSessionStoreDir();
+  const key = "agent:main:main";
+  await writeSessionStore({
+    entries: {
+      main: sessionStoreEntry("plugin-patch-session", {
+        pluginExtensions: { "patch-fixture": { workflow: { state: "waiting" } } },
+      }),
+    },
+  });
+  const before = loadSessionEntry({ sessionKey: key, storePath });
+  expect(before?.pluginExtensions?.["patch-fixture"]?.workflow).toEqual({ state: "waiting" });
+  const ws = await openPermissionClient({
+    id: GATEWAY_CLIENT_IDS.WEBCHAT_UI,
+    mode: GATEWAY_CLIENT_MODES.UI,
+    scopes: ["operator.admin"],
+  });
+  try {
+    const result = await rpcReq(ws, "sessions.pluginPatch", {
+      key,
+      pluginId: "patch-fixture",
+      namespace: "workflow",
+      value: { state: "ambiguous" },
+      unset: true,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual({
+      code: "INVALID_REQUEST",
+      message: "sessions.pluginPatch cannot specify both unset and value",
+    });
+    expect(loadSessionEntry({ sessionKey: key, storePath })).toEqual(before);
+  } finally {
+    ws.close();
+  }
+});
+
 test("session:patch hook mutations cannot change the response path", async () => {
   await createSessionStoreDir();
   await writeSessionStore({

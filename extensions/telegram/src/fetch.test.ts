@@ -180,6 +180,7 @@ function installUndiciRuntimeDeps(): void {
   (globalThis as Record<string, unknown>)[TEST_UNDICI_RUNTIME_DEPS_KEY] = {
     Agent: AgentCtor,
     EnvHttpProxyAgent: EnvHttpProxyAgentCtor,
+    FormData,
     Pool: vi.fn(function MockPool(
       this: MockDispatcherInstance,
       _origin: unknown,

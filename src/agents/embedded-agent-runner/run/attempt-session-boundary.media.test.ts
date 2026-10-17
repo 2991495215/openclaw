@@ -1,13 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { convertToLlm } from "../../../../packages/agent-core/src/harness/messages.js";
 import type { ProviderMessage } from "../../../../packages/ai/src/provider-types.js";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import { attachRuntimePromptMediaFacts } from "../../../media/media-facts.js";
 import { buildPersistedUserTurnMessage } from "../../../sessions/user-turn-transcript.js";
 import type { PersistedUserTurnMessage } from "../../../sessions/user-turn-transcript.types.js";
 import type { AgentMessage } from "../../runtime/index.js";
-import { convertToLlm } from "../../sessions/messages.js";
 import { normalizeMessagesForLlmBoundary } from "./attempt-llm-boundary.js";
 import { materializeProviderContext } from "./images.js";
 import {

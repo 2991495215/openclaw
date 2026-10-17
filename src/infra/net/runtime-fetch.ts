@@ -39,12 +39,7 @@ export function fetchWithPreparedRuntimeDispatcher(
   ) => Promise<Response>;
   const normalizedInit = normalizeRequestInitHeadersForFetch(init);
   const RuntimeFormData = runtimeDeps.FormData;
-  if (
-    !init ||
-    !isFormDataLike(init.body) ||
-    typeof RuntimeFormData !== "function" ||
-    init.body instanceof RuntimeFormData
-  ) {
+  if (!init || !isFormDataLike(init.body) || init.body instanceof RuntimeFormData) {
     return runtimeFetch(input, normalizedInit);
   }
   // Node global FormData and undici runtime FormData can differ; rebuild into

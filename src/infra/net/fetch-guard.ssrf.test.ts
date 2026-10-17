@@ -76,6 +76,7 @@ function installRuntime(fetch: NonNullable<GuardedFetchOptions["fetchImpl"]> = f
   Reflect.set(globalThis, TEST_UNDICI_RUNTIME_DEPS_KEY, {
     Agent: agentCtor,
     EnvHttpProxyAgent: envHttpProxyAgentCtor,
+    FormData,
     ProxyAgent: proxyAgentCtor,
     fetch,
   });

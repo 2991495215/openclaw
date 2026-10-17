@@ -46,7 +46,7 @@ export type InternalAgentTurnDispatchOptions = {
 export type InternalAgentTurnFacade = {
   dispatch: <T = unknown>(
     request: AgentRunRequest,
-    options?: InternalAgentTurnDispatchOptions | number,
+    options?: InternalAgentTurnDispatchOptions,
   ) => Promise<T>;
   dispatchRaw: (
     request: AgentRunRequest,

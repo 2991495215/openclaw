@@ -113,6 +113,7 @@ describe("LiteLLM discovery-backed onboarding", () => {
     vi.stubGlobal("__OPENCLAW_TEST_UNDICI_RUNTIME_DEPS__", {
       Agent,
       EnvHttpProxyAgent,
+      FormData,
       ProxyAgent,
       fetch: discoveryFetch,
     });

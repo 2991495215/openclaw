@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { convertToLlm as convertHarnessMessages } from "../../../../packages/agent-core/src/harness/messages.js";
 import { markInboundContextLabel } from "../../../auto-reply/reply/inbound-context-marker.js";
 import { buildTimestampPrefix } from "../../../gateway/server-methods/agent-timestamp.js";
 import { labelRuntimeContextText } from "../../../llm/types.js";
 import { withEnvAsync } from "../../../test-utils/env.js";
 import type { AgentMessage } from "../../runtime/index.js";
-import { convertToLlm as convertHarnessMessages } from "../../sessions/messages.js";
 import { makeAssistantMessageFixture } from "../../test-helpers/assistant-message-fixtures.js";
 import { beginPromptCacheObservation } from "../prompt-cache-observability.js";
 import {

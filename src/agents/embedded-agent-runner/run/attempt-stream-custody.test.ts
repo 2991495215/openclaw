@@ -9,6 +9,7 @@ import {
   type Model,
 } from "openclaw/plugin-sdk/llm";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { convertToLlm } from "../../../../packages/agent-core/src/harness/messages.js";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import { createReplyOperation } from "../../../auto-reply/reply/reply-run-registry.js";
@@ -52,7 +53,6 @@ import {
   registerAgentSessionLoopTestLifecycle,
   testModel,
 } from "../../sessions/agent-session-loop-correctness.test-support.js";
-import { convertToLlm } from "../../sessions/messages.js";
 import { resolveEmbeddedSessionLane } from "../lanes.js";
 import { clearActiveEmbeddedRun } from "../runs.js";
 import { testing as embeddedRecoveryTesting } from "../runs.test-support.js";

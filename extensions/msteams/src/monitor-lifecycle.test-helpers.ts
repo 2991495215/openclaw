@@ -50,3 +50,28 @@ export function createStores() {
     pollStore: {} as MSTeamsPollStore,
   };
 }
+
+export function createSdkContext<T extends object>(activity: T) {
+  return {
+    activity,
+    reply: vi.fn(async () => undefined),
+    send: vi.fn(async () => undefined),
+    api: {
+      teams: { getById: vi.fn(async (_teamId: string) => ({ aadGroupId: "fixture-group" })) },
+      conversations: {
+        activities: vi.fn(() => ({
+          update: vi.fn(async () => ({})),
+          delete: vi.fn(async () => {}),
+        })),
+      },
+    },
+    stream: {
+      events: { on: vi.fn(() => 1), off: vi.fn() },
+      emit: vi.fn(),
+      update: vi.fn(),
+      clearText: vi.fn(),
+      close: vi.fn(async () => undefined),
+      canceled: false,
+    },
+  };
+}

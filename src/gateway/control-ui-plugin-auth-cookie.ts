@@ -222,7 +222,7 @@ export function setControlUiPluginAuthCookie(
   if (cookiesToAdd.length === 0) {
     return issuedGrants;
   }
-  const existing = typeof res.getHeader === "function" ? res.getHeader("Set-Cookie") : undefined;
+  const existing = res.getHeader("Set-Cookie");
   const cookies = Array.isArray(existing)
     ? [...existing, ...cookiesToAdd]
     : typeof existing === "string"

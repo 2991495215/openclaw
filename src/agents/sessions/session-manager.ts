@@ -5,6 +5,10 @@
  * behavior are split into focused internal modules.
  */
 import { isDeepStrictEqual } from "node:util";
+import type {
+  BashExecutionMessage,
+  CustomMessage,
+} from "../../../packages/agent-core/src/harness/messages.js";
 import { buildSessionContext as buildCoreSessionContext } from "../../../packages/agent-core/src/harness/session/session.js";
 import type { AgentMessage } from "../../../packages/agent-core/src/types.js";
 import type { SessionTranscriptRuntimeTarget } from "../../config/sessions/session-accessor.js";
@@ -43,7 +47,6 @@ import { CURRENT_SESSION_VERSION } from "../../config/sessions/version.js";
 import { readSqliteDatabaseWriteTokenForPath } from "../../infra/sqlite-database-admission.js";
 import type { Message } from "../../llm/types.js";
 import type { UserTurnTranscriptAdmissionReceipt } from "../../sessions/user-turn-transcript.types.js";
-import type { BashExecutionMessage, CustomMessage } from "./messages.js";
 import { SessionManagerBranching } from "./session-manager-branching.js";
 import { cloneSessionModelContextEntries } from "./session-manager-codec.js";
 import {

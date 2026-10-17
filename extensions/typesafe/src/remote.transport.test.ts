@@ -151,6 +151,7 @@ beforeEach(() => {
   vi.stubGlobal("__OPENCLAW_TEST_UNDICI_RUNTIME_DEPS__", {
     Agent: FixtureAgent,
     EnvHttpProxyAgent,
+    FormData,
     ProxyAgent,
     fetch: undiciFetch,
   });

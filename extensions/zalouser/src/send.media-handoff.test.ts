@@ -101,6 +101,7 @@ beforeEach(() => {
   vi.stubGlobal("__OPENCLAW_TEST_UNDICI_RUNTIME_DEPS__", {
     Agent: FixtureAgent,
     EnvHttpProxyAgent: FixtureEnvHttpProxyAgent,
+    FormData,
     ProxyAgent: FixtureProxyAgent,
     fetch: async (input: Parameters<typeof fetch>[0], init?: DispatcherAwareRequestInit) => {
       const url = requestUrl(input);

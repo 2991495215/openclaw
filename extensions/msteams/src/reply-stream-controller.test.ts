@@ -7,16 +7,6 @@ import { createTeamsReplyStreamController } from "./reply-stream-controller.js";
 type StreamCloseResult = { id: string } | undefined;
 
 function makeStream() {
-  return {
-    emit: vi.fn(),
-    update: vi.fn(),
-    clearText: vi.fn(),
-    close: vi.fn<() => Promise<StreamCloseResult>>(async () => ({ id: "stream-final" })),
-    canceled: false,
-  };
-}
-
-function makeAcknowledgedStream() {
   type ChunkActivity = {
     id?: string;
     type?: string;
@@ -25,8 +15,12 @@ function makeAcknowledgedStream() {
   };
   const handlers = new Map<number, (activity: ChunkActivity) => void>();
   let nextSubscriptionId = 0;
-  const stream = {
-    ...makeStream(),
+  return {
+    emit: vi.fn(),
+    update: vi.fn(),
+    clearText: vi.fn(),
+    close: vi.fn<() => Promise<StreamCloseResult>>(async () => ({ id: "stream-final" })),
+    canceled: false,
     events: {
       on: vi.fn((_event: "chunk", handler: (activity: ChunkActivity) => void) => {
         const subscriptionId = nextSubscriptionId++;
@@ -50,7 +44,6 @@ function makeAcknowledgedStream() {
       }
     },
   };
-  return stream;
 }
 
 function makeContext(stream?: ReturnType<typeof makeStream>) {
@@ -84,7 +77,7 @@ describe("createTeamsReplyStreamController", () => {
   });
 
   it("retains an acknowledged replacement when stream close produces no activity", async () => {
-    const stream = makeAcknowledgedStream();
+    const stream = makeStream();
     const ctrl = makeController({ stream });
 
     ctrl.onPartialReply({ text: "abcde" });
@@ -114,7 +107,7 @@ describe("createTeamsReplyStreamController", () => {
   });
 
   it("rejects a delayed common-prefix chunk while awaiting replacement acknowledgement", async () => {
-    const stream = makeAcknowledgedStream();
+    const stream = makeStream();
     const ctrl = makeController({ stream });
 
     ctrl.onPartialReply({ text: "abcdef" });
@@ -131,7 +124,7 @@ describe("createTeamsReplyStreamController", () => {
   });
 
   it("uses the latest partial when no final text payload follows a rewrite", async () => {
-    const stream = makeAcknowledgedStream();
+    const stream = makeStream();
     const ctrl = makeController({ stream });
 
     ctrl.onPartialReply({ text: "abcde" });
@@ -153,7 +146,7 @@ describe("createTeamsReplyStreamController", () => {
   });
 
   it("suppresses a replacement after the native stream discovers Stop", async () => {
-    const stream = makeAcknowledgedStream();
+    const stream = makeStream();
     const ctrl = makeController({ stream });
 
     ctrl.onPartialReply({ text: "abcde" });
@@ -171,7 +164,7 @@ describe("createTeamsReplyStreamController", () => {
   });
 
   it("preserves held payload order after replacement close fails", async () => {
-    const stream = makeAcknowledgedStream();
+    const stream = makeStream();
     const ctrl = makeController({ stream });
 
     ctrl.onPartialReply({ text: "abcde" });
@@ -325,7 +318,7 @@ describe("createTeamsReplyStreamController", () => {
     });
 
     it("does not trim an independent later payload using a previous stream acknowledgement", async () => {
-      const stream = makeAcknowledgedStream();
+      const stream = makeStream();
       const ctrl = makeController({ stream });
 
       ctrl.onPartialReply({ text: "hello" });
@@ -343,7 +336,7 @@ describe("createTeamsReplyStreamController", () => {
     });
 
     it("ignores unrelated, informative, and out-of-order stream acknowledgements", async () => {
-      const stream = makeAcknowledgedStream();
+      const stream = makeStream();
       const ctrl = makeController({ stream });
 
       ctrl.onPartialReply({ text: "hello" });
@@ -363,7 +356,7 @@ describe("createTeamsReplyStreamController", () => {
     });
 
     it("retains media when Teams already acknowledged all fallback text", async () => {
-      const stream = makeAcknowledgedStream();
+      const stream = makeStream();
       const ctrl = makeController({ stream });
 
       ctrl.onPartialReply({ text: "hello" });
