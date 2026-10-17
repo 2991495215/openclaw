@@ -11,7 +11,7 @@ import {
 import type { PreparedConfigRecovery } from "../config/io.types.js";
 import type { ConfigFileSnapshot } from "../config/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { resolveDatabaseEngineInput } from "../infra/database-engine/config.js";
+import { resolveDatabaseEngineSelection } from "../infra/database-engine/config.js";
 import {
   getDatabaseEngineSelection,
   installDatabaseEngineSelection,
@@ -28,6 +28,7 @@ import {
 } from "../plugins/plugin-cache.js";
 import { completePluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
+import { normalizeAgentId } from "../routing/session-key.js";
 import { readAgentDatabaseAdmissionRefusal } from "../state/agent-database-admission.js";
 import {
   withArtifactPreservingStateReads,
@@ -189,14 +190,14 @@ export async function readAdmittedConfigSnapshot(params: {
       }
       // Read-only preparation shares one state generation. Release its snapshot before
       // the caller's live guard or any recovery application / writer lease acquisition.
-      const selection = getDatabaseEngineSelection();
-      const engineInput = selection
-        ? selection.input
-        : await resolveDatabaseEngineInput(selected.config, params.env);
-      installDatabaseEngineSelection({ input: engineInput });
-      const withStateSnapshot: typeof withOpenClawStateDatabaseReadSnapshot = engineInput
-        ? (operation) => operation()
-        : withOpenClawStateDatabaseReadSnapshot;
+      const selection =
+        getDatabaseEngineSelection() ??
+        (await resolveDatabaseEngineSelection(selected.config, params.env));
+      installDatabaseEngineSelection(selection);
+      const withStateSnapshot: typeof withOpenClawStateDatabaseReadSnapshot =
+        selection.effectiveEngines.state === "postgres"
+          ? (operation) => operation()
+          : withOpenClawStateDatabaseReadSnapshot;
       const admitted = await measureDoctorConfigPreflightStep("admission.state-snapshot", () =>
         withStateSnapshot(
           async () => {
@@ -277,7 +278,7 @@ export async function readAdmittedConfigSnapshot(params: {
       }
       return {
         ...admitted,
-        ...(engineInput ? { databaseEngineSelection: getDatabaseEngineSelection() } : {}),
+        databaseEngineSelection: selection,
       };
     } catch (error) {
       return rethrowStartupConfigFailure(error);
@@ -296,6 +297,7 @@ async function assertStartupStateReady(params: {
   );
   const agentCount = listAgentIds(params.cfg).length;
   const admissionMetrics: Record<string, number> = { agentCount };
+  let registeredDatabases: readonly { agentId: string; path: string }[] = [];
   await measureDoctorConfigPreflightStep(
     "admission.database-readiness",
     () =>
@@ -306,6 +308,12 @@ async function assertStartupStateReady(params: {
         onAgentInspection: (stats) => {
           Object.assign(admissionMetrics, stats);
         },
+        onRegisteredAgentDatabases: (targets) => {
+          registeredDatabases = targets.map((target) => ({
+            ...target,
+            agentId: normalizeAgentId(target.agentId),
+          }));
+        },
       }),
     undefined,
     () => admissionMetrics,
@@ -313,21 +321,11 @@ async function assertStartupStateReady(params: {
   const [
     { assertSessionStoreMigrationComplete },
     { resolveAllAgentSessionStoreCandidateTargetsSync },
-    { inspectOpenClawRegisteredAgentDatabases },
   ] = await measureDoctorConfigPreflightStep("admission.session-runtime-import", () =>
     Promise.all([
       import("../config/sessions/startup-migration.js"),
       import("../config/sessions/targets.js"),
-      import("../state/openclaw-agent-db-registry.js"),
     ]),
-  );
-  const registeredDatabases = await measureDoctorConfigPreflightStep(
-    "admission.agent-inventory",
-    () =>
-      inspectOpenClawRegisteredAgentDatabases({
-        env: params.env,
-        includeIncompatibleSchemaVersions: true,
-      }),
   );
   const targets = await measureDoctorConfigPreflightStep(
     "admission.session-targets",

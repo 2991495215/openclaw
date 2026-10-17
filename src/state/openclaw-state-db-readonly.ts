@@ -96,9 +96,17 @@ const stateSnapshotReads = resolveGlobalSingleton(
         cleanupRoot?: string;
         env: NodeJS.ProcessEnv;
         cleanClose?: boolean;
+        callerSignal?: AbortSignal;
       }
     >(),
 );
+
+function resolveStateReadCallerSignal(): AbortSignal | undefined {
+  const signal = getAsyncWorkSignal();
+  const snapshot = stateSnapshotReads.getStore();
+  // Snapshot drainage closes physical custody; only the caller can cancel an admitted read.
+  return snapshot && signal === snapshot.work.signal ? snapshot.callerSignal : signal;
+}
 
 /** Stable identity and private bytes for reads within the enclosing snapshot scope. */
 export function getActiveOpenClawStateDatabaseReadSnapshot(
@@ -123,7 +131,7 @@ export async function withOpenClawStateDatabaseReadSnapshot<T>(
     return await operation();
   }
   const env = options.env ?? process.env;
-  const callerSignal = getAsyncWorkSignal();
+  const callerSignal = resolveStateReadCallerSignal();
   const controller = new AbortController();
   const admissionSignal = callerSignal
     ? AbortSignal.any([callerSignal, controller.signal])
@@ -199,6 +207,7 @@ export async function withOpenClawStateDatabaseReadSnapshot<T>(
         cleanupRoot: prepared.cleanupRoot,
         env,
         cleanClose,
+        callerSignal,
       },
     );
     const lifecycle = stateSnapshotReads.run(snapshot, () => bindRetainedReadScope(snapshot));
@@ -507,8 +516,7 @@ export function executeExistingOpenClawStateRead<Command extends OpenClawStateRe
   } catch (error) {
     throw mapError ? mapError(error, receipt.phase) : error;
   }
-  const result = completion.kind === "retained" ? completion.operation.result : completion.result;
-  return result.then((reply) => {
+  return completion.then((reply) => {
     if (!reply || isStateReadReply(reply, type)) {
       return reply;
     }
@@ -553,7 +561,13 @@ function startRetainedOpenClawStateRead(
   }
   const preserveArtifacts = requiresArtifactPreservingSnapshot(pathname);
   const controller = new AbortController();
-  const readSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+  // Inspection inherits its deadline; ordinary background reads own explicit cancellation.
+  const callerSignal =
+    signal ??
+    (isArtifactPreservingStateRead() ? resolveStateReadCallerSignal() : snapshot?.callerSignal);
+  const readSignal = callerSignal
+    ? AbortSignal.any([callerSignal, controller.signal])
+    : controller.signal;
   const run = () => {
     const inheritedSource = currentRead
       ? undefined
@@ -570,6 +584,7 @@ function startRetainedOpenClawStateRead(
       onChunkAsync,
       controller,
       signal: readSignal,
+      callerSignal,
       receipt,
       mapError,
     });
@@ -580,9 +595,7 @@ function startRetainedOpenClawStateRead(
     (operation, scope) => () =>
       scope.work.run(() => {
         const completion = operation();
-        const result =
-          completion.kind === "retained" ? completion.operation.result : completion.result;
-        void scope.work.track(() => result).catch(() => undefined);
+        void scope.work.track(() => completion).catch(() => undefined);
         return completion;
       }),
     run,
@@ -594,7 +607,7 @@ function startRetainedOpenClawStateRead(
     void maintenance.run(() => {
       const accepted = tracked();
       completion = accepted;
-      return accepted.kind === "retained" ? accepted.operation.result : accepted.result;
+      return accepted;
     });
   } else {
     completion = tracked();
@@ -602,8 +615,7 @@ function startRetainedOpenClawStateRead(
   if (!completion) {
     throw new Error("Shared-state read maintenance scope did not start its operation");
   }
-  const result = completion.kind === "retained" ? completion.operation.result : completion.result;
-  void retainSnapshotWork(result, () =>
+  void retainSnapshotWork(completion, () =>
     controller.abort(new Error("Shared-state read admission closed")),
   );
   return completion;

@@ -1,9 +1,9 @@
+import { createComponent, createSignal, flush, merge, Show } from "solid-js";
 import { onTestFinished, vi } from "vitest";
 import type {
   SessionSuggestion,
   SessionSuggestionEvent,
   SessionTypingEvent,
-  SessionCatalogSession,
   SessionCatalogTranscriptItem,
   TaskSuggestion,
   TaskSuggestionEvent,
@@ -35,8 +35,6 @@ import type { CatalogSessionKey } from "../../lib/sessions/catalog-key.ts";
 import { createSessionCapability, type SessionCapability } from "../../lib/sessions/index.ts";
 import { createSessionArchiveState } from "../../lib/sessions/session-archive-state.ts";
 import { createSessionRowProvenance } from "../../lib/sessions/session-row-provenance.ts";
-import { emptyLegacyContent } from "../../lit/solid-content.tsx";
-import type { SolidControllerHost } from "../../lit/solid-controller-host.ts";
 import { ControlUiPluginRuntime } from "../../plugins/control-ui-runtime.ts";
 import { createNavigationPreferencesFixture } from "../../test-helpers/application-context.ts";
 import {
@@ -48,15 +46,19 @@ import {
   SESSION_MUTATION_TEST_METHODS,
   sessionMutationGatewayHello,
 } from "../../test-helpers/gateway-methods.ts";
+import { mountSolid as mountSolidRoot } from "../../test-helpers/mount-solid.ts";
 import { createChatErrorState } from "./chat-error-state.ts";
 import type { createChatPaneRails } from "./chat-pane-rails.ts";
 import { ChatPaneRuntime } from "./chat-pane-render.ts";
 import {
   createPaneTestHost as createRuntimeTestHost,
   type PaneRuntimeConstructor,
+  type PaneTestLifecycle,
 } from "./chat-pane-runtime.test-support.ts";
+import type { ResolvedBoardView } from "./chat-pane-shared.ts";
+import { ChatBoardPanel } from "./chat-pane-surfaces.tsx";
 import { attachChatRealtimeActions, createInitialChatRealtimeState } from "./chat-realtime.ts";
-import type { ChatStateController } from "./chat-state-controller.ts";
+import type { createChatState } from "./chat-state-controller.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { createPageState } from "./chat-state-page.ts";
 import type {
@@ -71,7 +73,7 @@ import type {
   ChatTaskSuggestionTrayProps,
   TaskSuggestionStartMode,
 } from "./components/chat-task-suggestions.tsx";
-import type { ChatTranscriptController } from "./components/chat-transcript-controller.ts";
+import type { ChatTranscript } from "./components/chat-transcript-controller.ts";
 import type { ChatMessageCache } from "./session-message-cache.ts";
 import type { SessionSnapshotStore } from "./session-snapshot-store.ts";
 
@@ -90,19 +92,59 @@ export function createPaneHeaderWorkspaceFixture(
   };
 }
 
-export interface TestChatPane extends HTMLElement, SolidControllerHost {
+type BoardPanelProps = Parameters<typeof ChatBoardPanel>[0];
+
+export function mountBoardPanel(
+  pane: {
+    resolveBoardView: () => ResolvedBoardView;
+    renderBoardPanel: (
+      board: ResolvedBoardView,
+      layout: ChatPageHost["sidebarLayout"],
+    ) => BoardPanelProps | null;
+  },
+  layout: ChatPageHost["sidebarLayout"],
+  container: HTMLElement,
+) {
+  const [content, setContent] = createSignal<BoardPanelProps | null>(null);
+  const view = mountSolidRoot(
+    () =>
+      Show({
+        get when() {
+          return content();
+        },
+        children: (current) => createComponent(ChatBoardPanel, merge(current)),
+      }),
+    { container },
+  );
+  return {
+    ...view,
+    draw: () => {
+      setContent(pane.renderBoardPanel(pane.resolveBoardView(), layout));
+      flush();
+    },
+  };
+}
+
+export interface TestChatPane extends HTMLElement, PaneTestLifecycle {
+  readonly updateComplete: Promise<boolean>;
   readonly element: HTMLElement;
   render: ChatPaneRuntime["render"];
-  readonly transcript: ChatTranscriptController;
-  catalogMessages: unknown[];
+  readonly transcript: ChatTranscript;
+  readonly history: ChatPaneRuntime["history"];
+  readonly sessionDiscussion: ChatPaneRuntime["sessionDiscussion"];
+  readonly swarm: ChatPaneRuntime["swarm"];
   active: boolean;
   presented: boolean;
   presentationId: string;
   chatMessagesBySession?: ChatMessageCache;
   sessionSnapshotStore?: SessionSnapshotStore;
   chatState: Pick<
-    ChatStateController<ChatPageHost>,
-    "attach" | "composerPersistence" | "createRenderLifecycle" | "requestBackgroundUpdate"
+    ReturnType<typeof createChatState<ChatPageHost>>,
+    | "attach"
+    | "composerDraft"
+    | "composerPersistence"
+    | "createRenderLifecycle"
+    | "requestBackgroundUpdate"
   >;
   context: ApplicationContext;
   state: ChatPageHost;
@@ -182,7 +224,6 @@ export interface TestChatPane extends HTMLElement, SolidControllerHost {
     transcriptLoad: Promise<boolean>,
   ) => void;
   paneLabel: string | undefined;
-  catalogSession: SessionCatalogSession | null;
   catalogItemMessage: (item: SessionCatalogTranscriptItem) => Record<string, unknown> | null;
   handleTranscriptScroll: (event: Event) => void;
   handleTranscriptHistoryIntent: (event: Event) => void;
@@ -196,8 +237,6 @@ export interface TestChatPane extends HTMLElement, SolidControllerHost {
   resetOlderMessagesViewport: () => void;
   readReplyMessage: (messageId: string) => unknown;
   hasOlderMessages: () => boolean;
-  loadingOlder: boolean;
-  catalogCursor: string | undefined;
   olderCursorsSeen: Set<string>;
   headerRenameSession: Pick<GatewaySessionRow, "key" | "sessionId" | "label"> | null;
   headerRenameValue: string;
@@ -544,6 +583,7 @@ export function createTestChatPane(params: {
     sessions: context.sessions,
     sessionsError: null,
     sessionsLoading: false,
+    settings: loadSettings(),
     sidebarContent: null,
     sidebarFocusPanelId: "",
     sidebarFocusVersion: 0,
@@ -663,14 +703,18 @@ class RenderTestChatPane extends ChatPaneRuntime {
     this.state = createPageState(
       context,
       { afterCommit: () => () => {}, invalidate: () => {} },
-      this,
+      {
+        sessionKey: this.sessionKey,
+        dispatchEvent: (event) => this.element.dispatchEvent(event),
+        querySelector: (selector) => this.element.querySelector(selector),
+      },
     );
     return this.state;
   }
 
   protected override renderChatPaneLayout(params: { chatProps: ChatProps }) {
     this.chatProps = params.chatProps;
-    return emptyLegacyContent;
+    return null;
   }
 
   override applySessionsState(state: ApplicationContext["sessions"]["state"]) {

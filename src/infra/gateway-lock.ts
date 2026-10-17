@@ -428,6 +428,7 @@ async function assertHistoricalGatewayOwnerStopped(
         path.join(paths.stateDir, "state", "openclaw.sqlite"),
         undefined,
         describeGatewayLockHolder(payload, lockPath, owner === "alive" ? "live" : "unknown"),
+        { pid: payload.pid, role: payload.role },
       );
     }
   }
@@ -510,7 +511,6 @@ export async function acquireGatewayLock(
       (await acquireWithWait({
         deadlineMs,
         pollIntervalMs: resolvePositiveTimerTimeoutMs(opts.pollIntervalMs, 250),
-        maxPollIntervalMs: 2000,
         now,
         sleep: opts.sleep,
         acquire: async () => {

@@ -292,6 +292,9 @@ export function handleChatGatewayEvent(state: ChatState, incoming?: ChatEventPay
     reconcileChatRunLifecycle(state, {
       outcome: terminalStatus === "completed" ? "done" : "interrupted",
       sessionStatus,
+      suppressErrorNotice: payload.suppressErrorNotice,
+      localModelMayStillBeFinishing:
+        payload.state === "aborted" && payload.localModelMayStillBeFinishing,
       errorMessage: payload.errorMessage?.trim()
         ? resolveGatewayErrorText(payload, null)
         : undefined,
@@ -318,6 +321,7 @@ export function handleChatGatewayEvent(state: ChatState, incoming?: ChatEventPay
       const diagnosticOwnerRunId =
         state.chatRunId ?? pendingRunId ?? state.lastLocalTerminalReconcile?.runId;
       if (
+        !payload.suppressErrorNotice &&
         diagnosticOwnerRunId === payload.runId &&
         payload.errorMessage?.trim() &&
         projectedRun.currentRun?.errorMessage !== previousTerminalRun.errorMessage
@@ -531,12 +535,14 @@ export function handleChatGatewayEvent(state: ChatState, incoming?: ChatEventPay
     // The shared Gateway projection owns timeout classification; preserve it
     // when publishing selected-session and sidebar terminal status.
     reconcileOwnedTerminalRun();
-    setChatRunError(
-      state,
-      resolveGatewayErrorText(payload, projectedErrorMessage ? visiblePayloadMessage : null),
-      payload.runId,
-      errorKind,
-    );
+    if (!payload.suppressErrorNotice) {
+      setChatRunError(
+        state,
+        resolveGatewayErrorText(payload, projectedErrorMessage ? visiblePayloadMessage : null),
+        payload.runId,
+        errorKind,
+      );
+    }
   }
   if (payload.state !== "delta") {
     // Terminal materialization transfers ownership into chatMessages; retaining

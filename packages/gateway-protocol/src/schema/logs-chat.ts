@@ -474,6 +474,8 @@ export const ChatFinalEventSchema = closedObject({
 export const ChatAbortedEventSchema = closedObject({
   ...ChatEventBaseSchema,
   state: Type.Literal("aborted"),
+  // Captured before abort clears the local provider wait; not backend-release evidence.
+  localModelMayStillBeFinishing: Type.Optional(Type.Literal(true)),
   message: Type.Optional(Type.Unknown()),
   errorMessage: Type.Optional(Type.String()),
   stopReason: Type.Optional(Type.String()),
@@ -533,6 +535,7 @@ export const ChatErrorEventSchema = closedObject({
   message: Type.Optional(Type.Unknown()),
   errorMessage: Type.Optional(Type.String()),
   errorKind: Type.Optional(ChatEventErrorKindSchema),
+  suppressErrorNotice: Type.Optional(Type.Boolean()),
   errorDetail: Type.Optional(ChatErrorDetailSchema),
   usage: Type.Optional(Type.Unknown()),
   stopReason: Type.Optional(Type.String()),

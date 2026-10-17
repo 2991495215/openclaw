@@ -1,5 +1,6 @@
 // Keep the registered pane class on this file's module graph.
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import type { SessionSuggestionsListResult } from "../../../../packages/gateway-protocol/src/schema/sessions-suggestions.js";
 /* @vitest-environment jsdom */
 /* @vitest-environment-options {"url":"http://chat-pane-connection-lifecycle.test/"} */
 import { GATEWAY_OWNER_PROFILE_ID } from "../../../../packages/gateway-protocol/src/schema/user-profile-constants.js";
@@ -8,8 +9,6 @@ import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { ApplicationContext } from "../../app/context.ts";
 import type { SessionCapability } from "../../lib/sessions/index.ts";
 import { sessionsResult } from "../../lib/sessions/session-capability.test-support.ts";
-import { emptyLegacyContent } from "../../lit/solid-content.tsx";
-import { renderPaneLegacyContent } from "../../test-helpers/chat-pane-embedded-panels.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { sessionMutationGatewayHello } from "../../test-helpers/gateway-methods.ts";
 import { flush } from "../../test-helpers/solid-settle.ts";
@@ -25,7 +24,7 @@ import {
 } from "./chat-pane.test-support.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { applySelectedChatAgent } from "./chat-state-refresh.ts";
-import { renderMessageGroup } from "./components/chat-message-group.test-support.ts";
+import { createMessageGroupHarness } from "./components/chat-message-native.test-support.tsx";
 import { createMessageGroup } from "./components/chat-message.test-support.ts";
 import * as chatThread from "./components/chat-thread-interactions.ts";
 import {
@@ -79,6 +78,75 @@ function disconnect(pane: TestChatPane) {
 }
 
 describe("chat pane connection lifecycle", () => {
+  it.each(["main", "research"])(
+    "loads %s suggestions once when startup and session projection share a target",
+    async (agentId) => {
+      const listed = createDeferred<SessionSuggestionsListResult>();
+      const fallback = createReconnectRequest({ messages: [], sessionId: "suggestion-session" });
+      const row = {
+        key: `agent:${agentId}:current`,
+        kind: "direct" as const,
+        sessionId: "suggestion-session",
+        updatedAt: 1,
+      };
+      const request = vi.fn((...args: Parameters<GatewayBrowserClient["request"]>) => {
+        if (args[0] === "session.suggestions.list") {
+          return listed.promise;
+        }
+        if (args[0] === "sessions.list") {
+          return Promise.resolve(sessionsResult([row], 1));
+        }
+        if (args[0] === "sessions.describe") {
+          return Promise.resolve({ session: row });
+        }
+        return fallback(...args);
+      });
+      const { pane, state, sessions } = createTestChatPane({
+        client: createTestGatewayClient(request),
+      });
+      await sessions.refresh({ agentId: "main" });
+      state.sessionKey = row.key;
+      pane.sessionKey = row.key;
+      state.sessionsResult = sessions.state.result;
+      state.sessionsResultAgentId = "main";
+      state.loadAssistantIdentity = vi.fn(async () => undefined);
+      pane.connectedClient = null;
+      const snapshot = pane.context.gateway.snapshot;
+      const connected = {
+        ...snapshot,
+        hello: {
+          ...snapshot.hello!,
+          snapshot: {
+            presence: [
+              { ts: 0, user: { id: "owner" } },
+              { ts: 0, user: { id: "alice" } },
+            ],
+          },
+        },
+      };
+
+      pane.applyGatewaySnapshot(connected);
+      pane.applySessionsState(sessions.state);
+      listed.resolve({ suggestions: [], role: "owner" });
+      await pane.sessionSuggestionsRefreshPromise;
+      expect(
+        request.mock.calls.filter(([method]) => method === "session.suggestions.list"),
+      ).toHaveLength(1);
+      await pane.refreshSessionSuggestions();
+      expect(
+        request.mock.calls.filter(([method]) => method === "session.suggestions.list"),
+      ).toHaveLength(2);
+
+      pane.applyGatewaySnapshot({ ...connected, phase: "reconnecting", hello: null });
+      pane.applyGatewaySnapshot(connected);
+      pane.applySessionsState(sessions.state);
+      await pane.sessionSuggestionsRefreshPromise;
+      expect(
+        request.mock.calls.filter(([method]) => method === "session.suggestions.list"),
+      ).toHaveLength(3);
+    },
+  );
+
   it.each(["reconnect", "auth change", "authenticated owner", "pane disposal"])(
     "retires pairing QR credentials on %s without losing canonical history",
     async (transition) => {
@@ -126,21 +194,17 @@ describe("chat pane connection lifecycle", () => {
       setChatRunOwner(state, "pairing-run");
       const runBefore = getChatSessionProjection(state).runs["pairing-run"];
       const view = document.createElement("div");
-      onTestFinished(() => {
-        renderPaneLegacyContent(null, view);
-      });
+      const messageView = createMessageGroupHarness(view);
+      onTestFinished(() => messageView.unmount());
       const renderReply = () => {
-        renderPaneLegacyContent(
-          renderMessageGroup(
-            createMessageGroup(state.chatMessages[0], "assistant", { key: "pairing-reply" }),
-            {
-              showReasoning: false,
-              showToolCalls: false,
-              assistantName: "OpenClaw",
-              assistantAvatar: null,
-            },
-          ),
-          view,
+        messageView.render(
+          createMessageGroup(state.chatMessages[0], "assistant", { key: "pairing-reply" }),
+          {
+            showReasoning: false,
+            showToolCalls: false,
+            assistantName: "OpenClaw",
+            assistantAvatar: null,
+          },
         );
         flush();
       };
@@ -231,8 +295,9 @@ describe("chat pane connection lifecycle", () => {
       readonly conversationPresented: boolean;
     };
     lifecycle.render = () => ({
-      layout: emptyLegacyContent,
+      layout: null,
       capabilityDialogs: undefined,
+      providerReviewSource: undefined,
     });
     const shell = document.createElement("openclaw-app-shell");
     const presentations: Array<{ paneCount: number; conversationPresented: boolean }> = [];
@@ -264,8 +329,9 @@ describe("chat pane connection lifecycle", () => {
     });
     const lifecycle = pane;
     lifecycle.render = () => ({
-      layout: emptyLegacyContent,
+      layout: null,
       capabilityDialogs: undefined,
+      providerReviewSource: undefined,
     });
     connectPaneTestView(lifecycle);
     await lifecycle.updateComplete;
@@ -277,8 +343,8 @@ describe("chat pane connection lifecycle", () => {
     expect(cancelAnimationFrame).toHaveBeenCalledWith(7);
     expect(state.chatStreamRenderFrame).toBeNull();
     expect(requestUpdate).toHaveBeenCalledOnce();
-    lifecycle.requestUpdate();
-    lifecycle.requestUpdate();
+    lifecycle.invalidate();
+    lifecycle.invalidate();
     await Promise.resolve();
     expect(performUpdate).not.toHaveBeenCalled();
 
@@ -290,7 +356,7 @@ describe("chat pane connection lifecycle", () => {
     const addVisibilityListener = vi.spyOn(document, "addEventListener");
     const removeVisibilityListener = vi.spyOn(document, "removeEventListener");
     visibilityState = "hidden";
-    lifecycle.requestUpdate();
+    lifecycle.invalidate();
     await Promise.resolve();
     Object.defineProperty(lifecycle, "isConnected", { configurable: true, value: false });
     lifecycle.disconnectedCallback();
@@ -309,7 +375,7 @@ describe("chat pane connection lifecycle", () => {
     Object.defineProperty(lifecycle, "isConnected", { configurable: true, value: false });
     lifecycle.disconnectedCallback();
     addVisibilityListener.mockClear();
-    lifecycle.requestUpdate();
+    lifecycle.invalidate();
     await lifecycle.updateComplete;
     expect(addVisibilityListener).not.toHaveBeenCalledWith(
       "visibilitychange",
@@ -341,21 +407,27 @@ describe("chat pane connection lifecycle", () => {
     state.renderLifecycle.afterCommit = () => cancelCommit;
     scheduleChatScroll(state);
     const stop = vi.fn(() => {
-      expect(state.realtimeTalkSession).toBeNull();
+      expect(state.realtimeTalk.snapshot.realtimeTalkSession).toBeNull();
     });
-    state.realtimeTalkSession = { stop } as unknown as ChatPageHost["realtimeTalkSession"];
-    state.realtimeTalkActive = true;
-    state.realtimeTalkStatus = "listening";
-    state.realtimeTalkDetail = "live";
-    state.realtimeTalkInputLevel.set(0.7);
-    state.realtimeTalkConversationState.entries = [
+    state.realtimeTalk.update({
+      realtimeTalkSession: {
+        stop,
+      } as unknown as ChatPageHost["realtimeTalk"]["snapshot"]["realtimeTalkSession"],
+    });
+    state.realtimeTalk.update({ realtimeTalkActive: true });
+    state.realtimeTalk.update({ realtimeTalkStatus: "listening" });
+    state.realtimeTalk.update({ realtimeTalkDetail: "live" });
+    state.realtimeTalk.snapshot.realtimeTalkInputLevel.set(0.7);
+    state.realtimeTalk.snapshot.realtimeTalkConversationState.entries = [
       { id: "utterance", role: "user", text: "stale", isStreaming: true },
     ];
-    state.realtimeTalkVideoStream = {} as MediaStream;
-    state.realtimeTalkCameraDevices = [{ deviceId: "camera", label: "Camera" }];
-    state.realtimeTalkVideoCapable = true;
-    state.realtimeTalkVideoPending = true;
-    state.realtimeTalkCameraError = true;
+    state.realtimeTalk.update({ realtimeTalkVideoStream: {} as MediaStream });
+    state.realtimeTalk.update({
+      realtimeTalkCameraDevices: [{ deviceId: "camera", label: "Camera" }],
+    });
+    state.realtimeTalk.update({ realtimeTalkVideoCapable: true });
+    state.realtimeTalk.update({ realtimeTalkVideoPending: true });
+    state.realtimeTalk.update({ realtimeTalkCameraError: true });
 
     disconnect(pane);
 
@@ -366,16 +438,16 @@ describe("chat pane connection lifecycle", () => {
     expect(state.chatSending).toBe(false);
     expect(state.chatSendingScopeKey).toBeNull();
     expect(stop).toHaveBeenCalledOnce();
-    expect(state.realtimeTalkActive).toBe(false);
-    expect(state.realtimeTalkStatus).toBe("idle");
-    expect(state.realtimeTalkDetail).toBeNull();
-    expect(state.realtimeTalkInputLevel.value).toBe(0);
-    expect(state.realtimeTalkConversationState.entries).toEqual([]);
-    expect(state.realtimeTalkVideoStream).toBeNull();
-    expect(state.realtimeTalkCameraDevices).toEqual([]);
-    expect(state.realtimeTalkVideoCapable).toBe(false);
-    expect(state.realtimeTalkVideoPending).toBe(false);
-    expect(state.realtimeTalkCameraError).toBe(false);
+    expect(state.realtimeTalk.snapshot.realtimeTalkActive).toBe(false);
+    expect(state.realtimeTalk.snapshot.realtimeTalkStatus).toBe("idle");
+    expect(state.realtimeTalk.snapshot.realtimeTalkDetail).toBeNull();
+    expect(state.realtimeTalk.snapshot.realtimeTalkInputLevel.value).toBe(0);
+    expect(state.realtimeTalk.snapshot.realtimeTalkConversationState.entries).toEqual([]);
+    expect(state.realtimeTalk.snapshot.realtimeTalkVideoStream).toBeNull();
+    expect(state.realtimeTalk.snapshot.realtimeTalkCameraDevices).toEqual([]);
+    expect(state.realtimeTalk.snapshot.realtimeTalkVideoCapable).toBe(false);
+    expect(state.realtimeTalk.snapshot.realtimeTalkVideoPending).toBe(false);
+    expect(state.realtimeTalk.snapshot.realtimeTalkCameraError).toBe(false);
   });
 
   it("preserves owner-qualified model and identity state when global selection changes", () => {
@@ -637,9 +709,11 @@ describe("chat pane connection lifecycle", () => {
       },
     } as unknown as ApplicationContext;
     state.loadAssistantIdentity = vi.fn(async () => {});
-    state.realtimeTalkInputLevel = {
-      set: vi.fn(),
-    } as unknown as ChatPageHost["realtimeTalkInputLevel"];
+    state.realtimeTalk.update({
+      realtimeTalkInputLevel: {
+        set: vi.fn(),
+      } as unknown as ChatPageHost["realtimeTalk"]["snapshot"]["realtimeTalkInputLevel"],
+    });
     state.resetToolStream = vi.fn();
     const snapshot = {
       ...pane.context.gateway.snapshot,

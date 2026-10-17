@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { EngineConnection } from "../infra/sql-connection.js";
 import type { SqliteWalMaintenance } from "../infra/sqlite-wal.js";
 import type {
   DatabaseFileIdentity,
@@ -6,7 +6,10 @@ import type {
 } from "../infra/sqlite-worker-identity.js";
 import type { OpenClawStateDatabaseOptions } from "./openclaw-state-db-contract.js";
 
-export const OPENCLAW_AGENT_SCHEMA_VERSION = 27;
+export const OPENCLAW_AGENT_SCHEMA_VERSION = 30;
+export const AGENT_TRAJECTORY_STORAGE_SCHEMA_VERSION = 30;
+export const AGENT_INDEX_RETIREMENT_SCHEMA_VERSION = 29;
+export const AGENT_WRITE_LAYOUT_SCHEMA_VERSION = 28;
 export const AGENT_OUTBOX_SEQUENCE_SCHEMA_VERSION = 27;
 export const AGENT_JSON_PREDICATE_SCHEMA_VERSION = 26;
 export const CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION = 25;
@@ -22,7 +25,7 @@ export const AGENT_DATABASE_PREPARATION_CONCURRENCY = 4;
 
 export type OpenClawAgentDatabase = {
   agentId: string;
-  db: DatabaseSync;
+  db: EngineConnection;
   path: string;
   walMaintenance: SqliteWalMaintenance;
 };

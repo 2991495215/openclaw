@@ -29,14 +29,12 @@ async function snapshotCandidateState(): Promise<unknown> {
     | (Parameters<typeof snapshotUpdateCandidateState>[0] & {
         mode: "snapshot";
         streamProgress?: boolean;
-        streamEntryProgress?: boolean;
       })
     | (Parameters<typeof discoverUpdateStateSchemaInspectionInProcess>[0] & { mode: "discover" })
     | (Parameters<typeof readUpdateStateSchemaVersionsInProcess>[0] & { mode: "versions" })
     | (Parameters<typeof readUpdateCandidateStateInventoryInProcess>[0] & {
         mode: "inventory";
         streamProgress?: boolean;
-        streamEntryProgress?: boolean;
       })
     | (Parameters<
         typeof import("./update-database-backup.js").createUpdateDatabaseBackupInProcess
@@ -44,7 +42,11 @@ async function snapshotCandidateState(): Promise<unknown> {
     | (Parameters<
         typeof import("./update-database-restore-source.js").prepareUpdateDatabaseRestoreSourceInProcess
       >[0] & { mode: "database-restore-preparation" })
-    | { mode: "database-generations"; paths: string[] };
+    | {
+        mode: "database-generations";
+        paths: string[];
+        pluginOwners?: import("./database-engine/port-descriptor.js").DatabasePortPluginOwners;
+      };
   switch (input.mode) {
     case "database-restore-preparation": {
       const { prepareUpdateDatabaseRestoreSourceInProcess } =
@@ -54,17 +56,24 @@ async function snapshotCandidateState(): Promise<unknown> {
     case "database-generations": {
       const { readUpdatePhysicalDatabaseGenerations } =
         await import("./update-database-generations.js");
-      return readUpdatePhysicalDatabaseGenerations(input.paths);
+      return readUpdatePhysicalDatabaseGenerations(input.paths, input.pluginOwners);
     }
     case "inventory": {
+      const { resolveDatabaseFamilyEngines } = await import("./database-engine/registry.js");
       const { databases, ...inventory } = await readUpdateCandidateStateInventoryInProcess({
         ...input,
-        onProgress: createUpdateStateInspectionReporter(
-          !input.streamProgress,
-          input.streamEntryProgress,
-        ),
+        onProgress: createUpdateStateInspectionReporter(!input.streamProgress),
       });
-      return { ...inventory, databases: [...databases] };
+      return {
+        ...inventory,
+        databases: [...databases],
+        // PostgreSQL snapshots retain portable exports alongside their private copies.
+        // External stores still follow the global engine when built-in families override it.
+        ...(input.config.database?.engine !== "postgres" &&
+        !Object.values(resolveDatabaseFamilyEngines(input.config)).includes("postgres")
+          ? { snapshotSpace: "single-generation" }
+          : {}),
+      };
     }
     case "database-backup": {
       const { createUpdateDatabaseBackupInProcess } = await import("./update-database-backup.js");
@@ -77,10 +86,7 @@ async function snapshotCandidateState(): Promise<unknown> {
       return snapshotUpdateCandidateState({
         ...input,
         includeLocalStoreVersions: input.includeLocalStoreVersions === true,
-        onProgress: createUpdateStateInspectionReporter(
-          !input.streamProgress,
-          input.streamEntryProgress,
-        ),
+        onProgress: createUpdateStateInspectionReporter(!input.streamProgress),
       });
     case "discover":
       return discoverUpdateStateSchemaInspectionInProcess({

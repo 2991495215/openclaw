@@ -1,26 +1,25 @@
 import { afterEach, expect, it, vi } from "vitest";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { SessionCapability } from "../../lib/sessions/index.ts";
-import { solidContent } from "../../lit/solid-content.tsx";
 import {
   createInitializationContext,
   createTestChatPane,
   connectPaneTestView,
 } from "./chat-pane.test-support.ts";
 import { createPageState } from "./chat-state-page.ts";
-import { requestChatPageUpdate } from "./chat-state-render.ts";
+import { publishChatRunState } from "./chat-state-render.ts";
 
-function PaneLabels(props: { label: string | undefined; id: string }) {
+// mock-isolation: Exercise runtime commit cadence without initializing the full pane renderer.
+vi.mock("./chat-pane-layout-view.tsx", () => import("./chat-pane-layout.test-support.tsx"));
+
+function FrameLayout(props: { label?: string; id?: string; stream?: string | null }) {
   return (
     <>
       <span>{props.label}</span>
       <span>{props.id}</span>
+      <output>{props.stream}</output>
     </>
   );
-}
-
-function StreamOutput(props: { value: string | null }) {
-  return <output>{props.value}</output>;
 }
 
 // MessageChannel supplies distinct browser tasks without a timer or a real-frame race.
@@ -57,7 +56,10 @@ async function mountPane(presented = true) {
   // Use the existing lifecycle harness, with a small render to isolate cadence.
   Object.assign(pane, {
     render: () => ({
-      layout: solidContent(PaneLabels, { label: pane.paneLabel, id: pane.paneId }),
+      layout: {
+        component: FrameLayout,
+        props: { label: pane.history.catalogCursor ?? pane.paneLabel, id: pane.paneId },
+      },
     }),
     presentedChanged: () => {},
   });
@@ -76,6 +78,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it("batches a projected history change with a legacy invalidation into one frame", async () => {
+  const { pane, updates } = await mountPane();
+  await task(() => {
+    pane.history.catalogCursor = "projected history";
+    pane.invalidate();
+  });
+  await pane.updateComplete;
+  expect(pane.textContent).toContain("projected history");
+  expect(updates).toHaveBeenCalledOnce();
+});
+
 it.each([false, true])(
   "parks property changes until presented and settles updateComplete (initially presented: %s)",
   async (initiallyPresented) => {
@@ -90,7 +103,7 @@ it.each([false, true])(
       await task(() => {
         pane.paneLabel = `hidden revision ${index}`;
         pane.paneId = `parked-pane-${index}`;
-        pane.requestUpdate();
+        pane.invalidate();
       });
     }
     let completed = false;
@@ -125,7 +138,7 @@ it.each(["request", "property", "state"] as const)(
       } else if (trigger === "state") {
         lifecycle.invalidate();
       } else {
-        pane.requestUpdate();
+        pane.invalidate();
       }
     });
     await pane.updateComplete;
@@ -140,7 +153,7 @@ it("keeps an unpresented pane parked when the document becomes visible", async (
   let visibility: DocumentVisibilityState = "hidden";
   vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
   const { pane, updates } = await mountPane(false);
-  pane.requestUpdate();
+  pane.invalidate();
   await task(() => {});
   visibility = "visible";
   document.dispatchEvent(new Event("visibilitychange"));
@@ -169,11 +182,11 @@ it("absorbs a queued stream frame into a property commit and accepts the next st
   pane.state = state;
   pane.chatState.attach(state);
   Object.assign(pane, {
-    render: () => ({ layout: solidContent(StreamOutput, { value: state.chatStream }) }),
+    render: () => ({ layout: { component: FrameLayout, props: { stream: state.chatStream } } }),
   });
   const updates = vi.spyOn(pane, "render");
   state.chatStream = "First stream revision";
-  requestChatPageUpdate(state, "animation-frame");
+  publishChatRunState(state, "animation-frame");
   const queuedFrame = frames.get(state.chatStreamRenderFrame!);
   expect(queuedFrame).toBeDefined();
 
@@ -189,7 +202,7 @@ it("absorbs a queued stream frame into a property commit and accepts the next st
   expect(updates).toHaveBeenCalledOnce();
 
   state.chatStream = "Next stream revision";
-  requestChatPageUpdate(state, "animation-frame");
+  publishChatRunState(state, "animation-frame");
   frames.get(state.chatStreamRenderFrame!)?.(0);
   await task(() => {});
   await pane.updateComplete;
@@ -199,7 +212,7 @@ it("absorbs a queued stream frame into a property commit and accepts the next st
 
 it("releases a disconnected pane's parked update and renders after reconnect", async () => {
   const { pane, updates } = await mountPane(false);
-  pane.requestUpdate();
+  pane.invalidate();
   await task(() => {});
   Object.defineProperty(pane, "isConnected", { configurable: true, value: false });
   pane.disconnectedCallback();
@@ -208,7 +221,7 @@ it("releases a disconnected pane's parked update and renders after reconnect", a
   Object.defineProperty(pane, "isConnected", { configurable: true, value: true });
   pane.presented = true;
   connectPaneTestView(pane);
-  pane.requestUpdate();
+  pane.invalidate();
   await pane.updateComplete;
   expect(pane.textContent).toContain(pane.paneId);
   updates.mockClear();
