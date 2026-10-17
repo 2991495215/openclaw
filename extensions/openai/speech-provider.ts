@@ -11,7 +11,6 @@ import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
-import { resolveOpenAIProviderConfigRecord } from "./realtime-provider-shared.js";
 import {
   DEFAULT_OPENAI_BASE_URL,
   isCustomOpenAITtsBaseUrl,
@@ -91,7 +90,10 @@ function normalizeOpenAIProviderConfig(
   config: Record<string, unknown>,
   source: "raw" | "resolved" = "raw",
 ) {
-  const raw = source === "raw" ? resolveOpenAIProviderConfigRecord(config) : config;
+  const raw =
+    source === "raw"
+      ? (asOptionalRecord(asOptionalRecord(config.providers)?.openai) ?? {})
+      : config;
   const configuredBaseUrl = normalizeOptionalString(raw.baseUrl);
   const defaultBaseUrl =
     normalizeOptionalString(process.env.OPENAI_TTS_BASE_URL) ?? DEFAULT_OPENAI_BASE_URL;

@@ -6,7 +6,7 @@ import path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { MessagePort, parentPort, threadId, workerData } from "node:worker_threads";
-import zlib from "node:zlib";
+import { createZstdCompress } from "node:zlib";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   installDatabaseEngineSelection,
@@ -160,9 +160,6 @@ async function encodeStagedTranscriptArchive(params: {
   stagedPath: string;
 }): Promise<NonNullable<TranscriptArchiveWorkerResult["archive"]>> {
   const createdAt = Date.now();
-  const optionalZlib: Partial<typeof zlib> = zlib;
-  const createZstdCompress = optionalZlib.createZstdCompress;
-  const compressed = typeof createZstdCompress === "function";
   const archivePath = `${resolveSqliteTranscriptArchivePath({
     archiveDirectory: params.archiveDirectory,
     generation: params.generation,
@@ -170,12 +167,12 @@ async function encodeStagedTranscriptArchive(params: {
     reason: params.reason,
     sessionId: params.sessionId,
     nowMs: createdAt,
-  })}${compressed ? ".zst" : ""}`;
+  })}.zst`;
   const encodedPath = `${archivePath}.${randomUUID()}.stage`;
   try {
     await pipeline([
       fs.createReadStream(params.stagedPath),
-      ...(compressed ? [createZstdCompress.call(zlib)] : []),
+      createZstdCompress(),
       createArchiveByteLimitTransform(),
       fs.createWriteStream(encodedPath, { flags: "wx", mode: 0o600 }),
     ]);
@@ -184,7 +181,7 @@ async function encodeStagedTranscriptArchive(params: {
       archiveName: path.basename(archivePath),
       bytes,
       createdAt,
-      encoding: compressed ? "zstd" : "identity",
+      encoding: "zstd",
       sha256: hashSessionArchiveBytes(bytes),
     };
   } finally {

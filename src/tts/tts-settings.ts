@@ -1,5 +1,5 @@
 // Lightweight TTS settings resolution shared by agent prompts, status, and speech runtime.
-import { asNonArrayRecord, isRecord } from "../../packages/normalization-core/src/record-coerce.js";
+import { asNonArrayRecord } from "../../packages/normalization-core/src/record-coerce.js";
 import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
@@ -23,7 +23,6 @@ import type { SpeechProviderConfig } from "./provider-types.js";
 import { withSpeakerSelectionCompat } from "./speaker.js";
 import { normalizeTtsAutoMode } from "./tts-auto-mode.js";
 import {
-  isTtsConfigReservedKey,
   readTtsPrefs,
   resolveEffectiveTtsConfig,
   resolveTtsAutoModeFromPrefs,
@@ -36,7 +35,7 @@ import type { PreparedTtsPreferences } from "./tts-preferences.js";
 import type { ResolvedTtsConfig, ResolvedTtsModelOverrides } from "./tts-types.js";
 
 export type { ResolvedTtsConfig, ResolvedTtsModelOverrides };
-export { isTtsConfigReservedKey, readTtsPrefs, type TtsUserPrefs } from "./tts-config.js";
+export { readTtsPrefs, type TtsUserPrefs } from "./tts-config.js";
 
 export const DEFAULT_TTS_TIMEOUT_MS = 30_000;
 const DEFAULT_TTS_MAX_LENGTH = 1500;
@@ -123,21 +122,6 @@ function collectTtsPersonas(raw: TtsConfig): Record<string, ResolvedTtsPersona> 
   return personas;
 }
 
-function collectDirectProviderConfigEntries(raw: TtsConfig): Record<string, SpeechProviderConfig> {
-  const entries = normalizeProviderConfigMap(raw.providers) ?? {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (isTtsConfigReservedKey(key)) {
-      continue;
-    }
-    if (!isRecord(value)) {
-      continue;
-    }
-    const normalized = normalizeConfiguredSpeechProviderId(key) ?? key;
-    entries[normalized] ??= asProviderConfig(value);
-  }
-  return entries;
-}
-
 export function resolveTtsConfig(
   cfgInput: OpenClawConfig,
   contextOrAgentId?: string | TtsConfigResolutionContext,
@@ -156,7 +140,7 @@ export function resolveTtsConfig(
     personas: collectTtsPersonas(raw),
     summaryModel: normalizeOptionalString(raw.summaryModel),
     modelOverrides: resolveModelOverridePolicy(raw.modelOverrides),
-    providerConfigs: collectDirectProviderConfigEntries(raw),
+    providerConfigs: normalizeProviderConfigMap(raw.providers) ?? {},
     prefsPath: (raw as TtsConfig & { prefsPath?: string }).prefsPath,
     maxTextLength: raw.maxTextLength ?? DEFAULT_MAX_TEXT_LENGTH,
     timeoutMs,

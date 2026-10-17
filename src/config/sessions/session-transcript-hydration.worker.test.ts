@@ -6,7 +6,7 @@ import { openNodeSqliteDatabase } from "../../infra/node-sqlite.js";
 import { assertNoActiveSqliteReaders } from "../../infra/sqlite-reader-lifecycle.js";
 import { admitSqliteSchema } from "../../infra/sqlite-schema-facts.js";
 import type { WorkerTaskChannel } from "../../infra/worker-task-server.js";
-import { resolveZstdCodec } from "../../infra/zstd-codec.js";
+import { zstdCodec } from "../../infra/zstd-codec.js";
 import * as readonlyStore from "../../state/openclaw-agent-db-readonly.js";
 import { streamSessionTranscriptHydration } from "./session-transcript-hydration.worker.js";
 import type { SessionTranscriptHydrationChunk } from "./session-transcript-worker.types.js";
@@ -88,10 +88,6 @@ function fixture(
 }
 
 it("keeps exact bytes and one snapshot across ACKs", async () => {
-  const codec = resolveZstdCodec();
-  if (!codec) {
-    throw new Error("The hydration regression requires zstd support");
-  }
   const texts = Array.from({ length: 270 }, (_, index) => JSON.stringify({ id: index }));
   // Split a multibyte code point and terminate exact slice multiples with an empty frame.
   texts[0] = `${" ".repeat(65535)}"🦞"`;
@@ -102,7 +98,7 @@ it("keeps exact bytes and one snapshot across ACKs", async () => {
       seq === 257
         ? {
             seq,
-            compressed: codec.compress(Buffer.from(text), 1, true),
+            compressed: zstdCodec.compress(Buffer.from(text), 1, true),
             size: Buffer.byteLength(text),
           }
         : { seq: seq === 0 ? -2 : seq, text },

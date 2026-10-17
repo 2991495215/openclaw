@@ -4,7 +4,7 @@ import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/s
 import { listAgentEntries, withAgentRosterFactsBatch } from "../agents/agent-scope-config.js";
 import { resolveConfiguredTalkSpeechProviderId } from "../config/talk.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { isTtsConfigReservedKey, resolveEffectiveTtsConfig } from "../tts/tts-config.js";
+import { resolveEffectiveTtsConfig } from "../tts/tts-config.js";
 import { isConfigActivationValueEnabled } from "./gateway-startup-plugin-contracts.js";
 
 /** Normalizes configured TTS provider ids for startup plugin selection. */
@@ -13,7 +13,7 @@ function normalizeConfiguredSpeechProviderIdForStartup(value: unknown): string |
   return normalized === "edge" ? "microsoft" : normalized;
 }
 
-/** Resolves provider activation from both canonical providers maps and legacy root keys. */
+/** Resolves provider activation from the configured providers map. */
 function resolveProviderConfigActivation(
   ttsConfig: Record<string, unknown>,
   providerId: string,
@@ -26,19 +26,7 @@ function resolveProviderConfigActivation(
       }
     }
   }
-  if (fromProviders !== undefined) {
-    return fromProviders;
-  }
-
-  for (const [key, providerConfig] of Object.entries(ttsConfig)) {
-    if (isTtsConfigReservedKey(key) || !isRecord(providerConfig)) {
-      continue;
-    }
-    if (normalizeConfiguredSpeechProviderIdForStartup(key) === providerId) {
-      return isConfigActivationValueEnabled(providerConfig);
-    }
-  }
-  return undefined;
+  return fromProviders;
 }
 
 function addProviderIfEnabled(
@@ -98,14 +86,6 @@ function addConfiguredTtsProviderIds(target: Set<string>, value: unknown): void 
       if (isConfigActivationValueEnabled(providerConfig)) {
         addProviderIfEnabled(target, value, providerId);
       }
-    }
-  }
-  for (const [key, providerConfig] of Object.entries(value)) {
-    if (isTtsConfigReservedKey(key) || !isRecord(providerConfig)) {
-      continue;
-    }
-    if (isConfigActivationValueEnabled(providerConfig)) {
-      addProviderIfEnabled(target, value, key);
     }
   }
 }
