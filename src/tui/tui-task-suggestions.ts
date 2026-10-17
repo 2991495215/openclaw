@@ -8,6 +8,7 @@ import { tuiTheme as theme } from "./theme/theme.js";
 import type { TuiBackend } from "./tui-backend.js";
 import { sanitizeRenderableText } from "./tui-formatters.js";
 import { matchesOwnedTuiSession } from "./tui-session-events.js";
+import { TuiSnapshotJournal } from "./tui-snapshot-journal.js";
 
 type TaskSuggestionControllerDeps = {
   client: Pick<
@@ -77,12 +78,11 @@ function parseTuiTaskSuggestion(value: unknown): TaskSuggestion | null {
 }
 
 export function createTuiTaskSuggestionController(deps: TaskSuggestionControllerDeps) {
-  const suggestions = new Map<string, TaskSuggestion>();
+  let suggestions = new Map<string, TaskSuggestion>();
   const hiddenIds = new Set<string>();
   const resolvingIds = new Set<string>();
   type Presentation = { id: string; overlay?: OverlayHandle; actionKey: string };
   let active: Presentation | null = null;
-  let revision = 0;
   let disposed = false;
 
   const closeActive = () => {
@@ -93,7 +93,7 @@ export function createTuiTaskSuggestionController(deps: TaskSuggestionController
   };
 
   const remove = (id: string) => {
-    revision += 1;
+    mutations.record(id, null);
     suggestions.delete(id);
     hiddenIds.delete(id);
     if (active?.id === id) {
@@ -247,24 +247,20 @@ export function createTuiTaskSuggestionController(deps: TaskSuggestionController
   };
 
   const refreshRunner = createTuiRefreshCoalescer(
-    async (requestRerun) => {
-      const startRevision = revision;
+    async () => {
+      const startVersion = mutations.version;
       const listed = await deps.client.listTaskSuggestions?.();
       if (disposed || !listed) {
         return false;
       }
-      // An event raced this snapshot. Retry instead of resurrecting resolved work.
-      if (revision !== startRevision) {
-        requestRerun();
-        return true;
-      }
-      suggestions.clear();
+      const parsed: TaskSuggestion[] = [];
       for (const value of listed) {
         const suggestion = parseTuiTaskSuggestion(value);
         if (suggestion) {
-          suggestions.set(suggestion.id, suggestion);
+          parsed.push(suggestion);
         }
       }
+      suggestions = mutations.replay(parsed, startVersion);
       for (const id of hiddenIds) {
         if (!suggestions.has(id)) {
           hiddenIds.delete(id);
@@ -273,6 +269,7 @@ export function createTuiTaskSuggestionController(deps: TaskSuggestionController
       return true;
     },
     () => {
+      mutations.clear();
       if (active && !suggestions.has(active.id)) {
         closeActive();
       }
@@ -280,6 +277,7 @@ export function createTuiTaskSuggestionController(deps: TaskSuggestionController
       deps.requestRender();
     },
   );
+  const mutations = new TuiSnapshotJournal<TaskSuggestion>(refreshRunner.isRunning);
 
   const refresh = async (): Promise<void> => {
     if (disposed || !deps.client.listTaskSuggestions) {
@@ -297,7 +295,7 @@ export function createTuiTaskSuggestionController(deps: TaskSuggestionController
       if (record.action === "created") {
         const suggestion = parseTuiTaskSuggestion(record.suggestion);
         if (suggestion) {
-          revision += 1;
+          mutations.record(suggestion.id, suggestion);
           hiddenIds.delete(suggestion.id);
           suggestions.set(suggestion.id, suggestion);
           presentNext();
@@ -328,6 +326,7 @@ export function createTuiTaskSuggestionController(deps: TaskSuggestionController
         return;
       }
       disposed = true;
+      mutations.clear();
       suggestions.clear();
       hiddenIds.clear();
       closeActive();

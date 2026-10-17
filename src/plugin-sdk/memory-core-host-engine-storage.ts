@@ -62,6 +62,7 @@ export { chunkMarkdown } from "../../packages/memory-host-sdk/src/engine-storage
 export { ensureDir } from "../../packages/memory-host-sdk/src/engine-storage.js";
 
 export type {
+  MemoryEmbeddingProbeResult,
   MemoryWorkspaceFiles,
   MemoryWorkspaceWatchRequest,
   MemoryEntryProvenance,
@@ -74,16 +75,6 @@ export { openOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-re
 export { getDatabaseEngineSelection } from "../infra/database-engine/context.js";
 export { isPostgresSqlConnection } from "../infra/sql-connection.js";
 export { DatabaseSearchCapabilityUnavailableError } from "../infra/database-engine/capability-unavailable.js";
-
-/** Health probe result for embedding provider availability checks. */
-export type MemoryEmbeddingProbeResult = {
-  ok: boolean;
-  error?: string;
-  checked?: boolean;
-  cached?: boolean;
-  checkedAtMs?: number;
-  cacheExpiresAtMs?: number;
-};
 
 export type {
   MemoryCliSearchParams,
