@@ -1,9 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { validateClawLifecyclePlanResult } from "../../../packages/gateway-protocol/src/index.js";
 import type { ClawLifecyclePlanResult } from "../../../packages/gateway-protocol/src/schema/claws.js";
+import * as deletionJournal from "../../state/agent-deletion-journal.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import {
   authorizeOperatorScopesForMethod,
@@ -15,6 +16,7 @@ import type { GatewayRequestContext, RespondFn } from "./types.js";
 const enabled = { gateway: { controlUi: { experimental: { claws: true } } } };
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const cleanup of cleanups.splice(0).toReversed()) {
     await cleanup();
   }
@@ -39,7 +41,9 @@ async function fixture() {
     "base64",
   );
   await fs.writeFile(path.join(localPath, "icon.png"), icon);
-  return { state, source: { localPath }, icon };
+  const bootstrap = "Read GROK-IMPORT.md and ask the user to finish setup.\n";
+  await fs.writeFile(path.join(localPath, "BOOTSTRAP.md"), bootstrap);
+  return { state, source: { localPath }, icon, bootstrap };
 }
 
 async function request(
@@ -83,8 +87,8 @@ describe("local Claw Add through the Gateway", () => {
     ).toEqual({ allowed: true });
   });
 
-  it("installs a local package as an ordinary agent with its instructions and avatar", async () => {
-    const { state, source, icon } = await fixture();
+  it("installs a local package with its instructions, first-run setup, and avatar", async () => {
+    const { state, source, icon, bootstrap } = await fixture();
     const preview = await request("claws.add.plan", { source });
     expect(preview[0], JSON.stringify(preview[2])).toBe(true);
     const plan = preview[1] as ClawLifecyclePlanResult;
@@ -92,6 +96,9 @@ describe("local Claw Add through the Gateway", () => {
     expect(plan.manifestDisclosure?.source).toMatchObject({ localName: "@fixture/local-bot" });
     expect(plan.blockers).toEqual([]);
     expect(plan.target.agentId).toBe("local-bot");
+    expect(plan.actions).toContainEqual(
+      expect.objectContaining({ kind: "bootstrap", id: "BOOTSTRAP.md" }),
+    );
     const applied = await request("claws.add.apply", { source, planIntegrity: plan.planIntegrity });
     expect(applied[0], JSON.stringify(applied[2])).toBe(true);
     expect(applied[1]).toMatchObject({
@@ -106,6 +113,7 @@ describe("local Claw Add through the Gateway", () => {
       "You are a research bot.",
     );
     expect(await fs.readFile(path.join(workspace, "avatars/bot.png"))).toEqual(icon);
+    expect(await fs.readFile(path.join(workspace, "BOOTSTRAP.md"), "utf8")).toBe(bootstrap);
   });
 
   it("rejects a package changed after preview without creating the agent", async () => {
@@ -122,6 +130,30 @@ describe("local Claw Add through the Gateway", () => {
     });
     const config = JSON.parse(await fs.readFile(state.configPath, "utf8"));
     expect(config.agents?.entries?.["local-bot"]).toBeUndefined();
+  });
+
+  it("preserves first-run setup when retrying an installation rolled back before agent creation", async () => {
+    const { state, source, bootstrap } = await fixture();
+    const preview = await request("claws.add.plan", { source });
+    const plan = preview[1] as ClawLifecyclePlanResult;
+    vi.spyOn(deletionJournal, "readAgentDeletionJournalAsync").mockRejectedValueOnce(
+      new Error("Agent deletion journal unavailable"),
+    );
+    const failed = await request("claws.add.apply", { source, planIntegrity: plan.planIntegrity });
+    expect(failed[1]).toMatchObject({
+      status: "partial",
+      error: { message: expect.stringContaining("Agent deletion journal unavailable") },
+    });
+    const retryPreview = await request("claws.add.plan", { source });
+    const retryPlan = retryPreview[1] as ClawLifecyclePlanResult;
+    const retried = await request("claws.add.apply", {
+      source,
+      planIntegrity: retryPlan.planIntegrity,
+    });
+    expect(retried[1]).toMatchObject({ status: "complete", agentId: "local-bot" });
+    const config = JSON.parse(await fs.readFile(state.configPath, "utf8"));
+    const workspace = config.agents.entries["local-bot"].workspace;
+    expect(await fs.readFile(path.join(workspace, "BOOTSTRAP.md"), "utf8")).toBe(bootstrap);
   });
 
   it("rejects relative paths and withholds a local preview after authority is revoked", async () => {
