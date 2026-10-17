@@ -46,6 +46,13 @@ affected shared-state database and revokes their schema admission, even when
 Doctor exits unsuccessfully. The next parent access admits the resulting schema
 again and refuses a version newer than the running updater supports.
 
+After Doctor backs up and admits shared-state maintenance reads, native Codex
+assignment detection reads one database transaction snapshot. Lease renewals and
+other maintenance writes can continue without requiring the database files to
+stop changing for a private copy. Inspection without that admission still uses
+an artifact-preserving copy and refuses an inconsistent source. This is
+candidate-side behavior; the installed updater runs first with its shipped checks.
+
 ### Migration integrity checks
 
 SQLite upgrades default to a whole-database `quick_check`, a full
@@ -601,8 +608,12 @@ its `--timeout` option cannot increase this cap.
 Plugin rehearsal copies are temporary and rebuilt after interruption. Copying
 uses up to four concurrent file copies and avoids a disk flush for every file.
 If a copy fails, active copies finish before cleanup; link publication and
-verification run only after all file copies succeed. Stored state and recovery backups
-retain their existing durability guarantees. An older installed updater keeps
+verification run only after all file copies succeed. Each private copy or inspection
+uses one generous absolute allowance derived from its inventoried size, with the
+caller's larger allowance preserved. Progress remains diagnostic and does not renew
+the allowance. Exceptionally slow storage may require another update attempt after
+a visible timeout. Stored state and recovery backups retain their existing
+durability guarantees. An older installed updater keeps
 its initial snapshot behavior until you launch an update from the newer version.
 
 Runtime retention looks for hoisted dependencies within the package manager's

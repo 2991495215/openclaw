@@ -24,6 +24,10 @@ import {
 import type { AuthProfileStore } from "./types.js";
 
 type ExternalAuthProfileMap = Map<string, ProviderExternalAuthProfile>;
+export type WithPreparedExternalAuthProfiles = <T>(
+  params: { config?: OpenClawConfig; env?: NodeJS.ProcessEnv },
+  run: () => Promise<T>,
+) => Promise<T>;
 export type ExternalCliOverlayOptions = {
   allowKeychainPrompt?: boolean;
   config?: OpenClawConfig;
@@ -138,6 +142,7 @@ export function syncPersistedExternalCliAuthProfiles(
 // Only external-profile-dependent operations are bound; module state stays above.
 export function createExternalAuthRuntime(
   resolveExternalAuthProfilesWithPlugins: ProviderExternalAuthProfileResolver,
+  withPreparedExternalAuthProfiles: WithPreparedExternalAuthProfiles,
 ) {
   function resolveExternalAuthProfiles(params: {
     store: AuthProfileStore;
@@ -220,5 +225,6 @@ export function createExternalAuthRuntime(
   return {
     listRuntimeExternalAuthProfiles,
     overlayExternalAuthProfiles,
+    withPreparedExternalAuthProfiles,
   };
 }
