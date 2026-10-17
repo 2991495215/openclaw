@@ -729,13 +729,10 @@ describe.skipIf(process.platform === "win32")(
               clientFactory: shared.factory,
               nativeHookRelay: { enabled: false },
             };
-            // Both turns use production process policy with separate run authorities.
-            const initialParams = { ...params, prompt: "Initialize the source." };
-            const closeInitialHost =
-              await bindProductionHarnessHostCapabilitiesForTest(initialParams);
-            cleanups.push(async () => closeInitialHost());
-            const initialized = await runCodexAppServerAttempt(initialParams, runOptions);
-            closeInitialHost();
+            const initialized = await runCodexAppServerAttempt(
+              { ...params, prompt: "Initialize the source." },
+              runOptions,
+            );
             expect(initialized.terminal).toEqual({ kind: "ok" });
             const initialBinding = await readCodexAppServerBinding(params.sessionFile);
             if (!initialBinding) {

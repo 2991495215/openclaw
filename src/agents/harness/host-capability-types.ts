@@ -12,8 +12,6 @@ type AgentHarnessHostApprovalResult = Readonly<{
 type AgentHarnessPreparedEnvironment = Readonly<{
   credentialScrubEnv: Readonly<Record<string, string>>;
   localIdentityEnv: Readonly<Record<string, string>>;
-  /** Append to effective Git parameters only in an owned local execution environment. */
-  localGitConfigParameters?: string;
   /** Local child destination facts; must not be projected into a remote or sandbox process. */
   localProcessEnv?: Readonly<Record<string, string>>;
   /** Tool lookup on an owned local process; omit for remote, socket, or sandbox placement. */

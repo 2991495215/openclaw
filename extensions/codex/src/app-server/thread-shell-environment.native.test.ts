@@ -16,7 +16,6 @@ import {
 } from "./thread-lifecycle.test-fixtures.js";
 import { buildThreadResumeParams, buildThreadStartParams } from "./thread-requests.js";
 import { mergeCodexNativeShellEnvironment } from "./thread-shell-environment.js";
-import { withCodexAppServerGitConfig } from "./transport-stdio.js";
 import { CODEX_APP_SERVER_VERSION } from "./version.js";
 
 vi.unmock("node:child_process");
@@ -73,7 +72,7 @@ describe.skipIf(process.platform === "win32")("native Codex tool PATH", () => {
                     call_id: `path-probe-${requests.length}`,
                     name: "exec_command",
                     arguments: JSON.stringify({
-                      cmd: `${expectPrefix ? "tool-path-probe && native-path-probe && " : ""}if shopt -q login_shell; then echo LOGIN=yes; else echo LOGIN=no; fi; printf 'GIT_NAME='; git config --get user.name || printf '\\n'; git config --get maintenance.auto; git config --get gc.auto`,
+                      cmd: `${expectPrefix ? "tool-path-probe && native-path-probe && " : ""}if shopt -q login_shell; then echo LOGIN=yes; else echo LOGIN=no; fi`,
                       shell: "/bin/bash",
                       ...(loginAllowed ? { login: true } : {}),
                       max_output_tokens: 1000,
@@ -150,7 +149,6 @@ describe.skipIf(process.platform === "win32")("native Codex tool PATH", () => {
                 "[shell_environment_policy.set]",
                 `PATH=${JSON.stringify([nativeBin, "/usr/bin", "/bin"].join(path.delimiter))}`,
                 'KEEP="preserved"',
-                `GIT_CONFIG_PARAMETERS=${JSON.stringify("'user.name=Native Git'")}`,
               ]
             : []),
           ...(filters
@@ -183,7 +181,6 @@ describe.skipIf(process.platform === "win32")("native Codex tool PATH", () => {
           (entry): entry is [string, string] => entry[1] !== undefined,
         ),
       );
-      childEnv.GIT_CONFIG_PARAMETERS = "'user.name=Inherited Git'";
       const appServer = {
         ...createAppServerOptions(),
         sandbox: "danger-full-access" as const,
@@ -217,17 +214,8 @@ describe.skipIf(process.platform === "win32")("native Codex tool PATH", () => {
           host.closeHost();
           host.closeAdmission();
         });
-        const prepared = host.hostCapabilities.preparedEnvironment?.();
-        const shellGitConfigParameters = prepared?.localGitConfigParameters;
-        if (!shellGitConfigParameters) {
-          throw new Error("Expected host Git configuration policy");
-        }
-        const phaseAppServer = {
-          ...appServer,
-          start: withCodexAppServerGitConfig(appServer.start, shellGitConfigParameters),
-        };
         const client = await createIsolatedCodexAppServerClient({
-          startOptions: phaseAppServer.start,
+          startOptions: appServer.start,
           agentDir: path.join(root, "agent"),
           authProfileId: null,
           config: {},
@@ -236,22 +224,21 @@ describe.skipIf(process.platform === "win32")("native Codex tool PATH", () => {
         try {
           expect(client.getRuntimeIdentity()?.serverVersion).toBe(CODEX_APP_SERVER_VERSION);
           const params = createParams(path.join(root, "session.jsonl"), native.cwd);
+          const prepared = host.hostCapabilities.preparedEnvironment?.();
           const shellEnvironment = prepared?.localToolEnv;
           const effective = await readCodexEffectiveConfig(client, native.cwd, {
             timeoutMs: 20_000,
           });
           const options = {
-            appServer: phaseAppServer,
+            appServer,
             shellEnvironment,
-            shellGitConfigParameters,
             shellPathPrepend: prepared?.localToolPathPrepend,
-            config:
-              shellEnvironment || shellGitConfigParameters
-                ? mergeCodexNativeShellEnvironment(
-                    undefined,
-                    effective.config.shell_environment_policy,
-                  )
-                : undefined,
+            config: shellEnvironment
+              ? mergeCodexNativeShellEnvironment(
+                  undefined,
+                  effective.config.shell_environment_policy,
+                )
+              : undefined,
             disableLoginShell: false,
             modelProvider: "path-fixture",
             model: "gpt-5.6-luna",
@@ -313,11 +300,6 @@ describe.skipIf(process.platform === "win32")("native Codex tool PATH", () => {
           const output = outputs.at(-1);
           expect(output).toMatchObject({
             output: expect.stringContaining("Process exited with code 0"),
-          });
-          expect(output).toMatchObject({
-            output: expect.stringContaining(
-              `GIT_NAME=${filters ? "" : configured ? "Native Git" : "Inherited Git"}\nfalse\n0`,
-            ),
           });
           if (expectPrefix) {
             expect(output).toMatchObject({ output: expect.stringContaining(`SELECTED=${phase}`) });

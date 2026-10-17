@@ -430,7 +430,7 @@ export async function prepareCodexThreadLifecyclePreflight(params: CodexStartOrR
     );
   }
   params.config = mergeCodexNativeProjectDocThreadConfig(params.config, effectiveConfig);
-  if (params.shellEnvironment || params.shellGitConfigParameters) {
+  if (params.shellEnvironment) {
     params.config = mergeCodexNativeShellEnvironment(
       params.config,
       effectiveConfig.config.shell_environment_policy,

@@ -93,12 +93,6 @@ function fixture() {
       authProfileStore: { version: 1, profiles: {} },
       hostCapabilities: createCodexTestHostCapabilities({
         assertActive: mocks.assert,
-        preparedEnvironment: () => ({
-          credentialScrubEnv: {},
-          localIdentityEnv: {},
-          managedLocalIdentity: false,
-          localGitConfigParameters: "'maintenance.auto=false' 'gc.auto=0'",
-        }),
         retainSourceAuthority: () => ({
           assertCurrent: mocks.assert,
           release: vi.fn(),
@@ -155,7 +149,6 @@ describe("cold native MCP App session preparation", () => {
         }),
         userMcpServersEnabled: false,
         nativeModelAdmission: "required",
-        shellGitConfigParameters: "'maintenance.auto=false' 'gc.auto=0'",
         dynamicTools: [],
       }),
     );

@@ -68,7 +68,6 @@ export function prepareAgentHarnessEnvironment(params: {
   return Object.freeze({
     credentialScrubEnv: Object.freeze({ ...identity.credentialScrubEnv }),
     localIdentityEnv: Object.freeze({ ...identity.localIdentityEnv }),
-    localGitConfigParameters: identity.localGitConfigParameters,
     managedLocalIdentity: identity.managedLocalIdentity,
     ...(localProcessEnv ? { localProcessEnv } : {}),
     ...(localToolEnv ? { localToolEnv, localToolPathPrepend } : {}),

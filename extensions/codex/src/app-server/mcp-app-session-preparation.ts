@@ -34,7 +34,6 @@ import {
   retainCodexAppServerBindingSubscription,
   rollbackCodexAppServerBindingSubscription,
 } from "./thread-ownership.js";
-import { withCodexAppServerGitConfig } from "./transport-stdio.js";
 
 /** Runs the existing thread lifecycle only. This path has no prompt or turn submission. */
 export async function prepareCodexMcpAppSession(params: {
@@ -101,11 +100,7 @@ export async function prepareCodexMcpAppSession(params: {
         canUseAutoReview: false,
       });
       const environment = input.hostCapabilities.preparedEnvironment?.();
-      const ownedLocalProcess =
-        appServer.start.transport === "stdio" &&
-        !isCodexAppServerProxyLaunch(appServer.start.args) &&
-        !appServer.remoteWorkspaceRoot;
-      const baseStartOptions =
+      const startOptions =
         appServer.start.transport === "stdio" && !isCodexAppServerProxyLaunch(appServer.start.args)
           ? {
               ...appServer.start,
@@ -117,12 +112,6 @@ export async function prepareCodexMcpAppSession(params: {
               },
             }
           : appServer.start;
-      const shellGitConfigParameters = ownedLocalProcess
-        ? environment?.localGitConfigParameters
-        : undefined;
-      const startOptions = shellGitConfigParameters
-        ? withCodexAppServerGitConfig(baseStartOptions, shellGitConfigParameters)
-        : baseStartOptions;
       const authProfileId = resolveCodexAppServerAuthProfileId({
         authProfileId: input.authProfileId ?? admitted.binding?.authProfileId,
         store: input.authProfileStore,
@@ -212,7 +201,6 @@ export async function prepareCodexMcpAppSession(params: {
           agentDir: input.agentDir,
           cwd: input.workspaceDir,
           appServer,
-          shellGitConfigParameters,
           dynamicTools: [],
           nativeCodeModeEnabled: false,
           webSearchAllowed: false,

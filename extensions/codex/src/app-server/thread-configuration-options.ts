@@ -21,7 +21,5 @@ export type CodexThreadConfigurationOptions = {
   restrictedToolSurfaceInheritedMcpServerNames?: readonly string[];
   shellEnvironment?: Readonly<Record<string, string>>;
   shellPathPrepend?: readonly string[];
-  /** Host append fragment; inherited Git settings stay in the private stdio process. */
-  shellGitConfigParameters?: string;
   disableLoginShell?: boolean;
 };

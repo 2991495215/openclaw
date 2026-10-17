@@ -17,7 +17,6 @@ import {
 } from "../infra/installation-target-context.js";
 import { omitGatewayAgentCliPath } from "../infra/openclaw-cli-shim.js";
 import { OPENCLAW_CLI_ENV_VAR, buildExecRoutingEnv } from "../infra/openclaw-exec-env.js";
-import { mergeProcessEnv, resolveEnvironmentValue } from "../infra/process-env.js";
 import {
   getShellPathFromLoginShell,
   resolveShellEnvFallbackTimeoutMs,
@@ -391,7 +390,6 @@ export function resolvePreparedExecEnvironment(params: {
   storeSecretEnv?: Record<string, string>;
   credentialScrubEnv?: Readonly<Record<string, string>>;
   localIdentityEnv?: Readonly<Record<string, string>>;
-  localGitConfigParameters?: string;
   managedLocalIdentity?: boolean;
   localProcessEnv?: Readonly<Record<string, string>>;
   warnings: string[];
@@ -547,31 +545,20 @@ export function resolvePreparedExecEnvironment(params: {
       }
     }
   }
-  const preparedEnv: Record<string, string> = {
+  const preparedEnv = {
     ...params.localProcessEnv,
     ...params.credentialScrubEnv,
     ...(params.host === "gateway" ? params.localIdentityEnv : undefined),
   };
-  // Inherited Git parameters can contain credentials; keep them out of request overrides.
-  const gitPolicyEnv =
-    params.host === "gateway" && params.localGitConfigParameters
-      ? {
-          GIT_CONFIG_PARAMETERS: [
-            resolveEnvironmentValue(preparedEnv, "GIT_CONFIG_PARAMETERS") ??
-              resolveEnvironmentValue(env, "GIT_CONFIG_PARAMETERS"),
-            params.localGitConfigParameters,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        }
-      : undefined;
   // Prepared values win locally; nodes sanitize their own base env and reject scrub override keys.
-  const executionEnv = mergeProcessEnv([env, preparedEnv, routingEnv, gitPolicyEnv]);
+  Object.assign(env, preparedEnv);
+
+  Object.assign(env, routingEnv);
   const forwardedEnv =
     params.host === "node" || !routingEnv ? requestedEnv : { ...requestedEnv, ...routingEnv };
 
   return {
-    env: executionEnv,
+    env,
     ...(params.host === "node" && routingEnv ? { executionContext } : {}),
     ...(params.host !== "node" && Object.keys(preparedEnv).length > 0
       ? { requestedEnv: { ...forwardedEnv, ...preparedEnv } }
