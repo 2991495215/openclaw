@@ -38,15 +38,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v bwrap >/dev/null; then
-            sudo apt-get update
-            sudo apt-get install --yes bubblewrap
-          fi
-          bwrap --unshare-all --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 --proc /proc --dev /dev -- /bin/true
+          image=ubuntu@sha256:a2d43bffc46670d7108bb3c0468c67c5557c4c92e83e1e34cbff1322ad1b94dc
+          docker pull "$image"
+          docker run --rm --network none --read-only --user "$(id -u):$(id -g)" --cap-drop ALL --security-opt no-new-privileges "$image" /bin/true
       - name: Compare canonical CI typecheck graphs
         env:
           GROUP: ${{ matrix.group }}
-        run: node .github/scripts/compiler-comparison.mjs --group "$GROUP" --groups 6 --repeats 3
+        run: node .github/scripts/compiler-comparison.mjs --group "$GROUP" --groups 6 --repeats 3 --isolation docker
       - name: Upload complete measurement evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

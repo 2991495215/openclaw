@@ -19,6 +19,10 @@ const argument = (name, fallback) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? fallback : process.argv[i + 1];
 };
+const isolation = argument("--isolation", "bwrap");
+assert(["bwrap", "docker"].includes(isolation));
+const containerImage =
+  "ubuntu@sha256:a2d43bffc46670d7108bb3c0468c67c5557c4c92e83e1e34cbff1322ad1b94dc";
 const group = Number(argument("--group", "0"));
 const groups = Number(argument("--groups", "6"));
 const repeats = Number(argument("--repeats", "3"));
@@ -101,7 +105,57 @@ const evidenceMetrics = path.join(directory, "metrics");
 fs.mkdirSync(metricsDirectory, { recursive: true });
 fs.mkdirSync(evidenceMetrics, { recursive: true });
 
-function sandbox(mode) {
+function sandbox(mode, containerName) {
+  if (isolation === "docker") {
+    const args = [
+      "run",
+      "--rm",
+      "--name",
+      containerName,
+      "--network",
+      "none",
+      "--read-only",
+      "--user",
+      process.getuid() + ":" + process.getgid(),
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--tmpfs",
+      "/tmp:rw,nosuid,nodev",
+      "--tmpfs",
+      "/cache:rw,nosuid,nodev,size=256m",
+      "--workdir",
+      "/work",
+    ];
+    const mount = (source, destination, readonly = true) =>
+      args.push(
+        "--mount",
+        "type=bind,src=" + source + ",dst=" + destination + (readonly ? ",readonly" : ""),
+      );
+    mount(root, "/work");
+    if (fs.statSync(path.join(root, ".git")).isDirectory())
+      args.push("--tmpfs", "/work/.git:rw,nosuid,nodev");
+    else mount("/dev/null", "/work/.git");
+    if (fs.existsSync(path.join(root, ".openclaw")))
+      args.push("--tmpfs", "/work/.openclaw:rw,nosuid,nodev");
+    mount(libraries, "/libs");
+    mount(libraries, "/pin");
+    mount(libraries, "/reference");
+    mount(path.join(referenceDirectory, "tsc"), "/reference/tsc");
+    mount(nativeDirectory, "/native");
+    mount(metricsDirectory, "/metrics", false);
+    mount("/usr/bin/time", "/usr/bin/time");
+    for (const value of ["PATH=/usr/bin:/bin", "HOME=/tmp", "LC_ALL=C", "TSC_TS_LIB_DIR=/libs"])
+      args.push("--env", value);
+    if (mode === "incremental-cold") {
+      for (const name of ["GOMAXPROCS", "GOGC", "GOMEMLIMIT"]) {
+        if (ciPolicy.env[name]) args.push("--env", name + "=" + ciPolicy.env[name]);
+      }
+    }
+    args.push(containerImage);
+    return args;
+  }
   const args = [
     "--unshare-all",
     "--die-with-parent",
@@ -177,10 +231,35 @@ function sandbox(mode) {
   args.push("--");
   return args;
 }
+let containerSequence = 0;
+function executeIsolated(args, options = {}, mode) {
+  const name = "compiler-comparison-" + process.pid + "-" + containerSequence++;
+  const result = spawnSync(
+    isolation === "docker" ? "docker" : "bwrap",
+    [...sandbox(mode, name), ...args],
+    { cwd: root, encoding: "utf8", timeout: 120000, ...options },
+  );
+  if (isolation === "docker" && (result.error || result.signal)) {
+    const cleanup = spawnSync("docker", ["rm", "--force", name], {
+      encoding: "utf8",
+      timeout: 30000,
+    });
+    if (cleanup.error || (cleanup.status !== 0 && !cleanup.stderr.includes("No such container"))) {
+      throw new Error("Failed to join task-owned container " + name);
+    }
+  }
+  return result;
+}
+function isolatedOutput(args, options = {}, mode) {
+  const result = executeIsolated(args, options, mode);
+  if (result.error || result.status !== 0)
+    throw new Error("Isolation: " + (result.error?.message ?? result.stderr ?? result.status));
+  return result.stdout;
+}
 const version = Object.fromEntries(
   Object.entries(binaries).map(([name, binary]) => [
     name,
-    run("bwrap", [...sandbox(), binary, "--version"]).trim(),
+    isolatedOutput([binary, "--version"]).trim(),
   ]),
 );
 dump("metadata.json", {
@@ -217,6 +296,8 @@ dump("metadata.json", {
   groups,
   archives,
   ciPolicy,
+  isolation,
+  containerImage: isolation === "docker" ? containerImage : null,
   method:
     "Fresh process and empty incremental cache per sample. Warm filesystem after input preflight. GNU time inside secretless sandbox. incremental-cold applies the canonical CI resource policy to both compilers; other modes use explicit direct flags without Go tuning.",
 });
@@ -252,10 +333,8 @@ function measure(graph, compiler, mode, iteration) {
   const stderrFd = fs.openSync(stderrFile, "w");
   let result;
   try {
-    result = spawnSync(
-      "bwrap",
+    result = executeIsolated(
       [
-        ...sandbox(mode),
         "/usr/bin/time",
         "-f",
         "%e %U %S %M %x",
@@ -264,7 +343,8 @@ function measure(graph, compiler, mode, iteration) {
         binaries[compiler],
         ...flags(graph, mode),
       ],
-      { cwd: root, timeout: 600000, killSignal: "SIGKILL", stdio: ["ignore", stdoutFd, stderrFd] },
+      { timeout: 600000, killSignal: "SIGKILL", stdio: ["ignore", stdoutFd, stderrFd] },
+      mode,
     );
   } finally {
     fs.closeSync(stdoutFd);
@@ -324,15 +404,10 @@ for (const graph of graphs) {
       ["files", "--listFilesOnly"],
     ]) {
       const output = normalize(
-        run(
-          "bwrap",
-          [
-            ...sandbox("incremental-cold"),
-            binaries[compiler],
-            ...flags(graph, "incremental-cold"),
-            option,
-          ],
+        isolatedOutput(
+          [binaries[compiler], ...flags(graph, "incremental-cold"), option],
           { maxBuffer: 64 * 1024 * 1024 },
+          "incremental-cold",
         ),
       );
       fs.writeFileSync(
