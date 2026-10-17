@@ -250,26 +250,6 @@ describe("native overlay lifecycle", () => {
     expect(incoming.owner.open).toBe(false);
     expect(outgoing.owner.open).toBe(false);
   });
-  it("reopens after a native close callback supersedes the accepted close", async () => {
-    const fixture = mountOverlay();
-    await open(fixture);
-    const phases = recordPhases(fixture);
-    fixture.surface.addEventListener(
-      "beforetoggle",
-      (event) => {
-        if ((event as ToggleEvent).newState === "closed") {
-          fixture.owner.request(true);
-        }
-      },
-      { once: true },
-    );
-    const shown = completion(fixture, "open");
-    fixture.owner.request(false);
-    await shown;
-    expect(fixture.owner.open).toBe(true);
-    expect(fixture.surface.matches(":popover-open")).toBe(true);
-    expect(phases).toEqual(["open"]);
-  });
   it("preserves the accepted hide when initial focus dismisses the opening", async () => {
     const fixture: Fixture = mountOverlay({ onInitialFocus: () => fixture.owner.request(false) });
     const phases = recordPhases(fixture);

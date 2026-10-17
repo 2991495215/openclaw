@@ -12,7 +12,6 @@ import {
 } from "./overlay-registry.ts";
 import type {
   Overlay,
-  OverlayFocusIntent,
   OverlayLifecycleEvent,
   OverlayNativeAdapter,
   OverlayOptions,
@@ -56,7 +55,6 @@ export function createOverlay(
   let disposed = false;
   let intent = 0;
   let intentTarget = false;
-  let intentFocus: OverlayFocusIntent = "none";
   let notifyingRetirement = false;
   let nativeMutation = false;
   let generation = 0;
@@ -264,7 +262,6 @@ export function createOverlay(
       }
       const requested = ++intent;
       intentTarget = next;
-      intentFocus = focus;
       if (next === opened) {
         if (!next) {
           notifyClosed();
@@ -278,11 +275,7 @@ export function createOverlay(
         }
         const target = returnTarget ?? trigger;
         if (focus === "return" && target?.isConnected) {
-          if (options.onReturnFocus) {
-            options.onReturnFocus(target);
-          } else {
-            target.focus({ preventScroll: true });
-          }
+          target.focus({ preventScroll: true });
         }
         return true;
       }
@@ -378,15 +371,6 @@ export function createOverlay(
           setNativeOpen(false);
         }
         children.forEach((child) => child.retire());
-        if (requested !== intent) {
-          const reopen = intentTarget;
-          const reopenFocus = intentFocus;
-          publish(false);
-          if (reopen) {
-            api.request(true, reopenFocus);
-          }
-          return false;
-        }
         const token = ++generation;
         publish(false);
         complete(false, token);
@@ -431,7 +415,6 @@ export function createOverlay(
       if (next) {
         native.show(surface, trigger);
       } else {
-        options.beforeNativeHide?.();
         native.hide(surface);
       }
     } catch (error) {
@@ -550,9 +533,6 @@ export function createOverlay(
           setNativeOpen(false);
           children.forEach((child) => child.retire());
           if (token !== generation || disposed) {
-            if (!disposed && intentTarget) {
-              api.request(true, intentFocus);
-            }
             return;
           }
           // Native close can start a fresh exit after an interrupted entry settles.
