@@ -5,8 +5,10 @@ import {
   normalizeTrimmedStringList,
 } from "../../packages/normalization-core/src/string-normalization.js";
 import { isBlockedObjectKey } from "../infra/prototype-keys.js";
-import { PLUGIN_MANIFEST_CONTRACT_KEYS } from "./manifest-contract-keys.js";
-import { TRANSCRIPT_SOURCE_LOCATOR_FIELDS } from "./manifest-types.js";
+import {
+  PLUGIN_MANIFEST_CONTRACT_KEYS,
+  TRANSCRIPT_SOURCE_LOCATOR_FIELDS,
+} from "./manifest-contract-keys.js";
 import type {
   DecisionProviderCapabilities,
   PluginManifest,

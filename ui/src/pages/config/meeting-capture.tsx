@@ -3,7 +3,7 @@ import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { JSX } from "@solidjs/web";
 import { For, Show, createMemo, createSignal } from "solid-js";
-import { TRANSCRIPT_SOURCE_LOCATOR_FIELDS } from "../../../../src/plugins/manifest-types.js";
+import { TRANSCRIPT_SOURCE_LOCATOR_FIELDS } from "../../../../src/plugins/manifest-contract-keys.js";
 import { hasOperatorAdminAccess, hasOperatorReadAccess } from "../../app/operator-access.ts";
 import { ShellLayoutBoundary } from "../../app/shell-layout-traits-solid.tsx";
 import { Icon } from "../../components/solid/icon.tsx";

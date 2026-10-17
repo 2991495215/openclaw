@@ -8,7 +8,10 @@ import type { ConfigUiHint, ConfigUiGroup } from "../shared/config-ui-hints-type
 import type { JsonSchemaObject } from "../shared/json-schema.types.js";
 import type { DoctorSessionRouteStateOwner } from "./doctor-session-route-state-owner-types.js";
 import type { PluginManifestCommandAlias } from "./manifest-command-aliases.js";
-import type { PLUGIN_MANIFEST_CONTRACT_KEYS } from "./manifest-contract-keys.js";
+import type {
+  PLUGIN_MANIFEST_CONTRACT_KEYS,
+  TRANSCRIPT_SOURCE_LOCATOR_FIELDS,
+} from "./manifest-contract-keys.js";
 import type { PluginKind } from "./plugin-kind.types.js";
 
 /** UI hint metadata for plugin config schema fields. */
@@ -390,14 +393,6 @@ export type PluginManifestCatalog = {
   featured?: boolean;
   order?: number;
 };
-
-/** Static transcript setup metadata; runtime registration does not gate configuration. */
-export const TRANSCRIPT_SOURCE_LOCATOR_FIELDS = [
-  "accountId",
-  "guildId",
-  "channelId",
-  "meetingUrl",
-] as const;
 
 export type PluginManifestTranscriptSource = {
   name?: string;
