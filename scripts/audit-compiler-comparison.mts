@@ -277,7 +277,7 @@ export function auditCompilerComparison(directory: string) {
             ...new Set(
               [...outcome.stdout.matchAll(/\berror TS(\d+):/gu)].map((match) => Number(match[1])),
             ),
-          ].sort((a, b) => a - b);
+          ].toSorted((a, b) => a - b);
           return (
             JSON.stringify(codes) ===
               JSON.stringify(canary.expectedCodes?.toSorted((a, b) => a - b)) &&

@@ -108,11 +108,11 @@ async function main() {
   const fixtures = process.argv.includes("--canaries")
     ? JSON.parse(fs.readFileSync(path.join(root, "test/fixtures/compiler-comparison.json"), "utf8"))
     : [];
-  const canaries = fixtures.map(({ name, files, compilerOptions, ...expectations }) => {
+  const canaries = fixtures.map(({ name, files, compilerOptions, kind, expectedCodes, source }) => {
     const fixtureDirectory = path.join(directory, "canaries", name);
     fs.mkdirSync(fixtureDirectory, { recursive: true });
-    for (const [file, source] of Object.entries(files)) {
-      fs.writeFileSync(path.join(fixtureDirectory, file), source);
+    for (const [file, contents] of Object.entries(files)) {
+      fs.writeFileSync(path.join(fixtureDirectory, file), contents);
     }
     const config = path.join(fixtureDirectory, "tsconfig.json");
     fs.writeFileSync(
@@ -126,10 +126,16 @@ async function main() {
           lib: ["es2022"],
           ...compilerOptions,
         },
-        files: Object.keys(files).sort(),
+        files: Object.keys(files).toSorted(),
       }),
     );
-    return { name: "canary-" + name, config: path.relative(root, config), ...expectations };
+    return {
+      name: "canary-" + name,
+      config: path.relative(root, config),
+      kind,
+      expectedCodes,
+      source,
+    };
   });
   const selectedGraphs = [...canaries, ...graphs];
   const nativeDirectory = path.join(directory, "native/package/lib");
@@ -545,10 +551,9 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
         ["files", "--listFilesOnly"],
       ]) {
         const output = normalize(
-          await isolatedOutput(
-            [binaries[compiler], ...flags(graph, modesFor(graph)[0]), option],
-            { mode: modesFor(graph)[0] },
-          ),
+          await isolatedOutput([binaries[compiler], ...flags(graph, modesFor(graph)[0]), option], {
+            mode: modesFor(graph)[0],
+          }),
         );
         fs.writeFileSync(
           path.join(directory, graph.name + "-" + compiler + "-" + label + ".txt"),
