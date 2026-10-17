@@ -199,36 +199,38 @@ export function createConfigIoContext(
     candidate: ConfigRecoveryCandidate,
   ): ConfigIoOperation<ConfigRecoveryCandidatePreparation> {
     try {
-      const originalEnv = cloneEnvWithPlatformSemantics(deps.env);
-      const includeProvenance: NonNullable<ConfigFileSnapshot["includeProvenance"]>[number][] = [];
-      const originalResolvedIncludes = resolveConfigIncludesForRead(
-        candidate.parsed,
-        configPath,
-        { ...deps, env: originalEnv },
-        undefined,
-        undefined,
-        undefined,
-        (event) => {
-          const { value: _value, ...ownership } = event;
-          includeProvenance.push(ownership);
-        },
-      );
-      const originalResolution = resolveConfigForRead(
-        originalResolvedIncludes,
-        originalEnv,
-        deps.lowerPrecedenceEnv,
-      );
       const prepareValidation = () => {
         const pending = options.deferredPluginMigrations;
-        const authoredCandidate = transformRecoveryCandidate
-          ? transformRecoveryCandidate({
-              candidate,
-              configPath,
-              includeProvenance,
-              resolvedConfig: originalResolution.resolvedConfigRaw,
-              deferredPluginMigrations: pending ?? [],
-            })
-          : candidate.parsed;
+        let authoredCandidate = candidate.parsed;
+        if (transformRecoveryCandidate) {
+          const originalEnv = cloneEnvWithPlatformSemantics(deps.env);
+          const includeProvenance: NonNullable<ConfigFileSnapshot["includeProvenance"]>[number][] =
+            [];
+          const originalResolvedIncludes = resolveConfigIncludesForRead(
+            candidate.parsed,
+            configPath,
+            { ...deps, env: originalEnv },
+            undefined,
+            undefined,
+            undefined,
+            (event) => {
+              const { value: _value, ...ownership } = event;
+              includeProvenance.push(ownership);
+            },
+          );
+          const originalResolution = resolveConfigForRead(
+            originalResolvedIncludes,
+            originalEnv,
+            deps.lowerPrecedenceEnv,
+          );
+          authoredCandidate = transformRecoveryCandidate({
+            candidate,
+            configPath,
+            includeProvenance,
+            resolvedConfig: originalResolution.resolvedConfigRaw,
+            deferredPluginMigrations: pending ?? [],
+          });
+        }
         const candidateEnv = cloneEnvWithPlatformSemantics(deps.env);
         const resolved = resolveConfigIncludesForRead(authoredCandidate, configPath, {
           ...deps,

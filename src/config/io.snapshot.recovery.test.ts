@@ -99,22 +99,39 @@ async function recovery(io: ReturnType<typeof createConfigIO>) {
 }
 
 describe("prepared config recovery", () => {
-  it.each(["sync", "async"] as const)(
-    "prepares a canonical backup when migration metadata is unavailable (%s)",
-    async (mode) => {
+  it.each([
+    { mode: "sync", transform: false },
+    { mode: "async", transform: false },
+    { mode: "sync", transform: true },
+    { mode: "async", transform: true },
+  ] as const)(
+    "prepares a canonical backup without unused include reads when migration metadata is unavailable ($mode, transform=$transform)",
+    async ({ mode, transform }) => {
       const root = tempDirs.make("openclaw-backup-preparation-io-");
-      const context = createConfigIoContext({
-        configPath: path.join(root, "openclaw.json"),
-        env: { HOME: root, OPENCLAW_STATE_DIR: root },
-        observe: false,
-      });
+      const includeRaw = '{"gateway":{"mode":"local"}}';
+      fs.writeFileSync(path.join(root, "recovery-gateway.json"), includeRaw);
+      const parsed = { $include: "./recovery-gateway.json", gateway: { port: 18720 } };
+      const candidate = { raw: JSON.stringify(parsed), parsed };
+      const context = createConfigIoContext(
+        {
+          configPath: path.join(root, "openclaw.json"),
+          env: { HOME: root, OPENCLAW_STATE_DIR: root },
+          observe: false,
+        },
+        transform
+          ? ({ resolvedConfig, includeProvenance }) => {
+              expect(resolvedConfig).toMatchObject({ gateway: { mode: "local", port: 18720 } });
+              expect(includeProvenance).toHaveLength(1);
+              // A transformer may mutate and return the same authored object.
+              parsed.gateway.port = 18721;
+              return parsed;
+            }
+          : undefined,
+      );
       const unavailable = Object.assign(new Error("migration metadata unavailable"), {
         code: "EIO",
       });
-      const candidate = {
-        raw: '{"gateway":{"mode":"local"}}',
-        parsed: { gateway: { mode: "local" } },
-      };
+      const includeReads = vi.spyOn(fs, "readFileSync");
       const readSync = vi
         .spyOn(deferredMigrations, "readDeferredPluginMigrations")
         .mockImplementation(() => {
@@ -131,12 +148,18 @@ describe("prepared config recovery", () => {
         expect(prepared).toMatchObject({
           ok: true,
           candidate: {
-            raw: '{"gateway":{"mode":"local"}}',
-            parsed: { gateway: { mode: "local" } },
-            config: { gateway: { mode: "local" } },
+            raw: candidate.raw,
+            parsed,
+            config: { gateway: { mode: "local", port: transform ? 18721 : 18720 } },
           },
         });
+        expect(
+          includeReads.mock.results.filter(
+            (result) => result.type === "return" && result.value === includeRaw,
+          ),
+        ).toHaveLength(transform ? 2 : 1);
       } finally {
+        includeReads.mockRestore();
         readSync.mockRestore();
         readAsync.mockRestore();
       }
