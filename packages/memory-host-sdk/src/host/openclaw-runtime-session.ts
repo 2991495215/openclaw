@@ -427,7 +427,6 @@ export function extractAgentIdFromSessionPath(absPath: string): string | null {
   }
 }
 
-
 export async function readSessionResetRecallCutoffInWorker(
   ...args: Parameters<
     typeof import("../../../../src/config/sessions/session-transcript-read-worker-runtime.js").readSessionResetRecallCutoffInWorker
