@@ -13,7 +13,6 @@ import {
   capturePluginRegistryLifecycleEpoch,
   capturePluginRegistryLifecycleSignal,
   getPluginRegistryLifetime,
-  getPluginRegistryGatewayOwner,
   getPluginRegistryResourceOwner,
   markPluginRegistryActive,
   isPluginRegistryRetired,
@@ -249,7 +248,6 @@ export function publishPreparedPluginGeneration(
   }
   const release = ownPreparedPluginGeneration(generation).retain();
   const version = owner.generation;
-  const gatewayLenders = new Set<PluginRegistry>();
   let signal: AbortSignal | undefined;
   const unsubscribe = () => signal?.removeEventListener("abort", observe);
   const observe = () => {
@@ -265,16 +263,7 @@ export function publishPreparedPluginGeneration(
           "Prepared model runtime plugin generation retired",
         );
         owner.pluginGeneration = undefined;
-        const retiredGatewayLoan = [...instances].some((instance) => {
-          const registry = instance.owner?.registry;
-          return !instance.acceptingCalls && registry !== undefined && gatewayLenders.has(registry);
-        });
         releasePreparedPluginPublication(owner);
-        // Independent prepared instances and metadata caches retain their terminal
-        // retirement contract; only a lost Gateway loan needs process publication.
-        if (retiredGatewayLoan) {
-          owner.onPluginGenerationRetired?.();
-        }
         return;
       }
       releasePreparedPluginPublication(owner);
@@ -282,16 +271,10 @@ export function publishPreparedPluginGeneration(
     }
     // Publication can transfer an unchanged instance before aborting its old registry
     // epoch. Follow its new owner so a later real retirement remains observable.
-    gatewayLenders.clear();
     signal = AbortSignal.any([
       cacheSignal,
       ...[...instances].flatMap((instance) => {
         const registry = instance.owner?.registry;
-        // A turn registry can carry its admitting Gateway without being its lender.
-        // Capture physical custody while the Gateway owner still admits work.
-        if (registry && getPluginRegistryGatewayOwner(registry)?.current() === registry) {
-          gatewayLenders.add(registry);
-        }
         const current =
           registry &&
           capturePluginRegistryLifecycleSignal(
