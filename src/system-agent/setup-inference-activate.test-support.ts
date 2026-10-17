@@ -16,7 +16,7 @@ import {
 } from "../agents/execution-auth-binding.js";
 import { resolveApiKeyForProviderCore } from "../agents/model-auth.js";
 import * as runtimePlugins from "../agents/runtime-plugins.js";
-import * as codexRuntimePlugin from "../commands/codex-runtime-plugin-install.js";
+import * as codexRuntimePlugin from "../commands/runtime-plugin-install.js";
 import { clearConfigCache } from "../config/config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import * as installRecordCommit from "../plugins/install-record-commit.js";
