@@ -8,9 +8,9 @@ import { stableStringify } from "@openclaw/normalization-core";
  */
 export function createMcpStructuredContentMirrorMatcher(
   structuredContent: Record<string, unknown>,
+  canonical?: string,
 ): (text: string) => boolean {
   let pretty: string | undefined;
-  let canonical: string | undefined;
   return (text) => {
     if (text === (pretty ??= JSON.stringify(structuredContent, null, 2))) {
       return true;
