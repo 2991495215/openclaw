@@ -3,6 +3,11 @@ export function readStringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+/** Checks raw string length in Unicode code points without trimming. */
+export function isStringWithinCodePointLimit(value: unknown, max: number): value is string {
+  return typeof value === "string" && (value.length <= max || Array.from(value).length <= max);
+}
+
 /** Trims string input and returns null for non-strings or empty strings. */
 export function normalizeNullableString(value: unknown): string | null {
   if (typeof value !== "string") {
