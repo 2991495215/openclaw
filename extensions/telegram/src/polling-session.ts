@@ -1,20 +1,18 @@
 import type { ChannelAccountSnapshot } from "openclaw/plugin-sdk/channel-contract";
-import { createDeferred } from "openclaw/plugin-sdk/concurrency-runtime";
 import type { TelegramNetworkConfig } from "openclaw/plugin-sdk/config-contracts";
 import { drainPendingDeliveries } from "openclaw/plugin-sdk/delivery-queue-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
-import { formatDurationPrecise, sleepWithAbort } from "openclaw/plugin-sdk/runtime-env";
+import {
+  computeBackoff,
+  formatDurationPrecise,
+  sleepWithAbort,
+} from "openclaw/plugin-sdk/runtime-env";
 import { raceWithTimeout } from "openclaw/plugin-sdk/time-runtime";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import { createTelegramBot } from "./bot.js";
 import type { TelegramTransport } from "./fetch.js";
 import { isRecoverableTelegramNetworkError } from "./network-errors.js";
 import { TelegramPollingLivenessTracker } from "./polling-liveness.js";
-import {
-  createTelegramRestartBackoffState,
-  resetTelegramRestartBackoffState,
-  resolveTelegramRestartDelayMs,
-} from "./polling-session-restart-policy.js";
 import { TelegramPollingTransportState } from "./polling-transport-state.js";
 import { createTelegramTransportIngressMonitor } from "./telegram-ingress-drain-factory.js";
 import { resolveTelegramAdoptionStallTimeoutMs } from "./telegram-ingress-drain.js";
@@ -29,6 +27,13 @@ import { createTelegramStatusPublisher } from "./transport-status.js";
 // user-fixable causes are a second poller on the same token or a stale webhook.
 const TELEGRAM_GET_UPDATES_CONFLICT_HINT =
   " Another OpenClaw gateway, script, or Telegram poller may be using this bot token; stop the duplicate poller or switch this account to webhook mode.";
+
+const TELEGRAM_POLL_RESTART_POLICY = {
+  initialMs: 30_000,
+  maxMs: 600_000,
+  factor: 2,
+  jitter: 0.2,
+};
 
 const DEFAULT_POLL_STALL_THRESHOLD_MS = 120_000;
 const MIN_POLL_STALL_THRESHOLD_MS = 30_000;
@@ -91,7 +96,7 @@ type TelegramPollingSessionOpts = {
 };
 
 export class TelegramPollingSession {
-  #restartBackoffState = createTelegramRestartBackoffState();
+  #restartAttempts = 0;
   #webhookCleared = false;
   #transportState: TelegramPollingTransportState;
   #status: ReturnType<typeof createTelegramStatusPublisher>;
@@ -144,16 +149,10 @@ export class TelegramPollingSession {
     }
   }
 
-  async #waitBeforeRestart(
-    buildLine: (delay: string) => string,
-    opts: { stopTimedOut?: boolean } = {},
-  ): Promise<"continue" | "exit"> {
-    const { delayMs, stopTimeoutSuffix } = resolveTelegramRestartDelayMs(
-      this.#restartBackoffState,
-      opts,
-    );
+  async #waitBeforeRestart(buildLine: (delay: string) => string): Promise<"continue" | "exit"> {
+    const delayMs = computeBackoff(TELEGRAM_POLL_RESTART_POLICY, ++this.#restartAttempts);
     const delay = formatDurationPrecise(delayMs);
-    this.opts.log(`${buildLine(delay)}${stopTimeoutSuffix}`);
+    this.opts.log(buildLine(delay));
     this.#status.noteRecovery();
     try {
       await sleepWithAbort(delayMs, this.opts.abortSignal);
@@ -348,9 +347,6 @@ export class TelegramPollingSession {
     };
     const liveness = new TelegramPollingLivenessTracker();
     let restartRequested = false;
-    let stopTimedOut = false;
-    let forceCycleTimer: ReturnType<typeof setTimeout> | undefined;
-    const { promise: forceCyclePromise, resolve: forceCycleResolve } = createDeferred();
     const unsubscribe = worker.onMessage((message) => {
       const ackSpooledUpdate: NonNullable<typeof worker.ackSpooledUpdate> = (requestId, result) => {
         try {
@@ -373,7 +369,7 @@ export class TelegramPollingSession {
       if (message.type === "poll-success") {
         liveness.noteGetUpdatesSuccessCount(message.count, message.finishedAt);
         liveness.noteGetUpdatesFinished();
-        resetTelegramRestartBackoffState(this.#restartBackoffState);
+        this.#restartAttempts = 0;
         if (!restartRequested) {
           this.#status.noteReady(message.finishedAt);
         }
@@ -451,13 +447,6 @@ export class TelegramPollingSession {
       void stopWorker();
     };
     this.opts.abortSignal?.addEventListener("abort", stopOnAbort, { once: true });
-    const clearForceCycleTimer = () => {
-      if (!forceCycleTimer) {
-        return;
-      }
-      clearTimeout(forceCycleTimer);
-      forceCycleTimer = undefined;
-    };
     const requestStopForRestart = () => {
       if (restartRequested) {
         return;
@@ -465,18 +454,6 @@ export class TelegramPollingSession {
       restartRequested = true;
       abortMedia();
       void stopWorker();
-      if (!forceCycleTimer) {
-        forceCycleTimer = setTimeout(() => {
-          if (this.opts.abortSignal?.aborted) {
-            return;
-          }
-          this.opts.log(
-            `[telegram] Isolated polling ingress stop timed out after ${formatDurationPrecise(POLL_STOP_GRACE_MS)}; forcing restart cycle.`,
-          );
-          stopTimedOut = true;
-          forceCycleResolve();
-        }, POLL_STOP_GRACE_MS);
-      }
     };
     ingressMonitor.start();
     const watchdog = setInterval(() => {
@@ -497,8 +474,7 @@ export class TelegramPollingSession {
     watchdog.unref?.();
     try {
       try {
-        await Promise.race([worker.task(), forceCyclePromise]);
-        clearForceCycleTimer();
+        await worker.task();
         abortMedia();
       } catch (err) {
         if (this.opts.abortSignal?.aborted) {
@@ -528,7 +504,6 @@ export class TelegramPollingSession {
           : formatErrorMessage(err);
         this.opts.log(`[telegram][diag] isolated polling ingress failed: ${message}`);
         this.#status.noteError(message, "recovering");
-        clearForceCycleTimer();
         return await this.#waitBeforeRestart(
           (delay) => `Telegram isolated polling ingress failed; restarting in ${delay}.`,
         );
@@ -542,7 +517,6 @@ export class TelegramPollingSession {
         );
         return await this.#waitBeforeRestart(
           (delay) => `Telegram isolated polling ingress restart requested; restarting in ${delay}.`,
-          { stopTimedOut },
         );
       }
       const errorText = pollState.error ? ` error=${pollState.error}` : "";
@@ -554,7 +528,6 @@ export class TelegramPollingSession {
       );
     } finally {
       clearInterval(watchdog);
-      clearForceCycleTimer();
       unsubscribe();
       this.opts.abortSignal?.removeEventListener("abort", stopOnAbort);
       // End media work before waiting for durable handlers so every interrupted claim can retry.
