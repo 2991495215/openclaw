@@ -2,13 +2,14 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { sha256Hex } from "./crypto-digest.js";
 import type { SessionUsageRollupData } from "./session-cost-usage-rollup.js";
 import type { UsageCostTranscriptFile } from "./session-cost-usage.types.js";
-import { zstdCodec } from "./zstd-codec.js";
+import { resolveZstdCodec } from "./zstd-codec.js";
 
 // Cache data is rebuildable. Semantic changes get a new version; old rows are
 // ignored and rebuilt instead of normalized through a runtime compatibility path.
 export const USAGE_COST_ROLLUP_VERSION = 8;
 const USAGE_COST_ROLLUP_FORMAT_VERSION = 1;
 export const USAGE_COST_ROLLUP_SCOPE = "session-cost-usage-rollup-v3";
+const zstd = resolveZstdCodec();
 
 export type UsageCostJsonlCheckpoint = {
   kind: "jsonl";
@@ -64,7 +65,7 @@ export function encodeUsageCostRollup(entry: UsageCostRollupEntry): {
 } {
   const json = JSON.stringify(entry.rollup);
   const raw = Buffer.from(json, "utf8");
-  const compressed = raw.byteLength >= 1024 ? zstdCodec.compress(raw, 1) : undefined;
+  const compressed = raw.byteLength >= 1024 ? zstd?.compress(raw, 1) : undefined;
   const useCompressed = compressed !== undefined && compressed.byteLength < raw.byteLength;
   const bytes = useCompressed ? compressed : raw;
   const envelope: UsageCostRollupEnvelope = {
@@ -182,9 +183,9 @@ export function decodeUsageCostRollup(
   try {
     const raw =
       envelope.body.encoding === "zstd"
-        ? zstdCodec.decompress(blob, envelope.body.bytes)
+        ? zstd?.decompress(blob, envelope.body.bytes)
         : Buffer.from(blob.buffer, blob.byteOffset, blob.byteLength);
-    if (raw.byteLength !== envelope.body.bytes || sha256Hex(raw) !== envelope.body.sha256) {
+    if (!raw || raw.byteLength !== envelope.body.bytes || sha256Hex(raw) !== envelope.body.sha256) {
       return undefined;
     }
     const json = raw.toString("utf8");
