@@ -182,6 +182,15 @@ describe("compiler comparison artifact audit", () => {
     );
     expectedSamples.push("core-single-threaded-reference-1");
     evidence.write("metadata.json", { ...metadata, expectedSamples });
+    fs.mkdirSync(path.join(evidence.directory, "metrics"));
+    evidence.write("metrics/core-single-threaded-reference-1.json", {
+      wallSeconds: 1,
+      userSeconds: 1,
+      sysSeconds: 0,
+      peakRssKiB: 1024,
+      exitCode: 0,
+      processExitCode: 137,
+    });
     const proofs = { ...evidence.proofs, reference: evidence.proofs.pinned };
     evidence.write("input-parity.json", [{ graph: "core", proofs }]);
     for (const label of ["config", "files"]) {
@@ -193,6 +202,7 @@ describe("compiler comparison artifact audit", () => {
     const result = auditCompilerComparison(evidence.directory);
     expect(result.status).toBe("incomplete");
     expect(result.missing).toContain("Planned sample missing: core-single-threaded-reference-1");
+    expect(result.typecheckPassed).toBe(false);
   });
 
   it("requires equal reference inputs for a planned collection", () => {

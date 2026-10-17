@@ -459,8 +459,14 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
         processExitCode: result.status,
       }),
     );
-    // Preserve both observed statuses before rejecting a killed or failed sample.
-    assert.equal(result.status, exitCode, id + ": process and GNU time exit statuses differ");
+    // Keep rejected trials out of measurements while collecting the remaining
+    // isolated samples. Their planned IDs keep the audit incomplete.
+    if (![0, 1, 2].includes(result.status) || result.status !== exitCode) {
+      console.error(
+        id + ": rejected sample: process exit " + result.status + ", GNU time " + exitCode,
+      );
+      return;
+    }
     const stdout = normalize(fs.readFileSync(stdoutFile, "utf8"));
     const stderr = fs.readFileSync(stderrFile);
     const row = {
