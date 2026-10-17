@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { ExecProcessOutcome } from "../agents/bash-tools.exec-types.js";
 import type { EmbeddedAgentExecutionPhase } from "../agents/embedded-agent-runner/execution-phase.js";
 import type { IsolatedCompletionPurpose } from "../agents/isolated-completion-purpose.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -569,7 +568,14 @@ type DiagnosticExecProcessCompletedEvent = DiagnosticBaseEvent & {
   exitCode?: number;
   exitSignal?: string;
   timedOut?: boolean;
-  failureKind?: Extract<ExecProcessOutcome, { status: "failed" }>["failureKind"];
+  failureKind?:
+    | "shell-command-not-found"
+    | "shell-not-executable"
+    | "overall-timeout"
+    | "no-output-timeout"
+    | "signal"
+    | "aborted"
+    | "runtime-error";
 };
 
 type DiagnosticExecApprovalFollowupSuppressedEvent = DiagnosticBaseEvent & {
