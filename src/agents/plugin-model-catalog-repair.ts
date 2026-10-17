@@ -47,16 +47,17 @@ export function repairPluginModelCatalogTransportMetadata(
     const models: unknown[] = [];
     let providerChanged = false;
     for (const model of provider.models) {
-      if (!providerApi && (!isRecord(model) || !hasCatalogApi(model.api))) {
+      const modelRecord = isRecord(model) ? model : undefined;
+      if (!providerApi && !hasCatalogApi(modelRecord?.api)) {
         removedModelCount += 1;
         providerChanged = true;
         continue;
       }
-      if (!isRecord(model)) {
+      if (!modelRecord) {
         models.push(model);
         continue;
       }
-      const completed = normalizeModelCostForCatalog(model);
+      const completed = normalizeModelCostForCatalog(modelRecord);
       if (completed !== model) {
         completedCostModelCount += 1;
         providerChanged = true;
@@ -91,17 +92,19 @@ export function stripPluginModelCatalogCredentials(
     return null;
   }
   let changed = false;
-  const matches = (value: unknown): boolean =>
-    typeof value === "string" &&
-    (credentials === undefined ||
-      credentials.has(value) ||
-      (value.startsWith("Bearer ") && credentials.has(value.slice(7))));
+  const matches = (value: unknown): boolean | undefined =>
+    typeof value !== "string"
+      ? undefined
+      : credentials === undefined ||
+        credentials.has(value) ||
+        (value.startsWith("Bearer ") && credentials.has(value.slice(7)));
   const strip = (entry: Record<string, unknown>): boolean => {
     if (entry.apiKey !== undefined) {
-      if (credentials !== undefined && typeof entry.apiKey !== "string") {
+      const match = credentials === undefined || matches(entry.apiKey);
+      if (match === undefined) {
         return false;
       }
-      if (credentials === undefined || matches(entry.apiKey)) {
+      if (match) {
         delete entry.apiKey;
         changed = true;
       }
@@ -115,10 +118,11 @@ export function stripPluginModelCatalogCredentials(
           return false;
         }
         for (const [name, value] of Object.entries(entry.headers)) {
-          if (typeof value !== "string") {
+          const match = matches(value);
+          if (match === undefined) {
             return false;
           }
-          if (matches(value)) {
+          if (match) {
             delete entry.headers[name];
             changed = true;
           }

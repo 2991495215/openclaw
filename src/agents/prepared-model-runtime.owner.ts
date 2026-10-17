@@ -157,7 +157,7 @@ export function rebindInputToCommittedConfiguredOwner(
   // Reserved execution identities (for example setup's `openclaw` agent) intentionally borrow a
   // configured agent directory. Rebase their lifecycle inputs without erasing that run identity.
   const agentId = input.agentId ?? owner.input.agentId;
-  return normalizePreparedModelRuntimeInput({
+  return {
     ...input,
     ...(agentId ? { agentId } : {}),
     agentDir: owner.input.agentDir,
@@ -169,7 +169,7 @@ export function rebindInputToCommittedConfiguredOwner(
     allowGatewaySubagentBinding:
       input.allowGatewaySubagentBinding ?? owner.input.allowGatewaySubagentBinding,
     runtimePluginSelections: input.runtimePluginSelections ?? owner.input.runtimePluginSelections,
-  });
+  };
 }
 
 /** Accepts canonical config clones without weakening projected-config isolation. */
@@ -518,7 +518,12 @@ export async function publishPreparedModelRuntimeOwnerBatch(
       return;
     }
     const result = results.get(candidate.owner);
-    if (!result || candidate.owner.snapshot === result.snapshot) {
+    if (!result) {
+      throw new Error(
+        `prepared model runtime snapshot missing after auth refresh for ${candidate.input.agentDir}`,
+      );
+    }
+    if (candidate.owner.snapshot === result.snapshot) {
       return;
     }
     if (captureRemoteModelCatalogStartupSnapshot() !== catalogGeneration) {
@@ -612,15 +617,6 @@ export async function publishPreparedModelRuntimeOwnerBatch(
     for (const candidate of candidates) {
       if (!settleSingleOwner && candidate.owner.generation === candidate.generation) {
         candidate.owner.pendingPluginGeneration = undefined;
-      }
-      if (!candidate.isCurrent()) {
-        continue;
-      }
-      const result = results.get(candidate.owner);
-      if (!result) {
-        throw new Error(
-          `prepared model runtime snapshot missing after auth refresh for ${candidate.input.agentDir}`,
-        );
       }
       publishCandidate(candidate);
     }
