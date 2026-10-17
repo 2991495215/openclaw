@@ -239,9 +239,9 @@ function collectDeclarationChanges(
 
   const names = new Set([...removedByName.keys(), ...addedByName.keys()]);
   const changes: PluginSdkApiDeclarationChange[] = [];
-  for (const name of [...names].sort(compareText)) {
-    const removed = (removedByName.get(name) ?? []).sort(compareText);
-    const added = (addedByName.get(name) ?? []).sort(compareText);
+  for (const name of [...names].toSorted(compareText)) {
+    const removed = (removedByName.get(name) ?? []).toSorted(compareText);
+    const added = (addedByName.get(name) ?? []).toSorted(compareText);
     const count = Math.max(removed.length, added.length);
     for (let index = 0; index < count; index += 1) {
       changes.push({
@@ -257,7 +257,7 @@ function collectDeclarationChanges(
 function moduleChange(moduleSurface: PluginSdkApiDiffModule): PluginSdkApiEntrypointChange {
   return {
     entrypoint: moduleSurface.entrypoint,
-    exportNames: moduleSurface.exports.map((exportSurface) => exportSurface.exportName).sort(),
+    exportNames: moduleSurface.exports.map((exportSurface) => exportSurface.exportName).toSorted(),
     importSpecifier: moduleSurface.importSpecifier,
   };
 }
@@ -286,7 +286,7 @@ export function diffPluginSdkApi(
     exports: [],
   };
 
-  for (const [entrypoint, moduleSurface] of [...modules].sort(([left], [right]) =>
+  for (const [entrypoint, moduleSurface] of [...modules].toSorted(([left], [right]) =>
     compareText(left, right),
   )) {
     const beforeModule = beforeModules.get(entrypoint);
@@ -301,7 +301,7 @@ export function diffPluginSdkApi(
     const beforeExports = beforeModule ? exportMap(beforeModule) : new Map();
     const afterExports = afterModule ? exportMap(afterModule) : new Map();
     const exportNames = new Set([...beforeExports.keys(), ...afterExports.keys()]);
-    for (const exportName of [...exportNames].sort(compareText)) {
+    for (const exportName of [...exportNames].toSorted(compareText)) {
       const beforeExport = beforeExports.get(exportName);
       const afterExport = afterExports.get(exportName);
       let change: PluginSdkApiExportChange["change"];
@@ -404,7 +404,7 @@ function collectDeclarationReportChanges(
       grouped.set(key, declaration);
     }
   }
-  return [...grouped.values()].sort(
+  return [...grouped.values()].toSorted(
     (left, right) =>
       compareText(left.name, right.name) ||
       compareText(left.before ?? "", right.before ?? "") ||
