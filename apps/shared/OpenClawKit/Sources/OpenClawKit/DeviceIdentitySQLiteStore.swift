@@ -35,42 +35,38 @@ enum DeviceIdentitySQLiteStore {
         try OpenClawNativeStateSQLite.assertNoOfflineMaintenance(databaseURL: databaseURL)
         try self.secureDirectory(destinationStateDirURL)
         try self.secureDirectory(databaseURL.deletingLastPathComponent())
+        // SQLite owns an existing profile; leave any downgrade-recreated legacy source for Doctor.
+        if self.pathMayExist(databaseURL),
+           let existing = try self.loadExisting(
+               databaseURL: databaseURL,
+               destinationStateDirURL: destinationStateDirURL,
+               profile: profile)
+        {
+            return existing
+        }
+        var claims: [LegacyClaim] = []
         do {
-            // SQLite owns an existing profile; leave any downgrade-recreated legacy source for Doctor.
-            if self.pathMayExist(databaseURL),
-               let existing = try self.loadExisting(
-                   databaseURL: databaseURL,
-                   destinationStateDirURL: destinationStateDirURL,
-                   profile: profile)
-            {
-                return existing
+            for source in legacySources {
+                if let claim = try self.claimLegacyIdentity(source, beforeClaim: beforeLegacyClaim) {
+                    claims.append(claim)
+                }
             }
-            var claims: [LegacyClaim] = []
+            return try self.loadOrCreate(
+                databaseURL: databaseURL,
+                destinationStateDirURL: destinationStateDirURL,
+                profile: profile,
+                claims: claims,
+                legacySources: legacySources,
+                afterLegacyCommit: afterLegacyCommit)
+        } catch {
             do {
-                for source in legacySources {
-                    if let claim = try self.claimLegacyIdentity(source, beforeClaim: beforeLegacyClaim) {
-                        claims.append(claim)
-                    }
-                }
-                return try self.loadOrCreate(
-                    databaseURL: databaseURL,
-                    destinationStateDirURL: destinationStateDirURL,
-                    profile: profile,
-                    claims: claims,
-                    legacySources: legacySources,
-                    afterLegacyCommit: afterLegacyCommit)
-            } catch {
-                do {
-                    try self.restoreClaimedLegacyIdentities(claims)
-                } catch let restoreError {
-                    throw DeviceIdentityStore.storageError(
-                        "Device identity migration failed: \(error.localizedDescription); " +
-                            "native claim restoration failed: \(restoreError.localizedDescription)")
-                }
-                throw error
+                try self.restoreClaimedLegacyIdentities(claims)
+            } catch let restoreError {
+                throw DeviceIdentityStore.storageError(
+                    "Device identity migration failed: \(error.localizedDescription); " +
+                        "native claim restoration failed: \(restoreError.localizedDescription)")
             }
-        } catch let error as OpenClawNativeStateError {
-            throw DeviceIdentityStore.storageError(error.message)
+            throw error
         }
     }
 

@@ -79,6 +79,7 @@ let package = Package(
             name: "OpenClawKitTests",
             dependencies: [
                 "OpenClawKit",
+                "OpenClawNativeState",
                 "OpenClawChatUI",
                 "OpenClawProtocol",
                 .product(name: "GRDB", package: "GRDB.swift"),

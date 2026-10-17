@@ -4,6 +4,7 @@ import Foundation
 import SQLite3
 import Testing
 @testable import OpenClawKit
+@testable import OpenClawNativeState
 
 private final class DeviceIdentityMigrationFixture {
     let root: URL
@@ -626,6 +627,40 @@ struct DeviceIdentityStoreTests {
             "SELECT private_key_pem FROM device_identities WHERE identity_key = 'primary'") ==
             "not-a-private-key")
     }
+
+    #if os(macOS)
+    @Test
+    func `maintenance beginning during migration stays retryable and restores the legacy identity`() throws {
+        let fixture = DeviceIdentityMigrationFixture()
+        let source = try fixture.source()
+        let original = try Data(contentsOf: source.identityURL)
+        let ownerURL = try OpenClawNativeStateAdmission.processOwnerURL(
+            databaseURL: fixture.databaseURL,
+            uid: getuid())
+        defer { try? FileManager.default.removeItem(at: ownerURL) }
+
+        do {
+            _ = try fixture.load(sources: [source], beforeLegacyClaim: { _ in
+                try FileManager.default.createDirectory(
+                    at: ownerURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true)
+                let owner: [String: Any] = [
+                    "pid": getpid(),
+                    "role": "sqlite-maintenance",
+                    "createdAt": "2026-10-16T00:00:00.000Z",
+                    "configPath": fixture.destination.appendingPathComponent("openclaw.json").path,
+                ]
+                try JSONSerialization.data(withJSONObject: owner).write(to: ownerURL, options: .atomic)
+            })
+            Issue.record("maintenance unexpectedly permitted identity migration")
+        } catch let error as OpenClawNativeStateError {
+            #expect(error.code == .busy)
+        }
+        #expect(try Data(contentsOf: source.identityURL) == original)
+        #expect(!FileManager.default.fileExists(atPath: fixture.claimURL(for: source).path))
+        #expect(!FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+    }
+    #endif
 
     @Test
     func `same key migration preserves the authoritative SQLite timestamp`() throws {
