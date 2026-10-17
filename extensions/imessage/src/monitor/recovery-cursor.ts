@@ -129,16 +129,22 @@ async function readRecoveryCursor(accountId: string, dbIdentity: string): Promis
   const key = recoveryCursorStoreKey(accountId, dbIdentity);
   const value = await store.lookup(key);
   if (value) {
-    return Number.isFinite(value.lastRowid) ? value.lastRowid : null;
+    const rowid = Number.isFinite(value.lastRowid) ? value.lastRowid : null;
+    if (rowid !== null) {
+      // Finish a prior adoption whose source cleanup failed after the write.
+      await store.delete(accountId);
+    }
+    return rowid;
   }
   // One-time upgrade adoption: cursors written before database scoping were
   // keyed by accountId alone. Adopt such an entry for the active database so
   // the upgrade restart still replays downtime rows, then consume it so a
   // later dbPath change cannot inherit this database's high-water.
-  const legacy = await store.consume(accountId);
+  const legacy = await store.lookup(accountId);
   if (legacy && Number.isFinite(legacy.lastRowid)) {
-    await store.registerIfAbsent(key, { lastRowid: legacy.lastRowid });
-    const adopted = await store.lookup(key);
+    const inserted = await store.registerIfAbsent(key, { lastRowid: legacy.lastRowid });
+    const adopted = inserted ? legacy : await store.lookup(key);
+    await store.consume(accountId);
     return adopted && Number.isFinite(adopted.lastRowid) ? adopted.lastRowid : null;
   }
   return null;
@@ -156,13 +162,20 @@ async function migrateLegacyCatchupCursor(
     maxEntries: LEGACY_CATCHUP_CURSOR_MAX_ENTRIES,
   });
   const key = createHash("sha256").update(accountId, "utf8").digest("hex").slice(0, 32);
-  const value = await legacy.consume(key);
+  const value = await legacy.lookup(key);
   const rowid =
     typeof value?.lastSeenRowid === "number" && Number.isFinite(value.lastSeenRowid)
       ? value.lastSeenRowid
       : null;
+  // Persist the adopted cursor before discarding the only saved progress.
   if (rowid !== null) {
-    await advanceIMessageRecoveryCursor(accountId, dbIdentity, rowid);
+    await applyRecoveryCursorUpdate(recoveryCursorStoreKey(accountId, dbIdentity), {
+      kind: "advance",
+      rowid,
+    });
+  }
+  if (value !== undefined) {
+    await legacy.consume(key);
   }
   return rowid;
 }
@@ -196,7 +209,7 @@ async function reconcileRecoveryCursorToWatermark(
 export async function loadIMessageRecoveryCursor(
   accountId: string,
   dbIdentity: string,
-  options: { migrateLegacyCatchup?: boolean; watermarkRowid?: number | null } = {},
+  options: { watermarkRowid?: number | null } = {},
 ): Promise<number | null> {
   const watermarkRowid =
     typeof options.watermarkRowid === "number" && Number.isFinite(options.watermarkRowid)
@@ -205,9 +218,6 @@ export async function loadIMessageRecoveryCursor(
   const current = await readRecoveryCursor(accountId, dbIdentity);
   if (current !== null) {
     return await reconcileRecoveryCursorToWatermark(accountId, dbIdentity, current, watermarkRowid);
-  }
-  if (options.migrateLegacyCatchup === false) {
-    return null;
   }
   return await reconcileRecoveryCursorToWatermark(
     accountId,

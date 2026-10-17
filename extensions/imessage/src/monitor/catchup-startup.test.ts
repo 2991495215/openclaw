@@ -70,10 +70,16 @@ describe("registered iMessage account startup", () => {
     }
   }
 
-  function startAccount() {
+  function startAccount(catchupEnabled = false, remoteHost?: string) {
     const cfg: OpenClawConfig = {
       channels: {
-        imessage: { cliPath: path.join(stateDir, "synthetic-imsg"), dbPath, dmPolicy: "disabled" },
+        imessage: {
+          cliPath: path.join(stateDir, "synthetic-imsg"),
+          dbPath,
+          dmPolicy: "disabled",
+          ...(remoteHost ? { remoteHost } : {}),
+          ...(catchupEnabled ? { catchup: { enabled: true } } : {}),
+        },
       },
     };
     const account = resolveIMessageAccount({ cfg, accountId: "default" });
@@ -81,6 +87,9 @@ describe("registered iMessage account startup", () => {
     const request = vi.spyOn(client, "request").mockImplementation(async (method) => {
       if (method === "watch.subscribe") {
         return { subscription: 1 };
+      }
+      if (method === "chats.list") {
+        return { chats: [] };
       }
       throw new Error(`unexpected bridge method ${method}`);
     });
@@ -128,20 +137,23 @@ describe("registered iMessage account startup", () => {
     expect(watermarkQueries()).toHaveLength(0);
   });
 
-  it.each(["current", "legacy"] as const)(
-    "rejects startup rather than skipping saved progress after a failed %s cursor read",
+  it.each(["current", "legacy", "unscoped-write", "legacy-write", "unscoped-cleanup"] as const)(
+    "rejects startup rather than skipping saved progress after a failed %s cursor operation",
     async (kind) => {
       seedChatDb();
       const state = getIMessageRuntime().state;
-      if (kind === "current") {
+      if (kind === "current" || kind === "unscoped-write" || kind === "unscoped-cleanup") {
         state
           .openSyncKeyedStore<{ lastRowid: number }>({
             namespace: "imessage.recovery-cursor",
             maxEntries: 64,
           })
-          .register(`default\u0000${resolveIMessageRecoveryCursorDbIdentity({ dbPath })}`, {
-            lastRowid: 4990,
-          });
+          .register(
+            kind === "unscoped-write" || kind === "unscoped-cleanup"
+              ? "default"
+              : `default\u0000${resolveIMessageRecoveryCursorDbIdentity({ dbPath })}`,
+            { lastRowid: 4990 },
+          );
       } else {
         state
           .openSyncKeyedStore<IMessageCatchupCursor>({
@@ -154,23 +166,27 @@ describe("registered iMessage account startup", () => {
             updatedAt: Date.now(),
           });
       }
-      const failure = new Error("synthetic cursor read unavailable");
-      let failReads = true;
+      const failure = new Error("synthetic cursor operation unavailable");
+      let failOperations = true;
+      const faults: Array<{ mockRestore(): void }> = [];
       const open = state.openKeyedStoreV2.bind(state);
       vi.spyOn(state, "openKeyedStoreV2").mockImplementation(
         <T>(options: OpenAsyncKeyedStoreOptions) => {
           const store = open<T>(options);
-          const method = kind === "current" ? "lookup" : "consume";
           const namespace =
-            kind === "current" ? "imessage.recovery-cursor" : IMESSAGE_CATCHUP_CURSOR_NAMESPACE;
-          if (options.namespace === namespace) {
-            const read = store[method].bind(store);
-            store[method] = async (key) => {
-              if (failReads) {
-                throw failure;
-              }
-              return await read(key);
-            };
+            kind === "legacy" ? IMESSAGE_CATCHUP_CURSOR_NAMESPACE : "imessage.recovery-cursor";
+          if (options.namespace === namespace && failOperations) {
+            const methods =
+              kind === "unscoped-write"
+                ? (["registerIfAbsent"] as const)
+                : kind === "legacy-write"
+                  ? (["register"] as const)
+                  : kind === "unscoped-cleanup"
+                    ? (["consume"] as const)
+                    : (["lookup", "consume"] as const);
+            for (const method of methods) {
+              faults.push(vi.spyOn(store, method).mockRejectedValue(failure));
+            }
           }
           return store;
         },
@@ -180,7 +196,10 @@ describe("registered iMessage account startup", () => {
       expect(probe).not.toHaveBeenCalled();
       expect(first.request).not.toHaveBeenCalled();
 
-      failReads = false;
+      failOperations = false;
+      for (const fault of faults) {
+        fault.mockRestore();
+      }
       const recovered = startAccount();
       await recovered.starting;
       expect(recovered.request).toHaveBeenCalledWith(
@@ -188,8 +207,41 @@ describe("registered iMessage account startup", () => {
         expect.objectContaining({ since_rowid: 4990 }),
         expect.any(Object),
       );
+      if (kind === "unscoped-cleanup") {
+        const remote = startAccount(false, "synthetic@messages.test");
+        await remote.starting;
+        expect(remote.request).toHaveBeenCalledWith(
+          "watch.subscribe",
+          { attachments: false, include_reactions: true },
+          expect.any(Object),
+        );
+      }
     },
   );
+
+  it("starts compatibility catchup when its unused recovery cursor is unavailable", async () => {
+    seedChatDb();
+    const state = getIMessageRuntime().state;
+    const open = state.openKeyedStoreV2.bind(state);
+    vi.spyOn(state, "openKeyedStoreV2").mockImplementation(
+      <T>(options: OpenAsyncKeyedStoreOptions) => {
+        if (options.namespace === "imessage.recovery-cursor") {
+          throw new Error("synthetic unused recovery cursor unavailable");
+        }
+        return open<T>(options);
+      },
+    );
+
+    const { request, starting } = startAccount(true);
+    await starting;
+
+    expect(request).toHaveBeenCalledWith(
+      "watch.subscribe",
+      { attachments: false, include_reactions: true },
+      expect.any(Object),
+    );
+    expect(request).toHaveBeenCalledWith("chats.list", expect.any(Object), expect.any(Object));
+  });
 
   it("joins startup watermark cleanup before probing or subscribing", async () => {
     seedChatDb();
