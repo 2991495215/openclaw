@@ -4,6 +4,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { mock } from "node:test";
 import { isDeepStrictEqual } from "node:util";
 import { runGuidedOnboarding } from "../../../../dist/commands/onboard-guided.js";
 import { clearConfigCache } from "../../../../dist/config/config.js";
@@ -26,6 +27,8 @@ import {
 import { runSystemAgent } from "../../../../dist/system-agent/system-agent.js";
 import { createE2eStateDir } from "../../../../scripts/e2e/lib/temp-state-dir.ts";
 import type { OpenClawConfigWithLegacyRoster } from "../../../../src/config/legacy.roster.js";
+import type { applySystemAgentSetup } from "../../../../src/system-agent/setup-apply.js";
+import type { WizardPrompter } from "../../../../src/wizard/prompts.js";
 
 type SystemAgentFirstRunCommand = {
   id: string;
@@ -350,76 +353,118 @@ async function main() {
   } = { interruptions: 0, handoffs: 0, choices: [] };
   // Let guided onboarding own consent and the SQLite receipt, then interrupt
   // its existing apply boundary before workspace setup.
-  await runGuidedOnboarding({ workspace: spec.dockerDefaultWorkspace }, activationRuntime.runtime, {
-    createPrompter: () => ({
-      intro: async () => {},
-      outro: async () => {},
-      note: async (message) => {
-        activationRuntime.lines.push(message);
-      },
-      select: async ({ options }) => {
-        const choice = options.find(({ value }) =>
-          ["quick", "one", "detected-ai", "candidate:claude-cli"].includes(String(value)),
-        );
-        assert(choice, "guided onboarding offered an unexpected selection");
-        const value = String(choice.value);
-        assert(!guided.choices.includes(value), `guided onboarding repeated ${value}`);
-        guided.choices.push(value);
-        return choice.value;
-      },
-      multiselect: async () => {
-        throw new Error("guided onboarding requested an unexpected multiselect");
-      },
-      text: async () => {
-        throw new Error("guided onboarding requested unexpected text");
-      },
-      confirm: async () => {
-        throw new Error("guided onboarding requested an unexpected confirmation");
-      },
-      progress: () => ({ update: () => {}, stop: () => {} }),
-    }),
-    activate: async (params) => {
-      assert(!guided.activation, "guided onboarding repeated inference activation");
-      assert(params.kind === "claude-cli", "guided onboarding selected a different runtime");
-      // Forward the producer's commit callback unchanged; it claims the receipt.
-      guided.activation = await activateSetupInference(params);
-      return guided.activation;
-    },
-    applySetup: async (params, hooks) => {
-      assert(guided.interruptions === 0, "guided onboarding repeated setup apply");
-      assert(
-        params.workspace === spec.dockerDefaultWorkspace &&
-          params.allowWorkspaceChange === true &&
-          typeof params.assertCommitPreconditions === "function",
-        "guided onboarding did not authorize its pending workspace",
-      );
-      const config = JSON.parse(await fs.readFile(configPath, "utf8")) as OpenClawConfig;
-      const owner = readLocalOnboardingStateForConfig(configPath, config);
-      assert(
-        owner?.status === "pending" &&
-          owner.workspace === spec.dockerDefaultWorkspace &&
-          owner.teamCoordinatorId === undefined &&
-          owner.securityAcknowledgedAt === config.wizard?.securityAcknowledgedAt,
-        "guided onboarding reached setup without its ordinary pending owner",
-      );
-      params.assertCommitPreconditions(config);
-      hooks?.beforePersistentApply?.();
-      guided.runId = owner.runId;
-      guided.interruptions += 1;
-      throw new Error(GUIDED_SETUP_INTERRUPTION);
-    },
-    runSystemAgentChat: async (workspace, runtime, acceptRisk, agentName) => {
-      assert(
-        guided.interruptions === 1 &&
-          workspace === spec.dockerDefaultWorkspace &&
-          runtime === activationRuntime.runtime &&
-          acceptRisk &&
-          agentName === "main",
-        "guided onboarding did not hand its interrupted setup to recovery chat",
-      );
-      guided.handoffs += 1;
+  const guidedEntry = new URL("../../../../dist/commands/onboard-guided.js", import.meta.url);
+  const guidedSource = await fs.readFile(guidedEntry, "utf8");
+  const prompterImports = [
+    ...guidedSource.matchAll(/import\(["']([^"']*\/clack-prompter-[^"']+\.mjs)["']\)/gu),
+  ];
+  const setupApplyImports = [
+    ...guidedSource.matchAll(/import\(["']([^"']*\/setup-apply-[^"']+\.mjs)["']\)/gu),
+  ];
+  const prompterImport = prompterImports[0]?.[1];
+  const setupApplyImport = setupApplyImports[0]?.[1];
+  assert(
+    prompterImports.length === 1 &&
+      setupApplyImports.length === 1 &&
+      prompterImport &&
+      setupApplyImport,
+    "packaged guided onboarding must expose one dynamic import per fixture boundary",
+  );
+  const prompterUrl = new URL(prompterImport, guidedEntry);
+  const setupApplyUrl = new URL(setupApplyImport, guidedEntry);
+  const prompterModule = await import(prompterUrl.href);
+  const setupApplyModule = await import(setupApplyUrl.href);
+  const prompterMock = mock.module(prompterUrl.href, {
+    namedExports: {
+      ...prompterModule,
+      createClackPrompter: (): WizardPrompter => ({
+        intro: async () => {},
+        outro: async () => {},
+        note: async (message) => {
+          activationRuntime.lines.push(message);
+        },
+        select: async ({ options }) => {
+          const choice = options.find(({ value }) =>
+            ["quick", "one", "detected-ai", "candidate:claude-cli"].includes(String(value)),
+          );
+          assert(choice, "guided onboarding offered an unexpected selection");
+          const value = String(choice.value);
+          assert(!guided.choices.includes(value), `guided onboarding repeated ${value}`);
+          guided.choices.push(value);
+          return choice.value;
+        },
+        multiselect: async () => {
+          throw new Error("guided onboarding requested an unexpected multiselect");
+        },
+        text: async () => {
+          throw new Error("guided onboarding requested unexpected text");
+        },
+        confirm: async () => {
+          throw new Error("guided onboarding requested an unexpected confirmation");
+        },
+        progress: () => ({ update: () => {}, stop: () => {} }),
+      }),
     },
   });
+  const setupApplyMock = mock.module(setupApplyUrl.href, {
+    namedExports: {
+      ...setupApplyModule,
+      applySystemAgentSetup: async (
+        ...[params, hooks]: Parameters<typeof applySystemAgentSetup>
+      ) => {
+        assert(guided.interruptions === 0, "guided onboarding repeated setup apply");
+        assert(
+          params.workspace === spec.dockerDefaultWorkspace &&
+            params.allowWorkspaceChange === true &&
+            typeof params.assertCommitPreconditions === "function",
+          "guided onboarding did not authorize its pending workspace",
+        );
+        const config = JSON.parse(await fs.readFile(configPath, "utf8")) as OpenClawConfig;
+        const owner = readLocalOnboardingStateForConfig(configPath, config);
+        assert(
+          owner?.status === "pending" &&
+            owner.workspace === spec.dockerDefaultWorkspace &&
+            owner.teamCoordinatorId === undefined &&
+            owner.securityAcknowledgedAt === config.wizard?.securityAcknowledgedAt,
+          "guided onboarding reached setup without its ordinary pending owner",
+        );
+        params.assertCommitPreconditions(config);
+        hooks?.beforePersistentApply?.();
+        guided.runId = owner.runId;
+        guided.interruptions += 1;
+        throw new Error(GUIDED_SETUP_INTERRUPTION);
+      },
+    },
+  });
+  try {
+    await runGuidedOnboarding(
+      { workspace: spec.dockerDefaultWorkspace },
+      activationRuntime.runtime,
+      {
+        activate: async (params) => {
+          assert(!guided.activation, "guided onboarding repeated inference activation");
+          assert(params.kind === "claude-cli", "guided onboarding selected a different runtime");
+          // Forward the producer's commit callback unchanged; it claims the receipt.
+          guided.activation = await activateSetupInference(params);
+          return guided.activation;
+        },
+        runSystemAgentChat: async (workspace, runtime, acceptRisk, agentName) => {
+          assert(
+            guided.interruptions === 1 &&
+              workspace === spec.dockerDefaultWorkspace &&
+              runtime === activationRuntime.runtime &&
+              acceptRisk &&
+              agentName === "main",
+            "guided onboarding did not hand its interrupted setup to recovery chat",
+          );
+          guided.handoffs += 1;
+        },
+      },
+    );
+  } finally {
+    setupApplyMock.restore();
+    prompterMock.restore();
+  }
   assert(
     guided.interruptions === 1 &&
       guided.handoffs === 1 &&
