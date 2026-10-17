@@ -104,7 +104,7 @@ it("keeps exact bytes and one snapshot across ACKs", async () => {
         : { seq: seq === 0 ? -2 : seq, text },
     ),
   );
-  const decompress = vi.spyOn(codec, "decompress");
+  const decompress = vi.spyOn(zstdCodec, "decompress");
   let acknowledgements = 0;
   try {
     const result = await f.stream(async () => {
