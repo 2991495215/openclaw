@@ -94,12 +94,7 @@ export function recordAgentDeletionRecoveryHolds(
   });
   const key = (entry: HeldAgentDatabase) => JSON.stringify([entry.agentId, entry.path]);
   const entries = new Map<string, HeldAgentDatabase>();
-  // System agents cannot be deleted. Existing invalid holds still need Doctor's
-  // ownership verification and backup before they can be resolved.
-  for (const entry of [
-    ...(previous?.held ?? []),
-    ...held.filter((target) => !isReservedSystemAgentId(target.agentId)).map(encode),
-  ]) {
+  for (const entry of [...(previous?.held ?? []), ...held.map(encode)]) {
     entries.set(key(entry), entry);
   }
   const missing = new Map<string, HeldAgentDatabase>();

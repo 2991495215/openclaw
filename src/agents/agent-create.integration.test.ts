@@ -144,6 +144,131 @@ it("restores only the configured held store after explicit creation, never throu
     closeOpenClawStateDatabaseForTest();
     await state.cleanup();
   }
+}
+
+function authBatch(
+  agentDir: string,
+  profileId: string,
+  key: string,
+): Parameters<typeof stageProviderAuthProfileBatch>[0] {
+  return {
+    agentDir,
+    config: {},
+    profiles: [{ profileId, credential: { type: "api_key", provider: "openai", key } }],
+  };
+}
+
+const expectCreation = async (params: Parameters<typeof createAgent>[0], result: object) =>
+  expect(await createAgent(params)).toMatchObject(result);
+
+async function expectMissing(...paths: string[]) {
+  for (const file of paths) {
+    await expect(fs.stat(file)).rejects.toMatchObject({ code: "ENOENT" });
+  }
+}
+
+function claimAuthority(label: string) {
+  const authority = claimAgentRunDelegatedAuthority({ instanceId: label, runId: label });
+  onTestFinished(() => {
+    releaseAgentRunDelegatedAuthority(authority);
+  });
+  return authority;
+}
+
+const legacyRoster: OpenClawConfigWithLegacyRoster = {
+  agents: {
+    list: [
+      { id: "main", default: true },
+      { id: "ops", workspace: "/srv/ops" },
+    ],
+  },
+};
+
+const settle = <T>(operation: Promise<T>) =>
+  operation.then(
+    (result) => ({ result }),
+    (error: unknown) => ({ error }),
+  );
+
+async function observeSql(run: (queries: string[]) => Promise<void>) {
+  const observation = observeHostDataSql();
+  try {
+    await run(observation.queries);
+  } finally {
+    observation.restore();
+  }
+}
+
+it("restores only the configured held store after explicit creation, never through bootstrap or retargeting", async () => {
+  const state = await createState("held-agent-restore");
+
+  const cfg = {
+    agents: { entries: { main: { workspace: state.workspaceDir, agentDir: state.agentDir() } } },
+    gateway: { mode: "local" as const },
+  };
+  await state.writeConfig(cfg);
+  const recovery = await prepareRecoveryHolds(state, "main");
+  const aliasPath = state.path("held-hardlink.sqlite");
+  await fs.link(recovery.held[0]!.path, aliasPath);
+  expect(() =>
+    openOpenClawAgentDatabase({ agentId: "alias", path: aliasPath, env: state.env }),
+  ).toThrow("belongs to agent main; requested agent alias");
+  const params = { name: "main", workspace: state.workspaceDir };
+  await observeSql(async (queries) => {
+    await expectCreation(
+      { ...params, agentDir: path.dirname(recovery.held[1]!.path) },
+      {
+        status: "error",
+        reason: "already-exists",
+      },
+    );
+    expect(queries.filter((sql) => /\bmigration_sources\b/i.test(sql))).toEqual([]);
+  });
+  expect(recovery.readHolds()).toEqual(recovery.held);
+  await expectCreation({ ...params, bootstrapMain: true }, { status: "existing" });
+  expect(recovery.readHolds()).toEqual(recovery.held);
+  await expectCreation(
+    { ...params, bootstrapFirstAgent: true },
+    {
+      status: "error",
+      reason: "already-exists",
+    },
+  );
+  expect(recovery.readHolds()).toEqual(recovery.held);
+  await expect(
+    createAgent({
+      ...params,
+      beforePersistentApply: () => {
+        throw new Error("restore authority closed");
+      },
+    }),
+  ).rejects.toThrow("restore authority closed");
+  expect(recovery.readHolds()).toEqual(recovery.held);
+
+  await expectCreation(
+    { ...params, restorePaths: [] },
+    { status: "error", reason: "already-exists" },
+  );
+  expect(recovery.readHolds()).toEqual(recovery.held);
+
+  await expectCreation(params, { status: "existing", agentDir: state.agentDir() });
+  expect(recovery.readHolds()).toEqual(recovery.held.slice(1));
+  const isHeld = createRetainedAgentDatabaseMatcher(state.env, () =>
+    resolveConfiguredAgentDatabaseTargets(cfg, { env: state.env }),
+  );
+  expect(
+    isHeld(resolveSessionStorePathCore(undefined, { agentId: "main", env: state.env }), "main"),
+  ).toBeFalsy();
+  expect(await Promise.all(recovery.held.map((target) => fs.readFile(target.path)))).toEqual(
+    recovery.bytes,
+  );
+  expect(readAgentDeletionJournal("main", { env: state.env })).toBeUndefined();
+  expect(await readAgentDeletionJournalStatusInWorker("main", { env: state.env })).toBe("absent");
+  expect(isAgentDeletionBlocked("main", { env: state.env })).toBe(false);
+  for (const target of recovery.held.slice(0, 2)) {
+    expect(openOpenClawAgentDatabase({ ...target, env: state.env }).path).toBe(target.path);
+  }
+  expect(recovery.readHolds()).toEqual(recovery.held.slice(1));
 });
 
 it.each(["added", "removed"] as const)(

@@ -8,22 +8,17 @@ import { executeSqliteQueryTakeFirstSync, getNodeSqliteKysely } from "../infra/k
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import { prepareSqliteReadOnlyLocationSync } from "../infra/sqlite-snapshot-source.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
-import { resolveAgentDeletionRecoveryHolds } from "../state/agent-deletion-journal-recovery.js";
 import {
   readAgentDeletionMissingJournalHolds,
   readAgentDeletionRecoveryHolds,
-  type RecoveryDatabase,
 } from "../state/agent-deletion-journal-recovery.kernel.js";
 import { readAgentDeletionJournalInDatabase } from "../state/agent-deletion-journal.js";
 import type { HeldAgentDatabase } from "../state/agent-deletion-journal.types.js";
 import type { DB } from "../state/openclaw-agent-db.generated.js";
-import {
-  createOpenClawAgentDatabasePathMatcher,
-  resolveOpenClawAgentSqlitePath,
-} from "../state/openclaw-agent-db.paths.js";
+import { createOpenClawAgentDatabasePathMatcher } from "../state/openclaw-agent-db.paths.js";
 import { getOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
+import { isStatePostgres } from "../state/openclaw-state-db-engine.js";
 import { withExistingOpenClawStateDatabaseCurrentReadOnly } from "../state/openclaw-state-db-readonly.js";
-import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { isReservedSystemAgentId } from "../system-agent/agent-id.js";
 import { backupDoctorSqliteDatabases } from "./doctor-migration-backup.js";
@@ -56,20 +51,15 @@ function readAffectedProducer(database: DatabaseSync, agentId: string) {
       .selectAll()
       .where("meta_key", "=", "primary"),
   );
-  if (
-    row?.role !== "agent" ||
-    row.agent_id !== agentId ||
-    readSqliteUserVersion(database) !== row.schema_version
-  ) {
-    return undefined;
-  }
-  // System stores have no legitimate deletion history. Ordinary agents need
-  // the affected producer's unchanged birth stamp to restore lost deletion intent.
-  return isReservedSystemAgentId(agentId) ||
-    (row.app_version !== null &&
-      AFFECTED_AGENT_SCHEMAS.get(row.app_version) === row.schema_version &&
-      row.created_at > 0 &&
-      row.created_at === row.updated_at)
+  // The producer's unchanged birth stamp survives a hold; config/provenance and
+  // shared metadata can be rewritten during an upgrade and cannot identify birth.
+  return row?.role === "agent" &&
+    row.agent_id === agentId &&
+    row.app_version !== null &&
+    AFFECTED_AGENT_SCHEMAS.get(row.app_version) === row.schema_version &&
+    readSqliteUserVersion(database) === row.schema_version &&
+    row.created_at > 0 &&
+    row.created_at === row.updated_at
     ? row
     : undefined;
 }
@@ -90,7 +80,7 @@ function inspectProducer(pathname: string, agentId: string) {
   return producer;
 }
 
-/** Reconcile invalid system holds and the published native-first missing-journal cohort. */
+/** Restore the published native-first cohort through the explicit per-agent restore owner. */
 export async function restoreDoctorMissingJournalStores(params: {
   env: NodeJS.ProcessEnv;
   held: readonly HeldAgentDatabase[];
@@ -98,7 +88,7 @@ export async function restoreDoctorMissingJournalStores(params: {
   const changes: string[] = [];
   const warnings: string[] = [];
   const restored: HeldAgentDatabase[] = [];
-  if (params.held.length === 0) {
+  if (params.held.length === 0 || isStatePostgres()) {
     return { changes, warnings, restored };
   }
   const maintenance = getOpenClawDatabaseMaintenanceScope();
@@ -119,33 +109,23 @@ export async function restoreDoctorMissingJournalStores(params: {
     registeredDatabases: params.held,
   });
   const agentIds = listAgentIds(snapshot.sourceConfig);
-  const readEligibleHolds = (database: RecoveryDatabase, agentId: string) =>
-    isReservedSystemAgentId(agentId)
-      ? readAgentDeletionRecoveryHolds(database)
-      : readAgentDeletionMissingJournalHolds(database);
-  const matchesReceipt = (target: HeldAgentDatabase, current?: RecoveryDatabase) => {
-    const matches = (database: RecoveryDatabase) =>
-      readEligibleHolds(database, target.agentId).some(
-        (entry) => entry.agentId === target.agentId && samePath(entry.path, target.path),
-      ) && !readAgentDeletionJournalInDatabase(database, target.agentId);
-    return current
-      ? matches(current)
-      : withExistingOpenClawStateDatabaseCurrentReadOnly(matches, {
-          env: params.env,
-          allowNativeRead: true,
-        }) === true;
-  };
-  const eligible = params.held.flatMap((target) => {
-    const owned = isReservedSystemAgentId(target.agentId)
-      ? samePath(
-          target.path,
-          resolveOpenClawAgentSqlitePath({ agentId: target.agentId, env: params.env }),
-        )
-      : agentIds.includes(target.agentId) &&
-        configured.some(
+  const matchesMissingReceipt = (target: HeldAgentDatabase) =>
+    withExistingOpenClawStateDatabaseCurrentReadOnly(
+      (database) =>
+        readAgentDeletionMissingJournalHolds(database).some(
           (entry) => entry.agentId === target.agentId && samePath(entry.path, target.path),
-        );
-    if (!owned || !matchesReceipt(target)) {
+        ) && !readAgentDeletionJournalInDatabase(database, target.agentId),
+      { env: params.env, allowNativeRead: true },
+    ) === true;
+  const eligible = params.held.flatMap((target) => {
+    if (
+      isReservedSystemAgentId(target.agentId) ||
+      !agentIds.includes(target.agentId) ||
+      !configured.some(
+        (entry) => entry.agentId === target.agentId && samePath(entry.path, target.path),
+      ) ||
+      !matchesMissingReceipt(target)
+    ) {
       return [];
     }
     try {
@@ -162,20 +142,18 @@ export async function restoreDoctorMissingJournalStores(params: {
     return { changes, warnings, restored };
   }
   const remaining = new Set(eligible);
-  const assertCurrent = (database?: RecoveryDatabase) => {
+  const assertCurrent = () => {
     maintenance.assertAdmission();
-    if (
-      !samePath.isCurrent() ||
-      [...remaining].some((target) => !matchesReceipt(target, database))
-    ) {
+    if (!samePath.isCurrent() || [...remaining].some((target) => !matchesMissingReceipt(target))) {
       throw new Error(
         "Agent deletion recovery changed; preserved stores remain held. Rerun Doctor.",
       );
     }
   };
   assertCurrent();
-  // Ordinary agents require the published missing-journal cohort; reserved agents
-  // cannot be deleted. Both repairs preserve a verified rollback group first.
+  // Peter's decision (2026-10-16) accepts resurrecting a lost pending deletion
+  // when its entire journal vanished with this producer shape. A present but
+  // incomplete journal never qualifies. Preserve a verified rollback group first.
   const backups = await backupDoctorSqliteDatabases({
     env: params.env,
     pendingDatabasePaths: eligible.map((target) => target.path),
@@ -194,16 +172,17 @@ export async function restoreDoctorMissingJournalStores(params: {
         );
         if (owner?.role === "global") {
           const source = { db: database, path: resolveOpenClawStateSqlitePath(params.env) };
+          const missing = readAgentDeletionMissingJournalHolds(source);
           if (
             eligible.some(
               (target) =>
-                !readEligibleHolds(source, target.agentId).some(
+                !missing.some(
                   (entry) => entry.agentId === target.agentId && samePath(entry.path, target.path),
                 ) || readAgentDeletionJournalInDatabase(source, target.agentId),
             )
           ) {
             throw new Error(
-              "Recovery backup does not preserve the deletion reconstruction records.",
+              "Recovery backup does not preserve the missing-journal reconstruction records.",
             );
           }
         } else if (
@@ -236,36 +215,17 @@ export async function restoreDoctorMissingJournalStores(params: {
   for (const agentId of new Set(eligible.map((target) => target.agentId))) {
     const targets = eligible.filter((target) => target.agentId === agentId);
     assertCurrent();
-    if (isReservedSystemAgentId(agentId)) {
-      for (const target of targets) {
-        if (!isDeepStrictEqual(inspectProducer(target.path, agentId), target.producer)) {
-          throw new Error(`System agent ${agentId} ownership changed before recovery.`);
-        }
-      }
-      runOpenClawStateWriteTransaction(
-        (database) => {
-          assertCurrent(database);
-          resolveAgentDeletionRecoveryHolds(
-            database,
-            agentId,
-            targets.map((target) => target.path),
-          );
-        },
-        { env: params.env },
-      );
-    } else {
-      const result = await createAgent({
-        name: agentId,
-        expectedConfigHash,
-        restorePaths: targets.map((target) => target.path),
-        beforePersistentApply: assertCurrent,
-      });
-      if (result.status === "error") {
-        warnings.push(`Agent ${agentId} remains held: ${result.message}`);
-        continue;
-      }
-      expectedConfigHash = result.configHash ?? expectedConfigHash;
+    const result = await createAgent({
+      name: agentId,
+      expectedConfigHash,
+      restorePaths: targets.map((target) => target.path),
+      beforePersistentApply: assertCurrent,
+    });
+    if (result.status === "error") {
+      warnings.push(`Agent ${agentId} remains held: ${result.message}`);
+      continue;
     }
+    expectedConfigHash = result.configHash ?? expectedConfigHash;
     // Check the selected owner actually resolved each hold before reporting recovery.
     for (const target of targets) {
       const stillHeld = withExistingOpenClawStateDatabaseCurrentReadOnly(
@@ -281,7 +241,7 @@ export async function restoreDoctorMissingJournalStores(params: {
       remaining.delete(target);
       restored.push(target);
       warnings.push(
-        `Warning: Automatically restored agent ${agentId} database ${target.path}${isReservedSystemAgentId(agentId) ? " after verifying reserved system-agent ownership" : ` created by affected OpenClaw ${target.producer.app_version}`}. Verified backup: ${backupPaths.find((entry) => samePath(entry.sourcePath, target.path))!.path}; shared state and reconstruction records: ${sharedBackup.path}.`,
+        `Warning: Automatically restored agent ${agentId} database ${target.path} created by affected OpenClaw ${target.producer.app_version}. Verified backup: ${backupPaths.find((entry) => samePath(entry.sourcePath, target.path))!.path}; shared state and reconstruction records: ${sharedBackup.path}.`,
       );
     }
   }
