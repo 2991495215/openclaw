@@ -298,8 +298,7 @@ export class SidebarSessionNarrationController {
     ) {
       return;
     }
-    const hint = error instanceof GatewayProtocolRequestError ? error.retryAfterMs : undefined;
-    const floor = typeof hint === "number" && Number.isFinite(hint) ? Math.max(0, hint) : 0;
+    const floor = error instanceof GatewayProtocolRequestError ? (error.retryAfterMs ?? 0) : 0;
     const delay = resolveSafeTimeoutDelayMs(floor + Math.random() * retry.retryWindowMs);
     retry.retryWindowMs = Math.min(retry.retryWindowMs * 2, SIDEBAR_NARRATION_RETRY_MAX_MS);
     retry.retryAt = Date.now() + delay;
