@@ -15,7 +15,10 @@ import { buildDeliveryFormatPrompt } from "../../infra/outbound/delivery-format-
 import type { EnvelopeFormatOptions } from "../envelope.js";
 import { formatAgentEnvelopeTimestamp } from "../envelope.js";
 import { getRequesterProfile } from "../requester-profile.js";
-import type { TemplateContext } from "../templating.js";
+import {
+  INBOUND_SOURCE_MODALITIES as INBOUND_SOURCE_MODALITY_VALUES,
+  type TemplateContext,
+} from "../templating.js";
 import {
   formatContextJsonBlock,
   MAX_CONTEXT_JSON_STRING_CHARS,
@@ -31,7 +34,7 @@ const MAX_ACTIVE_GOAL_OBJECTIVE_CHARS = 200;
 const ACTIVE_GOAL_CONTEXT_PREFIX = "Active goal: ";
 const ACTIVE_GOAL_CONTEXT_SUFFIX =
   " — advance; keep active until fully achieved; block only after the same blocker on 3 consecutive turns; after update_goal, provide the requested visible final.";
-const INBOUND_SOURCE_MODALITIES = new Set(["text", "voice", "audio", "image", "video", "document"]);
+const INBOUND_SOURCE_MODALITIES = new Set<string>(INBOUND_SOURCE_MODALITY_VALUES);
 
 export function formatActiveGoalContext(sessionEntry?: SessionEntry): string | undefined {
   const goal = sessionEntry ? resolveSessionGoalDisplayState(sessionEntry) : undefined;

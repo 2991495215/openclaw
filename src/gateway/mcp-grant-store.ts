@@ -19,6 +19,7 @@ import type {
 import type { ReplyTurnParticipants } from "../auto-reply/reply/reply-run-registry.contracts.js";
 import type { SessionEventSourcePolicy } from "../auto-reply/reply/session-event-contract.js";
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
+import type { ReplyToMode } from "../config/types.base.js";
 import type { GroupToolPolicyConfig } from "../config/types.tools.js";
 import type { CronScheduledToolCallerOrigin } from "../cron/scheduled-tool-policy.js";
 import type { AgentRunDelegatedAuthority } from "../infra/agent-run-registry.js";
@@ -67,7 +68,7 @@ export type McpLoopbackRequestContext = {
   currentThreadTs?: string;
   currentMessageId?: string;
   currentConversationOrigin?: McpCurrentConversationOrigin;
-  replyToMode?: "off" | "first" | "all" | "batched";
+  replyToMode?: ReplyToMode;
   currentInboundAudio?: boolean;
   accountId?: string;
   inboundEventKind?: InboundEventKind;

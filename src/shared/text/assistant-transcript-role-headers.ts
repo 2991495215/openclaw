@@ -1,9 +1,10 @@
+import type { AssistantTranscriptRoleHeaderSpan } from "../../../packages/markdown-core/src/assistant-transcript-headers.js";
 import { markdownToIR } from "../../../packages/markdown-core/src/ir.js";
 
-type AssistantTranscriptRoleHeaderDetection = {
-  kind: "angle_role_header" | "role_timestamp_bracket" | "timestamp_role_colon";
-  role: "assistant" | "developer" | "system" | "user";
-};
+type AssistantTranscriptRoleHeaderDetection = Pick<
+  AssistantTranscriptRoleHeaderSpan,
+  "kind" | "role"
+>;
 
 /** Detect transcript-role headers in assistant Markdown through the canonical parser. */
 export function detectAssistantTranscriptRoleHeaderText(

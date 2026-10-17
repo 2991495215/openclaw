@@ -13,14 +13,14 @@ import { stringLiteralUnion } from "./string-literal-union.js";
  * because older CLI/channel clients may continue sending them across releases.
  */
 const AGENT_INTERNAL_EVENT_TYPE_TASK_COMPLETION = "task_completion";
-const AGENT_INTERNAL_EVENT_SOURCES = [
+export const AGENT_INTERNAL_EVENT_SOURCES = [
   "subagent",
   "cron",
   "image_generation",
   "video_generation",
   "music_generation",
 ] as const;
-const AGENT_INTERNAL_EVENT_STATUSES = ["ok", "timeout", "error", "unknown"] as const;
+export const AGENT_INTERNAL_EVENT_STATUSES = ["ok", "timeout", "error", "unknown"] as const;
 const CONVERSATION_REF_PATTERN = "^conv_[a-f0-9]{32}$";
 
 /** Generated media/file attachment metadata carried by internal agent events. */

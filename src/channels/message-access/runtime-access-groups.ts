@@ -7,6 +7,7 @@ import type { ResolveChannelMessageIngressParams } from "./runtime-types.js";
 import type {
   AccessGroupMembershipFact,
   ChannelIngressChannelId,
+  ChannelIngressMatchContext,
   InternalChannelIngressAdapter,
 } from "./types.js";
 
@@ -25,7 +26,7 @@ export async function normalizeEffectiveEntries(params: {
   adapter: InternalChannelIngressAdapter;
   accountId: string;
   entries: readonly (string | number)[];
-  context: "dm" | "group" | "route" | "command";
+  context: ChannelIngressMatchContext;
 }): Promise<string[]> {
   const rawEntries = normalizeStringEntries(params.entries);
   const accessGroupEntries = rawEntries.filter(

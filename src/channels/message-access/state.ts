@@ -12,6 +12,7 @@ import {
 import { allReferencedAccessGroupNames } from "./runtime-access-groups.js";
 import type {
   NormalizedIngressState,
+  ChannelIngressMatchContext,
   ChannelIngressStateInput,
   InternalChannelIngressAdapter,
   InternalChannelIngressSubject,
@@ -66,7 +67,7 @@ async function normalizeAndMatch(params: {
   subject: NormalizedIngressSubject;
   accountId: string;
   entries: readonly string[];
-  context: "dm" | "group" | "route" | "command";
+  context: ChannelIngressMatchContext;
 }): Promise<{
   normalizedEntries: ReturnType<typeof redactedEntries>;
   invalidEntries: RedactedIngressEntryDiagnostic[];
@@ -241,7 +242,7 @@ async function originSubjectAuthentication(
 
 async function resolveAccessGroupEntries(params: {
   input: NormalizedStateInput;
-  context: "dm" | "group" | "route" | "command";
+  context: ChannelIngressMatchContext;
   referenced: readonly string[];
 }): Promise<{
   normalizedEntries: ReturnType<typeof redactedEntries>;
@@ -331,7 +332,7 @@ async function resolveAccessGroupEntries(params: {
 async function resolveIngressAllowlist(params: {
   input: NormalizedStateInput;
   rawEntries: Array<string | number> | undefined;
-  context: "dm" | "group" | "route" | "command";
+  context: ChannelIngressMatchContext;
 }): Promise<NormalizedIngressAllowlist> {
   const entries = normalizeStringEntries(params.rawEntries ?? []);
   const referenced = allReferencedAccessGroupNames([entries]);

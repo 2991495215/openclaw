@@ -3,7 +3,10 @@
  */
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { getChannelPlugin, normalizeChannelId } from "../channels/plugins/index.js";
-import { isMessageToolSendActionName } from "../channels/plugins/message-action-names.js";
+import {
+  isFencedProviderReadAction,
+  isMessageToolSendActionName,
+} from "../channels/plugins/message-action-names.js";
 import {
   CHANNEL_MESSAGE_ACTION_NAMES,
   type ChannelMessageActionName,
@@ -18,25 +21,8 @@ const CORE_MESSAGING_TOOLS = new Set([
   "conversations_turn",
   "message",
 ]);
-const MESSAGE_TOOL_READ_ONLY_ACTIONS = new Set([
-  "read",
-  "reactions",
-  "list-pins",
-  "permissions",
-  "thread-list",
-  "search",
-  "sticker-search",
-  "member-info",
-  "role-info",
-  "emoji-list",
-  "channel-info",
-  "channel-list",
-  "voice-status",
-  "event-list",
-  "download-file",
-]);
 const MESSAGE_TOOL_MUTATION_ACTIONS = new Set<string>(
-  CHANNEL_MESSAGE_ACTION_NAMES.filter((action) => !MESSAGE_TOOL_READ_ONLY_ACTIONS.has(action)),
+  CHANNEL_MESSAGE_ACTION_NAMES.filter((action) => !isFencedProviderReadAction(action)),
 );
 const MESSAGE_TOOL_CONVERSATION_CREATE_ACTIONS = new Set([
   "thread-create",
