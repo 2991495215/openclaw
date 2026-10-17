@@ -1729,7 +1729,6 @@ final class TalkModeManager {
         let prompt = self.buildPrompt(transcript: transcript)
 
         do {
-            let startedAt = Date().timeIntervalSince1970
             let runId = UUID().uuidString
             let completionSubscription = await gateway.makeServerEventSubscription(
                 bufferingNewest: 200,
@@ -1770,7 +1769,6 @@ final class TalkModeManager {
             }
             guard let completedSuccessfully = try await completeTranscriptResponse(
                 acknowledgement: acknowledgement,
-                startedAt: startedAt,
                 context: context,
                 generation: generation,
                 streamingOwner: streamingOwner)
@@ -1794,7 +1792,6 @@ final class TalkModeManager {
 
     private func completeTranscriptResponse(
         acknowledgement: OpenClawChatSendResponse,
-        startedAt: Double,
         context: TalkGatewayContext,
         generation: UInt64,
         streamingOwner: TranscriptStreamingOwner) async throws -> Bool?
@@ -1860,7 +1857,6 @@ final class TalkModeManager {
             assistantText = try await self.waitForAssistantTextFromHistory(
                 context: context,
                 runId: runId,
-                since: Self.chatSendHistorySince(response: acknowledgement, startedAt: startedAt),
                 timeoutSeconds: completion.state == .final ? 12 : 25)
             guard self.isCurrentTranscriptProcessing(generation) else { return nil }
         }
@@ -2588,13 +2584,6 @@ final class TalkModeManager {
         return chatEvent?.runId == runId
     }
 
-    private static func chatSendHistorySince(
-        response: OpenClawChatSendResponse,
-        startedAt: Double) -> Double?
-    {
-        ChatSendStatus.acceptance(of: response.status) == .terminalSuccess ? nil : startedAt
-    }
-
     private func sendChat(
         _ message: String,
         context: TalkGatewayContext,
@@ -2672,59 +2661,35 @@ final class TalkModeManager {
     private func waitForAssistantTextFromHistory(
         context: TalkGatewayContext,
         runId: String,
-        since: Double?,
         timeoutSeconds: Int) async throws -> String?
     {
         let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
+        var inputRunIDs: [String]? = [runId]
         while Date() < deadline {
             try Task.checkCancellation()
-            if let text = try await fetchLatestAssistantText(
-                context: context,
-                runId: runId,
-                since: since)
-            {
-                return text
+            let request = OpenClawChatGatewayRequests.history(
+                sessionKey: context.sessionKey,
+                agentID: nil,
+                inputRunIDs: inputRunIDs)
+            do {
+                let response = try await context.gateway.request(request, ifCurrentRoute: context.route)
+                guard await context.gateway.currentRoute() == context.route else { throw CancellationError() }
+                let history = try JSONDecoder().decode(OpenClawChatHistoryPayload.self, from: response)
+                if let text = OpenClawChatHistoryPresentation.replyText(
+                    from: history.messages ?? [],
+                    runID: runId,
+                    inputConsumptions: history.inputConsumptions)
+                {
+                    return text
+                }
+            } catch {
+                if inputRunIDs != nil, IOSGatewayChatTransport.isUnsupportedHistoryInputRunIDsError(error) {
+                    inputRunIDs = nil
+                    continue
+                }
+                throw error
             }
             try await Task.sleep(nanoseconds: 300_000_000)
-        }
-        return nil
-    }
-
-    private func fetchLatestAssistantText(
-        context: TalkGatewayContext,
-        runId: String,
-        since: Double? = nil) async throws -> String?
-    {
-        let request = OpenClawChatGatewayRequests.history(sessionKey: context.sessionKey, agentID: nil)
-        let res = try await context.gateway.request(
-            request,
-            ifCurrentRoute: context.route)
-        guard await context.gateway.currentRoute() == context.route else { throw CancellationError() }
-        guard let json = try JSONSerialization.jsonObject(with: res) as? [String: Any] else { return nil }
-        guard let messages = json["messages"] as? [[String: Any]] else { return nil }
-        return Self.latestAssistantText(messages: messages, runId: runId, since: since)
-    }
-
-    private static func latestAssistantText(
-        messages: [[String: Any]],
-        runId: String,
-        since: Double?) -> String?
-    {
-        for msg in messages.reversed() {
-            guard (msg["role"] as? String) == "assistant" else { continue }
-            let metadata = msg["__openclaw"] as? [String: Any]
-            let idempotencyKey = (msg["idempotencyKey"] as? String) ?? (metadata?["idempotencyKey"] as? String)
-            guard idempotencyKey == runId else { continue }
-            if let since, let timestamp = msg["timestamp"] as? Double,
-               TalkHistoryTimestamp.isAfter(timestamp, sinceSeconds: since) == false
-            {
-                continue
-            }
-            guard let content = msg["content"] as? [[String: Any]] else { continue }
-            let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
-            if let trimmed = text.trimmedNonEmpty {
-                return trimmed
-            }
         }
         return nil
     }
@@ -4223,14 +4188,6 @@ extension TalkModeManager {
 
     static func _test_isPCMFormatRejectedByAPI(_ error: Error?) -> Bool {
         self.isPCMFormatRejectedByAPI(error)
-    }
-
-    static func _test_latestAssistantText(
-        messages: [[String: Any]],
-        runId: String,
-        since: Double? = nil) -> String?
-    {
-        self.latestAssistantText(messages: messages, runId: runId, since: since)
     }
 
     func _test_applyLoadedTalkConfig(_ parsed: TalkModeGatewayConfigState) {
