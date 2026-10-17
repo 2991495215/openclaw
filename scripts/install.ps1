@@ -2139,10 +2139,10 @@ function Refresh-GatewayServiceIfLoaded {
     # `gateway install --force` activates the replacement service. A second
     # restart can kill startup migrations and strand their lock until expiry.
     try {
-        Invoke-OpenClawCommand gateway status --json | Out-Null
+        Invoke-OpenClawCommand gateway status --json --require-rpc | Out-Null
         Write-Host "[OK] Gateway service refreshed" -ForegroundColor Green
     } catch {
-        Write-Host "[!] Gateway service status check failed; continuing. Run: openclaw gateway status --json" -ForegroundColor Yellow
+        Write-Host "[!] Gateway service status check failed; continuing. Run: openclaw gateway status --json --require-rpc" -ForegroundColor Yellow
     }
 }
 
