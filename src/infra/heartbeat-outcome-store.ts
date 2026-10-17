@@ -1,4 +1,5 @@
 import { safeParseJson } from "@openclaw/normalization-core/json-coercion";
+import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import type { EmbeddedRunTrigger } from "../agents/run-trigger.js";
 import type { HeartbeatToolResponse } from "../auto-reply/heartbeat-tool-response.js";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
@@ -13,7 +14,6 @@ import {
 } from "../config/sessions/session-actor-storage-binding.js";
 import { readSessionActorStorageResult } from "../config/sessions/session-actor-storage-result.js";
 import { resolveStateDir } from "../config/state-dir.js";
-import { truncateOptionalText } from "../shared/text-truncate.js";
 import { resolveOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { captureOpenClawAgentDatabaseExecution } from "../state/openclaw-agent-execution.js";
 import { openOpenClawAgentSqliteWorkerStore } from "../state/openclaw-agent-worker-store.js";
@@ -49,9 +49,14 @@ type PersistedHeartbeatOutcome = {
   occurredAt: number;
 };
 
+function boundedText(value: string | undefined, maxChars: number): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? truncateUtf16Safe(normalized, maxChars) : undefined;
+}
+
 function normalizeTaskNames(taskNames: readonly string[]): string[] {
   return taskNames
-    .map((name) => truncateOptionalText(name, HEARTBEAT_OUTCOME_TASK_NAME_MAX_CHARS))
+    .map((name) => boundedText(name, HEARTBEAT_OUTCOME_TASK_NAME_MAX_CHARS))
     .filter((name): name is string => Boolean(name))
     .slice(0, HEARTBEAT_OUTCOME_MAX_TASKS);
 }
@@ -112,18 +117,16 @@ export async function persistHeartbeatOutcome(params: {
     run_session_key: params.runSessionKey,
     outcome: params.response.outcome,
     summary:
-      truncateOptionalText(params.response.summary, HEARTBEAT_OUTCOME_SUMMARY_MAX_CHARS) ??
+      boundedText(params.response.summary, HEARTBEAT_OUTCOME_SUMMARY_MAX_CHARS) ??
       params.response.outcome,
     response_reason:
-      truncateOptionalText(params.response.reason, HEARTBEAT_OUTCOME_REASON_MAX_CHARS) ?? null,
+      boundedText(params.response.reason, HEARTBEAT_OUTCOME_REASON_MAX_CHARS) ?? null,
     priority: params.response.priority ?? null,
     next_check:
-      truncateOptionalText(params.response.nextCheck, HEARTBEAT_OUTCOME_NEXT_CHECK_MAX_CHARS) ??
-      null,
+      boundedText(params.response.nextCheck, HEARTBEAT_OUTCOME_NEXT_CHECK_MAX_CHARS) ?? null,
     task_names_json: taskNames.length > 0 ? JSON.stringify(taskNames) : null,
     wake_source: params.wakeSource ?? null,
-    wake_reason:
-      truncateOptionalText(params.wakeReason, HEARTBEAT_OUTCOME_WAKE_REASON_MAX_CHARS) ?? null,
+    wake_reason: boundedText(params.wakeReason, HEARTBEAT_OUTCOME_WAKE_REASON_MAX_CHARS) ?? null,
     occurred_at: params.occurredAt,
     context_run_id: null,
     context_claimed_at: null,

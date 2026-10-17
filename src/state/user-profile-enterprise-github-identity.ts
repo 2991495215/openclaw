@@ -50,6 +50,7 @@ export function selectEnterpriseGitHubIdentities(
   const ambiguous = new Set<string>();
   for (const row of rows) {
     const principal = parseEnterpriseGitHubPrincipal(`${row.provider}:${row.subject}`);
+    const accountId = principal?.accountId ?? Number.NaN;
     const login = row.canonical_login ? normalizeGitHubLogin(row.canonical_login) : undefined;
     let proof: unknown;
     try {
@@ -65,11 +66,12 @@ export function selectEnterpriseGitHubIdentities(
       !isRecord(proof) ||
       proof.version !== 1 ||
       proof.profileId !== row.profile_id ||
-      !login
+      !login ||
+      !Number.isSafeInteger(accountId) ||
+      accountId <= 0
     ) {
       continue;
     }
-    const { accountId } = principal;
     const binding = bindings.get(`${row.provider}:${accountId}`);
     if (binding?.profile_id !== row.profile_id || binding.binding_id !== proof.bindingId) {
       continue;

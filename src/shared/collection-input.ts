@@ -1,8 +1,6 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 
-export function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
-}
+export { isStringArray } from "@openclaw/normalization-core/record-coerce";
 
 export function normalizeOptionalTrimmedStringRecord(
   record: Record<string, unknown>,

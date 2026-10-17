@@ -1,6 +1,6 @@
+import { createHash } from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import {
   commandError,
   gitEnvironment,
@@ -31,11 +31,13 @@ export type WorkerLocalProjectSnapshot = {
 export type WorkerProjectSnapshot = WorkerLocalProjectSnapshot | RepositoryWorkerProjectSnapshot;
 
 export function workerProjectSeedKey(project: Pick<WorkerProjectSnapshot, "key" | "baseCommit">) {
-  return sha256Hex(`${project.key}\0${project.baseCommit}`);
+  return createHash("sha256").update(`${project.key}\0${project.baseCommit}`).digest("hex");
 }
 
 export function workerLocalProjectKey(namespace: string, commonDir: string): string {
-  return sha256Hex(JSON.stringify([namespace, commonDir]));
+  return createHash("sha256")
+    .update(JSON.stringify([namespace, commonDir]))
+    .digest("hex");
 }
 
 export async function prepareWorkerProjectSnapshot(params: {

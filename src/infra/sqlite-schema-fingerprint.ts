@@ -1,4 +1,4 @@
-import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
+import { createHash } from "node:crypto";
 import type { SqliteSchemaCatalog } from "./sqlite-schema-catalog-types.js";
 import { normalizeSchemaSql } from "./sqlite-schema-sql.js";
 
@@ -90,7 +90,7 @@ export function fingerprintSqliteSchemaCatalog(
       }))
       .toSorted(byName),
   };
-  return sha256Hex(JSON.stringify(facts));
+  return createHash("sha256").update(JSON.stringify(facts)).digest("hex");
 }
 
 function byName(left: { name: string }, right: { name: string }): number {
