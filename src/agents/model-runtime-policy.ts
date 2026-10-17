@@ -1,6 +1,4 @@
 /**
- * Model runtime policy resolution.
- *
  * Agent execution uses this to choose a model/provider-specific runtime policy
  * from agent entries, model catalog config, provider config, or QA overrides.
  */
@@ -272,7 +270,6 @@ function resolveModelConfig(params: {
   });
 }
 
-/** Resolves the effective runtime policy for an agent/model/provider selection. */
 export function resolveModelRuntimePolicy(
   params: {
     config?: OpenClawConfig;

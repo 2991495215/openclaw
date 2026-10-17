@@ -1,4 +1,3 @@
-/** Worker-thread entrypoint for complete model-catalog discovery. */
 import { parentPort, workerData } from "node:worker_threads";
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { withClawInstallSchemaVersionFacts } from "../claws/provenance-runtime-read.js";

@@ -1,5 +1,4 @@
 /**
- * Auth profile ordering and eligibility.
  * Resolves configured/stored auth order, provider aliases, cooldowns, and
  * profile compatibility for provider auth selection.
  */
@@ -31,14 +30,12 @@ import {
 
 export { resolveExplicitAuthOrderSelection };
 
-/** Reason a profile is or is not eligible for provider auth. */
 export type AuthProfileEligibilityReasonCode =
   | AuthCredentialReasonCode
   | "profile_missing"
   | "provider_mismatch"
   | "mode_mismatch";
 
-/** Eligibility decision for one auth profile candidate. */
 type AuthProfileEligibility = {
   eligible: boolean;
   reasonCode: AuthProfileEligibilityReasonCode;
@@ -61,7 +58,6 @@ function prepareProviderCompatibility(params: {
   };
 }
 
-/** Returns true when a stored credential can authenticate the requested provider. */
 export function isStoredCredentialCompatibleWithAuthProvider(params: {
   cfg?: OpenClawConfig;
   authAliasLookupParams?: ProviderAuthAliasLookupParams;
@@ -71,7 +67,6 @@ export function isStoredCredentialCompatibleWithAuthProvider(params: {
   return prepareProviderCompatibility(params).matchesStoredProvider(params.credential.provider);
 }
 
-/** Returns true when config declares an aws-sdk auth profile for a provider. */
 export function isConfiguredAwsSdkAuthProfileForProvider(params: {
   cfg?: OpenClawConfig;
   authAliasLookupParams?: ProviderAuthAliasLookupParams;
@@ -91,7 +86,6 @@ export function isConfiguredAwsSdkAuthProfileForProvider(params: {
   );
 }
 
-/** Resolves whether a profile can be used for a provider right now. */
 export function resolveAuthProfileEligibility(params: {
   cfg?: OpenClawConfig;
   authAliasLookupParams?: ProviderAuthAliasLookupParams;

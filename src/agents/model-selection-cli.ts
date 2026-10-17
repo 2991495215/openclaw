@@ -1,6 +1,3 @@
-/**
- * Detects providers whose model selections are backed by CLI runtimes.
- */
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveRuntimeCliBackends } from "../plugins/cli-backends.runtime.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";

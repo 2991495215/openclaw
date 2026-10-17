@@ -1,5 +1,4 @@
 /**
- * Generated plugin model catalog discovery.
  *
  * The existing agent SQLite cache lets provider discovery reuse plugin-owned
  * catalogs without loading runtimes or creating parallel state files.
@@ -624,12 +623,10 @@ export type PluginModelCatalogMetadataSnapshot = Pick<PluginMetadataSnapshot, "o
   normalizePluginId?: (pluginId: string) => string;
 };
 
-/** Encodes the profile-relative path for a plugin-owned generated model catalog. */
 export function encodePluginModelCatalogRelativePath(pluginId: string): string {
   return `plugins/${encodeURIComponent(pluginId)}/${PLUGIN_MODEL_CATALOG_FILE}`;
 }
 
-/** Decodes the plugin id from a canonical generated catalog path. */
 export function decodePluginModelCatalogRelativePathPluginId(
   relativePath: string,
 ): string | undefined {
