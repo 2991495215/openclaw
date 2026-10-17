@@ -21,7 +21,9 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        group: [0, 1, 2, 3, 4, 5]
+        # The full matrix retained 37 complete triples before group 0 hit
+        # its job deadline. Run only the unfinished canonical graph (index 36).
+        group: [36]
     steps:
       - name: Checkout temporary experiment
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,7 +46,7 @@ jobs:
       - name: Compare canonical CI typecheck graphs
         env:
           GROUP: ${{ matrix.group }}
-        run: node .github/scripts/compiler-comparison.mjs --group "$GROUP" --groups 6 --repeats 3 --isolation docker
+        run: node .github/scripts/compiler-comparison.mjs --group "$GROUP" --groups 38 --repeats 3 --isolation docker
       - name: Upload complete measurement evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
