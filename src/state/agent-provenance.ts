@@ -72,7 +72,6 @@ export async function readAgentProvenanceForDisplay(
       },
       { context, current: true },
     );
-    context.admission.assertCurrent();
     records.push(...(batch?.records ?? []));
   }
   return records;
@@ -87,7 +86,6 @@ export async function listAgentProvenance(
     { type: "agentProvenance.list", input: undefined },
     { context, current: true },
   );
-  context.admission.assertCurrent();
   return reply?.records ?? [];
 }
 
