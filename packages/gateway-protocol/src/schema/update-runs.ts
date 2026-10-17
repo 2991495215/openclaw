@@ -1,6 +1,8 @@
 import { Type, type Static } from "typebox";
 import {
   UPDATE_NPM_ERROR_CODES,
+  UPDATE_INSTALLATION_METHODS,
+  UPDATE_ROLLBACK_STATUSES,
   UPDATE_RUN_DRIVER_LIMIT,
   UPDATE_RUN_PHASES,
   UPDATE_RUN_STATUSES,
@@ -107,17 +109,7 @@ export const UpdateRunRecordSchema = closedObject({
     version: Type.Optional(text),
     sha: Type.Optional(text),
     installationMethod: Type.Optional(
-      Type.Union([
-        Type.Enum([
-          "git-checkout",
-          "npm-global",
-          "pnpm-global",
-          "bun-global",
-          "managed-service",
-          "ocm",
-        ]),
-        Type.Null(),
-      ]),
+      Type.Union([Type.Enum(UPDATE_INSTALLATION_METHODS), Type.Null()]),
     ),
   }),
   before: version,
@@ -211,7 +203,7 @@ export const UpdateRunRecordSchema = closedObject({
     rollbackOutcome: Type.Optional(
       Type.Union([
         closedObject({
-          status: Type.Enum(["not-needed", "not-attempted", "succeeded", "failed"]),
+          status: Type.Enum(UPDATE_ROLLBACK_STATUSES),
           reason: Type.String({ maxLength: 512 }),
         }),
         Type.Null(),

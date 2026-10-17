@@ -10,6 +10,7 @@ import {
 } from "@openclaw/normalization-core/string-coerce";
 import { REPEATED_TOOL_ERROR_MESSAGE } from "../../packages/agent-core/src/errors.js";
 import { sha256Hex } from "../infra/crypto-digest.js";
+import type { DiagnosticToolLoopEvent } from "../infra/diagnostic-events.js";
 import type { SessionState, ToolCallRecord } from "../logging/diagnostic-session-state.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isPlainObject } from "../utils.js";
@@ -30,13 +31,7 @@ import { getProgressCardToolOutcome } from "./tools/progress-card-tool-outcome.j
 
 const log = createSubsystemLogger("agents/loop-detection");
 
-type LoopDetectorKind =
-  | "generic_repeat"
-  | "argument_churn"
-  | "unknown_tool_repeat"
-  | "known_poll_no_progress"
-  | "global_circuit_breaker"
-  | "ping_pong";
+type LoopDetectorKind = DiagnosticToolLoopEvent["detector"];
 
 type LoopDetectionResult =
   | { stuck: false }

@@ -71,13 +71,15 @@ export type DecisionBatchResult = {
   };
 };
 
-export type ProviderFailureReason =
-  | "credentials-unavailable"
-  | "authentication"
-  | "rate-limited"
-  | "transport"
-  | "unsupported-input"
-  | "invalid-response";
+export const PROVIDER_FAILURE_REASONS = [
+  "credentials-unavailable",
+  "authentication",
+  "rate-limited",
+  "transport",
+  "unsupported-input",
+  "invalid-response",
+] as const;
+export type ProviderFailureReason = (typeof PROVIDER_FAILURE_REASONS)[number];
 
 export type UnavailableReason =
   | ProviderFailureReason

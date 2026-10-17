@@ -3,13 +3,15 @@ import type { SpawnInitiation } from "../spawn-initiation.js";
 
 export type ProcessExtinctionResult = void | WindowsJobExtinction;
 
-export type TerminationReason =
-  | "manual-cancel"
-  | "overall-timeout"
-  | "no-output-timeout"
-  | "spawn-error"
-  | "signal"
-  | "exit";
+export const TERMINATION_REASONS = [
+  "manual-cancel",
+  "overall-timeout",
+  "no-output-timeout",
+  "spawn-error",
+  "signal",
+  "exit",
+] as const;
+export type TerminationReason = (typeof TERMINATION_REASONS)[number];
 
 /** Producer-owned activity; a settled result does not establish descendant extinction. */
 export type ProcessRunActivity = {

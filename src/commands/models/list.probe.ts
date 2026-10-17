@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { normalizeUniqueStringEntries } from "@openclaw/normalization-core/string-normalization";
 import pMap from "p-map";
+import type { AuthProbeStatus } from "../../../packages/gateway-protocol/src/schema/agents-models-skills.js";
 import {
   resolveAgentDir,
   resolveAgentWorkspaceDir,
@@ -66,15 +67,7 @@ const PROBE_PROMPT = "Reply with OK. Do not use tools.";
 
 export { redactAuthProbeError };
 
-export type AuthProbeStatus =
-  | "ok"
-  | "auth"
-  | "rate_limit"
-  | "billing"
-  | "timeout"
-  | "format"
-  | "unknown"
-  | "no_model";
+export type { AuthProbeStatus };
 
 /** Reason code for probes that never reached a model call. */
 export type AuthProbeReasonCode =

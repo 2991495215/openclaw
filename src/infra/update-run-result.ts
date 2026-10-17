@@ -1,3 +1,4 @@
+import type { UPDATE_PLUGIN_RESULT_STATUSES } from "../../packages/gateway-protocol/src/update-run-vocabulary.js";
 import type {
   PluginUpdateIntegrityDriftParams,
   PluginUpdateSummary,
@@ -33,7 +34,7 @@ export type UpdateRunResult = {
     plugins?: {
       failureFacts?: UpdateFailureFact[];
       doctorLint?: UpdateStepResult;
-      status: "ok" | "warning" | "skipped" | "error";
+      status: (typeof UPDATE_PLUGIN_RESULT_STATUSES)[number];
       reason?: string;
       changed: boolean;
       warnings?: Array<{

@@ -29,12 +29,13 @@ import type {
   DecisionOutcomeV2,
   DecisionProviderV2,
 } from "./types-v2.js";
-import type {
-  DecisionBatch,
-  DecisionOutcome,
-  DecisionProviderV1,
-  ProviderFailureReason,
-  UnavailableReason,
+import {
+  PROVIDER_FAILURE_REASONS,
+  type DecisionBatch,
+  type DecisionOutcome,
+  type DecisionProviderV1,
+  type ProviderFailureReason,
+  type UnavailableReason,
 } from "./types.js";
 import { DecisionContractError, validateDecisionResult } from "./validation.js";
 
@@ -47,14 +48,7 @@ export type PreparedDecisionBilling = {
   model: string;
   billing?: ModelDecisionCapabilities["billing"];
 };
-const FAILURE_REASONS = new Set<ProviderFailureReason>([
-  "credentials-unavailable",
-  "authentication",
-  "rate-limited",
-  "transport",
-  "unsupported-input",
-  "invalid-response",
-]);
+const FAILURE_REASONS = new Set<ProviderFailureReason>(PROVIDER_FAILURE_REASONS);
 const MAX_CONCURRENT = 4;
 const COOLDOWN_MS = 10_000;
 const MAX_RETRY_AFTER_MS = 60_000;

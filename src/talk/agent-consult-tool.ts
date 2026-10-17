@@ -10,6 +10,7 @@ import {
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
 import { isStringOption, readTrimmedStringAlias } from "../utils/string-readers.js";
+import { DEFAULT_REALTIME_VOICE_CONSULT_QUESTION_KEYS } from "./consult-question.js";
 import type { RealtimeVoiceTool } from "./provider-types.js";
 
 /** Stable provider-facing tool name for realtime voice agent delegation. */
@@ -190,7 +191,7 @@ export function buildRealtimeVoiceSessionInstructions(params: {
 export function parseRealtimeVoiceAgentConsultArgs(args: unknown): RealtimeVoiceAgentConsultArgs {
   const record = asOptionalRecord(args);
   const question =
-    record && readTrimmedStringAlias(record, ["question", "prompt", "query", "task"]);
+    record && readTrimmedStringAlias(record, DEFAULT_REALTIME_VOICE_CONSULT_QUESTION_KEYS);
   if (!record || !question) {
     throw new Error("question required");
   }

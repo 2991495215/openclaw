@@ -8,6 +8,7 @@ import {
   THEME_BRAND_NAME_MAX_LENGTH,
   THEME_DESCRIPTION_MAX_LENGTH,
   THEME_TOKEN_MAX_LENGTH,
+  THEME_WORKING_INDICATOR_VALUES,
   THEME_WORKING_PHRASES_MAX,
   THEME_WORKING_PHRASE_MAX_LENGTH,
 } from "../theme.js";
@@ -45,7 +46,7 @@ export const ThemeDefinitionSchema = closedObject({
   mascot: Type.Optional(stringLiteralUnion(["claw", "none"])),
   brandName: Type.Optional(Type.String({ minLength: 1, maxLength: THEME_BRAND_NAME_MAX_LENGTH })),
   brandIcon: Type.Optional(ThemeArtworkId),
-  workingIndicator: Type.Optional(stringLiteralUnion(["claw", "dots", "brand", "none"])),
+  workingIndicator: Type.Optional(stringLiteralUnion(THEME_WORKING_INDICATOR_VALUES)),
   lobsterdex: Type.Optional(Type.Boolean()),
   communityLinks: Type.Optional(Type.Boolean()),
   workingPhrases: Type.Optional(

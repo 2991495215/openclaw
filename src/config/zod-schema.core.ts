@@ -1,6 +1,7 @@
 import path from "node:path";
 import { normalizeStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { z } from "zod";
+import { MARKDOWN_TABLE_MODES } from "../../packages/markdown-core/src/types.js";
 import { isSafeExecutableValue } from "../infra/exec-safety.js";
 import { normalizeExactAllowedHost } from "../secrets/exact-hostname.js";
 import { ENV_SECRET_REF_ID_RE, SECRET_PROVIDER_ALIAS_PATTERN } from "../secrets/ref-contract.js";
@@ -484,7 +485,7 @@ export const BlockStreamingChunkSchema = z.strictObject({
 
 export const MarkdownConfigSchema = z
   .strictObject({
-    tables: z.enum(["off", "bullets", "code", "block"]).optional(),
+    tables: z.enum(MARKDOWN_TABLE_MODES).optional(),
   })
   .optional();
 

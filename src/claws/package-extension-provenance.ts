@@ -1,5 +1,6 @@
 import { coerceRequiredSqliteNumber as sqliteNumber } from "../infra/sqlite-number.js";
 import type { DB } from "../state/openclaw-state-db.generated.js";
+import { CLAW_EXTENSION_FORMATS } from "./manifest-contract.js";
 import type {
   ClawAppliedExtension,
   ClawPackageKind,
@@ -85,7 +86,7 @@ function parsePackageRefExtension(row: PackageRefRow): ClawAppliedExtension | un
       `Claw package reference ${row.package_kind}:${row.package_ref} has incomplete extension provenance.`,
     );
   }
-  const formats = new Set(["openclaw", "claude", "codex", "cursor"]);
+  const formats = new Set<string>(CLAW_EXTENSION_FORMATS);
   if (!formats.has(row.extension_format!) || !formats.has(row.extension_detected_format!)) {
     throw new Error(
       `Claw package reference ${row.package_kind}:${row.package_ref} has unsupported extension format provenance.`,
