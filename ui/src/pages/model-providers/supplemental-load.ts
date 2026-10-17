@@ -91,11 +91,10 @@ export class ModelProviderSupplementalLoader {
   }
 
   private cancelGeneration(): void {
-    const retired = [...this.requests.values()];
-    this.requests.clear();
-    for (const request of retired) {
+    for (const request of this.requests.values()) {
       request.abort();
     }
+    this.requests.clear();
     this.notify();
   }
 

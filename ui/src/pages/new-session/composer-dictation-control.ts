@@ -25,7 +25,7 @@ type NewSessionDictationOptions = {
  */
 export class NewSessionDictationControl extends EventTarget {
   private readonly devicePicker = new ComposerMicrophoneOwner();
-  private session: ComposerDictationOwner | null = null;
+  private session: ComposerDictationOwner | undefined;
   private owner: { key: string } | null = null;
 
   constructor(private readonly options: NewSessionDictationOptions) {
@@ -42,7 +42,7 @@ export class NewSessionDictationControl extends EventTarget {
   dispose(): void {
     this.owner = null;
     this.session?.dispose();
-    this.session = null;
+    this.session = undefined;
     this.devicePicker.dispose();
   }
 
@@ -57,14 +57,14 @@ export class NewSessionDictationControl extends EventTarget {
   }
 
   get dictation() {
-    return this.session ?? undefined;
+    return this.session;
   }
 
   prepare(ownerKey: string, inputDeviceId?: string) {
     if (this.owner?.key !== ownerKey) {
       this.owner = { key: ownerKey };
       this.session?.dispose();
-      this.session = null;
+      this.session = undefined;
     }
     const owner = this.owner;
     const ownsDraft = () => this.owner === owner;

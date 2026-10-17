@@ -15,8 +15,9 @@ import {
   withToolApprovalReviews,
 } from "../../lib/chat/tool-approval-reviews.ts";
 import { readLiveDiffStat } from "../../lib/chat/tool-call-diff.ts";
+import { extractToolOutputText } from "../../lib/chat/tool-output-text.ts";
 import { formatUiExternalText } from "../../lib/format-error.ts";
-import { formatUnknownText, truncateText } from "../../lib/format.ts";
+import { truncateText } from "../../lib/format.ts";
 import { uiSessionEventMatches } from "../../lib/sessions/session-key.ts";
 import { updateChatReasoning } from "./chat-reasoning.ts";
 import { reconcileChatRunStartup } from "./chat-run-startup.ts";
@@ -47,27 +48,6 @@ function isPolicyState(value: unknown): value is keyof typeof PROVIDER_POLICY_PR
   return typeof value === "string" && Object.hasOwn(PROVIDER_POLICY_PRECEDENCE, value);
 }
 
-function extractToolOutputText(value: unknown): string | null {
-  const record = readRecord(value);
-  if (!record) {
-    return null;
-  }
-  if (typeof record.text === "string") {
-    return record.text;
-  }
-  if (!Array.isArray(record.content)) {
-    return null;
-  }
-  const parts: string[] = [];
-  for (const content of record.content) {
-    const entry = readRecord(content);
-    if (entry?.type === "text" && typeof entry.text === "string" && entry.text) {
-      parts.push(entry.text);
-    }
-  }
-  return parts.length > 0 ? parts.join("\n") : null;
-}
-
 function formatToolOutput(value: unknown): string | null {
   if (value === null || value === undefined) {
     return null;
@@ -82,11 +62,7 @@ function formatToolOutput(value: unknown): string | null {
   } else if (contentText) {
     text = contentText;
   } else {
-    try {
-      text = JSON.stringify(value, null, 2);
-    } catch {
-      text = formatUnknownText(value);
-    }
+    text = JSON.stringify(value, null, 2);
   }
   const truncated = truncateText(text, TOOL_OUTPUT_CHAR_LIMIT);
   if (!truncated.truncated) {

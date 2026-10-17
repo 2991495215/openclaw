@@ -6,13 +6,11 @@ import {
 import type { SidebarSnapshotModel } from "../../components/sidebar-snapshot-data.ts";
 import {
   sidebarSnapshotInvalidationMatches,
-  snapshotStoreGeneration,
   subscribeSnapshotInvalidation,
 } from "./session-snapshot-invalidation-events.ts";
 
 type PrewarmedSnapshot = {
   cacheKey: string;
-  cancelled: boolean;
   promise: Promise<unknown>;
 };
 
@@ -20,25 +18,18 @@ let pending: PrewarmedSnapshot | undefined;
 
 export function discardPrewarmedChatSnapshot(cacheKey?: string): void {
   if (pending && (cacheKey === undefined || pending.cacheKey === cacheKey)) {
-    pending.cancelled = true;
     pending = undefined;
   }
 }
 
 export function prewarmChatSnapshot(cacheKey: string): void {
-  discardPrewarmedChatSnapshot();
-  const generation = snapshotStoreGeneration;
-  const entry: PrewarmedSnapshot = {
+  pending = {
     cacheKey,
-    cancelled: false,
     promise: import("./session-snapshot-database.ts")
       .then(({ readStoredChatSnapshotRecord }) => readStoredChatSnapshotRecord(cacheKey))
-      .then((record) =>
-        entry.cancelled || generation !== snapshotStoreGeneration ? undefined : record,
-      )
+      // Optional prewarm failure leaves the normal live-history fallback available.
       .catch(() => undefined),
   };
-  pending = entry;
 }
 
 export function consumePrewarmedChatSnapshot(

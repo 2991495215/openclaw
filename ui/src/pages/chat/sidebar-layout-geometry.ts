@@ -51,17 +51,14 @@ export function fitSidebarLayout(
   layout: SidebarLayout,
   availableWidth: number,
 ): SidebarLayout | null {
-  const next = structuredClone(layout);
-  if (!Number.isFinite(availableWidth) || availableWidth <= 0) {
-    return next;
+  const column = layout.columns[0];
+  if (!Number.isFinite(availableWidth) || availableWidth <= 0 || !column) {
+    return layout;
   }
-  const column = next.columns[0];
-  if (!column) {
-    return next;
-  }
-  next.columns = [column];
+  const nextColumn = { ...column };
+  const next = { ...layout, columns: [nextColumn] };
   if (sidebarDock(next) === "bottom") {
-    column.height = clampHeight(column.height);
+    nextColumn.height = clampHeight(column.height);
     return next;
   }
   const maxColumnWidth = Math.max(
@@ -72,7 +69,7 @@ export function fitSidebarLayout(
   if (SIDEBAR_MIN_WIDTH_PX > budget) {
     return null;
   }
-  column.width = Math.min(maxColumnWidth, budget, clampWidth(column.width));
+  nextColumn.width = Math.min(maxColumnWidth, budget, clampWidth(column.width));
   return next;
 }
 
@@ -96,8 +93,8 @@ export function initializeBrowserSidebarWidth(
   ) {
     return layout;
   }
-  const next = structuredClone(layout);
-  const nextColumn = next.columns[0]!;
+  const nextColumn = { ...column };
+  const next = { ...layout, columns: [nextColumn] };
   // Reclaim the centered chat's spare margins; share tighter panes evenly.
   nextColumn.width = Math.max(
     column.width,

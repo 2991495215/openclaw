@@ -127,6 +127,26 @@ describe("subagent panel call counts", () => {
     ).toEqual({ count: 2, exact: true });
   });
 
+  it("retains visible prepared history when a suppressed duplicate follows", () => {
+    const visible = activity();
+    const messages = [
+      { ...toolCall(), activity: [visible] },
+      {
+        ...toolCall(),
+        activity: [
+          activity({ itemId: "duplicate-item", suppressChannelProgress: true }),
+          { ...activity({ toolCallId: "invalid" }), title: null },
+        ],
+      },
+    ];
+    const original = structuredClone(messages);
+    const snapshot = readSubagentActivitySnapshot(complete(messages));
+
+    expect([...snapshot.calls.values()]).toEqual([visible]);
+    expect(subagentToolCallCount(snapshot)).toEqual({ count: 1, exact: true });
+    expect(messages).toEqual(original);
+  });
+
   it.each(["omitted"])(
     "keeps a lower bound when an invocation ID is %s across item frames",
     (change) => {

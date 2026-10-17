@@ -7,6 +7,7 @@ export function MarkdownHtml(props: {
   dir?: "ltr" | "rtl" | "auto";
   style?: JSX.CSSProperties | string;
   as?: "div" | "p" | "article";
+  onClick?: JSX.EventHandler<HTMLElement, MouseEvent>;
   options?: Parameters<typeof toSanitizedMarkdownHtml>[1];
 }) {
   const Tag = dynamic(() => props.as ?? "div");
@@ -15,6 +16,7 @@ export function MarkdownHtml(props: {
       class={props.class}
       dir={props.dir}
       style={props.style}
+      onClick={props.onClick}
       // oxlint-disable-next-line solid/no-innerhtml -- The shared Markdown renderer sanitizes this sole HTML sink.
       innerHTML={toSanitizedMarkdownHtml(props.markdown, props.options)}
     />

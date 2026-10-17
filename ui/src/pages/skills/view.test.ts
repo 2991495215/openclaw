@@ -700,7 +700,7 @@ describe("renderSkills", () => {
       detailKey: "agentreceipt",
       detailTab: "card",
       skillCardContents: {
-        agentreceipt: "# AgentReceipt\n\nLocal **trust** card.",
+        agentreceipt: "# AgentReceipt\n\nLocal **trust** card.\n\n```sh\necho synthetic\n```",
       },
       clawhubVerdicts: {
         [verdictKey]: {
@@ -723,6 +723,20 @@ describe("renderSkills", () => {
     expect(container.querySelector("#skill-detail-tab-card")?.hasAttribute("active")).toBe(true);
     expect(container.querySelector(".sidebar-markdown strong")?.textContent).toBe("trust");
     expect(normalizeText(container)).toContain("AgentReceipt Local trust card.");
+    const article = expectDefined(container.querySelector("article.lit-content.sidebar-markdown"));
+    const copy = expectDefined(article.querySelector<HTMLButtonElement>(".code-block-copy"));
+    const writeText = vi.fn(async () => undefined);
+    vi.useFakeTimers();
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    try {
+      copy.click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(writeText).toHaveBeenCalledExactlyOnceWith("echo synthetic");
+      expect(copy.classList.contains("copied")).toBe(true);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 
   it.each([{ loading: true, label: "Refreshing…", warning: false }])(

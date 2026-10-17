@@ -111,7 +111,7 @@ export function readSubagentActivitySnapshot(history: ChatHistoryResult): Subage
         }
         const id = scopedIdentity(entry, item.toolCallId);
         if (id) {
-          calls.set(id, readSubagentToolEvent("item", item, calls.get(id)) ?? item);
+          calls.set(id, (item.suppressChannelProgress && calls.get(id)) || item);
         }
         const next = readSidebarToolActivity("item", item, tool);
         if (next !== undefined) {

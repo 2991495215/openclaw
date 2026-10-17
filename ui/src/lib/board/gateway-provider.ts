@@ -51,7 +51,7 @@ export class GatewayBoardProvider implements BoardProvider {
   private refreshLoop: Promise<void> | undefined;
   private refreshRequested = false;
   private userRefreshRequested = false;
-  private readonly changedWidgets = new Set<string>();
+  private changedWidgets = new Set<string>();
   private stateGeneration = 0;
   private wakeRetryDelay: (() => void) | undefined;
   private readonly appViews = new BoardMcpAppViewCache();
@@ -136,8 +136,6 @@ export class GatewayBoardProvider implements BoardProvider {
     this.connected = false;
     this.unsubscribe?.();
     this.unsubscribe = undefined;
-    this.clientGeneration += 1;
-    this.stateGeneration += 1;
     this.refreshRequested = false;
     this.userRefreshRequested = false;
     this.changedWidgets.clear();
@@ -347,7 +345,6 @@ export class GatewayBoardProvider implements BoardProvider {
     const retry = { delayMs: 1_000 };
     while (this.refreshRequested) {
       if (this.disposed) {
-        this.refreshRequested = false;
         return;
       }
       // Preserve pending board changes without polling a disconnected client;
@@ -358,8 +355,8 @@ export class GatewayBoardProvider implements BoardProvider {
       // A manual refresh permits one offline request, never a follow-up after
       // that request completes and discovers a disconnected Gateway.
       this.userRefreshRequested = false;
-      const changedWidgets = new Set(this.changedWidgets);
-      this.changedWidgets.clear();
+      const changedWidgets = this.changedWidgets;
+      this.changedWidgets = new Set();
       const client = this.client;
       const stateGeneration = this.stateGeneration;
       try {
@@ -368,14 +365,12 @@ export class GatewayBoardProvider implements BoardProvider {
           return;
         }
         if (client !== this.client) {
-          this.refreshRequested = true;
           continue;
         }
         // A completed request satisfies any manual refresh that joined it;
         // only a newer board change should require a follow-up request.
         this.userRefreshRequested = false;
         if (stateGeneration !== this.stateGeneration) {
-          this.refreshRequested = true;
           for (const name of changedWidgets) {
             this.changedWidgets.add(name);
           }

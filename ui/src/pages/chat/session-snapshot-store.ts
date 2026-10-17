@@ -112,7 +112,7 @@ const sidebarRecordSchema = metadataSchema.omit({ weight: true }).extend({
   projectionVersion: z.literal(1),
   model: z.unknown(),
 });
-type SidebarRecord = z.infer<typeof sidebarRecordSchema>;
+type SidebarRecord<Model = unknown> = z.infer<typeof sidebarRecordSchema> & { model: Model };
 const sidebarRecordBytes = (record: SidebarRecord) =>
   new TextEncoder().encode(JSON.stringify(record)).byteLength;
 type PreparedSnapshotRecord = {
@@ -260,7 +260,7 @@ async function accessSidebarSnapshot<Model>(
   key: string,
   validate: (value: unknown) => Model | null,
   isCurrent: () => boolean,
-  incoming?: SidebarRecord,
+  incoming?: SidebarRecord<Model>,
 ): Promise<Model | null> {
   const database = await openSessionSnapshotDatabase();
   if (!database) {
@@ -285,7 +285,7 @@ async function accessSidebarSnapshot<Model>(
     let bytes = 0;
     let result: Model | null = null;
     for (const [index, record] of retained.toSorted((a, b) => b.savedAt - a.savedAt).entries()) {
-      const admitted = validate(record.model);
+      const admitted = record === incoming ? incoming.model : validate(record.model);
       if (admitted === null) {
         throw new Error("sidebar projection shape mismatch");
       }
@@ -374,11 +374,11 @@ export class SessionSnapshotStore implements ChatCacheObserver {
     }
     const isCurrent = this.captureReadScope(key);
     try {
-      const record: SidebarRecord = {
+      const record: SidebarRecord<Model> = {
         sessionKey: key,
         savedAt: Date.now(),
         projectionVersion: 1,
-        model: structuredClone(model),
+        model,
       };
       if (sidebarRecordBytes(record) > 512 * 1024) {
         return false;

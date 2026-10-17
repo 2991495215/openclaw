@@ -42,7 +42,7 @@ export function ImageLightboxContent(props: ImageLightboxProps & { host: ImageLi
   const [resolvingOriginal, setResolvingOriginal] = createSignal(false, { ownedWrite: true });
   const [scale, setScale] = createSignal(1, { ownedWrite: true });
   const [canZoom, setCanZoom] = createSignal(false, { ownedWrite: true });
-  const image = () => host.querySelector<HTMLImageElement>(".image") ?? undefined;
+  const image = () => host.querySelector<HTMLImageElement>(".image");
   const stage = () => host.querySelector<HTMLDivElement>(".stage") ?? undefined;
   const slide = () => host.querySelector<HTMLDivElement>(".slide") ?? undefined;
   const video = () => host.querySelector<HTMLVideoElement>(".video") ?? undefined;

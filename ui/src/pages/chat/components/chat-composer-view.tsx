@@ -125,7 +125,7 @@ export function renderChatComposerView(
                 class={`btn btn--sm ${banner().actionStyle ?? ""}`}
                 disabled={Boolean(banner().disabledReason) || banner().busy}
                 aria-busy={banner().busy ? "true" : "false"}
-                title={banner().disabledReason ?? undefined}
+                title={banner().disabledReason}
                 onClick={() => onAction()()}
               >
                 {banner().busy ? (

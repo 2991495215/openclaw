@@ -164,7 +164,7 @@ function SessionHistory(props: PluginSessionSummaryProps & { scope: SummaryScope
     refreshes.scheduleRetry(0);
   });
   const messages = createMemo(() =>
-    (history()?.messages ?? []).slice(-20).flatMap((message) => {
+    (history()?.messages ?? []).flatMap((message) => {
       if (!isRecord(message) || (message.role !== "user" && message.role !== "assistant")) {
         return [];
       }

@@ -60,10 +60,7 @@ export function createTerminalSessionPicker(deps: PickerDependencies) {
       },
       true,
     );
-    return () => {
-      generation += 1;
-      stop();
-    };
+    return stop;
   });
 
   return {
@@ -114,7 +111,6 @@ export function createTerminalSessionPicker(deps: PickerDependencies) {
       void deps.attach(sessionId, owner?.startsWith("agent:") === true);
     },
     reset() {
-      generation += 1;
       setOpen(false);
       setLoading(false);
       setSessions([]);
