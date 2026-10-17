@@ -60,6 +60,8 @@ After Gateway health succeeds, the app prepares
 `~/.openclaw-<profile>`. Preparation uses an APFS directory clone when available,
 falling back to a file copy. The app checks manifest identity, contained paths,
 payload sizes, and the executable checksum before publishing the copy atomically.
+Later runtime lookups check the manifest identity and required files without
+rescanning the sidecar; full payload validation stays with packaging and seed admission.
 It then runs `--version` at low priority, without a short timeout, to warm the
 copied executable. A build-specific extended attribute on the seed directory
 records successful warming; the executable itself is not modified.
@@ -440,6 +442,8 @@ back.
 Node rollback and prior-build restoration use this app's bundled CLI with the
 same runtime-intent observation. The installer restores the retained package's
 runtime and entrypoint, and its SQLite library for Bun, rather than its own.
+A retained standalone runtime is restored as its direct executable command,
+with the same manifest validation used by normal service installation.
 Recovery does not require the failed replacement service to be running. An
 operator change is preserved and reported without retry. If the app's bundled
 runtime is missing or incompatible, recovery stops; reinstall OpenClaw.app.

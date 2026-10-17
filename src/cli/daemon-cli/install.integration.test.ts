@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServiceEnvironment } from "../../daemon/service-env.js";
 import type {
@@ -21,6 +22,7 @@ import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db
 import { makeTempWorkspace } from "../../test-helpers/workspace.js";
 import { captureEnv, withEnvAsync } from "../../test-utils/env.js";
 import { stubNodeRuntime } from "../update-cli/update-command-runtime-recovery.test-support.js";
+import { addGatewayServiceCommands } from "./register-service-commands.js";
 
 const { runtimeLogs, runtimeErrors, defaultRuntime, resetRuntimeCapture } = await vi.hoisted(
   async () => {
@@ -183,6 +185,96 @@ describe("runDaemonInstall integration", () => {
     serviceMock.readCommand.mockReset();
     serviceMock.readCommand.mockResolvedValue(null);
     await writeConfig({}, 2);
+  });
+
+  it
+    .skipIf(process.platform === "win32")
+    .each([
+      "standalone",
+      "renamed standalone",
+      "missing manifest",
+      "mismatched manifest",
+      "different entrypoint",
+    ] as const)("restores a retained service through the CLI: %s", async (fixture) => {
+    const root = await fs.mkdtemp(path.join(accountHome, "retained-cli-"));
+    const executable = path.join(
+      root,
+      fixture === "renamed standalone" ? "custom-runtime" : "openclaw",
+    );
+    await fs.writeFile(
+      executable,
+      `#!${process.execPath}\nconsole.log("OpenClaw 2026.10.14 (1234567)");\n`,
+      { mode: 0o700 },
+    );
+    if (fixture !== "missing manifest") {
+      await fs.writeFile(
+        path.join(root, "manifest.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          mode: "jit",
+          executable: {
+            path: fixture === "mismatched manifest" ? "another-runtime" : path.basename(executable),
+          },
+          runtime: { path: "runtime" },
+          openclaw: { version: "2026.10.14" },
+          bun: { version: "1.4.3" },
+        }),
+      );
+    }
+    let entrypoint = executable;
+    if (fixture === "different entrypoint") {
+      entrypoint = path.join(root, "another-runtime");
+      await fs.copyFile(executable, entrypoint);
+    }
+    const expected = await runtimePinState.withDaemonRuntimePinMigration(process.env, () =>
+      runtimePinState.readDaemonRuntimePinForInstall(
+        { kind: "gateway", env: process.env },
+        null,
+        true,
+      ),
+    );
+    const program = new Command().name("openclaw");
+    addGatewayServiceCommands(program.command("daemon"));
+    serviceMock.install.mockImplementationOnce(async () => {
+      serviceMock.isLoaded.mockResolvedValue(true);
+    });
+    const before = await snapshotConfig();
+    const run = program.parseAsync(
+      [
+        "daemon",
+        "install",
+        "--json",
+        "--force",
+        "--port",
+        "19523",
+        "--runtime",
+        "bun",
+        "--runtime-path",
+        executable,
+        "--expected-runtime-pin",
+        JSON.stringify({ revision: expected.revision, definition: expected.definition ?? null }),
+        "--restore-service-cli",
+        JSON.stringify({ executable, entrypoint, sqliteLibrary: null }),
+      ],
+      { from: "user" },
+    );
+    if (fixture === "standalone" || fixture === "renamed standalone") {
+      await run;
+      expect(serviceMock.install).toHaveBeenCalledOnce();
+      expect(serviceMock.install.mock.calls[0]?.[0]).toMatchObject({
+        programArguments: [executable, "gateway", "--port", "19523"],
+        runtimePinUpdate: {
+          expected,
+          pin: { runtime: "bun", path: executable },
+          requireDefinitionMatch: true,
+        },
+      });
+    } else {
+      await expect(run).rejects.toThrow("__exit__:1");
+      expect(runtimeLogs.join("\n")).toContain("Invalid restore service CLI.");
+      expect(serviceMock.install).not.toHaveBeenCalled();
+      expect(await snapshotConfig()).toEqual(before);
+    }
   });
 
   it("migrates legacy runtime intent before planning and preserves a malformed pin", async () => {

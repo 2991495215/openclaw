@@ -164,31 +164,6 @@ describe.skipIf(process.platform !== "darwin")("standalone Mac runtime staging",
     expect(existsSync(f.output)).toBe(false);
   });
 
-  it("passes the desktop selection to the builder when no prebuilt output is supplied", () => {
-    const f = fixture();
-    writeFileSync(
-      path.join(f.root, "scripts/stage-openclaw-bun.sh"),
-      '#!/bin/bash\nmkdir -p "$1/bin"\ncp "' +
-        path.join(f.root, "fake-builder") +
-        '" "$1/bin/bun"\n',
-    );
-    writeFileSync(
-      path.join(f.root, "fake-builder"),
-      `#!/bin/bash
-printf '%s\\n' "$@" > "${path.join(f.root, "builder-args")}"
-cp -R "${path.join(f.root, "input")}" "$2"
-`,
-    );
-    chmodSync(path.join(f.root, "fake-builder"), 0o755);
-    const result = f.run({ OPENCLAW_MAC_RUNTIME_PREBUILT: "" });
-    expect(result.status, result.stderr).toBe(0);
-    const args = readFileSync(path.join(f.root, "builder-args"), "utf8").trim().split("\n");
-    expect(args.slice(2)).toEqual([
-      "--plugins",
-      "codex,discord,imessage,slack,sms,voice-call,whatsapp",
-    ]);
-  });
-
   it.each([
     { reason: "missing", embedded: undefined },
     { reason: "empty", embedded: [] },

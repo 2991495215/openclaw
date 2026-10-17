@@ -33,7 +33,8 @@ extension BundledRuntime {
         return manifest
     }
 
-    func validatedManifest(verifyExecutable: Bool = false) throws -> Manifest {
+    /// Routine discovery checks identity and required files; seed admission verifies the complete payload.
+    func validatedManifest(verifyPayload: Bool = false) throws -> Manifest {
         let manifest = try self.manifest()
         guard manifest.schemaVersion == 1,
               ["jit", "bytecode"].contains(manifest.mode),
@@ -53,10 +54,12 @@ extension BundledRuntime {
               executable.fileSize == manifest.executable.sizeBytes,
               FileManager.default.isExecutableFile(atPath: self.executable.path),
               sidecar.isDirectory == true,
-              try self.sidecarSize() == manifest.runtime.sizeBytes,
               FileManager.default.isReadableFile(atPath: self.sqliteLibrary.path)
         else { throw ValidationError.invalidPayload }
-        if verifyExecutable { try self.validateExecutable(manifest: manifest) }
+        if verifyPayload {
+            guard try self.sidecarSize() == manifest.runtime.sizeBytes else { throw ValidationError.invalidPayload }
+            try self.validateExecutable(manifest: manifest)
+        }
         return manifest
     }
 

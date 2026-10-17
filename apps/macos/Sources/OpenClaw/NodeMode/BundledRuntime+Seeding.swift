@@ -70,13 +70,13 @@ extension BundledRuntime {
             let partial = directory.appendingPathComponent("\(buildID).partial-\(UUID().uuidString)")
             defer { try? fileManager.removeItem(at: partial) }
             try self.cloneRuntimeTree(from: source.root, to: partial)
-            guard try Self(root: partial).validatedManifest(verifyExecutable: true) == expectedManifest else {
+            guard try Self(root: partial).validatedManifest(verifyPayload: true) == expectedManifest else {
                 throw ValidationError.invalidManifest
             }
             try Task.checkCancellation()
             try fileManager.moveItem(at: partial, to: target)
         } else {
-            let manifest = try Self(root: target).validatedManifest(verifyExecutable: true)
+            let manifest = try Self(root: target).validatedManifest(verifyPayload: true)
             // Re-signing the same build changes payload hashes but preserves its seed identity.
             guard manifest.buildId == expectedManifest.buildId,
                   manifest.openclaw == expectedManifest.openclaw,

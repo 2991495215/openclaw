@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import { isStandaloneRuntimeExecutable } from "../../../cli-invocation.mjs";
 import { buildGatewayInstallEntrypointCandidates } from "../../daemon/gateway-entrypoint.js";
 import { OPENCLAW_WRAPPER_ENV_KEY } from "../../daemon/program-args.js";
 import { resolvePinnedDaemonRuntimePath } from "../../daemon/runtime-paths.js";
@@ -38,17 +39,21 @@ export function assertExpectedRuntimePin(
 const serviceFile = z
   .string()
   .refine((file) => path.isAbsolute(file) && !/[\0\r\n]/.test(file) && isRegularFile(file));
-const restoreServiceCliSchema = z.strictObject({
-  executable: z.string(),
-  entrypoint: serviceFile.refine(
-    (entry) =>
+const restoreServiceCliSchema = z
+  .strictObject({
+    executable: z.string(),
+    entrypoint: serviceFile,
+    sqliteLibrary: serviceFile.nullable(),
+  })
+  .refine(
+    ({ executable, entrypoint: entry }) =>
       path.basename(entry) === "openclaw.mjs" ||
       buildGatewayInstallEntrypointCandidates(path.dirname(path.dirname(entry))).includes(
         path.normalize(entry),
-      ),
-  ),
-  sqliteLibrary: serviceFile.nullable(),
-});
+      ) ||
+      (path.normalize(entry) === path.normalize(executable) &&
+        isStandaloneRuntimeExecutable(executable)),
+  );
 
 /** Validate recovery before config preparation; SQLite selection changes only the service env. */
 export async function resolveRestoreServiceCli(
