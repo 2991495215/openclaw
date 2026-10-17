@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { hasNodeErrorCode } from "@openclaw/fs-safe/path";
 import { isPathInside } from "openclaw/plugin-sdk/file-access-runtime";
+import { hasNodeErrorCode } from "openclaw/plugin-sdk/path-existence-runtime";
 import { resolveRequiredHomeDir, resolveStateDir } from "openclaw/plugin-sdk/state-paths";
 import type { CodexAppServerClient } from "./client.js";
 import type { CodexSkillsListResponse } from "./protocol-control-plane.js";
