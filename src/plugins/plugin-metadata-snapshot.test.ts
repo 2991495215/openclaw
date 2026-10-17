@@ -471,6 +471,10 @@ describe("plugin metadata snapshot", () => {
     expect(loadPluginRegistrySnapshotWithMetadata).not.toHaveBeenCalled();
     expect(loadPluginManifestRegistryForInstalledIndex).not.toHaveBeenCalled();
 
+    expect(loadPluginMetadataSnapshot({ env: {}, index })).not.toBe(snapshot);
+    expect(loadPluginRegistrySnapshotWithMetadata).toHaveBeenCalledOnce();
+    expect(loadPluginManifestRegistryForInstalledIndex).toHaveBeenCalledOnce();
+
     setGatewayPluginMetadataSnapshot(ignored, { config, env: {} });
     expect(resolvePluginMetadataSnapshot({ config: structuredClone(config), env: {} })).toBe(
       ignored,
