@@ -392,10 +392,17 @@ export type PluginManifestCatalog = {
 };
 
 /** Static transcript setup metadata; runtime registration does not gate configuration. */
+export const TRANSCRIPT_SOURCE_LOCATOR_FIELDS = [
+  "accountId",
+  "guildId",
+  "channelId",
+  "meetingUrl",
+] as const;
+
 export type PluginManifestTranscriptSource = {
   name?: string;
   autoStart?: Partial<
-    Record<"accountId" | "guildId" | "channelId" | "meetingUrl", "optional" | "required">
+    Record<(typeof TRANSCRIPT_SOURCE_LOCATOR_FIELDS)[number], "optional" | "required">
   >;
 };
 
