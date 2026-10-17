@@ -260,13 +260,12 @@ describe("native plugin alias preparation", () => {
       "dist/extensions/demo/family.cjs",
       'module.exports = require("@openclaw/retry");',
     );
-    const extensionsRoot = path.join(f.root, "extensions");
-    const read = vi.spyOn(fs, "readdirSync");
+    const read = vi.spyOn(fs, "readFileSync");
     const load = createPluginModuleLoader({ devSourceRoot: f.root, pluginSdkResolution: "dist" });
     expect(load(f.entry)).toMatchObject({ marker: "metadata" });
-    expect(read.mock.calls.filter(([target]) => target === extensionsRoot)).toEqual([]);
+    expect(read.mock.calls.filter(([target]) => target === f.unused)).toEqual([]);
     expect(load(entry)).toMatchObject({ value: "family" });
-    expect(read.mock.calls.some(([target]) => target === extensionsRoot)).toBe(true);
+    expect(read.mock.calls.some(([target]) => target === f.unused)).toBe(true);
   });
 
   it("does not prepare aliases for unrelated requests or unregistered parents", async () => {
