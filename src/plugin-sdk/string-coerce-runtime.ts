@@ -53,7 +53,6 @@ export {
   normalizeUniqueStringEntries,
   normalizeUniqueTrimmedStringList,
   normalizeTrimmedStringList,
-  parseStringSet,
   sortUniqueStrings,
   uniqueStrings,
   uniqueValues,

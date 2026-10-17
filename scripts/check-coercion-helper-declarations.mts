@@ -43,6 +43,7 @@ export const CANONICAL_COERCION_HELPER_OWNERS = [
     kind: "function",
     names: [
       "hasNonEmptyString",
+      "isStringWithinCodePointLimit",
       "lowercasePreservingWhitespace",
       "localeLowercasePreservingWhitespace",
       "normalizeBoundedOptionalString",

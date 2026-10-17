@@ -14,7 +14,6 @@ import {
   normalizeUniqueStringEntries,
   normalizeUniqueStringEntriesLower,
   normalizeUniqueTrimmedStringList,
-  parseStringSet,
   sortUniqueStrings,
 } from "./string-normalization.js";
 
@@ -39,17 +38,6 @@ describe("normalization-core/string-normalization", () => {
     },
   ])("filters runtime strings from $value", ({ value, expected }) => {
     expect(filterStringEntries(value)).toEqual(expected);
-  });
-
-  it.each([
-    { raw: '["unfinished",', expected: [] },
-    {
-      raw: ' ["b", 7, "", " a ", "b", null, "A"] ',
-      expected: ["b", "", " a ", "A"],
-    },
-    { raw: " b, a\tB\n b,,a ", expected: ["b", "a", "B"] },
-  ])("parses string sets without changing entry bytes: $raw", ({ raw, expected }) => {
-    expect([...parseStringSet(raw)]).toEqual(expected);
   });
 
   it("normalizes mixed allow-list entries", () => {

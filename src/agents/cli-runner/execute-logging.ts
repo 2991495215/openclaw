@@ -1,3 +1,4 @@
+import { filterStringEntries } from "@openclaw/normalization-core/string-normalization";
 import type { PreparedCliRunContext } from "./types.js";
 export const CLAUDE_SELECTED_AUTH_ENV_KEYS = new Set([
   "ANTHROPIC_API_KEY",
@@ -27,4 +28,19 @@ export function resolveNodeClaudeAuthEnv(context: PreparedCliRunContext): Record
   } finally {
     data.fill(0);
   }
+}
+export const CLI_BACKEND_PRESERVE_ENV = "OPENCLAW_LIVE_CLI_BACKEND_PRESERVE_ENV";
+export function parseCliBackendPreserveEnv(raw: string | undefined): Set<string> {
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    return new Set();
+  }
+  if (trimmed.startsWith("[")) {
+    try {
+      return new Set(filterStringEntries(JSON.parse(trimmed)));
+    } catch {
+      return new Set();
+    }
+  }
+  return new Set(trimmed.split(/[,\s]+/).filter(Boolean));
 }

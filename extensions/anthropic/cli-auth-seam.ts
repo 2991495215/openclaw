@@ -1,8 +1,8 @@
 import { runUtf8CommandWithTimeout } from "openclaw/plugin-sdk/process-runtime";
 import {
+  filterStringEntries,
   isRecord,
   normalizeOptionalString,
-  parseStringSet,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
 import {
   materializeWindowsSpawnProgram,
@@ -34,6 +34,21 @@ type ClaudeCliAuthStatus =
 // here survive the Claude clear list for native-login runs, so readiness must probe them too.
 const CLI_BACKEND_PRESERVE_ENV = "OPENCLAW_LIVE_CLI_BACKEND_PRESERVE_ENV";
 
+function readPreservedCliEnv(env: NodeJS.ProcessEnv): ReadonlySet<string> {
+  const raw = env[CLI_BACKEND_PRESERVE_ENV]?.trim();
+  if (!raw) {
+    return new Set();
+  }
+  if (raw.startsWith("[")) {
+    try {
+      return new Set(filterStringEntries(JSON.parse(raw)));
+    } catch {
+      return new Set();
+    }
+  }
+  return new Set(raw.split(/[,\s]+/).filter(Boolean));
+}
+
 /** Ask Claude CLI whether its own login is usable without reading token material. */
 export async function probeClaudeCliAuthStatus(params?: {
   command?: string;
@@ -41,7 +56,7 @@ export async function probeClaudeCliAuthStatus(params?: {
   signal?: AbortSignal;
 }): Promise<ClaudeCliAuthStatus> {
   const env = { ...(params?.env ?? process.env) };
-  const preserved = parseStringSet(env[CLI_BACKEND_PRESERVE_ENV]);
+  const preserved = readPreservedCliEnv(env);
   for (const name of CLAUDE_CLI_CLEAR_ENV) {
     if (!preserved.has(name)) {
       delete env[name];

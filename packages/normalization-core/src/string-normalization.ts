@@ -18,22 +18,6 @@ export function filterStringEntries(value: unknown): string[] {
     : [];
 }
 
-/** Parses a JSON string array or comma/whitespace list; malformed JSON yields an empty set. */
-export function parseStringSet(raw: string | undefined): Set<string> {
-  const trimmed = raw?.trim();
-  if (!trimmed) {
-    return new Set();
-  }
-  if (trimmed.startsWith("[")) {
-    try {
-      return new Set(filterStringEntries(JSON.parse(trimmed)));
-    } catch {
-      return new Set();
-    }
-  }
-  return new Set(trimmed.split(/[,\s]+/).filter(Boolean));
-}
-
 /** Coerces entries to strings, trims them, and drops empty results. */
 export function normalizeStringEntries(list?: ReadonlyArray<unknown>) {
   return (list ?? []).map((entry) => String(entry).trim()).filter(Boolean);

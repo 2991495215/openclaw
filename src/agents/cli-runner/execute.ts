@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import { parseStringSet } from "@openclaw/normalization-core/string-normalization";
 import { parse as parseSemver } from "semver";
 import { assertAgentRunLifecycleGenerationCurrent } from "../../infra/agent-events.js";
 import { isTruthyEnvValue } from "../../infra/env.js";
@@ -39,7 +38,9 @@ import { executeDeps } from "./execute-deps.js";
 import { createCliEventHandlers } from "./execute-events.js";
 import {
   CLAUDE_SELECTED_AUTH_ENV_KEYS,
+  CLI_BACKEND_PRESERVE_ENV,
   NODE_CLAUDE_FORWARD_ENV_KEYS,
+  parseCliBackendPreserveEnv,
   resolveNodeClaudeAuthEnv,
 } from "./execute-logging.js";
 import { stripGatewayLocalClaudeArgs } from "./execute-node-claude.js";
@@ -60,8 +61,6 @@ import { createClaudeCliModelCallDiagnostics } from "./model-call-diagnostics.js
 import { composeCliPromptContext } from "./prompt-context.js";
 import { resolveCliNoOutputTimeoutMs, resolveCliRunTimeoutOverrideMs } from "./reliability.js";
 import type { PreparedCliRunContext } from "./types.js";
-
-const CLI_BACKEND_PRESERVE_ENV = "OPENCLAW_LIVE_CLI_BACKEND_PRESERVE_ENV";
 
 function exactToolAvailabilityError(params: {
   code: "unsupported" | "runtime-unavailable";
@@ -361,7 +360,7 @@ export async function executePreparedCliRun(
         ...new Set([...(selectedClaudeClearEnv ?? []), ...nodeRuntimeClearEnv]),
       ];
       const env = sanitizeHostExecEnv({ baseEnv: process.env, blockPathOverrides: true });
-      const preservedEnv = parseStringSet(process.env[CLI_BACKEND_PRESERVE_ENV]);
+      const preservedEnv = parseCliBackendPreserveEnv(process.env[CLI_BACKEND_PRESERVE_ENV]);
       for (const key of backend.clearEnv ?? []) {
         if (!preservedEnv.has(key) || selectedClaudeClearEnv?.has(key)) {
           delete env[key];
