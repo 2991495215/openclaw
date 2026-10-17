@@ -26,12 +26,20 @@ function show(input: Parameters<typeof props>[0] = {}, target = container) {
 beforeEach(() => {
   container = document.createElement("div");
   document.body.replaceChildren(container);
+  // Identity and navigation fixtures do not admit viewport-driven media discovery.
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class extends IntersectionObserver {
+      override observe() {}
+    },
+  );
 });
 
 describe("session activity semantics", () => {
   afterEach(() => {
     setAvatarGatewayOrigin(null);
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("shows online identity when interaction age is unknown", () => {

@@ -111,16 +111,15 @@ if (typeof document !== "undefined" && !("__vitest_browser__" in globalThis)) {
       configurable: true,
       writable: true,
       value(this: Element, optionsOrX?: ScrollToOptions | number, y?: number) {
-        if (typeof optionsOrX === "number") {
-          this.scrollLeft = optionsOrX;
-          this.scrollTop = y ?? this.scrollTop;
-          return;
+        const options = typeof optionsOrX === "number" ? { left: optionsOrX, top: y } : optionsOrX;
+        if (options?.left !== undefined) {
+          this.scrollLeft = options.left;
         }
-        if (optionsOrX?.left !== undefined) {
-          this.scrollLeft = optionsOrX.left;
-        }
-        if (optionsOrX?.top !== undefined) {
-          this.scrollTop = optionsOrX.top;
+        if (options?.top !== undefined) {
+          this.scrollTop = Math.max(
+            0,
+            Math.min(options.top, this.scrollHeight - this.clientHeight),
+          );
         }
       },
     });
