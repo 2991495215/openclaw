@@ -345,7 +345,7 @@ describe("connection live-text delivery", () => {
     "owner",
     "membership",
     "invalidated",
-    "replacement socket",
+    "replacement client",
     "scope",
     "throwing visibility",
   ] as const)("rechecks current %s before a pending send", (revoked) => {
@@ -385,8 +385,9 @@ describe("connection live-text delivery", () => {
     if (revoked === "invalidated") {
       peer.client.invalidated = true;
     }
-    if (revoked === "replacement socket") {
-      peer.client.socket = createPeer("replacement").client.socket;
+    if (revoked === "replacement client") {
+      clients.delete(peer.client);
+      clients.add(createPeer("replacement").client);
     }
     if (revoked === "scope") {
       peer.client.connect.scopes = [];

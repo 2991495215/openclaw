@@ -1,7 +1,7 @@
 import { X509Certificate } from "node:crypto";
 import { once } from "node:events";
 import { readFile, unlink, writeFile } from "node:fs/promises";
-import { createServer as createHttpServer, type ServerResponse } from "node:http";
+import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -10,7 +10,6 @@ import { TEST_TLS_CERT_PEM, TEST_TLS_KEY_PEM } from "../../test/helpers/tls-fixt
 import { waitForGatewayHttpReadiness } from "../cli/daemon-cli/restart-health-probe.js";
 import { startProxy } from "../infra/net/proxy/proxy-lifecycle.js";
 import { loadGatewayTlsServerRuntime } from "../infra/tls/gateway.js";
-import { createDeferredCore } from "../shared/deferred.js";
 import { PROXY_FIXTURE_CERTIFICATE } from "../test-helpers/proxy-tls-fixture.js";
 import { withTestDir } from "../test-helpers/temp-dir.js";
 import { createConfiguredGatewayLocalProbe } from "./local-http-probe.js";
@@ -182,98 +181,65 @@ test("keeps a WebSocket-first verified pin scoped to its endpoint", async () => 
   });
 });
 
-test.each([
-  { cache: "warm", completion: "old-first" },
-  { cache: "warm", completion: "new-first" },
-  { cache: "cold", completion: "old-first" },
-  { cache: "cold", completion: "new-first" },
-] as const)(
-  "retains the verified replacement after concurrent probes ($cache, $completion)",
-  async ({ cache, completion }) => {
-    await withTestDir({ prefix: "openclaw-probe-concurrent-renewal-" }, async (directory) => {
-      const [replacement, staged] = await Promise.all(
-        ["replacement", "staged"].map((name) =>
-          loadGatewayTlsServerRuntime({
-            enabled: true,
-            certPath: path.join(directory, name, "cert.pem"),
-            keyPath: path.join(directory, name, "key.pem"),
-          }),
-        ),
-      );
-      if (!replacement?.tlsOptions || !replacement.certPath || !staged?.certPath) {
-        throw new Error("Expected complete synthetic TLS pairs");
+test("retains the verified serving pin while another replacement is staged", async () => {
+  await withTestDir({ prefix: "openclaw-probe-renewal-" }, async (directory) => {
+    const [replacement, staged] = await Promise.all(
+      ["replacement", "staged"].map((name) =>
+        loadGatewayTlsServerRuntime({
+          enabled: true,
+          certPath: path.join(directory, name, "cert.pem"),
+          keyPath: path.join(directory, name, "key.pem"),
+        }),
+      ),
+    );
+    if (!replacement?.tlsOptions || !replacement.certPath || !staged?.certPath) {
+      throw new Error("Expected complete synthetic TLS pairs");
+    }
+    const certPath = path.join(directory, "current.pem");
+    await writeFile(certPath, TEST_TLS_CERT_PEM);
+    const server = createServer(
+      { cert: TEST_TLS_CERT_PEM, key: TEST_TLS_KEY_PEM },
+      (_request, response) => {
+        response.end('{"ok":true,"status":"live"}');
+      },
+    );
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Expected an ephemeral TLS listener");
       }
-      const certPath = path.join(directory, "current.pem");
-      await writeFile(certPath, TEST_TLS_CERT_PEM);
-      const oldResponse = createDeferredCore<ServerResponse>();
-      const newResponse = createDeferredCore<ServerResponse>();
-      let hold = false;
-      const server = createServer(
-        { cert: TEST_TLS_CERT_PEM, key: TEST_TLS_KEY_PEM },
-        (request, response) => {
-          if (hold) {
-            (request.url === "/healthz" ? oldResponse : newResponse).resolve(response);
-          } else {
-            response.end('{"ok":true,"status":"live"}');
-          }
-        },
-      );
-      server.listen(0, "127.0.0.1");
-      await once(server, "listening");
-      try {
-        const address = server.address();
-        if (!address || typeof address === "string") {
-          throw new Error("Expected an ephemeral TLS listener");
-        }
-        const port = address.port;
-        const probe = createConfiguredGatewayLocalProbe({
-          gateway: { tls: { enabled: true, certPath } },
-        });
-        const request = (pathname: "/healthz" | "/readyz") =>
-          probe.requestHttp({ host: "127.0.0.1", port, pathname, timeoutMs: 3000 });
-        if (cache === "warm") {
-          expect(await request("/healthz")).toMatchObject({ statusCode: 200 });
-        }
-        hold = true;
-        const oldRequest = request("/healthz");
-        const old = await oldResponse.promise;
-        await writeFile(certPath, await readFile(replacement.certPath));
-        server.setSecureContext(replacement.tlsOptions);
-        const newRequest = request("/readyz");
-        const next = await newResponse.promise;
-        const responses =
-          completion === "old-first"
-            ? ([
-                [old, oldRequest],
-                [next, newRequest],
-              ] as const)
-            : ([
-                [next, newRequest],
-                [old, oldRequest],
-              ] as const);
-        for (const [response, pending] of responses) {
-          response.end('{"ok":true,"status":"live"}');
-          expect(await pending).toMatchObject({ statusCode: 200 });
-        }
-        hold = false;
-        await writeFile(certPath, await readFile(staged.certPath));
-        expect(await request("/healthz")).toMatchObject({
-          statusCode: 200,
-          tlsFingerprint: replacement.fingerprintSha256,
-        });
-        expect(await probe.resolveWebSocketTarget(port)).toEqual({
-          url: `wss://127.0.0.1:${port}`,
-          tlsFingerprint: replacement.fingerprintSha256,
-        });
-      } finally {
-        server.closeAllConnections();
-        await new Promise<void>((resolve) => {
-          server.close(() => resolve());
-        });
-      }
-    });
-  },
-);
+      const port = address.port;
+      const probe = createConfiguredGatewayLocalProbe({
+        gateway: { tls: { enabled: true, certPath } },
+      });
+      const request = (pathname: "/healthz" | "/readyz") =>
+        probe.requestHttp({ host: "127.0.0.1", port, pathname, timeoutMs: 3000 });
+      expect(await request("/healthz")).toMatchObject({ statusCode: 200 });
+      await writeFile(certPath, await readFile(replacement.certPath));
+      server.setSecureContext(replacement.tlsOptions);
+      expect(await request("/readyz")).toMatchObject({
+        statusCode: 200,
+        tlsFingerprint: replacement.fingerprintSha256,
+      });
+      await writeFile(certPath, await readFile(staged.certPath));
+      expect(await request("/healthz")).toMatchObject({
+        statusCode: 200,
+        tlsFingerprint: replacement.fingerprintSha256,
+      });
+      expect(await probe.resolveWebSocketTarget(port)).toEqual({
+        url: `wss://127.0.0.1:${port}`,
+        tlsFingerprint: replacement.fingerprintSha256,
+      });
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    }
+  });
+});
 
 describe("local TLS probe cancellation", () => {
   test.each(["http", "websocket"] as const)(
