@@ -243,12 +243,11 @@ export async function runAgentAttempt(params: AgentAttemptParams) {
         : undefined,
   });
   const toolContext = buildCommandAttemptToolContext(params);
-  if (params.fallbackRuntimeState && params.fallbackRuntimeState.originRuntime === undefined) {
-    params.fallbackRuntimeState.originRuntime =
-      !isRawModelRun && isCliExecutionProvider ? "cli" : "embedded";
+  const fallbackState = params.fallbackRuntimeState;
+  if (fallbackState && fallbackState.originRuntime === undefined) {
+    fallbackState.originRuntime = isCliExecutionProvider && !isRawModelRun ? "cli" : "embedded";
   }
-  const shouldForwardImagesToEmbedded =
-    !params.isFallbackRetry || params.fallbackRuntimeState?.originRuntime === "cli";
+  const passImages = !params.isFallbackRetry || fallbackState?.originRuntime === "cli";
   const allowCliAuthProfileForwarding =
     isCliExecutionProvider &&
     cliBackendAcceptsAuthProfileForwarding({
@@ -345,6 +344,7 @@ export async function runAgentAttempt(params: AgentAttemptParams) {
       lane: params.opts.lane,
       swarmExecutionLane: params.opts.swarmExecutionLane,
       extraSystemPrompt: params.opts.extraSystemPrompt,
+      extraSystemPromptTurnContext: params.opts.extraSystemPromptTurnContext,
       inputProvenance: params.opts.inputProvenance,
       privateCompletion: params.opts.privateCompletion,
       skillLibraryAuthoring: params.opts.skillLibraryAuthoring,
@@ -694,8 +694,8 @@ export async function runAgentAttempt(params: AgentAttemptParams) {
     prompt: effectivePrompt,
     transcriptPrompt: continuationTranscriptBody,
     // CLI retries cannot replay a persisted turn after orphan-user repair removes it.
-    images: shouldForwardImagesToEmbedded ? params.opts.images : undefined,
-    imageOrder: shouldForwardImagesToEmbedded ? params.opts.imageOrder : undefined,
+    images: passImages ? params.opts.images : undefined,
+    imageOrder: passImages ? params.opts.imageOrder : undefined,
     clientTools: params.opts.clientTools,
     toolBindings: params.opts.toolBindings,
     provider: params.providerOverride,

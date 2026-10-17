@@ -215,6 +215,24 @@ export function withoutCodexSkillDiscovery(methods: string[]): string[] {
   return methods.filter((method) => method !== "skills/list");
 }
 
+export function isCodexTurnContextHandoff(params: unknown): boolean {
+  if (!isJsonObject(params) || !Array.isArray(params.items)) {
+    return false;
+  }
+  const item = params.items[0];
+  return isJsonObject(item) && item.role === "developer";
+}
+
+export function withoutCodexTurnContextHandoffs(
+  requests: ReadonlyArray<{ method: string; params?: unknown }>,
+): string[] {
+  return withoutCodexSkillDiscovery(
+    requests
+      .filter((request) => !isCodexTurnContextHandoff(request.params))
+      .map(({ method }) => method),
+  );
+}
+
 /** Creates an in-memory Codex app-server client harness with writable stdout frames. */
 export function createClientHarness(
   options: {

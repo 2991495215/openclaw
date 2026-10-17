@@ -599,6 +599,9 @@ describe("Codex app-server main thread cleanup", () => {
         if (method === "thread/start") {
           return threadStartResult();
         }
+        if (method === "thread/inject_items") {
+          return {};
+        }
         if (method === "turn/start") {
           if (owner === "successor") {
             const binding = testCodexAppServerBindingStore.read(identity);
@@ -636,6 +639,7 @@ describe("Codex app-server main thread cleanup", () => {
         "config/read",
         "configRequirements/read",
         "thread/start",
+        "thread/inject_items",
         "turn/start",
         ...(owner === "current" ? ["thread/unsubscribe"] : []),
       ]);
@@ -744,6 +748,9 @@ describe("Codex app-server main thread cleanup", () => {
       if (method === "thread/start") {
         return threadStartResult();
       }
+      if (method === "thread/inject_items") {
+        return {};
+      }
       if (method === "turn/start") {
         throw startupError;
       }
@@ -773,6 +780,7 @@ describe("Codex app-server main thread cleanup", () => {
     expect(withoutCodexSkillDiscovery(request.mock.calls.map(([method]) => method))).toEqual([
       "config/read",
       "thread/start",
+      "thread/inject_items",
       "turn/start",
       "turn/interrupt",
     ]);

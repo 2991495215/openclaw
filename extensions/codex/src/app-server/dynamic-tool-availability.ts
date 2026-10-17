@@ -10,6 +10,17 @@ import {
 } from "./dynamic-tool-catalog.js";
 import { flattenCodexDynamicToolFunctions, type CodexDynamicToolSpec } from "./protocol.js";
 
+export function resolveToolNames(
+  acceptedSpecs: readonly CodexDynamicToolSpec[] | undefined,
+  projected: readonly Pick<ProjectedCodexDynamicTool<AnyAgentTool>, "name">[],
+) {
+  return new Set(
+    acceptedSpecs
+      ? flattenCodexDynamicToolFunctions(acceptedSpecs).map((tool) => tool.name)
+      : projected.map((tool) => tool.name),
+  );
+}
+
 /** Prepare the actual executable set, then reproject only changed owner definitions. */
 export function finalizeCodexToolAvailability(
   entries: readonly ProjectedCodexDynamicTool<AnyAgentTool>[],

@@ -60,7 +60,7 @@ import {
 } from "./computer-context.js";
 import type { CodexDynamicToolsLoading } from "./config.js";
 import { createCodexAutomationsToolsAllowResolver } from "./dynamic-tool-automations-allowlist.js";
-import { finalizeCodexToolAvailability } from "./dynamic-tool-availability.js";
+import { finalizeCodexToolAvailability, resolveToolNames } from "./dynamic-tool-availability.js";
 import {
   assertCodexDynamicToolInputMatchesSchema,
   createCodexDynamicToolSpecs,
@@ -87,7 +87,6 @@ import type {
   CodexDynamicToolFunctionSpec,
   CodexDynamicToolSpec,
 } from "./protocol.js";
-import { flattenCodexDynamicToolFunctions } from "./protocol.js";
 import {
   prepareCodexRemoteWorkspaceMessageMedia,
   resolveCodexMediaSourceUrls,
@@ -176,16 +175,9 @@ export function createCodexDynamicToolBridge(params: {
   // Supervised thread declarations are native-owned and fingerprinted. Narrow
   // executors below, but never rewrite the catalog checked by thread-lifecycle-run.
   const inheritedSpecs = params.registeredSpecs ? [...params.registeredSpecs] : undefined;
-  const inheritedNames = inheritedSpecs
-    ? new Set(flattenCodexDynamicToolFunctions(inheritedSpecs).map((tool) => tool.name))
-    : undefined;
-  const registrationNames =
-    inheritedNames ?? new Set(registeredProjection.tools.map((entry) => entry.name));
-  const currentEntries = availableProjection.tools.filter((entry) =>
-    registrationNames.has(entry.name),
-  );
+  const registrationNames = resolveToolNames(inheritedSpecs, registeredProjection.tools);
   const finalized = finalizeCodexToolAvailability(
-    currentEntries,
+    availableProjection.tools.filter((entry) => registrationNames.has(entry.name)),
     params.requireExactRegisteredDefinitions ? inheritedSpecs : undefined,
   );
   const availableTools = finalized.tools;
@@ -221,8 +213,7 @@ export function createCodexDynamicToolBridge(params: {
     .map((entry) =>
       finalized.preparedNames.has(entry.name) ? (toolMap.get(entry.name) ?? entry) : entry,
     );
-  const registeredToolNames =
-    inheritedNames ?? new Set(registeredSpecTools.map((entry) => entry.name));
+  const registeredToolNames = resolveToolNames(inheritedSpecs, registeredSpecTools);
   const quarantinedTools = dedupeQuarantinedDynamicTools([
     ...availableProjection.quarantinedTools,
     ...registeredProjection.quarantinedTools,

@@ -594,6 +594,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     onDeferredLifecycleAbort: params.onDeferredLifecycleAbort,
     onExecutionPhase: params.onExecutionPhase,
     extraSystemPrompt,
+    extraSystemPromptTurnContext: params.extraSystemPromptTurnContext,
     gitCoauthorPrompt,
     preparedTtsPreferences: params.preparedTtsPreferences,
     sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,

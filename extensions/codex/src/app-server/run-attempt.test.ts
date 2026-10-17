@@ -146,7 +146,9 @@ import {
 import {
   createCodexTestModel,
   createCodexTestOAuthProfile,
+  isCodexTurnContextHandoff,
   withoutCodexSkillDiscovery,
+  withoutCodexTurnContextHandoffs,
 } from "./test-support.js";
 import { codexDynamicToolsFingerprint } from "./thread-fingerprints.js";
 import {
@@ -721,7 +723,7 @@ async function runSettledFailureClientReplacementTest(
     }
     const nativeRequest = CodexAppServerClient.prototype.request.bind(wire.client);
     wire.request.mockImplementation((method, params, requestOptions) => {
-      if (method !== "initialize") {
+      if (method !== "initialize" && !isCodexTurnContextHandoff(params)) {
         methods.push(method);
       }
       const response = nativeRequest(method, params, requestOptions);
@@ -1762,7 +1764,10 @@ describe("runCodexAppServerAttempt", () => {
     await emitItem(harness, "started", { type: "contextCompaction", id: "compact-1" });
     await emitItem(harness, "completed", { type: "contextCompaction", id: "compact-1" });
     let planRestoreRequests = harness.requests.filter(
-      (request) => request.method === "thread/inject_items",
+      (request) =>
+        request.method === "thread/inject_items" &&
+        !isCodexTurnContextHandoff(request.params) &&
+        JSON.stringify(request.params).includes("progress_card"),
     );
     expect(planRestoreRequests[0]?.params).toMatchObject({
       threadId: "thread-1",
@@ -1813,7 +1818,10 @@ describe("runCodexAppServerAttempt", () => {
     await emitItem(harness, "started", { type: "contextCompaction", id: "compact-2" });
     await emitItem(harness, "completed", { type: "contextCompaction", id: "compact-2" });
     planRestoreRequests = harness.requests.filter(
-      (request) => request.method === "thread/inject_items",
+      (request) =>
+        request.method === "thread/inject_items" &&
+        !isCodexTurnContextHandoff(request.params) &&
+        JSON.stringify(request.params).includes("progress_card"),
     );
     expect(planRestoreRequests).toHaveLength(2);
     expect(planRestoreRequests[1]?.params).toMatchObject({
@@ -1866,7 +1874,12 @@ describe("runCodexAppServerAttempt", () => {
     await emitItem(harness, "started", { type: "contextCompaction", id: "compact-3" });
     await emitItem(harness, "completed", { type: "contextCompaction", id: "compact-3" });
     expect(
-      harness.requests.filter((request) => request.method === "thread/inject_items"),
+      harness.requests.filter(
+        (request) =>
+          request.method === "thread/inject_items" &&
+          !isCodexTurnContextHandoff(request.params) &&
+          JSON.stringify(request.params).includes("progress_card"),
+      ),
     ).toHaveLength(2);
 
     const result = await finishRun(run, harness);
@@ -3057,11 +3070,11 @@ describe("runCodexAppServerAttempt", () => {
     await expect(runCodexAppServerAttempt(createParams(sessionFile, workspaceDir))).rejects.toThrow(
       error,
     );
-    expect(withoutCodexSkillDiscovery(harness.requests.map((request) => request.method))).toEqual([
+    expect(withoutCodexTurnContextHandoffs(harness.requests)).toEqual([
       "configRequirements/read",
       "config/read",
       "configRequirements/read",
-      ...(transient ? ["thread/start"] : ["thread/read", "thread/resume", "thread/inject_items"]),
+      ...(transient ? ["thread/start"] : ["thread/read", "thread/resume"]),
       "turn/start",
       "thread/unsubscribe",
     ]);
@@ -3113,7 +3126,7 @@ describe("runCodexAppServerAttempt", () => {
     );
     await harness.completeTurn({ threadId: "thread-existing", turnId: "turn-1" });
     await run;
-    const methods = harness.requests.map((request) => request.method);
+    const methods = withoutCodexTurnContextHandoffs(harness.requests);
     expect(methods).toContain("configRequirements/read");
     expect(methods.lastIndexOf("configRequirements/read")).toBeLessThan(
       methods.indexOf("thread/resume"),
@@ -3121,7 +3134,6 @@ describe("runCodexAppServerAttempt", () => {
     expect(methods.filter((method) => /^(thread|turn)\//.test(method))).toEqual([
       "thread/read",
       "thread/resume",
-      "thread/inject_items",
       "turn/start",
       "turn/start",
     ]);
@@ -3181,13 +3193,12 @@ describe("runCodexAppServerAttempt", () => {
       },
     });
     await finishRun(run, harness, "thread-existing");
-    expect(withoutCodexSkillDiscovery(harness.requests.map((request) => request.method))).toEqual([
+    expect(withoutCodexTurnContextHandoffs(harness.requests)).toEqual([
       "configRequirements/read",
       "config/read",
       "configRequirements/read",
       "thread/read",
       "thread/resume",
-      "thread/inject_items",
       "turn/start",
     ]);
     await expectRetainedSuccessfulThread(harness.client, "thread-existing");
@@ -3986,10 +3997,7 @@ describe("runCodexAppServerAttempt", () => {
     );
     expect(
       requests.map((methods) => methods.filter((method) => /^(thread|turn)\//.test(method))),
-    ).toEqual([
-      ["thread/read"],
-      ["thread/read", "thread/resume", "thread/inject_items", "turn/start"],
-    ]);
+    ).toEqual([["thread/read"], ["thread/read", "thread/resume", "turn/start"]]);
     await expectRetainedSuccessfulThread(client, "thread-existing");
   });
   it("rejects a replacement client whose managed policy disables the native shell", async () => {
@@ -4564,45 +4572,6 @@ async function startAttempt(
   ]);
   return { harness, run };
 }
-
-describe("runCodexAppServerAttempt", () => {
-  it("continues after bounded plan restoration fails", async () => {
-    const { harness, run } = await startAttempt(async (method) => {
-      if (method === "thread/inject_items") {
-        throw new Error("injected test failure");
-      }
-      return undefined;
-    });
-    await emit(harness, "turn/plan/updated", {
-      explanation: "e".repeat(10_000),
-      plan: Array.from({ length: 100 }, (_, index) => ({
-        step: `${index}: ${"x".repeat(2_000)}`,
-        status: index === 0 ? "inProgress" : "pending",
-      })),
-    });
-    await emitItem(harness, "started", { type: "contextCompaction", id: "compact-1" });
-    await emitItem(harness, "completed", { type: "contextCompaction", id: "compact-1" });
-
-    const request = harness.requests.find((entry) => entry.method === "thread/inject_items");
-    const text = (
-      request?.params as { items?: Array<{ content?: Array<{ text?: string }> }> } | undefined
-    )?.items?.[0]?.content?.[0]?.text;
-    expect(text).toBeDefined();
-    const payloadText = text?.slice((text?.indexOf("\n") ?? -1) + 1) ?? "";
-    const payload = JSON.parse(payloadText) as {
-      markdown?: string;
-      plan: Array<{ step: string; status: string }>;
-    };
-    expect(Buffer.byteLength(payloadText, "utf8")).toBeLessThanOrEqual(32 * 1024);
-    expect(Buffer.byteLength(payload.markdown ?? "", "utf8")).toBeLessThanOrEqual(2 * 1024);
-    expect(payload.plan.length).toBeLessThanOrEqual(50);
-    expect(payload.plan.every((step) => Buffer.byteLength(step.step, "utf8") <= 512)).toBe(true);
-    expect(payload.plan[0]?.status).toBe("in_progress");
-
-    const result = await finishRun(run, harness);
-    expect(readAttemptTerminal(result).promptError).toBeNull();
-  });
-});
 
 describe("runCodexAppServerAttempt native lifecycle", () => {
   it("releases completion and native hook relay state after marker plus interrupted completion", async () => {

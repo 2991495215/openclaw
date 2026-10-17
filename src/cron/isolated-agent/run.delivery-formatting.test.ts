@@ -80,10 +80,12 @@ describe("runCronIsolatedAgentTurn delivery formatting hints", () => {
         job: makeIsolatedAgentJobFixture({ delivery }),
       }),
     );
-    const prompt = harness.runEmbeddedAgentMock.mock.calls[0]?.[0].extraSystemPrompt;
+    const runParams = harness.runEmbeddedAgentMock.mock.calls[0]?.[0];
+    const prompt = runParams.extraSystemPrompt;
     expect(prompt?.split("### Delivery Format")).toHaveLength(2);
     expect(prompt).toContain('"schema": "openclaw.delivery_format.v1"');
     expect(prompt).toContain('"text_markup": "markdown_telegram_rich"');
     expect(prompt).toContain("Telegram rich ON.");
+    expect(runParams.extraSystemPromptTurnContext).toEqual({ start: 0, text: prompt });
   });
 });
