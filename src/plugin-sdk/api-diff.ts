@@ -79,7 +79,7 @@ async function readStringList(repoRoot: string, relativePath: string): Promise<s
   if (!Array.isArray(parsed) || parsed.some((entry) => typeof entry !== "string")) {
     throw new Error(`${relativePath} must contain a JSON string array`);
   }
-  return [...parsed];
+  return parsed;
 }
 
 /** Read the public entrypoint inventory owned by one repository revision. */
