@@ -112,7 +112,7 @@ async function createCompilerContext(
   const configPath = path.join(repoRoot, "tsconfig.json");
   const fileNames = entrypoints
     .map((entrypoint) => path.join(repoRoot, "src", "plugin-sdk", `${entrypoint}.ts`))
-    .toSorted((left, right) =>
+    .sort((left, right) =>
       compareText(relativePath(repoRoot, left), relativePath(repoRoot, right)),
     );
   const compilerOptions = {
@@ -264,7 +264,7 @@ function resolveSymbolAndDeclaration(
       (node): node is ts.Declaration =>
         node !== undefined && node.kind !== ts.SyntaxKind.SourceFile,
     )
-    .toSorted((left, right) => compareDeclarations(repoRoot, left, right));
+    .sort((left, right) => compareDeclarations(repoRoot, left, right));
   const declaration = declarations[0];
   return { declaration, resolvedSymbol };
 }
@@ -380,7 +380,7 @@ function buildModuleSurface(params: {
         symbol,
       }),
     )
-    .toSorted(sortExports);
+    .sort(sortExports);
 
   return {
     category: metadata?.category ?? null,
@@ -426,7 +426,7 @@ export async function renderPluginSdkApiBaseline(params?: {
         }
       }
     }
-    const declarationSections = [...sectionsByContent.values()].toSorted(
+    const declarationSections = [...sectionsByContent.values()].sort(
       (left, right) => compareText(left.name, right.name) || compareText(left.text, right.text),
     );
     const sectionIds = new Map(
@@ -454,7 +454,7 @@ export async function renderPluginSdkApiBaseline(params?: {
           importSpecifier: moduleSurface.importSpecifier,
           source: moduleSurface.source,
         }))
-        .toSorted((left, right) => compareText(left.importSpecifier, right.importSpecifier)),
+        .sort((left, right) => compareText(left.importSpecifier, right.importSpecifier)),
     };
     context.assertValid();
     return baseline;

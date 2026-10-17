@@ -224,20 +224,24 @@ function collectDeclarationChanges(
   const addedByName = new Map<string, string[]>();
   for (const [key, section] of beforeByKey) {
     if (!afterByKey.has(key)) {
-      removedByName.set(section.name, [...(removedByName.get(section.name) ?? []), section.text]);
+      const removed = removedByName.get(section.name) ?? [];
+      removed.push(section.text);
+      removedByName.set(section.name, removed);
     }
   }
   for (const [key, section] of afterByKey) {
     if (!beforeByKey.has(key)) {
-      addedByName.set(section.name, [...(addedByName.get(section.name) ?? []), section.text]);
+      const added = addedByName.get(section.name) ?? [];
+      added.push(section.text);
+      addedByName.set(section.name, added);
     }
   }
 
   const names = new Set([...removedByName.keys(), ...addedByName.keys()]);
   const changes: PluginSdkApiDeclarationChange[] = [];
-  for (const name of [...names].toSorted(compareText)) {
-    const removed = (removedByName.get(name) ?? []).toSorted(compareText);
-    const added = (addedByName.get(name) ?? []).toSorted(compareText);
+  for (const name of [...names].sort(compareText)) {
+    const removed = (removedByName.get(name) ?? []).sort(compareText);
+    const added = (addedByName.get(name) ?? []).sort(compareText);
     const count = Math.max(removed.length, added.length);
     for (let index = 0; index < count; index += 1) {
       changes.push({
@@ -253,7 +257,7 @@ function collectDeclarationChanges(
 function moduleChange(moduleSurface: PluginSdkApiDiffModule): PluginSdkApiEntrypointChange {
   return {
     entrypoint: moduleSurface.entrypoint,
-    exportNames: moduleSurface.exports.map((exportSurface) => exportSurface.exportName).toSorted(),
+    exportNames: moduleSurface.exports.map((exportSurface) => exportSurface.exportName).sort(),
     importSpecifier: moduleSurface.importSpecifier,
   };
 }
@@ -282,7 +286,7 @@ export function diffPluginSdkApi(
     exports: [],
   };
 
-  for (const [entrypoint, moduleSurface] of [...modules].toSorted(([left], [right]) =>
+  for (const [entrypoint, moduleSurface] of [...modules].sort(([left], [right]) =>
     compareText(left, right),
   )) {
     const beforeModule = beforeModules.get(entrypoint);
@@ -297,16 +301,14 @@ export function diffPluginSdkApi(
     const beforeExports = beforeModule ? exportMap(beforeModule) : new Map();
     const afterExports = afterModule ? exportMap(afterModule) : new Map();
     const exportNames = new Set([...beforeExports.keys(), ...afterExports.keys()]);
-    for (const exportName of [...exportNames].toSorted(compareText)) {
+    for (const exportName of [...exportNames].sort(compareText)) {
       const beforeExport = beforeExports.get(exportName);
       const afterExport = afterExports.get(exportName);
       let change: PluginSdkApiExportChange["change"];
-      if (!beforeExport && afterExport) {
+      if (!beforeExport) {
         change = "added";
-      } else if (beforeExport && !afterExport) {
+      } else if (!afterExport) {
         change = "removed";
-      } else if (!beforeExport || !afterExport) {
-        continue;
       } else if (
         beforeExport.kind !== afterExport.kind ||
         beforeExport.declaration !== afterExport.declaration
@@ -402,7 +404,7 @@ function collectDeclarationReportChanges(
       grouped.set(key, declaration);
     }
   }
-  return [...grouped.values()].toSorted(
+  return [...grouped.values()].sort(
     (left, right) =>
       compareText(left.name, right.name) ||
       compareText(left.before ?? "", right.before ?? "") ||
