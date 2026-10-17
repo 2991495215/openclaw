@@ -2,12 +2,12 @@ import { onCleanup } from "solid-js";
 import { comparePluginCatalogEntries } from "../../../../packages/plugin-package-contract/src/catalog-order.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { formatUiError } from "../../lib/format-error.ts";
+import { createPageRequest } from "../../lib/page-request.ts";
 import type {
   PluginDiscoveryCategory,
   PluginDiscoveryEntry,
   PluginDiscoveryResult,
 } from "../../lib/plugins/index.ts";
-import { createPluginRequest } from "./plugin-request.ts";
 
 export type PluginDiscoveryIntent = "all" | "bundled" | "trending" | "official" | "featured";
 export type PluginDiscoveryState = {
@@ -107,8 +107,9 @@ export function createPluginDiscovery(gateway: PluginDiscoveryGateway, onChange:
       return gateway.isConnected() && loadMoreTask.pending;
     },
   };
-  const categoriesTask = createPluginRequest(onChange, {
-    task: ([client]: readonly [GatewayBrowserClient], { signal }) =>
+  const categoriesTask = createPageRequest({
+    notify: onChange,
+    task: (signal, [client]: readonly [GatewayBrowserClient]) =>
       client.request<{ categories: PluginDiscoveryCategory[] }>(
         "plugins.catalog.categories",
         {},
@@ -123,20 +124,24 @@ export function createPluginDiscovery(gateway: PluginDiscoveryGateway, onChange:
       state.categoriesError = formatUiError(error);
     },
   });
-  const browseTask = createPluginRequest(onChange, {
+  onCleanup(categoriesTask.cancel);
+  const browseTask = createPageRequest({
+    notify: onChange,
     task: (
+      signal,
       [client, intent, category, query, manual]: readonly [...CatalogPageArgs, manual: boolean],
-      { signal },
     ) => fetchAvailablePage({ client, intent, category, query, manual, signal }),
     onComplete: applyPage,
     onError: (error) => {
       state.error = formatUiError(error);
     },
   });
-  const loadMoreTask = createPluginRequest(onChange, {
+  onCleanup(browseTask.cancel);
+  const loadMoreTask = createPageRequest({
+    notify: onChange,
     task: (
+      signal,
       [client, intent, category, query, cursor]: readonly [...CatalogPageArgs, cursor: string],
-      { signal },
     ) => fetchAvailablePage({ client, intent, category, query, cursor, signal }),
     onComplete: (page) => {
       if (!state.result || state.result.nextCursor !== page.requestedCursor) {
@@ -163,6 +168,7 @@ export function createPluginDiscovery(gateway: PluginDiscoveryGateway, onChange:
       state.loadMoreError = formatUiError(error);
     },
   });
+  onCleanup(loadMoreTask.cancel);
   function applyPage(page: CatalogPageLoad): void {
     state.result = {
       items: page.items,
