@@ -1,9 +1,23 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { hasAvailableAuthForProvider } from "../agents/model-auth.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { verifySystemAgentInferenceWithFallback } from "./inference-fallback.js";
-import type { SystemAgentConfiguredRoute } from "./inference-route.js";
-import type { VerifySetupInferenceResult } from "./setup-inference.js";
+import {
+  resolveSystemAgentConfiguredRouteFromConfig,
+  type SystemAgentConfiguredRoute,
+} from "./inference-route.js";
+import { verifySetupInference, type VerifySetupInferenceResult } from "./setup-inference.js";
+
+vi.mock("../agents/model-auth.js", () => ({ hasAvailableAuthForProvider: vi.fn() }));
+vi.mock("./inference-route.js", () => ({ resolveSystemAgentConfiguredRouteFromConfig: vi.fn() }));
+vi.mock("./setup-inference.js", () => ({ verifySetupInference: vi.fn() }));
+
+beforeEach(() => {
+  vi.mocked(hasAvailableAuthForProvider).mockReset().mockResolvedValue(true);
+  vi.mocked(resolveSystemAgentConfiguredRouteFromConfig).mockReset();
+  vi.mocked(verifySetupInference).mockReset();
+});
 
 const runtime = {} as RuntimeEnv;
 const config: OpenClawConfig = {
@@ -19,11 +33,12 @@ const config: OpenClawConfig = {
     },
   },
 };
-type FallbackDeps = NonNullable<
-  Parameters<typeof verifySystemAgentInferenceWithFallback>[0]["deps"]
->;
-const verifyConfigured = (deps: FallbackDeps) =>
-  verifySystemAgentInferenceWithFallback({ requestingAgentId: "requester", runtime, deps });
+const verifyConfigured = (cfg: OpenClawConfig) =>
+  verifySystemAgentInferenceWithFallback({
+    requestingAgentId: "requester",
+    runtime,
+    deps: { readConfig: async () => cfg },
+  });
 const success = (modelRef: string) => ({ ok: true, modelRef, latencyMs: 1, binding: {} }) as never;
 
 function route(agentId: string, provider: string): SystemAgentConfiguredRoute {
@@ -56,28 +71,25 @@ async function verifyAfterFailure(
 ) {
   const attempts: string[] = [];
   const cfg = fallbackConfig(["requester", "alpha-other", ...(includeBeta ? ["beta"] : [])]);
-  const result = await verifyConfigured({
-    readConfig: async () => cfg,
-    resolveRoute: async (_cfg, agentId) => route(agentId, agentId === "beta" ? "beta" : "alpha"),
-    hasAuth: async () => true,
-    verify: async ({ agentId }) => {
-      attempts.push(agentId);
-      return agentId === successfulAgentId
-        ? success(agentId === "beta" ? "beta/model" : "alpha/model")
-        : { ...failure };
-    },
+  vi.mocked(resolveSystemAgentConfiguredRouteFromConfig).mockImplementation(async (_cfg, agentId) =>
+    route(agentId!, agentId === "beta" ? "beta" : "alpha"),
+  );
+  vi.mocked(verifySetupInference).mockImplementation(async ({ agentId }) => {
+    attempts.push(agentId!);
+    return agentId === successfulAgentId
+      ? success(agentId === "beta" ? "beta/model" : "alpha/model")
+      : { ...failure };
   });
+  const result = await verifyConfigured(cfg);
   return { result, attempts };
 }
 
 describe("system-agent inference fallback", () => {
   it("does not claim providers are unconfigured when no route can be verified", async () => {
+    vi.mocked(resolveSystemAgentConfiguredRouteFromConfig).mockResolvedValue(null);
     const result = await verifySystemAgentInferenceWithFallback({
       runtime,
-      deps: {
-        readConfig: async () => ({}),
-        resolveRoute: async () => null,
-      },
+      deps: { readConfig: async () => ({}) },
     });
 
     expect(result).toEqual({
@@ -96,15 +108,13 @@ describe("system-agent inference fallback", () => {
         : ({ ok: false, status: "unavailable", error: "down" } as const);
     });
 
+    vi.mocked(resolveSystemAgentConfiguredRouteFromConfig).mockImplementation(
+      async (_cfg, agentId) => route(agentId!, agentId === "requester" ? "zeta" : agentId!),
+    );
+    vi.mocked(verifySetupInference).mockImplementation(verify as never);
     const result = await verifySystemAgentInferenceWithFallback({
       runtime,
-      deps: {
-        readConfig: async () => config,
-        resolveRoute: async (_cfg, agentId) =>
-          route(agentId, agentId === "requester" ? "zeta" : agentId),
-        hasAuth: async () => true,
-        verify: verify as never,
-      },
+      deps: { readConfig: async () => config },
     });
 
     expect(result.ok).toBe(true);
@@ -113,21 +123,16 @@ describe("system-agent inference fallback", () => {
 
   it("retains the implicit main fallback for a pre-roster config", async () => {
     const attempts: string[] = [];
-    const result = await verifySystemAgentInferenceWithFallback({
-      requestingAgentId: "requester",
-      runtime,
-      deps: {
-        readConfig: async () => ({}),
-        resolveRoute: async (_cfg, agentId) => route(agentId, agentId),
-        hasAuth: async () => true,
-        verify: async ({ agentId }) => {
-          attempts.push(agentId);
-          return agentId === "main"
-            ? ({ ok: true, modelRef: "main/model", latencyMs: 1, binding: {} } as never)
-            : ({ ok: false, status: "unavailable", error: "down" } as const);
-        },
-      },
+    vi.mocked(resolveSystemAgentConfiguredRouteFromConfig).mockImplementation(
+      async (_cfg, agentId) => route(agentId!, agentId!),
+    );
+    vi.mocked(verifySetupInference).mockImplementation(async ({ agentId }) => {
+      attempts.push(agentId!);
+      return agentId === "main"
+        ? success("main/model")
+        : ({ ok: false, status: "unavailable", error: "down" } as const);
     });
+    const result = await verifyConfigured({});
 
     expect(result.ok).toBe(true);
     expect(attempts).toEqual(["requester", "main"]);
@@ -135,20 +140,17 @@ describe("system-agent inference fallback", () => {
 
   it("skips unauthenticated fallback providers", async () => {
     const attempts: string[] = [];
-    await verifySystemAgentInferenceWithFallback({
-      requestingAgentId: "requester",
-      runtime,
-      deps: {
-        readConfig: async () => config,
-        resolveRoute: async (_cfg, agentId) =>
-          route(agentId, agentId === "requester" ? "zeta" : agentId),
-        hasAuth: async ({ provider }) => provider !== "alpha",
-        verify: async ({ agentId }) => {
-          attempts.push(agentId);
-          return { ok: false, status: "unavailable", error: "down" };
-        },
-      },
+    vi.mocked(resolveSystemAgentConfiguredRouteFromConfig).mockImplementation(
+      async (_cfg, agentId) => route(agentId!, agentId === "requester" ? "zeta" : agentId!),
+    );
+    vi.mocked(hasAvailableAuthForProvider).mockImplementation(
+      async ({ provider }) => provider !== "alpha",
+    );
+    vi.mocked(verifySetupInference).mockImplementation(async ({ agentId }) => {
+      attempts.push(agentId!);
+      return { ok: false, status: "unavailable", error: "down" };
     });
+    await verifyConfigured(config);
 
     expect(attempts).toEqual(["requester", "beta"]);
   });
@@ -157,18 +159,19 @@ describe("system-agent inference fallback", () => {
     const attempts: string[] = [];
     const duplicateProviderConfig = fallbackConfig(["requester", "alpha-bad", "alpha-good"]);
 
-    const result = await verifyConfigured({
-      readConfig: async () => duplicateProviderConfig,
-      resolveRoute: async (_cfg, agentId) =>
-        route(agentId, agentId === "requester" ? "zeta" : "alpha"),
-      hasAuth: async ({ agentDir }) => agentDir?.endsWith("alpha-good") === true,
-      verify: async ({ agentId }) => {
-        attempts.push(agentId);
-        return agentId === "alpha-good"
-          ? success("alpha/model")
-          : ({ ok: false, status: "unavailable", error: "down" } as const);
-      },
+    vi.mocked(resolveSystemAgentConfiguredRouteFromConfig).mockImplementation(
+      async (_cfg, agentId) => route(agentId!, agentId === "requester" ? "zeta" : "alpha"),
+    );
+    vi.mocked(hasAvailableAuthForProvider).mockImplementation(
+      async ({ agentDir }) => agentDir?.endsWith("alpha-good") === true,
+    );
+    vi.mocked(verifySetupInference).mockImplementation(async ({ agentId }) => {
+      attempts.push(agentId!);
+      return agentId === "alpha-good"
+        ? success("alpha/model")
+        : ({ ok: false, status: "unavailable", error: "down" } as const);
     });
+    const result = await verifyConfigured(duplicateProviderConfig);
 
     expect(result.ok).toBe(true);
     expect(attempts).toEqual(["requester", "alpha-good"]);
@@ -197,14 +200,13 @@ describe("system-agent inference fallback", () => {
       async () => ({ ok: false, status: "unknown", error: "winner identity uncertain" }) as const,
     );
 
-    const result = await verifyConfigured({
-      readConfig: async () =>
-        fallbackConfig(["requester", "beta", "alpha"], { agentId: "requester" }),
-      resolveRoute: async (_cfg, agentId) =>
-        route(agentId, agentId === "requester" ? "zeta" : agentId),
-      hasAuth: async () => true,
-      verify,
-    });
+    vi.mocked(resolveSystemAgentConfiguredRouteFromConfig).mockImplementation(
+      async (_cfg, agentId) => route(agentId!, agentId === "requester" ? "zeta" : agentId!),
+    );
+    vi.mocked(verifySetupInference).mockImplementation(verify);
+    const result = await verifyConfigured(
+      fallbackConfig(["requester", "beta", "alpha"], { agentId: "requester" }),
+    );
 
     expect(result).toEqual({
       ok: false,

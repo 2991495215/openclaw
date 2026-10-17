@@ -137,6 +137,14 @@ describe("guided onboarding inference composition", () => {
       configModule.clearConfigCache();
       const setupInference = await import("../system-agent/setup-inference.js");
       const onboardInference = await import("./onboard-inference.js");
+      const probes = await import("../system-agent/probes.js");
+      const cliCredentials = await import("../agents/cli-credentials.js");
+      vi.spyOn(probes, "probeLocalCommand").mockImplementation(async (command) => ({
+        command,
+        found: false,
+        error: "not found",
+      }));
+      vi.spyOn(cliCredentials, "hasCodexCliAuthFile").mockReturnValue(false);
       const { runGuidedOnboardingWithFixtures: runGuidedOnboarding } =
         await import("./onboard-guided-runtime.test-support.js");
       const { applySystemAgentSetup } = await import("../system-agent/setup-apply.js");
@@ -145,22 +153,10 @@ describe("guided onboarding inference composition", () => {
       const deps: GuidedOnboardingDeps = {
         createPrompter: () => activePrompter,
         detect: async () => {
-          const probeLocalCommand = async (command: string) => ({
-            command,
-            found: false,
-            error: "not found",
-          });
           const result = await setupInference.detectSetupInference({
             detectInferenceBackends: async (options) =>
               await onboardInference.detectInferenceBackends({
                 config: options?.config,
-                env: process.env,
-                platform: "linux",
-                deps: {
-                  probeLocalCommand,
-                  hasCodexCliAuthFile: () => false,
-                  readGeminiCliCredentials: () => null,
-                },
               }),
             resolveManifestProviderAuthChoices: () => [],
           });

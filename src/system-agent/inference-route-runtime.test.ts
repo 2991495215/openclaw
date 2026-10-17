@@ -38,6 +38,7 @@ import {
   verifySetupInference,
   verifySetupInferenceConfig,
 } from "./setup-inference-turn.js";
+import * as setupInference from "./setup-inference.js";
 import {
   createSystemAgentVerifiedInferenceBinding,
   resolveSystemAgentVerifiedInferenceRoute,
@@ -169,6 +170,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.mocked(runEmbeddedAgentOwner).mockReset();
   clearAuthProfileMigrationDiagnostics();
   clearSecretsRuntimeSnapshot();
@@ -375,21 +377,20 @@ it.each([
     vi.mocked(runEmbeddedAgentOwner).mockImplementation(runEmbeddedAgent);
     const deps = { readConfigFileSnapshot: readSnapshot };
     const attemptedOwners: string[] = [];
+    if (entrypoint === "fallback") {
+      const verify = setupInference.verifySetupInference;
+      vi.spyOn(setupInference, "verifySetupInference").mockImplementation(async (params) => {
+        attemptedOwners.push(params.agentId!);
+        return params.agentId === "main"
+          ? { ok: false, status: "auth", error: "Primary owner unavailable" }
+          : verify({ ...params, deps });
+      });
+    }
     const boundVerification =
       entrypoint === "verify"
         ? await verifySetupInference({ agentId: "main", bindSession: true, runtime, deps })
         : entrypoint === "fallback"
-          ? await verifySystemAgentInferenceWithFallback({
-              runtime,
-              deps: {
-                verify: async (params) => {
-                  attemptedOwners.push(params.agentId);
-                  return params.agentId === "main"
-                    ? { ok: false, status: "auth", error: "Primary owner unavailable" }
-                    : verifySetupInference({ ...params, deps });
-                },
-              },
-            })
+          ? await verifySystemAgentInferenceWithFallback({ runtime })
           : undefined;
     const result =
       boundVerification ??
