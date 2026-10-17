@@ -4,6 +4,8 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { validateClawLifecyclePlanResult } from "../../../packages/gateway-protocol/src/index.js";
 import type { ClawLifecyclePlanResult } from "../../../packages/gateway-protocol/src/schema/claws.js";
+import { resolveBootstrapContextForRun } from "../../agents/bootstrap-files.js";
+import { ensureAgentWorkspace, isWorkspaceBootstrapPending } from "../../agents/workspace.js";
 import * as deletionJournal from "../../state/agent-deletion-journal.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import {
@@ -34,14 +36,16 @@ async function fixture() {
   );
   await fs.writeFile(
     path.join(localPath, "CLAW.md"),
-    "---\nschemaVersion: 1\nagent:\n  id: local-bot\n  name: Local Bot\n  identity:\n    avatar: avatars/bot.png\nworkspace:\n  files:\n    - source: icon.png\n      path: avatars/bot.png\n---\n\nYou are a research bot.\n",
+    "---\nschemaVersion: 1\nagent:\n  id: local-bot\n  name: Local Bot\n  identity:\n    avatar: avatars/bot.png\nworkspace:\n  files:\n    - source: icon.png\n      path: avatars/bot.png\n    - source: memory.md\n      path: MEMORY.md\n    - source: research.md\n      path: skills/research/SKILL.md\n---\n\nYou are a research bot.\n",
   );
+  await fs.writeFile(path.join(localPath, "memory.md"), "Use primary sources.\n");
+  await fs.writeFile(path.join(localPath, "research.md"), "Ask which sources to research.\n");
   const icon = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=",
     "base64",
   );
   await fs.writeFile(path.join(localPath, "icon.png"), icon);
-  const bootstrap = "Read GROK-IMPORT.md and ask the user to finish setup.\n";
+  const bootstrap = "Read skills/research/SKILL.md and ask the user to finish setup.\n";
   await fs.writeFile(path.join(localPath, "BOOTSTRAP.md"), bootstrap);
   return { state, source: { localPath }, icon, bootstrap };
 }
@@ -114,6 +118,16 @@ describe("local Claw Add through the Gateway", () => {
     );
     expect(await fs.readFile(path.join(workspace, "avatars/bot.png"))).toEqual(icon);
     expect(await fs.readFile(path.join(workspace, "BOOTSTRAP.md"), "utf8")).toBe(bootstrap);
+    const prepared = await ensureAgentWorkspace({ dir: workspace, ensureBootstrapFiles: true });
+    expect(prepared.bootstrapPending).toBe(true);
+    const context = await resolveBootstrapContextForRun({ workspaceDir: workspace, config });
+    expect(context.contextFiles).toContainEqual({
+      path: path.join(workspace, "BOOTSTRAP.md"),
+      content: bootstrap.trimEnd(),
+    });
+    await fs.unlink(path.join(workspace, "BOOTSTRAP.md"));
+    await ensureAgentWorkspace({ dir: workspace, ensureBootstrapFiles: true });
+    expect(await isWorkspaceBootstrapPending(workspace)).toBe(false);
   });
 
   it("rejects a package changed after preview without creating the agent", async () => {
