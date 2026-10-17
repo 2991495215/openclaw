@@ -29,6 +29,10 @@ Dashboard window is active to reload its current page. Gateway HTTP errors with
 plain-text or JSON bodies use the recovery page; HTML sign-in pages from an
 authenticated proxy remain available in the window.
 
+Reloading or reconnecting a native-authenticated chat window keeps the selected
+private conversation open. The app does not require a public sharing link to
+restore it after the app or Gateway restarts.
+
 The native chat features below connect to the Gateway and default to the primary
 session for the selected agent (`main`, or `global` when `session.scope` is
 `global`). Quick Chat remains a native floating composer in either experience.

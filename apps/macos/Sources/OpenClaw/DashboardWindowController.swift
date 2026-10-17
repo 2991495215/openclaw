@@ -490,7 +490,7 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
         if self.isShowingFailurePage {
             DashboardManager.shared.recoverDashboard(self)
         } else if self.isTrustedDashboardDocument {
-            self.webView.reload()
+            self.documentHost.reload()
         }
     }
 

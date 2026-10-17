@@ -128,6 +128,7 @@ final class ControlUIDocumentHost {
     }
 
     func load(_ url: URL) {
+        let url = self.sessionEntryURL(for: url) ?? url
         self.retireInvalidNativeStartupCredentials()
         self.retirePendingLoad()
         self.hasLiveContent = false
@@ -151,6 +152,31 @@ final class ControlUIDocumentHost {
                 self.onAuthenticationFailure?(error)
             }
         }
+    }
+
+    func reload() {
+        if let url = self.webView.url, let entryURL = self.sessionEntryURL(for: url) {
+            self.load(entryURL)
+        } else {
+            self.webView.reload()
+        }
+    }
+
+    private func sessionEntryURL(for url: URL) -> URL? {
+        guard self.auth.usesNativeDevice,
+              Self.isTrustedLinkSource(url, dashboardURL: self.currentURL),
+              let path = Self.appPath(fromDocumentPath: url.path(percentEncoded: true), baseURL: self.currentURL),
+              path.hasPrefix("/chat/"), path != "/chat/",
+              var entry = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        else { return nil }
+        // Canonical chat GETs are public readers. The entry endpoint loads the
+        // app shell for native authentication and owns validation of the route.
+        let returnPath = entry.percentEncodedPath + (entry.percentEncodedQuery.map { "?" + $0 } ?? "")
+        entry.percentEncodedPath = Self.allowedPath(for: self.currentURL) + "__openclaw__/session-entry"
+        entry.queryItems = [URLQueryItem(name: "path", value: returnPath)]
+        // URLSearchParams on the Gateway decodes '+' as a space.
+        entry.percentEncodedQuery = entry.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        return entry.url
     }
 
     func retirePendingLoad() {
