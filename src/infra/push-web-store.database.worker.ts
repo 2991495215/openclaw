@@ -30,7 +30,6 @@ import {
   type WebPushMutationProfileFacts,
 } from "./push-web-store.records.js";
 import { ensureWebPushSubscriptionBindingColumns } from "./push-web-store.schema.js";
-// Canonical shared-SQLite store for Web Push subscriptions and VAPID identity.
 import type { EngineConnection } from "./sql-connection.js";
 import {
   getSqliteDatabaseAdmission,

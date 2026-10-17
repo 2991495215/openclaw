@@ -1,4 +1,3 @@
-/** Filesystem ownership guards for isolated Computer Use service provisioning. */
 import fs from "node:fs/promises";
 import path from "node:path";
 import {

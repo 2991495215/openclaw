@@ -1,4 +1,3 @@
-// Codex helper module selects an app-server connection from private binding ownership.
 import { AgentHarnessPreflightError } from "openclaw/plugin-sdk/agent-harness-registration";
 import type { EmbeddedRunAttemptParamsV2 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { createPluginRuntimeStore } from "openclaw/plugin-sdk/runtime-store";
