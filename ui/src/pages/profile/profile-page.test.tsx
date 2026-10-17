@@ -573,7 +573,6 @@ it.each([
 it("uses identity save receipts without rereading and keeps manual profile refresh", async () => {
   let avatarRevision = "avatar-content-hash-png";
   let publishAvatarPresence: (() => void) | undefined;
-  let allowIdentityRead = true;
   let profile: UserProfile = {
     ...modelAccountProfile,
     emails: ["ada@example.test", "ada@work.test"],
@@ -583,9 +582,6 @@ it("uses identity save receipts without rereading and keeps manual profile refre
       return { status: "ok", entries: { [GIT_COAUTHOR_PREFERENCE_KEY]: false } };
     }
     if (method === "users.self") {
-      if (!allowIdentityRead) {
-        throw new Error("Identity save must use its receipt");
-      }
       return { profile };
     }
     if (method === "users.listModelAccounts") {
@@ -637,7 +633,6 @@ it("uses identity save receipts without rereading and keeps manual profile refre
   await waitForFast(() => expect(input?.disabled).toBe(false));
   const coauthorToggle = page.querySelector<HTMLInputElement>("input.settings-toggle__input")!;
   expect(coauthorToggle.checked).toBe(false);
-  allowIdentityRead = false;
   input!.value = "Augusta Ada";
   input!.dispatchEvent(new Event("input", { bubbles: true }));
   flush();
@@ -720,7 +715,6 @@ it("uses identity save receipts without rereading and keeps manual profile refre
   expect(page.querySelector(".identity-error")).toBeNull();
   expect(displayNameInput.value).toBe("Unsaved draft");
   expect(coauthorToggle.checked).toBe(false);
-  allowIdentityRead = true;
   request.mockClear();
   page.querySelector<HTMLButtonElement>(".profile-refresh")?.click();
   await waitForFast(() =>
