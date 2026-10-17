@@ -469,9 +469,7 @@ export function createWebOnMessageHandler(params: {
         gating.needsMentionText === true
       ) {
         await runAudioPreflightOnce();
-        gating = await applyGroupGating(
-          typeof preflightAudioTranscript === "string" ? preflightAudioTranscript : undefined,
-        );
+        gating = await applyGroupGating(preflightAudioTranscript ?? undefined);
       }
       if (!gating.shouldProcess) {
         await clearPreDispatchReaction();

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { uniqueStrings } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { parseStringSet } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { QaProviderMode } from "./index.js";
 import { getQaProvider } from "./index.js";
 
@@ -100,21 +100,6 @@ function applyLiveProviderEnvAliases(env: NodeJS.ProcessEnv | Record<string, str
   }
 }
 
-function parsePreservedCliEnv(baseEnv: NodeJS.ProcessEnv) {
-  const raw = baseEnv[QA_LIVE_CLI_BACKEND_PRESERVE_ENV]?.trim();
-  if (raw?.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      return Array.isArray(parsed)
-        ? parsed.filter((entry): entry is string => typeof entry === "string")
-        : [];
-    } catch {
-      return [];
-    }
-  }
-  return (raw ?? "").split(/[,\s]+/).filter((entry) => entry.length > 0);
-}
-
 export function normalizeQaProviderModeEnv(env: NodeJS.ProcessEnv, providerMode?: QaProviderMode) {
   const provider = providerMode ? getQaProvider(providerMode) : null;
   if (provider?.kind === "mock") {
@@ -154,12 +139,13 @@ export function resolveQaLiveCliAuthEnv(
   }
   const claudeCliEnv: Record<string, string> = {};
   if (opts?.forwardHostHomeForClaudeCli) {
-    const values = parsePreservedCliEnv(baseEnv).filter((entry) => entry !== "ANTHROPIC_API_KEY");
+    const values = parseStringSet(baseEnv[QA_LIVE_CLI_BACKEND_PRESERVE_ENV]);
+    values.delete("ANTHROPIC_API_KEY");
     if (authMode === "api-key" || (authMode === "auto" && hasAnthropicKey)) {
-      values.push("ANTHROPIC_API_KEY");
+      values.add("ANTHROPIC_API_KEY");
     }
     claudeCliEnv[QA_LIVE_CLI_BACKEND_AUTH_MODE_ENV] = authMode;
-    claudeCliEnv[QA_LIVE_CLI_BACKEND_PRESERVE_ENV] = JSON.stringify(uniqueStrings(values));
+    claudeCliEnv[QA_LIVE_CLI_BACKEND_PRESERVE_ENV] = JSON.stringify([...values]);
   }
   const configuredCodexHome = baseEnv.CODEX_HOME?.trim();
   const hostHome = baseEnv.HOME?.trim();
