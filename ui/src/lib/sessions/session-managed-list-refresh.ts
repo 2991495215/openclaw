@@ -22,9 +22,9 @@ import type {
 } from "./session-list-query.ts";
 import { sessionListReadNeedsEventRefresh } from "./session-list-query.ts";
 import {
+  managedSessionListQueryKey,
   normalizeManagedSessionListQuery,
   requestSessionListParams,
-  sessionListQueryKey,
 } from "./session-requests.ts";
 import type { createSessionRosterObservations } from "./session-roster-observations.ts";
 
@@ -37,12 +37,12 @@ export function getManagedSessionList(
     immediate: boolean,
   ) => Promise<void>,
 ): ManagedSessionList {
-  const key = sessionListQueryKey(scope);
+  const query = normalizeManagedSessionListQuery(scope);
+  const key = managedSessionListQueryKey(query);
   const current = lists.get(key);
   if (current) {
     return current;
   }
-  const query = normalizeManagedSessionListQuery(scope);
   const entry: ManagedSessionList = {
     key,
     query,

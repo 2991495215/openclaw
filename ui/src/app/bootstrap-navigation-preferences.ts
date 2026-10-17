@@ -35,10 +35,10 @@ export function createApplicationNavigationPreferences(
         persisted.navWidth = patch.navWidth;
       }
       if (patch.sidebarEntries !== undefined) {
-        persisted.sidebarEntries = [...patch.sidebarEntries];
+        persisted.sidebarEntries = patch.sidebarEntries;
       }
       if (patch.pinnedAgentIds !== undefined) {
-        persisted.pinnedAgentIds = [...patch.pinnedAgentIds];
+        persisted.pinnedAgentIds = patch.pinnedAgentIds;
       }
       if (Object.keys(persisted).length > 0) {
         patchSettings(persisted);

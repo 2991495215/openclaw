@@ -32,7 +32,7 @@ export function createPortals(
 ) {
   // Selection and pending facts are synchronous admission state; Solid only projects them.
   const state: {
-    portals: PortalSummary[];
+    portals: readonly PortalSummary[];
     selectedPortalId: string | null;
     loading: boolean;
     loaded: boolean;
@@ -260,7 +260,7 @@ export function createPortals(
   }
 
   function applyPortalSet(portals: readonly PortalSummary[]) {
-    state.portals = [...portals];
+    state.portals = portals;
     const previousPortalId = state.selectedPortalId;
     const selectedPortalId = state.pendingEnvironmentId
       ? null

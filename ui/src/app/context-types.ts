@@ -79,7 +79,11 @@ export type ApplicationNavigationPreferencesSnapshot = {
 
 export type ApplicationNavigationPreferences = {
   readonly snapshot: ApplicationNavigationPreferencesSnapshot;
-  update: (patch: Partial<ApplicationNavigationPreferencesSnapshot>) => void;
+  update: (
+    patch: Partial<
+      Pick<UiPreferences, "navCollapsed" | "navWidth" | "sidebarEntries" | "pinnedAgentIds">
+    >,
+  ) => void;
   subscribe: (listener: (snapshot: ApplicationNavigationPreferencesSnapshot) => void) => () => void;
 };
 

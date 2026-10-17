@@ -376,11 +376,14 @@ export class SubagentsPanelData {
           for (const [id, item] of metrics.calls) {
             if (snapshot.calls.get(id)?.phase !== "end" || item.phase === "end") {
               const prepared = metrics.preparedCalls.has(id);
-              const update = readSubagentToolEvent(
-                prepared ? "item" : "tool",
-                prepared ? item : { ...item, phase: item.phase === "end" ? "result" : item.phase },
-                snapshot.calls.get(id),
-              );
+              const previous = snapshot.calls.get(id);
+              const update = prepared
+                ? (item.suppressChannelProgress && previous) || item
+                : readSubagentToolEvent(
+                    "tool",
+                    { ...item, phase: item.phase === "end" ? "result" : item.phase },
+                    previous,
+                  );
               if (update) {
                 snapshot.calls.set(id, update);
               }

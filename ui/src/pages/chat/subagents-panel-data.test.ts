@@ -444,6 +444,67 @@ describe("Subagents panel data ownership", () => {
     expect(f.data.rows[0]?.callCount).toEqual({ count: 2, exact: true });
   });
 
+  it.each([false, true])(
+    "merges a prepared completion received during history loading (suppressed=%s)",
+    async (suppressChannelProgress) => {
+      const row = child("pending-history", {
+        status: "running",
+        hasActiveRun: true,
+        activeRunIds: ["run-1"],
+      });
+      const pending = createDeferred<ChatHistoryResult>();
+      const started = createDeferred();
+      const recorded = {
+        itemId: "exec-item",
+        toolCallId: "exec-call",
+        kind: "tool",
+        name: "exec",
+        phase: "end",
+        status: "completed",
+        title: "Exec Recorded completion",
+        meta: "Recorded completion",
+      };
+      const result = {
+        ...history(row),
+        messages: [{ role: "assistant", runId: "run-1", content: [], activity: [recorded] }],
+        totalMessages: 1,
+      };
+      const original = structuredClone(result);
+      const f = fixture((method, params) => {
+        if (method === "sessions.list") {
+          return page(params.spawnedBy ? [row] : []);
+        }
+        if (method === "chat.history") {
+          started.resolve();
+          return pending.promise;
+        }
+        throw new Error(`Unexpected method: ${method}`);
+      });
+      onTestFinished(() => pending.resolve(result));
+      f.open();
+      await started.promise;
+      f.connection.publishEvent("agent", {
+        sessionKey: row.key,
+        agentId: "worker",
+        runId: "run-1",
+        stream: "item",
+        data: {
+          ...recorded,
+          title: "Exec Live completion",
+          meta: "Live completion",
+          suppressChannelProgress,
+        },
+      });
+      pending.resolve(result);
+      await f.when(() => f.data.rows[0]?.callCount?.exact === true);
+      expect(f.data.rows[0]?.callCount).toEqual({ count: 1, exact: true });
+      expect(f.data.rows[0]?.activity).toBe(
+        suppressChannelProgress ? "Recorded completion" : "Live completion",
+      );
+      expect(result).toEqual(original);
+    },
+  );
+
   it("ignores unrelated deltas without skipping lifecycle activity cleanup", async () => {
     let row = child("streams", { status: "running", hasActiveRun: true, activeRunIds: ["run-1"] });
     const f = fixture((method, params) => {

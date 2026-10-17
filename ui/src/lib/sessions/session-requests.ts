@@ -164,7 +164,13 @@ export function normalizeManagedSessionListQuery(
 }
 
 export function sessionListQueryKey(options: SessionListOptions): string {
-  const { source: _source, ...query } = normalizeManagedSessionListQuery(options);
+  return managedSessionListQueryKey(normalizeManagedSessionListQuery(options));
+}
+
+export function managedSessionListQueryKey(
+  prepared: ReturnType<typeof normalizeManagedSessionListQuery>,
+): string {
+  const { source: _source, ...query } = prepared;
   return JSON.stringify(query);
 }
 

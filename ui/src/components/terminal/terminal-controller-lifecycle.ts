@@ -1,4 +1,5 @@
 import type { GhosttyTerminalController } from "@openclaw/libterminal/browser";
+import { activeElementFor } from "../../lib/navigation-click.ts";
 
 type TerminalControllerSlot = {
   controller: GhosttyTerminalController;
@@ -11,13 +12,6 @@ type TerminalControllerFactory = (
 ) => Promise<GhosttyTerminalController>;
 
 const terminalOutputEncoder = new TextEncoder();
-
-function activeElementFor(host: HTMLElement): Element | null {
-  const root = host.getRootNode();
-  return root instanceof ShadowRoot
-    ? (root.activeElement ?? document.activeElement)
-    : document.activeElement;
-}
 
 function focusIfConnected(target: Element | null): void {
   if (target instanceof HTMLElement && target.isConnected) {

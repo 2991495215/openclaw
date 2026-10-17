@@ -1,5 +1,5 @@
 import { onSettled } from "solid-js";
-import { composedParent } from "../lib/navigation-click.ts";
+import { composedAncestors, composedParent } from "../lib/navigation-click.ts";
 import { listen } from "../lib/reactive/listener.ts";
 import { promoteToPopoverTopLayer } from "./menu-surface.ts";
 import { resolveTransientContainer } from "./transient-container.ts";
@@ -244,26 +244,11 @@ export class PortaledHovercardController {
     this.observePresentation();
   }
 
-  private presentationAncestors(): Node[] {
-    const ancestors: Node[] = [];
-    let node: Node | null = this.trigger;
-    while (node) {
-      ancestors.push(node);
-      node =
-        node instanceof Element && node.assignedSlot
-          ? node.assignedSlot
-          : node instanceof ShadowRoot
-            ? node.host
-            : node.parentNode;
-    }
-    return ancestors;
-  }
-
   private checkPresentation(): boolean {
     if (
       this.trigger &&
       (!this.trigger.isConnected ||
-        this.presentationAncestors().some(
+        composedAncestors(this.trigger).some(
           (node) =>
             node instanceof Element &&
             (node.hasAttribute("inert") ||
@@ -278,7 +263,7 @@ export class PortaledHovercardController {
   }
 
   private observePresentation(): void {
-    const ancestors = this.presentationAncestors();
+    const ancestors = composedAncestors(this.trigger);
     if (
       ancestors.length === this.triggerAncestors.length &&
       ancestors.every((node, index) => node === this.triggerAncestors[index])
