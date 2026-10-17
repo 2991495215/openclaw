@@ -1,4 +1,5 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { isStringWithinCodePointLimit } from "@openclaw/normalization-core/string-coerce";
 
 export const CLAWHUB_RECOMMENDATION_LIMIT = 3;
 export const CLAWHUB_RECOMMENDATIONS_CHANNEL_DATA_KEY = "openclawClawHubRecommendations";
@@ -31,16 +32,8 @@ const skillKeys = new Set([...sharedKeys, "registry", "skillRef"]);
 const skillReference =
   /^@[a-z0-9](?:[a-z0-9._-]{0,38}[a-z0-9])?\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
 
-function boundedText(value: unknown, max: number, min = 0): value is string {
-  return (
-    typeof value === "string" &&
-    value.length >= min &&
-    (value.length <= max || Array.from(value).length <= max)
-  );
-}
-
 function optionalText(value: unknown, max: number): value is string | undefined {
-  return value === undefined || boundedText(value, max);
+  return value === undefined || isStringWithinCodePointLimit(value, max);
 }
 
 function readUrl(value: unknown): string | undefined {
@@ -49,14 +42,17 @@ function readUrl(value: unknown): string | undefined {
   }
   // Match the wire reader's URL normalization before applying its length limit.
   const normalized = value.trim().replace(/[\t\n\r]/g, "");
-  return URL.canParse(normalized) && boundedText(normalized, 2048) ? normalized : undefined;
+  return URL.canParse(normalized) && isStringWithinCodePointLimit(normalized, 2048)
+    ? normalized
+    : undefined;
 }
 
 export function readClawHubRecommendation(value: unknown): ClawHubRecommendation | undefined {
   if (
     !isRecord(value) ||
     value.type !== "clawhub" ||
-    !boundedText(value.name, 120, 1) ||
+    !isStringWithinCodePointLimit(value.name, 120) ||
+    value.name.length === 0 ||
     !optionalText(value.description, 240) ||
     typeof value.installed !== "boolean" ||
     value.official !== true
@@ -75,7 +71,7 @@ export function readClawHubRecommendation(value: unknown): ClawHubRecommendation
   }
   if (value.kind === "plugin") {
     if (
-      !boundedText(value.id, 512) ||
+      !isStringWithinCodePointLimit(value.id, 512) ||
       !/^ch_[A-Za-z0-9_-]+$/.test(value.id) ||
       !optionalText(value.pluginId, 256)
     ) {
@@ -95,7 +91,7 @@ export function readClawHubRecommendation(value: unknown): ClawHubRecommendation
   }
   if (
     value.kind !== "skill" ||
-    !boundedText(value.id, 256) ||
+    !isStringWithinCodePointLimit(value.id, 256) ||
     !skillReference.test(value.id) ||
     value.skillRef !== value.id
   ) {
