@@ -216,9 +216,9 @@ async function main() {
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.once(signal, () => cancellation.abort());
   }
-  async function executeIsolated(args, options = {}, mode, files) {
+  async function executeIsolated(args, { mode, files, ...options } = {}) {
     const name = "compiler-comparison-" + process.pid + "-" + containerSequence++;
-    let result;
+    let result, failure;
     try {
       result = await new Promise((resolve) => {
         const child = spawn("docker", [...sandbox(mode, name), ...args], {
@@ -251,26 +251,30 @@ async function main() {
           resolve({ status, signal, error, ...output.finish() }),
         );
       });
-      return result;
-    } finally {
-      // Join the exact container after timeout/cancellation; terminating its client
-      // alone leaves the compiler running and invalidates subsequent measurements.
-      if (!result || result.error || result.signal || result.status > 2) {
-        const cleanup = spawnSync("docker", ["rm", "--force", name], {
-          encoding: "utf8",
-          timeout: 30000,
-        });
-        if (
-          cleanup.error ||
-          (cleanup.status !== 0 && !cleanup.stderr.includes("No such container"))
-        ) {
-          throw new Error("Failed to join task-owned container " + name);
-        }
+    } catch (error) {
+      failure = error;
+    }
+    // Join the exact container after timeout/cancellation; terminating its client
+    // alone leaves the compiler running and invalidates subsequent measurements.
+    if (!result || result.error || result.signal || result.status > 2) {
+      const cleanup = spawnSync("docker", ["rm", "--force", name], {
+        encoding: "utf8",
+        timeout: 30000,
+      });
+      if (
+        cleanup.error ||
+        (cleanup.status !== 0 && !cleanup.stderr.includes("No such container"))
+      ) {
+        throw new Error("Failed to join task-owned container " + name);
       }
     }
+    if (!result) {
+      throw failure;
+    }
+    return result;
   }
-  async function isolatedOutput(args, options = {}, mode) {
-    const result = await executeIsolated(args, options, mode);
+  async function isolatedOutput(args, options = {}) {
+    const result = await executeIsolated(args, options);
     if (result.error || result.status !== 0) {
       throw new Error("Isolation: " + (result.error?.message ?? result.stderr ?? result.status));
     }
@@ -322,7 +326,7 @@ async function main() {
     libraryManifest: fs
       .readdirSync(libraries)
       .filter((name) => name.startsWith("lib.") && name.endsWith(".d.ts"))
-      .sort()
+      .toSorted()
       .map((name) => ({ name, sha256: hash(fs.readFileSync(path.join(libraries, name))) })),
     repeats,
     group,
@@ -371,9 +375,12 @@ async function main() {
           binaries[compiler],
           ...flags(graph, mode),
         ],
-        { timeout: 600000, killSignal: "SIGKILL" },
-        mode,
-        { stdout: stdoutFd, stderr: stderrFd },
+        {
+          timeout: 600000,
+          killSignal: "SIGKILL",
+          mode,
+          files: { stdout: stdoutFd, stderr: stderrFd },
+        },
       );
     } finally {
       fs.closeSync(stdoutFd);
@@ -424,11 +431,9 @@ async function main() {
         ["files", "--listFilesOnly"],
       ]) {
         const output = normalize(
-          await isolatedOutput(
-            [binaries[compiler], ...flags(graph, "incremental-cold"), option],
-            {},
-            "incremental-cold",
-          ),
+          await isolatedOutput([binaries[compiler], ...flags(graph, "incremental-cold"), option], {
+            mode: "incremental-cold",
+          }),
         );
         fs.writeFileSync(
           path.join(directory, graph.name + "-" + compiler + "-" + label + ".txt"),
@@ -467,8 +472,10 @@ async function main() {
       " canonical graphs. Run audit-compiler-comparison.mts before interpreting timings.",
   );
 }
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   console.error("[compiler-comparison] FAILED (exit 1)");
   process.exitCode = 1;
-});
+}
