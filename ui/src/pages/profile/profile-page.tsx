@@ -283,9 +283,6 @@ class ProfileState {
         this.publish();
       }
     }
-    if (isCurrent()) {
-      void this.loadIdentity();
-    }
   }
 
   refreshManually() {

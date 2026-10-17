@@ -567,21 +567,25 @@ it.each([
   await waitForFast(() => expect(nameInput()?.disabled).toBe(false));
   expect(nameInput()?.value).toBe("Current draft");
   expect(harness.context.gateway.snapshot.selfUser?.avatarUrl).toContain("?v=current");
-  expect(request.mock.calls.filter(([method]) => method === "users.self")).toHaveLength(3);
+  expect(request.mock.calls.filter(([method]) => method === "users.self")).toHaveLength(2);
 });
 
-it("bootstraps and refreshes the connected user's profile through users.self", async () => {
+it("uses identity save receipts without rereading and keeps manual profile refresh", async () => {
   let avatarRevision = "avatar-content-hash-png";
   let publishAvatarPresence: (() => void) | undefined;
+  let allowIdentityRead = true;
   let profile: UserProfile = {
     ...modelAccountProfile,
     emails: ["ada@example.test", "ada@work.test"],
   };
   const request = vi.fn(async (method: string, params?: unknown) => {
     if (method === "users.prefs.get") {
-      return { status: "ok", entries: {} };
+      return { status: "ok", entries: { [GIT_COAUTHOR_PREFERENCE_KEY]: false } };
     }
     if (method === "users.self") {
+      if (!allowIdentityRead) {
+        throw new Error("Identity save must use its receipt");
+      }
       return { profile };
     }
     if (method === "users.listModelAccounts") {
@@ -631,6 +635,9 @@ it("bootstraps and refreshes the connected user's profile through users.self", a
 
   const input = page.querySelector<HTMLInputElement>('.identity-name-control input[type="text"]');
   await waitForFast(() => expect(input?.disabled).toBe(false));
+  const coauthorToggle = page.querySelector<HTMLInputElement>("input.settings-toggle__input")!;
+  expect(coauthorToggle.checked).toBe(false);
+  allowIdentityRead = false;
   input!.value = "Augusta Ada";
   input!.dispatchEvent(new Event("input", { bubbles: true }));
   flush();
@@ -639,14 +646,15 @@ it("bootstraps and refreshes the connected user's profile through users.self", a
   await waitForFast(() =>
     expect(request.mock.calls.some(([method]) => method === "users.setDisplayName")).toBe(true),
   );
-  await waitForFast(() =>
-    expect(request.mock.calls.filter(([method]) => method === "users.self")).toHaveLength(2),
-  );
+  await waitForFast(() => expect(input?.disabled).toBe(false));
+  expect(request.mock.calls.filter(([method]) => method === "users.self")).toHaveLength(1);
   flush();
   expect(page.querySelector<HTMLInputElement>(".identity-name-control input")?.value).toBe(
     "Augusta Ada",
   );
   expect(harness.context.gateway.snapshot.selfUser?.name).toBe("Augusta Ada");
+  expect(page.querySelector(".identity-error")).toBeNull();
+  expect(coauthorToggle.checked).toBe(false);
 
   const displayNameInput = page.querySelector<HTMLInputElement>(".identity-name-control input")!;
   await waitForFast(() => expect(displayNameInput.disabled).toBe(false));
@@ -661,9 +669,8 @@ it("bootstraps and refreshes the connected user's profile through users.self", a
   await waitForFast(() =>
     expect(request.mock.calls.some(([method]) => method === "users.setAvatar")).toBe(true),
   );
-  await waitForFast(() =>
-    expect(request.mock.calls.filter(([method]) => method === "users.self")).toHaveLength(3),
-  );
+  await waitForFast(() => expect(displayNameInput.disabled).toBe(false));
+  expect(request.mock.calls.filter(([method]) => method === "users.self")).toHaveLength(1);
   flush();
   expect(harness.context.gateway.snapshot.selfUser?.avatarUrl).toContain(
     `/api/users/profile-1/avatar?v=${avatarRevision}`,
@@ -678,6 +685,8 @@ it("bootstraps and refreshes the connected user's profile through users.self", a
   expect(page.querySelector<HTMLInputElement>(".identity-name-control input")?.value).toBe(
     "Unsaved draft",
   );
+  expect(page.querySelector(".identity-error")).toBeNull();
+  expect(coauthorToggle.checked).toBe(false);
 
   const avatarRequestCount = request.mock.calls.filter(
     ([method]) => method === "users.setAvatar",
@@ -707,6 +716,11 @@ it("bootstraps and refreshes the connected user's profile through users.self", a
   );
 
   await waitForFast(() => expect(displayNameInput.disabled).toBe(false));
+  expect(request.mock.calls.filter(([method]) => method === "users.self")).toHaveLength(1);
+  expect(page.querySelector(".identity-error")).toBeNull();
+  expect(displayNameInput.value).toBe("Unsaved draft");
+  expect(coauthorToggle.checked).toBe(false);
+  allowIdentityRead = true;
   request.mockClear();
   page.querySelector<HTMLButtonElement>(".profile-refresh")?.click();
   await waitForFast(() =>
