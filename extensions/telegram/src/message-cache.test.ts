@@ -3,7 +3,6 @@ import { createPluginRuntimeMock } from "openclaw/plugin-sdk/channel-test-helper
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 import {
   createPluginStateKeyedStoreForTests,
-  createPluginStateKeyedStoreV2ForTests,
   importPluginStateEntriesForDoctorForTests,
   resetPluginStateStoreForTests,
 } from "openclaw/plugin-sdk/plugin-state-test-runtime";
@@ -97,18 +96,15 @@ describe("telegram message cache", () => {
 
   beforeEach(async () => {
     state = await createOpenClawTestState({ prefix: "telegram-cache-", layout: "state-only" });
-    const openKeyedStore: TelegramRuntime["state"]["openKeyedStoreV2"] = <T>(
+    const openKeyedStore: TelegramRuntime["state"]["openKeyedStore"] = <T>(
       options: Parameters<TelegramRuntime["state"]["openKeyedStore"]>[0],
     ) => {
-      return createPluginStateKeyedStoreV2ForTests<T>(
-        "telegram",
-        { ...options, env: state.env },
-        { assertCurrent() {} },
-      );
+      return createPluginStateKeyedStoreForTests<T>("telegram", {
+        ...options,
+        env: state.env,
+      });
     };
-    setTelegramRuntime(
-      createPluginRuntimeMock({ state: { openKeyedStore, openKeyedStoreV2: openKeyedStore } }),
-    );
+    setTelegramRuntime(createPluginRuntimeMock({ state: { openKeyedStore } }));
     store = createPluginStateKeyedStoreForTests("telegram", {
       namespace: TELEGRAM_MESSAGE_CACHE_PERSISTENT_NAMESPACE,
       maxEntries: TELEGRAM_MESSAGE_CACHE_PERSISTENT_MAX_MESSAGES,

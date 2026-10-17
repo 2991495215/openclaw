@@ -10,7 +10,6 @@ import type { OpenAsyncKeyedStoreOptions } from "openclaw/plugin-sdk/plugin-stat
 import {
   createChannelIngressQueueForTests,
   createPluginStateKeyedStoreForTests,
-  createPluginStateKeyedStoreV2ForTests,
   resetPluginStateStoreForTests,
 } from "openclaw/plugin-sdk/plugin-state-test-runtime";
 import type { MsgContext } from "openclaw/plugin-sdk/reply-runtime";
@@ -87,8 +86,6 @@ it.each(["none", "middleware", "handler"] as const)(
           ) => createChannelIngressQueueForTests({ ...options, channelId: "telegram" }),
           openKeyedStore: <T>(options: OpenAsyncKeyedStoreOptions) =>
             createPluginStateKeyedStoreForTests<T>("telegram", options),
-          openKeyedStoreV2: <T>(options: OpenAsyncKeyedStoreOptions) =>
-            createPluginStateKeyedStoreV2ForTests<T>("telegram", options, { assertCurrent() {} }),
         },
       }),
     );

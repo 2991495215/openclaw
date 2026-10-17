@@ -74,11 +74,22 @@ export function formatPendingRequests(pending: PendingPairingRequest[]): string 
   return lines.join("\n");
 }
 
-function openNotifySubscriberStore(api: OpenClawPluginApi) {
-  return api.runtime.state.openKeyedStoreV2<NotifySubscription>({
+type NotifySubscriberStore = PluginStateKeyedStore<NotifySubscription> & {
+  observe: NonNullable<PluginStateKeyedStore<NotifySubscription>["observe"]>;
+  compareAndApply: NonNullable<PluginStateKeyedStore<NotifySubscription>["compareAndApply"]>;
+};
+
+function openNotifySubscriberStore(api: OpenClawPluginApi): NotifySubscriberStore {
+  const store = api.runtime.state.openKeyedStore<NotifySubscription>({
     namespace: DEVICE_PAIR_NOTIFY_SUBSCRIBER_NAMESPACE,
     maxEntries: DEVICE_PAIR_NOTIFY_SUBSCRIBER_MAX_ENTRIES,
   });
+  if (!store.observe || !store.compareAndApply) {
+    throw new Error(
+      "device-pair notify requires a runtime with atomic plugin state compare-and-apply support",
+    );
+  }
+  return store as NotifySubscriberStore;
 }
 
 function openNotifySeenRequestStore(
@@ -368,7 +379,9 @@ export async function handleNotifyCommand(params: {
   if (params.action === "status" || params.action === "") {
     const [current, subscriberCount, pending] = await Promise.all([
       subscriberStore.lookup(targetStoreKey),
-      subscriberStore.count(),
+      subscriberStore.count
+        ? subscriberStore.count()
+        : subscriberStore.entries().then((entries) => entries.length),
       listDevicePairing(),
     ]);
     const enabled = Boolean(current);

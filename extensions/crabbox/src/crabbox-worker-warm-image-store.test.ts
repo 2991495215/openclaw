@@ -43,12 +43,12 @@ function recordAllocation(availableImage?: typeof image) {
 }
 
 function observeComparisons(before: () => void | Promise<void>, after?: () => void) {
-  const open = crabboxState.openKeyedStoreV2;
+  const open = crabboxState.openKeyedStore;
   let attempts = 0;
-  vi.spyOn(crabboxState, "openKeyedStoreV2").mockImplementation(
+  vi.spyOn(crabboxState, "openKeyedStore").mockImplementation(
     <T>(options: OpenAsyncKeyedStoreOptions) => {
       const store = open<T>(options);
-      const compareAndApply = store.compareAndApply;
+      const compareAndApply = store.compareAndApply!;
       return {
         ...store,
         compareAndApply: async (...args: Parameters<typeof compareAndApply>) => {

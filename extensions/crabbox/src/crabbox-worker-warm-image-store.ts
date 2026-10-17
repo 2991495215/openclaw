@@ -18,7 +18,7 @@ import {
   WARM_IMAGE_MAX_ENTRIES,
 } from "./crabbox-worker-warm-image-records.js";
 
-export type CrabboxState = Pick<OpenClawPluginApi["runtime"]["state"], "openKeyedStoreV2">;
+export type CrabboxState = Pick<OpenClawPluginApi["runtime"]["state"], "openKeyedStore">;
 
 type WorkerNodeRuntimeIdentity = NonNullable<
   NonNullable<Parameters<WorkerProvider["provision"]>[2]>["nodeRuntimeIdentity"]
@@ -101,7 +101,7 @@ const WARM_IMAGE_MAX_ALLOCATIONS = 256;
 const CAPTURE_WARNING_AGE_MS = 1_200_000;
 
 const openLegacyLeases = (state: CrabboxState, env?: NodeJS.ProcessEnv) =>
-  state.openKeyedStoreV2<unknown>({
+  state.openKeyedStore<unknown>({
     namespace: "warm-leases",
     maxEntries: LEGACY_WARM_LEASE_MAX_ENTRIES,
     overflowPolicy: "evict-oldest",
@@ -113,7 +113,7 @@ export async function listCrabboxLegacyWarmLeases(state: CrabboxState, env?: Nod
 
 export async function assertCrabboxWarmImageMigrationReady(state: CrabboxState): Promise<void> {
   const leases = openLegacyLeases(state);
-  if ((await leases.count()) > 0) {
+  if ((leases.count ? await leases.count() : (await leases.entries()).length) > 0) {
     throw new Error(
       "Crabbox has legacy worker allocations whose original image choices are unknown; run openclaw doctor --fix and follow its provider-cleanup recovery instructions before provisioning workers.",
     );
@@ -325,10 +325,13 @@ export function withCrabboxWarmImageDisplayFacts(
 }
 
 async function compareProfile<T>(
-  store: PluginStateKeyedStore<T, 2>,
+  store: PluginStateKeyedStore<T>,
   key: string,
   prepare: (current: T | undefined) => PluginStateCompareIntent<T>,
 ): Promise<boolean> {
+  if (!store.observe || !store.compareAndApply) {
+    throw new Error("Crabbox warm images require atomic asynchronous plugin state support.");
+  }
   let observation = await store.observe(key);
   for (;;) {
     const result = await store.compareAndApply(
@@ -345,14 +348,14 @@ async function compareProfile<T>(
 }
 
 export function openCrabboxWarmImageStore(state: CrabboxState, env?: NodeJS.ProcessEnv) {
-  const store = state.openKeyedStoreV2<WarmProfileRecord>({
+  const store = state.openKeyedStore<WarmProfileRecord>({
     namespace: "warm-images",
     maxEntries: WARM_IMAGE_MAX_ENTRIES,
     overflowPolicy: "reject-new",
     ...(env ? { env } : {}),
   });
   const canonical = {
-    count: () => store.count(),
+    count: () => (store.count ? store.count() : store.entries().then((entries) => entries.length)),
     deleteIf(key: string, predicate: (current: WarmProfileRecord) => boolean) {
       return compareProfile(store, key, (current) => ({
         operation: "delete",

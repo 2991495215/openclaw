@@ -4,7 +4,6 @@ import { createPluginRuntimeMock } from "openclaw/plugin-sdk/channel-test-helper
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
   createPluginStateKeyedStoreForTests,
-  createPluginStateKeyedStoreV2ForTests,
   resetPluginStateStoreForTests,
 } from "openclaw/plugin-sdk/plugin-state-test-runtime";
 import {
@@ -157,8 +156,6 @@ function installTopicNameRuntimeForTest(): void {
           "telegram",
           options,
         )) as TelegramRuntime["state"]["openKeyedStore"],
-      openKeyedStoreV2: <T>(options: Parameters<TelegramRuntime["state"]["openKeyedStoreV2"]>[0]) =>
-        createPluginStateKeyedStoreV2ForTests<T>("telegram", options, { assertCurrent() {} }),
     },
     channel: { inbound: { ingress: createPluginRuntimeMock().channel.inbound.ingress } },
   } as TelegramRuntime);

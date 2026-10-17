@@ -5,7 +5,7 @@ import type { OpenClawConfig, TelegramAccountConfig } from "openclaw/plugin-sdk/
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 import {
   closeOpenClawStateDatabaseForTest,
-  createPluginStateKeyedStoreV2ForTests,
+  createPluginStateKeyedStoreForTests,
   executeSqliteQuerySync,
   getNodeSqliteKysely,
   openOpenClawStateDatabase,
@@ -236,14 +236,13 @@ describe("automatic Telegram retained history workload", () => {
 
   beforeEach(() => {
     reads = { pages: 0, rows: 0, lookups: 0, fullReads: 0 };
-    const openKeyedStore: TelegramRuntime["state"]["openKeyedStoreV2"] = <T>(
+    const openKeyedStore: TelegramRuntime["state"]["openKeyedStore"] = <T>(
       options: Parameters<TelegramRuntime["state"]["openKeyedStore"]>[0],
-    ): PluginStateKeyedStore<T, 2> => {
-      const store = createPluginStateKeyedStoreV2ForTests<T>(
-        "telegram",
-        { ...options, env: state.env },
-        { assertCurrent() {} },
-      );
+    ): PluginStateKeyedStore<T> => {
+      const store = createPluginStateKeyedStoreForTests<T>("telegram", {
+        ...options,
+        env: state.env,
+      });
       return {
         ...store,
         async entries() {
@@ -262,9 +261,7 @@ describe("automatic Telegram retained history workload", () => {
         },
       };
     };
-    setTelegramRuntime(
-      createPluginRuntimeMock({ state: { openKeyedStore, openKeyedStoreV2: openKeyedStore } }),
-    );
+    setTelegramRuntime(createPluginRuntimeMock({ state: { openKeyedStore } }));
   });
 
   afterEach(() => {
