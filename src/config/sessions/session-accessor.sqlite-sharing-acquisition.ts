@@ -3,6 +3,7 @@ import type {
   SessionEntryPlaceholder,
   SessionSharingEntry,
 } from "./session-accessor.sqlite-entry-cache.types.js";
+import type { SessionGenerationEntry } from "./session-delivery-generation.types.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
 export type PreparedSessionEntryPredicate = {
@@ -33,13 +34,7 @@ export type PreparedSessionSharingRead = {
   acquisition?: SessionSharingAcquisition;
   generation?: {
     initiallyAbsent?: true;
-    current:
-      | Pick<
-          SessionSharingEntry,
-          "sessionId" | "lifecycleRevision" | "permissionMode" | "toolOverrides"
-        >
-      | null
-      | undefined;
+    current: SessionGenerationEntry | null | undefined;
   };
 };
 

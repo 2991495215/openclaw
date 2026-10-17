@@ -77,17 +77,17 @@ export function captureWorkspaceStateReceipt<T>(db: EngineConnection, run: () =>
   return result;
 }
 
-export function workspaceStateReceiptResult(facts: unknown): unknown {
+export function readWorkspaceStateReceipt(facts: unknown): Record<string, unknown> {
   if (!isRecord(facts) || facts.kind !== "workspace-state") {
     throw new Error("Workspace state has no committed receipt");
   }
-  return facts.result;
+  return facts;
 }
 
 export function withWorkspaceStatePublication(
   context: OpenClawStateWorkerContext,
   createAdmission: SqliteWorkerAdmissionFactory,
-  onCommitted?: (facts: unknown) => void,
+  onCommitted?: (facts: Record<string, unknown>) => void,
 ): SqliteWorkerAdmissionFactory {
   return (operation) => {
     const accepted = createAdmission(operation);
@@ -98,11 +98,9 @@ export function withWorkspaceStatePublication(
       assertCurrent: context.assertPublicationCurrent ?? context.admission.assertCurrent,
     });
     observeSqliteWorkerCommittedFacts(accepted.admission, ({ facts }) => {
-      workspaceStateReceiptResult(facts);
-      if (isRecord(facts)) {
-        publication.committed(facts.receipt);
-      }
-      onCommitted?.(facts);
+      const committed = readWorkspaceStateReceipt(facts);
+      publication.committed(committed.receipt);
+      onCommitted?.(committed);
     });
     void operation.settled.then((settlement) =>
       publication.finish(settlement.kind === "completed"),

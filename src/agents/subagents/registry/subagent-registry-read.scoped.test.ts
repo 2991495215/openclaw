@@ -10,6 +10,7 @@ import {
 } from "./subagent-registry-queries.js";
 import type { SubagentRunReadRecord } from "./subagent-registry-read.types.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
+import { copySubagentRunRuntimeOwner } from "./subagent-run-generation.js";
 import { SubagentSessionReadLookup } from "./subagent-session-read-scope.js";
 
 const mocks = vi.hoisted(() => {
@@ -39,6 +40,11 @@ const mocks = vi.hoisted(() => {
 
 // mock-isolation: Scoped reads use fixture rows without initializing the live registry owner.
 vi.mock("./subagent-registry-memory.js", () => ({
+  copySubagentRunSessionListOwner: (entry: SubagentRunRecord) =>
+    copySubagentRunRuntimeOwner(
+      entry,
+      Object.freeze({ ...projectSubagentRunForSessionList(entry) }),
+    ),
   getSubagentRunsForChildSession: mocks.getSubagentRunsForChildSession,
   getSubagentSessionReadLookup: (runs: ReadonlyMap<string, SubagentRunRecord>) =>
     new SubagentSessionReadLookup(runs),

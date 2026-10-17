@@ -615,13 +615,13 @@ export class SettingsManager {
     this.setScopedSettings("global", { doubleEscapeAction: action });
   }
 
-  getTreeFilterMode(): "default" | "no-tools" | "user-only" | "labeled-only" | "all" {
+  getTreeFilterMode(): NonNullable<Settings["treeFilterMode"]> {
     const mode = this.settings.treeFilterMode;
     const valid = ["default", "no-tools", "user-only", "labeled-only", "all"];
     return mode && valid.includes(mode) ? mode : "default";
   }
 
-  setTreeFilterMode(mode: "default" | "no-tools" | "user-only" | "labeled-only" | "all"): void {
+  setTreeFilterMode(mode: NonNullable<Settings["treeFilterMode"]>): void {
     this.setScopedSettings("global", { treeFilterMode: mode });
   }
 

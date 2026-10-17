@@ -2,6 +2,7 @@ import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { asFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import { Type, type Static } from "typebox";
+import { stringLiteralUnion } from "../../../packages/gateway-protocol/src/schema/string-literal-union.js";
 import { tryResolveLegacyCompatibilityAgentId } from "../../config/legacy.default-agent-owner.js";
 import { resolvePersistedSessionStoreOwnerForKey } from "../../config/sessions/session-store-owner.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -9,6 +10,7 @@ import { createAbortError } from "../../infra/abort-signal.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { resolveSubagentCompletionResultText } from "../subagents/completion/subagent-completion-result.js";
 import { subscribeSubagentRunChanges } from "../subagents/registry/subagent-registry-publication.js";
+import { SWARM_COLLECTOR_STATUSES } from "../subagents/registry/subagent-registry-read.types.js";
 import { prepareSubagentRunsByRunIds } from "../subagents/registry/subagent-registry.js";
 import type { SubagentRunRecord } from "../subagents/registry/subagent-registry.types.js";
 import { markCollectorReaderTool } from "../subagents/swarm/swarm-collector-capability.js";
@@ -33,12 +35,7 @@ const AgentsWaitToolSchema = Type.Object({
 const CollectorCompletionSchema = Type.Object(
   {
     runId: Type.String(),
-    status: Type.Union([
-      Type.Literal("done"),
-      Type.Literal("failed"),
-      Type.Literal("killed"),
-      Type.Literal("timeout"),
-    ]),
+    status: stringLiteralUnion(SWARM_COLLECTOR_STATUSES),
     result: Type.String(),
     structured: Type.Optional(Type.Unknown()),
     error: Type.Optional(Type.String()),

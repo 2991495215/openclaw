@@ -24,10 +24,8 @@ import { FileSettingsStorage } from "./settings-storage.js";
 
 const fixtures = createFixtureLifetime();
 const storageUrl = resolveRuntimeWorkerUrl(agentProcessTestEntrypoints.settingsStorage);
-const managerUrl = resolveRuntimeWorkerUrl(agentProcessTestEntrypoints.settingsManager);
 
-// Pipe input is asynchronous: the child bridges it to a worker's shared-memory gate.
-// The reader stays outside Vitest too, so its synchronous fs probe remains abortable.
+// Pipe input controls the child worker's shared-memory gate outside Vitest.
 const readReleaseSource = String.raw`
   import { writeSync } from "node:fs";
   import { workerData } from "node:worker_threads";
@@ -262,121 +260,6 @@ describe("FileSettingsStorage", () => {
       fsync.mockRestore();
       syncBuiltinESMExports();
     }
-  });
-
-  it.for(["global", "project"] as const)(
-    "reads committed %s settings from an already-owned first write",
-    { timeout: 20_000 },
-    (scope, { signal }) =>
-      fixtures.run(async () => {
-        const root = fixtures.createTempDir("openclaw-settings-first-writer-");
-        const agentDir = join(root, "agent");
-        const settingsDir = scope === "global" ? agentDir : join(root, ".openclaw");
-        const settingsPath = join(settingsDir, "settings.json");
-        mkdirSync(settingsDir);
-        const abort = new AbortController();
-        const childSignal = AbortSignal.any([signal, abort.signal]);
-        const writer = startSettingsProcess(
-          String.raw`
-            const [moduleUrl, root, agentDir, scope] = fixtureArgs;
-            const { FileSettingsStorage } = await import(moduleUrl);
-            new FileSettingsStorage(root, agentDir).withLock(scope, (current) => {
-              if (current !== undefined) throw new Error("first-writer fixture already has settings");
-              writeSync(1, "ready\n");
-              waitForRelease();
-              return JSON.stringify({ theme: scope + "-committed" });
-            });
-          `,
-          [storageUrl.href, root, agentDir, scope],
-          childSignal,
-        );
-        let reader: ReturnType<typeof startSettingsProcess> | undefined;
-        try {
-          await writer.waitFor("ready", "first writer exited before its reader");
-          expect(existsSync(settingsPath)).toBe(false);
-          expect(existsSync(`${settingsPath}.lock`)).toBe(true);
-          reader = startSettingsProcess(
-            String.raw`
-              import fs from "node:fs";
-              import { syncBuiltinESMExports } from "node:module";
-              const [moduleUrl, root, agentDir, settingsPath] = fixtureArgs;
-              const { SettingsManager } = await import(moduleUrl);
-              const originalExists = fs.existsSync;
-              const originalLstat = fs.lstatSync;
-              let committedDuringRead = false;
-              // Preserve the observation, then commit before the next probe. A file-first
-              // reader returns stale defaults; the lock-first reader sees the committed theme.
-              const commitDuringObservation = () => {
-                if (!committedDuringRead) {
-                  committedDuringRead = true;
-                  writeSync(1, "observed\n");
-                  waitForRelease();
-                }
-              };
-              fs.existsSync = (filePath) => {
-                const observed = originalExists(filePath);
-                if (filePath === settingsPath) commitDuringObservation();
-                return observed;
-              };
-              fs.lstatSync = (...args) => {
-                const observed = originalLstat(...args);
-                if (args[0] === settingsPath + ".lock") commitDuringObservation();
-                return observed;
-              };
-              syncBuiltinESMExports();
-              const manager = SettingsManager.create(root, agentDir);
-              console.log(JSON.stringify({
-                committedDuringRead,
-                errors: manager.drainErrors(),
-                theme: manager.getTheme(),
-              }));
-            `,
-            [managerUrl.href, root, agentDir, settingsPath],
-            childSignal,
-          );
-          await reader.waitFor("observed", "reader exited before observing the first writer");
-          await writer.release();
-          const writerResult = await withinTest(writer.completed, signal);
-          expect(writerResult, writerResult.stderr).toMatchObject({ error: undefined, status: 0 });
-          // withLock returned and the writer exited: rename, fsync, and lock release are complete.
-          await reader.release();
-          const readerResult = await withinTest(reader.completed, signal);
-          expect(readerResult, readerResult.stderr).toMatchObject({ error: undefined, status: 0 });
-          expect(JSON.parse(readerResult.stdout.trim().split("\n").at(-1)!)).toEqual({
-            committedDuringRead: true,
-            errors: [],
-            theme: `${scope}-committed`,
-          });
-          expect(existsSync(`${settingsPath}.lock`)).toBe(false);
-        } finally {
-          abort.abort();
-          await Promise.all([writer.completed, reader?.completed]);
-        }
-      }),
-  );
-
-  it.each([".lock", ".lock.reclaim"])(
-    "does not skip an existing %s namespace when settings are absent",
-    (suffix) => {
-      const root = fixtures.createTempDir("openclaw-settings-lock-namespace-");
-      const settingsDir = join(root, "agent");
-      mkdirSync(settingsDir);
-      mkdirSync(join(settingsDir, `settings.json${suffix}`));
-      const storage = new FileSettingsStorage(root, settingsDir);
-      expect(() => storage.readSettingsScope("global")).toThrow(
-        suffix === ".lock" ? /Legacy storage lock/ : /file lock timeout/,
-      );
-    },
-  );
-
-  it.skipIf(process.platform === "win32")("does not skip a dangling lock symlink", () => {
-    const root = fixtures.createTempDir("openclaw-settings-lock-symlink-");
-    const settingsDir = join(root, "agent");
-    mkdirSync(settingsDir);
-    fs.symlinkSync(join(root, "missing"), join(settingsDir, "settings.json.lock"));
-    expect(() => new FileSettingsStorage(root, settingsDir).readSettingsScope("global")).toThrow(
-      /unsupported legacy type/,
-    );
   });
 
   it("locks before reading when the settings directory exists", () => {

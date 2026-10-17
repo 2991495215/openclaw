@@ -509,7 +509,7 @@ function reconcileRequesterWake(
     }
     // The completed write is not replayed. Publish current canonical fields so
     // independent cleanup cannot be overwritten by the older acknowledgement.
-    result.records.push(decodeSubagentCompletionRecord(row, expected.cleanupHandled));
+    result.records.push({ subagent: current, cleanupHandled: expected.cleanupHandled });
   }
   if (committed.result.queueIds.length > 0) {
     const receipts = reconcileSubagentCompletionQueueReceipts(
@@ -564,7 +564,7 @@ export function mutateSubagentCompletionInDatabase(
         // the current native row without replaying its write or terminal timestamps.
         return {
           applied: true,
-          records: [decodeSubagentCompletionRecord(row, mutation.expected.cleanupHandled)],
+          records: [{ subagent: current, cleanupHandled: mutation.expected.cleanupHandled }],
           retiredRunIds: [],
           queueIds: [],
         };

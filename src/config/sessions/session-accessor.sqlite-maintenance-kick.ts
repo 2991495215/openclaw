@@ -50,10 +50,7 @@ import {
 import { runSqliteSessionReclamation } from "./session-accessor.sqlite-reclamation-run.js";
 import { SqliteReclamationInputsChangedError } from "./session-accessor.sqlite-reclamation-worker-diagnostics.js";
 import { resolveSessionReclamationDatabaseOptions } from "./session-accessor.sqlite-reclamation.js";
-import {
-  toDatabaseOptions,
-  type ResolvedSqliteReadScope,
-} from "./session-accessor.sqlite-scope.js";
+import { toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
 import { assertMaintenancePreservationCompatible } from "./store-maintenance-preserve-snapshot.js";
 import { prepareSessionMaintenancePreservation } from "./store-maintenance-preserve.js";
 import { resolveMaintenanceConfig } from "./store-maintenance-runtime.js";
@@ -68,7 +65,7 @@ type SessionEntryMaintenanceRequest = {
   activeSessionKey: string;
   archiveDirectory: string;
   maintenanceConfig?: ResolvedSessionMaintenanceConfigInput;
-  scope: Pick<ResolvedSqliteReadScope, "agentId" | "databaseAgentId" | "env" | "path">;
+  scope: Parameters<typeof toDatabaseOptions>[0];
   skipMaintenance?: boolean;
   storePath: string;
 };

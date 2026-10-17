@@ -1,5 +1,6 @@
 import type { Selectable } from "kysely";
 import {
+  type WorkerInferenceCancelParams,
   type WorkerInferenceTerminalOutcome,
   validateWorkerInferenceTerminalOutcome,
 } from "../../../packages/gateway-protocol/src/schema/worker-inference.js";
@@ -29,10 +30,6 @@ type TurnIdentityRow = Pick<
 >;
 
 type NormalizedTurnInput = WorkerInferenceTurnInput & { nowMs: number };
-type WorkerInferenceTurnIdentity = Pick<
-  WorkerInferenceTurnInput,
-  "sessionId" | "runEpoch" | "runId" | "turnId"
->;
 type ExistingTurnResult = Extract<
   WorkerInferenceTurnBeginResult,
   { kind: "recover" | "replay" | "rejected" }
@@ -125,7 +122,7 @@ export function createWorkerInferenceStoreKernel(options: {
     throw new Error("Worker inference turn row has invalid terminal state");
   };
 
-  const pruneTerminalTurns = (nowMs: number, preserve?: WorkerInferenceTurnIdentity): void => {
+  const pruneTerminalTurns = (nowMs: number, preserve?: WorkerInferenceCancelParams): void => {
     const utf8 =
       executeSqliteQueryTakeFirstSync(db, query.selectFrom("pragma_encoding").select("encoding"))
         ?.encoding === "UTF-8";

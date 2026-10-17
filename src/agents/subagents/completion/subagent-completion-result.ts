@@ -1,5 +1,6 @@
 import { HEARTBEAT_TOKEN, isSilentReplyText } from "../../../auto-reply/tokens.js";
 import type { AgentRunTerminalReplySnapshot } from "../../agent-run-terminal-reply.types.js";
+import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
 
 export function resolveSubagentCompletionResultText(entry: {
   completion?: {
@@ -8,7 +9,7 @@ export function resolveSubagentCompletionResultText(entry: {
     terminalReply?: AgentRunTerminalReplySnapshot;
   };
   execution: {
-    outcome?: { status: "ok" | "error" | "timeout" | "unknown" };
+    outcome?: Pick<SubagentRunOutcome, "status">;
   };
 }): string | undefined {
   const terminalReply = entry.completion?.terminalReply;

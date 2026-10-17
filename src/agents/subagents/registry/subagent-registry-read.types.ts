@@ -84,7 +84,8 @@ export type SubagentCompletionDeliveryState = {
     | "waiting_for_requester_turn";
 };
 
-export type SwarmCollectorStatus = "done" | "failed" | "killed" | "timeout";
+export const SWARM_COLLECTOR_STATUSES = ["done", "failed", "killed", "timeout"] as const;
+export type SwarmCollectorStatus = (typeof SWARM_COLLECTOR_STATUSES)[number];
 
 /** Persisted fields shared by compact registry reads and the full runtime record. */
 export type SubagentRunReadRecord = {

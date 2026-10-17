@@ -6,6 +6,7 @@ import {
   parseSqliteSessionFileMarker,
   type SqliteSessionFileMarker,
 } from "../config/sessions/legacy-sqlite-marker.js";
+import { TRANSCRIPT_NAVIGATION_KEYS } from "../config/sessions/transcript-navigation-fields.js";
 import {
   isCanonicalSessionTranscriptEntry,
   isSessionTranscriptLeafControl,
@@ -293,14 +294,7 @@ async function scanSqliteUsageRollup(params: RollupScanInput): Promise<UsageCost
           usageEntry: isRecord(event) ? parseUsageCostTranscriptRecord(event) : null,
         };
         if (isRecord(event)) {
-          for (const key of [
-            "type",
-            "id",
-            "parentId",
-            "targetId",
-            "appendParentId",
-            "appendMode",
-          ]) {
+          for (const key of TRANSCRIPT_NAVIGATION_KEYS) {
             if (Object.hasOwn(event, key)) {
               record[key] = event[key];
             }

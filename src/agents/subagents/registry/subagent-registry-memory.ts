@@ -123,6 +123,14 @@ export function immutableSubagentRun(entry: SubagentRunRecord): SubagentRunRecor
   return entry;
 }
 
+/** Liveness copies carry runtime ownership; shared display facts must never acquire it. */
+export function copySubagentRunSessionListOwner(entry: SubagentRunRecord): SubagentRunReadRecord {
+  return copySubagentRunRuntimeOwner(
+    entry,
+    Object.freeze({ ...immutableSubagentRunSessionList(entry) }),
+  );
+}
+
 /** Registry projections contain only canonical JSON fields and owner-created containers. */
 export function freezeSubagentRunReadRecord<T extends SubagentRunReadRecord>(record: T): T {
   freezeValue(record);

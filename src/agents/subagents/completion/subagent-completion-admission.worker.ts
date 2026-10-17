@@ -177,7 +177,9 @@ export function admitSubagentCompletionInWorker(
     return {
       claimed,
       status,
-      record: decodeSubagentCompletionRecord(claimed ? boundSubagent : originalRow),
+      record: claimed
+        ? decodeSubagentCompletionRecord(boundSubagent)
+        : { subagent: current, cleanupHandled: undefined },
     };
   });
 }

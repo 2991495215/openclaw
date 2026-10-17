@@ -237,7 +237,6 @@ export class ExtensionRunner {
   private shutdownHandler: ShutdownHandler = () => {};
   private shortcutDiagnostics: ResourceDiagnostic[] = [];
   private commandDiagnostics: ResourceDiagnostic[] = [];
-  private staleMessage: string | undefined;
 
   constructor(
     private extensions: Extension[],
@@ -434,16 +433,10 @@ export class ExtensionRunner {
   invalidate(
     message = "This extension ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
   ): void {
-    if (!this.staleMessage) {
-      this.staleMessage = message;
-      this.runtime.invalidate(message);
-    }
+    this.runtime.invalidate(message);
   }
 
   private requireActive(): this {
-    if (this.staleMessage) {
-      throw new Error(this.staleMessage);
-    }
     this.runtime.assertActive();
     return this;
   }

@@ -34,7 +34,7 @@ type CreateSessionGoalOptions = SessionGoalStoreOptions & {
 };
 
 type UpdateSessionGoalStatusOptions = SessionGoalStoreOptions & {
-  status: Extract<SessionGoalStatus, "active" | "paused" | "blocked" | "complete">;
+  status: Parameters<typeof buildUpdatedSessionGoalStatus>[1]["status"];
   note?: string;
 };
 

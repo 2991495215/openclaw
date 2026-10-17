@@ -1,5 +1,4 @@
-import { constants } from "node:fs";
-import { access as fsAccess, readdir as fsReaddir, stat as fsStat } from "node:fs/promises";
+import { readdir as fsReaddir, stat as fsStat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
 import { classifyAttachmentBytes } from "@openclaw/media-core/attachment-classify";
 import { racePromiseWithAbortSignal } from "../../../infra/abort-signal.js";
@@ -76,7 +75,6 @@ async function assertLocalReadableFile(filePath: string): Promise<void> {
   if (!stat.isFile()) {
     throw regularFileReadError(filePath);
   }
-  await fsAccess(filePath, constants.R_OK);
 }
 
 async function suggestLocalReadPaths(filePath: string): Promise<string[]> {

@@ -3,9 +3,9 @@ import { normalizeDeliveryContext } from "../../../utils/delivery-context.shared
 import type { DeliveryContext } from "../../../utils/delivery-context.types.js";
 import { listSwarmRunReservationIds } from "../swarm/swarm-scheduler.js";
 import {
+  copySubagentRunSessionListOwner,
   getSubagentRunsForChildSession,
   getSubagentSessionReadLookup,
-  immutableSubagentRunSessionList,
   subagentRuns,
 } from "./subagent-registry-memory.js";
 import {
@@ -29,7 +29,6 @@ import {
   prepareSubagentSessionListReadCache,
 } from "./subagent-registry-state.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
-import { copySubagentRunRuntimeOwner } from "./subagent-run-generation.js";
 import { isSubagentRunLive, isSubagentRunQueued } from "./subagent-run-liveness.js";
 export { isSubagentRunLive, isSubagentRunQueued } from "./subagent-run-liveness.js";
 
@@ -66,27 +65,14 @@ export function buildSubagentSessionListReadIndex(
     (sessionKeys
       ? getSubagentSessionListRunsSnapshotForSessions(subagentRuns, sessionKeys)
       : getSubagentSessionListRunsSnapshotForRead(subagentRuns));
-  // Liveness copies carry runtime ownership; shared display facts must never acquire it.
   return buildSubagentRunReadIndexFromRuns({
     runs,
     inMemoryRuns: sessionKeys
       ? [...runs.keys()].flatMap((runId) => {
           const entry = subagentRuns.get(runId);
-          return entry
-            ? [
-                copySubagentRunRuntimeOwner(
-                  entry,
-                  Object.freeze({ ...immutableSubagentRunSessionList(entry) }),
-                ),
-              ]
-            : [];
+          return entry ? [copySubagentRunSessionListOwner(entry)] : [];
         })
-      : Array.from(subagentRuns.values(), (entry) =>
-          copySubagentRunRuntimeOwner(
-            entry,
-            Object.freeze({ ...immutableSubagentRunSessionList(entry) }),
-          ),
-        ),
+      : Array.from(subagentRuns.values(), copySubagentRunSessionListOwner),
     now,
   });
 }

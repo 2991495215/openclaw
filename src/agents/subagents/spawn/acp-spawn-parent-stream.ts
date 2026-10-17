@@ -122,8 +122,6 @@ export function startAcpSpawnParentStreamRelay(params: {
   const relayLabel = truncate(params.agentId.replace(/\s+/g, " ").trim(), 40) || "ACP child";
   const contextPrefix = `acp-spawn:${runId}`;
   const childSessionId = normalizeOptionalString(params.childSessionId);
-  // Delayed flushes must keep the state database selected when the relay started.
-  const stateEnv = { ...(params.env ?? process.env) };
   const host = getBoundLegacyPluginSdkResourceHost();
   const closingSignal = host?.scheduler.signal;
   const acceptedWork = new AsyncWorkScope();
@@ -132,7 +130,7 @@ export function startAcpSpawnParentStreamRelay(params: {
     if (childSessionId) {
       recorder = createAcpParentStreamRecorder({
         agentId: params.ownerAgentId ?? params.agentId,
-        env: stateEnv,
+        env: params.env,
         sessionId: childSessionId,
         runId,
       });

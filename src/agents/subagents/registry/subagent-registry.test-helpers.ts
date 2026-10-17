@@ -57,7 +57,7 @@ export function resetSubagentRegistryForTests(opts?: { persist?: boolean }) {
 }
 
 function createRegistryRunFixture(entry: SubagentRunRecordOverrides): SubagentRunRecord {
-  const canonical = createSubagentRunRecord(entry);
+  const canonical = createSubagentRunRecord(structuredClone(entry));
   const requesterAgentId =
     entry.requesterAgentId ?? parseAgentSessionKey(canonical.requesterSessionKey)?.agentId;
   if (!Object.hasOwn(entry, "requesterStorePath") && requesterAgentId) {
@@ -88,7 +88,7 @@ export async function addSubagentRunForTests(entry: SubagentRunRecordOverrides) 
 
 /** Read-only fixtures install canonical immutable rows without durable write admission. */
 export function seedSubagentRunForReadTest(entry: SubagentRunRecordOverrides): void {
-  const canonical = immutableSubagentRun(structuredClone(createRegistryRunFixture(entry)));
+  const canonical = immutableSubagentRun(createRegistryRunFixture(entry));
   subagentRuns.set(canonical.runId, canonical);
 }
 
