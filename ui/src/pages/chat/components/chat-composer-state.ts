@@ -82,7 +82,6 @@ export function isCurrentSessionSubmittedProgress(
   );
 }
 
-// Shared by the thread, composer, pane activity, and header presentation.
 export function isChatRunWorking(
   props: Pick<
     ChatComposerProps,
