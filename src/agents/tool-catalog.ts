@@ -1,5 +1,4 @@
 /**
- * Core tool catalog and profile defaults.
  * Drives built-in profile allowlists, group expansion, and UI section metadata
  * for OpenClaw-owned tools.
  *
@@ -288,7 +287,6 @@ function buildCoreToolGroupMap() {
   };
 }
 
-/** Built-in core tool groups keyed by group id. */
 export const CORE_TOOL_GROUPS = buildCoreToolGroupMap();
 
 /** Profile options shown in model/tool configuration UIs. */
@@ -299,7 +297,6 @@ export const PROFILE_OPTIONS = [
   { id: "full", label: "Full" },
 ] as const;
 
-/** Resolves the allow/deny policy for a built-in tool profile. */
 export function resolveCoreToolProfilePolicy(profile?: string): ToolProfilePolicy | undefined {
   if (!profile) {
     return undefined;
@@ -339,12 +336,10 @@ export function listCoreToolSections(params?: {
   })).filter((section) => section.tools.length > 0);
 }
 
-/** Lists built-in profile ids that include a core tool. */
 export function resolveCoreToolProfiles(toolId: string): ToolProfileId[] {
   return [...(CORE_TOOL_BY_ID.get(toolId)?.profiles ?? [])];
 }
 
-/** Returns true when a tool id is a known core tool. */
 export function isKnownCoreToolId(toolId: string): boolean {
   return CORE_TOOL_BY_ID.has(toolId);
 }

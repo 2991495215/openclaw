@@ -71,7 +71,6 @@ export function describeSessionLinkRule(base: string): string {
   return `When pointing the user at a session, cite its Control UI URL: main session -> \`${base}/chat/<agentId>\`; any other display session key -> \`${base}/chat/<agentId>/~key/\` + key minus \`agent:<agentId>:\`, with \`:\` replaced by \`/\`.`;
 }
 
-/** Describes the sessions_list tool for model-facing instructions. */
 export function describeSessionsListTool(options?: SessionLinkDescriptionOptions): string {
   return [
     "List visible session metadata and groups; filter ownerId/creatorId, projectId/workspaceDir, group/pinned, kind/agent/activity/archive. relationship=owned|created|involving selects the authenticated requesting user's sessions, not the agent's owner.",
@@ -82,7 +81,6 @@ export function describeSessionsListTool(options?: SessionLinkDescriptionOptions
   ].join(" ");
 }
 
-/** Describes the sessions_history tool for model-facing instructions. */
 export function describeSessionsHistoryTool(options?: SessionLinkDescriptionOptions): string {
   return [
     "Read sanitized visible-session history.",
@@ -92,7 +90,6 @@ export function describeSessionsHistoryTool(options?: SessionLinkDescriptionOpti
   ].join(" ");
 }
 
-/** Describes the sessions_search tool for model-facing instructions. */
 export function describeSessionsSearchTool(options?: SessionLinkDescriptionOptions): string {
   return [
     "Search visible past sessions for matching user and assistant text.",
@@ -100,7 +97,6 @@ export function describeSessionsSearchTool(options?: SessionLinkDescriptionOptio
   ].join(" ");
 }
 
-/** Describes the sessions_send tool for model-facing instructions. */
 export function describeSessionsSendTool(options?: { allowThreadTargets?: boolean }): string {
   return [
     "Run a permitted session on this Gateway by sessionKey/label, or a configured local agent by agentId; sessionKey wins redundant label. Explicit per-agent send destinations can permit messaging without transcript access.",
@@ -124,7 +120,6 @@ export function describeSubagentSpawnContext(threadAvailable: boolean): string {
 export const SESSIONS_SPAWN_COLLECTOR_GUIDANCE =
   "Default to ordinary spawn for one or a few children. Reserve `collect=true` (swarm) for large parallel fan-out (several similar children, about five or more). Collectors send no completion notification and cannot be steered; explicitly collect their results; structured result per `outputSchema`; `groupId` groups a batch.";
 
-/** Describes the sessions_spawn tool for model-facing instructions. */
 export function describeSessionsSpawnTool(options?: {
   acpAvailable?: boolean;
   threadAvailable?: boolean;
@@ -164,7 +159,6 @@ export function describeSessionsSpawnTool(options?: {
   ].join(" ");
 }
 
-/** Describes the session_status tool for model-facing instructions. */
 export function describeSessionStatusTool(): string {
   return [
     "Show visible-session model/usage/time/cost/tasks.",
