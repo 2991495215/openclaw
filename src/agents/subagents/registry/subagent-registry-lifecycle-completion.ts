@@ -447,13 +447,12 @@ function planTerminalCompletion(
     if (!entry.collect && !suppressSessionEffects) {
       // Unfinished work needs its history even when successful completion would delete it.
       entry.cleanup = "keep";
-      if (
-        entry.expectsCompletionMessage === false &&
-        entry.completionRequesterSessionId &&
-        entry.completionRequesterLifecycleRevision
-      ) {
+      if (entry.expectsCompletionMessage === false && entry.completionRequesterSessionId) {
         // Quiet completion does not waive continuation after a restart. Keep the
         // handoff private and bound to the requester captured before launch.
+        // Sessions created without a lifecycle revision (for example by the
+        // `agent` RPC) bind by session id plus the absent revision; a later reset
+        // assigns one, so the requester identity check still rejects replacements.
         entry.completionTarget = "parent";
         entry.requesterTurnRunId = undefined;
       }
