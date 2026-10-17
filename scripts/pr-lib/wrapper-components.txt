@@ -1834,6 +1834,7 @@ src/state/openclaw-agent-db-lease-provenance.ts
 src/state/openclaw-agent-db-lease.ts
 src/state/openclaw-agent-db-legacy-schema.ts
 src/state/openclaw-agent-db-lifecycle.ts
+src/state/openclaw-agent-db-maintenance-authority.ts
 src/state/openclaw-agent-db-metadata-write.ts
 src/state/openclaw-agent-db-metadata.ts
 src/state/openclaw-agent-db-migration-required.ts
@@ -1895,6 +1896,7 @@ src/state/openclaw-agent-storage-schema.ts
 src/state/openclaw-agent-transcript-fts-schema-source.ts
 src/state/openclaw-agent-transcript-fts-schema.ts
 src/state/openclaw-agent-transcript-payload-migration.ts
+src/state/openclaw-agent-write-layout-migration.ts
 src/state/openclaw-agent-write-admission.ts
 src/state/openclaw-agent-write-admission-state.ts
 src/state/openclaw-database-preflight-agent-scheduler.ts
@@ -1953,6 +1955,7 @@ src/state/openclaw-state-db-schema-v13-widerow.ts
 src/state/openclaw-state-db-schema-v21-columns.ts
 src/state/openclaw-state-db-schema-v22-columns.ts
 src/state/openclaw-state-db-schema-v24-indexes.ts
+src/state/openclaw-state-db-schema-v26-layout.ts
 src/state/openclaw-state-db-schema-version.ts
 src/state/openclaw-state-db-session-watch-migration.ts
 src/state/openclaw-state-db-snapshot-owner.ts
@@ -2028,6 +2031,7 @@ src/state/openclaw-state.worker.ts
 src/state/openclaw-update-schema-refusal.ts
 src/state/session-metadata-unavailable-error.ts
 src/state/session-watch-cursor-provenance.ts
+src/state/sqlite-table-layout-migration.ts
 src/state/worker-operation-registry.ts
 src/system-agent/agent-id.ts
 src/test-utils/bun-process.ts
