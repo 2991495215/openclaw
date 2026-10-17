@@ -33,8 +33,8 @@ import { sessionAttentionSubtitle } from "./session-attention-presentation.ts";
 import {
   areSessionCatalogsSettled,
   type SessionDataControllerHost,
-} from "./session-data-controller-catalog.ts";
-import type { SessionDataController } from "./session-data-controller.ts";
+} from "./session-data-catalog.ts";
+import type { SessionDataController } from "./session-data.ts";
 import { resolveSidebarSessionSubtitle } from "./session-row-subtitle.ts";
 import { summarizeTeamSessionSlots } from "./solid/session-presentation.tsx";
 

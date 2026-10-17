@@ -32,7 +32,7 @@ import type {
   SidebarToolActivity,
   SidebarSessionStatusFilter,
 } from "./app-sidebar-session-types.ts";
-import type { SessionDataController } from "./session-data-controller.ts";
+import type { SessionDataController } from "./session-data.ts";
 import type { SessionOrganizerController } from "./session-organizer-controller.ts";
 import type { SidebarMenusController } from "./sidebar-menus-controller.tsx";
 import type { AgentAvatarProps } from "./solid/agent-avatar.tsx";

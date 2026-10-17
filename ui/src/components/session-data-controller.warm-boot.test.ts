@@ -10,8 +10,8 @@ import * as snapshotPrewarm from "../pages/chat/session-snapshot-prewarm.ts";
 import { createContext, createGatewayHarness, TWO_AGENTS } from "../test-helpers/app-sidebar.ts";
 import { createTestGatewayClient } from "../test-helpers/gateway-client.ts";
 import { sidebarBootSnapshot } from "../test-helpers/sidebar-boot-snapshot.test-support.ts";
-import type { SessionDataControllerHost } from "./session-data-controller-catalog.ts";
-import { SessionDataController } from "./session-data-controller.ts";
+import type { SessionDataControllerHost } from "./session-data-catalog.ts";
+import { SessionDataController } from "./session-data.ts";
 
 afterEach(() => vi.restoreAllMocks());
 

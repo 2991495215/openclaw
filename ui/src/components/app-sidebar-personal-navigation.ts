@@ -19,7 +19,7 @@ import {
   setStoredSessionCatalogHidden,
   type SidebarRecentSession,
 } from "./app-sidebar-session-types.ts";
-import type { SessionDataController } from "./session-data-controller.ts";
+import type { SessionDataController } from "./session-data.ts";
 import type { SessionOwnerFilterController } from "./session-owner-filter-controller.ts";
 import type { SidebarSnapshotModel } from "./sidebar-snapshot-model.ts";
 

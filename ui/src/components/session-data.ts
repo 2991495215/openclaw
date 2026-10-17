@@ -45,7 +45,7 @@ import {
   type SessionCatalogDataOwner,
   type SessionDataControllerHost,
   updateSessionCatalogData,
-} from "./session-data-controller-catalog.ts";
+} from "./session-data-catalog.ts";
 import {
   hasSidebarListFilter,
   publishSidebarSessionError,

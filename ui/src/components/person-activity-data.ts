@@ -2,7 +2,7 @@ import { SIDEBAR_SESSION_ROSTER_LIMIT } from "../../../src/shared/session-list-l
 import type { ApplicationContext } from "../app/context.ts";
 import { readPresenceEntries } from "../app/user-profile.ts";
 import type { SessionListSnapshot } from "../lib/sessions/session-capability.ts";
-import type { SessionDataController } from "./session-data-controller.ts";
+import type { SessionDataController } from "./session-data.ts";
 
 export type PersonActivityData = Readonly<
   Pick<SessionDataController, "sessionsResult" | "presencePayload">

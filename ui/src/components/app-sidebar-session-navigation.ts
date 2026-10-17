@@ -84,7 +84,7 @@ import {
   type SidebarSessionStatusFilter,
 } from "./app-sidebar-session-types.ts";
 import { SessionAttentionController } from "./session-attention-controller.ts";
-import { SessionDataController } from "./session-data-controller.ts";
+import { SessionDataController } from "./session-data.ts";
 import type { SessionOrganizerController } from "./session-organizer-controller.ts";
 import { SessionOwnerFilterController } from "./session-owner-filter-controller.ts";
 import { SidebarEmptyGroupsController } from "./sidebar-empty-groups-controller.ts";

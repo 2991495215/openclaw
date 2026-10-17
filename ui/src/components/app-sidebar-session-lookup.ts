@@ -11,7 +11,7 @@ import type {
   SidebarRecentSession,
   SidebarSessionHovercardRow,
 } from "./app-sidebar-session-types.ts";
-import type { SessionDataController } from "./session-data-controller.ts";
+import type { SessionDataController } from "./session-data.ts";
 import { sessionLineageIdentityHost } from "./session-lineage-controller.ts";
 
 type SidebarSessionLookupData = Pick<

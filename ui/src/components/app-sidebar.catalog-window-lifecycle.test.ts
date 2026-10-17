@@ -19,7 +19,7 @@ import {
   applySessionCatalogContinuation,
   loadMoreSessionCatalog,
   resetSessionCatalogConnection,
-} from "./session-data-controller-catalog.ts";
+} from "./session-data-catalog.ts";
 
 const catalogClock: Parameters<typeof vi.useFakeTimers>[0] = {
   toFake: ["setTimeout", "clearTimeout", "Date"],

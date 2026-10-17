@@ -15,7 +15,7 @@ import {
 } from "../test-helpers/gateway-client.ts";
 import "../test-helpers/app-sidebar-suite.ts";
 import { settleLitElement } from "../test-helpers/lit-settle.ts";
-import { loadMoreSessionCatalog } from "./session-data-controller-catalog.ts";
+import { loadMoreSessionCatalog } from "./session-data-catalog.ts";
 import "./app-sidebar.tsx";
 
 // Capture JSDOM's frame owner before the sidebar fixture installs its scheduler.

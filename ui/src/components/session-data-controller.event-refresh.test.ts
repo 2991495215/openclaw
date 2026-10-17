@@ -6,8 +6,8 @@ import { createConnectionBootstrapCoordinator } from "../app/connection-bootstra
 import type { ApplicationContext } from "../app/context.ts";
 import { createSessionCapability, type SessionCapability } from "../lib/sessions/index.ts";
 import type { SessionGateway } from "../lib/sessions/session-capability.ts";
-import type { SessionDataControllerHost } from "./session-data-controller-catalog.ts";
-import { SessionDataController } from "./session-data-controller.ts";
+import type { SessionDataControllerHost } from "./session-data-catalog.ts";
+import { SessionDataController } from "./session-data.ts";
 
 const cleanups: Array<() => void> = [];
 

@@ -26,7 +26,7 @@ import type {
   SidebarSessionSortMode,
   SidebarSessionStatusFilter,
 } from "./app-sidebar-session-types.ts";
-import type { SessionDataController } from "./session-data-controller.ts";
+import type { SessionDataController } from "./session-data.ts";
 
 export type SidebarProjectionHost = {
   readonly sessionData: SessionDataController;

@@ -14,7 +14,7 @@ import type {
   SidebarRecentSession,
   SidebarSessionSortMode,
 } from "./app-sidebar-session-types.ts";
-import type { SessionDataController } from "./session-data-controller.ts";
+import type { SessionDataController } from "./session-data.ts";
 import type {
   SessionOrganizerController,
   SessionOrganizerControllerHost,

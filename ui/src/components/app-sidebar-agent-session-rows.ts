@@ -31,7 +31,7 @@ import {
   type SidebarRecentSession,
   type SidebarSessionStatusFilter,
 } from "./app-sidebar-session-types.ts";
-import type { SessionDataController } from "./session-data-controller.ts";
+import type { SessionDataController } from "./session-data.ts";
 
 type AgentSessionRowsHost = {
   readonly sessionDataContext:
