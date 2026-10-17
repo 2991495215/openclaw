@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { isRecord, isStringArray } from "@openclaw/normalization-core/record-coerce";
 import { isSessionRowAssistantMessage } from "../../gateway/session-row-transcript-preview.js";
 import type { EngineConnection } from "../../infra/sql-connection.js";
 import {
@@ -210,7 +210,7 @@ function isTranscriptReceipt(value: unknown): value is SessionTranscriptAuthorit
   }
   const keys = [...value.facts.keys()];
   if (
-    !keys.every((key) => typeof key === "string") ||
+    !isStringArray(keys) ||
     typeof value.source.identity !== "string" ||
     typeof value.source.incarnation !== "string"
   ) {

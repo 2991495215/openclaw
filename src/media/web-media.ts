@@ -13,6 +13,7 @@ import {
   normalizeMimeType,
 } from "@openclaw/media-core/mime";
 import { hasHttpUrlPrefix } from "@openclaw/net-policy/url-protocol";
+import { floorPositiveFiniteNumber as positiveInteger } from "@openclaw/normalization-core/number-coercion";
 import { uniqueValues } from "@openclaw/normalization-core/string-normalization";
 import { resolveCanvasHttpPathToLocalPath } from "../canvas/documents.js";
 import { logVerbose, shouldLogVerbose } from "../globals.js";
@@ -520,12 +521,6 @@ const DEFAULT_JPEG_QUALITIES = [80, 70, 60, 50, 40] as const;
 const DEFAULT_VISION_MAX_SIDE = 2048;
 const LOW_IMAGE_SIDE_FALLBACKS = [640, 512, 384, 256, 192, 128] as const;
 
-function positiveInteger(value: number | undefined): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.floor(value)
-    : undefined;
-}
-
 function effectiveImageQualityPreference(
   policy?: ImageCompressionPolicy,
 ): Exclude<ImageQualityPreference, "auto"> {
@@ -848,7 +843,7 @@ async function loadWebMediaInternal(
     }
     return {
       buffer: params.buffer,
-      contentType: params.contentType ?? undefined,
+      contentType: params.contentType,
       kind: params.kind,
       fileName: params.fileName,
       ...(params.trustedGeneratedHtmlSource ? { trustedGeneratedHtmlSource: true } : {}),

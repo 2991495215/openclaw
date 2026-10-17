@@ -15,9 +15,7 @@ type ParsedCliReseedPrompt =
   | { kind: "legacy"; userMessage: string }
   | { kind: "invalid" };
 
-export function hashCliReseedPrompt(text: string): string {
-  return sha256Hex(text);
-}
+export const hashCliReseedPrompt: (text: string) => string = sha256Hex;
 
 export function parseCliReseedPrompt(text: string): ParsedCliReseedPrompt {
   if (!text.startsWith(RESEED_PREFIX)) {

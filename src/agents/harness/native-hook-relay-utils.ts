@@ -1,4 +1,6 @@
+import { floorPositiveFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import { truncateUtf16Safe, truncateWithMarker } from "@openclaw/normalization-core/utf16-slice";
+import { shellEscapeBackslash } from "../../shared/shell-quote.js";
 import type {
   JsonValue,
   NativeHookRelayEvent,
@@ -19,11 +21,8 @@ export function normalizePositiveInteger(value: number | undefined, fallback: nu
   return normalizeOptionalPositiveInteger(value) ?? fallback;
 }
 
-export function normalizeOptionalPositiveInteger(value: number | undefined): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.floor(value)
-    : undefined;
-}
+export const normalizeOptionalPositiveInteger: (value: number | undefined) => number | undefined =
+  floorPositiveFiniteNumber;
 
 export function shellQuoteArgs(args: readonly string[]): string {
   return args.map((arg) => shellQuoteArg(arg, process.platform)).join(" ");
@@ -36,7 +35,7 @@ function shellQuoteArg(value: string, platform: NodeJS.Platform): string {
   if (platform === "win32") {
     return `"${value.replaceAll('"', '\\"')}"`;
   }
-  return `'${value.replaceAll("'", "'\\''")}'`;
+  return shellEscapeBackslash(value);
 }
 
 export function readNativeHookRelayProvider(value: unknown): NativeHookRelayProvider {
