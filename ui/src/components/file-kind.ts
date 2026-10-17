@@ -1,3 +1,4 @@
+// Shared glyph categories for file previews and Markdown file links.
 export type FileKind =
   | "skill"
   | "markdown"

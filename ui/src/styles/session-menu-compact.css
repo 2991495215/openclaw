@@ -1,3 +1,4 @@
+/* Shared by compact sidebar and chat-header menus. */
 .session-menu--compact .session-menu__back {
   z-index: 1;
   position: sticky;

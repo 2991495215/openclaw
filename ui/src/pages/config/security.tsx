@@ -1,3 +1,4 @@
+// Curated policies above the schema-backed security and approvals editor.
 import { createMemo } from "@solidjs/signals";
 import type { JSX } from "@solidjs/web";
 import { Icon } from "../../components/solid/icon.tsx";

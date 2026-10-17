@@ -10,6 +10,7 @@ type CustodianWizardSubmission = {
   display: string;
 };
 
+/** Build the typed answer sent by a client rendering the current wizard step. */
 export function custodianWizardSubmission(
   step: WizardStep,
   value: unknown,

@@ -1,3 +1,4 @@
+/** Runtime SDK subpath for prepared completions and assistant text extraction. */
 import type {
   PreparedSimpleCompletionModelForAgent,
   PrepareSimpleCompletionModelForAgentParams,
