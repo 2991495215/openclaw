@@ -236,15 +236,6 @@ it("keeps restored and independently cloned preview ownership separate", async (
   expect(revoked).toEqual([first, second]);
 });
 
-it("retains inline previews when object URLs are unavailable", () => {
-  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: undefined });
-  const attachment = selected();
-  expect(getChatAttachmentPreviewUrl(attachment)).toBe(dataUrl);
-  expect(created.size).toBe(0);
-  releaseChatAttachmentPayloads([attachment]);
-  expect(revoked).toEqual([]);
-});
-
 it("retains a pending video poster when a local message projects the same payload", async () => {
   const ready = createDeferred<Blob | null>();
   vi.spyOn(videoPosters, "requestVideoPoster").mockReturnValue(ready.promise);

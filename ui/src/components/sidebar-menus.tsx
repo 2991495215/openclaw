@@ -565,7 +565,7 @@ export function createSidebarMenus(deps: {
     restoreFocusAfterAgentMenuHoverOpen() {
       element
         .querySelector<HTMLElement>(".sidebar-agent-menu__agent-switch--active")
-        ?.scrollIntoView?.({ block: "nearest" });
+        ?.scrollIntoView({ block: "nearest" });
       if (!state.agentMenuPosition || state.agentMenuMode !== "hover") {
         return;
       }

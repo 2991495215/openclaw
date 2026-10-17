@@ -356,7 +356,7 @@ export function createConfigPage(
       if (!target) {
         return;
       }
-      target.scrollIntoView?.({ behavior: resolveScrollBehavior(), block: "start" });
+      target.scrollIntoView({ behavior: resolveScrollBehavior(), block: "start" });
       targetBlockId = null;
     });
   }

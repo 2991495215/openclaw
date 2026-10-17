@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // @vitest-environment node
 import { SIDEBAR_SESSION_ROSTER_LIMIT } from "../../../src/shared/session-list-limits.ts";
 import type { GatewayBrowserClient, GatewayEventFrame } from "../api/gateway.ts";
@@ -10,6 +10,23 @@ import type { SessionDataInputs } from "./session-data-catalog.ts";
 import { SessionDataOwner } from "./session-data.ts";
 
 const cleanups: Array<() => void> = [];
+
+beforeEach(() => {
+  const frames = new Map<number, FrameRequestCallback>();
+  let nextFrame = 0;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    const id = ++nextFrame;
+    frames.set(id, callback);
+    queueMicrotask(() => {
+      if (frames.delete(id)) {
+        callback(performance.now());
+      }
+    });
+    return id;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+  cleanups.push(() => frames.clear());
+});
 
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) {

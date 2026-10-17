@@ -140,7 +140,7 @@ async function loadApplicationConfig(params: {
   authCandidates: readonly string[];
   signal?: AbortSignal;
 }): Promise<{ config: ApplicationConfig; seamColor?: string } | null> {
-  if (typeof window === "undefined" || typeof fetch !== "function") {
+  if (typeof window === "undefined") {
     return null;
   }
 

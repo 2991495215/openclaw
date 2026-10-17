@@ -200,7 +200,7 @@ export class SessionDataOwner implements SessionCatalogDataOwner {
         this.notify();
       }
     };
-    if (document.visibilityState === "hidden" || typeof requestAnimationFrame !== "function") {
+    if (document.visibilityState === "hidden") {
       publish();
     } else {
       this.renderFrame = requestAnimationFrame(publish);

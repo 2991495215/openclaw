@@ -94,7 +94,7 @@ export function resolveTranscriptScrollMargin(
   headerHeight: number,
 ): number {
   const margin =
-    scrollElement instanceof HTMLElement && typeof getComputedStyle === "function"
+    scrollElement instanceof HTMLElement
       ? Number.parseFloat(getComputedStyle(scrollElement).paddingTop)
       : 0;
   return (Number.isFinite(margin) ? margin : 0) + headerHeight;

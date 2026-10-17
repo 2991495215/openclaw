@@ -110,6 +110,14 @@ describe("Plugin link reader panel", () => {
   });
 
   it("shows the overview while independent sections wait and loads files on selection", async () => {
+    // Keep deferred files offscreen until this case explicitly selects them.
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
     const overview = deferredDetail();
     const checks = deferredDetail();
     const discussion = deferredDetail();

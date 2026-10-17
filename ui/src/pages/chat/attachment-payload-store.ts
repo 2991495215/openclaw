@@ -15,13 +15,6 @@ export {
   releaseChatAttachmentPayloads,
 } from "./attachment-payload-lifecycle.ts";
 
-function createObjectUrl(blob: Blob): string | undefined {
-  if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
-    return undefined;
-  }
-  return URL.createObjectURL(blob);
-}
-
 export function registerChatAttachmentPayload(params: {
   attachment: ChatAttachment;
   dataUrl: string;
@@ -51,10 +44,7 @@ export function getChatAttachmentVideoPosterUrl(
     return null;
   }
   const file = payload.blob;
-  const src = createObjectUrl(file);
-  if (!src) {
-    return null;
-  }
+  const src = URL.createObjectURL(file);
   const controller = new AbortController();
   const poster: NonNullable<AttachmentPayload["videoPoster"]> = {
     controller,
@@ -74,8 +64,8 @@ export function getChatAttachmentVideoPosterUrl(
         if (!blob || payloads.get(attachment.id)?.videoPoster !== poster) {
           return null;
         }
-        poster.url = createObjectUrl(blob);
-        return poster.url ?? null;
+        poster.url = URL.createObjectURL(blob);
+        return poster.url;
       })
       .finally(() => revokeObjectUrl(src)),
   };
@@ -124,7 +114,7 @@ export function getChatAttachmentPreviewUrl(attachment: ChatAttachment): string 
     return preview;
   }
   const blob = getChatAttachmentBlob(attachment);
-  const objectUrl = blob && createObjectUrl(blob);
+  const objectUrl = blob && URL.createObjectURL(blob);
   if (objectUrl) {
     payloads.set(attachment.id, { ...payloads.get(attachment.id), previewUrl: objectUrl });
   }

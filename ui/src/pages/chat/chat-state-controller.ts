@@ -517,12 +517,7 @@ export function createChatState<TState extends ChatPageHost>(
     notifyRenderLifecycleForTest(renderer, "invalidate");
     // Only background producers opt in. Draft persistence and scroll ownership
     // are captured above, and transcript changes still commit before paint.
-    if (
-      background &&
-      !pendingScroll &&
-      globalThis.document?.visibilityState !== "hidden" &&
-      typeof globalThis.requestAnimationFrame === "function"
-    ) {
+    if (background && !pendingScroll && globalThis.document?.visibilityState !== "hidden") {
       backgroundRenderFrame ??= requestAnimationFrame(() => {
         backgroundRenderFrame = undefined;
         if (isRenderLifecycleScopeActive(scope)) {

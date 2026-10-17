@@ -326,7 +326,7 @@ export function showChatAnnotationEditor(options: {
   input.addEventListener("blur", clearCompositionEnd, { signal });
   window.addEventListener("resize", resizeInput, { signal });
   resizeInput();
-  if (options.sourceRange && typeof Highlight !== "undefined") {
+  if (options.sourceRange) {
     // Keep the passage visible as a selection after focus moves into the textarea.
     CSS.highlights.set("openclaw-comment", new Highlight(options.sourceRange));
     signal.addEventListener("abort", () => CSS.highlights.delete("openclaw-comment"), {

@@ -153,8 +153,7 @@ export class StartedSessionNavigation {
       to: "chat",
       router: context.router,
       signal: context.lifecycleAbortSignal,
-      prefersReducedMotion:
-        globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+      prefersReducedMotion: globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches,
       navigate: () => {
         if (this.current !== current || !this.isCurrent(context, started.agentId)) {
           throw new DOMException("Session navigation interrupted", "AbortError");

@@ -260,7 +260,7 @@ export function createLinkReaderPanel(host: HTMLElement, props: LinkReaderPanelP
       const anchor = [...content.querySelectorAll<HTMLElement>("[id]")].find(
         (node) => node.id === hash,
       );
-      anchor?.scrollIntoView?.({ block: "start" });
+      anchor?.scrollIntoView({ block: "start" });
     }
   }
   function abortRequest(): void {

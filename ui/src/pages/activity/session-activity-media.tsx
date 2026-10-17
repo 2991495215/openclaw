@@ -97,7 +97,6 @@ export function ActivitySessionMedia(props: ActivitySessionMediaProps) {
   const mediaOwner = {};
   const [revision, setRevision] = createSignal(0);
   let visible = false;
-  let observer: IntersectionObserver | undefined;
   let entry: ImageEntry | undefined;
   let settledEntry: ImageEntry | undefined;
   let displayedImages: ImageBlock[] = [];
@@ -348,19 +347,17 @@ export function ActivitySessionMedia(props: ActivitySessionMediaProps) {
   );
   onSettled(() => {
     // Visibility is required before transcript discovery; never fall back to an eager scan.
-    if (typeof IntersectionObserver !== "undefined") {
-      observer = new IntersectionObserver(
-        (entries) => {
-          visible = entries.some((observation) => observation.isIntersecting);
-          refresh();
-        },
-        { rootMargin: "200px" },
-      );
-      observer.observe(host);
-    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        visible = entries.some((observation) => observation.isIntersecting);
+        refresh();
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(host);
     return () => {
       disposed = true;
-      observer?.disconnect();
+      observer.disconnect();
       visible = false;
       closeImage(false);
       releaseChatMediaResourceOwner(mediaOwner);

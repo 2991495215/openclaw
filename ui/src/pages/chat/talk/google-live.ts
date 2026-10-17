@@ -132,9 +132,6 @@ export class GoogleLiveRealtimeTalkTransport implements RealtimeTalkTransport {
   }
 
   async start(): Promise<RealtimeTalkTransportStartResult> {
-    if (typeof WebSocket === "undefined") {
-      throw new Error("Realtime Talk requires browser WebSocket and microphone access");
-    }
     if (this.session.protocol !== "google-live-bidi") {
       throw new Error(`Unsupported realtime WebSocket protocol: ${this.session.protocol}`);
     }

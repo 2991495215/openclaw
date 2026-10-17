@@ -224,11 +224,11 @@ export function createModelSetup(
     if (manualProviderRevealPending) {
       manualProviderRevealPending = false;
       wizardDialog?.setReturnFocusTarget(manualInput ?? null);
-      manualInput?.scrollIntoView?.({ block: "nearest", behavior: "auto" });
+      manualInput?.scrollIntoView({ block: "nearest", behavior: "auto" });
       manualInput?.focus({ preventScroll: true });
     }
     if (feedbackState !== state.activationState && state.activationState.phase !== "idle") {
-      feedback?.scrollIntoView?.({ block: "nearest", behavior: "auto" });
+      feedback?.scrollIntoView({ block: "nearest", behavior: "auto" });
       feedbackState = state.activationState;
     }
     if (state.wizardState.phase !== "idle") {

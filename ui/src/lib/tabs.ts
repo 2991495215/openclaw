@@ -123,7 +123,7 @@ export function createTabList(
       select(target, event, false);
     }
     target.focus({ preventScroll: true });
-    target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    target.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 
   return {

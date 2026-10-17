@@ -252,7 +252,7 @@ export function handleModelSearchKeydown(event: KeyboardEvent): void {
   const offset = event.key === "ArrowDown" ? 1 : rows.length - 1;
   const nextIndex = currentIndex < 0 ? 0 : (currentIndex + offset) % rows.length;
   highlightModelRow(menu, rows[nextIndex]);
-  rows[nextIndex]?.scrollIntoView?.({ block: "nearest" });
+  rows[nextIndex]?.scrollIntoView({ block: "nearest" });
 }
 
 export function handleModelPickerKeydown(event: KeyboardEvent): void {

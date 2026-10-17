@@ -339,7 +339,7 @@ export function createCronPage(context: () => ApplicationContext, host: () => HT
       runTranscript.close();
       setDetailTab(editingJobId && cron.cronRunsRunId ? "history" : "settings");
       const scroller = host().closest(".content");
-      if (scroller instanceof HTMLElement && typeof scroller.scrollTo === "function") {
+      if (scroller instanceof HTMLElement) {
         scroller.scrollTo({ top: 0 });
       }
     }
@@ -365,7 +365,7 @@ export function createCronPage(context: () => ApplicationContext, host: () => HT
       );
     }
     if (pendingRunScroll && highlightedRun && highlightedRun.link === cron.cronRunsRunId) {
-      highlightedRun.element.scrollIntoView?.({ block: "nearest" });
+      highlightedRun.element.scrollIntoView({ block: "nearest" });
       pendingRunScroll = false;
     }
   }

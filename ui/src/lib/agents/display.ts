@@ -209,10 +209,7 @@ export function resolveModelPrimary(model?: unknown): string | null {
     return null;
   }
   const record = model as Record<string, unknown>;
-  const candidate = [record.primary, record.model, record.id, record.value].find(
-    (value) => typeof value === "string",
-  );
-  return normalizeOptionalString(candidate) ?? null;
+  return normalizeOptionalString(record.primary) ?? null;
 }
 
 export function resolveModelFallbacks(model?: unknown): string[] | null {
@@ -220,11 +217,7 @@ export function resolveModelFallbacks(model?: unknown): string[] | null {
     return null;
   }
   const record = model as Record<string, unknown>;
-  const fallbacks = Array.isArray(record.fallbacks)
-    ? record.fallbacks
-    : Array.isArray(record.fallback)
-      ? record.fallback
-      : null;
+  const fallbacks = Array.isArray(record.fallbacks) ? record.fallbacks : null;
   return fallbacks ? fallbacks.filter((entry): entry is string => typeof entry === "string") : null;
 }
 

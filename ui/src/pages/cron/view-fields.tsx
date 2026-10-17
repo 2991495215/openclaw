@@ -67,7 +67,7 @@ export function focusFormField(props: string) {
   if (!(el instanceof HTMLElement)) {
     return;
   }
-  el.scrollIntoView?.({ block: "center", behavior: resolveScrollBehavior() });
+  el.scrollIntoView({ block: "center", behavior: resolveScrollBehavior() });
   el.focus();
 }
 // A real label keeps the required marker in the control's accessible name.

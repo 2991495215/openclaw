@@ -105,11 +105,7 @@ class ChatRunPresentation<T extends object> {
       }
       return;
     }
-    if (
-      mode === "animation-frame" &&
-      globalThis.document?.visibilityState !== "hidden" &&
-      typeof globalThis.requestAnimationFrame === "function"
-    ) {
+    if (mode === "animation-frame" && globalThis.document?.visibilityState !== "hidden") {
       if (this.frame === null) {
         const frame = globalThis.requestAnimationFrame(() => {
           if (this.frame !== frame) {
@@ -138,7 +134,7 @@ class ChatRunPresentation<T extends object> {
 
   private clearFrame(): void {
     if (this.frame !== null) {
-      globalThis.cancelAnimationFrame?.(this.frame);
+      globalThis.cancelAnimationFrame(this.frame);
       this.frame = null;
     }
   }

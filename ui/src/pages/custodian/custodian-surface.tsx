@@ -264,7 +264,7 @@ function CustodianSurfaceView(props: CustodianSurfaceProps, host: HTMLElement) {
         lastMessageId = messageId;
         const lastMessage = transcript?.lastElementChild;
         if (lastMessage instanceof HTMLElement) {
-          lastMessage.scrollIntoView?.({ block: "nearest" });
+          lastMessage.scrollIntoView({ block: "nearest" });
         }
       }
     },

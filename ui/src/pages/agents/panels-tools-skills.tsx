@@ -124,7 +124,7 @@ function handleRuntimeToolJump(event: Event, anchorId: string) {
   window.history.replaceState(null, "", nextUrl);
 
   requestAnimationFrame(() => {
-    target.scrollIntoView?.({
+    target.scrollIntoView({
       block: "center",
       behavior: resolveScrollBehavior(),
     });
