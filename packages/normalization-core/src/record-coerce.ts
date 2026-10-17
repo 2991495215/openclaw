@@ -7,6 +7,13 @@ export function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
+export function hasOnlyKeys(
+  record: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+): boolean {
+  return Object.keys(record).every((key) => allowed.has(key));
+}
+
 /** Coerces object-like values to records, falling back to an empty record. */
 export function asRecord(value: unknown): Record<string, unknown> {
   return asOptionalObjectRecord(value) ?? {};

@@ -1,3 +1,4 @@
+import { hasOnlyKeys } from "openclaw/plugin-sdk/collection-input-runtime";
 import type { SessionCatalogProvider } from "openclaw/plugin-sdk/session-catalog";
 import {
   isRecord,
@@ -65,10 +66,6 @@ const TOP_LEVEL_KEYS = new Set([
 ]);
 const ITEM_KEYS = new Set(["type", "text"]);
 const SOURCE_MODEL_KEYS = new Set(["provider", "model"]);
-
-function hasOnlyKeys(value: Record<string, unknown>, allowed: Set<string>): boolean {
-  return Object.keys(value).every((key) => allowed.has(key));
-}
 
 function isIsoTimestamp(value: string): boolean {
   const match =

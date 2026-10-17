@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isStringRecord } from "@openclaw/normalization-core/record-coerce";
+import { hasOnlyKeys, isStringRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import { resolveMcpTransportConfig } from "../agents/mcp-transport-config.js";
 import {
@@ -193,10 +193,6 @@ function absolutizeBundleMcpServer(params: {
   }
 
   return next;
-}
-
-function hasOnlyKeys(raw: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
-  return Object.keys(raw).every((key) => allowed.has(key));
 }
 
 function isValidAgentCommand(command: unknown, rootDir: string): command is string {
