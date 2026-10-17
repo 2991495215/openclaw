@@ -22,10 +22,8 @@ function isValidTimeZone(tz: string): boolean {
   return valid;
 }
 
-type TimestampStyle = "short" | "medium" | "long";
-
 type FormatTimestampOptions = {
-  style?: TimestampStyle;
+  style: "short" | "long";
   timeZone?: string;
 };
 
@@ -78,19 +76,13 @@ function getTimestampParts(date: Date, timeZone?: string) {
   return parts;
 }
 
-export function formatTimestamp(date: Date, options?: FormatTimestampOptions): string {
-  const style = options?.style ?? "medium";
-  const parts = getTimestampParts(date, options?.timeZone);
+export function formatTimestamp(date: Date, options: FormatTimestampOptions): string {
+  const parts = getTimestampParts(date, options.timeZone);
   const offset = formatOffset(parts.timeZoneName ?? "GMT");
   const milliseconds = String(date.getUTCMilliseconds()).padStart(3, "0");
 
-  switch (style) {
-    case "short":
-      return `${parts.hour}:${parts.minute}:${parts.second}${offset}`;
-    case "medium":
-      return `${parts.hour}:${parts.minute}:${parts.second}.${milliseconds}${offset}`;
-    case "long":
-      return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${milliseconds}${offset}`;
+  if (options.style === "short") {
+    return `${parts.hour}:${parts.minute}:${parts.second}${offset}`;
   }
-  throw new Error("Unsupported timestamp style");
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${milliseconds}${offset}`;
 }

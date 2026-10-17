@@ -305,9 +305,7 @@ describe("runInteractiveSetup", () => {
     await runInteractiveSetup({} as never, runtime);
 
     expect(mocks.runSetupWizard).toHaveBeenCalledOnce();
-    expect(mocks.restoreTerminalState).toHaveBeenCalledWith("setup finish", {
-      resumeStdinIfPaused: false,
-    });
+    expect(mocks.restoreTerminalState).toHaveBeenCalledWith("setup finish");
   });
 
   it("restores terminal state without resuming stdin on cancel", async () => {
@@ -324,9 +322,7 @@ describe("runInteractiveSetup", () => {
     await expect(runInteractiveSetup({} as never, runtime)).rejects.toBe(exitError);
 
     expect(runtime.exit).toHaveBeenCalledWith(1);
-    expect(mocks.restoreTerminalState).toHaveBeenCalledWith("setup finish", {
-      resumeStdinIfPaused: false,
-    });
+    expect(mocks.restoreTerminalState).toHaveBeenCalledWith("setup finish");
     const restoreOrder =
       mocks.restoreTerminalState.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER;
     const exitOrder =
@@ -343,8 +339,6 @@ describe("runInteractiveSetup", () => {
     await expect(runInteractiveSetup({} as never, runtime)).rejects.toThrow("boom");
 
     expect(runtime.exit).not.toHaveBeenCalled();
-    expect(mocks.restoreTerminalState).toHaveBeenCalledWith("setup finish", {
-      resumeStdinIfPaused: false,
-    });
+    expect(mocks.restoreTerminalState).toHaveBeenCalledWith("setup finish");
   });
 });

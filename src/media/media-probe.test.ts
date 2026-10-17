@@ -49,11 +49,7 @@ beforeEach(() => {
 });
 
 async function probeMediaFile(filePath: string, kind: MediaProbeKind): Promise<MediaProbeResult> {
-  const [result] = await probeMediaFilesWithinBudget([{ filePath, kind }], {
-    budgetMs: 3000,
-    concurrency: 1,
-    maxProbes: 1,
-  });
+  const [result] = await probeMediaFilesWithinBudget([{ filePath, kind }]);
   return result ?? {};
 }
 
@@ -280,7 +276,6 @@ describe("probeMediaFilesWithinBudget", () => {
     runFfprobe.mockResolvedValue(JSON.stringify({ format: { duration: "1" } }));
     const results = await probeMediaFilesWithinBudget(
       Array.from({ length: 10 }, () => ({ filePath: songPath, kind: "audio" as const })),
-      { budgetMs: 3000, concurrency: 2, maxProbes: 8 },
     );
 
     expect(runFfprobe).toHaveBeenCalledTimes(8);
@@ -304,7 +299,6 @@ describe("probeMediaFilesWithinBudget", () => {
 
     await probeMediaFilesWithinBudget(
       Array.from({ length: 4 }, () => ({ filePath: songPath, kind: "audio" as const })),
-      { budgetMs: 3000, concurrency: 2, maxProbes: 8 },
     );
     expect(maxActive).toBe(2);
   });
@@ -319,7 +313,6 @@ describe("probeMediaFilesWithinBudget", () => {
     try {
       const results = await probeMediaFilesWithinBudget(
         Array.from({ length: 4 }, () => ({ filePath: songPath, kind: "audio" as const })),
-        { budgetMs: 3000, concurrency: 2, maxProbes: 8 },
       );
       expect(runFfprobe).toHaveBeenCalledTimes(2);
       expect(results).toEqual([{ durationMs: 1000 }, { durationMs: 1000 }, {}, {}]);
@@ -343,7 +336,6 @@ describe("probeMediaFilesWithinBudget", () => {
       try {
         const results = await probeMediaFilesWithinBudget(
           Array.from({ length: 4 }, () => ({ filePath: songPath, kind: "audio" as const })),
-          { budgetMs: 3000, concurrency: 2, maxProbes: 4 },
         );
         expect(runFfprobe).toHaveBeenCalledTimes(4);
         expect(results).toEqual(Array.from({ length: 4 }, () => ({ durationMs: 1000 })));

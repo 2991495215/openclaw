@@ -1079,7 +1079,6 @@ describe("tui session actions", () => {
         });
         const handlers = h.events({
           loadHistory: () => loadSelectedHistory(),
-          streamingWatchdogMs: 100,
         });
         handlers.handleChatEvent(
           assistantEvent(previousRunId, previousSessionKey, 1, "delta", "old partial"),
@@ -1114,7 +1113,7 @@ describe("tui session actions", () => {
 
         expect(state.activeChatRunId).toBe(preservesOld ? previousRunId : null);
         expect(setActivityStatus).toHaveBeenLastCalledWith(preservesOld ? "running" : "idle");
-        vi.advanceTimersByTime(101);
+        vi.advanceTimersByTime(30_001);
         expect(addPendingSystem).toHaveBeenCalledTimes(preservesOld ? 1 : 0);
         if (sameSession && !preservesOld) {
           handlers.handleChatEvent(

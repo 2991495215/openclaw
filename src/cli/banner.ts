@@ -15,8 +15,6 @@ type BannerOptions = TaglineOptions & {
   argv?: string[];
   commit?: string | null;
   columns?: number;
-  isTty?: boolean;
-  platform?: NodeJS.Platform;
   richTty?: boolean;
 };
 
@@ -34,11 +32,10 @@ export function formatCliBannerLine(version: string, options: BannerOptions = {}
   const commitLabel = commit ?? "unknown";
   const tagline = stripDecorativeEmojiForTerminal(
     pickTagline({ ...options, mode: parseTaglineMode(options.mode) }),
-    options,
   );
   const rich = options.richTty ?? isRich();
-  const title = decorativePrefix("🦞", "OpenClaw", options);
-  const prefix = decorativeEmoji("🦞", options);
+  const title = decorativePrefix("🦞", "OpenClaw");
+  const prefix = decorativeEmoji("🦞");
   const indent = prefix ? `${prefix} ` : "";
   const columns = options.columns ?? process.stdout.columns ?? 120;
   const plainBaseLine = `${title} ${version} (${commitLabel})`;
@@ -76,8 +73,7 @@ export function emitCliBanner(version: string, options: BannerOptions = {}) {
     return;
   }
   const argv = options.argv ?? process.argv;
-  const isTty = options.isTty ?? process.stdout.isTTY;
-  if (!isTty) {
+  if (!process.stdout.isTTY) {
     return;
   }
   if (hasJsonFlag(argv)) {

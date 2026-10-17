@@ -112,7 +112,6 @@ vi.mock("../runtime.js", async () => {
       ...actual.defaultRuntime,
       exit: vi.fn((code: number, opts?: RuntimeExitOptions) => {
         terminalRestore.restoreTerminalState("runtime exit", {
-          resumeStdinIfPaused: false,
           resetStream: opts?.resetStream,
         });
         process.exit(code);

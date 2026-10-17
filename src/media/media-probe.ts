@@ -38,11 +38,9 @@ type MediaFileProbeInput = {
   kind: MediaProbeKind;
 };
 
-type MediaProbeBatchOptions = {
-  budgetMs: number;
-  concurrency: number;
-  maxProbes: number;
-};
+const MEDIA_PROBE_BUDGET_MS = 3000;
+const MEDIA_PROBE_CONCURRENCY = 2;
+const MAX_MEDIA_PROBES = 8;
 
 type FfprobeSource = { stdinFileDescriptor: number } | { input: Buffer };
 
@@ -225,17 +223,16 @@ async function probeMediaFile(
 /** Probes a bounded batch under one elapsed-time budget, unaffected by wall-clock steps. */
 export async function probeMediaFilesWithinBudget(
   inputs: readonly MediaFileProbeInput[],
-  options: MediaProbeBatchOptions,
 ): Promise<MediaProbeResult[]> {
   const results: MediaProbeResult[] = inputs.map(() => ({}));
-  const deadlineMs = performance.now() + options.budgetMs;
-  const probeCount = Math.min(inputs.length, options.maxProbes);
-  for (let offset = 0; offset < probeCount; offset += options.concurrency) {
+  const deadlineMs = performance.now() + MEDIA_PROBE_BUDGET_MS;
+  const probeCount = Math.min(inputs.length, MAX_MEDIA_PROBES);
+  for (let offset = 0; offset < probeCount; offset += MEDIA_PROBE_CONCURRENCY) {
     const timeoutMs = deadlineMs - performance.now();
     if (timeoutMs <= 0) {
       break;
     }
-    const batchEnd = Math.min(offset + options.concurrency, probeCount);
+    const batchEnd = Math.min(offset + MEDIA_PROBE_CONCURRENCY, probeCount);
     const batch = inputs.slice(offset, batchEnd);
     const batchResults = await Promise.all(
       batch.map((input) => probeMediaFile(input.filePath, input.kind, { timeoutMs })),

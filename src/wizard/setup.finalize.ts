@@ -938,7 +938,7 @@ export async function finalizeSetupWizard(
     );
 
     if (shouldLaunchTui) {
-      restoreTerminalState("pre-setup tui", { resumeStdinIfPaused: false });
+      restoreTerminalState("pre-setup tui");
       try {
         await runTui({
           ...(gatewayProbe.ok
@@ -972,7 +972,7 @@ export async function finalizeSetupWizard(
           initialMessageTimeoutMs: HATCH_TUI_TIMEOUT_MS,
         });
       } finally {
-        restoreTerminalState("post-setup tui", { resumeStdinIfPaused: false });
+        restoreTerminalState("post-setup tui");
         if (sessionGateway) {
           // Setup owns this temporary Gateway; settle it before returning or
           // propagating a TUI failure to the CLI finalizer.

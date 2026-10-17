@@ -40,8 +40,6 @@ type TuiRunLifecycleContext = {
   forgetLocalRunId?: (runId: string) => void;
   clearLocalRunIds?: () => void;
   clearLocalBtwRunIds?: () => void;
-  /** Reset `streaming` after this much delta silence. Set to 0 to disable. */
-  streamingWatchdogMs?: number;
   localMode?: boolean;
 };
 
@@ -63,12 +61,6 @@ export function createTuiRunLifecycle(context: TuiRunLifecycleContext) {
   } = context;
   const { sessionRuns, liveTerminalErrorMessages } = runCoordinator;
   const pendingTerminalLifecycleErrors = new Map<string, ReturnType<typeof setTimeout>>();
-  const streamingWatchdogMs =
-    typeof context.streamingWatchdogMs === "number" &&
-    Number.isFinite(context.streamingWatchdogMs) &&
-    context.streamingWatchdogMs >= 0
-      ? Math.floor(context.streamingWatchdogMs)
-      : DEFAULT_STREAMING_WATCHDOG_MS;
 
   let lastSessionKey = state.currentSessionKey;
   let reconnectPendingRunId: string | null = null;
@@ -121,9 +113,6 @@ export function createTuiRunLifecycle(context: TuiRunLifecycleContext) {
 
   const armStreamingWatchdog = (runId: string) => {
     clearCancellationNotice();
-    if (streamingWatchdogMs <= 0) {
-      return;
-    }
     clearTimeout(streamingWatchdogTimer ?? undefined);
     streamingWatchdogRunId = runId;
     streamingWatchdogTimer = setTimeout(() => {
@@ -144,7 +133,7 @@ export function createTuiRunLifecycle(context: TuiRunLifecycleContext) {
       }
       chatLog.addPendingSystem(runId, STREAMING_WATCHDOG_USER_MESSAGE);
       tui.requestRender();
-    }, streamingWatchdogMs);
+    }, DEFAULT_STREAMING_WATCHDOG_MS);
     streamingWatchdogTimer.unref?.();
   };
 

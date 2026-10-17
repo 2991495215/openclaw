@@ -184,9 +184,7 @@ describe("guided onboarding post-inference steps", () => {
       expect(await outcome).toBe(failure);
       expect(deps.runBrowserHandoff).not.toHaveBeenCalled();
       expect(deps.launchHatchTui).not.toHaveBeenCalled();
-      expect(restoreTerminalState).toHaveBeenCalledWith("setup finish", {
-        resumeStdinIfPaused: false,
-      });
+      expect(restoreTerminalState).toHaveBeenCalledWith("setup finish");
     } finally {
       commit.resolve();
       await outcome;

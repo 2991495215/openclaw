@@ -2,13 +2,6 @@ import { splitGraphemes } from "./ansi.js";
 
 // Decorative emoji helpers that degrade cleanly on terminals without reliable emoji support.
 
-/** Environment and terminal facts used to decide decorative emoji support. */
-export type DecorativeEmojiOptions = {
-  env?: NodeJS.ProcessEnv;
-  isTty?: boolean;
-  platform?: NodeJS.Platform;
-};
-
 const EMOJI_GRAPHEME_PATTERN = /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20e3]/u;
 
 /** Detect terminals with known emoji rendering support. */
@@ -39,39 +32,30 @@ function hasUtf8Locale(env: NodeJS.ProcessEnv): boolean {
 }
 
 /** Return true when decorative emoji should be emitted for the target terminal. */
-export function supportsDecorativeEmoji(options: DecorativeEmojiOptions = {}): boolean {
-  const env = options.env ?? process.env;
-  const platform = options.platform ?? process.platform;
-  const isTty = options.isTty ?? process.stdout.isTTY;
+export function supportsDecorativeEmoji(): boolean {
+  const env = process.env;
 
-  return isTty
+  return process.stdout.isTTY
     ? (env.TERM ?? "").toLowerCase() !== "dumb" &&
         hasUtf8Locale(env) &&
-        (isKnownEmojiTerminal(env) || platform === "darwin")
+        (isKnownEmojiTerminal(env) || process.platform === "darwin")
     : false;
 }
 
 /** Return the emoji only when decorative emoji output is supported. */
-export function decorativeEmoji(emoji: string, options: DecorativeEmojiOptions = {}): string {
-  return supportsDecorativeEmoji(options) ? emoji : "";
+export function decorativeEmoji(emoji: string): string {
+  return supportsDecorativeEmoji() ? emoji : "";
 }
 
 /** Prefix text with a decorative emoji when supported. */
-export function decorativePrefix(
-  emoji: string,
-  text: string,
-  options: DecorativeEmojiOptions = {},
-): string {
-  const prefix = decorativeEmoji(emoji, options);
+export function decorativePrefix(emoji: string, text: string): string {
+  const prefix = decorativeEmoji(emoji);
   return prefix ? `${prefix} ${text}` : text;
 }
 
 /** Strip decorative emoji for terminals that should not receive them. */
-export function stripDecorativeEmojiForTerminal(
-  text: string,
-  options: DecorativeEmojiOptions = {},
-): string {
-  if (supportsDecorativeEmoji(options)) {
+export function stripDecorativeEmojiForTerminal(text: string): string {
+  if (supportsDecorativeEmoji()) {
     return text;
   }
   return splitGraphemes(text)

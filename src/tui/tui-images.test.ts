@@ -88,7 +88,6 @@ function createHarness(
     setActivityStatus,
     updateFooter,
     loadHistory: actions.loadHistory,
-    streamingWatchdogMs: 0,
   });
   cleanups.push(() => {
     handlers.dispose();

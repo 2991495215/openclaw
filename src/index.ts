@@ -215,7 +215,7 @@ if (shouldRunCli && !compileCacheRespawnEnv) {
     for (const message of runFatalErrorHooks({ reason: "uncaught_exception", error })) {
       console.error("[openclaw]", message);
     }
-    restoreRuntimeTerminalState("uncaught exception", { resumeStdinIfPaused: false });
+    restoreRuntimeTerminalState("uncaught exception");
     exitAfterSignalExitBarriers(1, "uncaught exception");
   });
 
@@ -243,7 +243,7 @@ if (shouldRunCli && !compileCacheRespawnEnv) {
           console.error("[openclaw]", message);
         }
       }
-      restoreRuntimeTerminalState("legacy cli failure", { resumeStdinIfPaused: false });
+      restoreRuntimeTerminalState("legacy cli failure");
       process.exitCode = 1;
     },
   });

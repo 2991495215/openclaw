@@ -70,7 +70,7 @@ export async function runCliWithExitFinalization(params: {
       if (signalExitCode !== undefined || requestedCode !== undefined) {
         // Explicit exits retain runtime.exit's terminal contract after owned cleanup.
         // Ordinary command completion must not add ANSI bytes to its output.
-        restoreRuntimeTerminalState("CLI exit", { resumeStdinIfPaused: false });
+        restoreRuntimeTerminalState("CLI exit");
       }
       // Node drains stdio and V8 compiler work naturally.
     }

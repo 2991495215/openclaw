@@ -47,7 +47,6 @@ function createDisplayHarness() {
     },
     updateFooter: vi.fn(),
     loadHistory: async () => ({ loaded: false }),
-    streamingWatchdogMs: 0,
   });
   onTestFinished(handlers.dispose);
   return {

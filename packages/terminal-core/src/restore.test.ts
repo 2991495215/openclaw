@@ -68,15 +68,6 @@ describe("restoreTerminalState", () => {
     expect(resume).not.toHaveBeenCalled();
   });
 
-  it("resumes paused stdin when resumeStdin is true", () => {
-    const { setRawMode, resume } = setupPausedTTYStdin();
-
-    restoreTerminalState("test", { resumeStdinIfPaused: true });
-
-    expect(setRawMode).toHaveBeenCalledWith(false);
-    expect(resume).toHaveBeenCalledOnce();
-  });
-
   it("does not touch stdin when stdin is not a TTY", () => {
     const setRawMode = vi.fn();
     const resume = vi.fn();
@@ -90,7 +81,7 @@ describe("restoreTerminalState", () => {
       isPaused,
     });
 
-    restoreTerminalState("test", { resumeStdinIfPaused: true });
+    restoreTerminalState("test");
 
     expect(setRawMode).not.toHaveBeenCalled();
     expect(resume).not.toHaveBeenCalled();
