@@ -1,32 +1,10 @@
 import type { JSX } from "@solidjs/web";
 import { createMemo, Show } from "solid-js";
-import { toSanitizedMarkdownHtml } from "../../components/markdown.ts";
 import { Icon } from "../../components/solid/icon.tsx";
+import { MarkdownHtml } from "../../components/solid/markdown-html.tsx";
 import "../../components/modal-dialog.ts";
-import { SanitizedHtml } from "../../components/solid/sanitized-html.tsx";
 import { t } from "../../lib/reactive/i18n.ts";
 import type { SkillsProps } from "./view-types.ts";
-
-export function MarkdownContent(props: {
-  content: string;
-  changelog?: boolean;
-  class?: JSX.HTMLAttributes<HTMLElement>["class"];
-  style?: JSX.HTMLAttributes<HTMLElement>["style"];
-  onClick?: JSX.EventHandler<HTMLElement, MouseEvent>;
-}) {
-  return (
-    <SanitizedHtml
-      tag="article"
-      class={["lit-content", props.class]}
-      style={props.style}
-      onClick={props.onClick}
-      html={toSanitizedMarkdownHtml(
-        props.content,
-        props.changelog ? { codeBlockChrome: "none", mode: "document" } : undefined,
-      )}
-    />
-  );
-}
 
 export function SkillReaderDialog(props: {
   label: string;
@@ -174,10 +152,11 @@ export function ClawHubDetailDialog(props: { view: SkillsProps; installLocked: b
                   </Show>{" "}
                   <Show when={detail()?.latestVersion?.changelog}>
                     {(changelog) => (
-                      <MarkdownContent
-                        class="clawhub-skill-detail__changelog sidebar-markdown"
-                        content={changelog()}
-                        changelog
+                      <MarkdownHtml
+                        as="article"
+                        class="lit-content clawhub-skill-detail__changelog sidebar-markdown"
+                        markdown={changelog()}
+                        options={{ codeBlockChrome: "none", mode: "document" }}
                       />
                     )}
                   </Show>{" "}

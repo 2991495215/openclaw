@@ -4,6 +4,7 @@ import type { SkillStatusEntry } from "../../api/types.ts";
 import { handleMarkdownCodeBlockClick } from "../../components/markdown-code-blocks.ts";
 import { HubTabs } from "../../components/solid/hub-tabs.tsx";
 import { Icon } from "../../components/solid/icon.tsx";
+import { MarkdownHtml } from "../../components/solid/markdown-html.tsx";
 import {
   SettingsEmpty,
   SettingsPage,
@@ -27,7 +28,7 @@ import {
 } from "../../lib/skills-shared.ts";
 import type { ClawHubSkillSecurityVerdict } from "../../lib/skills/index.ts";
 import { SkillDiscovery } from "./discovery-view.tsx";
-import { ClawHubDetailDialog, MarkdownContent, SkillReaderDialog } from "./skill-reader-dialog.tsx";
+import { ClawHubDetailDialog, SkillReaderDialog } from "./skill-reader-dialog.tsx";
 import {
   SkillStateStatus,
   SkillStatusChips,
@@ -584,11 +585,12 @@ function InstalledSkillCard(props: { skill: SkillStatusEntry; view: SkillsProps 
           </Show>
         }
       >
-        <MarkdownContent
-          class="sidebar-markdown"
+        <MarkdownHtml
+          as="article"
+          class="lit-content sidebar-markdown"
           style={{ "max-width": "100%", "overflow-wrap": "anywhere" }}
           onClick={handleMarkdownCodeBlockClick}
-          content={content() ?? ""}
+          markdown={content() ?? ""}
         />
       </Show>
     </Show>

@@ -40,9 +40,8 @@ export function createSidebarPeople(
   current: () => AppSidebarSessionNavigationElement,
 ) {
   let runtime: SidebarPeopleRuntime | null = null;
-  let loading: Promise<typeof import("./sidebar-people.runtime.ts")> | null = null;
-  let generation = 0;
-  let pendingTarget: HTMLElement | null = null;
+  let loading = false;
+  let pending: { target: HTMLElement; event: Event; startedAt: number } | null = null;
   let stopPending: (() => void)[] = [];
   let activityScope = "";
   const activityExpiry = createPresenceActivityLifecycle(
@@ -78,12 +77,11 @@ export function createSidebarPeople(
     return source ? projectOwner(source, (profileState) => profileState) : null;
   });
   const clearPending = () => {
-    pendingTarget = null;
+    pending = null;
     stopPending.forEach((stop) => stop());
     stopPending = [];
   };
   const dismiss = () => {
-    generation += 1;
     clearPending();
     return runtime?.dismiss() ?? false;
   };
@@ -91,7 +89,7 @@ export function createSidebarPeople(
     if (
       event instanceof KeyboardEvent
         ? event.key === "Escape"
-        : event.target instanceof Node && !pendingTarget?.contains(event.target)
+        : event.target instanceof Node && !pending?.target.contains(event.target)
     ) {
       dismiss();
     }
@@ -120,44 +118,33 @@ export function createSidebarPeople(
       return;
     }
     // Input modality belongs to the runtime; row intent only warms its lazy code.
-    const requestGeneration = ++generation;
     clearPending();
-    pendingTarget = target;
+    pending = { target, event, startedAt: performance.now() };
     stopPending = [
       listen(document, "pointerdown", cancelPending, true),
       listen(document, "keydown", cancelPending, true),
     ];
-    const client = host.sessionDataContext?.gateway.snapshot.client;
-    const gateway = host.sessionDataContext?.gateway;
-    const hello = gateway?.snapshot.hello;
-    const route = host.activeRouteId;
-    const sessionKey = host.sessionKey;
-    const startedAt = performance.now();
-    loading ??= import("./sidebar-people.runtime.ts");
-    void loading.then(
+    if (loading) {
+      return;
+    }
+    loading = true;
+    void import("./sidebar-people.runtime.ts").then(
       (module) => {
-        if (requestGeneration === generation) {
-          clearPending();
-        }
-        if (
-          requestGeneration !== generation ||
-          !host.isConnected ||
-          !target.isConnected ||
-          gateway !== host.sessionDataContext?.gateway ||
-          client !== gateway?.snapshot.client ||
-          hello !== gateway?.snapshot.hello ||
-          route !== host.activeRouteId ||
-          sessionKey !== host.sessionKey
-        ) {
+        loading = false;
+        const intent = pending;
+        clearPending();
+        if (!intent || !host.isConnected || !host.connected || !intent.target.isConnected) {
           return;
         }
+        // Code loading preserves latest input intent; the runtime reads current context.
         runtime ??= new module.SidebarPeopleRuntime(host);
-        runtime.handleEvent(event, startedAt);
+        runtime.handleEvent(intent.event, intent.startedAt);
       },
       () => {
-        loading = null;
-        if (requestGeneration === generation && host.isConnected) {
-          clearPending();
+        loading = false;
+        const intent = pending;
+        clearPending();
+        if (intent && host.isConnected && host.connected && intent.target.isConnected) {
           showToast({ message: t("presence.card.loadFailed") });
         }
       },
