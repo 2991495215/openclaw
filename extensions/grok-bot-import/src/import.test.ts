@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import * as gateway from "openclaw/plugin-sdk/gateway-runtime";
 import * as network from "openclaw/plugin-sdk/ssrf-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -150,26 +150,63 @@ describe("Grok import operations", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it("continues a bulk import after one inaccessible bot and disambiguates equal names", async () => {
+  it.each([401, 403])(
+    "exports nothing when Grok rejects account access with HTTP %s",
+    async (status) => {
+      const root = await directory();
+      const fetch = vi.spyOn(network, "fetchWithSsrFGuard").mockResolvedValue({
+        response: new Response(null, { status }),
+        release: async () => {},
+        finalUrl: "https://api2.cursor.sh",
+      });
+      const rpc = vi.spyOn(gateway, "callGatewayFromCli").mockResolvedValue({});
+      await expect(
+        importGrokBots({
+          all: true,
+          out: join(root, "export"),
+          install: true,
+          resolveAccessToken: async () => "synthetic-rejected-token",
+        }),
+      ).rejects.toThrow(status === 401 ? "Grok access is required" : "Grok refused access");
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch.mock.calls[0]?.[0].url).toBe(
+        "https://api2.cursor.sh/aiserver.v1.GrokBotService/ListGrokBotAgents",
+      );
+      expect(await readdir(root)).toEqual([]);
+      expect(rpc).not.toHaveBeenCalled();
+    },
+  );
+
+  it("exports only readable owned bots, excluding teammates and preserving equal names", async () => {
     const root = await directory();
     const auth = vi.fn(async () => "synthetic-token");
+    const requestedAgentIds: unknown[] = [];
+    const ownerRow = (id: string) => ({
+      id,
+      agentId: id,
+      name: "Same Name",
+      description: id,
+      kind: "GROK_BOT_AGENT_KIND_AGENT",
+      visibility: "GROK_BOT_AGENT_VISIBILITY_OWNER",
+    });
     vi.spyOn(network, "fetchWithSsrFGuard").mockImplementation(async (request) => {
       const method = new URL(request.url).pathname.split("/").at(-1);
       if (typeof request.init?.body !== "string") {
         throw new Error("Expected a JSON request body");
       }
       const body = JSON.parse(request.init.body);
+      if (body.agentId !== undefined) {
+        requestedAgentIds.push(body.agentId);
+      }
       const reply =
         method === "ListGrokBotAgents"
           ? {
-              agents: ["first", "broken", "last"].map((id) => ({
-                id,
-                agentId: id,
-                name: "Same Name",
-                description: id,
-                kind: "GROK_BOT_AGENT_KIND_AGENT",
-                visibility: "GROK_BOT_AGENT_VISIBILITY_OWNER",
-              })),
+              agents: [
+                ...["first", "broken", "last"].map(ownerRow),
+                { ...ownerRow("teammate"), visibility: "GROK_BOT_AGENT_VISIBILITY_TEAM" },
+                { ...ownerRow("room"), kind: "GROK_BOT_AGENT_KIND_ROOM" },
+                { ...ownerRow("not-owner"), viewerIsOwner: false },
+              ],
             }
           : method === "ListGrokBotAgentSkills"
             ? { skills: [] }
@@ -186,6 +223,14 @@ describe("Grok import operations", () => {
     const results = await importGrokBots({ all: true, out: root, resolveAccessToken: auth });
     expect(auth).toHaveBeenCalledTimes(1);
     expect(results.map((result) => result.status)).toEqual(["converted", "failed", "converted"]);
+    expect(new Set(requestedAgentIds)).toEqual(new Set(["broken", "first", "last"]));
+    expect(results[1]?.conversion).toBeUndefined();
+    expect(results[1]?.error).toContain("Grok refused access");
+    expect((await readdir(root)).toSorted((a, b) => a.localeCompare(b))).toEqual(
+      [results[0]!, results[2]!]
+        .map((result) => basename(result.conversion!.packageRoot))
+        .toSorted((a, b) => a.localeCompare(b)),
+    );
     for (const result of [results[0]!, results[2]!]) {
       expect(result.conversion?.completeness).toBe("partial");
       expect(result.conversion?.warnings.map(({ code }) => code)).toEqual([
