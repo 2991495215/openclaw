@@ -1105,8 +1105,6 @@ describe("server-channels auto restart", () => {
           ? startChannelHealthMonitor({
               scheduler: createTestGatewayScheduler("fake-timers"),
               channelManager: manager,
-              timing: { monitorStartupGraceMs: 2, channelConnectGraceMs: 0 },
-              maxRestartsPerHour: 1,
             })
           : undefined;
       const restartTask =
@@ -1117,7 +1115,8 @@ describe("server-channels auto restart", () => {
             })
           : undefined;
       try {
-        await vi.advanceTimersByTimeAsync(2);
+        // The first health wake is inside connect grace; the second begins recovery.
+        await vi.advanceTimersByTimeAsync(recovery === "health-monitor" ? 6 * 60_000 : 2);
         const replacement = vi.fn(stayRunning);
         installTestRegistry(createTestPlugin({ startAccount: replacement }));
         config = { channels: { discord: { enabled: true } } };
