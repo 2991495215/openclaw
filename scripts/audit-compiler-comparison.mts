@@ -111,7 +111,7 @@ export function auditCompilerComparison(directory: string) {
         assert(output.length > 0, `Empty ${graph.name}/${compiler}/${label}`);
         assert.equal(digest(output), proof.proofs[compiler][label].sha256, "Input hash mismatch");
         if (label === "config") {
-          const config = JSON.parse(output) as { compilerOptions: { noCheck?: boolean } };
+          const config = JSON.parse(output) as { compilerOptions: { noCheck?: unknown } };
           assert(
             config.compilerOptions.noCheck === undefined ||
               config.compilerOptions.noCheck === false,
