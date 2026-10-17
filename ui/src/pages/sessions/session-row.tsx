@@ -89,7 +89,7 @@ const CONTEXT_METER_DANGER_PERCENT = 85;
 
 function renderTokensCell(row: GatewaySessionRow) {
   const total = row.totalTokens;
-  if (typeof total !== "number" || !Number.isFinite(total)) {
+  if (total == null) {
     return <span class="muted">{t("common.na")}</span>;
   }
   // Stale snapshots (post-compaction, incomplete usage reporting) stay visible

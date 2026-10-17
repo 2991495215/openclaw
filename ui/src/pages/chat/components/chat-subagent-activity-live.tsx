@@ -21,7 +21,7 @@ function matchesRun(row: ChatSubagentActivityRow, digest: SessionObserverDigest)
   return (
     row.status === "running" &&
     areUiSessionKeysEquivalent(row.key, digest.sessionKey) &&
-    typeof digest.runId === "string" &&
+    digest.runId !== undefined &&
     session.activeRunIds?.includes(digest.runId) === true &&
     (!digest.agentId ||
       normalizeAgentId(digest.agentId) === resolveUiSessionRowAgentId(session, "")) &&

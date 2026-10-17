@@ -7,7 +7,6 @@ type SourceEntry<T> = {
   readonly invalidateOnConnect: boolean;
   source: T | undefined;
   cleanup: Cleanup | undefined;
-  generation: number;
 };
 
 /**
@@ -38,13 +37,8 @@ export class SubscriptionsController implements SolidController {
     return this.addEntry(
       getSource,
       (source, entry) => {
-        const generation = entry.generation;
         const notify = () => {
-          if (
-            !this.connected ||
-            entry.generation !== generation ||
-            !Object.is(entry.source, source)
-          ) {
+          if (!this.connected || !Object.is(entry.source, source)) {
             return;
           }
           synchronize?.(source);
@@ -101,7 +95,6 @@ export class SubscriptionsController implements SolidController {
       invalidateOnConnect,
       source: undefined,
       cleanup: undefined,
-      generation: 0,
     };
     this.entries.push(entry as SourceEntry<unknown>);
     if (this.connected) {
@@ -126,7 +119,6 @@ export class SubscriptionsController implements SolidController {
       return;
     }
     entry.source = source;
-    entry.generation += 1;
     try {
       entry.cleanup = entry.connect(source);
     } catch (error) {
@@ -139,7 +131,6 @@ export class SubscriptionsController implements SolidController {
   }
 
   private disconnectEntry<T>(entry: SourceEntry<T>): void {
-    entry.generation += 1;
     entry.source = undefined;
     const cleanup = entry.cleanup;
     entry.cleanup = undefined;

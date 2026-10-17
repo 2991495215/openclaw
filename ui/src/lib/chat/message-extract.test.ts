@@ -1,7 +1,29 @@
 // @vitest-environment node
 // Control UI tests cover message extract behavior.
 import { describe, expect, it } from "vitest";
-import { extractText, extractTextCached, extractThinkingCached } from "./message-extract.ts";
+import {
+  extractText,
+  extractTextCached,
+  extractThinkingCached,
+  readTranscriptMediaEntries,
+} from "./message-extract.ts";
+
+it("admits only string media types while retaining persisted attachment paths", () => {
+  const entries = readTranscriptMediaEntries({
+    __openclaw: {
+      media: [
+        { path: "/synthetic/photo.png", contentType: "image/png" },
+        { path: "/synthetic/picture.png", kind: "image" },
+        { path: "/synthetic/unknown.dat", kind: 123 },
+      ],
+    },
+  });
+  expect(entries.map(({ path, mediaType }) => ({ path, mediaType }))).toEqual([
+    { path: "/synthetic/photo.png", mediaType: "image/png" },
+    { path: "/synthetic/picture.png", mediaType: "image" },
+    { path: "/synthetic/unknown.dat", mediaType: undefined },
+  ]);
+});
 
 describe("extractTextCached", () => {
   it("returns consistent text output for repeated calls", () => {

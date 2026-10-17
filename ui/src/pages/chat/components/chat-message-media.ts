@@ -638,7 +638,7 @@ export function projectMessageMedia(
       const projected: ImageBlock = {
         url: mediaPath,
         fileName,
-        ...(typeof mediaType === "string" ? { mimeType: mediaType } : {}),
+        ...(mediaType !== undefined ? { mimeType: mediaType } : {}),
         sizeBytes,
         width,
         height,
@@ -662,7 +662,7 @@ export function projectMessageMedia(
                   : "document",
           label: fileName?.trim() || labelForMediaPath(mediaPath),
           ...(origin ? { origin } : {}),
-          ...(typeof mediaType === "string" ? { mimeType: mediaType } : {}),
+          ...(mediaType !== undefined ? { mimeType: mediaType } : {}),
           ...(sizeBytes !== undefined ? { sizeBytes } : {}),
           ...(durationMs !== undefined ? { durationMs } : {}),
           ...(width !== undefined ? { width } : {}),

@@ -1,5 +1,8 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
+import {
+  normalizeLowercaseStringOrEmpty,
+  readStringValue,
+} from "@openclaw/normalization-core/string-coerce";
 import { stripInternalRuntimeContext } from "../../../../src/agents/internal-runtime-context.js";
 import { stripUserEnvelopeForDisplay } from "../../../../src/auto-reply/reply/user-envelope-display.js";
 import { projectChatWorkContextForDisplay } from "../../../../src/chat/work-context.js";
@@ -134,7 +137,7 @@ export function readTranscriptMediaEntries(message: unknown): Array<{
           {
             factIndex,
             path,
-            mediaType: fact.contentType ?? fact.kind,
+            mediaType: fact.contentType ?? readStringValue(fact.kind),
             fileName: fact.fileName,
             ...(fact.origin ? { origin: fact.origin } : {}),
             ...(fact.sizeBytes !== undefined ? { sizeBytes: fact.sizeBytes } : {}),

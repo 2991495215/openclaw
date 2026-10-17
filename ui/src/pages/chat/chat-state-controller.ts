@@ -596,7 +596,7 @@ export function createChatState<TState extends ChatPageHost>(
     const streamChanged = previousChatStream !== state.chatStream;
     const loadingChanged = previousChatLoading !== state.chatLoading;
     const loadFinished = previousChatLoading && !state.chatLoading;
-    const streamStarted = previousChatStream == null && typeof state.chatStream === "string";
+    const streamStarted = previousChatStream == null && state.chatStream !== null;
     previousTranscriptSources = sources;
     previousChatLoading = state.chatLoading;
     previousChatStream = state.chatStream;

@@ -242,10 +242,6 @@ export function retireDeliveredQueuedUserTurn(
           : message,
     });
     preserveDeliveredUserTurn(host, submission);
-    const beforeRemoval = currentItem();
-    if (!isCurrent() || !beforeRemoval || !sameQueuedDeliveryVersion(beforeRemoval, stored)) {
-      return "stale";
-    }
     return !options?.retainUntilConsumed && removeDeliveredQueuedChatSendForRun(host, runId, scope)
       ? "retired"
       : "retained";

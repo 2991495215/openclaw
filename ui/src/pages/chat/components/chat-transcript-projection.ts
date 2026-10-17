@@ -283,7 +283,7 @@ export function projectChatTranscript(props: ChatThreadProps, transcript: ChatTr
       : null;
   const recapAttached = turnRecap !== null && tailStatusOwner?.runId === turnRecap.runId;
   const recapForGroup = (key: string) =>
-    recapAttached && key === tailStatusOwner?.key ? (turnRecap ?? undefined) : undefined;
+    recapAttached && key === tailStatusOwner?.key ? turnRecap : undefined;
   const resolveReplyPreview = createReplyPreviewResolver(loadedReplySources, props);
   const sharedMessageRenderOptions = {
     entryRefFor: transcript.entryAnimations.refFor,
