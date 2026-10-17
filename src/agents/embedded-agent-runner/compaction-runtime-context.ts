@@ -181,9 +181,7 @@ export function resolveCompactionTargetRuntime(
   // Provider defaults choose new runs; they cannot move an existing transcript.
   const useNativeHarnessRuntime =
     selectedHarnessRuntime !== "openclaw" && !isDefaultAgentRuntimeId(selectedHarnessRuntime);
-  return {
-    ...(useNativeHarnessRuntime ? { nativeHarnessCompaction: true } : {}),
-  };
+  return useNativeHarnessRuntime ? { nativeHarnessCompaction: true } : {};
 }
 
 function hasBareConfiguredModelForProvider(params: {
