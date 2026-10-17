@@ -1,6 +1,7 @@
 import type { MessagePort, Worker } from "node:worker_threads";
 import { toStringifiedError } from "@openclaw/normalization-core/error-coercion";
-import type { WorkerCleanup } from "./session-accessor.sqlite-reclamation-worker.types.js";
+
+export type WorkerCleanup = { cleanupWarnings: string[]; settled: boolean };
 
 export type SqliteMutationWorkerTransport =
   | { kind: "dedicated"; channel: Worker }

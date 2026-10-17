@@ -11,8 +11,10 @@ import { AGENT_DATABASE_PREFLIGHT_CONCURRENCY } from "../../state/openclaw-agent
 import { registerOpenClawStateDatabaseAsyncResource } from "../../state/openclaw-state-db-cache.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import type { SqliteSessionReclamationPlan } from "./session-accessor.sqlite-lifecycle-types.js";
-import type { WorkerCleanup } from "./session-accessor.sqlite-reclamation-worker.types.js";
-import type { SqliteMutationWorkerTransport } from "./session-accessor.sqlite-worker-transport.js";
+import type {
+  SqliteMutationWorkerTransport,
+  WorkerCleanup,
+} from "./session-accessor.sqlite-worker-transport.js";
 
 type DatabaseOptions = SqliteSessionReclamationPlan["databaseOptions"];
 const log = createSubsystemLogger("session-sqlite");

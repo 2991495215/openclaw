@@ -53,7 +53,6 @@ import type {
   SqliteReclamationPrepareRequest,
   SqliteReclamationExistingSource,
   SqliteReclamationPreparation,
-  WorkerCleanup,
 } from "./session-accessor.sqlite-reclamation-worker.types.js";
 import {
   withSqliteMutationWorkerCoordination,
@@ -70,6 +69,7 @@ import {
   sqliteMutationWorkerThreadId,
   terminateSqliteMutationWorker,
   type SqliteMutationWorkerTransport,
+  type WorkerCleanup,
 } from "./session-accessor.sqlite-worker-transport.js";
 
 type DatabaseOptions = SqliteArchiveReclamationPlan["databaseOptions"];
