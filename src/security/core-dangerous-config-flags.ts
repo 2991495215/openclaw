@@ -1,4 +1,3 @@
-// Detects dangerous core config flags during security audits.
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 
 /** List enabled core config flags that intentionally weaken security posture. */

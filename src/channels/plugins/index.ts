@@ -1,4 +1,3 @@
-// Runtime channel-plugin entrypoint for registry and config matching helpers.
 // Keep plugin-facing type exports narrow; broader SDK barrels live elsewhere.
 export {
   getChannelPlugin,

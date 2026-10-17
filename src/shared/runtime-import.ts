@@ -1,5 +1,4 @@
 /**
- * Runtime import helpers for lazy modules that may be loaded from file URLs or platform paths.
  * Windows paths need normalization before Node's ESM loader can import them safely.
  */
 import { toSafeImportPath } from "./import-specifier.js";
