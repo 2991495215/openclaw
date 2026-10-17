@@ -47,7 +47,10 @@ import { assertOpenClawDatabasesReady } from "../../state/openclaw-database-pref
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { useSessionStoreTempDirs } from "../../test-utils/session-state-cleanup.js";
 import { createAgentRunDirectAbortError } from "../run-termination.js";
-import { readStartupRecoveryWarning } from "./main-session-restart-recovery-diagnostics.js";
+import {
+  readStartupRecoveryWarning,
+  recordStartupRecoveryStoreResult,
+} from "./main-session-restart-recovery-diagnostics.js";
 import {
   markRestartAbortedMainSessions,
   markStartupOrphanedMainSessionsForRecovery,
@@ -239,6 +242,12 @@ it("keeps healthy stores recoverable when an earlier startup mark fails", async 
       expect(readStartupRecoveryWarning()).toBeUndefined();
     } finally {
       replacementSpy.mockRestore();
+      for (const agentId of ["main", "worker"]) {
+        recordStartupRecoveryStoreResult({
+          target: { agentId, storePath: path.join(state.sessionsDir(agentId), "sessions.json") },
+          outcome: { ok: true },
+        });
+      }
     }
   });
 });

@@ -186,8 +186,9 @@ class SubagentRunManager extends SubagentLaunchManager {
     context?: OpenClawStateWorkerContext;
   }): Promise<number> => {
     const runIds = new Set<string>();
-    if (typeof markParams.runId === "string" && markParams.runId.trim()) {
-      runIds.add(markParams.runId.trim());
+    const requestedRunId = markParams.runId?.trim();
+    if (requestedRunId) {
+      runIds.add(requestedRunId);
     }
     const childSessionKey = markParams.childSessionKey?.trim();
     if (childSessionKey) {

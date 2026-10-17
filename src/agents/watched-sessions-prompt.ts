@@ -123,12 +123,8 @@ export function prepareWatchedSessionsPrompt(
 export async function prepareWatchedSessionsPromptAsync(
   params: WatchedSessionsPromptParams & { assertCurrent: () => void },
 ): Promise<PreparedWatchedSessionsPrompt | undefined> {
-  const input = {
-    ...params,
-    toolNames: [...params.toolNames],
-    capabilityToolNames: [...(params.capabilityToolNames ?? [])],
-  };
-  const access = resolveWatchedSessionsPromptAccess(input);
+  const { config, sandboxed } = params;
+  const access = resolveWatchedSessionsPromptAccess(params);
   if (!access) {
     return undefined;
   }
@@ -181,8 +177,7 @@ export async function prepareWatchedSessionsPromptAsync(
         if (
           currentTargets.length !== targets.length ||
           currentTargets.some((key, index) => key !== targets[index]) ||
-          !watches.isCurrent() ||
-          !resolveWatchedSessionsPromptAccess(input)
+          !watches.isCurrent()
         ) {
           return undefined;
         }
@@ -198,7 +193,10 @@ export async function prepareWatchedSessionsPromptAsync(
     );
     watches.assertCurrent();
     assertCurrent();
-    return watches.isCurrent() && resolveWatchedSessionsPromptAccess(input) ? prepared : undefined;
+    return watches.isCurrent() &&
+      (!sandboxed || resolveSandboxSessionToolsVisibility(config ?? {}) === "all")
+      ? prepared
+      : undefined;
   } finally {
     watches.release();
   }

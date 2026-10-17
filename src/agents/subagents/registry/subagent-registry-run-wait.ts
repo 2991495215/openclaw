@@ -255,8 +255,8 @@ export abstract class SubagentWaitManager {
           outcome: { status: "timeout" },
           reason: SUBAGENT_ENDED_REASON_COMPLETE,
           terminalReply: wait.terminalReply,
-          ...(typeof endedAt === "number" ? { endedAt } : {}),
-          ...(typeof startedAt === "number" && Number.isFinite(startedAt) ? { startedAt } : {}),
+          ...(endedAt !== undefined ? { endedAt } : {}),
+          ...(startedAt !== undefined ? { startedAt } : {}),
         });
       const completeWithDeadline = (
         startedAt: number | undefined,
@@ -274,9 +274,9 @@ export abstract class SubagentWaitManager {
       };
       if (waitStatus === "timeout") {
         const isTerminalWaitTimeout =
-          typeof wait.endedAt === "number" ||
-          typeof wait.stopReason === "string" ||
-          typeof wait.livenessState === "string";
+          wait.endedAt !== undefined ||
+          wait.stopReason !== undefined ||
+          wait.livenessState !== undefined;
         const now = Date.now();
         // A plain agent.wait timeout has no terminal snapshot. For explicit
         // subagent run timeouts, the stored run deadline is the completion
@@ -289,8 +289,7 @@ export abstract class SubagentWaitManager {
         const completion = await this.options.resolveSubagentSessionCompletion({
           childSessionKey: entry.childSessionKey,
           childAgentId: entry.childAgentId,
-          fallbackEndedAt:
-            typeof wait.endedAt === "number" ? wait.endedAt : (hardRunTimeoutEndedAt ?? now),
+          fallbackEndedAt: wait.endedAt ?? hardRunTimeoutEndedAt ?? now,
           notBeforeMs: observedStartedAt ?? entry.execution.startedAt ?? entry.createdAt,
           assertCurrent,
         });
@@ -308,8 +307,7 @@ export abstract class SubagentWaitManager {
           return;
         }
         if (isTerminalWaitTimeout || hardRunTimeoutEndedAt !== undefined) {
-          const timeoutEndedAt =
-            typeof wait.endedAt === "number" ? wait.endedAt : hardRunTimeoutEndedAt;
+          const timeoutEndedAt = wait.endedAt ?? hardRunTimeoutEndedAt;
           await completeWithDeadline(observedStartedAt, timeoutEndedAt, now, () =>
             completeAsRunTimeout(timeoutEndedAt, observedStartedAt),
           );
@@ -356,7 +354,7 @@ export abstract class SubagentWaitManager {
         return;
       }
       await completeWithDeadline(observedStartedAt, wait.endedAt, Date.now(), () => {
-        const endedAt = typeof wait.endedAt === "number" ? wait.endedAt : Date.now();
+        const endedAt = wait.endedAt ?? Date.now();
         return complete({
           endedAt,
           outcome: withSubagentOutcomeTiming(observedCompletion.outcome, {

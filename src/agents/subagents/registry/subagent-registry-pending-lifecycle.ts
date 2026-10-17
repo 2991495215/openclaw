@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import { AGENT_RUN_TERMINAL_RETRY_GRACE_MS } from "../../agent-run-terminal-outcome.js";
 import {
   SUBAGENT_ENDED_REASON_COMPLETE,
@@ -69,16 +68,13 @@ export function createPendingLifecycleScheduler(params: {
       if (!entry || !canComplete(kind, entry, pending.expectedEntry)) {
         return;
       }
-      let publication: Pick<SubagentRunRecord, "execution" | "endedReason"> | undefined;
+      let published = false;
       const isCurrent = () => {
         const current = getCurrentSubagentRunOwner(params.runs, pending.expectedEntry);
         return (
           current !== undefined &&
           current.pauseReason !== "sessions_yield" &&
-          (publication
-            ? current.endedReason === publication.endedReason &&
-              isDeepStrictEqual(current.execution, publication.execution)
-            : canComplete(kind, current, pending.expectedEntry))
+          (published || canComplete(kind, current, pending.expectedEntry))
         );
       };
       params.completeInBackground(
@@ -89,9 +85,8 @@ export function createPendingLifecycleScheduler(params: {
           recoveryCurrent: {
             prepare: async () => isCurrent(),
             isHostCurrent: isCurrent,
-            onPublished: ({ execution, endedReason }) => {
-              // Deadline normalization can change a cancellation into this owner's timeout.
-              publication = { execution, endedReason };
+            onPublished: () => {
+              published = true;
             },
           },
           endedAt: pending.endedAt,
