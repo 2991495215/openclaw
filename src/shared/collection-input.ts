@@ -1,18 +1,7 @@
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 
 export function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string");
-}
-
-export function ensureRecord(root: Record<string, unknown>, key: string): Record<string, unknown> {
-  const current = asOptionalRecord(root[key]);
-  if (current) {
-    return current;
-  }
-  const next: Record<string, unknown> = {};
-  root[key] = next;
-  return next;
 }
 
 export function normalizeOptionalTrimmedStringRecord(

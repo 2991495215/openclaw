@@ -1,9 +1,6 @@
+import { ensureRecord } from "@openclaw/normalization-core/record-coerce";
 import { describe, expect, it } from "vitest";
-import {
-  ensureRecord,
-  isStringArray,
-  normalizeOptionalTrimmedStringRecord,
-} from "./collection-input.js";
+import { isStringArray, normalizeOptionalTrimmedStringRecord } from "./collection-input.js";
 
 describe("collection input", () => {
   it.each([

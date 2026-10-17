@@ -148,6 +148,7 @@ export const CANONICAL_COERCION_HELPER_OWNERS = [
       "asOptionalObjectRecord",
       "asOptionalRecord",
       "asRecord",
+      "ensureRecord",
       "filterStringRecord",
       "isRecord",
       "isStringRecord",

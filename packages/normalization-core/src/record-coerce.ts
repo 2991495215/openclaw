@@ -27,6 +27,16 @@ export function asNonArrayRecord(value: unknown): Record<string, unknown> {
   return asOptionalRecord(value) ?? {};
 }
 
+export function ensureRecord(root: Record<string, unknown>, key: string): Record<string, unknown> {
+  const current = asOptionalRecord(root[key]);
+  if (current) {
+    return current;
+  }
+  const next: Record<string, unknown> = {};
+  root[key] = next;
+  return next;
+}
+
 /** Returns a non-array record or null. */
 export function asNullableRecord(value: unknown): Record<string, unknown> | null {
   return isRecord(value) ? value : null;
