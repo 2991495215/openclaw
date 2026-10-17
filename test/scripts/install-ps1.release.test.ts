@@ -56,7 +56,11 @@ function createFailingNodeFixture(source: string): string {
   ].join("\n");
 }
 
-function createNativeUpgradeEnvironment(root: string, usableCommand: boolean): NodeJS.ProcessEnv {
+function createNativeUpgradeEnvironment(
+  root: string,
+  usableCommand: boolean,
+  gatewayStatusExitCode = 0,
+): NodeJS.ProcessEnv {
   const bin = join(root, "bin");
   mkdirSync(bin, { recursive: true });
   const commandPath = join(root, "command.cjs");
@@ -97,10 +101,10 @@ if (kind === "git" && args.join(" ") === "--version") {
     console.log(JSON.stringify({ service: { loaded: true } }));
   } else if (args.join(" ") === "--version") {
     console.log("2026.9.19");
+  } else if (args.join(" ") === "gateway status --json") {
+    process.exit(${gatewayStatusExitCode});
   } else if (![
     "gateway install --force",
-    "gateway restart",
-    "gateway status --json",
     "doctor --fix --non-interactive",
   ].includes(args.join(" "))) {
     throw new Error("Unexpected OpenClaw command: " + args.join(" "));
@@ -1906,10 +1910,14 @@ try {
         const prerequisite = `${engine} requires usable Node/SQLite: ${preflight.stdout}\n${preflight.stderr}`;
         expect(preflight.error, prerequisite).toBeUndefined();
         expect(preflight.status, prerequisite).toBe(0);
-        for (const usableCommand of [false, true]) {
+        for (const { usableCommand, gatewayStatusExitCode } of [
+          { usableCommand: false, gatewayStatusExitCode: 0 },
+          { usableCommand: true, gatewayStatusExitCode: 0 },
+          { usableCommand: true, gatewayStatusExitCode: 17 },
+        ]) {
           for (const mode of ["file", "scriptblock"]) {
             const root = harness.createTempDir("openclaw-native-upgrade-é-");
-            const env = createNativeUpgradeEnvironment(root, usableCommand);
+            const env = createNativeUpgradeEnvironment(root, usableCommand, gatewayStatusExitCode);
             const scriptPath = join(root, "install.ps1");
             writeFileSync(scriptPath, source);
             const command = [
@@ -1944,7 +1952,7 @@ try {
               timeout: 60_000,
             });
             const output = `${result.stdout}\n${result.stderr}`;
-            const label = `${engine} ${mode} usable=${usableCommand}: ${output}`;
+            const label = `${engine} ${mode} usable=${usableCommand} gatewayStatusExit=${gatewayStatusExitCode}: ${output}`;
             expect(result.error, label).toBeUndefined();
             expect(result.status, label).toBe(!usableCommand && mode === "file" ? 1 : 0);
             expect(output, label).toContain("Existing OpenClaw installation detected");
@@ -1966,11 +1974,19 @@ try {
               expect(cliCalls, label).toEqual([
                 "daemon status --json",
                 "gateway install --force",
-                "gateway restart",
                 "gateway status --json",
                 "doctor --fix --non-interactive",
                 "--version",
               ]);
+              if (gatewayStatusExitCode !== 0) {
+                expect(output, label).toContain(
+                  "[!] Gateway service status check failed; continuing. Run: openclaw gateway status --json",
+                );
+                expect(output, label).not.toContain("[OK] Gateway service refreshed");
+              } else {
+                expect(output, label).toContain("[OK] Gateway service refreshed");
+                expect(output, label).not.toContain("Gateway service status check failed");
+              }
             } else {
               expect(output, label).toContain(
                 "OpenClaw was installed, but its command is not on PATH.",
