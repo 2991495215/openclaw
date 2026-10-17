@@ -1,4 +1,5 @@
 import {
+  isStringWithinCodePointLimit,
   normalizeBoundedOptionalString,
   normalizeFastMode,
   normalizeStringifiedEntries,
@@ -9,6 +10,21 @@ import {
 import { describe, expect, it } from "vitest";
 
 describe("normalization-core/string-coerce", () => {
+  it.each([
+    { value: " ", max: 1, expected: true },
+    { value: "  ", max: 1, expected: false },
+    { value: "", max: 0, expected: true },
+    { value: "a", max: 0, expected: false },
+    { value: "abc", max: 3, expected: true },
+    { value: "😀", max: 1, expected: true },
+    { value: "😀😀", max: 1, expected: false },
+    { value: "e\u0301", max: 1, expected: false },
+    { value: "e\u0301", max: 2, expected: true },
+    { value: 42, max: 2, expected: false },
+  ])("checks raw string code-point limits", ({ value, max, expected }) => {
+    expect(isStringWithinCodePointLimit(value, max)).toBe(expected);
+  });
+
   it.each([
     [" Ultrafast ", "ultrafast"],
     ["fast", true],

@@ -1,4 +1,5 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import { isStringWithinCodePointLimit } from "@openclaw/normalization-core/string-coerce";
 
 export type TranscriptDisplayPosition = {
   source: string;
@@ -10,20 +11,17 @@ function isOrdinal(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-function isIdentifier(value: unknown, limit: number): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    (value.length <= limit || Array.from(value).length <= limit)
-  );
-}
-
 /** Public placement metadata is bounded and never supplies execution authority. */
 export function readTranscriptDisplayPosition(
   value: unknown,
 ): TranscriptDisplayPosition | undefined {
   const record = asOptionalRecord(value);
-  if (!record || !isIdentifier(record.source, 128) || !isOrdinal(record.rawSeq)) {
+  if (
+    !record ||
+    !isStringWithinCodePointLimit(record.source, 128) ||
+    record.source.length === 0 ||
+    !isOrdinal(record.rawSeq)
+  ) {
     return undefined;
   }
   if (record.activity === undefined) {
@@ -38,7 +36,8 @@ export function readTranscriptDisplayPosition(
     !activity ||
     (activity.afterRawSeq !== null &&
       (!isOrdinal(activity.afterRawSeq) || activity.afterRawSeq >= record.rawSeq)) ||
-    !isIdentifier(activity.scopeId, 1024) ||
+    !isStringWithinCodePointLimit(activity.scopeId, 1024) ||
+    activity.scopeId.length === 0 ||
     !isOrdinal(activity.startOrder)
   ) {
     return undefined;
