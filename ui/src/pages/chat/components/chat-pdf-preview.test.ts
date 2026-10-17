@@ -2,7 +2,7 @@
 
 import { afterEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
-import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
+import { flush, waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import * as responseBytes from "./chat-response-bytes.ts";
 import "./chat-detail-panel.tsx";
 import type { SidebarContent } from "./chat-sidebar-content-types.ts";
@@ -152,13 +152,13 @@ it.each(["unchanged", "changed", "failed", "identity", "oversized"] as const)(
       });
     vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response("%PDF-1.7")));
     const panel = await mountAttachment({ sourceIdentity: "attachment:brief" });
-    const preview = panel.querySelector("openclaw-chat-pdf-preview")!;
-    await preview.updateComplete;
+    expect(panel.querySelector("openclaw-chat-pdf-preview")).not.toBeNull();
+    flush();
     await originalReadStarted.promise;
     const bytes = new TextEncoder().encode("%PDF-1.7 original").buffer;
     original.resolve(bytes);
     await original.promise;
-    await preview.updateComplete;
+    flush();
     const frame = panel.querySelector("iframe")!;
     expect(frame?.getAttribute("src")).toBe("blob:original");
 
@@ -170,7 +170,7 @@ it.each(["unchanged", "changed", "failed", "identity", "oversized"] as const)(
       sizeBytes: change === "oversized" ? PDF_PREVIEW_MAX_BYTES + 1 : undefined,
     };
     await panel.updateComplete;
-    await preview.updateComplete;
+    flush();
     if (change === "identity" || change === "oversized") {
       expect(frame.isConnected).toBe(false);
       expect(urls.revokeObjectURL).toHaveBeenCalledWith("blob:original");
@@ -195,7 +195,7 @@ it.each(["unchanged", "changed", "failed", "identity", "oversized"] as const)(
           : bytes.slice(0),
     );
     await refreshed.promise;
-    await preview.updateComplete;
+    flush();
     if (change === "unchanged") {
       expect(panel.querySelector("iframe")).toBe(frame);
       expect(frame.getAttribute("src")).toBe("blob:original");

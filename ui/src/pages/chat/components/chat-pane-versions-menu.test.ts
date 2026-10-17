@@ -1,7 +1,11 @@
 /* @vitest-environment jsdom */
 import { flush } from "solid-js";
 import { afterEach, expect, it } from "vitest";
-import { mountChatPaneHeader, openNativeMenu } from "./chat-pane-header.test-support.ts";
+import {
+  mountChatPaneHeader,
+  openNativeMenu,
+  settleNativeMenu,
+} from "./chat-pane-header.test-support.ts";
 
 const containers: HTMLElement[] = [];
 afterEach(() => {
@@ -14,7 +18,7 @@ it("hides one branch and lists multiple branches with the active tip marked", as
   const one = mountChatPaneHeader(containers, {
     branches: [{ leafEntryId: "only", headline: "Only path", messageCount: 1, active: true }],
   });
-  await one.container.querySelector("openclaw-chat-pane-versions-menu")?.updateComplete;
+  await settleNativeMenu();
   expect(one.container.querySelector(".chat-pane__branches-trigger")).toBeNull();
 
   const multiple = mountChatPaneHeader(containers, {
@@ -29,7 +33,7 @@ it("hides one branch and lists multiple branches with the active tip marked", as
       },
     ],
   });
-  await multiple.container.querySelector("openclaw-chat-pane-versions-menu")?.updateComplete;
+  await settleNativeMenu();
   const menu = multiple.container.querySelector(".chat-pane__branches-menu")!;
   const trigger = menu.querySelector<HTMLButtonElement>(".oc-menu-trigger");
   expect(trigger?.classList.contains("chat-pane__branches-trigger")).toBe(true);
@@ -54,7 +58,7 @@ it("disables branch switching while the agent is working", async () => {
       { leafEntryId: "other", headline: "Earlier idea", messageCount: 2, active: false },
     ],
   });
-  await container.querySelector("openclaw-chat-pane-versions-menu")?.updateComplete;
+  await settleNativeMenu();
   const trigger = container.querySelector<HTMLButtonElement>(".chat-pane__branches-trigger");
   expect(trigger?.disabled).toBe(true);
   trigger?.click();

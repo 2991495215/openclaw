@@ -80,7 +80,7 @@ export function chatPaneHeaderSharing(
   };
 }
 
-async function settleNativeMenu() {
+export async function settleNativeMenu() {
   flush();
   await Promise.resolve();
   flush();

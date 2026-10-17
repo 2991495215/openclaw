@@ -17,6 +17,7 @@ import {
   chatPaneHeaderSharing,
   chatPaneHeaderSessionMenu,
   mountChatPaneHeader,
+  settleNativeMenu,
 } from "./chat-pane-header.test-support.ts";
 import "./chat-details.tsx";
 import { ChatSidebarEditorMenu } from "./chat-sidebar-editor-menu.tsx";
@@ -414,7 +415,7 @@ describe.skipIf(typeof HTMLElement.prototype.checkVisibility !== "function")(
           state === "idle"
             ? "position: fixed; top: 80px; left: 80px; width: 1000px"
             : "position: fixed; top: 80px; left: 500px; width: 650px";
-        await container.querySelector("openclaw-chat-pane-versions-menu")?.updateComplete;
+        await settleNativeMenu();
         const trigger = container.querySelector<HTMLButtonElement>(
           editor ? ".sidebar-file-view__action" : ".chat-pane__branches-trigger",
         )!;
