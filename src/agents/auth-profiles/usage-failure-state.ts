@@ -18,12 +18,12 @@ export function resolveUsageWindowUntil(now: number, durationMs: number): number
 function calculateAuthProfileCooldownMs(errorCount: number): number {
   const normalized = Math.max(1, errorCount);
   if (normalized <= 1) {
-    return 30_000; // 30 seconds
+    return 30_000;
   }
   if (normalized <= 2) {
-    return 60_000; // 1 minute
+    return 60_000;
   }
-  return 5 * 60_000; // 5 minutes max
+  return 5 * 60_000;
 }
 
 type BackoffFailureReason = Extract<

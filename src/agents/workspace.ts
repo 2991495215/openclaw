@@ -211,9 +211,7 @@ async function hasWorkspaceUserContentEvidence(
     try {
       await fs.access(indicator);
       return true;
-    } catch {
-      // continue
-    }
+    } catch {}
   }
   if (await exactWorkspaceEntryExists(dir, DEFAULT_MEMORY_FILENAME)) {
     return true;
@@ -231,9 +229,7 @@ async function hasWorkspaceSkillEvidence(dir: string): Promise<boolean> {
       try {
         await fs.access(path.join(dir, "skills", entry.name, "SKILL.md"));
         return true;
-      } catch {
-        // continue
-      }
+      } catch {}
     }
   } catch {
     // no workspace skills

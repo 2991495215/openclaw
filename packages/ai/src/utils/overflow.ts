@@ -34,9 +34,9 @@ const ASSISTANT_OVERFLOW_PATTERNS = [
   CONFIGURED_CONTEXT_SIZE_OVERFLOW_RE, // DS4 server
   /model_context_window_exceeded/i, // z.ai non-standard finish_reason surfaced as error text
   /prompt too long; exceeded (?:max )?context length/i, // Ollama explicit overflow error
-  /context[_ ]length[_ ]exceeded/i, // Generic fallback
-  /too many tokens/i, // Generic fallback
-  /token limit exceeded/i, // Generic fallback
+  /context[_ ]length[_ ]exceeded/i,
+  /too many tokens/i,
+  /token limit exceeded/i,
   /^413\s*(?:status code)?\s*\(no body\)/i, // Cerebras: 413 with no body
 ];
 
@@ -108,8 +108,8 @@ export function matchesContextOverflowMessage(
 // Bedrock throttling can say "too many tokens" without exhausting the context window.
 const NON_OVERFLOW_PATTERNS = [
   /^(Throttling error|Service unavailable):/i, // AWS Bedrock non-overflow errors (human-readable prefixes from formatBedrockError)
-  /rate limit/i, // Generic rate limiting
-  /too many requests/i, // Generic HTTP 429 style
+  /rate limit/i,
+  /too many requests/i,
 ];
 
 function resolveContextInputTokens(message: AssistantMessage): number | undefined {

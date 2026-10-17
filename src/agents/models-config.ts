@@ -146,9 +146,7 @@ async function readExistingModelsFile(pathname: string): Promise<{
 
 /** Best-effort chmod for the user-visible generated models.json file. */
 async function ensureModelsFileModeForModelsJson(pathname: string): Promise<void> {
-  await fs.chmod(pathname, 0o600).catch(() => {
-    // best-effort
-  });
+  await fs.chmod(pathname, 0o600).catch(() => {});
 }
 
 function materializePlannedPluginCatalogs(

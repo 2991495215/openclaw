@@ -4,7 +4,7 @@ import {
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
 
-const TEMP_FILE_CLEANUP_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+const TEMP_FILE_CLEANUP_DELAY_MS = 5 * 60 * 1000;
 
 /** Resolve the first non-blank API key in provider-defined precedence order. */
 export function resolveSpeechProviderApiKey(
