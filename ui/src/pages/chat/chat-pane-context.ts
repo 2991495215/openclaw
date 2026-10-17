@@ -617,8 +617,7 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
     }
     if (snapshot.phase !== "connected") {
       if (wasConnected) {
-        const currentSessionId =
-          typeof state.currentSessionId === "string" ? state.currentSessionId.trim() : "";
+        const currentSessionId = state.currentSessionId?.trim() ?? "";
         if (currentSessionId) {
           state.reconnectResumeSessionId = currentSessionId;
         }

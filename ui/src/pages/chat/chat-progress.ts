@@ -191,9 +191,7 @@ export function resolveWorkingProgress(
   const queuedRunId = queuedProgress?.sendRunId ?? queuedProgress?.pendingRunId;
   const segmentRunId = streamSegments
     .map((segment) => segment.runId)
-    .findLast(
-      (candidate): candidate is string => typeof candidate === "string" && candidate.length > 0,
-    );
+    .findLast((candidate): candidate is string => candidate !== undefined && candidate.length > 0);
   const toolProgress = toolMessages.map(asRecord);
   const toolRunId = toolProgress
     .map((message) => message?.runId)

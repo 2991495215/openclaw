@@ -53,7 +53,6 @@ export function createActivityPageState(context: ApplicationContext) {
   let sessionActivityRevision = -1;
   let inspectorAbort: AbortController | null = null;
   let inspectorClient: GatewayBrowserClient | null = null;
-  let inspectorEpoch = 0;
   let inspectorSelectorKey: string | null = null;
   let presenceClient: GatewayBrowserClient | null = null;
   let active = true;
@@ -170,7 +169,6 @@ export function createActivityPageState(context: ApplicationContext) {
   }
 
   function cancelInspectorRequest() {
-    inspectorEpoch += 1;
     inspectorAbort?.abort();
     inspectorAbort = null;
   }
@@ -238,7 +236,6 @@ export function createActivityPageState(context: ApplicationContext) {
     pageKind: "executions" | "decisions" = "executions",
   ) {
     cancelInspectorRequest();
-    const epoch = inspectorEpoch;
     const abort = new AbortController();
     inspectorAbort = abort;
     inspectorClient = client;
@@ -249,7 +246,7 @@ export function createActivityPageState(context: ApplicationContext) {
     publish();
     const requestSelectorKey = inspectorRequestKey(routeData);
     const isCurrent = () =>
-      inspectorEpoch === epoch &&
+      inspectorAbort === abort &&
       context.gateway === gateway &&
       gateway.snapshot.client === client &&
       gateway.snapshot.phase === "connected" &&

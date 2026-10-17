@@ -318,7 +318,7 @@ export function createOperations({
     }
   }
 
-  async function execute(op: string, params: unknown, request: GatewayRequest): Promise<unknown> {
+  async function execute(op: string, params: unknown, request: GatewayRequest) {
     switch (op) {
       case "status": {
         paramsObject(params, []);
@@ -485,7 +485,7 @@ export function createOperations({
     params: unknown,
     assertAuthority: () => void,
     boundRequest: GatewayRequest,
-  ): Promise<unknown> => {
+  ): Promise<Record<string, unknown>> => {
     // The SDK binding has no deadline; agent.wait owns its observation timeout.
     const request: GatewayRequest = async (method, requestParams) => {
       assertAuthority();

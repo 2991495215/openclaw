@@ -8,6 +8,7 @@ import {
   toolOutputSourceLabel,
   formatToolOutput,
 } from "../../../lib/chat/tool-output.ts";
+import { downloadHref } from "../../../lib/download.ts";
 import { t } from "../../../lib/reactive/i18n.ts";
 import { defineSolidBridge } from "../../../lib/solid-bridge.ts";
 import type {
@@ -110,10 +111,7 @@ function ToolOutput(props: Props) {
       url = URL.createObjectURL(
         new Blob([card.outputText ?? ""], { type: "text/plain;charset=utf-8" }),
       );
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "tool-output.txt";
-      anchor.click();
+      downloadHref(url, "tool-output.txt");
     } catch {
       setDownloadFailed(true);
     } finally {

@@ -6,6 +6,13 @@ export function composedParent(element: Element): Element | null {
   );
 }
 
+export function activeElementFor(element: Element): Element | null {
+  const root = element.getRootNode();
+  return root instanceof ShadowRoot
+    ? (root.activeElement ?? document.activeElement)
+    : document.activeElement;
+}
+
 /** Ordinary primary click without modifiers; anything else keeps native link behavior. */
 export function shouldHandleNavigationClick(event: MouseEvent): boolean {
   return (

@@ -10,6 +10,7 @@ import {
   onSettled,
   untrack,
 } from "solid-js";
+import { activeElementFor } from "../lib/navigation-click.ts";
 import { createTabList } from "../lib/tabs.ts";
 import type { PanelTabStripTab } from "./panel-tab-strip-types.ts";
 import { Icon } from "./solid/icon.tsx";
@@ -46,13 +47,6 @@ export type PanelTabStripProps<T extends SolidPanelTabStripTab> = {
 
 const PANEL_TAB_DRAG_TYPE = "application/x-openclaw-panel-tab";
 const keyboardCloseActivations = new WeakSet<Element>();
-
-function activeElementFor(element: Element): Element | null {
-  const root = element.getRootNode();
-  return root instanceof ShadowRoot
-    ? (root.activeElement ?? document.activeElement)
-    : document.activeElement;
-}
 
 function deepestActiveElementId(): string | null {
   let active = document.activeElement;

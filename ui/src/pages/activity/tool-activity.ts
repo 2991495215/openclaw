@@ -1,6 +1,7 @@
 import { asNullableObjectRecord as readRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeNullableString as toTrimmedString } from "@openclaw/normalization-core/string-coerce";
-import { formatUnknownText, truncateText } from "../../lib/format.ts";
+import { extractToolOutputText } from "../../lib/chat/tool-output-text.ts";
+import { truncateText } from "../../lib/format.ts";
 
 const ACTIVITY_ENTRY_LIMIT = 100;
 const ACTIVITY_OUTPUT_PREVIEW_LIMIT = 2_000;
@@ -68,46 +69,21 @@ export function parseActivityEvent(
   };
 }
 
-function extractText(value: unknown): string | null {
+function stringifyOutput(value: unknown): string | null {
   if (typeof value === "string") {
     return value;
   }
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
-  const record = readRecord(value);
-  if (!record) {
-    return null;
-  }
-  if (typeof record.text === "string") {
-    return record.text;
-  }
-  const content = record.content;
-  if (!Array.isArray(content)) {
-    return null;
-  }
-  const parts = content
-    .map((item) => {
-      const entry = readRecord(item);
-      return entry?.type === "text" && typeof entry.text === "string" ? entry.text : null;
-    })
-    .filter((part): part is string => Boolean(part));
-  return parts.length > 0 ? parts.join("\n") : null;
-}
-
-function stringifyOutput(value: unknown): string | null {
-  const text = extractText(value);
+  const text = extractToolOutputText(value);
   if (text !== null) {
     return text;
   }
   if (value === null || value === undefined) {
     return null;
   }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return formatUnknownText(value);
-  }
+  return JSON.stringify(value, null, 2);
 }
 
 function buildOutputPreview(value: unknown): { text?: string; truncated: boolean } {

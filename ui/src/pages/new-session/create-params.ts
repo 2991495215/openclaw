@@ -103,9 +103,7 @@ export function buildDraftSessionCreateParams(draft: {
   return {
     agentId: normalizeAgentId(draft.agentId),
     message,
-    ...(!draft.deferInitialTurn && draft.mentions?.length
-      ? { mentions: draft.mentions.map((mention) => ({ ...mention })) }
-      : {}),
+    ...(!draft.deferInitialTurn && draft.mentions?.length ? { mentions: [...draft.mentions] } : {}),
     ...(displayName ? { displayName } : {}),
     ...(titleSource ? { titleSource } : {}),
     ...(draft.visibility === "incognito" ? { incognito: true } : {}),
@@ -124,7 +122,7 @@ export function buildDraftSessionCreateParams(draft: {
     ...(draft.permissionMode ? { permissionMode: draft.permissionMode } : {}),
     ...(projectId ? { projectId } : {}),
     ...(projectGitUrl ? { projectGitUrl } : {}),
-    ...(repository ? { repository: { ...repository } } : {}),
+    ...(repository ? { repository } : {}),
     ...(deviceFolder ? { deviceFolder: { ...deviceFolder, path: deviceFolder.path.trim() } } : {}),
     ...(customFolder ? { cwd: customFolder } : {}),
     ...(emptyWorkspace ? { worktree: true, worktreeSource: "empty" as const } : {}),
