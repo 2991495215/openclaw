@@ -2187,7 +2187,8 @@ writes. Accepted work remains owned until its result settles or native exit is
 joined; a confirmed mutation stays successful if only subsequent cleanup fails.
 
 Deletion, quarantine, maintenance scopes, root retirement, and shutdown
-revoke reuse and join native worker exit before releasing the database owner. Pending
+revoke reuse and join database-task cleanup before releasing the database owner;
+failed stops must join native worker exit before recovering a retained lease. Pending
 commit requests are rejected before synchronous close can wait on their writer lock.
 Requests still waiting in the shared archive queue drop their callback before releasing
 their retained claim, so retirement does not wait for unrelated queued work. Surviving
