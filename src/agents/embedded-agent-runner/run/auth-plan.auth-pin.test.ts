@@ -1,3 +1,4 @@
+import "../../auth-profiles/external-auth.test-support.js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ModelProviderConfig } from "../../../config/types.models.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";

@@ -1,3 +1,4 @@
+import "../../agents/auth-profiles/external-auth.test-support.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { testing as externalAuthTesting } from "../../agents/auth-profiles/external-auth.test-support.js";
 import { testing as cliBackendsTesting } from "../../agents/cli-backends.test-support.js";

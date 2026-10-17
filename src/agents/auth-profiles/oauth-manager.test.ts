@@ -3,6 +3,7 @@
  * Covers identity safety, main-store adoption, refresh persistence, fallback
  * recovery, and external profile overlays.
  */
+import "./external-auth.test-support.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

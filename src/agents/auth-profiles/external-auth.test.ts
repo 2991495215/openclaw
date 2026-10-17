@@ -1,3 +1,4 @@
+import "./external-auth.test-support.js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { readDatabasePathIdentitySync } from "../../infra/sqlite-worker-identity.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";

@@ -1,3 +1,4 @@
+import "../../../agents/auth-profiles/external-auth.test-support.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
