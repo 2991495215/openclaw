@@ -1,7 +1,7 @@
 // Opt-in compiler comparison. Never changes the selected repository compiler.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -295,6 +295,61 @@ async function main() {
     [String(memoryBytes), "0", cpuSet],
     "Container limits were not enforced",
   );
+  const probe = ".compiler-isolation-" + randomUUID();
+  const probePaths = {
+    checkout: path.join(root, probe),
+    evidence: path.join(directory, probe),
+    metrics: path.join(metricsDirectory, probe),
+  };
+  for (const file of Object.values(probePaths)) {
+    assert(!fs.existsSync(file), "Isolation probe already exists");
+  }
+  const isolationSmoke = {
+    metricsWrite: "verified",
+    checkoutWrite: "EROFS",
+    evidenceWrite: "EROFS",
+    networkInterfaces: "loopback-only",
+    externalIpv4Tcp: "ENETUNREACH",
+  };
+  try {
+    // Linux EROFS/ENETUNREACH distinguish isolation from missing paths or a
+    // refused remote port. The documentation-only address is never a service dependency.
+    await isolatedOutput(
+      [
+        "bash",
+        "--noprofile",
+        "--norc",
+        "-c",
+        `set -eu
+fail() { printf '%s\\n' "$1" >&2; exit 1; }
+printf '%s' "$1" > "/metrics/$1"
+for target in "$2" "$3"; do
+  test -d "\${target%/*}" || fail "Missing isolation probe parent"
+  if printf forbidden 2>/tmp/write-error > "$target"; then fail "Unexpected writable checkout or evidence"; fi
+  [[ "$(</tmp/write-error)" == *"Read-only file system"* ]] || fail "Write failed without EROFS"
+done
+interfaces=(/sys/class/net/*)
+[[ \${#interfaces[@]} == 1 && \${interfaces[0]##*/} == lo ]] || fail "Non-loopback network interface"
+while read -r interface rest; do
+  [[ $interface == Iface || $interface == lo ]] || fail "Non-loopback IPv4 route"
+done < /proc/net/route
+if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected external TCP connection"; fi
+[[ "$(</tmp/network-error)" == *"Network is unreachable"* ]] || fail "TCP failed without ENETUNREACH"`,
+        "isolation-proof",
+        probe,
+        "/work/" + probe,
+        "/work/" + path.relative(root, path.join(directory, probe)),
+      ],
+      { timeout: 10000 },
+    );
+    assert.equal(fs.readFileSync(probePaths.metrics, "utf8"), probe);
+    assert(!fs.existsSync(probePaths.checkout) && !fs.existsSync(probePaths.evidence));
+  } finally {
+    // A broken mount must not leave even the probe's unexpected writes behind.
+    for (const file of Object.values(probePaths)) {
+      fs.rmSync(file, { force: true });
+    }
+  }
   const version = {};
   for (const [name, binary] of Object.entries(binaries)) {
     version[name] = (await isolatedOutput([binary, "--version"])).trim();
@@ -334,6 +389,7 @@ async function main() {
     archives,
     ciPolicy,
     isolation: "docker",
+    isolationSmoke,
     containerImage,
     limits: { cpuSet, memoryBytes, swapBytes: 0 },
     expectedSamples,
@@ -392,11 +448,19 @@ async function main() {
     const metricFile = path.join(metricsDirectory, id + ".time");
     const metrics = readCompilerComparisonMetrics(metricFile);
     const [wallSeconds, userSeconds, sysSeconds, peakRssKiB, exitCode] = metrics;
-    assert.equal(result.status, exitCode);
     fs.writeFileSync(
       path.join(evidenceMetrics, id + ".json"),
-      JSON.stringify({ wallSeconds, userSeconds, sysSeconds, peakRssKiB, exitCode }),
+      JSON.stringify({
+        wallSeconds,
+        userSeconds,
+        sysSeconds,
+        peakRssKiB,
+        exitCode,
+        processExitCode: result.status,
+      }),
     );
+    // Preserve both observed statuses before rejecting a killed or failed sample.
+    assert.equal(result.status, exitCode, id + ": process and GNU time exit statuses differ");
     const stdout = normalize(fs.readFileSync(stdoutFile, "utf8"));
     const stderr = fs.readFileSync(stderrFile);
     const row = {
