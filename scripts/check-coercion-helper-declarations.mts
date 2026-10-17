@@ -87,6 +87,7 @@ export const CANONICAL_COERCION_HELPER_OWNERS = [
       "normalizeUniqueStringEntries",
       "normalizeUniqueStringEntriesLower",
       "normalizeUniqueTrimmedStringList",
+      "parseStringSet",
       "sortUniqueStrings",
       "uniqueStrings",
       "uniqueValues",
