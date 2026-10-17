@@ -1,0 +1,61 @@
+name: Compiler comparison experiment
+
+on:
+  push:
+    branches: [bench/tsc-ts-ci-20261017]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compiler-comparison-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    name: Compiler comparison group ${{ matrix.group }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        group: [0, 1, 2, 3, 4, 5]
+    steps:
+      - name: Checkout temporary experiment
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Prepare pinned repository dependencies
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: 24.x
+          install-bun: false
+          cache-mode: off
+      - name: Prepare compiler isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v bwrap >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install --yes bubblewrap
+          fi
+          bwrap --unshare-all --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 --proc /proc --dev /dev -- /bin/true
+      - name: Compare canonical CI typecheck graphs
+        env:
+          GROUP: ${{ matrix.group }}
+        run: node .github/scripts/compiler-comparison.mjs --group "$GROUP" --groups 6 --repeats 3
+      - name: Upload complete measurement evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: compiler-comparison-group-${{ matrix.group }}
+          path: |
+            .artifacts/compiler-comparison/group-${{ matrix.group }}/
+            !.artifacts/compiler-comparison/**/native/**
+            !.artifacts/compiler-comparison/**/reference/**
+            !.artifacts/compiler-comparison/**/*.tgz
+          retention-days: 7
+          if-no-files-found: warn
