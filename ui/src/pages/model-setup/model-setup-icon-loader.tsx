@@ -65,9 +65,7 @@ export function createModelSetupIconLoader(
   }
   const loader = new PluginIconController({
     getFetchContext: () => pluginIconFetchContext(getContext()),
-    // Eligibility can change before the next reconciliation callback.
-    isConnected: (iconUrl) =>
-      getContext().gateway.snapshot.phase === "connected" && currentIconUrls().has(iconUrl),
+    isConnected: () => getContext().gateway.snapshot.phase === "connected",
     fetchIcon: (iconUrl, context, signal) =>
       fetchCatalogIconBlobUrl({ iconUrl, ...context, signal }),
     timeoutError: () => new DOMException("catalog icon fetch timed out", "TimeoutError"),
