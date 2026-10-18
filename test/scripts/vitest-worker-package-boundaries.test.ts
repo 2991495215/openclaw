@@ -4,7 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "tsdown";
 import { afterEach, expect, it } from "vitest";
-import { createVitestWorkerPackageBoundariesPlugin } from "../../scripts/lib/vitest-worker-package-boundaries.mts";
+import {
+  createVitestWorkerPackageBoundariesPlugin,
+  createVitestWorkerRelativeExternalsPlugin,
+} from "../../scripts/lib/vitest-worker-package-boundaries.mts";
 import { resolveTestNodeExecPath } from "../../src/test-utils/node-process.js";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 
@@ -73,7 +76,10 @@ it("keeps plugin package ownership when compiled workers move between checkout d
     dts: false,
     clean: false,
     logLevel: "silent",
-    plugins: [createVitestWorkerPackageBoundariesPlugin(first, (source) => recorded.push(source))],
+    plugins: [
+      createVitestWorkerPackageBoundariesPlugin(first, (source) => recorded.push(source)),
+      createVitestWorkerRelativeExternalsPlugin(first),
+    ],
     outExtensions: () => ({ js: ".js" }),
   });
   expect(new Set(recorded)).toEqual(
@@ -90,5 +96,48 @@ it("keeps plugin package ownership when compiled workers move between checkout d
       expect(result.status, result.stderr).toBe(0);
       expect(JSON.parse(result.stdout)).toEqual(["quickjs-owner", "discord-owner"]);
     }
+  }
+});
+
+it("keeps emitted module boundaries relative when copied to another slot", async () => {
+  const root = roots.make("vitest-worker-module-boundaries-");
+  fs.writeFileSync(path.join(root, "package.json"), '{"type":"module"}');
+  const first = path.join(root, ".artifacts/vitest-workers/run-cache-0/dist");
+  const second = path.join(root, ".artifacts/vitest-workers/run-cache-1/dist");
+  fs.mkdirSync(first, { recursive: true });
+  const source = path.join(root, "entry.ts");
+  fs.writeFileSync(source, 'import { marker } from "./boundary.js"; console.log(marker);');
+  await build({
+    config: false,
+    cwd: root,
+    entry: { entry: source, "nested/entry": source },
+    outDir: first,
+    format: "esm",
+    platform: "node",
+    dts: false,
+    clean: false,
+    logLevel: "silent",
+    plugins: [
+      {
+        name: "fixture-boundary",
+        resolveId(id) {
+          return id === "./boundary.js"
+            ? { id: path.join(first, "boundary.js"), external: "relative" }
+            : null;
+        },
+      },
+      createVitestWorkerRelativeExternalsPlugin(`${root}${path.sep}`),
+    ],
+    outExtensions: () => ({ js: ".js" }),
+  });
+  fs.writeFileSync(path.join(first, "boundary.js"), 'export const marker = "owned boundary";');
+  fs.cpSync(first, second, { recursive: true });
+  fs.rmSync(first, { recursive: true });
+  for (const entry of ["entry.js", "nested/entry.js"]) {
+    const result = spawnSync(resolveTestNodeExecPath(), [path.join(second, entry)], {
+      encoding: "utf8",
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe("owned boundary");
   }
 });

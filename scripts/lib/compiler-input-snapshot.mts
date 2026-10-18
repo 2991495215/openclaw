@@ -192,7 +192,7 @@ export class CompilerInputSnapshot {
   private toolPaths?: string;
   readonly rootDir: string;
   constructor(rootDir: string, policy: CompilerInputPolicy) {
-    this.rootDir = rootDir;
+    this.rootDir = path.resolve(rootDir);
     this.policy = policy;
   }
 

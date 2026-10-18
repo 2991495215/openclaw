@@ -126,18 +126,23 @@ it("preserves signatures across checkout depths with one shared external depende
     write(root, "src/index.ts", 'export { value } from "shared-dependency";\n');
     fs.mkdirSync(path.join(root, "node_modules"));
     fs.symlinkSync(dependency, path.join(root, "node_modules/shared-dependency"), linkType);
-    const snapshot = new CompilerInputSnapshot(root, {
-      toolchainFiles: [],
-      generatorInputs: ["package.json"],
-      isGeneratorInput: (file) => file.endsWith("/package.json"),
-    });
-    await snapshot.prepare();
-    signatures.push(
-      snapshot.signature("tsconfig.json", [], ["src/index.ts", path.join(dependency, "index.js")]),
-    );
+    for (const inputRoot of [root, `${root}${path.sep}`]) {
+      const snapshot = new CompilerInputSnapshot(inputRoot, {
+        toolchainFiles: [],
+        generatorInputs: ["package.json"],
+        isGeneratorInput: (file) => file.endsWith("/package.json"),
+      });
+      await snapshot.prepare();
+      signatures.push(
+        snapshot.signature(
+          "tsconfig.json",
+          [],
+          ["src/index.ts", path.join(dependency, "index.js")],
+        ),
+      );
+    }
   }
-  expect(signatures[1]).toBe(signatures[0]);
-  expect(signatures[2]).toBe(signatures[0]);
+  expect(new Set(signatures).size).toBe(1);
 });
 
 it("invalidates warm records when ancestor installs appear or disappear without reading their contents", async () => {

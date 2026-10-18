@@ -32,7 +32,10 @@ import {
   vitestWorkerRuntimeAssets,
 } from "./vitest-worker-declarations.mts";
 import { createVitestWorkerOutput } from "./vitest-worker-output.mts";
-import { createVitestWorkerPackageBoundariesPlugin } from "./vitest-worker-package-boundaries.mts";
+import {
+  createVitestWorkerPackageBoundariesPlugin,
+  createVitestWorkerRelativeExternalsPlugin,
+} from "./vitest-worker-package-boundaries.mts";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(import.meta.url);
@@ -280,6 +283,7 @@ async function compileVitestWorkerArtifacts(directory: string): Promise<void> {
         },
       },
       createVitestWorkerPackageBoundariesPlugin(root, recordInput),
+      createVitestWorkerRelativeExternalsPlugin(root),
       ...commonPlugins,
     ],
   };
@@ -356,6 +360,7 @@ async function compileVitestWorkerArtifacts(directory: string): Promise<void> {
             };
           },
         },
+        createVitestWorkerRelativeExternalsPlugin(root),
         ...createInputPlugins(legacyOutputPrefix),
       ],
     });

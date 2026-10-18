@@ -11,27 +11,6 @@ export function createVitestWorkerPackageBoundariesPlugin(
   const discord = path.join(root, "extensions/discord/src/voice/sdk-runtime.ts");
   return {
     name: "openclaw:worker-package-boundaries",
-    // Relative externals use the source base unless their output paths are explicit.
-    outputOptions(options) {
-      const destination = options.dir ?? (options.file && path.dirname(options.file));
-      if (!destination) {
-        throw new Error("Compiled subprocess package boundaries require an output directory");
-      }
-      const previous = options.paths;
-      return {
-        ...options,
-        paths(id) {
-          const source = path.normalize(id);
-          if (source === quickjs || source === discord) {
-            const relative = path
-              .relative(path.resolve(root, destination), source)
-              .replaceAll("\\", "/");
-            return relative.startsWith(".") ? relative : `./${relative}`;
-          }
-          return typeof previous === "function" ? previous(id) : (previous?.[id] ?? id);
-        },
-      };
-    },
     resolveId: {
       order: "pre",
       handler(id, importer) {
@@ -49,6 +28,35 @@ export function createVitestWorkerPackageBoundariesPlugin(
         }
         return { id: source, external: "relative" };
       },
+    },
+  };
+}
+
+/** Resolve absolute internal boundaries from the output, never the compiler source base. */
+export function createVitestWorkerRelativeExternalsPlugin(root: string): Rolldown.Plugin {
+  const rootDirectory = path.resolve(root);
+  return {
+    name: "openclaw:worker-relative-externals",
+    // Relative externals use the source base unless their output paths are explicit.
+    outputOptions(options) {
+      const destination = options.dir ?? (options.file && path.dirname(options.file));
+      if (!destination) {
+        throw new Error("Compiled subprocess package boundaries require an output directory");
+      }
+      const previous = options.paths;
+      return {
+        ...options,
+        paths(id) {
+          const source = path.normalize(id);
+          if (path.isAbsolute(source) && source.startsWith(`${rootDirectory}${path.sep}`)) {
+            const relative = path
+              .relative(path.resolve(rootDirectory, destination), source)
+              .replaceAll("\\", "/");
+            return relative.startsWith(".") ? relative : `./${relative}`;
+          }
+          return typeof previous === "function" ? previous(id) : (previous?.[id] ?? id);
+        },
+      };
     },
   };
 }
