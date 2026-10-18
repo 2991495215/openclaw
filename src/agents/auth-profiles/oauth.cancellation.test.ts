@@ -12,7 +12,6 @@ const authMocks = vi.hoisted(() => ({
 vi.mock("./oauth-manager.js", () => ({
   createOAuthManager: () => ({
     resolveOAuthAccess: authMocks.resolveOAuthAccess,
-    resetRefreshQueuesForTest: () => {},
   }),
 }));
 
