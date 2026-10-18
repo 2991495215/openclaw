@@ -210,19 +210,25 @@ it.each(["background", "early manual"])(
 it.each(["factory", "initialization"])("fences and joins a pending %s on close", async (phase) => {
   const factory = createDeferred();
   const factoryEntered = vi.fn();
-  const updateStartup = await import("../infra/update-startup.js");
+  const updateStartup = await vi.importActual<typeof import("../infra/update-startup.js")>(
+    "../infra/update-startup.js",
+  );
   if (phase === "factory") {
     // Gate the real lazy import; the exported factory remains synchronous.
     vi.doMock("../infra/update-startup.js", async () => {
       factoryEntered();
       await factory.promise;
-      return updateStartup;
+      return { ...updateStartup, createGatewayUpdateCheck: mocks.createGatewayUpdateCheck };
     });
   }
   const initialization = createDeferred<Initialization>();
+  const initializationEntered = createDeferred();
   const cleanup = createDeferred();
   const updateCheck = {
-    initialize: vi.fn(() => initialization.promise),
+    initialize: vi.fn(() => {
+      initializationEntered.resolve();
+      return initialization.promise;
+    }),
     start: vi.fn(),
     stop: vi.fn(() => cleanup.promise),
   };
@@ -232,7 +238,8 @@ it.each(["factory", "initialization"])("fences and joins a pending %s on close",
   let stopping: Promise<void> | undefined;
   try {
     if (phase === "initialization") {
-      await waitForGatewayTestState(() => expect(updateCheck.initialize).toHaveBeenCalledOnce());
+      await initializationEntered.promise;
+      expect(updateCheck.initialize).toHaveBeenCalledOnce();
     } else {
       await waitForGatewayTestState(() => expect(factoryEntered).toHaveBeenCalledOnce());
       expect(mocks.createGatewayUpdateCheck).not.toHaveBeenCalled();
@@ -261,7 +268,10 @@ it.each(["factory", "initialization"])("fences and joins a pending %s on close",
     } finally {
       if (phase === "factory") {
         // Keep the captured mock namespace, not a fresh singleton graph.
-        vi.doMock("../infra/update-startup.js", () => updateStartup);
+        vi.doMock("../infra/update-startup.js", () => ({
+          ...updateStartup,
+          createGatewayUpdateCheck: mocks.createGatewayUpdateCheck,
+        }));
       }
     }
   }

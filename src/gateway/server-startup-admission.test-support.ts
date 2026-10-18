@@ -147,7 +147,11 @@ export function registerGatewayStartupAdmissionTests(params: {
       const hookLoadStarted = createDeferred();
       const releaseHookLoad = createDeferred();
       const connectionWork = new GatewayConnectionWork();
-      const refresh = vi.fn(async () => null);
+      const refreshStarted = createDeferred();
+      const refresh = vi.fn(async () => {
+        refreshStarted.resolve();
+        return null;
+      });
       const sidecarsReady = vi.fn();
       // The subagent row isolates recovery admission; the hook row owns hook admission.
       if (stage === "subagent") {
@@ -196,6 +200,7 @@ export function registerGatewayStartupAdmissionTests(params: {
         if (stage === "gateway_start") {
           postReadyWork.resolve();
           await hookLoadStarted.promise;
+          await refreshStarted.promise;
         }
         suspension = tryBeginGatewaySuspendAdmission(() => {});
         expect(suspension?.commit()).toBe(true);

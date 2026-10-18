@@ -400,6 +400,11 @@ function startGatewayPostAttachRuntime(
   runtimeDeps?: PostAttachRuntimeDeps,
 ) {
   if (runtimeDeps) {
+    const refresh = runtimeDeps.refreshLatestUpdateRestartSentinel;
+    if (refresh !== restartSentinelMocks.prepareLatestUpdateRestartSentinel) {
+      // Dynamic imports retain this hoisted callable, not a replaced namespace slot.
+      restartSentinelMocks.prepareLatestUpdateRestartSentinel.mockImplementation(refresh);
+    }
     installGatewayStartupModuleMocks(runtimeDeps, startupModuleRestorers);
   }
   return startGatewayPostAttachRuntimeImpl({
@@ -812,8 +817,10 @@ describe("startGatewayPostAttachRuntime", () => {
 
   it("refreshes the restart sentinel after sidecars without blocking post-attach", async () => {
     const events: string[] = [];
+    const refreshStarted = createDeferred();
     const refreshLatestUpdateRestartSentinel = vi.fn(async () => {
       events.push("sentinel");
+      refreshStarted.resolve();
       return null;
     });
     const refreshChatMetadata = vi.fn(async () => {
@@ -831,9 +838,8 @@ describe("startGatewayPostAttachRuntime", () => {
     events.push("returned");
     expect(refreshLatestUpdateRestartSentinel).not.toHaveBeenCalled();
 
-    await waitForGatewayTestState(() => {
-      expect(refreshLatestUpdateRestartSentinel).toHaveBeenCalledTimes(1);
-    });
+    await refreshStarted.promise;
+    expect(refreshLatestUpdateRestartSentinel).toHaveBeenCalledTimes(1);
     expect(refreshLatestUpdateRestartSentinel).toHaveBeenCalledWith(
       expect.objectContaining({ OPENCLAW_STATE_DIR: testState.stateDir }),
     );

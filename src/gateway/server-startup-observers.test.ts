@@ -64,6 +64,11 @@ it.each([
   async ({ lane: blockedLane, outcome }) => {
     const entered = createDeferred();
     const prepared = createDeferred();
+    const refreshed = createDeferred();
+    mocks.refresh.mockImplementation(async () => {
+      refreshed.resolve();
+      return null;
+    });
     mocks.prewarm.mockImplementation(async (_database, lane = historyLane) => {
       if (lane === blockedLane) {
         entered.resolve();
@@ -93,6 +98,11 @@ it.each([
         entered.promise,
         observers,
         "restored recovery settled before preparing its transcript reader",
+      );
+      await awaitGateBeforeSettlement(
+        refreshed.promise,
+        observers,
+        "startup observers settled before refreshing the restart sentinel",
       );
       expect(activate).not.toHaveBeenCalled();
       expect(refresh).toHaveBeenCalledOnce();
