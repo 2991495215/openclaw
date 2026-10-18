@@ -406,7 +406,19 @@ export class CompilerInputSnapshot {
           file && this.policy.isGeneratorInput?.(name) ? [file] : [],
         ),
       ]),
-    ].toSorted();
+    ]
+      .map((file) => {
+        const absolute = path.resolve(this.rootDir, file);
+        const relative = portableRelativePath(this.rootDir, absolute);
+        const name =
+          relative === ".." || relative.startsWith("../") || path.isAbsolute(relative)
+            ? absolute
+            : relative;
+        return { file, name };
+      })
+      // Moving a checkout past an external dependency must not reorder its input hashes.
+      .toSorted((left, right) => left.name.localeCompare(right.name))
+      .map(({ file }) => file);
     return [...this.policy.toolchainFiles, ...this.generatorInputs];
   }
 

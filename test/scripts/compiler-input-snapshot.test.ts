@@ -111,8 +111,13 @@ it("preserves signatures across checkout depths with one shared external depende
   write(dependency, "package.json", '{"name":"shared-dependency","type":"module"}');
   write(dependency, "index.js", "export const value = 1;\n");
   const signatures: string[] = [];
-  for (const root of [path.join(directory, "shallow"), path.join(directory, "deeper/checkout")]) {
+  for (const root of [
+    path.join(directory, "shallow"),
+    path.join(directory, "deeper/checkout"),
+    path.join(directory, "zzz/checkout"),
+  ]) {
     write(root, "package.json", '{"type":"module"}');
+    write(root, "packages/local/package.json", '{"name":"checkout-package","type":"module"}');
     write(
       root,
       "tsconfig.json",
@@ -132,6 +137,7 @@ it("preserves signatures across checkout depths with one shared external depende
     );
   }
   expect(signatures[1]).toBe(signatures[0]);
+  expect(signatures[2]).toBe(signatures[0]);
 });
 
 it("invalidates warm records when ancestor installs appear or disappear without reading their contents", async () => {
