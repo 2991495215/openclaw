@@ -157,7 +157,7 @@ it("rechecks database ownership after a worker request crosses the message port"
     expect(Atomics.load(pending, 0)).toBe(2);
     expect(admit).not.toHaveBeenCalled();
     expect(admission.failure).toMatchObject({
-      message: expect.stringContaining("undergoing offline maintenance"),
+      message: expect.stringContaining("without an active schema lease or maintenance scope"),
     });
     expect(admission.failureSource).toBe("authority");
   } finally {

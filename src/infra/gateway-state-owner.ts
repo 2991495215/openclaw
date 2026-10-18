@@ -30,11 +30,15 @@ import { startGatewayStateOwnerHeartbeat } from "./gateway-state-owner-heartbeat
 import {
   assertPersistedStateDatabaseAccessAllowed,
   defaultPayload,
+  GatewayStateOwnerContentionError,
   isGatewayStateOwnerDefinitelyStale,
   StateDatabaseAdmissionPendingError,
+  StateDatabaseMaintenanceScopeError,
 } from "./gateway-state-owner-record.js";
 import { normalizeSqliteNonNegativeInteger } from "./sqlite-busy-timeout.js";
 import { runWithSqliteCleanup } from "./sqlite-lifecycle-errors.js";
+
+export { GatewayStateOwnerContentionError } from "./gateway-state-owner-record.js";
 
 export type StateDatabaseSchemaLease = {
   readonly path: string;
@@ -201,26 +205,6 @@ export function getStateDatabaseSchemaLease(
   entry?.lease.assertCurrent();
   return entry?.lease;
 }
-
-export const GatewayStateOwnerContentionError = resolveGlobalSingleton(
-  Symbol.for("openclaw.gatewayStateOwnerContentionError"),
-  () =>
-    class StateOwnerContentionError extends Error {
-      constructor(
-        public readonly databasePath: string,
-        public override readonly cause?: unknown,
-        holderDetail?: string,
-      ) {
-        super(
-          `OpenClaw state database is busy at ${databasePath}. ${holderDetail ? `${holderDetail} ` : ""}Wait for the other OpenClaw process to finish, then retry. If it persists, run \`openclaw gateway status\` and check for other OpenClaw processes using the same state directory. A running Gateway can hold this ownership until it stops; stop it through its service manager or original terminal before retrying.`,
-        );
-        this.name = "GatewayStateOwnerContentionError";
-      }
-    },
-);
-export type GatewayStateOwnerContentionError = InstanceType<
-  typeof GatewayStateOwnerContentionError
->;
 
 /** Retry cold admission only; the same budget covers opening and its first unentered write. */
 export function withStateDatabaseColdAdmission<T>(
@@ -613,7 +597,6 @@ export function captureGatewayStateOwner(databasePath: string) {
       owners.get(key) !== owner ||
       !owner.accepting ||
       resolveStateOwnerIdentity(databasePath).key !== key ||
-      !hasPhysicalOwnership(owner) ||
       (owner.getProjection && !owner.getProjection()?.verifyStillHeld())
     ) {
       throw new GatewayStateOwnerContentionError(databasePath);
@@ -633,10 +616,17 @@ function hasRecentVerification(verifiedAt: number | undefined, now: number): boo
   return verifiedAt !== undefined && now - verifiedAt < READ_OWNERSHIP_MAX_AGE_MS;
 }
 
-/** Only explicit reads reuse recent physical verification; mutations always check freshly. */
-export function assertStateDatabaseReadAllowed(databasePath: string): void {
+function assertStateDatabaseReadAtOwnerPath(
+  databasePath: string,
+  captured: Parameters<typeof assertStateDatabaseAccessAllowed>[1],
+  prepared?: ReturnType<typeof resolveStateOwnerIdentity>,
+): void {
   if (owners.size === 0) {
-    assertStateDatabaseAccessAllowed(databasePath);
+    assertStateDatabaseAccessAtOwnerPath(
+      databasePath,
+      prepared ?? resolveStateOwnerIdentity(databasePath),
+      captured,
+    );
     return;
   }
   const key = path.resolve(databasePath);
@@ -656,7 +646,7 @@ export function assertStateDatabaseReadAllowed(databasePath: string): void {
     return;
   }
   readOwnerPaths.delete(key);
-  const identity = resolveStateOwnerIdentity(databasePath);
+  const identity = prepared ?? resolveStateOwnerIdentity(databasePath);
   const owner = owners.get(identity.key);
   const role = owner?.payload.role ?? "gateway";
   if (
@@ -666,7 +656,7 @@ export function assertStateDatabaseReadAllowed(databasePath: string): void {
     (role !== "gateway" && role !== "agent-embedded")
   ) {
     // Maintenance/schema authority and foreign owners keep their existing fresh checks.
-    assertStateDatabaseAccessAllowed(databasePath);
+    assertStateDatabaseAccessAtOwnerPath(databasePath, identity, captured);
     return;
   }
   if (
@@ -692,6 +682,33 @@ export function assertStateDatabaseAccessAllowed(
     schemaLease?: Pick<StateDatabaseSchemaLease, "assertDatabaseAccess">;
   },
 ): void {
+  assertStateDatabaseAccessAtOwnerPath(
+    databasePath,
+    resolveStateOwnerIdentity(databasePath),
+    captured,
+  );
+}
+
+/** Retained handles keep their admitted paths; reopening captures a fresh identity. */
+export function captureStateDatabaseAccess(databasePath: string) {
+  const identity = resolveStateOwnerIdentity(databasePath);
+  const { canonicalPath } = identity;
+  return {
+    canonicalPath,
+    assertAccessAllowed(captured?: Parameters<typeof assertStateDatabaseAccessAllowed>[1]) {
+      assertStateDatabaseAccessAtOwnerPath(canonicalPath, identity, captured);
+    },
+    assertReadAllowed(captured?: Parameters<typeof assertStateDatabaseAccessAllowed>[1]) {
+      assertStateDatabaseReadAtOwnerPath(canonicalPath, captured, identity);
+    },
+  };
+}
+
+function assertStateDatabaseAccessAtOwnerPath(
+  databasePath: string,
+  identity: ReturnType<typeof resolveStateOwnerIdentity>,
+  captured: Parameters<typeof assertStateDatabaseAccessAllowed>[1],
+): void {
   const assertMaintenance = () => {
     const schemaLease = captured ? captured.schemaLease : getStateDatabaseSchemaLease(databasePath);
     if (schemaLease) {
@@ -700,13 +717,10 @@ export function assertStateDatabaseAccessAllowed(
     }
     const scope = captured ? captured.maintenanceScope : getOpenClawDatabaseMaintenanceScope();
     if (!scope) {
-      throw new Error(
-        `OpenClaw state at ${databasePath} is undergoing offline maintenance; retry when it finishes.`,
-      );
+      throw new StateDatabaseMaintenanceScopeError(databasePath);
     }
     scope.assertDatabaseAccess(databasePath);
   };
-  const identity = resolveStateOwnerIdentity(databasePath);
   const local = owners.get(identity.key);
   if (local) {
     if (!hasPhysicalOwnership(local)) {

@@ -122,21 +122,62 @@ describe("doctor agent memory schema repair", () => {
     }
   });
 
-  it("blocks runtime admission until a lost Doctor repair releases maintenance", async () => {
-    const { databasePath, env } = createRegisteredAgentDatabase();
-    const laterOptions = { agentId: "worker-2", env };
-    const laterPath = openOpenClawAgentDatabase(laterOptions).path;
-    closeOpenClawAgentDatabasesForTest();
-    recreateUnreleasedInlineMemoryMetadata(databasePath);
-    recreateUnreleasedInlineMemoryMetadata(laterPath);
-    const laterBefore = fs.readFileSync(laterPath);
-    const agentDatabase = await import("../state/openclaw-agent-db.js");
-    const agentMaintenance = await import("../state/openclaw-agent-db-maintenance.js");
-    const integrityWorker = await import("../infra/sqlite-integrity-worker.js");
-    const sqlite = await import("../infra/node-sqlite.js");
-    const startAdmission = createDeferred();
-    // Register outside the old maintenance ALS scope: this is a new runtime owner.
-    const newerAdmission = startAdmission.promise.then(() =>
+it("blocks runtime admission until a lost Doctor repair releases maintenance", async () => {
+  const { databasePath, env } = createRegisteredAgentDatabase();
+  const laterOptions = { agentId: "worker-2", env };
+  const laterPath = openOpenClawAgentDatabase(laterOptions).path;
+  closeOpenClawAgentDatabasesForTest();
+  recreateUnreleasedInlineMemoryMetadata(databasePath);
+  recreateUnreleasedInlineMemoryMetadata(laterPath);
+  const laterBefore = fs.readFileSync(laterPath);
+  const agentDatabase = await import("../state/openclaw-agent-db.js");
+  const agentMaintenance = await import("../state/openclaw-agent-db-maintenance.js");
+  const integrityWorker = await import("../infra/sqlite-integrity-worker.js");
+  const sqlite = await import("../infra/node-sqlite.js");
+  const startAdmission = createDeferred();
+  // Register outside the old maintenance ALS scope: this is a new runtime owner.
+  const newerAdmission = startAdmission.promise.then(() =>
+    agentDatabase.withOpenClawAgentDatabaseAsync(laterOptions, (database) =>
+      database.db.prepare("SELECT id, text FROM memory_index_chunks").all(),
+    ),
+  );
+  void newerAdmission.catch(() => {});
+  const scan = vi.spyOn(integrityWorker, "assertSqliteIntegrityInWorker");
+  const open = sqlite.openNodeSqliteDatabase;
+  const inspectedPaths: string[] = [];
+  vi.spyOn(sqlite, "openNodeSqliteDatabase").mockImplementation((pathname, options) => {
+    if (options?.readOnly) {
+      inspectedPaths.push(pathname);
+    }
+    return open(pathname, options);
+  });
+  const close = vi.spyOn(agentDatabase, "closeOpenClawAgentDatabaseByPath");
+  const migrate = agentMaintenance.migrateOpenClawAgentDatabaseForMaintenance;
+  const repair = vi
+    .spyOn(agentMaintenance, "migrateOpenClawAgentDatabaseForMaintenance")
+    .mockImplementationOnce(async (options, maintenance) => {
+      await migrate(options, maintenance);
+      const removed = openOpenClawStateDatabase({ env })
+        .db.prepare("DELETE FROM state_leases WHERE scope = ? AND lease_key = ?")
+        .run(AGENT_DATABASE_MAINTENANCE_LEASE.scope, AGENT_DATABASE_MAINTENANCE_LEASE.key);
+      expect(removed.changes).toBe(1);
+      // Earlier registry discovery may inspect targets while the lease is still valid.
+      inspectedPaths.length = 0;
+      close.mockClear();
+      startAdmission.resolve();
+      await newerAdmission.catch(() => {});
+    });
+  try {
+    await expect(repairMemory(env)).rejects.toThrow(/maintenance lease.*was lost/iu);
+    expect(repair.mock.calls.map(([options]) => options.pathname)).toEqual([databasePath]);
+    expect(inspectedPaths).not.toContain(laterPath);
+    expect(close.mock.calls.some(([pathname]) => pathname === laterPath)).toBe(false);
+    expect(scan.mock.calls.filter(([pathname]) => pathname === laterPath)).toHaveLength(0);
+    await expect(newerAdmission).rejects.toThrow(
+      "without an active schema lease or maintenance scope",
+    );
+    expect(fs.readFileSync(laterPath)).toEqual(laterBefore);
+    await expect(
       agentDatabase.withOpenClawAgentDatabaseAsync(laterOptions, (database) =>
         database.db.prepare("SELECT id, text FROM memory_index_chunks").all(),
       ),

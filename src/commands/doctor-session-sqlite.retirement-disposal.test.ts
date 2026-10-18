@@ -136,27 +136,65 @@ describe("runDoctorSessionSqlite", () => {
       unlinkSpy.mockRestore();
       syncSpy.mockRestore();
     }
-    expect(injected).toBe(true);
-    if (phase === "recreated") {
-      fs.writeFileSync(archivePath, "replacement after interrupted cleanup");
-    }
-    const resumed = await invoke();
-    if (phase === "recreated") {
-      expect(resumed.status).toBe("blocked");
-      expect(fs.readFileSync(archivePath, "utf8")).toBe("replacement after interrupted cleanup");
-      expect(
-        resumed.artifacts.find((item) => item.path === archivePath)?.removedBytes,
-      ).toBeUndefined();
-      return;
-    }
-    expect(resumed.status).toBe("complete");
-    if (duplicate) {
-      for (const file of [manifestPath, duplicate.manifestPath]) {
-        expect(
-          readMigrationManifest(file).targets[0]!.plannedMoves.find(
-            (move) => move.archivePath === archivePath,
-          )?.artifact?.disposal.state,
-        ).toBe("disposed");
+  },
+);
+
+it("refuses retirement while a peer maintenance operation holds the selected state", async () => {
+  const { store, archivePath } = await createVerifiedRecoveryStore();
+  const original = fs.readFileSync(archivePath);
+  const preview = inspectSessionSqliteRecovery({ cfg: {}, env: store.env });
+  const confirm = vi.fn(async () => true);
+  await withDoctorSqliteMaintenanceLock({
+    env: store.env,
+    operation: "fixture import",
+    run: async () => {
+      await expect(
+        runOutsideOpenClawDatabaseMaintenanceScope(() => retire(store, confirm, preview)),
+      ).rejects.toThrow("without an active schema lease or maintenance scope");
+    },
+  });
+  expect(confirm).not.toHaveBeenCalled();
+  expectFiles(original, archivePath);
+});
+
+it.each([
+  { name: "invalid message", rows: [{ type: "message", id: "bad", message: {} }] },
+  { name: "unknown event", rows: [{ type: "future_event", id: "unknown", payload: "unique" }] },
+  {
+    name: "duplicate divergent ID",
+    rows: [message("duplicate", "first"), message("duplicate", "unique second")],
+  },
+  { name: "missing ancestor", rows: [message("child", "history", "missing")] },
+])("protects $name and its recovery index", async ({ rows, name }) => {
+  const store = transcriptStore(...rows);
+  const original = fs.readFileSync(store.transcriptPath);
+  const imported = await importLegacyStore(store);
+  const move = transcriptMove(imported.migrationRun?.manifestPath);
+  if (name === "duplicate divergent ID") {
+    expect(move).toBeUndefined();
+    expect(hasCountMismatch(imported)).toBe(true);
+  } else {
+    expect(move).toBeDefined();
+  }
+  closeOpenClawAgentDatabasesForTest();
+  const result = await retire(store);
+  expect(result.totals.removedFiles).toBe(0);
+  if (move) {
+    expect(artifact(result, move.archivePath)?.outcome).toBe("protected");
+  }
+  expectFiles(original, move?.archivePath ?? store.transcriptPath);
+});
+
+it("retains complete recovery when durable transcript verification is short", async () => {
+  const store = transcriptStore(message("root", "root"));
+  const snapshot = sqliteReaders.readOnlySqliteValidationSnapshot;
+  let imported;
+  {
+    using spy = vi.spyOn(sqliteReaders, "readOnlySqliteValidationSnapshot");
+    spy.mockImplementation((target) => {
+      const result = snapshot(target);
+      if (!result.ok) {
+        return result;
       }
     }
     expect(fs.existsSync(archivePath)).toBe(false);

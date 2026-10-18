@@ -542,7 +542,9 @@ it("refuses checkpoints without borrowing the timer caller's maintenance authori
     periodicWork = Promise.resolve(maintenance.run(() => periodic()));
     await wait(signal);
     expect(observations).toEqual(["error"]);
-    expect(database.walMaintenance.health?.error).toContain("offline maintenance");
+    expect(database.walMaintenance.health?.error).toContain(
+      "without an active schema lease or maintenance scope",
+    );
     expect(prepare).not.toHaveBeenCalled();
     expect(database.walMaintenance.checkpoint()).toBe(false);
     expect(observations).toEqual(["error", "error"]);

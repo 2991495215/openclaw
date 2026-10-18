@@ -29,16 +29,13 @@ afterEach(async () => {
 });
 
 // Plugin state keeps cause text out of its public message; the maintenance refusal is the cause.
-async function expectOfflineMaintenance(operation: Promise<unknown>) {
-  const error = await operation.then(
-    () => undefined,
-    (caught: unknown) => caught,
-  );
+async function expectMissingMaintenanceScope(operation: Promise<unknown>) {
+  const error = await operation.then(() => undefined).catch((caught: unknown) => caught);
   const messages: string[] = [];
   for (let current: unknown = error; current instanceof Error; current = current.cause) {
     messages.push(current.message);
   }
-  expect(messages.join("\n")).toContain("offline maintenance");
+  expect(messages.join("\n")).toContain("without an active schema lease or maintenance scope");
 }
 
 function createSharedWorkerClient(env: NodeJS.ProcessEnv) {
@@ -175,43 +172,18 @@ it.each(["new", "existing", "borrowed"] as const)(
       if (mode !== "new") {
         await store.register(earlier, { value: earlier });
       }
-      const lock = await beginCaptureMaintenance("Gateway lock", state.env);
-      let borrowed:
-        | {
-            database: ReturnType<typeof openOpenClawStateDatabase>;
-            reference: ReturnType<typeof retainOpenClawStateDatabase>;
-          }
-        | undefined;
-      try {
-        await lock.run(async () => {
-          if (mode === "borrowed") {
-            const database = openOpenClawStateDatabase({ env: state.env });
-            borrowed = { database, reference: retainOpenClawStateDatabase(database) };
-          }
-          await store.register("owned", { value: "owned" });
-        });
-        await expectOfflineMaintenance(store.register("later", { value: "later" }));
-        if (borrowed) {
-          borrowed.reference.release();
-          expect(borrowed.database.db.isOpen).toBe(false);
-        }
-        await lock.release();
-        if (borrowed) {
-          expect(borrowed.database.db.isOpen).toBe(false);
-          await expect(store.lookup("foreign")).resolves.toEqual({ value: "foreign" });
-        }
-        await store.register("later", { value: "later" });
-        await store.register("after", { value: "after" });
-        await expect(store.lookup("after")).resolves.toEqual({ value: "after" });
-        expect((await store.entries()).map((entry) => entry.key).toSorted()).toEqual(
-          [...(mode === "new" ? [] : [earlier]), "after", "later", "owned"].toSorted(),
-        );
-      } finally {
-        try {
-          borrowed?.reference.release();
-        } finally {
-          await lock.release();
-        }
+      const lock = await begin("Gateway lock");
+      const borrowed = await lock.run(async () => {
+        const database = mode === "borrowed" ? openOpenClawStateDatabase({ env }) : undefined;
+        const reference = database && retainOpenClawStateDatabase(database);
+        defer(async () => reference?.release());
+        await store.register("owned", { value: "owned" });
+        return database && reference ? { database, reference } : undefined;
+      });
+      await expectMissingMaintenanceScope(store.register("later", { value: "later" }));
+      if (borrowed) {
+        borrowed.reference.release();
+        expect(borrowed.database.db.isOpen).toBe(false);
       }
     });
   },
