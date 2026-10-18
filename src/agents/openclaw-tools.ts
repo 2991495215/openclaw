@@ -325,7 +325,6 @@ function* createOpenClawToolsSteps(
                   supportsImages: options.modelHasVision === true,
                 }
               : undefined,
-          deferAutoModelResolution: true,
         })
       : null;
   options?.recordToolPrepStage?.("openclaw-tools:pdf-tool");

@@ -181,8 +181,6 @@ class Monitor {
     );
     this.completionDelivery = new CodexNativeSubagentCompletionDelivery({
       deliver: (params) => runtime.deliverAgentHarnessCompletion(params),
-      retryDelaysMs: options.completionDeliveryRetryDelaysMs,
-      maxRetries: options.completionDeliveryMaxRetries,
       children: this.childStates,
       parents: this.parentStates,
       retiredParents: this.retiredParentStates,
