@@ -61,8 +61,10 @@ import { refreshModelRuntimeAfterHotReload } from "./server-reload-model-runtime
 import { GatewayRequestEntryLifetime } from "./server-request-entry.js";
 import { createGatewaySidecarStopOwner } from "./server-sidecar-owners.js";
 import { publishConfiguredModelRuntimeSnapshots } from "./server-startup-model-runtime.js";
-import { installGatewaySubagentModuleLoad } from "./server-startup-module-mocks.test-support.js";
 import { runGatewayStartupObservers } from "./server-startup-observers.js";
+
+const { installGatewaySubagentModuleLoad } =
+  await import("./server-startup-module-mocks.test-support.js");
 
 function modelConfig(workspace: string): Pick<OpenClawConfig, "agents" | "models"> {
   return {

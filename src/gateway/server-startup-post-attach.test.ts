@@ -55,14 +55,13 @@ import { createMockGatewayRecoveryRuntime } from "./server-recovery-runtime.test
 import { registerGatewayStartupAdmissionTests } from "./server-startup-admission.test-support.js";
 import { restartSentinelMocks } from "./server-startup-background.test-support.js";
 import "./server-startup-outcomes.test-support.js";
-import {
-  installGatewayStartupModuleMocks,
-  installGatewayHookModuleLoad,
-  type GatewayStartupModuleMocks,
-} from "./server-startup-module-mocks.test-support.js";
+import type { GatewayStartupModuleMocks } from "./server-startup-module-mocks.test-support.js";
 import { markGatewayStartupMainSessionOrphans } from "./server-startup-observers.js";
 import { registerGatewayStartupReadinessTests } from "./server-startup-readiness.test-support.js";
 import { transcriptSidecarMocks } from "./server-startup-transcripts.test-support.js";
+
+const { installGatewayStartupModuleMocks, installGatewayHookModuleLoad } =
+  await import("./server-startup-module-mocks.test-support.js");
 
 type PluginHookGatewayStartEvent = Parameters<PluginHookHandlerMap["gateway_start"]>[0];
 
@@ -3347,8 +3346,10 @@ describe("startGatewayPostAttachRuntime", () => {
     ]);
 
     const hooks = await import("../plugins/hooks.js");
-    const selectHooks: typeof hooks.createHookRunner = (registry = other, options) =>
-      hooks.createHookRunner(registry, options);
+    const selectHooks = (
+      registry = other,
+      options?: Parameters<typeof hooks.createHookRunner>[1],
+    ) => hooks.createHookRunner(registry, options);
     // mock-isolation: Retain the captured hook owner and supply a decoy default registry.
     vi.doMock("../plugins/hooks.js", () => ({ ...hooks, createHookRunner: selectHooks }));
     startupModuleRestorers.push(() => {

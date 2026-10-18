@@ -26,7 +26,6 @@ import { connectUserModelAccount, readUserModelAuthProfile } from "../state/user
 import "../test-utils/prepare-compiled-subprocesses.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { createGatewayMetadataCloseFixture } from "./server-close.metadata.test-support.js";
-import { installGatewaySubagentModuleLoad } from "./server-startup-module-mocks.test-support.js";
 import { runGatewayStartupObservers } from "./server-startup-observers.js";
 import {
   withLocalWorkspaceStore,
@@ -36,6 +35,9 @@ import {
   localWorkspaceProjectionFixture,
   readLocalWorkspaceProjection,
 } from "./worker-environments/local-workspace-store.test-support.js";
+
+const { installGatewaySubagentModuleLoad } =
+  await import("./server-startup-module-mocks.test-support.js");
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {

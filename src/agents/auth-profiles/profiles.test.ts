@@ -7,7 +7,6 @@ import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-d
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
 import { AUTH_STORE_VERSION } from "./constants.js";
 import { createApiKeyCredential as apiKey, oauthCred } from "./credential-fixtures.test-support.js";
-import { testing as externalAuthTesting } from "./external-auth.test-support.js";
 import {
   getRuntimeAuthProfileStoreCredentialMutationToken,
   getRuntimeAuthProfileStoreStateMutationToken,
@@ -51,6 +50,8 @@ import {
 } from "./store.js";
 import type { AuthProfileStore, RuntimeAuthProfileStore } from "./types.js";
 import { persistAuthProfileBatch } from "./upsert-with-lock.js";
+
+const { testing: externalAuthTesting } = await import("./external-auth.test-support.js");
 
 function oauth(
   access: string,

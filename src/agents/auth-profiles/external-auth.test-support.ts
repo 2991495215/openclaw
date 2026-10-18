@@ -4,10 +4,10 @@ import type { ProviderExternalAuthProfileResolver } from "../../plugins/provider
 const controls = vi.hoisted(() => {
   let resolver: ProviderExternalAuthProfileResolver | undefined;
   return {
-    resetResolveExternalAuthProfilesForTest(): void {
+    resetResolveExternalAuthProfilesForTest: (): void => {
       resolver = undefined;
     },
-    setResolveExternalAuthProfilesForTest(next: ProviderExternalAuthProfileResolver): void {
+    setResolveExternalAuthProfilesForTest: (next: ProviderExternalAuthProfileResolver): void => {
       resolver = next;
     },
     resolve(

@@ -164,10 +164,7 @@ it.for([
             args,
           });
           toolOutcome = settledResult(
-            createSecretsTool({ sessionKey, runId }).execute(
-              "credential-call",
-              args,
-            ),
+            createSecretsTool({ sessionKey, runId }).execute("credential-call", args),
           );
           await toolOutcome;
           return undefined;

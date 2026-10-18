@@ -7,7 +7,6 @@ import {
   createExternalAuthRuntime,
   syncPersistedExternalCliAuthProfiles,
 } from "./external-auth.js";
-import { testing } from "./external-auth.test-support.js";
 import { isPersistedExternalCliAuthProfile } from "./external-cli-sync.js";
 import { prepareSharedAuthStoreOwnershipForNative } from "./path-resolve.native.js";
 import {
@@ -20,6 +19,8 @@ import { runAuthProfileWriteTransaction } from "./sqlite.js";
 import { withAgentDirEnv } from "./sqlite.test-support.js";
 import { ensureAuthProfileStore, saveAuthProfileStore } from "./store-runtime.js";
 import type { OAuthCredential, RuntimeAuthProfileStore } from "./types.js";
+
+const { testing } = await import("./external-auth.test-support.js");
 
 const readOptions = { allowKeychainPrompt: false, readOnly: true, syncExternalCli: false };
 const minimaxId = "minimax-portal:minimax-cli";
