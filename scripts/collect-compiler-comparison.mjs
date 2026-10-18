@@ -72,13 +72,31 @@ async function main() {
     "",
     "Commit tracked source before collection",
   );
+  const candidateProvenance = {
+    distribution: "upstream-ci-native",
+    repository: "vercel-labs/tsc-ts",
+    revision: "f43cb6bc130db3e451a28a0a49f3c7e2ed7a26f5",
+    runId: 39064305206,
+    runAttempt: 1,
+    artifactId: 12112945666,
+    artifactSha256: "ff14e926d593a3db80d9960e21c78822b78e1f228d7a51e1b90c5fe85fffbeed",
+    tarSha256: "b6bd9804b57a1d606ea75c68dca82ef6bd169f3bfa1ed87ed869f2e0bd245614",
+    binarySha256: "5ff32c1213453ebcbeffd2f724f204389681093130b93befc04335c789f7c8dc",
+  };
+  assert(process.env.RUNNER_TEMP, "Missing workflow staging directory");
+  const nativeArchive = path.join(process.env.RUNNER_TEMP, "compiler-candidate", "native.tar");
+  assert.equal(hash(fs.readFileSync(nativeArchive)), candidateProvenance.tarSha256);
+  // Hash the verified member before writing a fixed path; never restore archive
+  // paths, links or the unrelated CLI. The candidate runs only inside the sandbox.
+  const nativeBinary = run("tar", ["-xOf", nativeArchive, "packages/tsc-ts/dist/tsc"], {
+    encoding: null,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  assert.equal(hash(nativeBinary), candidateProvenance.binarySha256);
+  const nativeDirectory = path.join(directory, "native/package/lib");
+  fs.mkdirSync(nativeDirectory, { recursive: true });
+  fs.writeFileSync(path.join(nativeDirectory, "tsc-ts"), nativeBinary, { flag: "wx", mode: 0o755 });
   const archives = [
-    {
-      name: "native",
-      url: "https://registry.npmjs.org/@tsc-ts/linux-x64-gnu/-/linux-x64-gnu-0.0.2.tgz",
-      integrity:
-        "sha512-/+IrlTylDCCTqMtmEvV3pH+jWNnsI7I5+pSFFQj5tMFTYA7ArwROsaygtP6voPZtY6o+jFg6G7gPfxpCLPyYRg==",
-    },
     {
       name: "reference",
       url: "https://registry.npmjs.org/@typescript/typescript-linux-x64/-/typescript-linux-x64-7.0.2.tgz",
@@ -138,7 +156,6 @@ async function main() {
     };
   });
   const selectedGraphs = [...canaries, ...graphs];
-  const nativeDirectory = path.join(directory, "native/package/lib");
   const referenceDirectory = path.join(directory, "reference/package/lib");
   const binaries = { pinned: "/pin/tsc", candidate: "/native/tsc-ts", reference: "/reference/tsc" };
   const common = ["--noEmit", "--declaration", "false", "--pretty", "false"];
@@ -416,8 +433,9 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
     version,
     pinnedPackage: packageData.version,
     pinnedRevision: packageData.gitHead,
-    candidateVersion: "0.0.2",
-    candidateRevision: "b0dbfb0ea2240b59d51de5de1aae3a35a9f3dc10",
+    candidateVersion: "unreleased",
+    candidateRevision: candidateProvenance.revision,
+    candidateProvenance,
     referenceRevision: "2bd066d87f5bafd315be9f40889d0a60b9e58e0b",
     binarySha256: {
       pinned: hash(fs.readFileSync(pinnedBinary)),

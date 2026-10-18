@@ -74,6 +74,9 @@ jobs:
   compare:
     name: Compiler comparison (${{ matrix.graph }})
     needs: proof
+    permissions:
+      actions: read
+      contents: read
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -92,6 +95,17 @@ jobs:
           cache-mode: off
       - name: Prepare pinned isolation image
         run: docker pull ubuntu@sha256:a2d43bffc46670d7108bb3c0468c67c5557c4c92e83e1e34cbff1322ad1b94dc
+      # Immutable CI candidate, expiring 2026-10-20. Never fall back to a moving
+      # build or the older npm release; the collector pins tar and binary hashes.
+      - name: Stage pinned upstream native compiler
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          repository: vercel-labs/tsc-ts
+          run-id: 39064305206
+          artifact-ids: 12112945666
+          github-token: ${{ github.token }}
+          digest-mismatch: error
+          path: ${{ runner.temp }}/compiler-candidate
       - name: Collect diagnostics and resource measurements
         env:
           COMPILER_GROUP: ${{ matrix.group }}
