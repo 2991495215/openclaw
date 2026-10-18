@@ -8,6 +8,7 @@ import {
   type ResolvedMemorySearchConfig,
 } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import {
+  readMemorySearchManagerStatus,
   warnPluginSdkDeprecation,
   type MemoryProviderStatus,
   type MemorySearchManager,
@@ -21,6 +22,7 @@ import type { MemoryCoreAcquireLocalService } from "./embedding-local-service.js
 import { getMemoryManagerLifecycle, markMemoryIndexingLive } from "./lifecycle.js";
 import { runMemoryStatus } from "./manager-cpu-worker-runtime.js";
 import { MemoryIndexDatabase } from "./manager-database-context.js";
+import { MemoryIndexRevisionConflictError } from "./manager-db-kernel.js";
 import { isMemoryEmbeddingOperationError } from "./manager-embedding-errors.js";
 import {
   resolveEffectiveMemorySearchSettings,
@@ -38,7 +40,6 @@ import {
 } from "./manager-registry.js";
 import { waitForMemoryReindexLock } from "./manager-reindex-lock.js";
 import type { MemoryIndexIdentityState } from "./manager-reindex-state.js";
-import { runMemorySearchMaintenance } from "./manager-search-maintenance.js";
 import { MemorySearchOrchestration } from "./manager-search-orchestration.js";
 import { collectMemoryStatusSnapshot, resolveStatusProviderInfo } from "./manager-status-state.js";
 import type { MemoryEmbeddingBatchConfig } from "./manager-sync-base.js";
@@ -46,7 +47,7 @@ import {
   MemoryTargetedSessionSyncQueue,
   hasTargetedSessionSyncParams,
 } from "./manager-sync-control.js";
-import type { MemorySyncOutcome } from "./manager-sync-outcome.js";
+import { MEMORY_SYNC_DEFERRED, type MemorySyncOutcome } from "./manager-sync-outcome.js";
 import type { MemoryCoreRuntimeHost } from "./runtime-host.js";
 
 const log = createSubsystemLogger("memory");
@@ -340,19 +341,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
       return await this.syncing;
     }
     await this.syncOutcomes.track(() =>
-      runMemorySearchMaintenance({
-        reason: params.reason,
-        takeDirtyGeneration: () => this.takeSearchMaintenanceRequest(),
-        restoreDirtyGeneration: (generation) => this.adoptReindexRetryState(generation),
-        acquireManager: () =>
-          MemoryIndexManager.get({
-            cfg: this.cfg,
-            agentId: this.agentId,
-            purpose: "maintenance",
-            acquireLocalService: this.acquireLocalService,
-            maintenanceSource: this,
-          }),
-      }).catch((error: unknown) => {
+      this.runSearchMaintenance(params.reason).catch((error: unknown) => {
         if (
           this.providerRequirement.mode === "optional" &&
           isMemoryEmbeddingOperationError(error)
@@ -362,6 +351,68 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
         throw error;
       }),
     );
+  }
+
+  private async runSearchMaintenance(reason: string): Promise<MemorySyncOutcome> {
+    const dirtyGeneration = this.takeSearchMaintenanceRequest();
+    let manager: MemoryIndexManager | null;
+    try {
+      manager = await MemoryIndexManager.get({
+        cfg: this.cfg,
+        agentId: this.agentId,
+        purpose: "maintenance",
+        acquireLocalService: this.acquireLocalService,
+        maintenanceSource: this,
+      });
+    } catch (err) {
+      this.adoptReindexRetryState(dirtyGeneration);
+      throw toErrorObject(err, "Memory search maintenance manager acquisition failed");
+    }
+    if (!manager) {
+      this.adoptReindexRetryState(dirtyGeneration);
+      return undefined;
+    }
+
+    let maintenanceError: Error | undefined;
+    let incompleteReason: MemorySyncOutcome;
+    try {
+      // The transient manager owns exactly this handed-off generation, merged with
+      // its initial repair state. Full-retry flags still select rebuilds in runSync.
+      manager.adoptReindexRetryState(dirtyGeneration);
+      try {
+        await manager.sync({ reason });
+      } catch (err) {
+        if (!(err instanceof MemoryIndexRevisionConflictError)) {
+          throw err;
+        }
+        // Retry only this automatic generation. The failed sync released its reindex
+        // lease, and the next shadow build starts from the newest live revision.
+        await manager.sync({ reason, force: true });
+      }
+      const status = await readMemorySearchManagerStatus(manager);
+      if (status.dirty === true) {
+        // Return remaining work, including edits skipped by a completed full rebuild.
+        const remaining = manager.takeReindexRetryStateForMaintenance();
+        this.adoptReindexRetryState(remaining);
+        incompleteReason =
+          status.lastSyncError ??
+          (remaining.memoryFullRetryDirty || remaining.sessionsFullRetryDirty
+            ? MEMORY_SYNC_DEFERRED
+            : undefined);
+      }
+    } catch (err) {
+      this.adoptReindexRetryState(dirtyGeneration);
+      maintenanceError = toErrorObject(err, "Memory search maintenance failed");
+    }
+    try {
+      await manager.close();
+    } catch (err) {
+      maintenanceError ??= toErrorObject(err, "Memory search maintenance close failed");
+    }
+    if (maintenanceError) {
+      throw maintenanceError;
+    }
+    return incompleteReason;
   }
 
   protected async syncAdmitted(

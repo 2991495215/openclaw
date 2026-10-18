@@ -38,11 +38,16 @@ import type {
   MemoryPublicationState,
 } from "./manager-publication-task.js";
 import { MEMORY_INDEX_WRITE_SCOPE } from "./manager-publication-task.js";
-import { memoryEmbeddingCacheFitsInline } from "./manager-publication-transfer.js";
+import {
+  memoryEmbeddingCacheFitsInline,
+  memoryPublicationBatches,
+  memoryPublicationGroup,
+  memoryPublicationHeader,
+  memoryPublicationInline,
+} from "./manager-publication-transfer.js";
 import {
   initializePublishedMemory,
   publishMemoryEmbeddingCache,
-  publishMemorySource,
   retryMemoryPublication,
   withPublishedMemoryExecution,
 } from "./manager-publication.js";
@@ -625,17 +630,54 @@ export class MemoryIndexDatabase {
     assertCurrent: () => void,
     prepare: () => Promise<boolean>,
   ) {
-    return this.withSourceMutation(() =>
-      publishMemorySource({
-        replacement,
-        state: () => this.publicationState(),
-        execute: (command) => this.executePublication(command, assertCurrent),
-        run: (operation) => this.runPublication(operation, assertCurrent),
-        retry: (run, prepareRetry) => this.retryPublication(run, prepareRetry),
-        prepare,
-        assertPublished: this.isShadow ? assertCurrent : undefined,
-      }),
-    );
+    return this.withSourceMutation(async () => {
+      const assertPublished = this.isShadow ? assertCurrent : undefined;
+      if (Array.isArray(replacement)) {
+        return this.retryPublication(() => {
+          // Preparation may exclude files edited while their embeddings were in flight.
+          const sources = memoryPublicationGroup(replacement);
+          if (!sources) {
+            throw new Error("Memory publication group exceeds its bounded transfer");
+          }
+          return this.executePublication(
+            { type: "source.replace.group", input: { sources, state: this.publicationState() } },
+            assertCurrent,
+          );
+        }, prepare);
+      }
+      const inline = memoryPublicationInline(replacement);
+      if (inline) {
+        return this.retryPublication(
+          () =>
+            this.executePublication(
+              {
+                type: "source.replace.inline",
+                input: { ...inline, state: this.publicationState() },
+              },
+              assertCurrent,
+            ),
+          prepare,
+        );
+      }
+      return this.runPublication(async (scope) => {
+        const header = memoryPublicationHeader(replacement);
+        await scope.execute({ type: "stage.start", input: { header } });
+        for (const fragments of memoryPublicationBatches(replacement)) {
+          await scope.execute({ type: "stage.append", input: { fragments } });
+        }
+        const result = await this.retryPublication(
+          () =>
+            scope.execute({ type: "source.replace", input: { state: this.publicationState() } }),
+          prepare,
+        );
+        assertPublished?.();
+        // Thrown failures close through the host owner; another command could hide the write outcome.
+        if (result === undefined) {
+          await scope.execute({ type: "stage.discard", input: undefined });
+        }
+        return result;
+      }, assertCurrent);
+    });
   }
 
   async deleteSource(

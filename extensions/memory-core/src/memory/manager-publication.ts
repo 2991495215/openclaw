@@ -14,17 +14,11 @@ import type {
   MemoryEmbeddingCacheMutation,
   MemoryPublicationOperations,
   MemoryPublicationResult,
-  MemoryPublicationState,
 } from "./manager-publication-task.js";
 import {
   memoryEmbeddingCacheBatches,
   memoryEmbeddingCacheFitsInline,
-  memoryPublicationBatches,
-  memoryPublicationGroup,
-  memoryPublicationHeader,
-  memoryPublicationInline,
 } from "./manager-publication-transfer.js";
-import type { MemorySourceIndexReplacement } from "./manager-source-index-kernel.js";
 
 type PublicationScope = Pick<SqliteWorkerStore<MemoryPublicationOperations>, "execute">;
 type PublicationRetry = <T>(
@@ -123,53 +117,6 @@ export async function retryMemoryPublication<T>(params: {
     await delay(Math.min(25, Math.max(0, deadline - performance.now())));
   }
   return undefined;
-}
-
-/** Small publications use one request; larger inputs retain their bounded transfer scope. */
-export async function publishMemorySource(params: {
-  replacement: MemorySourceIndexReplacement | MemorySourceIndexReplacement[];
-  state: () => MemoryPublicationState;
-  execute: PublicationScope["execute"];
-  run: <T>(operation: (scope: PublicationScope) => Promise<T>) => Promise<T>;
-  retry: PublicationRetry;
-  prepare: () => Promise<boolean>;
-  assertPublished: (() => void) | undefined;
-}) {
-  const { replacement, state, execute, run, retry, prepare, assertPublished } = params;
-  if (Array.isArray(replacement)) {
-    return retry(() => {
-      // Preparation may exclude files edited while their embeddings were in flight.
-      const sources = memoryPublicationGroup(replacement);
-      if (!sources) {
-        throw new Error("Memory publication group exceeds its bounded transfer");
-      }
-      return execute({ type: "source.replace.group", input: { sources, state: state() } });
-    }, prepare);
-  }
-  const inline = memoryPublicationInline(replacement);
-  if (inline) {
-    return retry(
-      () => execute({ type: "source.replace.inline", input: { ...inline, state: state() } }),
-      prepare,
-    );
-  }
-  return run(async (scope) => {
-    const header = memoryPublicationHeader(replacement);
-    await scope.execute({ type: "stage.start", input: { header } });
-    for (const fragments of memoryPublicationBatches(replacement)) {
-      await scope.execute({ type: "stage.append", input: { fragments } });
-    }
-    const result = await retry(
-      () => scope.execute({ type: "source.replace", input: { state: state() } }),
-      prepare,
-    );
-    assertPublished?.();
-    // Thrown failures close through the host owner; another command could hide the write outcome.
-    if (result === undefined) {
-      await scope.execute({ type: "stage.discard", input: undefined });
-    }
-    return result;
-  });
 }
 
 /** Cache entries are content-addressed; the worker excludes forgotten sessions. */
