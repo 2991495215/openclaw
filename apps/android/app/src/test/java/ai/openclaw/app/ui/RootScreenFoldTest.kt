@@ -183,10 +183,7 @@ class RootScreenFoldTest {
       val editor = composeRule.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("chat-composer-surface")))
       editor.performClick().performTextReplacement("Expanded window draft")
       editor.assertIsFocused().assertTextEquals("Expanded window draft")
-      composeRule
-        .onNode(hasText("Settings") and hasAnyAncestor(hasTestTag("sidebar-permanent")))
-        .performScrollTo()
-        .performTouchInput { click() }
+      composeRule.onNodeWithContentDescription("Settings").assertIsDisplayed().performClick()
       composeRule.onNodeWithContentDescription("Search settings").assertIsDisplayed()
       sidebar.assertIsDisplayed()
       composeRule.onNodeWithTag("sidebar-open-settings").assertDoesNotExist()
@@ -272,7 +269,8 @@ class RootScreenFoldTest {
             val history = Json.parseToJsonElement(response).jsonObject
             val messages =
               history.getValue("messages").jsonArray.mapIndexed { index, message ->
-                if (index == 12) JsonObject(message.jsonObject + ("content" to JsonPrimitive(text))) else message
+                // Use the initial turn's final reply; earlier assistant rows are collapsed work.
+                if (index == 23) JsonObject(message.jsonObject + ("content" to JsonPrimitive(text))) else message
               }
             JsonObject(history + ("messages" to JsonArray(messages))).toString()
           } else {
