@@ -2,15 +2,25 @@ import { describe, expect, it } from "vitest";
 import { resolveCronPayloadOutcome } from "./helpers.js";
 
 describe("cron delivery outcomes", () => {
-  it("treats the retired heartbeat acknowledgement as ordinary output", () => {
-    const payload = { text: "HEARTBEAT_OK" };
-    const outcome = resolveCronPayloadOutcome({ payloads: [payload] });
-    expect(outcome.deliveryDisposition).toEqual({ kind: "visible" });
-    expect(outcome.deliveryPayloads).toEqual([payload]);
-  });
-  it("keeps NO_REPLY as a silent acknowledgement", () => {
+  it.each(["NO_REPLY", "no_r", "NO_R", "HEARTBEAT_OK"])(
+    "keeps prepared literal %s visible",
+    (text) => {
+      const payloads = [{ text }, { text: "Scheduled result" }];
+      const outcome = resolveCronPayloadOutcome({ payloads });
+      expect(outcome.deliveryDisposition).toEqual({ kind: "visible" });
+      expect(outcome.deliveryPayloads).toEqual(payloads);
+      expect(resolveCronPayloadOutcome({ payloads: [{ text }] }).deliveryDisposition).toEqual({
+        kind: "visible",
+      });
+    },
+  );
+
+  it("uses the prepared terminal disposition for a silent result", () => {
     expect(
-      resolveCronPayloadOutcome({ payloads: [{ text: "NO_REPLY" }] }).deliveryDisposition,
+      resolveCronPayloadOutcome({
+        payloads: [{ text: "NO_REPLY" }],
+        terminalReplyDisposition: "silent",
+      }).deliveryDisposition,
     ).toEqual({ kind: "silent", controlOnly: true });
   });
 

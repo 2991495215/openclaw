@@ -9,6 +9,7 @@ import { cloneCronJobForMutation, finalizeUpdatedJob } from "../service/jobs-mut
 import { recomputeSingleJobForMaintenance } from "../service/jobs-scheduling.js";
 import {
   reconcileCronChannelRequesterAuthority,
+  reconcileCronOperatorSource,
   reconcileRuntimeAuthority,
 } from "../service/jobs-tool-policy.js";
 import { applyDeclarativeJobSpec, applyJobPatch, createJob } from "../service/jobs.js";
@@ -59,7 +60,7 @@ export function planCronJobMutation(
   mutation: CronJobMutation,
   snapshot: CronJobMutationContext,
 ): CronJobMutationPlan {
-  const next: CronStoreFile = { version: 1, jobs: previous.jobs.map(cloneCronJobForMutation) };
+  const next: CronStoreFile = { version: 1, jobs: [...previous.jobs] };
   const plan: CronJobMutationPlan = { previous, next, notifications: [], logs: [] };
   const { nowMs: now, defaultAgentId, cronConfig, configuredChannels } = snapshot;
   if (mutation.kind === "remove") {
@@ -113,13 +114,13 @@ export function planCronJobMutation(
           },
         );
         if (options.createdActor) {
-          nextJob.createdActor = structuredClone(options.createdActor);
+          nextJob.createdActor = options.createdActor;
         }
         if (options.sourceConversation) {
-          nextJob.sourceConversation = structuredClone(options.sourceConversation);
+          nextJob.sourceConversation = options.sourceConversation;
         }
         if (options.skillLibrarySelections) {
-          nextJob.skillLibrarySelections = structuredClone(options.skillLibrarySelections);
+          nextJob.skillLibrarySelections = options.skillLibrarySelections;
         }
       }
     } else {
@@ -170,6 +171,7 @@ export function planCronJobMutation(
       reauthorizeCallerOrigin: mutation.kind === "update" && explicitlyMutatesToolsAllow,
     });
     resolveCronJobEffectiveAgentId(nextJob, defaultAgentId);
+    reconcileCronOperatorSource({ job: nextJob, previousJob, captured: options.operatorSource });
     plan.created = !previousJob;
     plan.updated =
       previousJob !== undefined &&
@@ -186,6 +188,8 @@ export function planCronJobMutation(
     plan.job = nextJob;
   }
   if (mutation.kind === "remove" || plan.created) {
+    // Only maintenance mutates untouched rows; ordinary edits clone their target above.
+    next.jobs = next.jobs.map((job) => (job === plan.job ? job : cloneCronJobForMutation(job)));
     const policy = { deps: { nowMs: () => now, log: createCronMutationLogger(plan.logs) } };
     const reservations = new Map(
       next.jobs.flatMap((job) =>

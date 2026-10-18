@@ -24,6 +24,7 @@ describe("resolveModelCallUrgency", () => {
   it.each([
     ["cron trigger", { trigger: "cron" }],
     ["memory trigger", { trigger: "memory" }],
+    ["skill review", { skillWorkshopReviewOf: "agent:main:conversation" }],
     ["cron bootstrap", { bootstrapContextRunKind: "cron" }],
   ] as const)(
     "keeps %s behind interactive work despite inherited user provenance",

@@ -44,6 +44,7 @@ export async function prepareDoctorHealthDatabaseBackups(params: {
   schemas: DoctorDatabasePreflight;
   repairState: boolean;
   automaticHeartbeatRepair: boolean;
+  check: "quick" | "full";
   verifiedSnapshots: readonly BackupSqliteSnapshotFact[];
   runtime: Pick<RuntimeEnv, "log">;
 }): Promise<DoctorDatabasePreflight> {
@@ -59,7 +60,7 @@ export async function prepareDoctorHealthDatabaseBackups(params: {
       repairOpenClawStateDatabaseIndexesForDoctor,
       repairOpenClawStateDatabaseReadabilityForDoctor,
     ]) {
-      const result = repair({ env: process.env });
+      const result = repair({ env: process.env, integrityCheck: params.check });
       repairedState ||= result.changes.length > 0;
       if (result.warnings.length > 0) {
         throw new Error(result.warnings.join("\n"));
@@ -96,9 +97,25 @@ export async function prepareDoctorHealthDatabaseBackups(params: {
       ),
   );
   const databasePaths = databaseTargets?.map((database) => database.path);
+  const { prepareDoctorDatabaseMigrations } =
+    await import("../commands/doctor-schema-migrations.js");
+  const versions = await prepareDoctorDatabaseMigrations({
+    env: process.env,
+    check: params.check,
+    databasePaths: databasePaths ?? [],
+    agentDatabaseTargets: databaseTargets,
+    pendingDatabasePaths: schemas.pendingMigrations?.map((database) => database.path) ?? [],
+    pendingMigrations: schemas.pendingMigrations,
+    verifiedSnapshots: params.verifiedSnapshots,
+  });
+  for (const message of [...versions.changes, ...versions.warnings]) {
+    params.runtime.log(message);
+  }
+  if (schemas.agentDatabaseMigrationDiscovery && versions.versionMigrations) {
+    schemas.agentDatabaseMigrationDiscovery.versionMigrations = versions.versionMigrations;
+  }
   // Snapshot reuse must cover current-schema stores in the same rollback group too.
   const backupInventory =
-    Boolean(schemas.pendingMigrations?.length) ||
     params.automaticHeartbeatRepair ||
     (await hasPendingHeartbeatMigration(
       databaseTargets?.map((database) => ({
@@ -107,19 +124,17 @@ export async function prepareDoctorHealthDatabaseBackups(params: {
         sqlitePath: database.path,
       })) ?? [],
     ));
+  if (!backupInventory) {
+    return schemas;
+  }
   const backups = await backupDoctorMigrationDatabases({
     env: process.env,
+    check: params.check,
     databasePaths: databasePaths ?? [],
     agentDatabaseTargets: databaseTargets,
-    pendingDatabasePaths: [
-      ...(schemas.pendingMigrations?.map((database) => database.path) ?? []),
-      ...(backupInventory
-        ? [resolveOpenClawStateSqlitePath(), ...(databasePaths ?? [])].filter((pathname) =>
-            fs.existsSync(pathname),
-          )
-        : []),
-    ],
-    pendingMigrations: schemas.pendingMigrations,
+    pendingDatabasePaths: [resolveOpenClawStateSqlitePath(), ...(databasePaths ?? [])].filter(
+      (pathname) => fs.existsSync(pathname),
+    ),
     verifiedSnapshots: params.verifiedSnapshots,
   });
   for (const message of [...backups.changes, ...backups.warnings]) {

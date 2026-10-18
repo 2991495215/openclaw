@@ -9,6 +9,7 @@ export type ModelCallUrgency = "foreground" | "normal" | "background";
 
 export function resolveModelCallUrgency(provenance: {
   trigger?: EmbeddedRunTrigger;
+  skillWorkshopReviewOf?: string;
   bootstrapContextRunKind?: BootstrapContextRunKind;
   currentInboundEventKind?: InboundEventKind;
   inputProvenance?: InputProvenance;
@@ -17,7 +18,7 @@ export function resolveModelCallUrgency(provenance: {
 }): ModelCallUrgency {
   const backgroundRunKind = provenance.bootstrapContextRunKind === "cron";
   const backgroundTrigger = provenance.trigger === "cron" || provenance.trigger === "memory";
-  if (backgroundRunKind || backgroundTrigger) {
+  if (backgroundRunKind || backgroundTrigger || provenance.skillWorkshopReviewOf) {
     return "background";
   }
   // Delegated runs may retain user provenance; they are not the interactive source turn.
@@ -38,13 +39,3 @@ export function resolveModelCallUrgency(provenance: {
   }
   return "normal";
 }
-
-/** Bounded internal diagnostic labels, independent of execution policy triggers. */
-export type IsolatedCompletionPurpose =
-  | "isolated-completion"
-  | "session-activity-summary"
-  | "session-observer"
-  | "conversation-label"
-  | "progress-narration"
-  | "transcript-summary"
-  | "plugin-completion";

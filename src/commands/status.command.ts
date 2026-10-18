@@ -1,4 +1,3 @@
-// Main `openclaw status` command orchestrator.
 // It routes all/json/deep modes, collects scan/runtime state, and delegates formatting to report builders.
 
 import {
@@ -160,7 +159,6 @@ export async function statusCommand(
   }
 
   const {
-    buildStatusCommandReportData,
     buildStatusCommandReportLines,
     buildStatusUpdateSurface,
     formatUsageReportLines,
@@ -240,23 +238,21 @@ export async function statusCommand(
     gatewayReachable: gatewayReachable && !nodeOnlyGateway,
     gatewayStartupPhase: gatewayProbe?.startupPhase,
   });
-  const lines = await buildStatusCommandReportLines(
-    await buildStatusCommandReportData({
-      ...scan,
-      env: env ?? {},
-      opts,
-      surface: overviewSurface,
-      securityAudit,
-      health,
-      usageLines,
-      automations,
-      pairingRecovery,
-      tableWidth,
-      updateValue: updateSurface.updateAvailable
-        ? warn(`available · ${updateSurface.updateLine}`)
-        : updateSurface.updateLine,
-      updateRows,
-    }),
-  );
+  const lines = await buildStatusCommandReportLines({
+    ...scan,
+    env: env ?? {},
+    opts,
+    surface: overviewSurface,
+    securityAudit,
+    health,
+    usageLines,
+    automations,
+    pairingRecovery,
+    tableWidth,
+    updateValue: updateSurface.updateAvailable
+      ? warn(`available · ${updateSurface.updateLine}`)
+      : updateSurface.updateLine,
+    updateRows,
+  });
   runtime.log(lines.join("\n"));
 }

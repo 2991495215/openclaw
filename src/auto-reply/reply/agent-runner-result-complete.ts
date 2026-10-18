@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
+import { createMissingReplyNotice } from "../../agents/reply-completion.js";
 import { withSystemEventOwner } from "../../infra/system-event-ownership.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { sessionDeliveryChannel } from "../../utils/delivery-context.read.js";
 import { getCommandOwnerAuthority } from "../command-owner-authority.js";
-import { setReplyPayloadMetadata } from "../reply-payload.js";
+import { getReplyPayloadMetadata, setReplyPayloadMetadata } from "../reply-payload.js";
 import type { ReplyPayload } from "../types.js";
 import {
   markBeforeAgentRunBlockedPayloads,
@@ -25,10 +26,8 @@ import {
 import { readPostCompactionContext } from "./post-compaction-context.js";
 import { warnPrivateMessageToolFinal } from "./private-message-tool-final.js";
 import { enqueueFollowupRun, refreshQueuedFollowupSession } from "./queue.js";
-import {
-  buildStrandedReplyDeliveryFailurePayload,
-  resolveStrandedReplyRecovery,
-} from "./stranded-reply-recovery.js";
+import { isInternalSourceReplyChannel } from "./source-reply-delivery-mode.js";
+import { resolveStrandedReplyRecovery } from "./stranded-reply-recovery.js";
 
 export async function completeReplyAgentRun(input: {
   context: FinalizeReplyAgentRunInput;
@@ -97,7 +96,7 @@ export async function completeReplyAgentRun(input: {
     }
 
     if (verboseEnabled) {
-      const suffix = typeof count === "number" ? ` (count ${count})` : "";
+      const suffix = count !== undefined ? ` (count ${count})` : "";
       prefixNotices.push(
         setReplyPayloadMetadata(
           { text: `🧹 Auto-compaction complete${suffix}.` },
@@ -138,7 +137,14 @@ export async function completeReplyAgentRun(input: {
   // durable delivery retries. Hidden reasoning, message-tool-only replies,
   // and sendPolicy-denied replies must not become replayable text.
   const isStrandedReplyRetryRun = followupRun.strandedReplyRetry === true;
-  if (sessionKey && storePath && (finalPayloads.length > 0 || isStrandedReplyRetryRun)) {
+  if (
+    sessionKey &&
+    storePath &&
+    runResult.meta?.terminalReply?.disposition !== "silent" &&
+    (finalPayloads.length > 0 ||
+      isStrandedReplyRetryRun ||
+      runResult.meta?.terminalReply !== undefined)
+  ) {
     const sourceReplyPolicy = resolveSourceReplyPolicy({
       cfg,
       sessionCtx,
@@ -147,24 +153,23 @@ export async function completeReplyAgentRun(input: {
       runtimePolicySessionKey,
       opts,
     });
-    // #85714: warn only for unusually substantive private final text. In
-    // message_tool_only, no tool call can be intentional silence, and
-    // final payloads also include verbose/status/usage metadata.
     const assistantFinalText = normalizeAssistantFinalDeliveryText(
-      typeof runResult.meta?.finalAssistantVisibleText === "string"
-        ? runResult.meta.finalAssistantVisibleText
-        : (rawAssistantText ?? ""),
+      runResult.meta?.finalAssistantVisibleText ?? rawAssistantText ?? "",
     );
-    const recovery = resolveStrandedReplyRecovery({
-      base: followupRun,
-      payloads: finalPayloads,
-      finalText: assistantFinalText,
-      sourceReplyDeliveryMode: sourceReplyPolicy.sourceReplyDeliveryMode,
-      sendPolicyDenied: sourceReplyPolicy.sendPolicyDenied,
-      successfulSourceReplyDelivery: completedSourceReplyDelivery,
-      isRoomEvent: sessionCtx.InboundEventKind === "room_event",
-    });
-    if (recovery.kind === "retry" || (recovery.kind === "diagnostic" && recovery.warn)) {
+    const recovery =
+      prepared.replyCompletion.outcome === "pending"
+        ? { kind: "none" as const }
+        : resolveStrandedReplyRecovery({
+            base: followupRun,
+            payloads: finalPayloads,
+            finalText: assistantFinalText,
+            terminalReply: runResult.meta?.terminalReply,
+            sourceReplyDeliveryMode: sourceReplyPolicy.sourceReplyDeliveryMode,
+            sendPolicyDenied: sourceReplyPolicy.sendPolicyDenied,
+            successfulSourceReplyDelivery: completedSourceReplyDelivery,
+            isRoomEvent: sessionCtx.InboundEventKind === "room_event",
+          });
+    if (recovery.kind === "retry") {
       warnPrivateMessageToolFinal({
         sessionKey,
         channel:
@@ -180,15 +185,15 @@ export async function completeReplyAgentRun(input: {
     } else if (recovery.kind === "retry") {
       const retryEnqueued = enqueueFollowupRun(
         queueKey,
-        recovery.run,
+        { ...recovery.run, controllerInput: undefined, controllerClaim: undefined },
         resolvedQueue,
         "none",
         runFollowupTurn,
         false,
-        { position: "front" },
+        { position: "front", storePath },
       );
       if (!retryEnqueued) {
-        finalPayloads = [...finalPayloads, buildStrandedReplyDeliveryFailurePayload()];
+        finalPayloads = [...finalPayloads, createMissingReplyNotice()];
       }
     }
     const recoverablePendingFinalText = buildRecoverablePendingFinalDeliveryText(
@@ -197,12 +202,33 @@ export async function completeReplyAgentRun(input: {
     const pendingText = sourceReplyPolicy.suppressDelivery
       ? ""
       : (recoverablePendingFinalText ?? "");
-
+    // The local source observer confirms the committed answer in chat history.
+    // Its live notification needs no second durable delivery state machine.
+    const canUseLocalTranscript =
+      isInternalSourceReplyChannel(sessionCtx) && !prepared.reminderNoteAppended;
     const sendableFinalPayloads = sourceReplyPolicy.suppressDelivery
       ? []
-      : finalPayloads.filter(
-          (payload) => normalizePendingFinalDeliveryPayloads([payload]).length > 0,
-        );
+      : finalPayloads.filter((payload) => {
+          const metadata = getReplyPayloadMetadata(payload);
+          const committedLocalText =
+            canUseLocalTranscript &&
+            metadata?.localTranscriptDeliveryConfirmed === true &&
+            !metadata.assistantMediaFailures?.length &&
+            !payload.mediaUrl &&
+            !payload.mediaUrls?.length &&
+            !payload.attachments?.length &&
+            !payload.presentation &&
+            !payload.interactive &&
+            !payload.channelData &&
+            !payload.location &&
+            !payload.btw &&
+            !payload.delivery &&
+            !payload.spokenText &&
+            !payload.ttsSupplement &&
+            !metadata?.responsePrefix &&
+            !metadata?.responseUsageLine;
+          return !committedLocalText && normalizePendingFinalDeliveryPayloads([payload]).length > 0;
+        });
     if (sendableFinalPayloads.length > 0) {
       const commandOwner = getCommandOwnerAuthority(followupRun.run);
       const commandOwnerReference = commandOwner

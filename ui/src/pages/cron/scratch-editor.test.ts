@@ -7,7 +7,7 @@ import type { ApplicationContext } from "../../app/context.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { createGateway, operatorHello } from "./cron-page.test-support.tsx";
-import "./scratch-editor.ts";
+import "./scratch-editor.tsx";
 
 type ScratchEditor = HTMLElement & { jobId: string; gateway: ApplicationContext["gateway"] };
 

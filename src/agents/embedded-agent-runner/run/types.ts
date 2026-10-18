@@ -12,6 +12,7 @@ import type { CommandQueueTaskDeadline } from "../../../process/command-queue.ty
 import type { AcceptedSessionSpawn } from "../../accepted-session-spawn.js";
 import type { AgentHarnessCompletionScope } from "../../agent-harness-completion-scope.js";
 import type { AgentRunAttemptTerminal } from "../../agent-run-terminal-outcome.js";
+import type { PreparedAgentRunTerminalReply } from "../../agent-run-terminal-reply.js";
 import type { ToolOutcomeObserver } from "../../agent-tools.before-tool-call.types.js";
 import type { AuthProfileStore } from "../../auth-profiles/types.js";
 import type { ContextWindowInfo } from "../../context-window-guard.js";
@@ -142,6 +143,8 @@ export type EmbeddedRunAttemptTrajectoryRecorder = {
 };
 
 export type EmbeddedRunAttemptParams = EmbeddedRunAttemptBase & {
+  /** Transport hooks follow the current endpoint without changing admitted request policy. */
+  transportConfig?: RunEmbeddedAgentParams["config"];
   modelCallSequence?: { value: number };
   /** Recomputed by the host for this attempt; never inherited from the requesting turn. */
   githubPublicationAvailable?: boolean;
@@ -164,6 +167,8 @@ export type EmbeddedRunAttemptParams = EmbeddedRunAttemptBase & {
   operation?: EmbeddedRunAttemptOperation;
   /** Core-prepared fact that explicit requester/config policy restricts plugin-native tools. */
   pluginHarnessToolPolicyRestricted?: boolean;
+  /** Host-prepared policy lifetime; turn-scoped policy can still allow every native tool. */
+  pluginHarnessToolPolicyScope?: "conversation" | "turn";
   /** Audited exact denies that the plugin harness must enforce against native equivalents. */
   pluginHarnessToolPolicySafeDeniedTools?: readonly string[];
   preparedModelRuntime?: PreparedModelRuntimeSnapshot;
@@ -232,6 +237,11 @@ export type EmbeddedRunAttemptParams = EmbeddedRunAttemptBase & {
   onAttemptTimeout?: (reason: Error) => void;
   /** Signals an explicit cancellation through the active native run handle. */
   onAttemptAbort?: () => void;
+  /** Called before attempt cleanup; only core decides whether to request verified context. */
+  onSettledTurn?: (
+    attempt: EmbeddedRunAttemptResult,
+    captureContext: () => Promise<EmbeddedRunAttemptResult["settledTurnFinalizationContext"]>,
+  ) => Promise<void>;
   onDeferredLifecycleOwner?: (owner: DeferredEmbeddedRunLifecycleOwner) => void;
   onDeferredLifecycleAbort?: (reason?: "user_abort" | "restart" | "superseded") => void;
   /** Host-requested runtime replacement takes effect after the current tool batch is persisted. */
@@ -281,6 +291,7 @@ export type EmbeddedRunAttemptParams = EmbeddedRunAttemptBase & {
 
 export type EmbeddedRunAttemptResult = {
   terminal: AgentRunAttemptTerminal;
+  preparedTerminalReply?: PreparedAgentRunTerminalReply;
   /** Prepared policy that explains unavailable tools without another session read. */
   sandboxRuntime?: ReturnType<typeof resolveSandboxRuntimeStatus>;
   /** True when the runtime made the authoritative final-assistant transcript decision. */

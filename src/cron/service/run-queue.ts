@@ -13,7 +13,7 @@ import { describeUnavailableCronAgent } from "../agent-availability.js";
 import { CronEventClaimInvalidatedError, cronEventPayload } from "../event-source.js";
 import { captureCronMutationCommit } from "../mutation-completion.js";
 import { cronSourceIdentity, ownsCronSource } from "../source-schedule.js";
-import { noteCronJobsStoreCommit } from "../store.js";
+import { getCronJobsStoreRevision } from "../store.js";
 import { cronStoreKey } from "../store/key.js";
 import type {
   CronQueuedRun,
@@ -55,7 +55,11 @@ import {
   type CronRunResult,
   type CronServiceState,
 } from "./state.js";
-import { captureCronServiceMutationSource, ensureLoaded } from "./store.js";
+import {
+  captureCronServiceMutationSource,
+  ensureLoaded,
+  noteLoadedCronStoreCommit,
+} from "./store.js";
 import { authorCronRunCompletion, executeJobCoreWithTimeout } from "./timer-job-runner.js";
 import { maybeNotifyIsolatedAgentSetupTimeout } from "./timer-notifications.js";
 import { finalizeCompletedCronRunOutcomes } from "./timer-outcome-finalization.js";
@@ -180,6 +184,7 @@ export async function commitCronRunRequests(
     options.commitGuard?.();
     source.assertCurrent();
   };
+  const observedRevision = getCronJobsStoreRevision(source.storeKey);
   const result = await runOpenClawStateWorkerOperation(
     source.context,
     (scope) =>
@@ -213,19 +218,18 @@ export async function commitCronRunRequests(
   );
   if (accepted.length > 0) {
     markCommitted?.();
-    noteCronJobsStoreCommit(source.storeKey);
     applyCronRuntimeRowsToState(
       state,
       accepted.map(({ job }) => job),
     );
+    noteLoadedCronStoreCommit(state, observedRevision);
     options.onExit?.onReserved();
   }
   return accepted;
 }
 
-async function publishSkipped(state: CronServiceState, skipped: CronSkippedRequest) {
+function publishSkipped(state: CronServiceState, skipped: CronSkippedRequest) {
   const pending = launchState(state).contexts.get(skipped.runReceipt.receiptId);
-  applyCronRuntimeRowsToState(state, skipped.job ? [skipped.job] : []);
   if (!pending) {
     return;
   }
@@ -276,6 +280,7 @@ async function cancelCronRunRequests(
   }
   const context =
     launchState(state).contexts.get(receiptIds[0]!)?.context ?? captureOpenClawStateWorkerContext();
+  const observedRevision = getCronJobsStoreRevision(state.deps.storePath);
   const result = await runOpenClawStateWorkerOperation(context, (scope) =>
     scope.execute({
       type: "cron.cancelRequests",
@@ -287,9 +292,13 @@ async function cancelCronRunRequests(
       },
     }),
   );
-  noteCronJobsStoreCommit(cronStoreKey(state.deps.storePath));
+  applyCronRuntimeRowsToState(
+    state,
+    result.skipped.flatMap(({ job }) => (job ? [job] : [])),
+  );
+  noteLoadedCronStoreCommit(state, observedRevision);
   for (const skipped of result.skipped) {
-    await publishSkipped(state, skipped);
+    publishSkipped(state, skipped);
   }
 }
 
@@ -330,6 +339,7 @@ export async function drainCronRunQueue(state: CronServiceState): Promise<void> 
         }
       }
     };
+    const observedRevision = getCronJobsStoreRevision(state.deps.storePath);
     const result = await runOpenClawStateWorkerOperation(
       context,
       (scope) =>
@@ -405,7 +415,7 @@ export async function drainCronRunQueue(state: CronServiceState): Promise<void> 
     if (!result) {
       return;
     }
-    await launchCronRunQueueResult(state, result, context);
+    await launchCronRunQueueResult(state, result, context, observedRevision);
   }).finally(() => {
     launchState(state).drain = undefined;
     if (retryAfterGuardRefusal) {
@@ -420,15 +430,17 @@ export async function launchCronRunQueueResult(
   state: CronServiceState,
   result: CronRunQueueOperations["cron.drainQueue"]["output"],
   context = captureOpenClawStateWorkerContext(),
+  observedRevision = getCronJobsStoreRevision(state.deps.storePath),
 ): Promise<void> {
   if (result.launches.length || result.skipped.length) {
-    noteCronJobsStoreCommit(cronStoreKey(state.deps.storePath));
+    const jobs = [...result.skipped, ...result.launches].flatMap(({ job }) => (job ? [job] : []));
+    applyCronRuntimeRowsToState(state, jobs);
+    noteLoadedCronStoreCommit(state, observedRevision);
   }
   for (const skipped of result.skipped) {
-    await publishSkipped(state, skipped);
+    publishSkipped(state, skipped);
   }
   for (const entry of result.launches) {
-    applyCronRuntimeRowsToState(state, [entry.job]);
     let pending = launchState(state).contexts.get(entry.runReceipt.receiptId);
     if (!pending) {
       pending = {
@@ -485,7 +497,6 @@ export async function launchCronRunQueueResult(
           );
         } finally {
           launch.activation.resolve();
-          launch.completion.reject(error);
           launch.removeCancellation?.();
           launchState(state).contexts.delete(entry.runReceipt.receiptId);
         }
@@ -504,7 +515,7 @@ async function launchCronRun(
   pending: CronLaunchContext,
 ) {
   const { options } = pending;
-  await ensureLoaded(state, { forceReload: true });
+  await ensureLoaded(state);
   pending.context.admission.assertCurrent();
   // Transfer ends the plugin's admission authority; this accepted occurrence
   // executes under live Cron/run/tool authority, not the retired source lease.

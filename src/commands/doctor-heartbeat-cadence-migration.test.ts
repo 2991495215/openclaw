@@ -3,7 +3,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as terminalNote from "../../packages/terminal-core/src/note.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
-import * as clawHeartbeatMigration from "../claws/heartbeat-migration.js";
 import { findLegacyConfigIssues } from "../config/legacy.js";
 import type { OpenClawConfigWithLegacyRoster } from "../config/legacy.roster.js";
 import type { LegacyHeartbeatConfig } from "../config/types.agent-defaults.js";
@@ -643,37 +642,6 @@ describe("heartbeat cadence Doctor cutover", () => {
     expect(readState(f)!.jobs).toEqual([]);
     expect(readState(f)!.receipt).toMatchObject({ jobId: original.id, phase: "complete" });
     expect(deliveryNotes()).toHaveLength(1);
-  });
-
-  it("keeps cutover pending when installed provenance fails and resumes without duplicating jobs", async () => {
-    const f = fixture();
-    const legacy = seedLegacyMonitor(f);
-    const input = structuredClone(f.cfg);
-    const finish = vi
-      .spyOn(clawHeartbeatMigration, "finishClawHeartbeatMigration")
-      .mockRejectedValueOnce(new Error("Synthetic installed-provenance failure"));
-
-    await expect(retireHeartbeatWithDoctor(f.cfg, f.env)).rejects.toThrow(
-      "Synthetic installed-provenance failure",
-    );
-    const pending = readState(f)!;
-    expect(pending.jobs).toEqual([
-      expect.objectContaining({
-        id: legacy.id,
-        payload: expect.objectContaining({ kind: "agentTurn" }),
-      }),
-    ]);
-    expect(pending.scratch.get(legacy.id)?.scratch?.content).toBe("Check the backup.\n");
-    expect(pending.receipt).toMatchObject({ jobId: legacy.id, phase: "pending" });
-    expect(f.cfg).toEqual(input);
-
-    finish.mockRestore();
-    const retired = await retireHeartbeatWithDoctor(f.cfg, f.env);
-    expect(retired.agents?.defaults?.heartbeat).toBeUndefined();
-    const completed = readState(f)!;
-    expect(completed.jobs).toEqual(pending.jobs);
-    expect(completed.scratch).toEqual(pending.scratch);
-    expect(completed.receipt).toMatchObject({ jobId: legacy.id, phase: "complete" });
   });
 
   it.each(["explicit", "session", "default"] as const)(

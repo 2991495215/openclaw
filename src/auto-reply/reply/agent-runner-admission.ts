@@ -5,6 +5,7 @@ import { composeSessionSourceAssertion } from "../../config/sessions/session-sou
 import { captureOwnedTranscriptWriteAssertion } from "../../config/sessions/transcript-write-context.js";
 import { resolveCronJobConfigRevision } from "../../cron/config-revision.js";
 import { prepareCronRunAdmission } from "../../cron/run-admission.js";
+import { isCronOneShotContinuationJob } from "../../cron/service/one-shot-schedule.js";
 import { resolveCronAuthenticatedChannelRequester } from "../../cron/tools-allow-provenance.js";
 import { captureAgentRunLifecycleGeneration } from "../../infra/agent-events.js";
 import { claimAgentRunContext, releaseAgentRunContext } from "../../infra/agent-run-registry.js";
@@ -107,14 +108,20 @@ export function prepareReplyTurnExecution(params: AgentTurnParams, runId: string
         standingGrantAuthority: cronAdmission.standingGrantAuthority,
       });
     }
+    const controllerAbortSignal = params.replyOperation?.abortSignal;
+    const callerAbortSignal = params.opts?.abortSignal;
     const deferredLifecycle = createDeferredEmbeddedRunLifecycleManager({
+      replyOperation: params.replyOperation,
       runId,
       agentId: params.followupRun.run.agentId,
       sessionId: params.followupRun.run.sessionId,
       sessionKey: params.sessionKey,
       sessionFile: params.followupRun.run.sessionFile,
       abortSignal: resolveFollowupAbortSignal({
-        abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
+        abortSignal:
+          controllerAbortSignal && callerAbortSignal
+            ? AbortSignal.any([controllerAbortSignal, callerAbortSignal])
+            : (controllerAbortSignal ?? callerAbortSignal),
         operatorAuthority: params.followupRun.operatorAuthority,
       }),
     });
@@ -158,7 +165,9 @@ export function prepareReplyTurnRunSource(params: AgentTurnParams, runId: string
               [
                 automation.job.id,
                 {
-                  pacingEnabled: automation.job.pacing !== undefined,
+                  nextCheckEnabled:
+                    automation.job.pacing !== undefined ||
+                    isCronOneShotContinuationJob(automation.job),
                   assertCurrent: () => {
                     automation.assertCurrent();
                     if (

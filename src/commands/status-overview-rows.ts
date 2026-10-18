@@ -2,6 +2,7 @@ import { theme } from "../../packages/terminal-core/src/theme.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { resolveIsNixMode } from "../config/paths.js";
 import { formatMissingChildRuntimeWarning } from "../infra/child-runtime-viability.js";
+import { formatDatabaseEngineSelection } from "../infra/database-engine/report.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { formatTimeAgo } from "../infra/format-time/format-relative.js";
 import type { PluginCompatibilityNotice } from "../plugins/status.js";
@@ -12,6 +13,7 @@ import { VERSION } from "../version.js";
 import { buildBackupStatusValue } from "./backup-health.js";
 import type { HealthSummary } from "./health.js";
 import { buildStatusOverviewSurfaceRows } from "./status-all/format.js";
+import { buildStatusDatabaseStoreRows } from "./status-database-engines.js";
 import type { StatusOverviewSurface } from "./status-overview-surface.ts";
 import {
   buildStatusAllAgentsValue,
@@ -150,6 +152,19 @@ export function buildStatusCommandOverviewRows(params: {
     agentsValue,
     suffixRows: [
       ...(params.updateRows ?? []),
+      ...((params.surface.cfg.database || params.surface.databaseEngines?.stores.length) &&
+      params.surface.databaseEngines?.source !== "unavailable"
+        ? [
+            {
+              Item: "Database engines (configured)",
+              Value: formatDatabaseEngineSelection(
+                params.surface.cfg,
+                params.surface.databaseEngines?.stores,
+              ),
+            },
+          ]
+        : []),
+      ...buildStatusDatabaseStoreRows(params.surface.databaseEngines),
       { Item: "Telemetry", Value: telemetryValue },
       { Item: "Memory", Value: memoryValue },
       {
@@ -234,6 +249,18 @@ export function buildStatusAllOverviewRows(params: {
     }),
     suffixRows: [
       { Item: "Automations", Value: buildStatusAutomationsValue(params.automations) },
+      ...(params.surface.databaseEngines?.source !== "unavailable"
+        ? [
+            {
+              Item: "Database engines (configured)",
+              Value: formatDatabaseEngineSelection(
+                params.surface.cfg,
+                params.surface.databaseEngines?.stores,
+              ),
+            },
+          ]
+        : []),
+      ...buildStatusDatabaseStoreRows(params.surface.databaseEngines),
       {
         Item: "Secrets",
         Value: buildStatusSecretsValue(params.secretDiagnosticsCount),

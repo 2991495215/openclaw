@@ -1,14 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { withServer, withTempDir } from "openclaw/plugin-sdk/test-env";
-import { expect, onTestFailed, test } from "vitest";
-import {
-  createQaGatewayChild,
-  writeJson,
-  type QaGatewayChild,
-} from "../../../../extensions/qa-lab/api.js";
+import { expect, test } from "vitest";
+import { createQaGatewayChild, writeJson } from "../../../../extensions/qa-lab/api.js";
 import { stopQaGatewayFixture } from "../../../helpers/qa-gateway-cleanup.js";
-import { createQaPreparedRepoCliCommand } from "../../../helpers/qa-prepared-repo-cli.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -34,31 +29,47 @@ function succeed(res: ServerResponse, result: unknown = true) {
   writeJson(res, 200, { ok: true, result });
 }
 
-test("visibly settles a message-tool-only Telegram turn after a provider failure", async () => {
+test("visibly settles a message-tool-only Telegram turn after a provider failure", async ({
+  signal,
+  onTestFailed,
+  onTestFinished,
+}) => {
   const pendingPolls = new Set<ServerResponse>();
   const telegramSends: JsonObject[] = [];
   const providerBodies: JsonObject[] = [];
   let providerRequests = 0;
   let updateDelivered = false;
-  let phase = "starting Gateway fixture";
-  let cleanupPhase = "not started";
-  let gateway: QaGatewayChild | undefined;
-  onTestFailed(() => {
+  const started = performance.now();
+  let phase = "test-enter";
+  let reported = false;
+  // Raw stderr remains visible under the E2E configuration silent mode.
+  const emitPhase = (event: "enter" | "failure") => {
     process.stderr.write(
-      `[telegram-failure-settlement] ${JSON.stringify({
+      `[qa-phase] ${JSON.stringify({
+        event,
         phase,
-        cleanupPhase,
+        elapsedMs: Math.round(performance.now() - started),
         providerRequests,
-        modelRequests: providerBodies.length,
-        telegramSends: telegramSends.length,
         updateDelivered,
-        pendingPolls: pendingPolls.size,
+        sends: telegramSends.length,
       })}\n`,
     );
-    if (gateway) {
-      process.stderr.write(`${gateway.logs()}\n`);
+  };
+  const enterPhase = (next: string) => {
+    phase = next;
+    emitPhase("enter");
+  };
+  const report = () => {
+    if (reported) {
+      return;
     }
-  });
+    reported = true;
+    emitPhase("failure");
+  };
+  signal.addEventListener("abort", report, { once: true });
+  onTestFailed(report);
+  onTestFinished(() => signal.removeEventListener("abort", report));
+  emitPhase("enter");
 
   const update = {
     update_id: 1,
@@ -127,20 +138,23 @@ test("visibly settles a message-tool-only Telegram turn after a provider failure
     succeed(res);
   };
 
+  enterPhase("http-start");
   await withServer(
     (req, res) => {
       void handleRequest(req, res).catch((error: unknown) => {
         writeJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
       });
     },
-    async (apiRoot) =>
-      await withTempDir("openclaw-telegram-failure-settlement-", async (workspace) => {
+    async (apiRoot) => {
+      enterPhase("temp-dir-start");
+      return await withTempDir("openclaw-telegram-failure-settlement-", async (workspace) => {
         const gatewayOwner = createQaGatewayChild();
         try {
           const repoRoot = path.resolve(import.meta.dirname, "../../../..");
-          gateway = await gatewayOwner.start({
+          enterPhase("gateway-start");
+          const gateway = await gatewayOwner.start({
+            onListening: () => enterPhase("gateway-listening"),
             repoRoot,
-            command: createQaPreparedRepoCliCommand(repoRoot),
             providerBaseUrl: `${apiRoot}/v1`,
             transportBaseUrl: apiRoot,
             transport: {
@@ -171,9 +185,6 @@ test("visibly settles a message-tool-only Telegram turn after a provider failure
               }),
             },
             controlUiEnabled: false,
-            onListening: () => {
-              phase = "waiting for Gateway readiness";
-            },
             runtimeEnvPatch: {
               OPENCLAW_SKIP_CHANNELS: undefined,
               OPENCLAW_SKIP_PROVIDERS: undefined,
@@ -194,7 +205,8 @@ test("visibly settles a message-tool-only Telegram turn after a provider failure
             },
           });
 
-          phase = "waiting for Telegram failure reply";
+          enterPhase("gateway-ready");
+          enterPhase("turn");
           await expect
             .poll(
               () => ({
@@ -211,7 +223,7 @@ test("visibly settles a message-tool-only Telegram turn after a provider failure
               providerRequests: expect.any(Number),
               sends: [{ chatId: String(CHAT_ID), silent: true, text: FAILURE_TEXT }],
             });
-          phase = "verifying provider continuation and public reply";
+          enterPhase("delivery-observed");
           expect(providerRequests).toBeGreaterThan(0);
           expect(providerBodies[1]?.model).toBe(providerBodies[0]?.model);
           expect(JSON.stringify(providerBodies[1]?.input)).toContain(REQUEST_TEXT);
@@ -221,14 +233,13 @@ test("visibly settles a message-tool-only Telegram turn after a provider failure
           expect(publicReplies).not.toContain(RAW_ERROR_DETAIL);
           expect(publicReplies).not.toContain(RAW_ERROR_CANARY);
         } finally {
-          cleanupPhase = "stopping Gateway fixture";
+          enterPhase("cleanup");
           await stopQaGatewayFixture(gatewayOwner);
-          cleanupPhase = "closing Telegram polls";
           for (const poll of pendingPolls) {
             poll.destroy();
           }
-          cleanupPhase = "closing HTTP and workspace fixtures";
         }
-      }),
+      });
+    },
   );
 }, 120_000);

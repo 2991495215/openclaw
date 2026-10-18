@@ -42,7 +42,7 @@ export function formatCronTerminalPresentation(
 
 export function buildCronSelfDescription(params: {
   activeRun: boolean;
-  pacingEnabled: boolean;
+  nextCheckEnabled: boolean;
 }): string {
   const inspection =
     "Inspect or remove only the current automation. Actions: status; list [includeDisabled]; get/runs/remove jobId. Use the current job ID. To stop a finished job, remove it; creating/updating/running jobs and waking sessions are unavailable. Return the task result; the scheduler owns delivery.";
@@ -52,7 +52,9 @@ export function buildCronSelfDescription(params: {
   return (
     inspection +
     " scratch_get reads this job's checklist and revision; scratch_set replaces or clears content using expectedRevision from the read (reread after a revision conflict). record_result accepts one outcome (no_change, progress, done, blocked, needs_attention) and concise summary for this run. no_change or NO_REPLY keeps the response silent." +
-    (params.pacingEnabled ? ' next_check in:"15m" proposes the next delay for this paced job.' : "")
+    (params.nextCheckEnabled
+      ? ' next_check in:"15m" proposes the next delay for this paced job or one-shot session continuation. A successful one-shot proposal rearms this same job from run end (minimum 2s); without one it completes normally.'
+      : "")
   );
 }
 
@@ -82,7 +84,7 @@ SCOPE: Authenticated configured channel owners and Control UI administrators can
 ADD: job requires schedule+payload.
 
 SCHEDULE:
-- {kind:"at",at:"ISO-8601"}: one-shot; missing timezone=UTC. Auto-deletes after successful completion; failed/unknown required delivery retains it disabled.
+- {kind:"at",at:"ISO-8601"}: one-shot; missing timezone=UTC. Auto-deletes after successful completion unless an explicit session continuation calls next_check; failed/unknown required delivery retains it disabled.
 - {kind:"every",everyMs}.
 - {kind:"cron",expr,tz?:"IANA"}: wall time in tz, never UTC-convert; omitted tz=Gateway host local.${streamScheduleLine}${eventScheduleLine}
 
@@ -90,7 +92,7 @@ TARGET+PAYLOAD:
 - "current" (agentTurn default) = this conversation's context: the run stays detached, reads bounded chat context, then delivers its final visible assistant result to the resolved destination (this conversation unless another destination is configured). Delayed work/loop = at|every + agentTurn + current. This is not a resumed parent turn: it uses the scheduled agent workspace with its own session identity, not the conversation worktree or cloud worker placement. In-flight turns sent through the job's stable cron key are canceled if that key is reassigned. Verify required checkout/tool access before delegating repository work; result delivery alone does not resume the original agent.
 - "isolated" = fresh detached session; standalone background work recorded in cron run history.
 - "main" = normal main-session follow-up; payload {kind:"systemEvent",text} (systemEvent default target). The run waits for actual execution and delivery.
-- "session:<key>" + agentTurn runs a turn inside that existing conversation (same history, saved workspace/worktree). To come back here later (wait for CI, recheck), add an at + agentTurn job with sessionTarget "session:<your session key from Runtime>" and message = instructions for your next turn.
+- "session:<key>" + agentTurn runs a turn inside that existing conversation (same history, saved workspace/worktree). To come back here later (wait for CI, recheck), add an at + agentTurn job with sessionTarget "session:<your session key from Runtime>" and message = instructions for your next turn. If that one-shot turn still needs to wait, call next_check in:"5m" to rearm this same job after successful completion (minimum 2s); target, payload, and tool cap stay unchanged. Without a proposal it completes normally.
 - {kind:"agentTurn",message,includeReasoning?}; includeReasoning includes reasoning only alongside a meaningful delivered result; timeoutSeconds 0=none.
 - Inherited MCP authority covers model-callable tools, not interactive app-view-only capabilities.${scriptPayloadLine}
 

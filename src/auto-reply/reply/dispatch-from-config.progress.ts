@@ -1,5 +1,6 @@
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
 import type { ReplyPayload } from "../reply-payload.js";
+import { createDispatchCommentaryProgress } from "./dispatch-from-config.commentary.js";
 import {
   hasExecApprovalPayload,
   requiresDurableToolResultDelivery,
@@ -62,63 +63,20 @@ export function createDispatchProgress(
   let finalReplyDeliveryStarted = false;
   const shouldSuppressLateTextOnlyToolProgress = (payload: ReplyPayload) =>
     finalReplyDeliveryStarted && !requiresDurableToolResultDelivery(payload);
-  // Buffer the latest snapshot per item and flush it before the next item or final reply.
-  let pendingCommentaryProgress: { itemId?: string; text: string } | null = null;
-  const flushedCommentaryItems = new Set<string>();
-  const deliverCommentaryProgressMessage = async (text: string) => {
-    if (!(await shouldSendToolSummariesAsync()) || (await shouldSuppressProgressDelivery())) {
-      return;
-    }
-    if (state.isDispatchOperationAborted()) {
-      return;
-    }
-    const payload: ReplyPayload = { text: `💬 ${text}` };
-    if (shouldSuppressLateTextOnlyToolProgress(payload)) {
-      return;
-    }
-    state.assertProgressCurrent();
-    if (shouldRouteToOriginating) {
-      await sendPayloadAsync(payload);
-    } else {
-      markInboundDedupeReplayUnsafe();
-      turnLedger.sendQueued("tool", payload);
-    }
-  };
-  const flushPendingCommentaryProgress = async () => {
-    const pending = pendingCommentaryProgress;
-    pendingCommentaryProgress = null;
-    const text = pending?.text.trim();
-    if (!text) {
-      return;
-    }
-    if (pending?.itemId) {
-      flushedCommentaryItems.add(pending.itemId);
-    }
-    await deliverCommentaryProgressMessage(text);
-  };
-  const noteCommentaryProgress = async (payload: { itemId?: string; progressText?: string }) => {
-    const itemId = payload.itemId?.trim() || undefined;
-    if (finalReplyDeliveryStarted || (itemId && flushedCommentaryItems.has(itemId))) {
-      return;
-    }
-    const text = payload.progressText ?? "";
-    const updatesBufferedItem =
-      pendingCommentaryProgress !== null &&
-      ((pendingCommentaryProgress.itemId !== undefined &&
-        pendingCommentaryProgress.itemId === itemId) ||
-        pendingCommentaryProgress.text.trim() === text.trim());
-    if (!text.trim()) {
-      // Empty commentary with an item id retracts that item before it is sent.
-      if (updatesBufferedItem) {
-        pendingCommentaryProgress = null;
-      }
-      return;
-    }
-    if (pendingCommentaryProgress && !updatesBufferedItem) {
-      await flushPendingCommentaryProgress();
-    }
-    pendingCommentaryProgress = { itemId, text };
-  };
+  const { flushPendingCommentaryProgress, noteCommentaryProgress } =
+    createDispatchCommentaryProgress({
+      shouldSendToolSummaries: shouldSendToolSummariesAsync,
+      shouldSuppressDelivery: shouldSuppressProgressDelivery,
+      isAborted: () => state.isDispatchOperationAborted(),
+      isFinalDeliveryStarted: () => finalReplyDeliveryStarted,
+      assertCurrent: () => state.assertProgressCurrent(),
+      send: shouldRouteToOriginating
+        ? sendPayloadAsync
+        : (payload) => {
+            markInboundDedupeReplayUnsafe();
+            turnLedger.sendQueued("tool", payload);
+          },
+    });
   const shouldSuppressMessageToolOnlyTextErrorProgress = async (payload: ReplyPayload) => {
     if (
       state.sourceReplyDeliveryMode !== "message_tool_only" ||

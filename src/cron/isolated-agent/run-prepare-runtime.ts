@@ -3,6 +3,7 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import { retireSessionMcpRuntime } from "../../agents/agent-bundle-mcp-tools.js";
 import { hasAnyAuthProfileStoreSourceAsync } from "../../agents/auth-profiles/source-check.js";
 import type { CliDeps } from "../../cli/outbound-send-deps.js";
+import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import type { CronCompletionDeliveryFence } from "../delivery-attempt-fence.js";
@@ -13,7 +14,7 @@ import type {
   CronJob,
   CronStoredJob,
 } from "../types.js";
-import type { MutableCronSession } from "./run-session-state.js";
+import type { CronSessionRowWriter, MutableCronSession } from "./run-session-state.js";
 import { logWarn } from "./run.runtime.js";
 import type { CronLaneWaitCallback, RunCronAgentTurnResult } from "./run.types.js";
 
@@ -24,6 +25,8 @@ export type RunCronAgentTurnParams = {
   cfg: OpenClawConfig;
   deps: CliDeps;
   job: CronStoredJob;
+  /** Trusted caller classification; stored jobs default to cron, not their payload or audit ingress. */
+  trigger?: "cron" | "event";
   deliveryAttemptFence: CronCompletionDeliveryFence | null;
   message: string;
   abortSignal?: AbortSignal;
@@ -54,6 +57,64 @@ export async function loadSessionAccessorRuntime() {
   return await sessionAccessorRuntimeLoader.load();
 }
 
+export function createCronSessionRowWriter(params: {
+  agentId: string;
+  agentSessionKey: string;
+  assertCurrent?: () => void;
+  onResetCommitted?: (result: {
+    storePath: string;
+    sessionKey: string;
+    entry: SessionEntry;
+  }) => void;
+}): CronSessionRowWriter {
+  const { agentId, agentSessionKey } = params;
+  let baseSessionMaintenanceStarted = false;
+  return async ({ storePath, sessionKey, operation, resetBoundary, assertCommitAllowed }) => {
+    const assertCurrent = () => {
+      params.assertCurrent?.();
+      assertCommitAllowed?.();
+    };
+    if (resetBoundary) {
+      const [{ applySessionEntryLifecycleMutation }, { projectCronSessionEntry }] =
+        await Promise.all([
+          loadSessionAccessorRuntime(),
+          import("../../config/sessions/session-entry-patch-operation.js"),
+        ]);
+      let entry = operation.next;
+      await applySessionEntryLifecycleMutation({
+        activeSessionKey: sessionKey,
+        agentId,
+        storePath,
+        commitGuard: assertCurrent,
+        upserts: [
+          {
+            sessionKey,
+            resetBoundary,
+            buildEntry: ({ currentEntry }) =>
+              (entry = projectCronSessionEntry(operation, currentEntry)),
+          },
+        ],
+        skipMaintenance: true,
+      });
+      params.onResetCommitted?.({ storePath, sessionKey, entry });
+      return entry;
+    }
+    const { applySessionEntryOperation } =
+      await import("../../config/sessions/session-accessor.sqlite-entry.js");
+    const entry = await applySessionEntryOperation({ storePath, sessionKey, agentId }, operation, {
+      fallbackEntry: operation.next,
+      replaceEntry: true,
+      // The maintenance owner follows later writes through its receipt subscription.
+      skipMaintenance: baseSessionMaintenanceStarted || sessionKey !== agentSessionKey,
+      workerGuard: { assertCurrent },
+    });
+    if (sessionKey === agentSessionKey) {
+      baseSessionMaintenanceStarted = true;
+    }
+    return entry;
+  };
+}
+
 export async function loadCronExternalContentRuntime() {
   return await cronExternalContentRuntimeLoader.load();
 }
@@ -77,9 +138,6 @@ export async function resolveCronAuthSelection(params: {
   provider: string;
   modelId: string;
   configuredProfileId?: string;
-  harnessRuntime: Parameters<
-    CronAuthProfileRuntime["resolveSessionAuthSelection"]
-  >[0]["harnessRuntime"];
   agentDir: string;
   cronSession: MutableCronSession;
   sessionKey: string;
@@ -100,7 +158,6 @@ export async function resolveCronAuthSelection(params: {
     provider: params.provider,
     modelId: params.modelId,
     ...(params.configuredProfileId ? { configuredProfileId: params.configuredProfileId } : {}),
-    harnessRuntime: params.harnessRuntime,
     agentDir: params.agentDir,
     sessionEntry: params.cronSession.sessionEntry,
     sessionStore: params.cronSession.store,
@@ -109,8 +166,6 @@ export async function resolveCronAuthSelection(params: {
     isNewSession: params.isNewSession,
   });
 }
-
-type CronAuthProfileRuntime = typeof import("./run-auth-profile.runtime.js");
 
 export async function retireRolledCronSessionMcpRuntime(params: {
   job: CronJob;

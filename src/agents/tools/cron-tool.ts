@@ -169,7 +169,7 @@ export function createCronTool(opts?: CronToolOptions, deps?: CronToolDeps): Any
       ? getAgentRunContext(opts.runId)?.cronRunsByJobId?.get(selfJobId)
       : undefined;
   const activeRun = Boolean(automationRun?.assertCurrent && !automationRun.closed);
-  const pacingEnabled = Boolean(activeRun && automationRun?.pacingEnabled);
+  const nextCheckEnabled = Boolean(activeRun && automationRun?.nextCheckEnabled);
   const recordResult =
     opts?.runId && selfJobId ? createAutomationResultRecorder(opts.runId, selfJobId) : undefined;
   // Trigger-gated surfaces default on, matching cron/service/jobs-validation.ts.
@@ -182,7 +182,7 @@ export function createCronTool(opts?: CronToolOptions, deps?: CronToolDeps): Any
     description: selfRemoveOnly
       ? managementAuthority?.managementOnly
         ? "Inspect or remove only the current automation. Actions: list [includeDisabled], get jobId, remove jobId. Use the current job ID; other jobs and management actions are unavailable."
-        : buildCronSelfDescription({ activeRun, pacingEnabled })
+        : buildCronSelfDescription({ activeRun, nextCheckEnabled })
       : managementAuthority?.managementOnly
         ? 'Manage any existing automation on this Gateway with the admitted automation management authority. Actions: list [includeDisabled,limit,offset] (compact summaries with timing; follow nextOffset); get jobId (full schedule, payload, and delivery details); update jobId job (partial patch, null clears); run jobId (runMode:"force" runs now; waits up to timeoutMs, default 60s, and returns the finished run, or its runId if still running); remove jobId (operator removal requests cancellation of an active run; the result reports activeRunCancellationRequested:true). Creator attribution and scheduled execution policy stay intact. Use the Automations page for other actions.'
         : buildCronToolDescription({ triggersEnabled }),
@@ -192,7 +192,7 @@ export function createCronTool(opts?: CronToolOptions, deps?: CronToolDeps): Any
       triggersEnabled,
       selfRemoveOnly,
       activeRun,
-      pacingEnabled,
+      nextCheckEnabled,
       management: managementAuthority
         ? managementAuthority.managementOnly
           ? "only"
@@ -475,6 +475,7 @@ export function createCronTool(opts?: CronToolOptions, deps?: CronToolDeps): Any
               if (shouldInfer) {
                 const inferred = await resolveCronCreationDelivery({
                   cfg: runtimeConfig,
+                  agentId: callerAgentId,
                   currentDeliveryContext: opts.currentDeliveryContext,
                   agentSessionKey: opts.agentSessionKey,
                 });

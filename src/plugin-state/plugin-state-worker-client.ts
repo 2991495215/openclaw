@@ -1,4 +1,3 @@
-import { toUSVString } from "node:util";
 import { err, ok, type Result } from "@openclaw/normalization-core/result";
 import { assertSessionEntriesCurrentAdmission } from "../config/sessions/session-entry-current-admission.js";
 import type {
@@ -6,16 +5,14 @@ import type {
   SessionEntriesCurrentCheck,
 } from "../config/sessions/session-entry-current.types.js";
 import { assertStateDatabaseReadAllowed } from "../infra/gateway-state-owner.js";
-import {
-  hasSqliteDatabaseSchemaAdmissionForIdentity,
-  readSqliteDatabaseWriteRevisionForIdentity,
-} from "../infra/sqlite-database-admission.js";
+import { hasSqliteDatabaseSchemaAdmissionForIdentity } from "../infra/sqlite-database-admission.js";
 import type { SqliteWorkerStore } from "../infra/sqlite-worker-contract.js";
 import type {
   SqliteWorkerAdmissionFactory,
   SqliteWorkerAdmissionRequest,
 } from "../infra/sqlite-worker-operation-admission.js";
 import { openClawStateDatabaseCache } from "../state/openclaw-state-db-cache.js";
+import { executeExistingOpenClawStateRead } from "../state/openclaw-state-db-readonly.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
@@ -44,8 +41,10 @@ import { wrapPluginStateError } from "./plugin-state-store.database.js";
 import { PluginStateStoreError } from "./plugin-state-store.types.js";
 import {
   pluginStateWorkerOperations,
+  isPluginStateReadCommand,
   type PluginStateWorkerOperations,
   type PluginStateWorkerRequests,
+  type PluginStateWriteOperations,
 } from "./plugin-state-worker-contract.js";
 import {
   capturePluginStateWorkerFailure,
@@ -53,7 +52,7 @@ import {
   type PluginStateWorkerFailure,
 } from "./plugin-state-worker-errors.js";
 
-type Scope = Pick<SqliteWorkerStore<PluginStateWorkerOperations>, "execute">;
+type Scope = Pick<SqliteWorkerStore<PluginStateWriteOperations>, "execute">;
 type HostAdmission = {
   context?: OpenClawStateWorkerContext;
   env?: NodeJS.ProcessEnv;
@@ -141,9 +140,6 @@ async function execute<Key extends keyof PluginStateWorkerOperations>(
   let publication: ReturnType<typeof beginPluginStatePublication> | undefined;
   let installObservation: ReturnType<typeof preparePluginStateObservationCacheRead> | undefined;
   let installEntries: ReturnType<typeof preparePluginStateEntriesCacheRead> | undefined;
-  let installLookups:
-    | Array<{ key: string; install: ReturnType<typeof preparePluginStateObservationCacheRead> }>
-    | undefined;
   try {
     const context =
       capturedContext ?? captureOpenClawStateWorkerContext({ path: databasePath, env });
@@ -180,7 +176,6 @@ async function execute<Key extends keyof PluginStateWorkerOperations>(
         typedCommand.type === "pluginState.entries")
     ) {
       const identity = context.admission.identity.key;
-      const writeRevision = readSqliteDatabaseWriteRevisionForIdentity(context.admission.identity);
       const keys =
         typedCommand.type === "pluginState.entries"
           ? []
@@ -189,10 +184,10 @@ async function execute<Key extends keyof PluginStateWorkerOperations>(
             : [typedCommand.input.key];
       const cachedEntries =
         typedCommand.type === "pluginState.entries"
-          ? readPluginStateEntriesCache(identity, typedCommand.input, writeRevision)
+          ? readPluginStateEntriesCache(identity, typedCommand.input)
           : undefined;
       const cached = keys.map((key) =>
-        readPluginStateObservationCache(identity, { ...typedCommand.input, key }, writeRevision),
+        readPluginStateObservationCache(identity, { ...typedCommand.input, key }),
       );
       if (
         cached.every((entry) => entry !== undefined) &&
@@ -255,27 +250,42 @@ async function execute<Key extends keyof PluginStateWorkerOperations>(
         operationStarted = false;
       }
       if (typedCommand.type === "pluginState.observe") {
-        installObservation = preparePluginStateObservationCacheRead(
-          identity,
-          typedCommand.input,
-          writeRevision,
-        );
+        installObservation = preparePluginStateObservationCacheRead(identity, typedCommand.input);
       } else if (typedCommand.type === "pluginState.entries") {
-        installEntries = preparePluginStateEntriesCacheRead(
-          identity,
-          typedCommand.input,
-          writeRevision,
-        );
-      } else {
-        installLookups = keys.map((key) => ({
-          key: toUSVString(key),
-          install: preparePluginStateObservationCacheRead(
-            identity,
-            { ...typedCommand.input, key },
-            writeRevision,
-          ),
-        }));
+        installEntries = preparePluginStateEntriesCacheRead(identity, typedCommand.input);
       }
+    }
+    if (isPluginStateReadCommand(typedCommand)) {
+      const reply = await executeExistingOpenClawStateRead(
+        { path: databasePath, env },
+        typedCommand,
+        {
+          context,
+          signal,
+          current: true,
+          preferIndependentWarmRead: true,
+          mapError(error, phase) {
+            operationStarted = phase === "read";
+            return error;
+          },
+        },
+      );
+      assertAdmission?.();
+      if (!reply) {
+        return missing!();
+      }
+      operationStarted = true;
+      if (!reply.result.ok) {
+        throw restorePluginStateWorkerFailure(reply.result.error);
+      }
+      if (typedCommand.type === "pluginState.entries") {
+        installEntries?.(
+          // SAFETY: The matching command and reply identify the namespace entry list.
+          reply.result.value as PluginStateWorkerRequests["pluginState.entries"]["output"],
+        );
+      }
+      // SAFETY: The reader preserves the command's typed result, as the writer transport does.
+      return reply.result.value as PluginStateWorkerRequests[Key]["output"];
     }
     // A write-only await here would let later reads overtake it before broker admission.
     const [
@@ -289,38 +299,24 @@ async function execute<Key extends keyof PluginStateWorkerOperations>(
     ]);
     const operation = async (scope: Scope) => {
       operationStarted = true;
-      const result = await scope.execute<Key>(
-        command.input === undefined
-          ? command
-          : {
-              type: command.type,
-              input: {
-                ...command.input,
-                sessionEntryCurrentSources: currentEntries?.sources,
-              },
-            },
-      );
+      const result = await scope.execute({
+        type: typedCommand.type,
+        input: {
+          ...typedCommand.input,
+          sessionEntryCurrentSources: currentEntries?.sources,
+        },
+      });
       if (!result.ok) {
         throw restorePluginStateWorkerFailure(result.error);
-      }
-      if (installLookups && result.readRows) {
-        const rows = new Map(result.readRows.map((row) => [row.entry_key, row]));
-        for (const { key, install } of installLookups) {
-          install(rows.get(key));
-        }
       }
       if (command.type === "pluginState.observe") {
         const observation =
           // SAFETY: The command discriminant fixes this worker result's private row envelope.
           result.value as PluginStateWorkerRequests["pluginState.observe"]["output"];
         installObservation?.(observation.row);
-      } else if (command.type === "pluginState.entries") {
-        installEntries?.(
-          // SAFETY: The command discriminant fixes this worker result's entry list.
-          result.value as PluginStateWorkerRequests["pluginState.entries"]["output"],
-        );
       }
-      return result.value;
+      // SAFETY: Dispatch preserves the caller's command/result pairing across the writer transport.
+      return result.value as PluginStateWorkerRequests[Key]["output"];
     };
     if (missing) {
       const result = await runOpenClawStateWorkerOperation(context, operation, {

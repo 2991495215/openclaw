@@ -22,7 +22,7 @@ All `system` subcommands use Gateway RPC and accept the shared client flags:
 | `--token <token>`       | none                                 | Gateway token, if required.                                                                                           |
 | `--password <password>` | none                                 | Gateway password, if required.                                                                                        |
 | `--timeout <ms>`        | `30000`                              | RPC timeout in milliseconds.                                                                                          |
-| `--expect-final`        | off                                  | Wait for final response (agent).                                                                                      |
+| `--expect-final`        | off                                  | Accepted as a shared client flag, but has no effect on system commands.                                               |
 | `--json`                | off                                  | Print JSON for `system event`, which otherwise prints `ok`. `system presence` always prints the raw RPC JSON payload. |
 
 ## Common commands
@@ -40,8 +40,16 @@ Submit a system event to the agent's **main** session by default. Use `--mode no
 to request ordinary session processing. It works without a periodic monitor or
 an enabled automation scheduler.
 
-Pass `--session-key` to target a specific session, for example to return a
-background-task completion to the conversation that started it.
+The command returns when the Gateway accepts the event, not when the session
+turn finishes. `--expect-final` does not wait for an agent response.
+
+Pass `--session-key` to target a specific session, for example to relay an
+async-task completion back to the channel that started it. Prefer an
+agent-qualified key. For example, if the `ops` agent is configured:
+
+```bash
+openclaw system event --text "Deploy finished" --session-key agent:ops:main --mode now
+```
 
 The retained `next-heartbeat` mode is the compatibility default. An untargeted
 request defers to the corresponding scheduled automation; an unavailable target
@@ -51,10 +59,13 @@ for immediate work and an automation's own schedule for delayed work.
 
 Flags:
 
-- `--text <text>`: required event text.
+- `--text <text>`: required system event text.
 - `--mode <mode>`: `now` or the deprecated `next-heartbeat` default.
-- `--session-key <sessionKey>`: optional target session instead of the agent's main
-  session. Session ownership is validated by the Gateway.
+- `--session-key <sessionKey>`: optional; target a specific agent session
+  instead of the agent's main session. The Gateway rejects malformed
+  agent-qualified keys, keys for unknown agents, targets that conflict with the
+  caller's agent scope, and subagent sessions. Rejected targets do not fall back
+  to the main session.
 
 <a id="system-heartbeat-lastenabledisable" />
 

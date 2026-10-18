@@ -14,6 +14,10 @@ import {
   setRuntimeConfigSnapshot,
 } from "../../config/runtime-snapshot.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
+import {
   replaceSessionEntry,
   loadSessionEntry,
   upsertSessionEntryCore,
@@ -110,12 +114,14 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  clearRuntimeConfigSnapshot();
   testing.resetToolsEffectiveCacheForTest();
   toolsEffectiveInventoryMocks.resolveEffectiveToolInventory.mockClear();
   ingress.mockClear();
   resetSystemEventsForTest();
   clearRuntimeConfigSnapshot();
   vi.restoreAllMocks();
+  clearRuntimeConfigSnapshot();
 });
 afterAll(async () => {
   memorySessionActorOwners.reset();

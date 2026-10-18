@@ -1,11 +1,16 @@
-import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { stripAnsi } from "../../packages/terminal-core/src/ansi.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import * as backupRunRecords from "../state/backup-run-records.js";
 import { createSqliteWalHealth } from "./sqlite-wal-health.test-support.js";
-import { buildStatusCommandReportData } from "./status.command-report-data.js";
+import { buildStatusCommandReportLines } from "./status.command-report.js";
 import { createStatusCommandReportDataParams } from "./status.test-support.js";
+
+// mock-isolation: Keep database inspection in its own owner proof; these tests exercise report data.
+vi.mock("./status-database-engines.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./status-database-engines.js")>()),
+  resolveStatusDatabaseEngines: async () => ({ source: "admitted", stores: [] }),
+}));
 
 beforeEach(() => {
   vi.stubEnv("OPENCLAW_PROFILE", undefined);
@@ -36,25 +41,20 @@ it.each([
     expected: "scheduler enabled · 3 total jobs · next wake 2026-09-01T12:00:00.000Z",
   },
 ])("reports scheduler status: $expected", async ({ enabled, jobs, nextWakeAtMs, expected }) => {
-  const report = await buildStatusCommandReportData(
+  const lines = await buildStatusCommandReportLines(
     createStatusCommandReportDataParams({
       automations: { ok: true, value: { enabled, jobs, nextWakeAtMs } },
     }),
   );
-  const row = expectDefined(
-    report.overviewRows.find(({ Item }) => Item === "Automations"),
-    "automations row",
-  );
-  expect(stripAnsi(row.Value)).toBe(expected);
-  expect(
-    report.overviewRows.some(({ Item }) => Item === "Heartbeat" || Item === "Last heartbeat"),
-  ).toBe(false);
+  const output = stripAnsi(lines.join("\n"));
+  expect(output).toContain(expected);
+  expect(output).not.toContain("Heartbeat");
 });
 
 it("awaits backup freshness before assembling the overview", async () => {
   const freshness = createDeferred<backupRunRecords.BackupRunFreshness>();
   vi.spyOn(backupRunRecords, "readBackupRunFreshness").mockReturnValueOnce(freshness.promise);
-  const pending = buildStatusCommandReportData(createStatusCommandReportDataParams());
+  const pending = buildStatusCommandReportLines(createStatusCommandReportDataParams());
   freshness.resolve({
     latest: {
       id: "failed-backup",
@@ -64,9 +64,7 @@ it("awaits backup freshness before assembling the overview", async () => {
       kind: "archive",
     },
   });
-  expect((await pending).overviewRows.find(({ Item }) => Item === "Backups")?.Value).toBe(
-    "last attempt failed just now (archive)",
-  );
+  expect(stripAnsi((await pending).join("\n"))).toContain("last attempt failed just now (archive)");
 });
 
 it.each([
@@ -83,7 +81,7 @@ it.each([
   },
 ])("keeps startup guidance for $name", async ({ error, expected }) => {
   const params = createStatusCommandReportDataParams();
-  const report = await buildStatusCommandReportData({
+  const lines = await buildStatusCommandReportLines({
     ...params,
     surface: {
       ...params.surface,
@@ -93,19 +91,18 @@ it.each([
     health: undefined,
     automations: { ok: false, error },
   });
-  expect(report.overviewRows.find(({ Item }) => Item === "Automations")?.Value).toBe(expected);
-  expect(report.footerLines.at(-1)).toBe("  Retry after startup: openclaw status --deep");
-  expect(report.footerLines.join("\n")).not.toContain("Fix reachability first");
+  expect(stripAnsi(lines.join("\n"))).toContain(expected);
+  expect(lines.at(-1)).toBe("  Retry after startup: openclaw status --deep");
+  expect(lines.join("\n")).not.toContain("Fix reachability first");
 });
 
 it("shows skipped audit text when fast status omits the security audit", async () => {
-  const report = await buildStatusCommandReportData(
+  const lines = await buildStatusCommandReportLines(
     createStatusCommandReportDataParams({ securityAudit: undefined }),
   );
-  expect(report.securityAuditLines.map(stripAnsi)).toEqual([
-    "Skipped in fast status. Full report: openclaw security audit",
-    "Deep check: openclaw status --deep",
-  ]);
+  expect(stripAnsi(lines.join("\n"))).toContain(
+    "Skipped in fast status. Full report: openclaw security audit\nDeep check: openclaw status --deep",
+  );
 });
 
 it("renders the recorded SQLite checkpoint warning in deep status", async () => {
@@ -119,20 +116,18 @@ it("renders the recorded SQLite checkpoint warning in deep status", async () => 
     checkpointedFrames: 100,
     lastCompletedAtMs: Date.parse("2026-09-13T11:00:00.000Z"),
   });
-  const report = await buildStatusCommandReportData({
+  const lines = await buildStatusCommandReportLines({
     ...params,
     summary: { ...params.summary, sqliteWal },
     opts: { deep: true },
+    tableWidth: 500,
   });
-  const row = expectDefined(
-    report.healthRows?.find(({ Item }) => Item === "SQLite WAL"),
-    "SQLite WAL warning",
-  );
-  expect(stripAnsi(row.Status)).toBe("WARN");
-  expect(row.Detail).toContain("checkpoint blocked");
-  expect(row.Detail).toContain("WAL 128.0 MiB");
-  expect(row.Detail).toContain("frames 100/4000 checkpointed");
-  expect(row.Detail).toContain("last complete 2026-09-13T11:00:00.000Z");
-  expect(row.Detail).toContain("observed 2026-09-13T12:00:00.000Z");
-  expect(row.Detail).toContain("openclaw gateway restart");
+  const output = stripAnsi(lines.join("\n"));
+  expect(output).toMatch(/SQLite WAL[^\n]*WARN/);
+  expect(output).toContain("checkpoint blocked");
+  expect(output).toContain("WAL 128.0 MiB");
+  expect(output).toContain("frames 100/4000 checkpointed");
+  expect(output).toContain("last complete 2026-09-13T11:00:00.000Z");
+  expect(output).toContain("observed 2026-09-13T12:00:00.000Z");
+  expect(output).toContain("openclaw gateway restart");
 });

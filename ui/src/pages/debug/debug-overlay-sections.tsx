@@ -2,7 +2,7 @@ import { formatByteSize } from "@openclaw/normalization-core";
 import { asOptionalObjectRecord } from "@openclaw/normalization-core/record-coerce";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import type { JSX as SolidJSX } from "@solidjs/web";
-import { For, Show, untrack } from "solid-js";
+import { For, Show } from "solid-js";
 import type { SystemInfoResult } from "../../../../packages/gateway-protocol/src/index.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { SessionsListResult } from "../../api/types.ts";
@@ -93,7 +93,7 @@ export function DebugOverlayWidget(props: {
         prop:label={t("debug.overlay.ping")}
         prop:samples={collectGatewayStatusSamples(props.history, (sample) => sample.pingMs)}
         prop:format={(value: number) =>
-          untrack(() => t("debug.overlay.pingMs", { value: String(Math.round(value)) }))
+          t("debug.overlay.pingMs", { value: String(Math.round(value)) })
         }
         prop:floorMax={20}
       />
@@ -122,7 +122,7 @@ function Status(props: {
                     sample.disks?.find((entry) => entry.path === disk().path)?.availableBytes,
                 )}
                 prop:format={(value: number) =>
-                  untrack(() => t("debug.overlay.freeShort", { value: storageBytes(value) }))
+                  t("debug.overlay.freeShort", { value: storageBytes(value) })
                 }
                 autorange
               />
@@ -130,7 +130,7 @@ function Status(props: {
           </For>
         </div>
       </Show>
-      <Show when={typeof props.status.uptimeMs === "number"}>
+      <Show when={props.status.uptimeMs !== undefined}>
         <div class="debug-overlay__vitals-footer mono">
           {t("debug.overlay.uptime")} {formatDurationHuman(props.status.uptimeMs)}
         </div>

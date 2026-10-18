@@ -23,16 +23,13 @@ import {
 import {
   PluginStateStoreError,
   type PluginStateEntry,
-  type PluginStateKeyRange,
+  type PluginStateKeyRangeParams,
 } from "./plugin-state-store.types.js";
 
 export function lookupPluginStateEntries(
   store: PluginStateDatabase,
   params: { pluginId: string; namespace: string; keys: readonly string[] },
-): {
-  values: Array<Result<unknown, PluginStateStoreError>>;
-  rows: PluginStateReadRow[];
-} {
+): Array<Result<unknown, PluginStateStoreError>> {
   for (const key of params.keys) {
     assertPluginStateKey(store.db, key, "lookup");
   }
@@ -41,14 +38,14 @@ export function lookupPluginStateEntries(
     store.db,
     getPluginStateKysely(store.db)
       .selectFrom("plugin_state_entries")
-      .select(["entry_key", "value_json", "created_at", "expires_at"])
+      .select(["entry_key", "value_json"])
       .where("plugin_id", "=", params.pluginId)
       .where("namespace", "=", params.namespace)
       .where("entry_key", "in", sqliteStringSet(params.keys))
       .where((eb) => eb.or([eb("expires_at", "is", null), eb("expires_at", ">", now)])),
   ).rows;
   const values = new Map(rows.map((row) => [row.entry_key, row.value_json]));
-  const parsed = params.keys.map((key): Result<unknown, PluginStateStoreError> => {
+  return params.keys.map((key): Result<unknown, PluginStateStoreError> => {
     // Match node:sqlite text binding, including lone UTF-16 surrogates.
     const raw = values.get(toUSVString(key));
     try {
@@ -61,7 +58,6 @@ export function lookupPluginStateEntries(
       throw error;
     }
   });
-  return { values: parsed, rows };
 }
 
 export function listPluginStateEntries(
@@ -87,11 +83,6 @@ export function listPluginStateEntries(
   }
   return entries;
 }
-
-export type PluginStateKeyRangeParams = {
-  pluginId: string;
-  namespace: string;
-} & PluginStateKeyRange;
 
 export function validatePluginStateKeyRange(params: PluginStateKeyRangeParams): void {
   if (!Number.isSafeInteger(params.limit) || params.limit < 1) {

@@ -323,6 +323,22 @@ describe("Claws Gateway contract", () => {
     if (!scheduledJob) {
       throw new Error("expected one scheduled job fixture");
     }
+    for (const everyMs of [1, 1_800_000, 0, -1, 0.5]) {
+      expect(
+        validateClawLifecyclePlanResult({
+          ...plan,
+          scheduledJobs: {
+            ...plan.scheduledJobs,
+            jobs: [
+              {
+                ...scheduledJob,
+                proposed: { ...scheduledJob.proposed, schedule: { everyMs }, delivery: "owner" },
+              },
+            ],
+          },
+        }),
+      ).toBe(Number.isInteger(everyMs) && everyMs > 0);
+    }
     expect(
       validateClawLifecyclePlanResult({
         ...plan,

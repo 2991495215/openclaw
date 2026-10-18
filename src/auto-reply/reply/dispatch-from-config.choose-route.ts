@@ -29,6 +29,10 @@ import {
   DispatchReplyOperationAbortedError,
   runWithDispatchAbortSignal,
 } from "./dispatch-from-config.abort.js";
+import {
+  acquireAcpDispatchTurn,
+  acquireDispatchTurn,
+} from "./dispatch-from-config.dispatch-admission.js";
 import { admittedSessionSettingsRestrictRuntime } from "./dispatch-from-config.events.js";
 import { suppressPendingFinalDelivery } from "./dispatch-from-config.pending-final.js";
 import type { PrepareDispatchOperationReadyState } from "./dispatch-from-config.prepare-operation.js";
@@ -36,8 +40,8 @@ import { createDispatchProgress } from "./dispatch-from-config.progress.js";
 import { runReplyDispatchHook } from "./dispatch-from-config.reply-dispatch-hook.js";
 import { createSessionMetadataChangeNotifier } from "./dispatch-from-config.session-metadata.js";
 import {
-  captureDeliveredTranscriptMirror,
   mirrorDeliveredReplyToTranscript,
+  sendReplyWithTranscriptMirror,
   transcriptMirrorForDeliveredPayload,
 } from "./dispatch-from-config.transcript.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply.js";
@@ -174,21 +178,17 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
   };
   const sendTrackedBlockReply = (operation: ReplyDispatchOperation) => {
     const payload = operation.kind === "prepared" ? operation.plan.payload : operation.payload;
-    const mirror = commandBlockMirror(payload);
-    const captureToken = mirror ? {} : undefined;
-    const deliveredMirror = captureDeliveredTranscriptMirror({
+    const delivery = sendReplyWithTranscriptMirror({
       dispatcher,
-      metadata: mirror,
-      captureToken,
+      cfg,
+      metadata: commandBlockMirror(payload),
+      payload,
       kind: "block",
+      send: () =>
+        operation.kind === "prepared"
+          ? turnLedger.sendPreparedQueued("block", operation.plan)
+          : turnLedger.sendQueued("block", payload),
     });
-    if (captureToken) {
-      setReplyPayloadMetadata(payload, { finalDeliveryCapture: captureToken });
-    }
-    const delivery =
-      operation.kind === "prepared"
-        ? turnLedger.sendPreparedQueued("block", operation.plan)
-        : turnLedger.sendQueued("block", payload);
     recordBlockOutcome(
       payload,
       delivery.queued
@@ -198,13 +198,6 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
           })) ?? Promise.resolve({ outcome: "failed-deliver" }))
         : Promise.resolve({ outcome: "cancelled" }),
     );
-    if (mirror && delivery.queued && delivery.outcome) {
-      registerReplyDispatcherSettledTask(dispatcher, async () => {
-        if ((await delivery.outcome) === "delivered") {
-          await mirrorDeliveredReplyToTranscript({ metadata: deliveredMirror(), cfg });
-        }
-      });
-    }
     return delivery;
   };
   const recordRoutedBlockReplyDelivery = (
@@ -501,37 +494,18 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
     }
     throwIfFinalDeliveryAborted();
     markInboundDedupeReplayUnsafe();
-    const finalDeliveryCapture = transcriptMirror ? {} : undefined;
-    const deliveredTranscriptMirror = transcriptMirror
-      ? captureDeliveredTranscriptMirror({
-          dispatcher,
-          metadata: transcriptMirror,
-          captureToken: finalDeliveryCapture,
-        })
-      : undefined;
-    if (finalDeliveryCapture) {
-      setReplyPayloadMetadata(normalizedPayload, { finalDeliveryCapture });
-    }
-    if (deferFinalTtsText && normalizedPayload.mediaUrl && normalizedPayload.text?.trim()) {
-      attachReplyDispatchUndeliveredFallback(
-        normalizedPayload,
-        buildCaptionedFinalTextFallback(normalizedPayload),
-      );
-    }
-    const { queued: queuedFinal, outcome: dispatcherOutcome } = turnLedger.sendQueued(
-      "final",
-      normalizedPayload,
-    );
-    if (queuedFinal && deliveredTranscriptMirror && dispatcherOutcome) {
-      // The common settle owner runs this after successful delivery or
-      // cancellation. Keeping reconciliation out of the reply operation avoids
-      // creating another operation/idle cycle during delivery settlement.
-      registerReplyDispatcherSettledTask(dispatcher, async () => {
-        if ((await dispatcherOutcome) === "delivered") {
-          await mirrorDeliveredReplyToTranscript({ metadata: deliveredTranscriptMirror(), cfg });
+    const { queued: queuedFinal, outcome: dispatcherOutcome } = sendReplyWithTranscriptMirror({
+      dispatcher,
+      cfg,
+      metadata: transcriptMirror,
+      payload: normalizedPayload,
+      send: (reply) => {
+        if (deferFinalTtsText && reply.mediaUrl && reply.text?.trim()) {
+          attachReplyDispatchUndeliveredFallback(reply, buildCaptionedFinalTextFallback(reply));
         }
-      });
-    }
+        return turnLedger.sendQueued("final", reply);
+      },
+    });
     return {
       blockDeliveryOutcome: sourceRecovery ? blockDeliveryOutcome : undefined,
       pendingBlock,
@@ -562,8 +536,8 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
       },
     });
     const beforeDispatchResult = await traceReplyPhase("reply.before_dispatch_hooks", () =>
-      runWithDispatchLifecycleAdmission(async () => {
-        return await runWithDispatchAbortSignal(
+      runWithDispatchLifecycleAdmission(() =>
+        runWithDispatchAbortSignal(
           getPreDispatchAbortSignal(),
           () => {
             const hookContext = state.hookState.hookContext;
@@ -599,8 +573,8 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
             );
           },
           trackDispatchLifecycleWork,
-        );
-      }),
+        ),
+      ),
     );
     if (beforeDispatchResult?.handled) {
       takeover = {
@@ -645,6 +619,10 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
     };
   }
 
+  const acpRefusal = state.dispatchKind === "acp" ? await acquireAcpDispatchTurn(state) : undefined;
+  if (acpRefusal) {
+    return acpRefusal;
+  }
   const replyDispatchTakeover = await runReplyDispatchHook(state, {
     shouldSendToolSummaries,
     shouldSendToolSummariesAsync,
@@ -660,19 +638,10 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
       }),
     };
   }
-
-  const dispatchPhase = state.activeRunSafeCommandTurn ? "command_resolution" : "dispatch";
-  const dispatchAcquisition = await traceReplyPhase(`reply.admit_${dispatchPhase}`, () =>
-    state.ensureDispatchReplyOperation(dispatchPhase),
-  );
-  if (dispatchAcquisition.status === "aborted") {
-    return { status: "complete" as const, result: state.finishReplyOperationAbortedDispatch() };
-  }
-  if (dispatchAcquisition.status === "busy") {
-    return {
-      status: "complete" as const,
-      result: state.finishReplyOperationBusyDispatch({ dedupeDisposition: "release" }),
-    };
+  const dispatchRefusal =
+    state.dispatchKind === "acp" ? undefined : await acquireDispatchTurn(state);
+  if (dispatchRefusal) {
+    return dispatchRefusal;
   }
   const nextState = Object.assign(state, {
     shouldSuppressProgressDelivery,

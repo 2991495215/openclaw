@@ -35,6 +35,8 @@ export type AgentRunContext = {
   eventState?: AgentRunEventState;
   /** Model request numbering survives provider fallback within this registered run. */
   modelCallSequence?: { value: number };
+  /** Active provider-owned local wait; cleared on first response or call settlement. */
+  localModelWait?: { requestId: string };
   activeModel?: AgentRunModel;
   verboseLevel?: VerboseLevel;
   /** Whether control UI clients should receive chat/agent updates for this run. */
@@ -53,7 +55,7 @@ export type AgentRunContext = {
   cronRunsByJobId?: Map<
     string,
     {
-      pacingEnabled: boolean;
+      nextCheckEnabled: boolean;
       nextCheckMs?: number;
       assertCurrent?: () => void;
       closed?: boolean;

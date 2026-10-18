@@ -1,5 +1,5 @@
---- telegram-direct-codex-message-tool.md	sha256=1d9ca8c997731321d313761c01537097f7bb5e5ef71bf5bdcf0b4dd17e050d12
-+++ discord-group-codex-message-tool.md	sha256=d8e9c1bf8137adc3b339de95e002b34e226695c1b36a6e06b3a92f948f648baa
+--- telegram-direct-codex-message-tool.md	sha256=e1b4596cad00e0b5d47645f8dc70674523436769e67f401c43e31625ae757100
++++ discord-group-codex-message-tool.md	sha256=4dbd5f2388f6c2351042cc03443ba92061ea8175e1b16af76f4ffae8ad3fbaf2
 @@ -1,1 +1,1 @@
 -# Telegram Direct Codex Message Tool Turn
 +# Discord Group Codex Message Tool Turn
@@ -32,25 +32,25 @@
 -    "chars": 1338,
 +    "chars": 1337,
 @@ -256,2 +256,2 @@
--    "chars": 74562,
--    "roughTokens": 18641
-+    "chars": 75160,
-+    "roughTokens": 18790
+-    "chars": 75371,
+-    "roughTokens": 18843
++    "chars": 75969,
++    "roughTokens": 18993
 @@ -260,2 +260,2 @@
--    "chars": 3194,
--    "roughTokens": 799
-+    "chars": 4142,
-+    "roughTokens": 1036
+-    "chars": 3490,
+-    "roughTokens": 873
++    "chars": 4726,
++    "roughTokens": 1182
 @@ -268,2 +268,2 @@
--    "chars": 27570,
--    "roughTokens": 6893
-+    "chars": 28887,
-+    "roughTokens": 7222
+-    "chars": 27866,
+-    "roughTokens": 6967
++    "chars": 29471,
++    "roughTokens": 7368
 @@ -272,2 +272,2 @@
--    "chars": 102134,
--    "roughTokens": 25534
-+    "chars": 104049,
-+    "roughTokens": 26013
+-    "chars": 103239,
+-    "roughTokens": 25810
++    "chars": 105442,
++    "roughTokens": 26361
 @@ -276,2 +276,2 @@
 -    "chars": 879,
 -    "roughTokens": 220
@@ -67,7 +67,7 @@
 +  "chat_type": "group"
 @@ -512,1 +512,3 @@
 -You are in a Telegram direct conversation. Normal final replies are private and are not automatically sent to this conversation. To post visible output here, use the message tool with action=send; the target defaults to this conversation. If no visible direct response is needed, do not call message(action=send). Your normal final answer stays private and will not be posted to the conversation.
-+You are in a Discord group chat. Normal final replies are private and are not automatically sent to this group chat. To post visible output here, use the message tool with action=send; the target defaults to this group chat. Be a good group participant: mostly lurk and follow the conversation; reply only when directly addressed or you can add clear value. Emoji reactions are welcome when available. Write like a human. Avoid Markdown tables. Minimize empty lines and use normal chat conventions, not document-style spacing. Don't type literal \n sequences; use real line breaks sparingly. If addressed to someone else, stay silent unless invited or correcting key facts. Discord: wrap bare URLs like <https://example.com> to suppress embeds. When subagent or session-spawn tools are available and a directly requested group-chat task will require several tool calls, prefer delegating bounded side investigations early so the channel gets a responsive path forward. Keep the critical path local, avoid subagents for simple one-step work, and only surface concise group-visible updates when they add value. If no visible group response is needed, do not call message(action=send).
++You are in a Discord group chat. Normal final replies are private and are not automatically sent to this group chat. To post visible output here, use the message tool with action=send; the target defaults to this group chat. Be a good group participant: mostly lurk and follow the conversation; reply only when directly addressed or you can add clear value. Emoji reactions are welcome when available. Write like a human. Avoid Markdown tables. Minimize empty lines and use normal chat conventions, not document-style spacing. Don't type literal \n sequences; use real line breaks sparingly. If addressed to someone else, stay silent unless invited or correcting key facts. Discord: wrap bare URLs like <https://example.com> to suppress embeds. When subagent or session-spawn tools are available and a directly requested group-chat task will require several tool calls, prefer delegating bounded side investigations early so the channel gets a responsive path forward. Keep the critical path local, avoid subagents for simple one-step work, and only surface concise group-visible updates when they add value. If no visible group response is needed, do not call message(action=send). If no text reply is needed, including after a reaction or other action, reply with exactly "NO_REPLY" as the entire final answer, without commentary, punctuation, or formatting. NO_REPLY discards anything written this turn that was not sent, so send confirmations before ending silently.
 +
 +Activation: trigger-only (you are invoked only when explicitly mentioned; recent context may be included). Address the specific sender noted in the message context.
 @@ -528,1 +530,1 @@

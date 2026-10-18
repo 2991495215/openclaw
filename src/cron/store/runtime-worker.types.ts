@@ -1,4 +1,3 @@
-import type { ClawPortableRemovalPrecondition } from "../../claws/portable-heartbeat-removal.types.js";
 import type { CronConfig } from "../../config/types.cron.js";
 import type { AgentDeletionRecoveryHoldPredicate } from "../../state/agent-deletion-journal-recovery.kernel.js";
 import type { CronJobScratchWriteInput, CronJobScratchWriteOutcome } from "../scratch-contract.js";
@@ -91,7 +90,6 @@ export type CronRuntimeMutationInputs = {
     storeKey: string;
     jobMutation: CronJobMutation;
     expectedJob?: { id: string; configRevision: string };
-    clawPrecondition?: ClawPortableRemovalPrecondition;
     preconditionJob?: CronJob;
     receiptMutation?: {
       jobId: string;

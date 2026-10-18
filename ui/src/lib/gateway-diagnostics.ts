@@ -7,10 +7,7 @@ import type {
   StatusSummary,
 } from "../api/types.ts";
 
-export type { CommandLaneSnapshot } from "../../../src/process/command-queue.types.js";
-
 export type CommandLaneDiagnostics = ReturnType<typeof getCommandLaneDiagnostics>;
-export type CommandLaneDynamicSummary = NonNullable<CommandLaneDiagnostics["dynamic"]>;
 
 type GatewayDiagnosticsSnapshot = CommandLaneDiagnostics & {
   status: StatusSummary;

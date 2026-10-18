@@ -5,18 +5,11 @@ import {
   createDeferred,
   withinTest,
 } from "../../test/helpers/promise.js";
-import { listActiveEmbeddedRunSessionKeys } from "../agents/embedded-agent-runner/active-run-projections.js";
-import {
-  setActiveEmbeddedRun,
-  clearActiveEmbeddedRun,
-} from "../agents/embedded-agent-runner/runs.js";
-import { createEmbeddedRunHandle } from "../agents/embedded-agent-runner/runs.test-support.js";
-import {
-  createReplyOperation,
-  replyRunRegistry,
-  type ReplyOperation,
-} from "../auto-reply/reply/reply-run-registry.js";
 import { onGatewayWorkMetricsChanged } from "../infra/gateway-work-metrics-events.js";
+import type { ReplyOperation } from "../sessions/session-controller.contracts.js";
+import { createReplyOperation } from "../sessions/session-controller.operation.js";
+import { listActiveReplyRunSessionKeys } from "../sessions/session-controller.queries.js";
+import { getSessionControllerOperation } from "../sessions/session-controller.state.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import {
   markCronJobActive,
@@ -31,26 +24,11 @@ import { createNoopLogger } from "./service.test-harness.js";
 import { waitForCronExecutionIdle } from "./service/execution-idle.js";
 import { createCronServiceState } from "./service/state.js";
 
-const embedded: Array<{
-  sessionId: string;
-  sessionKey: string;
-  handle: ReturnType<typeof createEmbeddedRunHandle>;
-}> = [];
-function registerEmbeddedRun(sessionKey: string) {
-  const sessionId = `native:${sessionKey}`;
-  const handle = createEmbeddedRunHandle({ runId: sessionId });
-  setActiveEmbeddedRun(sessionId, handle, sessionKey);
-  embedded.push({ sessionId, sessionKey, handle });
-}
-
 const operations: ReplyOperation[] = [];
 afterEach(() => {
   resetCronActiveJobs();
   for (const operation of operations.splice(0)) {
     operation.complete();
-  }
-  for (const { sessionId, sessionKey, handle } of embedded.splice(0)) {
-    clearActiveEmbeddedRun(sessionId, handle, sessionKey);
   }
 });
 const idleJob = makeCronJob({ agentId: "main", idleOnly: true, sessionTarget: "isolated" });
@@ -83,7 +61,7 @@ describe("idle-only execution admission", () => {
         sessionKey,
         sessionId: id,
         resetTriggered: false,
-        turnKind: "background",
+        turnKind: "queued_followup",
       });
       operations.push(operation);
       const job = makeCronJob({
@@ -120,7 +98,7 @@ describe("idle-only execution admission", () => {
             signal: activeSignal,
             assertCurrent: () => {
               operation.abortSignal.throwIfAborted();
-              if (replyRunRegistry.get(operation.key) !== operation) {
+              if (getSessionControllerOperation(operation.key) !== operation) {
                 throw new Error("On-exit reply owner was replaced");
               }
             },
@@ -149,7 +127,7 @@ describe("idle-only execution admission", () => {
       expect(order).toEqual([]);
       expect(owners.every(({ marker }) => marker.idleAdmissionWait)).toBe(true);
       expect(hasActiveCronJobsForAgent("main")).toBe(true);
-      expect(listActiveEmbeddedRunSessionKeys()).toEqual(
+      expect(listActiveReplyRunSessionKeys().toSorted()).toEqual(
         [foreground.key, ...owners.map(({ operation }) => operation.key)].toSorted(),
       );
       foreground.complete();
@@ -171,7 +149,7 @@ describe("idle-only execution admission", () => {
         `start:${second}`,
         `finish:${second}`,
       ]);
-      expect(listActiveEmbeddedRunSessionKeys()).toEqual([]);
+      expect(listActiveReplyRunSessionKeys()).toEqual([]);
       expect(hasActiveCronJobsForAgent("main")).toBe(false);
     } finally {
       unsubscribe();
@@ -182,20 +160,20 @@ describe("idle-only execution admission", () => {
     }
   });
 
-  it.for(["peer", "own", "native"] as const)(
+  it.for(["peer", "own"] as const)(
     "keeps a %s successor at a waiting session key visible to idle admission",
     async (replacement) => {
       const own = createReplyOperation({
         sessionKey: "agent:main:own-wait",
         sessionId: "own-wait",
         resetTriggered: false,
-        turnKind: "background",
+        turnKind: "queued_followup",
       });
       const peer = createReplyOperation({
         sessionKey: "agent:main:peer-wait",
         sessionId: "peer-wait",
         resetTriggered: false,
-        turnKind: "background",
+        turnKind: "queued_followup",
       });
       operations.push(own, peer);
       const ownMarker = markCronJobActive(idleJob.id, { agentId: "main" });
@@ -204,20 +182,16 @@ describe("idle-only execution admission", () => {
       const endPeerWait = markCronJobWaitingForIdle(peerMarker, peer);
       try {
         expect(isCronExecutionIdle({}, idleJob, "main", own.key, own)).toBe(true);
-        if (replacement === "native") {
-          registerEmbeddedRun(peer.key);
-        } else {
-          const previous = replacement === "own" ? own : peer;
-          previous.complete();
-          operations.push(
-            createReplyOperation({
-              sessionKey: previous.key,
-              sessionId: `foreground-${replacement}`,
-              resetTriggered: false,
-              turnKind: "visible",
-            }),
-          );
-        }
+        const previous = replacement === "own" ? own : peer;
+        previous.complete();
+        operations.push(
+          createReplyOperation({
+            sessionKey: previous.key,
+            sessionId: `foreground-${replacement}`,
+            resetTriggered: false,
+            turnKind: "visible",
+          }),
+        );
         expect(isCronExecutionIdle({}, idleJob, "main", own.key, own)).toBe(false);
         expect(hasActiveCronJobsForAgent("main")).toBe(true);
       } finally {
@@ -265,12 +239,32 @@ describe("idle-only execution admission", () => {
     expect(hasActiveCronJobsForAgent("main")).toBe(false);
   });
 
-  it("excludes only its own backend at the runner-entry recheck", () => {
+  it("excludes only its own controller operation at the runner-entry recheck", () => {
     const ownSessionKey = "agent:main:cron:check:run:one";
-    registerEmbeddedRun(ownSessionKey);
-    registerEmbeddedRun("agent:other:main");
-    expect(isCronExecutionIdle({}, idleJob, "main", ownSessionKey)).toBe(true);
-    registerEmbeddedRun("agent:main:chat:foreground");
-    expect(isCronExecutionIdle({}, idleJob, "main", ownSessionKey)).toBe(false);
+    const own = createReplyOperation({
+      sessionKey: ownSessionKey,
+      sessionId: "native-own",
+      resetTriggered: false,
+      turnKind: "visible",
+    });
+    operations.push(
+      own,
+      createReplyOperation({
+        sessionKey: "agent:other:main",
+        sessionId: "native-other",
+        resetTriggered: false,
+        turnKind: "visible",
+      }),
+    );
+    expect(isCronExecutionIdle({}, idleJob, "main", ownSessionKey, own)).toBe(true);
+    operations.push(
+      createReplyOperation({
+        sessionKey: "agent:main:chat:foreground",
+        sessionId: "native-foreground",
+        resetTriggered: false,
+        turnKind: "visible",
+      }),
+    );
+    expect(isCronExecutionIdle({}, idleJob, "main", ownSessionKey, own)).toBe(false);
   });
 });

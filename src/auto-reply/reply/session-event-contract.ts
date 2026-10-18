@@ -9,9 +9,9 @@ import type {
   SourceDeliveryOutcome,
   SourceDeliveryPlan,
 } from "../../infra/outbound/source-delivery-plan.types.js";
+import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
-import type { ReplyOperation } from "./reply-run-registry.contracts.js";
 
 export type SessionEventSource =
   | "exec"

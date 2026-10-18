@@ -82,6 +82,5 @@ let macNodeIdentityProfileKey = "openclaw.macNodeIdentityProfile"
 let debugPaneEnabledKey = "openclaw.debugPaneEnabled"
 let debugFileLogEnabledKey = "openclaw.debug.fileLogEnabled"
 let appLogLevelKey = "openclaw.debug.appLogLevel"
-let voiceWakeSupported: Bool = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
 
 let nativeConversationForcedKey = "openclaw.chat.useNativeConversation"

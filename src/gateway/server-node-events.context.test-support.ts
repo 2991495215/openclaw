@@ -65,9 +65,7 @@ export function expectSuspendReady(requestId: string): void {
   }
 }
 
-export function buildCtx(
-  opts: { authorizeNodeSystemRunEvent?: NodeEventContext["authorizeNodeSystemRunEvent"] } = {},
-): NodeEventContext {
+export function buildCtx(overrides: Partial<NodeEventContext> = {}): NodeEventContext {
   return {
     deps: {} as CliDeps,
     broadcast: () => {},
@@ -77,14 +75,14 @@ export function buildCtx(
     broadcastVoiceWakeChanged: () => {},
     addChatRun: () => {},
     removeChatRun: () => undefined,
-    chatAbortControllers: new Map(),
     dedupe: new Map(),
     agentRunSeq: new Map(),
     getHealthCache: () => null,
     refreshHealthSnapshot: async () => ({}) as HealthSummary,
     loadGatewayModelCatalog: async () => [],
-    authorizeNodeSystemRunEvent: opts.authorizeNodeSystemRunEvent ?? (() => false),
+    authorizeNodeSystemRunEvent: () => false,
     logGateway: { warn: () => {} },
+    ...overrides,
   };
 }
 

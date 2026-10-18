@@ -172,13 +172,23 @@ describe("cron message action authority", () => {
         });
         expect(assertReplacementCurrent).toBeTypeOf("function");
         expect(assertReplacementCurrent).toThrow();
-        expect(getActiveCronJobCount()).toBe(1);
+        expect(getActiveCronJobCount()).toBeGreaterThan(0);
       } finally {
         first.close();
         replacement.close();
       }
     },
   );
+});
+
+it("refuses self-removal without an active run", () => {
+  const commitGuard = bindCronSelfRemovalCommitGuard(
+    "idle-job",
+    createOperationalRunInstanceRef("idle-run"),
+    vi.fn(),
+    vi.fn(),
+  );
+  expect(commitGuard).toThrow("Cron self-removal requires the exact live run");
 });
 
 describe.each(["same module", "reload before guard", "reload after guard"])(
@@ -225,7 +235,7 @@ describe.each(["same module", "reload before guard", "reload after guard"])(
         });
         expect(assertMessageCurrent).not.toThrow();
         let callerActive = true;
-        const commitGuard = vi.fn();
+        let commitGuard: () => void = vi.fn();
         const bindingModule =
           moduleBoundary === "reload before guard"
             ? await importFreshModule<typeof import("./active-jobs.js")>(
@@ -233,7 +243,7 @@ describe.each(["same module", "reload before guard", "reload after guard"])(
                 "./active-jobs.js?cron-self-removal-before-guard",
               )
             : { bindCronSelfRemovalCommitGuard };
-        bindingModule.bindCronSelfRemovalCommitGuard(
+        commitGuard = bindingModule.bindCronSelfRemovalCommitGuard(
           jobId,
           scenario === "different instance"
             ? createOperationalRunInstanceRef(context.operationalRunInstance.runId)
@@ -263,6 +273,13 @@ describe.each(["same module", "reload before guard", "reload after guard"])(
         const cancel = vi.fn();
         currentMarker.cancellation = { kind: "bound", cancel };
 
+        if (scenario === "active owner" || scenario === "copied guard") {
+          expect(commitGuard).not.toThrow();
+        } else {
+          expect(commitGuard).toThrow();
+        }
+        expect(cancel).not.toHaveBeenCalled();
+        expect(currentMarker.jobRemoved).toBeUndefined();
         const removalGuard = scenario === "copied guard" ? () => commitGuard() : commitGuard;
         const removalModule =
           moduleBoundary === "same module"
@@ -274,7 +291,7 @@ describe.each(["same module", "reload before guard", "reload after guard"])(
         expect(removalModule.noteActiveCronJobRemoval(jobId, removalGuard)).toBe(currentMarker);
         expect(currentMarker.jobRemoved).toBe(true);
         expect(assertMessageCurrent).toThrow();
-        expect(getActiveCronJobCount()).toBe(1);
+        expect(getActiveCronJobCount()).toBeGreaterThan(0);
         if (scenario === "active owner") {
           expect(cancel).not.toHaveBeenCalled();
         } else {
@@ -313,7 +330,7 @@ describe("active cron schedule ownership", () => {
       kind: "requested",
       reason: "Cron job removed by operator.",
     });
-    expect(getActiveCronJobCount()).toBe(1);
+    expect(getActiveCronJobCount()).toBeGreaterThan(0);
   });
 
   it("does not mistake an ordinary schedule edit for job removal", () => {

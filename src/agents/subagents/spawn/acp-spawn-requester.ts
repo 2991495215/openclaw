@@ -12,17 +12,19 @@ import {
   hasDeliveryTargetFields,
   normalizeDeliveryContext,
 } from "../../../utils/delivery-context.shared.js";
-import { resolveRequesterOriginForChild } from "../../spawn-requester-origin.js";
+import {
+  resolveRequesterOriginForChild,
+  resolveSpawnRequesterConversationTarget,
+  type SpawnRequesterConversationSource,
+} from "../../spawn-requester-origin.js";
 import {
   resolveInternalSessionKey,
   resolveMainSessionAlias,
 } from "../../tools/sessions-helpers.js";
 
-type AcpSpawnRequesterContext = {
+type AcpSpawnRequesterContext = SpawnRequesterConversationSource & {
   agentChannel?: string;
   agentAccountId?: string;
-  agentTo?: string;
-  agentThreadId?: string | number;
   agentGroupSpace?: string | null;
   agentMemberRoleIds?: string[];
 };
@@ -85,10 +87,8 @@ export async function resolveAcpSpawnRequesterState(params: {
         )
       : false;
   params.assertActive?.();
-  const hasThreadContext =
-    typeof params.ctx.agentThreadId === "string"
-      ? Boolean(normalizeOptionalString(params.ctx.agentThreadId))
-      : params.ctx.agentThreadId != null;
+  const requesterConversation = resolveSpawnRequesterConversationTarget(params.ctx);
+  const hasThreadContext = requesterConversation.threadId != null;
   return {
     isSubagentSession,
     hasActiveSubagentBinding,
@@ -113,8 +113,8 @@ export async function resolveAcpSpawnRequesterState(params: {
       requesterAgentId: params.requesterAgentId,
       requesterChannel: params.ctx.agentChannel,
       requesterAccountId: params.ctx.agentAccountId,
-      requesterTo: params.ctx.agentTo,
-      requesterThreadId: params.ctx.agentThreadId,
+      requesterTo: requesterConversation.to,
+      requesterThreadId: requesterConversation.threadId,
       requesterGroupSpace: params.ctx.agentGroupSpace,
       requesterMemberRoleIds: params.ctx.agentMemberRoleIds,
     }),

@@ -70,7 +70,7 @@ to the agent's `modelPolicy.allow` before selecting it. Allowed overrides are
 preserved.
 
 <Warning>
-The shared-state database advances to schema 23 so an older Gateway cannot run
+The shared-state database advances to schema 29 so an older Gateway cannot run
 these jobs while ignoring their new execution or delivery policies. Keep a
 verified backup before upgrading. To roll back, restore the pre-upgrade backup
 into a separate state directory; do not lower schema version markers. See
@@ -78,7 +78,7 @@ into a separate state directory; do not lower schema version markers. See
 </Warning>
 
 Heartbeat migration adds no per-agent schema change. The current agent schema is
-26; its old `heartbeat_outcomes` table
+31; its old `heartbeat_outcomes` table
 remains inert until a later approved schema change; meaningful pending context
 moves to ordinary session delivery/context ownership.
 

@@ -587,7 +587,7 @@
   gap: 14px;
   width: 100%;
   height: auto;
-  max-height: calc(100dvh - 40px);
+  max-height: var(--openclaw-modal-height-limit);
   min-height: 0;
   overflow: hidden;
   padding: 20px 22px;
@@ -1496,7 +1496,7 @@
   grid-column: 1 / -1;
 }
 
-.workboard-modal__actions {
+.workboard-modal__actions:not(openclaw-modal-actions) {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -3185,18 +3185,11 @@ workboard-inline-text {
   min-width: 0;
 }
 
-.workboard-detail__section h3,
-.workboard-detail__section h4 {
+.workboard-detail__section h3 {
   margin: 0;
   font-size: 0.84rem;
   font-weight: 600;
   color: var(--text);
-}
-
-.workboard-detail__section h4 {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 0.78rem;
 }
 
 .workboard-detail__section p {
@@ -3277,11 +3270,6 @@ workboard-inline-text {
   font-size: 0.76rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
-}
-
-.workboard-detail__session-state {
-  color: var(--muted);
-  font-size: 0.72rem;
 }
 
 .workboard-detail .workboard-detail__session-link {
@@ -4194,10 +4182,6 @@ workboard-inline-text {
 }
 
 .workboard-discard__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
   margin-top: 12px;
 }
 
@@ -4664,4 +4648,13 @@ workboard-inline-text {
     width: 44px;
     height: 44px;
   }
+}
+
+.workboard-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  color: var(--muted);
 }

@@ -9,7 +9,11 @@ type PublicReplyOptions<T> = T extends undefined
   ? undefined
   : Omit<
       T,
-      "internalEventExecution" | "onReplyOperationOwned" | "scheduledAutomation" | "modelOverride"
+      | "internalEventExecution"
+      | "onReplyOperationAdmitted"
+      | "onReplyOperationOwned"
+      | "scheduledAutomation"
+      | "modelOverride"
     >;
 
 type PublicReplyFunction<T> = T extends (params: infer P) => infer R
@@ -57,6 +61,7 @@ export function publicReplyOptions(
   }
   const publicOptions = { ...options };
   Reflect.deleteProperty(publicOptions, "internalEventExecution");
+  Reflect.deleteProperty(publicOptions, "onReplyOperationAdmitted");
   Reflect.deleteProperty(publicOptions, "onReplyOperationOwned");
   Reflect.deleteProperty(publicOptions, "scheduledAutomation");
   Reflect.deleteProperty(publicOptions, "modelOverride");

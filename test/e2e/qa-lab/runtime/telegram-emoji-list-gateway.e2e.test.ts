@@ -1,9 +1,5 @@
-import { ChildProcess } from "node:child_process";
-import { subscribe, unsubscribe } from "node:diagnostics_channel";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { withServer, withTempDir } from "openclaw/plugin-sdk/test-env";
 import { expect, test } from "vitest";
 import {
@@ -13,7 +9,6 @@ import {
   writeJson,
 } from "../../../../extensions/qa-lab/api.js";
 import { stopQaGatewayFixture } from "../../../helpers/qa-gateway-cleanup.js";
-import { createQaPreparedRepoCliCommand } from "../../../helpers/qa-prepared-repo-cli.js";
 
 type JsonObject = Record<string, unknown>;
 type TelegramCall = { pathname: string; method: string; body: JsonObject };
@@ -119,148 +114,48 @@ async function settleCleanup(...cleanups: Array<() => Promise<void>>) {
 }
 
 test("binds Telegram emoji discovery to the current conversation before Bot API I/O", async ({
+  signal,
   onTestFailed,
   onTestFinished,
 }) => {
-  const startedAt = performance.now();
-  const phases: Array<{ stage: string; elapsedMs: number }> = [];
-  const repairPhaseTimings: Array<{
-    phase: string;
-    startedOffsetMs: number;
-    durationMs: number;
-    outcome: string;
-  }> = [];
-  const doctorPhaseTimings: Array<{
-    phase: string;
-    durationMs: number;
-    totalMs: number;
-    startedOffsetMs: number;
-  }> = [];
-  const mark = (stage: string) => {
-    phases.push({ stage, elapsedMs: Math.round(performance.now() - startedAt) });
-  };
-  const observeChild = (message: unknown) => {
-    if (
-      !message ||
-      typeof message !== "object" ||
-      !("process" in message) ||
-      !(message.process instanceof ChildProcess)
-    ) {
-      return;
-    }
-    const child = message.process;
-    child.once("spawn", () => {
-      const args = child.spawnargs;
-      const stage = args.includes("paste-api-key")
-        ? "auth-cli"
-        : args.includes("repair")
-          ? args.includes("--help")
-            ? "repair-help"
-            : "repair"
-          : args.includes("gateway")
-            ? "gateway"
-            : undefined;
-      if (stage) {
-        mark(`${stage}-spawned`);
-        child.once("exit", () => mark(`${stage}-exited`));
-        child.once("close", () => mark(`${stage}-closed`));
-      }
-      if (stage === "repair") {
-        let pendingStderr = "";
-        child.stderr?.on("data", (chunk: Buffer) => {
-          const lines = `${pendingStderr}${chunk.toString("utf8")}`.split("\n");
-          pendingStderr = (lines.pop() ?? "").slice(-16 * 1024);
-          for (const line of lines) {
-            const match =
-              /\[gateway\] startup trace: (doctor\.(?:maintenance\.(?:begin|finish|release)|database-preflight|config-flow|contributions|maintenance-ready)|cli\.bootstrap\.(?:state-write-admission|stale-update-runs|config-snapshot|state-migrations-import|state-dir-migrations|state-schema|session-entry-state|exec-approvals-migration|cron-repair-import|cron-repair|cron-policy-scan|legacy-state-migrations|media-persistence-migration|automatic-heartbeat-config-repair|automatic-config-repair|heartbeat-retirement)) (\d+(?:\.\d+)?)ms total=(\d+(?:\.\d+)?)ms start=(\d+(?:\.\d+)?)ms(?:\s|"|$)/u.exec(
-                line,
-              );
-            if (!match) {
-              continue;
-            }
-            const [, phase, duration, total, start] = match;
-            const durationMs = Number(duration);
-            const totalMs = Number(total);
-            const startedOffsetMs = Number(start);
-            if (
-              phase &&
-              Number.isFinite(durationMs) &&
-              Number.isFinite(totalMs) &&
-              Number.isFinite(startedOffsetMs)
-            ) {
-              doctorPhaseTimings.push({ phase, durationMs, totalMs, startedOffsetMs });
-            }
-          }
-        });
-        let stdout = "";
-        let stdoutBytes = 0;
-        const captureLimit = 1024 * 1024;
-        child.stdout?.on("data", (chunk: Buffer) => {
-          stdoutBytes += chunk.length;
-          stdout = stdoutBytes <= captureLimit ? stdout + chunk.toString("utf8") : "";
-        });
-        child.once("close", (code) => {
-          if (code !== 0 || stdoutBytes > captureLimit) {
-            return;
-          }
-          const result = safeParseJsonRecord(stdout);
-          stdout = "";
-          const knownPhases = new Set([
-            "preflight",
-            "targetConfigValidation",
-            "configSnapshot",
-            "doctor",
-            "plugins",
-            "targetConfigConvergence",
-            "completionCache",
-          ]);
-          const knownOutcomes = new Set(["completed", "failed", "warning", "skipped", "deferred"]);
-          const timings: unknown[] = Array.isArray(result?.phaseTimings) ? result.phaseTimings : [];
-          for (const entry of timings) {
-            if (
-              !isRecord(entry) ||
-              typeof entry.phase !== "string" ||
-              !knownPhases.has(entry.phase) ||
-              typeof entry.outcome !== "string" ||
-              !knownOutcomes.has(entry.outcome) ||
-              typeof entry.startedOffsetMs !== "number" ||
-              !Number.isFinite(entry.startedOffsetMs) ||
-              typeof entry.durationMs !== "number" ||
-              !Number.isFinite(entry.durationMs)
-            ) {
-              continue;
-            }
-            repairPhaseTimings.push({
-              phase: entry.phase,
-              startedOffsetMs: entry.startedOffsetMs,
-              durationMs: entry.durationMs,
-              outcome: entry.outcome,
-            });
-          }
-        });
-      }
-    });
-  };
-  // Observe native lifecycle events without wrapping spawns or recording child options.
-  subscribe("child_process", observeChild);
-  onTestFinished(() => {
-    unsubscribe("child_process", observeChild);
-  });
-  onTestFailed(() => {
-    process.stderr.write(`Telegram emoji-list phases: ${JSON.stringify(phases)}\n`);
-    process.stderr.write(
-      `Telegram emoji-list repair phases: ${JSON.stringify(repairPhaseTimings)}\n`,
-    );
-    process.stderr.write(
-      `Telegram emoji-list Doctor phases: ${JSON.stringify(doctorPhaseTimings)}\n`,
-    );
-  });
-  mark("test-started");
   const telegramCalls: TelegramCall[] = [];
   const pendingUpdates: unknown[] = [];
   const pendingPolls = new Set<ServerResponse>();
   const scriptedCalls: Array<{ scenario: string; arguments: JsonObject }> = [];
   let mock: Awaited<ReturnType<typeof startQaMockOpenAiServer>> | undefined;
+  const started = performance.now();
+  let phase = "test-enter";
+  let reported = false;
+  let providerRequests = 0;
+  // Raw stderr remains visible under the E2E configuration silent mode.
+  const emitPhase = (event: "enter" | "failure") => {
+    process.stderr.write(
+      `[qa-phase] ${JSON.stringify({
+        event,
+        phase,
+        elapsedMs: Math.round(performance.now() - started),
+        providerRequests,
+        pendingUpdates: pendingUpdates.length,
+        scriptedCalls: scriptedCalls.length,
+        sends: telegramCalls.filter((call) => call.method === "sendMessage").length,
+      })}\n`,
+    );
+  };
+  const enterPhase = (next: string) => {
+    phase = next;
+    emitPhase("enter");
+  };
+  const report = () => {
+    if (reported) {
+      return;
+    }
+    reported = true;
+    emitPhase("failure");
+  };
+  signal.addEventListener("abort", report, { once: true });
+  onTestFailed(report);
+  onTestFinished(() => signal.removeEventListener("abort", report));
+  emitPhase("enter");
 
   const queueUpdate = (update: unknown) => {
     const poll = pendingPolls.values().next().value;
@@ -281,6 +176,7 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
       writeJson(res, 503, { error: "mock provider is not ready" });
       return;
     }
+    providerRequests += 1;
     const raw = await readRequest(req);
     const upstream = await fetch(`${mock.baseUrl}${pathname}`, {
       method: req.method,
@@ -306,11 +202,6 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
           : undefined;
 
     if (pathname === "/v1/responses" && scenario) {
-      mark(
-        scenario === CURRENT_CHAT_SCENARIO
-          ? "current-provider-request"
-          : "foreign-provider-request",
-      );
       const args = {
         action: "emoji-list",
         ...(scenario === FOREIGN_CHAT_SCENARIO ? { chatId: String(FOREIGN_CHAT_ID) } : {}),
@@ -387,6 +278,7 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
     succeed(res);
   };
 
+  enterPhase("http-start");
   await withServer(
     (req, res) => {
       void handleRequest(req, res).catch((error: unknown) => {
@@ -395,18 +287,18 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
         });
       });
     },
-    async (apiRoot) =>
-      await withTempDir("openclaw-telegram-emoji-list-", async (workspace) => {
+    async (apiRoot) => {
+      enterPhase("temp-dir-start");
+      return await withTempDir("openclaw-telegram-emoji-list-", async (workspace) => {
         const gatewayOwner = createQaGatewayChild();
         try {
           const repoRoot = path.resolve(import.meta.dirname, "../../../..");
-          mark("mock-starting");
+          enterPhase("mock-start");
           mock = await startQaMockOpenAiServer();
-          mark("mock-listening");
-          mark("gateway-starting");
+          enterPhase("gateway-start");
           await gatewayOwner.start({
+            onListening: () => enterPhase("gateway-listening"),
             repoRoot,
-            command: createQaPreparedRepoCliCommand(repoRoot),
             providerBaseUrl: `${apiRoot}/v1`,
             mockSessionObserverUrl: mock.sessionObserverUrl,
             transportBaseUrl: apiRoot,
@@ -432,9 +324,7 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
               }),
             },
             controlUiEnabled: false,
-            onListening: () => mark("gateway-listening"),
             runtimeEnvPatch: {
-              OPENCLAW_GATEWAY_STARTUP_TRACE: "1",
               OPENCLAW_SKIP_CHANNELS: undefined,
               OPENCLAW_SKIP_PROVIDERS: undefined,
               OPENCLAW_TEST_MINIMAL_GATEWAY: undefined,
@@ -452,8 +342,7 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
             },
           });
 
-          mark("gateway-ready-rpc");
-
+          enterPhase("gateway-ready");
           const findToolResult = async (scenario: string) => {
             const response = await fetch(`${mock!.baseUrl}/debug/requests`);
             expect(response.ok).toBe(true);
@@ -463,7 +352,7 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
             );
           };
 
-          mark("current-update-queued");
+          enterPhase("turn");
           queueUpdate(inboundUpdate(1, CURRENT_CHAT_SCENARIO));
           await expect
             .poll(
@@ -484,7 +373,6 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
               ],
             });
 
-          mark("current-result-observed");
           const currentChatResult = await findToolResult(CURRENT_CHAT_SCENARIO);
           expect(JSON.parse(currentChatResult!.toolOutput)).toMatchObject({
             ok: true,
@@ -500,7 +388,6 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
             ),
           ).toHaveLength(1);
 
-          mark("foreign-update-queued");
           queueUpdate(inboundUpdate(2, FOREIGN_CHAT_SCENARIO));
           await expect
             .poll(() => findToolResult(FOREIGN_CHAT_SCENARIO), {
@@ -509,7 +396,6 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
             })
             .toMatchObject({ toolOutput: expect.stringContaining(CONVERSATION_BINDING_ERROR) });
 
-          mark("foreign-refusal-observed");
           const foreignChatResult = await findToolResult(FOREIGN_CHAT_SCENARIO);
           expect(foreignChatResult!.toolOutput).toContain(CONVERSATION_BINDING_ERROR);
           expect(
@@ -523,20 +409,13 @@ test("binds Telegram emoji discovery to the current conversation before Bot API 
             },
           ]);
         } finally {
+          enterPhase("cleanup");
           await settleCleanup(
-            async () => {
-              mark("gateway-cleanup-started");
-              await stopQaGatewayFixture(gatewayOwner);
-              mark("gateway-cleanup-finished");
-            },
-            async () => {
-              mark("mock-cleanup-started");
-              await mock?.stop();
-              mark("mock-cleanup-finished");
-            },
+            async () => await stopQaGatewayFixture(gatewayOwner),
+            async () => await mock?.stop(),
           );
         }
-      }),
+      });
+    },
   );
-  mark("http-server-closed");
 }, 120_000);

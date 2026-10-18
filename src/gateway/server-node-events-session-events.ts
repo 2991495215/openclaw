@@ -302,25 +302,39 @@ export async function handleNodeSessionEvent(
         }
       }
 
-      const receipt = enqueueNodeExecNotice({
-        agentId,
-        sessionKey: eventSessionKey,
-        authorization,
-        runId,
-        text,
-        expectedTarget,
-        assertAcceptanceCurrent,
-      });
-      if (receipt) {
-        const accepted = await receipt.accepted;
-        if (!accepted.ok) {
-          throw new Error(accepted.error);
-        }
-        void receipt.settled.then((outcome) => {
-          if (outcome.status !== "completed") {
-            ctx.logGateway.warn(`exec event not delivered node=${nodeId}: ${outcome.status}`);
-          }
+      const notify = async () => {
+        const receipt = enqueueNodeExecNotice({
+          agentId,
+          sessionKey: eventSessionKey,
+          authorization,
+          runId,
+          text,
+          expectedTarget,
+          assertAcceptanceCurrent,
         });
+        if (receipt) {
+          const accepted = await receipt.accepted;
+          if (!accepted.ok) {
+            throw new Error(accepted.error);
+          }
+          void receipt.settled.then((outcome) => {
+            if (outcome.status !== "completed") {
+              ctx.logGateway.warn(`exec event not delivered node=${nodeId}: ${outcome.status}`);
+            }
+          });
+        }
+      };
+      // A caller still waiting on this run receives its output inline.
+      if (typeof authorization === "object" && authorization.holdNotice) {
+        authorization.holdNotice(() => {
+          void notify().catch((error: unknown) => {
+            ctx.logGateway.warn(
+              `exec event not delivered node=${nodeId}: ${formatErrorMessage(error)}`,
+            );
+          });
+        });
+      } else {
+        await notify();
       }
       return undefined;
     }

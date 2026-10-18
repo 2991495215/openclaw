@@ -1,8 +1,8 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, assert, describe, expect, it, vi } from "vitest";
 import { OAuthRefreshFailureError } from "../../agents/auth-profiles/oauth-refresh-failure.js";
 import { FailoverError } from "../../agents/failover-error.js";
-import { renderFailoverCodeUserCopy } from "../../agents/failover/user-copy.js";
+import { AUTH_PROFILE_COOLDOWN_ERROR_CODE } from "../../agents/failover/error.js";
 import { runWithAgentWorkspaceReadiness } from "../../agents/workspace-readiness.js";
 import * as agentEvents from "../../infra/agent-events.js";
 import * as providerFailover from "../../plugins/provider-failover.js";
@@ -83,6 +83,53 @@ describe("createAgentLifecycleTerminalBackstop", () => {
     expect(data.providerStarted).toBe(retry ? undefined : false);
   });
 
+  it.each([false, true])("replaces pending or captured attempt facts (captured=%s)", (captured) => {
+    emitAgentEvent.mockClear();
+    const terminal = createAgentLifecycleTerminalBackstop({
+      runId: "recovered",
+      startedAt: 100,
+      getLifecycleGeneration: () => "generation",
+      resolveTerminationFields: () => ({}),
+    });
+    terminal.note({
+      stream: "lifecycle",
+      data: {
+        phase: "finishing",
+        error: "old capacity error",
+        stopReason: "error",
+        errorObservation: { httpStatus: 503 },
+        timeoutPhase: "provider",
+        providerStarted: true,
+        aborted: true,
+        livenessState: "blocked",
+        replayInvalid: true,
+        suppressErrorNotice: true,
+        assistantTranscriptIdempotencyKey: "old-receipt",
+      },
+    });
+    if (captured) {
+      terminal.capture("error", new Error("old capacity error"));
+    }
+    terminal.replaceAttemptTerminal();
+    expect(terminal.getDeferredError()).toBeUndefined();
+    terminal.emit("end", {
+      meta: { stopReason: "stop", assistantTranscriptIdempotencyKey: "selected" },
+    });
+    terminal.replaceAttemptTerminal();
+    terminal.emit("error", new Error("must not reopen"));
+    expect(emitAgentEvent).toHaveBeenCalledOnce();
+    const event = emitAgentEvent.mock.calls[0]?.[0];
+    assert.isDefined(event);
+    expect(event.data).toEqual({
+      phase: "end",
+      startedAt: 100,
+      endedAt: expect.any(Number),
+      stopReason: "stop",
+      assistantTranscriptIdempotencyKey: "selected",
+      executionSettled: true,
+    });
+  });
+
   it("publishes the provider-owned OAuth summary instead of the wrapped diagnostic", () => {
     emitAgentEvent.mockClear();
     const summary =
@@ -117,9 +164,23 @@ describe("createAgentLifecycleTerminalBackstop", () => {
     expect(JSON.stringify(event)).not.toContain(rawDiagnostic);
   });
 
-  it.each(["typed", "raw"] as const)(
-    "publishes bounded selected-profile recovery from %s failures without discovering providers",
-    (kind) => {
+  it.each(
+    (["typed", "raw"] as const).flatMap((kind) => [
+      {
+        kind,
+        code: "selected_auth_profile_unavailable",
+        expected:
+          "This saved login isn't available. Choose another login under Models in the Control UI or run `openclaw configure`.",
+      },
+      {
+        kind,
+        code: AUTH_PROFILE_COOLDOWN_ERROR_CODE,
+        expected: "⚠️ The AI service needs a short break. Please try again in a few minutes.",
+      },
+    ]),
+  )(
+    "publishes bounded $code recovery from $kind failures without discovering providers",
+    ({ kind, code, expected }) => {
       const classifyProvider = vi
         .spyOn(providerFailover, "classifyProviderFailoverSignalWithPlugin")
         .mockImplementation(() => {
@@ -140,19 +201,17 @@ describe("createAgentLifecycleTerminalBackstop", () => {
           kind === "typed"
             ? new FailoverError(rawCause, {
                 reason: "auth",
-                code: "selected_auth_profile_unavailable",
+                code,
                 profileId,
                 cause: new Error(rawCause),
               })
             : Object.assign(new Error(rawCause), {
-                code: "selected_auth_profile_unavailable",
+                code,
               });
         terminal.emit("error", error);
 
         const event = expectDefined(emitAgentEvent.mock.calls[0]?.[0], "terminal event");
-        expect(event.data.error).toBe(
-          renderFailoverCodeUserCopy("selected_auth_profile_unavailable"),
-        );
+        expect(event.data.error).toBe(expected);
         expect(JSON.stringify(event)).not.toContain(profileId);
         expect(JSON.stringify(event)).not.toContain(rawCause);
         expect(classifyProvider).not.toHaveBeenCalled();

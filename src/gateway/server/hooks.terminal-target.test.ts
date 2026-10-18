@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createDeferred } from "../../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { DeferredHookWake } from "../../cron/service/wake.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
-import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
+import type { HookAgentDispatchPayload as HookPayload } from "../hooks.js";
 
 let terminalObserved = createDeferred();
 let warningObserved = createDeferred();
@@ -43,82 +45,30 @@ vi.mock("../../config/io.js", () => ({
   getRuntimeConfig: loadConfigMock,
 }));
 
-let capturedDispatchAgentHook: ((value: HookPayload) => Promise<unknown>) | undefined;
+const { createGatewayHookDispatcher } = await import("./hooks.js");
+let dispatch: ReturnType<typeof createGatewayHookDispatcher>["dispatchAgentHook"];
 
-vi.mock("./hooks-request-handler.js", () => ({
-  createHooksRequestHandler: vi.fn((opts: Record<string, unknown>) => {
-    capturedDispatchAgentHook = opts.dispatchAgentHook as typeof capturedDispatchAgentHook;
-    return vi.fn();
-  }),
-}));
+const payload = (wakeMode: HookPayload["wakeMode"] = "now"): HookPayload => ({
+  message: "test message",
+  name: "Email",
+  effectiveAgentId: "main",
+  wakeMode,
+  sessionKey: "session-1",
+  sessionMode: "isolated",
+  sourcePath: "/hooks/agent",
+  deliver: true,
+  channel: "last",
+  delivery: { mode: "none" },
+});
 
-const { createGatewayHooksRequestHandler } = await import("./hooks.js");
-
-type HookPayload = {
-  message: string;
-  name: string;
-  agentId?: string;
-  effectiveAgentId: string;
-  wakeMode: "now" | "next-heartbeat";
-  sessionKey: string;
-  sourcePath: string;
-  deliver: boolean;
-  channel: "last";
-  delivery: { mode: "none" };
-};
-
-function payload(overrides: Partial<HookPayload> = {}): HookPayload {
-  return {
-    message: "test message",
-    name: "Email",
-    effectiveAgentId: "main",
-    wakeMode: "now",
-    sessionKey: "session-1",
-    sourcePath: "/hooks/agent",
-    deliver: true,
-    channel: "last",
-    delivery: { mode: "none" },
-    ...overrides,
-  };
-}
-
-function globalConfig(systemAgentId: "main" | "work", includeMain = true): OpenClawConfig {
-  return {
-    agents: {
-      ownership: "explicit",
-      defaults: { systemAgent: { agentId: systemAgentId } },
-      entries: {
-        ...(includeMain ? { main: {} } : {}),
-        work: {},
-      },
-    },
-    session: { scope: "global" },
-  };
-}
-
-function createDeferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((innerResolve) => {
-    resolve = innerResolve;
-  });
-  return { promise, resolve };
-}
-
-function dispatch(value: HookPayload): Promise<unknown> {
-  if (!capturedDispatchAgentHook) {
-    throw new Error("dispatchAgentHook missing");
-  }
-  return capturedDispatchAgentHook(value);
-}
-
-function expectOwnedEvent(text: string, agentId: string): void {
-  const call = enqueueSessionEventMock.mock.calls.find(([actual]) => actual === text);
-  expect(call?.[1]).toMatchObject({
-    agentId,
-    sessionKey: "global",
-    expectedTarget: { agentId, sessionKey: "global", sessionId: "captured-session" },
-  });
-}
+const globalConfig = (systemAgentId: "main" | "work", includeMain = true): OpenClawConfig => ({
+  agents: {
+    ownership: "explicit",
+    defaults: { systemAgent: { agentId: systemAgentId } },
+    entries: includeMain ? { main: {}, work: {} } : { work: {} },
+  },
+  session: { scope: "global" },
+});
 
 async function startGatedRun(
   result: "success" | "failure",
@@ -134,7 +84,7 @@ async function startGatedRun(
     }
     return { status: "ok", summary: "done", delivered: false, deliveryAttempted: false };
   });
-  void dispatch(payload({ wakeMode }));
+  void dispatch(payload(wakeMode));
   await started.promise;
   return gate;
 }
@@ -151,28 +101,18 @@ describe("global hook terminal target resolution", () => {
     });
     warningObserved = createDeferred();
     loadConfigMock.mockReturnValue(globalConfig("main"));
-    capturedDispatchAgentHook = undefined;
-    createGatewayHooksRequestHandler({
-      scheduler: createTestGatewayScheduler("fake-timers"),
+    ({ dispatchAgentHook: dispatch } = createGatewayHookDispatcher({
       deps: {} as never,
       deferHookWake: deferHookWakeMock,
-      getHooksConfig: () => null,
-      getClientIpConfig: () => ({ trustedProxies: undefined, allowRealIpFallback: false }),
-      bindHost: "127.0.0.1",
-      port: 18789,
       logHooks: {
+        ...createSubsystemLogger("hook-terminal-test"),
         warn: logHooksWarnMock,
-        debug: vi.fn(),
         info: vi.fn(),
-        error: vi.fn(),
-      } as never,
-    });
+      },
+    }));
   });
 
-  afterEach(() => {
-    resetGatewayWorkAdmission();
-    vi.restoreAllMocks();
-  });
+  afterEach(resetGatewayWorkAdmission);
 
   it.each(["now", "next-heartbeat"] as const)(
     "keeps the accepted %s target when hooks are disabled and the system agent changes",
@@ -186,7 +126,14 @@ describe("global hook terminal target resolution", () => {
 
       await terminalObserved.promise;
       if (wakeMode === "now") {
-        expectOwnedEvent("Hook Email: done", "main");
+        const call = enqueueSessionEventMock.mock.calls.find(
+          ([text]) => text === "Hook Email: done",
+        );
+        expect(call?.[1]).toMatchObject({
+          agentId: "main",
+          sessionKey: "global",
+          expectedTarget: { agentId: "main", sessionKey: "global", sessionId: "captured-session" },
+        });
         expect(captureSessionEventTargetMock).toHaveBeenCalledExactlyOnceWith("main", "global");
         expect(deferHookWakeMock).not.toHaveBeenCalled();
       } else {
@@ -213,7 +160,7 @@ describe("global hook terminal target resolution", () => {
     async (wakeMode) => {
       captureSessionEventTargetMock.mockRejectedValueOnce(new Error("session target was replaced"));
 
-      await expect(dispatch(payload({ wakeMode }))).resolves.toMatchObject({
+      await expect(dispatch(payload(wakeMode))).resolves.toMatchObject({
         ok: false,
         statusCode: 502,
       });

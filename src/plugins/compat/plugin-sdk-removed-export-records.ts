@@ -119,7 +119,7 @@ export const PLUGIN_SDK_REMOVED_EXPORT_RECORDS = [
     introduced: "2026-10-08",
     removeAfter: "2026-10-03",
     replacement:
-      "Use ordinary Automations and SILENT_REPLY_TOKEN/isSilentReplyText from openclaw/plugin-sdk/reply-runtime; heartbeat-specific prompt and reply normalization no longer applies.",
+      "Use ordinary Automations and the producer-owned terminal reply contract from openclaw/plugin-sdk/agent-harness-runtime; heartbeat-specific prompt and reply normalization no longer applies.",
     docsPath: "/plugins/sdk-migration/removed-surfaces#heartbeat-runtime-and-reply-helpers",
     surfaces: [
       "openclaw/plugin-sdk/reply-runtime.HEARTBEAT_PROMPT",
@@ -158,5 +158,24 @@ export const PLUGIN_SDK_REMOVED_EXPORT_RECORDS = [
     ],
     releaseNote:
       "Maintainer-approved breaking removal on 2026-10-03: agent harnesses no longer register or normalize heartbeat response tools; no deprecated aliases remain.",
+  },
+  {
+    code: "plugin-sdk-reply-silence-parsers",
+    status: "removed",
+    owner: "agent-runtime",
+    introduced: "2026-10-13",
+    removeAfter: "2026-10-12",
+    replacement:
+      "Delivery plugins forward prepared text without parsing it. Harness producers use prepareAgentRunTerminalReply from openclaw/plugin-sdk/agent-harness-runtime once and publish its terminalReply. Import SILENT_REPLY_TOKEN from openclaw/plugin-sdk/reply-runtime instead of reply-chunking.",
+    docsPath: "/plugins/sdk-migration/removed-surfaces#reply-silence-parsing",
+    surfaces: [
+      "openclaw/plugin-sdk/reply-chunking.isSilentReplyText",
+      "openclaw/plugin-sdk/reply-chunking.isSilentReplyPayloadText",
+      "openclaw/plugin-sdk/reply-chunking.SILENT_REPLY_TOKEN",
+    ],
+    diagnostics: ["plugin SDK shipped-surface guard and migration guide"],
+    tests: ["src/plugin-sdk/reply-runtime.contract.test.ts", "src/plugins/compat/registry.test.ts"],
+    releaseNote:
+      "Reply silence is classified once by the terminal producer. Delivery-side parsers were removed without a compatibility shim so visible text is never reclassified as silence. The redundant reply-chunking.SILENT_REPLY_TOKEN export was removed; the constant remains available from reply-runtime.",
   },
 ] as const satisfies readonly PluginCompatRecord[];

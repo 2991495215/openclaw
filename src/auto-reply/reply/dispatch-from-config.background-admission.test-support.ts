@@ -11,7 +11,7 @@ import {
   automaticDirectReplyConfig,
   dispatchReplyFromConfig,
   createReplyOperation,
-  replyRunRegistry,
+  getSessionControllerOperation,
   setNoAbort,
   messageAuditEvents,
 } from "./dispatch-from-config.test-support.js";
@@ -65,7 +65,7 @@ export function registerBackgroundDispatchAdmissionTests(): void {
       counts: { tool: 0, block: 0, final: 0 },
     });
     expect(replyResolver).not.toHaveBeenCalled();
-    expect(replyRunRegistry.get(sessionKey)).toBe(activeOperation);
+    expect(getSessionControllerOperation(sessionKey)).toBe(activeOperation);
     expect(messageAuditMocks.emitTrustedMessageAuditEvent).toHaveBeenCalledOnce();
     expect(messageAuditEvents()[0]).toEqual(
       expect.objectContaining({

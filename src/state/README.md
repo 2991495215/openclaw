@@ -6,9 +6,10 @@
 `heartbeat_outcomes` in the per-agent schema. Its runtime readers and writers are
 retired; Doctor transfers still-relevant pending outcomes idempotently into
 ordinary session context before removing each verified source row. Existing
-session deletion and retention continue to own the remaining inert rows.
+session deletion and retention continue to own the remaining inert rows. Session-key
+repair also preserves these historical rows until Doctor transfers them.
 
-Keep agent schema 26 during this cutover, without an additional agent migration.
+Keep the current agent schema 31 during this cutover, without an additional agent migration.
 Removing the table requires a separately approved agent-schema migration; the
 shared-state policy fence does not authorize that cleanup. Its owner must remove
 the table declaration, generated types, and

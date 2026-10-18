@@ -1,4 +1,4 @@
-/** Shared task conversion for Doctor and admitted portable-artifact imports. */
+/** Doctor-owned conversion of legacy heartbeat task definitions. */
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
@@ -222,7 +222,7 @@ export function planHeartbeatTaskMigration(params: {
     });
     jobs.push({
       declarationKey,
-      ...(existing ? { previous: structuredClone(existing) } : {}),
+      ...(existing ? { previous: existing } : {}),
       job,
       sortOrder: reserveSortOrder(snapshot, existing),
     });

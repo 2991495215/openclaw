@@ -10,7 +10,6 @@ import {
   setReplyPayloadMetadata,
   type ReplyPayload,
 } from "../../auto-reply/reply-payload.js";
-import { isSilentReplyPayloadText } from "../../auto-reply/tokens.js";
 import { truncateUtf16Safe } from "../../utils.js";
 
 type DeliveryPayload = Pick<
@@ -81,15 +80,15 @@ export function pickSummaryFromOutput(text: string | undefined) {
 function pickLastNonEmptyTextFromPayloads(
   payloads: Array<{ text?: string | undefined; isError?: boolean }>,
 ) {
-  const successful = payloads
-    .findLast((payload) => !payload?.isError && payload?.text?.trim())
-    ?.text?.trim();
+  const successful = payloads.findLast(
+    (payload) => !payload?.isError && payload?.text?.trim(),
+  )?.text;
   if (successful) {
     return successful;
   }
-  return payloads
-    .findLast((payload) => !isNonTerminalToolErrorWarning(payload) && payload?.text?.trim())
-    ?.text?.trim();
+  return payloads.findLast(
+    (payload) => !isNonTerminalToolErrorWarning(payload) && payload?.text?.trim(),
+  )?.text;
 }
 
 function isDeliverablePayload(payload: DeliveryPayload | null | undefined): boolean {
@@ -119,6 +118,7 @@ function payloadHasNonTextDeliveryContent(payload: DeliveryPayload): boolean {
 function resolveCronDeliveryPayloads(params: {
   payloads: DeliveryPayload[];
   finalAssistantVisibleText?: string;
+  terminalReplyDisposition?: "visible" | "silent" | "empty";
 }): Pick<CronPayloadOutcome, "deliveryPayloads" | "deliveryDisposition"> {
   if (params.payloads.length === 0) {
     return { deliveryPayloads: [], deliveryDisposition: { kind: "empty" } };
@@ -126,21 +126,14 @@ function resolveCronDeliveryPayloads(params: {
   // Structured output is always visible, even when a sibling text payload is
   // an acknowledgement. Only the payload owner can safely preserve that batch.
   const hasNonTextContent = params.payloads.some(payloadHasNonTextDeliveryContent);
-  const terminalText = params.finalAssistantVisibleText ?? params.payloads.at(-1)?.text;
-  if (!hasNonTextContent && isSilentReplyPayloadText(terminalText)) {
-    const controlOnly = params.payloads.every((payload) => isSilentReplyPayloadText(payload.text));
+  if (!hasNonTextContent && params.terminalReplyDisposition === "silent") {
     return {
       deliveryPayloads: params.payloads,
-      deliveryDisposition: { kind: "silent", controlOnly },
+      deliveryDisposition: { kind: "silent", controlOnly: true },
     };
   }
   return {
-    // Earlier control acknowledgements cannot become visible siblings of a
-    // later result or fail before that result reaches recipient custody.
-    deliveryPayloads: params.payloads.filter(
-      (payload) =>
-        payloadHasNonTextDeliveryContent(payload) || !isSilentReplyPayloadText(payload.text),
-    ),
+    deliveryPayloads: params.payloads,
     deliveryDisposition: { kind: "visible" },
   };
 }
@@ -168,6 +161,7 @@ export function resolveCronPayloadOutcome(params: {
   runLevelError?: unknown;
   failureSignal?: CronFailureSignal | undefined;
   finalAssistantVisibleText?: string | undefined;
+  terminalReplyDisposition?: "visible" | "silent" | "empty";
   preferFinalAssistantVisibleText?: boolean;
 }): CronPayloadOutcome {
   const fallbackOutputText = pickLastNonEmptyTextFromPayloads(params.payloads);
@@ -192,9 +186,9 @@ export function resolveCronPayloadOutcome(params: {
   );
   const lastErrorPayloadText = lastTextErrorPayload?.text?.trim();
   const errorPayloads = params.payloads.filter((payload) => payload?.isError === true);
-  const finalText = normalizeOptionalString(params.finalAssistantVisibleText);
-  const normalizedFinalAssistantVisibleText =
-    finalText && !isSilentReplyPayloadText(finalText) ? finalText : undefined;
+  const normalizedFinalAssistantVisibleText = params.finalAssistantVisibleText?.trim()
+    ? params.finalAssistantVisibleText
+    : undefined;
   const hasSuccessfulPayloadAfterLastError =
     !params.runLevelError &&
     lastErrorPayloadIndex >= 0 &&
@@ -305,6 +299,7 @@ export function resolveCronPayloadOutcome(params: {
     : resolveCronDeliveryPayloads({
         payloads: resolvedDeliveryPayloads,
         finalAssistantVisibleText: normalizedFinalAssistantVisibleText,
+        terminalReplyDisposition: params.terminalReplyDisposition,
       });
   return {
     summary: fatalDeliveryText ? (pickSummaryFromOutput(fatalDeliveryText) ?? summary) : summary,

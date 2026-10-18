@@ -66,6 +66,9 @@ export interface ProcessSession {
   eventRouting?: EventSessionRoutingPolicy;
   notifyDeliveryContext?: DeliveryContext;
   notifySessionTarget?: SessionEventTarget;
+  persistExitNotification?: () => Promise<void>;
+  exitNotificationPersistence?: Promise<void>;
+  clearExitNotification?: () => Promise<void>;
   notifyOnExit?: boolean;
   notifyOnExitEmptySuccess?: boolean;
   exitNotified?: boolean;
@@ -344,6 +347,7 @@ export function markBackgrounded(session: ProcessSession) {
   if (active?.session === session) {
     active.promoted = true;
   }
+  session.exitNotificationPersistence ??= session.persistExitNotification?.();
 }
 
 /** Retains the precise completion-event removal handle on its process owner. */
@@ -368,7 +372,11 @@ export function acknowledgeNotifyOnExit(record: {
 }
 
 /** Retire notification custody without claiming that retained output was observed. */
-export function removeNotifyOnExit(record: { notifyOnExitRemoval?: NotifyOnExitRemoval }): void {
+export function removeNotifyOnExit(record: {
+  notifyOnExitRemoval?: NotifyOnExitRemoval;
+  clearExitNotification?: () => Promise<void>;
+}): void {
+  void record.clearExitNotification?.();
   const remove = record.notifyOnExitRemoval;
   if (!remove) {
     return;
@@ -428,7 +436,7 @@ function moveToFinished(session: ProcessSession) {
   if (stdin) {
     if (typeof stdin.destroy === "function") {
       stdin.destroy();
-    } else if (typeof stdin.end === "function") {
+    } else {
       stdin.end();
     }
     delete session.stdin;

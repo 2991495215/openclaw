@@ -581,7 +581,7 @@ export async function maybeMigrateHeartbeatFilesToScratch(params: {
     const groupChanges: string[] = [];
     for (const [agentId, monitor] of importAgents) {
       try {
-        const shouldWriteScratch = runOpenClawStateWriteTransaction(
+        const { shouldWriteScratch, destination } = runOpenClawStateWriteTransaction(
           ({ db }) => {
             const currentJob = loadedCronStoreFromRows(
               loadCronRows(db, cronStoreKey(storePath)),
@@ -603,7 +603,7 @@ export async function maybeMigrateHeartbeatFilesToScratch(params: {
               throw new Error("scratch changed during migration");
             }
             if (state.scratch?.sourceSha256 === source.sha256) {
-              return false;
+              return { shouldWriteScratch: false, destination: state };
             }
             const { result } = writeCronJobScratchInDatabase(db, {
               storeKey: cronStoreKey(storePath),
@@ -616,16 +616,14 @@ export async function maybeMigrateHeartbeatFilesToScratch(params: {
             if (!result.ok) {
               throw new Error("scratch changed during migration");
             }
-            return true;
+            return {
+              shouldWriteScratch: true,
+              destination: { currentRevision: result.currentRevision, scratch: result.scratch },
+            };
           },
           { env },
           { operationLabel: "doctor.heartbeat-scratch-migration" },
         );
-        const destination = readCronJobScratchState(storePath, monitor.id, { env });
-        const verified = destination.scratch;
-        if (!verified || verified.sourceSha256 !== source.sha256) {
-          throw new Error("scratch verification failed after write");
-        }
         verifiedScratch.set(monitor.id, destination);
         if (!keepSource || shouldWriteScratch) {
           groupChanges.push(

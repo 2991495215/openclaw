@@ -1,6 +1,6 @@
-import type { ReplyOperation } from "../../auto-reply/reply/reply-run-registry.contracts.js";
 import { racePromiseWithAbortSignal } from "../../infra/abort-signal.js";
 import { onGatewayWorkMetricsChanged } from "../../infra/gateway-work-metrics-events.js";
+import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { markCronJobWaitingForIdle, type CronActiveJobMarker } from "../active-jobs.js";
 import type { CronJob } from "../types.js";

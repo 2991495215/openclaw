@@ -107,7 +107,7 @@ export async function resolveSlackBlockActionCommandAuthorized(
       defaultRequireMention: params.ctx.defaultRequireMention,
       allowNameMatching: params.ctx.allowNameMatching,
     });
-    channelUsers = Array.isArray(channelConfig?.users) ? channelConfig.users : [];
+    channelUsers = channelConfig?.users ?? [];
   }
 
   const commandIngress = await resolveSlackCommandIngress({

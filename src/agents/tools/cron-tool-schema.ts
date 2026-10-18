@@ -51,7 +51,7 @@ type CronToolSchemaOptions = {
   management?: "only" | "also";
   selfRemoveOnly?: boolean;
   activeRun?: boolean;
-  pacingEnabled?: boolean;
+  nextCheckEnabled?: boolean;
   /**
    * Whether cron.triggers.enabled is on for this deployment. When false, the
    * trigger-gated surfaces (job trigger, script payloads, stream
@@ -113,13 +113,13 @@ function createCronScheduleSchema(params: {
         expr: Type.Optional(
           Type.String({
             description:
-              'Cron wall-time expr; never UTC-convert. Missing tz=Gateway local. Example "0 18 * * *", "Asia/Shanghai".',
+              'Cron wall-time expr; never UTC-convert. Missing tz preserves the existing cron timezone on update; otherwise Gateway local. Example "0 18 * * *", "Asia/Shanghai".',
           }),
         ),
         tz: Type.Optional(
           Type.String({
             description:
-              'IANA timezone for wall-clock fields; missing=Gateway host local timezone. Example "Asia/Shanghai".',
+              'IANA timezone for wall-clock fields. Omit on update to preserve the existing cron timezone; otherwise defaults to Gateway host local timezone. Example "Asia/Shanghai".',
           }),
         ),
         staggerMs: optionalNonNegativeIntegerSchema({
@@ -357,7 +357,7 @@ const cronToolSchemas = createCachedToolSchema({
       options?.management ?? null,
       options?.selfRemoveOnly === true,
       options?.activeRun === true,
-      options?.pacingEnabled === true,
+      options?.nextCheckEnabled === true,
       Boolean(options?.agentSessionKey?.trim()),
     ]),
   build: buildCronToolSchema,
@@ -455,7 +455,7 @@ function buildCronToolSchema(options?: CronToolSchemaOptions): TSchema {
                     "scratch_get",
                     "scratch_set",
                     "record_result",
-                    ...(options.pacingEnabled ? ["next_check"] : []),
+                    ...(options.nextCheckEnabled ? ["next_check"] : []),
                   ]
                 : []),
             ]
@@ -525,7 +525,7 @@ function buildCronToolSchema(options?: CronToolSchemaOptions): TSchema {
             "expectedRevision",
             "outcome",
             "summary",
-            ...(options.pacingEnabled ? ["in"] : []),
+            ...(options.nextCheckEnabled ? ["in"] : []),
           ]
         : []),
     ]);

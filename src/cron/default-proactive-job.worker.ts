@@ -54,7 +54,6 @@ export function provisionDefaultProactiveJobInWorker(
         recordDefaultProactiveJobInDatabase(db, storePath, input.agentId, job.id, job.createdAtMs);
         outcome = { storeKey, created: true, job };
       }
-      assertAgentDeletionRecoveryHoldPredicate(writer, input.recoveryHoldPredicate);
       return { outcome };
     },
     { database, path: database.path, env },

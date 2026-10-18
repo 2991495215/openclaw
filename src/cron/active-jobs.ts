@@ -4,8 +4,13 @@ import {
   type AdmittedRunContext,
   type OperationalRunInstanceRef,
 } from "../agents/admitted-run-context.js";
-import type { ReplyOperation } from "../auto-reply/reply/reply-run-registry.contracts.js";
+import {
+  composeSessionSourceAssertion,
+  prepareSessionSourceAuthority,
+  type SessionSourceAssertion,
+} from "../config/sessions/session-source-authority.js";
 import { notifyGatewayWorkMetricsChanged } from "../infra/gateway-work-metrics-events.js";
+import type { ReplyOperation } from "../sessions/session-controller.contracts.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type { CronStandingGrantAuthority } from "./standing-grant-authority.types.js";
 
@@ -14,7 +19,7 @@ type CronActiveJobState = {
   selfRemovalOwners: WeakMap<() => void, () => CronActiveJobMarker | undefined>;
   admittedJobRuns: WeakMap<
     CronActiveJobMarker,
-    { context: AdmittedRunContext; assertActive: () => void; signal: AbortSignal }
+    { context: AdmittedRunContext; assertActive: SessionSourceAssertion; signal: AbortSignal }
   >;
   generation: number;
   nextToken: number;
@@ -41,7 +46,7 @@ function captureCronJobMessageAuthority(
     operationalRunInstance: OperationalRunInstanceRef;
   },
   sourceSensitive: boolean,
-): (() => void) | undefined {
+): SessionSourceAssertion | undefined {
   const { jobId } = params;
   const marker = getCurrentCronActiveJobMarker(jobId);
   const isAuthorityCurrent = sourceSensitive
@@ -60,7 +65,7 @@ function captureCronJobMessageAuthority(
     !marker.jobRemoved &&
     marker.cancellation?.kind !== "requested";
   const inactive = () => new Error("cron message action authority is no longer active");
-  const assertLocal = () => {
+  const readOwner = () => {
     const admitted = admittedJobRuns.get(marker);
     if (
       !isMarkerCurrent() ||
@@ -72,10 +77,15 @@ function captureCronJobMessageAuthority(
       throw inactive();
     }
     owner ??= admitted;
-    owner.assertActive();
+    return owner;
   };
-  const assertCurrent = () => {
-    assertLocal();
+  // The occurrence binds its admitted run after this capability is created.
+  const source = Object.assign(() => readOwner().assertActive(), {
+    prepareSessionSource: () => prepareSessionSourceAuthority(readOwner().assertActive),
+  });
+  return composeSessionSourceAssertion([source], (assertSource) => {
+    readOwner();
+    assertSource();
     if (!isAuthorityCurrent()) {
       if (sourceSensitive) {
         marker.messageSourceAuthorityRevoked = true;
@@ -84,9 +94,7 @@ function captureCronJobMessageAuthority(
       }
       throw inactive();
     }
-    assertLocal();
-  };
-  return assertCurrent;
+  });
 }
 
 export function captureCronJobMessageActionAuthority(params: {
@@ -101,6 +109,26 @@ export function captureCronJobMessageSourceAuthority(params: {
   operationalRunInstance: OperationalRunInstanceRef;
 }) {
   return captureCronJobMessageAuthority(params, true);
+}
+
+/** Source restoration precedes run admission, but still belongs to one live occurrence. */
+export function captureCronJobSourceAuthority(jobId: string): (() => void) | undefined {
+  const marker = getCurrentCronActiveJobMarker(jobId);
+  const owner = marker?.standingGrantAuthority;
+  if (!marker || !owner) {
+    return undefined;
+  }
+  return () => {
+    if (
+      getCurrentCronActiveJobMarker(jobId) !== marker ||
+      marker.messageSourceAuthorityRevoked ||
+      marker.jobRemoved ||
+      marker.cancellation?.kind === "requested"
+    ) {
+      throw new Error("Cron occurrence source authority is no longer active");
+    }
+    owner.assertCurrent();
+  };
 }
 
 export function captureCronJobStandingGrantAuthority(params: {
@@ -145,36 +173,46 @@ export function bindCronSelfRemovalCommitGuard(
   instance: OperationalRunInstanceRef,
   commitGuard: () => void,
   assertCallerActive: () => void,
-): void {
+): () => void {
   const { admittedJobRuns, selfRemovalOwners } = getCronActiveJobState();
   const marker = getCurrentCronActiveJobMarker(jobId);
   const owner = marker && admittedJobRuns.get(marker);
-  if (
-    !marker ||
-    !owner ||
-    owner.context.operationalRunInstance.instanceId !== instance.instanceId ||
-    owner.context.operationalRunInstance.runId !== instance.runId
-  ) {
-    return;
-  }
-  selfRemovalOwners.set(commitGuard, () => {
+  const assertOwner = () => {
+    assertCallerActive();
+    if (
+      !marker ||
+      !owner ||
+      owner.context.operationalRunInstance.instanceId !== instance.instanceId ||
+      owner.context.operationalRunInstance.runId !== instance.runId ||
+      getCurrentCronActiveJobMarker(jobId) !== marker ||
+      admittedJobRuns.get(marker) !== owner
+    ) {
+      throw new TypeError(
+        "Cron self-removal requires the exact live run; the job was not removed.",
+      );
+    }
+    owner.assertActive();
+    return marker;
+  };
+  const selfRemovalGuard = () => {
+    commitGuard();
+    assertOwner();
+  };
+  selfRemovalOwners.set(selfRemovalGuard, () => {
     try {
-      assertCallerActive();
-      owner.assertActive();
-      return getCurrentCronActiveJobMarker(jobId) === marker &&
-        admittedJobRuns.get(marker) === owner
-        ? marker
-        : undefined;
+      return assertOwner();
     } catch {
       return undefined;
     }
   });
+  return selfRemovalGuard;
 }
 
 export type CronActiveJobMarker = {
   jobId: string;
   standingGrantAuthority?: CronStandingGrantAuthority;
   agentId?: string;
+  sessionKey?: string;
   stateIdentityKey?: string;
   generation: number;
   token: number;
@@ -264,6 +302,7 @@ export function markCronJobActive(
   jobId: string,
   opts?: {
     agentId?: string;
+    sessionKey?: string;
     stateIdentityKey?: string;
     isMessageActionAuthorityCurrent?: () => boolean;
     isMessageSourceAuthorityCurrent?: () => boolean;
@@ -278,6 +317,7 @@ export function markCronJobActive(
   const marker: CronActiveJobMarker = {
     jobId,
     ...(opts?.agentId ? { agentId: opts.agentId } : {}),
+    ...(opts?.sessionKey ? { sessionKey: opts.sessionKey } : {}),
     ...(opts?.stateIdentityKey ? { stateIdentityKey: opts.stateIdentityKey } : {}),
     ...(opts?.isMessageActionAuthorityCurrent
       ? { isMessageActionAuthorityCurrent: opts.isMessageActionAuthorityCurrent }

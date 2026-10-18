@@ -53,11 +53,7 @@ export function showSessionPlacementTargetDialog(
     return Promise.resolve(null);
   }
   active = true;
-  return withPromiseModalHost<SessionMoveTarget | null>(undefined, (modal) => {
-    const finish = (result: SessionMoveTarget | null) => {
-      modal.finish(result);
-      active = false;
-    };
+  return withPromiseModalHost<SessionMoveTarget | null>(undefined, ({ finish, render }) => {
     function Dialog() {
       const loaded = createMemo<Catalog | string | null>(
         () =>
@@ -256,18 +252,20 @@ export function showSessionPlacementTargetDialog(
                 </For>
               </div>
             )}
-            <div class="exec-approval-actions">
+            <openclaw-modal-actions class="exec-approval-actions">
               <button type="submit" class="btn primary" disabled={!selectable()}>
                 {t(`sessionsView.${options.mode}SessionAction`)}
               </button>
               <button type="button" class="btn" onClick={() => finish(null)}>
                 {t("common.cancel")}
               </button>
-            </div>
+            </openclaw-modal-actions>
           </form>
         </openclaw-modal-dialog>
       );
     }
-    modal.render(() => <Dialog />);
+    render(() => <Dialog />);
+  }).finally(() => {
+    active = false;
   });
 }

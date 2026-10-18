@@ -21,7 +21,7 @@ export function registerAgentCreatorAuthorityTests() {
         | CronCreatorAuthorityCapability
         | undefined;
       expect(capability).toMatchObject({ active: true, runId });
-      return { payloads: [{ text: "ok" }], meta: { durationMs: 100 } };
+      return { payloads: [{ text: "ok" }], meta: { durationMs: 100, terminalReply: { disposition: "visible", text: "ok" } } };
     });
 
     await invokeAgent(

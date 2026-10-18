@@ -11,7 +11,6 @@ import { normalizeReplyPayload } from "./normalize-reply.js";
 
 function buildTestReplyPayloads({ payloads }: { payloads: ReplyPayload[] }) {
   return buildReplyPayloads({
-    didLogHeartbeatStrip: false,
     blockStreamingEnabled: false,
     blockReplyPipeline: null,
     replyToMode: "off",

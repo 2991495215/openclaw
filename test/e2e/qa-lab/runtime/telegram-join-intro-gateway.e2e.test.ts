@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { withServer, withTempDir } from "openclaw/plugin-sdk/test-env";
-import { expect, onTestFailed, test } from "vitest";
+import { expect, test } from "vitest";
 import {
   type MockOpenAiRequestSnapshot,
   createQaGatewayChild,
@@ -10,7 +10,6 @@ import {
   type QaGatewayChild,
 } from "../../../../extensions/qa-lab/api.js";
 import { stopQaGatewayFixture } from "../../../helpers/qa-gateway-cleanup.js";
-import { createQaPreparedRepoCliCommand } from "../../../helpers/qa-prepared-repo-cli.js";
 
 type JsonObject = Record<string, unknown>;
 type TelegramCall = { method: string; body: JsonObject };
@@ -111,30 +110,49 @@ async function settleCleanup(...cleanups: Array<() => Promise<void>>) {
   }
 }
 
-test("introduces itself once when Telegram reports joining an allowed supergroup", async () => {
+test("introduces itself once when Telegram reports joining an allowed supergroup", async ({
+  signal,
+  onTestFailed,
+  onTestFinished,
+}) => {
   const telegramCalls: TelegramCall[] = [];
   const pendingUpdates: unknown[] = [];
   const pendingPolls = new Set<ServerResponse>();
   let groundedModelResponses = 0;
-  let mock: Awaited<ReturnType<typeof startQaMockOpenAiServer>> | undefined;
-  let gateway: QaGatewayChild | undefined;
-  let phase = "starting mock provider";
-  let cleanupPhase = "not started";
-  onTestFailed(() => {
+  let providerRequests = 0;
+  const started = performance.now();
+  let phase = "test-enter";
+  let reported = false;
+  // Raw stderr remains visible under the E2E configuration silent mode.
+  const emitPhase = (event: "enter" | "failure") => {
     process.stderr.write(
-      `[telegram-join-intro] ${JSON.stringify({
+      `[qa-phase] ${JSON.stringify({
+        event,
         phase,
-        cleanupPhase,
-        groundedModelResponses,
-        telegramMethods: telegramCalls.map((call) => call.method),
+        elapsedMs: Math.round(performance.now() - started),
+        providerRequests,
         pendingUpdates: pendingUpdates.length,
-        pendingPolls: pendingPolls.size,
+        groundedModelResponses,
+        sends: telegramCalls.filter((call) => call.method === "sendMessage").length,
       })}\n`,
     );
-    if (gateway) {
-      process.stderr.write(`${gateway.logs().slice(-12_000)}\n`);
+  };
+  const enterPhase = (next: string) => {
+    phase = next;
+    emitPhase("enter");
+  };
+  const report = () => {
+    if (reported) {
+      return;
     }
-  });
+    reported = true;
+    emitPhase("failure");
+  };
+  signal.addEventListener("abort", report, { once: true });
+  onTestFailed(report);
+  onTestFinished(() => signal.removeEventListener("abort", report));
+  emitPhase("enter");
+  let mock: Awaited<ReturnType<typeof startQaMockOpenAiServer>> | undefined;
 
   const queueUpdate = (update: unknown) => {
     const pendingPoll = pendingPolls.values().next().value;
@@ -155,6 +173,7 @@ test("introduces itself once when Telegram reports joining an allowed supergroup
       writeJson(res, 503, { error: "mock provider is not ready" });
       return;
     }
+    providerRequests += 1;
     const raw = await readRequest(req);
     const upstream = await fetch(`${mock.baseUrl}${pathname}`, {
       method: req.method,
@@ -246,6 +265,7 @@ test("introduces itself once when Telegram reports joining an allowed supergroup
     succeed(res);
   };
 
+  enterPhase("http-start");
   await withServer(
     (req, res) => {
       void handleRequest(req, res).catch((error: unknown) => {
@@ -254,16 +274,19 @@ test("introduces itself once when Telegram reports joining an allowed supergroup
         });
       });
     },
-    async (apiRoot) =>
-      await withTempDir("openclaw-telegram-join-intro-", async (workspace) => {
+    async (apiRoot) => {
+      enterPhase("temp-dir-start");
+      return await withTempDir("openclaw-telegram-join-intro-", async (workspace) => {
         const gatewayOwner = createQaGatewayChild();
+        let gateway: QaGatewayChild | undefined;
         try {
           const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+          enterPhase("mock-start");
           mock = await startQaMockOpenAiServer();
-          phase = "starting Gateway fixture";
+          enterPhase("gateway-start");
           gateway = await gatewayOwner.start({
+            onListening: () => enterPhase("gateway-listening"),
             repoRoot,
-            command: createQaPreparedRepoCliCommand(repoRoot),
             providerBaseUrl: `${apiRoot}/v1`,
             mockSessionObserverUrl: mock.sessionObserverUrl,
             transportBaseUrl: apiRoot,
@@ -289,9 +312,6 @@ test("introduces itself once when Telegram reports joining an allowed supergroup
               }),
             },
             controlUiEnabled: false,
-            onListening: () => {
-              phase = "waiting for Gateway readiness";
-            },
             runtimeEnvPatch: {
               OPENCLAW_SKIP_CHANNELS: undefined,
               OPENCLAW_SKIP_PROVIDERS: undefined,
@@ -308,7 +328,8 @@ test("introduces itself once when Telegram reports joining an allowed supergroup
             },
           });
 
-          phase = "waiting for join introduction";
+          enterPhase("gateway-ready");
+          enterPhase("turn");
           queueUpdate(joinUpdate());
           await expect
             .poll(
@@ -347,7 +368,7 @@ test("introduces itself once when Telegram reports joining an allowed supergroup
               );
             });
 
-          phase = "verifying grounded introduction";
+          enterPhase("delivery-observed");
           const deliveries = telegramCalls.filter((call) => call.method === "sendMessage");
           expect(deliveries).toHaveLength(1);
           expect(String(deliveries[0]?.body.chat_id)).toBe(String(CHAT_ID));
@@ -370,18 +391,13 @@ test("introduces itself once when Telegram reports joining an allowed supergroup
             expect.stringContaining(UNAVAILABLE_HISTORY_FACT),
           );
         } finally {
+          enterPhase("cleanup");
           await settleCleanup(
-            async () => {
-              cleanupPhase = "stopping Gateway fixture";
-              await stopQaGatewayFixture(gatewayOwner);
-            },
-            async () => {
-              cleanupPhase = "stopping mock provider";
-              await mock?.stop();
-            },
+            async () => await stopQaGatewayFixture(gatewayOwner),
+            async () => await mock?.stop(),
           );
-          cleanupPhase = "closing HTTP and workspace fixtures";
         }
-      }),
+      });
+    },
   );
 }, 120_000);

@@ -24,6 +24,7 @@ import {
   modelSupportsInput,
   prepareModelRunCapabilities,
 } from "../../agents/model-catalog-lookup.js";
+import { recordModelFallbackStop } from "../../agents/model-fallback-stop.js";
 import { resolveConfiguredThinkingDefault } from "../../agents/model-thinking-default.js";
 import {
   resolveScheduledToolCallerContext,
@@ -49,7 +50,12 @@ import { resolveCronAuthenticatedChannelRequester } from "../tools-allow-provena
 import type { CronAgentExecutionPhaseUpdate } from "../types.js";
 import { isCommandStyleCronMessage } from "./command-style-prompt.js";
 import { resolveIsolatedCronPromptCacheKey } from "./prompt-cache-key.js";
-import { assertCronRuntimeAuthorityCandidate } from "./run-admission.js";
+import {
+  assertCronCandidateSandboxPlacement,
+  assertCronRuntimeAuthorityCandidate,
+  resolveCronSandboxPlacement,
+  type CronSandboxPlacement,
+} from "./run-admission.js";
 import { createCronCandidateExecutionResolver } from "./run-candidate-runtime.js";
 import { finalizeCronPromptForResolvedTools } from "./run-delivery-trace.js";
 import {
@@ -88,6 +94,7 @@ export function createCronPromptExecutor(
     onPromptCompleted: (run: CronCompletedPromptRun) => void;
   },
 ) {
+  const trigger = params.trigger === "event" ? "event" : "cron";
   const cronFallbacksOverride =
     params.modelFallbacksOverride ??
     resolveCronFallbacksOverride({
@@ -162,6 +169,9 @@ export function createCronPromptExecutor(
     hasNewGeneratedMediaTaskForSessionKey(params.runSessionKey, attemptMediaTaskIds);
 
   const resolveCandidateExecution = createCronCandidateExecutionResolver(params);
+  // Resolved once per isolated run from the prepared session entry; every
+  // candidate (initial, fallback, override) reuses the same placement facts.
+  let sandboxPlacement: CronSandboxPlacement | undefined;
 
   return async (promptText: string, runStartedAt: number): Promise<CronCompletedPromptRun> => {
     using inferenceLease = new DisposableStack();
@@ -202,6 +212,7 @@ export function createCronPromptExecutor(
           });
     pendingUserTurn = { promptText, recorder: userTurnTranscriptRecorder };
     const cronAdmission = prepareCronRunAdmission({
+      operatorAuthority: params.operatorAuthority,
       admissionSource: params.admissionSource,
       deliveryAttemptFence: params.deliveryAttemptFence,
       cfg: params.cfgWithAgentDefaults,
@@ -237,6 +248,7 @@ export function createCronPromptExecutor(
     }
     const { modelResolve, currentChannelId } = await prepareCronModelResolveInput({
       ...params,
+      trigger,
       prompt: promptText,
       messageChannel,
     });
@@ -364,11 +376,6 @@ export function createCronPromptExecutor(
           catalog: thinkingCatalog,
           agentRuntime: candidateRuntime,
         });
-        if (cliExecution && !params.job.runtimeAuthority && !binding) {
-          throw new Error(
-            "Automation has no recorded inference account. Explicitly select its account with a model@profile update before running it.",
-          );
-        }
         if (binding && (providerOverride !== binding.provider || cliExecution)) {
           throw new Error(
             "Automation candidate is incompatible with its recorded inference account and route.",
@@ -379,6 +386,22 @@ export function createCronPromptExecutor(
           authority: params.job.runtimeAuthority,
           candidateRuntime,
           cliExecution,
+        });
+        // CLI backends execute on the gateway host; a session whose configured
+        // sandbox claims containment must fail closed instead of dispatching
+        // there. Covers every candidate: initial selection, fallbacks, and
+        // harness/runtime overrides. Unowned preflight errors are terminal for
+        // the whole fallback chain, so this cannot silently switch models.
+        sandboxPlacement ??= resolveCronSandboxPlacement({
+          cfg: params.cfgWithAgentDefaults,
+          agentId: params.agentId,
+          sessionKey: params.runSessionKey,
+          preparedSessionEntry: params.cronSession.sessionEntry,
+        });
+        assertCronCandidateSandboxPlacement({
+          ...sandboxPlacement,
+          cliExecution,
+          executionProvider,
         });
         // The validated candidate that admits detached work owns its continuation
         // even if the provider throws before returning result metadata.
@@ -424,7 +447,7 @@ export function createCronPromptExecutor(
             sessionKey: params.runSessionKey,
             sessionTarget,
             agentId: params.agentId,
-            trigger: "cron",
+            trigger,
             jobId: params.job.id,
             messageActionTurnCapability: cronAdmission.messageActionTurnCapability,
             config: params.cfgWithAgentDefaults,
@@ -445,6 +468,7 @@ export function createCronPromptExecutor(
             extraSystemPrompt: params.deliverySystemPrompt,
             sourceReplyDeliveryMode: sourceDelivery.sourceReplyDeliveryMode,
             requireExplicitMessageTarget: sourceDelivery.messageTool.requireExplicitTarget,
+            messageToolFinalByDefault: sourceDelivery.messageTool.finalByDefault,
             scheduledToolPolicy,
             onExecutionStarted: notifyExecutionStarted,
             onExecutionPhase: notifyExecutionPhase,
@@ -509,6 +533,14 @@ export function createCronPromptExecutor(
                         : undefined,
                     })
                   : undefined;
+                if (trigger === "cron" && !binding && authProfileId) {
+                  const refusal = new Error(
+                    "Automation has no recorded inference account. Explicitly select its account with a model@profile update before running it.",
+                  );
+                  // Another model would only bypass the operator's account choice.
+                  recordModelFallbackStop(refusal);
+                  throw refusal;
+                }
                 const guardedCliSessionBinding =
                   cliSessionBinding && hasCliSessionReuseMetadata(cliSessionBinding)
                     ? cliSessionBinding
@@ -530,13 +562,10 @@ export function createCronPromptExecutor(
                   ),
                   provider: executionProvider,
                   authProfileId,
+                  nativeAuthOnly: trigger === "cron" && !binding ? true : undefined,
                   cliSessionId: cliSessionBinding?.sessionId,
                   cliSessionBinding: guardedCliSessionBinding,
-                  cliSessionBindingFacts: {
-                    extraSystemPromptStatic: params.deliverySystemPrompt,
-                    sourceReplyDeliveryMode: sourceDelivery.sourceReplyDeliveryMode,
-                    requireExplicitMessageTarget: sourceDelivery.messageTool.requireExplicitTarget,
-                  },
+                  cliSessionBindingFacts: params.cliSessionBindingFacts,
                   toolsAllow: resolveCliRuntimeToolsAllow(params.agentPayload?.toolsAllow),
                   abortSignal: cliAbortSignal,
                 });
@@ -569,7 +598,7 @@ export function createCronPromptExecutor(
               {
                 preparedRunAdmission: cronAdmission.preparedRunAdmission,
                 abortSignal: cliAbortSignal,
-                trigger: "cron",
+                trigger,
                 isFinalFallbackAttempt: runOptions.isFinalFallbackAttempt,
               },
             );

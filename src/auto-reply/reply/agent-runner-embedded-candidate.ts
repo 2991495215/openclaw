@@ -5,12 +5,13 @@ import type {
 } from "../../agents/embedded-agent-runner/run/internal-params.js";
 import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
 import { resolveAgentHarnessPolicy } from "../../agents/harness/policy.js";
-import { resolveOpenAIRuntimeProvider } from "../../agents/openai-routing.js";
 import type { ReplyDeliveryState } from "../../agents/reply-completion.js";
 import type { CompactionRequestBudget } from "../../agents/sessions/compaction/request-budget.js";
 import { resolveGroupSessionKey } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { resolveSessionPinnedHarnessId } from "../../sessions/agent-harness-session-key.js";
+import { markReplyOperationGlobalLaneWaitProgress } from "../../sessions/session-controller.js";
+import { hasReplyOperationExecutionStarted } from "../../sessions/session-controller.state.js";
 import {
   isMarkdownCapableMessageChannel,
   resolveMessageChannel,
@@ -28,8 +29,6 @@ import { buildFallbackCandidateTurnParams } from "./agent-runner-run-params.js";
 import { buildEmbeddedRunExecutionParams } from "./agent-runner-utils.js";
 import type { DirectBlockDelivery } from "./reply-delivery.js";
 import { resolveReplyOperationTerminationFields } from "./reply-operation-abort.js";
-import { markReplyOperationGlobalLaneWaitProgress } from "./reply-run-registry.js";
-import { hasReplyOperationExecutionStarted } from "./reply-run-registry.state.js";
 import {
   bindSourceReplyDeliveryRuntime,
   readSourceReplyDeliveryRuntime,
@@ -107,19 +106,6 @@ export async function runEmbeddedFallbackCandidate(
         agentId: turn.followupRun.run.agentId,
         sessionKey: turn.followupRun.run.runtimePolicySessionKey ?? turn.sessionKey,
       });
-  const embeddedRunProvider = resolveOpenAIRuntimeProvider({
-    provider: params.provider,
-    harnessRuntime: agentHarnessPolicy.runtime,
-    authProfileProvider: runBaseParams.authProfileId?.split(":", 1)[0],
-    authProfileId: runBaseParams.authProfileId,
-    config: params.runtimeConfig,
-    workspaceDir: turn.followupRun.run.workspaceDir,
-  });
-  const embeddedRunHarnessOverride =
-    params.agentHarnessRuntimeOverride ??
-    (agentHarnessPolicy.runtime === "openclaw" && embeddedRunProvider !== params.provider
-      ? "openclaw"
-      : undefined);
   let attemptCompactionCount = 0;
   let postCompactionModelAttempted = false;
   let compactionAccounting: CompactionAccountingFact | undefined;
@@ -155,9 +141,9 @@ export async function runEmbeddedFallbackCandidate(
         groupSpace: normalizeOptionalString(turn.sessionCtx.GroupSpace),
         ...buildFallbackCandidateTurnParams(params),
         contextWindow: turn.getActiveSessionEntry()?.contextWindow,
-        provider: embeddedRunProvider,
+        provider: params.provider,
         agentHarnessId: resolveSessionPinnedHarnessId(turn.getActiveSessionEntry()),
-        agentHarnessRuntimeOverride: embeddedRunHarnessOverride,
+        agentHarnessRuntimeOverride: params.agentHarnessRuntimeOverride,
         agentHarnessRuntimePreparationHint:
           agentHarnessPolicy.runtimeSource !== "implicit" ? agentHarnessPolicy.runtime : undefined,
         sandboxSessionKey: turn.runtimePolicySessionKey,
@@ -188,6 +174,7 @@ export async function runEmbeddedFallbackCandidate(
         toolAuthorityFingerprint: turn.replyOperation?.toolAuthorityFingerprint,
         deferTerminalLifecycle: true,
         onAttemptStart: lifecycleBackstop.beginAttempt,
+        onAttemptTerminalReplaced: lifecycleBackstop.replaceAttemptTerminal,
         onCompactionAccounting: (fact) => {
           compactionAccounting = fact;
         },

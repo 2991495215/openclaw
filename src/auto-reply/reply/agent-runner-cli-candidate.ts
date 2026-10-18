@@ -19,6 +19,7 @@ import {
 import { findModelInCatalog } from "../../agents/model-catalog-lookup.js";
 import { normalizeChatType } from "../../channels/chat-type.js";
 import { shouldPreserveUserFacingSessionStateForInputProvenance } from "../../sessions/input-provenance.js";
+import { hasReplyOperationExecutionStarted } from "../../sessions/session-controller.state.js";
 import { createAgentLifecycleTerminalBackstop } from "./agent-lifecycle-terminal.js";
 import { resolveRunAuthProfile } from "./agent-runner-auth-profile.js";
 import {
@@ -42,7 +43,6 @@ import { shouldBridgeCliPreambleEvents } from "./get-reply.types.js";
 import { hasInboundAudio } from "./inbound-media.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { resolveReplyOperationTerminationFields } from "./reply-operation-abort.js";
-import { hasReplyOperationExecutionStarted } from "./reply-run-registry.state.js";
 import { resolveReplyRunTrigger } from "./reply-turn-kind.js";
 
 export async function runCliFallbackCandidate(
@@ -436,7 +436,7 @@ export async function runCliFallbackCandidate(
             ...forkRunParams,
             authProfileId,
             mediaImageLayout: params.currentTurnImages.mediaImageLayout,
-            messageChannel: turn.followupRun.originatingChannel ?? undefined,
+            messageChannel: turn.followupRun.originatingChannel,
             messageProvider: hookMessageProvider,
             currentChannelId:
               turn.followupRun.originatingTo ?? turn.sessionCtx.OriginatingTo ?? turn.sessionCtx.To,

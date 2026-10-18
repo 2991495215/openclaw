@@ -120,7 +120,7 @@ export async function ensureLoaded(
         );
       }
     }
-    const rawConfigJob = loaded.configJobs[index] ?? structuredClone(raw);
+    const rawConfigJob = loaded.configJobs[index] ?? raw;
     const sourceIndex = loaded.configJobIndexes[index] ?? index;
     const runtimeEntry = loaded.configJobRuntimeEntries[index];
     const rawInvalidReason = getInvalidPersistedCronJobReason(raw);
@@ -162,7 +162,7 @@ export async function ensureLoaded(
       if (runtimeState && typeof runtimeState === "object" && !Array.isArray(runtimeState)) {
         // Preserve runtime state with the quarantined config so doctor can
         // repair shape without losing last/next run information.
-        quarantineEntry.state = structuredClone(runtimeState as Record<string, unknown>);
+        quarantineEntry.state = runtimeState as Record<string, unknown>;
       }
       const updatedAtMs = runtimeEntry?.updatedAtMs ?? raw.updatedAtMs;
       if (typeof updatedAtMs === "number" && Number.isFinite(updatedAtMs)) {
@@ -180,6 +180,12 @@ export async function ensureLoaded(
       continue;
     }
     const hydrated = hydratedRaw;
+    const loadWarning = state.deps.describeJobLoadWarning?.(hydrated);
+    const loadWarningKey = `host:${hydrated.id}`;
+    if (loadWarning && !state.warnedInvalidPersistedJobKeys.has(loadWarningKey)) {
+      state.warnedInvalidPersistedJobKeys.add(loadWarningKey);
+      state.deps.log.warn({ jobId: hydrated.id, name: hydrated.name }, loadWarning);
+    }
     jobs.push(hydrated);
     durableNextRunAtMsByJobId.set(hydrated.id, hydrated.state.nextRunAtMs);
   }
@@ -393,7 +399,6 @@ export async function persistCronJobMutation(params: {
   agentId?: string;
   preconditionJob?: CronJob;
   expectedJob?: { id: string; configRevision: string };
-  clawPrecondition?: CronRuntimeMutationInputs["cron.mutateJobs"]["clawPrecondition"];
   receiptMutation?: CronRuntimeMutationInputs["cron.mutateJobs"]["receiptMutation"];
   afterCommit?: () => void;
   afterPublish?: () => void;
@@ -425,7 +430,6 @@ export async function persistCronJobMutation(params: {
       agentId: params.agentId,
       preconditionJob: params.preconditionJob,
       expectedJob: params.expectedJob,
-      clawPrecondition: params.clawPrecondition,
       receiptMutation: params.receiptMutation,
       jobMutation: params.jobMutation,
     }),

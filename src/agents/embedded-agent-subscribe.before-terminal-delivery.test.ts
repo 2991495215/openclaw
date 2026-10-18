@@ -304,7 +304,7 @@ describe("delivery failures", () => {
 
 describe("deferred reply supersession", () => {
   it.each(["immediate", "rejected"] as const)(
-    "recovers a required reply without stealing %s delivery ownership",
+    "honors terminal silence without stealing %s delivery ownership",
     async (delivery) => {
       const markdown =
         "## Result\n\n- **Saved** the note.\n- Keep `note.md` unchanged.\n\n```text\nfirst  second\n```";
@@ -361,7 +361,7 @@ describe("deferred reply supersession", () => {
         itemLifecycle: h.subscription.getItemLifecycle(),
         toolMetas: [{ toolName: "read", toolCallId: "read", isError: false, replaySafe: true }],
       });
-      expect(h.subscription.assistantTexts).toEqual([markdown, "NO_REPLY"]);
+      expect(h.subscription.assistantTexts).toEqual([markdown]);
       expect(attempt.itemLifecycle).toMatchObject({
         startedCount: 1,
         completedCount: 1,
@@ -390,11 +390,7 @@ describe("deferred reply supersession", () => {
         terminalState: resolveEmbeddedRunAttemptTerminalState({ attempt, assistant }),
         settledTurnFinalizationAvailable: true,
       });
-      if (delivery === "rejected") {
-        expect(request).toContain("Tools are unavailable");
-      } else {
-        expect(request).toBeNull();
-      }
+      expect(request).toBeNull();
     },
   );
 

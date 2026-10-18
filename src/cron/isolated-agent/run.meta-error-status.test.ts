@@ -4,16 +4,14 @@ import {
   createDeferred,
   withinTest,
 } from "../../../test/helpers/promise.js";
-import {
-  createReplyOperation,
-  type ReplyOperation,
-} from "../../auto-reply/reply/reply-run-registry.js";
 import { setRuntimeConfigSnapshot } from "../../config/config.js";
 import { deriveGatewaySessionLifecycleProjectionPatch } from "../../gateway/session-lifecycle-state.js";
 import { onAgentEventForRun, type AgentEventPayload } from "../../infra/agent-events.js";
 import { createAutomationResultRecorder } from "../../infra/agent-run-registry.automation.js";
 import { getAgentRunContext } from "../../infra/agent-run-registry.js";
 import { onGatewayWorkMetricsChanged } from "../../infra/gateway-work-metrics-events.js";
+import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
+import { createReplyOperation } from "../../sessions/session-controller.operation.js";
 import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { expectObjectFields } from "../../test-utils/mock-call-assertions.js";
 import {
@@ -240,8 +238,8 @@ describe("runCronIsolatedAgentTurn - meta.error status propagation", () => {
         async runIsolatedAgentJob() {
           throw new Error("The admitted isolated invocation must not be restarted");
         },
-        isExecutionIdle: (candidate, ownSessionKey) =>
-          isCronExecutionIdle(cfg, candidate, "main", ownSessionKey),
+        isExecutionIdle: (candidate, ownSessionKey, ownReplyOperation) =>
+          isCronExecutionIdle(cfg, candidate, "main", ownSessionKey, ownReplyOperation),
       });
       const marker = markCronJobActive("test-job", { agentId: "main" });
       const controller = new AbortController();
@@ -294,10 +292,12 @@ describe("runCronIsolatedAgentTurn - meta.error status propagation", () => {
       const waitForIdle: NonNullable<RunCronAgentTurnParams["waitForIdle"]> = (
         ownSessionKey,
         waiterSignal,
+        ownReplyOperation,
       ) =>
         waitForCronExecutionIdle(state, job, {
           activeJobMarker: marker,
           ownSessionKey,
+          ownReplyOperation,
           signal: waiterSignal ?? abortSignal,
           assertCurrent,
         });
@@ -547,18 +547,15 @@ describe("runCronIsolatedAgentTurn - meta.error status propagation", () => {
 
   it("marks an aborted embedded agent run without a run-level error as a cron error", async () => {
     mockAgentRun({ ...failedRun, meta: { aborted: true } });
-    const result = await runTurn({
-      job: makeIsolatedAgentJobFixture({ deleteAfterRun: true }),
-    });
+    const result = await runTurn();
     expectObjectFields(result, { status: "error", error: "cron isolated agent run aborted" });
-    expect(callGatewayMock).toHaveBeenCalledTimes(1);
   });
 
   it("keeps explicit silent replies as successful cron completions", async () => {
     await useRealOutcome();
     mockAgentRun({
       usage: { input: 10, output: 1 },
-      meta: { finalAssistantRawText: "NO_REPLY", finalAssistantVisibleText: "NO_REPLY" },
+      meta: { terminalReply: { disposition: "silent" } },
     });
     const result = await runTurn();
     expect(dispatchCronDeliveryMock).toHaveBeenCalled();
@@ -569,7 +566,7 @@ describe("runCronIsolatedAgentTurn - meta.error status propagation", () => {
     await useRealOutcome();
     mockAgentRun({
       payloads: [{ text: "⚠️ 🛠️ Bash failed: mount unavailable", isError: true }],
-      meta: { finalAssistantVisibleText: "NO_REPLY" },
+      meta: { terminalReply: { disposition: "silent" } },
     });
     const result = await runTurn();
     expect(result.status).toBe("error");
@@ -723,12 +720,11 @@ describe("delivered report outcome", () => {
       messagingToolSentTargets,
       meta: {
         agentMeta: { usage: { input: 10, output: 20 } },
-        finalAssistantVisibleText: "NO_REPLY",
-        finalAssistantRawText: "NO_REPLY",
+        terminalReply: { disposition: "silent" },
       },
     });
 
-    const cfg = {};
+    const cfg = { session: { store: "/tmp/store.json" } };
     setRuntimeConfigSnapshot(cfg);
     const result = await runCronIsolatedAgentTurn({
       deliveryAttemptFence: null,

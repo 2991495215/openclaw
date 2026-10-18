@@ -17,11 +17,6 @@ import {
 } from "../agents/tools/gateway-caller-context.js";
 import { parseExecutionIdentityAdmissionToken } from "../audit/execution-identity-admission.js";
 import {
-  createReplyOperation,
-  replyRunRegistry,
-  type ReplyOperation,
-} from "../auto-reply/reply/reply-run-registry.js";
-import {
   assertSessionEventTargetCurrent,
   captureSessionEventTargetForHost,
 } from "../auto-reply/reply/session-event-handoff.js";
@@ -52,6 +47,10 @@ import {
   bindGatewayContextResolver,
   clearGatewayContextResolver,
 } from "../plugins/runtime/gateway-request-scope.js";
+import type { ReplyOperation } from "../sessions/session-controller.contracts.js";
+import { createReplyOperation } from "../sessions/session-controller.operation.js";
+import { getSessionControllerOperation } from "../sessions/session-controller.state.js";
+import { abortReplyRunBySessionId } from "../sessions/session-controller.stop-runtime.js";
 import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
 import type { DB as OpenClawStateDatabase } from "../state/openclaw-state-db.generated.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
@@ -317,7 +316,7 @@ it.for(["resume", "stop"] as const)(
     let foreground: ReplyOperation | undefined;
     let scheduledOperation: ReplyOperation | undefined;
     const unsubscribe = onGatewayWorkMetricsChanged(() => {
-      const operation = replyRunRegistry.get(SESSION);
+      const operation = getSessionControllerOperation(SESSION);
       if (!injected && operation) {
         injected = true;
         scheduledOperation = operation;
@@ -352,7 +351,7 @@ it.for(["resume", "stop"] as const)(
       );
     };
     runEmbeddedAgentMock.mockImplementation(async (params) => {
-      expect(replyRunRegistry.get(SESSION)).toBe(scheduledOperation);
+      expect(getSessionControllerOperation(SESSION)).toBe(scheduledOperation);
       expect(inspectActiveCronRunReceipt({ storePath, jobId: job.id })?.receiptId).toBe(
         receiptAtWait?.receiptId,
       );
@@ -365,7 +364,7 @@ it.for(["resume", "stop"] as const)(
       expect(readExecutionBinding()).toEqual(admittedBinding);
       await params.onExecutionStarted?.();
       expect(admitted.operationalRunInstance.runId).toBe(params.runId);
-      expect(replyRunRegistry.get(SESSION)).toBe(scheduledOperation);
+      expect(getSessionControllerOperation(SESSION)).toBe(scheduledOperation);
       expect(params.prompt.split(noticeText)).toHaveLength(2);
       expect(params.prompt).toContain("Exact observed command output");
       await params.onAgentEvent?.({ stream: "lifecycle", data: { phase: "start" } });
@@ -406,7 +405,9 @@ it.for(["resume", "stop"] as const)(
       expect(readExecutionBinding()).toBeUndefined();
       expect(peekSystemEventEntries(SESSION).some((event) => event.id === notice.id)).toBe(true);
       if (completion === "stop") {
-        expect(replyRunRegistry.abort(SESSION)).toBe(true);
+        expect(
+          abortReplyRunBySessionId(expectDefined(scheduledOperation, "scheduled reply").sessionId),
+        ).toBe(true);
       } else {
         foreground?.complete();
       }

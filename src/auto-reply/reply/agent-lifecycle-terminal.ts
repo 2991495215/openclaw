@@ -10,6 +10,7 @@ import { formatErrorMessage } from "../../infra/errors.js";
 
 export type AgentLifecycleTerminalBackstop = {
   beginAttempt: () => void;
+  replaceAttemptTerminal: () => void;
   capture: AgentLifecycleTerminalBackstop["emit"];
   emit: (
     phase: "end" | "error",
@@ -41,6 +42,7 @@ const DEFERRED_TERMINAL_METADATA_KEYS = [
   "livenessState",
   "replayInvalid",
   "errorObservation",
+  "suppressErrorNotice",
   "assistantTranscriptIdempotencyKey",
 ] as const;
 
@@ -201,6 +203,8 @@ export function createAgentLifecycleTerminalBackstop(params: {
 
   return {
     beginAttempt,
+    // Accepted recovery replaces pending attempt facts, never a published terminal.
+    replaceAttemptTerminal: beginAttempt,
     capture,
     emit,
     getDeferredError: () => (state.kind === "pending" ? state.deferredError : undefined),

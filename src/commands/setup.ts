@@ -269,6 +269,9 @@ async function setupUnderOwner(
   await fs.mkdir(sessionsDir, { recursive: true });
   const { provisionDefaultProactiveJob } = await import("../cron/default-proactive-job.js");
   await provisionDefaultProactiveJob(next, selectedAgentId);
+  const { initializeFreshDaemonRuntimePinMigration } =
+    await import("../infra/state-migrations.daemon-runtime-pins.js");
+  initializeFreshDaemonRuntimePinMigration(process.env);
   if (opts?.json) {
     writeRuntimeJson(runtime, {
       ok: true,

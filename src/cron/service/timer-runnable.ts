@@ -12,7 +12,10 @@ import {
   resolveJobLastRunEndedAtMs,
   resolveJobLastRunStatus,
 } from "./jobs-scheduling.js";
-import { resolveForcePreservedOneShotAtMs } from "./one-shot-schedule.js";
+import {
+  isCronOneShotContinuationJob,
+  resolveForcePreservedOneShotAtMs,
+} from "./one-shot-schedule.js";
 import { hasPendingCronTriggerInterval } from "./trigger-interval.js";
 
 /**
@@ -52,11 +55,7 @@ export function hasMissedCronSlotSinceLastRun(job: CronJob, nowMs: number): bool
   } catch {
     return false;
   }
-  if (
-    typeof previousRunAtMs !== "number" ||
-    !Number.isFinite(previousRunAtMs) ||
-    previousRunAtMs <= lastRunAtMs
-  ) {
+  if (previousRunAtMs === undefined || previousRunAtMs <= lastRunAtMs) {
     return false;
   }
   // Slots computed from freshly edited scheduling inputs never existed before
@@ -121,7 +120,8 @@ export function isRunnableJob(params: {
       typeof lastRun === "number" &&
       typeof nextRun === "number" &&
       nextRun > lastRun &&
-      parseAbsoluteTimeMs(job.schedule.at) === nextRun
+      (parseAbsoluteTimeMs(job.schedule.at) === nextRun ||
+        (isCronOneShotContinuationJob(job) && job.state.pacedNextRunAtMs === nextRun))
     ) {
       return nowMs >= nextRun;
     }
@@ -160,7 +160,7 @@ export function isRunnableJob(params: {
       return false;
     }
     const lastEndedAtMs = resolveJobLastRunEndedAtMs(job) ?? lastRunAtMs;
-    return typeof latestRunAtMs === "number" && latestRunAtMs > lastEndedAtMs;
+    return latestRunAtMs !== undefined && latestRunAtMs > lastEndedAtMs;
   }
   if (!params.allowCronMissedRunByLastRun || job.schedule.kind !== "cron") {
     return false;

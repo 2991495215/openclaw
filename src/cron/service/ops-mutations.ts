@@ -7,10 +7,12 @@ import {
   type CronActiveJobMarker,
   noteActiveCronJobRemoval,
   onCronJobInactive,
-  requestActiveCronJobCancellation,
 } from "../active-jobs.js";
 import { resolveCronJobEffectiveAgentId, tryResolveCronJobEffectiveAgentId } from "../agent-id.js";
-import { resolveCronJobConfigRevision } from "../config-revision.js";
+import {
+  CronJobConfigRevisionConflictError,
+  resolveCronJobConfigRevision,
+} from "../config-revision.js";
 import { normalizeCronRunJobId } from "../run-history.js";
 import { removeCronJobBaseSession } from "../session-reaper.js";
 import { removeStaleCronJobFamilyRows } from "../store.js";
@@ -35,11 +37,11 @@ import {
 } from "./locked.js";
 import { normalizeOptionalAgentId } from "./normalize.js";
 import { resolveCurrentDefaultAgentId } from "./ops-shared.js";
-import type { CronRemoveOptions } from "./remove-options.js";
 import { captureCronSchedulerSnapshot } from "./scheduler-config.js";
 import type {
   CronAddOptions,
   CronAddResult,
+  CronRemoveOptions,
   CronServiceState,
   CronUpdateOptions,
   CronUpdatePrecondition,
@@ -56,58 +58,6 @@ import {
 } from "./store.js";
 
 const RETRY_ADD_AFTER_SESSION_CLEANUP = new Error("retry add after session cleanup");
-
-/** Cancels only caller-corroborated definitions while the durable lifecycle fence holds. */
-export async function quiesceJobs(
-  state: CronServiceState,
-  jobs: readonly { id: string; revision: string }[],
-  commitGuard: () => void,
-  withCurrent?: (cancel: () => void) => Promise<void>,
-): Promise<void> {
-  const source = captureCronServiceMutationSource(state);
-  await locked(state, async () => {
-    await ensureLoadedForOperation(state);
-    const assertCurrent = () => {
-      source.assertCurrent();
-      for (const expected of jobs) {
-        const job = state.store?.jobs.find((candidate) => candidate.id === expected.id);
-        if (!job || resolveCronJobConfigRevision(job) !== expected.revision) {
-          throw new Error(`Cron job ${expected.id} changed before cancellation.`);
-        }
-      }
-      commitGuard();
-    };
-    if (withCurrent) {
-      assertCurrent();
-    }
-    let cancelled = false;
-    let closed = false;
-    const cancel = () => {
-      if (closed || cancelled) {
-        throw new Error("Cron cancellation authority has already settled.");
-      }
-      assertCurrent();
-      cancelled = true;
-      for (const job of jobs) {
-        requestActiveCronJobCancellation(job.id, "Claw agent removal.");
-      }
-    };
-    try {
-      // The caller holds its authoritative worker snapshot while this synchronous
-      // cancellation applies the already-validated process-local lifecycle fact.
-      if (withCurrent) {
-        await withCurrent(cancel);
-      } else {
-        cancel();
-      }
-      if (!cancelled) {
-        throw new Error("Cron cancellation was not authorized by its lifecycle owner.");
-      }
-    } finally {
-      closed = true;
-    }
-  });
-}
 
 /** Adds or converges a declaration-keyed cron job inside one store lock and write transaction. */
 export async function add(
@@ -155,6 +105,7 @@ export async function add(
         createdActor: opts?.createdActor,
         inferenceBinding: opts?.inferenceBinding,
         sourceConversation: opts?.sourceConversation,
+        operatorSource: opts?.operatorSource,
         skillLibrarySelections: opts?.skillLibrarySelections,
         scheduledToolPolicy: opts?.scheduledToolPolicy,
         toolsAllowProvenance: opts?.toolsAllowProvenance,
@@ -359,9 +310,6 @@ export async function updateWithPrecondition(
 
 /** Removes a cron job through its worker owner before canceling and cleaning up host work. */
 export async function remove(state: CronServiceState, id: string, opts?: CronRemoveOptions) {
-  if (opts?.clawPrecondition && opts.clawPrecondition.jobId !== id) {
-    throw new Error("Portable removal targets a different automation.");
-  }
   const source = captureCronJobMutationSource(state);
   let sessionCleanup:
     | {
@@ -381,10 +329,16 @@ export async function remove(state: CronServiceState, id: string, opts?: CronRem
     }
     const removedJob = state.store.jobs.find((j) => j.id === id);
     if (!removedJob) {
-      if (opts?.clawPrecondition) {
-        throw new Error("Portable automation changed before removal; rebuild the Claw plan.");
-      }
       return { ok: true, removed: false } as const;
+    }
+    if (opts?.expectedConfigRevision !== undefined) {
+      const actualConfigRevision = resolveCronJobConfigRevision(removedJob);
+      if (actualConfigRevision !== opts.expectedConfigRevision) {
+        throw new CronJobConfigRevisionConflictError(
+          opts.expectedConfigRevision,
+          actualConfigRevision,
+        );
+      }
     }
     source.assertCurrent();
     opts?.commitGuard?.();
@@ -398,15 +352,14 @@ export async function remove(state: CronServiceState, id: string, opts?: CronRem
       source,
       method: "cron.remove",
       assertCurrent: opts?.commitGuard,
+      ...(opts?.expectedConfigRevision !== undefined
+        ? { expectedJob: { id, configRevision: opts.expectedConfigRevision } }
+        : {}),
       jobMutation: { kind: "remove", ids: [id], systemOwned: opts?.systemOwned },
       jobMutationSnapshot: {
         nowMs: state.deps.nowMs(),
         scheduler: await captureCronSchedulerSnapshot(state),
       },
-      clawPrecondition: opts?.clawPrecondition,
-      expectedJob: opts?.clawPrecondition
-        ? { id, configRevision: opts.clawPrecondition.configRevision }
-        : undefined,
       suppressScheduledJobId: id,
       afterCommit: () => {
         noteActiveCronJobRemoval(id, opts?.commitGuard, (activeMarker) => {

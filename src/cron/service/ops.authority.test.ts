@@ -1,13 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { runOpenClawStateWriteTransaction } from "../../state/openclaw-state-db.js";
-import { markCronJobActive, clearCronJobActive } from "../active-jobs.js";
-import { resolveCronJobConfigRevision } from "../config-revision.js";
+import { toPublicCronJob } from "../public-job.js";
 import { readCronJobScratchState } from "../scratch-store.js";
 import { setupCronServiceSuite, writeCronStoreSnapshot } from "../service.test-harness.js";
 import { loadCronStore } from "../store.js";
 import { stop } from "./ops-lifecycle.js";
-import { add, quiesceJobs, remove, update, updateWithPrecondition } from "./ops-mutations.js";
+import { add, remove, update, updateWithPrecondition } from "./ops-mutations.js";
 import { writeScratch } from "./ops-read.js";
 import { createOkIsolatedCronStateFactory } from "./ops.test-support.js";
 import type { CronAddOptions, CronAddResult } from "./state.js";
@@ -33,61 +32,69 @@ function requireDeclarativeAddResult(result: CronAddResult) {
 }
 
 describe("scheduled tool policy provenance", () => {
-  it("rechecks cancellation authority after worker preparation and closes the retained callback", async () => {
+  it("retains a continuation source privately until an executable edit retires it", async () => {
     const { storePath } = await makeStorePath();
     const state = createOkIsolatedCronState({ storePath, now: Date.now() });
-    const job = await add(state, {
-      name: "guarded cancellation",
-      enabled: true,
-      schedule: { kind: "every", everyMs: 60_000 },
-      sessionTarget: "isolated",
-      wakeMode: "now",
-      payload: { kind: "agentTurn", message: "run" },
+    const sessionKey = "agent:main:continuation";
+    const source = {
+      version: 1,
+      agentId: "main",
+      sessionKey,
+      sessionId: "source-session",
+      sourceRunId: "creator-run",
+      snapshot: {
+        profileId: "fixture-operator",
+        scopes: ["operator.write"],
+        assignedRole: null,
+        githubLogin: null,
+        grant: null,
+        aliasBindingIds: [],
+        authPolicy: {
+          generation: "",
+          grantGeneration: "fixture-generation",
+          role: "operator",
+          authMethod: "token",
+        },
+        controlUiAdmin: true,
+        localOperator: false,
+        sourceIngress: "control-ui",
+      },
+    } satisfies NonNullable<CronAddOptions["operatorSource"]>;
+    const created = await add(
+      state,
+      {
+        ...jobInput,
+        agentId: "main",
+        sessionTarget: `session:${sessionKey}`,
+        owner: { agentId: "main", sessionKey, accountId: "default" },
+        payload: { ...jobInput.payload, toolsAllow: ["*"] },
+      },
+      {
+        operatorSource: source,
+        scheduledToolPolicy: {
+          version: 1,
+          mode: "account",
+          ownerSessionKey: sessionKey,
+          ownerAccountId: "default",
+        },
+      },
+    );
+    expect(created.operatorSource?.source).toEqual(source);
+    const stored = (await loadCronStore(storePath)).jobs[0];
+    expect(stored?.operatorSource).toEqual(created.operatorSource);
+    expect(toPublicCronJob(created)).not.toHaveProperty("operatorSource");
+    const display = await update(state, created.id, { description: "Readable description" });
+    expect(display.operatorSource).toEqual(created.operatorSource);
+    const edited = await update(state, created.id, {
+      payload: { kind: "agentTurn", message: "A different task" },
     });
-    const marker = markCronJobActive(job.id);
-    if (!marker) {
-      throw new Error("Expected an active cron owner");
-    }
-    const cancelRun = vi.fn();
-    marker.cancellation = { kind: "bound", cancel: cancelRun };
-    const entered = createDeferred();
-    const resume = createDeferred();
-    let current = true;
-    const guard = () => {
-      if (!current) {
-        throw new Error("removal owner changed");
-      }
-    };
-    const jobs = [{ id: job.id, revision: resolveCronJobConfigRevision(job) }];
-    try {
-      const pending = quiesceJobs(state, jobs, guard, async (cancel) => {
-        entered.resolve();
-        await resume.promise;
-        cancel();
-      });
-      await entered.promise;
-      current = false;
-      resume.resolve();
-      await expect(pending).rejects.toThrow("removal owner changed");
-      expect(cancelRun).not.toHaveBeenCalled();
-      current = true;
-      let retained: (() => void) | undefined;
-      await expect(
-        quiesceJobs(state, jobs, guard, async (cancel) => {
-          retained = cancel;
-        }),
-      ).rejects.toThrow("not authorized");
-      expect(() => retained!()).toThrow("already settled");
-      expect(cancelRun).not.toHaveBeenCalled();
-      await quiesceJobs(state, jobs, guard, async (cancel) => cancel());
-      expect(cancelRun).toHaveBeenCalledExactlyOnceWith("Claw agent removal.");
-    } finally {
-      clearCronJobActive(job.id, marker);
-      stop(state);
-      await state.schedulerDrain;
-    }
+    expect(edited.operatorSource).toBeUndefined();
+    const reverted = await update(state, created.id, {
+      payload: { kind: "agentTurn", message: jobInput.payload.message },
+    });
+    expect(reverted.operatorSource).toBeUndefined();
+    expect((await loadCronStore(storePath)).jobs[0]?.operatorSource).toBeUndefined();
   });
-
   it("guards scratch and removal at their locked mutation owners", async () => {
     const { storePath } = await makeStorePath();
     const state = createOkIsolatedCronState({ storePath, now: Date.now() });

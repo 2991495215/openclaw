@@ -12,10 +12,10 @@ import * as mutationOps from "./service/ops-mutations.js";
 import * as readOps from "./service/ops-read.js";
 import * as runOps from "./service/ops-run.js";
 import * as streamOps from "./service/ops-stream.js";
-import type { CronRemoveOptions } from "./service/remove-options.js";
 import type { OnExitRunOptions } from "./service/run-options.js";
 import {
   type CronAddOptions,
+  type CronRemoveOptions,
   type CronServiceDeps,
   type CronRunMode,
   type CronUpdatePrecondition,
@@ -157,14 +157,6 @@ export class CronService implements CronServiceContract {
 
   async removeAgentJobsTransactional<T>(agentId: string, commit: () => Promise<T>): Promise<T> {
     return await mutationOps.removeAgentJobsTransactional(this.state, agentId, commit);
-  }
-
-  async quiesceJobs(
-    jobs: readonly { id: string; revision: string }[],
-    commitGuard: () => void,
-    withCurrent?: (cancel: () => void) => Promise<void>,
-  ) {
-    await mutationOps.quiesceJobs(this.state, jobs, commitGuard, withCurrent);
   }
 
   async run(

@@ -50,7 +50,7 @@ describe("cron model schema regressions", () => {
     const paced = createCronToolSchema({
       selfRemoveOnly: true,
       activeRun: true,
-      pacingEnabled: true,
+      nextCheckEnabled: true,
     });
     expect(propertyAt(paced, "in")?.description).toContain("next_check");
   });

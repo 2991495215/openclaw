@@ -27,7 +27,7 @@ import {
 } from "../plugins/runtime/gateway-request-scope.js";
 import {
   buildPluginRuntimeLoadOptions,
-  createPluginRuntimeLoaderLogger,
+  pluginRuntimeLoaderLogger,
   setPluginRuntimeLoadContext,
   type PluginRuntimeLoadContext,
 } from "../plugins/runtime/load-context.js";
@@ -37,9 +37,10 @@ import type {
   PluginRuntime,
   RuntimeGatewayRequestOptions,
 } from "../plugins/runtime/types.js";
+import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
 import { bindInProcessSessionDeliveryGeneration } from "./in-process-session-delivery.js";
 import { authorizeOperatorScopesForRequiredScope } from "./method-scopes.js";
-import { normalizeOperatorScopeList } from "./operator-scopes.js";
+import { APPROVALS_SCOPE, normalizeOperatorScopeList } from "./operator-scopes.js";
 import type { GatewayNodeInvokeStream } from "./server-methods/shared-types.js";
 import type { GatewayContextResolver, GatewayRequestHandler } from "./server-methods/types.js";
 import { resolveTrustedPluginGitHubAccount } from "./server-plugin-github-account.js";
@@ -148,10 +149,22 @@ export async function dispatchTrustedPluginGatewayMethod<T>(
   return await dispatchGatewayMethodInProcess<T>(method, requestParams, {
     forceSyntheticClient: true,
     pluginRuntimeOwnerId: pluginId,
+    ...(method === "plugin.approval.request" && syntheticScopes?.includes(APPROVALS_SCOPE)
+      ? { allowHostPluginApprovalRequest: true }
+      : {}),
     resolveGatewayContext,
     ...(!scope?.client ? { operatorRoleActor: { kind: "system" as const } } : {}),
     ...(syntheticScopes ? { syntheticScopes } : {}),
     ...(options?.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    ...(options?.signal
+      ? {
+          signal: AbortSignal.any(
+            [options.signal, scope?.signal, getAsyncWorkSignal()].filter(
+              (signal): signal is AbortSignal => signal !== undefined,
+            ),
+          ),
+        }
+      : {}),
   });
 }
 
@@ -408,7 +421,7 @@ export async function loadGatewayPlugins(params: {
     });
   const loaderMetadata = metadataSnapshot ?? params.pluginLookUpTable;
   const logger = {
-    ...createPluginRuntimeLoaderLogger(),
+    ...pluginRuntimeLoaderLogger,
     ...(params.suppressPluginInfoLogs ? { info: () => undefined } : {}),
   };
   const loadContext: PluginRuntimeLoadContext = {

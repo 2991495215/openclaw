@@ -1,5 +1,4 @@
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
-import { testing as externalAuthTesting } from "../../agents/auth-profiles/external-auth.test-support.js";
 import { testing as cliBackendsTesting } from "../../agents/cli-backends.test-support.js";
 import type { RunCliAgentParams } from "../../agents/cli-runner/types.js";
 import type { RunEmbeddedAgentInternalParams } from "../../agents/embedded-agent-runner/run/internal-params.js";
@@ -29,7 +28,11 @@ import {
 import type { SessionEventTarget } from "./session-event-contract.js";
 import { captureSessionEventTargetForHost } from "./session-event-target.js";
 
+const { testing: externalAuthTesting } =
+  await import("../../agents/auth-profiles/external-auth.test-support.js");
+
 const state = await setupAgentRunnerExecutionTestState();
+const executeChannelTurn = await getExecuteAgentTurnForTest();
 const { mintReplyMessageActionTurnCapability } =
   await vi.importActual<typeof import("./agent-runner-utils.js")>("./agent-runner-utils.js");
 const sessionKey = "agent:main:discord:channel:100000000000000003";
@@ -135,13 +138,18 @@ describe("channel reply message authority", () => {
         return { payloads: [{ text: "done" }], meta: {} };
       });
 
-      const execute = await getExecuteAgentTurnForTest();
-      const result = await execute({
+      const result = await executeChannelTurn({
         ...turn,
         ...(outcome === "policy-session" ? { runtimePolicySessionKey: policySessionKey } : {}),
       });
 
       expect(result.kind).toBe(outcome === "failure" ? "final" : "success");
+      expect(state.runCliAgentMock).toHaveBeenCalledOnce();
+      if (outcome === "failure") {
+        await expect(state.runCliAgentMock.mock.results[0]?.value).rejects.toThrow(
+          "CLI execution failed",
+        );
+      }
       expect(token).toBeDefined();
       expect(resolveCapability(token, authorityKey)).toBeUndefined();
     },
@@ -181,8 +189,7 @@ describe("channel reply message authority", () => {
       };
     });
 
-    const execute = await getExecuteAgentTurnForTest();
-    expect((await execute(channelTurn())).kind).toBe("success");
+    expect((await executeChannelTurn(channelTurn())).kind).toBe("success");
     expect(embeddedToken).toBeDefined();
     expect(cliToken).toBeDefined();
     expect(resolveCapability(embeddedToken)).toBeUndefined();
@@ -202,8 +209,7 @@ describe("channel reply message authority", () => {
         observedCapability = run.messageActionTurnCapability;
         return { payloads: [{ text: "done" }], meta: {} };
       });
-      const execute = await getExecuteAgentTurnForTest();
-      await execute({
+      await executeChannelTurn({
         ...turn,
         opts: { ...turn.opts, internalEventExecution: turn.followupRun.run.internalEventExecution },
         sessionCtx: {

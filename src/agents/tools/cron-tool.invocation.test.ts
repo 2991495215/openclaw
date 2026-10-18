@@ -23,10 +23,10 @@ afterEach(() => {
   resetAgentRunRegistryForTest();
 });
 
-function registerRun(pacingEnabled = false) {
+function registerRun(nextCheckEnabled = false) {
   const state = { current: true };
   const invocation = {
-    pacingEnabled,
+    nextCheckEnabled,
     closed: false,
     assertCurrent() {
       if (!state.current) {

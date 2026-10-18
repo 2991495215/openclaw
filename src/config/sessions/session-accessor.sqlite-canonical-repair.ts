@@ -510,7 +510,7 @@ function copySqliteSessionOwnedStateForRepair(params: {
     });
   }
   // Membership is authorization state and follows the selected winner. Boards,
-  // suggestions, and heartbeat state merge by their own revision/id contracts.
+  // suggestions, and retained legacy heartbeat rows merge by their own revision/id contracts.
   deleteSessionMembersForRepair(params.destination, params.canonicalKey);
   copySessionNodeArtifactsForRepair(
     params.source,

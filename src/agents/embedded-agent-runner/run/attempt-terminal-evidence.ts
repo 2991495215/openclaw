@@ -1,4 +1,3 @@
-import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../../auto-reply/tokens.js";
 import {
   hasAcceptedSessionSpawn,
   hasCompletionMessageSessionSpawn,
@@ -119,6 +118,7 @@ type AcceptedSessionSpawnContinuationAttempt = Pick<
   | "assistantTexts"
   | "terminal"
   | "sourceReplyDelivered"
+  | "preparedTerminalReply"
   | "sourceReplyDeliveryState"
 >;
 
@@ -157,11 +157,7 @@ export function shouldContinueInteractiveAcceptedSessionSpawns(params: {
   ) {
     return false;
   }
-  if (
-    attempt.assistantTexts.some(
-      (text) => text.trim().length > 0 && !isSilentReplyText(text, SILENT_REPLY_TOKEN),
-    )
-  ) {
+  if (attempt.preparedTerminalReply?.terminalReply.disposition === "visible") {
     return false;
   }
   // The media run delivers the result, so progress sends do not replace the owed reply.

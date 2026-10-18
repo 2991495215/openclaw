@@ -7,11 +7,12 @@ export function resolveActiveRunQueueAction(params: {
   isActive: boolean;
   shouldFollowup: boolean;
   resetTriggered?: boolean;
+  interrupt?: boolean;
 }): ActiveRunQueueAction {
   if (!params.isActive && !params.hasQueuedFollowups) {
     return "run-now";
   }
-  if (params.resetTriggered) {
+  if (params.resetTriggered || params.interrupt) {
     return "run-now";
   }
   return params.hasQueuedFollowups || params.shouldFollowup ? "enqueue-followup" : "run-now";

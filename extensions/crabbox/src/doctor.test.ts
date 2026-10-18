@@ -24,7 +24,7 @@ const CRABBOX_SETUP_SECRETS_CHECK_ID = "crabbox/setup-secrets";
 const CRABBOX_WARM_IMAGES_CHECK_ID = "crabbox/warm-images";
 const listPluginStateEntries: CrabboxDoctorRegistrationHost["listPluginStateEntries"] = <T>(
   options: OpenKeyedStoreOptions,
-) => crabboxState.openKeyedStore<T>(options).entries();
+) => crabboxState.openKeyedStoreV2<T>(options).entries();
 
 function captureCrabboxDoctorCheck(
   id = CRABBOX_CLOUD_WORKER_PROFILE_CHECK_ID,
@@ -195,10 +195,13 @@ describe("Crabbox worker doctor", () => {
     vi.spyOn(managedBinary, "resolveManagedCrabboxBinaryPath").mockReturnValue("/managed/crabbox");
     const install = vi
       .spyOn(managedBinary, "ensureManagedCrabboxBinary")
-      .mockImplementation(async ({ binary } = {}) => ({
-        binary: binary ?? "crabbox",
-        version: managedBinary.CRABBOX_MIN_VERSION,
-      }));
+      .mockImplementation(async (options = {}) => {
+        const { binary } = options;
+        return {
+          binary: binary ?? "crabbox",
+          version: managedBinary.CRABBOX_MIN_VERSION,
+        };
+      });
     const check = captureCrabboxDoctorCheck();
     const findings = [{ checkId: CRABBOX_CLOUD_WORKER_PROFILE_CHECK_ID }] as never;
     const ctx = context();

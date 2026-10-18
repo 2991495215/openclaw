@@ -11,15 +11,14 @@ import { createRequireRecord } from "../../test/helpers/record.js";
 import { AgentDeletionCommitUncertainError } from "../agents/agent-deletion-errors.js";
 import {
   abortAndDrainEmbeddedAgentRun,
-  clearActiveEmbeddedRun,
+  detachActiveEmbeddedRun,
   isEmbeddedAgentRunHandleActive,
-  setActiveEmbeddedRun,
+  attachActiveEmbeddedRun,
 } from "../agents/embedded-agent-runner/runs.js";
 import {
   createEmbeddedRunHandle,
   testing as embeddedRunsTesting,
 } from "../agents/embedded-agent-runner/runs.test-support.js";
-import { createReplyOperation, replyRunRegistry } from "../auto-reply/reply/reply-run-registry.js";
 import { captureSessionEventTargetForHost } from "../auto-reply/reply/session-event-handoff.js";
 import type { CliDeps } from "../cli/deps.js";
 import type { OpenClawConfig } from "../config/config.js";
@@ -40,6 +39,7 @@ import {
   tryBeginGatewayRootWorkAdmission,
   tryBeginGatewaySuspendAdmission,
 } from "../process/gateway-work-admission.js";
+import { withSessionTurn } from "../sessions/session-controller.admission.js";
 import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
@@ -72,6 +72,7 @@ const {
   getGlobalHookRunnerMock,
   runCronChangedMock,
   abortAndDrainEmbeddedAgentRunMock,
+  captureSessionMcpRuntimeRetirementMock,
   retireSessionMcpRuntimeMock,
   requestSafeGatewayRestartMock,
   getProcessSupervisorMock,
@@ -127,7 +128,11 @@ const {
     drained: true,
     forceCleared: false,
   })),
-  retireSessionMcpRuntimeMock: vi.fn(async () => true),
+  captureSessionMcpRuntimeRetirementMock:
+    vi.fn<
+      typeof import("../agents/agent-bundle-mcp-manager-api.js").captureSessionMcpRuntimeRetirement
+    >(),
+  retireSessionMcpRuntimeMock: vi.fn(async (assertCurrent: () => void) => assertCurrent()),
   requestSafeGatewayRestartMock: vi.fn(() => ({
     ok: true,
     status: "scheduled",
@@ -256,8 +261,9 @@ vi.mock("../agents/embedded-agent.js", () => ({
   abortAndDrainEmbeddedAgentRun: abortAndDrainEmbeddedAgentRunMock,
 }));
 
-vi.mock("../agents/agent-bundle-mcp-tools.js", () => ({
-  retireSessionMcpRuntime: retireSessionMcpRuntimeMock,
+vi.mock("../agents/agent-bundle-mcp-manager-api.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../agents/agent-bundle-mcp-manager-api.js")>()),
+  captureSessionMcpRuntimeRetirement: captureSessionMcpRuntimeRetirementMock,
 }));
 
 vi.mock("../process/supervisor/index.js", () => ({
@@ -500,6 +506,7 @@ function expectIsolatedRunFields(fields: Record<string, unknown>) {
     callArg(runCronIsolatedAgentTurnMock, 0, 0, "isolated cron run"),
     "isolated cron run",
   );
+  expect(options.trigger).toBe("cron");
   for (const [key, value] of Object.entries(fields)) {
     expect(options[key]).toEqual(value);
   }
@@ -522,6 +529,10 @@ describe("buildGatewayCronService", () => {
     runCronChangedMock.mockClear();
     getGlobalHookRunnerMock.mockClear();
     abortAndDrainEmbeddedAgentRunMock.mockClear();
+    captureSessionMcpRuntimeRetirementMock.mockReset();
+    captureSessionMcpRuntimeRetirementMock.mockImplementation(({ sessionId }) =>
+      sessionId ? { sessionId, retire: retireSessionMcpRuntimeMock } : undefined,
+    );
     retireSessionMcpRuntimeMock.mockClear();
     requestSafeGatewayRestartMock.mockClear();
     getProcessSupervisorMock.mockReset();
@@ -688,7 +699,6 @@ describe("buildGatewayCronService", () => {
       expect(spawn).toHaveBeenCalledOnce();
 
       await state.cron.start();
-      await state.reconcileExitWatchers?.();
       await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(2));
     });
   });
@@ -1148,103 +1158,90 @@ describe("buildGatewayCronService", () => {
       });
     }
 
-    const replyOwners: Array<ReturnType<typeof createReplyOperation>> = [];
-
-    function registerRun(
-      runId: string,
-      kind: "embedded" | "cli" = "embedded",
-      onAbort?: () => void,
-    ) {
-      if (kind === "cli") {
-        const operation = createReplyOperation({ sessionId, sessionKey, resetTriggered: false });
-        const abort = vi.fn(() => {
-          operation.complete();
-          onAbort?.();
+    async function registerRun(runId: string, storePath?: string) {
+      const registered = createDeferred<ReturnType<typeof createEmbeddedRunHandle>>();
+      const release = createDeferred();
+      const turn = withSessionTurn({ sessionKey, sessionId, storePath }, async (operation) => {
+        const handle = createEmbeddedRunHandle({
+          runId,
+          abort: vi.fn(() => {
+            detachActiveEmbeddedRun(sessionId, handle, sessionKey);
+            release.resolve();
+          }),
         });
-        operation.attachBackend({ kind: "cli", runId, cancel: abort });
-        operation.setPhase("running");
-        replyOwners.push(operation);
-        return { abort, isActive: () => replyRunRegistry.get(sessionKey) === operation };
-      }
-      const handle = createEmbeddedRunHandle({
-        runId,
-        abort: vi.fn(() => {
-          clearActiveEmbeddedRun(sessionId, handle, sessionKey);
-          onAbort?.();
-        }),
+        attachActiveEmbeddedRun(sessionId, handle, sessionKey, undefined, undefined, operation);
+        registered.resolve(handle);
+        await release.promise;
       });
-      setActiveEmbeddedRun(sessionId, handle, sessionKey);
-      return { abort: handle.abort, isActive: () => isEmbeddedAgentRunHandleActive(sessionId) };
+      void turn.catch(registered.reject);
+      return {
+        handle: await registered.promise,
+        async release() {
+          release.resolve();
+          await turn;
+        },
+      };
     }
 
     afterEach(() => {
-      for (const operation of replyOwners.splice(0)) {
-        operation.complete();
-      }
       embeddedRunsTesting.resetActiveEmbeddedRuns();
       abortAndDrainEmbeddedAgentRunMock.mockReset();
     });
 
-    it.each(["embedded", "cli"] as const)(
-      "leaves a replacement %s run and its MCP runtime intact after the cron run ended",
-      async (kind) => {
-        await withCronService(
-          createCronConfig("server-cron-timeout-replacement"),
-          async (state) => {
-            const replacement = registerRun("replacement-run", kind);
+    it("leaves a replacement run and its MCP runtime intact after the cron run ended", async () => {
+      await withCronService(createCronConfig("server-cron-timeout-replacement"), async (state) => {
+        const replacement = await registerRun("replacement-run");
+        try {
+          await cleanupTimedOutCronRun(state);
 
-            await cleanupTimedOutCronRun(state, kind === "cli" ? "main" : "isolated");
-
-            expect(replacement.abort).not.toHaveBeenCalled();
-            expect(replacement.isActive()).toBe(true);
-            expect(retireSessionMcpRuntimeMock).not.toHaveBeenCalled();
-          },
-        );
-      },
-    );
-
-    it.each(["embedded", "cli"] as const)(
-      "aborts the %s cron run and retires its MCP runtime while it still owns the session",
-      async (kind) => {
-        await withCronService(createCronConfig("server-cron-timeout-owner"), async (state) => {
-          const original = registerRun("cron-run", kind);
-
-          await cleanupTimedOutCronRun(state, kind === "cli" ? "main" : "isolated");
-
-          expect(original.abort).toHaveBeenCalledOnce();
-          expect(original.isActive()).toBe(false);
-          expect(retireSessionMcpRuntimeMock).toHaveBeenCalledExactlyOnceWith(
-            expect.objectContaining({ sessionId, reason: "cron-timeout-cleanup" }),
-          );
-        });
-      },
-    );
-    it("keeps a successor reply even when the old embedded handle still matches", async () => {
-      await withCronService(createCronConfig("server-cron-timeout-two-owners"), async (state) => {
-        const original = registerRun("cron-run");
-        const successor = registerRun("reply-successor", "cli");
-        await cleanupTimedOutCronRun(state);
-        expect(original.abort).not.toHaveBeenCalled();
-        expect(successor.abort).not.toHaveBeenCalled();
-        expect(successor.isActive()).toBe(true);
-        expect(retireSessionMcpRuntimeMock).not.toHaveBeenCalled();
+          expect(replacement.handle.abort).not.toHaveBeenCalled();
+          expect(isEmbeddedAgentRunHandleActive(sessionId)).toBe(true);
+          expect(retireSessionMcpRuntimeMock).not.toHaveBeenCalled();
+        } finally {
+          detachActiveEmbeddedRun(sessionId, replacement.handle, sessionKey);
+          await replacement.release();
+        }
       });
     });
 
-    it("keeps the MCP runtime of a successor admitted while timeout drainage settles", async () => {
+    it("aborts the cron run and retires its MCP runtime while it still owns the session", async () => {
+      await withCronService(createCronConfig("server-cron-timeout-owner"), async (state) => {
+        const original = await registerRun("cron-run");
+        try {
+          await cleanupTimedOutCronRun(state);
+
+          expect(original.handle.abort).toHaveBeenCalledOnce();
+          expect(isEmbeddedAgentRunHandleActive(sessionId)).toBe(false);
+          expect(retireSessionMcpRuntimeMock).toHaveBeenCalledOnce();
+        } finally {
+          await original.release();
+        }
+      });
+    });
+
+    it("aborts only the timed-out cron run when physical stores share a session ID", async () => {
       await withCronService(
-        createCronConfig("server-cron-timeout-drain-successor"),
+        createCronConfig("server-cron-timeout-physical-owner"),
         async (state) => {
-          const successorReady = createDeferred<ReturnType<typeof registerRun>>();
-          const original = registerRun("cron-run", "cli", () => {
-            queueMicrotask(() => successorReady.resolve(registerRun("reply-successor", "cli")));
-          });
-          await cleanupTimedOutCronRun(state, "main");
-          const successor = await successorReady.promise;
-          expect(original.abort).toHaveBeenCalledOnce();
-          expect(successor.abort).not.toHaveBeenCalled();
-          expect(successor.isActive()).toBe(true);
-          expect(retireSessionMcpRuntimeMock).not.toHaveBeenCalled();
+          const original = await registerRun(
+            "cron-run",
+            path.join(os.tmpdir(), "server-cron-timeout-original", "sessions.json"),
+          );
+          const other = await registerRun(
+            "other-run",
+            path.join(os.tmpdir(), "server-cron-timeout-other", "sessions.json"),
+          );
+          try {
+            await cleanupTimedOutCronRun(state);
+
+            expect(original.handle.abort).toHaveBeenCalledOnce();
+            expect(other.handle.abort).not.toHaveBeenCalled();
+            expect(isEmbeddedAgentRunHandleActive(sessionId)).toBe(true);
+          } finally {
+            detachActiveEmbeddedRun(sessionId, original.handle, sessionKey);
+            detachActiveEmbeddedRun(sessionId, other.handle, sessionKey);
+            await Promise.all([original.release(), other.release()]);
+          }
         },
       );
     });
@@ -1301,8 +1298,8 @@ describe("buildGatewayCronService", () => {
     try {
       // Gate reconcile's first list call: capture the pre-add (empty) snapshot,
       // hold it while the add's direct route starts the owner, then release the
-      // stale snapshot. The revision fence must re-list instead of stopping the
-      // freshly started owner as "removed".
+      // stale snapshot. The older sweep must not stop the freshly started
+      // owner as "removed"; the mutation already routed its current definition.
       const originalList = state.cron.list.bind(state.cron);
       const { promise: staleListGate, resolve: releaseStaleList } = createDeferred();
       let armed = true;
@@ -1963,63 +1960,73 @@ describe("buildGatewayCronService", () => {
     }
   });
 
-  it("delivers isolated script notify through the cron announce path", async () => {
-    const cfg = createCronConfig("server-cron-script-announce");
-    cfg.cron = { ...cfg.cron, triggers: { enabled: true } };
-    cfg.gateway = { publicOrigin: "https://gateway.example", controlUi: { basePath: "/control" } };
-    loadConfigMock.mockReturnValue(cfg);
-    cronScriptExecutorMock.mockResolvedValueOnce({
-      kind: "completed",
-      notify: "queue changed",
-      stateChanged: false,
-    });
+  it.each([
+    { notify: "queue changed", expected: "queue changed" },
+    { notify: "NO_REPLY", expected: undefined },
+    { notify: "NO_REPLY\nNO_REPLY", expected: "NO_REPLY" },
+    { notify: "NO_REPLY.", expected: "NO_REPLY." },
+  ])(
+    "prepares isolated script notify $notify before announcement",
+    async ({ notify, expected }) => {
+      const cfg = createCronConfig("server-cron-script-announce");
+      cfg.cron = { ...cfg.cron, triggers: { enabled: true } };
+      cfg.gateway = {
+        publicOrigin: "https://gateway.example",
+        controlUi: { basePath: "/control" },
+      };
+      loadConfigMock.mockReturnValue(cfg);
+      cronScriptExecutorMock.mockResolvedValueOnce({
+        kind: "completed",
+        notify,
+        stateChanged: false,
+      });
 
-    const state = createCronService(cfg);
-    try {
-      const job = await addScriptJob(
-        state,
-        "script-announce",
-        "return { notify: 'queue changed' }",
-        {
-          deleteAfterRun: false,
-          delivery: { mode: "announce", channel: "telegram", to: "123", threadId: 456 },
-        },
-      );
+      const state = createCronService(cfg);
+      try {
+        const job = await addScriptJob(
+          state,
+          "script-announce",
+          "return { notify: 'queue changed' }",
+          {
+            deleteAfterRun: false,
+            delivery: { mode: "announce", channel: "telegram", to: "123", threadId: 456 },
+          },
+        );
 
-      await state.cron.run(job.id, "force");
+        await state.cron.run(job.id, "force");
 
-      const stateDir = path.dirname(state.storePath);
-      expect(stateDir).not.toBe(process.env.OPENCLAW_STATE_DIR);
-      expect(captureSessionEventTargetForHost).toHaveBeenCalledExactlyOnceWith(
-        "main",
-        "agent:main:main",
-        { env: expect.objectContaining({ OPENCLAW_STATE_DIR: stateDir }) },
-      );
-      expect(cronScriptExecutorMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          job: expect.objectContaining({
-            id: job.id,
-            payload: expect.objectContaining({
-              script: "return { notify: 'queue changed' }",
-              timeoutSeconds: 300,
-              toolBudget: 50,
+        expect(cronScriptExecutorMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            job: expect.objectContaining({
+              id: job.id,
+              payload: expect.objectContaining({
+                script: "return { notify: 'queue changed' }",
+                timeoutSeconds: 300,
+                toolBudget: 50,
+              }),
             }),
           }),
-        }),
-      );
-      expect(sendCronAnnouncePayloadStrictMock).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({
-          jobId: job.id,
-          payload: [{ text: "queue changed" }],
-          inspectionUrl: `https://gateway.example/control/automations?job=${job.id}&run=cron%3A${job.id}%3A${state.cron.getJob(job.id)?.state.lastRunAtMs}`,
-          target: expect.objectContaining({ threadId: 456 }),
-        }),
-      );
-      expect(state.cron.getJob(job.id)?.state.lastRunStatus).toBe("ok");
-    } finally {
-      state.cron.stop();
-    }
-  });
+        );
+        if (expected === undefined) {
+          expect(sendCronAnnouncePayloadStrictMock).not.toHaveBeenCalled();
+          expect(state.cron.getJob(job.id)?.state.deliverySuppressionReason).toBe("silent");
+        } else {
+          expect(sendCronAnnouncePayloadStrictMock).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({
+              jobId: job.id,
+              payload: [{ text: expected }],
+              inspectionUrl: `https://gateway.example/control/automations?job=${job.id}&run=cron%3A${job.id}%3A${state.cron.getJob(job.id)?.state.lastRunAtMs}`,
+              target: expect.objectContaining({ threadId: 456 }),
+            }),
+          );
+          expect(state.cron.getJob(job.id)?.state.deliverySuppressionReason).toBeUndefined();
+        }
+        expect(state.cron.getJob(job.id)?.state.lastRunStatus).toBe("ok");
+      } finally {
+        state.cron.stop();
+      }
+    },
+  );
 
   it("keeps script failure detail transient while preserving structured error payloads", async () => {
     const cfg = createCronConfig("server-cron-script-failure-detail");
