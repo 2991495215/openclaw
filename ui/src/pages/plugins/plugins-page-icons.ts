@@ -1,71 +1,85 @@
 import type { ApplicationContext } from "../../app/context.ts";
-import type { PluginDiscoveryEntry, PluginListResult } from "../../lib/plugins/index.ts";
-import { CatalogIconController } from "./catalog-icon-controller.ts";
-import { PluginIconController } from "./plugin-icon-controller.ts";
+import {
+  resolveControlUiAuthCandidates,
+  type ControlUiAuthSource,
+} from "../../app/control-ui-auth.ts";
+import type { PluginDiscoveryDetailResult, PluginListResult } from "../../lib/plugins/index.ts";
+import type { createPluginDiscovery } from "./plugin-discovery.ts";
+import { PluginIconController, pluginIconFetchContext } from "./plugin-icon-controller.ts";
 
 type PluginsPageIconsHost = {
   getContext: () => ApplicationContext;
   isConnected: () => boolean;
   onInstalledUrlsChange: (urls: Record<string, string>) => void;
   onCatalogUrlsChange: (urls: Record<string, string>) => void;
+  onChange?: () => void;
 };
 
-export class PluginsPageIcons {
-  private readonly installed: PluginIconController;
-  private readonly catalog: CatalogIconController;
+export function createPluginsPageIcons(host: PluginsPageIconsHost) {
+  let authCandidates: string[] = [];
+  const tiles = new Set<() => string>();
+  const shared = {
+    getFetchContext: () => pluginIconFetchContext(host.getContext()),
+    isConnected: host.isConnected,
+    onLoadingChange: host.onChange,
+  };
+  const installed = new PluginIconController({
+    ...shared,
+    onUrlsChange: host.onInstalledUrlsChange,
+  });
+  const catalog = new PluginIconController({
+    kind: "catalog",
+    ...shared,
+    onUrlsChange: host.onCatalogUrlsChange,
+  });
 
-  constructor(host: PluginsPageIconsHost) {
-    const shared = {
-      getFetchContext: () => {
-        const context = host.getContext();
-        return {
-          resourceBasePath: context.resourceBasePath,
-          gatewayUrl: context.gateway.connection.gatewayUrl,
-          auth: {
-            hello: context.gateway.snapshot.hello,
-            settings: { token: context.gateway.connection.token },
-            password: context.gateway.connection.password,
-          },
-        };
-      },
-      isConnected: host.isConnected,
-    };
-    this.installed = new PluginIconController({
-      ...shared,
-      onUrlsChange: host.onInstalledUrlsChange,
-    });
-    this.catalog = new CatalogIconController({
-      ...shared,
-      onUrlsChange: host.onCatalogUrlsChange,
-    });
+  function updateAuth(source: ControlUiAuthSource): boolean {
+    const next = resolveControlUiAuthCandidates(source);
+    const changed =
+      next.length !== authCandidates.length ||
+      next.some((candidate, index) => candidate !== authCandidates[index]);
+    authCandidates = next;
+    return changed;
   }
 
-  syncInstalled(result: PluginListResult | null, renderedPluginIds: ReadonlySet<string>): void {
-    this.installed.sync(result, renderedPluginIds);
+  function sync(
+    result: PluginListResult | null,
+    discovery: Pick<
+      ReturnType<ReturnType<typeof createPluginDiscovery>["read"]>,
+      "result" | "featured" | "trending"
+    >,
+    rendered: ReadonlySet<string>,
+    detail?: PluginDiscoveryDetailResult | null,
+  ): void {
+    // Both inventories follow the same rendered sorting, filtering, and collapse policy.
+    installed.sync(result, rendered);
+    catalog.syncCatalog(
+      [
+        ...(discovery.result?.items ?? []),
+        ...discovery.featured,
+        ...discovery.trending,
+        ...(detail ? [detail.plugin] : []),
+      ],
+      detail?.detail.author?.imageUrl ? [detail.detail.author.imageUrl] : [],
+      rendered,
+    );
   }
 
-  reconcileInstalled(result: PluginListResult | null): void {
-    this.installed.reconcile(result);
+  function reset(): void {
+    installed.reset();
+    catalog.reset();
   }
-
-  invalidateInstalled(pluginId: string): void {
-    this.installed.invalidate(pluginId);
-  }
-
-  handleInstalledError(pluginId: string): void {
-    this.installed.handleError(pluginId);
-  }
-
-  syncCatalog(entries: readonly PluginDiscoveryEntry[], extraUrls: readonly string[] = []): void {
-    this.catalog.sync(entries, extraUrls);
-  }
-
-  resetInstalled(): void {
-    this.installed.reset();
-  }
-
-  reset(): void {
-    this.installed.reset();
-    this.catalog.reset();
-  }
+  return {
+    installed,
+    catalog,
+    updateAuth,
+    sync,
+    reset,
+    rendered: () => new Set(Array.from(tiles, (readId) => readId()).filter(Boolean)),
+    register(this: void, readId: () => string) {
+      tiles.add(readId);
+      host.onChange?.();
+      return () => tiles.delete(readId);
+    },
+  };
 }

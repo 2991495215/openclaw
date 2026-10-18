@@ -1,26 +1,49 @@
 import { createHook } from "node:async_hooks";
+import { createHash } from "node:crypto";
+import { addAbortListener } from "node:events";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
-import { createNodeWorkspaceTransferService } from "./node-workspace-transfer-service.js";
-import { prepareNodeWorkspaceTransferSnapshot } from "./node-workspace-transfer-snapshot.js";
 import {
   readActualWorkspaceManifestImpl,
+  readWorkspaceFileContentsWithLimit,
   readWorkspaceFileSnapshotWithLimit,
 } from "./workspace-actual-manifest.js";
 import { withWorkspaceHashMemo, workspaceStatIdentity } from "./workspace-hash-memo.js";
 import { MAX_WORKSPACE_INVENTORY_TOTAL_BYTES } from "./workspace-inventory-limits.js";
-import { readActualWorkspaceManifest } from "./workspace-reconcile-core.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
+
+type InventoryOptions = Parameters<typeof readActualWorkspaceManifestImpl>[0];
+
+async function inventoryFixture(count = 0) {
+  const root = await fs.realpath(tempDirs.make("workspace-inventory-"));
+  const files = Array.from({ length: count }, (_, index) => `file-${index}.txt`);
+  await Promise.all(files.map((file) => fs.writeFile(path.join(root, file), "inside")));
+  const capture = (options: Omit<InventoryOptions, "root" | "baseCommit"> = {}) =>
+    readActualWorkspaceManifestImpl({ root, baseCommit: null, ...options });
+  return { root, files, capture };
+}
+
+function observeSettlement(promise: Promise<unknown>) {
+  let settled = false;
+  const markSettled = () => {
+    settled = true;
+  };
+  void promise.then(markSettled, markSettled);
+  return () => settled;
+}
 
 it.each(["before traversal", "during traversal", "root resolution", "safe-root setup"] as const)(
   "rejects an empty inventory aborted %s",
   async (phase) => {
-    const root = await fs.realpath(tempDirs.make("workspace-inventory-empty-abort-"));
+    const { root, capture } = await inventoryFixture();
     const controller = new AbortController();
     const reason = new Error("empty inventory aborted");
     const entered = createDeferred();
@@ -49,13 +72,10 @@ it.each(["before traversal", "during traversal", "root resolution", "safe-root s
       controller.abort(reason);
       gate.resolve();
     }
-    const params = {
-      root,
-      baseCommit: null,
+    const scan = capture({
       signal: controller.signal,
       ...(phase === "before traversal" ? { includePaths: new Set<string>() } : {}),
-    };
-    const scan = readActualWorkspaceManifest(params);
+    });
     const rejected = expect(scan).rejects.toBe(reason);
     try {
       if (phase !== "before traversal") {
@@ -75,17 +95,19 @@ it.each(["before traversal", "during traversal", "root resolution", "safe-root s
   },
 );
 
-it.each(["metadata", "files"] as const)(
+it.for(["metadata", "files"] as const)(
   "bounds pending promise resources while %s operations are blocked",
-  async (phase) => {
-    const root = await fs.realpath(tempDirs.make("workspace-inventory-pending-"));
-    const files = Array.from({ length: 512 }, (_, index) => `file-${index}.txt`);
-    await Promise.all(files.map((file) => fs.writeFile(path.join(root, file), "inside")));
+  async (phase, { signal }) => {
+    const { root, files, capture } = await inventoryFixture(512);
     const gate = createDeferred();
+    const allStarted = createDeferred();
     let started = 0;
     const pause = async (target: unknown) => {
       if (String(target).startsWith(root + path.sep)) {
         started++;
+        if (started === 4) {
+          allStarted.resolve();
+        }
         await gate.promise;
       }
     };
@@ -113,17 +135,16 @@ it.each(["metadata", "files"] as const)(
         pendingPromises.delete(id);
       },
     }).enable();
-    const scan = readActualWorkspaceManifestImpl({
-      root,
-      baseCommit: null,
-      includePaths: new Set(files),
-    });
+    const scan = capture({ includePaths: new Set(files) });
+    const cancelWait = addAbortListener(signal, () => allStarted.reject(signal.reason));
     try {
-      await vi.waitFor(() => expect(started).toBe(4));
+      await Promise.race([allStarted.promise, scan]);
+      expect(started).toBe(4);
       // Observe queued resources, not limiter internals: idle paths must not
       // each retain a promise graph while the active I/O is blocked.
       expect(pendingPromises.size).toBeLessThan(files.length);
     } finally {
+      cancelWait[Symbol.dispose]();
       hook.disable();
       gate.resolve();
       await Promise.allSettled([scan]);
@@ -132,40 +153,13 @@ it.each(["metadata", "files"] as const)(
   },
 );
 
-const fileFailures = ["symlink replacement", "snapshot abort", "attachment abort"] as const;
+const fileFailures = ["symlink replacement", "caller abort"] as const;
 it.each(fileFailures)("drains admitted file reads after %s", async (failure) => {
-  const root = await fs.realpath(tempDirs.make("workspace-inventory-readers-"));
+  const { root, files, capture } = await inventoryFixture(9);
   const outside = await fs.realpath(tempDirs.make("workspace-inventory-outside-"));
-  const files = Array.from({ length: 9 }, (_, index) => `file-${index}.txt`);
-  await Promise.all(files.map((file) => fs.writeFile(path.join(root, file), "inside")));
   await fs.writeFile(path.join(outside, "target.txt"), "outside");
   const controller = new AbortController();
   const reason = new Error("manifest scan aborted");
-  const service =
-    failure === "attachment abort"
-      ? createNodeWorkspaceTransferService({
-          temporaryRoot: tempDirs.make("workspace-inventory-transfers-"),
-          getOwner: () => ({
-            credential: { ownerEpoch: 1, sessionId: "session" },
-            environment: {
-              ownerEpoch: 1,
-              attachedSessionIds: ["session"],
-              destroyRequestedAtMs: null,
-              state: "attached",
-            },
-          }),
-        })
-      : undefined;
-  if (service) {
-    await service.prepareSync({
-      environmentId: "environment",
-      ownerEpoch: 1,
-      sessionId: "session",
-      generation: 1,
-      localPath: tempDirs.make("workspace-inventory-empty-source-"),
-      isAuthorized: () => true,
-    });
-  }
   const open = fs.open.bind(fs);
   const gates: Array<ReturnType<typeof createDeferred<void>>> = [];
   const gatedPaths: string[] = [];
@@ -191,29 +185,8 @@ it.each(fileFailures)("drains admitted file reads after %s", async (failure) => 
     }
     return handle;
   });
-  const scan = service
-    ? service.prepareAttachments({
-        environmentId: "environment",
-        localPath: root,
-        isAuthorized: () => true,
-        signal: controller.signal,
-      })
-    : failure === "snapshot abort"
-      ? prepareNodeWorkspaceTransferSnapshot({
-          localPath: root,
-          temporaryRoot: tempDirs.make("workspace-inventory-snapshot-"),
-          signal: controller.signal,
-        })
-      : readActualWorkspaceManifest({ root, baseCommit: null, includePaths: new Set(files) });
-  let settled = false;
-  void scan.then(
-    () => {
-      settled = true;
-    },
-    () => {
-      settled = true;
-    },
-  );
+  const scan = capture({ includePaths: new Set(files), signal: controller.signal });
+  const settled = observeSettlement(scan);
   try {
     await vi.waitFor(() => expect(gates).toHaveLength(4));
     if (failure === "symlink replacement") {
@@ -224,7 +197,7 @@ it.each(fileFailures)("drains admitted file reads after %s", async (failure) => 
     }
     gates[0]!.resolve();
     await firstClosed.promise;
-    expect(settled).toBe(false);
+    expect(settled()).toBe(false);
     expect(opened).toHaveBeenCalledTimes(4);
   } finally {
     releasing = true;
@@ -232,7 +205,6 @@ it.each(fileFailures)("drains admitted file reads after %s", async (failure) => 
       gate.resolve();
     }
     await Promise.allSettled([scan]);
-    await service?.closeAll();
   }
   if (failure === "symlink replacement") {
     await expect(scan).rejects.toThrow();
@@ -252,9 +224,7 @@ const metadataFailures = [
 it.each(metadataFailures)("settles metadata after %s", async (failure) => {
   const walk = failure === "walk abort before metadata error";
   const admitted = walk ? 1 : 4;
-  const root = await fs.realpath(tempDirs.make("workspace-inventory-metadata-"));
-  const files = Array.from({ length: 9 }, (_, index) => `file-${index}.txt`);
-  await Promise.all(files.map((file) => fs.writeFile(path.join(root, file), "inside")));
+  const { root, files, capture } = await inventoryFixture(9);
   const lstat = fs.lstat.bind(fs);
   const gates: Array<ReturnType<typeof createDeferred<void>>> = [];
   const failed = createDeferred();
@@ -281,22 +251,11 @@ it.each(metadataFailures)("settles metadata after %s", async (failure) => {
     return await lstat(...args);
   });
   const opened = vi.spyOn(fs, "open");
-  const params = {
-    root,
-    baseCommit: null,
+  const scan = capture({
     ...(walk ? {} : { includePaths: new Set(files) }),
     signal: controller.signal,
-  };
-  const scan = readActualWorkspaceManifest(params);
-  let settled = false;
-  void scan.then(
-    () => {
-      settled = true;
-    },
-    () => {
-      settled = true;
-    },
-  );
+  });
+  const settled = observeSettlement(scan);
   try {
     await vi.waitFor(() => expect(gates).toHaveLength(admitted));
     if (failure !== "metadata error") {
@@ -304,7 +263,7 @@ it.each(metadataFailures)("settles metadata after %s", async (failure) => {
     }
     gates[0]!.resolve();
     await failed.promise;
-    expect(settled).toBe(false);
+    expect(settled()).toBe(false);
     expect(started).toBe(admitted);
     if (failure === "metadata error") {
       // Let the rejected operation reach the scan owner before the later cancellation.
@@ -326,7 +285,7 @@ it.each(metadataFailures)("settles metadata after %s", async (failure) => {
 });
 
 it("stops an admitted directory enumeration on caller cancellation", async () => {
-  const root = await fs.realpath(tempDirs.make("workspace-inventory-directory-abort-"));
+  const { root, capture } = await inventoryFixture();
   const target = path.join(root, "directory");
   await fs.mkdir(target);
   await Promise.all(
@@ -359,13 +318,10 @@ it("stops an admitted directory enumeration on caller cancellation", async () =>
     }
     return directory;
   });
-  const params = {
-    root,
-    baseCommit: null,
+  const scan = capture({
     includePaths: new Set(["directory"]),
     signal: controller.signal,
-  };
-  const scan = readActualWorkspaceManifest(params);
+  });
   const rejected = expect(scan).rejects.toBe(reason);
   try {
     await entered.promise;
@@ -428,7 +384,7 @@ it("preserves bottom-up directory membership and canonical output across input o
 });
 
 it("reserves aggregate inventory bytes even when every file hits the hash memo", async () => {
-  const root = await fs.realpath(tempDirs.make("workspace-inventory-byte-budget-"));
+  const { root, capture } = await inventoryFixture();
   const memo = new Map<string, string>();
   const metrics = { contentHashCount: 0, contentHashDurationMs: 0, memoHitCount: 0 };
   for (const file of ["first.bin", "second.bin"]) {
@@ -440,40 +396,139 @@ it("reserves aggregate inventory bytes even when every file hits the hash memo",
       "a".repeat(64),
     );
   }
-  await expect(
-    withWorkspaceHashMemo(
-      memo,
-      () => readActualWorkspaceManifestImpl({ root, baseCommit: null }),
-      metrics,
-    ),
-  ).rejects.toThrow("eligible byte limit");
+  await expect(withWorkspaceHashMemo(memo, () => capture(), metrics)).rejects.toThrow(
+    "eligible byte limit",
+  );
   expect(metrics).toMatchObject({ contentHashCount: 0, memoHitCount: 1 });
 });
 
-it.each(["inventory", "fixed limit"] as const)(
-  "preserves the %s diagnosis when a file grows during its read",
+it("bounds active fallback scratch across inventories and skips reads on memo hits", async () => {
+  vi.stubEnv("FS_SAFE_NATIVE_MODE", "off");
+  const fixtures = await Promise.all(
+    [0, 1].map(async (owner) => {
+      const { root, capture } = await inventoryFixture();
+      const entries = await Promise.all(
+        Array.from({ length: 32 }, async (_, index) => {
+          const file = `file-${index}.bin`;
+          const bytes = Buffer.alloc(
+            index % 7 === 0 ? 270_001 + index : 17 + index,
+            owner * 32 + index,
+          );
+          await fs.writeFile(path.join(root, file), bytes);
+          return {
+            path: file,
+            type: "file",
+            mode: 0o644,
+            size: bytes.length,
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+          };
+        }),
+      );
+      const memo = new Map<string, string>();
+      return { root, entries, capture: () => withWorkspaceHashMemo(memo, () => capture()) };
+    }),
+  );
+  const activeBuffers = new Set<Buffer>();
+  let readCount = 0;
+  const open = fs.open.bind(fs);
+  vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+    const handle = await open(...args);
+    const fixture = fixtures.find(({ root }) => String(args[0]).startsWith(root + path.sep));
+    if (fixture) {
+      const read = handle.read.bind(handle);
+      vi.spyOn(handle, "read").mockImplementation(async (...readArgs) => {
+        const buffer = readArgs[0];
+        if (!Buffer.isBuffer(buffer)) {
+          throw new Error("Expected a caller-owned inventory buffer");
+        }
+        expect(
+          [...activeBuffers].every(
+            (active) =>
+              active.buffer !== buffer.buffer ||
+              active.byteOffset + active.byteLength <= buffer.byteOffset ||
+              buffer.byteOffset + buffer.byteLength <= active.byteOffset,
+          ),
+        ).toBe(true);
+        activeBuffers.add(buffer);
+        expect(
+          [...activeBuffers].reduce((bytes, active) => bytes + active.byteLength, 0),
+        ).toBeLessThanOrEqual(2 * 1024 * 1024);
+        readCount++;
+        try {
+          return await read(...readArgs);
+        } finally {
+          activeBuffers.delete(buffer);
+        }
+      });
+    }
+    return handle;
+  });
+  const capture = () => Promise.all(fixtures.map((fixture) => fixture.capture()));
+  const manifests = await capture();
+  for (const [index, fixture] of fixtures.entries()) {
+    expect(manifests[index]!.manifest.entries).toEqual(
+      fixture.entries.toSorted((left, right) => left.path.localeCompare(right.path)),
+    );
+  }
+  const coldReadCount = readCount;
+  expect(coldReadCount).toBeGreaterThan(0);
+  expect(await capture()).toEqual(manifests);
+  expect(readCount).toBe(coldReadCount);
+});
+
+it.each(["", "\u0000binary\u00ff"])(
+  "returns independently owned captured bytes for %j",
+  async (content) => {
+    const root = tempDirs.make("workspace-captured-bytes-");
+    const target = path.join(root, "content.bin");
+    const expected = Buffer.from(content);
+    await fs.writeFile(target, expected);
+    const [first, second] = await Promise.all([
+      readWorkspaceFileContentsWithLimit(target, expected.length),
+      readWorkspaceFileContentsWithLimit(target, expected.length),
+    ]);
+    expect(first).toMatchObject({
+      type: "file",
+      size: expected.length,
+      sha256: createHash("sha256").update(expected).digest("hex"),
+    });
+    expect(second).toEqual(first);
+    if (first.type !== "file" || second.type !== "file") {
+      throw new Error("Supported file did not return its captured contents");
+    }
+    expect(first.content).toEqual(expected);
+    first.content.fill(0x58);
+    expect(second.content).toEqual(expected);
+  },
+);
+
+it.each(["inventory", "fixed limit", "captured contents"] as const)(
+  "preserves the %s diagnosis when a file grows after its opened size is captured",
   async (mode) => {
-    const root = await fs.realpath(tempDirs.make("workspace-inventory-growing-file-"));
+    const { root, capture } = await inventoryFixture();
     const target = path.join(root, "growing.txt");
     await fs.writeFile(target, "a");
     const open = fs.open.bind(fs);
     vi.spyOn(fs, "open").mockImplementation(async (...args) => {
       const handle = await open(...args);
       if (String(args[0]) === target) {
-        const read = handle.read.bind(handle);
-        vi.spyOn(handle, "read").mockImplementationOnce(async (...readArgs) => {
+        const stat = handle.stat.bind(handle);
+        vi.spyOn(handle, "stat").mockImplementationOnce(async (...statArgs) => {
+          const opened = await stat(...statArgs);
           await fs.appendFile(target, "b");
-          return await read(...readArgs);
+          return opened;
         });
       }
       return handle;
     });
     if (mode === "inventory") {
-      await expect(readActualWorkspaceManifestImpl({ root, baseCommit: null })).rejects.toThrow(
-        "file changed while it was being read",
-      );
+      await expect(capture()).rejects.toThrow("file changed while it was being read");
     } else {
-      await expect(readWorkspaceFileSnapshotWithLimit(target, 1, root)).resolves.toEqual({
+      const snapshot =
+        mode === "captured contents"
+          ? readWorkspaceFileContentsWithLimit(target, 1)
+          : readWorkspaceFileSnapshotWithLimit(target, 1, root);
+      await expect(snapshot).resolves.toEqual({
         type: "unsupported",
       });
     }

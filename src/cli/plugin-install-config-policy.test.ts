@@ -3,20 +3,25 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OfficialExternalPluginCatalogEntry } from "../plugins/official-external-plugin-catalog.js";
 import {
   resolvePluginInstallInvalidConfigPolicy,
-  resolvePluginInstallPreactionRequest,
+  resolvePluginInstallRequestContext,
   type PluginInstallRequestContext,
-} from "./plugin-install-config-policy.js";
+} from "../plugins/install-config.js";
+import type { OfficialExternalPluginCatalogEntry } from "../plugins/official-external-plugin-catalog.js";
+import { resolvePluginInstallPreactionRequest } from "./plugin-install-config-policy.js";
 
 const fixture = vi.hoisted(() => ({
   bundledPath: "",
   entries: [] as OfficialExternalPluginCatalogEntry[],
 }));
 
-vi.mock("../plugins/bundled-sources.js", () => ({
-  findBundledPluginSource: () => ({ pluginId: "bundled-demo", localPath: fixture.bundledPath }),
+vi.mock("../plugins/bundled-sources.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../plugins/bundled-sources.js")>()),
+  findBundledPluginSource: ({ lookup }: { lookup: { kind: string; value: string } }) =>
+    lookup.kind === "pluginId" && lookup.value === "bundled-demo"
+      ? { pluginId: "bundled-demo", localPath: fixture.bundledPath }
+      : undefined,
 }));
 
 vi.mock("../plugins/official-external-plugin-catalog.js", async (importOriginal) => ({
@@ -69,28 +74,60 @@ describe("plugin install recovery source ownership", () => {
     fs.rmSync(fixture.bundledPath, { recursive: true, force: true });
   });
 
-  it.each([false, true])("honors official recovery=%s before bundled recovery", (allowed) => {
-    fixture.entries = [
-      {
-        name: "@fixture/recovery",
-        openclaw: {
-          plugin: { id: "official-demo" },
-          install: { npmSpec: "@fixture/recovery", allowInvalidConfigRecovery: allowed },
+  it.each(
+    [false, true].flatMap((allowed) =>
+      [
+        { spec: "npm:@fixture/recovery@1.2.3", ownsRecovery: true },
+        { spec: "official-demo", ownsRecovery: true },
+        { spec: "@fixture/recovery", ownsRecovery: false },
+        { spec: "@fixture/recovery@1.2.3", ownsRecovery: false },
+        { spec: "clawhub:@fixture/recovery@1.2.3", ownsRecovery: false },
+      ].map((request) => Object.assign({ allowed }, request)),
+    ),
+  )(
+    "respects $spec source ownership with official recovery=$allowed",
+    ({ allowed, spec, ownsRecovery }) => {
+      fixture.entries = [
+        {
+          name: "@fixture/recovery",
+          openclaw: {
+            plugin: { id: "official-demo" },
+            install: { npmSpec: "@fixture/recovery", allowInvalidConfigRecovery: allowed },
+          },
         },
-      },
-    ];
-    const request = parseInstallRequest("npm:@fixture/recovery@1.2.3");
-    expect(request).toMatchObject({
-      bundledPluginId: "official-demo",
-      allowInvalidConfigRecovery: allowed,
-    });
-    expect(resolvePluginInstallInvalidConfigPolicy(request)).toBe(
-      allowed ? "allow-plugin-recovery" : "deny",
-    );
-  });
+      ];
+      const request = parseInstallRequest(spec);
+      expect(request).toEqual({
+        rawSpec: spec,
+        ...(ownsRecovery
+          ? {
+              installKind: "plugin",
+              bundledPluginId: "official-demo",
+              allowInvalidConfigRecovery: allowed,
+            }
+          : {}),
+      });
+      expect(resolvePluginInstallInvalidConfigPolicy(request)).toBe(
+        ownsRecovery && allowed ? "allow-plugin-recovery" : "deny",
+      );
 
-  it("uses bundled recovery when no official descriptor owns the spec", () => {
-    const request = parseInstallRequest("@fixture/recovery");
+      if (spec === "@fixture/recovery@1.2.3") {
+        for (const source of ["npm", "clawhub"] as const) {
+          const selected = resolvePluginInstallRequestContext({ rawSpec: spec, source });
+          expect(selected).toMatchObject({ ok: true });
+          if (!selected.ok) {
+            throw new Error(selected.error);
+          }
+          expect(resolvePluginInstallInvalidConfigPolicy(selected.request)).toBe(
+            source === "npm" && allowed ? "allow-plugin-recovery" : "deny",
+          );
+        }
+      }
+    },
+  );
+
+  it("uses bundled recovery for a canonical plugin ID", () => {
+    const request = parseInstallRequest("bundled-demo");
     expect(request).toMatchObject({
       bundledPluginId: "bundled-demo",
       allowInvalidConfigRecovery: true,
@@ -99,8 +136,6 @@ describe("plugin install recovery source ownership", () => {
 
   it.each([
     { prefix: "", allowed: false },
-    { prefix: "", allowed: true },
-    { prefix: "file:", allowed: false },
     { prefix: "file:", allowed: true },
   ])(
     "uses local recovery=$allowed through $prefix without borrowing metadata",

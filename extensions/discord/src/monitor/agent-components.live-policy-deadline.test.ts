@@ -8,7 +8,11 @@ import {
   resolveDiscordModalEntryWithPersistence,
 } from "../components-registry.js";
 import { clearDiscordComponentEntriesForTest } from "../components-registry.test-support.js";
-import { ButtonInteraction, createInteraction, type ComponentData } from "../internal/discord.js";
+import {
+  BaseComponentInteraction,
+  createInteraction,
+  type ComponentData,
+} from "../internal/discord.js";
 import {
   attachRestMock,
   createInternalComponentInteractionPayload,
@@ -40,8 +44,8 @@ const policy: DiscordLivePolicy = {
   allowNameMatching: false,
 };
 
-function createModalScenario(readPolicy: DiscordLivePolicyReader) {
-  registerDiscordComponentEntries({
+async function createModalScenario(readPolicy: DiscordLivePolicyReader) {
+  await registerDiscordComponentEntries({
     entries: [{ id: "btn_1", kind: "modal-trigger", label: "Open form", modalId: "mdl_1" }],
     modals: [
       {
@@ -79,7 +83,7 @@ function createModalScenario(readPolicy: DiscordLivePolicyReader) {
         },
       }),
     );
-    if (!(interaction instanceof ButtonInteraction)) {
+    if (!(interaction instanceof BaseComponentInteraction)) {
       throw new Error("expected Discord button interaction");
     }
     return { interaction, patch, post };
@@ -107,7 +111,7 @@ describe("Discord component policy deadlines", () => {
         rejectPolicy = reject;
       });
       const readPolicy = vi.fn(() => pendingPolicy);
-      const { button, createButtonInteraction } = createModalScenario(readPolicy);
+      const { button, createButtonInteraction } = await createModalScenario(readPolicy);
       const { interaction, post, patch } = createButtonInteraction("interaction-1");
       const data: ComponentData = { cid: "btn_1", mid: "mdl_1" };
       const run = button.run(interaction, data);
@@ -160,7 +164,7 @@ describe("Discord component policy deadlines", () => {
 
   it("reports a policy failure without opening or consuming the modal", async () => {
     const error = new Error("policy is unavailable");
-    const { button, createButtonInteraction } = createModalScenario(async () => {
+    const { button, createButtonInteraction } = await createModalScenario(async () => {
       throw error;
     });
     const { interaction, post } = createButtonInteraction("interaction-error");
