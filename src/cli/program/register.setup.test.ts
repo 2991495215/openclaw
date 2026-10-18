@@ -164,7 +164,7 @@ describe("registered setup routing", () => {
     expect(runtime.error).toHaveBeenCalledWith(expect.stringContaining("cannot be combined"));
     if (args.includes("--json")) {
       expect(runtime.log).toHaveBeenCalledTimes(1);
-      expect(JSON.parse(runtime.log.mock.calls[0][0])).toEqual({
+      expect(JSON.parse(String(runtime.log.mock.calls[0]?.[0]))).toEqual({
         ok: false,
         error: { type: "cli_error", message: expect.any(String) },
         phase: "options",
