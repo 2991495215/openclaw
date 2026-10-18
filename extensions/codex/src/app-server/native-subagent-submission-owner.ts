@@ -74,15 +74,10 @@ export class CodexNativeSubagentSubmissionOwner {
 
   constructor(private readonly dependencies: SubmissionDependencies) {
     this.pollDelays = dependencies.recoveryPollDelaysMs ?? DEFAULT_RECOVERY_POLL_DELAYS_MS;
-    this.modelInputs = createNativeSubagentSubmissionCalls(this.calls, dependencies, {
-      isCurrent: (state) => this.isCurrent(state),
-      capture: (state, receipt, owner, persist, completionCustody) =>
-        this.capture(state, receipt, owner, persist, completionCustody),
-      observeKnownChild: (threadId) => this.observeKnownChild(threadId),
-    });
+    this.modelInputs = createNativeSubagentSubmissionCalls(this.calls, dependencies, this);
   }
 
-  private isCurrent(state: ParentState): boolean {
+  isCurrent(state: ParentState): boolean {
     if (this.dependencies.isCurrent(state)) {
       return true;
     }
@@ -272,7 +267,7 @@ export class CodexNativeSubagentSubmissionOwner {
     }
   }
 
-  private capture(
+  capture(
     state: ParentState,
     receipt: CodexNativeSubagentSubmission,
     owner?: ParentOwner,

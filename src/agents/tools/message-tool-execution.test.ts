@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { GatewayClientRequestError } from "../../../packages/gateway-client/src/request-error.js";
 import {
   ErrorCodes,
@@ -12,6 +12,8 @@ import type {
   ChannelMessageActionName,
   ChannelPlugin,
 } from "../../channels/plugins/types.public.js";
+import * as commandSecretGateway from "../../cli/command-secret-gateway.js";
+import * as commandSecretTargets from "../../cli/command-secret-targets.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
@@ -26,7 +28,7 @@ import type {
   MessageActionInput,
   MessageActionResult,
 } from "../../infra/outbound/message-action-contracts.js";
-import { runMessageAction as runRealMessageAction } from "../../infra/outbound/message-action-runner.js";
+import * as messageActionRunner from "../../infra/outbound/message-action-runner.js";
 import {
   workspaceConfig,
   workspaceTestPlugin,
@@ -57,22 +59,24 @@ const EMPTY_CATALOG = {
   getChannel: () => undefined,
 } as const;
 
-afterEach(() => {
-  clearRuntimeConfigSnapshot();
+beforeEach(() => {
+  vi.spyOn(commandSecretTargets, "getScopedChannelsCommandSecretTargets").mockReturnValue({
+    targetIds: new Set<string>(),
+  });
+  vi.spyOn(commandSecretGateway, "resolveCommandSecretRefsViaGateway").mockImplementation(
+    async ({ config }) => ({
+      resolvedConfig: config,
+      diagnostics: [],
+      targetStatesByPath: {},
+      hadUnresolvedTargets: false,
+    }),
+  );
 });
 
-const secretDeps = {
-  getScopedChannelsCommandSecretTargets: () => ({ targetIds: new Set<string>() }),
-  resolveCommandSecretRefsViaGateway: async ({ config }) => ({
-    resolvedConfig: config,
-    diagnostics: [],
-    targetStatesByPath: {},
-    hadUnresolvedTargets: false,
-  }),
-} satisfies Pick<
-  NonNullable<Parameters<typeof createMessageTool>[0]>,
-  "getScopedChannelsCommandSecretTargets" | "resolveCommandSecretRefsViaGateway"
->;
+afterEach(() => {
+  vi.restoreAllMocks();
+  clearRuntimeConfigSnapshot();
+});
 
 describe("registered message action source completion", () => {
   afterEach(() => resetPluginRuntimeStateForTest());
@@ -227,7 +231,6 @@ describe("registered message action source completion", () => {
           agentAccountId: "default",
           messageActionTurnCapability: capability,
           sourceReplyDeliveryMode: "automatic",
-          ...secretDeps,
         });
         const execution = tool.execute("source-upload", {
           action,
@@ -275,9 +278,9 @@ describe("registered message action source completion", () => {
 });
 
 function createFailingMessageTool(error: Error) {
-  const runMessageAction = vi.fn(async () => {
-    throw error;
-  });
+  const runMessageAction = vi
+    .spyOn(messageActionRunner, "runMessageAction")
+    .mockRejectedValue(error);
   setRuntimeConfigSnapshot({});
   const tool = createMessageTool({
     config: {},
@@ -288,13 +291,14 @@ function createFailingMessageTool(error: Error) {
     currentChannelProvider: "telegram",
     currentChannelId: "chat-123",
     currentMessagingTarget: "chat-123",
-    ...secretDeps,
-    runMessageAction,
   });
   return { tool, runMessageAction };
 }
 
-function sentIdempotencyKey(runMessageAction: ReturnType<typeof vi.fn>, call: number) {
+function sentIdempotencyKey(
+  runMessageAction: MockInstance<typeof messageActionRunner.runMessageAction>,
+  call: number,
+) {
   const request = runMessageAction.mock.calls[call]?.[0] as
     | { params?: { idempotencyKey?: string } }
     | undefined;
@@ -360,9 +364,9 @@ it.each(["read", "edit", "delete", "pin", "unpin"] as const)(
         assertCurrent: () => {},
       },
     });
-    const resolveSecrets = vi.fn(async () => {
-      throw new Error("Credential preparation must not run for a missing account");
-    });
+    const resolveSecrets = vi
+      .spyOn(commandSecretGateway, "resolveCommandSecretRefsViaGateway")
+      .mockRejectedValue(new Error("Credential preparation must not run for a missing account"));
     try {
       setRuntimeConfigSnapshot(cfg);
       const tool = createMessageTool({
@@ -375,7 +379,6 @@ it.each(["read", "edit", "delete", "pin", "unpin"] as const)(
         messageActionTurnCapability: token,
         preparedMessageToolCatalog: EMPTY_CATALOG,
         admitScheduledInvocation: () => cfg,
-        resolveCommandSecretRefsViaGateway: resolveSecrets,
       });
       await expect(
         tool.execute(action, {
@@ -554,8 +557,6 @@ describe("message tool terminal source actions", () => {
       messageActionTurnCapability: turnCapability,
       ...source,
       sourceReplyDeliveryMode: "automatic",
-      ...secretDeps,
-      runMessageAction: runRealMessageAction,
     });
 
     const result = await tool.execute("terminal-action", { action: "react", emoji: "👍", ...args });
@@ -664,8 +665,6 @@ describe("message tool group thread replies", () => {
       currentChannelId: "C12345678",
       currentMessagingTarget: "C12345678",
       currentThreadTs: "42",
-      ...secretDeps,
-      runMessageAction: runRealMessageAction,
     });
     const participant = { agentId: "reviewer", name: "Reviewer" };
     const location = { latitude: 48.858844, longitude: 2.294351 };
@@ -711,18 +710,8 @@ describe("message tool group thread replies", () => {
         createMockPluginRegistry([{ hookName: "message_sending", handler: sendingHook }]),
       );
       setRuntimeConfigSnapshot({});
-      const tool = createMessageTool({
-        config: {},
-        agentSessionKey: `agent:reviewer:${channel}:group:123:thread:${sourceThread}`,
-        currentChannelProvider: channel,
-        currentChannelId: "123",
-        currentMessagingTarget: "123",
-        currentThreadTs: sourceThread,
-        ...secretDeps,
-        runMessageAction: async ({
-          action,
-          params,
-        }: MessageActionInput): Promise<MessageActionResult> => {
+      vi.spyOn(messageActionRunner, "runMessageAction").mockImplementation(
+        async ({ action, params }: MessageActionInput): Promise<MessageActionResult> => {
           if (action !== "send" && action !== "edit") {
             throw new Error(`Unexpected fixture action: ${action}`);
           }
@@ -785,6 +774,14 @@ describe("message tool group thread replies", () => {
               }
             : { ...common, kind: "action", action };
         },
+      );
+      const tool = createMessageTool({
+        config: {},
+        agentSessionKey: `agent:reviewer:${channel}:group:123:thread:${sourceThread}`,
+        currentChannelProvider: channel,
+        currentChannelId: "123",
+        currentMessagingTarget: "123",
+        currentThreadTs: sourceThread,
       });
       const participant = { agentId: "reviewer", name: "Reviewer" };
       await withGroupThreadTurn(

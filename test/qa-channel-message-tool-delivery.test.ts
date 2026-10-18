@@ -18,7 +18,6 @@ import {
   mintMessageActionTurnCapability,
   revokeMessageActionTurnCapability,
 } from "../src/gateway/message-action-turn-capability.js";
-import { runMessageAction } from "../src/infra/outbound/message-action-runner.js";
 import { createStartAccountContext } from "../src/plugin-sdk/test-helpers/start-account-context.js";
 import { setActivePluginRegistry } from "../src/plugins/runtime.js";
 import { createRuntimeChannel } from "../src/plugins/runtime/runtime-channel.js";
@@ -135,14 +134,6 @@ async function withQaMessageTool(
               sourceReplyOnly: source.sourceReplyOnly,
               sourceReplyDeliveryMode: "message_tool_only",
               workspaceDir: state.workspaceDir,
-              runMessageAction,
-              getScopedChannelsCommandSecretTargets: () => ({ targetIds: new Set<string>() }),
-              resolveCommandSecretRefsViaGateway: async ({ config: inputConfig }) => ({
-                resolvedConfig: inputConfig,
-                diagnostics: [],
-                targetStatesByPath: {},
-                hadUnresolvedTargets: false,
-              }),
             });
             await exercise({ tool, inbound, busState, baseUrl: bus.baseUrl });
           } catch (error) {
