@@ -55,7 +55,7 @@ export function prepareCopilotAttemptContext(
     hostSystemAgentActive &&
     input.toolsAllow?.length === 1 &&
     input.toolsAllow[0]?.trim().toLowerCase() === "openclaw";
-  const messages = Array.isArray(input.messages) ? [...input.messages] : [];
+  const messages = [...(input.messages ?? [])];
   const modelRef = resolveModelRef(input);
   const resolvedWorkspaceForSandbox =
     readResolvedAttemptPath(input.workspaceDir) ?? readResolvedAttemptPath(input.cwd);
@@ -91,6 +91,7 @@ export function prepareCopilotAttemptContext(
     modelProviderId: modelRef.provider,
     modelId: modelRef.id,
     trigger: input.trigger,
+    inputProvenance: input.inputProvenance,
     foregroundPromptContext: buildEmbeddedForegroundPromptContext(
       { ...input, agentId: sessionAgentId },
       input.agentDir ?? resolveAgentDir(input.config ?? {}, sessionAgentId),

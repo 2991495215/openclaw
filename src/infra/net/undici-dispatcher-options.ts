@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import net from "node:net";
+import { floorPositiveFiniteNumber as normalizedTimeout } from "@openclaw/normalization-core/number-coercion";
 import { isRecord as isObjectRecord } from "@openclaw/normalization-core/record-coerce";
 import { addActiveManagedProxyTlsOptions } from "./proxy/managed-proxy-undici.js";
 import { withUndiciErrorDiagnostics } from "./undici-error-diagnostics.js";
@@ -7,11 +8,18 @@ import { resolveUndiciAutoSelectFamilyConnectOptions } from "./undici-family-pol
 
 const TEST_UNDICI_RUNTIME_DEPS_KEY = "__OPENCLAW_TEST_UNDICI_RUNTIME_DEPS__";
 const requireUndici = createRequire(import.meta.url);
+let undiciModule: typeof import("undici") | undefined;
+
+// Streaming defaults must not extend TCP/TLS setup; explicit request budgets still can.
+export let globalUndiciStreamTimeoutMs: number | undefined;
+
+export function setGlobalUndiciStreamTimeoutMs(timeoutMs: number | undefined): void {
+  globalUndiciStreamTimeoutMs = timeoutMs;
+}
 
 type UndiciAgentOptions = ConstructorParameters<typeof import("undici").Agent>[0];
 type UndiciProxyAgentOptions = ConstructorParameters<typeof import("undici").ProxyAgent>[0];
 type UndiciProxyAgentOptionsRecord = Exclude<UndiciProxyAgentOptions, string | URL>;
-type UndiciProxyClientFactory = NonNullable<UndiciProxyAgentOptionsRecord["clientFactory"]>;
 // Guarded fetch dispatchers intentionally stay on HTTP/1.1. Undici 8 enables
 // HTTP/2 ALPN by default, but dispatcher overrides are unreliable on that path.
 const HTTP1_ONLY_DISPATCHER_OPTIONS = Object.freeze({
@@ -28,31 +36,30 @@ export function loadUndiciModule(
   ) {
     return override as typeof import("undici");
   }
-  return requireUndici("undici") as typeof import("undici");
+  // Bun substitutes a partial built-in for bare undici; require the installed API.
+  return (undiciModule ??= requireUndici("undici/index.js") as typeof import("undici"));
 }
 
-function createHttp1ProxyClientFactory(): UndiciProxyClientFactory {
+function createHttp1ProxyClient(origin: URL, poolOptions: object): import("undici").Dispatcher {
   type Connect = ReturnType<typeof import("undici").buildConnector>;
-  return (origin, poolOptions) => {
-    const connect = isObjectRecord(poolOptions) ? poolOptions.connect : undefined;
-    return createUndiciPool(origin, {
-      ...poolOptions,
-      ...(typeof connect === "function"
-        ? {
-            connect: (params: Parameters<Connect>[0], callback: Parameters<Connect>[1]) => {
-              // IP-addressed HTTPS proxies must not send an IP literal as TLS SNI.
-              const { servername, ...withoutServername } = params;
-              return connect(
-                servername && net.isIP(servername.replace(/^\[|\]$/g, ""))
-                  ? withoutServername
-                  : params,
-                callback,
-              );
-            },
-          }
-        : {}),
-    });
-  };
+  const connect = isObjectRecord(poolOptions) ? poolOptions.connect : undefined;
+  return createUndiciPool(origin, {
+    ...poolOptions,
+    ...(typeof connect === "function"
+      ? {
+          connect: (params: Parameters<Connect>[0], callback: Parameters<Connect>[1]) => {
+            // IP-addressed HTTPS proxies must not send an IP literal as TLS SNI.
+            const { servername, ...withoutServername } = params;
+            return connect(
+              servername && net.isIP(servername.replace(/^\[|\]$/g, ""))
+                ? withoutServername
+                : params,
+              callback,
+            );
+          },
+        }
+      : {}),
+  });
 }
 
 /** Prepare proxy transport without transferring direct-origin TLS or DNS policy. */
@@ -80,19 +87,22 @@ export function buildProxyConnectOptions(
   };
 }
 
-function createUndiciClient(origin: string | URL, options: object): import("undici").Dispatcher {
+function createUndiciClient(
+  origin: string | URL,
+  options: import("undici").Client.Options,
+): import("undici").Dispatcher {
   const { Client } = loadUndiciModule(["Client"]);
-  return withUndiciErrorDiagnostics(
-    new Client(origin, options as ConstructorParameters<typeof Client>[1]),
-  );
+  return withUndiciErrorDiagnostics(new Client(origin, options));
 }
 
-function createUndiciPool(origin: string | URL, options: unknown): import("undici").Dispatcher {
+function createUndiciPool(
+  origin: string | URL,
+  options: import("undici").Pool.Options,
+): import("undici").Dispatcher {
   const { Pool } = loadUndiciModule(["Pool"]);
-  const poolOptions = isObjectRecord(options) ? options : {};
   return withUndiciErrorDiagnostics(
     new Pool(origin, {
-      ...poolOptions,
+      ...options,
       factory: createUndiciClient,
     }),
   );
@@ -100,17 +110,11 @@ function createUndiciPool(origin: string | URL, options: unknown): import("undic
 
 function createUndiciOriginDispatcher(
   origin: string | URL,
-  options: object,
+  options: import("undici").Agent.Options,
 ): import("undici").Dispatcher {
-  return isObjectRecord(options) && options.connections === 1
+  return options.connections === 1
     ? createUndiciClient(origin, options)
     : createUndiciPool(origin, options);
-}
-
-function normalizedTimeout(timeoutMs?: number): number | undefined {
-  return timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0
-    ? Math.floor(timeoutMs)
-    : undefined;
 }
 
 export function buildHttp1AgentOptions(
@@ -130,7 +134,8 @@ export function buildHttp1AgentOptions(
             ...options.connect,
             ...(timeout !== undefined ? { timeout } : {}),
           },
-    ...(timeout !== undefined ? { bodyTimeout: timeout, headersTimeout: timeout } : {}),
+    bodyTimeout: timeout ?? options.bodyTimeout ?? globalUndiciStreamTimeoutMs,
+    headersTimeout: timeout ?? options.headersTimeout ?? globalUndiciStreamTimeoutMs,
   };
 }
 
@@ -142,7 +147,7 @@ export function buildHttp1ProxyAgentOptions(
   const normalized =
     typeof options === "string" || options instanceof URL ? { uri: options.toString() } : options;
   // oxlint-disable-next-line typescript/unbound-method -- Undici invokes this callback without an options receiver; preserve inherited callbacks too.
-  const { clientFactory = createHttp1ProxyClientFactory() } = normalized;
+  const { clientFactory = createHttp1ProxyClient } = normalized;
   const managed = addActiveManagedProxyTlsOptions(normalized, { env: managedTlsEnv });
   // Generic connector hints are not TLS opt-in: Undici interprets proxyTls
   // presence as SOCKS-over-TLS. Only explicitly supplied/managed TLS belongs there.

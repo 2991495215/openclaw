@@ -1,6 +1,7 @@
 import "./chat-engine.mocks.test-support.js";
 import { describe, expect, it, vi } from "vitest";
 import {
+  operationMocks,
   fakeOverviewLoader,
   classifySystemAgentApprovalText,
   useTempStateDir,
@@ -15,14 +16,45 @@ import {
   type WizardPrompter,
 } from "./chat-engine.test-support.js";
 
+function createEngine(options: ConstructorParameters<typeof SystemAgentChatEngine>[0] = {}) {
+  return new SystemAgentChatEngine({
+    runAgentTurn: async () => null,
+    ...options,
+    deps: { loadOverview: fakeOverviewLoader(), ...options.deps },
+  });
+}
+
+function tokenWizard(sensitive = false, initialValue?: string) {
+  return async (_channel: string, prompter: WizardPrompter) => {
+    await prompter.text({
+      message: "Bot token",
+      ...(sensitive ? { sensitive: true } : {}),
+      ...(initialValue === undefined ? {} : { initialValue }),
+    });
+  };
+}
+
+async function startGatewayWizard(
+  options: ConstructorParameters<typeof SystemAgentChatEngine>[0] = {},
+) {
+  const engine = createEngine({
+    surface: "gateway",
+    runChannelSetupWizard: tokenWizard(),
+    ...options,
+  });
+  const prompt = await engine.handle("connect telegram");
+  return {
+    engine,
+    prompt,
+    stepId: expectDefined(prompt.step?.id, "expected an active wizard step"),
+  };
+}
+
 describe("SystemAgentChatEngine wizard", () => {
   it("recommends the confirm option matching the initial value", async () => {
     let enabled: boolean | undefined;
-    const engine = new SystemAgentChatEngine({
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
+    const engine = createEngine({
+      runChannelSetupWizard: async (_channel, prompter) => {
         enabled = await prompter.confirm({
           message: "Enable delegated auth?",
           initialValue: false,
@@ -45,10 +77,7 @@ describe("SystemAgentChatEngine wizard", () => {
     await engine.handle("no");
     expect(enabled).toBe(false);
 
-    const defaultEngine = new SystemAgentChatEngine({
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
+    const defaultEngine = createEngine({
       runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
         await prompter.confirm({ message: "Continue?" });
       },
@@ -66,10 +95,7 @@ describe("SystemAgentChatEngine wizard", () => {
   it("rejects non-decimal menu numbers in hosted wizard choices", async () => {
     useTempStateDir();
     const runs: unknown[] = [];
-    const engine = new SystemAgentChatEngine({
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
+    const engine = createEngine({
       runChannelSetupWizard: async (_channel, prompter) => {
         runs.push(
           await prompter.select({
@@ -108,7 +134,6 @@ describe("SystemAgentChatEngine wizard", () => {
     const engine = new SystemAgentChatEngine({
       surface: "gateway",
       runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
       deps: { loadOverview: fakeOverviewLoader() },
       runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
         await prompter.note("Before entering the token, open the provider console.");
@@ -129,7 +154,6 @@ describe("SystemAgentChatEngine wizard", () => {
     const engine = new SystemAgentChatEngine({
       surface: "gateway",
       runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
       deps: { loadOverview: fakeOverviewLoader() },
       runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
         await prompter.text({ message: "Bot label" });
@@ -146,18 +170,12 @@ describe("SystemAgentChatEngine wizard", () => {
 
   it("routes sensitive CLI wizard prompts to the masked channel setup flow", async () => {
     useTempStateDir();
-    const engine = new SystemAgentChatEngine({
+    const engine = createEngine({
       surface: "cli",
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
-        await prompter.text({ message: "Bot token", sensitive: true });
-      },
+      runChannelSetupWizard: tokenWizard(true),
     });
 
     const reply = await engine.handle("connect telegram");
-
     expect(reply.text).toContain("Sensitive input is not accepted");
     expect(reply.text).toContain("openclaw channels add --channel telegram");
     expect(reply.sensitive).toBeUndefined();
@@ -184,14 +202,9 @@ describe("SystemAgentChatEngine wizard", () => {
   });
 
   it("clears a sensitive channel before a different wizard session starts", async () => {
-    const engine = new SystemAgentChatEngine({
+    const engine = createEngine({
       surface: "cli",
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
-        await prompter.text({ message: "Bot token", sensitive: true });
-      },
+      runChannelSetupWizard: tokenWizard(true),
       runSkillsSetupWizard: async () => {},
     });
 
@@ -206,12 +219,7 @@ describe("SystemAgentChatEngine wizard", () => {
   });
 
   it("routes inference setup out of both CLI and gateway sessions", async () => {
-    const common = {
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
-    };
-    const cli = new SystemAgentChatEngine({ ...common, surface: "cli" });
+    const cli = createEngine({ surface: "cli" });
     for (const command of ["open setup wizard", "open classic wizard"]) {
       const cliReply = await cli.handle(command);
       expect(cliReply.action).toBe("none");
@@ -219,12 +227,10 @@ describe("SystemAgentChatEngine wizard", () => {
       expect(cliReply.text).toContain("run `openclaw onboard`");
     }
 
-    const gateway = new SystemAgentChatEngine({ ...common, surface: "gateway" });
+    const gateway = createEngine({ surface: "gateway" });
     const gatewayReply = await gateway.handle("open setup wizard");
     expect(gatewayReply.action).toBe("none");
     expect(gatewayReply.handoff).toBeUndefined();
-    // The gateway surface has real setup screens, so the reply names them
-    // rather than sending the reader to a terminal they may not have.
     expect(gatewayReply.text).toContain("Settings");
     expect(gatewayReply.text).toContain("change providers from a shell");
     expect(gatewayReply.text).toContain("machine running OpenClaw");
@@ -234,11 +240,8 @@ describe("SystemAgentChatEngine wizard", () => {
 
   it("keeps hosted-wizard validation errors on the current prompt", async () => {
     useTempStateDir();
-    const engine = new SystemAgentChatEngine({
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
+    const engine = createEngine({
+      runChannelSetupWizard: async (_channel, prompter) => {
         await prompter.text({
           message: "Port",
           validate: (value) => (value === "18789" ? undefined : "Enter port 18789"),
@@ -259,11 +262,8 @@ describe("SystemAgentChatEngine wizard", () => {
 
   it("hints cancel once per message, only while a step awaits an answer", async () => {
     useTempStateDir();
-    const engine = new SystemAgentChatEngine({
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
+    const engine = createEngine({
+      runChannelSetupWizard: async (_channel, prompter) => {
         await prompter.note("Open the linked-devices screen.", "Step 1");
         await prompter.note("Scan the code shown next.", "Step 2");
         await prompter.note("Keep the phone online.", "Step 3");
@@ -272,8 +272,6 @@ describe("SystemAgentChatEngine wizard", () => {
       },
     });
 
-    // Three auto-answered notes concatenate into the prompt's message; the hint
-    // is the message's, not each step's.
     const prompt = await engine.handle("connect telegram");
     expect(prompt.text).toContain("Step 3");
     expect(prompt.text).toContain("Phone number");
@@ -291,7 +289,6 @@ describe("SystemAgentChatEngine wizard", () => {
     useTempStateDir();
     const engine = new SystemAgentChatEngine({
       runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
       deps: { loadOverview: fakeOverviewLoader() },
       runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
         await prompter.text({ message: "Bot token" });
@@ -310,7 +307,6 @@ describe("SystemAgentChatEngine wizard", () => {
     useTempStateDir();
     const engine = new SystemAgentChatEngine({
       runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
       deps: { loadOverview: fakeOverviewLoader() },
       runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
         await prompter.text({ message: "Bot token" });
@@ -325,17 +321,14 @@ describe("SystemAgentChatEngine wizard", () => {
   });
 
   it("voids a stale host proposal before an exact wizard, including cancellation", async () => {
-    const runConfigSet = vi.fn(async () => {});
+    const runConfigSet = operationMocks.runConfigSet.mockResolvedValue(undefined);
     const runAgentTurn = vi.fn(async (params: { approvalArmed: boolean }) => ({
       text: params.approvalArmed ? "unexpected approval" : "No pending change.",
     }));
-    const engine = new SystemAgentChatEngine({
+    const engine = createEngine({
       runAgentTurn: runAgentTurn as never,
       classifyApproval: async ({ message }) => classifySystemAgentApprovalText(message),
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
-        await prompter.text({ message: "Bot token" });
-      },
-      deps: { runConfigSet, loadOverview: fakeOverviewLoader() },
+      runChannelSetupWizard: tokenWizard(),
     });
     engine.propose({ kind: "config-set", path: "gateway.port", value: "19001" });
 
@@ -365,13 +358,10 @@ describe("SystemAgentChatEngine wizard", () => {
         return { text: "No pending change." };
       },
     );
-    const engine = new SystemAgentChatEngine({
+    const engine = createEngine({
       runAgentTurn: runAgentTurn as never,
       classifyApproval: async ({ message }) => classifySystemAgentApprovalText(message),
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
-        await prompter.text({ message: "Bot token" });
-      },
-      deps: { loadOverview: fakeOverviewLoader() },
+      runChannelSetupWizard: tokenWizard(),
     });
 
     await engine.handle("prepare a change for me");
@@ -385,29 +375,16 @@ describe("SystemAgentChatEngine wizard", () => {
 
   it("strips a sensitive step's prefilled value but keeps a plain one", async () => {
     useTempStateDir();
-    const makeEngine = (sensitive: boolean) =>
-      new SystemAgentChatEngine({
-        surface: "gateway",
-        runAgentTurn: async () => null,
-        planWithAssistant: async () => null,
-        deps: { loadOverview: fakeOverviewLoader() },
-        runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
-          await prompter.text({
-            message: "Bot token",
-            initialValue: "123456:REAL-SECRET",
-            ...(sensitive ? { sensitive: true } : {}),
-          });
-        },
-      });
-
-    const secret = await makeEngine(true).handle("connect telegram");
+    const { prompt: secret } = await startGatewayWizard({
+      runChannelSetupWizard: tokenWizard(true, "123456:REAL-SECRET"),
+    });
     expect(secret.step?.sensitive).toBe(true);
     expect(secret.step).not.toHaveProperty("initialValue");
     expect(JSON.stringify(secret)).not.toContain("REAL-SECRET");
 
-    // Redaction is scoped to sensitive steps; ordinary prefill still reaches
-    // clients, otherwise every edit-in-place prompt would lose its default.
-    const plain = await makeEngine(false).handle("connect telegram");
+    const { prompt: plain } = await startGatewayWizard({
+      runChannelSetupWizard: tokenWizard(false, "123456:REAL-SECRET"),
+    });
     expect(plain.step?.initialValue).toBe("123456:REAL-SECRET");
   });
 
@@ -416,7 +393,6 @@ describe("SystemAgentChatEngine wizard", () => {
     const engine = new SystemAgentChatEngine({
       surface: "gateway",
       runAgentTurn: async () => ({ text: "*click* Everything looks healthy." }),
-      planWithAssistant: async () => null,
       deps: { loadOverview: fakeOverviewLoader() },
       runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
         await prompter.text({ message: "Bot token" });
@@ -437,12 +413,8 @@ describe("SystemAgentChatEngine wizard", () => {
   it("submits a typed answer directly and records the server-owned option label", async () => {
     useTempStateDir();
     let selected: unknown;
-    const engine = new SystemAgentChatEngine({
-      surface: "gateway",
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
+    const { engine, stepId } = await startGatewayWizard({
+      runChannelSetupWizard: async (_channel, prompter) => {
         selected = await prompter.select({
           message: "Choose one",
           options: [
@@ -453,8 +425,6 @@ describe("SystemAgentChatEngine wizard", () => {
       },
     });
 
-    const prompt = await engine.handle("connect telegram");
-    const stepId = expectDefined(prompt.step?.id, "expected an active wizard step");
     await engine.answerWizard({ stepId, value: "beta" });
 
     expect(selected).toBe("beta");
@@ -466,7 +436,6 @@ describe("SystemAgentChatEngine wizard", () => {
     const engine = new SystemAgentChatEngine({
       surface: "gateway",
       runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
       deps: { loadOverview: fakeOverviewLoader() },
       runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
         await prompter.text({ message: "Bot token" });
@@ -503,22 +472,12 @@ describe("SystemAgentChatEngine wizard", () => {
     } satisfies OpenClawConfig;
     const verifiedInference = await createAmbientVerifiedBinding(baseConfig);
     let currentConfig: OpenClawConfig = baseConfig;
-    const engine = new SystemAgentChatEngine({
-      surface: "gateway",
+    const { engine, stepId } = await startGatewayWizard({
       verifiedInference,
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
       deps: {
         readConfigFileSnapshot: vi.fn(async () => configSnapshot(currentConfig)) as never,
-        loadOverview: fakeOverviewLoader(),
-      },
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
-        await prompter.text({ message: "Bot token" });
       },
     });
-
-    const prompt = await engine.handle("connect telegram");
-    const stepId = expectDefined(prompt.step?.id, "expected an active wizard step");
     currentConfig = changedConfig;
     const cancelled = await engine.cancelWizard({ stepId });
 
@@ -528,18 +487,7 @@ describe("SystemAgentChatEngine wizard", () => {
 
   it("rejects a stale typed cancel without changing the active step", async () => {
     useTempStateDir();
-    const engine = new SystemAgentChatEngine({
-      surface: "gateway",
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
-        await prompter.text({ message: "Bot token" });
-      },
-    });
-
-    const prompt = await engine.handle("connect telegram");
-    const stepId = expectDefined(prompt.step?.id, "expected an active wizard step");
+    const { engine, stepId } = await startGatewayWizard();
     await expect(engine.cancelWizard({ stepId: "stale-step" })).rejects.toBeInstanceOf(
       SystemAgentWizardAnswerError,
     );
@@ -550,21 +498,10 @@ describe("SystemAgentChatEngine wizard", () => {
 
   it("rejects a stale structured answer without changing the active step", async () => {
     useTempStateDir();
-    const engine = new SystemAgentChatEngine({
-      surface: "gateway",
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
-        await prompter.text({ message: "Bot token" });
-      },
-    });
-
-    const prompt = await engine.handle("connect telegram");
+    const { engine, stepId } = await startGatewayWizard();
     await expect(
       engine.answerWizard({ stepId: "stale-step", value: "ignored" }),
     ).rejects.toBeInstanceOf(SystemAgentWizardAnswerError);
-    const stepId = expectDefined(prompt.step?.id, "expected an active wizard step");
     const done = await engine.answerWizard({ stepId, value: "123:abc" });
 
     expect(done.step).toBeUndefined();
@@ -573,18 +510,9 @@ describe("SystemAgentChatEngine wizard", () => {
 
   it("redacts a sensitive structured answer from engine history", async () => {
     useTempStateDir();
-    const engine = new SystemAgentChatEngine({
-      surface: "gateway",
-      runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
-      deps: { loadOverview: fakeOverviewLoader() },
-      runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
-        await prompter.text({ message: "Bot token", sensitive: true });
-      },
+    const { engine, stepId } = await startGatewayWizard({
+      runChannelSetupWizard: tokenWizard(true),
     });
-
-    const prompt = await engine.handle("connect telegram");
-    const stepId = expectDefined(prompt.step?.id, "expected an active wizard step");
     await engine.answerWizard({ stepId, value: "raw-secret-value" });
 
     expect(engine.historySince(0)).toContainEqual({ role: "user", text: "<redacted secret>" });
@@ -597,7 +525,6 @@ describe("SystemAgentChatEngine wizard", () => {
     const engine = new SystemAgentChatEngine({
       surface: "gateway",
       runAgentTurn: async () => null,
-      planWithAssistant: async () => null,
       deps: { loadOverview: fakeOverviewLoader() },
       runChannelSetupWizard: async (_channel: string, prompter: WizardPrompter) => {
         selected = await prompter.select({
