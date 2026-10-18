@@ -5,6 +5,8 @@ import {
 import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import {
+  createMessageInjectionAuthority,
+  enqueueMessageInjection,
   MessageInjectionAcceptedUnconfirmedError,
   MessageInjectionAuthorityError,
   MessageInjectionWithdrawnError,
@@ -69,7 +71,6 @@ import {
   tryLoadForceClearSessionSnapshot,
 } from "./force-clear-session-state.js";
 import {
-  createEmbeddedMessageInjectionQueue,
   prepareEmbeddedInjectionAuthority,
   resolveEmbeddedInjection,
   type EmbeddedInjectionPreparation,
@@ -492,180 +493,206 @@ export async function queueGuardedEmbeddedAgentMessageWithOutcomeAsync(
   }
 }
 
-const queueEmbeddedAgentMessageAsync = createEmbeddedMessageInjectionQueue(async (...args) => {
-  const [sessionId, input, options, canInject, sourcePreparation, release, assertCurrent] = args;
-  let text = input;
-  let prepared: PreparedEmbeddedAgentQueueMessage;
-  try {
-    assertCurrent();
-    text = (await sourcePreparation?.prepareMessage?.()) ?? text;
-    assertCurrent();
-    const authority =
-      options?.toolAuthorityOverlay || sourcePreparation
-        ? await prepareEmbeddedInjectionAuthority(sessionId, options, canInject, sourcePreparation)
-        : undefined;
-    assertCurrent();
-    prepared = prepareEmbeddedAgentQueueMessage(
-      sessionId,
-      options,
-      canInject,
-      authority,
-      sourcePreparation,
+function queueEmbeddedAgentMessageAsync(
+  sessionId: string,
+  input: string,
+  options?: ReplyMessageInjectionOptions,
+  canInject?: () => boolean,
+  sourcePreparation?: EmbeddedInjectionPreparation,
+): Promise<EmbeddedAgentQueueMessageOutcome> {
+  const capturedHandle = ACTIVE_EMBEDDED_RUNS.get(sessionId);
+  const capturedRegistration =
+    capturedHandle && ACTIVE_EMBEDDED_RUN_REGISTRATIONS.get(capturedHandle);
+  const capturedRunId = capturedHandle?.runId;
+  const assertCurrent = createMessageInjectionAuthority(() => {
+    capturedRegistration?.toolAuthority?.assertActive();
+    return (
+      ACTIVE_EMBEDDED_RUNS.get(sessionId) === capturedHandle &&
+      (!capturedHandle ||
+        (ACTIVE_EMBEDDED_RUN_REGISTRATIONS.get(capturedHandle) === capturedRegistration &&
+          capturedHandle.runId === capturedRunId))
     );
-  } catch (error) {
-    if (error instanceof MessageInjectionAuthorityError) {
-      return createQueueFailureOutcome(sessionId, "tool_authority_mismatch");
-    }
-    return createQueueFailureOutcome(sessionId, "runtime_rejected", formatErrorMessage(error));
-  }
-  const enqueuedAtMs = Date.now();
-  const queuedOutcome = {
-    queued: true,
-    sessionId,
-    target: "embedded_run",
-    gatewayHealth: "live",
-  } satisfies EmbeddedAgentQueueMessageOutcome;
-  let queueAccepted = false;
-  const unconfirmed = (errorMessage: string): EmbeddedAgentQueueMessageOutcome => {
-    diag.warn(
-      `queue message accepted without confirmation: sessionId=${sessionId} err=${errorMessage}`,
-    );
-    logActiveRunMessageAccepted(sessionId);
-    return {
-      ...queuedOutcome,
-      ...(prepared.kind === "embedded_run" && prepared.runId ? { runId: prepared.runId } : {}),
-      transcriptCommit: "unconfirmed",
-      errorMessage,
-      enqueuedAtMs,
-    };
-  };
-  const failed = (error: unknown): EmbeddedAgentQueueMessageOutcome => {
-    const candidates = collectErrorGraphCandidates(error, readErrorCauses);
-    const accepted = candidates.findLast(
-      (candidate) => candidate instanceof MessageInjectionAcceptedUnconfirmedError,
-    );
-    const questionUnconfirmed = candidates.findLast(
-      (candidate) => candidate instanceof QuestionAnswerUnconfirmedError,
-    );
-    const withdrawn = candidates.some(
-      (candidate) => candidate instanceof MessageInjectionWithdrawnError,
-    );
-    if (accepted || (queueAccepted && (!withdrawn || questionUnconfirmed))) {
-      return unconfirmed(accepted?.message ?? formatErrorMessage(error));
-    }
-    if (questionUnconfirmed) {
-      throw questionUnconfirmed;
-    }
-    const errorMessage = formatErrorMessage(error);
-    diag.debug(`queue message rejected: sessionId=${sessionId} err=${errorMessage}`);
-    return createQueueFailureOutcome(sessionId, "runtime_rejected", errorMessage);
-  };
-  if (prepared.kind === "complete") {
-    const { outcome, pendingInput } = prepared;
-    if (!outcome.queued && options?.isInboundUserMessage === true && pendingInput) {
-      const authorityMismatch =
-        outcome.reason === "tool_authority_mismatch" ||
-        outcome.reason === "input_visibility_mismatch";
-      if (hasPromptImageInput(options)) {
-        if (authorityMismatch || outcome.reason === "image_input_unsupported") {
-          try {
-            const cancellation = pendingInput.cancelPendingUserInput?.("image-reply");
-            release();
-            await cancellation;
-          } catch (err) {
-            diag.warn(
-              `failed to cancel pending user input before queued image fallback: sessionId=${sessionId} err=${formatErrorMessage(err)}`,
-            );
-          }
-        }
-      } else if (authorityMismatch && pendingInput.claimPendingUserInputAnswer) {
-        const claimPendingUserInputAnswer = pendingInput.claimPendingUserInputAnswer;
-        try {
-          const claim = claimPendingUserInputAnswer(text, options);
-          release();
-          if (await claim) {
-            queueAccepted = true;
-            options.onQueueAccepted?.(true);
-            options.onQueueSettled?.();
-            logActiveRunMessageAccepted(sessionId);
-            return {
-              ...queuedOutcome,
-              enqueuedAtMs: Date.now(),
-            };
-          }
-        } catch (err) {
-          return failed(err);
-        }
-      }
-    }
-    return outcome;
-  }
-  const handle = ACTIVE_EMBEDDED_RUNS.get(sessionId);
-  const registration = handle && ACTIVE_EMBEDDED_RUN_REGISTRATIONS.get(handle);
-  const idempotencyKey = options?.userTurnTranscriptRecorder?.message?.idempotencyKey;
-  const admissions =
-    registration && idempotencyKey ? (registration.messageAdmissions ??= new Map()) : undefined;
-  const existing = idempotencyKey && admissions?.get(idempotencyKey);
-  if (existing) {
-    // A duplicate owns no backend input and must not hold up unrelated FIFO work.
-    release();
-    const outcome = await existing;
-    if (outcome.queued) {
-      options?.onQueueSettled?.();
-    }
-    return outcome;
-  }
-  const target = prepared;
-  const dispatch = async (): Promise<EmbeddedAgentQueueMessageOutcome> => {
+  });
+  const admitted = async (release: () => void): Promise<EmbeddedAgentQueueMessageOutcome> => {
+    let text = input;
+    let prepared: PreparedEmbeddedAgentQueueMessage;
     try {
-      if (target.prepareQueueMessage) {
-        await target.prepareQueueMessage();
+      assertCurrent();
+      text = (await sourcePreparation?.prepareMessage?.()) ?? text;
+      assertCurrent();
+      const authority =
+        options?.toolAuthorityOverlay || sourcePreparation
+          ? await prepareEmbeddedInjectionAuthority(
+              sessionId,
+              options,
+              canInject,
+              sourcePreparation,
+            )
+          : undefined;
+      assertCurrent();
+      prepared = prepareEmbeddedAgentQueueMessage(
+        sessionId,
+        options,
+        canInject,
+        authority,
+        sourcePreparation,
+      );
+    } catch (error) {
+      if (error instanceof MessageInjectionAuthorityError) {
+        return createQueueFailureOutcome(sessionId, "tool_authority_mismatch");
       }
-      const delivery = target.queueMessage(text, {
-        ...target.options,
-        onQueueAccepted: (accepted) => {
-          // Once the backend owns input, observer failures cannot release it for replay.
-          queueAccepted ||= accepted;
-          target.options.onQueueAccepted?.(accepted);
-        },
-      });
-      release();
-      const queueResult = await delivery;
-      queueAccepted = true;
-      if (queueResult?.transcriptCommit === "unconfirmed") {
-        return unconfirmed(queueResult.errorMessage);
-      }
-      const deliveredAtMs = options?.waitForTranscriptCommit ? Date.now() : undefined;
+      return createQueueFailureOutcome(sessionId, "runtime_rejected", formatErrorMessage(error));
+    }
+    const enqueuedAtMs = Date.now();
+    const queuedOutcome = {
+      queued: true,
+      sessionId,
+      target: "embedded_run",
+      gatewayHealth: "live",
+    } satisfies EmbeddedAgentQueueMessageOutcome;
+    let queueAccepted = false;
+    const unconfirmed = (errorMessage: string): EmbeddedAgentQueueMessageOutcome => {
+      diag.warn(
+        `queue message accepted without confirmation: sessionId=${sessionId} err=${errorMessage}`,
+      );
       logActiveRunMessageAccepted(sessionId);
       return {
         ...queuedOutcome,
-        ...(target.runId ? { runId: target.runId } : {}),
-        ...(deliveredAtMs !== undefined ? { deliveredAtMs } : {}),
+        ...(prepared.kind === "embedded_run" && prepared.runId ? { runId: prepared.runId } : {}),
+        transcriptCommit: "unconfirmed",
+        errorMessage,
         enqueuedAtMs,
       };
-    } catch (err) {
-      return failed(err);
-    }
-  };
-  const delivery = dispatch();
-  if (!admissions || !idempotencyKey) {
-    return delivery;
-  }
-  const admission = delivery.then(
-    (outcome) => {
-      if (!outcome.queued) {
-        admissions.delete(idempotencyKey);
+    };
+    const failed = (error: unknown): EmbeddedAgentQueueMessageOutcome => {
+      const candidates = collectErrorGraphCandidates(error, readErrorCauses);
+      const accepted = candidates.findLast(
+        (candidate) => candidate instanceof MessageInjectionAcceptedUnconfirmedError,
+      );
+      const questionUnconfirmed = candidates.findLast(
+        (candidate) => candidate instanceof QuestionAnswerUnconfirmedError,
+      );
+      const withdrawn = candidates.some(
+        (candidate) => candidate instanceof MessageInjectionWithdrawnError,
+      );
+      if (accepted || (queueAccepted && (!withdrawn || questionUnconfirmed))) {
+        return unconfirmed(accepted?.message ?? formatErrorMessage(error));
+      }
+      if (questionUnconfirmed) {
+        throw questionUnconfirmed;
+      }
+      const errorMessage = formatErrorMessage(error);
+      diag.debug(`queue message rejected: sessionId=${sessionId} err=${errorMessage}`);
+      return createQueueFailureOutcome(sessionId, "runtime_rejected", errorMessage);
+    };
+    if (prepared.kind === "complete") {
+      const { outcome, pendingInput } = prepared;
+      if (!outcome.queued && options?.isInboundUserMessage === true && pendingInput) {
+        const authorityMismatch =
+          outcome.reason === "tool_authority_mismatch" ||
+          outcome.reason === "input_visibility_mismatch";
+        if (hasPromptImageInput(options)) {
+          if (authorityMismatch || outcome.reason === "image_input_unsupported") {
+            try {
+              const cancellation = pendingInput.cancelPendingUserInput?.("image-reply");
+              release();
+              await cancellation;
+            } catch (err) {
+              diag.warn(
+                `failed to cancel pending user input before queued image fallback: sessionId=${sessionId} err=${formatErrorMessage(err)}`,
+              );
+            }
+          }
+        } else if (authorityMismatch && pendingInput.claimPendingUserInputAnswer) {
+          const claimPendingUserInputAnswer = pendingInput.claimPendingUserInputAnswer;
+          try {
+            const claim = claimPendingUserInputAnswer(text, options);
+            release();
+            if (await claim) {
+              queueAccepted = true;
+              options.onQueueAccepted?.(true);
+              options.onQueueSettled?.();
+              logActiveRunMessageAccepted(sessionId);
+              return {
+                ...queuedOutcome,
+                enqueuedAtMs: Date.now(),
+              };
+            }
+          } catch (err) {
+            return failed(err);
+          }
+        }
       }
       return outcome;
-    },
-    (error: unknown) => {
-      admissions.delete(idempotencyKey);
-      throw error;
-    },
-  );
-  admissions.set(idempotencyKey, admission);
-  return admission;
-});
+    }
+    const handle = ACTIVE_EMBEDDED_RUNS.get(sessionId);
+    const registration = handle && ACTIVE_EMBEDDED_RUN_REGISTRATIONS.get(handle);
+    const idempotencyKey = options?.userTurnTranscriptRecorder?.message?.idempotencyKey;
+    const admissions =
+      registration && idempotencyKey ? (registration.messageAdmissions ??= new Map()) : undefined;
+    const existing = idempotencyKey && admissions?.get(idempotencyKey);
+    if (existing) {
+      // A duplicate owns no backend input and must not hold up unrelated FIFO work.
+      release();
+      const outcome = await existing;
+      if (outcome.queued) {
+        options?.onQueueSettled?.();
+      }
+      return outcome;
+    }
+    const target = prepared;
+    const dispatch = async (): Promise<EmbeddedAgentQueueMessageOutcome> => {
+      try {
+        if (target.prepareQueueMessage) {
+          await target.prepareQueueMessage();
+        }
+        const delivery = target.queueMessage(text, {
+          ...target.options,
+          onQueueAccepted: (accepted) => {
+            // Once the backend owns input, observer failures cannot release it for replay.
+            queueAccepted ||= accepted;
+            target.options.onQueueAccepted?.(accepted);
+          },
+        });
+        release();
+        const queueResult = await delivery;
+        queueAccepted = true;
+        if (queueResult?.transcriptCommit === "unconfirmed") {
+          return unconfirmed(queueResult.errorMessage);
+        }
+        const deliveredAtMs = options?.waitForTranscriptCommit ? Date.now() : undefined;
+        logActiveRunMessageAccepted(sessionId);
+        return {
+          ...queuedOutcome,
+          ...(target.runId ? { runId: target.runId } : {}),
+          ...(deliveredAtMs !== undefined ? { deliveredAtMs } : {}),
+          enqueuedAtMs,
+        };
+      } catch (err) {
+        return failed(err);
+      }
+    };
+    const delivery = dispatch();
+    if (!admissions || !idempotencyKey) {
+      return delivery;
+    }
+    const admission = delivery.then(
+      (outcome) => {
+        if (!outcome.queued) {
+          admissions.delete(idempotencyKey);
+        }
+        return outcome;
+      },
+      (error: unknown) => {
+        admissions.delete(idempotencyKey);
+        throw error;
+      },
+    );
+    admissions.set(idempotencyKey, admission);
+    return admission;
+  };
+  return capturedHandle ? enqueueMessageInjection(capturedHandle, admitted) : admitted(() => {});
+}
 
 function prepareEmbeddedAgentQueueMessage(
   sessionId: string,

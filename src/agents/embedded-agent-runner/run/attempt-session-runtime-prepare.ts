@@ -310,7 +310,6 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
   resources.removeToolResultContextGuard = contextGuards.remove;
 
   const traceContext = {
-    env: process.env,
     runId: attempt.runId,
     sessionId: activeSession.sessionId,
     sessionKey: attempt.sessionKey,

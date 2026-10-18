@@ -1,8 +1,5 @@
 import { hasInboundAudio } from "../../auto-reply/reply/inbound-media.js";
-import {
-  createMessageInjectionAuthority,
-  enqueueMessageInjection,
-} from "../../auto-reply/reply/message-injection-authority.js";
+import { createMessageInjectionAuthority } from "../../auto-reply/reply/message-injection-authority.js";
 import {
   replyMessageInjectionTargetOwner,
   type ReplyBackendHandle,
@@ -41,7 +38,6 @@ import {
   ACTIVE_EMBEDDED_RUNS_BY_RUN_ID,
   resolveActiveEmbeddedRunRecoveryBlocker,
   type EmbeddedAgentQueueHandle,
-  type EmbeddedAgentQueueMessageOutcome,
 } from "./run-state.js";
 import { isEmbeddedRunHandleAbortable } from "./runs.probes.js";
 
@@ -229,42 +225,6 @@ export type EmbeddedInjectionPreparation = Pick<
   Partial<Pick<ReplyToolAuthorityPreparation, "compatAssertCurrent">> & {
     prepareMessage?: () => Promise<string>;
   };
-
-type EmbeddedInjectionTask = (
-  sessionId: string,
-  text: string,
-  options: ReplyMessageInjectionOptions | undefined,
-  canInject: (() => boolean) | undefined,
-  sourcePreparation: EmbeddedInjectionPreparation | undefined,
-  release: () => void,
-  assertCurrent: () => void,
-) => Promise<EmbeddedAgentQueueMessageOutcome>;
-
-export function createEmbeddedMessageInjectionQueue(consume: EmbeddedInjectionTask) {
-  return (
-    sessionId: string,
-    text: string,
-    options?: ReplyMessageInjectionOptions,
-    canInject?: () => boolean,
-    sourcePreparation?: EmbeddedInjectionPreparation,
-  ): Promise<EmbeddedAgentQueueMessageOutcome> => {
-    const handle = ACTIVE_EMBEDDED_RUNS.get(sessionId);
-    const registration = handle && ACTIVE_EMBEDDED_RUN_REGISTRATIONS.get(handle);
-    const runId = handle?.runId;
-    const assertCurrent = createMessageInjectionAuthority(() => {
-      registration?.toolAuthority?.assertActive();
-      return (
-        ACTIVE_EMBEDDED_RUNS.get(sessionId) === handle &&
-        (!handle ||
-          (ACTIVE_EMBEDDED_RUN_REGISTRATIONS.get(handle) === registration &&
-            handle.runId === runId))
-      );
-    });
-    const admitted = (release: () => void) =>
-      consume(sessionId, text, options, canInject, sourcePreparation, release, assertCurrent);
-    return handle ? enqueueMessageInjection(handle, admitted) : admitted(() => {});
-  };
-}
 
 export async function prepareEmbeddedInjectionAuthority(
   sessionId: string,
