@@ -3,6 +3,7 @@ import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { evaluateDecisionInRegistry } from "../../../decisions/runtime.js";
 import { getPluginRegistryForContext } from "../../../plugins/runtime/gateway-request-scope.js";
 import { isDecisionAssistanceEligible } from "../../decision-assistance.js";
+import { resolveDecisionModelSetting } from "../../decision-model-setting.js";
 import type { AgentMessage } from "../../runtime/index.js";
 import { prepareDecisionContext, type DecisionContextFacts } from "./attempt-decision-context.js";
 
@@ -83,10 +84,16 @@ export async function evaluateAttemptDecisionToolPrefilter(
   if (context.facts.contextChars + promptBuildChars > MAX_DECISION_TEXT_CHARS) {
     return skip("prompt-build-context-too-large", context.facts);
   }
+  const selection = resolveDecisionModelSetting(config, params.agentId);
   const isCurrent = () => {
     params.signal.throwIfAborted();
     params.assertActive();
-    return true;
+    const current = readConfig();
+    const currentSelection = resolveDecisionModelSetting(current, params.agentId);
+    return (
+      currentSelection?.provider === selection?.provider &&
+      currentSelection?.model === selection?.model
+    );
   };
   const outcome = await evaluateDecisionInRegistry(
     {
