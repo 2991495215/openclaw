@@ -142,6 +142,29 @@ describe("node.pending handlers", () => {
     expect(mocks.drainNodePendingWork).not.toHaveBeenCalled();
   });
 
+  it.each([999, 86_400_001, 1_000.5, Number.NaN, Number.POSITIVE_INFINITY, "1000"])(
+    "rejects invalid pending-work TTL %s before queueing",
+    async (expiresInMs) => {
+      expect(await enqueue({ expiresInMs, wake: false })).toHaveBeenCalledWith(
+        false,
+        undefined,
+        expect.objectContaining({ code: "INVALID_REQUEST" }),
+      );
+      expect(mocks.enqueueNodePendingWork).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([1_000, 86_400_000])("forwards admitted pending-work TTL %s", async (expiresInMs) => {
+    expect(await enqueue({ expiresInMs, wake: false })).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ queued: item }),
+      undefined,
+    );
+    expect(mocks.enqueueNodePendingWork).toHaveBeenCalledWith(
+      expect.objectContaining({ expiresInMs }),
+    );
+  });
+
   it("rejects a changed pairing before draining its pending work", async () => {
     const context = makeContext(() => ({ connId: "conn-1", pairingGeneration: generation.key }));
     context.nodeRegistry.isConnectionCurrentPairingState.mockResolvedValue(false);
