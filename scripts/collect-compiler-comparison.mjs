@@ -73,15 +73,15 @@ async function main() {
     "Commit tracked source before collection",
   );
   const candidateProvenance = {
-    distribution: "upstream-ci-native",
-    repository: "vercel-labs/tsc-ts",
-    revision: "f43cb6bc130db3e451a28a0a49f3c7e2ed7a26f5",
-    runId: 39064305206,
+    distribution: "fork-ci-native",
+    repository: "vincentkoc/tsc-ts",
+    revision: "68d06984df0d1a9a89657cf44f0f709e15f13403",
+    runId: 39144449305,
     runAttempt: 1,
-    artifactId: 12112945666,
-    artifactSha256: "ff14e926d593a3db80d9960e21c78822b78e1f228d7a51e1b90c5fe85fffbeed",
-    tarSha256: "b6bd9804b57a1d606ea75c68dca82ef6bd169f3bfa1ed87ed869f2e0bd245614",
-    binarySha256: "5ff32c1213453ebcbeffd2f724f204389681093130b93befc04335c789f7c8dc",
+    artifactId: 12142748611,
+    artifactSha256: "6a11c020208c367c598f632f6cc2c8555b5df88de0f8d01e2a1160e691124d00",
+    tarSha256: "b0fa72407c1dcda84d6976bb0452470317d0c5a69d74e8f7d6a3e0184819ee6a",
+    binarySha256: "d44c8fc87651ea844ae30418a08697c54b5c55213463c5f5eff19b1f7b3d3479",
   };
   assert(process.env.RUNNER_TEMP, "Missing workflow staging directory");
   const nativeArchive = path.join(process.env.RUNNER_TEMP, "compiler-candidate", "native.tar");
@@ -192,7 +192,7 @@ async function main() {
   const ciEnv = { CI: "true", GITHUB_ACTIONS: "true", OPENCLAW_LOCAL_CHECK: "0" };
   const ciPolicy = applyLocalTsgoPolicy([...common], ciEnv, resources);
   // Compiler-writable files never enter the artifact upload tree. Host-side reads
-  // reject symlinks, then publish only parsed numeric metrics as new regular files.
+  // reject symlinks, then publish parsed metrics and validated execution evidence.
   const metricsDirectory = path.join(
     root,
     ".artifacts/compiler-comparison-scratch",
@@ -205,7 +205,6 @@ async function main() {
   function sandbox(mode, containerName) {
     const args = [
       "run",
-      "--rm",
       "--pull",
       "never",
       "--cpuset-cpus",
@@ -267,13 +266,14 @@ async function main() {
     return args;
   }
   let containerSequence = 0;
+  const containerPrefix = "compiler-comparison-" + randomUUID() + "-";
   const cancellation = new AbortController();
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.once(signal, () => cancellation.abort());
   }
   async function executeIsolated(args, { mode, files, ...options } = {}) {
-    const name = "compiler-comparison-" + process.pid + "-" + containerSequence++;
-    let result, failure;
+    const name = containerPrefix + containerSequence++;
+    let result;
     try {
       result = await new Promise((resolve) => {
         const child = spawn("docker", [...sandbox(mode, name), ...args], {
@@ -307,27 +307,44 @@ async function main() {
         );
       });
     } catch (error) {
-      failure = error;
-    }
-    // Join the exact container after timeout/cancellation; terminating its client
-    // alone leaves the compiler running and invalidates subsequent measurements.
-    if (!result || result.error || result.signal || result.status > 2) {
+      result = { status: null, signal: null, error };
+    } finally {
+      // Inspect before removal: exit 137 alone cannot establish an OOM kill.
+      // After a client timeout this is a live snapshot, not a terminal exit code.
+      result.preCleanupState = { available: false };
+      try {
+        const inspection = spawnSync("docker", ["inspect", "--format", "{{json .State}}", name], {
+          encoding: "utf8",
+          timeout: 5000,
+          maxBuffer: 4096,
+        });
+        assert(!inspection.error && inspection.status === 0, "Container state unavailable");
+        const { Status, Running, OOMKilled, ExitCode } = JSON.parse(inspection.stdout);
+        assert(
+          ["created", "running", "paused", "restarting", "removing", "exited", "dead"].includes(
+            Status,
+          ) &&
+            typeof Running === "boolean" &&
+            typeof OOMKilled === "boolean" &&
+            Number.isInteger(ExitCode),
+          "Malformed container state",
+        );
+        result.preCleanupState = { available: true, Status, Running, OOMKilled, ExitCode };
+      } catch {
+        // Missing evidence remains unavailable; it must never become OOMKilled=false.
+      }
+      // Always join the exact task-owned container, including successful runs.
+      // Killing only its client can leave a compiler contaminating later samples.
       const cleanup = spawnSync("docker", ["rm", "--force", name], {
         encoding: "utf8",
         timeout: 30000,
+        maxBuffer: 4096,
       });
-      if (
-        cleanup.error ||
-        (cleanup.status !== 0 && !cleanup.stderr.includes("No such container"))
-      ) {
-        throw new Error("Failed to join task-owned container " + name);
+      result.cleanupVerified =
+        !cleanup.error && (cleanup.status === 0 || cleanup.stderr.includes("No such container"));
+      if (!result.cleanupVerified) {
+        result.error = new Error("Failed to join task-owned container " + name);
       }
-      if (result) {
-        result.cleanupVerified = true;
-      }
-    }
-    if (!result) {
-      throw failure;
     }
     return result;
   }
@@ -360,6 +377,22 @@ async function main() {
   assert.equal(fs.readFileSync(path.join(metricsDirectory, "deadline-ready"), "utf8"), "ready");
   assert.equal(deadlineSmoke.signal, "SIGKILL", "Deadline did not terminate the Docker client");
   assert.equal(deadlineSmoke.cleanupVerified, true, "Deadline cleanup was not verified");
+  assert.equal(deadlineSmoke.preCleanupState.available, true, "Deadline state was not captured");
+  const exitSmoke = [];
+  for (const exitCode of [0, 1, 2, 137]) {
+    const result = await executeIsolated(["sh", "-c", "exit " + exitCode]);
+    assert.ifError(result.error);
+    assert.equal(result.status, exitCode);
+    assert.equal(result.cleanupVerified, true);
+    assert.deepEqual(result.preCleanupState, {
+      available: true,
+      Status: "exited",
+      Running: false,
+      OOMKilled: false,
+      ExitCode: exitCode,
+    });
+    exitSmoke.push({ exitCode, preCleanupState: result.preCleanupState });
+  }
   const probe = ".compiler-isolation-" + randomUUID();
   const probePaths = {
     checkout: path.join(root, probe),
@@ -458,7 +491,12 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
     isolationSmoke,
     containerImage,
     limits: { cpuSet, memoryBytes, swapBytes: 0 },
-    deadlineSmoke: { signal: deadlineSmoke.signal, cleanupVerified: deadlineSmoke.cleanupVerified },
+    deadlineSmoke: {
+      signal: deadlineSmoke.signal,
+      cleanupVerified: deadlineSmoke.cleanupVerified,
+      preCleanupState: deadlineSmoke.preCleanupState,
+    },
+    exitSmoke,
     expectedSamples,
     canaries,
     method:
@@ -510,6 +548,17 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
       fs.closeSync(stdoutFd);
       fs.closeSync(stderrFd);
     }
+    // Publish execution evidence before fallible metric parsing, even when no
+    // valid GNU time record survived. Missing numeric values remain absent.
+    const execution = {
+      processExitCode: result.status,
+      processSignal: result.signal,
+      infrastructureError: result.error?.message,
+      cleanupVerified: result.cleanupVerified,
+      preCleanupState: result.preCleanupState,
+    };
+    const evidenceFile = path.join(evidenceMetrics, id + ".json");
+    fs.writeFileSync(evidenceFile, JSON.stringify(execution));
     if (result.error || result.signal) {
       throw new Error(id + ": infrastructure failure: " + (result.error?.message ?? result.signal));
     }
@@ -517,14 +566,14 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
     const metrics = readCompilerComparisonMetrics(metricFile);
     const [wallSeconds, userSeconds, sysSeconds, peakRssKiB, exitCode] = metrics;
     fs.writeFileSync(
-      path.join(evidenceMetrics, id + ".json"),
+      evidenceFile,
       JSON.stringify({
         wallSeconds,
         userSeconds,
         sysSeconds,
         peakRssKiB,
         exitCode,
-        processExitCode: result.status,
+        ...execution,
       }),
     );
     // Keep rejected trials out of measurements while collecting the remaining
