@@ -651,24 +651,12 @@ export async function startGatewayPostAttachRuntime(
       ["gatewayMethodCount", loaded.gatewayMethods.length],
     ]);
   };
-  let startupLogPromise: Promise<void> | undefined;
   const startupLogSettled = createDeferredCore();
   // Tailscale and sidecar work can delay the public readiness handle past log failure.
   void startupLogSettled.promise.catch(() => {});
-  let startupLogOwnerAssigned = false;
-  const assignStartupLogOwner = (owner: Promise<void>) => {
-    if (params.sidecarStartup !== "defer" || startupLogOwnerAssigned) {
-      return;
-    }
-    startupLogOwnerAssigned = true;
-    void owner.then(startupLogSettled.resolve, startupLogSettled.reject);
-  };
   const startStartupLog = () => {
-    if (startupLogPromise) {
-      return startupLogPromise;
-    }
     // Sidecar failure can settle public readiness before this producer finishes.
-    startupLogPromise = params.trackStartupWork(() =>
+    const startupLogPromise = params.trackStartupWork(() =>
       measureStartup(params.startupTrace, "post-attach.log", () =>
         runtimeDeps.logGatewayStartup({
           cfg: params.cfgAtStart,
@@ -685,11 +673,10 @@ export async function startGatewayPostAttachRuntime(
         }),
       ),
     );
-    void startupLogPromise.catch(() => {});
-    assignStartupLogOwner(startupLogPromise);
+    void startupLogPromise.then(startupLogSettled.resolve, startupLogSettled.reject);
     return startupLogPromise;
   };
-  const skipStartupLog = () => assignStartupLogOwner(Promise.resolve());
+  const skipStartupLog = () => startupLogSettled.resolve();
 
   const updateCheck = createDeferredGatewayUpdateCheck({
     scheduler: params.scheduler,
