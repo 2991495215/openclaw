@@ -9,6 +9,7 @@ import type { NodeWorkerTunnelManager } from "./node-worker-tunnel.js";
 import type { WorkerNodePortalCarrier } from "./portal-node-carrier.js";
 import type { createWorkerProviderLifecycle } from "./provider-lifecycle.js";
 import { deriveEnvironmentIntent } from "./service-contract.js";
+import { requireWorkerProfile } from "./service-validation.js";
 import { prepareWorkerEnvironmentAttachmentSession } from "./session-attachment-session.js";
 import type {
   WorkerEnvironmentAttachment,
@@ -46,20 +47,18 @@ export function createWorkerEnvironmentSessionAttachments(
   },
 ) {
   const { store, providerLifecycle } = options;
-  const requireDedicatedAllocation = async (
-    intent: Pick<
-      WorkerEnvironmentRecord,
-      "environmentId" | "providerId" | "profileSnapshot" | "provisionOperationId"
-    > & { leaseId?: string | null },
-    assertCurrent: () => void,
+  const assertDelegatedAccess = (
+    intent: Pick<WorkerEnvironmentRecord, "providerId" | "profileSnapshot">,
   ) => {
-    assertCurrent();
-    const allocation = await providerLifecycle.resolveAllocation(intent, assertCurrent);
-    if (intent.leaseId && allocation.leaseId !== intent.leaseId) {
-      throw new Error("Worker allocation identity changed before cleanup");
-    }
-    if (allocation.sharedHost !== false) {
-      throw new Error("Shared cloud workers require administrator access");
+    const provider = providerLifecycle.providerFor(intent.providerId);
+    if (
+      provider.supportsDelegatedSessionAccess?.(
+        requireWorkerProfile(intent.profileSnapshot.settings),
+        intent.profileSnapshot.machineClass,
+        intent.profileSnapshot.os,
+      ) !== true
+    ) {
+      throw new Error("This cloud worker profile requires administrator access");
     }
   };
   const captureDedicatedLease = (environmentId: string) =>
@@ -352,7 +351,15 @@ export function createWorkerEnvironmentSessionAttachments(
           }
         : undefined;
     },
-    assertSessionAttachment,
+    assertSessionAttachment(
+      binding: WorkerEnvironmentAttachment,
+      access?: { dedicatedOnly: boolean },
+    ) {
+      assertSessionAttachment(binding);
+      if (access?.dedicatedOnly) {
+        assertDelegatedAccess(store.get(binding.environmentId)!);
+      }
+    },
     touchSessionAttachment: (binding: WorkerEnvironmentAttachment) =>
       touchSessionAttachment(binding),
     createSessionAttachment(
@@ -384,9 +391,11 @@ export function createWorkerEnvironmentSessionAttachments(
               input.sessionLifecycleRevision ?? session.entry?.lifecycleRevision,
           };
           let dedicatedLease: ReturnType<typeof captureDedicatedLease> | undefined;
+          let assertProviderAccess = () => {};
           const assertCurrent = () => {
             signal?.throwIfAborted();
             authorize();
+            assertProviderAccess();
             dedicatedLease?.assertCurrent();
             if (options.isStopping() || !matchesSession(selected, request)) {
               throw new Error("Conversation environment requester is no longer current");
@@ -417,6 +426,14 @@ export function createWorkerEnvironmentSessionAttachments(
             !["destroyed", "failed", "orphaned"].includes(environment.state),
           );
           if (reused && attachment && environment) {
+            if (access?.dedicatedOnly) {
+              if (environment.sharedHost === true) {
+                throw new Error("Shared cloud workers require administrator access");
+              }
+              const existing = environment;
+              assertProviderAccess = () => assertDelegatedAccess(existing);
+              assertCurrent();
+            }
             if (
               environment.profileId !== request.profileId ||
               (request.machineClass !== undefined &&
@@ -434,12 +451,6 @@ export function createWorkerEnvironmentSessionAttachments(
               access?.dedicatedOnly && ["ready", "idle"].includes(environment.state)
                 ? captureDedicatedLease(environment.environmentId)
                 : undefined;
-            if (access?.dedicatedOnly && !dedicatedLease) {
-              if (environment.sharedHost === true) {
-                throw new Error("Shared cloud workers require administrator access");
-              }
-              await requireDedicatedAllocation(environment, assertCurrent);
-            }
             await store.touchSessionAttachment(attachment, assertCurrent);
             // Recovery needs the stored environment identity, not a newly supplied retry key.
             const environmentId = environment.environmentId;
@@ -472,10 +483,10 @@ export function createWorkerEnvironmentSessionAttachments(
             providerLifecycle.assertPreparedIntentCurrent(request.profileId, intent);
             const environmentIntent = deriveEnvironmentIntent(allocationKey);
             if (access?.dedicatedOnly) {
-              // Resolve the exact frozen operation before reserving or provisioning.
-              // Provider allocation identity is side-effect-free, unlike provision.
-              await requireDedicatedAllocation({ ...intent, ...environmentIntent }, assertCurrent);
-              providerLifecycle.assertPreparedIntentCurrent(request.profileId, intent);
+              // Admission follows the frozen target and stays in the effect guard.
+              // It must not wait behind provisioning when Stop needs to close custody.
+              assertProviderAccess = () => assertDelegatedAccess(intent);
+              assertCurrent();
             }
             let reservationCreated = false;
             const reserved = await options
@@ -629,6 +640,7 @@ export function createWorkerEnvironmentSessionAttachments(
                 : undefined;
             assertAllowed = () => {
               authorize();
+              assertDelegatedAccess(environment);
               lease?.assertCurrent();
               const current = store.getSessionAttachmentRecord(request.sessionId);
               const owner = store.get(environment.environmentId);
@@ -645,9 +657,6 @@ export function createWorkerEnvironmentSessionAttachments(
                 throw new Error("Conversation environment changed before cleanup");
               }
             };
-            if (!lease) {
-              await requireDedicatedAllocation(environment, assertAllowed);
-            }
           }
           // Admission precedes the intentional close. Teardown keeps exact custody
           // after its own revocation, including failed or interrupted provisioning.

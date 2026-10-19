@@ -118,9 +118,6 @@ export type WorkerProviderLifecycleOptions = Omit<
     run: (signal: AbortSignal) => Promise<T>,
   ) => Promise<T>;
   callProvider: <T>(environmentId: string, run: () => Promise<T>, timeoutMs?: number) => Promise<T>;
-  callProviderAllocation: (
-    run: () => ReturnType<WorkerProvider["resolveAllocation"]>,
-  ) => ReturnType<WorkerProvider["resolveAllocation"]>;
   isStopping: () => boolean;
   move: (
     record: WorkerEnvironmentRecord,

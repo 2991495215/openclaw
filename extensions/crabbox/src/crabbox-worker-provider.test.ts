@@ -126,23 +126,26 @@ function lifecycleLease(leaseId = LEASE_ID, profile: WorkerProfile = PROFILE) {
 it.each([
   ...["aws", "azure", "daytona", "gcp", "hetzner", "machine0"].map((backend) => ({
     backend,
-    sharedHost: false,
+    delegated: true,
   })),
-  ...["external", "ssh", "unqualified-backend"].map((backend) => ({ backend, sharedHost: true })),
+  ...["external", "ssh", "unqualified-backend"].map((backend) => ({ backend, delegated: false })),
 ])(
-  "classifies $backend consistently before allocation and during inspection",
-  async ({ backend, sharedHost }) => {
+  "qualifies only delegated access for $backend without changing allocation metadata",
+  async ({ backend, delegated }) => {
     vi.useFakeTimers();
     const { provider, calls } = recordedProvider();
     const profile = { ...PROFILE, provider: backend };
+    expect(provider.supportsDelegatedSessionAccess?.(profile)).toBe(delegated);
+    expect(calls).toEqual([]);
+    expect(ensureManagedCrabboxBinary).not.toHaveBeenCalled();
     await expect(provider.resolveAllocation(profile, OPERATION_ID)).resolves.toEqual({
       leaseId: LEASE_ID,
-      sharedHost,
+      sharedHost: false,
     });
     expect(calls).toEqual([]);
     await expect(provider.inspect(lifecycleLease(LEASE_ID, profile))).resolves.toEqual({
       status: "active",
-      sharedHost,
+      sharedHost: false,
     });
     expect(calls.map((argv) => argv[1])).toEqual(["inspect"]);
   },

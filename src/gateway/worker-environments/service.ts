@@ -152,15 +152,6 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
     }
   };
 
-  // Allocation identity has no effects. Keep its bounded read independent of the
-  // provision queue so Stop can authorize close and abort an in-flight allocation.
-  const callProviderAllocation = (run: () => ReturnType<WorkerProvider["resolveAllocation"]>) =>
-    withTimeout(
-      trackOperation(Promise.resolve().then(run)),
-      options.providerCallTimeoutMs ?? 300_000,
-      "Worker provider allocation identity",
-    );
-
   const move = async (
     record: WorkerEnvironmentRecord,
     to: WorkerEnvironmentState,
@@ -211,7 +202,6 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
     warn,
     callBootstrap,
     callProvider,
-    callProviderAllocation,
     isStopping: () => stopping,
     move,
     saveError,

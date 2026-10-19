@@ -118,7 +118,10 @@ export type WorkerEnvironmentServiceContract = {
         environment: WorkerEnvironmentServiceRecord;
       }
     | undefined;
-  assertSessionAttachment(binding: WorkerEnvironmentAttachment): void;
+  assertSessionAttachment(
+    binding: WorkerEnvironmentAttachment,
+    access?: { dedicatedOnly: boolean },
+  ): void;
   touchSessionAttachment(binding: WorkerEnvironmentAttachment): Promise<void>;
   execSessionAttachment(
     binding: WorkerEnvironmentAttachment,

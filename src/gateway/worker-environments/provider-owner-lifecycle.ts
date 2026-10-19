@@ -32,7 +32,6 @@ export function createWorkerProviderOwnerLifecycle(
     | "store"
     | "tunnelManager"
     | "callProvider"
-    | "callProviderAllocation"
     | "providerCallTimeoutMs"
     | "resolveSshIdentity"
     | "placementStore"
@@ -53,27 +52,6 @@ export function createWorkerProviderOwnerLifecycle(
     leaseId,
     profile: requireWorkerProfile(record.profileSnapshot.settings),
   });
-
-  const resolveAllocation = async (
-    record: Pick<
-      WorkerEnvironmentRecord,
-      "environmentId" | "providerId" | "profileSnapshot" | "provisionOperationId"
-    >,
-    assertCurrent: () => void,
-    provider = providerFor(record.providerId),
-  ) => {
-    const allocation = requireWorkerAllocation(
-      await options.callProviderAllocation(() => {
-        assertCurrent();
-        return provider.resolveAllocation(
-          requireWorkerProfile(record.profileSnapshot.settings),
-          record.provisionOperationId,
-        );
-      }),
-    );
-    assertCurrent();
-    return allocation;
-  };
 
   const requireCurrentOwner = (record: WorkerEnvironmentRecord): WorkerEnvironmentRecord => {
     const current = store.get(record.environmentId);
@@ -319,12 +297,14 @@ export function createWorkerProviderOwnerLifecycle(
     if (!leaseId) {
       let allocation: Awaited<ReturnType<WorkerProvider["resolveAllocation"]>>;
       try {
-        allocation = await resolveAllocation(
-          r,
-          () => {
+        allocation = requireWorkerAllocation(
+          await callProvider(r.environmentId, () => {
             requireCurrentOwner(r);
-          },
-          owningProvider,
+            return owningProvider.resolveAllocation(
+              requireWorkerProfile(r.profileSnapshot.settings),
+              r.provisionOperationId,
+            );
+          }),
         );
       } catch (error) {
         await saveError(r, error);
@@ -479,7 +459,6 @@ export function createWorkerProviderOwnerLifecycle(
   };
 
   return {
-    resolveAllocation,
     identityResolverFor,
     requireCurrentOwner,
     stopOwner,

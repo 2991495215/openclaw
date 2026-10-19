@@ -108,7 +108,7 @@ export const environmentsSessionExecHandlers: GatewayRequestHandlers = {
           policy.security !== "full" || policy.ask === "always" || toolPolicy.cronExecAskAlways;
         const assertCurrent = () => {
           toolPolicy.assertAllowed();
-          service.assertSessionAttachment(binding);
+          service.assertSessionAttachment(binding, { dedicatedOnly: Boolean(lease) });
           lease?.assertCurrent();
           const defaults = resolvePolicy();
           if (defaults.security === "deny") {

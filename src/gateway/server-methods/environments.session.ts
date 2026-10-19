@@ -148,9 +148,9 @@ export async function resolveSessionEnvironmentCaller(
         if (denied) {
           throw new Error(denied.message);
         }
-        // Participation alone does not admit machine effects: role agent and sandbox
-        // ceilings remain live even when an operator owns or belongs to the session.
-        if (mutation) {
+        // Delegated machine effects need live agent and sandbox ceilings in addition
+        // to participation. Preserve the existing administrator admission path.
+        if (mutation && !hasGatewayAdminScope(client)) {
           const runDenied = authorizeSessionAgentRun(
             { cfg, client, target: facts.target },
             { policy: sharing.policy },

@@ -79,7 +79,7 @@ type CrabboxProfile = ReturnType<typeof parseCrabboxProfile>;
 
 // These backends allocate a dedicated VM or isolated sandbox per lease. Fixed IDs (including
 // external adapters) prove identity, not isolation from the underlying host.
-const DEDICATED_WORKER_BACKENDS = new Set([
+const DELEGATED_WORKER_BACKENDS = new Set([
   "aws",
   "azure",
   "daytona",
@@ -178,9 +178,9 @@ export function createCrabboxWorkerProvider(
     };
   };
 
-  const resolveAllocation: WorkerProvider["resolveAllocation"] = async (profile, operationId) => ({
+  const resolveAllocation: WorkerProvider["resolveAllocation"] = async (_profile, operationId) => ({
     leaseId: operationLeaseId(operationId),
-    sharedHost: !DEDICATED_WORKER_BACKENDS.has(parseCrabboxCleanupProfile(profile).provider),
+    sharedHost: false,
   });
 
   const prepareProvision: NonNullable<WorkerProvider["prepareProvision"]> = async (
@@ -607,6 +607,8 @@ export function createCrabboxWorkerProvider(
     provisionBeforeInstallation: true,
     requiresNodeEnrollment: true,
     supportsProjectPreparation: supportsCrabboxProjectPreparation,
+    supportsDelegatedSessionAccess: (profile) =>
+      DELEGATED_WORKER_BACKENDS.has(parseCrabboxCleanupProfile(profile).provider),
     resolvePreparedIdleTimeoutMs: resolveCrabboxPreparedIdleTimeoutMs,
     resolvePreparationTarget: resolveCrabboxPreparationTarget,
     runSetupCommand: createCrabboxSetupCommandRunner({
@@ -643,7 +645,7 @@ export function createCrabboxWorkerProvider(
       }
       // `ready` is an SSH probe; every recognized nonterminal lease remains active.
       heartbeats.start({ ...context, lifetime: inspected.lifetime });
-      return { status: "active", sharedHost: !DEDICATED_WORKER_BACKENDS.has(context.provider) };
+      return { status: "active", sharedHost: false };
     },
     async destroy(lease): Promise<void> {
       assertCrabboxLeaseId(lease.leaseId);

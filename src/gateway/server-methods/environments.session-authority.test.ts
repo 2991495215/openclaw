@@ -15,6 +15,52 @@ import type { GatewayRequestHandlerOptions } from "./types.js";
 
 afterEach(() => closeOpenClawAgentDatabasesForTest());
 
+it.each(["agent", "sandbox"] as const)(
+  "preserves named administrator access despite a restrictive role %s ceiling",
+  async (restriction) => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      const cfg = rolePolicyConfig();
+      cfg.gateway!.roles!.definitions.view = {
+        sessions: { others: "view" },
+        agents: restriction === "agent" ? ["another-agent"] : ["main"],
+        sandbox: restriction === "sandbox" ? "required" : "inherit",
+        scopes: ["operator.admin"],
+      };
+      setRuntimeConfigSnapshot(cfg);
+      const client = roleClient("view", "environment-administrator");
+      client.connect.scopes = ["operator.admin"];
+      const identity = { agentId: "main", sessionKey: "agent:main:admin-worker" };
+      await upsertSessionEntryCore(identity, {
+        sessionId: "admin-worker",
+        updatedAt: 1,
+        createdActor: {
+          type: "human",
+          source: "profile",
+          id: client.authenticatedUserProfile!.profileId,
+        },
+      });
+      const options: GatewayRequestHandlerOptions = {
+        req: { type: "req", id: "admin-command", method: "environments.session.exec" },
+        params: identity,
+        client,
+        context: createDirectChatContext({ getRuntimeConfig: () => cfg }),
+        respond: vi.fn(),
+        isWebchatConnect: () => false,
+      };
+      options.sessionMutationCommitGuard = captureGatewayRequestOperatorGuard(options);
+      const caller = await resolveSessionEnvironmentCaller(options, identity, true);
+      try {
+        expect(caller.identity.sessionId).toBe("admin-worker");
+        expect(caller.assertCurrent).not.toThrow();
+        client.invalidated = true;
+        expect(caller.assertCurrent).toThrow();
+      } finally {
+        caller.release();
+      }
+    });
+  },
+);
+
 it.each(["membership", "agent", "sandbox", "scope", "connection"] as const)(
   "revalidates a raw worker operator's %s authority on the actual session",
   async (revocation) => {

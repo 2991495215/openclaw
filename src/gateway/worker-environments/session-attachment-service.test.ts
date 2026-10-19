@@ -145,61 +145,69 @@ beforeEach(() => {
 });
 afterEach(() => closeOpenClawAgentDatabases());
 
-it.each([true, undefined, "false"])(
-  "rejects non-dedicated allocation classification %s before reservation or spending",
-  async (sharedHost) => {
-    makeService({ resolveAllocation: async () => ({ leaseId: "lease-1", sharedHost }) as never });
+it.each([
+  undefined,
+  () => false,
+  () => "true",
+  () => {
+    throw new Error("provider retired");
+  },
+])(
+  "requires an explicit delegated-access opt-in before reservation or spending (%#)",
+  async (supportsDelegatedSessionAccess) => {
+    const resolveAllocation = vi.fn(async () => ({ leaseId: "lease-1", sharedHost: false }));
+    makeService({
+      supportsDelegatedSessionAccess: supportsDelegatedSessionAccess as never,
+      resolveAllocation,
+    });
     await expect(createDedicated()).rejects.toThrow();
+    expect(resolveAllocation).not.toHaveBeenCalled();
     expect(provision).not.toHaveBeenCalled();
     expect(state.store.list()).toEqual([]);
     expect(service.getSessionAttachmentStatus(identity.sessionId)).toBeUndefined();
   },
 );
 
-it("rechecks the caller after allocation classification before reserving a machine", async () => {
-  let allowed = true;
-  makeService({
-    resolveAllocation: async () => {
-      allowed = false;
-      return { leaseId: "lease-1", sharedHost: false };
-    },
-  });
+it("rechecks delegated eligibility after deferred reservation and cleans up after revocation", async () => {
+  let eligible = true;
+  const supportsDelegatedSessionAccess = vi.fn(() => eligible);
+  makeService({ supportsDelegatedSessionAccess });
   await expect(
-    createDedicated(() => {
-      if (!allowed) {
-        throw new Error("worker authority revoked");
-      }
-    }),
-  ).rejects.toThrow("worker authority revoked");
+    service.createSessionAttachment(
+      request,
+      authorize,
+      undefined,
+      async () => {
+        eligible = false;
+      },
+      dedicated,
+    ),
+  ).rejects.toThrow("requires administrator access");
   expect(provision).not.toHaveBeenCalled();
-  expect(state.store.list()).toEqual([]);
+  expect(service.getSessionAttachment(identity.sessionId)).toBeUndefined();
+  expect(state.store.list().every((record) => record.state === "failed")).toBe(true);
 });
 
-it("bounds allocation classification without reserving or provisioning a worker", async () => {
+it("rejects retired delegated eligibility after provider preparation without allocating", async () => {
   const gate = barrier();
-  makeService(
-    {
-      resolveAllocation: async () => {
-        await gate.wait();
-        return { leaseId: "lease-1", sharedHost: false };
-      },
+  let eligible = true;
+  const allocate = vi.fn(async () => ({ leaseId: "lease-1", ssh: support.SSH_ENDPOINT }));
+  makeService({
+    supportsDelegatedSessionAccess: () => eligible,
+    prepareProvision: async () => {
+      await gate.wait();
+      return allocate;
     },
-    { providerCallTimeoutMs: 10 },
-  );
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
   const creation = outcome(createDedicated());
-  try {
-    await awaitBlocked(gate.entered, creation, "Creation ended before allocation classification");
-    await vi.advanceTimersByTimeAsync(11);
-    expect(await creation).toMatchObject({
-      error: { message: expect.stringMatching(/timed out/i) },
-    });
-    expect(provision).not.toHaveBeenCalled();
-    expect(state.store.list()).toEqual([]);
-  } finally {
-    gate.release();
-    await creation;
-  }
+  await awaitBlocked(gate.entered, creation, "Creation ended before preparation");
+  eligible = false;
+  gate.release();
+  expect(await creation).toMatchObject({
+    error: { message: "This cloud worker profile requires administrator access" },
+  });
+  expect(allocate).not.toHaveBeenCalled();
+  expect(service.getSessionAttachment(identity.sessionId)).toBeUndefined();
 });
 
 it("does not let a limited create clean up an old incarnation's unqualified attachment", async () => {
@@ -219,6 +227,7 @@ it("creates and stops a dedicated node attachment while preserving teardown afte
   const destroy = vi.fn(async () => {});
   makeService(
     {
+      supportsDelegatedSessionAccess: () => true,
       provision: async () => ({
         leaseId: "lease-1",
         node: { deviceId: "node-one" },
@@ -239,9 +248,45 @@ it("creates and stops a dedicated node attachment while preserving teardown afte
 });
 
 it("refuses active unattested attachments but lets an administrator stop them", async () => {
+  makeService({ supportsDelegatedSessionAccess: () => true });
   const { attachment } = await create();
   await expect(stopDedicated()).rejects.toThrow("current dedicated cloud worker");
   expect(service.getSessionAttachment(identity.sessionId)).toMatchObject(attachment);
+  await expect(stop()).resolves.toMatchObject({ state: "destroyed" });
+});
+
+it("keeps admin-created workers private until their frozen target permits delegated access", async () => {
+  let eligible = false;
+  const supportsDelegatedSessionAccess = vi.fn(() => eligible);
+  makeService(
+    {
+      supportsDelegatedSessionAccess,
+      provision: async () => ({
+        leaseId: "lease-1",
+        node: { deviceId: "node-one" },
+        sharedHost: false,
+      }),
+      inspect: async () => ({ status: "active", sharedHost: false }),
+    },
+    { ensureNodeWorkerBundle: async () => structuredClone(support.BOOTSTRAP_RECEIPT) },
+  );
+  const { attachment } = await create();
+  const stored = state.store.get(attachment.environmentId)!;
+  state.config.cloudWorkers!.profiles!.development!.settings = { backend: "later-config" };
+  await expect(createDedicated()).rejects.toThrow("requires administrator access");
+  await expect(stopDedicated()).rejects.toThrow("requires administrator access");
+  expect(() => service.assertSessionAttachment(attachment, dedicated)).toThrow(
+    "requires administrator access",
+  );
+  expect(service.getSessionAttachment(identity.sessionId)).toMatchObject(attachment);
+  eligible = true;
+  expect(() => service.assertSessionAttachment(attachment, dedicated)).not.toThrow();
+  expect(supportsDelegatedSessionAccess).toHaveBeenLastCalledWith(
+    stored.profileSnapshot.settings,
+    stored.profileSnapshot.machineClass,
+    stored.profileSnapshot.os,
+  );
+  eligible = false;
   await expect(stop()).resolves.toMatchObject({ state: "destroyed" });
 });
 
@@ -270,54 +315,61 @@ it("does not close an attachment that appears after an empty cleanup admission",
   });
 });
 
-it.each([false, true])(
-  "retains exact dedicated cleanup after failed provisioning (lease changed: %s)",
-  async (changedLease) => {
-    let leaseId = "lease-1";
-    const destroy = vi.fn().mockRejectedValue(new Error("cleanup temporarily unavailable"));
-    makeService(
-      {
-        resolveAllocation: async () => ({ leaseId, sharedHost: false }),
-        provision: async () => ({
-          leaseId: "lease-1",
-          node: { deviceId: "node-one" },
-          sharedHost: false,
-        }),
-        destroy,
+it("cleans the stored lease after failed provisioning without rediscovering allocation", async () => {
+  let eligible = true;
+  const resolveAllocation = vi.fn(async () => ({ leaseId: "different-lease", sharedHost: false }));
+  const destroy = vi.fn().mockRejectedValue(new Error("cleanup temporarily unavailable"));
+  makeService(
+    {
+      supportsDelegatedSessionAccess: () => eligible,
+      resolveAllocation,
+      provision: async () => ({
+        leaseId: "lease-1",
+        node: { deviceId: "node-one" },
+        sharedHost: false,
+      }),
+      destroy,
+    },
+    {
+      ensureNodeWorkerBundle: async () => {
+        throw new Error("bootstrap failed");
       },
-      {
-        ensureNodeWorkerBundle: async () => {
-          throw new Error("bootstrap failed");
-        },
-      },
-    );
-    await expect(createDedicated()).rejects.toThrow("bootstrap failed");
-    const status = service.getSessionAttachmentStatus(identity.sessionId)!;
-    expect(status.attachment.closedAtMs).not.toBeNull();
-    expect(service.getDedicatedNodeLeaseSignal(status.environment.environmentId)).toBeUndefined();
-    destroy.mockResolvedValue(undefined);
-    if (changedLease) {
-      leaseId = "different-lease";
-      destroy.mockClear();
-      await expect(stopDedicated()).rejects.toThrow("allocation identity changed");
-      expect(destroy).not.toHaveBeenCalled();
-      expect(state.store.get(status.environment.environmentId)?.leaseId).toBe("lease-1");
-      return;
-    }
-    await expect(stopDedicated()).resolves.toMatchObject({ state: "failed", leaseId: null });
-  },
-);
+    },
+  );
+  await expect(createDedicated()).rejects.toThrow("bootstrap failed");
+  const status = service.getSessionAttachmentStatus(identity.sessionId)!;
+  expect(status.attachment.closedAtMs).not.toBeNull();
+  expect(service.getDedicatedNodeLeaseSignal(status.environment.environmentId)).toBeUndefined();
+  destroy.mockResolvedValue(undefined);
+  eligible = false;
+  await expect(stopDedicated()).rejects.toThrow("requires administrator access");
+  eligible = true;
+  await expect(stopDedicated()).resolves.toMatchObject({ state: "failed", leaseId: null });
+  expect(resolveAllocation).not.toHaveBeenCalled();
+  expect(destroy).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      leaseId: "lease-1",
+      profile: state.store.get(status.environment.environmentId)!.profileSnapshot.settings,
+    }),
+  );
+});
 
 it.each([true, undefined])(
   "closes a new attachment when provision contradicts dedication (%s)",
   async (sharedHost) => {
+    const destroy = vi.fn(async () => {});
     const provision = vi.fn(async () => ({
       leaseId: "lease-1",
       node: { deviceId: "node-one" },
       sharedHost,
     }));
     makeService(
-      { provision, inspect: async () => ({ status: "active", sharedHost }) },
+      {
+        supportsDelegatedSessionAccess: () => true,
+        provision,
+        destroy,
+        inspect: async () => ({ status: "active", sharedHost }),
+      },
       {
         ensureNodeWorkerBundle: async () => structuredClone(support.BOOTSTRAP_RECEIPT),
       },
@@ -328,14 +380,19 @@ it.each([true, undefined])(
     expect(service.getSessionAttachmentStatus(identity.sessionId)?.attachment.closedAtMs).toEqual(
       expect.any(Number),
     );
+    expect(destroy).toHaveBeenCalledWith(expect.objectContaining({ leaseId: "lease-1" }));
   },
 );
 
 it("stops an admitted dedicated allocation while provision is pending", async () => {
+  let eligible = true;
   const gate = barrier();
   const destroy = vi.fn(async () => {});
+  const resolveAllocation = vi.fn(async () => ({ leaseId: "lease-1", sharedHost: false }));
   makeService(
     {
+      supportsDelegatedSessionAccess: () => eligible,
+      resolveAllocation,
       provision: async () => {
         await gate.wait();
         return { leaseId: "lease-1", node: { deviceId: "node-one" }, sharedHost: false };
@@ -346,6 +403,10 @@ it("stops an admitted dedicated allocation while provision is pending", async ()
   );
   const creation = outcome(createDedicated());
   await awaitBlocked(gate.entered, creation, "Creation ended before provision");
+  eligible = false;
+  await expect(stopDedicated()).rejects.toThrow("requires administrator access");
+  expect(service.getSessionAttachmentStatus(identity.sessionId)?.attachment.closedAtMs).toBeNull();
+  eligible = true;
   const closing = outcome(stopDedicated());
   try {
     await support.waitForFast(() => {
@@ -353,6 +414,8 @@ it("stops an admitted dedicated allocation while provision is pending", async ()
         expect.any(Number),
       );
     });
+    expect(resolveAllocation).not.toHaveBeenCalled();
+    expect(destroy).not.toHaveBeenCalled();
   } finally {
     gate.release();
   }
