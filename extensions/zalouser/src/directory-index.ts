@@ -1,3 +1,4 @@
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import { normalizeOptionalLowercaseString } from "openclaw/plugin-sdk/string-coerce-runtime";
 
 export function buildZaloNameIndex<T>(
@@ -10,9 +11,7 @@ export function buildZaloNameIndex<T>(
     if (!name) {
       continue;
     }
-    const list = index.get(name) ?? [];
-    list.push(item);
-    index.set(name, list);
+    getOrCreateMapValue(index, name, () => []).push(item);
   }
   return index;
 }

@@ -11,6 +11,7 @@ import type {
   WorkboardRunAttempt,
   WorkboardWorkerLog,
 } from "@openclaw/workboard-contract";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import {
   getNodeSqliteKysely,
   iterateSqliteQuerySync,
@@ -117,12 +118,7 @@ function groupByCardId(rows: Iterable<Row>): Map<string, Row[]> {
     if (!cardId) {
       continue;
     }
-    const bucket = grouped.get(cardId);
-    if (bucket) {
-      bucket.push(row);
-    } else {
-      grouped.set(cardId, [row]);
-    }
+    getOrCreateMapValue(grouped, cardId, () => []).push(row);
   }
   return grouped;
 }

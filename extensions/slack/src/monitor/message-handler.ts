@@ -3,6 +3,10 @@ import {
   resolveInboundDebounceMs,
   shouldDebounceTextInbound,
 } from "openclaw/plugin-sdk/channel-inbound";
+import {
+  deleteMapCollectionEntry,
+  getOrCreateMapValue,
+} from "openclaw/plugin-sdk/collection-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
@@ -129,13 +133,11 @@ export function createSlackMessageHandler(params: {
                   teamId,
                 );
                 if (flushedKey && topLevelConversationKey) {
-                  const pendingKeys = pendingTopLevelDebounceKeys.get(topLevelConversationKey);
-                  if (pendingKeys) {
-                    pendingKeys.delete(flushedKey);
-                    if (pendingKeys.size === 0) {
-                      pendingTopLevelDebounceKeys.delete(topLevelConversationKey);
-                    }
-                  }
+                  deleteMapCollectionEntry(
+                    pendingTopLevelDebounceKeys,
+                    topLevelConversationKey,
+                    flushedKey,
+                  );
                 }
               }
               // Logical-identity claims: Slack sends message + app_mention twins with
@@ -398,11 +400,9 @@ export function createSlackMessageHandler(params: {
     ctx.rememberSlackChannelType(message.channel, message.channel_type, opts.eventScope);
     trackEvent?.();
     const client = opts.eventScope?.client ?? ctx.app.client;
-    let threadTsResolver = threadTsResolvers.get(client);
-    if (!threadTsResolver) {
-      threadTsResolver = createSlackThreadTsResolver({ client });
-      threadTsResolvers.set(client, threadTsResolver);
-    }
+    const threadTsResolver = getOrCreateMapValue(threadTsResolvers, client, () =>
+      createSlackThreadTsResolver({ client }),
+    );
     const resolvedMessage = await threadTsResolver.resolve({
       message,
       source: opts.source,
@@ -429,9 +429,11 @@ export function createSlackMessageHandler(params: {
       }
     }
     if (canDebounce && debounceKey && conversationKey) {
-      const pendingKeys = pendingTopLevelDebounceKeys.get(conversationKey) ?? new Set<string>();
-      pendingKeys.add(debounceKey);
-      pendingTopLevelDebounceKeys.set(conversationKey, pendingKeys);
+      getOrCreateMapValue(
+        pendingTopLevelDebounceKeys,
+        conversationKey,
+        () => new Set<string>(),
+      ).add(debounceKey);
     }
     const dispatchCompletion = opts.awaitDispatch ? createDeferred<void>() : undefined;
     await debouncer.enqueue({

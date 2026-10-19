@@ -1,4 +1,4 @@
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { pruneMapToMaxSize, readUnexpiredMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
@@ -44,20 +44,6 @@ function cacheMattermostOpaqueTarget(
   });
   // Keep the newest authoritative classifications while bounding retention.
   pruneMapToMaxSize(mattermostOpaqueTargetCache, MATTERMOST_OPAQUE_TARGET_CACHE_MAX_ENTRIES);
-}
-
-function getCachedMattermostOpaqueTargetKind(
-  key: string,
-): MattermostOpaqueTargetResolution["kind"] | undefined {
-  const cached = mattermostOpaqueTargetCache.get(key);
-  if (!cached) {
-    return undefined;
-  }
-  if (cached.expiresAt <= Date.now()) {
-    mattermostOpaqueTargetCache.delete(key);
-    return undefined;
-  }
-  return cached.kind;
 }
 
 function cacheKey(baseUrl: string, token: string, id: string): string {
@@ -151,7 +137,7 @@ export async function resolveMattermostOpaqueTarget(
   }
 
   const key = cacheKey(client.baseUrl, client.token, input);
-  const cachedKind = getCachedMattermostOpaqueTargetKind(key);
+  const cachedKind = readUnexpiredMapEntry(mattermostOpaqueTargetCache, key)?.kind;
   if (cachedKind) {
     const to = cachedKind === "user" ? `user:${input}` : `channel:${input}`;
     return { kind: cachedKind, id: input, to };

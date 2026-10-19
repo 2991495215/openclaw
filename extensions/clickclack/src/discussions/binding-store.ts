@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { createAsyncLock } from "openclaw/plugin-sdk/async-lock-runtime";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import type { PluginRuntime } from "openclaw/plugin-sdk/core";
 import {
   assertPluginStateReadAvailable,
@@ -363,11 +364,9 @@ export class ClickClackDiscussionBindingStore {
 export function getClickClackDiscussionBindingStore(
   runtime: PluginRuntime,
 ): ClickClackDiscussionBindingStore {
-  const existing = storesByRuntime.get(runtime);
-  if (existing) {
-    return existing;
-  }
-  const created = new ClickClackDiscussionBindingStore(runtime);
-  storesByRuntime.set(runtime, created);
-  return created;
+  return getOrCreateMapValue(
+    storesByRuntime,
+    runtime,
+    () => new ClickClackDiscussionBindingStore(runtime),
+  );
 }

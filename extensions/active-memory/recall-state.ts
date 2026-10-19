@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { readUnexpiredMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { coerceErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { closeActiveMemorySearchManager } from "openclaw/plugin-sdk/memory-host-search";
 import type {
@@ -194,15 +195,7 @@ export function buildCacheKey(params: {
 }
 
 export function getCachedResult(cacheKey: string): ActiveRecallResult | undefined {
-  const cached = activeRecallCache.get(cacheKey);
-  if (!cached) {
-    return undefined;
-  }
-  if (cached.expiresAt <= Date.now()) {
-    activeRecallCache.delete(cacheKey);
-    return undefined;
-  }
-  return cached.result;
+  return readUnexpiredMapEntry(activeRecallCache, cacheKey)?.result;
 }
 
 export function setCachedResult(cacheKey: string, result: ActiveRecallResult, ttlMs: number): void {

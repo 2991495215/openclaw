@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import { runTasksWithConcurrency } from "openclaw/plugin-sdk/concurrency-runtime";
 import { parseDateFirstTimestampMs } from "openclaw/plugin-sdk/number-runtime";
 import {
@@ -506,15 +507,10 @@ export async function listClaudeSessions(
       ? readDesktopOverlay(homeDir, options.forceRefresh)
       : emptyDesktopOverlay,
   ]);
-  let overlays = mergedScans.get(cli);
-  if (!overlays) {
-    overlays = new WeakMap();
-    mergedScans.set(cli, overlays);
-  }
-  let merged = overlays.get(desktop);
-  if (!merged) {
-    merged = mergeClaudeSessions(cli, desktop);
-    overlays.set(desktop, merged);
-  }
-  return merged;
+  const overlays = getOrCreateMapValue(
+    mergedScans,
+    cli,
+    () => new WeakMap<DesktopOverlay, Promise<ClaudeCatalogScan>>(),
+  );
+  return getOrCreateMapValue(overlays, desktop, () => mergeClaudeSessions(cli, desktop));
 }

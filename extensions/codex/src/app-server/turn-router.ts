@@ -1,5 +1,6 @@
 import { AsyncResource } from "node:async_hooks";
 import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import type { CodexAppServerClient } from "./client.js";
 import { redactCodexEventKind } from "./event-projector-diagnostics.js";
@@ -115,13 +116,7 @@ export function hasCodexAppServerSiblingRouteWork(
 export function getCodexAppServerTurnRouter(
   client: CodexAppServerClient,
 ): CodexAppServerTurnRouter {
-  const existing = routers.get(client);
-  if (existing) {
-    return existing;
-  }
-  const router = new ClientTurnRouter(client);
-  routers.set(client, router);
-  return router;
+  return getOrCreateMapValue(routers, client, () => new ClientTurnRouter(client));
 }
 
 class ClientTurnRouter {

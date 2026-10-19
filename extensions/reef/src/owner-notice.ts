@@ -1,4 +1,4 @@
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { getOrCreateMapValue, pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
 import type { PluginRuntime } from "openclaw/plugin-sdk/core";
 import { KeyedAsyncQueue } from "openclaw/plugin-sdk/keyed-async-queue";
 import type { PluginServiceSchedulerV1 } from "openclaw/plugin-sdk/plugin-entry";
@@ -84,9 +84,7 @@ export class ReefReceiptNotifier {
       if (!rejection.reservedNotice) {
         continue;
       }
-      const recovered = recoveredByPeer.get(rejection.peer) ?? [];
-      recovered.push(rejection);
-      recoveredByPeer.set(rejection.peer, recovered);
+      getOrCreateMapValue(recoveredByPeer, rejection.peer, () => []).push(rejection);
     }
     for (const [peer, recovered] of recoveredByPeer) {
       await this.peerQueues.enqueue(peer, async () => {

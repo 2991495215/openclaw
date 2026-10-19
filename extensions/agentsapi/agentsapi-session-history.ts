@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { Turn } from "openai/resources/beta/agents/sessions/turns";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import {
   isAgentsApiTerminalTurn,
   type AgentsApiClient,
@@ -37,9 +38,7 @@ export function createAgentsApiSessionHistory(options: {
       if (!item.turn_id) {
         continue;
       }
-      const items = itemsByTurn.get(item.turn_id) ?? [];
-      items.push(item);
-      itemsByTurn.set(item.turn_id, items);
+      getOrCreateMapValue(itemsByTurn, item.turn_id, () => []).push(item);
     }
     return itemsByTurn;
   };

@@ -1,4 +1,5 @@
 import type { WorkboardChange } from "@openclaw/workboard-contract";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { WORKBOARD_DRAFT_DEFAULTS } from "./card-state.ts";
 import { normalizeWorkboardChange } from "./change-payload.ts";
@@ -132,12 +133,7 @@ function createDefaultState(): WorkboardUiState {
 }
 
 export function getWorkboardRuntime(host: WorkboardHost): WorkboardRuntime {
-  let runtime = workboardRuntimes.get(host);
-  if (!runtime) {
-    runtime = {};
-    workboardRuntimes.set(host, runtime);
-  }
-  return runtime;
+  return getOrCreateMapValue(workboardRuntimes, host, () => ({}));
 }
 
 export function getWorkboardState(host: WorkboardHost): WorkboardUiState {

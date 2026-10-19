@@ -1,5 +1,6 @@
 import { normalizeAccountId } from "openclaw/plugin-sdk/account-resolution";
 import type { ChannelDoctorConfigMutation } from "openclaw/plugin-sdk/channel-contract";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { resolveSignalAccountKey } from "./account-selection.js";
@@ -18,12 +19,7 @@ export function repairSignalAccountKeys({
   for (const key of Object.keys(accounts)) {
     if (key) {
       const id = normalizeAccountId(key);
-      const keys = groups.get(id);
-      if (keys) {
-        keys.push(key);
-      } else {
-        groups.set(id, [key]);
-      }
+      getOrCreateMapValue(groups, id, () => []).push(key);
     }
   }
   const moves = new Map<string, string>();

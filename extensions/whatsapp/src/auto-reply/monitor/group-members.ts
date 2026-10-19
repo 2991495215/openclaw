@@ -1,3 +1,4 @@
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import { uniqueStrings } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { normalizeE164 } from "openclaw/plugin-sdk/text-utility-runtime";
 
@@ -14,12 +15,7 @@ export function noteGroupMember(
   if (!key) {
     return;
   }
-  let roster = groupMemberNames.get(conversationId);
-  if (!roster) {
-    roster = new Map();
-    groupMemberNames.set(conversationId, roster);
-  }
-  roster.set(key, name);
+  getOrCreateMapValue(groupMemberNames, conversationId, () => new Map()).set(key, name);
 }
 
 export function formatGroupMembers(params: {

@@ -1,5 +1,6 @@
 import type { ChannelBotLoopProtectionFacts } from "openclaw/plugin-sdk/channel-inbound";
 import { resolveChannelProgressDraftConfig } from "openclaw/plugin-sdk/channel-outbound";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import type { SlackAccountConfig } from "openclaw/plugin-sdk/config-contracts";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { mergePairLoopGuardConfig } from "openclaw/plugin-sdk/pair-loop-guard-runtime";
@@ -114,16 +115,6 @@ export type SlackEventDeliveryAttempt = {
 const SLACK_STREAM_RECIPIENT_TEAM_CACHE_MAX = 2000;
 const slackStreamRecipientTeamCaches = new WeakMap<object, Map<string, string>>();
 
-function getSlackStreamRecipientTeamCache(client: object): Map<string, string> {
-  const existing = slackStreamRecipientTeamCaches.get(client);
-  if (existing) {
-    return existing;
-  }
-  const cache = new Map<string, string>();
-  slackStreamRecipientTeamCaches.set(client, cache);
-  return cache;
-}
-
 export function buildSlackEventDeliveryKey(
   params: SlackEventDeliveryAttempt,
   preparedReply: PreparedSlackReply = prepareSlackReply(params.payload),
@@ -159,7 +150,13 @@ export async function resolveSlackStreamRecipientTeamId(params: {
     params.fallbackTeamId && params.userId
       ? `${params.fallbackTeamId}:${params.userId}`
       : undefined;
-  const cache = cacheKey ? getSlackStreamRecipientTeamCache(params.client) : undefined;
+  const cache = cacheKey
+    ? getOrCreateMapValue(
+        slackStreamRecipientTeamCaches,
+        params.client,
+        () => new Map<string, string>(),
+      )
+    : undefined;
   const cachedTeamId = cache && cacheKey ? readLruMapEntry(cache, cacheKey) : undefined;
   if (cachedTeamId) {
     return cachedTeamId;

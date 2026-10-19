@@ -1,7 +1,7 @@
 import type { AnyChunk, MessageMetadata } from "@slack/types";
 import type { WebClient, WebClientOptions } from "@slack/web-api";
 import type { ChatStreamer } from "@slack/web-api/dist/chat-stream.js";
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { getOrCreateMapValue, pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { getSlackListenerWriteClient } from "./client.js";
 import { buildSlackMessageIdentityPayload } from "./post-message-identity.js";
@@ -88,12 +88,10 @@ const stateBySession = new WeakMap<SlackStreamSession, SlackClientStreams>();
 const SLACK_STOPPED_STREAMS_MAX = 1024;
 
 function getSlackClientStreams(client: WebClient): SlackClientStreams {
-  let state = streamsByClient.get(client);
-  if (!state) {
-    state = { sessions: new Set(), stopped: new Map() };
-    streamsByClient.set(client, state);
-  }
-  return state;
+  return getOrCreateMapValue(streamsByClient, client, () => ({
+    sessions: new Set(),
+    stopped: new Map(),
+  }));
 }
 
 function releaseSlackStream(session: SlackStreamSession): void {

@@ -5,7 +5,7 @@ import {
   type ChannelIngressStateInput,
   readChannelIngressStoreAllowFromForDmPolicy,
 } from "openclaw/plugin-sdk/channel-ingress-runtime";
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { getOrCreateMapValue, pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { normalizeStringEntriesLower } from "openclaw/plugin-sdk/string-normalization-runtime";
@@ -61,18 +61,6 @@ function createSlackIngressResolver(ctx: SlackMonitorContext) {
   });
 }
 
-function getChannelMembersCache(
-  ctx: SlackMonitorContext,
-): Map<string, SlackChannelMembersCacheEntry> {
-  const existing = slackChannelMembersCache.get(ctx);
-  if (existing) {
-    return existing;
-  }
-  const next = new Map<string, SlackChannelMembersCacheEntry>();
-  slackChannelMembersCache.set(ctx, next);
-  return next;
-}
-
 export async function resolveSlackEffectiveAllowFrom(
   ctx: SlackMonitorContext,
   options?: { includePairingStore?: boolean; eventScope?: SlackEventScope },
@@ -116,7 +104,11 @@ async function resolveSlackChannelMemberIds(
   channelId: string,
   eventScope?: SlackEventScope,
 ): Promise<Set<string>> {
-  const cache = getChannelMembersCache(ctx);
+  const cache = getOrCreateMapValue(
+    slackChannelMembersCache,
+    ctx,
+    () => new Map<string, SlackChannelMembersCacheEntry>(),
+  );
   const key = `${ctx.accountId}:${eventScope ? `${eventScope.teamId}:` : ""}${channelId}`;
   const nowMs = Date.now();
   const cached = cache.get(key);

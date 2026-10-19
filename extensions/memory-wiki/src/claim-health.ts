@@ -1,3 +1,4 @@
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import { parseDateStringTimestampMs } from "openclaw/plugin-sdk/number-runtime";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { WikiClaim, WikiPageSummary } from "./markdown.js";
@@ -160,9 +161,7 @@ export function buildClaimContradictionClusters(params: { pages: WikiPageSummary
     if (!claim.claimId) {
       continue;
     }
-    const current = byId.get(claim.claimId) ?? [];
-    current.push(claim);
-    byId.set(claim.claimId, current);
+    getOrCreateMapValue(byId, claim.claimId, () => []).push(claim);
   }
 
   return [...byId.entries()]
@@ -196,14 +195,13 @@ export function buildPageContradictionClusters(
       if (!key) {
         continue;
       }
-      const current = byNote.get(key) ?? [];
+      const current = getOrCreateMapValue(byNote, key, () => []);
       current.push({
         pagePath: page.relativePath,
         pageTitle: page.title,
         ...(page.id ? { pageId: page.id } : {}),
         note,
       });
-      byNote.set(key, current);
     }
   }
   return [...byNote.entries()]

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ChannelMessageSendResult } from "openclaw/plugin-sdk/channel-outbound";
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { pruneMapToMaxSize, readUnexpiredMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
 import {
@@ -501,12 +501,8 @@ async function fetchGroupsByIds(api: API, ids: string[]): Promise<Map<string, Gr
 
 function readCachedGroupContext(profile: string, groupId: string): ZaloGroupContext | null {
   const key = `${profile}:${groupId}`;
-  const cached = groupContextCache.get(key);
+  const cached = readUnexpiredMapEntry(groupContextCache, key);
   if (!cached) {
-    return null;
-  }
-  if (cached.expiresAt <= Date.now()) {
-    groupContextCache.delete(key);
     return null;
   }
   // Bump recency so hot groups stay in cache when enforcing max entries.

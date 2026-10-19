@@ -1,4 +1,4 @@
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { pruneMapToMaxSize, readUnexpiredMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 import { createFeishuClient } from "./client.js";
 import type { ResolvedFeishuAccount } from "./types.js";
 
@@ -21,12 +21,8 @@ const backoffUntilByAccount = new Map<string, number>();
 const inflight = new Map<string, Promise<string | undefined>>();
 
 function readCache(key: string): CacheEntry | undefined {
-  const entry = cache.get(key);
+  const entry = readUnexpiredMapEntry(cache, key);
   if (!entry) {
-    return undefined;
-  }
-  if (entry.expiresAt <= Date.now()) {
-    cache.delete(key);
     return undefined;
   }
   cache.delete(key);

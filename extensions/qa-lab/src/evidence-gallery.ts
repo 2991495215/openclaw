@@ -4,6 +4,7 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import { runTasksWithConcurrency } from "openclaw/plugin-sdk/concurrency-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { isPathInside, readFileWindowFully } from "openclaw/plugin-sdk/file-access-runtime";
@@ -304,12 +305,9 @@ async function projectQaEvidenceArtifacts(params: {
   const publishedPath = path.join(evidenceDir, "qa-suite-summary.json");
   const summaries = new Map<string, ReturnType<typeof readJsonIfExists>>();
   const readSummary = (summaryPath: string) => {
-    let pending = summaries.get(summaryPath);
-    if (!pending) {
-      pending = readJsonIfExists(summaryPath, allowedRoots);
-      summaries.set(summaryPath, pending);
-    }
-    return pending;
+    return getOrCreateMapValue(summaries, summaryPath, () =>
+      readJsonIfExists(summaryPath, allowedRoots),
+    );
   };
   const published = await readSummary(publishedPath);
   // An enclosing publisher may add its own presentation without changing child

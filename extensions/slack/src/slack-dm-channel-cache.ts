@@ -1,4 +1,5 @@
 import type { WebClient } from "@slack/web-api";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import { createSlackTokenCacheKey } from "./client.js";
 import { writeLruMapEntry } from "./monitor/lru-map-cache.js";
 
@@ -16,13 +17,7 @@ function createSlackDmCacheKey(params: {
 }
 
 function getSlackDmChannelCache(client: WebClient): Map<string, string> {
-  const existing = slackDmChannelCaches.get(client);
-  if (existing) {
-    return existing;
-  }
-  const cache = new Map<string, string>();
-  slackDmChannelCaches.set(client, cache);
-  return cache;
+  return getOrCreateMapValue(slackDmChannelCaches, client, () => new Map<string, string>());
 }
 
 export function readCachedSlackDmChannelId(params: {

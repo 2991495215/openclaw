@@ -1,6 +1,7 @@
 // QA Lab owns bounded profile partitioning and canonical shard evidence aggregation.
 import fs from "node:fs/promises";
 import path from "node:path";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import {
   canonicalPathFromExistingAncestor,
   isPathInside,
@@ -128,9 +129,7 @@ function buildQaProfileScenarioGroups(params: {
         scenario,
         params.categoriesByScenarioRef.get(scenario.sourcePath) ?? [],
       );
-      const scenarios = categoryGroups.get(categoryId) ?? [];
-      scenarios.push(scenario);
-      categoryGroups.set(categoryId, scenarios);
+      getOrCreateMapValue(categoryGroups, categoryId, () => []).push(scenario);
       continue;
     }
     const connected = affinityGroups.filter((group) =>
@@ -190,9 +189,7 @@ function buildQaProfileEvidenceShardPlan(
   const categoryIdsByScenarioRef = new Map<string, string[]>();
   for (const category of membership.categories) {
     for (const scenarioRef of category.scenarioRefs) {
-      const categoryIds = categoryIdsByScenarioRef.get(scenarioRef) ?? [];
-      categoryIds.push(category.id);
-      categoryIdsByScenarioRef.set(scenarioRef, categoryIds);
+      getOrCreateMapValue(categoryIdsByScenarioRef, scenarioRef, () => []).push(category.id);
     }
   }
   for (const categoryIds of categoryIdsByScenarioRef.values()) {

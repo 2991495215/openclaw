@@ -1,5 +1,5 @@
 import type { GroupMetadata, proto } from "baileys";
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { pruneMapToMaxSize, readUnexpiredMapEntry } from "openclaw/plugin-sdk/collection-runtime";
 
 const WHATSAPP_BAILEYS_CACHE_MAX_ENTRIES = 500;
 
@@ -38,12 +38,8 @@ export function readWhatsAppBaileysCacheEntry<T>(
   cache: Map<string, WhatsAppBaileysCacheEntry<T>>,
   key: string,
 ): T | undefined {
-  const entry = cache.get(key);
+  const entry = readUnexpiredMapEntry(cache, key);
   if (!entry) {
-    return undefined;
-  }
-  if (entry.expiresAt <= Date.now()) {
-    cache.delete(key);
     return undefined;
   }
   cache.delete(key);

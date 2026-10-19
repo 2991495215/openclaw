@@ -14,6 +14,10 @@ import {
   type AgentHarnessCompactResult,
   type AgentHarnessResetParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import {
+  deleteMapCollectionEntry,
+  getOrCreateMapValue,
+} from "openclaw/plugin-sdk/collection-runtime";
 import { KeyedAsyncQueue } from "openclaw/plugin-sdk/keyed-async-queue";
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -478,11 +482,12 @@ export function createCopilotAgentHarness(
     sessionId: string;
     sdkSessionId: string;
   }): void {
-    const cleanups =
-      deferredCompactionCleanups.get(params.sessionId) ??
-      new Map<Promise<DeferredCompactionCleanupOutcome>, DeferredCompactionCleanup>();
+    const cleanups = getOrCreateMapValue(
+      deferredCompactionCleanups,
+      params.sessionId,
+      () => new Map<Promise<DeferredCompactionCleanupOutcome>, DeferredCompactionCleanup>(),
+    );
     cleanups.set(params.cleanup, { abort: params.abort, sdkSessionId: params.sdkSessionId });
-    deferredCompactionCleanups.set(params.sessionId, cleanups);
     void params.cleanup.then(
       () => removeDeferredCompactionCleanup(params.sessionId, params.cleanup),
       () => removeDeferredCompactionCleanup(params.sessionId, params.cleanup),
@@ -493,14 +498,7 @@ export function createCopilotAgentHarness(
     sessionId: string,
     cleanup: Promise<DeferredCompactionCleanupOutcome>,
   ): void {
-    const cleanups = deferredCompactionCleanups.get(sessionId);
-    if (!cleanups) {
-      return;
-    }
-    cleanups.delete(cleanup);
-    if (cleanups.size === 0) {
-      deferredCompactionCleanups.delete(sessionId);
-    }
+    deleteMapCollectionEntry(deferredCompactionCleanups, sessionId, cleanup);
   }
 
   async function hasPendingDeferredCompactionCleanup(sessionId: string): Promise<boolean> {

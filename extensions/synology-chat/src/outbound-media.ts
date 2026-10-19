@@ -1,7 +1,7 @@
 // Synology Chat plugin module stages immutable outbound bytes for NAS attachment pickup.
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { getOrCreateMapValue, pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
 import { mimeTypeFromFilePath, normalizeMimeType } from "openclaw/plugin-sdk/media-mime";
 import { resolveExpiresAtMsFromDurationMs } from "openclaw/plugin-sdk/number-runtime";
 import {
@@ -198,13 +198,7 @@ function getHostedMediaStore(accountId: string): HostedOutboundMediaStore {
     hostedMediaStores.clear();
     hostedMediaLimits = createHostedMediaLimits();
   }
-  const existing = hostedMediaStores.get(accountId);
-  if (existing) {
-    return existing;
-  }
-  const created = createHostedMediaStore(accountId);
-  hostedMediaStores.set(accountId, created);
-  return created;
+  return getOrCreateMapValue(hostedMediaStores, accountId, () => createHostedMediaStore(accountId));
 }
 
 function skipAsciiWhitespace(buffer: Buffer, start: number): number {

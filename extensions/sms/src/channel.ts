@@ -19,6 +19,7 @@ import {
   defineChannelSetupContract,
   type ChannelSetupInput,
 } from "openclaw/plugin-sdk/channel-setup";
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import { createEmptyChannelDirectoryAdapter } from "openclaw/plugin-sdk/directory-runtime";
 import { PlatformMessageNotDispatchedError } from "openclaw/plugin-sdk/error-runtime";
 import {
@@ -292,18 +293,6 @@ async function prepareSmsAttachmentAttempt(
   return { account, to, attempt, platformDispatchStarted: false };
 }
 
-function getOrPrepareSmsAttachmentAttempt(
-  ctx: SmsAttachmentContext,
-): Promise<PreparedSmsAttachmentAttempt> {
-  const existing = preparedSmsAttachmentAttempts.get(ctx);
-  if (existing) {
-    return existing;
-  }
-  const created = prepareSmsAttachmentAttempt(ctx);
-  preparedSmsAttachmentAttempts.set(ctx, created);
-  return created;
-}
-
 async function sendPreparedSmsAttachment(ctx: SmsAttachmentContext) {
   const preparation = preparedSmsAttachmentAttempts.get(ctx);
   preparedSmsAttachmentAttempts.delete(ctx);
@@ -337,7 +326,9 @@ const smsMessageAdapter = defineChannelMessageAdapter({
         if (ctx.kind !== "media") {
           return undefined;
         }
-        return await getOrPrepareSmsAttachmentAttempt(ctx);
+        return await getOrCreateMapValue(preparedSmsAttachmentAttempts, ctx, () =>
+          prepareSmsAttachmentAttempt(ctx),
+        );
       },
       afterSendFailure: async (ctx) => {
         if (ctx.kind !== "media") {

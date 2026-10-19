@@ -1,3 +1,4 @@
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalStringifiedId,
@@ -25,16 +26,6 @@ export function normalizeThreadId(raw?: string | number | null): string | null {
 const MAX_DIRECT_ROOM_CACHE_SIZE = 1024;
 const directRoomCacheByClient = new WeakMap<MatrixClient, Map<string, string>>();
 
-function resolveDirectRoomCache(client: MatrixClient): Map<string, string> {
-  const existing = directRoomCacheByClient.get(client);
-  if (existing) {
-    return existing;
-  }
-  const created = new Map<string, string>();
-  directRoomCacheByClient.set(client, created);
-  return created;
-}
-
 async function resolveDirectRoomId(
   client: MatrixClient,
   userId: string,
@@ -46,7 +37,11 @@ async function resolveDirectRoomId(
   }
   const selfUserId = (await client.getUserId().catch(() => null))?.trim() || null;
 
-  const directRoomCache = resolveDirectRoomCache(client);
+  const directRoomCache = getOrCreateMapValue(
+    directRoomCacheByClient,
+    client,
+    () => new Map<string, string>(),
+  );
   // A read lookup must not suppress mapping repair on a later send.
   const cacheKey = persistDirectMapping ? trimmed : `read:${trimmed}`;
   const cached = directRoomCache.get(cacheKey);

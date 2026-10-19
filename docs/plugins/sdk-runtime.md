@@ -820,6 +820,15 @@ migration.
 
 The former Tasks runtime is no longer available. See [removed Tasks and TaskFlow APIs](/plugins/sdk-migration/removed-surfaces#tasks-and-taskflow-apis-removed) for native-owner alternatives.
 
+### In-memory collections
+
+`openclaw/plugin-sdk/collection-runtime` provides `getOrCreateMapValue` for
+synchronous Map or WeakMap initialization, retaining the original value or
+promise. `readUnexpiredMapEntry` removes entries whose `expiresAt` has passed
+without promoting live hits. `deleteMapCollectionEntry` removes an item from
+a keyed Map or Set bucket and prunes an empty bucket. Callers keep cache keys,
+capacity limits, recency promotion, and authority checks.
+
 ### Bounded stale reads
 
 `openclaw/plugin-sdk/collection-runtime` exports `createStaleWhileRevalidateCache`

@@ -1,3 +1,4 @@
+import { getOrCreateMapValue } from "openclaw/plugin-sdk/collection-runtime";
 import { resolveExecApprovalsDisplayPath } from "openclaw/plugin-sdk/exec-approvals-runtime";
 import type { HealthCheckContext, HealthFinding } from "openclaw/plugin-sdk/health";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -47,13 +48,7 @@ import type { PolicyEvaluation } from "./types.js";
 const policyEvaluationCache = new WeakMap<HealthCheckContext, Promise<PolicyEvaluation>>();
 
 export function evaluatePolicy(ctx: HealthCheckContext): Promise<PolicyEvaluation> {
-  const cached = policyEvaluationCache.get(ctx);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const next = evaluatePolicyUncached(ctx);
-  policyEvaluationCache.set(ctx, next);
-  return next;
+  return getOrCreateMapValue(policyEvaluationCache, ctx, () => evaluatePolicyUncached(ctx));
 }
 
 async function evaluatePolicyUncached(ctx: HealthCheckContext): Promise<PolicyEvaluation> {

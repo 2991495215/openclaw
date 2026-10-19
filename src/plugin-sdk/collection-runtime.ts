@@ -2,3 +2,8 @@
 
 export { pruneMapToMaxSize } from "../infra/map-size.js";
 export { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";
+export {
+  deleteMapCollectionEntry,
+  getOrCreateMapValue,
+  readUnexpiredMapEntry,
+} from "../shared/map-collections.js";

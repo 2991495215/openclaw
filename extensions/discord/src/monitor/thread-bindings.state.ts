@@ -1,3 +1,7 @@
+import {
+  deleteMapCollectionEntry,
+  getOrCreateMapValue,
+} from "openclaw/plugin-sdk/collection-runtime";
 import { resolveGlobalSingleton } from "openclaw/plugin-sdk/global-singleton";
 import {
   resolveNonNegativeIntegerOption,
@@ -250,9 +254,7 @@ function linkSessionBinding(targetSessionKey: string, bindingKey: string) {
   if (!key) {
     return;
   }
-  const threads = BINDINGS_BY_SESSION_KEY.get(key) ?? new Set<string>();
-  threads.add(bindingKey);
-  BINDINGS_BY_SESSION_KEY.set(key, threads);
+  getOrCreateMapValue(BINDINGS_BY_SESSION_KEY, key, () => new Set<string>()).add(bindingKey);
 }
 
 function unlinkSessionBinding(targetSessionKey: string, bindingKey: string) {
@@ -260,14 +262,7 @@ function unlinkSessionBinding(targetSessionKey: string, bindingKey: string) {
   if (!key) {
     return;
   }
-  const threads = BINDINGS_BY_SESSION_KEY.get(key);
-  if (!threads) {
-    return;
-  }
-  threads.delete(bindingKey);
-  if (threads.size === 0) {
-    BINDINGS_BY_SESSION_KEY.delete(key);
-  }
+  deleteMapCollectionEntry(BINDINGS_BY_SESSION_KEY, key, bindingKey);
 }
 
 export function toReusableWebhookKey(params: { accountId: string; channelId: string }): string {
