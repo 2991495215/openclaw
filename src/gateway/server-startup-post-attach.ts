@@ -11,7 +11,7 @@ import {
 import type { GatewayActiveWorkInspectors } from "../infra/gateway-active-work.js";
 import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { hasRestartSentinel } from "../infra/restart-sentinel.js";
-import type { createGatewayUpdateCheck } from "../infra/update-startup.js";
+import type { startGatewayUpdateChecks } from "../infra/update-startup.js";
 import type { PluginHookGatewayCronService } from "../plugins/hook-gateway.types.js";
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
@@ -438,9 +438,7 @@ type GatewayPostAttachRuntimeDeps = Pick<
   refreshLatestUpdateRestartSentinel: (
     env?: NodeJS.ProcessEnv,
   ) => Awaitable<ReturnType<typeof prepareLatestUpdateRestartSentinel>>;
-  createGatewayUpdateCheck: (
-    ...args: Parameters<typeof createGatewayUpdateCheck>
-  ) => Awaitable<ReturnType<typeof createGatewayUpdateCheck>>;
+  loadUpdateChecks: () => Awaitable<typeof startGatewayUpdateChecks>;
   startGatewaySidecars: typeof startGatewaySidecars;
   warmSystemCa: typeof warmMacOSSystemCaOffMainThread;
 };
@@ -452,8 +450,8 @@ const defaultGatewayPostAttachRuntimeDeps: GatewayPostAttachRuntimeDeps = {
     (await import("./server-startup-log.js")).logGatewayStartup(params),
   refreshLatestUpdateRestartSentinel: async (env) =>
     (await import("./server-update-sentinel.js")).prepareLatestUpdateRestartSentinel(env),
-  createGatewayUpdateCheck: async (...args) =>
-    (await import("../infra/update-startup.js")).createGatewayUpdateCheck(...args),
+  loadUpdateChecks: async () =>
+    (await import("../infra/update-startup.js")).startGatewayUpdateChecks,
   startGatewaySidecars,
   warmSystemCa: beginMacOSSystemCaWarmupOnce,
   loadSubagentRegistryActivation: async () =>
@@ -660,7 +658,7 @@ export async function startGatewayPostAttachRuntime(
   const updateCheck = createDeferredGatewayUpdateCheck({
     scheduler: params.scheduler,
     startupTrace: params.startupTrace,
-    createUpdateCheck: runtimeDeps.createGatewayUpdateCheck,
+    loadUpdateChecks: runtimeDeps.loadUpdateChecks,
     getConfig: params.getConfig,
     getPluginRegistry: () => params.getCurrentPluginRegistry?.() ?? pluginRegistry,
     log: params.log,

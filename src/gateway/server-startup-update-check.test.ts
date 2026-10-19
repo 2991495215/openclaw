@@ -1,25 +1,26 @@
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createDeferred } from "../../test/helpers/promise.js";
+import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import { applyRemoteModelCatalogUpdate } from "../agents/prepared-model-runtime.js";
 import { currentUpdateCheckLifecycle } from "../infra/update-check-lifecycle.js";
+import * as startupInstall from "../infra/update-install-status.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
-import { resetGatewayWorkAdmission } from "../process/gateway-work-admission.js";
+import * as workAdmission from "../process/gateway-work-admission.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { createOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createDeferredGatewayUpdateCheck } from "./server-startup-update-check.js";
 
 const mocks = vi.hoisted(() => ({
-  createGatewayUpdateCheck:
-    vi.fn<typeof import("../infra/update-startup.js").createGatewayUpdateCheck>(),
+  startGatewayUpdateChecks:
+    vi.fn<typeof import("../infra/update-startup.js").startGatewayUpdateChecks>(),
   startUpdateRunWatcher: vi.fn<typeof import("./update-run-watcher.js").startUpdateRunWatcher>(),
 }));
 
 vi.mock("../infra/update-startup.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../infra/update-startup.js")>()),
-  createGatewayUpdateCheck: mocks.createGatewayUpdateCheck,
+  startGatewayUpdateChecks: mocks.startGatewayUpdateChecks,
 }));
 
 vi.mock("./update-run-watcher.js", async (importOriginal) => ({
@@ -33,8 +34,7 @@ vi.mock("../agents/prepared-model-runtime.js", async (importOriginal) => ({
 }));
 
 type UpdateCheckStartupParams = Parameters<typeof createDeferredGatewayUpdateCheck>[0];
-type UpdateCheck = ReturnType<typeof import("../infra/update-startup.js").createGatewayUpdateCheck>;
-type Initialization = Awaited<ReturnType<UpdateCheck["initialize"]>>;
+type Initialization = Awaited<ReturnType<typeof startupInstall.resolveStartupInstallStatus>>;
 const initialized: Initialization = {
   root: null,
   status: { root: null, installKind: "unknown", packageManager: "unknown" },
@@ -42,22 +42,17 @@ const initialized: Initialization = {
 };
 
 let state: Awaited<ReturnType<typeof createOpenClawTestState>>;
-let defaultUpdateCheck: UpdateCheck;
 let scheduler: ReturnType<typeof createTestGatewayScheduler>;
 const owners = new Set<ReturnType<typeof createDeferredGatewayUpdateCheck>>();
 
 beforeEach(async () => {
-  resetGatewayWorkAdmission();
+  workAdmission.resetGatewayWorkAdmission();
   scheduler = createTestGatewayScheduler();
   state = await createOpenClawTestState({ label: "gateway-update-check" });
   // Keep cold partial-mock loading outside the factory-readiness assertion window.
   await import("../infra/update-startup.js");
-  defaultUpdateCheck = {
-    initialize: vi.fn(async () => initialized),
-    start: vi.fn(),
-    stop: vi.fn(async () => {}),
-  };
-  mocks.createGatewayUpdateCheck.mockReset().mockReturnValue(defaultUpdateCheck);
+  vi.spyOn(startupInstall, "resolveStartupInstallStatus").mockResolvedValue(initialized);
+  mocks.startGatewayUpdateChecks.mockReset();
   mocks.startUpdateRunWatcher
     .mockReset()
     .mockImplementation(
@@ -72,7 +67,7 @@ afterEach(async () => {
     await scheduler.stop();
   } finally {
     owners.clear();
-    resetGatewayWorkAdmission();
+    workAdmission.resetGatewayWorkAdmission();
     closeOpenClawStateDatabaseForTest();
     await state.cleanup();
     vi.restoreAllMocks();
@@ -82,8 +77,8 @@ afterEach(async () => {
 async function startUpdateCheck(overrides: Partial<UpdateCheckStartupParams> = {}, start = true) {
   const owner = createDeferredGatewayUpdateCheck({
     scheduler,
-    createUpdateCheck: async (...args) =>
-      (await import("../infra/update-startup.js")).createGatewayUpdateCheck(...args),
+    loadUpdateChecks: async () =>
+      (await import("../infra/update-startup.js")).startGatewayUpdateChecks,
     getConfig: () => ({}),
     getPluginRegistry: () => undefined,
     log: { info: vi.fn(), warn: vi.fn() },
@@ -122,7 +117,7 @@ it("owns RPC update work when autonomous checks never start", async () => {
   try {
     await cancelled.promise;
     expect(stopped).not.toHaveBeenCalled();
-    expect(mocks.createGatewayUpdateCheck).not.toHaveBeenCalled();
+    expect(mocks.startGatewayUpdateChecks).not.toHaveBeenCalled();
   } finally {
     cleanup.resolve();
     await Promise.all([work, stopping]);
@@ -148,7 +143,7 @@ it.each(["background", "early manual"])(
           .filter((client) => !filter || filter(client as never))
           .map((client) => client.connId),
       );
-    const createGatewayUpdateCheck = mocks.createGatewayUpdateCheck;
+    const startGatewayUpdateChecks = mocks.startGatewayUpdateChecks;
 
     const ready = createDeferred();
     const result = await startUpdateCheck({
@@ -157,14 +152,14 @@ it.each(["background", "early manual"])(
       getClientConnIds,
     });
     if (source === "background") {
-      await waitForGatewayTestState(() => expect(createGatewayUpdateCheck).toHaveBeenCalledOnce());
+      await waitForGatewayTestState(() => expect(startGatewayUpdateChecks).toHaveBeenCalledOnce());
     } else {
-      expect(createGatewayUpdateCheck).not.toHaveBeenCalled();
+      expect(startGatewayUpdateChecks).not.toHaveBeenCalled();
     }
 
     const updateCheckParams =
       source === "background"
-        ? createGatewayUpdateCheck.mock.calls[0]![0]
+        ? startGatewayUpdateChecks.mock.calls[0]![0]
         : currentUpdateCheckLifecycle();
     const publicUpdate = {
       currentVersion: "2026.8.7",
@@ -211,76 +206,100 @@ it.each(["background", "early manual"])(
   },
 );
 
-it.each(["factory", "initialization"])("fences and joins a pending %s on close", async (phase) => {
-  const factory = createDeferred();
-  const factoryEntered = vi.fn();
-  const updateStartup = await vi.importActual<typeof import("../infra/update-startup.js")>(
-    "../infra/update-startup.js",
-  );
-  if (phase === "factory") {
-    // Gate the real lazy import; the exported factory remains synchronous.
-    vi.doMock("../infra/update-startup.js", async () => {
-      factoryEntered();
-      await factory.promise;
-      return { ...updateStartup, createGatewayUpdateCheck: mocks.createGatewayUpdateCheck };
-    });
-  }
-  const initialization = createDeferred<Initialization>();
-  const initializationEntered = createDeferred();
-  const cleanup = createDeferred();
-  const updateCheck = {
-    initialize: vi.fn(() => {
-      initializationEntered.resolve();
-      return initialization.promise;
-    }),
-    start: vi.fn(),
-    stop: vi.fn(() => cleanup.promise),
-  };
-  mocks.createGatewayUpdateCheck.mockReturnValue(updateCheck);
-  const result = await startUpdateCheck();
-  const stopped = vi.fn();
-  let stopping: Promise<void> | undefined;
-  try {
-    if (phase === "initialization") {
-      await initializationEntered.promise;
-      expect(updateCheck.initialize).toHaveBeenCalledOnce();
-    } else {
-      await waitForGatewayTestState(() => expect(factoryEntered).toHaveBeenCalledOnce());
-      expect(mocks.createGatewayUpdateCheck).not.toHaveBeenCalled();
+it.each(["lazy import", "initialization"])(
+  "fences and joins a pending %s on close",
+  async (phase) => {
+    const loading = createDeferred();
+    const loadingEntered = vi.fn();
+    const updateStartup = await vi.importActual<typeof import("../infra/update-startup.js")>(
+      "../infra/update-startup.js",
+    );
+    if (phase === "lazy import") {
+      // Hold the actual lazy import without replacing the canonical lifecycle.
+      vi.doMock("../infra/update-startup.js", async () => {
+        loadingEntered();
+        await loading.promise;
+        return { ...updateStartup, startGatewayUpdateChecks: mocks.startGatewayUpdateChecks };
+      });
     }
-    stopping = result.stop().then(stopped);
-    if (phase === "factory") {
+    const initializing = createDeferred<AbortSignal>();
+    const cleanup = createDeferred();
+    vi.mocked(startupInstall.resolveStartupInstallStatus).mockImplementation(async (_, signal) => {
+      initializing.resolve(signal);
+      await cleanup.promise;
+      signal.throwIfAborted();
+      return initialized;
+    });
+    const result = await startUpdateCheck();
+    const stopped = vi.fn();
+    let stopping: Promise<void> | undefined;
+    try {
+      if (phase === "initialization") {
+        await initializing.promise;
+      } else {
+        await waitForGatewayTestState(() => expect(loadingEntered).toHaveBeenCalledOnce());
+      }
+      stopping = result.stop().then(stopped);
+      expect(currentUpdateCheckLifecycle().signal.aborted).toBe(true);
       await Promise.resolve();
       expect(stopped).not.toHaveBeenCalled();
-      expect(updateCheck.stop).not.toHaveBeenCalled();
-      factory.resolve();
-      await waitForGatewayTestState(() => expect(updateCheck.stop).toHaveBeenCalledOnce());
-      expect(updateCheck.initialize).not.toHaveBeenCalled();
-    } else {
-      expect(updateCheck.stop).toHaveBeenCalledOnce();
-      cleanup.resolve();
-      await nextTurn();
-    }
-    expect(stopped).not.toHaveBeenCalled();
-    expect(updateCheck.start).not.toHaveBeenCalled();
-  } finally {
-    factory.resolve();
-    cleanup.resolve();
-    initialization.resolve(await defaultUpdateCheck.initialize());
-    try {
-      await (stopping ?? result.stop());
+      if (phase === "lazy import") {
+        expect(startupInstall.resolveStartupInstallStatus).not.toHaveBeenCalled();
+        loading.resolve();
+      } else {
+        expect((await initializing.promise).aborted).toBe(true);
+        await nextTurn();
+        expect(stopped).not.toHaveBeenCalled();
+        cleanup.resolve();
+      }
+      await stopping;
+      expect(stopped).toHaveBeenCalledOnce();
+      expect(mocks.startGatewayUpdateChecks).not.toHaveBeenCalled();
+      expect(scheduler.nextWakeAtMs).toBeNull();
     } finally {
-      if (phase === "factory") {
-        // Keep the captured mock namespace, not a fresh singleton graph.
-        vi.doMock("../infra/update-startup.js", () => ({
-          ...updateStartup,
-          createGatewayUpdateCheck: mocks.createGatewayUpdateCheck,
-        }));
+      loading.resolve();
+      cleanup.resolve();
+      try {
+        await (stopping ?? result.stop());
+      } finally {
+        if (phase === "lazy import") {
+          // Preserve the captured singleton namespace when releasing the import.
+          vi.doMock("../infra/update-startup.js", () => ({
+            ...updateStartup,
+            startGatewayUpdateChecks: mocks.startGatewayUpdateChecks,
+          }));
+        }
       }
     }
+  },
+);
+
+it("cancels startup waiting for suspended root admission before joining shutdown", async ({
+  signal,
+}) => {
+  const waiting = createDeferred();
+  const admit = workAdmission.runWithGatewayIndependentRootWorkAdmission;
+  vi.spyOn(workAdmission, "runWithGatewayIndependentRootWorkAdmission").mockImplementation(
+    function observe<T>(run: () => Promise<T>, origin?: string, admissionSignal?: AbortSignal) {
+      const operation = admit(run, origin, admissionSignal);
+      waiting.resolve();
+      return operation;
+    },
+  );
+  const suspension = workAdmission.tryBeginGatewaySuspendAdmission(() => {});
+  expect(suspension).not.toBeNull();
+  const owner = await startUpdateCheck();
+  try {
+    await withinTest(waiting.promise, signal);
+    expect(mocks.startGatewayUpdateChecks).not.toHaveBeenCalled();
+    await withinTest(owner.stop(), signal);
+    expect(currentUpdateCheckLifecycle().signal.aborted).toBe(true);
+    expect(mocks.startGatewayUpdateChecks).not.toHaveBeenCalled();
+    expect(scheduler.nextWakeAtMs).toBeNull();
+  } finally {
+    suspension?.rollback();
+    await owner.stop();
   }
-  await result.stop();
-  expect(updateCheck.stop).toHaveBeenCalledOnce();
 });
 
 it("joins update notices before releasing the update-check shutdown owner", async () => {
@@ -292,7 +311,7 @@ it("joins update notices before releasing the update-check shutdown owner", asyn
   const stopping = result.stop().then(stopped);
   try {
     expect(stopWatcher).toHaveBeenCalledOnce();
-    await waitForGatewayTestState(() => expect(defaultUpdateCheck.stop).toHaveBeenCalledOnce());
+    expect(currentUpdateCheckLifecycle().signal.aborted).toBe(true);
     await nextTurn();
     expect(stopped).not.toHaveBeenCalled();
     notices.resolve();
@@ -307,13 +326,13 @@ it("joins update notices before releasing the update-check shutdown owner", asyn
 it("warns once when initialization records unavailable Git facts", async () => {
   const warned = createDeferred();
   const warn = vi.fn(() => warned.resolve());
-  defaultUpdateCheck.initialize = vi.fn<UpdateCheck["initialize"]>(async () => ({
+  vi.mocked(startupInstall.resolveStartupInstallStatus).mockResolvedValue({
     ...initialized,
     status: {
       ...initialized.status,
       error: { status: "failed", message: "Git discovery timed out", timeoutMs: 120_000 },
     },
-  }));
+  });
   const owner = await startUpdateCheck({ log: { info: vi.fn(), warn } });
   await warned.promise;
   await owner.stop();
@@ -331,9 +350,8 @@ it("adopts scheduled remote catalogs inside the live Gateway registry scope", as
     return "published";
   });
   let applyRemoteCatalogUpdate: ((signal: AbortSignal) => Promise<unknown>) | undefined;
-  mocks.createGatewayUpdateCheck.mockImplementation((params) => {
+  mocks.startGatewayUpdateChecks.mockImplementation((params) => {
     applyRemoteCatalogUpdate = params.applyRemoteCatalogUpdate;
-    return defaultUpdateCheck;
   });
   await startUpdateCheck({ getPluginRegistry: () => gatewayRegistry });
   await waitForGatewayTestState(() => expect(applyRemoteCatalogUpdate).toBeDefined());

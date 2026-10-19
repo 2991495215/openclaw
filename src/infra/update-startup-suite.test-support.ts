@@ -1,8 +1,35 @@
 import { expect } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
+import { writeConfigMachineState } from "../state/config-machine-state-write.js";
+import { readConfigMachineState } from "../state/config-machine-state.js";
 import type { GatewayActiveWorkInspectors } from "./gateway-active-work.js";
 import type { UpdateRunRecord } from "./update-run-record.js";
 import type { UpdateRunResult } from "./update-run-result.js";
+
+const UPDATE_CHECK_STATE_KEY = "update.checkState";
+
+type PersistedUpdateCheckState = {
+  lastCheckedAt?: string;
+  lastCheckedChannel?: "stable" | "extended-stable" | "beta" | "dev";
+  lastNotifiedVersion?: string;
+  lastNotifiedTag?: string;
+  lastAvailableVersion?: string;
+  lastAvailableTag?: string;
+  autoInstallId?: string;
+  autoFirstSeenVersion?: string;
+  autoFirstSeenTag?: string;
+  autoFirstSeenAt?: string;
+  autoLastAttemptVersion?: string;
+  autoLastAttemptAt?: string;
+};
+
+export function readPersistedUpdateCheckState(): PersistedUpdateCheckState | null {
+  return readConfigMachineState<PersistedUpdateCheckState>(UPDATE_CHECK_STATE_KEY) ?? null;
+}
+
+export function writePersistedUpdateCheckState(state: PersistedUpdateCheckState): void {
+  writeConfigMachineState(UPDATE_CHECK_STATE_KEY, { lastCheckedChannel: "stable", ...state });
+}
 
 export function pauseAt<T>(
   entered: ReturnType<typeof createDeferred<void>>,

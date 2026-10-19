@@ -9,8 +9,6 @@ import {
 } from "../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { runOutsideAsyncWorkScope } from "../shared/async-work-scope.js";
-import { writeConfigMachineState } from "../state/config-machine-state-write.js";
-import { readConfigMachineState } from "../state/config-machine-state.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import {
   createGatewaySchedulerClock,
@@ -42,6 +40,8 @@ import {
   startedHandoff,
   idleActiveWorkInspectors,
   expectNoCalls,
+  readPersistedUpdateCheckState,
+  writePersistedUpdateCheckState,
 } from "./update-startup-suite.test-support.js";
 
 const {
@@ -57,26 +57,9 @@ const {
   versionMock: versionRef,
 } = await vi.hoisted(() => import("./update-startup.test-support.js"));
 
-const UPDATE_CHECK_STATE_KEY = "update.checkState";
-
 function commandSuccess(stdout = "") {
   return { stdout, stderr: "", code: 0, signal: null, killed: false, termination: "exit" as const };
 }
-
-type PersistedUpdateCheckState = {
-  lastCheckedAt?: string;
-  lastCheckedChannel?: "stable" | "extended-stable" | "beta" | "dev";
-  lastNotifiedVersion?: string;
-  lastNotifiedTag?: string;
-  lastAvailableVersion?: string;
-  lastAvailableTag?: string;
-  autoInstallId?: string;
-  autoFirstSeenVersion?: string;
-  autoFirstSeenTag?: string;
-  autoFirstSeenAt?: string;
-  autoLastAttemptVersion?: string;
-  autoLastAttemptAt?: string;
-};
 
 describe("update-startup", () => {
   let tempDir: string;
@@ -91,7 +74,7 @@ describe("update-startup", () => {
   let resolveNpmChannelTag: (typeof import("./update-check.js"))["resolveNpmChannelTag"];
   let runCommandWithTimeout: (typeof import("../process/exec.js"))["runCommandWithTimeout"];
   let runGatewayUpdateCheckOwner: (typeof import("./update-startup.js"))["runGatewayUpdateCheck"];
-  let createGatewayUpdateCheck: (typeof import("./update-startup.js"))["createGatewayUpdateCheck"];
+  let startGatewayUpdateChecks: (typeof import("./update-startup.js"))["startGatewayUpdateChecks"];
   let getUpdateAvailable: (typeof import("./update-status-state.js"))["getUpdateAvailable"];
   let getUpdateEffectiveChannel: (typeof import("./update-startup.js"))["getUpdateEffectiveChannel"];
   let getUpdateSchedule: (typeof import("./update-status-state.js"))["getUpdateSchedule"];
@@ -99,7 +82,7 @@ describe("update-startup", () => {
   let resetUpdateAvailableStateForTest: (typeof import("./update-startup.js"))["resetUpdateAvailableStateForTest"];
   let loaded = false;
   let autoRun: typeof import("./update-startup-auto-run.js");
-  const updateChecks = new Set<ReturnType<typeof createGatewayUpdateCheck>>();
+  const updateChecks = new Set<ReturnType<typeof createGatewayUpdateLifecycle>>();
 
   type CheckOptions = {
     cfg: OpenClawConfig | (() => OpenClawConfig);
@@ -107,12 +90,13 @@ describe("update-startup", () => {
     isNixMode?: boolean;
   };
   type UpdateCheckFixtureParams = Omit<
-    Parameters<typeof createGatewayUpdateCheck>[0],
+    Parameters<typeof startGatewayUpdateChecks>[0],
     "getConfig" | "log" | "isNixMode" | "lifecycle" | "applyRemoteCatalogUpdate"
   > &
     CheckOptions & {
+      lifecycle?: Parameters<typeof startGatewayUpdateChecks>[0]["lifecycle"];
       applyRemoteCatalogUpdate?: Parameters<
-        typeof createGatewayUpdateCheck
+        typeof startGatewayUpdateChecks
       >[0]["applyRemoteCatalogUpdate"];
     };
   function checkOptions<T extends CheckOptions>({
@@ -123,22 +107,22 @@ describe("update-startup", () => {
   }: T) {
     return { ...params, log, isNixMode, getConfig: typeof cfg === "function" ? cfg : () => cfg };
   }
-  function createTestUpdateCheck({
+  function createTestUpdateLifecycle() {
+    const lifecycle = createGatewayUpdateLifecycle(scheduler);
+    updateChecks.add(lifecycle);
+    return lifecycle;
+  }
+  function scheduleGatewayUpdateCheck({
     applyRemoteCatalogUpdate = async () => "unchanged",
+    lifecycle = createTestUpdateLifecycle(),
     ...params
   }: UpdateCheckFixtureParams) {
-    const check = createGatewayUpdateCheck({
+    startGatewayUpdateChecks({
       ...checkOptions(params),
       applyRemoteCatalogUpdate,
-      lifecycle: createGatewayUpdateLifecycle(scheduler),
+      lifecycle,
     });
-    updateChecks.add(check);
-    return check;
-  }
-  function scheduleGatewayUpdateCheck(params: UpdateCheckFixtureParams) {
-    const check = createTestUpdateCheck(params);
-    check.start();
-    return check.stop;
+    return lifecycle.stop;
   }
   function runGatewayUpdateCheck({
     allowInTests = true,
@@ -148,17 +132,9 @@ describe("update-startup", () => {
     return runGatewayUpdateCheckOwner({ ...checkOptions(params), allowInTests });
   }
 
-  function readPersistedUpdateCheckState(): PersistedUpdateCheckState | null {
-    return readConfigMachineState<PersistedUpdateCheckState>(UPDATE_CHECK_STATE_KEY) ?? null;
-  }
-
   function expectLastTelemetryConfig(config: OpenClawConfig) {
     const call = telemetry.mock.lastCall;
     expect([call?.[0](), call?.[1]]).toEqual([config, { surface: "gateway" }]);
-  }
-
-  function writePersistedUpdateCheckState(state: PersistedUpdateCheckState): void {
-    writeConfigMachineState(UPDATE_CHECK_STATE_KEY, { lastCheckedChannel: "stable", ...state });
   }
 
   beforeEach(async () => {
@@ -199,7 +175,7 @@ describe("update-startup", () => {
       ({ runCommandWithTimeout } = await import("../process/exec.js"));
       ({
         runGatewayUpdateCheck: runGatewayUpdateCheckOwner,
-        createGatewayUpdateCheck,
+        startGatewayUpdateChecks,
         getUpdateEffectiveChannel,
         resetUpdateAvailableStateForTest,
       } = await import("./update-startup.js"));
@@ -232,7 +208,7 @@ describe("update-startup", () => {
     cancelHandoff.mockReset().mockResolvedValue("restored-in-process");
     startHandoff.mockResolvedValue(startedHandoff());
     resetUpdateAvailableStateForTest(scheduler);
-    createTestUpdateCheck({ cfg: {} });
+    createTestUpdateLifecycle();
   });
 
   afterEach(async () => {
@@ -890,7 +866,7 @@ describe("update-startup", () => {
       (fetchGit ? remoteEntered : initialEntered).resolve();
       return fetchGit ? remote.promise : initial.promise;
     });
-    const check = createTestUpdateCheck({ cfg: { update: { channel: "dev" } } });
+    const check = createTestUpdateLifecycle();
     const initializing = check.initialize().catch((error: unknown) => error);
     const refreshing = refreshGatewayUpdateStatus(() => ({ update: { channel: "dev" } })).catch(
       (error: unknown) => error,
@@ -915,7 +891,7 @@ describe("update-startup", () => {
       await stopping;
       expect(getUpdateSchedule()).toBeNull();
       await expect(getUpdateEffectiveChannel()).rejects.toMatchObject({ name: "AbortError" });
-      check.start();
+      scheduleGatewayUpdateCheck({ lifecycle: check, cfg: { update: { channel: "dev" } } });
       await clock.advanceBy(0);
       expect(checkUpdateStatus).toHaveBeenCalledTimes(2);
       expect(refreshCatalog).not.toHaveBeenCalled();
@@ -938,7 +914,7 @@ describe("update-startup", () => {
       log: { info: vi.fn() },
       isNixMode: false,
     };
-    createTestUpdateCheck(params);
+    createTestUpdateLifecycle();
     const oldRefresh = refreshGatewayUpdateStatus(() => params.cfg);
     expect(refreshGatewayUpdateStatus(() => params.cfg)).toBe(oldRefresh);
     const refreshing = oldRefresh.catch((error: unknown) => error);
@@ -948,7 +924,7 @@ describe("update-startup", () => {
     try {
       await withinTest(entered.promise, signal);
       const oldSignal = vi.mocked(checkUpdateStatus).mock.calls[0]?.[0].signal;
-      const replacement = createTestUpdateCheck(params);
+      const replacement = createTestUpdateLifecycle();
       initializing = replacement.initialize().catch((error: unknown) => error);
       const newRefresh = refreshGatewayUpdateStatus(() => params.cfg);
       expect(newRefresh).not.toBe(oldRefresh);

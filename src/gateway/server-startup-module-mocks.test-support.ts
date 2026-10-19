@@ -37,7 +37,7 @@ export type GatewayStartupModuleMocks = {
     params: Parameters<typeof startupLog.logGatewayStartup>[0],
   ) => void | Promise<void>;
   refreshLatestUpdateRestartSentinel: typeof updateSentinel.prepareLatestUpdateRestartSentinel;
-  createGatewayUpdateCheck: typeof updateStartup.createGatewayUpdateCheck;
+  startGatewayUpdateChecks: typeof updateStartup.startGatewayUpdateChecks;
   warmSystemCa: typeof systemCa.beginMacOSSystemCaWarmupOnce;
 };
 
@@ -58,14 +58,31 @@ export function installGatewayStartupModuleMocks(
     spy.mockImplementation(mocks.refreshLatestUpdateRestartSentinel);
     restorers.push(() => spy.mockRestore());
   }
-  if (updateStartup.createGatewayUpdateCheck !== mocks.createGatewayUpdateCheck) {
-    const spy = vi.spyOn(updateStartup, "createGatewayUpdateCheck");
-    spy.mockImplementation(mocks.createGatewayUpdateCheck);
+  if (updateStartup.startGatewayUpdateChecks !== mocks.startGatewayUpdateChecks) {
+    const spy = vi.spyOn(updateStartup, "startGatewayUpdateChecks");
+    spy.mockImplementation(mocks.startGatewayUpdateChecks);
     restorers.push(() => spy.mockRestore());
   }
   if (systemCa.beginMacOSSystemCaWarmupOnce !== mocks.warmSystemCa) {
     restorers.push(systemCaMock.install(mocks.warmSystemCa));
   }
+}
+
+export async function installGatewayUpdateModuleFailure(
+  error: Error,
+  restorers: Array<() => void>,
+): Promise<void> {
+  const owner = await import("../infra/update-startup.js");
+  // Fail export resolution in the actual lazy loader, not Vitest's wrapped mock factory.
+  vi.doMock("../infra/update-startup.js", () => ({
+    ...owner,
+    get startGatewayUpdateChecks() {
+      throw error;
+    },
+  }));
+  restorers.push(() => {
+    vi.doMock("../infra/update-startup.js", () => owner);
+  });
 }
 
 // Gate the actual lazy import; the exported hook factory remains synchronous.

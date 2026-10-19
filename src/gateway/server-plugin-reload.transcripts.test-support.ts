@@ -57,19 +57,18 @@ export async function startTranscriptReloadFixtureSidecars(
   const unusedRecovery = async (): Promise<never> => {
     throw new Error("unexpected main-session recovery");
   };
+  const startupInstall = await import("../infra/update-install-status.js");
+  const installStatus = vi.spyOn(startupInstall, "resolveStartupInstallStatus").mockResolvedValue({
+    root: null,
+    status: { root: null, installKind: "unknown", packageManager: "unknown" },
+    installReceipt: null,
+  });
+  startupModuleRestorers.push(() => installStatus.mockRestore());
   installGatewayStartupModuleMocks(
     {
       logGatewayStartup: () => {},
       refreshLatestUpdateRestartSentinel: async () => null,
-      createGatewayUpdateCheck: () => ({
-        initialize: async () => ({
-          root: null,
-          status: { root: null, installKind: "unknown", packageManager: "unknown" },
-          installReceipt: null,
-        }),
-        start: () => {},
-        stop: async () => {},
-      }),
+      startGatewayUpdateChecks: () => {},
       warmSystemCa: async () => {},
     },
     startupModuleRestorers,

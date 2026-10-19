@@ -62,8 +62,11 @@ import {
 } from "./server-startup-readiness.test-support.js";
 import { transcriptSidecarMocks } from "./server-startup-transcripts.test-support.js";
 
-const { installGatewayStartupModuleMocks, installGatewayHookModuleLoad } =
-  await import("./server-startup-module-mocks.test-support.js");
+const {
+  installGatewayStartupModuleMocks,
+  installGatewayHookModuleLoad,
+  installGatewayUpdateModuleFailure,
+} = await import("./server-startup-module-mocks.test-support.js");
 
 type PluginHookGatewayStartEvent = Parameters<PluginHookHandlerMap["gateway_start"]>[0];
 
@@ -82,16 +85,12 @@ const hoisted = vi.hoisted(() => {
   const startupHookEvent = { type: "gateway", action: "startup", sessionKey: "gateway:startup" };
   const createInternalHookEvent = vi.fn(() => startupHookEvent);
   const triggerInternalHook = vi.fn(async () => {});
-  const updateCheck = {
-    initialize: vi.fn(async () => ({
-      root: null,
-      status: { root: null, installKind: "unknown" as const, packageManager: "unknown" as const },
-      installReceipt: null,
-    })),
-    start: vi.fn(),
-    stop: vi.fn(async () => {}),
-  };
-  const createGatewayUpdateCheck = vi.fn(() => updateCheck);
+  const resolveStartupInstallStatus = vi.fn(async () => ({
+    root: null,
+    status: { root: null, installKind: "unknown" as const, packageManager: "unknown" as const },
+    installReceipt: null,
+  }));
+  const startGatewayUpdateChecks = vi.fn();
   const logGatewayStartup = vi.fn();
   const activateSubagentRegistry = vi.fn();
   const markStartupOrphanedMainSessionsForRecovery = vi.fn(async () => ({ marked: 0, skipped: 0 }));
@@ -134,8 +133,8 @@ const hoisted = vi.hoisted(() => {
     startupHookEvent,
     createInternalHookEvent,
     triggerInternalHook,
-    updateCheck,
-    createGatewayUpdateCheck,
+    resolveStartupInstallStatus,
+    startGatewayUpdateChecks,
     logGatewayStartup,
     activateSubagentRegistry,
     markStartupOrphanedMainSessionsForRecovery,
@@ -218,7 +217,12 @@ vi.mock("./server-startup-log.js", () => ({
 }));
 
 vi.mock("../infra/update-startup.js", () => ({
-  createGatewayUpdateCheck: hoisted.createGatewayUpdateCheck,
+  startGatewayUpdateChecks: hoisted.startGatewayUpdateChecks,
+}));
+
+vi.mock("../infra/update-install-status.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../infra/update-install-status.js")>()),
+  resolveStartupInstallStatus: hoisted.resolveStartupInstallStatus,
 }));
 
 // mock-isolation: Config publication owns the current-config producer, not external auth discovery.
@@ -491,10 +495,8 @@ describe("startGatewayPostAttachRuntime", () => {
     hoisted.hasInternalHookListeners.mockReturnValue(false);
     hoisted.createInternalHookEvent.mockClear();
     hoisted.triggerInternalHook.mockClear();
-    hoisted.createGatewayUpdateCheck.mockClear();
-    hoisted.updateCheck.initialize.mockClear();
-    hoisted.updateCheck.start.mockClear();
-    hoisted.updateCheck.stop.mockClear();
+    hoisted.startGatewayUpdateChecks.mockClear();
+    hoisted.resolveStartupInstallStatus.mockClear();
     hoisted.logGatewayStartup.mockClear();
     hoisted.activateSubagentRegistry.mockClear();
     hoisted.scheduleRestartAbortedMainSessionRecovery.mockClear();
@@ -988,7 +990,7 @@ describe("startGatewayPostAttachRuntime", () => {
     const lifecycle = currentUpdateCheckLifecycle();
     const updateSignal = await lifecycle.run(async (signal) => signal);
     expect(updateSignal.aborted).toBe(false);
-    expect(runtimeDeps.createGatewayUpdateCheck).not.toHaveBeenCalled();
+    expect(runtimeDeps.startGatewayUpdateChecks).not.toHaveBeenCalled();
 
     await stopTrackedSidecars(publishedGatewayLifetimeSidecars);
     expect(updateSignal.aborted).toBe(true);
@@ -998,51 +1000,48 @@ describe("startGatewayPostAttachRuntime", () => {
     const events: string[] = [];
     const postReadyWork = createDeferred();
     const started = createDeferred();
-    const updateCheck = {
-      initialize: vi.fn(async () => {
-        events.push("install-identity");
-        return await hoisted.updateCheck.initialize();
-      }),
-      start: vi.fn(() => {
-        events.push("update-check");
-        started.resolve();
-      }),
-      stop: vi.fn(async () => {}),
-    };
+    const startGatewayUpdateChecks = vi.fn(() => {
+      events.push("update-check");
+      started.resolve();
+    });
     const refreshChatMetadata = vi.fn(async () => {
       events.push("sidecars");
     });
-
     const result = await startGatewayPostAttachRuntime(
       createPostAttachParams({
         waitForPostReadyWork: () => postReadyWork.promise,
         refreshChatMetadata,
       }),
       createPostAttachRuntimeDeps({
-        createGatewayUpdateCheck: () => updateCheck,
+        startGatewayUpdateChecks,
         refreshLatestUpdateRestartSentinel: vi.fn(async () => null),
       }),
     );
     events.push("returned");
-
+    const lifecycle = currentUpdateCheckLifecycle();
+    const initialize = lifecycle.initialize;
+    const initializeStatus = vi.spyOn(lifecycle, "initialize").mockImplementation(() => {
+      events.push("install-identity");
+      return initialize();
+    });
     try {
       await new Promise<void>((resolve) => {
         setImmediate(resolve);
       });
-      expect(updateCheck.initialize).not.toHaveBeenCalled();
-      expect(updateCheck.start).not.toHaveBeenCalled();
+      expect(initializeStatus).not.toHaveBeenCalled();
+      expect(startGatewayUpdateChecks).not.toHaveBeenCalled();
       expect(events).toEqual(["sidecars", "returned"]);
-
       postReadyWork.resolve();
       await started.promise;
-      expect(updateCheck.start).toHaveBeenCalledTimes(1);
-      expect(updateCheck.initialize).toHaveBeenCalledTimes(1);
+      expect(startGatewayUpdateChecks).toHaveBeenCalledTimes(1);
+      expect(initializeStatus).toHaveBeenCalledTimes(1);
       expect(events).toEqual(["sidecars", "returned", "install-identity", "update-check"]);
     } finally {
       postReadyWork.resolve();
       await result.stopGatewayUpdateCheck();
+      initializeStatus.mockRestore();
     }
-    expect(updateCheck.stop).toHaveBeenCalledTimes(1);
+    expect(lifecycle.signal.aborted).toBe(true);
   });
 
   it.each(["stop", "close-prelude"] as const)(
@@ -1050,18 +1049,13 @@ describe("startGatewayPostAttachRuntime", () => {
     async (outcome) => {
       const postReadyWork = createDeferred();
       let closing = false;
-      const updateCheck = {
-        initialize: vi.fn(hoisted.updateCheck.initialize),
-        start: vi.fn(),
-        stop: vi.fn(async () => {}),
-      };
-      const createGatewayUpdateCheck = vi.fn(() => updateCheck);
+      const startGatewayUpdateChecks = vi.fn();
       const result = await startGatewayPostAttachRuntime(
         createPostAttachParams({
           waitForPostReadyWork: () => postReadyWork.promise,
           isClosing: () => closing,
         }),
-        createPostAttachRuntimeDeps({ createGatewayUpdateCheck }),
+        createPostAttachRuntimeDeps({ startGatewayUpdateChecks }),
       );
       if (outcome === "close-prelude") {
         closing = true;
@@ -1079,7 +1073,7 @@ describe("startGatewayPostAttachRuntime", () => {
       });
       try {
         await waitForGatewayTestState(() => expect(stopped).toBe(true));
-        expect(createGatewayUpdateCheck).not.toHaveBeenCalled();
+        expect(startGatewayUpdateChecks).not.toHaveBeenCalled();
       } finally {
         postReadyWork.resolve();
         await stopping;
@@ -1087,9 +1081,8 @@ describe("startGatewayPostAttachRuntime", () => {
       await new Promise<void>((resolve) => {
         setImmediate(resolve);
       });
-      expect(createGatewayUpdateCheck).not.toHaveBeenCalled();
-      expect(updateCheck.initialize).not.toHaveBeenCalled();
-      expect(updateCheck.start).not.toHaveBeenCalled();
+      expect(hoisted.resolveStartupInstallStatus).not.toHaveBeenCalled();
+      expect(startGatewayUpdateChecks).not.toHaveBeenCalled();
     },
   );
 
@@ -1097,7 +1090,6 @@ describe("startGatewayPostAttachRuntime", () => {
     const sidecarsReady = createDeferred();
     const cleanup = createDeferred();
     const startupError = new Error("sidecar startup failed");
-    const updateCheck = { ...hoisted.updateCheck, stop: vi.fn(() => cleanup.promise) };
     const onGatewayLifetimeSidecars = vi.fn<SidecarPublisher>();
     const result = await startGatewayPostAttachRuntime(
       createPostAttachParams({
@@ -1108,13 +1100,21 @@ describe("startGatewayPostAttachRuntime", () => {
           throw startupError;
         },
       }),
-      createPostAttachRuntimeDeps({
-        createGatewayUpdateCheck: () => updateCheck,
-      }),
+      createPostAttachRuntimeDeps(),
     );
     let stopped = false;
     let stopping: Promise<void> | undefined;
     try {
+      const lifecycle = currentUpdateCheckLifecycle();
+      const entered = createDeferred();
+      const updateWork = lifecycle
+        .run(async (signal) => {
+          entered.resolve();
+          await cleanup.promise;
+          signal.throwIfAborted();
+        })
+        .catch((error: unknown) => error);
+      await entered.promise;
       const updateCheckOwner = onGatewayLifetimeSidecars.mock.calls[0]?.[0];
       if (!updateCheckOwner) {
         throw new Error("update-check cleanup owner was not published");
@@ -1125,8 +1125,10 @@ describe("startGatewayPostAttachRuntime", () => {
       });
       sidecarsReady.resolve();
       await expect(result.startupSettled).rejects.toBe(startupError);
-      expect(updateCheck.stop).toHaveBeenCalledOnce();
+      expect(lifecycle.signal.aborted).toBe(true);
       expect(stopped).toBe(false);
+      cleanup.resolve();
+      await updateWork;
     } finally {
       sidecarsReady.resolve();
       cleanup.resolve();
@@ -1137,19 +1139,12 @@ describe("startGatewayPostAttachRuntime", () => {
 
   it("logs deferred gateway update check startup failures without failing ready", async () => {
     const log = { info: vi.fn(), warn: vi.fn() };
-    const createGatewayUpdateCheck = vi.fn(() => {
-      throw new Error("boom");
-    });
-
+    await installGatewayUpdateModuleFailure(new Error("boom"), startupModuleRestorers);
     await expect(
       startGatewayPostAttachRuntime(
-        {
-          ...createPostAttachParams(),
-          log,
-        },
+        { ...createPostAttachParams(), log },
         createPostAttachRuntimeDeps({
           refreshLatestUpdateRestartSentinel: vi.fn(async () => null),
-          createGatewayUpdateCheck,
         }),
       ),
     ).resolves.toEqual(
@@ -1157,7 +1152,6 @@ describe("startGatewayPostAttachRuntime", () => {
         stopGatewayUpdateCheck: expect.any(Function),
       }),
     );
-
     await waitForGatewayTestState(() => {
       expect(log.warn).toHaveBeenCalledWith(
         "gateway update check failed to initialize: Error: boom",
@@ -1287,7 +1281,7 @@ describe("startGatewayPostAttachRuntime", () => {
       expect(params.startChannels).not.toHaveBeenCalled();
       expect(hoisted.startPluginServices).not.toHaveBeenCalled();
       expect(hoisted.refreshPreparedModelRuntimeSnapshots).not.toHaveBeenCalled();
-      expect(runtimeDeps.createGatewayUpdateCheck).not.toHaveBeenCalled();
+      expect(runtimeDeps.startGatewayUpdateChecks).not.toHaveBeenCalled();
     },
   );
 
@@ -3136,7 +3130,7 @@ function createPostAttachRuntimeDeps(
   return {
     logGatewayStartup: hoisted.logGatewayStartup,
     refreshLatestUpdateRestartSentinel: restartSentinelMocks.prepareLatestUpdateRestartSentinel,
-    createGatewayUpdateCheck: hoisted.createGatewayUpdateCheck,
+    startGatewayUpdateChecks: hoisted.startGatewayUpdateChecks,
     warmSystemCa: vi.fn(async () => {}),
     ...overrides,
   };
