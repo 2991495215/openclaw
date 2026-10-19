@@ -1,5 +1,6 @@
 import {
   buildChannelInboundEventContext,
+  buildChannelInboundRouteFacts,
   createChannelInboundEnvelopeBuilderAsync,
   recordChannelBotPairLoopAndCheckSuppression,
 } from "openclaw/plugin-sdk/channel-inbound";
@@ -230,12 +231,7 @@ export async function handleClickClackInbound(params: {
       threadId: message.parent_message_id ? message.thread_root_id : undefined,
       nativeChannelId: conversationId,
     },
-    route: {
-      agentId: route.agentId,
-      dmScope: route.dmScope,
-      accountId: route.accountId,
-      routeSessionKey: route.sessionKey,
-    },
+    route: buildChannelInboundRouteFacts(route),
     reply: {
       to: target,
       originatingTo: target,

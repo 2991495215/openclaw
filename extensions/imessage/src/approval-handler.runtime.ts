@@ -1,9 +1,8 @@
 import { setTimeout as delay } from "node:timers/promises";
 import {
-  buildChannelApprovalExpiredText,
-  buildChannelApprovalResolvedText,
   type ChannelApprovalKind,
   createChannelApprovalNativeRuntimeAdapterAsync,
+  createTextChannelApprovalPresentation,
   resolvePreparedApprovalAccountId,
 } from "openclaw/plugin-sdk/approval-handler-runtime";
 import { buildChannelApprovalNativeTargetKey } from "openclaw/plugin-sdk/approval-native-runtime";
@@ -397,8 +396,8 @@ export const imessageApprovalNativeRuntime = createChannelApprovalNativeRuntimeA
     isConfigured: ({ context }) => Boolean(context),
     shouldHandle: ({ context }) => Boolean(context),
   },
-  presentation: {
-    buildPendingPayload: ({ request, nowMs, view }) => {
+  presentation: createTextChannelApprovalPresentation<IMessagePendingDelivery>(
+    ({ request, nowMs, view }) => {
       const { reactionPayload } = buildApprovalReactionPendingContent({ request, view, nowMs });
       return {
         text: reactionPayload.text ?? "",
@@ -407,15 +406,7 @@ export const imessageApprovalNativeRuntime = createChannelApprovalNativeRuntimeA
         allowedDecisions: reactionPayload.allowedDecisions,
       };
     },
-    buildResolvedResult: ({ request, resolved, view }) => ({
-      kind: "update",
-      payload: { text: buildChannelApprovalResolvedText({ request, resolved, view }) },
-    }),
-    buildExpiredResult: ({ request, view }) => ({
-      kind: "update",
-      payload: { text: buildChannelApprovalExpiredText({ request, view }) },
-    }),
-  },
+  ),
   transport: {
     prepareTarget: ({ plannedTarget, accountId }) => {
       const to = normalizeIMessageMessagingTarget(plannedTarget.target.to);

@@ -1,5 +1,6 @@
 import { logTypingFailure } from "openclaw/plugin-sdk/channel-feedback";
 import {
+  buildChannelInboundRouteFacts,
   createChannelPartialDeliveryError,
   formatInboundMediaUnavailableText,
   createChannelInboundEnvelopeBuilderAsync,
@@ -522,12 +523,7 @@ async function processMessageWithPipeline(params: ZaloMessagePipelineParams): Pr
       id: chatId,
       label: fromLabel,
     },
-    route: {
-      agentId: route.agentId,
-      dmScope: route.dmScope,
-      accountId: route.accountId,
-      routeSessionKey: route.sessionKey,
-    },
+    route: buildChannelInboundRouteFacts(route),
     reply: {
       to: `zalo:${chatId}`,
     },

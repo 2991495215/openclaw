@@ -1,3 +1,4 @@
+import { throwCollectedErrors } from "openclaw/plugin-sdk/error-runtime";
 import type { QaRunnerCliRegistration } from "openclaw/plugin-sdk/qa-runner-runtime";
 import type { QaBusState } from "./bus-state.js";
 import { createQaCrablineTransportAdapterFactory } from "./crabline-transport-factory.js";
@@ -175,12 +176,7 @@ export async function createQaTransportAdapter(
       cleanupBeforeGatewayStop,
       cleanupAfterGatewayStop,
     ]);
-    if (errors.length === 1) {
-      throw errors[0];
-    }
-    if (errors.length > 1) {
-      throw new AggregateError(errors, "QA transport cleanup failed");
-    }
+    throwCollectedErrors(errors, "QA transport cleanup failed");
   };
   return {
     adapter,

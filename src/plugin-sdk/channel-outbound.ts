@@ -44,6 +44,7 @@ export {
 } from "../channels/message/ingress-monitor.js";
 export { createChannelIngressError } from "../channels/message/ingress-errors.js";
 export {
+  createChannelIngressFailureClassifier,
   DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
   DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
 } from "../channels/message/ingress-retry-policy.js";

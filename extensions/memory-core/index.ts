@@ -1,4 +1,5 @@
 import { listAgentIds, resolveSessionAgentIdStrict } from "openclaw/plugin-sdk/agent-scope-runtime";
+import { throwCollectedErrors } from "openclaw/plugin-sdk/error-runtime";
 import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
 // Memory Core plugin entrypoint registers its OpenClaw integration.
 import {
@@ -238,12 +239,7 @@ export default definePluginEntry({
           errors.push(error);
         }
       }
-      if (errors.length === 1) {
-        throw errors[0];
-      }
-      if (errors.length > 1) {
-        throw new AggregateError(errors, "Memory index shutdown failed");
-      }
+      throwCollectedErrors(errors, "Memory index shutdown failed");
     };
     api.lifecycle.onDispose?.(async () => {
       const retirement = prepareMemoryManagerReload({

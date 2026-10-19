@@ -1,5 +1,6 @@
 import { resolveHumanDelayConfig } from "openclaw/plugin-sdk/agent-runtime";
 import {
+  buildChannelInboundRouteFacts,
   createChannelInboundEnvelopeBuilderAsync,
   formatInboundMediaUnavailableText,
 } from "openclaw/plugin-sdk/channel-inbound";
@@ -496,12 +497,7 @@ export async function monitorTlonProvider(opts: MonitorTlonOpts): Promise<void> 
         id: tlonConversationId,
         label: fromLabel,
       },
-      route: {
-        agentId: route.agentId,
-        dmScope: route.dmScope,
-        accountId: route.accountId,
-        routeSessionKey: route.sessionKey,
-      },
+      route: buildChannelInboundRouteFacts(route),
       reply: {
         to: `tlon:${botShipName}`,
         originatingTo: `tlon:${isGroup ? channelNest : botShipName}`,

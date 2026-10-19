@@ -1,5 +1,5 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
-import { toStringifiedError } from "openclaw/plugin-sdk/error-runtime";
+import { throwCollectedErrors, toStringifiedError } from "openclaw/plugin-sdk/error-runtime";
 import type { QaRunnerCliRegistration } from "openclaw/plugin-sdk/qa-runner-runtime";
 import { sleep } from "openclaw/plugin-sdk/runtime-env";
 import { releaseQaCredentialLease } from "../shared/credential-lease-cleanup.js";
@@ -246,12 +246,7 @@ export async function createDiscordQaTransportAdapter(
           failures.push(error);
         }
       }
-      if (failures.length === 1) {
-        throw failures[0];
-      }
-      if (failures.length) {
-        throw new AggregateError(failures, "Discord QA cleanup failed");
-      }
+      throwCollectedErrors(failures, "Discord QA cleanup failed");
     },
   };
 }

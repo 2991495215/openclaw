@@ -1,6 +1,7 @@
 import { resolveHumanDelayConfig } from "openclaw/plugin-sdk/agent-runtime";
 import {
   createCommandTurnContext,
+  createPinnedMainDmOwnerSkipLogger,
   formatInboundEnvelope,
   resolveEnvelopeFormatOptions,
   runChannelInboundEvent,
@@ -268,11 +269,7 @@ export async function dispatchDiscordComponentEvent(params: {
                     ? {
                         ownerRecipient: pinnedMainDmOwner,
                         senderRecipient: interactionCtx.userId,
-                        onSkip: ({ ownerRecipient, senderRecipient }) => {
-                          logVerbose(
-                            `discord: skip main-session last route for ${senderRecipient} (pinned owner ${ownerRecipient})`,
-                          );
-                        },
+                        onSkip: createPinnedMainDmOwnerSkipLogger("discord", logVerbose),
                       }
                     : undefined,
               }

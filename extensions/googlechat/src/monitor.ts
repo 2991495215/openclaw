@@ -1,5 +1,6 @@
 import { resolveAgentConfig } from "openclaw/plugin-sdk/agent-scope-runtime";
 import {
+  buildChannelInboundRouteFacts,
   formatInboundMediaUnavailableText,
   recordChannelBotPairLoopAndCheckSuppression,
   createChannelInboundEnvelopeBuilderAsync,
@@ -245,12 +246,7 @@ async function processGoogleChatEvent(
       id: spaceId,
       label: fromLabel,
     },
-    route: {
-      agentId: route.agentId,
-      dmScope: route.dmScope,
-      accountId: route.accountId,
-      routeSessionKey: route.sessionKey,
-    },
+    route: buildChannelInboundRouteFacts(route),
     reply: {
       to: `googlechat:${spaceId}`,
       originatingTo: `googlechat:${spaceId}`,

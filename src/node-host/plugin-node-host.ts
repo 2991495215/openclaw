@@ -20,9 +20,9 @@ import type {
   PluginLogger,
 } from "../plugins/types.js";
 import type { OpenClawPluginNodeHostCommandContext } from "../plugins/types.node-host.js";
+import { throwCollectedErrors } from "../shared/collected-errors.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
-import { throwNodeHostCleanupErrors } from "./cleanup-errors.js";
 import { preparePluginExecAuthorization } from "./plugin-exec-policy.js";
 
 const loadPluginRegistryLoaderModule = createLazyRuntimeModule(
@@ -151,7 +151,7 @@ export function watchRegisteredNodeHostCommandAvailability(
         const failures = results.flatMap((result) =>
           result.status === "rejected" ? [result.reason] : [],
         );
-        throwNodeHostCleanupErrors(failures, "node-host watcher cleanup failed");
+        throwCollectedErrors(failures, "node-host watcher cleanup failed");
       })
       .catch((error: unknown) => {
         stopping = undefined;

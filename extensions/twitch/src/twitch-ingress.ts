@@ -1,6 +1,7 @@
 import { HttpStatusCodeError } from "@twurple/api-call";
 import {
   createChannelIngressError,
+  createChannelIngressFailureClassifier,
   createChannelIngressMonitor,
   type ChannelIngressQueue,
   type ChannelIngressMonitorLifecycle,
@@ -153,15 +154,10 @@ export function createTwitchIngress(options: {
       failedMaxEntries: 1_000,
     },
     drain: {
-      resolveNonRetryableFailure: (error) => {
-        if (error instanceof TwitchIngressPermanentError) {
-          return { reason: "invalid-event", message: error.message };
-        }
-        if (isTwitchAuthenticationFailure(error)) {
-          return { reason: "authentication-failed", message: formatErrorMessage(error) };
-        }
-        return null;
-      },
+      resolveNonRetryableFailure: createChannelIngressFailureClassifier({
+        invalidEventError: TwitchIngressPermanentError,
+        isAuthenticationFailure: isTwitchAuthenticationFailure,
+      }),
       onLog: (message) => options.runtime.error?.(`twitch ingress: ${message}`),
     },
     abortSignal: shutdown.signal,

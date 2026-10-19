@@ -1,5 +1,6 @@
 import {
   buildChannelInboundEventContext,
+  createPinnedMainDmOwnerSkipLogger,
   createCommandTurnContext,
   formatInboundEnvelope,
   formatInboundMediaUnavailableText,
@@ -616,17 +617,7 @@ export async function buildDiscordMessageProcessContext(params: {
             ? {
                 ownerRecipient: pinnedMainDmOwner,
                 senderRecipient: author.id,
-                onSkip: ({
-                  ownerRecipient,
-                  senderRecipient,
-                }: {
-                  ownerRecipient: string;
-                  senderRecipient: string;
-                }) => {
-                  logVerbose(
-                    `discord: skip main-session last route for ${senderRecipient} (pinned owner ${ownerRecipient})`,
-                  );
-                },
+                onSkip: createPinnedMainDmOwnerSkipLogger("discord", logVerbose),
               }
             : undefined,
       },

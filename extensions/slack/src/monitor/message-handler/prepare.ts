@@ -4,6 +4,7 @@ import {
 } from "openclaw/plugin-sdk/channel-feedback";
 import {
   buildChannelInboundEventContext,
+  createPinnedMainDmOwnerSkipLogger,
   buildMentionRegexes,
   classifyChannelInboundEvent,
   formatInboundEnvelope,
@@ -1527,11 +1528,7 @@ export async function prepareSlackMessage(params: {
                     ? {
                         ownerRecipient: pinnedMainDmOwner,
                         senderRecipient: normalizeLowercaseStringOrEmpty(message.user),
-                        onSkip: ({ ownerRecipient, senderRecipient }) => {
-                          logVerbose(
-                            `slack: skip main-session last route for ${senderRecipient} (pinned owner ${ownerRecipient})`,
-                          );
-                        },
+                        onSkip: createPinnedMainDmOwnerSkipLogger("slack", logVerbose),
                       }
                     : undefined,
               }

@@ -1,6 +1,7 @@
 import { resolveHumanDelayConfig } from "openclaw/plugin-sdk/agent-runtime";
 import {
   hasFinalInboundReplyDispatch,
+  createPinnedMainDmOwnerSkipLogger,
   resolveInboundReplyDispatchCounts,
 } from "openclaw/plugin-sdk/channel-inbound";
 import {
@@ -453,17 +454,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
                         ? {
                             ownerRecipient: pinnedMainDmOwner,
                             senderRecipient: normalizeMatrixUserId(senderId),
-                            onSkip: ({
-                              ownerRecipient,
-                              senderRecipient,
-                            }: {
-                              ownerRecipient: string;
-                              senderRecipient: string;
-                            }) => {
-                              logVerboseMessage(
-                                `matrix: skip main-session last route for ${senderRecipient} (pinned owner ${ownerRecipient})`,
-                              );
-                            },
+                            onSkip: createPinnedMainDmOwnerSkipLogger("matrix", logVerboseMessage),
                           }
                         : undefined,
                   }

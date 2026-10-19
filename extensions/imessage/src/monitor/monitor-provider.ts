@@ -4,6 +4,7 @@ import type { PluginRuntime } from "openclaw/plugin-sdk/channel-core";
 import { logTypingFailure } from "openclaw/plugin-sdk/channel-feedback";
 import {
   createChannelInboundDebouncer,
+  createPinnedMainDmOwnerSkipLogger,
   resolveInboundDebounceMs,
   formatInboundMediaUnavailableText,
   resolveEnvelopeFormatOptions,
@@ -1005,11 +1006,7 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts): Promis
                         ? {
                             ownerRecipient: pinnedMainDmOwner,
                             senderRecipient: decision.senderNormalized,
-                            onSkip: ({ ownerRecipient, senderRecipient }) => {
-                              logVerbose(
-                                `imessage: skip main-session last route for ${senderRecipient} (pinned owner ${ownerRecipient})`,
-                              );
-                            },
+                            onSkip: createPinnedMainDmOwnerSkipLogger("imessage", logVerbose),
                           }
                         : undefined,
                   }

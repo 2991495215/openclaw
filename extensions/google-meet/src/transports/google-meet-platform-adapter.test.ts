@@ -6,6 +6,18 @@ import { GOOGLE_MEET_PLATFORM_ADAPTER } from "./google-meet-platform-adapter.js"
 
 const MEETING_URL = "https://meet.google.com/abc-defg-hij";
 
+it("keeps Meet's stricter consult instructions with shared participant labels", () => {
+  expect(GOOGLE_MEET_PLATFORM_ADAPTER.agentConsult).toEqual({
+    surface: "a private Google Meet",
+    userLabel: "Participant",
+    assistantLabel: "Agent",
+    questionSourceLabel: "participant",
+    workingResponseLabel: "participant",
+    extraSystemPrompt:
+      "You are a behind-the-scenes consultant for a live meeting voice agent. Prioritize a fast, speakable answer over exhaustive investigation. For tool-backed status checks, prefer one or two bounded read-only queries before answering. Do not print secret values or dump environment variables; only check whether required configuration is present. Be accurate, brief, and speakable.",
+  });
+});
+
 it.each([true, false])(
   "starts browser capture only for the current Meet session (owner=%s)",
   async (owns) => {

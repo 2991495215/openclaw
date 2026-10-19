@@ -1,4 +1,5 @@
 import { createDedupeCache } from "../infra/dedupe.js";
+import type { InboundLastRouteUpdate } from "./session.types.js";
 
 // Bound process-local warning state; evicted conversations may log again.
 const inboundDropWarnings = createDedupeCache({ ttlMs: 0, maxSize: 512 });
@@ -8,6 +9,18 @@ const inboundDropWarnings = createDedupeCache({ ttlMs: 0, maxSize: 512 });
  * Keep messages compact and stable enough for plugin logs without making them machine contracts.
  */
 export type LogFn = (message: string) => void;
+
+/** Formats the diagnostic after the session owner declines a pinned-DM route update. */
+export function createPinnedMainDmOwnerSkipLogger(
+  channel: string,
+  log: LogFn,
+): NonNullable<NonNullable<InboundLastRouteUpdate["mainDmOwnerPin"]>["onSkip"]> {
+  return ({ ownerRecipient, senderRecipient }) => {
+    log(
+      `${channel}: skip main-session last route for ${senderRecipient} (pinned owner ${ownerRecipient})`,
+    );
+  };
+}
 
 export function logInboundDrop(params: {
   log: LogFn;

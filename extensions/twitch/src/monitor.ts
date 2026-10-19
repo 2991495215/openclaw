@@ -1,5 +1,8 @@
 import type { ChannelAccountSnapshot } from "openclaw/plugin-sdk/channel-contract";
-import { createChannelInboundEnvelopeBuilderAsync } from "openclaw/plugin-sdk/channel-inbound";
+import {
+  buildChannelInboundRouteFacts,
+  createChannelInboundEnvelopeBuilderAsync,
+} from "openclaw/plugin-sdk/channel-inbound";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { resolveOutboundMediaUrls } from "openclaw/plugin-sdk/reply-payload";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -138,12 +141,7 @@ export async function monitorTwitchProvider(options: TwitchMonitorOptions) {
                 id: message.channel,
                 label: message.channel,
               },
-              route: {
-                agentId: route.agentId,
-                dmScope: route.dmScope,
-                accountId: route.accountId,
-                routeSessionKey: route.sessionKey,
-              },
+              route: buildChannelInboundRouteFacts(route),
               reply: {
                 to: `twitch:channel:${message.channel}`,
               },

@@ -1,4 +1,5 @@
 import { normalizeOptionalString } from "../../packages/normalization-core/src/string-coerce.js";
+import type { ChannelApprovalNativePresentationAdapter } from "../infra/approval-handler-runtime-types.js";
 import { normalizeApprovalRequest } from "../infra/approval-types.js";
 import type { ApprovalRequestInput } from "../infra/approval-types.js";
 import type {
@@ -52,6 +53,23 @@ export { resolveApprovalOverGateway } from "./approval-gateway-runtime.js";
 
 type ApprovalRequest = ApprovalRequestInput;
 type ApprovalResolved = ExecApprovalResolved | PluginApprovalResolved | SystemAgentApprovalResolved;
+
+/** Keeps channel-owned pending controls while rendering terminal updates as plain text. */
+export function createTextChannelApprovalPresentation<TPendingPayload>(
+  buildPendingPayload: ChannelApprovalNativePresentationAdapter<TPendingPayload>["buildPendingPayload"],
+): ChannelApprovalNativePresentationAdapter<TPendingPayload, { text: string }> {
+  return {
+    buildPendingPayload,
+    buildResolvedResult: ({ request, resolved, view }) => ({
+      kind: "update",
+      payload: { text: buildChannelApprovalResolvedText({ request, resolved, view }) },
+    }),
+    buildExpiredResult: ({ request, view }) => ({
+      kind: "update",
+      payload: { text: buildChannelApprovalExpiredText({ request, view }) },
+    }),
+  };
+}
 
 /** Builds channel-visible resolved approval text for every approval kind. */
 export function buildChannelApprovalResolvedText(params: {

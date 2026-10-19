@@ -2,6 +2,7 @@ import { mergeAllowlist, summarizeMapping } from "openclaw/plugin-sdk/allow-from
 import type { ChannelAccountSnapshot } from "openclaw/plugin-sdk/channel-contract";
 import {
   createAcceptedChannelDeliveryResult,
+  buildChannelInboundRouteFacts,
   createChannelInboundEnvelopeBuilderAsync,
   createChannelPartialDeliveryError,
   implicitMentionKindWhen,
@@ -539,13 +540,9 @@ async function processMessage(
       id: chatId,
       label: fromLabel,
     },
-    route: {
-      agentId: route.agentId,
-      dmScope: route.dmScope,
-      accountId: route.accountId,
-      routeSessionKey: route.sessionKey,
+    route: buildChannelInboundRouteFacts(route, {
       dispatchSessionKey: route.sessionKey,
-    },
+    }),
     reply: {
       to: normalizedTo,
       originatingTo: normalizedTo,

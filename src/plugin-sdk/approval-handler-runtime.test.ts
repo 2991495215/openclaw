@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SystemAgentApprovalRequest } from "../infra/system-agent-approvals.js";
 import {
-  buildChannelApprovalResolvedText,
+  createTextChannelApprovalPresentation,
   type ResolvedApprovalView,
 } from "./approval-handler-runtime.js";
 import {
@@ -103,12 +103,29 @@ describe("approval terminal presentation", () => {
       createdAtMs: 0,
       expiresAtMs: 60_000,
     };
+    const presentation = createTextChannelApprovalPresentation(() => ({ text: "pending" }));
     expect(
-      buildChannelApprovalResolvedText({
+      presentation.buildResolvedResult({
+        cfg: {},
+        entry: undefined,
         request,
         resolved: { id: request.id, decision: "deny", ts: 1 },
         view: systemAgentView({ applicationStatus: "applied" }),
       }),
-    ).toBe("❌ OpenClaw change denied. No change was made.");
+    ).toEqual({
+      kind: "update",
+      payload: { text: "❌ OpenClaw change denied. No change was made." },
+    });
+    expect(
+      presentation.buildExpiredResult({
+        cfg: {},
+        entry: undefined,
+        request,
+        view: { ...systemAgentView(), phase: "expired" },
+      }),
+    ).toEqual({
+      kind: "update",
+      payload: { text: "⏱️ OpenClaw change expired. No change was made." },
+    });
   });
 });

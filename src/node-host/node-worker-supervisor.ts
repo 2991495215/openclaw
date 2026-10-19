@@ -4,6 +4,7 @@ import { NODE_WORKER_IDLE_RETENTION_PROTOCOL_FEATURE } from "../../packages/gate
 import { resolveStateDir } from "../config/paths.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { withTimeout } from "../infra/fs-safe.js";
+import { throwCollectedErrors } from "../shared/collected-errors.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import type { WorkerLaunchDescriptor } from "../worker/launch-descriptor.js";
 import {
@@ -23,7 +24,6 @@ import {
   type WorkerConnectionEndpoint,
 } from "../worker/worker-connection-endpoint.js";
 import type { NodeWorkerProcessInput } from "../worker/worker-process-observation.js";
-import { throwNodeHostCleanupErrors } from "./cleanup-errors.js";
 import { NodeWorkerCapacity } from "./node-worker-capacity.js";
 import { NodeWorkerChildLifecycle } from "./node-worker-child-lifecycle.js";
 import { NodeWorkerContainerLifecycle } from "./node-worker-container-lifecycle.js";
@@ -572,7 +572,7 @@ class NodeWorkerSupervisor {
           result.status === "rejected" ? [result.reason] : [],
         ),
       );
-      throwNodeHostCleanupErrors(errors, "node worker environment cleanup failed");
+      throwCollectedErrors(errors, "node worker environment cleanup failed");
     });
   }
 
@@ -718,7 +718,7 @@ class NodeWorkerSupervisor {
     await this.journal
       .drain({ close: errors.length === 0 })
       .catch((error: unknown) => errors.push(error));
-    throwNodeHostCleanupErrors(errors, "node worker terminal reconciliation failed");
+    throwCollectedErrors(errors, "node worker terminal reconciliation failed");
   }
 }
 

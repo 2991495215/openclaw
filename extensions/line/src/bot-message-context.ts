@@ -2,6 +2,7 @@ import type { webhook } from "@line/bot-sdk";
 import { recordChannelActivity } from "openclaw/plugin-sdk/channel-activity-runtime";
 import {
   buildChannelInboundEventContext,
+  createPinnedMainDmOwnerSkipLogger,
   formatInboundMediaUnavailableText,
   formatInboundEnvelope,
   formatLocationText,
@@ -443,17 +444,7 @@ async function finalizeLineInboundContext<Event extends MessageEvent | PostbackE
                   ? {
                       ownerRecipient: pinnedMainDmOwner,
                       senderRecipient: params.source.userId,
-                      onSkip: ({
-                        ownerRecipient,
-                        senderRecipient,
-                      }: {
-                        ownerRecipient: string;
-                        senderRecipient: string;
-                      }) => {
-                        logVerbose(
-                          `line: skip main-session last route for ${senderRecipient} (pinned owner ${ownerRecipient})`,
-                        );
-                      },
+                      onSkip: createPinnedMainDmOwnerSkipLogger("line", logVerbose),
                     }
                   : undefined,
             }

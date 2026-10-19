@@ -1,5 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import { logInboundDrop } from "./logging.js";
+import { createPinnedMainDmOwnerSkipLogger, logInboundDrop } from "./logging.js";
+
+it("logs a pinned owner skip through the supplied channel sink", () => {
+  const log = vi.fn();
+  createPinnedMainDmOwnerSkipLogger(
+    "example",
+    log,
+  )({
+    ownerRecipient: "owner",
+    senderRecipient: "sender",
+  });
+  expect(log).toHaveBeenCalledExactlyOnceWith(
+    "example: skip main-session last route for sender (pinned owner owner)",
+  );
+});
 
 describe("logInboundDrop", () => {
   it("deduplicates scoped drops without suppressing other accounts, chats, reasons, or channels", () => {

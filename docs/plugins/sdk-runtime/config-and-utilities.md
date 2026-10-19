@@ -72,6 +72,12 @@ retain restart behavior under a broader no-op prefix.
 
 ## Reusable runtime utilities
 
+`throwCollectedErrors(errors, message, options?)` from
+`openclaw/plugin-sdk/error-runtime` returns for an empty collection, throws a sole
+failure unchanged, and throws an `AggregateError` for multiple failures in their
+original order. Supply `ErrorOptions` only when the caller already owns a cause.
+The caller still owns collecting and settling cleanup work.
+
 For libraries that accept a Node HTTP agent, use `createNodeProxyAgent` from
 `openclaw/plugin-sdk/fetch-runtime`. With `mode: "env"`, supply `targetUrl` for
 a fixed destination, or omit it when the library selects destinations itself

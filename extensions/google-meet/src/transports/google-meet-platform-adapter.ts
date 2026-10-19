@@ -83,10 +83,6 @@ export const GOOGLE_MEET_PLATFORM_ADAPTER = MeetingPlatformAdapter.create<
   logScope: "[google-meet]",
   agentConsult: {
     surface: "a private Google Meet",
-    userLabel: "Participant",
-    assistantLabel: "Agent",
-    questionSourceLabel: "participant",
-    workingResponseLabel: "participant",
     extraSystemPrompt: [
       "You are a behind-the-scenes consultant for a live meeting voice agent.",
       "Prioritize a fast, speakable answer over exhaustive investigation.",

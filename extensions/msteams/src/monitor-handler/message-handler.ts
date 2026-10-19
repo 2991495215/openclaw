@@ -1,5 +1,6 @@
 import { resolveAllowlistMatchSimple } from "openclaw/plugin-sdk/allow-from";
 import {
+  buildChannelInboundRouteFacts,
   createChannelInboundEnvelopeBuilderAsync,
   formatMediaPlaceholderText,
   resolveInboundMentionDecision,
@@ -446,12 +447,7 @@ export function createMSTeamsMessageHandler(deps: MSTeamsMessageHandlerDeps) {
         spaceId: teamId,
         nativeChannelId,
       },
-      route: {
-        agentId: route.agentId,
-        dmScope: route.dmScope,
-        accountId: route.accountId,
-        routeSessionKey: route.sessionKey,
-      },
+      route: buildChannelInboundRouteFacts(route),
       reply: {
         to: teamsTo,
         // A user target is a mutable lookup alias; the conversation id is the

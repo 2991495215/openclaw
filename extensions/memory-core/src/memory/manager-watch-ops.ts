@@ -1,3 +1,4 @@
+import { throwCollectedErrors } from "openclaw/plugin-sdk/error-runtime";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import type { MemorySyncParams } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { resolveTimerTimeoutMs } from "openclaw/plugin-sdk/number-runtime";
@@ -132,12 +133,7 @@ export abstract class MemoryManagerWatchOps extends MemoryManagerSyncBase {
     const errors = results.flatMap((result) =>
       result.status === "rejected" ? [result.reason] : [],
     );
-    if (errors.length === 1) {
-      throw errors[0];
-    }
-    if (errors.length > 1) {
-      throw new AggregateError(errors, "Memory watch resources cleanup failed");
-    }
+    throwCollectedErrors(errors, "Memory watch resources cleanup failed");
   }
 
   protected syncInBackground(params: MemorySyncParams, failureReason = params.reason): void {

@@ -38,17 +38,6 @@ export const TEAMS_MEETINGS_PLATFORM_ADAPTER = MeetingPlatformAdapter.create<
   logScope: "[teams-meetings]",
   agentConsult: {
     surface: "a private Microsoft Teams meeting",
-    userLabel: "Participant",
-    assistantLabel: "Agent",
-    questionSourceLabel: "participant",
-    workingResponseLabel: "participant",
-    extraSystemPrompt: [
-      "You are a behind-the-scenes consultant for a live meeting voice agent.",
-      "Prioritize a fast, speakable answer over exhaustive investigation.",
-      "Use only bounded, task-relevant tool calls.",
-      "Never print secrets or dump environment variables.",
-      "Be accurate, brief, and speakable.",
-    ].join(" "),
   },
   session: {
     idPrefix: "teams_meeting",

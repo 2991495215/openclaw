@@ -140,6 +140,11 @@ subscription, and routed-elsewhere notices.
   `bindPending` returns no handle
 - `observe` - optional delivery diagnostics hooks
 
+For channels that update terminal approvals with plain text, use
+`createTextChannelApprovalPresentation(buildPendingPayload)` from
+`openclaw/plugin-sdk/approval-handler-runtime`. It retains the channel's pending
+controls and renders resolved/expired updates with the shared approval text builders.
+
 Native approval runtimes can receive three approval kinds: `exec`, `plugin`,
 and `system-agent`. A `system-agent` request asks an operator to approve a
 Gateway-side persistent change, such as a config write or Gateway restart.

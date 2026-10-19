@@ -2,6 +2,7 @@
 import { GatewayDispatchEvents, type APIMessage } from "discord-api-types/v10";
 import {
   createChannelIngressError,
+  createChannelIngressFailureClassifier,
   createChannelIngressMonitor,
   DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
   type ChannelIngressQueue,
@@ -153,15 +154,10 @@ export function createDiscordIngressMonitor(params: {
         maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
         deadLetterMinAgeMs: 0,
       },
-      resolveNonRetryableFailure: (error) => {
-        if (error instanceof DiscordIngressPayloadError) {
-          return { reason: "invalid-event", message: error.message };
-        }
-        if (isDiscordAuthenticationFailure(error)) {
-          return { reason: "authentication-failed", message: formatErrorMessage(error) };
-        }
-        return null;
-      },
+      resolveNonRetryableFailure: createChannelIngressFailureClassifier({
+        invalidEventError: DiscordIngressPayloadError,
+        isAuthenticationFailure: isDiscordAuthenticationFailure,
+      }),
       onLog: (message) => params.runtime.error?.(danger(`discord ingress: ${message}`)),
     },
     onError: (error) =>

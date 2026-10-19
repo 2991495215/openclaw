@@ -5,11 +5,41 @@ import {
   TEST_MEETING_PLATFORM_ADAPTER,
   testMeetingObservation,
 } from "./observation-provenance.test-support.js";
+import { MeetingPlatformAdapter } from "./platform-adapter.js";
 
 const parseTranscript = (payload: unknown) =>
   TEST_MEETING_PLATFORM_ADAPTER.browser.captions.parseTranscript({
     result: JSON.stringify(payload),
   });
+
+it("defaults consult metadata at the adapter owner and preserves explicit overrides", () => {
+  const create = (
+    agentConsult: Parameters<typeof MeetingPlatformAdapter.create>[0]["agentConsult"],
+  ) =>
+    MeetingPlatformAdapter.create({
+      ...TEST_MEETING_PLATFORM_ADAPTER,
+      agentConsult,
+      parsing: {
+        classifyManualActionReason: () => "custom",
+        displayName: "Test Meeting",
+        invalidTranscriptMessage: "Invalid transcript",
+        malformedStatusMessage: "Malformed status",
+        malformedTranscriptMessage: "Malformed transcript",
+      },
+    });
+  expect(create({ surface: "a private meeting" }).agentConsult).toEqual({
+    surface: "a private meeting",
+    userLabel: "Participant",
+    assistantLabel: "Agent",
+    questionSourceLabel: "participant",
+    workingResponseLabel: "participant",
+    extraSystemPrompt:
+      "You are a behind-the-scenes consultant for a live meeting voice agent. Prioritize a fast, speakable answer over exhaustive investigation. Use only bounded, task-relevant tool calls. Never print secrets or dump environment variables. Be accurate, brief, and speakable.",
+  });
+  expect(
+    create({ surface: "custom", userLabel: "Caller", extraSystemPrompt: "" }).agentConsult,
+  ).toMatchObject({ surface: "custom", userLabel: "Caller", extraSystemPrompt: "" });
+});
 
 describe("meeting observation provenance parsing", () => {
   it("preserves committed, pending, and source-ineligible row facts through browser forwarding", async () => {

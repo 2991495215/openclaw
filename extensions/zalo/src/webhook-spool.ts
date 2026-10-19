@@ -1,6 +1,7 @@
 import {
   bindIngressLifecycleToReplyOptions,
   createChannelIngressError,
+  createChannelIngressFailureClassifier,
   createChannelIngressMonitor,
   DEFAULT_INGRESS_ADOPTION_STALL_MS,
   DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
@@ -167,15 +168,10 @@ function createZaloWebhookIngress(options: {
         maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
         deadLetterMinAgeMs: 0,
       },
-      resolveNonRetryableFailure: (error) => {
-        if (error instanceof ZaloWebhookPayloadError) {
-          return { reason: "invalid-event", message: error.message };
-        }
-        if (isZaloAuthenticationFailure(error)) {
-          return { reason: "authentication-failed", message: formatErrorMessage(error) };
-        }
-        return null;
-      },
+      resolveNonRetryableFailure: createChannelIngressFailureClassifier({
+        invalidEventError: ZaloWebhookPayloadError,
+        isAuthenticationFailure: isZaloAuthenticationFailure,
+      }),
       onLog: (message) => options.runtime.error?.(`zalo ingress: ${message}`),
     },
     createStoppedError: () => new Error("Zalo ingress stopped."),

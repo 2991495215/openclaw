@@ -1,4 +1,5 @@
 import {
+  buildChannelInboundRouteFacts,
   logInboundDrop,
   createChannelInboundEnvelopeBuilderAsync,
 } from "openclaw/plugin-sdk/channel-inbound";
@@ -351,12 +352,7 @@ export async function handleIrcInbound(params: {
       id: peerId,
       label: fromLabel,
     },
-    route: {
-      agentId: route.agentId,
-      dmScope: route.dmScope,
-      accountId: route.accountId,
-      routeSessionKey: route.sessionKey,
-    },
+    route: buildChannelInboundRouteFacts(route),
     reply: {
       to: message.isGroup ? `channel:${channelTarget}` : `irc:${peerId}`,
       originatingTo: message.isGroup ? `channel:${channelTarget}` : `irc:${peerId}`,

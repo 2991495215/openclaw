@@ -1,5 +1,6 @@
 import {
   buildChannelInboundEventContext,
+  buildChannelInboundRouteFacts,
   createChannelInboundEnvelopeBuilderAsync,
 } from "openclaw/plugin-sdk/channel-inbound";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
@@ -87,13 +88,9 @@ export async function dispatchA2aInbound(params: A2aInboundDispatchParams): Prom
       id: params.contextId,
       label: params.peerName,
     },
-    route: {
-      agentId: route.agentId,
-      dmScope: route.dmScope,
-      accountId: route.accountId,
-      routeSessionKey: route.sessionKey,
+    route: buildChannelInboundRouteFacts(route, {
       dispatchSessionKey: route.sessionKey,
-    },
+    }),
     reply: { to: target, originatingTo: target },
     message: {
       body,

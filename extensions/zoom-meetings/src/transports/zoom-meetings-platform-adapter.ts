@@ -27,17 +27,6 @@ export const ZOOM_MEETINGS_PLATFORM_ADAPTER = MeetingPlatformAdapter.create<
   logScope: "[zoom-meetings]",
   agentConsult: {
     surface: "a private Zoom meeting",
-    userLabel: "Participant",
-    assistantLabel: "Agent",
-    questionSourceLabel: "participant",
-    workingResponseLabel: "participant",
-    extraSystemPrompt: [
-      "You are a behind-the-scenes consultant for a live meeting voice agent.",
-      "Prioritize a fast, speakable answer over exhaustive investigation.",
-      "Use only bounded, task-relevant tool calls.",
-      "Never print secrets or dump environment variables.",
-      "Be accurate, brief, and speakable.",
-    ].join(" "),
   },
   session: {
     idPrefix: "zoom_meeting",

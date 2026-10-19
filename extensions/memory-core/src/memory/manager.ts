@@ -1,4 +1,8 @@
-import { formatErrorMessage, toErrorObject } from "openclaw/plugin-sdk/error-runtime";
+import {
+  formatErrorMessage,
+  throwCollectedErrors,
+  toErrorObject,
+} from "openclaw/plugin-sdk/error-runtime";
 import {
   createSubsystemLogger,
   resolveAgentWorkspaceDir,
@@ -700,12 +704,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
         errors.push(error);
       }
     }
-    if (errors.length === 1) {
-      throw errors[0];
-    }
-    if (errors.length > 1) {
-      throw new AggregateError(errors, "Memory manager cleanup failed");
-    }
+    throwCollectedErrors(errors, "Memory manager cleanup failed");
   }
 
   private async closeOnce(): Promise<void> {

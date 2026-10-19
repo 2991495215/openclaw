@@ -1,6 +1,7 @@
 import { resolveHumanDelayConfig } from "openclaw/plugin-sdk/agent-runtime";
 import {
   isChannelPartialDeliveryError,
+  createPinnedMainDmOwnerSkipLogger,
   type ChannelInboundTurnPlan,
 } from "openclaw/plugin-sdk/channel-inbound";
 import {
@@ -405,11 +406,9 @@ export async function dispatchMattermostInboundTurn(
                         ? {
                             ownerRecipient: pinnedMainDmOwner,
                             senderRecipient: normalizeMattermostAllowEntry(senderId),
-                            onSkip: ({ ownerRecipient, senderRecipient }) => {
-                              monitor.logVerboseMessage(
-                                `mattermost: skip main-session last route for ${senderRecipient} (pinned owner ${ownerRecipient})`,
-                              );
-                            },
+                            onSkip: createPinnedMainDmOwnerSkipLogger("mattermost", (message) =>
+                              monitor.logVerboseMessage(message),
+                            ),
                           }
                         : undefined,
                   }

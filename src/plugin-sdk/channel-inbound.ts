@@ -39,6 +39,7 @@ import {
   type PublicChannelTurnParams,
   type PublicReplyParams,
 } from "./reply-options.js";
+export { buildChannelInboundRouteFacts } from "../channels/inbound-event/route-facts.js";
 export {
   hasFinalChannelTurnDispatch as hasFinalInboundReplyDispatch,
   hasVisibleChannelTurnDispatch as hasVisibleInboundReplyDispatch,
@@ -122,7 +123,7 @@ export {
   toLocationContext,
 } from "../channels/location.js";
 export type { LogFn } from "../channels/logging.js";
-export { logInboundDrop } from "../channels/logging.js";
+export { createPinnedMainDmOwnerSkipLogger, logInboundDrop } from "../channels/logging.js";
 export {
   resolveInboundSessionEnvelopeContext,
   resolveInboundSessionEnvelopeContextAsync,

@@ -1,4 +1,5 @@
 import { createAsyncLock } from "openclaw/plugin-sdk/async-lock-runtime";
+import { throwCollectedErrors } from "openclaw/plugin-sdk/error-runtime";
 import { fingerprint } from "../protocol/index.js";
 import { normalizeReefTarget } from "./config-schema.js";
 import type { ReefAutonomy, ReefPeerTrust } from "./friend-types.js";
@@ -130,12 +131,7 @@ export class ReefFriendManager {
             ]
           : [],
       );
-      if (failures.length === 1) {
-        throw failures[0]!;
-      }
-      if (failures.length > 1) {
-        throw new AggregateError(failures, "Reef friendship removal failed");
-      }
+      throwCollectedErrors(failures, "Reef friendship removal failed");
     });
   }
 

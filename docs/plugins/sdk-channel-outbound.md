@@ -137,6 +137,13 @@ classification, and persisted payload shape in the plugin. Webhook transports
 should acknowledge only after `admit` resolves; non-replay transports should
 surface durable append exhaustion rather than silently dispatching.
 
+For the standard permanent-failure mapping, pass
+`createChannelIngressFailureClassifier({ invalidEventError, isAuthenticationFailure })`
+as `drain.resolveNonRetryableFailure`. The plugin's error class maps to
+`invalid-event` before its authentication predicate maps to `authentication-failed`;
+other errors return `null` for the normal retry policy. Validation and
+authentication detection stay plugin-owned.
+
 ### Deferred claim heartbeats
 
 Forward both `onDeferredHeartbeat` and `deferredHeartbeatIntervalMs` when a

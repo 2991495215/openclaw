@@ -1,5 +1,6 @@
 import type { AgentHarnessCompletionCustody } from "openclaw/plugin-sdk/agent-harness-completion";
 import { embeddedAgentLog, formatErrorMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { throwCollectedErrors } from "openclaw/plugin-sdk/error-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import {
   normalizeOptionalString,
@@ -1022,14 +1023,9 @@ class Monitor {
       const errors = results.flatMap((result) =>
         result.status === "rejected" ? [result.reason] : [],
       );
-      if (errors.length === 1) {
-        throw errors[0];
-      }
-      if (errors.length > 1) {
-        throw new AggregateError(errors, "Codex native parent retirement did not settle.", {
-          cause: errors[0],
-        });
-      }
+      throwCollectedErrors(errors, "Codex native parent retirement did not settle.", {
+        cause: errors[0],
+      });
     });
   }
 

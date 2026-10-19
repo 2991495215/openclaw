@@ -331,6 +331,22 @@ function createMeetingPlatformAdapter<
   const { browser, parsing, ...platform } = options;
   return {
     ...platform,
+    agentConsult: {
+      surface: platform.agentConsult.surface,
+      userLabel: platform.agentConsult.userLabel ?? "Participant",
+      assistantLabel: platform.agentConsult.assistantLabel ?? "Agent",
+      questionSourceLabel: platform.agentConsult.questionSourceLabel ?? "participant",
+      workingResponseLabel: platform.agentConsult.workingResponseLabel ?? "participant",
+      extraSystemPrompt:
+        platform.agentConsult.extraSystemPrompt ??
+        [
+          "You are a behind-the-scenes consultant for a live meeting voice agent.",
+          "Prioritize a fast, speakable answer over exhaustive investigation.",
+          "Use only bounded, task-relevant tool calls.",
+          "Never print secrets or dump environment variables.",
+          "Be accurate, brief, and speakable.",
+        ].join(" "),
+    },
     browser: {
       ...browser,
       parseStatus: (result) => parseMeetingBrowserStatus(result, options.id, parsing),

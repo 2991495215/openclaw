@@ -188,7 +188,8 @@ export type MeetingPlatformAdapterOptions<
   >,
   "agentConsult" | "browser" | "session"
 > & {
-  agentConsult: MeetingPlatformRuntimeMetadata["agentConsult"];
+  agentConsult: Pick<MeetingPlatformRuntimeMetadata["agentConsult"], "surface"> &
+    Partial<Omit<MeetingPlatformRuntimeMetadata["agentConsult"], "surface">>;
   browser: Omit<
     MeetingBrowserAdapter<Mode, Health, Transcript>,
     "captions" | "classifyManualAction" | "parseLeaveResult" | "parseStatus" | "permissionNotes"

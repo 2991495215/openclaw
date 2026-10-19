@@ -1,4 +1,5 @@
 import {
+  buildChannelInboundRouteFacts,
   createChannelInboundEnvelopeBuilderAsync,
   formatInboundMediaUnavailableText,
 } from "openclaw/plugin-sdk/channel-inbound";
@@ -582,12 +583,7 @@ export async function handleNextcloudTalkInbound(params: {
         id: isGroup ? roomToken : senderId,
         label: fromLabel,
       },
-      route: {
-        agentId: route.agentId,
-        dmScope: route.dmScope,
-        accountId: route.accountId,
-        routeSessionKey: route.sessionKey,
-      },
+      route: buildChannelInboundRouteFacts(route),
       reply: { to: `nextcloud-talk:${roomToken}`, originatingTo: `nextcloud-talk:${roomToken}` },
       message: {
         body,

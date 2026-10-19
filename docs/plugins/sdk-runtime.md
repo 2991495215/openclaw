@@ -554,6 +554,13 @@ managers or prevent concurrent manager acquisition.
 
 ## Browser meeting transport builders
 
+`MeetingPlatformAdapter.create` requires `agentConsult.surface` and defaults
+`userLabel` to `Participant`, `assistantLabel` to `Agent`, and both
+`questionSourceLabel` and `workingResponseLabel` to `participant`, with the shared
+bounded, speakable-answer prompt. Supply any label or `extraSystemPrompt`
+explicitly to override that default; platform-specific instructions remain
+platform-owned.
+
 `MeetingPlatformAdapter.createBrowserAdapterOptions` builds the `browser` and
 `parsing` options for `MeetingPlatformAdapter.create` from platform page scripts,
 permission origins, display names, manual-action prefixes, and retry policy.

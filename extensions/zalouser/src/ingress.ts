@@ -1,6 +1,7 @@
 import {
   bindIngressLifecycleToReplyOptions,
   createChannelIngressError,
+  createChannelIngressFailureClassifier,
   createChannelIngressMonitor,
   DEFAULT_INGRESS_ADOPTION_STALL_MS,
   type ChannelIngressQueue,
@@ -181,15 +182,10 @@ export function createZalouserIngressMonitor(options: {
     drain: {
       orderBy: "received",
       adoptionStallTimeoutMs: options.adoptionStallTimeoutMs ?? DEFAULT_INGRESS_ADOPTION_STALL_MS,
-      resolveNonRetryableFailure: (error) => {
-        if (error instanceof ZalouserIngressPayloadError) {
-          return { reason: "invalid-event", message: error.message };
-        }
-        if (isZalouserAuthenticationFailure(error)) {
-          return { reason: "authentication-failed", message: formatErrorMessage(error) };
-        }
-        return null;
-      },
+      resolveNonRetryableFailure: createChannelIngressFailureClassifier({
+        invalidEventError: ZalouserIngressPayloadError,
+        isAuthenticationFailure: isZalouserAuthenticationFailure,
+      }),
       onLog: (message) => options.runtime.error?.(`zalouser ingress: ${message}`),
     },
     createStoppedError: () => new Error("Zalouser ingress monitor is stopped."),

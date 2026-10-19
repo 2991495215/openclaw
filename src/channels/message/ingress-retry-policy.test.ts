@@ -1,6 +1,7 @@
 import { coerceErrorMessage } from "@openclaw/normalization-core/error-coercion";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  createChannelIngressFailureClassifier,
   DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
   DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
   resolveIngressFailureDisposition,
@@ -13,6 +14,36 @@ const wrapError = (cause: Error) =>
   Object.assign(new Error("BotError in middleware"), {
     error: new Error("telegram spooled update processing failed", { cause }),
   });
+
+describe("channel permanent ingress classification", () => {
+  class InvalidEventError extends Error {}
+
+  it("preserves invalid-event precedence without consulting authentication", () => {
+    const isAuthenticationFailure = vi.fn(() => true);
+    const classify = createChannelIngressFailureClassifier({
+      invalidEventError: InvalidEventError,
+      isAuthenticationFailure,
+    });
+    expect(classify(new InvalidEventError("bad event"))).toEqual({
+      reason: "invalid-event",
+      message: "bad event",
+    });
+    expect(isAuthenticationFailure).not.toHaveBeenCalled();
+  });
+
+  it("classifies authentication failures while leaving other errors retryable", () => {
+    const authentication = new Error("authentication rejected");
+    const classify = createChannelIngressFailureClassifier({
+      invalidEventError: InvalidEventError,
+      isAuthenticationFailure: (error) => error === authentication,
+    });
+    expect(classify(authentication)).toEqual({
+      reason: "authentication-failed",
+      message: "authentication rejected",
+    });
+    expect(classify(new Error("transient failure"))).toBeNull();
+  });
+});
 
 function disposition(
   err: unknown,

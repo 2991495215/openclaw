@@ -48,6 +48,12 @@ import {
 - `dispatchChannelInboundReply(...)`: records and dispatches an already
   assembled inbound reply with a delivery adapter.
 
+`buildChannelInboundRouteFacts(route, overrides?)` projects a resolved agent route
+into the context builder's `route` field. It copies only the agent, DM scope,
+account, and route session key. The optional overrides argument accepts an explicit
+`dispatchSessionKey`.
+It does not select a route, authorize a sender, or copy last-route policy.
+
 For replies, channel plugins decode the platform reference and hydrate accessible
 parent messages. Pass the reference as `reply.replyToId` even when the parent
 cannot be fetched, and pass available text and sender facts as
@@ -78,6 +84,10 @@ scope, such as `JSON.stringify([accountId, conversationId])`, to suppress repeat
 for that channel and reason. The process-local cache retains 512 recently used
 keys; evicted keys can log again. Omit `onceKey` for per-message logging. Keep
 message bodies and sender details out of default-level diagnostics.
+
+For the session owner's pinned-DM skip callback, use
+`createPinnedMainDmOwnerSkipLogger(channel, log)`. It formats the existing
+diagnostic through the caller's logger without making the owner-pin decision.
 
 For a group-setting hint, use `resolveChannelGroupsConfigPath({ cfg, channel, accountId, groups })`
 from `openclaw/plugin-sdk/channel-policy`. Pass the exact groups map selected by

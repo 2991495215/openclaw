@@ -9,6 +9,7 @@ import {
 } from "@openclaw/normalization-core/error-coercion";
 import { SESSION_RESTART_RECOVERY_TOMBSTONE_ERROR_CODE } from "../../config/sessions/work-start-error.js";
 import { computeBackoff } from "../../infra/backoff.js";
+import { formatErrorMessage } from "../../infra/errors.js";
 
 export const DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS = 8;
 export const DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS = 24 * 60 * 60 * 1000;
@@ -33,6 +34,22 @@ export type IngressNonRetryableFailure = {
   reason: string;
   message: string;
 };
+
+/** Channel predicates own classification; malformed events take precedence over auth failures. */
+export function createChannelIngressFailureClassifier(params: {
+  invalidEventError: abstract new (...args: never[]) => Error;
+  isAuthenticationFailure: (error: unknown) => boolean;
+}): (error: unknown) => IngressNonRetryableFailure | null {
+  return (error) => {
+    if (error instanceof params.invalidEventError) {
+      return { reason: "invalid-event", message: error.message };
+    }
+    if (params.isAuthenticationFailure(error)) {
+      return { reason: "authentication-failed", message: formatErrorMessage(error) };
+    }
+    return null;
+  };
+}
 
 type IngressFailureDisposition =
   | {

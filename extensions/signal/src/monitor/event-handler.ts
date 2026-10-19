@@ -28,6 +28,7 @@ import {
   toHistoryMediaEntries,
   type ChannelInboundMediaInput,
   type ChannelInboundTurnPlan,
+  buildChannelInboundRouteFacts,
 } from "openclaw/plugin-sdk/channel-inbound";
 import {
   fanInChannelIngressLifecycles,
@@ -256,12 +257,7 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
         id: entry.isGroup ? (entry.groupId ?? "unknown") : entry.senderRecipient,
         label: fromLabel,
       },
-      route: {
-        agentId: route.agentId,
-        dmScope: route.dmScope,
-        accountId: route.accountId,
-        routeSessionKey: route.sessionKey,
-      },
+      route: buildChannelInboundRouteFacts(route),
       reply: {
         to: signalTo,
         replyToId: entry.replyToId ?? entry.messageId,

@@ -1,6 +1,7 @@
 import { normalizeURL } from "nostr-tools/utils";
 import {
   buildChannelInboundEventContext,
+  buildChannelInboundRouteFacts,
   logInboundDrop,
   recordDroppedChannelInboundHistory,
   createChannelInboundEnvelopeBuilderAsync,
@@ -209,12 +210,7 @@ export async function handleBuzzInbound(params: {
       threadId: message.threadId,
       nativeChannelId: channelId,
     },
-    route: {
-      agentId: route.agentId,
-      dmScope: route.dmScope,
-      accountId: route.accountId,
-      routeSessionKey: route.sessionKey,
-    },
+    route: buildChannelInboundRouteFacts(route),
     reply: {
       to: target,
       originatingTo: target,

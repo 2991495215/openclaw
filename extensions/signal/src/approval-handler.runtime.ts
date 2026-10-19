@@ -1,8 +1,7 @@
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import {
-  buildChannelApprovalExpiredText,
-  buildChannelApprovalResolvedText,
   createChannelApprovalNativeRuntimeAdapterAsync,
+  createTextChannelApprovalPresentation,
   resolvePreparedApprovalAccountId,
 } from "openclaw/plugin-sdk/approval-handler-runtime";
 import { buildChannelApprovalNativeTargetKey } from "openclaw/plugin-sdk/approval-native-runtime";
@@ -78,17 +77,7 @@ export const signalApprovalNativeRuntime = createChannelApprovalNativeRuntimeAda
     isConfigured: ({ context }) => Boolean(context),
     shouldHandle: ({ context }) => Boolean(context),
   },
-  presentation: {
-    buildPendingPayload: buildApprovalReactionPendingContent,
-    buildResolvedResult: ({ request, resolved, view }) => ({
-      kind: "update",
-      payload: { text: buildChannelApprovalResolvedText({ request, resolved, view }) },
-    }),
-    buildExpiredResult: ({ request, view }) => ({
-      kind: "update",
-      payload: { text: buildChannelApprovalExpiredText({ request, view }) },
-    }),
-  },
+  presentation: createTextChannelApprovalPresentation(buildApprovalReactionPendingContent),
   transport: {
     prepareTarget: ({ cfg, plannedTarget, accountId, context }) => {
       const plannedAccountId = (plannedTarget.target as { accountId?: string | null }).accountId;
