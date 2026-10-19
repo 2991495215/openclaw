@@ -620,7 +620,7 @@ describe("runCronIsolatedAgentTurn - meta.error status propagation", () => {
       acceptedSessionSpawns: [{ runId: "run-child", childSessionKey: "agent:default:child" }],
     });
     resolveCronDeliveryPlanMock.mockReturnValue({ mode: "none", requested: false });
-    listDescendantRunsForRequesterMock.mockResolvedValue([
+    listDescendantRunsForRequesterMock.mockImplementation(async () => [
       {
         runId: "run-child",
         childSessionKey: "agent:default:child",
@@ -629,7 +629,7 @@ describe("runCronIsolatedAgentTurn - meta.error status propagation", () => {
         createdAt: Date.now(),
         task: "delegated report",
         cleanup: "keep",
-        execution: { status: "terminal", endedAt: Date.now() + 1_000, outcome: { status: "ok" } },
+        execution: { status: "terminal", endedAt: Date.now(), outcome: { status: "ok" } },
         completion: { required: true, terminalReply: { disposition: "visible", text: reply } },
       },
     ]);
