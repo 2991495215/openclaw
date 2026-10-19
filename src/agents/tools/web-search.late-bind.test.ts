@@ -68,7 +68,6 @@ describe("web_search late-bound runtime fallback", () => {
     });
     const tool = createWebSearchTool({
       config: {},
-      lateBindRuntimeConfig: true,
       runtimeWebSearch: {
         selectedProvider: "brave",
         providerConfigured: "brave",
@@ -90,7 +89,6 @@ describe("web_search late-bound runtime fallback", () => {
     });
     const tool = createWebSearchTool({
       config: { tools: { web: { search: { provider: "brave" } } } },
-      lateBindRuntimeConfig: true,
     });
 
     await expect(tool?.execute("call-search", { query: "openclaw" }, undefined)).rejects.toThrow(

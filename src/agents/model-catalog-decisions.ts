@@ -53,7 +53,6 @@ import { loadManifestModelCatalog } from "./model-catalog.js";
 import type { ModelCatalogEntry, ModelCatalogSnapshot } from "./model-catalog.types.js";
 import { dedupeModelCatalogEntries } from "./model-selection-shared.js";
 import {
-  createOpenAIModelRoutesResolver,
   openAIModelCatalogRoutePolicy,
   resolveModelCatalogIdentityKey,
 } from "./openai-model-routes.js";
@@ -82,7 +81,6 @@ export type ModelCatalogDecisionParams = {
   profileProvider?: string;
   runtimeOverride?: string;
   accountCatalog?: import("./prepared-model-runtime-auth.js").PreparedAccountCatalogAccess;
-  routeResolverFactory?: typeof createOpenAIModelRoutesResolver;
   isCurrent?: () => boolean;
   preparedPersonalCatalog?: PersonalCatalogProfiles & { isCurrent: () => boolean };
 };
@@ -360,7 +358,6 @@ export function createModelCatalogDecisions(params: ModelCatalogDecisionParams) 
       .flatMap((plugin) => plugin.syntheticAuthRefs ?? []),
     externalCliProviderIds: resolveExternalCliAuthScopeFromConfig(params.cfg)?.providerIds ?? [],
     preparedRuntimeAuthStore: authStore,
-    routeResolverFactory: params.routeResolverFactory,
     // Read at evaluation time: selected-account discovery replaces outcomes in place. Entitlement
     // is per account, so only the listing discovery made with this exact credential applies.
     accountListedModelIds: (provider, profileId) => {

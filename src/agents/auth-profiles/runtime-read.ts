@@ -28,7 +28,14 @@ import type {
   PreparedAuthProfileStoreReads,
 } from "./runtime-read.types.js";
 import { readAuthProfileStoreInWorker } from "./runtime-read.worker.js";
-import { getWorkerAuthProfileWrites } from "./runtime-scope.js";
+import {
+  captureAuthProfileStoreScope,
+  getScopedAuthProfileEnv,
+  getWorkerAuthProfileWrites,
+  isEnvOnlyAuthProfileRuntime,
+  resolveRuntimeAuthProfileAgentDir,
+  resolveRuntimeAuthProfileLoadOptions,
+} from "./runtime-scope.js";
 import { createEmptyAuthProfileStore } from "./runtime-snapshot-owner.js";
 import { resolveSharedMainAuthAgentDir } from "./shared-main-dir.js";
 import {
@@ -82,12 +89,6 @@ export function resolveExternalCliOverlayOptions(
 }
 
 type RuntimeReadHost = {
-  isEnvOnlyAuthProfileRuntime: () => boolean;
-  getScopedAuthProfileEnv: () => NodeJS.ProcessEnv | undefined;
-  resolveRuntimeAuthProfileAgentDir: (agentDir?: string) => string | undefined;
-  resolveRuntimeAuthProfileLoadOptions: (
-    options?: LoadAuthProfileStoreOptions,
-  ) => LoadAuthProfileStoreOptions | undefined;
   loadAuthProfileStoreForAgent: (
     agentDir?: string,
     options?: LoadAuthProfileStoreOptions,
@@ -101,10 +102,6 @@ type RuntimeReadHost = {
     readPreparedStore?: (databasePath: string) => AuthProfileStore,
   ) => AuthProfileStore;
   withPreparedExternalAuthProfiles: WithPreparedExternalAuthProfiles;
-  captureScope: () => {
-    isolated: boolean;
-    run: <T>(agentDir: string | undefined, env: NodeJS.ProcessEnv, run: () => T) => T;
-  };
 };
 
 type AsyncAuthProfileStoreOptions = Omit<
@@ -143,14 +140,9 @@ function captureReadOptions(
 
 /** Bind to the canonical store scope; this reader owns no mutable runtime or lifecycle state. */
 export function createAuthProfileStoreRuntimeReader({
-  isEnvOnlyAuthProfileRuntime,
-  getScopedAuthProfileEnv,
-  resolveRuntimeAuthProfileAgentDir,
-  resolveRuntimeAuthProfileLoadOptions,
   loadAuthProfileStoreForAgent,
   loadRuntimeAuthProfileStore,
   withPreparedExternalAuthProfiles,
-  captureScope,
 }: RuntimeReadHost) {
   /** Capture sources once; the store owner decides which persisted facts it needs. */
   function withPreparedAuthProfileStoreReads(
@@ -171,7 +163,7 @@ export function createAuthProfileStoreRuntimeReader({
     consume?: (reads: PreparedAuthProfileStoreReads) => Promise<T>,
     suppliedEnv?: NodeJS.ProcessEnv,
   ): Promise<T | AuthProfileStore> {
-    const scope = captureScope();
+    const scope = captureAuthProfileStoreScope();
     const env = cloneEnvWithPlatformSemantics(
       getScopedAuthProfileEnv() ?? suppliedEnv ?? process.env,
     );

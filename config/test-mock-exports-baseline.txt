@@ -1748,7 +1748,6 @@
 ["src/agents/bash-tools.exec-host-node.test.ts","../logger.js","d70c526f932072e3fb53ae2ce044c1221cc85db03dd4ecfae73e6639e730654c",1]
 ["src/agents/bash-tools.exec-host-node.test.ts","./bash-tools.exec-approval-request.js","6c3a61200ead16572c9b238063be4684704536c3bebba9d07a9354944ce3219a",1]
 ["src/agents/bash-tools.exec-host-node.test.ts","./bash-tools.exec-host-shared.js","120603a41005ed3a7d01bb57d93744877f1a7e508175487bf256545d9f6f9194",1]
-["src/agents/bash-tools.exec-host-node.test.ts","./bash-tools.exec-runtime.js","8cd5634c3153d90b49db1221e1f340b118e636240ff4a82698508974cd0a51cb",1]
 ["src/agents/bash-tools.exec-host-node.test.ts","./tools/gateway.js","580e936546443014e7b89b9398595960a1d2b06675703b5d3ead3e43d57d3ab3",1]
 ["src/agents/bash-tools.exec-host-node.test.ts","./tools/nodes-utils.js","91382426ac22659d5b872f7bff7685e80a806d29dfce71cbb762f5276f2ed2a3",1]
 ["src/agents/bash-tools.exec-host-shared.test.ts","./bash-tools.exec-approval-followup.js","3898fca9077cd9660557cc6c0fe8128fdf86bc5cfcb9f6c656dde84edf80a0a6",1]

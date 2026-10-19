@@ -85,7 +85,7 @@ import {
   resolveExecHostApprovalContext,
   sendExecApprovalFollowupResult,
 } from "./bash-tools.exec-host-shared.js";
-import { createApprovalSlug, runExecProcess } from "./bash-tools.exec-runtime.js";
+import { runExecProcess } from "./bash-tools.exec-runtime.js";
 import type { ExecToolApprovalReview, ExecToolDetails } from "./bash-tools.exec-types.js";
 import { abortable } from "./embedded-agent-runner/run/abortable.js";
 import type { AgentToolResult } from "./runtime/index.js";
@@ -866,8 +866,6 @@ export async function processGatewayAllowlist(
       });
     const approvalRoute = await createExecApprovalRequestRoute({
       warnings: params.warnings,
-      approvalRunningNoticeMs: params.approvalRunningNoticeMs,
-      createApprovalSlug,
       turnSourceChannel: params.turnSourceChannel,
       turnSourceAccountId: params.turnSourceAccountId,
       register: registerGatewayApproval,

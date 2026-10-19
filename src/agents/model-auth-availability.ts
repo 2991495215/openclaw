@@ -125,7 +125,6 @@ type CreateModelAuthAvailabilityResolverParams = {
   syntheticAuthProviderRefs?: readonly string[];
   metadataSnapshot?: PluginMetadataSnapshot;
   externalCliProviderIds?: readonly string[];
-  routeResolverFactory?: typeof createOpenAIModelRoutesResolver;
   preparedRuntimeAuthStore?: AuthProfileStore;
   preparedRuntimeAuthModes?: PreparedAgentCredentialModes;
   preparedRuntimeAuthMaterializations?: readonly RuntimeAuthMaterialization[];
@@ -251,7 +250,7 @@ export function createModelAuthAvailabilityResolver(
   ) {
     synthetic.add("codex");
   }
-  const resolveRoutes = (params.routeResolverFactory ?? createOpenAIModelRoutesResolver)({
+  const resolveRoutes = createOpenAIModelRoutesResolver({
     config: params.cfg,
     agentId: params.agentId,
     primaryModel: resolveDefaultModelForAgent({

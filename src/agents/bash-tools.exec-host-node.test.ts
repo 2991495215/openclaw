@@ -398,10 +398,6 @@ vi.mock("./bash-tools.exec-host-shared.js", () => ({
   buildHeadlessExecApprovalDeniedMessage: vi.fn(() => "denied"),
 }));
 
-vi.mock("./bash-tools.exec-runtime.js", () => ({
-  createApprovalSlug: vi.fn(() => "slug"),
-}));
-
 vi.mock("./tools/gateway.js", () => ({
   callGatewayTool: callGatewayToolMock,
 }));

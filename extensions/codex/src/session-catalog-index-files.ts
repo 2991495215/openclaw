@@ -22,9 +22,8 @@ import {
 type ReconciliationOwner = {
   rows: ReadonlyMap<string, CodexCatalogIndexRow>;
   observedFiles: ReadonlyMap<string, CodexCatalogRolloutFingerprint>;
-  scanner: CodexCatalogRolloutScanner;
   assertCurrent(): void;
-  requestNativeRefresh(): void;
+  nativeDirty: boolean;
   report(error: unknown): void;
   put(row: CodexCatalogIndexRow): void;
   remove(id: string): void;
@@ -34,6 +33,7 @@ type ReconciliationOwner = {
 export async function reconcileCodexCatalogFiles(
   root: string,
   owner: ReconciliationOwner,
+  scanner: CodexCatalogRolloutScanner,
 ): Promise<Map<string, CodexCatalogRolloutFingerprint>> {
   const byPath = new Map<string, CodexCatalogIndexRow>();
   let processed = 0;
@@ -46,7 +46,7 @@ export async function reconcileCodexCatalogFiles(
       owner.assertCurrent();
     }
   }
-  const { files, present } = await owner.scanner.scan(new Set(byPath.keys()));
+  const { files, present } = await scanner.scan(new Set(byPath.keys()));
   owner.assertCurrent();
   const observed = new Map(files);
   for (const [file, fingerprint] of files) {
@@ -59,7 +59,7 @@ export async function reconcileCodexCatalogFiles(
     if (known?.mtimeMs === fingerprint.mtimeMs && known.size === fingerprint.size) {
       continue;
     }
-    owner.requestNativeRefresh();
+    owner.nativeDirty = true;
     // Failed reads retain their old fingerprint so the next scan can retry.
     observed.delete(file);
     if (known) {
@@ -117,7 +117,7 @@ export async function reconcileCodexCatalogFiles(
       !present.has(codexCatalogRolloutLogicalPath(row.rolloutPath)) &&
       owner.rows.get(row.threadId) === row
     ) {
-      owner.requestNativeRefresh();
+      owner.nativeDirty = true;
       owner.remove(row.threadId);
     }
   }

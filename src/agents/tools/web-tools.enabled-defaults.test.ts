@@ -311,7 +311,6 @@ describe("web tools defaults", () => {
         selectedProviderKeySource: "config",
         diagnostics: [],
       },
-      lateBindRuntimeConfig: true,
     });
 
     const result = await tool?.execute?.("call-runtime-provider", { query: "openclaw" });

@@ -31,6 +31,7 @@ import {
 } from "./bash-tools.exec-approval-request.js";
 import {
   buildApprovalPendingMessage,
+  createApprovalSlug,
   DEFAULT_APPROVAL_TIMEOUT_MS,
 } from "./bash-tools.exec-runtime.js";
 import type { ExecElevatedDefaults, ExecToolDetails } from "./bash-tools.exec-types.js";
@@ -179,8 +180,6 @@ async function resolveExecApprovalUnavailableState(params: {
 
 type DefaultExecApprovalRequestParams = {
   warnings: string[];
-  approvalRunningNoticeMs: number;
-  createApprovalSlug: (approvalId: string) => string;
   turnSourceChannel?: string;
   turnSourceAccountId?: string;
   register: (approvalId: string) => Promise<ExecApprovalRegistration>;
@@ -192,7 +191,7 @@ async function createAndRegisterDefaultExecApprovalRequest(
   const approvalId = crypto.randomUUID();
   const defaultExpiresAtMs = resolveExpiresAtMsFromDurationMs(DEFAULT_APPROVAL_TIMEOUT_MS) ?? 0;
   const warningText = params.warnings.length ? `${params.warnings.join("\n")}\n\n` : "";
-  const approvalSlug = params.createApprovalSlug(approvalId);
+  const approvalSlug = createApprovalSlug(approvalId);
   const registration = await params.register(approvalId);
   const preResolvedDecision = registration.finalDecision;
   const { initiatingSurface, sentApproverDms, unavailableReason } =

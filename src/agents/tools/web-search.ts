@@ -82,7 +82,6 @@ export function createWebSearchTool(options?: {
   agentDir?: string;
   sandboxed?: boolean;
   runtimeWebSearch?: RuntimeWebSearchMetadata;
-  lateBindRuntimeConfig?: boolean;
 }): AnyAgentTool | null {
   if (options?.enabled === false || isWebSearchDisabled(options?.config)) {
     return null;
@@ -107,7 +106,7 @@ export function createWebSearchTool(options?: {
       } = resolveWebToolRuntimeContext({
         kind: "search",
         config: options?.config,
-        lateBindRuntimeConfig: options?.lateBindRuntimeConfig,
+        lateBindRuntimeConfig: true,
         runtimeMetadata: options?.runtimeWebSearch,
       });
       if (isWebSearchDisabled(config)) {

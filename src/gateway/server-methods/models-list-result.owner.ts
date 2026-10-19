@@ -2,7 +2,6 @@ import type { ModelsListParams } from "../../../packages/gateway-protocol/src/sc
 import { resolveAgentWorkspaceDir, resolveAmbientOwnerAgentId } from "../../agents/agent-scope.js";
 import type { createModelCatalogDecisions } from "../../agents/model-catalog-decisions.js";
 import type { ModelCatalogSnapshot } from "../../agents/model-catalog.types.js";
-import type { createOpenAIModelRoutesResolver } from "../../agents/openai-model-routes.js";
 import { publishedModelCatalogOwnerMatchesAgent } from "../../agents/prepared-model-catalog-owner.js";
 import { PreparedModelRuntimeOwnerNotPublishedError } from "../../agents/prepared-model-runtime.errors.js";
 import { preparedModelRuntimeConfigsMatch } from "../../agents/prepared-model-runtime.js";
@@ -39,7 +38,6 @@ export type BuildModelsListResultParams = {
   };
   catalogProjector?: ReturnType<typeof createModelCatalogDecisions>;
   preloadedOnly?: boolean;
-  routeResolverFactory?: typeof createOpenAIModelRoutesResolver;
 };
 
 export type ModelsListOwner = NonNullable<Awaited<ReturnType<typeof resolveModelsListOwner>>>;

@@ -256,8 +256,6 @@ describe("createExecApprovalRequestRoute", () => {
   const createRoute = (turnSourceChannel?: string, finalDecision?: null) =>
     createExecApprovalRequestRoute({
       warnings: [],
-      approvalRunningNoticeMs: 1_000,
-      createApprovalSlug: (approvalId) => approvalId,
       turnSourceChannel,
       register: async (approvalId) => ({ id: approvalId, expiresAtMs: 60_000, finalDecision }),
       askFallback: "full",

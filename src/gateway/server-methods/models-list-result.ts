@@ -196,7 +196,6 @@ async function prepareOwnedModelsListResult({
         ? undefined
         : (draft?.owner ?? params.requesterProfileId),
     ...(view === "provider-config" ? {} : profiles),
-    routeResolverFactory: params.routeResolverFactory,
   };
   const preloadedProjector = usedPreloadedCatalog ? params.catalogProjector : undefined;
   const projector = preloadedProjector
@@ -486,7 +485,6 @@ async function prepareOwnedModelsListResult({
     const inventoryProjector = createModelCatalogDecisions({
       ...decisionOwner(),
       snapshot: inventorySnapshot,
-      ...(params.routeResolverFactory ? { routeResolverFactory: params.routeResolverFactory } : {}),
     });
     const inventory = await inventoryProjector.projectCatalog(authority);
     const entries = await withCurrentReadAuthority(authority, () =>

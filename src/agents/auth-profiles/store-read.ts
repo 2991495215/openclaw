@@ -22,6 +22,14 @@ import {
   type PreparedAuthProfileStoreReads,
 } from "./runtime-read.js";
 import {
+  captureAuthProfileStoreScope,
+  getScopedAuthProfileEnv,
+  getScopedSharedAuthStore,
+  isEnvOnlyAuthProfileRuntime,
+  resolveRuntimeAuthProfileAgentDir,
+  resolveRuntimeAuthProfileLoadOptions,
+} from "./runtime-scope.js";
+import {
   createEmptyAuthProfileStore,
   listRuntimeLocalProfileIds,
   mergeLocalAuthProfileStoreWithInheritedStore,
@@ -54,16 +62,7 @@ type EnsureAuthProfileStoreOptions = Pick<
   | "readOnly"
   | "syncExternalCli"
 >;
-type StoreReadHost = Pick<
-  RuntimeReadHost,
-  | "isEnvOnlyAuthProfileRuntime"
-  | "getScopedAuthProfileEnv"
-  | "resolveRuntimeAuthProfileAgentDir"
-  | "resolveRuntimeAuthProfileLoadOptions"
-  | "loadAuthProfileStoreForAgent"
-  | "captureScope"
-> & {
-  getScopedSharedAuthStore: () => AuthProfileStore | undefined;
+type StoreReadHost = Pick<RuntimeReadHost, "loadAuthProfileStoreForAgent"> & {
   resolvePersistedLoadOptions: (
     options: Pick<LoadAuthProfileStoreOptions, "allowKeychainPrompt" | "database"> | undefined,
   ) => { allowKeychainPrompt?: boolean; database?: AuthProfileDatabase };
@@ -124,14 +123,8 @@ function* readSharedAuthPath(): AuthProfileStoreReadSequence<string> {
 
 export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
   const {
-    isEnvOnlyAuthProfileRuntime,
-    getScopedAuthProfileEnv,
-    getScopedSharedAuthStore,
-    resolveRuntimeAuthProfileAgentDir,
-    resolveRuntimeAuthProfileLoadOptions,
     resolvePersistedLoadOptions,
     loadAuthProfileStoreForAgent,
-    captureScope,
     withPreparedAuthProfileStoreReads,
     overlayExternalAuthProfiles,
     withPreparedExternalAuthProfiles,
@@ -170,7 +163,7 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
       }
       step = reads.next(result);
     }
-    return profileId && !captureScope().isolated
+    return profileId && !captureAuthProfileStoreScope().isolated
       ? materializePersonalAuthProfile(step.value, profileId)
       : step.value;
   }

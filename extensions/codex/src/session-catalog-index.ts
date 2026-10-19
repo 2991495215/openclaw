@@ -61,7 +61,7 @@ const SAFETY_INTERVAL_MS = 15 * 60_000;
 
 /** One home owns resident queries and authoritative overflow discovery. */
 export class CodexCatalogIndex {
-  private readonly rows = new Map<string, CodexCatalogIndexRow>();
+  readonly rows = new Map<string, CodexCatalogIndexRow>();
   private readonly availability = new CodexCatalogAvailability();
   private readonly liveStatus = new CodexCatalogStatusIndex();
   private readonly liveSettings = new CodexCatalogSettingsIndex();
@@ -81,7 +81,7 @@ export class CodexCatalogIndex {
   private terminalFailure: CodexAppServerSpawnError | undefined;
   private currencyWork: Promise<void> | undefined;
   private safetyRefresh: Promise<void> | undefined;
-  private nativeDirty = false;
+  nativeDirty = false;
   private nextNativeAt = 0;
   private nextFilesAt = 0;
   private readonly runBackground: NonNullable<CodexCatalogIndexOptions["runBackground"]>;
@@ -89,7 +89,7 @@ export class CodexCatalogIndex {
   private readonly unsubscribe: () => void;
   private reconciling: Promise<void> | undefined;
   private reconcilingNative: Promise<void> | undefined;
-  private observedFiles = new Map<string, CodexCatalogRolloutFingerprint>();
+  observedFiles = new Map<string, CodexCatalogRolloutFingerprint>();
   private readonly persistence: CodexCatalogPersistence;
   private readonly obsoleteStoredKeys = new Set<string>();
   private readonly ordering = new CodexCatalogOrdering();
@@ -156,7 +156,7 @@ export class CodexCatalogIndex {
     );
   }
 
-  private assertCurrent(): void {
+  assertCurrent(): void {
     if (this.closed) {
       throw new Error("Codex resident catalog is closed");
     }
@@ -168,7 +168,7 @@ export class CodexCatalogIndex {
     }
   }
 
-  private report(error: unknown): void {
+  report(error: unknown): void {
     const overflow = CodexCatalogResponseTooLargeError.fromError(error);
     if (overflow && overflow === this.reportedOverflow) {
       return;
@@ -185,7 +185,7 @@ export class CodexCatalogIndex {
     return applyCodexCatalogName(row, name);
   }
 
-  private put(candidate: CodexCatalogIndexRow): void {
+  put(candidate: CodexCatalogIndexRow): void {
     if (this.closed) {
       return;
     }
@@ -224,7 +224,7 @@ export class CodexCatalogIndex {
     this.persistence.remove(threadId);
   }
 
-  private remove(threadId: string): void {
+  remove(threadId: string): void {
     this.evict(threadId);
     this.liveStatus.delete(threadId);
     this.liveSettings.delete(threadId);
@@ -569,16 +569,7 @@ export class CodexCatalogIndex {
       return;
     }
     this.assertCurrent();
-    this.observedFiles = await reconcileCodexCatalogFiles(root, {
-      rows: this.rows,
-      observedFiles: this.observedFiles,
-      scanner: this.rolloutScanner,
-      assertCurrent: () => this.assertCurrent(),
-      requestNativeRefresh: () => (this.nativeDirty = true),
-      report: (error) => this.report(error),
-      put: (row) => this.put(row),
-      remove: (id) => this.remove(id),
-    });
+    this.observedFiles = await reconcileCodexCatalogFiles(root, this, this.rolloutScanner);
   }
 
   async upsertThread(thread: CodexThread): Promise<void> {

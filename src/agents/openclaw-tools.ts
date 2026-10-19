@@ -334,7 +334,6 @@ function* createOpenClawToolsSteps(
     agentDir: webSearchAgentDir,
     enabled: options?.webSearchEnabled,
     runtimeWebSearch: runtimeWebTools?.search,
-    lateBindRuntimeConfig: true,
   });
   if (webSearchTool) {
     const configured =
@@ -429,8 +428,13 @@ function* createOpenClawToolsSteps(
       allowlist: explicitFactoryAllowlist,
       denylist: explicitFactoryDenylist,
     });
-  const sessionLookupToolOptions = {
+  const sessionToolBinding = {
     agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
+    agentId: sessionAgentId,
+  };
+  const sessionLookupToolOptions = {
+    ...sessionToolBinding,
+    requesterAgentIdOverride: sessionAgentId,
     sandboxed: options?.sandboxed,
     config: sessionConfig,
     callGateway: embedded ? createEmbeddedCallGateway() : callAgentToolGatewayRequest,
@@ -451,12 +455,10 @@ function* createOpenClawToolsSteps(
     : null;
   const transcriptsTool = resolveTranscriptsTool(resolvedConfig, sessionAgentId, options);
   const githubActionsAvailable = hasSessionControlAuthority(options?.sessionControlAuthority);
+  const sessionToolOptions = { ...options, ...sessionToolBinding };
   const tools: AnyAgentTool[] = [
     ...createInstalledSkillTools(options?.installedSkills ?? []),
-    createDashboardTool({
-      agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
-      agentId: sessionAgentId,
-    }),
+    createDashboardTool(sessionToolBinding),
     ...(embedded
       ? []
       : [
@@ -472,10 +474,8 @@ function* createOpenClawToolsSteps(
                 contextEpoch: options?.computerContextEpoch,
               }),
           createCronTool({
-            ...options,
             // Use the durable runSessionKey; cleanup-retired policy keys leave cron jobs dangling.
-            agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
-            agentId: sessionAgentId,
+            ...sessionToolOptions,
             agentAccountId: gatewayCallerAccountId,
             currentDeliveryContext: deliveryContext,
             creatorToolAllowlist: options?.cronCreatorToolAllowlist,
@@ -486,28 +486,17 @@ function* createOpenClawToolsSteps(
           }),
           createSessionsCreateTool({ sessionControlAuthority: options?.sessionControlAuthority }),
           createSessionsTool({
-            ...options,
+            ...sessionToolOptions,
             stopAllowed: options?.swarmCollector !== true,
-            agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
             agentSessionId: options?.sessionId,
             requesterAgentIdOverride: sessionAgentId,
             config: sessionConfig,
           }),
-          createScreenTool({
-            agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
-            agentId: sessionAgentId,
-          }),
+          createScreenTool(sessionToolBinding),
           createThemeTool(),
           ...(options?.sandboxed
             ? []
-            : [
-                createTerminalTool({
-                  ...options,
-                  agentId: sessionAgentId,
-                  agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
-                }),
-                ...createAvailablePortalTools(options),
-              ]),
+            : [createTerminalTool(sessionToolOptions), ...createAvailablePortalTools(options)]),
         ]),
     ...(!embedded && sessionKey && options?.taskSuggestionDeliveryMode === "gateway"
       ? createTaskSuggestionTools({
@@ -600,21 +589,16 @@ function* createOpenClawToolsSteps(
     ),
     createSessionsListTool({
       ...sessionLookupToolOptions,
-      requesterAgentIdOverride: sessionAgentId,
       requesterProfileId: options?.gatewayUiCommandTarget?.profileId,
       supportsActiveOnly: !embedded,
       requireSessionReadOwner: embedded,
     }),
-    createSessionsHistoryTool({
-      ...sessionLookupToolOptions,
-      requesterAgentIdOverride: sessionAgentId,
-      sessionReadScopeKey: options?.sessionReadScopeKey,
-    }),
-    createSessionsSearchTool({
-      ...sessionLookupToolOptions,
-      agentId: sessionAgentId,
-      sessionReadScopeKey: options?.sessionReadScopeKey,
-    }),
+    ...[createSessionsHistoryTool, createSessionsSearchTool].map((createTool) =>
+      createTool({
+        ...sessionLookupToolOptions,
+        sessionReadScopeKey: options?.sessionReadScopeKey,
+      }),
+    ),
     ...(embedded ? [] : createHostedConversationTools(options, sessionAgentId, sessionConfig)),
     !embedded || options?.allowGatewaySubagentBinding === true
       ? createSessionsSpawnTool({
@@ -643,14 +627,10 @@ function* createOpenClawToolsSteps(
         requesterTurnRunId: options?.runId,
       }),
     }),
-    createSubagentsTool({
-      // Match the durable controller key the spawn tool registers runs under, so split-key
-      // callers (e.g. Telegram DM with a policy key distinct from the durable run key) still
-      // see their spawned runs in the active/recent list. Mirrors createSessionsSpawnTool above.
-      agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
-      agentId: sessionAgentId,
-      config: sessionConfig,
-    }),
+    // Match the durable controller key the spawn tool registers runs under, so split-key
+    // callers (e.g. Telegram DM with a policy key distinct from the durable run key) still
+    // see their spawned runs in the active/recent list. Mirrors createSessionsSpawnTool above.
+    createSubagentsTool({ ...sessionToolBinding, config: sessionConfig }),
     createSessionStatusTool({
       ...options,
       requesterAgentIdOverride: sessionAgentId,
