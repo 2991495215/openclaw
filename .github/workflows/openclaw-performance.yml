@@ -2065,7 +2065,7 @@ jobs:
             printf '\nprocess-cgroup\n'
             cat /proc/self/cgroup
             printf '\ncgroup-mounts\n'
-            rg ' - cgroup' /proc/self/mountinfo
+            grep ' - cgroup' /proc/self/mountinfo
             printf '\nvisible-cpu-quotas\n'
             timeout 5s find /sys/fs/cgroup -type f \( -name cpu.max -o \
               -name cpu.cfs_quota_us -o -name cpu.cfs_period_us \) -print -exec head -c 256 {} \;
