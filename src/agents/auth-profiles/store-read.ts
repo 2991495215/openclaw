@@ -17,6 +17,7 @@ import { materializePersonalAuthProfile } from "./personal-profiles.js";
 import { mergeRuntimeExternalProfileReferences } from "./runtime-external-profile-references.js";
 import {
   resolveExternalCliOverlayOptions,
+  resolveRuntimeAuthProfileLoadOptions,
   type createAuthProfileStoreRuntimeReader,
   type LoadAuthProfileStoreOptions,
   type PreparedAuthProfileStoreReads,
@@ -27,7 +28,6 @@ import {
   getScopedSharedAuthStore,
   isEnvOnlyAuthProfileRuntime,
   resolveRuntimeAuthProfileAgentDir,
-  resolveRuntimeAuthProfileLoadOptions,
 } from "./runtime-scope.js";
 import {
   createEmptyAuthProfileStore,

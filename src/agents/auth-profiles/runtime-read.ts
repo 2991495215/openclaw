@@ -29,12 +29,12 @@ import type {
 } from "./runtime-read.types.js";
 import { readAuthProfileStoreInWorker } from "./runtime-read.worker.js";
 import {
+  authProfileRuntimeMode,
   captureAuthProfileStoreScope,
   getScopedAuthProfileEnv,
   getWorkerAuthProfileWrites,
   isEnvOnlyAuthProfileRuntime,
   resolveRuntimeAuthProfileAgentDir,
-  resolveRuntimeAuthProfileLoadOptions,
 } from "./runtime-scope.js";
 import { createEmptyAuthProfileStore } from "./runtime-snapshot-owner.js";
 import { resolveSharedMainAuthAgentDir } from "./shared-main-dir.js";
@@ -55,6 +55,16 @@ export type {
   LoadAuthProfileStoreOptions,
   PreparedAuthProfileStoreReads,
 } from "./runtime-read.types.js";
+
+export function resolveRuntimeAuthProfileLoadOptions(
+  options?: LoadAuthProfileStoreOptions,
+): LoadAuthProfileStoreOptions | undefined {
+  const mode = authProfileRuntimeMode.getStore();
+  if (mode?.kind !== "agent-dir") {
+    return options;
+  }
+  return { ...options, inheritedAuthDir: mode.agentDir };
+}
 
 export function resolveExternalCliOverlayOptions(
   options: LoadAuthProfileStoreOptions | undefined,
