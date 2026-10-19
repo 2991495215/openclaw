@@ -7,7 +7,7 @@ import { createPreparedGatewayModelCatalog } from "./server-model-catalog-view.j
 import type { PreparedGatewayModelCatalog } from "./server-model-catalog.types.js";
 import { createSessionRowProjectionCatalog } from "./session-row-projection-catalog.js";
 
-it("retains completed catalog facts during runtime replacement and adopts completed or failed publications", async () => {
+it("retains completed catalog facts through incomplete renewal and adopts complete publications", async () => {
   const pluginRegistry = createEmptyPluginRegistry();
   const metadataSnapshot = createPluginMetadataSnapshotFixture();
   const other = createPreparedGatewayModelCatalog({
@@ -42,6 +42,7 @@ it("retains completed catalog facts during runtime replacement and adopts comple
     refreshed.mockClear();
     read.mockClear();
     notifyPreparedModelRuntimePublication({ phase: "catalog-status", modelFactsChanged: false });
+    notifyPreparedModelRuntimePublication({ phase: "published", modelFactsChanged: false });
     await catalog.refresh();
     expect(catalog.current).toBe(original);
     expect(read).not.toHaveBeenCalled();
@@ -61,50 +62,68 @@ it("retains completed catalog facts during runtime replacement and adopts comple
     expect(catalog.current).toBe(original);
     expect(refreshed).not.toHaveBeenCalled();
     read.mockClear();
-    await catalog.refresh();
+    const retry = catalog.refresh();
+    expect(catalog.refresh()).toBe(retry);
+    await retry;
     expect(catalog.current).toBe(original);
     expect(refreshed).not.toHaveBeenCalled();
-    expect(read).not.toHaveBeenCalled();
+    expect(read).toHaveBeenCalledTimes(1);
 
-    // Provider publication does not finish the pending runtime replacement.
+    // Incomplete provider publications cannot withdraw the completed view.
     notifyPreparedModelRuntimePublication({ phase: "catalog-published" });
     await catalog.refresh();
     expect(catalog.current).toBe(original);
     const successor = createDeferredCore();
     notifyPreparedModelRuntimePublication({ phase: "invalidated", replacement: successor.promise });
+    read.mockClear();
     first.resolve();
     await first.promise;
     await catalog.refresh();
     expect(catalog.current).toBe(original);
     expect(refreshed).not.toHaveBeenCalled();
-    expect(read).not.toHaveBeenCalled();
+    expect(read).toHaveBeenCalledTimes(1);
 
     next = view(8_192);
-    successor.resolve();
-    await successor.promise;
-    notifyPreparedModelRuntimePublication({ phase: "published" });
+    // Complete facts do not need an unrelated replacement gate to settle.
     await catalog.refresh();
     expect(refreshed).toHaveBeenLastCalledWith(new Set());
     expect(catalog.current).toBe(next);
 
+    next = view(16_384);
+    successor.resolve();
+    await successor.promise;
+    await catalog.refresh();
+    expect(refreshed).toHaveBeenLastCalledWith(new Set(["main"]));
+    expect(catalog.current).toBe(next);
+
     // A scoped auth refresh can finish without a global publication.
     notifyPreparedModelRuntimePublication({ phase: "invalidated" });
-    next = view(16_384);
+    next = view(32_768);
     await catalog.refresh();
     expect(refreshed).toHaveBeenLastCalledWith(new Set(["main"]));
     expect(catalog.current).toBe(next);
 
     const failed = createDeferredCore();
+    const completed = catalog.current;
+    refreshed.mockClear();
     notifyPreparedModelRuntimePublication({ phase: "invalidated", replacement: failed.promise });
     next = new Map([
       ["main", undefined],
       ["other", other],
     ]);
     notifyPreparedModelRuntimePublication({ phase: "failed", error: new Error("Refresh failed") });
+    await catalog.refresh();
+    expect(catalog.current).toBe(completed);
+    expect(refreshed).not.toHaveBeenCalled();
+
+    next = view(32_768);
+    await catalog.refresh();
+    expect(refreshed).toHaveBeenLastCalledWith(new Set());
+    next = view(65_536);
     failed.reject(new Error("Refresh failed"));
     await failed.promise.catch(() => {});
     await catalog.refresh();
-    expect(refreshed).toHaveBeenLastCalledWith(undefined);
+    expect(refreshed).toHaveBeenLastCalledWith(new Set(["main"]));
     expect(catalog.current).toBe(next);
 
     next = new Map([["other", other]]);
@@ -163,4 +182,56 @@ it("retains completed catalog facts during runtime replacement and adopts comple
   } finally {
     catalog.dispose();
   }
+});
+
+it.each(["map", "array"] as const)(
+  "adopts complete empty %s after partial startup",
+  async (kind) => {
+    let next: Parameters<typeof createSessionRowProjectionCatalog>[0]["modelCatalog"] = new Map([
+      ["main", undefined],
+    ]);
+    const catalog = createSessionRowProjectionCatalog({
+      getModelCatalog: async () => next,
+      onInvalidated: () => catalog.invalidate(),
+      onRefreshed: vi.fn(),
+    });
+    try {
+      await catalog.refresh();
+      expect(catalog.current).toBe(next);
+      expect(catalog.needsInitialRead).toBe(false);
+      next = new Map([["main", { entries: [] }]]);
+      catalog.invalidate();
+      await catalog.refresh();
+      next = kind === "map" ? new Map() : [];
+      catalog.invalidate();
+      await catalog.refresh();
+      expect(catalog.current).toBe(next);
+    } finally {
+      catalog.dispose();
+    }
+  },
+);
+
+it("ignores held reads and replacement settlements after disposal", async () => {
+  const initial: [] = [];
+  const reading = createDeferredCore<[]>();
+  const replacement = createDeferredCore();
+  const invalidated = vi.fn();
+  const refreshed = vi.fn();
+  const catalog = createSessionRowProjectionCatalog({
+    modelCatalog: initial,
+    getModelCatalog: () => reading.promise,
+    onInvalidated: invalidated,
+    onRefreshed: refreshed,
+  });
+  const pending = catalog.refresh();
+  notifyPreparedModelRuntimePublication({ phase: "invalidated", replacement: replacement.promise });
+  invalidated.mockClear();
+  catalog.dispose();
+  reading.resolve([]);
+  replacement.resolve();
+  await Promise.all([pending, replacement.promise]);
+  expect(catalog.current).toBe(initial);
+  expect(refreshed).not.toHaveBeenCalled();
+  expect(invalidated).not.toHaveBeenCalled();
 });

@@ -36,6 +36,13 @@ function changedModelAgents(previous: Inputs["modelCatalog"], next: Inputs["mode
   return changed;
 }
 
+function isCompleteCatalog(catalog: Inputs["modelCatalog"]) {
+  return (
+    catalog !== undefined &&
+    (!(catalog instanceof Map) || ![...catalog.values()].includes(undefined))
+  );
+}
+
 /** The projection's one catalog snapshot survives asynchronous renewal. */
 export function createSessionRowProjectionCatalog(params: {
   modelCatalog?: Inputs["modelCatalog"];
@@ -46,30 +53,25 @@ export function createSessionRowProjectionCatalog(params: {
   let modelCatalog = params.modelCatalog;
   let catalogDirty = Boolean(params.getModelCatalog);
   let pending: Promise<void> | undefined;
-  let replacement: Promise<void> | undefined;
   let disposed = false;
   const unsubscribe = registerPreparedModelRuntimePublicationListener((event) => {
     if (event.phase === "catalog-status") {
       return;
     }
     if (event.phase === "invalidated" && event.replacement) {
-      replacement = event.replacement;
       const settled = () => {
-        // A superseded reload must not release its successor's catalog gate.
-        if (!disposed && replacement === event.replacement) {
-          replacement = undefined;
+        if (!disposed) {
           params.onInvalidated();
         }
       };
-      // Scoped auth invalidations need not publish globally; only the owner gate can pause reads.
-      void replacement.then(settled, settled).catch(() => {});
+      // Scoped auth invalidations need not publish globally; retry on owner settlement.
+      void event.replacement.then(settled, settled).catch(() => {});
     }
     // An incomplete catalog read still needs the next publication to recover its rows.
     if (
       event.phase !== "failed" &&
       event.modelFactsChanged === false &&
-      modelCatalog !== undefined &&
-      (!(modelCatalog instanceof Map) || ![...modelCatalog.values()].includes(undefined))
+      isCompleteCatalog(modelCatalog)
     ) {
       return;
     }
@@ -91,7 +93,7 @@ export function createSessionRowProjectionCatalog(params: {
       }
     },
     refresh() {
-      if (disposed || !catalogDirty || (replacement && modelCatalog !== undefined)) {
+      if (disposed || !catalogDirty) {
         return Promise.resolve();
       }
       if (pending) {
@@ -99,8 +101,7 @@ export function createSessionRowProjectionCatalog(params: {
       }
       const work = (async () => {
         const next = await params.getModelCatalog?.();
-        // Replacement can begin while the catalog read yields.
-        if (disposed || (replacement && modelCatalog !== undefined)) {
+        if (disposed || (isCompleteCatalog(modelCatalog) && !isCompleteCatalog(next))) {
           return;
         }
         // A concurrent catalog change is adopted by the next publication.

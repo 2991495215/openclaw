@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   refreshModels: vi.fn(),
   replacement: vi.fn(),
   modelSnapshot: vi.fn(),
+  configSnapshot: vi.fn(),
   snapshot: vi.fn(),
   revision: vi.fn(),
   info: vi.fn(),
@@ -71,6 +72,11 @@ vi.mock("../secrets/runtime.js", () => ({
   getActiveSecretsRuntimeSnapshot: mocks.snapshot,
   getActiveSecretsRuntimeSnapshotRevision: mocks.revision,
   refreshActiveSecretsRuntimeSnapshotForConfig: mocks.refreshSecrets,
+}));
+// mock-isolation: Borrowed config reads share the fixture's active publication.
+vi.mock("../secrets/runtime-state.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../secrets/runtime-state.js")>()),
+  getActiveSecretsRuntimeConfigSnapshot: mocks.configSnapshot,
 }));
 // mock-isolation: Capture startup diagnostics without process logging state.
 vi.mock("../logging/subsystem.js", () => ({
@@ -124,6 +130,11 @@ function createFleet(
   mocks.modelSnapshot.mockReturnValue({});
   mocks.migrate.mockImplementation(async ({ assertCurrent }) => assertCurrent());
   mocks.revision.mockImplementation(() => revision);
+  mocks.configSnapshot.mockImplementation(() => ({
+    config: cfg,
+    sourceConfig: cfg,
+    configRefsPrepared: true,
+  }));
   mocks.snapshot.mockImplementation(() => ({
     sourceConfig: cfg,
     authStores: paths.flatMap((databasePath, index) =>
@@ -591,6 +602,41 @@ it.for([
       expect(mocks.opened).toHaveBeenCalledTimes(1);
       expect(mocks.migrate).toHaveBeenCalledTimes(1);
       expect(mocks.refreshSecrets).toHaveBeenCalledTimes(2);
+    });
+  },
+);
+
+it.for(["present", "missing"] as const)(
+  "uses the current credential publication only when its selected auth store is %s",
+  async (authStore, { signal }) => {
+    const fleet = createFleet(["large"]);
+    const refresh = mocks.refreshSecrets.getMockImplementation()!;
+    mocks.refreshSecrets.mockImplementationOnce(async (params) => {
+      const published = await refresh(params);
+      fleet.bumpSecretsRevision();
+      return published;
+    });
+    if (authStore === "missing") {
+      mocks.snapshot.mockReturnValue({ authStores: [] });
+    }
+    mocks.refreshModels.mockImplementation(async (_cfg, { isPublicationCurrent }) => {
+      expect(isPublicationCurrent()).toBe(true);
+    });
+    await fleet.run(async (admission) => {
+      fleet.inspect(0);
+      await withinTest(admission.waitForAgentPreparation("large", fleet)!, signal);
+      if (authStore === "present") {
+        expectAdmission(fleet, "large");
+        expectLog(mocks.info, recoveredMessage, { agentId: "large" });
+        expect(mocks.refreshModels).toHaveBeenCalledTimes(1);
+      } else {
+        expect(readAgentDatabaseAdmissionRefusal("large", fleet)).toMatchObject({
+          code: "agent-database-inspection-failed",
+          reason: expect.stringContaining("has not published its auth store"),
+        });
+        expect(mocks.refreshModels).not.toHaveBeenCalled();
+        expect(mocks.info).not.toHaveBeenCalledWith(recoveredMessage, expect.anything());
+      }
     });
   },
 );

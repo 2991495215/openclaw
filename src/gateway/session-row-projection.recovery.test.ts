@@ -79,7 +79,9 @@ it.for(["cold storage", "index reconciliation"] as const)(
       // Prevent automatic reconciliation from racing the unavailable-reader fixture.
       const previewRead = cold
         ? undefined
-        : vi.spyOn(transcriptBackfill, "backfillSessionRowTranscriptFields").mockResolvedValue({});
+        : vi
+            .spyOn(transcriptBackfill, "backfillSessionRowTranscriptFields")
+            .mockResolvedValue(undefined);
       let initial = await list();
       if (cold) {
         await withinTest(omitted!, signal);

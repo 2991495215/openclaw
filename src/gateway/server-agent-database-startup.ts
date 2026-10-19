@@ -136,10 +136,12 @@ export function activateGatewayAgentDatabaseStartup(params: {
             getActiveSecretsRuntimeSnapshotRevision,
             refreshActiveSecretsRuntimeSnapshotForConfig,
           },
+          { getActiveSecretsRuntimeConfigSnapshot },
         ] = await Promise.all([
           import("../agents/prepared-model-runtime.js"),
           import("../agents/prepared-model-runtime.configured.js"),
           import("../secrets/runtime.js"),
+          import("../secrets/runtime-state.js"),
         ]);
         assertCurrent();
         const beforeConfig = params.getConfig();
@@ -149,7 +151,7 @@ export function activateGatewayAgentDatabaseStartup(params: {
           return;
         }
         const previousSecretsRevision = getActiveSecretsRuntimeSnapshotRevision();
-        const previousSecrets = getActiveSecretsRuntimeSnapshot();
+        const previousSecrets = getActiveSecretsRuntimeConfigSnapshot();
         if (
           !previousSecrets ||
           !(await refreshActiveSecretsRuntimeSnapshotForConfig({
@@ -176,7 +178,6 @@ export function activateGatewayAgentDatabaseStartup(params: {
         const secrets = getActiveSecretsRuntimeSnapshot();
         const authDatabasePath = resolveAuthProfileDatabasePath(resolveAgentDir(cfg, agentId, env));
         if (
-          secretsRevision !== previousSecretsRevision + 1 ||
           !secrets?.authStores.some((entry) =>
             isSameOpenClawAgentDatabasePath(entry.databasePath, authDatabasePath),
           )

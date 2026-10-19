@@ -211,7 +211,7 @@ describe("sessions.search gateway method", () => {
     });
   });
 
-  it("hides a retired session whose visibility changes while its transcript is searched", async () => {
+  it("rejects a superseded retired-session search and allows a fresh request", async () => {
     await withOpenClawTestState(profileState, async () => {
       const { viewer, other } = await useRestrictedSearchMetadata("view");
       using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
@@ -239,7 +239,20 @@ describe("sessions.search gateway method", () => {
         viewer.id,
       );
 
-      expect(respond).toHaveBeenCalledWith(true, { results: [] });
+      expect(respond).toHaveBeenCalledWith(
+        false,
+        undefined,
+        expect.objectContaining({
+          code: "UNAVAILABLE",
+          message: "Session search scope changed while reading; retry the request",
+        }),
+      );
+      const fresh = await callSearch(
+        { agentId: "main", query: "needle" },
+        ["operator.read"],
+        viewer.id,
+      );
+      expect(fresh).toHaveBeenCalledWith(true, { results: [] });
     });
   });
 

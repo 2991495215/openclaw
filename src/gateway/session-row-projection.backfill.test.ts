@@ -756,9 +756,14 @@ it.for(["ready", "readiness failure"])(
   async (mode, { signal }) => {
     const reads = vi
       .spyOn(transcriptBackfill, "backfillSessionRowTranscriptFields")
-      .mockResolvedValue({});
+      .mockResolvedValue({
+        lastMessagePreview: null,
+        lastAssistantMessage: null,
+        terminalModel: null,
+        indexedSeq: null,
+      });
     const rows = new Map<string, EntryRow>(
-      ["first", "second"].map((key) => [
+      ["first", "second"].map((key): [string, EntryRow] => [
         key,
         {
           ...create({
@@ -767,6 +772,12 @@ it.for(["ready", "readiness failure"])(
             storeTarget: { agentId: "main", storePath: "unused" },
           }),
           entry: { sessionId: key, updatedAt: 1 },
+          retainedDatabaseFacts: {
+            sessionKey: key,
+            entry: { sessionId: key, updatedAt: 1 },
+            hasBoard: false,
+            transcriptAssistantMessage: "unknown",
+          },
         },
       ]),
     );
@@ -787,7 +798,8 @@ it.for(["ready", "readiness failure"])(
       publish(row) {
         published.push(row.key);
         if (row.key === "first") {
-          queueMicrotask(() => backfill.prepare(rows.get("second")!, undefined));
+          const next = rows.get("second")!;
+          queueMicrotask(() => backfill.prepare(next, next.retainedDatabaseFacts));
         } else {
           completed.resolve();
         }
@@ -795,13 +807,14 @@ it.for(["ready", "readiness failure"])(
     });
     try {
       backfill.start();
-      backfill.prepare(rows.get("first")!, undefined);
+      const first = rows.get("first")!;
+      backfill.prepare(first, first.retainedDatabaseFacts);
       if (mode !== "ready") {
         await withinTest(paused.promise, signal);
         await nextTurn();
         const row = rows.get("first")!;
         row.entry = { ...row.entry, displayName: "Renamed while waiting" };
-        backfill.prepare(row, undefined);
+        backfill.prepare(row, row.retainedDatabaseFacts);
         await nextTurn();
         expect(published).toContain("first");
       }

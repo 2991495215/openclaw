@@ -271,7 +271,6 @@ export function createManagedReloadSecretHandlers(options: {
     // A deferred channel/plugin reload can overlap secrets.reload. Retry from
     // preparation unless the same active snapshot still owns publication.
     for (;;) {
-      transactionOwnership.assertInvokerOwned?.();
       await transactionOwnership.checkpoint();
       assertReloadPublicationCurrent(transactionOwnership.isCurrent(), false);
       const previousSnapshot = getActiveSecretsRuntimeSnapshotState();

@@ -332,7 +332,6 @@ async function readApprovalStore<T>(
     ...databaseOptions,
     path: databaseOptions?.database?.path ?? databaseOptions?.path,
   });
-  const captured = structuredClone(command);
   const assertOperationCurrent = () => {
     context.admission.assertCurrent();
     guard?.assertCurrent();
@@ -341,12 +340,12 @@ async function readApprovalStore<T>(
   // Preserve creating/writable admission, then use the existing read-only owner.
   return runApprovalStoreOperation(
     context,
-    captured,
+    command,
     async (_scope, preparation) => {
       preparation.assertCurrent();
       assertOperationCurrent();
       preparation.release();
-      const result = await readApprovalStoreCommand(context, captured);
+      const result = await readApprovalStoreCommand(context, command);
       assertOperationCurrent();
       const value = project(result);
       if (value !== undefined) {

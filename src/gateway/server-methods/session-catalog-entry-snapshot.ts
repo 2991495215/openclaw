@@ -65,7 +65,7 @@ const projectedHosts = new WeakMap<
       fallbackAgentId: string;
       adoptionRevision: object | undefined;
       audience: SessionCatalogProvider["audience"];
-      source: string;
+      source: SessionCatalogHost;
       host: SessionCatalogHost;
     }
   >
@@ -252,7 +252,6 @@ export function createSessionCatalogRequestEntrySnapshot(params: {
     },
     entryForSession,
     projectHostSessions: (host, instances, audience) => {
-      const source = JSON.stringify(host);
       const revision = params.projection.sharingRevision;
       const identityRevision = params.projection.state.rowContext.identityProjection?.revision;
       const adoptionRevision = adoptionRevisions.get(instances);
@@ -267,12 +266,15 @@ export function createSessionCatalogRequestEntrySnapshot(params: {
         cached.fallbackAgentId === params.fallbackAgentId &&
         cached.adoptionRevision === adoptionRevision &&
         cached.audience === audience &&
-        cached.source === source
+        isDeepStrictEqual(cached.source, host)
       ) {
         return cached.host;
       }
-      // Providers can update returned objects in place; detach only changed publications.
-      const snapshot: SessionCatalogHost = JSON.parse(source);
+      // Published provider facts are immutable; own only the display fields we rewrite.
+      const snapshot: SessionCatalogHost = {
+        ...host,
+        sessions: host.sessions.map((session) => ({ ...session })),
+      };
       for (const session of snapshot.sessions) {
         const { sessionKey, color: rawColor } = session;
         delete session.sessionKey;
@@ -318,7 +320,7 @@ export function createSessionCatalogRequestEntrySnapshot(params: {
         fallbackAgentId: params.fallbackAgentId,
         adoptionRevision,
         audience,
-        source,
+        source: host,
         host: projected,
       });
       if (hosts.size > 128) {

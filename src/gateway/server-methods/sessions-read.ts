@@ -152,8 +152,7 @@ export const sessionReadHandlers: GatewayRequestHandlers = {
         ? [{ agentId, storePath: resolveSessionStorePathCore(cfg.session?.store, { agentId }) }]
         : await discovery!;
       if (!configured && (searchTargets.length === 0 || scopedSessionKeys?.length === 0)) {
-        respond(true, { results: [] }, undefined);
-        return undefined;
+        return [];
       }
       const entriesByTarget = restrictVisibility
         ? await Promise.all(
@@ -217,56 +216,52 @@ export const sessionReadHandlers: GatewayRequestHandlers = {
       });
     };
     try {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const requests = await prepareSearch();
-        if (!requests) {
-          return;
-        }
-        const targetResults = await Promise.all(
-          requests.map((request) => searchSessionTranscripts(request)),
-        );
-        // Current configuration, identity, and sharing must authorize the whole result page.
-        const current = await prepareSearch();
-        if (!current) {
-          return;
-        }
-        if (JSON.stringify(current) !== JSON.stringify(requests)) {
-          continue;
-        }
-        const archivedTranscriptsExcluded = targetResults.reduce(
-          (count, result) => count + (result.archivedTranscriptsExcluded ?? 0),
-          0,
-        );
-        const limit = params.limit ?? 10;
-        const sortedHits = targetResults
-          .flatMap((result) => result.hits)
-          .toSorted(
-            (left, right) =>
-              right.score - left.score ||
-              right.timestamp - left.timestamp ||
-              left.messageId.localeCompare(right.messageId),
-          );
-        const seenHits = new Set<string>();
-        const hits = sortedHits.filter((hit) => {
-          const identity = `${hit.sessionKey}\u0000${hit.sessionId}\u0000${hit.messageId}`;
-          if (seenHits.has(identity)) {
-            return false;
-          }
-          seenHits.add(identity);
-          return true;
-        });
-        sessionMutationAuthorization?.assertCurrent();
-        respond(true, {
-          results: hits.slice(0, limit),
-          ...(archivedTranscriptsExcluded ? { archivedTranscriptsExcluded } : {}),
-          ...(targetResults.some((result) => result.indexing) ? { indexing: true } : {}),
-          ...(targetResults.some((result) => result.truncated) || hits.length > limit
-            ? { truncated: true }
-            : {}),
-        });
+      const requests = await prepareSearch();
+      if (!requests) {
         return;
       }
-      throw new Error("Session search scope changed while reading; retry the request");
+      const targetResults = await Promise.all(
+        requests.map((request) => searchSessionTranscripts(request)),
+      );
+      // A changed scope rejects the whole page; the caller can retry with its current selection.
+      const current = await prepareSearch();
+      if (!current) {
+        return;
+      }
+      if (JSON.stringify(current) !== JSON.stringify(requests)) {
+        throw new Error("Session search scope changed while reading; retry the request");
+      }
+      const archivedTranscriptsExcluded = targetResults.reduce(
+        (count, result) => count + (result.archivedTranscriptsExcluded ?? 0),
+        0,
+      );
+      const limit = params.limit ?? 10;
+      const sortedHits = targetResults
+        .flatMap((result) => result.hits)
+        .toSorted(
+          (left, right) =>
+            right.score - left.score ||
+            right.timestamp - left.timestamp ||
+            left.messageId.localeCompare(right.messageId),
+        );
+      const seenHits = new Set<string>();
+      const hits = sortedHits.filter((hit) => {
+        const identity = `${hit.sessionKey}\u0000${hit.sessionId}\u0000${hit.messageId}`;
+        if (seenHits.has(identity)) {
+          return false;
+        }
+        seenHits.add(identity);
+        return true;
+      });
+      sessionMutationAuthorization?.assertCurrent();
+      respond(true, {
+        results: hits.slice(0, limit),
+        ...(archivedTranscriptsExcluded ? { archivedTranscriptsExcluded } : {}),
+        ...(targetResults.some((result) => result.indexing) ? { indexing: true } : {}),
+        ...(targetResults.some((result) => result.truncated) || hits.length > limit
+          ? { truncated: true }
+          : {}),
+      });
     } catch (error) {
       if (error instanceof SessionMutationAuthorizationChangedError) {
         throw error;
@@ -313,10 +308,7 @@ export const sessionReadHandlers: GatewayRequestHandlers = {
             client,
             acceptsSerializedJson: args.acceptsSerializedJson,
             diagnostics,
-            onResult: (result) => {
-              assertCurrent();
-              respond(true, result);
-            },
+            onResult: (result) => respond(true, result),
           });
         },
       };

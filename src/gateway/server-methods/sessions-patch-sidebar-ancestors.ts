@@ -71,7 +71,7 @@ export async function prepareSessionPatchSidebarAncestors(params: {
     let matched = 0;
     const visited = new Set<string>();
     while (key && (retained.length === 0 || matched < params.ancestors.length)) {
-      assertCurrent();
+      params.assertCallerCurrent();
       const identity = agentId + "\0" + key;
       if (visited.has(identity) || retained.length >= 256) {
         throw changed();
@@ -80,7 +80,7 @@ export async function prepareSessionPatchSidebarAncestors(params: {
       const read = await prepareSessionMutationFacts({ cfg: params.cfg, sessionKey: key, agentId });
       let adopted = false;
       try {
-        assertCurrent();
+        params.assertCallerCurrent();
         const target = read.readCurrent(params.getCurrentConfig()).target;
         if (!target) {
           throw changed();

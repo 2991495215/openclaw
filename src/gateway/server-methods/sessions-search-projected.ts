@@ -89,99 +89,92 @@ export async function searchProjectedSessionTranscripts(params: {
           right.hit.timestamp - left.hit.timestamp ||
           left.hit.messageId.localeCompare(right.hit.messageId),
       );
-  for (let attempt = 0; attempt < 2; attempt++) {
-    do {
-      await projection.ensureMaterialized();
-      if (params.scope.search?.trim()) {
-        searchIdentities = await prepareSessionSearchIdentityNames(projection, params.scope);
-      }
-    } while (
-      projection.needsMaterialization ||
-      (searchIdentities && searchIdentities.cfg !== projection.state.cfg)
-    );
-    const selected = select();
-    // Filter every physical store before LIMIT. Never dispatch an empty key set.
-    const pages = await Promise.all(
-      [...selected.stores].map(async ([path, { target, rows }]) => ({
-        path,
-        page: await searchSessionTranscripts(
-          {
-            ...target,
-            sessionKeys: [...rows.keys()],
-            query: params.query,
-            match: "prefix",
-            limit,
-          },
-          { agentId: target.agentId, path: target.storePath },
-        ),
-      })),
-    );
-    if (getSessionRowProjection(params.context) !== projection) {
-      throw new Error("Session search owner changed while reading; retry the request");
+  do {
+    await projection.ensureMaterialized();
+    if (params.scope.search?.trim()) {
+      searchIdentities = await prepareSessionSearchIdentityNames(projection, params.scope);
     }
-    if (
-      projection.needsMaterialization ||
-      (searchIdentities && searchIdentities.cfg !== projection.state.cfg)
-    ) {
-      continue;
-    }
-    // Reacquire viewer identity, roles, sharing, and presentation after the await.
-    // A changed scope invalidates the entire page, including counts and truncation.
-    const current = select();
-    if (!sameSelection(selected, current)) {
-      continue;
-    }
-    const hits = matchingHits(current, pages);
-    const matches = hits.slice(0, limit);
-    const matchedRows = new Set(matches.map(({ row }) => row));
-    projection.setArchivePageSize(matchedRows.size);
-    const published = await withReadySessionRows(
-      projection,
-      () =>
-        [...matchedRows].map((row) => ({
-          agentId: row.agentId,
-          key: row.key,
-          storePath: row.storeTarget.storePath,
-        })),
-      (read) => {
-        if (getSessionRowProjection(params.context) !== projection) {
-          throw new Error("Session search owner changed while reading; retry the request");
-        }
-        if (searchIdentities && searchIdentities.cfg !== projection.state.cfg) {
-          return false;
-        }
-        const refreshed = select();
-        if (!sameSelection(selected, refreshed)) {
-          return false;
-        }
-        const sessions = [...matchedRows].flatMap((target) => {
-          const record = read.describe({
-            ...target,
-            storePath: target.storeTarget.storePath,
-          });
-          const row = record && refreshed.presentation.present(record);
-          return row ? [row] : [];
-        });
-        const archivedTranscriptsExcluded = pages.reduce(
-          (count, { page }) => count + (page.archivedTranscriptsExcluded ?? 0),
-          0,
-        );
-        params.onResult({
-          results: matches.map((match) => match.hit),
-          sessions,
-          ...(pages.some(({ page }) => page.indexing) ? { indexing: true } : {}),
-          ...(archivedTranscriptsExcluded ? { archivedTranscriptsExcluded } : {}),
-          ...(hits.length > limit || pages.some(({ page }) => page.truncated)
-            ? { truncated: true }
-            : {}),
-        });
-        return true;
-      },
-      { selection: true },
-    );
-    if (published) {
-      return;
-    }
+  } while (
+    projection.needsMaterialization ||
+    (searchIdentities && searchIdentities.cfg !== projection.state.cfg)
+  );
+  const selected = select();
+  // Filter every physical store before LIMIT. Never dispatch an empty key set.
+  const pages = await Promise.all(
+    [...selected.stores].map(async ([path, { target, rows }]) => ({
+      path,
+      page: await searchSessionTranscripts(
+        {
+          ...target,
+          sessionKeys: [...rows.keys()],
+          query: params.query,
+          match: "prefix",
+          limit,
+        },
+        { agentId: target.agentId, path: target.storePath },
+      ),
+    })),
+  );
+  if (getSessionRowProjection(params.context) !== projection) {
+    throw new Error("Session search owner changed while reading; retry the request");
   }
-  throw new Error("Session search scope changed while reading; retry the request");
+  if (
+    projection.needsMaterialization ||
+    (searchIdentities && searchIdentities.cfg !== projection.state.cfg)
+  ) {
+    throw new Error("Session search scope changed while reading; retry the request");
+  }
+  // Reacquire viewer identity, roles, sharing, and presentation after the await.
+  // A changed scope invalidates the entire page, including counts and truncation.
+  const current = select();
+  if (!sameSelection(selected, current)) {
+    throw new Error("Session search scope changed while reading; retry the request");
+  }
+  const hits = matchingHits(current, pages);
+  const matches = hits.slice(0, limit);
+  const matchedRows = new Set(matches.map(({ row }) => row));
+  projection.setArchivePageSize(matchedRows.size);
+  await withReadySessionRows(
+    projection,
+    () =>
+      [...matchedRows].map((row) => ({
+        agentId: row.agentId,
+        key: row.key,
+        storePath: row.storeTarget.storePath,
+      })),
+    (read) => {
+      if (getSessionRowProjection(params.context) !== projection) {
+        throw new Error("Session search owner changed while reading; retry the request");
+      }
+      if (searchIdentities && searchIdentities.cfg !== projection.state.cfg) {
+        throw new Error("Session search scope changed while reading; retry the request");
+      }
+      const refreshed = select();
+      if (!sameSelection(selected, refreshed)) {
+        throw new Error("Session search scope changed while reading; retry the request");
+      }
+      const sessions = [...matchedRows].flatMap((target) => {
+        const record = read.describe({
+          ...target,
+          storePath: target.storeTarget.storePath,
+        });
+        const row = record && refreshed.presentation.present(record);
+        return row ? [row] : [];
+      });
+      const archivedTranscriptsExcluded = pages.reduce(
+        (count, { page }) => count + (page.archivedTranscriptsExcluded ?? 0),
+        0,
+      );
+      params.onResult({
+        results: matches.map((match) => match.hit),
+        sessions,
+        ...(pages.some(({ page }) => page.indexing) ? { indexing: true } : {}),
+        ...(archivedTranscriptsExcluded ? { archivedTranscriptsExcluded } : {}),
+        ...(hits.length > limit || pages.some(({ page }) => page.truncated)
+          ? { truncated: true }
+          : {}),
+      });
+    },
+    { selection: true },
+  );
 }

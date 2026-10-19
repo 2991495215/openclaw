@@ -437,7 +437,12 @@ it.each(["catalog", "archive"] as const)(
           if (params.sessionKey === target.sessionKey) {
             await completion.promise;
           }
-          return { lastMessagePreview: "Enriched", fallbackModel: undefined };
+          return {
+            lastMessagePreview: "Enriched",
+            lastAssistantMessage: null,
+            terminalModel: null,
+            indexedSeq: null,
+          };
         });
       if (change === "catalog") {
         writeRow("agent:main:live", { sessionId: "live" });

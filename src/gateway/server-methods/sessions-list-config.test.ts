@@ -1,5 +1,6 @@
 import { StatementSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
+import { withinTest } from "../../../test/helpers/promise.js";
 import { observeSqliteReadSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { notifyPreparedModelRuntimePublication } from "../../agents/prepared-model-runtime.publication-events.js";
 import {
@@ -17,11 +18,15 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import * as history from "../../config/sessions/session-transcript-worker-runtime.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
+import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { sessionChanges } from "../../sessions/session-row-changes.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import * as sharedReads from "../../state/openclaw-state-db-readonly.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import type { OperatorScope } from "../operator-scopes.js";
+import { createPreparedGatewayModelCatalog } from "../server-model-catalog-view.js";
+import type { PreparedGatewayModelCatalog } from "../server-model-catalog.types.js";
 import * as projectionWork from "../session-projection-work.js";
 import { bindSessionRowProjection } from "../session-row-projection-access.js";
 import { createSessionRowProjection } from "../session-row-projection.js";
@@ -209,6 +214,127 @@ it("reuses committed row facts when a changed model catalog updates session list
       release();
     }
   }));
+
+it("keeps lists warm through incomplete catalogs and retries both settlements", async ({
+  signal,
+}) => {
+  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    const cfg = config({ model: "unit-test/fixture" });
+    const scopes = ["first", "second"].map((name) => seed(`catalog-settlement-${name}`, {}));
+    const pluginRegistry = createEmptyPluginRegistry();
+    const metadataSnapshot = createPluginMetadataSnapshotFixture();
+    const view = (contextTokens: number) =>
+      new Map([
+        [
+          "main",
+          createPreparedGatewayModelCatalog({
+            config: cfg,
+            entries: [{ id: "fixture", name: "Fixture", provider: "unit-test", contextTokens }],
+            pluginRegistry,
+            metadataSnapshot,
+          }),
+        ],
+      ]);
+    let next: Map<string, PreparedGatewayModelCatalog | undefined> = view(8_192);
+    const reading = createDeferredCore<typeof next>();
+    const requested = createDeferredCore();
+    const replacement = createDeferredCore();
+    const failed = createDeferredCore();
+    let held = false;
+    const release = projectionWork.retainSessionListForegroundWork();
+    const projection = await createSessionRowProjection({
+      cfg,
+      getModelCatalog: () => {
+        if (held) {
+          requested.resolve();
+          return reading.promise;
+        }
+        return Promise.resolve(next);
+      },
+    });
+    const context = bindSessionRowProjection(requestContext(cfg), () => projection);
+    const client = identifiedClient("viewer");
+    const list = () => listSessions({ context, client, request: {} });
+    const sequences = () =>
+      scopes.map(
+        (scope) =>
+          projection.capture({ agentId: "main", key: scope.sessionKey })?.materializedSequence,
+      );
+    try {
+      const original = await list();
+      expect(original.sessions.map((row) => row.contextTokens)).toEqual([8_192, 8_192]);
+      expect(original.sessions.map((row) => row.model)).toEqual(["fixture", "fixture"]);
+      const materialized = sequences();
+      const count = projection.materializedCount;
+      const reads: string[] = [];
+      observeRowFacts(reads);
+      const shared = vi.spyOn(sharedReads, "executeExistingOpenClawStateRead");
+      const hostReads = observeSqliteReadSql(StatementSync.prototype);
+      try {
+        held = true;
+        sessionChanges.emit({ all: true, scope: "catalog" });
+        const listing = list();
+        await withinTest(requested.promise, signal);
+        notifyPreparedModelRuntimePublication({
+          phase: "invalidated",
+          replacement: replacement.promise,
+        });
+        held = false;
+        next = new Map([["main", undefined]]);
+        reading.resolve(next);
+        expect((await listing).sessions.map((row) => row.contextTokens)).toEqual([8_192, 8_192]);
+        expect((await list()).sessions.map((row) => row.contextTokens)).toEqual([8_192, 8_192]);
+        expect(sequences()).toEqual(materialized);
+        expect(projection.materializedCount).toBe(count);
+
+        // A complete equivalent view can be adopted before the replacement settles.
+        next = view(8_192);
+        await list();
+        expect(sequences()).toEqual(materialized);
+        expect(projection.materializedCount).toBe(count);
+        next = view(16_384);
+        replacement.resolve();
+        await replacement.promise;
+        // No final global publication: the original owner's settlement requests this refresh.
+        expect((await list()).sessions.map((row) => row.contextTokens)).toEqual([16_384, 16_384]);
+
+        const renewed = sequences();
+        const renewedCount = projection.materializedCount;
+        next = new Map([["main", undefined]]);
+        notifyPreparedModelRuntimePublication({
+          phase: "invalidated",
+          replacement: failed.promise,
+        });
+        expect((await list()).sessions.map((row) => row.contextTokens)).toEqual([16_384, 16_384]);
+        expect(sequences()).toEqual(renewed);
+        expect(projection.materializedCount).toBe(renewedCount);
+        next = view(16_384);
+        await list();
+        next = view(32_768);
+        failed.reject(new Error("Synthetic replacement failure"));
+        await failed.promise.catch(() => {});
+        const recovered = await list();
+        expect(recovered.sessions.map((row) => row.contextTokens)).toEqual([32_768, 32_768]);
+        expect(recovered.sessions.map((row) => row.model)).toEqual(["fixture", "fixture"]);
+        expect([
+          reads,
+          shared.mock.calls.filter(([, command]) => command.type === "sessionRows.sharedFacts"),
+          hostReads.queries.filter((sql) =>
+            /session_nodes|board_tabs|transcript_rewrite_watermarks|acp_sessions/.test(sql),
+          ),
+        ]).toEqual([[], [], []]);
+      } finally {
+        hostReads.restore();
+      }
+    } finally {
+      reading.resolve(next);
+      replacement.resolve();
+      failed.resolve();
+      projection.dispose();
+      release();
+    }
+  });
+});
 
 it("retains session facts on identity-scope changes and refreshes changes that affect the rows", () =>
   withOpenClawTestState({ scenario: "minimal" }, async () => {

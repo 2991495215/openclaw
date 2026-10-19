@@ -28,7 +28,7 @@ type ApprovalClient = {
   connId?: string | null;
   isDeviceTokenAuth?: boolean;
   connect?: {
-    scopes?: unknown;
+    scopes?: readonly string[];
     client?: { id?: string | null; mode?: string | null } | null;
     device?: { id?: string | null } | null;
   } | null;
@@ -55,7 +55,7 @@ function normalizeApprovalDecision(value: unknown): "allow-once" | "allow-always
 }
 
 function clientHasApprovals(client: ApprovalClient | null): boolean {
-  const scopes = Array.isArray(client?.connect?.scopes) ? client?.connect?.scopes : [];
+  const scopes = client?.connect?.scopes ?? [];
   return scopes.includes("operator.admin") || scopes.includes("operator.approvals");
 }
 

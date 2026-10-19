@@ -478,7 +478,6 @@ export function startGatewayConfigReloader(
       currentCompareConfig,
       nextCompareConfig,
     );
-    await checkpoint();
     const previousPluginInstallConfig = withPluginInstallRecords({}, currentPluginInstallRecords);
     const nextPluginInstallConfig = withPluginInstallRecords({}, nextPluginInstallRecords);
     const pluginInstallRecordChangedPaths = diffConfigPaths(

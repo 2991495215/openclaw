@@ -69,7 +69,7 @@ export async function backfillSessionRowTranscriptFields(params: BackfillParams)
   const execution = captureOpenClawAgentDatabaseExecution(options);
   const source = createSessionWorkerExecutionSource(() => {}, "Session row backfill retired");
   try {
-    const fields = await runOpenClawAgentWorkerWrite(
+    return await runOpenClawAgentWorkerWrite(
       options,
       () =>
         execution.runExisting(source, (worker) =>
@@ -79,7 +79,6 @@ export async function backfillSessionRowTranscriptFields(params: BackfillParams)
       undefined,
       "background",
     );
-    return fields ? presentSessionRowTranscriptFields(params, fields) : undefined;
   } finally {
     await execution.release();
   }

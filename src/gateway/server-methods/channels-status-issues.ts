@@ -29,7 +29,7 @@ export function collectGatewayChannelStatusIssues(params: {
   payload: Record<string, unknown>;
   plugins: readonly ChannelPlugin[];
   reloadingChannels?: ReadonlyMap<ChannelId, string | undefined>;
-  defaultAccountIds: Record<string, unknown>;
+  defaultAccountIds: Readonly<Record<string, string>>;
   context: GatewayRequestContext;
   warnings: string[];
 }): ChannelStatusIssue[] {
@@ -48,7 +48,7 @@ export function collectGatewayChannelStatusIssues(params: {
     const deferredIssue = resolveDeferredChannelReloadIssue(
       params.context,
       plugin.id,
-      typeof defaultAccountId === "string" ? defaultAccountId : DEFAULT_ACCOUNT_ID,
+      defaultAccountId ?? DEFAULT_ACCOUNT_ID,
     );
     if (deferredIssue) {
       issues.push(deferredIssue);

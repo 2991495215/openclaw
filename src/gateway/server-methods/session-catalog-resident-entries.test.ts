@@ -136,7 +136,7 @@ async function withCatalog(
 
 it("reads clean local catalog entries from the resident owner without SQLite", () =>
   withCatalog(async ({ list, setList }) => {
-    const retainedHosts = hosts([session({ pullRequest: { numbers: [1], state: "open" } })]);
+    let retainedHosts = hosts([session({ pullRequest: { numbers: [1], state: "open" } })]);
     setList(async () => retainedHosts);
     const first = await list();
     expect(payload(first)).toMatchObject({
@@ -149,14 +149,20 @@ it("reads clean local catalog entries from the resident owner without SQLite", (
     expect(payload(second)).toEqual(payload(first));
     const originalHost = firstHost(first);
     expect(firstHost(second)).toBe(originalHost);
-    for (const value of [originalHost, originalHost.sessions, originalHost.sessions[0]]) {
+    for (const value of [
+      originalHost,
+      originalHost.sessions,
+      originalHost.sessions[0],
+      originalHost.sessions[0]?.pullRequest,
+      originalHost.sessions[0]?.pullRequest?.numbers,
+    ]) {
       expect(Object.isFrozen(value)).toBe(true);
     }
     for (const read of reads) {
       expect(read).not.toHaveBeenCalled();
     }
+    retainedHosts = hosts([session({ pullRequest: { numbers: [1, 2], state: "open" } })]);
     retainedHosts[0]!.label = "Updated provider label";
-    retainedHosts[0]!.sessions[0]!.pullRequest!.numbers.push(2);
     const mutatedHost = firstHost(await list());
     expect(mutatedHost).not.toBe(originalHost);
     expectSnapshot(mutatedHost, "Updated provider label", [1, 2]);

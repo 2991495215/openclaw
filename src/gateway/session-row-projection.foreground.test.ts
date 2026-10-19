@@ -133,7 +133,7 @@ function holdBackfillPublication(signal?: AbortSignal) {
   };
 }
 
-it("publishes legacy transcript previews without acquiring stored row facts again", async () => {
+it("retries a replaced metadata snapshot without restoring its held backfill or reloading row facts", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     setRuntimeConfigSnapshot(cfg);
     const { scope, query } = await seedPreview(
@@ -156,8 +156,10 @@ it("publishes legacy transcript previews without acquiring stored row facts agai
       projection.describe(query);
       releaseForeground();
       await backfill.prepared;
+      const originalFacts = projection.capture(query)?.retainedDatabaseFacts;
       await sessions.patchSessionEntryCore(scope, () => ({ displayName: "Renamed while reading" }));
       await projection.ensureMaterialized();
+      expect(projection.capture(query)?.retainedDatabaseFacts).not.toBe(originalFacts);
       const stored = structuredClone(sessions.loadSessionEntry(scope));
       expect(projection.dirtyRowCount).toBe(0);
       expect(reads).toHaveBeenCalled();
@@ -176,6 +178,10 @@ it("publishes legacy transcript previews without acquiring stored row facts agai
       try {
         await backfill.publish();
         await projection.ensureMaterialized();
+        // The old read belongs to the replaced facts object, not the renamed row.
+        expect(preview(projection, query)).toBeUndefined();
+        await backfill.publishAvailable();
+        expect(transcriptBackfill.backfillSessionRowTranscriptFields).toHaveBeenCalledTimes(2);
         expect(
           hostReads.queries.filter((sql) =>
             /session_nodes|session_members|board_tabs|transcript_rewrite_watermarks/.test(sql),
@@ -291,7 +297,7 @@ it("retains transcript previews across metadata edits and consumes committed ali
   });
 });
 
-it("reuses an unknown preview until a committed transcript watermark changes", async () => {
+it("retains completed raw preview facts until a committed transcript watermark changes", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     setRuntimeConfigSnapshot(cfg);
     const { scope, query } = await seedPreview("preview-notifications", "Original preview", cfg);
@@ -303,7 +309,11 @@ it("reuses an unknown preview until a committed transcript watermark changes", a
       await projection.ensureMaterialized();
       projection.describe(query);
       await initial;
-      expect(projection.capture(query)?.retainedDatabaseFacts?.transcriptPreview).toBeUndefined();
+      expect(projection.capture(query)?.retainedDatabaseFacts).toMatchObject({
+        transcriptPreview: "Original preview",
+        transcriptAssistantMessage: null,
+        transcriptTerminalModel: null,
+      });
       expect(backfill).toHaveBeenCalledTimes(1);
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 

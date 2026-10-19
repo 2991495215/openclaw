@@ -61,7 +61,7 @@ export function buildPublicModelProjection(
     ...(entry.contextWindows ? { contextWindows: entry.contextWindows } : {}),
     ...(entry.contextWindowDefault ? { contextWindowDefault: entry.contextWindowDefault } : {}),
     ...(typeof entry.reasoning === "boolean" ? { reasoning: entry.reasoning } : {}),
-    ...(typeof entry.compat?.supportsTools === "boolean"
+    ...(entry.compat?.supportsTools !== undefined
       ? { supportsTools: entry.compat.supportsTools }
       : {}),
   };

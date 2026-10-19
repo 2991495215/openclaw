@@ -16,15 +16,20 @@ import {
   projectSessionRowAssistantMessage,
   SESSION_ROW_TRANSCRIPT_PREVIEW_MAX_BYTES,
   SESSION_ROW_TRANSCRIPT_TERMINAL_MAX_BYTES,
+  type SessionRowAssistantMessage,
   type SessionRowTranscriptProjection,
 } from "./session-row-transcript-preview.js";
 import { sqliteMessageEventWithSeq } from "./session-transcript-entry-message.js";
+
+type BackfilledTranscriptFields = SessionRowTranscriptProjection & {
+  lastAssistantMessage: SessionRowAssistantMessage | null;
+};
 
 /** Read and persist bounded derived facts in the existing writer's transaction. */
 export function backfillSessionRowTranscriptFieldsInDatabase(
   database: OpenClawAgentDatabase,
   params: SessionRowTranscriptReadParams,
-): SessionRowTranscriptProjection | undefined {
+): BackfilledTranscriptFields | undefined {
   const transcriptScope = { ...params, agentId: params.storeAgentId ?? params.agentId };
   try {
     return withCurrentProjectionSnapshot(
@@ -44,7 +49,7 @@ export function backfillSessionRowTranscriptFieldsInDatabase(
                 offset: 0,
               }).events[0]?.event
             : undefined;
-        const fields: SessionRowTranscriptProjection = {
+        const fields: BackfilledTranscriptFields = {
           lastMessagePreview: null,
           lastAssistantMessage: null,
           terminalModel: readSessionTranscriptTerminalModel(terminalEvent),

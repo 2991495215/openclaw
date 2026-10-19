@@ -267,12 +267,7 @@ type NodeCommandPolicyNode = {
 };
 
 function isLiveNodeSession(node: NodeCommandPolicyNode | undefined): boolean {
-  return (
-    typeof node?.nodeId === "string" &&
-    node.nodeId.trim() !== "" &&
-    typeof node.connId === "string" &&
-    node.connId.trim() !== ""
-  );
+  return Boolean(normalizeOptionalString(node?.nodeId) && normalizeOptionalString(node?.connId));
 }
 
 function hasTalkSurface(node?: NodeCommandPolicyNode): boolean {

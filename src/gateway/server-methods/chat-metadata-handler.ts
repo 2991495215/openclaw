@@ -191,7 +191,6 @@ export const handleChatMetadataRequest = createPreparedReadHandler(
         run: async (respond) => {
           const metadata = await context.readChatMetadata(readScope);
           const publish = () => {
-            assertCurrent();
             const cfg = context.getRuntimeConfig();
             const policy =
               metadata.models &&

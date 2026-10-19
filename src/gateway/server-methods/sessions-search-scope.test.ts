@@ -421,7 +421,7 @@ test("scope rechecks sharing after readiness and reports FTS failure instead of 
   });
 });
 
-test("search discards hits and page metadata when sharing is revoked during its worker read", async () => {
+test("search rejects superseded hits and page metadata, then admits a fresh request", async () => {
   await withSearchState(async () => {
     const viewer = ensureProfileForEmail("worker-search@example.test").id;
     const context = requestContext({
@@ -452,12 +452,22 @@ test("search discards hits and page metadata when sharing is revoked during its 
           return { ...result, indexing: true, truncated: true, archivedTranscriptsExcluded: 7 };
         });
       try {
-        const response = await search(context, client, {
+        const params = {
           query: "needle",
           ...(scoped ? { scope: {} } : { sessionKeys: [key] }),
+        };
+        const response = await search(context, client, params);
+        expect(response).toMatchObject({
+          ok: false,
+          error: {
+            code: "UNAVAILABLE",
+            message: "Session search scope changed while reading; retry the request",
+          },
         });
-        expect(response.ok).toBe(true);
-        expect(response.payload).toEqual({ results: [], ...(scoped ? { sessions: [] } : {}) });
+        expect(response.payload).toBeUndefined();
+        const fresh = await search(context, client, params);
+        expect(fresh.ok, fresh.error?.message).toBe(true);
+        expect(fresh.payload).toEqual({ results: [], ...(scoped ? { sessions: [] } : {}) });
       } finally {
         spy.mockRestore();
       }
@@ -508,6 +518,15 @@ test("search prepares the full scope and rechecks visibility while materializing
         return prepare(queries, consume, options);
       },
     );
+    const superseded = await search(context, client, params);
+    expect(superseded).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNAVAILABLE",
+        message: "Session search scope changed while reading; retry the request",
+      },
+    });
+    expect(superseded.payload).toBeUndefined();
     expect(await search(context, client, params)).toMatchObject({
       ok: true,
       payload: { results: [], sessions: [] },

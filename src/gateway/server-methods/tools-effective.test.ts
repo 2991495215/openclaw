@@ -549,6 +549,25 @@ describe("tools.effective handler", () => {
     expectResponsesOk(first.respond, second.respond);
   });
 
+  it("coerces a failed refresh and releases its model context before the next request", async () => {
+    runtimeMocks.resolveEffectiveToolInventory.mockRejectedValueOnce("inventory unavailable");
+    const first = createInvokeParams({ sessionKey: "main:abc" });
+    await first.invoke();
+    expect(firstRespondCall(first.respond)).toMatchObject([
+      false,
+      undefined,
+      { code: ErrorCodes.UNAVAILABLE, message: expect.stringContaining("Error:") },
+    ]);
+    const acquired =
+      await runtimeMocks.acquireEffectiveToolInventoryRuntimeModelContext.mock.results[0]!.value;
+    expect(acquired[Symbol.asyncDispose]).toHaveBeenCalledOnce();
+
+    const next = createInvokeParams({ sessionKey: "main:abc" });
+    await next.invoke();
+    expectResponsesOk(next.respond);
+    expect(runtimeMocks.resolveEffectiveToolInventory).toHaveBeenCalledTimes(2);
+  });
+
   it("returns stale cached base inventory immediately while refreshing in the background", async () => {
     let now = 1_000;
     const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
