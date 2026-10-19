@@ -61,7 +61,7 @@ export class ShellPanelOwner {
     const sessionRoute = isSessionRouteId(host.routeState.routeId);
     const terminalAvailable = isTerminalAvailable(
       gatewaySnapshot,
-      context.config.current.terminalEnabled ?? false,
+      context.config.current.terminalEnabled,
     );
     const browserAvailable = !sessionRoute && isBrowserPanelSurfaceAvailable(gatewaySnapshot);
     for (const [element, layout, available] of [
@@ -109,7 +109,7 @@ export class ShellPanelOwner {
     if (
       !snapshot ||
       !(panel === "terminal"
-        ? isTerminalAvailable(snapshot, context.config.current.terminalEnabled ?? false)
+        ? isTerminalAvailable(snapshot, context.config.current.terminalEnabled)
         : isBrowserPanelSurfaceAvailable(snapshot))
     ) {
       event.preventDefault();

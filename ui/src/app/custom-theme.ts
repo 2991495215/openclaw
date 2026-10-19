@@ -176,19 +176,14 @@ export function parseImportedCustomTheme(value: unknown): ImportedCustomTheme | 
 }
 
 function buildCustomThemeStyles(theme: Pick<ImportedCustomTheme, "light" | "dark">) {
-  const light = normalizeStoredTokenMap(theme.light);
-  const dark = normalizeStoredTokenMap(theme.dark);
-  if (!light || !dark) {
-    throw new Error("Stored custom theme is missing required tokens.");
-  }
   const renderDeclarations = (modeTokens: ThemeTokenMap) =>
     MODE_TOKEN_ORDER.map((key) => `  --${key}: ${modeTokens[key]};`).join("\n");
   return [
     `:root[data-theme="custom"] {`,
-    renderDeclarations(dark),
+    renderDeclarations(theme.dark),
     `}`,
     `:root[data-theme="custom-light"] {`,
-    renderDeclarations(light),
+    renderDeclarations(theme.light),
     `}`,
   ].join("\n");
 }
@@ -204,13 +199,7 @@ export function syncCustomThemeStyleTag(
     style?.remove();
     return;
   }
-  let cssText;
-  try {
-    cssText = buildCustomThemeStyles(theme);
-  } catch {
-    style?.remove();
-    return;
-  }
+  const cssText = buildCustomThemeStyles(theme);
   if (!style) {
     style = document.createElement("style");
     style.id = CUSTOM_THEME_STYLE_ID;

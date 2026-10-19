@@ -68,7 +68,6 @@ import {
   retireCachedPairingQr,
 } from "./session-message-cache.ts";
 import { migrateLegacyDockVisibility } from "./sidebar-layout-legacy-migration.ts";
-import { normalizeSidebarLayout } from "./sidebar-layout.ts";
 import { resetToolStream } from "./tool-stream-state.ts";
 import { reconcileWaitingApprovalsFromSnapshot } from "./tool-stream-status.ts";
 
@@ -573,9 +572,7 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
       });
       const persistedLayout = sidebarSettings.sidebarSessionLayouts?.[sidebarSessionKey];
       if (persistedLayout !== undefined) {
-        state.sidebarLayout = this.restorePaneSidebarLayout(
-          normalizeSidebarLayout(persistedLayout),
-        );
+        state.sidebarLayout = this.restorePaneSidebarLayout(persistedLayout);
       } else if (layoutClientChanged) {
         state.sidebarLayout = { columns: [] };
       } else if (sidebarKeyChanged && state.sidebarLayout.columns.length > 0) {

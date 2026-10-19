@@ -40,7 +40,10 @@ describe("session speech bubbles", () => {
       "agent:main:matrix:channel:!AbC:host",
     ]);
     expect(isChatBubbleMode(settings, "agent:main:matrix:channel:!abc:host", true)).toBe(false);
-    expect(setChatBubbleMode(settings, "agent:main:main", false)).toEqual({
+    const loaded = {
+      chatBubbleSessionKeys: normalizeChatBubbleSessionKeys(settings.chatBubbleSessionKeys),
+    };
+    expect(setChatBubbleMode(loaded, "agent:main:main", false)).toEqual({
       chatBubbleSessionKeys: ["agent:main:matrix:channel:!AbC:host"],
       chatBubbleDisabledSessionKeys: ["agent:main:main"],
     });
