@@ -3,11 +3,17 @@ import type { UserConfig } from "tsdown";
 /** Keep runtime chunking independent from declaration graph construction. */
 export function splitTsdownPackageConfig(
   config: UserConfig,
-  emitDeclarations: boolean,
+  declarations: UserConfig["dts"],
 ): UserConfig[] {
   const runtimeConfig = { ...config, dts: false } satisfies UserConfig;
-  if (!emitDeclarations) {
+  if (!declarations) {
     return [runtimeConfig];
   }
-  return [runtimeConfig, { ...config, dts: { emitDtsOnly: true } }];
+  return [
+    runtimeConfig,
+    {
+      ...config,
+      dts: { ...(typeof declarations === "object" ? declarations : {}), emitDtsOnly: true },
+    },
+  ];
 }

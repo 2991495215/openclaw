@@ -10,6 +10,8 @@ import {
   declarationInputs,
   expectStagingClean,
   runFixture,
+  runFixtureModule,
+  runPackageCacheBuild,
   runUnifiedBuild,
   runUnifiedWriter,
   treeHashes,
@@ -135,6 +137,101 @@ describe("write-unified-entry-dts", () => {
       realpath.mockRestore();
     }
   });
+
+  it("reuses declarations after AI and workspace runtime graphs rebuild", ({ command }) =>
+    command.lifetime.run(async () => {
+      const { root, write } = createFixture(command, TSDOWN_UNIFIED_DTS_CONFIG_GROUPS, undefined, [
+        "tsdown.ai.config.ts",
+      ]);
+      for (const [packageName, entryNames] of [
+        ["ai", ["index", "providers"]],
+        ["llm-core", ["index", "types"]],
+      ] as const) {
+        const alias = path.join(root, "examples/ai-chat/node_modules/@openclaw", packageName);
+        fs.mkdirSync(path.dirname(alias), { recursive: true });
+        fs.symlinkSync(path.join(root, "packages", packageName), alias, "junction");
+        write(
+          `packages/${packageName}/src/internal/cache-shared.ts`,
+          `export const cacheIdentity = ${JSON.stringify(packageName)};\n`,
+        );
+        for (const entryName of entryNames) {
+          write(
+            `packages/${packageName}/src/${entryName}.ts`,
+            [
+              'export * as cacheNamespace from "./internal/cache-shared.js";',
+              'export const loadCacheNamespace = () => import("./internal/cache-shared.js");',
+            ].join("\n"),
+          );
+        }
+      }
+      const initial = await runPackageCacheBuild(command, root);
+      expect(initial.status, initial.stdout + initial.stderr).toBe(0);
+      const snapshot = () =>
+        Object.fromEntries(
+          ["ai", "llm-core"].map((name) => [
+            name,
+            treeHashes(path.join(root, "packages", name, "dist")),
+          ]),
+        );
+      const expected = snapshot();
+      const unified = treeHashes(path.join(root, "dist"));
+      for (const files of Object.values(expected)) {
+        expect(Object.keys(files).some((name) => /cache-shared-.*\.[cm]?js$/u.test(name))).toBe(
+          true,
+        );
+        expect(Object.keys(files).some((name) => /\.d\.[cm]?ts$/u.test(name))).toBe(true);
+      }
+      expect(Object.keys(expected["llm-core"]!).some((name) => name.endsWith(".map"))).toBe(true);
+      const expectReuse = async (result: Awaited<ReturnType<typeof runPackageCacheBuild>>) => {
+        expect(result.status, result.stdout + result.stderr).toBe(0);
+        for (const group of TSDOWN_UNIFIED_DTS_CONFIG_GROUPS) {
+          expect(result.stdout + result.stderr).toContain(
+            `[tsdown-unified] ${group}: cache hit (fresh-cache)`,
+          );
+        }
+        expect(snapshot()).toEqual(expected);
+        expect(treeHashes(path.join(root, "dist"))).toEqual(unified);
+        const imported = await runFixtureModule(
+          command,
+          root,
+          `
+import assert from "node:assert/strict";
+for (const name of ["ai", "llm-core"]) {
+  const output = await import("./packages/" + name + "/dist/index.mjs");
+  assert.equal(output.cacheNamespace.cacheIdentity, name);
+  assert.equal((await output.loadCacheNamespace()).cacheIdentity, name);
+}
+`,
+        );
+        expect(imported.status, imported.stdout + imported.stderr).toBe(0);
+        expectStagingClean(root);
+      };
+      // A cache hit must restore declarations, not just report a matching signature.
+      for (const [name, files] of Object.entries(expected)) {
+        for (const file of Object.keys(files).filter((entry) => /\.d\.[cm]?ts$/u.test(entry))) {
+          fs.rmSync(path.join(root, "packages", name, "dist", file));
+        }
+      }
+      await expectReuse(await runPackageCacheBuild(command, root));
+      for (const [miss, hit, runtimeHit] of [
+        ["tsdown-ai", "tsdown-packages", "llm-core"],
+        ["tsdown-packages", "tsdown-ai", "ai"],
+      ]) {
+        fs.rmSync(path.join(root, ".artifacts/build-all-cache", miss!), { recursive: true });
+        const result = await runPackageCacheBuild(command, root);
+        expect(result.stderr).not.toContain(`[build-all] ${miss} (cache restored)`);
+        expect(result.stderr).toContain(`[build-all] ${hit} (cache restored)`);
+        expect(result.stdout + result.stderr).toContain(
+          `[tsdown-cache] tsdown-runtime-${runtimeHit}: reused`,
+        );
+        await expectReuse(result);
+      }
+      const uncached = await runPackageCacheBuild(command, root, ["tsdown-ai", "tsdown-packages"], {
+        OPENCLAW_BUILD_CACHE: "0",
+      });
+      expect(uncached.status, uncached.stdout + uncached.stderr).toBe(0);
+      await expectReuse(await runPackageCacheBuild(command, root, ["write-unified-entry-dts"]));
+    }));
 
   it("compiles declarations once and restores them while rebuilding runtime after input edits", ({
     command,

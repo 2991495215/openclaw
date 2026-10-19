@@ -2,6 +2,7 @@
 // the already-parallel main package graph.
 import type { UserConfig } from "tsdown";
 import { createDeclarationBoundaryHooks } from "./scripts/lib/tsdown-declaration-boundary.mts";
+import { splitTsdownPackageConfig } from "./scripts/lib/tsdown-package-config.mts";
 import { cacheTsdownRuntimeConfigs } from "./scripts/lib/tsdown-runtime-cache.mts";
 
 const externalDependencies = [
@@ -62,4 +63,4 @@ const config = {
   },
 } satisfies UserConfig;
 
-export default cacheTsdownRuntimeConfigs([config])[0]!;
+export default cacheTsdownRuntimeConfigs(splitTsdownPackageConfig(config, config.dts));
