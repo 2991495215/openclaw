@@ -17,7 +17,7 @@ import { canonicalModelAuthProviderId, loadModelAuthStatus } from "../../lib/mod
 import { ModelCatalogReader } from "../../lib/model-catalog-reader.ts";
 import { readAgentModelCatalog } from "../../lib/model-catalog-store.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
-import { projectSource } from "../../lib/reactive/projection.ts";
+import { projectMutableSource } from "../../lib/reactive/projection.ts";
 import { openPreferredApplicationSession } from "../../lib/sessions/route-navigation.ts";
 import type { ModelSetupWizardCompletion } from "../model-setup/wizard-runner.ts";
 import type { ModelProviderRowMessage } from "./config-mutation.ts";
@@ -42,8 +42,8 @@ type LoginOptions = {
 };
 
 export function createModelProviderLogin(options: LoginOptions) {
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((listener) => listener());
+  let notifyView = () => {};
+  const notify = () => notifyView();
   const [query, setQuery] = createSignal("");
   const [providerSelection, setProvider] = createSignal("");
   let currentPicker:
@@ -101,22 +101,8 @@ export function createModelProviderLogin(options: LoginOptions) {
       notify();
     },
   });
-  const view = projectSource(null, {
-    read: () => ({
-      picker: currentPicker,
-      mutationActive,
-      refreshWarning,
-      message,
-      loginMode,
-      completionModel,
-      startingChat,
-    }),
-    subscribe: (_, listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    equality: "revision",
-  });
+  const view = projectMutableSource(null, () => null);
+  notifyView = view.publish;
 
   function busy(): boolean {
     view.read();
@@ -362,7 +348,7 @@ export function createModelProviderLogin(options: LoginOptions) {
     }
   }
   onCleanup(() => {
-    listeners.clear();
+    notifyView = () => {};
     generation += 1;
     startChatRequest?.abort();
     inventoryRequest?.abort();

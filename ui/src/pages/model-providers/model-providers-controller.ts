@@ -15,7 +15,7 @@ import {
 } from "../../lib/reactive/application.ts";
 import { projectAgents, projectRuntimeConfig } from "../../lib/reactive/domain-capabilities.ts";
 import { i18nRevision, t } from "../../lib/reactive/i18n.ts";
-import { projectSource } from "../../lib/reactive/projection.ts";
+import { projectMutableSource } from "../../lib/reactive/projection.ts";
 import { UsageRefreshPolicy } from "../usage/refresh-policy.ts";
 import type { ModelAccountUsageElement } from "./account-usage.tsx";
 import {
@@ -52,8 +52,8 @@ export function createModelProviders(
   const gatewayState = projectGateway(context.gateway);
   const selection = projectAgentSelection(context.settingsAgentSelection);
   const overlays = projectOverlays(context.overlays);
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((listener) => listener());
+  let notifyView = () => {};
+  const notify = () => notifyView();
   const mutationBlockedReason = (): string | null =>
     modelProviderConfigMutationBlockedReason(context) ??
     (state.selectedAgentId ? null : t("agents.noAgents"));
@@ -226,14 +226,8 @@ export function createModelProviders(
     canContinue: () => mutationBlockedReason() === null,
     refresh: (providerId) => refresh("replacement", providerId),
   });
-  const projection = projectSource(state, {
-    read: (value) => value,
-    subscribe: (_, listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    equality: "revision",
-  });
+  const projection = projectMutableSource(state, (value) => value);
+  notifyView = projection.publish;
   let previousRouteData: ModelProvidersRouteData | undefined;
   let previousLoaderPending: boolean | undefined;
 
@@ -336,7 +330,7 @@ export function createModelProviders(
     syncAgent();
     synchronizeRoute(inputs.routeData, inputs.loaderPending ?? false);
     return () => {
-      listeners.clear();
+      notifyView = () => {};
       connected = false;
       for (const cleanup of cleanups) {
         cleanup();

@@ -19,7 +19,7 @@ import { createPageRequest } from "../../lib/page-request.ts";
 import { projectGateway } from "../../lib/reactive/application.ts";
 import { projectRuntimeConfig } from "../../lib/reactive/domain-capabilities.ts";
 import { i18nRevision, t } from "../../lib/reactive/i18n.ts";
-import { projectOwner, projectSource } from "../../lib/reactive/projection.ts";
+import { projectMutableSource, projectOwner } from "../../lib/reactive/projection.ts";
 import {
   modelProviderConfigBusy,
   modelProviderConfigMutationBlockedReason,
@@ -55,8 +55,8 @@ export function createInstalledAgents(options: InstalledAgentsOptions) {
   const gatewayState = projectGateway(context.gateway);
   const config = projectRuntimeConfig(context.runtimeConfig);
   const overlays = projectOwner(context.overlays, (source) => source.snapshot);
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((listener) => listener());
+  let notifyView = () => {};
+  const notify = () => notifyView();
   let installed: InstalledAgent[] | null = null;
   let listClient: GatewayBrowserClient | null | undefined;
   let listEpoch = -1;
@@ -111,21 +111,15 @@ export function createInstalledAgents(options: InstalledAgentsOptions) {
     sessionExpiredMessage: () => t("modelProviders.installedAgents.sessionExpired"),
     finishingMessage: () => t("modelProviders.saving"),
   });
-  const projection = projectSource(null, {
-    read: () => ({
-      agents: installed,
-      error: loadError,
-      loading: listRequest.pending,
-      pending,
-      messages,
-      enablement,
-    }),
-    subscribe: (_, listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    equality: "revision",
-  });
+  const projection = projectMutableSource(null, () => ({
+    agents: installed,
+    error: loadError,
+    loading: listRequest.pending,
+    pending,
+    messages,
+    enablement,
+  }));
+  notifyView = projection.publish;
 
   function synchronize(): void {
     const gateway = options.gateway;
@@ -517,7 +511,7 @@ export function createInstalledAgents(options: InstalledAgentsOptions) {
     return <InstalledAgents />;
   }
   onCleanup(() => {
-    listeners.clear();
+    notifyView = () => {};
     enablement = null;
     listClient = undefined;
   });
