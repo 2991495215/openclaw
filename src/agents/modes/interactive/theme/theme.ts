@@ -1,8 +1,5 @@
-import * as fs from "node:fs";
-import { getCapabilities } from "@earendil-works/pi-tui";
 import chalk from "chalk";
 import { type Static, Type } from "typebox";
-import { Compile } from "typebox/compile";
 import type { SourceInfo } from "../../../sessions/source-info.js";
 import { highlight, supportsLanguage } from "../../../utils/syntax-highlight.js";
 
@@ -10,8 +7,6 @@ const ColorValueSchema = Type.Union([
   Type.String(), // hex "#ff0000", var ref "primary", or empty ""
   Type.Integer({ minimum: 0, maximum: 255 }), // 256-color index
 ]);
-
-type ColorValue = Static<typeof ColorValueSchema>;
 
 const ThemeJsonSchema = Type.Object({
   $schema: Type.Optional(Type.String()),
@@ -80,8 +75,6 @@ const ThemeJsonSchema = Type.Object({
 });
 
 type ThemeJson = Static<typeof ThemeJsonSchema>;
-
-const validateThemeJson = Compile(ThemeJsonSchema);
 
 type ThemeColor = Exclude<keyof ThemeJson["colors"], ThemeBg>;
 
@@ -205,36 +198,6 @@ function colorAnsi(color: string | number, mode: ColorMode, layer: "fg" | "bg"):
   throw new Error(`Invalid color value: ${color}`);
 }
 
-function resolveVarRefs(
-  value: ColorValue,
-  vars: Record<string, ColorValue>,
-  visited = new Set<string>(),
-): string | number {
-  if (typeof value === "number" || value === "" || value.startsWith("#")) {
-    return value;
-  }
-  if (visited.has(value)) {
-    throw new Error(`Circular variable reference detected: ${value}`);
-  }
-  visited.add(value);
-  const resolved = vars[value];
-  if (resolved === undefined) {
-    throw new Error(`Variable reference not found: ${value}`);
-  }
-  return resolveVarRefs(resolved, vars, visited);
-}
-
-function resolveThemeColors<T extends Record<string, ColorValue>>(
-  colors: T,
-  vars: Record<string, ColorValue> = {},
-): Record<keyof T, string | number> {
-  const resolved: Record<string, string | number> = {};
-  for (const [key, value] of Object.entries(colors)) {
-    resolved[key] = resolveVarRefs(value, vars);
-  }
-  return resolved as Record<keyof T, string | number>;
-}
-
 // Keep formatting independent of overridable public ANSI getters.
 function getThemeAnsi(colors: ReadonlyMap<string, string>, color: string, label: string): string {
   const ansi = colors.get(color);
@@ -324,82 +287,6 @@ export class Theme {
   getBashModeBorderColor(): (str: string) => string {
     return (str: string) => this.fg("bashMode", str);
   }
-}
-
-function parseThemeJson(label: string, json: unknown): ThemeJson {
-  if (!validateThemeJson.Check(json)) {
-    const errors = Array.from(validateThemeJson.Errors(json));
-    const missingColors = new Set<string>();
-    const otherErrors: string[] = [];
-
-    for (const error of errors) {
-      if (error.keyword === "required" && error.instancePath === "/colors") {
-        const requiredProperties = (error.params as { requiredProperties?: string[] })
-          .requiredProperties;
-        for (const requiredProperty of requiredProperties ?? []) {
-          missingColors.add(requiredProperty);
-        }
-        continue;
-      }
-
-      const pathLocal = error.instancePath || "/";
-      otherErrors.push(`  - ${pathLocal}: ${error.message}`);
-    }
-
-    let errorMessage = `Invalid theme "${label}":\n`;
-    if (missingColors.size > 0) {
-      errorMessage += "\nMissing required color tokens:\n";
-      errorMessage += Array.from(missingColors)
-        .toSorted()
-        .map((color) => `  - ${color}`)
-        .join("\n");
-      errorMessage += '\n\nPlease add these colors to your theme\'s "colors" object.';
-      errorMessage += "\nSee the built-in themes (dark.json, light.json) for reference values.";
-    }
-    if (otherErrors.length > 0) {
-      errorMessage += `\n\nOther errors:\n${otherErrors.join("\n")}`;
-    }
-
-    throw new Error(errorMessage);
-  }
-
-  return json;
-}
-
-function parseThemeJsonContent(label: string, content: string): ThemeJson {
-  let json: unknown;
-  try {
-    json = JSON.parse(content);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse theme ${label}: ${message}`, { cause: error });
-  }
-  return parseThemeJson(label, json);
-}
-
-function createTheme(themeJson: ThemeJson, mode?: ColorMode, sourcePath?: string): Theme {
-  const colorMode = mode ?? (getCapabilities().trueColor ? "truecolor" : "256color");
-  const resolvedColors = resolveThemeColors(themeJson.colors, themeJson.vars);
-  const fgColors: Record<ThemeColor, string | number> = {} as Record<ThemeColor, string | number>;
-  const bgColors: Record<ThemeBg, string | number> = {} as Record<ThemeBg, string | number>;
-  const bgColorKeys: Set<string> = new Set(BACKGROUND_COLOR_KEYS);
-  for (const [key, value] of Object.entries(resolvedColors)) {
-    if (bgColorKeys.has(key)) {
-      bgColors[key as ThemeBg] = value;
-    } else {
-      fgColors[key as ThemeColor] = value;
-    }
-  }
-  return new Theme(fgColors, bgColors, colorMode, {
-    name: themeJson.name,
-    sourcePath,
-  });
-}
-
-export function loadThemeFromPath(themePath: string, mode?: ColorMode): Theme {
-  const content = fs.readFileSync(themePath, "utf-8");
-  const themeJson = parseThemeJsonContent(themePath, content);
-  return createTheme(themeJson, mode, themePath);
 }
 
 // Use globalThis to share theme across module loaders (tsx + jiti in dev mode)

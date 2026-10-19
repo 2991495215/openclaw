@@ -533,7 +533,6 @@ describe("AgentSession loop correctness", () => {
     const pluginDir = tempDirs.make("openclaw-terminate-plugin-");
     const resourceLoader = new DefaultResourceLoader({
       cwd: pluginDir,
-      agentDir: pluginDir,
       extensionFactories: [
         (api) => {
           api.on("tool_result", async (event) => ({ ...event, terminate: pluginTerminate }));

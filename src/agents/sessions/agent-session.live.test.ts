@@ -57,8 +57,6 @@ function createResourceLoader(handlers: ExtensionHandlers = new Map()): Resource
     getExtensions: () => extensionsResult,
     getSkills: () => ({ skills: [], diagnostics: [] }),
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
-    getThemes: () => ({ themes: [], diagnostics: [] }),
-    extendResources: () => {},
     reload: async () => {},
   };
 }

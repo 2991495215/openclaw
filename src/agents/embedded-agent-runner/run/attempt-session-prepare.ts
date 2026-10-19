@@ -142,7 +142,6 @@ export async function prepareEmbeddedAttemptAgentSession(input: {
   });
   const resourceLoader = new DefaultResourceLoader({
     cwd: input.effectiveCwd,
-    agentDir: input.agentDir,
     extensionFactories,
   });
   await resourceLoader.reload();

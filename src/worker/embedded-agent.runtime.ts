@@ -150,7 +150,6 @@ export async function runWorkerEmbeddedTurn(params: RunWorkerEmbeddedTurnParams)
     });
     const resourceLoader = new DefaultResourceLoader({
       cwd: params.cwd,
-      agentDir: params.stateDir,
     });
     const baseSessionManager = SessionManager.inMemory(params.cwd);
     for (const message of params.initialMessages ?? []) {

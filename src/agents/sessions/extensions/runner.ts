@@ -521,7 +521,6 @@ export class ExtensionRunner {
 
   /**
    * Request a graceful shutdown. Called by extension tools and event handlers.
-   * The actual shutdown behavior is provided by the mode via bindExtensions().
    */
   shutdown(): void {
     this.shutdownHandler();

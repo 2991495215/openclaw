@@ -1,15 +1,7 @@
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import type { ImageContent, Model } from "../../llm/types.js";
 import type { Agent, AgentEvent, AgentMessage, ThinkingLevel } from "../runtime/index.js";
-import type {
-  ExtensionCommandContextActions,
-  ExtensionErrorListener,
-  ExtensionRunner,
-  ExtensionUIContext,
-  InputSource,
-  ShutdownHandler,
-  ToolDefinition,
-} from "./extensions/index.js";
+import type { ExtensionRunner, InputSource, ToolDefinition } from "./extensions/index.js";
 import type { ModelRegistry } from "./model-registry.js";
 import type { ResourceLoader } from "./resource-loader.js";
 import type { SessionManager } from "./session-manager.js";
@@ -103,14 +95,6 @@ export interface AgentSessionConfig {
   ) => ThinkingLevel;
   /** Whether disposing this object ends the durable provider session. Defaults to true. */
   cleanupProviderSessionResourcesOnDispose?: boolean;
-}
-
-export interface ExtensionBindings {
-  uiContext?: ExtensionUIContext;
-  commandContextActions?: ExtensionCommandContextActions;
-  abortHandler?: () => void;
-  shutdownHandler?: ShutdownHandler;
-  onError?: ExtensionErrorListener;
 }
 
 export interface PromptOptions {

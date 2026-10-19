@@ -80,7 +80,6 @@ it.each([
   });
   const resourceLoader = new DefaultResourceLoader({
     cwd,
-    agentDir: cwd,
     extensionFactories: buildEmbeddedExtensionFactories({
       cfg: {},
       workspaceDir: cwd,

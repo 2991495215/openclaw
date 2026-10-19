@@ -26,15 +26,7 @@ import type {
 import { replaceAgentMessageInPlace } from "./agent-session-utils.js";
 import { formatNoApiKeyFoundMessage } from "./auth-guidance.js";
 import type { CompactionRequestBudget } from "./compaction/request-budget.js";
-import {
-  type ExtensionCommandContextActions,
-  type ExtensionErrorListener,
-  ExtensionRunner,
-  type ExtensionUIContext,
-  type ShutdownHandler,
-  type ToolDefinition,
-  type ToolInfo,
-} from "./extensions/index.js";
+import { ExtensionRunner, type ToolDefinition, type ToolInfo } from "./extensions/index.js";
 import type { RegisteredTool } from "./extensions/types.js";
 import type { CustomMessage } from "./messages.js";
 import { getModelRegistryRuntime } from "./model-registry-runtime.js";
@@ -88,12 +80,6 @@ export abstract class AgentSessionBase {
   protected extensionRunnerRef?: { current?: ExtensionRunner };
   protected allowedToolNames: Set<string>;
   protected withExternalSessionWriteSettlement?: AgentSessionWriteSettlementRunner;
-  protected extensionUIContext?: ExtensionUIContext;
-  protected extensionCommandContextActions?: ExtensionCommandContextActions;
-  protected extensionAbortHandler?: () => void;
-  protected extensionShutdownHandler?: ShutdownHandler;
-  protected extensionErrorListener?: ExtensionErrorListener;
-  protected extensionErrorUnsubscriber?: () => void;
   private readonly cleanupProviderSessionResourcesOnDispose: boolean;
 
   protected sessionModelRegistry: ModelRegistry;

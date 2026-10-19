@@ -1,9 +1,6 @@
-import { basename, dirname } from "node:path";
 import { AgentSessionCompaction } from "./agent-session-compaction.js";
-import type { ExtensionBindings } from "./agent-session-types.js";
 import { ExtensionRunner, type ToolDefinition, wrapRegisteredTools } from "./extensions/index.js";
 import { emitSessionShutdownEvent } from "./extensions/runner.js";
-import type { ResourceExtensionPaths } from "./resource-loader.js";
 import type { SlashCommandInfo } from "./slash-commands.js";
 import { createSyntheticSourceInfo } from "./source-info.js";
 
@@ -21,84 +18,6 @@ function describeCommands<T extends Pick<SlashCommandInfo, "description" | "sour
 }
 
 export abstract class AgentSessionExtensions extends AgentSessionCompaction {
-  async bindExtensions(bindings: ExtensionBindings): Promise<void> {
-    if (bindings.uiContext !== undefined) {
-      this.extensionUIContext = bindings.uiContext;
-    }
-    if (bindings.commandContextActions !== undefined) {
-      this.extensionCommandContextActions = bindings.commandContextActions;
-    }
-    if (bindings.abortHandler !== undefined) {
-      this.extensionAbortHandler = bindings.abortHandler;
-    }
-    if (bindings.shutdownHandler !== undefined) {
-      this.extensionShutdownHandler = bindings.shutdownHandler;
-    }
-    if (bindings.onError !== undefined) {
-      this.extensionErrorListener = bindings.onError;
-    }
-
-    this.applyExtensionBindings(this.currentExtensionRunner);
-    await this.currentExtensionRunner.emit({ type: "session_start", reason: "startup" });
-    await this.extendResourcesFromExtensions("startup");
-  }
-
-  private async extendResourcesFromExtensions(reason: "startup" | "reload"): Promise<void> {
-    if (!this.currentExtensionRunner.hasHandlers("resources_discover")) {
-      return;
-    }
-
-    const { skillPaths, promptPaths, themePaths } =
-      await this.currentExtensionRunner.emitResourcesDiscover(this.cwd, reason);
-
-    if (skillPaths.length === 0 && promptPaths.length === 0 && themePaths.length === 0) {
-      return;
-    }
-
-    const extensionPaths: ResourceExtensionPaths = {
-      skillPaths: this.buildExtensionResourcePaths(skillPaths),
-      promptPaths: this.buildExtensionResourcePaths(promptPaths),
-      themePaths: this.buildExtensionResourcePaths(themePaths),
-    };
-
-    this.sessionResourceLoader.extendResources(extensionPaths);
-    this.agent.state.systemPrompt = this.baseSystemPrompt;
-  }
-
-  private buildExtensionResourcePaths(
-    entries: Array<{ path: string; extensionPath: string }>,
-  ): Array<{
-    path: string;
-    metadata: { source: string; scope: "temporary"; origin: "top-level"; baseDir?: string };
-  }> {
-    return entries.map((entry) => {
-      const synthetic = entry.extensionPath.startsWith("<");
-      return {
-        path: entry.path,
-        metadata: {
-          source: `extension:${
-            synthetic
-              ? entry.extensionPath.replace(/[<>]/g, "")
-              : basename(entry.extensionPath).replace(/\.(ts|js)$/, "")
-          }`,
-          scope: "temporary",
-          origin: "top-level",
-          baseDir: synthetic ? undefined : dirname(entry.extensionPath),
-        },
-      };
-    });
-  }
-
-  private applyExtensionBindings(runner: ExtensionRunner): void {
-    runner.setUIContext(this.extensionUIContext);
-    runner.bindCommandContext(this.extensionCommandContextActions);
-
-    this.extensionErrorUnsubscriber?.();
-    this.extensionErrorUnsubscriber = this.extensionErrorListener
-      ? runner.onError(this.extensionErrorListener)
-      : undefined;
-  }
-
   private refreshCurrentModelFromRegistry(): void {
     const currentModel = this.model;
     if (!currentModel) {
@@ -186,16 +105,10 @@ export abstract class AgentSessionExtensions extends AgentSessionCompaction {
         isIdle: () => !this.isStreaming,
         getSignal: () => this.agent.signal,
         abort: () => {
-          if (this.extensionAbortHandler) {
-            this.extensionAbortHandler();
-            return;
-          }
           void this.abort();
         },
         hasPendingMessages: () => this.pendingMessageCount > 0,
-        shutdown: () => {
-          this.extensionShutdownHandler?.();
-        },
+        shutdown: () => {},
         getContextUsage: () => this.getContextUsage(),
         compact: (options) => {
           void (async () => {
@@ -270,7 +183,6 @@ export abstract class AgentSessionExtensions extends AgentSessionCompaction {
       this.extensionRunnerRef.current = this.currentExtensionRunner;
     }
     this.bindExtensionCore(this.currentExtensionRunner);
-    this.applyExtensionBindings(this.currentExtensionRunner);
 
     this.refreshToolRegistry(options.activeToolNames);
   }
@@ -290,15 +202,5 @@ export abstract class AgentSessionExtensions extends AgentSessionCompaction {
       activeToolNames: this.getActiveToolNames(),
       flagValues: previousFlagValues,
     });
-
-    const hasBindings =
-      this.extensionUIContext ||
-      this.extensionCommandContextActions ||
-      this.extensionShutdownHandler ||
-      this.extensionErrorListener;
-    if (hasBindings) {
-      await this.currentExtensionRunner.emit({ type: "session_start", reason: "reload" });
-      await this.extendResourcesFromExtensions("reload");
-    }
   }
 }
