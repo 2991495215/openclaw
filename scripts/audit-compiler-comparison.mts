@@ -3,6 +3,10 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  assertCompilerNetworkIsolation,
+  type CompilerNetworkEvidence,
+} from "./lib/compiler-comparison-io.mts";
 
 type Graph = { name: string; config: string };
 type Canary = Graph & {
@@ -39,6 +43,9 @@ const hashPattern = /^[a-f0-9]{64}$/u;
 /** Audit one collector group. Completion covers its declared graphs, not all CI. */
 export function auditCompilerComparison(directory: string) {
   const read = (name: string) => fs.readFileSync(path.join(directory, name), "utf8");
+  const networkIsolation = assertCompilerNetworkIsolation(
+    JSON.parse(read("network-isolation.json")) as CompilerNetworkEvidence,
+  );
   const metadata = JSON.parse(read("metadata.json")) as {
     sourceHead: string;
     repeats: number;
@@ -337,6 +344,7 @@ export function auditCompilerComparison(directory: string) {
       JSON.stringify(metadata.libraryManifest.toSorted((a, b) => (a.name < b.name ? -1 : 1))),
     ),
     scope: {
+      networkIsolation,
       capacityControl: metadata.capacityControl === true,
       group: metadata.group,
       groups: metadata.groups,

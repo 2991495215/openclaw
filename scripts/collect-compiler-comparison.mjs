@@ -9,7 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ensureKyselyTypes } from "./generate-kysely-types.mts";
 import {
+  COMPILER_NETWORK_POLICY,
+  assertCompilerNetworkIsolation,
   captureCompilerComparisonOutput,
+  compilerNetworkDeviceTypes,
   readCompilerComparisonMetrics,
 } from "./lib/compiler-comparison-io.mts";
 import { applyLocalTsgoPolicy, resolveRepoToolBinPath } from "./lib/local-check-runtime.mts";
@@ -486,13 +489,17 @@ async function main() {
     metricsWrite: "verified",
     checkoutWrite: "EROFS",
     evidenceWrite: "EROFS",
-    networkInterfaces: "loopback-only",
-    externalIpv4Tcp: "ENETUNREACH",
+    networkEvidence: "network-isolation.json",
+  };
+  const networkEvidence = {
+    policy: COMPILER_NETWORK_POLICY,
+    collectorNamespace: fs.readlinkSync("/proc/self/ns/net"),
+    probe: "",
   };
   try {
     // Linux EROFS/ENETUNREACH distinguish isolation from missing paths or a
     // refused remote port. The documentation-only address is never a service dependency.
-    await isolatedOutput(
+    networkEvidence.probe = await isolatedOutput(
       [
         "bash",
         "--noprofile",
@@ -506,60 +513,48 @@ for target in "$2" "$3"; do
   if printf forbidden 2>/tmp/write-error > "$target"; then fail "Unexpected writable checkout or evidence"; fi
   [[ "$(</tmp/write-error)" == *"Read-only file system"* ]] || fail "Write failed without EROFS"
 done
-interfaces=(/sys/class/net/*)
-if [[ "$4" == true ]]; then
-  interface_kind() { [[ $1 == lo ]] && printf loopback || printf non-loopback; }
-  default_name() {
-    case $1 in
-      lo|tunl0|gre0|gretap0|erspan0|sit0|ip6tnl0|ip6gre0|ip_vti0|ip6_vti0) printf '%s' "$1" ;;
-      *) printf redacted ;;
-    esac
-  }
-  printf 'sysfs-readable=%s proc-net-readable=%s\\n' "$(test -r /sys/class/net && echo yes || echo no)" "$(test -r /proc/self/net/dev && echo yes || echo no)" >&2
-  for interface in "\${interfaces[@]}"; do
-    printf 'sysfs-entry-present=%s kind=%s\\n' "$(test -e "$interface" && echo yes || echo no)" "$(interface_kind "\${interface##*/}")" >&2
-    printf 'default-name=%s type=%s flags=%s operstate=%s\\n' "$(default_name "\${interface##*/}")" "$(cat "$interface/type" 2>/dev/null || printf unavailable)" "$(cat "$interface/flags" 2>/dev/null || printf unavailable)" "$(cat "$interface/operstate" 2>/dev/null || printf unavailable)" >&2
-  done
-  while IFS=: read -r interface rest; do
-    [[ -n $rest ]] || continue
-    printf 'proc-interface=%s\\n' "$(interface_kind "\${interface//[[:space:]]/}")" >&2
-  done < /proc/self/net/dev
-  route_count=0
-  printf 'ipv4-route-readable=%s\\n' "$(test -r /proc/self/net/route && echo yes || echo no)" >&2
-  while read -r interface rest; do
-    [[ $interface == Iface ]] || printf 'route-interface=%s\\n' "$(interface_kind "$interface")" >&2
-    [[ $interface == Iface ]] || route_count=$((route_count + 1))
-  done < /proc/self/net/route
-  printf 'ipv4-route-count=%s\\n' "$route_count" >&2
-  printf 'ipv6-route-readable=%s\\n' "$(test -r /proc/self/net/ipv6_route && echo yes || echo no)" >&2
-  if [[ -r /proc/self/net/ipv6_route ]]; then
-    route_count=0
-    while read -ra route; do
-      printf 'ipv6-route-interface=%s\\n' "$(interface_kind "\${route[9]}")" >&2
-      route_count=$((route_count + 1))
-    done < /proc/self/net/ipv6_route
-    printf 'ipv6-route-count=%s\\n' "$route_count" >&2
-  fi
-  while read -r key value rest; do
-    case $key in CapEff:|CapBnd:|NoNewPrivs:) printf '%s %s\\n' "$key" "$value" >&2 ;; esac
-  done < /proc/self/status
-  printf 'net-namespace=%s\\n' "$(readlink /proc/self/ns/net)" >&2
-  printf 'mount-namespace=%s\\n' "$(readlink /proc/self/ns/mnt)" >&2
-fi
-[[ \${#interfaces[@]} == 1 && \${interfaces[0]##*/} == lo ]] || fail "Non-loopback network interface"
+known_name() {
+  case $1 in
+    ${[...compilerNetworkDeviceTypes.keys()].join("|")}) printf '%s' "$1" ;;
+    *) printf redacted ;;
+  esac
+}
+printf 'namespace\\t%s\\n' "$(readlink /proc/self/ns/net)"
+while read -r key value rest; do
+  case $key in
+    CapInh:|CapPrm:|CapEff:|CapBnd:|CapAmb:) printf 'capability\\t%s\\t%s\\n' "\${key%:}" "$value" ;;
+    NoNewPrivs:) printf 'no-new-privs\\t%s\\n' "$value" ;;
+  esac
+done < /proc/self/status
+for interface in /sys/class/net/*; do
+  printf 'sysfs\\t%s\\t%s\\t%s\\t%s\\n' "$(known_name "\${interface##*/}")" "$(cat "$interface/type" 2>/dev/null || printf unavailable)" "$(cat "$interface/flags" 2>/dev/null || printf unavailable)" "$(cat "$interface/operstate" 2>/dev/null || printf unavailable)"
+done
+while IFS=: read -r interface rest; do
+  [[ -n $rest ]] || continue
+  printf 'proc\\t%s\\n' "$(known_name "\${interface//[[:space:]]/}")"
+done < /proc/self/net/dev
 while read -r interface rest; do
-  [[ $interface == Iface || $interface == lo ]] || fail "Non-loopback IPv4 route"
-done < /proc/net/route
+  [[ $interface == Iface ]] || printf 'route4\\t%s\\n' "$(known_name "$interface")"
+done < /proc/self/net/route
+printf 'routes4\\tcomplete\\n'
+while read -ra route; do
+  printf 'route6\\t%s\\n' "$(known_name "\${route[9]}")"
+done < /proc/self/net/ipv6_route
+printf 'routes6\\tcomplete\\n'
 if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected external TCP connection"; fi
-[[ "$(</tmp/network-error)" == *"Network is unreachable"* ]] || fail "TCP failed without ENETUNREACH"`,
+[[ "$(</tmp/network-error)" == *"Network is unreachable"* ]] || fail "TCP failed without ENETUNREACH"
+printf 'tcp\\tENETUNREACH\\n'`,
         "isolation-proof",
         probe,
         "/work/" + probe,
         "/work/" + path.relative(root, path.join(directory, probe)),
-        String(isolationOnly),
       ],
       { timeout: 10000, diagnoseNetwork: isolationOnly },
     );
+    // The trusted probe records facts; this shared owner decides admission.
+    // Publish even rejected observations, but never invoke a compiler after rejection.
+    dump("network-isolation.json", networkEvidence);
+    assertCompilerNetworkIsolation(networkEvidence);
     assert.equal(fs.readFileSync(probePaths.metrics, "utf8"), probe);
     assert(!fs.existsSync(probePaths.checkout) && !fs.existsSync(probePaths.evidence));
   } finally {

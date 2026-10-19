@@ -8,6 +8,7 @@ on:
       - scripts/lib/compiler-comparison-io.mts
       - test/scripts/compiler-comparison.test.ts
       - test/scripts/compiler-comparison-canaries.test.ts
+      - test/scripts/compiler-comparison-network.fixtures.ts
       - test/fixtures/compiler-comparison.json
       - .github/workflows/compiler-qualification.yml
   workflow_dispatch:
@@ -93,7 +94,7 @@ jobs:
       - name: Lint and format qualification tooling
         run: |
           node scripts/run-oxlint.mjs --tsconfig config/tsconfig/oxlint.scripts.json scripts/audit-compiler-comparison.mts scripts/collect-compiler-comparison.mjs scripts/lib/compiler-comparison-io.mts
-          pnpm format:check scripts/audit-compiler-comparison.mts scripts/collect-compiler-comparison.mjs scripts/lib/compiler-comparison-io.mts test/scripts/compiler-comparison.test.ts test/scripts/compiler-comparison-canaries.test.ts test/fixtures/compiler-comparison.json .github/workflows/compiler-qualification.yml
+          pnpm format:check scripts/audit-compiler-comparison.mts scripts/collect-compiler-comparison.mjs scripts/lib/compiler-comparison-io.mts test/scripts/compiler-comparison.test.ts test/scripts/compiler-comparison-canaries.test.ts test/scripts/compiler-comparison-network.fixtures.ts test/fixtures/compiler-comparison.json .github/workflows/compiler-qualification.yml
           pnpm check:workflows
 
   compare:
