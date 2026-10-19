@@ -507,5 +507,12 @@ export function buildOpenAICompletionsRequest(
   if (params.tools?.length && isKnownOpenAICompletionsEndpoint(model)) {
     applyOpenAICompletionsToolReasoning(params, model);
   }
+  if (contextOutputCap !== undefined) {
+    contextOutputBudgets.set(params, {
+      model: params.model,
+      cap: contextOutputCap,
+      inputHash: completionsInputHash(params),
+    });
+  }
   return params;
 }
