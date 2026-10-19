@@ -362,7 +362,7 @@ export async function runReplyAgent(
     bindReplyOperationQueueDisposition(followupRun, replyOperationRunState);
     const result = await runActiveReplySteer({
       assertSourceCurrent:
-        providedReplyOperation && providedReplyOperation.key !== sessionKey
+        providedReplyOperation && sessionKey && providedReplyOperation.key !== sessionKey
           ? assertReadCurrent
           : undefined,
       followupRun,
