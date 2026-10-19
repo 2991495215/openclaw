@@ -31,7 +31,6 @@ type CatalogSubscriber = {
 // Native work still owns its admitted resources after delivery expires.
 class CatalogListWork {
   private pending = 0;
-  private listing = true;
   private releaseRoot: (() => void) | undefined;
 
   begin(retainRoot = false): void {
@@ -43,16 +42,7 @@ class CatalogListWork {
 
   end(): void {
     this.pending--;
-    this.finish();
-  }
-
-  finishListing(): void {
-    this.listing = false;
-    this.finish();
-  }
-
-  private finish(): void {
-    if (!this.listing && this.pending === 0) {
+    if (this.pending === 0) {
       this.releaseRoot?.();
       this.releaseRoot = undefined;
     }
@@ -114,7 +104,6 @@ function createProviderCallbacks(
 /** The aggregate response can finish before the native host publications it owns. */
 export class SessionCatalogListLifetime {
   private readonly controller = new AbortController();
-  private readonly catalogIds: ReadonlySet<string>;
   private readonly subscribers = new Map<string, CatalogSubscriber>();
   private readonly publishers = new Set<() => void>();
   private removeAbortListener: (() => void) | undefined;
@@ -124,8 +113,7 @@ export class SessionCatalogListLifetime {
   private readonly deadline: ReturnType<typeof setTimeout>;
   private readonly sourceSignal: AbortSignal;
 
-  constructor(signals: readonly AbortSignal[], catalogIds: readonly string[]) {
-    this.catalogIds = new Set(catalogIds);
+  constructor(signals: readonly AbortSignal[]) {
     // This bounds delivery captures, not custody of native work that ignores abort.
     this.deadline = setTimeout(
       () => this.retire(new Error("Session catalog list expired")),
@@ -182,7 +170,7 @@ export class SessionCatalogListLifetime {
   }
 
   publish(catalog: SessionCatalog, instances: SessionCatalogInstances): void {
-    if (!this.active() || !this.catalogIds.has(catalog.id)) {
+    if (!this.active()) {
       return;
     }
     for (const subscriber of this.subscribers.values()) {
@@ -327,7 +315,6 @@ export class SessionCatalogListLifetime {
     // source signal directly so response cleanup does not cancel their work.
     this.removeAbortListener?.();
     this.removeAbortListener = undefined;
-    this.work.finishListing();
     this.releaseUnusedPublishers();
     this.finish();
   }
