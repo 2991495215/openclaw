@@ -82,6 +82,7 @@ function runWorkload<Sample>(
     runs: number;
     requests: number;
     json: boolean;
+    help: boolean;
     output: string;
   },
 ) {
