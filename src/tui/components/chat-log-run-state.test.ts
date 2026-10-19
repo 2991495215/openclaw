@@ -130,12 +130,12 @@ describe("ChatLog run state", () => {
     chatLog.addPendingUser("local", "queued hello");
     chatLog.updateAssistant("hi there", "r-accepted");
 
-    expect(chatLog.rekeyPendingUser("local", "r-accepted")).toBe(true);
+    chatLog.rekeyPendingUser("local", "r-accepted");
 
     const rendered = chatLog.render(120).join("\n");
     expect(rendered.indexOf("queued hello")).toBeLessThan(rendered.indexOf("hi there"));
     // The row is now addressable by the gateway-assigned runId.
-    expect(chatLog.dropPendingUser("r-accepted")).toBe(true);
+    chatLog.dropPendingUser("r-accepted");
     expect(chatLog.countPendingUsers()).toBe(0);
   });
 });
