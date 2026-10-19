@@ -146,7 +146,6 @@ export function listBundledPluginMetadata(params?: {
   return entries;
 }
 
-/** Finds bundled plugin metadata by manifest id. */
 export function findBundledPluginMetadataById(
   pluginId: string,
   params?: Parameters<typeof listBundledPluginMetadata>[0],
