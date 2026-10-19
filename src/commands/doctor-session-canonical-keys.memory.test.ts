@@ -122,11 +122,11 @@ describe("canonical SQLite session repair memory", () => {
           timeout: 60_000,
         },
       );
-      return JSON.parse(stdout) as { foundGroups: number; scannedStores: number };
+      return JSON.parse(stdout) as { foundGroups: number };
     };
 
     closeOpenClawAgentDatabasesForTest();
-    await expect(runChild()).resolves.toMatchObject({ foundGroups: 0, scannedStores: 1 });
+    await expect(runChild()).resolves.toMatchObject({ foundGroups: 0 });
     const writable = openOpenClawAgentDatabase({
       agentId: "main",
       env: state.env,
@@ -168,7 +168,7 @@ describe("canonical SQLite session repair memory", () => {
     }
     closeOpenClawAgentDatabasesForTest();
 
-    await expect(runChild()).resolves.toMatchObject({ foundGroups: 0, scannedStores: 1 });
+    await expect(runChild()).resolves.toMatchObject({ foundGroups: 0 });
     const verifier = openOpenClawAgentDatabase({
       agentId: "main",
       env: state.env,

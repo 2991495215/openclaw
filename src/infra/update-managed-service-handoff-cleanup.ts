@@ -42,7 +42,7 @@ export async function cleanupStaleManagedServiceUpdateHandoffs(params?: {
   tmpDir?: string;
   nowMs?: number;
   ttlMs?: number;
-}): Promise<number> {
+}): Promise<void> {
   const tmpDir = params?.tmpDir ?? os.tmpdir();
   const nowMs = params?.nowMs ?? Date.now();
   const ttlMs = params?.ttlMs ?? MANAGED_SERVICE_UPDATE_HANDOFF_STALE_TTL_MS;
@@ -50,10 +50,9 @@ export async function cleanupStaleManagedServiceUpdateHandoffs(params?: {
   try {
     entries = await fs.readdir(tmpDir, { withFileTypes: true });
   } catch {
-    return 0;
+    return;
   }
 
-  let removed = 0;
   for (const entry of entries.toSorted((left, right) => left.name.localeCompare(right.name))) {
     if (
       !entry.isDirectory() ||
@@ -68,12 +67,10 @@ export async function cleanupStaleManagedServiceUpdateHandoffs(params?: {
         continue;
       }
       await fs.rm(dir, { recursive: true, force: true });
-      removed += 1;
     } catch {
       // Best effort cleanup only.
     }
   }
-  return removed;
 }
 
 export async function inspectManagedHandoffRepairFacts(

@@ -77,7 +77,6 @@ export type CanonicalSessionKeyRepairReport = {
   repairBatches: number;
   removedRows: number;
   repairedGroups: number;
-  scannedStores: number;
 };
 
 const CANONICAL_SESSION_REPAIR_BATCH_GROUP_LIMIT = 64;
@@ -609,6 +608,5 @@ export async function repairCanonicalSessionKeys(params: {
     repairBatches,
     removedRows,
     repairedGroups,
-    scannedStores: stores.length,
   };
 }

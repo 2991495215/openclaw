@@ -57,7 +57,7 @@ describe("session-delivery queue recovery", () => {
 
       const deliver = vi.fn(async () => undefined);
       const onSettled = vi.fn(async () => undefined);
-      const summary = await recoverPendingSessionDeliveries({
+      await recoverPendingSessionDeliveries({
         deliver,
         onSettled,
         queueContext,
@@ -66,7 +66,6 @@ describe("session-delivery queue recovery", () => {
 
       expect(deliver).toHaveBeenCalledTimes(1);
       expect(onSettled).toHaveBeenCalledWith(expect.any(Object), "recovered", queueContext);
-      expect(summary.recovered).toBe(1);
       expect(await loadPendingSessionDeliveries(queueContext)).toStrictEqual([]);
     });
   });
@@ -122,14 +121,13 @@ describe("session-delivery queue recovery", () => {
       });
       const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
-      const first = await recoverPendingSessionDeliveries({
+      await recoverPendingSessionDeliveries({
         deliver,
         onSettled,
         queueContext,
         log,
       });
 
-      expect(first.recovered).toBe(0);
       expect(deliver).toHaveBeenCalledTimes(1);
       expect(await loadPendingSessionDeliveries(queueContext)).toEqual([
         expect.objectContaining({
@@ -139,14 +137,13 @@ describe("session-delivery queue recovery", () => {
         }),
       ]);
 
-      const second = await recoverPendingSessionDeliveries({
+      await recoverPendingSessionDeliveries({
         deliver,
         onSettled,
         queueContext,
         log,
       });
 
-      expect(second.recovered).toBe(1);
       expect(deliver).toHaveBeenCalledTimes(1);
       expect(onSettled).toHaveBeenCalledTimes(2);
       expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
@@ -184,9 +181,10 @@ describe("session-delivery queue recovery", () => {
             ? recoverPendingSessionDeliveries(options)
             : drainPendingSessionDelivery({ ...options, id, logLabel: "Session delivery" });
 
-        expect(await drain()).toEqual(
-          expect.objectContaining(mode === "recovery" ? { failed: 0 } : { id }),
-        );
+        const pending = await drain();
+        if (mode === "exact") {
+          expect(pending).toEqual(expect.objectContaining({ id }));
+        }
         expect(log.warn).toHaveBeenCalledExactlyOnceWith(
           `Session delivery: dead-letter decision for entry ${id}: ambiguous side effects`,
         );
@@ -195,9 +193,10 @@ describe("session-delivery queue recovery", () => {
           expect.objectContaining({ id, settlementOutcome: "moved-to-failed" }),
         ]);
 
-        expect(await drain()).toEqual(
-          mode === "recovery" ? expect.objectContaining({ failed: 1 }) : null,
-        );
+        const settled = await drain();
+        if (mode === "exact") {
+          expect(settled).toBeNull();
+        }
         expect(log.warn).toHaveBeenNthCalledWith(
           2,
           `Session delivery: entry ${id} was dead-lettered and moved to failed`,
@@ -205,9 +204,10 @@ describe("session-delivery queue recovery", () => {
         expect(deliver).toHaveBeenCalledTimes(1);
         expect(onSettled).toHaveBeenCalledTimes(2);
         expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
-        expect(await drain()).toEqual(
-          mode === "recovery" ? expect.objectContaining({ failed: 0 }) : null,
-        );
+        const empty = await drain();
+        if (mode === "exact") {
+          expect(empty).toBeNull();
+        }
         expect(deliver).toHaveBeenCalledTimes(1);
         expect(log.warn).toHaveBeenCalledTimes(2);
       });
@@ -243,14 +243,13 @@ describe("session-delivery queue recovery", () => {
       });
 
       const deliver = vi.fn(async () => undefined);
-      const summary = await recoverPendingSessionDeliveries({
+      await recoverPendingSessionDeliveries({
         deliver,
         queueContext,
         log: createInfoWarnErrorLogger(),
       });
 
       expect(deliver).not.toHaveBeenCalled();
-      expect(summary.recovered).toBe(1);
       expect(await loadPendingSessionDeliveries(queueContext)).toStrictEqual([]);
     });
   });
@@ -342,11 +341,11 @@ describe("session-delivery queue recovery", () => {
         await expect(controlledSleep.started).resolves.toBe(RECOVERY_REPLAY_SPACING_MS);
         expect(deliver).toHaveBeenCalledTimes(1);
         controlledSleep.release();
-        const summary = await recovery;
+        await recovery;
 
         expect(deliver).toHaveBeenCalledTimes(2);
         expect(deliveryTimes[1]).toBe(startedAt.getTime() + RECOVERY_REPLAY_SPACING_MS);
-        expect(summary.recovered).toBe(2);
+        expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
       });
     } finally {
       vi.useRealTimers();
@@ -386,11 +385,10 @@ describe("session-delivery queue recovery", () => {
         await expect(controlledSleep.started).resolves.toBe(1);
         expect(deliver).toHaveBeenCalledTimes(1);
         controlledSleep.release();
-        const summary = await recovery;
+        await recovery;
 
         expect(deliver).toHaveBeenCalledTimes(1);
         expect(deliveryTimes).toEqual([startedAt.getTime()]);
-        expect(summary.recovered).toBe(1);
         expect(await loadPendingSessionDeliveries(queueContext)).toHaveLength(2);
       });
     } finally {
@@ -414,7 +412,7 @@ describe("session-delivery queue recovery", () => {
 
       const deliver = vi.fn(async () => undefined);
       const warn = vi.fn();
-      const summary = await recoverPendingSessionDeliveries({
+      await recoverPendingSessionDeliveries({
         deliver,
         queueContext,
         maxRecoveryMs: 1,
@@ -429,7 +427,6 @@ describe("session-delivery queue recovery", () => {
       expect(warn).toHaveBeenCalledWith(
         "Session delivery recovery time budget exceeded — remaining entries deferred",
       );
-      expect(summary.recovered).toBe(0);
       expect(await loadPendingSessionDeliveries(queueContext)).toHaveLength(1);
     });
 
@@ -450,7 +447,7 @@ describe("session-delivery queue recovery", () => {
 
       const onSettled = vi.fn(async () => undefined);
       const log = createInfoWarnErrorLogger();
-      const summary = await recoverPendingSessionDeliveries({
+      await recoverPendingSessionDeliveries({
         deliver: vi.fn(async (entry) => {
           await markSessionDeliveryAttemptStarted(entry, queueContext);
           throw new Error("transient failure");
@@ -461,7 +458,6 @@ describe("session-delivery queue recovery", () => {
       });
 
       const [failedEntry] = await loadPendingSessionDeliveries(queueContext);
-      expect(summary.failed).toBe(1);
       expect(failedEntry?.retryCount).toBe(1);
       expect(failedEntry?.lastError).toBe("transient failure");
       expect(failedEntry?.deliveryStartedAt).toEqual(expect.any(Number));
@@ -539,7 +535,7 @@ describe("session-delivery queue recovery", () => {
         queueContext,
       );
 
-      const summary = await recoverPendingSessionDeliveries({
+      await recoverPendingSessionDeliveries({
         deliver: vi.fn(async () => {
           await deferSessionDelivery(id, 1_000, queueContext);
           throw new SessionDeliveryDeferredError("agent run still active");
@@ -549,7 +545,6 @@ describe("session-delivery queue recovery", () => {
       });
 
       const [entry] = await loadPendingSessionDeliveries(queueContext);
-      expect(summary.failed).toBe(0);
       expect(entry?.retryCount).toBe(0);
       expect(entry?.availableAt).toBeGreaterThan(Date.now());
     });
@@ -566,7 +561,7 @@ describe("session-delivery queue recovery", () => {
         },
         queueContext,
       );
-      const summary = await recoverPendingSessionDeliveries({
+      await recoverPendingSessionDeliveries({
         queueContext,
         deliver: async () => {
           await failSessionDelivery(id, "terminal attempt failed", queueContext);
@@ -575,7 +570,6 @@ describe("session-delivery queue recovery", () => {
         log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
       });
 
-      expect(summary.failed).toBe(1);
       expect(await loadPendingSessionDeliveries(queueContext)).toEqual([
         expect.objectContaining({
           id,
@@ -625,9 +619,7 @@ describe("session-delivery queue recovery", () => {
         };
 
         if (mode === "recovery") {
-          const summary = await recoverPendingSessionDeliveries(options);
-          expect(summary.recovered).toBe(0);
-          expect(summary.failed).toBe(1);
+          await recoverPendingSessionDeliveries(options);
         } else {
           expect(
             await drainPendingSessionDelivery({ ...options, id, logLabel: "Session delivery" }),
@@ -659,7 +651,7 @@ describe("session-delivery queue recovery", () => {
           queueContext,
         );
         expect(await loadPendingSessionDeliveries(queueContext)).toStrictEqual([]);
-        expect((await recoverPendingSessionDeliveries(options)).failed).toBe(0);
+        await recoverPendingSessionDeliveries(options);
         expect(options.deliver).toHaveBeenCalledTimes(1);
         expect(log.warn).toHaveBeenCalledTimes(2);
       });
@@ -749,7 +741,7 @@ describe("session-delivery queue recovery", () => {
 
       const deliver = vi.fn(async () => undefined);
       const onSettled = vi.fn(async () => undefined);
-      const summary = await recoverPendingSessionDeliveries({
+      await recoverPendingSessionDeliveries({
         deliver,
         onSettled,
         queueContext,
@@ -757,7 +749,6 @@ describe("session-delivery queue recovery", () => {
       });
 
       expect(deliver).not.toHaveBeenCalled();
-      expect(summary.skippedMaxRetries).toBe(1);
       expect(onSettled).toHaveBeenCalledWith(
         expect.objectContaining({ id }),
         "moved-to-failed",
@@ -812,12 +803,11 @@ describe("session-delivery queue recovery", () => {
               log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
             });
           } else {
-            const summary = await recoverPendingSessionDeliveries({
+            await recoverPendingSessionDeliveries({
               deliver,
               queueContext,
               log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
             });
-            expect(summary.skippedMaxRetries).toBe(0);
           }
 
           expect(deliver).toHaveBeenCalledWith(
@@ -904,7 +894,7 @@ describe("session-delivery queue recovery", () => {
       );
 
       const deliver = vi.fn(async () => undefined);
-      const summary = await recoverPendingSessionDeliveries({
+      await recoverPendingSessionDeliveries({
         deliver,
         queueContext,
         maxEnqueuedAt,
@@ -912,7 +902,6 @@ describe("session-delivery queue recovery", () => {
       });
 
       expect(deliver).toHaveBeenCalledTimes(1);
-      expect(summary.recovered).toBe(1);
       const pending = await loadPendingSessionDeliveries(queueContext);
       expect(pending).toHaveLength(1);
       expect(pending[0]?.kind).toBe("systemEvent");

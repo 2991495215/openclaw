@@ -1691,7 +1691,6 @@ describe("legacy OpenAI auth profiles through the canonical migration owner", ()
           shouldRepair,
         });
         expect(result).toMatchObject({
-          scannedStores: 1,
           repairedSessions: 0,
           warnings: [],
           changes: [],
@@ -1743,7 +1742,6 @@ describe("legacy OpenAI auth profiles through the canonical migration owner", ()
     });
 
     expect(preview).toMatchObject({
-      scannedStores: 1,
       repairedStores: 0,
       repairedSessions: 0,
       changes: [],

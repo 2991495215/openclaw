@@ -47,7 +47,7 @@ describe("cleanupArchivedSessionTranscripts", () => {
     ]);
     const readdirSpy = vi.spyOn(fsPromises, "readdir");
 
-    const result = await cleanupArchivedSessionTranscripts({
+    await cleanupArchivedSessionTranscripts({
       directories: [dir],
       rules: [
         { reason: "deleted", olderThanMs: 30 * DAY_MS },
@@ -57,14 +57,13 @@ describe("cleanupArchivedSessionTranscripts", () => {
     });
 
     expect(readdirSpy).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ removed: 2, scanned: 3 });
     expect(await remaining()).toEqual([`c.jsonl.reset.${FRESH_STAMP}`, "live.jsonl"]);
   });
 
   it("drops invalid rules and never lists when none remain", async () => {
     const readdirSpy = vi.spyOn(fsPromises, "readdir");
 
-    const result = await cleanupArchivedSessionTranscripts({
+    await cleanupArchivedSessionTranscripts({
       directories: [dir],
       rules: [
         { reason: "deleted", olderThanMs: Number.NaN },
@@ -73,7 +72,6 @@ describe("cleanupArchivedSessionTranscripts", () => {
       nowMs: NOW_MS,
     });
 
-    expect(result).toEqual({ removed: 0, scanned: 0 });
     expect(readdirSpy).not.toHaveBeenCalled();
   });
 
@@ -87,13 +85,12 @@ describe("cleanupArchivedSessionTranscripts", () => {
       return await realStat(target);
     });
 
-    const result = await cleanupArchivedSessionTranscripts({
+    await cleanupArchivedSessionTranscripts({
       directories: [dir],
       rules: [{ reason: "deleted", olderThanMs: 0 }],
       nowMs: NOW_MS,
     });
 
-    expect(result).toEqual({ removed: 0, scanned: 1 });
     await expect(fsPromises.access(archivePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -113,7 +110,7 @@ describe("cleanupArchivedSessionTranscripts", () => {
     expect(await remaining()).toEqual([archiveName]);
   });
 
-  it("does not count an archive removed between stat and cleanup", async () => {
+  it("ignores an archive removed between stat and cleanup", async () => {
     const archiveName = `a.jsonl.deleted.${OLD_STAMP}`;
     const archivePath = path.join(dir, archiveName);
     await seed([archiveName]);
@@ -124,13 +121,12 @@ describe("cleanupArchivedSessionTranscripts", () => {
       return stat;
     });
 
-    const result = await cleanupArchivedSessionTranscripts({
+    await cleanupArchivedSessionTranscripts({
       directories: [dir],
       rules: [{ reason: "deleted", olderThanMs: 0 }],
       nowMs: NOW_MS,
     });
 
-    expect(result).toEqual({ removed: 0, scanned: 1 });
     await expect(fsPromises.access(archivePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

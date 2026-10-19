@@ -946,13 +946,11 @@ describe("managed service update handoff", () => {
     const staleTime = new Date(now - 25 * 60 * 60_000);
     await fs.utimes(staleDir, staleTime, staleTime);
 
-    await expect(
-      cleanupStaleManagedServiceUpdateHandoffs({
-        tmpDir,
-        nowMs: now,
-        ttlMs: 24 * 60 * 60_000,
-      }),
-    ).resolves.toBe(1);
+    await cleanupStaleManagedServiceUpdateHandoffs({
+      tmpDir,
+      nowMs: now,
+      ttlMs: 24 * 60 * 60_000,
+    });
 
     await expect(pathExists(staleDir)).resolves.toBe(false);
     await expect(pathExists(freshDir)).resolves.toBe(true);

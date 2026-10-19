@@ -65,13 +65,11 @@ describe("session-delivery recovery persistence", () => {
         expect(pending?.lastAttemptAt).toBeUndefined();
 
         const retryDelivery = vi.fn(async () => undefined);
-        await expect(
-          recoverPendingSessionDeliveries({
-            deliver: retryDelivery,
-            queueContext,
-            log,
-          }),
-        ).resolves.toMatchObject({ recovered: 1 });
+        await recoverPendingSessionDeliveries({
+          deliver: retryDelivery,
+          queueContext,
+          log,
+        });
         expect(retryDelivery).toHaveBeenCalledTimes(1);
         expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
       });
@@ -117,9 +115,10 @@ describe("session-delivery recovery persistence", () => {
                   queueContext,
                   log,
                 });
-          await expect(recovery).resolves.toMatchObject(
-            mode === "startup" ? { recovered: 0, failed: 0 } : { id },
-          );
+          const result = await recovery;
+          if (mode === "targeted drain") {
+            expect(result).toMatchObject({ id });
+          }
         } finally {
           db.exec("DROP TRIGGER IF EXISTS main.reject_session_delivery_settlement");
         }

@@ -212,7 +212,7 @@ it("backs up original rows and migrates pending delivery state before canonical 
 
   expect(() => loadExactSessionEntryReadOnly(legacy.scope)).toThrow(/run openclaw doctor --fix/);
   expect(() => loadExactSessionEntryReadOnly(routing.scope)).toThrow(/run openclaw doctor --fix/);
-  expect(await repair(false)).toEqual({ found: 17, repaired: 0, scannedStores: 1 });
+  expect(await repair(false)).toEqual({ found: 17, repaired: 0 });
   expect(legacy.readRaw()).toBe(legacy.raw);
   const report = await withMaintenance((authority) => repair(true, authority));
   expect(report).toMatchObject({ found: 17, repaired: 17 });
@@ -371,7 +371,7 @@ it("backs up original rows and migrates pending delivery state before canonical 
       .prepare("SELECT value_json FROM session_entry_snapshots WHERE session_key = ?")
       .get(legacy.sessionKey)?.value_json,
   ).toBe(JSON.stringify(snapshot));
-  expect(await repair()).toEqual({ found: 0, repaired: 0, scannedStores: 1 });
+  expect(await repair()).toEqual({ found: 0, repaired: 0 });
 });
 
 it.each([false, true])(

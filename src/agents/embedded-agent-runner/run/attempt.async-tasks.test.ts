@@ -16,12 +16,9 @@ import {
 } from "./attempt-async-tasks.js";
 
 const sessionKey = "agent:main:cron:daily-media:run:run-123";
-const emptyResult = { waitedRunIds: [], timedOutRunIds: [], terminalTasks: [] };
+const emptyResult = { timedOutRunIds: [] };
 function taskMeta(task: ReturnType<typeof startTask>): AsyncStartedToolMeta {
   return { asyncStarted: true, asyncTaskRunId: task.runId, asyncTaskId: task.taskId };
-}
-function terminalTask(taskId: string) {
-  return { taskId, status: "succeeded", terminalSummary: "Generated media." };
 }
 function startTask(kind = "image", requesterSessionKey = sessionKey) {
   const runId = `tool:${kind}_generate:run-123`;
@@ -78,12 +75,10 @@ describe("waitForCompletionRequiredAsyncTasks", () => {
 
   it("waits for active cron tasks discovered from native media operations", async () => {
     const task = startTask();
-    const result = await wait({ sleep: async () => completeTask(task.taskId, 2) });
-    expect(result).toMatchObject({
-      waitedRunIds: [task.runId],
-      timedOutRunIds: [],
-      terminalTasks: [terminalTask(task.taskId)],
-    });
+    const sleep = vi.fn(async () => completeTask(task.taskId, 2));
+    expect(await wait({ sleep })).toEqual(emptyResult);
+    expect(sleep).toHaveBeenCalledOnce();
+    expect(task.status).toBe("succeeded");
   });
 
   it.each(["image", "music", "video"])("releases durably queued %s completion", async (kind) => {
@@ -95,7 +90,7 @@ describe("waitForCompletionRequiredAsyncTasks", () => {
         updateMediaGenerationOperation(task.taskId, { completionDelivery: "queued" });
       },
     });
-    expect(result).toEqual({ ...emptyResult, waitedRunIds: [task.runId] });
+    expect(result).toEqual(emptyResult);
     expect(findMediaGenerationOperation(task.taskId)?.status).toBe("running");
     expect(requiresCompletionRequiredAsyncTaskWait({ sessionKey, toolMetas })).toBe(false);
     expect(await wait({ getToolMetas: () => toolMetas, getDeadlineAtMs: () => 0 })).toEqual(
@@ -132,14 +127,9 @@ describe("waitForCompletionRequiredAsyncTasks", () => {
         }
       },
     });
-    expect(result).toMatchObject({
-      waitedRunIds: [first.runId, "tool:music_generate:run-123"],
-      timedOutRunIds: [],
-      terminalTasks: [
-        terminalTask(first.taskId),
-        { taskId: "tool:music_generate:run-123", status: "succeeded" },
-      ],
-    });
+    expect(result).toEqual(emptyResult);
+    expect(findMediaGenerationOperation(first.taskId)?.status).toBe("succeeded");
+    expect(findMediaGenerationOperation("tool:music_generate:run-123")?.status).toBe("succeeded");
     expect(polls).toBe(2);
   });
 
@@ -165,7 +155,7 @@ describe("waitForCompletionRequiredAsyncTasks", () => {
         }
       },
     });
-    expect(result).toMatchObject({ waitedRunIds: [task.runId], timedOutRunIds: [task.runId] });
+    expect(result).toEqual({ timedOutRunIds: [task.runId] });
     expect(now).toBe(startedAt + 1_750);
     expect(polls).toBe(expectedSleeps.length);
     expect(getDeadlineAtMs).toHaveBeenCalledTimes(5);

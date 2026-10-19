@@ -2,11 +2,9 @@
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import {
   createDeliveryRecoveryCoordinator,
-  createEmptyDeliveryRecoverySummary,
   getErrnoCode,
   isDeliveryRecoveryRetryEligible,
   resolveDeliveryRecoveryDeadlineMs,
-  type DeliveryRecoverySummary,
 } from "./delivery-recovery.shared.js";
 import { formatErrorMessage } from "./errors.js";
 import {
@@ -251,15 +249,14 @@ export async function recoverPendingSessionDeliveries(opts: {
   queueContext: OpenClawStateWorkerContext;
   maxRecoveryMs?: number;
   maxEnqueuedAt?: number;
-}): Promise<DeliveryRecoverySummary> {
+}): Promise<void> {
   const pending = (await loadPendingSessionDeliveries(opts.queueContext)).filter(
     (entry) => opts.maxEnqueuedAt == null || entry.enqueuedAt <= opts.maxEnqueuedAt,
   );
   if (pending.length === 0) {
-    return createEmptyDeliveryRecoverySummary();
+    return;
   }
 
-  const summary = createEmptyDeliveryRecoverySummary();
   const deadline = resolveDeliveryRecoveryDeadlineMs(opts.maxRecoveryMs);
   const onDeadlineExceeded = () => {
     opts.log.warn("Session delivery recovery time budget exceeded — remaining entries deferred");
@@ -274,7 +271,6 @@ export async function recoverPendingSessionDeliveries(opts: {
     return "continue" as const;
   };
   const onFailed = (failedEntry: QueuedSessionDelivery, errMsg: string) => {
-    summary.failed += 1;
     opts.log.warn(`Session delivery retry failed for entry ${failedEntry.id}: ${errMsg}`);
   };
   await recoveryCoordinator.scan({
@@ -292,22 +288,12 @@ export async function recoverPendingSessionDeliveries(opts: {
         beforeDelivery,
         onFailed,
       });
-      if (result.status === "max-retries") {
-        summary.skippedMaxRetries += 1;
-        return "continue";
-      }
-      if (result.status === "backoff") {
-        summary.deferredBackoff += 1;
-        return "continue";
-      }
       if (result.status === "stop") {
         return "stop";
       }
       if (result.status === "recovered" && result.finalized) {
-        summary.recovered += 1;
         opts.log.info(`Recovered session delivery ${currentEntry.id}`);
       } else if (result.status === "moved-to-failed" && result.finalized) {
-        summary.failed += 1;
         opts.log.warn(
           `Session delivery: entry ${currentEntry.id} was dead-lettered and moved to failed`,
         );
@@ -315,6 +301,4 @@ export async function recoverPendingSessionDeliveries(opts: {
       return "continue";
     },
   });
-
-  return summary;
 }

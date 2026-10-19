@@ -77,7 +77,6 @@ describe("doctor canonical session-key retention repair", () => {
         foundGroups: 1,
         removedRows: 2,
         repairedGroups: 1,
-        scannedStores: 2,
       });
       expect(load("agent:main:shared", "main")?.entry.sessionId).toBe("winner");
       expect(load("agent:main:shared ", "ops")).toBeUndefined();

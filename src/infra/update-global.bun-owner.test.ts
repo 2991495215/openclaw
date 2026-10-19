@@ -515,9 +515,7 @@ describe("FreeBSD package-manager admission", () => {
       return pkgQueryResult();
     });
     await withMockedPlatform("freebsd", async () => {
-      await expect(
-        cleanupGlobalRenameDirs({ globalRoot: base, packageName: "openclaw" }),
-      ).resolves.toEqual({ removed: [] });
+      await cleanupGlobalRenameDirs({ globalRoot: base, packageName: "openclaw" });
     });
     expect(query).toHaveBeenCalledOnce();
     expect(await fs.readdir(base)).toHaveLength(2);
@@ -543,11 +541,10 @@ describe("FreeBSD package-manager admission", () => {
       .spyOn(exec, "runCommandBuffered")
       .mockImplementation(async () => pkgQueryResult(claimed ? `${retained}\n` : ""));
     await withMockedPlatform("freebsd", async () => {
-      await expect(
-        cleanupGlobalRenameDirs({ globalRoot: base, packageName: "openclaw" }),
-      ).resolves.toEqual({ removed: [firstName] });
+      await cleanupGlobalRenameDirs({ globalRoot: base, packageName: "openclaw" });
     });
     expect(query).toHaveBeenCalledTimes(2);
+    await expect(fs.stat(first)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.readFile(retained, "utf8")).resolves.toBe("retained");
   });
 
@@ -561,9 +558,7 @@ describe("FreeBSD package-manager admission", () => {
       return pkgQueryResult();
     });
     await withMockedPlatform("freebsd", async () => {
-      await expect(
-        cleanupGlobalRenameDirs({ globalRoot: base, packageName: "openclaw" }),
-      ).resolves.toEqual({ removed: [] });
+      await cleanupGlobalRenameDirs({ globalRoot: base, packageName: "openclaw" });
     });
     await expect(fs.readFile(path.join(candidate, "marker"), "utf8")).resolves.toBe("replacement");
   });

@@ -83,14 +83,12 @@ export async function repairLegacySessionTitles(params: {
   const report = {
     found: 0,
     repaired: 0,
-    scannedStores: 0,
     warnings,
   };
   for (const target of params.targets ?? listExistingAgentDatabaseTargets(params.cfg, params.env)) {
     if (params.apply) {
       assertRepairAuthority();
     }
-    report.scannedStores++;
     const scope = { agentId: target.agentId, storePath: target.storePath, env: params.env };
     const scan = runDoctorAgentDatabaseOperation({
       agentId: target.agentId,

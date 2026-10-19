@@ -146,7 +146,6 @@ function prepareSessionEntryRepairs(params: PreparedSessionEntryRepairParams) {
     targets,
     pending,
     found: pending.reduce((count, item) => count + item.sessionKeys.length, 0),
-    scannedStores: targets.length,
     apply(assertCurrent?: (target: ExistingAgentDatabaseTarget) => void): number {
       let repaired = 0;
       for (const { target, scope, sessionKeys, identity } of pending) {
@@ -184,7 +183,6 @@ export function repairCanonicalSessionEntries(
   return {
     found: plan.found,
     repaired: params.apply ? plan.apply() : 0,
-    scannedStores: plan.scannedStores,
   };
 }
 
@@ -214,7 +212,7 @@ export async function repairLegacySessionEntryStates(params: {
       },
       updateDeliveryProjection: true,
     });
-    const report = { found: plan.found, repaired: 0, scannedStores: plan.scannedStores };
+    const report = { found: plan.found, repaired: 0 };
     if (!params.apply || plan.found === 0) {
       return report;
     }

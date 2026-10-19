@@ -45,5 +45,5 @@ export async function repairLegacySessionWorktreeWorkspaces(params: {
       }
     }
   }
-  return { found, repaired, scannedStores: targets.length };
+  return { found, repaired };
 }

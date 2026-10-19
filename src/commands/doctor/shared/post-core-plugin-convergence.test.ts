@@ -83,7 +83,7 @@ function writeJson(file: string, value: unknown) {
   fs.writeFileSync(file, JSON.stringify(value), "utf8");
 }
 
-const peerResult = { checked: 0, attempted: 0, repaired: 0, skipped: 0 };
+const peerResult = { repaired: 0 };
 
 function configured(...ids: string[]): OpenClawConfig {
   return { plugins: { entries: Object.fromEntries(ids.map((id) => [id, { enabled: true }])) } };
@@ -122,7 +122,7 @@ function reportPackageReadFailure(
   mocks.relinkPeers.mockImplementation(
     async (params: { onPackageReadError?: (error: unknown, packageDir: string) => void }) => {
       params.onPackageReadError?.(error, packageDir);
-      return { ...peerResult, skipped: 1 };
+      return peerResult;
     },
   );
 }
@@ -186,7 +186,7 @@ describe("runPostCorePluginConvergence", () => {
             await releaseSibling.promise;
             params.beforePersistentApply?.();
             laterWrite();
-            return { checked: 1, attempted: 1, repaired: 1, skipped: 0 };
+            return { repaired: 1 };
           } finally {
             siblingSettled = true;
           }
@@ -270,9 +270,7 @@ describe("runPostCorePluginConvergence", () => {
     mockRepairs({ codex: { source: "npm", installPath: "/p/codex" } });
     const roots = [path.join(stateDir, "npm"), path.join(stateDir, "npm", "projects", "codex")];
     mocks.managedRoots.mockReturnValue(roots);
-    mocks.relinkPeers
-      .mockResolvedValueOnce(peerResult)
-      .mockResolvedValueOnce({ checked: 1, attempted: 1, repaired: 1, skipped: 0 });
+    mocks.relinkPeers.mockResolvedValueOnce(peerResult).mockResolvedValueOnce({ repaired: 1 });
 
     const result = await converge(configured("codex"), {
       env: { OPENCLAW_STATE_DIR: stateDir },

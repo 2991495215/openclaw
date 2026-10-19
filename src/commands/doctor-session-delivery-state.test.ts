@@ -90,12 +90,11 @@ function makeEnv(prefix: string) {
 }
 
 function expectReport(
-  actual: { found: number; repaired: number; scannedStores: number },
+  actual: { found: number; repaired: number },
   found: number,
   repaired = found,
-  scannedStores = 1,
 ) {
-  expect(actual).toEqual({ found, repaired, scannedStores });
+  expect(actual).toEqual({ found, repaired });
 }
 
 function readEntry(env: NodeJS.ProcessEnv, sessionKey: string) {
@@ -518,10 +517,10 @@ describe("doctor canonical session resolved skills", () => {
       ).toBe(0);
     }
 
-    expectReport(repairCanonicalSessionResolvedSkills({ apply: false, cfg: {}, env }), 2, 0, 2);
+    expectReport(repairCanonicalSessionResolvedSkills({ apply: false, cfg: {}, env }), 2, 0);
     expect(readEntry(env, "agent:main:runtime-skills").skillsSnapshot.resolvedSkills).toBeDefined();
 
-    expectReport(repairCanonicalSessionResolvedSkills({ apply: true, cfg: {}, env }), 2, 2, 2);
+    expectReport(repairCanonicalSessionResolvedSkills({ apply: true, cfg: {}, env }), 2);
     for (const agentId of ["main", "work"]) {
       const sessionKey = `agent:${agentId}:runtime-skills`;
       expect(
@@ -537,6 +536,6 @@ describe("doctor canonical session resolved skills", () => {
     for (const agentId of ["main", "work"]) {
       expect(listEntries(env, agentId, false)[0]?.entry.skillsSnapshot).toEqual(compactSnapshot);
     }
-    expectReport(repairCanonicalSessionResolvedSkills({ apply: true, cfg: {}, env }), 0, 0, 2);
+    expectReport(repairCanonicalSessionResolvedSkills({ apply: true, cfg: {}, env }), 0);
   });
 });

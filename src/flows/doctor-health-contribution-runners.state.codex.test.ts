@@ -54,7 +54,6 @@ describe("Codex session doctor health owner", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.maybeRepairCodexSessionRoutes.mockResolvedValue({
-      scannedStores: 1,
       repairedStores: 1,
       repairedSessions: 1,
       changes: [],

@@ -231,9 +231,7 @@ describe("Doctor with a deleted agent database", () => {
         cfg,
       ).map((target) => target.agentId),
     ).toEqual(["main"]);
-    expect(await repairCanonicalSessionKeys({ apply: true, cfg, env })).toMatchObject({
-      scannedStores: 1,
-    });
+    await repairCanonicalSessionKeys({ apply: true, cfg, env });
     unregisterOpenClawAgentDatabase({ agentId: "main", path: databasePath, env });
     const activeAlias = path.join(stateDir, "active-alias.sqlite");
     fs.linkSync(databasePath, activeAlias);
@@ -438,9 +436,7 @@ describe("Doctor with a deleted agent database", () => {
             "Doctor warnings",
           );
         } else {
-          expect(await repairCanonicalSessionKeys({ apply: true, cfg, env })).toMatchObject({
-            scannedStores: 1,
-          });
+          await repairCanonicalSessionKeys({ apply: true, cfg, env });
         }
         await expect(
           assertOpenClawDatabasesReady({

@@ -572,11 +572,10 @@ describe("update global helpers", () => {
             await fs.writeFile(path.join(root, ".openclaw-file"), "nope", "utf8");
             await fs.mkdir(path.join(root, "openclaw"), { recursive: true });
 
-            const result = await cleanupGlobalRenameDirs({
+            await cleanupGlobalRenameDirs({
               globalRoot: root,
               packageName: "openclaw",
             });
-            expect(result.removed.toSorted()).toEqual([".openclaw-123", ".openclaw-456"]);
             expect((await fs.readdir(root)).toSorted()).toEqual([".openclaw-file", "openclaw"]);
             const packageDirStat = await fs.stat(path.join(root, "openclaw"));
             const markerFileStat = await fs.stat(path.join(root, ".openclaw-file"));

@@ -1167,12 +1167,11 @@ export function globalInstallArgs(
 export async function cleanupGlobalRenameDirs(params: {
   globalRoot: string;
   packageName: string;
-}): Promise<{ removed: string[] }> {
-  const removed: string[] = [];
+}): Promise<void> {
   const root = params.globalRoot.trim();
   const name = params.packageName.trim();
   if (!root || !name) {
-    return { removed };
+    return;
   }
   const prefix = `.${name}-`;
   const inspectionDeadline = Date.now() + PKG_INSPECTION_TIMEOUT_MS;
@@ -1180,7 +1179,7 @@ export async function cleanupGlobalRenameDirs(params: {
   try {
     entries = await fs.readdir(root);
   } catch {
-    return { removed };
+    return;
   }
   for (const entry of entries) {
     if (!entry.startsWith(prefix)) {
@@ -1206,11 +1205,9 @@ export async function cleanupGlobalRenameDirs(params: {
         continue;
       }
       await fs.rm(target, { recursive: true, force: true });
-      removed.push(entry);
     } catch {
       // ignore cleanup failures
     }
   }
-  return { removed };
 }
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

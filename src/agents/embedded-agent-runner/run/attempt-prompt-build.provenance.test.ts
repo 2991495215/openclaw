@@ -219,22 +219,16 @@ describe("prompt-build hook context input provenance", () => {
     expect(finalPrompt.match(/Hook suffix/g)).toHaveLength(1);
   });
 
-  it.each([
-    { requiresToolAuthority: undefined, reason: "ineligible" },
-    { requiresToolAuthority: true, reason: "pending-action-context" },
-  ] as const)(
+  it.each([{ requiresToolAuthority: undefined }, { requiresToolAuthority: true }] as const)(
     "gates semantic prefilter admission for authority=$requiresToolAuthority",
-    async ({ requiresToolAuthority, reason }) => {
-      const { prompt } = await assembleWithCapturedHookCtx(
+    async ({ requiresToolAuthority }) => {
+      const observeDecision = vi.spyOn(decisionDiagnostics, "logDecisionToolPrefilter");
+      await assembleWithCapturedHookCtx(
         "hook-prefilter-admission",
         { supportsTurnScopedToolRestrictions: true },
         { requiresToolAuthority, hookResult: { appendContext: "Answer warmly without tools." } },
       );
-      expect(prompt.decisionPrefilter).toMatchObject({
-        shouldPruneTools: false,
-        status: "skipped",
-        reason,
-      });
+      expect(observeDecision).toHaveBeenCalledExactlyOnceWith({ effect: "skipped" });
     },
   );
 
