@@ -1844,7 +1844,7 @@ describe("runPreparedReply media-only handling", () => {
       shouldSteer: false,
       shouldFollowup: true,
       isActive: true,
-      followupRun: { run: { terminalReplyExpectation: "optional" } },
+      followupRun: { run: { terminalReplyExpectation: "required" } },
     });
   });
 
