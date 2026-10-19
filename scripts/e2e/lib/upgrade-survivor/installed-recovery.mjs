@@ -190,7 +190,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
     const helperIdentity = fileIdentity(helper);
     settingsUnchanged();
 
-    const recovery = async (name, action, selectedHelper = printed.helper, faultCut) => {
+    const recovery = async (name, action, { selectedHelper = printed.helper, faultCut } = {}) => {
       const result = await run(
         directory,
         name,
@@ -219,7 +219,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
       assert.equal(launcher().digest, originalLauncher.digest);
     }
     const selectedLauncher = launcher();
-    await recovery("retirement", "retire", printed.helper, cut);
+    await recovery("retirement", "retire", { faultCut: cut });
     const retirement = read(path.join(directory, "retirement.fault.json.observed"));
     assertRetirementCut(cut, retirement, anchor, helper);
     assert.deepEqual(readActivation(journal), retirement.row);
@@ -232,8 +232,14 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
     if (!cut.startsWith("helper-")) {
       assert.equal((await recovery("resume-retirement", "retire")).phase, "complete");
     }
-    assert.equal((await recovery("completed-status", "status", alternate)).phase, "complete");
-    assert.equal((await recovery("archive-completed", "retire", alternate)).phase, "complete");
+    assert.equal(
+      (await recovery("completed-status", "status", { selectedHelper: alternate })).phase,
+      "complete",
+    );
+    assert.equal(
+      (await recovery("archive-completed", "retire", { selectedHelper: alternate })).phase,
+      "complete",
+    );
     assert.equal(fs.existsSync(journal), false, "completed custody must stop blocking admission");
     assert.equal(fs.existsSync(anchor), false);
     assert.equal(fs.existsSync(helper), false);
@@ -328,8 +334,10 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
   );
 }
 
-await main(process.argv.slice(2)).catch((error) => {
+try {
+  await main(process.argv.slice(2));
+} catch (error) {
   console.error(error);
   console.error("[installed-recovery] FAILED (exit 1)");
   process.exitCode = 1;
-});
+}
