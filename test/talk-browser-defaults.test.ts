@@ -108,7 +108,7 @@ vi.mock("../src/talk/client-voice-session-write.js", async (importOriginal) => {
 vi.mock("../src/talk/client-voice-session.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/talk/client-voice-session.js")>()),
   createOrResumeClientVoiceSession: () => "test-voice-session",
-  closeStaleClientVoiceSessions: async () => 0,
+  closeStaleClientVoiceSessions: async () => {},
 }));
 vi.mock("../ui/src/pages/chat/talk/transport.runtime.js", () => ({
   createRealtimeTalkTransport: (): RealtimeTalkTransport => ({

@@ -238,16 +238,14 @@ it.each(["plugin-owned-state", "promoted-slots"] as const)(
 
     parseSessionEntryCalls.mockClear();
     const clone = vi.spyOn(globalThis, "structuredClone");
-    expect(
-      await cleanupPluginHostSessionStore({
-        agentId: scope.agentId,
-        storePath: database.path,
-        sessionKey: scope.sessionKey,
-        pluginId: "fixture",
-        sessionEntrySlotKeys: new Set(["fixtureState"]),
-        mode,
-      }),
-    ).toBe(1);
+    await cleanupPluginHostSessionStore({
+      agentId: scope.agentId,
+      storePath: database.path,
+      sessionKey: scope.sessionKey,
+      pluginId: "fixture",
+      sessionEntrySlotKeys: new Set(["fixtureState"]),
+      mode,
+    });
     expect(
       clone.mock.calls.some(
         ([value]) => isRecord(value) && value.sessionId === "plugin-cleanup-sibling",

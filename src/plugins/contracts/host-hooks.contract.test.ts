@@ -1847,7 +1847,7 @@ describe("host-hook fixture plugin contract", () => {
         pluginId: "cleanup-failure-fixture",
         reason: "disable",
       }),
-    ).resolves.toEqual({ cleanupCount: 0, failures: [] });
+    ).resolves.toEqual({ failures: [] });
     expect(cleanup).toHaveBeenCalledTimes(2);
     expect(listPluginSessionSchedulerJobs("cleanup-failure-fixture")).toEqual([]);
   });
@@ -1872,7 +1872,7 @@ describe("host-hook fixture plugin contract", () => {
         previousRegistry: previousFixture.registry.registry,
         nextRegistry: replacementFixture.registry.registry,
       })(),
-    ).resolves.toEqual({ cleanupCount: 0, failures: [] });
+    ).resolves.toEqual({ failures: [] });
     expect(cleanupEvents).toEqual([]);
     expect(listPluginSessionSchedulerJobs("scheduler-preserve")).toEqual([
       { ...sharedJob, pluginId: "scheduler-preserve" },

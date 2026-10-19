@@ -40,7 +40,7 @@ export function registerGatewayResourceRetirementTests(
         pluginMetadata: {
           beginClose() {},
           async close(_onFinal, retireRegistry) {
-            return (await retireRegistry?.()) ?? { cleanupCount: 0, failures: [] };
+            return (await retireRegistry?.()) ?? { failures: [] };
           },
         },
       })();
@@ -91,7 +91,7 @@ export function registerGatewayResourceRetirementTests(
         onStartFailure: () => true,
         onRemoved,
       });
-      const retireRegistry = vi.fn(async () => ({ cleanupCount: 0, failures: [] }));
+      const retireRegistry = vi.fn(async () => ({ failures: [] }));
       const closeSdkResources = vi.fn(async () => {});
       const clearSecretsRuntimeSnapshot = vi.fn();
       const close = createGatewayCloseHandler({

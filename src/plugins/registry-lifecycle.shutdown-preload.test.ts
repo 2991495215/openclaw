@@ -5,7 +5,6 @@ import type { disposePluginRegistryInstances } from "./runtime.js";
 const fixture = vi.hoisted(() => ({
   rotated: false,
   dispose: vi.fn<typeof disposePluginRegistryInstances>(async () => ({
-    cleanupCount: 0,
     failures: [],
   })),
 }));
@@ -21,7 +20,7 @@ vi.mock("./runtime.js", () => ({
   },
 }));
 vi.mock("./host-hook-cleanup.js", () => ({
-  createPluginHostRegistryRetirement: () => async () => ({ cleanupCount: 0, failures: [] }),
+  createPluginHostRegistryRetirement: () => async () => ({ failures: [] }),
 }));
 vi.mock("./memory-runtime.js", () => ({}));
 

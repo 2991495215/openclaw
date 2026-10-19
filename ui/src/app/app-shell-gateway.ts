@@ -160,11 +160,6 @@ export class ShellGatewayOwner {
       runtime.applyServerUiPrefs(configObject, {
         scope,
         profileId,
-        onThemeChanged: (theme) => {
-          if (remainsCurrent()) {
-            context.theme.recordServerSelection(theme, scope);
-          }
-        },
         onApplied: () => {
           if (remainsCurrent()) {
             context.theme.refresh();
@@ -583,11 +578,6 @@ export class ShellGatewayOwner {
           onApplied: () => {
             if (remainsCurrent()) {
               context.theme.refresh({ notify: true });
-            }
-          },
-          onThemeChanged: (theme) => {
-            if (remainsCurrent()) {
-              context.theme.recordServerSelection(theme, scope);
             }
           },
         });

@@ -127,9 +127,8 @@ it("keeps retirement pending after self acknowledgement and preserves its final 
   let settled = false;
   let retirement: ReturnType<typeof waitForPluginRegistryRetirement> | undefined;
   try {
-    expect(await acknowledged.promise).toEqual({ cleanupCount: 0, failures: [] });
+    expect(await acknowledged.promise).toEqual({ failures: [] });
     expect(await waitForPluginRegistryRetirement(registry, { deferConsumers: true })).toEqual({
-      cleanupCount: 0,
       failures: [],
       deferredPluginIds: [record.id],
     });
@@ -145,7 +144,6 @@ it("keeps retirement pending after self acknowledgement and preserves its final 
     const result = await retirement;
     await call;
     expect(result).toEqual({
-      cleanupCount: 0,
       failures: [{ pluginId: record.id, hookId: "instance", error: failure }],
     });
     const repeated = await waitForPluginRegistryRetirement(registry);

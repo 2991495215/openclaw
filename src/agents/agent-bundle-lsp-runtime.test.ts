@@ -312,7 +312,7 @@ describe("bundle LSP runtime", () => {
 
     const runtime = await createRuntime();
 
-    expect(runtime).toMatchObject({ sessions: [], tools: [] });
+    expect(runtime.tools).toEqual([]);
     expect(child.dispose).toHaveBeenCalledOnce();
   });
 

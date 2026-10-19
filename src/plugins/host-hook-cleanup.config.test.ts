@@ -48,7 +48,6 @@ describe("plugin host cleanup config fallback", () => {
         },
       ],
     ]);
-    expect(result.cleanupCount).toBe(1);
     expect(result.failures).toEqual([
       {
         error: configError,

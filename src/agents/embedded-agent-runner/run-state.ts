@@ -64,7 +64,6 @@ export type AbandonedEmbeddedRun = {
   runId?: string;
   sessionKey?: string;
   sessionFile?: string;
-  abandonedAtMs: number;
   reason: "timeout" | "recovering_timeout";
 };
 

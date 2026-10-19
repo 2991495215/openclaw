@@ -665,7 +665,7 @@ export async function closeStaleClientVoiceSessions(params: {
   excludeVoiceSessionId?: string;
   now?: number;
   warn?: (message: string) => void;
-}): Promise<number> {
+}): Promise<void> {
   const now = params.now ?? Date.now();
   // A new voice session remains a retry point, but channel I/O is detached so a
   // stalled adapter cannot block stale-session recovery.
@@ -683,10 +683,9 @@ export async function closeStaleClientVoiceSessions(params: {
     },
     physicalSource.options,
   );
-  let closed = 0;
   for (const record of stale) {
     try {
-      const didClose = await closeVoiceSessionOperationOwner({
+      await closeVoiceSessionOperationOwner({
         agentId: params.agentId,
         physicalSource,
         sessionKey: record.sessionKey,
@@ -696,16 +695,12 @@ export async function closeStaleClientVoiceSessions(params: {
         staleBefore: now - STALE_AFTER_MS,
         transcriptFailurePolicy: "require-success",
       });
-      if (didClose) {
-        closed += 1;
-      }
     } catch (error) {
       params.warn?.(
         `failed to close stale voice session ${record.voiceSessionId}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
-  return closed;
 }
 
 const clientVoiceSessionTesting = {

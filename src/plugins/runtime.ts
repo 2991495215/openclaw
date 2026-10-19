@@ -153,8 +153,7 @@ export function disposePluginRegistryInstances(
         });
     const initialized = trackAsyncWork(() => runContextCleanup(initialize));
     // Cache initialization, not one caller's self-retirement acknowledgment.
-    wait = async (observation) =>
-      (await (await initialized)?.(observation)) ?? { cleanupCount: 0, failures: [] };
+    wait = async (observation) => (await (await initialized)?.(observation)) ?? { failures: [] };
     retirements.set(registry, wait);
     // Epoch abort observers can reenter retirement and must receive this same completion.
     quiescePluginRegistry(registry);
@@ -237,7 +236,6 @@ export async function waitForPluginRegistryRetirement(
 ): Promise<PluginHostCleanupResult> {
   return (
     (await retirements.get(getPluginRegistryResourceOwner(registry))?.(options)) ?? {
-      cleanupCount: 0,
       failures: [],
     }
   );

@@ -40,7 +40,6 @@ import {
   readSettingsForGateway,
   profileNavigation,
 } from "./settings.ts";
-import type { ThemeName } from "./theme.ts";
 
 function applyChangedSettingsPatch(
   target: Partial<UiSettings>,
@@ -362,7 +361,6 @@ export function applyServerUiPrefs(
     scope?: string;
     profileId?: string | null;
     onApplied: (patch: Partial<UiSettings>) => void;
-    onThemeChanged?: (theme: ThemeName | null) => void;
     /** Only a successful profile read confirms navigation; cached reapplication does not. */
     navigationConfirmed?: boolean;
   },
@@ -462,9 +460,6 @@ export function applyServerUiPrefs(
   Object.assign(changed, navigationPatch);
   publishConfirmedPrefs(sync, scope, prefs);
   finishReconciliation();
-  if (Object.hasOwn(changed, "theme")) {
-    hooks.onThemeChanged?.(changed.theme ?? null);
-  }
   // Adopting identity changes the read fallback before application snapshots are notified.
   // Publish navigation resets on first adoption too, even if that fallback equals the new defaults.
   const patch = serverPrefsLocalPatch(
@@ -486,7 +481,6 @@ export async function refreshProfileAppearancePrefs(options: {
   configObject: unknown;
   scope?: string;
   onApplied: (patch: Partial<UiSettings>) => void;
-  onThemeChanged?: (theme: ThemeName | null) => void;
   isCurrent?: () => boolean;
 }): Promise<boolean> {
   const scope = options.scope ?? options.client.gatewayUrl;

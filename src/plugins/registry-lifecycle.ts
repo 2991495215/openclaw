@@ -229,7 +229,7 @@ export function getPluginLoaderCacheState(cache = getPluginCache()) {
       quiescePluginRegistry(registry);
     }
     if (registries.size === 0) {
-      return { cleanupCount: 0, failures: [] };
+      return { failures: [] };
     }
     // Lookup invalidation never reaches this terminal owner; runtime cleanup stays lazy until retirement.
     const disposePluginRegistryInstances = await loadRegistryDisposer();

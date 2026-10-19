@@ -49,7 +49,6 @@ type LspServerCapabilities = {
 
 type BundleLspToolRuntime = {
   tools: AnyAgentTool[];
-  sessions: Array<{ serverName: string; capabilities: LspServerCapabilities }>;
   dispose: () => Promise<void>;
 };
 
@@ -515,7 +514,7 @@ export async function createBundleLspToolRuntime(params: {
     logWarn(`bundle-lsp: ${diagnostic.pluginId}: ${diagnostic.message}`);
   }
   if (Object.keys(loaded.config.lspServers).length === 0) {
-    return { tools: [], sessions: [], dispose: async () => {} };
+    return { tools: [], dispose: async () => {} };
   }
 
   const reservedNames = normalizeReservedToolNames(params.reservedToolNames);
@@ -593,10 +592,6 @@ export async function createBundleLspToolRuntime(params: {
 
     return {
       tools,
-      sessions: sessions.map((s) => ({
-        serverName: s.serverName,
-        capabilities: s.capabilities,
-      })),
       dispose: () => disposeSessions(sessions),
     };
   } catch (error) {

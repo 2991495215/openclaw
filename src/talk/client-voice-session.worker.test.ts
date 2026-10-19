@@ -409,7 +409,7 @@ describe("client voice session worker contract", () => {
       (value) => ({ value }),
       (error: unknown) => ({ error }),
     );
-    let recovery: Promise<number> | undefined;
+    let recovery: Promise<void> | undefined;
     try {
       await withinTest(
         awaitGateBeforeSettlement(
@@ -430,7 +430,7 @@ describe("client voice session worker contract", () => {
       );
       release.resolve();
       expect(await resumeResult).toEqual({ value: voiceSessionId });
-      expect(await recovery).toBe(0);
+      await recovery;
       expect(readRecord(voiceSessionId)).toMatchObject({
         status: "open",
         updatedAt: now,

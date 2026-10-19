@@ -39,7 +39,6 @@ it.each(["reset", "delete"] as const)(
     };
 
     await expect(runPluginHostCleanup(params)).resolves.toEqual({
-      cleanupCount: 0,
       failures: [{ pluginId: "cleanup-fixture", hookId: "runtime:release", error }],
     });
 
@@ -55,7 +54,6 @@ it.each(["reset", "delete"] as const)(
 
     warn.mockClear();
     await expect(runPluginHostCleanup(params)).resolves.toEqual({
-      cleanupCount: 1,
       failures: [],
     });
     expect(warn).not.toHaveBeenCalled();

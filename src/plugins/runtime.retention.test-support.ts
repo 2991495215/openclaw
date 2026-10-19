@@ -25,7 +25,7 @@ import { createEmptyPluginRegistry } from "./registry-empty.js";
 import { disposePluginRegistryInstances, waitForPluginRegistryRetirement } from "./runtime.js";
 import { createPluginRecord } from "./status.test-helpers.js";
 
-const emptyResult = { cleanupCount: 0, failures: [] };
+const emptyResult = { failures: [] };
 
 function assertCollected(reference: WeakRef<object>, message: string) {
   assert.equal(reference.deref(), undefined, message);

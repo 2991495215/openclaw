@@ -170,7 +170,6 @@ export function markActiveEmbeddedRunAbandoned(params: {
   ABANDONED_EMBEDDED_RUNS.set(owner, {
     sessionId,
     ...(runId ? { runId } : {}),
-    abandonedAtMs: Date.now(),
     reason: params.reason,
     ...(sessionKey ? { sessionKey } : {}),
     ...(sessionFile ? { sessionFile } : {}),

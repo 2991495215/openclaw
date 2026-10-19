@@ -52,7 +52,6 @@ export function createGatewayCloseTestDepsFactory(mocks: GatewayCloseFixtureMock
         let retirement: ReturnType<GatewayCloseParams["pluginMetadata"]["close"]> | undefined;
         const retire = () =>
           (retirement ??= clearActivePluginRegistry().then(() => ({
-            cleanupCount: 0,
             failures: [],
           })));
         await onRetirement?.(retire);
@@ -66,7 +65,7 @@ export function createGatewayCloseTestDepsFactory(mocks: GatewayCloseFixtureMock
           const retire = () =>
             (retirement ??= Promise.resolve()
               .then(retireRegistry)
-              .then((result) => result ?? { cleanupCount: 0, failures: [] }));
+              .then((result) => result ?? { failures: [] }));
           await onFinal?.(retire);
           return retire();
         },

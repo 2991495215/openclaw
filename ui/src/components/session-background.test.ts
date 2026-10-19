@@ -61,9 +61,7 @@ function fixture(resourceBasePath = "/control") {
     branding: resolveThemeBranding(undefined),
     mode: "dark",
     resolvedMode: "dark",
-    serverSelection: null,
     appliedPalette: null,
-    recordServerSelection: () => undefined,
     setMode: () => undefined,
     refresh: () => listeners.forEach((notify) => notify()),
     subscribe: (notify: () => void) => {

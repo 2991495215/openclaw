@@ -460,7 +460,7 @@ it("shares a confirmed send across context refresh while the first read waits", 
   try {
     await closeVoice(voiceSessionId, target);
     await withinTest(readStarted.promise, signal);
-    expect(await recoverStale()).toBe(0);
+    await recoverStale();
     releaseRead.resolve();
     await settleDigestAttempts();
     expect(warning).toHaveBeenCalledWith(expect.stringContaining(markerFailure.message));
@@ -498,7 +498,7 @@ it.each(["different path", "same path replacement"] as const)(
       }
       await seedSession(sessionKey);
       const stale = await createVoiceSession({ sessionKey, now: 1 });
-      expect(await recoverStale({ now: 6 * 60 * 60_000 + 2 })).toBe(1);
+      await recoverStale({ now: 6 * 60 * 60_000 + 2 });
       await settleDigestAttempts();
       expect(readRecord(stale)?.status).toBe("closed");
       expectRetained();
@@ -563,7 +563,7 @@ it("recovers current stale calls after shared storage retires a failed digest co
   openOpenClawStateDatabase();
   const stale = await createVoiceSession({ now: 1 });
   expect(readDatabasePathIdentitySync(agentPath)).toEqual(identity);
-  await expect(recoverStale({ now: 6 * 60 * 60_000 + 2 })).resolves.toBe(1);
+  await recoverStale({ now: 6 * 60 * 60_000 + 2 });
   await settleDigestAttempts();
   expect(readRecord(stale)?.status).toBe("closed");
   expect(readRecord(retired)?.digestDeliveredAt).toBeUndefined();
@@ -603,7 +603,7 @@ it.each([
         : vi.spyOn(sessionEvents, "publishTranscriptUpdate").mockImplementationOnce(publish);
     if (phase === "recovery") {
       const warn = vi.fn();
-      expect(await recoverStale({ now: 6 * 60 * 60_000 + 2, warn })).toBe(0);
+      await recoverStale({ now: 6 * 60 * 60_000 + 2, warn });
       expect(warn).toHaveBeenCalledOnce();
     } else {
       // Transcript and voice confirmation commit together before publication.

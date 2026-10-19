@@ -98,16 +98,15 @@ export async function applySessionPatchProjection<
  */
 export async function cleanupPluginHostSessionStore(
   params: PluginHostSessionCleanupStoreParams,
-): Promise<number> {
+): Promise<void> {
   if (
     shouldSkipPluginHostCleanupStore(params) ||
     (params.shouldCleanup && !params.shouldCleanup())
   ) {
-    return 0;
+    return;
   }
   const now = Date.now();
   const cleanupRevoked = new Error("Plugin session cleanup is no longer current");
-  let cleared = 0;
   for (const { entry, sessionKey } of await readSessionEntrySummariesInWorker({
     agentId: params.agentId,
     storePath: params.storePath,
@@ -146,9 +145,6 @@ export async function cleanupPluginHostSessionStore(
             }
           },
         },
-        onCommitted: () => {
-          cleared += 1;
-        },
         replaceEntry: true,
         skipMaintenance: true,
       },
@@ -158,5 +154,4 @@ export async function cleanupPluginHostSessionStore(
       }
     });
   }
-  return cleared;
 }

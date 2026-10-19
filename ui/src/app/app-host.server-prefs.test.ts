@@ -12,8 +12,7 @@ import { loadSettings, patchSettings } from "./settings.ts";
 
 function createPreferenceShell(
   prefs: Record<string, string>,
-  theme: Pick<ApplicationContext["theme"], "refresh"> &
-    Partial<Pick<ApplicationContext["theme"], "recordServerSelection" | "serverSelection">>,
+  theme: Pick<ApplicationContext["theme"], "refresh">,
   scope = "ws://locale.test",
 ) {
   const state = { configSnapshot: { config: { ui: { prefs } }, hash: scope } };
@@ -64,25 +63,27 @@ describe("OpenClaw shell locale preferences", () => {
     expect(refresh).toHaveBeenCalledOnce();
   });
 
-  it("publishes authored theme changes when the local mirror needs no patch", async () => {
+  it("applies server theme selections through the settings owner", async () => {
     patchSettings({ gatewayUrl: "ws://theme.test" });
-    const recordServerSelection = vi.fn();
+    const refresh = vi.fn();
     const { shell, state, runtimeConfig } = createPreferenceShell(
-      { theme: "custom" },
-      { recordServerSelection, refresh: vi.fn(), serverSelection: null },
+      { theme: "knot" },
+      { refresh },
       "ws://theme.test",
     );
 
     await shell.shellGateway.reconcileServerUiPrefs(runtimeConfig);
-    expect(recordServerSelection).toHaveBeenLastCalledWith("custom", "ws://theme.test");
+    expect(loadSettings().theme).toBe("knot");
+    expect(refresh).toHaveBeenCalledOnce();
+    refresh.mockClear();
 
     state.configSnapshot = {
       config: { ui: { prefs: { theme: "claw" } } },
       hash: "theme-claw",
     };
     await shell.shellGateway.reconcileServerUiPrefs(runtimeConfig);
-    expect(recordServerSelection).toHaveBeenLastCalledWith("claw", "ws://theme.test");
     expect(loadSettings().theme).toBe("claw");
+    expect(refresh).toHaveBeenCalledOnce();
   });
 });
 

@@ -63,7 +63,6 @@ it.each([false, true])(
         await expect(result).resolves.toBeUndefined();
       }
       await expect(waitForPluginCacheRetirement()).resolves.toEqual({
-        cleanupCount: 0,
         failures: [],
       });
     } finally {

@@ -44,7 +44,6 @@ type InstalledSkillSource = {
   slug: string;
   targetDir: string;
   source: "path" | "git";
-  git?: SkillSourceOrigin["git"];
 };
 
 async function resolveSkillInstallSlug(params: {
@@ -170,7 +169,6 @@ async function installLocalSkillDir(
     slug,
     targetDir: install.targetDir,
     source: params.source,
-    ...(params.git ? { git: params.git } : {}),
   };
 }
 

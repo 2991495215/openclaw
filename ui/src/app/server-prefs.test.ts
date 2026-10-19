@@ -208,11 +208,9 @@ describe("server preferences", () => {
 
   it("preserves a server custom-theme override when this device lacks its palette", () => {
     const config = configWithPrefs({ theme: "custom" });
-    const onThemeChanged = vi.fn();
-    expect(applyServerUiPrefs(config, { onApplied, onThemeChanged })).toBe(false);
+    expect(applyServerUiPrefs(config, { onApplied })).toBe(false);
     expect(loadSettings().theme).toBe("claw");
     expect(onApplied).not.toHaveBeenCalled();
-    expect(onThemeChanged).toHaveBeenCalledWith("custom");
     const state = resolveServerUiPrefState(config, "theme");
 
     expectThemeState(config, "synced", "claw", "", true);
@@ -305,23 +303,22 @@ describe("server preferences", () => {
     expect(Object.hasOwn(persisted, "chatSendShortcut")).toBe(false);
   });
 
-  it("does not publish a server theme change shadowed by pending local intent", async () => {
+  it("preserves pending local theme intent while applying other server preferences", async () => {
     const requestGate = holdRequest();
-    const onThemeChanged = vi.fn();
-    const themeHooks = { scope, onApplied, onThemeChanged };
+    const themeHooks = { scope, onApplied };
     applyPrefs({ theme: "claw" }, themeHooks);
-    onThemeChanged.mockClear();
 
+    patchSettings({ theme: "knot" });
     push(client, { theme: "knot" });
     await waitForRequest();
     expect(applyPrefs({ theme: "knot" }, themeHooks)).toBe(false);
-    expect(onThemeChanged).not.toHaveBeenCalled();
+    expect(loadSettings().theme).toBe("knot");
 
     onApplied.mockClear();
     expect(applyPrefs({ theme: "knot", locale: "de" }, themeHooks)).toBe(true);
     expect(onApplied).toHaveBeenCalledExactlyOnceWith({ locale: "de" });
     expect(loadSettings().locale).toBe("de");
-    expect(onThemeChanged).not.toHaveBeenCalled();
+    expect(loadSettings().theme).toBe("knot");
 
     requestGate.resolve({});
     await waitForFast(expectCleared);

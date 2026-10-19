@@ -91,7 +91,6 @@ export function retainGatewayPluginMetadata(
             }
           });
           return {
-            cleanupCount: (previous?.cleanupCount ?? 0) + (cleanup?.cleanupCount ?? 0),
             failures: [...(previous?.failures ?? []), ...(cleanup?.failures ?? [])],
           };
         }));
@@ -124,7 +123,6 @@ export function retainGatewayPluginMetadata(
     );
     const deferredPluginIds = completed.flatMap((result) => result.deferredPluginIds ?? []);
     return {
-      cleanupCount: completed.reduce((count, result) => count + result.cleanupCount, 0),
       failures: completed.flatMap((result) => result.failures),
       ...(deferredPluginIds.length ? { deferredPluginIds } : {}),
     };

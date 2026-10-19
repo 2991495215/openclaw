@@ -6,7 +6,6 @@ export type PluginHostCleanupFailure = {
 };
 
 export type PluginHostCleanupResult = {
-  cleanupCount: number;
   failures: PluginHostCleanupFailure[];
   deferredPluginIds?: string[];
 };

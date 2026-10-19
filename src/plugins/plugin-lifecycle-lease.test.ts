@@ -378,7 +378,6 @@ describe("plugin lifecycle lease", () => {
         cleanups.flatMap((cleanup) => cleanup.failures.map((failure) => failure.error)),
       ).toEqual([processError, operationError]);
       await expect(waitForPluginCacheRetirement()).resolves.toEqual({
-        cleanupCount: 0,
         failures: [],
       });
     });

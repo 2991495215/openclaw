@@ -46,8 +46,8 @@ describe("plugin host cleanup session stores", () => {
       reason: "disable",
       ...overrides,
     });
-  async function expectCleanup(overrides: CleanupOptions, cleanupCount = 1) {
-    expect(await cleanup(overrides)).toEqual({ cleanupCount, failures: [] });
+  async function expectCleanup(overrides: CleanupOptions) {
+    expect(await cleanup(overrides)).toEqual({ failures: [] });
   }
 
   function store(storePath = path.join(stateDir, "sessions.json"), agentId?: string) {
@@ -57,8 +57,8 @@ describe("plugin host cleanup session stores", () => {
       read: (key: string) => loadSessionEntry(scope(key)),
       write: (key: string, sessionId: string, overrides: Partial<SessionEntry> = {}) =>
         replaceSessionEntry(scope(key), { sessionId, updatedAt, ...overrides }),
-      clean: (overrides: CleanupOptions, count = 1) =>
-        expectCleanup({ cfg: { session: { store: storePath } }, ...overrides }, count),
+      clean: (overrides: CleanupOptions) =>
+        expectCleanup({ cfg: { session: { store: storePath } }, ...overrides }),
     };
   }
 
@@ -88,7 +88,7 @@ describe("plugin host cleanup session stores", () => {
     await write("agent:main:main", "session-id");
     const before = read("agent:main:main");
 
-    await clean({ pluginId: "noop-plugin" }, 0);
+    await clean({ pluginId: "noop-plugin" });
     expect(read("agent:main:main")).toEqual(before);
   });
 
@@ -182,7 +182,6 @@ describe("plugin host cleanup session stores", () => {
           sessionStoreTargets: completed ? [retired, active] : [retired],
         });
         expect(result).toEqual({
-          cleanupCount: completed ? 1 : 0,
           failures:
             mode === "snapshot-rejected" || !completed
               ? [expect.objectContaining({ pluginId: "fixture", hookId: "session-store" })]
@@ -283,7 +282,7 @@ describe("plugin host cleanup session stores", () => {
             ? { status: "rejected", reason: revoked }
             : {
                 status: "fulfilled",
-                value: { cleanupCount: mode === "committed" ? 1 : 0, failures: [] },
+                value: { failures: [] },
               },
         );
         const after = loadSessionEntry(scope);
@@ -306,10 +305,11 @@ describe("plugin host cleanup session stores", () => {
     const pluginExtensions = { test: { state: { active: true } } };
     await write("agent:main:main", "session-id", { pluginExtensions });
 
-    await clean(
-      { reason: "reset", sessionKey: "agent:main:main", skipPersistentSessionState: true },
-      0,
-    );
+    await clean({
+      reason: "reset",
+      sessionKey: "agent:main:main",
+      skipPersistentSessionState: true,
+    });
     expect(read("agent:main:main")?.pluginExtensions).toEqual(pluginExtensions);
   });
 
@@ -372,17 +372,14 @@ describe("plugin host cleanup session stores", () => {
     await first.write(unrelatedKey, unrelatedEntry.sessionId, unrelatedEntry);
     await second.write(secondKey, runtimeSessionId, { pluginExtensions: cleanupState });
 
-    await first.clean(
-      {
-        pluginId: "cleanup",
-        sessionKey: runtimeSessionId.toUpperCase(),
-        sessionStoreTargets: [
-          { agentId: "a", storePath: first.storePath },
-          { agentId: "b", storePath: second.storePath },
-        ],
-      },
-      2,
-    );
+    await first.clean({
+      pluginId: "cleanup",
+      sessionKey: runtimeSessionId.toUpperCase(),
+      sessionStoreTargets: [
+        { agentId: "a", storePath: first.storePath },
+        { agentId: "b", storePath: second.storePath },
+      ],
+    });
     const firstMain = first.read(targetKey);
     const secondOther = second.read(secondKey);
     expect(firstMain?.pluginExtensions).toEqual(preserved);
@@ -400,19 +397,16 @@ describe("plugin host cleanup session stores", () => {
     await main.write("agent:main:main", "shared-session", { pluginExtensions: cleanupState });
     await work.write("agent:work:main", "shared-session", { pluginExtensions: cleanupState });
 
-    await main.clean(
-      {
-        cfg: {
-          session: { store: sharedStorePath },
-          agents: {
-            entries: { main: {}, work: {} },
-            defaults: { sessionStore: { agentId: "main" } },
-          },
+    await main.clean({
+      cfg: {
+        session: { store: sharedStorePath },
+        agents: {
+          entries: { main: {}, work: {} },
+          defaults: { sessionStore: { agentId: "main" } },
         },
-        pluginId: "cleanup",
       },
-      2,
-    );
+      pluginId: "cleanup",
+    });
     for (const [target, key] of [
       [main, "agent:main:main"],
       [work, "agent:work:main"],
@@ -448,13 +442,7 @@ describe("plugin host cleanup session stores", () => {
       await write(`agent:main:${id}`, id, entry);
     }
 
-    await clean(
-      {
-        registry,
-        pluginId: "fixture",
-      },
-      2,
-    );
+    await clean({ registry, pluginId: "fixture" });
     for (const id of ["a", "b"]) {
       expect(read(`agent:main:${id}`)).toMatchObject(lockedState(id));
     }

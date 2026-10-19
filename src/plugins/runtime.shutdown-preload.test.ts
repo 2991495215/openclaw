@@ -26,7 +26,7 @@ vi.mock("../shared/lazy-runtime.js", async (importOriginal) => {
   };
 });
 vi.mock("./host-hook-cleanup.js", () => ({
-  createPluginHostRegistryRetirement: () => async () => ({ cleanupCount: 0, failures: [] }),
+  createPluginHostRegistryRetirement: () => async () => ({ failures: [] }),
 }));
 vi.mock("./memory-runtime.js", () => ({
   prepareMemoryRuntimeReload: () => ({ close: state.closeMemory, commit() {} }),

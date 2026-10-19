@@ -223,7 +223,7 @@ it.each([
     const owner = retainMetadata(createScheduler());
     owner.publish(owner.runBootstrap(createSnapshot));
     const failure = { pluginId, hookId: "instance", error: new Error("cleanup failed") };
-    const completed = { cleanupCount: 1, failures: [failure] };
+    const completed = { failures: [failure] };
     const cleanup = createDeferredCore<typeof completed>();
     if (!deferred) {
       cleanup.resolve(completed);
@@ -233,7 +233,7 @@ it.each([
       new Set([pluginId]),
       (options) =>
         options?.deferConsumers
-          ? Promise.resolve({ cleanupCount: 0, failures: [], deferredPluginIds: [pluginId] })
+          ? Promise.resolve({ failures: [], deferredPluginIds: [pluginId] })
           : cleanup.promise,
     );
     if (!deferred) {
@@ -245,7 +245,6 @@ it.each([
       await withTestTimeout(publication, 1_000, "Publication waited for its retained consumer");
       if (deferred) {
         expect(await publication).toEqual({
-          cleanupCount: 0,
           failures: [],
           deferredPluginIds: ["turn-owner"],
         });

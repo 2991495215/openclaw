@@ -492,7 +492,7 @@ describe("client voice session lifecycle", () => {
           });
         try {
           const warn = vi.fn();
-          expect(await recoverStale({ now, warn })).toBe(closed === "original" ? 0 : 1);
+          await recoverStale({ now, warn });
           expect(warn).toHaveBeenCalledTimes(closed === "original" ? 1 : 0);
           expect(readRecord(voiceSessionId)?.status).toBe("open");
           env.restore();
@@ -514,7 +514,7 @@ describe("client voice session lifecycle", () => {
         now: 6 * 60 * 60_000,
       });
 
-      expect(await recoverStale({ now: 6 * 60 * 60_000 + 2 })).toBe(1);
+      await recoverStale({ now: 6 * 60 * 60_000 + 2 });
       expect(readRecord(stale)?.status).toBe("closed");
       expect(readRecord(recent)?.status).toBe("open");
     });
@@ -529,7 +529,7 @@ describe("client voice session lifecycle", () => {
         await createVoiceSession({ voiceSessionId, now });
         return candidates;
       });
-      expect(await recoverStale({ now })).toBe(0);
+      await recoverStale({ now });
       expect(readRecord(voiceSessionId)?.status).toBe("open");
     });
 

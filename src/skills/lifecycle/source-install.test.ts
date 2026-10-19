@@ -332,8 +332,12 @@ describe("installSkillFromSource", () => {
       expect(result).toMatchObject({
         slug: "good-skill",
         source: "git",
-        git: { commit: expectedCommit },
       });
+      expect(
+        JSON.parse(
+          await fs.readFile(path.join(result.targetDir, ".openclaw", "source-origin.json"), "utf8"),
+        ),
+      ).toMatchObject({ git: { commit: expectedCommit } });
     },
   );
 
@@ -365,7 +369,10 @@ describe("installSkillFromSource", () => {
       const slug = sourceRef === "feature/skill" ? "feature-skill" : "git-skill";
       const targetDir = path.join(workspaceDir, "skills", slug);
       expect(result).toMatchObject({ slug, source: "git", targetDir });
-      expect(result.git?.commit).toMatch(/^[0-9a-f]{40}$/);
+      const origin = JSON.parse(
+        await fs.readFile(path.join(targetDir, ".openclaw", "source-origin.json"), "utf8"),
+      );
+      expect(origin).toMatchObject({ git: { commit: expect.stringMatching(/^[0-9a-f]{40}$/) } });
       await expect(fs.readFile(path.join(targetDir, "SKILL.md"), "utf8")).resolves.toContain(
         sourceRef === "feature/skill" ? "Feature branch skill" : "git-skill",
       );

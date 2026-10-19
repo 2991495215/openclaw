@@ -133,7 +133,7 @@ const mocks = vi.hoisted(() => ({
     { role: "assistant", text: "Earlier answer" },
     { role: "tool", text: "internal tool output" },
   ]),
-  closeStaleClientVoiceSessions: vi.fn(async () => 0),
+  closeStaleClientVoiceSessions: vi.fn(async () => {}),
   createOrResumeClientVoiceSession: vi.fn<
     typeof import("../../../talk/client-voice-session.js").createOrResumeClientVoiceSession
   >(async () => "voice-test"),

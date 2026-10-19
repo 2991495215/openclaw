@@ -19,7 +19,6 @@ export function summarizePluginRetirementResults(
     result.status === "fulfilled" ? [result.value] : [],
   );
   return {
-    cleanupCount: completed.reduce((count, result) => count + result.cleanupCount, 0),
     failures: completed.flatMap((result) => result.failures),
   };
 }
