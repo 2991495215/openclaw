@@ -5,8 +5,8 @@ import type {
   McpCatalogTool,
   McpServerCatalog,
   McpToolCatalog,
-  RequesterScopedMcpRuntimeHandle,
   SessionMcpRuntime,
+  SessionMcpRuntimeLease,
 } from "./agent-bundle-mcp-types.js";
 
 export type SessionMcpCatalogBinding = {
@@ -69,14 +69,14 @@ export function createSessionMcpCatalogStore(
     }
   };
   const rememberAdvertisedScopedCatalog = (
-    handle: RequesterScopedMcpRuntimeHandle,
+    handle: SessionMcpRuntimeLease,
     catalog: McpToolCatalog,
   ) => {
     const entry = advertisedScopedCatalogBySessionId.get(handle.runtime.sessionId);
     const runtimeKey = [...runtimes].find(([, runtime]) => runtime === handle.runtime)?.[0];
     // Publish only the current owner's recorded discovery, never a pre-reload result.
     if (
-      entry?.configFingerprint !== handle.advertisedCatalogConfigFingerprint ||
+      !entry ||
       runtimeKey === undefined ||
       catalogByRuntimeKey.get(runtimeKey)?.catalog !== catalog
     ) {
@@ -121,7 +121,6 @@ export function createSessionMcpCatalogStore(
       // A reset, replacement or reload must not resurrect a late discovery result.
       if (
         publication &&
-        catalogByRuntimeKey.get(runtimeKey) === publication &&
         runtimes.get(runtimeKey) === runtime &&
         sessionMcpRuntimeOwners.get(runtime)?.isCurrent() !== false
       ) {

@@ -8,7 +8,6 @@ import {
   listMediaGenerationOperations,
   type MediaGenerationOperation,
 } from "../../media-generation-activity.js";
-import { withAbortListener } from "./abortable.js";
 
 export type AsyncStartedToolMeta = {
   toolName?: string;
@@ -40,19 +39,6 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
     throw createAbortError(signal);
   }
-}
-
-async function sleepWithAbort(
-  ms: number,
-  signal: AbortSignal | undefined,
-  sleepFn: (ms: number) => Promise<void>,
-): Promise<void> {
-  if (!signal) {
-    await sleepFn(ms);
-    return;
-  }
-  throwIfAborted(signal);
-  await withAbortListener(signal, () => sleepFn(ms), createAbortError);
 }
 
 function isPendingCompletionTask(task: MediaGenerationOperation): boolean {
@@ -122,11 +108,9 @@ export async function waitForCompletionRequiredAsyncTasks(params: {
   getDeadlineAtMs: () => number | undefined;
   now?: () => number;
   pollIntervalMs?: number;
-  sleep?: (ms: number) => Promise<void>;
   abortSignal?: AbortSignal;
 }): Promise<CompletionRequiredAsyncTaskWaitResult> {
   const now = params.now ?? Date.now;
-  const sleepFn = params.sleep ?? sleep;
   const pollIntervalMs =
     params.pollIntervalMs ?? (isFastTestRuntimeEnv() ? 10 : DEFAULT_ASYNC_TASK_POLL_INTERVAL_MS);
   const waitedRunIds = new Set<string>();
@@ -179,7 +163,7 @@ export async function waitForCompletionRequiredAsyncTasks(params: {
         }
         break waitForTasks;
       }
-      await sleepWithAbort(Math.min(pollIntervalMs, remainingMs), params.abortSignal, sleepFn);
+      await sleep(Math.min(pollIntervalMs, remainingMs), params.abortSignal);
     }
   }
   return {

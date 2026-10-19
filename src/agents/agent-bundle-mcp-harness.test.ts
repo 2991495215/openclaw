@@ -37,7 +37,6 @@ const mocks = vi.hoisted(() => {
           ? {
               runtime,
               releaseLease: runtime.acquireLease?.() ?? (() => {}),
-              advertisedCatalogConfigFingerprint: runtime.configFingerprint,
             }
           : undefined;
       },
@@ -497,7 +496,6 @@ describe("materializeRequesterScopedMcpToolsForHarnessRunCore", () => {
     mocks.acquireRequesterScopedMcpRuntime.mockResolvedValueOnce({
       runtime: unavailable,
       releaseLease: unavailable.acquireLease!(),
-      advertisedCatalogConfigFingerprint: "",
     });
     const busy = await fullPermissionTools("session-stable", "busy");
     expect(busy).toBeDefined();

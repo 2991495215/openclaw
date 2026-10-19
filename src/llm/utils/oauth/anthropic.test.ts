@@ -1,5 +1,7 @@
 // Anthropic OAuth tests cover token exchange and refresh behavior.
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDeferred } from "../../../../test/helpers/promise.js";
+import type { OAuthLoopbackCallbackServer } from "../../../infra/oauth-loopback-callback.js";
 
 const startOAuthLoopbackCallbackServer = vi.hoisted(() =>
   vi.fn<
@@ -135,6 +137,65 @@ describe("Anthropic OAuth token responses", () => {
 });
 
 describe("Anthropic OAuth callback host", () => {
+  it.each(["manual", "timeout", "empty", "wrong state", "rejection", "no manual"] as const)(
+    "settles %s input through one prompt and closes the callback",
+    async (entry) => {
+      const manual = createDeferred<string>();
+      const ready = createDeferred();
+      const callback =
+        createDeferred<Awaited<ReturnType<OAuthLoopbackCallbackServer["waitForCallback"]>>>();
+      const close = vi.fn(async () => callback.reject(new Error("OAuth callback cancelled")));
+      startOAuthLoopbackCallbackServer.mockResolvedValueOnce({
+        waitForCallback: () => callback.promise,
+        complete: async () => undefined,
+        close,
+      });
+      const tokenExchange = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+        Response.json({ access_token: "access", refresh_token: "refresh", expires_in: 3600 }),
+      );
+      vi.stubGlobal("fetch", tokenExchange);
+      const onPrompt = vi.fn(async () => "fallback-code");
+      const login = anthropicOAuthProvider.login({
+        onAuth: () => ready.resolve(),
+        onPrompt,
+        ...(entry === "no manual" ? {} : { onManualCodeInput: () => manual.promise }),
+      });
+      const outcome = login.catch((error: unknown) => error);
+      await ready.promise;
+      if (entry === "timeout" || entry === "no manual") {
+        callback.reject(new Error("OAuth callback timeout"));
+        // Let the callback timeout reach the login while manual input is still pending.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        if (entry === "timeout") {
+          expect(onPrompt).not.toHaveBeenCalled();
+        }
+      }
+      if (entry === "rejection") {
+        manual.reject("manual entry failed");
+      } else {
+        manual.resolve(
+          entry === "empty" ? "" : entry === "wrong state" ? "code#wrong" : "manual-code",
+        );
+      }
+      const result = await outcome;
+      expect(close).toHaveBeenCalled();
+      if (entry === "wrong state" || entry === "rejection") {
+        expect(result).toMatchObject({
+          message: entry === "wrong state" ? "OAuth state mismatch" : "manual entry failed",
+        });
+        expect(tokenExchange).not.toHaveBeenCalled();
+        expect(onPrompt).not.toHaveBeenCalled();
+      } else {
+        expect(result).toMatchObject({ access: "access", refresh: "refresh" });
+        const fallback = entry === "empty" || entry === "no manual";
+        expect(onPrompt).toHaveBeenCalledTimes(fallback ? 1 : 0);
+        expect(tokenExchange.mock.calls[0]?.[1]).toMatchObject({
+          body: expect.stringContaining(`"code":"${fallback ? "fallback-code" : "manual-code"}"`),
+        });
+      }
+    },
+  );
+
   it("rejects non-loopback callback bind hosts", async () => {
     vi.stubEnv("OPENCLAW_OAUTH_CALLBACK_HOST", "0.0.0.0");
 
