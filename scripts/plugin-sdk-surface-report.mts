@@ -290,7 +290,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // ControlUiChannelSettingsView for plugin-owned channel Settings presentations.
       // +1: the shared message-tool source-reply finality resolver.
       // +1: awaited web_search policy preparation for harnesses; the sync resolver stays.
-      3810,
+      // +2: shared SystemOne question/response codecs for the approved Liquid provider integration.
+      3812,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(

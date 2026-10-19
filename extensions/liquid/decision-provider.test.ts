@@ -21,7 +21,7 @@ const image: DecisionBatchV2 = {
   ...batch,
   state: { type: "image", dataUri: "data:image/png;base64,AA==", text: "Evidence" },
 };
-function context(): DecisionProviderContextV2 {
+function context(overrides: Partial<DecisionProviderContextV2> = {}): DecisionProviderContextV2 {
   return {
     model: { provider: "liquid", id: "d1-ultra", name: "Liquid d1 Ultra" },
     config: {},
@@ -29,6 +29,7 @@ function context(): DecisionProviderContextV2 {
     signal: new AbortController().signal,
     deadlineMonotonicMs: performance.now() + 5_000,
     isAdmissible: () => true,
+    ...overrides,
   };
 }
 function wire() {
@@ -203,37 +204,38 @@ describe("Liquid native Decision provider", () => {
   it.each(["provider", "model", "defaults", "default-model", "agent-model", "agent"])(
     "rejects unsupported %s parameters before inspecting images or sending HTTP",
     async (scope) => {
-      const ctx = context();
       const params = { temperature: 0, provider: { data_collection: "deny" } };
-      ctx.agentId = "worker";
-      ctx.model.params = scope === "model" ? params : undefined;
-      ctx.config = {
-        models: {
-          providers: {
-            liquid: {
-              baseUrl: "https://api.liquid.ai/decisions/v1",
-              models: [],
-              params: scope === "provider" ? params : undefined,
+      const ctx = context({
+        agentId: "worker",
+        config: {
+          models: {
+            providers: {
+              liquid: {
+                baseUrl: "https://api.liquid.ai/decisions/v1",
+                models: [],
+                params: scope === "provider" ? params : undefined,
+              },
             },
           },
-        },
-        agents: {
-          defaults: {
-            params: scope === "defaults" ? params : undefined,
-            models: {
-              "liquid/d1-ultra": { params: scope === "default-model" ? params : undefined },
-            },
-          },
-          entries: {
-            worker: {
-              params: scope === "agent" ? params : undefined,
+          agents: {
+            defaults: {
+              params: scope === "defaults" ? params : undefined,
               models: {
-                "liquid/d1-ultra": { params: scope === "agent-model" ? params : undefined },
+                "liquid/d1-ultra": { params: scope === "default-model" ? params : undefined },
+              },
+            },
+            entries: {
+              worker: {
+                params: scope === "agent" ? params : undefined,
+                models: {
+                  "liquid/d1-ultra": { params: scope === "agent-model" ? params : undefined },
+                },
               },
             },
           },
         },
-      };
+      });
+      ctx.model.params = scope === "model" ? params : undefined;
       expect(await provider.evaluate(image, ctx)).toMatchObject({ reason: "unsupported-input" });
       expect(getImageMetadata).not.toHaveBeenCalled();
       expect(fetchWithProviderHttpGuard).not.toHaveBeenCalled();
@@ -241,8 +243,7 @@ describe("Liquid native Decision provider", () => {
   );
 
   it("ignores empty parameters and parameters for other agents or models", async () => {
-    const ctx = context();
-    ctx.agentId = "worker";
+    const ctx = context({ agentId: "worker" });
     ctx.model.params = {};
     ctx.config.agents = {
       defaults: { params: {}, models: { "other/model": { params: { temperature: 0 } } } },
@@ -261,13 +262,12 @@ describe("Liquid native Decision provider", () => {
   it.each(["unknown-model", "missing-credentials", "expired-deadline"])(
     "rejects %s before HTTP",
     async (failure) => {
-      const ctx = context();
+      const ctx = context({
+        ...(failure === "missing-credentials" ? { auth: { mode: "api-key" } } : {}),
+        ...(failure === "expired-deadline" ? { deadlineMonotonicMs: 0 } : {}),
+      });
       if (failure === "unknown-model") {
         ctx.model.id = "unsupported";
-      } else if (failure === "missing-credentials") {
-        ctx.auth = { mode: "api-key" };
-      } else {
-        ctx.deadlineMonotonicMs = 0;
       }
       expect(await provider.evaluate(batch, ctx)).toMatchObject({ status: "unavailable" });
       expect(fetchWithProviderHttpGuard).not.toHaveBeenCalled();
