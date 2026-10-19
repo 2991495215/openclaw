@@ -64,6 +64,7 @@ it("expires idle partitions while preserving reuse and leases", async () => {
     try {
       await getRuntime();
       const runtimeKeys = manager.listRuntimeKeys();
+      expect(runtimeKeys).toHaveLength(2);
       await clock.advanceBy(1_200_000 - 1);
       await manager.sweepIdleRuntimes();
       expect(manager.listRuntimeKeys()).toEqual(runtimeKeys);
