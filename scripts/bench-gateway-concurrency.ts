@@ -56,6 +56,7 @@ import {
   type GatewayRpc,
   getFreePort,
   readGatewayMemory,
+  readGatewayWorkers,
   readProcessRssMb,
 } from "./lib/gateway-bench-probes.ts";
 import {
@@ -194,6 +195,10 @@ type BenchmarkRun = {
   loadWindow?: { startMonotonicMicros: number; endMonotonicMicros: number };
   history: Array<TimedProbe & { sessionKey?: string }>;
   memory: { after: GatewayMemorySample; before: GatewayMemorySample; peakRssMb: number };
+  workers?: {
+    before: Awaited<ReturnType<typeof readGatewayWorkers>>;
+    after: Awaited<ReturnType<typeof readGatewayWorkers>>;
+  };
   messageSubscriptions: TimedProbe[];
   messageSubscriptionsDuringLoad: TimedProbe[];
   mockRequests?: ReturnType<typeof summarizeMockRequests>;
@@ -2475,6 +2480,7 @@ async function runGatewaySample(
             }
           : undefined;
       partialRun.processPlacement = processPlacement;
+      const workersBefore = await readGatewayWorkers(rpc);
       const cpuBefore = await readGatewayCpuUsage(gateway);
       const turnsStartedAt = performance.now();
       // Keep the live artifact intact: buffered setup writes can arrive after this boundary.
@@ -2694,6 +2700,8 @@ async function runGatewaySample(
       };
       const turnsDurationMs = performance.now() - turnsStartedAt;
       partialRun.turnsDurationMs = turnsDurationMs;
+      const workersAfter = await readGatewayWorkers(rpc);
+      partialRun.workers = { before: workersBefore, after: workersAfter };
       if (!live) {
         providerAfterLoad = readProviderRequestLog(requestLogPath).length;
       }
@@ -2768,6 +2776,7 @@ async function runGatewaySample(
           endMonotonicMicros: loadEndMonotonicMicros,
         },
         memory: { after: memoryAfter, before: memoryBefore, peakRssMb },
+        workers: { before: workersBefore, after: workersAfter },
         messageSubscriptions,
         messageSubscriptionsDuringLoad,
         turnAccounting,
