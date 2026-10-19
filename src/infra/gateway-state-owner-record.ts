@@ -31,7 +31,7 @@ export function isGatewayStateOwnerDefinitelyStale(value: unknown, lockPath: str
   );
 }
 
-export class StateDatabaseAccessError extends Error {
+class StateDatabaseAccessError extends Error {
   override name = "StateDatabaseAccessError";
 }
 
