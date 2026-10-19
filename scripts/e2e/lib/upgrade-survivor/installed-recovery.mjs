@@ -3,8 +3,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runManagedCommand } from "../../../lib/managed-child-process.mts";
 import { packFirstHopUpdateFixture } from "../update-first-hop-package-fixtures.mjs";
+import { runInstalledRecoveryCommand } from "./installed-recovery-command.mjs";
 import {
   assertRetirementCut,
   fileDigest,
@@ -84,37 +84,34 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
     console.log(`[installed-recovery] ${path.basename(directory)}: ${name}`);
     const stdout = path.join(directory, `${name}.out`);
     const stderr = path.join(directory, `${name}.err`);
-    const out = fs.openSync(stdout, "wx", 0o600);
-    const err = fs.openSync(stderr, "wx", 0o600);
-    let status;
-    try {
-      const childEnv = { ...env };
-      if (faultCut) {
-        const spec = path.join(directory, `${name}.fault.json`);
-        write(spec, { root, anchor, helper, journal, cut: faultCut, evidence: `${spec}.observed` });
-        childEnv.OPENCLAW_SURVIVOR_INSTALLED_RECOVERY_FAULT = spec;
-        childEnv.NODE_OPTIONS = `--import=${fault}`;
-      }
-      status = await runManagedCommand({
-        bin: command,
-        args,
-        env: childEnv,
-        stdio: ["ignore", out, err],
-        timeoutMs: 180_000,
-        timeoutKillGraceMs: 10_000,
-        requireProcessTreeExit: true,
-        timeoutForceKillOnLeaderExit: true,
-      });
-    } finally {
-      fs.closeSync(out);
-      fs.closeSync(err);
+    const childEnv = { ...env };
+    if (faultCut) {
+      const spec = path.join(directory, `${name}.fault.json`);
+      write(spec, { root, anchor, helper, journal, cut: faultCut, evidence: `${spec}.observed` });
+      childEnv.OPENCLAW_SURVIVOR_INSTALLED_RECOVERY_FAULT = spec;
+      childEnv.NODE_OPTIONS = `--import=${fault}`;
     }
+    const result = await runInstalledRecoveryCommand({
+      bin: command,
+      args,
+      env: childEnv,
+      stdout,
+      stderr,
+      timeoutMs: 180_000,
+      timeoutKillGraceMs: 10_000,
+      record: (outcome) => {
+        evidence.current = {
+          cut: path.relative(artifacts, directory) || null,
+          name,
+          stdout: path.relative(artifacts, stdout),
+          stderr: path.relative(artifacts, stderr),
+          ...outcome,
+        };
+        write(summary, evidence);
+      },
+    });
+    const { status } = result;
     commands.push({ name, status, treeJoined: true, preload: faultCut ?? null });
-    const result = {
-      status,
-      stdout: fs.readFileSync(stdout, "utf8"),
-      stderr: fs.readFileSync(stderr, "utf8"),
-    };
     assert.equal(
       status === 0,
       !faultCut,

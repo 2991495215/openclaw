@@ -162,6 +162,7 @@ if [ "$UPGRADE_TARGET_TRAIN" = extended-stable ]; then
   cp "$HARNESS_ROOT_DIR/scripts/e2e/lib/upgrade-survivor/native-assignment-summary.mjs" "$UPGRADE_SCENARIO_STAGE/native-assignment-summary.mjs"
   cp "$HARNESS_ROOT_DIR/scripts/e2e/lib/upgrade-survivor/plugin-policy-summary.mjs" "$UPGRADE_SCENARIO_STAGE/plugin-policy-summary.mjs"
   cp "$HARNESS_ROOT_DIR/scripts/e2e/lib/upgrade-survivor/observations.mjs" "$UPGRADE_SCENARIO_STAGE/observations.mjs"
+  cp "$HARNESS_ROOT_DIR/scripts/e2e/lib/upgrade-survivor/installed-recovery-observations.mjs" "$UPGRADE_SCENARIO_STAGE/installed-recovery-observations.mjs"
   cp "$HARNESS_ROOT_DIR/scripts/e2e/lib/upgrade-survivor/package-activation-recovery.mjs" "$UPGRADE_SCENARIO_STAGE/package-activation-recovery.mjs"
   chmod 0755 "$UPGRADE_SCENARIO_STAGE"
   UPGRADE_SCENARIO_ARGS+=(
