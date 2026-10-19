@@ -557,6 +557,7 @@ it.for([
             ok: false,
             error: {
               code: "UNAVAILABLE",
+              message: "chat.send unavailable during gateway startup",
               retryable: true,
               details: { reason: "startup-sidecars", method: "chat.send" },
             },
