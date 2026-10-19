@@ -1,10 +1,7 @@
-import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { captureOpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution.js";
 import { runOpenClawAgentWorkerWrite } from "../../state/openclaw-agent-write-admission.js";
-import { cloneEnvWithPlatformSemantics } from "../config-env-vars.js";
-import { resolveStateDir } from "../state-dir.js";
 import { SessionWorkStartInvalidatedError } from "./lifecycle.js";
-import { resolveSqliteScope, toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
+import { prepareSqliteStoreReadScope } from "./session-accessor.sqlite-scope.js";
 import {
   acquireSessionActorStorage,
   captureSessionActorStorageOwner,
@@ -70,12 +67,7 @@ export async function setSessionReactionAsync(
     }
   }
   assertCurrent();
-  const env = cloneEnvWithPlatformSemantics(scope.env ?? process.env);
-  env.OPENCLAW_STATE_DIR = resolveStateDir(env);
-  // Resolve the logical key without consulting a custom store's native registry.
-  const logical = resolveSqliteScope({ ...scope, storePath: undefined, env });
-  const storePath =
-    logical.path ?? scope.storePath ?? resolveOpenClawAgentSqlitePath(toDatabaseOptions(logical));
+  const { env, logical, storePath } = prepareSqliteStoreReadScope(scope);
   const candidates = captureSessionStoreReadCandidates(storePath);
   try {
     return await withSessionStoreTarget(
