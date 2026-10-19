@@ -129,7 +129,14 @@ describe("node exec events", () => {
     "consumes exec authorization and notifies only undelivered output (suppress=$suppressNotifyOnExit, settle=$settle)",
     async ({ suppressNotifyOnExit, settle }) => {
       const registry = new NodeRegistry();
-      const connection = { connId: "conn-1" };
+      const connection = {
+        connId: "conn-1",
+        assertSessionEventCurrent: () => {
+          if (registry.get("node-1")?.connId !== "conn-1") {
+            throw new Error("Node pairing changed during session event admission");
+          }
+        },
+      };
       const [runId, sessionKey] = [`run-seq-${suppressNotifyOnExit}-${settle}`, "agent:main:main"];
       const eventRouting = { sessionKey, contextKey: `exec:${runId}`, deliveryContext: undefined };
       const startedPayload = { runId, sessionKey, command: "printf ok" };

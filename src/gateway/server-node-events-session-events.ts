@@ -310,7 +310,8 @@ export async function handleNodeSessionEvent(
           runId,
           text,
           expectedTarget,
-          assertAcceptanceCurrent,
+          // The registry accepted this notice before the node connection could depart.
+          assertAcceptanceCurrent: config.assertCurrent,
         });
         if (receipt) {
           const accepted = await receipt.accepted;
