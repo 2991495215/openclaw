@@ -478,6 +478,7 @@ it.each([401, 402, 429, 503])(
   },
 );
 it("rejects malformed native output instead of guessing an answer", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...reported, id: "wrong" })));
   const { provider, context } = fixture();
   await expect(provider.evaluate(batch, context)).resolves.toEqual({

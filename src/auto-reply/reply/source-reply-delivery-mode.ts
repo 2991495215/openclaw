@@ -98,12 +98,12 @@ export function resolveSourceReplyExpectation(params: {
   ctx: SourceReplyDeliveryModeContext;
   cfg: OpenClawConfig;
 }): ReplyExpectation {
-  // Admitted notifications may settle quietly even when their session has no delivery route.
+  // Admitted notifications may explicitly settle quietly, but an empty result still fails.
   if (
     params.ctx.InternalTurnSource === "event" &&
     params.ctx.InputProvenance?.kind === "internal_system"
   ) {
-    return "optional";
+    return "required";
   }
   const commandExpectation = resolveCommandReplyExpectation({
     cfg: params.cfg,

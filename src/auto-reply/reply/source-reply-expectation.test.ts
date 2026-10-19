@@ -26,7 +26,7 @@ describe("source reply expectation", () => {
         InternalTurnSource: "event",
         InputProvenance: { kind: "internal_system", sourceTool: "exec" },
       },
-      expected: "optional",
+      expected: "required",
     },
     {
       policy: undefined,

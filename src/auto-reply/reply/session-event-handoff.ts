@@ -609,7 +609,7 @@ export function enqueueSessionEventForHost(
               if (outcome !== "completed") {
                 failure ??= `Session event execution ${outcome}`;
               }
-              assertCurrent();
+              await prepareCurrent();
               if (options.scheduledAutomation) {
                 const automationOutcome = await settleSessionAutomationTurn({
                   automation: options.scheduledAutomation,
