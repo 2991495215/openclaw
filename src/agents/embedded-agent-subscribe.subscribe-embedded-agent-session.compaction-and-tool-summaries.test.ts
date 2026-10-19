@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "openclaw/plugin-sdk/llm";
-import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { EmbeddedContextAccountingEvent } from "./embedded-agent-runner/run/internal-params.js";
 import {

@@ -382,14 +382,6 @@ export async function runReplyAgent(
       shouldFollowup: effectiveShouldFollowup || shouldQueueProvidedSteer,
       resetTriggered,
     });
-    if (activeRunQueueAction === "drop") {
-      if (replyOperationRunState) {
-        replyOperationRunState.admission = { status: "skipped", reason: "active-run" };
-      }
-      typing.cleanup();
-      return undefined;
-    }
-
     if (activeRunQueueAction === "enqueue-followup") {
       bindReplyOperationQueueDisposition(followupRun, replyOperationRunState);
       const enqueued = enqueueFollowupRun(

@@ -19,7 +19,6 @@ import { resolveAgentSessionDirs } from "../session-dirs.js";
 
 export const mainSessionRecoveryLog = createSubsystemLogger("main-session-restart-recovery");
 export const DEFAULT_RECOVERY_DELAY_MS = 5_000;
-export const MAX_RECOVERY_RETRIES = 3;
 export const RETRY_BACKOFF_MULTIPLIER = 2;
 /** Mailbox identity of one resend attempt; its dispatcher and foreground admission both derive it. */
 export function resolveRestartResendReservationId(attempt: {
@@ -49,15 +48,6 @@ export type ExpectedRestartRecoveryTarget = {
 export type ExhaustedRestartRecoveryTarget = ExpectedRestartRecoveryTarget & {
   storePath: string;
 };
-
-export function resolveRestartRecoveryTerminalClientRunId(
-  entry: Pick<SessionEntry, "restartRecoveryDeliverySourceRunId" | "restartRecoverySourceIngress">,
-): string | undefined {
-  return entry.restartRecoverySourceIngress === "control-ui" ||
-    entry.restartRecoverySourceIngress === "internal"
-    ? normalizeOptionalString(entry.restartRecoveryDeliverySourceRunId)
-    : undefined;
-}
 
 export async function discoverRestartRecoveryStoreTargets(params: {
   cfg?: OpenClawConfig;

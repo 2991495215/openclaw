@@ -1,6 +1,7 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { stripInternalMetadataForDisplay } from "../../auto-reply/reply/display-text-sanitize.js";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
+import { resolveRestartRecoveryTerminalClientRunId } from "../../config/sessions/restart-recovery-state.js";
 import type {
   SessionTranscriptTurnExpectedState,
   SessionTranscriptTurnLifecyclePatch,
@@ -15,10 +16,7 @@ import { buildMainSessionRecoverySettlementPatch } from "./main-session-recovery
 import type { MainSessionRecoveryObservation } from "./main-session-recovery-state.js";
 import { commitMainSessionRecovery } from "./main-session-recovery-store.js";
 import { resolveRestartRecoveryDeliveryContext } from "./main-session-restart-recovery-delivery.js";
-import {
-  mainSessionRecoveryLog,
-  resolveRestartRecoveryTerminalClientRunId,
-} from "./main-session-restart-recovery-shared.js";
+import { mainSessionRecoveryLog } from "./main-session-restart-recovery-shared.js";
 
 /** Retire only the interrupted input; a fresh authenticated turn can use the same session. */
 export async function prepareRequesterRestartRecovery(params: {

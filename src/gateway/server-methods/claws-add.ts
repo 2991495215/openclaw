@@ -196,7 +196,7 @@ export const clawsAddHandlers: GatewayRequestHandlers = {
             return job ? { ...job, configRevision: resolveCronJobConfigRevision(job) } : undefined;
           },
           writeScratch: async (jobId, content, commitGuard) => {
-            const result = await context.cron.writeScratch(jobId, {
+            const scratchResult = await context.cron.writeScratch(jobId, {
               content,
               expectedRevision: 0,
               commitGuard: () => {
@@ -204,7 +204,7 @@ export const clawsAddHandlers: GatewayRequestHandlers = {
                 commitGuard();
               },
             });
-            if (!result.ok) {
+            if (!scratchResult.ok) {
               throw new Error("Claw automation scratch changed before import.");
             }
           },

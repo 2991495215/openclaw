@@ -7,6 +7,7 @@ import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.
 import * as entryReadRuntime from "../../config/sessions/session-entry-read-runtime.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { makeCronJob } from "../../cron/delivery.test-helpers.js";
 import {
   createReplyOperation,
   getSessionControllerOperation,
@@ -226,12 +227,12 @@ it("does not turn revoked dispatch authority into a missing-entry fallback", asy
 });
 
 it.each([
-  { isHeartbeat: true, selectedActive: false },
-  { isHeartbeat: true, selectedActive: true },
-  { isHeartbeat: false, selectedActive: true },
+  { idleOnly: true, selectedActive: false },
+  { idleOnly: true, selectedActive: true },
+  { idleOnly: false, selectedActive: true },
 ])(
-  "keeps dispatch on its physical owner (heartbeat=$isHeartbeat, selected active=$selectedActive)",
-  async ({ isHeartbeat, selectedActive }) => {
+  "keeps dispatch on its physical owner (idle only=$idleOnly, selected active=$selectedActive)",
+  async ({ idleOnly, selectedActive }) => {
     state = await createOpenClawTestState({ label: "dispatch-physical-owner" });
     const cfg: OpenClawConfig = {
       agents: {
@@ -292,14 +293,22 @@ it.each([
             CommandAuthorized: false,
           },
           dispatcher,
-          replyOptions: { isHeartbeat },
+          replyOptions: idleOnly
+            ? {
+                scheduledAutomation: {
+                  admissionSource: "operator-schedule",
+                  job: makeCronJob({ agentId: "work", sessionTarget: "main", idleOnly: true }),
+                  assertCurrent: () => {},
+                },
+              }
+            : undefined,
         },
         undefined,
         false,
         undefined,
         (dispose) => resources.defer(dispose),
       );
-      if (isHeartbeat && selectedActive) {
+      if (idleOnly && selectedActive) {
         expect(gathered.status).toBe("complete");
       } else {
         expect(gathered.status).toBe("ready");

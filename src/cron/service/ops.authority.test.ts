@@ -5,7 +5,6 @@ import { toPublicCronJob } from "../public-job.js";
 import { readCronJobScratchState } from "../scratch-store.js";
 import { setupCronServiceSuite, writeCronStoreSnapshot } from "../service.test-harness.js";
 import { loadCronStore } from "../store.js";
-import { stop } from "./ops-lifecycle.js";
 import { add, remove, update, updateWithPrecondition } from "./ops-mutations.js";
 import { writeScratch } from "./ops-read.js";
 import { createOkIsolatedCronStateFactory } from "./ops.test-support.js";

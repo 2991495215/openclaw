@@ -34,11 +34,11 @@ export async function loadStatePortDescriptor(
       return backup;
     }
     // v28 appends publication draft choices; v24-v26 additionally retain older indexes.
-    // Pin these predecessor shapes so later column changes need their own descriptor.
+    // v29 only fences automation policies. Pin these shapes before later column changes.
     if (
       backup ||
-      OPENCLAW_STATE_SCHEMA_VERSION !== 28 ||
-      ![24, 25, 26, 27].includes(sourceVersion)
+      OPENCLAW_STATE_SCHEMA_VERSION !== 29 ||
+      ![24, 25, 26, 27, 28].includes(sourceVersion)
     ) {
       throw new DatabasePortDataError(
         `Missing shared-state PostgreSQL backup descriptor for version ${sourceVersion}`,
@@ -142,7 +142,7 @@ export async function loadStatePortDescriptor(
       });
     },
   };
-  if (sourceVersion === 27) {
+  if (sourceVersion >= 27 && sourceVersion < OPENCLAW_STATE_SCHEMA_VERSION) {
     return { ...descriptor, inspectSqliteSource: undefined, admit: undefined };
   }
   const historicalSqlite = withLegacyStateWriteIndexes(descriptor.sqlite);

@@ -19,10 +19,8 @@ import {
 import {
   claimSystemEventTurn,
   enqueueRequiredSystemEventEntry,
-  type SystemEvent,
 } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { channelRouteTargetsMatchExact } from "../../plugin-sdk/channel-route.js";
 import { runWithGatewayDetachedWorkContinuation } from "../../process/gateway-work-admission.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
@@ -30,17 +28,17 @@ import { isCurrentSessionControllerOperation } from "../../sessions/session-cont
 import { createDeferredCore } from "../../shared/deferred.js";
 import type { ReplyPayload } from "../../shared/reply-payload.types.js";
 import { readAgentDeletionJournalStatusInWorker } from "../../state/agent-deletion-journal.read.js";
-import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
-import type { MsgContext } from "../templating.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
-import { settleSessionAutomationTurn } from "./session-event-automation.js";
+import {
+  resolveScheduledSessionReplyOptions,
+  settleSessionAutomationTurn,
+} from "./session-event-automation.js";
+import { buildSessionEventContext } from "./session-event-context.js";
 import type {
-  ScheduledSessionAutomation,
+  SessionEventEnqueueOptions,
   SessionEventOutcome,
   SessionEventReceipt,
-  SessionEventSource,
-  SessionEventTarget,
 } from "./session-event-contract.js";
 import { narrowSessionEventSettings } from "./session-event-policy.js";
 import {
@@ -53,7 +51,6 @@ import {
   readSessionEventTargetEnvironment,
   resolveSessionEventKey,
 } from "./session-event-target.js";
-import { setChannelSourceTurnId } from "./source-turn-id.js";
 
 export {
   assertSessionEventTargetCurrent,
@@ -74,37 +71,7 @@ const MAX_CONFIG_READMISSION_ATTEMPTS = 2;
 /** Producer-owned occurrence; passive notices continue to use enqueueSystemEvent. */
 export function enqueueSessionEventForHost(
   text: string,
-  {
-    assertAcceptanceCurrent,
-    ...options
-  }: {
-    agentId: string;
-    sessionKey: string;
-    source: SessionEventSource;
-    contextKey?: string;
-    /** Stable identity for durable host producers across restart handoffs. */
-    sourceTurnId?: string;
-    deliveryContext?: DeliveryContext;
-    abortSignal?: AbortSignal;
-    expectedTarget?: SessionEventTarget;
-    /** Authorized fresh work may create an absent session; captured completions may not. */
-    createIfMissing?: true;
-    /** Submitting invocation custody lasts through acceptance only. */
-    assertAcceptanceCurrent?: () => void;
-    /** Durable producer commits its attempt only after normal turn adoption. */
-    onAdopted?: () => void | Promise<void>;
-    /** Transfer exact queued occurrences into one ordinary turn without duplicating them. */
-    occurrences?: readonly SystemEvent[];
-    scheduledAutomation?: ScheduledSessionAutomation;
-    /** Failed promotion retains an existing passive occurrence until ordinary adoption begins. */
-    preserveOccurrenceOnRejection?: true;
-    /** Internal: policy-change re-admission depth, bounded to stop publication storms. */
-    readmissionAttempt?: number;
-    /** An explicitly silent source records its result without transport delivery. */
-    deliver?: boolean;
-    /** Host producer remains live through admission, execution and delivery. */
-    assertCurrent?: () => void;
-  },
+  { assertAcceptanceCurrent, ...options }: SessionEventEnqueueOptions,
 ): SessionEventReceipt {
   let acceptanceAssertion = assertAcceptanceCurrent;
   acceptanceAssertion?.();
@@ -189,6 +156,7 @@ export function enqueueSessionEventForHost(
   if (!occurrence?.id || occurrences.some((event) => !event.id)) {
     throw new Error("Session event was not enqueued: an identical occurrence is already pending");
   }
+  const occurrenceId = occurrence.id;
   const eventText = occurrences.map((event) => event.text).join("\n");
   const ownership = claimSystemEventTurn(
     resolveSystemEventQueueKey(sessionKey, agentId),
@@ -381,7 +349,7 @@ export function enqueueSessionEventForHost(
           source: options.source,
           agentId,
           sessionKey,
-          eventId: occurrence.id,
+          eventId: occurrenceId,
           error: String(failure),
         });
       }
@@ -399,23 +367,13 @@ export function enqueueSessionEventForHost(
           // still rejects. Only an occurrence that was already a passive notice keeps
           // passive custody on rejection; producer-owned text never becomes passive.
           readmittedReceipt = enqueueSessionEventForHost(eventText, {
+            ...options,
             agentId,
             sessionKey,
-            source: options.source,
-            contextKey: options.contextKey,
-            sourceTurnId: options.sourceTurnId,
-            deliveryContext: options.deliveryContext,
-            abortSignal: options.abortSignal,
-            expectedTarget: options.expectedTarget,
-            createIfMissing: options.createIfMissing,
             assertAcceptanceCurrent: pendingAcceptanceAssertion,
-            onAdopted: options.onAdopted,
             occurrences,
-            scheduledAutomation: options.scheduledAutomation,
             preserveOccurrenceOnRejection: preservePassive,
             readmissionAttempt: attempt + 1,
-            deliver: options.deliver,
-            assertCurrent: options.assertCurrent,
           });
         } catch (error) {
           if (!preservePassive) {
@@ -432,7 +390,7 @@ export function enqueueSessionEventForHost(
             source: options.source,
             agentId,
             sessionKey,
-            eventId: occurrence.id,
+            eventId: occurrenceId,
             error: String(failure),
           });
         }
@@ -569,32 +527,15 @@ export function enqueueSessionEventForHost(
       settings = narrowSessionEventSettings(settings, generationLease.readSessionSettings());
       settingsAdmitted = true;
       assertCurrent();
-      const ctx: MsgContext = {
-        AgentId: agentId,
-        SessionKey: sessionKey,
-        Body: eventText,
-        BodyForAgent: eventText,
-        InternalTurnSource: "event",
-        BodyForCommands: "",
-        CommandBody: "",
-        RawBody: "",
-        CommandAuthorized: false,
-        InputProvenance: { kind: "internal_system", sourceTool: options.source },
-        ChatType: channelRouteTargetsMatchExact({ left: route, right: target.deliveryContext })
-          ? target.chatType
-          : undefined,
-        Surface: route?.channel ?? INTERNAL_MESSAGE_CHANNEL,
-        Provider: route?.channel ?? INTERNAL_MESSAGE_CHANNEL,
-        OriginatingChannel: route?.channel,
-        OriginatingTo: route?.to,
-        AccountId: route?.accountId,
-        MessageThreadId: route?.threadId,
-        // Inbound dedupe retains an adopted attempt's id; a policy re-admission is a new dispatch.
-        MessageSid: options.readmissionAttempt
-          ? `${occurrence.id}:readmission-${options.readmissionAttempt}`
-          : occurrence.id,
-      };
-      setChannelSourceTurnId(ctx, options.sourceTurnId);
+      const ctx = buildSessionEventContext({
+        agentId,
+        sessionKey,
+        text: eventText,
+        options,
+        occurrenceId,
+        deliveryContext: route,
+        target,
+      });
       const result = await dispatchInboundMessageWithRoutedChannelDispatcher({
         cfg: { ...cfg, session: { ...cfg.session, store: storePath } },
         ctx,
@@ -611,27 +552,12 @@ export function enqueueSessionEventForHost(
         },
         replyOptions: {
           scheduledAutomation: options.scheduledAutomation,
-          ...(options.scheduledAutomation
-            ? {
-                sourceReplyDeliveryMode: "automatic" as const,
-                allowEmptyAssistantReplyAsSilent: true,
-              }
-            : {}),
+          ...resolveScheduledSessionReplyOptions(options.scheduledAutomation),
           admittedSessionSettings: settings,
           toolsAllow,
           onDeliberateSilentTerminalReply: () => {
             deliverySuppressionReason = "silent";
           },
-          ...(options.scheduledAutomation?.job.payload.kind === "agentTurn"
-            ? {
-                modelOverride: options.scheduledAutomation.job.payload.model,
-                thinkingLevelOverride: options.scheduledAutomation.job.payload.thinking,
-                timeoutOverrideSeconds: options.scheduledAutomation.job.payload.timeoutSeconds,
-                bootstrapContextMode: options.scheduledAutomation.job.payload.lightContext
-                  ? "lightweight"
-                  : "full",
-              }
-            : {}),
           abortSignal: signal,
           expectedExistingSessionId: target.sessionId || undefined,
           pinExpectedExistingSession: Boolean(target.sessionId),
@@ -791,7 +717,7 @@ export function enqueueSessionEventForHost(
     })
     .finally(() => generationLease?.release());
   return {
-    id: occurrence.id,
+    id: occurrenceId,
     cancel: () => {
       // Producers keep this original handle; cancellation reaches the live attempt.
       if (readmittedReceipt) {

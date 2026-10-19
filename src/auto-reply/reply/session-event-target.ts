@@ -13,9 +13,12 @@ import {
 import { getRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { canonicalizeMainSessionAlias } from "../../config/sessions/main-session.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
+import type { SessionEntryReadSourcePreparation } from "../../config/sessions/session-entry-read-runtime.types.js";
+import { isSessionStoreReadCandidateCurrent } from "../../config/sessions/session-store-read-candidates.js";
 import { sessionToolOverridesEqual } from "../../config/sessions/session-tool-overrides.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { getAgentRunContext } from "../../infra/agent-run-registry.js";
+import { readDatabasePathIdentitySync } from "../../infra/sqlite-worker-identity.js";
 import { channelRouteDedupeKey } from "../../plugin-sdk/channel-route.js";
 import {
   normalizeAgentId,
@@ -28,10 +31,42 @@ import { deliveryContextFromSession } from "../../utils/delivery-context.read.js
 import { resolveEffectiveReplyRoute } from "./effective-reply-route.js";
 import type { SessionEventTarget } from "./session-event-contract.js";
 import { narrowSessionEventSettings } from "./session-event-policy.js";
+import { SessionEventTargetRetiredError } from "./session-event-target-errors.js";
+
+type CapturedEventSource = {
+  database: Parameters<SessionEntryReadSourcePreparation>[0];
+  identity: Parameters<SessionEntryReadSourcePreparation>[1];
+  selectedStore: { path: string; physicalPath: string };
+};
+
+function assertCapturedEventSource(source: CapturedEventSource | undefined) {
+  if (!source) {
+    return;
+  }
+  const identity = readDatabasePathIdentitySync(source.database.path);
+  const selectedStoreCurrent = isSessionStoreReadCandidateCurrent(source.selectedStore);
+  if (
+    identity.key === source.identity.key &&
+    identity.birthtime === source.identity.birthtime &&
+    selectedStoreCurrent
+  ) {
+    return;
+  }
+  const replacement = selectedStoreCurrent
+    ? identity
+    : readDatabasePathIdentitySync(source.selectedStore.path);
+  const message = "Session event destination storage changed after capture";
+  // Missing or unreadable storage is not proof that another physical owner replaced it.
+  if (replacement.key.startsWith("file:")) {
+    throw new SessionEventTargetRetiredError(message);
+  }
+  throw new Error(message);
+}
 
 const targetScopes = resolveGlobalSingleton(
   Symbol.for("openclaw.sessionEvents.targetScopes"),
-  () => new WeakMap<SessionEventTarget, { env?: NodeJS.ProcessEnv }>(),
+  () =>
+    new WeakMap<SessionEventTarget, { env?: NodeJS.ProcessEnv; source?: CapturedEventSource }>(),
 );
 
 export function getSessionEventRuntimeConfig() {
@@ -120,16 +155,36 @@ export async function captureSessionEventTargetForHost(
     const { withSessionEntryReadOnlyInWorker } =
       await import("../../config/sessions/session-entry-read-runtime.js");
     await readAgentDeletionJournalStatusInWorker(agentId, { env });
+    let source: CapturedEventSource | undefined;
+    let preparedSource: Pick<CapturedEventSource, "database" | "identity"> | undefined;
     const entry = await withSessionEntryReadOnlyInWorker(
       { agentId, storePath, sessionKey, env },
       assertCaptureCurrent,
-      async (read) => {
+      async (read, owner) => {
         if (!read.ok) {
           throw read.error;
         }
+        if (preparedSource && owner.selectedStore) {
+          source = {
+            ...preparedSource,
+            // Cold admission may wait for the first writer; bind the file the worker actually read.
+            identity: owner.source
+              ? {
+                  ...preparedSource.identity,
+                  key: `file:${owner.source.databaseIdentity}`,
+                  birthtime: owner.source.databaseBirthtime,
+                }
+              : preparedSource.identity,
+            selectedStore: owner.selectedStore,
+          };
+        }
         return read.value;
       },
+      (database, identity) => {
+        preparedSource = { database, identity };
+      },
     );
+    assertCapturedEventSource(source);
     let toolsAllow: string[] | undefined;
     if (caller && callerAgentMatches) {
       assertCaptureCurrent();
@@ -170,7 +225,7 @@ export async function captureSessionEventTargetForHost(
         ? narrowSessionEventSettings(producerSettings, destinationSettings)
         : structuredClone(destinationSettings),
     };
-    targetScopes.set(target, { env });
+    targetScopes.set(target, { env, source });
     return target;
   } finally {
     preparedCaller?.release();
@@ -201,12 +256,13 @@ export async function prepareSessionEventTargetForHost(
   }
   const { prepareSessionGenerationFacts } =
     await import("../../config/sessions/session-delivery-generation.js");
-  const env = targetScopes.get(target)?.env;
+  const { env, source } = targetScopes.get(target) ?? {};
   const assertAcceptance = () => {
     options.assertAcceptanceCurrent?.();
     assertSessionEventTargetCurrent(target);
   };
   assertAcceptance();
+  assertCapturedEventSource(source);
   let preparation:
     | ReturnType<
         typeof import("../../config/sessions/session-accessor.entry-mutation.js").prepareSessionEntryMutationDatabases
@@ -223,38 +279,67 @@ export async function prepareSessionEventTargetForHost(
             agentId: target.agentId,
             storePath: target.storePath,
             sessionKey: target.sessionKey,
-            env,
+            env: source?.database.env ?? env,
           },
           assertCurrent: assertAcceptance,
+          expectedSource: source,
         },
       ],
       Promise.resolve(),
     );
   }
   let lease: Awaited<ReturnType<typeof prepareSessionGenerationFacts>> | undefined;
+  let preparedSource = source;
   try {
     try {
       const prepared = await preparation?.preparations[0];
       assertAcceptance();
       prepared?.assertCurrent();
+      if (!prepared) {
+        assertCapturedEventSource(source);
+      } else if (source?.identity.key.startsWith("path:")) {
+        const accepted = prepared.execution?.fileIdentity;
+        if (!accepted || typeof accepted.birthtime !== "string") {
+          throw new Error("Fresh session event has no accepted physical storage identity");
+        }
+        preparedSource = {
+          ...source,
+          identity: {
+            ...source.identity,
+            key: `file:${accepted.physicalIdentity}`,
+            birthtime: accepted.birthtime,
+          },
+        };
+      }
       lease = await prepareSessionGenerationFacts({
         agentId: target.agentId,
-        storePath: target.storePath,
+        storePath: source?.database.path ?? target.storePath,
         sessionKey: target.sessionKey,
         sessionId: target.sessionId || null,
         lifecycleRevision: target.lifecycleRevision ?? null,
-        env,
+        env: source?.database.env ?? env,
       });
       prepared?.assertCurrent();
       assertAcceptance();
+      assertCapturedEventSource(preparedSource);
     } finally {
       await preparation?.[Symbol.asyncDispose]();
     }
     assertAcceptance();
+    assertCapturedEventSource(preparedSource);
     lease.assertCurrent();
+    // Only the accepted creation owner can advance captured physical absence.
+    if (preparedSource !== source) {
+      const captured = targetScopes.get(target);
+      if (captured?.source !== source) {
+        throw new Error("Session event storage was already prepared by another admission");
+      }
+      targetScopes.set(target, { ...captured, source: preparedSource });
+    }
     const retained = lease;
     const assertTargetCurrent = () => {
       assertSessionEventTargetCurrent(target);
+      assertCapturedEventSource(preparedSource);
     };
     const assertCurrent = () => {
       assertTargetCurrent();
@@ -315,6 +400,7 @@ export function combineSessionEventTargetsForHost(
   const assertCurrent = () => {
     for (const target of retained) {
       assertSessionEventTargetCurrent(target);
+      assertCapturedEventSource(targetScopes.get(target)?.source);
     }
   };
   assertCurrent();

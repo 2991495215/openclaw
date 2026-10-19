@@ -33,7 +33,6 @@ import {
   mockRunCronFallbackPassthrough,
   patchSessionEntryMock,
   runEmbeddedAgentMock,
-  preflightCronModelProviderMock,
   resetRunCronIsolatedAgentTurnHarness,
   resolveCronSessionMock,
 } from "./run.test-harness.js";

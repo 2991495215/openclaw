@@ -27,7 +27,6 @@ import { makeIsolatedAgentJobFixture, makeIsolatedAgentParamsFixture } from "./j
 import type { RunCronAgentTurnParams } from "./run-prepare-runtime.js";
 import { setupRunCronIsolatedAgentTurnSuite } from "./run.suite-helpers.js";
 import {
-  callGatewayMock,
   appendSessionRuntimeContextMock,
   dispatchCronDeliveryMock,
   listDescendantRunsForRequesterMock,

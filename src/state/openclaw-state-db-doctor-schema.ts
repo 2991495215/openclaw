@@ -93,4 +93,28 @@ export function openDoctorStateSchemaReadAdmission(
   };
 }
 
-export { LEGACY_SKILL_WORKSHOP_COLLECTION_REVIEWS_INDEX };
+/**
+ * Make the known malformed index parseable, then let SQLite drop and reclaim it
+ * in the caller's transaction. A failed repair rolls both catalog edits back.
+ */
+export function repairDanglingSkillWorkshopCollectionReviewIndex(database: DatabaseSync): boolean {
+  if (!hasDanglingSkillWorkshopCollectionReviewIndex(database)) {
+    return false;
+  }
+  return withSqliteWritableSchema(database, () => {
+    database
+      .prepare("UPDATE sqlite_schema SET sql = ? WHERE type = 'index' AND name = ?")
+      .run(
+        `CREATE INDEX ${LEGACY_SKILL_WORKSHOP_COLLECTION_REVIEWS_INDEX} ON skill_workshop_collection_reviews(create_time DESC, review_id DESC)`,
+        LEGACY_SKILL_WORKSHOP_COLLECTION_REVIEWS_INDEX,
+      );
+    // SAFETY: the pragma result is treated as unknown and validated before arithmetic.
+    const row = database.prepare("PRAGMA schema_version").get() as {
+      schema_version?: unknown;
+    };
+    const schemaVersion = typeof row.schema_version === "number" ? row.schema_version : 0;
+    database.exec(`PRAGMA schema_version = ${schemaVersion + 1}; PRAGMA writable_schema = OFF;`);
+    database.exec(`DROP INDEX ${LEGACY_SKILL_WORKSHOP_COLLECTION_REVIEWS_INDEX};`);
+    return true;
+  });
+}

@@ -12,10 +12,7 @@ import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execu
 import { createOperationalRunInstanceRef } from "../../agents/admitted-run-context.js";
 import { withAgentDeletion } from "../../agents/agent-lifecycle-registry.js";
 import { withGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
-import {
-  getRuntimeConfigSnapshot,
-  setRuntimeConfigSnapshot,
-} from "../../config/runtime-snapshot.js";
+import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import {
   commitReplySessionInitialization,
   loadReplySessionInitializationSnapshot,
@@ -28,7 +25,6 @@ import { createCronServiceState } from "../../cron/service/state.js";
 import { wake } from "../../cron/service/wake.js";
 import type { CronJob } from "../../cron/types.js";
 import { createGatewayCronTargetResolver } from "../../gateway/server-cron-targets.js";
-import { rotateAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { clearAgentRunContext, registerAgentRunContext } from "../../infra/agent-run-registry.js";
 import {
   enqueueAutomationSystemEvent,

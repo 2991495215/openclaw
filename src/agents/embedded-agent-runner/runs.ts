@@ -28,10 +28,7 @@ import {
   type ReplyOperation,
   waitForReplyOperationOwnerSettlement,
 } from "../../sessions/session-controller.js";
-import {
-  waitForCapturedSessionNativeAttemptEnd,
-  waitForSessionNativeAttemptEnd,
-} from "../../sessions/session-controller.native-runtime.js";
+import { waitForCapturedSessionNativeAttemptEnd } from "../../sessions/session-controller.native-runtime.js";
 import {
   assertSessionControllerOperation,
   getAttachedBackend,

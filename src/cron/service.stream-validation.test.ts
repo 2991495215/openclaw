@@ -429,11 +429,12 @@ async function withIdleStreamOutput(
   const losses: CronStreamLossReason[] = [];
   let tail = Promise.resolve();
   let running = true;
+  const outputScheduler = scheduler.scope();
   const output = new CronStreamOutput({
     job: { ...job, schedule: job.schedule },
     scheduleKey: cronStreamScheduleKey(job.schedule),
     sourceIdentity: job.state.streamSourceIdentity,
-    scheduler: scheduler.scope(),
+    scheduler: outputScheduler,
     minIntervalMs: 100,
     settleTimeoutMs: 10_000,
     enqueue: (_label, operation) => {
@@ -459,7 +460,6 @@ async function withIdleStreamOutput(
     recordLoss: async (reason) => {
       losses.push(reason);
     },
-    getGeneration: () => 1,
     getState: () => (running ? "running" : "stopped"),
     isDesiredRunning: () => running,
     requestTriggerDisabledStop: () => {
@@ -470,8 +470,10 @@ async function withIdleStreamOutput(
     },
     logger,
   });
+  const sourceSignal = output.startSource(outputScheduler);
   const stop = async () => {
     running = false;
+    output.cancelMatching();
     await tail;
     await output.finishStop(await output.beginStop());
   };
@@ -484,7 +486,7 @@ async function withIdleStreamOutput(
       losses,
       stop,
       accept: async (chunk) => {
-        output.enqueueChunk("stdout", chunk, 1);
+        output.enqueueChunk("stdout", chunk, sourceSignal);
         await tail;
       },
       settleAttempt: async (index) => {

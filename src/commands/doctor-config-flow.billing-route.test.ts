@@ -5,7 +5,6 @@ import { loadAuthProfileStoreForRuntime } from "../agents/auth-profiles/store-ru
 import { createModelAuthAvailabilityResolver } from "../agents/model-auth-availability.js";
 import { writeOpenClawConfig } from "../config/test-helpers.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { loadCronJobsStore, resolveCronJobsStorePath } from "../cron/store.js";
 import {
   runInitialConfigWriteHealth,
   runWriteConfigHealth,
@@ -23,13 +22,6 @@ const withDoctorConfigPreflightHome = useDoctorConfigPreflightHome("billing-rout
 const retirementStep = "finalize:doctor:model-retirement";
 
 afterEach(() => closeOpenClawStateDatabaseForTest());
-
-async function readMigratedHeartbeatJob(agentId = "main") {
-  const { jobs } = await loadCronJobsStore(resolveCronJobsStorePath());
-  const mainJobs = jobs.filter((job) => job.agentId === agentId);
-  expect(mainJobs).toHaveLength(1);
-  return mainJobs[0]!;
-}
 
 async function writeBillingFixture(
   home: string,

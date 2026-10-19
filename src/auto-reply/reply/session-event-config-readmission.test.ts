@@ -14,11 +14,15 @@ import { createAgentHarnessHostCapabilities } from "../../agents/harness/host-ca
 import { resolveAttemptWorkspaceSandbox } from "../../agents/workspace-sandbox.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
+import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../../infra/system-events.js";
 import { drainGlobalSingletonLifecycleState } from "../../shared/global-singleton.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
-import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import {
+  withOpenClawTestState,
+  type OpenClawTestState,
+} from "../../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import {
   captureSessionEventTargetForHost,
@@ -36,6 +40,74 @@ await Promise.all([
     runtime.prewarmConfigDrivenReplyRuntime(),
   ),
 ]);
+
+async function configureEventState(
+  state: OpenClawTestState,
+  overrides: Partial<OpenClawConfig> = {},
+) {
+  const config: OpenClawConfig = {
+    agents: {
+      entries: { main: { workspace: state.workspaceDir } },
+      defaults: {
+        workspace: state.workspaceDir,
+        skipBootstrap: true,
+        model: { primary: "mock-openai/gpt-5.6-luna" },
+        models: { "mock-openai/gpt-5.6-luna": { agentRuntime: { id: "openclaw" } } },
+      },
+    },
+    plugins: { enabled: false },
+    skills: { load: { watch: false } },
+    ...overrides,
+  };
+  setRuntimeConfigSnapshot(config);
+  await state.writeConfig(config);
+  openOpenClawStateDatabase();
+  return config;
+}
+
+it.for([
+  { entry: { archivedAt: 1 }, error: "archived", retryable: false },
+  { entry: { initializationPending: true }, error: "still initializing", retryable: true },
+  {
+    entry: {
+      mainRestartRecovery: {
+        cycleId: "failed-recovery",
+        revision: 1,
+        chargedAttempts: 3,
+        tombstone: { reason: "automatic recovery exhausted" },
+      },
+    },
+    error: "ended during restart recovery",
+    retryable: false,
+  },
+] satisfies Array<{ entry: Partial<InternalSessionEntry>; error: string; retryable: boolean }>)(
+  "preserves session event admission policy: $error",
+  async ({ entry, error, retryable }, { signal }) => {
+    await withOpenClawTestState({ label: "session-event-refusal" }, async (state) => {
+      await configureEventState(state, {
+        agents: { entries: { main: { workspace: state.workspaceDir } } },
+      });
+      const scope = { agentId: "main", sessionKey: "agent:main:event-refusal" };
+      await replaceSessionEntry(scope, { sessionId: "event-refusal", updatedAt: 1, ...entry });
+      runEmbeddedAgentMock.mockReset();
+      const receipt = enqueueSessionEventForHost("Resume interrupted work", {
+        ...scope,
+        source: "restart",
+        abortSignal: signal,
+      });
+      await expect(receipt.settled).resolves.toMatchObject({
+        status: "failed",
+        executionStarted: false,
+        delivered: false,
+        error: expect.stringContaining(error),
+        retryable,
+      });
+      await expect(receipt.accepted).resolves.toMatchObject({ ok: false });
+      expect(runEmbeddedAgentMock).not.toHaveBeenCalled();
+      expect(peekSystemEventEntries(scope.sessionKey)).toEqual([]);
+    });
+  },
+);
 
 /** Attempts the real managed write tool, as the model would, and reports the final effect. */
 async function attemptRealWrite(params: RunEmbeddedAgentParams, filePath: string) {
@@ -126,22 +198,7 @@ it.for([
     await withOpenClawTestState(
       { label: "session-event-config-readmission", env: { OPENCLAW_TEST_FAST: "0" } },
       async (state) => {
-        const config: OpenClawConfig = {
-          agents: {
-            entries: { main: { workspace: state.workspaceDir } },
-            defaults: {
-              workspace: state.workspaceDir,
-              skipBootstrap: true,
-              model: { primary: "mock-openai/gpt-5.6-luna" },
-              models: { "mock-openai/gpt-5.6-luna": { agentRuntime: { id: "openclaw" } } },
-            },
-          },
-          plugins: { enabled: false },
-          skills: { load: { watch: false } },
-        };
-        setRuntimeConfigSnapshot(config);
-        await state.writeConfig(config);
-        openOpenClawStateDatabase();
+        const config = await configureEventState(state);
         const scope = { agentId: "main", sessionKey: "agent:main:config-readmission" };
         await replaceSessionEntry(scope, {
           sessionId: "config-readmission",

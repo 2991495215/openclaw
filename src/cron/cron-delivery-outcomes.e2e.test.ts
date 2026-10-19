@@ -665,7 +665,7 @@ describe("cron delivery outcomes", { concurrent: false }, () => {
         { layout: "state-only", prefix: "openclaw-cron-alert-fallback-" },
         async (state) => {
           const enqueueSystemEvent = vi.fn();
-          const requestHeartbeat = vi.fn();
+          const enqueueSessionEvent = vi.fn();
           const storePath = state.path("cron", "jobs.json");
           let delivery: Promise<void> | undefined;
           const expectedError =
@@ -679,7 +679,7 @@ describe("cron delivery outcomes", { concurrent: false }, () => {
             cronEnabled: true,
             log: createNoopLogger(),
             enqueueSystemEvent,
-            requestHeartbeat,
+            enqueueSessionEvent,
             runIsolatedAgentJob: vi.fn(async () => ({
               status: "error" as const,
               error: "provider unavailable",
@@ -728,17 +728,10 @@ describe("cron delivery outcomes", { concurrent: false }, () => {
               throw new Error("Expected a failure alert transport");
             }
             await expect(delivery).rejects.toThrow(expectedError);
-            expect(enqueueSystemEvent).toHaveBeenCalledExactlyOnceWith(
+            expect(enqueueSessionEvent).toHaveBeenCalledExactlyOnceWith(
               expect.stringContaining('Automation "fallback owner" failed 1 times'),
               { agentId: "work", sessionKey, contextKey: `cron:${job.id}:failure-alert` },
             );
-            expect(requestHeartbeat).toHaveBeenCalledWith({
-              source: "notifications-event",
-              intent: "immediate",
-              reason: "wake",
-              agentId: "work",
-              sessionKey,
-            });
             expect(await persistedJob(storePath, job.id)).toMatchObject({
               state: {
                 lastFailureNotificationDelivered: false,

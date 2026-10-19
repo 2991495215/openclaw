@@ -9,6 +9,7 @@ import type {
   SourceDeliveryOutcome,
   SourceDeliveryPlan,
 } from "../../infra/outbound/source-delivery-plan.types.js";
+import type { SystemEvent } from "../../infra/system-events.js";
 import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
@@ -45,6 +46,35 @@ export type SessionEventReceipt = {
   /** Resolves after ordinary turn adoption or committed follow-up queue admission. */
   accepted: Promise<{ ok: true } | { ok: false; error: string }>;
   settled: Promise<SessionEventOutcome>;
+};
+
+export type SessionEventEnqueueOptions = {
+  agentId: string;
+  sessionKey: string;
+  source: SessionEventSource;
+  contextKey?: string;
+  /** Stable identity for durable host producers across restart handoffs. */
+  sourceTurnId?: string;
+  deliveryContext?: DeliveryContext;
+  abortSignal?: AbortSignal;
+  expectedTarget?: SessionEventTarget;
+  /** Authorized fresh work may create an absent session; captured completions may not. */
+  createIfMissing?: true;
+  /** Submitting invocation custody lasts through acceptance only. */
+  assertAcceptanceCurrent?: () => void;
+  /** Durable producer commits its attempt only after normal turn adoption. */
+  onAdopted?: () => void | Promise<void>;
+  /** Transfer exact queued occurrences into one ordinary turn without duplicating them. */
+  occurrences?: readonly SystemEvent[];
+  scheduledAutomation?: ScheduledSessionAutomation;
+  /** Failed promotion retains an existing passive occurrence until ordinary adoption begins. */
+  preserveOccurrenceOnRejection?: true;
+  /** Internal: policy-change re-admission depth, bounded to stop publication storms. */
+  readmissionAttempt?: number;
+  /** An explicitly silent source records its result without transport delivery. */
+  deliver?: boolean;
+  /** Host producer remains live through admission, execution and delivery. */
+  assertCurrent?: () => void;
 };
 
 export type SessionEventTarget = {

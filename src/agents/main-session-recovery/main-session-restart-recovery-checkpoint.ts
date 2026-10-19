@@ -1,6 +1,7 @@
 import { asOptionalObjectRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
+import { resolveRestartRecoveryTerminalClientRunId } from "../../config/sessions/restart-recovery-state.js";
 import type { RestartRecoveryTerminalDeliveryEvidenceResult } from "../../config/sessions/restart-recovery-types.js";
 import {
   applySessionEntryReplacements,
@@ -24,10 +25,7 @@ import {
 import { buildMainSessionRecoverySettlementPatch } from "./main-session-recovery-clear.js";
 import type { MainSessionRecoveryStoreTarget } from "./main-session-recovery-store.js";
 import { isRestartAbortTailArtifact } from "./main-session-restart-recovery-resume-policy.js";
-import {
-  mainSessionRecoveryLog,
-  resolveRestartRecoveryTerminalClientRunId,
-} from "./main-session-restart-recovery-shared.js";
+import { mainSessionRecoveryLog } from "./main-session-restart-recovery-shared.js";
 
 export async function readMainSessionRecoveryCheckpoint(scope: SessionTranscriptReadScope) {
   const { checkpoint } = await readSessionTranscriptSummaryAsync(scope, {

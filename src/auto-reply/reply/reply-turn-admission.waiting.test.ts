@@ -114,7 +114,7 @@ describe("reply turn admission", () => {
     }
   });
 
-  it("skips heartbeat turns while delivery settles", async () => {
+  it("skips background turns while delivery settles", async () => {
     const active = createTestReplyOperation({
       sessionKey: "agent:main:discord:channel:42",
       sessionId: "active-session",
@@ -124,8 +124,8 @@ describe("reply turn admission", () => {
     active.completeWithAfterClearBarrier(barrier);
     const result = await admitTestReplyTurn({
       sessionKey: "agent:main:discord:channel:42",
-      sessionId: "heartbeat-session",
-      kind: "heartbeat",
+      sessionId: "background-session",
+      kind: "background",
     });
 
     expect(result).toEqual({ status: "skipped", reason: "active-run" });
@@ -189,7 +189,7 @@ describe("reply turn admission", () => {
     }
   });
 
-  it("skips heartbeat turns while a visible turn owns the lane", async () => {
+  it("skips background turns while a visible turn owns the lane", async () => {
     const active = createTestReplyOperation({
       sessionKey: "agent:main:telegram:topic:42",
       sessionId: "visible-session",
@@ -197,8 +197,8 @@ describe("reply turn admission", () => {
 
     const result = await admitTestReplyTurn({
       sessionKey: "agent:main:telegram:topic:42",
-      sessionId: "heartbeat-session",
-      kind: "heartbeat",
+      sessionId: "background-session",
+      kind: "background",
     });
 
     expect(result).toMatchObject({
@@ -337,7 +337,7 @@ describe("reply turn admission", () => {
     }
   });
 
-  it.each(["heartbeat", "queued_followup"] as const)(
+  it.each(["background", "queued_followup"] as const)(
     "does not let %s turns reclaim a stale active operation",
     async (kind) => {
       vi.useFakeTimers();

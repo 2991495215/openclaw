@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coerceToFailoverError, FailoverError } from "../../agents/failover-error.js";
+import { FailoverError } from "../../agents/failover-error.js";
 import { AUTH_PROFILE_COOLDOWN_ERROR_CODE } from "../../agents/failover/error.js";
 import { ContextPreparationTimeoutError } from "../../agents/failover/local-preparation-error.js";
 import { GENERIC_EXTERNAL_RUN_FAILURE_TEXT } from "../../agents/failover/user-copy.js";

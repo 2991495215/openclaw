@@ -68,9 +68,17 @@ export function registerSessionEventDeletionEnvironmentTests(
           );
           if (journalScope === "captured") {
             expect(() => assertSessionEventTargetCurrent(target)).toThrow("owner is being deleted");
-            expect(() => resolver.resolveCronAgent("main")).toThrow(
-              "cron job agent is unavailable",
-            );
+            await expect(
+              resolver.enqueueSessionEvent("Do not deliver to a deleted agent", {
+                agentId: "main",
+                sessionKey,
+                expectedTarget: target,
+              }),
+            ).resolves.toMatchObject({
+              ok: false,
+              error: expect.stringContaining("Session event agent is being deleted"),
+            });
+            expect(peekSystemEventEntries(sessionKey)).toEqual([]);
           } else {
             expect(() => assertSessionEventTargetCurrent(target)).not.toThrow();
             expect(resolver.resolveCronAgent("main").agentId).toBe("main");

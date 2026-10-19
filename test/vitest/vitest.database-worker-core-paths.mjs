@@ -698,6 +698,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/canvas/widget-tool.report.test.ts",
   "src/canvas/widget-tool.test.ts",
   "src/claws/add-stateless.test.ts",
+  "src/claws/add-portable-automation.test.ts",
   "src/claws/gateway-add-apply.plugin-batch.test.ts",
   "src/claws/packages.runtime.test.ts",
   "src/claws/packages.capability-consent.test.ts",

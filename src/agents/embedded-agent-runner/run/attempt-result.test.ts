@@ -15,8 +15,9 @@ import type { AgentMessage } from "../../runtime/index.js";
 import { makeAssistantMessageFixture } from "../../test-helpers/assistant-message-fixtures.js";
 import { getCoreTtsAttemptResultMediaUrls } from "../../tools/tts-tool-result-provenance.js";
 import { recordEmbeddedToolReceipt } from "../tool-send-receipts.js";
-import { completeEmbeddedAttemptResult, createAttemptCarryover } from "./attempt-result.js";
+import { completeEmbeddedAttemptResult } from "./attempt-result.js";
 import { resolveSettledToolTerminalContinuationInstruction } from "./incomplete-turn-recovery.js";
+import { buildPayloads } from "./payloads.test-helpers.js";
 import { normalizeEmbeddedRunAttemptResult } from "./run-attempt-result.js";
 import type { EmbeddedRunAttemptResult, EmbeddedRunAttemptTrajectoryRecorder } from "./types.js";
 

@@ -10,6 +10,7 @@ import {
   hasRestartRecoveryTerminalRun,
   isRetryableUnadoptedChatClaim,
   recordLifecycleFence,
+  resolveRestartRecoveryTerminalClientRunId,
 } from "../../config/sessions/restart-recovery-state.js";
 import { isTerminalSessionStatus } from "../../config/sessions/types.js";
 import {
@@ -26,11 +27,6 @@ import type {
   MainSessionRecoveryTransitionResult,
   MainSessionRecoveryView,
 } from "./main-session-recovery-types.js";
-import {
-  MAX_RECOVERY_RETRIES,
-  resolveRestartRecoveryTerminalClientRunId,
-} from "./main-session-restart-recovery-shared.js";
-
 export type {
   MainSessionRecoveryCommand,
   MainSessionRecoveryObservation,
@@ -38,6 +34,8 @@ export type {
   MainSessionRecoveryReservation,
   MainSessionRecoveryTransitionResult,
 } from "./main-session-recovery-types.js";
+
+export const MAX_RECOVERY_RETRIES = 3;
 
 const MAIN_RESTART_RECOVERY_REMEDIATION_HINT =
   "inspect the failed main session and use Resume in WebChat; in other channels, use /new or /reset to start a replacement session";

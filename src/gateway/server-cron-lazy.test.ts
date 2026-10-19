@@ -51,9 +51,9 @@ describe("createLazyGatewayCronState", () => {
         return { ok: true, eventOutcome: "queued" };
       });
       state.deferHookWake = deferHookWake;
-      const lazy = createLazyGatewayCronState(createParams());
+      const hookWakeOwner = createLazyGatewayCronState(createParams());
       let current = true;
-      const accepted = lazy.deferHookWake?.({
+      const accepted = hookWakeOwner.deferHookWake?.({
         text: "synthetic Hook notice",
         agentId: "main",
         commitGuard: () => {
@@ -63,7 +63,7 @@ describe("createLazyGatewayCronState", () => {
         },
       });
       if (outcome === "stopped") {
-        lazy.cron.stop();
+        hookWakeOwner.cron.stop();
       } else if (outcome === "caller-revoked") {
         current = false;
       }

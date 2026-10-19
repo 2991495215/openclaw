@@ -117,7 +117,15 @@ describe("Gateway Claw Add plan", () => {
       config,
     );
 
-    expect(plan.actions.filter((action) => action.kind === "workspaceFile")).toHaveLength(3);
+    expect(plan.actions.filter((action) => action.kind === "workspaceFile")).toHaveLength(2);
+    expect(plan.actions).toContainEqual(
+      expect.objectContaining({
+        kind: "cronJob",
+        id: "$portable-heartbeat",
+        scratch:
+          "# Incident Heartbeat\n\nCheck active incidents, unresolved owners, and overdue status updates.\n",
+      }),
+    );
     expect(projected).toMatchObject({
       operation: "add",
       target: { agentId: "claw-gateway-add-fixture" },
@@ -529,7 +537,7 @@ describe("Gateway Claw Add plan", () => {
           blocked: false,
           proposed: {
             schedule: { everyMs: 1_800_000 },
-            session: "main",
+            session: "isolated",
             delivery: "owner",
             message: expect.stringContaining("Review your automation scratch checklist"),
             messageDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),

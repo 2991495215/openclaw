@@ -16,10 +16,6 @@ import { formatSqliteSessionFileMarker } from "../../config/sessions/legacy-sqli
 import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import { createReplyOperation, isSessionRunActive } from "../../sessions/session-controller.js";
 import { beginSessionEffect } from "../../sessions/session-controller.lifecycle.js";
-import {
-  reserveSessionControllerSource,
-  retireSessionControllerInput,
-} from "../../sessions/session-controller.mailbox.js";
 import { captureSessionTarget } from "../../sessions/session-controller.target.js";
 import { resolveReusableWorkspaceSkillSnapshot } from "../../skills/runtime/session-snapshot.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
@@ -33,7 +29,6 @@ import { prepareReplyConversation } from "./prompt-session-context.js";
 import { createQueueTestRun } from "./queue.test-helpers.js";
 import { enqueueFollowupRun } from "./queue/enqueue.js";
 import { clearFollowupQueue, getExistingFollowupQueue } from "./queue/state.js";
-import { bindReplySourceInput } from "./reply-source-binding.js";
 import { resolveFollowupRunToolAuthorityFingerprintAsync } from "./reply-tool-authority.test-support.js";
 import { createTypingController } from "./typing.js";
 

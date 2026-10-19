@@ -34,7 +34,6 @@ describe("resolveActiveRunQueueAction", () => {
         hasQueuedFollowups: true,
         isActive: true,
         interrupt: true,
-        isHeartbeat: false,
         shouldFollowup: false,
       }),
     ).toBe("run-now");
@@ -47,23 +46,11 @@ describe("resolveActiveRunQueueAction", () => {
         resolveActiveRunQueueAction({
           hasQueuedFollowups: true,
           isActive: true,
-          isHeartbeat: false,
           shouldFollowup: mode === "steer" || mode === "followup" || mode === "collect",
         }),
       ).toBe("enqueue-followup");
     },
   );
-
-  it("drops heartbeats while an active run has queued followups", () => {
-    expect(
-      resolveActiveRunQueueAction({
-        hasQueuedFollowups: true,
-        isActive: true,
-        isHeartbeat: true,
-        shouldFollowup: true,
-      }),
-    ).toBe("drop");
-  });
 
   it("runs reset-triggered turns immediately while another run is active", () => {
     expect(

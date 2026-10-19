@@ -1,4 +1,3 @@
-import { isAgentDeletionBlocked } from "../agents/agent-lifecycle-registry.js";
 import { resolveAgentEntry, tryResolveAmbientOwnerAgentId } from "../agents/agent-scope-config.js";
 import type { SessionEventTarget } from "../auto-reply/reply/session-event-contract.js";
 import {
@@ -15,7 +14,6 @@ import {
   resolveSystemMainSessionTarget,
 } from "../config/sessions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { CronAgentDeletionBlockedError } from "../cron/agent-availability.js";
 import { resolveCronJobEffectiveAgentId } from "../cron/agent-id.js";
 import type { CronServiceDeps } from "../cron/service/state.js";
 import { resolveCronSessionTargetSessionKey } from "../cron/session-target.js";
@@ -51,9 +49,6 @@ export function createGatewayCronTargetResolver(
       normalized ? { agentId: normalized } : {},
       defaultAgentId,
     );
-    if (isAgentDeletionBlocked(agentId, { env })) {
-      throw new CronAgentDeletionBlockedError(agentId);
-    }
     assertAgentDatabaseAdmitted(agentId, { env });
     return { agentId, cfg: runtimeConfig };
   };

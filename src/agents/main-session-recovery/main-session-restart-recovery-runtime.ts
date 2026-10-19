@@ -23,7 +23,10 @@ import {
   listAgentDatabaseAdmissionRefusals,
   readAgentDatabaseAdmissionRefusal,
 } from "../../state/agent-database-admission.js";
-import { getMainSessionRecoveryRetryCount } from "./main-session-recovery-state.js";
+import {
+  getMainSessionRecoveryRetryCount,
+  MAX_RECOVERY_RETRIES,
+} from "./main-session-recovery-state.js";
 import type { MainSessionRecoveryStoreTarget } from "./main-session-recovery-store.js";
 import {
   restartRecoveryStoreTargetKey,
@@ -39,7 +42,6 @@ import {
   type ExhaustedRestartRecoveryTarget,
   type ExpectedRestartRecoveryTarget,
   mainSessionRecoveryLog,
-  MAX_RECOVERY_RETRIES,
   RETRY_BACKOFF_MULTIPLIER,
   discoverRestartRecoveryStoreTargets,
 } from "./main-session-restart-recovery-shared.js";

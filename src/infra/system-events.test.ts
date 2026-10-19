@@ -104,31 +104,33 @@ describe("delivery-owned system event selection", () => {
   );
 
   it("leaves ordinary and exec occurrences with their exact owners through user selection", async () => {
-    const sessionKey = "agent:main:ordinary-event-owner";
+    const ownedSessionKey = "agent:main:ordinary-event-owner";
     const occurrence = expectDefined(
-      enqueueSystemEventEntry("Task completed", { sessionKey }),
+      enqueueSystemEventEntry("Task completed", { sessionKey: ownedSessionKey }),
       "ordinary occurrence",
     );
     const cancelled = vi.fn();
-    const sibling = enqueueEntry("Sibling completed", sessionKey);
+    const sibling = enqueueEntry("Sibling completed", ownedSessionKey);
     const owner = expectDefined(
-      claimSystemEventTurn(sessionKey, [occurrence, sibling], cancelled, "main"),
+      claimSystemEventTurn(ownedSessionKey, [occurrence, sibling], cancelled, "main"),
       "ordinary owner",
     );
-    enqueueSystemEvent("Passive notice", { sessionKey });
+    enqueueSystemEvent("Passive notice", { sessionKey: ownedSessionKey });
     const execOccurrence = expectDefined(
-      enqueueSystemEventEntry("Exec finished (gateway id=uncertain, code 0)", { sessionKey }),
+      enqueueSystemEventEntry("Exec finished (gateway id=uncertain, code 0)", {
+        sessionKey: ownedSessionKey,
+      }),
       "exec completion",
     );
     const execCancelled = vi.fn();
     const execOwner = expectDefined(
-      claimSystemEventTurn(sessionKey, [execOccurrence], execCancelled, "main"),
+      claimSystemEventTurn(ownedSessionKey, [execOccurrence], execCancelled, "main"),
       "exec completion owner",
     );
     const prompt = await drainFormattedSystemEvents({
       cfg: {},
       agentId: "main",
-      sessionKey,
+      sessionKey: ownedSessionKey,
       isMainSession: false,
       isNewSession: false,
     });
@@ -136,19 +138,21 @@ describe("delivery-owned system event selection", () => {
     expect(prompt).not.toContain("Task completed");
     expect(prompt).not.toContain("Sibling completed");
     expect(prompt).not.toContain(execOccurrence.text);
-    expect(peekSystemEventEntries(sessionKey).map(({ id }) => id)).toEqual([
+    expect(peekSystemEventEntries(ownedSessionKey).map(({ id }) => id)).toEqual([
       occurrence.id,
       sibling.id,
       execOccurrence.id,
     ]);
     expect(cancelled).not.toHaveBeenCalled();
     owner.start();
-    expect(peekSystemEventEntries(sessionKey).map(({ id }) => id)).toEqual([execOccurrence.id]);
+    expect(peekSystemEventEntries(ownedSessionKey).map(({ id }) => id)).toEqual([
+      execOccurrence.id,
+    ]);
     expect(cancelled).not.toHaveBeenCalled();
     expect(owner.cancel()).toBe(false);
     expect(execCancelled).not.toHaveBeenCalled();
     execOwner.start();
-    expect(peekSystemEventEntries(sessionKey)).toEqual([]);
+    expect(peekSystemEventEntries(ownedSessionKey)).toEqual([]);
     expect(execOwner.cancel()).toBe(false);
     expect(execCancelled).not.toHaveBeenCalled();
   });
@@ -565,7 +569,7 @@ describe("system events (session routing)", () => {
   });
 
   it("drains ordinary notices regardless of text that formerly selected heartbeat execution", async () => {
-    const key = "agent:main:test-ordinary-notices";
+    const noticeKey = "agent:main:test-ordinary-notices";
     const notices = [
       "Read HEARTBEAT.md before continuing",
       "heartbeat poll: pending",
@@ -574,14 +578,14 @@ describe("system events (session routing)", () => {
       "Exec failed (abc12345, signal SIGTERM) :: browser auth timed out",
     ];
     for (const text of notices) {
-      enqueueSystemEvent(text, { sessionKey: key });
+      enqueueSystemEvent(text, { sessionKey: noticeKey });
     }
 
-    const result = await drainFormattedEvents(key);
+    const result = await drainFormattedEvents(noticeKey);
     for (const text of notices) {
       expect(result).toContain(text);
     }
-    expect(peekSystemEvents(key)).toEqual([]);
+    expect(peekSystemEvents(noticeKey)).toEqual([]);
   });
 
   it.each([

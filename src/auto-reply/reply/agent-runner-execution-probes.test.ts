@@ -551,12 +551,12 @@ describe("executeAgentTurn: primary probe routing", () => {
     }));
     const { replyOperation, failMock } = createMockReplyOperation();
 
-    const executeAgentTurn = await getExecuteAgentTurnForTest();
+    const executeInternalEventTurn = await getExecuteAgentTurnForTest();
     const params = createMinimalRunAgentTurnParams({ replyOperation });
     const internalEventExecution = { onStarted: vi.fn(), onTerminal: vi.fn() };
     params.followupRun.run.internalEventExecution = internalEventExecution;
     params.opts = { ...params.opts, internalEventExecution };
-    const result = await executeAgentTurn(params);
+    const result = await executeInternalEventTurn(params);
 
     expect(result).toMatchObject({
       kind: "success",

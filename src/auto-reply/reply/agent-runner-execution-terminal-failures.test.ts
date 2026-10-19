@@ -8,10 +8,7 @@ import { createCliTimeoutError } from "../../agents/cli-runner/no-output-timeout
 import { buildPayloads } from "../../agents/embedded-agent-runner/run/payloads.test-helpers.js";
 import { FailoverError } from "../../agents/failover-error.js";
 import { formatBillingErrorMessage } from "../../agents/failover/user-copy.js";
-import {
-  AgentHarnessPreflightError,
-  AgentHarnessSessionSupersededError,
-} from "../../agents/harness/errors.js";
+import { AgentHarnessPreflightError } from "../../agents/harness/errors.js";
 import {
   createAgentRunDirectAbortError,
   createAgentRunRestartAbortError,

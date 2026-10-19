@@ -219,8 +219,8 @@ function ScratchEditorContent(_props: Props, host: Host) {
                 class="settings-input mono"
                 rows={8}
                 value={view().draft}
-                readOnly={view().disabled || view().redacted}
-                maxLength={view().snapshot?.maxBytes}
+                readonly={view().disabled || view().redacted}
+                maxlength={view().snapshot?.maxBytes}
                 onInput={(event) => {
                   state.draft = event.currentTarget.value;
                   state.publish();

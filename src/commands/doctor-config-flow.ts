@@ -6,7 +6,6 @@ import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { withProgress } from "../cli/progress.js";
 import { configIncludeOwnsAgentRoster } from "../config/agent-roster-provenance.js";
-import { getDeferredPluginMigrationConfigFacts } from "../config/deferred-plugin-migration-config.js";
 import { readRecentConfigAuditRecords } from "../config/io.audit.js";
 import { hashConfigRaw } from "../config/io.read-helpers.js";
 import {
@@ -43,7 +42,7 @@ import { emitDoctorNotes, sanitizeDoctorNote } from "./doctor/emit-notes.js";
 import { finalizeDoctorConfigFlow } from "./doctor/finalize-config-flow.js";
 import {
   applyLegacyCompatibilityStep,
-  applyUnknownConfigKeyStep,
+  applyRetiredConfigStep,
   prepareDoctorConfigReferenceSource,
 } from "./doctor/shared/config-flow-steps.js";
 import {
@@ -601,46 +600,13 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   }
 
   const modelBillingRouteConfig = state.candidate;
-  if (shouldRepair) {
-    const { tryProjectRetiredHeartbeatConfig } = await import("./doctor-heartbeat-legacy.js");
-    const { retireHeartbeatWithDoctor } = await import("./doctor-heartbeat-retirement.js");
-    const retiredConfig = tryProjectRetiredHeartbeatConfig(state.candidate)
-      ? await retireHeartbeatWithDoctor(state.candidate)
-      : undefined;
-    if (retiredConfig && JSON.stringify(retiredConfig) !== JSON.stringify(state.candidate)) {
-      applyConfigMutation(
-        {
-          config: retiredConfig,
-          changes: ["Retired heartbeat configuration after ordinary automation data was verified."],
-        },
-        `Run "${doctorFixCommand}" to finish the heartbeat migration.`,
-      );
-    }
-  }
-
-  const unknownStep = applyUnknownConfigKeyStep({
+  state = await applyRetiredConfigStep({
     state,
     shouldRepair,
     doctorFixCommand,
-    preservedPaths: getDeferredPluginMigrationConfigFacts(snapshot.sourceConfig)?.flatMap(
-      (pending) => (pending.configPaths ?? []).concat(pending.validationExcludedPaths ?? []),
-    ),
+    sourceConfig: snapshot.sourceConfig,
+    emitChanges: changesPanelSink.emit,
   });
-  state = unknownStep.state;
-  if (unknownStep.removed.length > 0 || unknownStep.repairs.length > 0) {
-    const lines = [
-      ...unknownStep.removed.map((pathLocal) => `- ${pathLocal}`),
-      ...unknownStep.repairs.map((change) => `- ${change}`),
-    ];
-    if (shouldRepair) {
-      changesPanelSink.emit(lines);
-    } else {
-      note(lines.join("\n"), "Unknown config keys");
-    }
-  }
-  if (unknownStep.warnings.length > 0) {
-    note(unknownStep.warnings.join("\n"), "Doctor warnings");
-  }
 
   const finalized = await finalizeDoctorConfigFlow({
     ...state,

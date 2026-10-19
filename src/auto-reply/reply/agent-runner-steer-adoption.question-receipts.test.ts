@@ -279,7 +279,6 @@ describe("question response custody through reply adoption", () => {
                   typingSignals: createTypingSignaler({
                     typing,
                     mode: "never",
-                    isHeartbeat: false,
                   }),
                 })
           ).finally(() => {

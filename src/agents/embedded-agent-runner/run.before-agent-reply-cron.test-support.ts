@@ -9,6 +9,7 @@ import type { OpenClawTestState } from "../../test-utils/openclaw-test-state.js"
 import { makeAttemptResult } from "./run.overflow-compaction.fixture.js";
 import {
   mockedGlobalHookRunner,
+  mockedGetApiKeyForModel,
   mockedRunEmbeddedAttempt,
   createOverflowRunParams,
   resetSharedRunIntegrationHarnessMocks,
@@ -116,11 +117,28 @@ describe("runEmbeddedAgent before_agent_reply seam", () => {
       (hookName: string) => hookName === "before_agent_reply",
     );
     mockedGlobalHookRunner.runBeforeAgentReply.mockResolvedValue(undefined);
+    mockedGetApiKeyForModel.mockResolvedValue({
+      apiKey: "synthetic-configured-key",
+      mode: "api-key",
+      source: "models.providers.anthropic",
+    });
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(makeAttemptResult());
     const onExecutionPhase = vi.fn();
 
     await runEmbeddedAgent({
       ...createOverflowRunParams(state),
+      config: {
+        models: {
+          providers: {
+            anthropic: {
+              auth: "api-key",
+              apiKey: "synthetic-configured-key",
+              baseUrl: "https://api.anthropic.com",
+              models: [],
+            },
+          },
+        },
+      },
       trigger: "cron",
       onExecutionPhase,
     });

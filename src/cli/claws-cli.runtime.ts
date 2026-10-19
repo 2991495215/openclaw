@@ -328,7 +328,7 @@ async function runClawsAddCommandLocal(
             get: async (id) => await callGatewayFromCli("cron.get", {}, { id }),
             writeScratch: async (id, content, commitGuard) => {
               commitGuard();
-              const result = await callGatewayFromCli(
+              const scratchResult = await callGatewayFromCli(
                 "cron.scratch.set",
                 {},
                 {
@@ -337,7 +337,7 @@ async function runClawsAddCommandLocal(
                   expectedRevision: 0,
                 },
               );
-              if (!result.ok) {
+              if (!scratchResult.ok) {
                 throw new Error("Claw automation scratch changed before import.");
               }
             },

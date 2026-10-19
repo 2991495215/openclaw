@@ -281,32 +281,34 @@ describe("resolveDeliveryTarget", () => {
   it.each(["allow", "block"] as const)(
     "honors directPolicy=%s for plugin-resolved directory targets",
     async (directPolicy) => {
-      setSingleOutboundTestPlugin({
-        id: "alpha",
-        outbound: createStubOutbound("Alpha"),
-        messaging: {
-          targetPrefixes: ["alpha"],
-          targetResolver: {
-            resolveTarget: async ({ input }) =>
-              input === "alice"
-                ? { to: "user:123", kind: "user" as const, source: "directory" as const }
-                : null,
+      setPlugins(
+        createOutboundTestPlugin({
+          id: "alpha",
+          outbound: createStubOutbound("Alpha"),
+          messaging: {
+            targetPrefixes: ["alpha"],
+            targetResolver: {
+              resolveTarget: async ({ input }) =>
+                input === "alice"
+                  ? { to: "user:123", kind: "user" as const, source: "directory" as const }
+                  : null,
+            },
+            resolveOutboundSessionRoute: ({ cfg, agentId, accountId, target }) => {
+              const isUser = target.startsWith("user:");
+              return buildChannelOutboundSessionRoute({
+                cfg,
+                agentId,
+                channel: "alpha",
+                accountId,
+                peer: { kind: isUser ? "direct" : "channel", id: target },
+                chatType: isUser ? "direct" : "channel",
+                from: target,
+                to: isUser ? target : `channel:${target}`,
+              });
+            },
           },
-          resolveOutboundSessionRoute: ({ cfg, agentId, accountId, target }) => {
-            const isUser = target.startsWith("user:");
-            return buildChannelOutboundSessionRoute({
-              cfg,
-              agentId,
-              channel: "alpha",
-              accountId,
-              peer: { kind: isUser ? "direct" : "channel", id: target },
-              chatType: isUser ? "direct" : "channel",
-              from: target,
-              to: isUser ? target : `channel:${target}`,
-            });
-          },
-        },
-      });
+        }),
+      );
 
       const result = await resolveDeliveryTarget(makeCfg(), AGENT_ID, {
         channel: "alpha",

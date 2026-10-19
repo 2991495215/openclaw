@@ -1,11 +1,39 @@
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { consumeCronNextCheckProposal } from "../../infra/agent-run-registry.automation.js";
 import { getAgentRunContext } from "../../infra/agent-run-registry.js";
+import type { InternalGetReplyOptions } from "./get-reply.types.js";
 import type {
   ScheduledSessionAutomation,
   SessionEventExecution,
   SessionEventOutcome,
 } from "./session-event-contract.js";
+
+export function resolveScheduledSessionReplyOptions(
+  automation?: ScheduledSessionAutomation,
+): Pick<
+  InternalGetReplyOptions,
+  | "sourceReplyDeliveryMode"
+  | "modelOverride"
+  | "thinkingLevelOverride"
+  | "timeoutOverrideSeconds"
+  | "bootstrapContextMode"
+> {
+  if (!automation) {
+    return {};
+  }
+  const payload = automation.job.payload;
+  return {
+    sourceReplyDeliveryMode: "automatic",
+    ...(payload.kind === "agentTurn"
+      ? {
+          modelOverride: payload.model,
+          thinkingLevelOverride: payload.thinking,
+          timeoutOverrideSeconds: payload.timeoutSeconds,
+          bootstrapContextMode: payload.lightContext ? "lightweight" : "full",
+        }
+      : {}),
+  };
+}
 
 /** Project the completed ordinary invocation into its scheduler result and session context. */
 export async function settleSessionAutomationTurn(params: {

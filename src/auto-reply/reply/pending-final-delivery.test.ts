@@ -6,10 +6,7 @@ import {
 } from "../../agents/internal-runtime-context.js";
 import { setReplyPayloadMetadata } from "../reply-payload.js";
 import { markInboundContextLabel } from "./inbound-context-marker.js";
-import {
-  classifyHeartbeatPendingFinalDelivery,
-  sanitizePendingFinalDeliveryText,
-} from "./pending-final-delivery-state.js";
+import { sanitizePendingFinalDeliveryText } from "./pending-final-delivery-state.js";
 import {
   buildRecoverablePendingFinalDeliveryText,
   normalizePendingFinalDeliveryPayloads,
@@ -59,16 +56,6 @@ describe("resolvePendingFinalDeliveryCompletion", () => {
   });
 });
 
-it.each(["no_r", "NO_R", "NO_REPLY"])(
-  "keeps pending ordinary reply %s during heartbeat admission",
-  (text) => {
-    expect(classifyHeartbeatPendingFinalDelivery(text, 300)).toEqual({
-      shouldClear: false,
-      replayText: text,
-    });
-  },
-);
-
 describe("sanitizePendingFinalDeliveryText", () => {
   it("preserves indented code in pending final text", () => {
     const text = "    const value = 1;\n    use(value);";
@@ -91,7 +78,7 @@ describe("sanitizePendingFinalDeliveryText", () => {
     expect(sanitizePendingFinalDeliveryText(text)).toBe("Visible reply");
   });
 
-  it.each(["NO_REPLY", '"NO_REPLY"', '{"action":"NO_REPLY"}', "NO_REPLY."])(
+  it.each(["no_r", "NO_R", "NO_REPLY", '"NO_REPLY"', '{"action":"NO_REPLY"}', "NO_REPLY."])(
     "preserves prepared text without reinterpreting it: %s",
     (text) => expect(sanitizePendingFinalDeliveryText(text)).toBe(text),
   );

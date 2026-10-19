@@ -3,10 +3,10 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import {
   getMainSessionRecoveryRetryCount,
+  MAX_RECOVERY_RETRIES,
   transitionMainSessionRecovery,
 } from "../../agents/main-session-recovery/main-session-recovery-state.js";
 import type { MainSessionRecoveryOwnerLease } from "../../agents/main-session-recovery/main-session-recovery-store.js";
-import { MAX_RECOVERY_RETRIES } from "../../agents/main-session-recovery/main-session-restart-recovery-shared.js";
 import { getGeneratedMediaTaskIdsForSessionKey } from "../../agents/media-generation-activity.js";
 import {
   mergeSessionEntry,

@@ -27,6 +27,7 @@ import { resolveExecDefaultsAsync } from "../exec-defaults.js";
 import {
   getMainSessionRecoveryRetryCount,
   isMainRestartRecoveryTerminalOnly,
+  MAX_RECOVERY_RETRIES,
 } from "./main-session-recovery-state.js";
 import { commitMainSessionRecovery } from "./main-session-recovery-store.js";
 import { resumeMainSession } from "./main-session-restart-dispatch.js";
@@ -59,7 +60,6 @@ import {
   type ExhaustedRestartRecoveryTarget,
   type ExpectedRestartRecoveryTarget,
   mainSessionRecoveryLog,
-  MAX_RECOVERY_RETRIES,
 } from "./main-session-restart-recovery-shared.js";
 import { resolveRestartRecoveryDispatchTarget } from "./main-session-restart-recovery-target.js";
 

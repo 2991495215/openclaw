@@ -153,10 +153,6 @@ function buildPayloadFromPatch(patch: CronPayloadPatch): CronPayload {
     return { kind: "script", script: patch.script };
   }
 
-  if (patch.kind !== "agentTurn") {
-    return { kind: patch.kind };
-  }
-
   if (typeof patch.message !== "string" || patch.message.length === 0) {
     throw new Error('cron.update payload.kind="agentTurn" requires message');
   }

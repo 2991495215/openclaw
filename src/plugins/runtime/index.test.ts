@@ -4,8 +4,6 @@ import {
   setRuntimeConfigSnapshot,
   type OpenClawConfig,
 } from "../../config/config.js";
-import type { SessionEntry } from "../../config/sessions/types.js";
-import { createDeferredCore } from "../../shared/deferred.js";
 
 const runtimeModelAuthMocks = vi.hoisted(() => ({
   getApiKeyForModel: vi.fn(),

@@ -4,7 +4,7 @@ import { resolveCronDeliveryPlan, resolveFailureDestination } from "../delivery-
 import { makeCronJob } from "../delivery.test-helpers.js";
 import { projectCronJobThroughStorageCodec } from "../store/row-codec.js";
 import type { CronJob, CronJobCreate, CronJobPatch } from "../types.js";
-import { applyDeclarativeJobSpec, applyJobPatch, createJob } from "./jobs.js";
+import { applyJobPatch, createJob } from "./jobs.js";
 
 function makeJob(overrides: Partial<CronJob> = {}): CronJob {
   return makeCronJob({

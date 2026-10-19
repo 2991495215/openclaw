@@ -29,9 +29,7 @@ import type {
   AgentDeletionInput,
   AgentDeletionJournalTransport,
 } from "../state/agent-deletion-journal-transport.js";
-import {
-  readAgentDeletionJournalInDatabase,
-} from "../state/agent-deletion-journal.js";
+import { readAgentDeletionJournalInDatabase } from "../state/agent-deletion-journal.js";
 import type { AgentDeletionWorkerPredicate } from "../state/agent-deletion-worker-contract.js";
 import type { AgentDeletionWorkerAuthority } from "../state/agent-deletion-worker.types.js";
 import { prepareOpenClawAgentDatabaseRegistryRemoval } from "../state/openclaw-agent-db-registry-listing.js";

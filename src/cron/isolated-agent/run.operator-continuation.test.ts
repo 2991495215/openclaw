@@ -448,7 +448,6 @@ describe("same-conversation scheduled operator continuation", () => {
       defaultAgentId: "main",
       log: createNoopLogger(),
       enqueueSystemEvent: vi.fn(),
-      requestHeartbeat: vi.fn(),
       runSchedulerOwned: createScheduledGatewayRunner(() => context),
       runIsolatedAgentJob: (request) =>
         runCronIsolatedAgentTurn({

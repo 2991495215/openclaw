@@ -27,7 +27,6 @@ import { registerAgentCreatorAuthorityTests } from "./agent.creator-authority.te
 import {
   getAgentTestMocks,
   makeContext,
-  type AgentHandlerArgs,
   type AgentParams,
   type AgentCommandCall,
   setDateOnlyFakeClockActive,

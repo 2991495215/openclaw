@@ -308,18 +308,8 @@ async function resolveCronRunPreparation(params: CronRunPreparationParams) {
         agentId,
         agentSessionKey,
         assertCurrent: input.assertCurrent,
-        onResetCommitted: ({ storePath, sessionKey, entry }) => {
-          if (
-            resultTarget.agentId === agentId &&
-            resultTarget.sessionKey === sessionKey &&
-            resultTarget.storePath === storePath &&
-            resultTarget.sessionId === cronSession.initialSessionEntry?.sessionId &&
-            resultTarget.lifecycleRevision === cronSession.initialSessionEntry?.lifecycleRevision
-          ) {
-            resultTarget.sessionId = entry.sessionId;
-            resultTarget.lifecycleRevision = entry.lifecycleRevision;
-          }
-        },
+        resultTarget,
+        cronSession,
       });
       const persistSessionEntry = createPersistCronSessionEntry({
         cronSession,

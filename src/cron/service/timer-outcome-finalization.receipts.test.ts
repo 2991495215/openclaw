@@ -13,7 +13,6 @@ import {
 } from "../../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { runOpenClawStateWorkerOperation } from "../../state/openclaw-state-worker-store.js";
-import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import {
   advanceCronActiveJobGeneration,
   clearCronJobActive,
@@ -43,6 +42,7 @@ import { createCronRunHandle } from "./run-history.js";
 import type { TimedCronRunOutcome } from "./timer-execution-timeout.js";
 import { authorCronRunCompletion } from "./timer-job-runner.js";
 import { finalizeCompletedCronRunOutcomes } from "./timer-outcome-finalization.js";
+import { onTimer } from "./timer.test-support.js";
 
 const fixtures = setupCronRegressionFixtures({ prefix: "cron-finalization-receipts-" });
 const runtimeAuthority: NonNullable<CronStoredJob["runtimeAuthority"]> = {
@@ -500,7 +500,7 @@ describe("cron outcome receipt finalization", () => {
       END;
     `);
     const deferredOutcome = (run: typeof completed) =>
-      authorOutcome({
+      authorCronRunCompletion(run.job, {
         ...run,
         status: "skipped",
         admissionDeferred: true,
@@ -511,7 +511,7 @@ describe("cron outcome receipt finalization", () => {
     try {
       const failure = await finalizeCompletedCronRunOutcomes(state, [
         deferredOutcome(failed),
-        authorOutcome({ ...completed, status: "ok" }),
+        authorCronRunCompletion(completed.job, { ...completed, status: "ok" }),
         deferredOutcome(predecessor),
         deferredOutcome(later),
       ]).then(

@@ -7,6 +7,7 @@ import {
 } from "../../claws/gateway-add-apply.js";
 import { ClawGatewayConsentError } from "../../claws/gateway-plugin-consent.js";
 import { ClawSkillConsentError } from "../../claws/gateway-skill-consent.js";
+import type { CronJobCreate, CronStoredJob } from "../../cron/types.js";
 import { authorizeOperatorScopesForMethod } from "../method-scopes.js";
 import { clawsAddHandlers } from "./claws-add.js";
 import { coreGatewayHandlers } from "./core-handlers.js";
@@ -189,7 +190,7 @@ describe("claws.add.plan Gateway method", () => {
 describe("claws.add.apply Gateway method", () => {
   const source = { packageName: "@openclaw/workflow-operator", version: "1.0.0" };
   const params = { source, planIntegrity: "sha256:reviewed", acknowledgeCapabilities: [] };
-  const schedule = {
+  const schedule: CronJobCreate = {
     name: "daily-brief",
     declarationKey: "claw:workflow-operator:daily-brief",
     owner: { agentId: "workflow-operator" },
@@ -407,7 +408,13 @@ describe("claws.add.apply Gateway method", () => {
   });
 
   it("exposes guarded scheduler reads and removal for Add rollback", async () => {
-    const job = { id: "job-1", agentId: "workflow-operator" };
+    const job: CronStoredJob = {
+      ...schedule,
+      id: "job-1",
+      createdAtMs: 1_000,
+      updatedAtMs: 1_000,
+      state: {},
+    };
     const cron = {
       add: vi.fn(),
       list: vi.fn().mockResolvedValue([]),
@@ -415,10 +422,16 @@ describe("claws.add.apply Gateway method", () => {
       remove: vi.fn().mockResolvedValue({ ok: true, removed: true }),
     };
     const commitGuard = vi.fn();
+    let configRevision: string | undefined;
     applyClawAddForGateway.mockImplementation(async (input) => {
-      expect(await input.cronGateway.get("job-1")).toEqual(job);
+      const loaded = await input.cronGateway.get("job-1");
+      expect(loaded).toEqual({
+        ...job,
+        configRevision: expect.stringMatching(/^sha256:[A-Za-z0-9_-]{43}$/),
+      });
+      configRevision = loaded.configRevision;
       await input.cronGateway.remove("job-1", {
-        expectedConfigRevision: "revision-1",
+        expectedConfigRevision: configRevision,
         commitGuard,
       });
       return { agentId: "workflow-operator", status: "complete" };
@@ -432,7 +445,7 @@ describe("claws.add.apply Gateway method", () => {
     expect(cron.readJob).toHaveBeenCalledWith("job-1");
     expect(cron.remove).toHaveBeenCalledWith("job-1", {
       commitGuard: expect.any(Function),
-      expectedConfigRevision: "revision-1",
+      expectedConfigRevision: configRevision,
     });
     expect(request.replies[0]?.[0]).toBe(true);
   });

@@ -152,7 +152,7 @@ describe("session-bound cron lane admission", () => {
         await previous;
         await expect(withinTest(run, signal)).resolves.toMatchObject({ status: "ok" });
         expect(laneSignals).toContainEqual({ waiting: false, stage: "preparation" });
-        expect(laneSignals.filter((info) => info?.stage !== "session-preparation")).toEqual([]);
+        expect(laneSignals.filter((info) => info.stage !== "preparation")).toEqual([]);
         expect(accessor.loadSessionEntry(target)).toMatchObject({
           sessionId: target.sessionId,
           ...terminal,

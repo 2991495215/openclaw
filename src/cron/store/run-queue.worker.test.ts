@@ -22,8 +22,8 @@ const now = 1_800_000_000_000;
 let fixture: OpenClawTestState;
 let context: OpenClawStateWorkerContext;
 
-async function readHistoryRecords(storeKey: string) {
-  const { records } = await readCronRunHistoryCandidates(storeKey);
+async function readHistoryRecords(storeKey: string, jobId?: string) {
+  const { records } = await readCronRunHistoryCandidates(storeKey, jobId);
   return readCronRunHistoryRecords(
     storeKey,
     records.map((record) => record.id),
@@ -261,7 +261,7 @@ it.each([0, 64])(
       ).toBeUndefined();
     }
     expect((await queue.read()).jobs[0]?.state.nextRunAtMs).toBe(now);
-    expect(await readCronRunRecords(queue.storeKey, original.id)).toEqual([]);
+    expect(await readHistoryRecords(queue.storeKey, original.id)).toEqual([]);
     const retried = (await queue.request([request])).accepted[0]!;
     expect(retried.runReceipt.receiptId).not.toBe(first.runReceipt.receiptId);
     // Cancellation can follow a backward clock adjustment after the deferrals.
@@ -276,7 +276,7 @@ it.each([0, 64])(
     ]);
     expect((await queue.read()).jobs[0]?.state.nextRunAtMs).toBe(now + 60_000);
     expect(
-      projectCronRunHistoryPage(await readCronRunRecords(queue.storeKey, original.id), {
+      projectCronRunHistoryPage(await readHistoryRecords(queue.storeKey, original.id), {
         storeKey: queue.storeKey,
       }).entries,
     ).toMatchObject([{ status: "skipped", error: "synthetic cancellation" }]);

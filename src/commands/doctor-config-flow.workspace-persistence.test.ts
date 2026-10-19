@@ -21,10 +21,6 @@ import {
 } from "../state/openclaw-state-db.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import {
-  commitAutomaticHeartbeatRepair,
-  prepareAutomaticHeartbeatRepair,
-} from "./doctor-automatic-heartbeat-repair.js";
-import {
   prepareDoctorContext,
   withDoctorConfigMaintenance,
 } from "./doctor-config-flow.test-support.js";

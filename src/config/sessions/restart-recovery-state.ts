@@ -60,6 +60,18 @@ export function isMainRestartRecoveryCandidate(
   );
 }
 
+export function resolveRestartRecoveryTerminalClientRunId(
+  entry: Pick<
+    InternalSessionEntry,
+    "restartRecoveryDeliverySourceRunId" | "restartRecoverySourceIngress"
+  >,
+): string | undefined {
+  return entry.restartRecoverySourceIngress === "control-ui" ||
+    entry.restartRecoverySourceIngress === "internal"
+    ? normalizeRunId(entry.restartRecoveryDeliverySourceRunId)
+    : undefined;
+}
+
 /** A final intent can acknowledge only its admitted source on the same captured route. */
 export function getRestartRecoveryPendingFinalSourceRunId(
   entry: SessionEntry,
