@@ -172,6 +172,31 @@ function fixture(
 }
 
 describe("compiler comparison artifact audit", () => {
+  it.each([
+    { cpus: 4, memoryGiB: 24, swapBytes: 0, error: null },
+    { cpus: 8, memoryGiB: 24, swapBytes: 0, error: "four CPUs" },
+    { cpus: 4, memoryGiB: 12, swapBytes: 0, error: "24 GiB" },
+    { cpus: 4, memoryGiB: 24, swapBytes: 1, error: "forbids swap" },
+  ])("keeps the capacity control distinct and checks its declared limits: %j", (profile) => {
+    const evidence = fixture();
+    const metadata = JSON.parse(
+      fs.readFileSync(path.join(evidence.directory, "metadata.json"), "utf8"),
+    );
+    evidence.write("metadata.json", {
+      ...metadata,
+      capacityControl: true,
+      cpus: profile.cpus,
+      limits: { memoryBytes: profile.memoryGiB * 1024 ** 3, swapBytes: profile.swapBytes },
+    });
+    if (profile.error) {
+      expect(() => auditCompilerComparison(evidence.directory)).toThrow(profile.error);
+    } else {
+      const result = auditCompilerComparison(evidence.directory);
+      expect(result.scope.capacityControl).toBe(true);
+      expect(result.qualificationPassed).toBe(true);
+    }
+  });
+
   it("rejects a diagnostic memory profile even when all compiler outcomes pass", () => {
     const evidence = fixture();
     const metadata = JSON.parse(

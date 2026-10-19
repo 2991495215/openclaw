@@ -15,7 +15,7 @@ on:
       scope:
         description: Canonical graph coverage
         type: choice
-        options: [representative, all, memory-diagnostic]
+        options: [representative, all, remaining, memory-diagnostic, capacity-control]
         default: representative
 
 permissions:
@@ -55,6 +55,13 @@ jobs:
           const selected = new Set(["core", "ui", "extensions", "scripts", "test-root-e2e"]);
           const include = inventory.flatMap((graph, group) => {
             const entry = { graph: graph.name, group, groups: inventory.length };
+            if (process.env.QUALIFICATION_SCOPE === "remaining") {
+              return ["extensions", "extensions-test"].includes(graph.name) ? [] : [entry];
+            }
+            if (process.env.QUALIFICATION_SCOPE === "capacity-control") {
+              return ["extensions", "extensions-test"].includes(graph.name)
+                ? [{ ...entry, capacityControl: true }] : [];
+            }
             if (process.env.QUALIFICATION_SCOPE === "memory-diagnostic") {
               return graph.name === "extensions-test"
                 ? ["3GiB", "10GiB"].map(memoryTarget => ({ ...entry, memoryTarget })) : [];
@@ -78,17 +85,17 @@ jobs:
           pnpm check:workflows
 
   compare:
-    name: Compiler comparison (${{ matrix.graph }}${{ matrix.memoryTarget && format(', memory {0}', matrix.memoryTarget) || '' }})
+    name: Compiler comparison (${{ matrix.graph }}${{ matrix.memoryTarget && format(', memory {0}', matrix.memoryTarget) || matrix.capacityControl && ', capacity 24GiB' || '' }})
     needs: proof
     if: github.event_name == 'workflow_dispatch'
     permissions:
       actions: read
       contents: read
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.scope == 'capacity-control' && 'blacksmith-32vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: ${{ inputs.scope == 'capacity-control' && 1 || 2 }}
       matrix: ${{ fromJSON(needs.proof.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -119,13 +126,20 @@ jobs:
           COMPILER_GROUP_COUNT: ${{ matrix.groups }}
           COMPILER_CANARIES: ${{ matrix.graph == 'core' }}
           COMPILER_MEMORY_TARGET: ${{ matrix.memoryTarget || '' }}
+          COMPILER_CAPACITY_CONTROL: ${{ matrix.capacityControl || false }}
           COMPILER_REPEATS: ${{ matrix.memoryTarget && '1' || '3' }}
         run: |
           args=(--group "$COMPILER_GROUP" --repeats "$COMPILER_REPEATS")
           if [[ -n "$COMPILER_GROUP_COUNT" ]]; then args+=(--groups "$COMPILER_GROUP_COUNT"); fi
           if [[ "$COMPILER_CANARIES" == true ]]; then args+=(--canaries); fi
           if [[ -n "$COMPILER_MEMORY_TARGET" ]]; then args+=(--memory-diagnostic "$COMPILER_MEMORY_TARGET"); fi
-          node scripts/collect-compiler-comparison.mjs "${args[@]}"
+          if [[ "$COMPILER_CAPACITY_CONTROL" == true ]]; then
+            args+=(--capacity-control)
+            python3 -c 'import os,sys; cpus=sorted(os.sched_getaffinity(0)); assert len(cpus)>=4; os.sched_setaffinity(0,cpus[:4]); os.execvp(sys.argv[1],sys.argv[1:])' \
+              node scripts/collect-compiler-comparison.mjs "${args[@]}"
+          else
+            node scripts/collect-compiler-comparison.mjs "${args[@]}"
+          fi
       - name: Audit qualification independently
         if: ${{ !cancelled() && !matrix.memoryTarget }}
         env:
@@ -138,7 +152,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: compiler-${{ matrix.memoryTarget && format('memory-{0}', matrix.memoryTarget) || 'qualification' }}-${{ matrix.group }}
+          name: compiler-${{ matrix.memoryTarget && format('memory-{0}', matrix.memoryTarget) || matrix.capacityControl && 'capacity-control' || 'qualification' }}-${{ matrix.group }}
           path: |
             .artifacts/compiler-comparison/group-${{ matrix.group }}/
             !.artifacts/compiler-comparison/**/native/**

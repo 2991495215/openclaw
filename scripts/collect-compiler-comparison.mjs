@@ -38,8 +38,12 @@ async function main() {
   const groups = Number(argument("--groups", String(inventory.length)));
   const repeats = Number(argument("--repeats", "3"));
   const memoryTarget = argument("--memory-diagnostic", "");
+  const capacityControl = process.argv.includes("--capacity-control");
   assert(["", "3GiB", "10GiB"].includes(memoryTarget), "Unknown diagnostic memory target");
   assert(!memoryTarget || (repeats === 1 && !process.argv.includes("--canaries")));
+  assert(
+    !capacityControl || (!memoryTarget && repeats === 3 && !process.argv.includes("--canaries")),
+  );
   assert(Number.isInteger(group) && Number.isInteger(groups) && group >= 0 && group < groups);
   assert(Number.isInteger(repeats) && repeats > 0 && repeats <= 10);
   const directory = path.join(root, ".artifacts/compiler-comparison", "group-" + group);
@@ -59,6 +63,11 @@ async function main() {
   assert(
     !memoryTarget || (graphs.length === 1 && graphs[0].name === "extensions-test"),
     "Memory diagnostic is scoped to the plugin-test graph",
+  );
+  assert(
+    !capacityControl ||
+      (graphs.length === 1 && ["extensions", "extensions-test"].includes(graphs[0].name)),
+    "Capacity control is scoped to the two incomplete plugin graphs",
   );
   dump("inventory.json", { inventory, group, groups, graphs });
 
@@ -172,7 +181,15 @@ async function main() {
     .trim();
   assert(cpuSet, "Missing CPU affinity");
   const memoryCapacity = Math.min(os.totalmem(), process.constrainedMemory() || os.totalmem());
-  const memoryBytes = Math.floor((memoryCapacity * 0.8) / 1024 ** 3) * 1024 ** 3;
+  // The larger control changes only the hard memory cap. Collector affinity must
+  // remain four CPUs so the canonical cold checking policy stays constrained.
+  if (capacityControl) {
+    assert(memoryCapacity >= 30 * 1024 ** 3, "Capacity control requires 30 GiB host headroom");
+    assert.equal(os.availableParallelism(), 4, "Capacity control requires four-CPU affinity");
+  }
+  const memoryBytes = capacityControl
+    ? 24 * 1024 ** 3
+    : Math.floor((memoryCapacity * 0.8) / 1024 ** 3) * 1024 ** 3;
   assert(memoryBytes > 0, "Missing memory capacity");
   const resources = { logicalCpuCount: os.availableParallelism(), totalMemoryBytes: memoryBytes };
   if (memoryTarget) {
@@ -507,6 +524,7 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
     archives,
     ciPolicy,
     memoryDiagnostic: memoryTarget || undefined,
+    capacityControl: capacityControl || undefined,
     isolation: "docker",
     isolationSmoke,
     containerImage,

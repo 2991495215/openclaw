@@ -49,12 +49,21 @@ export function auditCompilerComparison(directory: string) {
     expectedSamples?: string[];
     canaries?: Canary[];
     memoryDiagnostic?: unknown;
+    capacityControl?: unknown;
+    cpus?: number;
+    limits?: { memoryBytes: number; swapBytes: number };
   };
   assert.equal(
     metadata.memoryDiagnostic,
     undefined,
     "Memory diagnostics are not qualification evidence",
   );
+  assert(metadata.capacityControl === undefined || metadata.capacityControl === true);
+  if (metadata.capacityControl) {
+    assert.equal(metadata.cpus, 4, "Capacity control requires four CPUs");
+    assert.equal(metadata.limits?.memoryBytes, 24 * 1024 ** 3, "Capacity control requires 24 GiB");
+    assert.equal(metadata.limits?.swapBytes, 0, "Capacity control forbids swap");
+  }
   const inventory = JSON.parse(read("inventory.json")) as {
     inventory: Graph[];
     graphs: Graph[];
@@ -328,6 +337,7 @@ export function auditCompilerComparison(directory: string) {
       JSON.stringify(metadata.libraryManifest.toSorted((a, b) => (a.name < b.name ? -1 : 1))),
     ),
     scope: {
+      capacityControl: metadata.capacityControl === true,
       group: metadata.group,
       groups: metadata.groups,
       graphs: inventory.graphs,
