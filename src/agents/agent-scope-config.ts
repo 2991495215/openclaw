@@ -1,4 +1,3 @@
-/** Resolves configured agent ids, directories, workspaces, and merged agent defaults. */
 import path from "node:path";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
@@ -385,7 +384,6 @@ export function resolveMutableAgentEntry(
   return undefined;
 }
 
-/** Resolves merged config for one agent id. */
 export function resolveAgentConfig(
   cfg: OpenClawConfig,
   agentId: string,

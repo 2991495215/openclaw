@@ -1,8 +1,3 @@
-/**
- * OpenClaw system prompt renderer.
- *
- * Assembles runtime, workspace, tooling, memory, delegation, channel, and cache-boundary prompt sections.
- */
 import { createHmac } from "node:crypto";
 import {
   normalizePromptCapabilityIds,

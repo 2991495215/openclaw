@@ -1,8 +1,3 @@
-/**
- * Agent run workspace resolver.
- *
- * Selects per-run workspace directories and redacts run identifiers for logs/prompts.
- */
 import { redactIdentifier } from "@openclaw/normalization-core/node-crypto";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { logWarn } from "../logger.js";
@@ -33,7 +28,6 @@ export function redactRunIdentifier(value: string | undefined): string {
   return redactIdentifier(value, { len: 12 });
 }
 
-/** Resolves the workspace directory used for an agent run. */
 export function resolveRunWorkspaceDir(params: {
   workspaceDir: unknown;
   sessionKey?: string;

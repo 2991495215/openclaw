@@ -7,12 +7,10 @@ type ChannelAgentToolMeta = {
 
 const channelAgentToolMeta = new WeakMap<ChannelAgentTool, ChannelAgentToolMeta>();
 
-/** Read channel metadata attached to a channel-owned agent tool. */
 export function getChannelAgentToolMeta(tool: ChannelAgentTool): ChannelAgentToolMeta | undefined {
   return channelAgentToolMeta.get(tool);
 }
 
-/** Attach channel ownership metadata to a concrete agent tool. */
 export function setChannelAgentToolMeta(tool: ChannelAgentTool, meta: ChannelAgentToolMeta): void {
   channelAgentToolMeta.set(tool, meta);
 }

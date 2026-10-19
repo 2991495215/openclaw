@@ -1,5 +1,4 @@
 /**
- * Tool display metadata registry.
  *
  * Agent UIs use this config to map tool names/actions to stable titles,
  * icons, and detail keys without embedding presentation data in tool handlers.

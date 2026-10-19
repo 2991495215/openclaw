@@ -1,5 +1,4 @@
 /**
- * User-facing tool display formatter.
  *
  * Builds labels and compact details from tool metadata without affecting execution semantics.
  */
@@ -49,7 +48,6 @@ const DETAIL_LABEL_OVERRIDES: Record<string, string> = {
   maxChars: "max chars",
 };
 
-/** Resolves the display model for a tool invocation. */
 export function resolveToolDisplay(params: {
   name?: string;
   args?: unknown;
@@ -82,12 +80,10 @@ export function resolveToolDisplay(params: {
   };
 }
 
-/** Formats detail text for display. */
 export function formatToolDetail(display: ToolDisplay): string | undefined {
   return display.detail || undefined;
 }
 
-/** Infers compact display metadata for a tool invocation from its arguments. */
 export function inferToolMetaFromArgsCore(
   toolName: string,
   args: unknown,

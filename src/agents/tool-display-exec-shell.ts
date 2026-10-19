@@ -1,5 +1,4 @@
 /**
- * Lightweight shell parsing helpers for exec display summaries.
  *
  * Handles common quoting, wrapper, and preamble shapes for UI labels without validating shell syntax.
  */

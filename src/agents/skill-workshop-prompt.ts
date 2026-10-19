@@ -1,7 +1,5 @@
-/** System-prompt contribution that keeps the agent's learned (Workshop) skills current. */
 export const SKILL_WORKSHOP_TOOL_NAME = "skill_workshop";
 
-/** Build the system-prompt section for Skill Workshop. */
 export function buildSkillWorkshopPromptSection(): string[] {
   return [
     "## Skill Workshop",

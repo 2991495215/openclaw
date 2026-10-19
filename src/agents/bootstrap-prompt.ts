@@ -1,4 +1,3 @@
-/** Builds prompt lines for a full BOOTSTRAP.md workflow handoff. */
 export function buildFullBootstrapPromptLines(params: {
   readLine: string;
   firstReplyLine: string;
@@ -12,7 +11,6 @@ export function buildFullBootstrapPromptLines(params: {
   ];
 }
 
-/** Builds prompt lines for a constrained BOOTSTRAP.md workflow handoff. */
 export function buildLimitedBootstrapPromptLines(params: {
   introLine: string;
   nextStepLine: string;
