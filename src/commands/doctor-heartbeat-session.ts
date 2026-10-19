@@ -70,7 +70,7 @@ export function resolveLegacyHeartbeatSessionKey(
     });
     return canonical !== "global" &&
       !isSubagentSessionKey(canonical) &&
-      resolveAgentIdFromSessionKey(canonical) === normalizeAgentId(resolvedAgentId)
+      resolveAgentIdFromSessionKey(canonical) === resolvedAgentId
       ? canonical
       : undefined;
   };

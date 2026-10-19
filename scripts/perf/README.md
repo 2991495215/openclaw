@@ -205,6 +205,19 @@ A separate configuration-edit phase verifies that a changed job name becomes
 visible. Only browser list requests are counted; the controller socket is
 excluded, and the created jobs are removed on exit.
 
+For board/chat document loads, use `--load-runs 5 --load-path /dashboard --duration 12`.
+This mode retains synthetic `cron.list`, `models.list`, and `users.self` parameters,
+response bytes, `models.snapshot` event counts, paint entries, and native Long Task
+blocking (the sum of each task's duration above 50 ms). It records the first cold
+browser context separately from later documents that retain browser cache and
+storage. `--phase-seed` selects deterministic randomized reload delays; paired
+sides must use matching seeds, routes, and `--start-at` times. Reloads use fixed
+slots from that shared start time; a missed slot fails the run. Use
+`--expect-session <key>` to assert the committed session and `--open-details` for
+chat Details. Optional `--request-stacks` adds caller stacks for diagnosis;
+leave it off for paired timing. Use only synthetic requests:
+parameters and stacks are retained, while auth and response payloads are omitted.
+
 For paired activity measurements, use `--start-at <epoch-ms>` with the same future
 time on both sides; it gates the runtime window after browser readiness and
 rejects a missed deadline. Hold the host's shared measurement lock, use separate
@@ -474,6 +487,18 @@ latency alone can hide a burst. Existing completion, concurrency, event-order,
 and fanout checks still apply. This fixture uses synthetic model streams;
 provider latency and external tool execution are outside this comparison.
 
+Use `--stream-start-allocations` to sample main-isolate allocations, including
+collected objects, from before admission through release plus 500 ms. This writes
+`stream-start-<round>.heapprofile` and diagnostics sidecars. It cannot be combined
+with whole-round `--allocations`. Divide sampled bytes by `runCount` for bytes per
+started stream; `observedSessionPublications` counts `session.message` and
+`sessions.changed` received by the first viewer during capture. This is a received
+publication denominator, so events still in flight at the boundary are excluded.
+Sampling and stopping/serializing the profile add overhead; keep these attribution
+runs separate from unprofiled acceptance timing. `--trace-gc` adds V8 GC logging to
+the owned Gateway's log only. With `--active-work-diagnostics`, each successful
+held-stream scrape is retained as `held-streams-<cohort>.prom` for GC counter context.
+
 `eventBytes` measures the exact received, uncompressed JSON frame bytes,
 including the event envelope, before parsing. `sessionEventSizes` splits session
 frame counts and bytes by the existing bounded reason labels and the fixture's
@@ -730,6 +755,43 @@ does not count later work. `nativeTaskInputs`, `transcriptQueueMetrics`,
 submission counts include work before the diagnostics exporter starts; queue
 metrics do not. Record the kind breakdown and verify memory catch-up actually
 ran before attributing an improvement to it. Use a fresh fixture for each revision.
+
+## Checkout diff command fan-out
+
+`checkout-diff-measure.ts` exercises the production Git worker or its read-cache
+owner against a small synthetic checkout, without a Gateway or model:
+
+```sh
+node --import ./scripts/tsx.mjs scripts/perf/checkout-diff-measure.ts \
+  --state-dir /path/to/new-diff-fixture --seed
+node --import ./scripts/tsx.mjs scripts/perf/checkout-diff-measure.ts \
+  --state-dir /path/to/new-diff-fixture --boundary worker --summary --mutate \
+  --samples 40 --output /path/to/summary-result.json
+```
+
+The seed refuses an existing directory. It creates 100 untracked files,
+including binary, large, empty, and symlink cases, three tracked changes, and an
+ignored file. `--untracked` adjusts the count. Omit `--summary` to measure full
+patches. `--mutate` changes one tracked file before each request; omit it for
+unchanged polls. `--boundary read` uses `loadCheckoutDiff`, including revision
+validation and caching. Use `--poll-ms 10050` to cross the former summary cache's
+ten-second TTL; immediate repeated reads alone cannot demonstrate that change.
+
+Run identical separate fixtures concurrently with `--start-at <epoch-ms>` under
+the host's exclusive measurement lock, then swap CPU halves for the next pair.
+The report includes per-request latency, actual Git process counts from trace2,
+command families, payload size, and a SHA-256 of each response with the fixture's
+absolute root removed. Compare matching sample hashes across revisions before
+attributing speedups. Setup and worker warmup are separate from measured samples;
+trace2's small write overhead is included identically on both sides. These are
+Git owner timings, not end-to-end `sessions.diff` RPC or browser latency.
+
+Acceptance for untracked batching is a Git command bound independent of the
+untracked-file count, byte-identical returned file statistics and patches, and
+paired p50/p99 that improve or remain within noise for a simplification. An
+unchanged checkout eligible for revision caching should issue zero Git commands,
+including after the prior TTL. Compare B minus A within each concurrent pair;
+use at least two pairs with swapped CPU halves and record outside load for context.
 
 ## Sandbox measurements
 

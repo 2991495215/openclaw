@@ -235,6 +235,7 @@ export async function finishGatewayStartup(params: {
         cfgAtStart,
         deps,
         sessionDeliveryRecoveryMaxEnqueuedAt,
+        sessionRecoveryReady: postAttachHandles.subagentRecoverySettled,
         log,
         resolveGatewayContext: resolvePluginGatewayContext,
       });
