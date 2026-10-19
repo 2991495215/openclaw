@@ -60,6 +60,7 @@ export function createWorkerProviderLifecycle(
   };
 
   const {
+    resolveAllocation,
     identityResolverFor,
     requireCurrentOwner,
     stopOwner,
@@ -730,6 +731,7 @@ export function createWorkerProviderLifecycle(
       }),
     destroy,
     identityResolverFor,
+    resolveAllocation,
     ...machineCatalog,
     providerFor,
     reconcileRecord,

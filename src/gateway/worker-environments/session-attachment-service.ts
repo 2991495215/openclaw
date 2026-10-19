@@ -3,6 +3,7 @@ import type { SessionIdentityMutation } from "../../config/sessions/session-acce
 import type { OpenClawConfig } from "../../config/types.js";
 import { hasLiveAgentRunContext, listAgentRunsForSession } from "../../infra/agent-run-registry.js";
 import { KeyedAsyncQueue } from "../../plugin-sdk/keyed-async-queue.js";
+import { captureDedicatedNodeLease } from "./dedicated-node-lease-attestations.js";
 import type { createWorkerEnvironmentAccess } from "./environment-access.js";
 import type { NodeWorkerTunnelManager } from "./node-worker-tunnel.js";
 import type { WorkerNodePortalCarrier } from "./portal-node-carrier.js";
@@ -45,6 +46,24 @@ export function createWorkerEnvironmentSessionAttachments(
   },
 ) {
   const { store, providerLifecycle } = options;
+  const requireDedicatedAllocation = async (
+    intent: Pick<
+      WorkerEnvironmentRecord,
+      "environmentId" | "providerId" | "profileSnapshot" | "provisionOperationId"
+    > & { leaseId?: string | null },
+    assertCurrent: () => void,
+  ) => {
+    assertCurrent();
+    const allocation = await providerLifecycle.resolveAllocation(intent, assertCurrent);
+    if (intent.leaseId && allocation.leaseId !== intent.leaseId) {
+      throw new Error("Worker allocation identity changed before cleanup");
+    }
+    if (allocation.sharedHost !== false) {
+      throw new Error("Shared cloud workers require administrator access");
+    }
+  };
+  const captureDedicatedLease = (environmentId: string) =>
+    captureDedicatedNodeLease(providerLifecycle.getDedicatedNodeLeaseSignal, environmentId);
   const operations = new KeyedAsyncQueue();
   const creations = new Map<string, Set<AbortController>>();
   const closingAttachments = new Map<string, number>();
@@ -341,6 +360,7 @@ export function createWorkerEnvironmentSessionAttachments(
       authorize: () => void,
       callerSignal?: AbortSignal,
       onReserved?: WorkerEnvironmentSessionReservationHandler,
+      access?: { dedicatedOnly: boolean },
     ) {
       const sessionId = input.sessionId;
       const creation = new AbortController();
@@ -363,9 +383,11 @@ export function createWorkerEnvironmentSessionAttachments(
             sessionLifecycleRevision:
               input.sessionLifecycleRevision ?? session.entry?.lifecycleRevision,
           };
+          let dedicatedLease: ReturnType<typeof captureDedicatedLease> | undefined;
           const assertCurrent = () => {
             signal?.throwIfAborted();
             authorize();
+            dedicatedLease?.assertCurrent();
             if (options.isStopping() || !matchesSession(selected, request)) {
               throw new Error("Conversation environment requester is no longer current");
             }
@@ -378,6 +400,11 @@ export function createWorkerEnvironmentSessionAttachments(
             attachment.closedAtMs === null &&
             !matchesSession(prepared, attachment)
           ) {
+            if (access?.dedicatedOnly) {
+              throw new Error(
+                "An administrator must clean up the previous conversation environment before creating a worker",
+              );
+            }
             await close(request.sessionId, assertCurrent, attachment.environmentId, creation);
             assertCurrent();
             attachment = store.getSessionAttachmentRecord(request.sessionId);
@@ -403,6 +430,16 @@ export function createWorkerEnvironmentSessionAttachments(
             if (environment.destroyRequestedAtMs !== null) {
               throw new Error("Conversation environment is stopping");
             }
+            dedicatedLease =
+              access?.dedicatedOnly && ["ready", "idle"].includes(environment.state)
+                ? captureDedicatedLease(environment.environmentId)
+                : undefined;
+            if (access?.dedicatedOnly && !dedicatedLease) {
+              if (environment.sharedHost === true) {
+                throw new Error("Shared cloud workers require administrator access");
+              }
+              await requireDedicatedAllocation(environment, assertCurrent);
+            }
             await store.touchSessionAttachment(attachment, assertCurrent);
             // Recovery needs the stored environment identity, not a newly supplied retry key.
             const environmentId = environment.environmentId;
@@ -413,6 +450,10 @@ export function createWorkerEnvironmentSessionAttachments(
               const current = store.get(environmentId);
               if (current) {
                 await providerLifecycle.reconcileRecord(current, signal, undefined, assertCurrent);
+              }
+              if (access?.dedicatedOnly) {
+                dedicatedLease = captureDedicatedLease(environmentId);
+                assertCurrent();
               }
             });
           } else {
@@ -430,6 +471,12 @@ export function createWorkerEnvironmentSessionAttachments(
             assertCurrent();
             providerLifecycle.assertPreparedIntentCurrent(request.profileId, intent);
             const environmentIntent = deriveEnvironmentIntent(allocationKey);
+            if (access?.dedicatedOnly) {
+              // Resolve the exact frozen operation before reserving or provisioning.
+              // Provider allocation identity is side-effect-free, unlike provision.
+              await requireDedicatedAllocation({ ...intent, ...environmentIntent }, assertCurrent);
+              providerLifecycle.assertPreparedIntentCurrent(request.profileId, intent);
+            }
             let reservationCreated = false;
             const reserved = await options
               .withLock(environmentIntent.environmentId, async () => {
@@ -490,6 +537,10 @@ export function createWorkerEnvironmentSessionAttachments(
                     throw authorityFailure.error;
                   }
                   assertProvisionCurrent();
+                  if (access?.dedicatedOnly) {
+                    dedicatedLease = captureDedicatedLease(reservation.environment.environmentId);
+                    assertProvisionCurrent();
+                  }
                   return reservation;
                 } catch (error) {
                   await cancelReservation();
@@ -544,12 +595,71 @@ export function createWorkerEnvironmentSessionAttachments(
     destroySessionAttachment(
       request: { sessionId: string; environmentId?: string },
       authorize: () => void,
+      access?: { dedicatedOnly: boolean },
     ) {
-      // Close the durable relation before waiting for provisioning or transport cleanup.
+      if (!access?.dedicatedOnly) {
+        return options.trackOperation(
+          close(request.sessionId, authorize, request.environmentId, undefined, true).then(
+            (record) => (record ? options.environmentAccess.project(record) : undefined),
+          ),
+        );
+      }
       return options.trackOperation(
-        close(request.sessionId, authorize, request.environmentId, undefined, true).then(
-          (record) => (record ? options.environmentAccess.project(record) : undefined),
-        ),
+        (async () => {
+          await store.ready();
+          authorize();
+          const attachment = store.getSessionAttachmentRecord(request.sessionId);
+          const environment = attachment && store.get(attachment.environmentId);
+          let assertAllowed = () => {
+            authorize();
+            if (store.getSessionAttachmentRecord(request.sessionId) !== undefined) {
+              throw new Error("Conversation environment changed before cleanup");
+            }
+          };
+          if (attachment && !environment) {
+            throw new Error("Conversation environment ownership is unavailable");
+          }
+          if (attachment && environment) {
+            if (environment.sharedHost === true) {
+              throw new Error("Shared cloud workers require administrator access");
+            }
+            const lease =
+              attachment.closedAtMs === null && ["ready", "idle"].includes(environment.state)
+                ? captureDedicatedLease(environment.environmentId)
+                : undefined;
+            assertAllowed = () => {
+              authorize();
+              lease?.assertCurrent();
+              const current = store.getSessionAttachmentRecord(request.sessionId);
+              const owner = store.get(environment.environmentId);
+              if (
+                current?.environmentId !== attachment.environmentId ||
+                current.generation !== attachment.generation ||
+                current.closedAtMs !== attachment.closedAtMs ||
+                owner?.ownerEpoch !== environment.ownerEpoch ||
+                owner.state !== environment.state ||
+                owner.leaseId !== environment.leaseId ||
+                owner.nodeDeviceId !== environment.nodeDeviceId ||
+                owner.sharedHost !== environment.sharedHost
+              ) {
+                throw new Error("Conversation environment changed before cleanup");
+              }
+            };
+            if (!lease) {
+              await requireDedicatedAllocation(environment, assertAllowed);
+            }
+          }
+          // Admission precedes the intentional close. Teardown keeps exact custody
+          // after its own revocation, including failed or interrupted provisioning.
+          const record = await close(
+            request.sessionId,
+            assertAllowed,
+            request.environmentId,
+            undefined,
+            true,
+          );
+          return record ? options.environmentAccess.project(record) : undefined;
+        })(),
       );
     },
     async reconcileSessionAttachments() {

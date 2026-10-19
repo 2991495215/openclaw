@@ -123,6 +123,31 @@ function lifecycleLease(leaseId = LEASE_ID, profile: WorkerProfile = PROFILE) {
   return { leaseId, profile };
 }
 
+it.each([
+  ...["aws", "azure", "daytona", "gcp", "hetzner", "machine0"].map((backend) => ({
+    backend,
+    sharedHost: false,
+  })),
+  ...["external", "ssh", "unqualified-backend"].map((backend) => ({ backend, sharedHost: true })),
+])(
+  "classifies $backend consistently before allocation and during inspection",
+  async ({ backend, sharedHost }) => {
+    vi.useFakeTimers();
+    const { provider, calls } = recordedProvider();
+    const profile = { ...PROFILE, provider: backend };
+    await expect(provider.resolveAllocation(profile, OPERATION_ID)).resolves.toEqual({
+      leaseId: LEASE_ID,
+      sharedHost,
+    });
+    expect(calls).toEqual([]);
+    await expect(provider.inspect(lifecycleLease(LEASE_ID, profile))).resolves.toEqual({
+      status: "active",
+      sharedHost,
+    });
+    expect(calls.map((argv) => argv[1])).toEqual(["inspect"]);
+  },
+);
+
 function providerWithRawRunner(
   runCommand: CrabboxCommandRunner,
   warn?: (message: string) => void,

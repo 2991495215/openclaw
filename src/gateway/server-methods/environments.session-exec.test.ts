@@ -96,6 +96,8 @@ const result = {
 };
 
 function fixture(denied: string[] = [], runtimeAllow?: string[]) {
+  const lease = new AbortController();
+  const qualification = vi.fn((): AbortSignal | undefined => lease.signal);
   const storePath = "/tmp/environment-session-policy/sessions.json";
   const config = { session: { store: storePath }, tools: { deny: denied } };
   const projection = createSessionRowProjectionFixture({
@@ -121,6 +123,7 @@ function fixture(denied: string[] = [], runtimeAllow?: string[]) {
     {
       getRuntimeConfig: () => config,
       workerEnvironmentService: {
+        getDedicatedNodeLeaseSignal: qualification,
         getSessionAttachment: () => binding,
         assertSessionAttachment: vi.fn(),
         execSessionAttachment: execute,
@@ -137,7 +140,7 @@ function fixture(denied: string[] = [], runtimeAllow?: string[]) {
     } as unknown as GatewayRequestHandlerOptions);
     return respond.mock.calls.at(-1);
   };
-  return { execute, call, respond, projection };
+  return { execute, call, respond, projection, lease, qualification };
 }
 
 beforeEach(() => {
@@ -150,6 +153,33 @@ beforeEach(() => {
 });
 
 describe("conversation environment execution RPC", () => {
+  it.each(["run", "start", "status", "stop"])(
+    "refuses %s on an unqualified attached worker",
+    async (action) => {
+      const { execute, call, qualification } = fixture();
+      qualification.mockReturnValue(undefined);
+      expect(await call({ action, argv: ["pwd"], processId: "process-one" })).toMatchObject([
+        false,
+        undefined,
+        { message: "A current dedicated cloud worker is required" },
+      ]);
+      expect(execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it("withdraws command authority when dedicated ownership ends during approval", async () => {
+    const { execute, call, lease } = fixture();
+    mocks.policy.ask = "always";
+    mocks.approve.mockImplementation(async () => {
+      lease.abort(new Error("Dedicated lease retired"));
+    });
+    expect(await call({ argv: ["pwd"] })).toMatchObject([
+      false,
+      undefined,
+      { message: "Dedicated lease retired" },
+    ]);
+    expect(execute).not.toHaveBeenCalled();
+  });
   it.each([
     { allow: [], allowed: false },
     { allow: ["read"], allowed: false },

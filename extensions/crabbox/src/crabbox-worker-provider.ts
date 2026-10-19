@@ -77,6 +77,17 @@ import { createCrabboxWarmImageManager } from "./crabbox-worker-warm-image.js";
 
 type CrabboxProfile = ReturnType<typeof parseCrabboxProfile>;
 
+// These backends allocate a dedicated VM or isolated sandbox per lease. Fixed IDs (including
+// external adapters) prove identity, not isolation from the underlying host.
+const DEDICATED_WORKER_BACKENDS = new Set([
+  "aws",
+  "azure",
+  "daytona",
+  "gcp",
+  "hetzner",
+  "machine0",
+]);
+
 type LeaseHeartbeatContext = LeaseCommandContext &
   Pick<CrabboxProfile, "heartbeatIntervalMs" | "heartbeatTimeoutMs" | "idleTimeout">;
 
@@ -167,9 +178,9 @@ export function createCrabboxWorkerProvider(
     };
   };
 
-  const resolveAllocation: WorkerProvider["resolveAllocation"] = async (_profile, operationId) => ({
+  const resolveAllocation: WorkerProvider["resolveAllocation"] = async (profile, operationId) => ({
     leaseId: operationLeaseId(operationId),
-    sharedHost: false,
+    sharedHost: !DEDICATED_WORKER_BACKENDS.has(parseCrabboxCleanupProfile(profile).provider),
   });
 
   const prepareProvision: NonNullable<WorkerProvider["prepareProvision"]> = async (
@@ -632,7 +643,7 @@ export function createCrabboxWorkerProvider(
       }
       // `ready` is an SSH probe; every recognized nonterminal lease remains active.
       heartbeats.start({ ...context, lifetime: inspected.lifetime });
-      return { status: "active", sharedHost: false };
+      return { status: "active", sharedHost: !DEDICATED_WORKER_BACKENDS.has(context.provider) };
     },
     async destroy(lease): Promise<void> {
       assertCrabboxLeaseId(lease.leaseId);
