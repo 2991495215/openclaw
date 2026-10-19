@@ -170,7 +170,7 @@ posixIt.each([
     ["helper", "pnpm@12.11.1"],
     ["baseline", "pnpm@12.10.1"],
     ["candidate", fixture.candidate],
-  ]) {
+  ] as const) {
     mkdirSync(join(root, variant));
     writeFileSync(join(root, variant, "package.json"), JSON.stringify({ packageManager: pin }));
   }

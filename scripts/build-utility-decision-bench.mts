@@ -67,7 +67,7 @@ await runBenchmarkEntrypoint("build-utility-decision-bench", async () => {
                 // Only this exact resolved module is synthetic; the scheduler and
                 // its activity, enablement and channel wiring remain production code.
                 if (id !== path.join(root, substitutedModule)) {
-                  return;
+                  return null;
                 }
                 substitutions++;
                 return `export { prepareNarrationModel, generateNarrationWithUtilityModel } from ${JSON.stringify(path.join(root, "scripts/lib/bench-narration-model.ts"))};`;
