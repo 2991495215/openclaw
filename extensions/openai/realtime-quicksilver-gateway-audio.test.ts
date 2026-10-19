@@ -20,6 +20,8 @@ describe("GPT-Live gateway telephony audio", () => {
       let callbacks: OpenAIQuicksilverAudioPeerCallbacks | undefined;
       const input: Buffer[] = [];
       const output: Buffer[] = [];
+      const fetchImpl = vi.fn(async () => createCallResponse("v=answer\r\n", "rtc_audio"));
+      vi.stubGlobal("fetch", fetchImpl);
       const bridge = new OpenAIQuicksilverGatewayBridge(
         {
           providerConfig: {},
@@ -47,7 +49,6 @@ describe("GPT-Live gateway telephony audio", () => {
               close: () => {},
             };
           },
-          fetchImpl: vi.fn(async () => createCallResponse("v=answer\r\n", "rtc_audio")),
           ...fakeQuicksilverSocketFactories(() => {
             socket = new FakeSocket();
             const send = socket.send.bind(socket);

@@ -110,7 +110,6 @@ export function createOpenAIQuicksilverBrowserSessionBroker(
   params: {
     getConfig: () => OpenClawConfig | undefined;
     logger: Pick<PluginLogger, "debug" | "warn">;
-    fetchImpl?: typeof fetch;
     webSocketFactory?: OpenAIQuicksilverSocketFactory;
     onCleanupComplete?: () => void;
   },
@@ -425,7 +424,6 @@ export function createOpenAIQuicksilverBrowserSessionBroker(
                 apiKey: offer.auth.token,
                 callId,
                 signal: AbortSignal.timeout(OPENAI_QUICKSILVER_UPSTREAM_TIMEOUT_MS),
-                fetchImpl: params.fetchImpl,
               },
               context,
             ),
@@ -446,7 +444,6 @@ export function createOpenAIQuicksilverBrowserSessionBroker(
             ? { gaSideband: true, onCallAllocated: adoptAllocatedCall }
             : { onCallAllocated: publicApi ? adoptAllocatedCall : undefined }),
           signal: upstreamSignal,
-          fetchImpl: params.fetchImpl,
         },
         context,
       );

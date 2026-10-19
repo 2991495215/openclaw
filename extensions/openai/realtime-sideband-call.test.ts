@@ -29,6 +29,7 @@ describe("OpenAI Realtime sideband call wire", () => {
       });
     });
 
+    vi.stubGlobal("fetch", fetchImpl);
     await expect(
       createOpenAIQuicksilverCall(
         {
@@ -42,7 +43,6 @@ describe("OpenAI Realtime sideband call wire", () => {
           session: { type: "realtime", model: "gpt-realtime-2.1" },
           gaSideband: true,
           onCallAllocated,
-          fetchImpl: fetchImpl as typeof fetch,
         },
         openAIRealtimeHost,
       ),
@@ -65,6 +65,16 @@ describe("OpenAI Realtime sideband call wire", () => {
     [`/v1/realtime/calls/rtc_test?${"x".repeat(600)}`, "too large"],
   ])("rejects an untrusted Location header", async (location, message) => {
     const onCallAllocated = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("v=answer\r\n", {
+            status: 201,
+            ...(location === null ? {} : { headers: { Location: location } }),
+          }),
+      ),
+    );
     await expect(
       createOpenAIQuicksilverCall(
         {
@@ -78,13 +88,6 @@ describe("OpenAI Realtime sideband call wire", () => {
           session: { type: "realtime", model: "gpt-realtime-2.1" },
           gaSideband: true,
           onCallAllocated,
-          fetchImpl: vi.fn(
-            async () =>
-              new Response("v=answer\r\n", {
-                status: 201,
-                ...(location === null ? {} : { headers: { Location: location } }),
-              }),
-          ) as typeof fetch,
         },
         openAIRealtimeHost,
       ),
@@ -102,11 +105,11 @@ describe("OpenAI Realtime sideband call wire", () => {
   it.each([200, 404, 503])("releases the hangup response body for HTTP %s", async (status) => {
     const cancel = vi.fn();
     const fetchImpl = vi.fn(async () => new Response(new ReadableStream({ cancel }), { status }));
+    vi.stubGlobal("fetch", fetchImpl);
     const hangingUp = hangupOpenAIRealtimeCall(
       {
         apiKey: "sk-platform", // pragma: allowlist secret
         callId: "call_test-123",
-        fetchImpl: fetchImpl as typeof fetch,
       },
       openAIRealtimeHost,
     );
@@ -128,6 +131,7 @@ describe("OpenAI Realtime sideband call wire", () => {
     const fetchImpl = vi.fn(
       async () => new Response(`request rejected Authorization: Bearer ${leaked}`, { status: 403 }),
     );
+    vi.stubGlobal("fetch", fetchImpl);
     let error: unknown;
     try {
       await createOpenAIQuicksilverCall(
@@ -142,7 +146,6 @@ describe("OpenAI Realtime sideband call wire", () => {
           session: { type: "realtime", model: "gpt-realtime-2.1" },
           gaSideband: true,
           onCallAllocated,
-          fetchImpl: fetchImpl as typeof fetch,
         },
         openAIRealtimeHost,
       );

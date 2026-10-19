@@ -48,6 +48,10 @@ describe("GPT-Live gateway microphone audio pipeline", () => {
       resolvePeer = resolve;
     });
     const onError = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => createCallResponse("v=answer\r\n", "rtc_pending_audio")),
+    );
     const bridge = new OpenAIQuicksilverGatewayBridge(
       {
         providerConfig: {},
@@ -68,7 +72,6 @@ describe("GPT-Live gateway microphone audio pipeline", () => {
           peerCallbacks = callbacks;
           return peerPromise;
         }),
-        fetchImpl: vi.fn(async () => createCallResponse("v=answer\r\n", "rtc_pending_audio")),
         webSocketFactory: () => new FakeSocket(),
       },
       openAIRealtimeHost,

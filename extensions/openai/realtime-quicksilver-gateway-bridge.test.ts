@@ -46,6 +46,7 @@ function createBridge(overrides: Partial<BridgeConfig> = {}) {
   const fetchImpl = vi.fn<typeof fetch>(async () =>
     createCallResponse("v=answer\r\n", "rtc_bridge"),
   );
+  vi.stubGlobal("fetch", fetchImpl);
   const bridge = new OpenAIQuicksilverGatewayBridge(
     {
       providerConfig: {},
@@ -56,7 +57,6 @@ function createBridge(overrides: Partial<BridgeConfig> = {}) {
       runAgentConsult: vi.fn(async () => ({ text: "done" })),
       resolveAuth: async () => ({ type: "oauth", token: "oauth-token", accountId: "account-1" }),
       createPeer: vi.fn(async () => peer),
-      fetchImpl,
       webSocketFactory: createSocket,
       ...overrides,
     },

@@ -25,6 +25,8 @@ function readAudio(socket: FakeSocket) {
 function createHarness(overrides: Partial<BridgeConfig> = {}) {
   let socket: FakeSocket | undefined;
   const webSocketFactory = vi.fn(() => (socket = new FakeSocket()));
+  const fetchImpl = vi.fn<typeof fetch>();
+  vi.stubGlobal("fetch", fetchImpl);
   const callbacks = {
     onAudio: vi.fn(),
     onClose: vi.fn(),
@@ -32,7 +34,6 @@ function createHarness(overrides: Partial<BridgeConfig> = {}) {
     onTranscript: vi.fn(),
     logger: { debug: vi.fn(), warn: vi.fn() },
     createPeer: vi.fn(),
-    fetchImpl: vi.fn<typeof fetch>(),
   };
   const bridge = new OpenAIQuicksilverGatewayBridge(
     {
@@ -50,6 +51,7 @@ function createHarness(overrides: Partial<BridgeConfig> = {}) {
   return {
     ...callbacks,
     bridge,
+    fetchImpl,
     webSocketFactory,
     get socket() {
       return socket;
