@@ -337,7 +337,7 @@ function createReadTransport(
       const request: OpenClawStateReadRequest = {
         context: {
           databaseEngineSelection: context.databaseEngineSelection,
-          environment: { ...context.environment },
+          environment: context.environment,
           existingSchemaPath: context.existingSchemaPath,
           stateIntegrity: context.stateIntegrity,
         },
@@ -347,7 +347,7 @@ function createReadTransport(
         expectedIdentity,
         snapshotRoot,
         postgresSnapshot,
-        command: { ...readCommand },
+        command: readCommand,
       };
       const pool = readPool(state, ownsAdmission(), awaitedOnly);
       // Maintenance reuses this reader; standalone inspection releases it before metadata loads.

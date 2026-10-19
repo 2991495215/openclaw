@@ -31,7 +31,11 @@ type AgentDatabaseResource = (
       ownership: "unresolved";
       agentId?: never;
     })
-) & { cleanupOwner?: object };
+) & {
+  cleanupOwner?: object;
+  /** Undefined is active; null retains a revoked or failed close for retry. */
+  closeOperation?: Promise<void> | null;
+};
 export type AgentDatabaseCloseSelection = {
   path?: string;
   rootPath?: string;
@@ -41,15 +45,14 @@ export type AgentDatabaseCloseSelection = {
 const resources = resolveGlobalSingleton(
   Symbol.for("openclaw.agentDatabaseAsyncResources"),
   () => ({
-    active: new Set<AgentDatabaseResource>(),
-    closing: new Map<AgentDatabaseResource, Promise<void> | undefined>(),
+    owned: new Set<AgentDatabaseResource>(),
     selections: new Map<AgentDatabaseCloseSelection, Promise<unknown> | undefined>(),
   }),
 );
 
 /** CLI cleanup can skip loading native database owners when no Worker was admitted. */
 export function hasOpenClawAgentDatabaseAsyncResources(): boolean {
-  return resources.active.size > 0 || resources.closing.size > 0;
+  return resources.owned.size > 0;
 }
 
 /** Observe a full close without admitting a reader into its retiring lifetime. */
@@ -66,7 +69,7 @@ export { matchesAgentDatabaseReadCandidatePath };
 
 registerAgentDatabaseReaderCloser(async (candidates, retainedPaths) => {
   const results = await Promise.allSettled(
-    [...new Set([...resources.active, ...resources.closing.keys()])]
+    [...resources.owned]
       .filter(
         (resource) =>
           !retainedPaths?.has(path.resolve(resource.path)) &&
@@ -156,13 +159,15 @@ function registerAgentDatabaseResource(
         )
       : undefined;
   const unregister = () => {
-    resources.active.delete(owned);
+    if (owned.closeOperation === undefined) {
+      resources.owned.delete(owned);
+    }
     releaseCreation?.();
   };
   getOpenClawDatabaseMaintenanceScope()?.own(unregister, "agent-resources", () =>
     closeAgentDatabaseResource(owned),
   );
-  resources.active.add(owned);
+  resources.owned.add(owned);
   return unregister;
 }
 
@@ -174,8 +179,9 @@ export function assertAgentDatabaseResourceAdmission(
     [...resources.selections.keys()].some((selection) =>
       matchesAgentDatabaseClose(selection, owned),
     ) ||
-    [...resources.closing.keys()].some(
+    [...resources.owned].some(
       (closing) =>
+        closing.closeOperation !== undefined &&
         (closing.path === owned.path ||
           (closing.ownership === "unresolved" &&
             matchesAgentDatabaseReadCandidatePath(closing, owned.path)) ||
@@ -196,13 +202,13 @@ function closeAgentDatabaseResource(
   resource: AgentDatabaseResource,
   onCloseError?: (pathname: string, error: unknown) => void,
 ): Promise<void> {
+  resources.owned.add(resource);
   if (resource.ownership === "known" && resource.closeSync) {
-    resources.closing.set(resource, undefined);
+    resource.closeOperation = null;
     try {
       resource.revoke();
       resource.closeSync();
-      resources.active.delete(resource);
-      resources.closing.delete(resource);
+      resources.owned.delete(resource);
       return Promise.resolve();
     } catch (error) {
       if (onCloseError) {
@@ -213,22 +219,20 @@ function closeAgentDatabaseResource(
       return failed;
     }
   }
-  let operation = resources.closing.get(resource);
+  let operation = resource.closeOperation;
   if (!operation) {
     operation = Promise.resolve().then(() => resource.close());
-    resources.closing.set(resource, operation);
-    void operation
-      .then(
-        () => {
-          resources.active.delete(resource);
-          resources.closing.delete(resource);
-        },
-        () => {
-          // Keep exact custody even if the actor unregisters while its close fails.
-          resources.closing.set(resource, undefined);
-        },
-      )
-      .catch(() => {});
+    resource.closeOperation = operation;
+    void operation.then(
+      () => {
+        resources.owned.delete(resource);
+        resource.closeOperation = undefined;
+      },
+      () => {
+        // Keep exact custody even if the actor unregisters while its close fails.
+        resource.closeOperation = null;
+      },
+    );
   }
   if (onCloseError) {
     void operation.catch((error: unknown) => onCloseError(resource.path, error)).catch(() => {});
@@ -242,15 +246,9 @@ export function revokeAgentDatabaseResources(
   selection: AgentDatabaseCloseSelection,
   onCloseError?: (pathname: string, error: unknown) => void,
 ): Promise<void>[] {
-  const closing = new Set([...resources.active, ...resources.closing.keys()]);
-  const pending: Promise<void>[] = [];
-  for (const resource of closing) {
-    if (!matchesAgentDatabaseClose(selection, resource)) {
-      continue;
-    }
-    pending.push(closeAgentDatabaseResource(resource, onCloseError));
-  }
-  return pending;
+  return [...resources.owned]
+    .filter((resource) => matchesAgentDatabaseClose(selection, resource))
+    .map((resource) => closeAgentDatabaseResource(resource, onCloseError));
 }
 
 export async function drainAgentDatabaseResources<T>(
@@ -259,7 +257,7 @@ export async function drainAgentDatabaseResources<T>(
   cleanupOwner?: object,
 ): Promise<T> {
   return withAgentDatabaseCloseFence(selection, async () => {
-    const selected = [...new Set([...resources.active, ...resources.closing.keys()])].filter(
+    const selected = [...resources.owned].filter(
       (resource) =>
         matchesAgentDatabaseClose(selection, resource) &&
         (!cleanupOwner || resource.cleanupOwner === cleanupOwner),
@@ -267,9 +265,7 @@ export async function drainAgentDatabaseResources<T>(
     const nativeOwners = selected.filter((resource) => resource.retireAfterResources);
     for (const resource of nativeOwners) {
       // Retain exact failed-close custody before revocation can cause another admission.
-      if (!resources.closing.has(resource)) {
-        resources.closing.set(resource, undefined);
-      }
+      resource.closeOperation ??= null;
       resource.revoke();
     }
     const results = await Promise.allSettled(
@@ -304,7 +300,7 @@ export async function withAgentDatabaseCloseFence<T>(
   const ownedSelection = { ...selection };
   resources.selections.set(ownedSelection, undefined);
   try {
-    const resourcePaths = [...new Set([...resources.active, ...resources.closing.keys()])]
+    const resourcePaths = [...resources.owned]
       .filter((resource) => matchesAgentDatabaseClose(ownedSelection, resource))
       .map((resource) => resource.path);
     const operation = close(resourcePaths);

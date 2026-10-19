@@ -27,7 +27,7 @@ export function selectEnterpriseGitHubIdentities(
     query = query.where("provider", "=", `github:${host}`);
   }
   if (profileIds) {
-    query = query.where("profile_id", "in", [...profileIds]);
+    query = query.where("profile_id", "in", profileIds);
   }
   const rows = executeSqliteQuerySync(db, query).rows;
   if (!rows.length) {
@@ -107,7 +107,7 @@ export function selectEnterpriseGitHubProfileIdsForMerge(
         .select("profile_id")
         .distinct()
         .where("provider", "like", "github:%")
-        .where("profile_id", "in", [...profileIds]),
+        .where("profile_id", "in", profileIds),
     ).rows.map((row) => row.profile_id),
   );
 }

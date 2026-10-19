@@ -117,7 +117,6 @@ export class SqliteReclamationWorker {
     private readonly execution?: CanonicalWorkerPool,
     private readonly onRetired?: (worker: SqliteReclamationWorker) => void,
   ) {
-    this.options = structuredClone(options);
     this.stateContext = captureOpenClawStateWorkerContext({ env: options.env });
     this.unregisterAgent = registerOpenClawAgentDatabaseAsyncResource({
       agentId: options.agentId,

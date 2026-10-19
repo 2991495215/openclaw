@@ -890,9 +890,6 @@ function shouldPersistCanonicalAgentRoster(params: {
   explicitSetPaths?: readonly (readonly string[])[];
   unsetPaths?: readonly (readonly string[])[];
 }): boolean {
-  if (!canCanonicalizeAgentRoster(params.nextConfig)) {
-    return false;
-  }
   if (
     params.persistCanonicalAgentRoster === true ||
     params.explicitSetPaths?.some(pathTouchesAgentRoster) ||
@@ -1509,7 +1506,8 @@ export function resolvePersistCandidateForWrite(
 ): unknown {
   const inputBasis = params.inputBasis ?? { kind: "runtime", config: params.runtimeConfig };
   const rootAuthoredConfig = params.rootAuthoredConfig ?? params.sourceConfig;
-  const wantsCanonicalRoster = shouldPersistCanonicalAgentRoster(params);
+  const canCanonicalizeRoster = canCanonicalizeAgentRoster(params.nextConfig);
+  const wantsCanonicalRoster = canCanonicalizeRoster && shouldPersistCanonicalAgentRoster(params);
   const includeOwnsRoster =
     wantsCanonicalRoster &&
     configIncludeOwnsAgentRosterValues({
@@ -1597,8 +1595,7 @@ export function resolvePersistCandidateForWrite(
     // Includes were validated and restored above; ancestor merges retain their directives.
     preserveDescendantIncludes: persistCanonicalRoster,
   });
-  const preserveAuthoredRoster =
-    canCanonicalizeAgentRoster(params.nextConfig) || params.preserveLegacyAgentRoster === true;
+  const preserveAuthoredRoster = canCanonicalizeRoster || params.preserveLegacyAgentRoster === true;
   const withAuthoredRoster =
     wantsCanonicalRoster || !preserveAuthoredRoster
       ? persisted
