@@ -2,7 +2,7 @@ import {
   createLazyRuntimeModule,
   createLazyRuntimeSurface,
 } from "openclaw/plugin-sdk/lazy-runtime";
-import { resolveNodeHostExecutable } from "openclaw/plugin-sdk/node-host";
+import { parseNodeHostParamsJson, resolveNodeHostExecutable } from "openclaw/plugin-sdk/node-host";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import {
   createSessionCatalogNodeHostBindings,
@@ -60,16 +60,8 @@ function createPiSessionNodeHostBindings() {
           strategy: "direct",
         }),
       ),
-    parseParams: (paramsJSON) => {
-      if (!paramsJSON) {
-        return undefined;
-      }
-      try {
-        return JSON.parse(paramsJSON) as unknown;
-      } catch (error) {
-        throw new Error("Pi session parameters must be valid JSON", { cause: error });
-      }
-    },
+    parseParams: (paramsJSON) =>
+      parseNodeHostParamsJson(paramsJSON, "Pi session parameters must be valid JSON"),
     list: async (params) => await (await loadPiSessionCatalogModule()).listPiSessions(params),
     read: async (params) => await (await loadPiSessionCatalogModule()).readPiSession(params),
     requireSession: async (threadId) =>

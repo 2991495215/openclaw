@@ -1,6 +1,7 @@
 import {
   decodeNodePtyResumeParams,
   decodeNodePtyStartParams,
+  parseNodeHostParamsJson,
   type OpenClawPluginNodeHostCommandIo,
   runNodePtyCommand,
   validateClaudeSessionId,
@@ -11,17 +12,6 @@ import type { ClaudeSessionCatalogSession } from "./session-catalog-types.js";
 import { listLocalClaudeSessionPage, readLocalClaudeTranscriptPage } from "./session-catalog.js";
 
 const CLAUDE_NODE_LOOKUP_PAGE_LIMIT = 100;
-
-function parseNodeParams(paramsJSON?: string | null): unknown {
-  if (!paramsJSON) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(paramsJSON) as unknown;
-  } catch (error) {
-    throw new Error("Claude session parameters must be valid JSON", { cause: error });
-  }
-}
 
 async function requireLocalResumableClaudeSession(
   threadId: string,
@@ -50,11 +40,19 @@ async function requireLocalResumableClaudeSession(
 }
 
 export async function listClaudeSessions(paramsJSON?: string | null): Promise<string> {
-  return JSON.stringify(await listLocalClaudeSessionPage(parseNodeParams(paramsJSON)));
+  return JSON.stringify(
+    await listLocalClaudeSessionPage(
+      parseNodeHostParamsJson(paramsJSON, "Claude session parameters must be valid JSON"),
+    ),
+  );
 }
 
 export async function readClaudeSession(paramsJSON?: string | null): Promise<string> {
-  return JSON.stringify(await readLocalClaudeTranscriptPage(parseNodeParams(paramsJSON)));
+  return JSON.stringify(
+    await readLocalClaudeTranscriptPage(
+      parseNodeHostParamsJson(paramsJSON, "Claude session parameters must be valid JSON"),
+    ),
+  );
 }
 
 export async function resumeClaudeSession(

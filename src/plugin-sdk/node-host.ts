@@ -11,6 +11,21 @@ export {
 export { validateClaudeSessionId } from "../node-host/invoke-agent-cli-claude-params.js";
 export type { OpenClawPluginNodeHostCommandIo } from "../plugins/types.js";
 
+/** Decode optional node-command parameters, retaining the caller's diagnostic and parse cause. */
+export function parseNodeHostParamsJson(
+  paramsJSON: string | null | undefined,
+  invalidMessage: string,
+): unknown {
+  if (!paramsJSON) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(paramsJSON) as unknown;
+  } catch (error) {
+    throw new Error(invalidMessage, { cause: error });
+  }
+}
+
 /** Resolve a node-host executable using the selected PATH source policy. */
 export function resolveNodeHostExecutable(
   executable: string,

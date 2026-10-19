@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
-import { registerSandboxBackend } from "openclaw/plugin-sdk/sandbox";
+import { registerPluginSandboxBackend } from "openclaw/plugin-sdk/sandbox";
 import { resolveMxcBinaryPath } from "./binary-resolver.js";
 import { resolveConfig } from "./config.js";
 import { createMxcSandboxBackendFactory } from "./mxc-backend-factory.js";
@@ -36,21 +36,8 @@ export function registerMxcPlugin(api: OpenClawPluginApi): void {
   // directory-access ACEs, which only degrades in-sandbox directory listing.
   warnMxcHostPrepIfNeeded();
 
-  const unregister = registerSandboxBackend("mxc", {
+  registerPluginSandboxBackend(api, "mxc", {
     factory: createMxcSandboxBackendFactory(config),
     manager: mxcSandboxBackendManager,
-  });
-
-  // Eager CLI registrations must retire even if Gateway services never start.
-  api.lifecycle.registerRuntimeLifecycle({
-    id: "mxc-sandbox-cleanup",
-    cleanup: ({ reason, sessionKey, runId }) => {
-      if (sessionKey !== undefined || runId !== undefined) {
-        return;
-      }
-      if (reason === "disable" || reason === "restart") {
-        unregister();
-      }
-    },
   });
 }

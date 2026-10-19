@@ -1,3 +1,30 @@
+import {
+  registerSandboxBackend,
+  type SandboxBackendRegistration,
+} from "../agents/sandbox/backend.js";
+import type { OpenClawPluginApi } from "../plugins/plugin-api.types.js";
+
+/** Retire eager backend registrations only when their whole plugin generation stops. */
+export function registerPluginSandboxBackend(
+  api: Pick<OpenClawPluginApi, "lifecycle">,
+  id: string,
+  registration: SandboxBackendRegistration,
+): void {
+  const unregister = registerSandboxBackend(id, registration);
+  api.lifecycle.registerRuntimeLifecycle({
+    id: `${id}-sandbox-cleanup`,
+    cleanup: ({ reason, sessionKey, runId }) => {
+      if (
+        sessionKey === undefined &&
+        runId === undefined &&
+        (reason === "disable" || reason === "restart")
+      ) {
+        unregister();
+      }
+    },
+  });
+}
+
 export type {
   CreateSandboxBackendParams,
   CreateReservedSandboxBackendParamsV1,

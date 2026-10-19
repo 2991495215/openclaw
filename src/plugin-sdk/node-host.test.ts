@@ -3,7 +3,27 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { clearExecutablePathCache } from "../infra/executable-path.js";
-import { resolveNodeHostExecutable } from "./node-host.js";
+import { parseNodeHostParamsJson, resolveNodeHostExecutable } from "./node-host.js";
+
+describe("parseNodeHostParamsJson", () => {
+  it("keeps missing parameters distinct from explicit JSON values", () => {
+    for (const absent of [undefined, null, ""]) {
+      expect(parseNodeHostParamsJson(absent, "invalid parameters")).toBeUndefined();
+    }
+    expect(parseNodeHostParamsJson("null", "invalid parameters")).toBeNull();
+    expect(parseNodeHostParamsJson("false", "invalid parameters")).toBe(false);
+    expect(parseNodeHostParamsJson('{"limit":3}', "invalid parameters")).toEqual({ limit: 3 });
+  });
+
+  it("preserves the caller diagnostic and original syntax failure", () => {
+    expect(() => parseNodeHostParamsJson(" ", "caller parameters must be valid JSON")).toThrow(
+      expect.objectContaining({
+        message: "caller parameters must be valid JSON",
+        cause: expect.any(SyntaxError),
+      }),
+    );
+  });
+});
 
 const tempDirs: string[] = [];
 

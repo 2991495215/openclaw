@@ -3,7 +3,7 @@ import process from "node:process";
 import { resolveAcpSessionAvailability } from "openclaw/plugin-sdk/acp-runtime";
 import { resolveSessionAgentIdsStrict } from "openclaw/plugin-sdk/agent-scope-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
-import { resolveNodeHostExecutable } from "openclaw/plugin-sdk/node-host";
+import { parseNodeHostParamsJson, resolveNodeHostExecutable } from "openclaw/plugin-sdk/node-host";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import {
   createSessionCatalogFamily,
@@ -37,17 +37,6 @@ const MAX_HOSTS = 100;
 const ACPX_BACKEND_ID = "acpx";
 const OPENCODE_ACP_AGENT_ID = "opencode";
 const OPENCODE_ADOPTED_SESSION_KEY_PREFIX = "plugin:opencode:catalog-adopt:";
-
-function parseNodeParams(paramsJSON?: string | null): unknown {
-  if (!paramsJSON) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(paramsJSON) as unknown;
-  } catch (error) {
-    throw new Error("OpenCode session parameters must be valid JSON", { cause: error });
-  }
-}
 
 function isOpenCodeSessionCatalogEnabled(pluginConfig: unknown): boolean {
   return (
@@ -109,7 +98,8 @@ function createOpenCodeNodeHostBindings() {
     args: (threadId) => ["--session", threadId],
     listAvailable: available,
     terminalAvailable: available,
-    parseParams: parseNodeParams,
+    parseParams: (paramsJSON) =>
+      parseNodeHostParamsJson(paramsJSON, "OpenCode session parameters must be valid JSON"),
     list: listLocalOpenCodeSessionPage,
     read: readLocalOpenCodeTranscriptPage,
     requireSession: requireLocalOpenCodeSession,

@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { definePluginEntry, type OpenClawPluginService } from "openclaw/plugin-sdk/plugin-entry";
-import { registerSandboxBackend } from "openclaw/plugin-sdk/sandbox";
+import { registerPluginSandboxBackend } from "openclaw/plugin-sdk/sandbox";
 import {
   CRABBOX_SANDBOX_BACKEND_ID,
   createCrabboxSandboxBackendFactory,
@@ -93,22 +93,11 @@ export default definePluginEntry({
         openclawRoot: resolveOpenClawRoot(api.rootDir),
         pluginConfig: sandboxConfig,
       };
-      const unregister = registerSandboxBackend(CRABBOX_SANDBOX_BACKEND_ID, {
+      registerPluginSandboxBackend(api, CRABBOX_SANDBOX_BACKEND_ID, {
         factory: createCrabboxSandboxBackendFactory(backendDependencies),
         reserveRuntimeId: mintCrabboxSandboxLeaseId,
         manager: createCrabboxSandboxBackendManager(backendDependencies),
         resolveWorkdir: resolveCrabboxSandboxWorkdir,
-      });
-      api.lifecycle.registerRuntimeLifecycle({
-        id: "crabbox-sandbox-cleanup",
-        cleanup: ({ reason, sessionKey, runId }) => {
-          if (sessionKey !== undefined || runId !== undefined) {
-            return;
-          }
-          if (reason === "disable" || reason === "restart") {
-            unregister();
-          }
-        },
       });
     }
     // Worker sidecars stop first; plugin services own generation-wide heartbeat cleanup.

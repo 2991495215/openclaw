@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import {
   createServer,
   type IncomingHttpHeaders,
@@ -428,13 +429,7 @@ export async function startMatrixQaFaultProxy(
     })();
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
+  await once(server.listen(0, "127.0.0.1"), "listening");
 
   const address = server.address();
   if (!address || typeof address === "string") {
