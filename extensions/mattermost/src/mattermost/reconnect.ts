@@ -4,7 +4,6 @@ type RunWithReconnectOpts = {
   abortSignal?: AbortSignal;
   onError?: (err: unknown) => void;
   onReconnect?: (delayMs: number) => void;
-  initialDelayMs?: number;
   reconnectAfterClose?: boolean;
 };
 
@@ -12,8 +11,7 @@ export async function runWithReconnect(
   connectFn: () => Promise<void>,
   opts: RunWithReconnectOpts = {},
 ): Promise<void> {
-  const initialDelayMs = opts.initialDelayMs ?? 2000;
-  let retryDelay = initialDelayMs;
+  let retryDelay = 2000;
   while (!opts.abortSignal?.aborted) {
     let failed = false;
     try {
@@ -29,7 +27,7 @@ export async function runWithReconnect(
       return;
     }
     if (!failed) {
-      retryDelay = initialDelayMs;
+      retryDelay = 2000;
     }
     const delayMs = withJitter(retryDelay);
     if (!failed && opts.reconnectAfterClose === false) {
