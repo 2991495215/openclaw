@@ -19,7 +19,7 @@ export function createResearchTool(
       _id: string,
       args: unknown,
       signal?: AbortSignal,
-      progress: (message: string) => void = () => {},
+      progress: (message: string, jobId?: string) => void = () => {},
     ) {
       context.assertInvocationCurrent();
       signal?.throwIfAborted();

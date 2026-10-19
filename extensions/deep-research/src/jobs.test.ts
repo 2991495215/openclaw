@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResearchJobs, type ResearchJob } from "./jobs.js";
 import { createResearchJobsFixture, descriptor, handle, completed } from "./jobs.test-support.js";
 import { createResearchTool } from "./tool.js";
+import { projectResearchJob } from "./view-projection.js";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -938,4 +939,55 @@ describe("research recovery fault injection", () => {
     );
     expect(request).toHaveBeenCalledTimes(2);
   });
+});
+
+it("retains real portable phase and source observations before a model completes", async () => {
+  const { jobs, runtime, context, readStore } = await fixture();
+  const entered = Promise.withResolvers<void>();
+  const extraction = Promise.withResolvers<unknown>();
+  const response = (value: unknown) => ({
+    text: JSON.stringify(value),
+    provider: "fixture",
+    model: "research",
+    agentId: "main",
+    usage: { totalTokens: 1 },
+    execution: {
+      mode: "direct-provider" as const,
+      owner: { kind: "provider" as const, id: "fixture" },
+    },
+    audit: { caller: { kind: "plugin" as const, id: "deep-research" } },
+  });
+  vi.mocked(runtime.llm.complete)
+    .mockResolvedValueOnce(response({ questions: ["River"] }))
+    .mockImplementationOnce(async () => {
+      entered.resolve();
+      return response(await extraction.promise);
+    });
+  const quote = "The measured river length is twelve kilometers.";
+  const running = jobs.start(
+    { question: "River", sources: { documents: [{ title: "River report", text: quote }] } },
+    "live-observation",
+    context,
+  );
+  try {
+    await Promise.race([
+      entered.promise,
+      running.then(() => {
+        throw new Error("Job ended before evidence assessment");
+      }),
+    ]);
+    const [retained] = await jobs.list(context);
+    assert.ok(retained);
+    const read = await jobs.read(retained.id, context);
+    expect((await readStore().lookup(retained.id))?.observation).toEqual(read.observation);
+    expect(projectResearchJob(read)).toMatchObject({
+      state: "running",
+      phase: "assessing",
+      counts: { sources: 1, modelCalls: 1, fetches: 0, searches: 0 },
+      sources: [{ id: "S1", provenance: "supplied-document", excerpt: quote }],
+    });
+  } finally {
+    extraction.resolve({ findings: [], gaps: ["No supported finding"], queries: [] });
+    await running;
+  }
 });

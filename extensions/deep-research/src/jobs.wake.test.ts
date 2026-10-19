@@ -6,7 +6,7 @@ import {
   createTestGatewayScheduler,
 } from "openclaw/plugin-sdk/plugin-test-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ResearchState } from "./job-state.js";
+import { ResearchState, ResearchStartRejectedError } from "./job-state.js";
 import type { ResearchJob } from "./jobs.js";
 import { createResearchJobsFixture, descriptor, handle, completed } from "./jobs.test-support.js";
 
@@ -20,6 +20,30 @@ const fixture = (options: Parameters<typeof createResearchJobsFixture>[0] = {}) 
   createResearchJobsFixture(options, (close) => cleanup.push(close));
 
 describe("durable research wakes", () => {
+  it("classifies admission denials as rejected before any durable job or wake", async () => {
+    const sessionWork: PluginServiceSessionWorkV1 = {
+      version: 1,
+      admit: async () => {
+        throw new Error("Web tools denied by policy");
+      },
+      run: vi.fn(),
+    };
+    const { jobs, context, runtime, readStore } = await fixture({ sessionWork });
+    await expect(
+      jobs.start({ question: "Policy denied" }, "policy-key", context, undefined, undefined, true),
+    ).rejects.toBeInstanceOf(ResearchStartRejectedError);
+    expect(await readStore().count()).toBe(0);
+    expect(
+      await runtime.state
+        .openKeyedStoreV2({
+          namespace: "research-wakes-v1",
+          maxEntries: 4096,
+          overflowPolicy: "reject-new",
+        })
+        .count(),
+    ).toBe(0);
+    expect(sessionWork.run).not.toHaveBeenCalled();
+  });
   it.each(["unavailable", "missing", "terminal", "deferred"] as const)(
     "retires an obsolete wake without provider effects: %s",
     async (condition) => {
@@ -672,4 +696,87 @@ describe("durable research wakes", () => {
       await Promise.allSettled([waking, ...busy]);
     }
   });
+});
+
+it("accepts duplicate UI starts without invoking a model in the request, survives restart, and keeps reads pure", async () => {
+  const clock = createGatewaySchedulerClock(Date.now());
+  const scheduler = createTestPluginServiceScheduler(createTestGatewayScheduler(clock.clock));
+  const target = {
+    agentId: "main",
+    sessionKey: "agent:main:research-fixture",
+    sessionId: "generation-1",
+  };
+  const sessionWork: PluginServiceSessionWorkV1 = {
+    version: 1,
+    admit: async () => ({ recoverable: true, target }),
+    run: async (_id, work) => ({
+      status: "completed",
+      value: await work({ target, signal: scheduler.signal, assertCurrent() {} }),
+    }),
+  };
+  const { jobs, context, runtime, readStore } = await fixture({ scheduler, sessionWork });
+  const network = vi
+    .mocked(runtime.gateway.request)
+    .mockResolvedValueOnce(descriptor)
+    .mockResolvedValue(completed);
+  const request = { question: "Research UI durable acceptance", engine: "google" as const };
+  const starts = await Promise.all([
+    jobs.start(request, "ui-retry", context, undefined, undefined, true),
+    jobs.start(request, "ui-retry", context, undefined, undefined, true),
+  ]);
+  expect(starts[0].id).toBe(starts[1].id);
+  expect(network).not.toHaveBeenCalled();
+  expect(await readStore().count()).toBe(1);
+  await jobs.startRecovery();
+  await clock.advanceBy(1000);
+  expect((await jobs.read(starts[0].id, context)).state).toBe("completed");
+  expect(network).toHaveBeenCalledTimes(2);
+  const retained = await readStore().lookup(starts[0].id);
+  assert.ok(retained);
+  await readStore().register(starts[0].id, { ...retained, state: "submitting" });
+  const rawBefore = await readStore().lookup(starts[0].id);
+  expect((await jobs.read(starts[0].id, context)).state).toBe("submitting");
+  expect((await jobs.list(context))[0]?.state).toBe("submitting");
+  expect(await readStore().lookup(starts[0].id)).toEqual(rawBefore);
+  expect(network).toHaveBeenCalledTimes(2);
+  await expect(
+    jobs.read(starts[0].id, { ...context, sessionId: "reset-incarnation" }),
+  ).rejects.toThrow("not found");
+});
+
+it("retains concurrent UI cancellation requests until the service observes termination", async () => {
+  const clock = createGatewaySchedulerClock(Date.now());
+  const scheduler = createTestPluginServiceScheduler(createTestGatewayScheduler(clock.clock));
+  const target = {
+    agentId: "main",
+    sessionKey: "agent:main:research-fixture",
+    sessionId: "generation-1",
+  };
+  const sessionWork: PluginServiceSessionWorkV1 = {
+    version: 1,
+    admit: async () => ({ recoverable: true, target }),
+    run: async (_id, work) => ({
+      status: "completed",
+      value: await work({ target, signal: scheduler.signal, assertCurrent() {} }),
+    }),
+  };
+  const { jobs, context, runtime } = await fixture({ scheduler, sessionWork });
+  const job = await jobs.start(
+    { question: "Cancel before work begins" },
+    "ui-cancel",
+    context,
+    undefined,
+    undefined,
+    true,
+  );
+  const cancelled = await Promise.all([
+    jobs.cancel(job, context, undefined, true),
+    jobs.cancel(job, context, undefined, true),
+  ]);
+  expect(cancelled.every((value) => value.state === "queued" && value.cancelRequested)).toBe(true);
+  expect((await jobs.read(job.id, context)).cancelRequested).toBe(true);
+  await clock.advanceBy(1000);
+  expect((await jobs.read(job.id, context)).state).toBe("cancelled");
+  expect(runtime.llm.complete).not.toHaveBeenCalled();
+  expect(runtime.gateway.request).not.toHaveBeenCalled();
 });
