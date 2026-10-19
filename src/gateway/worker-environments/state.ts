@@ -13,6 +13,10 @@ export function isTerminalWorkerEnvironmentState(state: WorkerEnvironmentState):
   return WORKER_ENVIRONMENT_TERMINAL_STATES.some((terminal) => terminal === state);
 }
 
+export function isUsableWorkerEnvironmentState(state: WorkerEnvironmentState) {
+  return state === "ready" || state === "idle" || state === "attached";
+}
+
 const TRANSITIONS = {
   requested: ["provisioning", "failed"],
   provisioning: ["bootstrapping", "ready", "draining", "failed"],

@@ -7,6 +7,7 @@ import { NODE_WORKER_PROCESSES_COMMAND } from "../../infra/node-commands.js";
 import type { NodeWorkerProcessInput } from "../../worker/worker-process-observation.js";
 import type { NodeWorkerSupervisorTransport } from "../node-registry-private.js";
 import { parseNodeWorkerResponse } from "./node-worker-response.js";
+import { isUsableWorkerEnvironmentState } from "./state.js";
 import type { WorkerEnvironmentRecord } from "./store.js";
 
 /** Process observations use one pinned node owner; an uncertain stop is never retried. */
@@ -35,7 +36,7 @@ export function createNodeWorkerProcessObserver(options: {
         current.ownerEpoch !== input.ownerEpoch ||
         current.leaseId !== record.leaseId ||
         current.destroyRequestedAtMs !== null ||
-        !["ready", "idle", "attached"].includes(current.state) ||
+        !isUsableWorkerEnvironmentState(current.state) ||
         options.getTransport() !== transport
       ) {
         throw new Error("Worker process placement changed; refresh the process list.");

@@ -25,6 +25,7 @@ import type { NodeWorkerSupervisorTransport } from "../node-registry-private.js"
 import { publishNodePermissionMissing } from "../server-methods/nodes.permission-missing.js";
 import type { GatewayContextResolver } from "../server-methods/types.js";
 import type { WorkerSessionPlacementStore, WorkerSessionTurnClaim } from "./placement-store.js";
+import { isUsableWorkerEnvironmentState } from "./state.js";
 import type { WorkerEnvironmentRecord, WorkerEnvironmentStore } from "./store.js";
 import { WorkerRunnerUnavailableError } from "./tunnel-contract.js";
 
@@ -121,7 +122,7 @@ export function createEnvironmentComputerTransportOwner(options: WorkerComputerO
       return (
         environmentIsCurrent(currentEnvironment) &&
         currentEnvironment?.ownerEpoch === source.ownerEpoch &&
-        ["ready", "idle", "attached"].includes(currentEnvironment.state) &&
+        isUsableWorkerEnvironmentState(currentEnvironment.state) &&
         currentEnvironment.destroyRequestedAtMs === null
       );
     };

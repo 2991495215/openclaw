@@ -32,6 +32,7 @@ import {
   requireWorkerProfile,
   resolveWorkerLeaseTransportError,
 } from "./service-validation.js";
+import { isUsableWorkerEnvironmentState } from "./state.js";
 import type { WorkerEnvironmentRecord } from "./store.js";
 import { boundedWorkerError as boundedError } from "./worker-error.js";
 
@@ -505,10 +506,7 @@ export function createWorkerProviderLifecycle(
       return void (await finishDestroy(record));
     }
     let currentBundle: WorkerInstallationArtifact | undefined;
-    if (
-      record.destroyRequestedAtMs === null &&
-      ["ready", "idle", "attached"].includes(record.state)
-    ) {
+    if (record.destroyRequestedAtMs === null && isUsableWorkerEnvironmentState(record.state)) {
       try {
         currentBundle = await options.prepareInstallation("bundle", workSignal);
         if (record.bootstrapReceipt && sameWorkerBuild(record.bootstrapReceipt, currentBundle)) {

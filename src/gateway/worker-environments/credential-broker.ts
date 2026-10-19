@@ -17,7 +17,7 @@ import type { WorkerLiveEventReceiver } from "./live-events.js";
 import type { WorkerSessionTurnClaim } from "./placement-record.js";
 import type { WorkerSessionPlacementGate } from "./placement-worker-gate.js";
 import { WorkerSessionAlreadyAttachedError } from "./session-attachment.js";
-import type { WorkerEnvironmentState } from "./state.js";
+import { isUsableWorkerEnvironmentState, type WorkerEnvironmentState } from "./state.js";
 import type {
   PreparedEnvironmentPlacementBinding,
   WorkerEnvironmentRecord,
@@ -306,7 +306,7 @@ export function createWorkerCredentialBroker(options: WorkerCredentialBrokerOpti
     const checkedAtMs = now();
     if (
       !environment ||
-      !["ready", "idle", "attached"].includes(environment.state) ||
+      !isUsableWorkerEnvironmentState(environment.state) ||
       environment.destroyRequestedAtMs !== null ||
       environment.ownerEpoch !== binding.ownerEpoch ||
       !credential ||

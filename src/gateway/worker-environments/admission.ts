@@ -18,6 +18,7 @@ import type {
 } from "./environment-record.js";
 import type { WorkerSessionTurnClaim } from "./placement-record.js";
 import { isWorkerEnvironmentAttachedTo } from "./placement-target.js";
+import { isUsableWorkerEnvironmentState } from "./state.js";
 import type { WorkerEnvironmentStore } from "./store.js";
 
 export type { WorkerConnectionIdentity } from "./connection-identity.js";
@@ -117,9 +118,7 @@ export function admitWorkerConnection(params: {
   const environment = store.get(admission.environmentId);
   if (
     !environment ||
-    (environment.state !== "ready" &&
-      environment.state !== "idle" &&
-      environment.state !== "attached") ||
+    !isUsableWorkerEnvironmentState(environment.state) ||
     environment.destroyRequestedAtMs !== null ||
     !environment.bootstrapReceipt
   ) {
@@ -198,9 +197,7 @@ export function validateWorkerConnectionIdentity(params: {
   const environment = params.store.get(params.identity.environmentId);
   if (
     !environment ||
-    (environment.state !== "ready" &&
-      environment.state !== "idle" &&
-      environment.state !== "attached") ||
+    !isUsableWorkerEnvironmentState(environment.state) ||
     environment.destroyRequestedAtMs !== null
   ) {
     return "environment-unavailable";

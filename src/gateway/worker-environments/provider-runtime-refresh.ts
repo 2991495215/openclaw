@@ -7,6 +7,7 @@ import { workerEnvironmentServiceError as serviceError } from "./environment-err
 import type { WorkerSessionPlacementGate } from "./placement-worker-gate.js";
 import type { WorkerProviderLifecycleOptions } from "./provider-lifecycle.types.js";
 import type { createWorkerProviderOwnerLifecycle } from "./provider-owner-lifecycle.js";
+import { isUsableWorkerEnvironmentState } from "./state.js";
 import type { WorkerEnvironmentRecord } from "./store.js";
 
 export type WorkerRuntimeRefreshInFlight = {
@@ -58,7 +59,7 @@ export function createWorkerRuntimeRefresher(options: WorkerRuntimeRefreshOption
       return;
     }
     if (
-      (record.state !== "attached" && record.state !== "ready" && record.state !== "idle") ||
+      !isUsableWorkerEnvironmentState(record.state) ||
       !record.bootstrapReceipt ||
       !record.leaseId
     ) {

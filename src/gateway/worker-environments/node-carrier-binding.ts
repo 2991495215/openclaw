@@ -1,5 +1,6 @@
 import type { NodeDesktopStreamBroker } from "../desktop/node-stream-broker.js";
 import type { NodeWorkerSupervisorTransport } from "../node-registry-private.js";
+import { isUsableWorkerEnvironmentState } from "./state.js";
 import type { WorkerEnvironmentRecord } from "./store.js";
 
 export type WorkerNodeCarrierBinding = {
@@ -21,7 +22,7 @@ export function snapshotWorkerNodeCarrierBinding(
 ): WorkerNodeCarrierBinding {
   if (
     !record ||
-    (record.state !== "ready" && record.state !== "idle" && record.state !== "attached") ||
+    !isUsableWorkerEnvironmentState(record.state) ||
     record.destroyRequestedAtMs !== null ||
     !record.leaseId ||
     !record.nodeDeviceId ||
@@ -44,7 +45,7 @@ export function isWorkerNodeCarrierBindingCurrent(
 ): boolean {
   return Boolean(
     current &&
-    (current.state === "ready" || current.state === "idle" || current.state === "attached") &&
+    isUsableWorkerEnvironmentState(current.state) &&
     current.destroyRequestedAtMs === null &&
     current.leaseId === binding.leaseId &&
     current.nodeDeviceId === binding.nodeDeviceId &&

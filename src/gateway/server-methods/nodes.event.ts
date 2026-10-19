@@ -9,6 +9,7 @@ import { formatErrorMessage } from "../../infra/errors.js";
 import { ApnsRegistrationPairingChangedError } from "../../infra/push-apns-store.errors.js";
 import { NodeWorkerProcessesChangedSchema } from "../../worker/worker-process-observation.js";
 import type { NodeEventContext } from "../server-node-events-types.js";
+import { isUsableWorkerEnvironmentState } from "../worker-environments/state.js";
 import { resolveDispatchableNodeSession, respondPairingChanged } from "./nodes.shared.js";
 import { respondUnavailableOnThrow } from "./response.js";
 import type { GatewayRequestHandlers } from "./types.js";
@@ -68,7 +69,7 @@ export const nodeEventHandlers: GatewayRequestHandlers = {
                 environment?.nodeDeviceId === nodeId &&
                 environment.ownerEpoch === input.ownerEpoch &&
                 environment.destroyRequestedAtMs === null &&
-                ["ready", "idle", "attached"].includes(environment.state)
+                isUsableWorkerEnvironmentState(environment.state)
               ) {
                 const { sessionKey, agentId } = placement;
                 context.broadcast(

@@ -13,7 +13,7 @@ import {
 import { assertPreparedEnvironmentAttachment } from "./prepared-environment-store.js";
 import { hasWorkerEnvironmentSessionAttachment } from "./session-attachment-store.js";
 import { WorkerSessionAlreadyAttachedError } from "./session-attachment.js";
-import { canTransitionWorkerEnvironment } from "./state.js";
+import { canTransitionWorkerEnvironment, isUsableWorkerEnvironmentState } from "./state.js";
 import {
   credentialInsert,
   nextGlobalOwnerEpoch,
@@ -296,9 +296,7 @@ export function createWorkerEnvironmentTransitionOps(db: EngineConnection, now: 
         to === "failed" ||
         to === "orphaned";
       const ownerEndingTransition =
-        revokesCredential &&
-        !acceptsAttachedCredential &&
-        (from === "ready" || from === "idle" || from === "attached");
+        revokesCredential && !acceptsAttachedCredential && isUsableWorkerEnvironmentState(from);
       const ownerEpoch = acceptsBootstrapReceipt
         ? Math.max(1, current.ownerEpoch)
         : acceptsAttachedCredential || ownerEndingTransition

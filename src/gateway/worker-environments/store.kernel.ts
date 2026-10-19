@@ -12,7 +12,7 @@ import {
 } from "./prepared-environment-store.js";
 import { createWorkerEnvironmentSessionAttachmentStore } from "./session-attachment-store.js";
 import type { WorkerEnvironmentAttachmentRecord } from "./session-attachment.js";
-import { isTerminalWorkerEnvironmentState } from "./state.js";
+import { isTerminalWorkerEnvironmentState, isUsableWorkerEnvironmentState } from "./state.js";
 import {
   credentialInsert,
   revokeCredential,
@@ -210,7 +210,7 @@ export function createWorkerEnvironmentStoreKernel(
       if (current.ownerEpoch !== input.expectedOwnerEpoch) {
         throw new Error(`Worker environment ${environmentId} owner epoch changed`);
       }
-      if (current.state !== "ready" && current.state !== "idle" && current.state !== "attached") {
+      if (!isUsableWorkerEnvironmentState(current.state)) {
         throw new Error(`Cannot mint worker credential in state ${current.state}`);
       }
       if (current.destroyRequestedAtMs !== null) {
@@ -250,9 +250,7 @@ export function createWorkerEnvironmentStoreKernel(
       const credential = findCredential(db, environmentId);
       if (
         !credential ||
-        (environment.state !== "ready" &&
-          environment.state !== "idle" &&
-          environment.state !== "attached") ||
+        !isUsableWorkerEnvironmentState(environment.state) ||
         environment.destroyRequestedAtMs !== null ||
         credential.credentialHash !== normalizeCredentialHash(input.credentialHash) ||
         credential.ownerEpoch !== input.ownerEpoch ||

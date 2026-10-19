@@ -39,7 +39,7 @@ import type {
   WorkerEnvironmentReconcileGuard,
 } from "./service.types.js";
 import { createWorkerEnvironmentSessionAttachments } from "./session-attachment-service.js";
-import type { WorkerEnvironmentState } from "./state.js";
+import { isUsableWorkerEnvironmentState, type WorkerEnvironmentState } from "./state.js";
 import { WorkerEnvironmentInventoryClosedError } from "./store-errors.js";
 import type {
   WorkerEnvironmentRecord,
@@ -166,7 +166,7 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
       patch,
       assertCurrent,
     });
-    if (to !== "ready" && to !== "idle" && to !== "attached") {
+    if (!isUsableWorkerEnvironmentState(to)) {
       credentialBroker.clearEnvironment(record.environmentId);
     }
     if (to !== "attached") {

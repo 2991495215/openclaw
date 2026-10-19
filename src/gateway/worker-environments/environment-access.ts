@@ -20,6 +20,7 @@ import type { WorkerProviderLifecycleInputOptions } from "./provider-lifecycle.t
 import { WorkerRuntimeRefreshPendingError } from "./provider-runtime-refresh.js";
 import { prepareRepositoryWorkerProjectSource } from "./repository-project-admission.js";
 import type { WorkerDesktopLaunchResult, WorkerDesktopObserveResult } from "./service-contract.js";
+import { isUsableWorkerEnvironmentState } from "./state.js";
 import type { WorkerEnvironmentRecord, WorkerEnvironmentStore } from "./store.js";
 import {
   joinWorkerTunnelStops,
@@ -155,7 +156,7 @@ export function createWorkerEnvironmentAccess(options: WorkerEnvironmentAccessOp
   const requireDesktopRecord = (environmentId: string) => {
     const record = requireCurrentRecord(environmentId);
     if (
-      !["ready", "idle", "attached"].includes(record.state) ||
+      !isUsableWorkerEnvironmentState(record.state) ||
       record.destroyRequestedAtMs !== null ||
       !record.leaseId ||
       !record.desktop
@@ -197,7 +198,7 @@ export function createWorkerEnvironmentAccess(options: WorkerEnvironmentAccessOp
     const cleanupError = options.getCleanupError(record);
     const desktopAvailable =
       options.getConfig().cloudWorkers?.desktop === true &&
-      ["ready", "idle", "attached"].includes(record.state) &&
+      isUsableWorkerEnvironmentState(record.state) &&
       record.desktop !== null;
     const nodeTunnelStatus = nodeTunnels?.status(record.environmentId);
     const preparedProject = record.preparation
@@ -345,7 +346,7 @@ export function createWorkerEnvironmentAccess(options: WorkerEnvironmentAccessOp
     const { startup, stopStartup } = await withLock(request.environmentId, async () => {
       const record = requireCurrentRecord(request.environmentId);
       if (
-        !["ready", "idle", "attached"].includes(record.state) ||
+        !isUsableWorkerEnvironmentState(record.state) ||
         record.destroyRequestedAtMs !== null ||
         !record.leaseId ||
         !record.bootstrapReceipt
