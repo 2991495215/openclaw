@@ -374,12 +374,18 @@ function transformUserTextContent(
   return { content: changed ? projected : content, changed };
 }
 
-function composeModelPromptContext(params: {
-  prompt: string;
+/** The model-facing text of a prompt before any recorded projection. */
+export function resolveModelPromptText(params: {
+  text: string;
+  transcriptPrompt: string;
+  modelPrompt?: string;
   prependContext?: string;
   appendContext?: string;
 }): string {
-  return [params.prependContext, params.prompt, params.appendContext]
+  if (params.modelPrompt?.trim() && params.text === params.transcriptPrompt) {
+    return params.modelPrompt;
+  }
+  return [params.prependContext, params.text, params.appendContext]
     .filter((value): value is string => Boolean(value?.trim()))
     .join("\n\n");
 }
@@ -467,13 +473,7 @@ export function installModelPromptProjection(params: {
               frozen ??
               (firstText === undefined
                 ? undefined
-                : params.modelPrompt?.trim() && firstText === params.transcriptPrompt
-                  ? params.modelPrompt
-                  : composeModelPromptContext({
-                      prompt: firstText,
-                      prependContext: params.prependContext,
-                      appendContext: params.appendContext,
-                    }));
+                : resolveModelPromptText({ ...params, text: firstText }));
             // Keep the source envelope without discarding authorized prompt enrichment.
             const envelope =
               frozen === undefined && firstText
