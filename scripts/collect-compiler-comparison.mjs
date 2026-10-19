@@ -414,6 +414,7 @@ async function main() {
           sourceHead: run("git", ["rev-parse", "HEAD"]).trim(),
           runId: process.env.GITHUB_RUN_ID,
           kernel: os.release(),
+          collectorNetworkNamespace: fs.readlinkSync("/proc/self/ns/net"),
           dockerVersion,
           limits: { cpuSet, memoryBytes, swapBytes: 0 },
           profile: networkProfile,
@@ -508,17 +509,40 @@ done
 interfaces=(/sys/class/net/*)
 if [[ "$4" == true ]]; then
   interface_kind() { [[ $1 == lo ]] && printf loopback || printf non-loopback; }
+  default_name() {
+    case $1 in
+      lo|tunl0|gre0|gretap0|erspan0|sit0|ip6tnl0|ip6gre0|ip_vti0|ip6_vti0) printf '%s' "$1" ;;
+      *) printf redacted ;;
+    esac
+  }
   printf 'sysfs-readable=%s proc-net-readable=%s\\n' "$(test -r /sys/class/net && echo yes || echo no)" "$(test -r /proc/self/net/dev && echo yes || echo no)" >&2
   for interface in "\${interfaces[@]}"; do
     printf 'sysfs-entry-present=%s kind=%s\\n' "$(test -e "$interface" && echo yes || echo no)" "$(interface_kind "\${interface##*/}")" >&2
+    printf 'default-name=%s type=%s flags=%s operstate=%s\\n' "$(default_name "\${interface##*/}")" "$(cat "$interface/type" 2>/dev/null || printf unavailable)" "$(cat "$interface/flags" 2>/dev/null || printf unavailable)" "$(cat "$interface/operstate" 2>/dev/null || printf unavailable)" >&2
   done
   while IFS=: read -r interface rest; do
     [[ -n $rest ]] || continue
     printf 'proc-interface=%s\\n' "$(interface_kind "\${interface//[[:space:]]/}")" >&2
   done < /proc/self/net/dev
+  route_count=0
+  printf 'ipv4-route-readable=%s\\n' "$(test -r /proc/self/net/route && echo yes || echo no)" >&2
   while read -r interface rest; do
     [[ $interface == Iface ]] || printf 'route-interface=%s\\n' "$(interface_kind "$interface")" >&2
+    [[ $interface == Iface ]] || route_count=$((route_count + 1))
   done < /proc/self/net/route
+  printf 'ipv4-route-count=%s\\n' "$route_count" >&2
+  printf 'ipv6-route-readable=%s\\n' "$(test -r /proc/self/net/ipv6_route && echo yes || echo no)" >&2
+  if [[ -r /proc/self/net/ipv6_route ]]; then
+    route_count=0
+    while read -ra route; do
+      printf 'ipv6-route-interface=%s\\n' "$(interface_kind "\${route[9]}")" >&2
+      route_count=$((route_count + 1))
+    done < /proc/self/net/ipv6_route
+    printf 'ipv6-route-count=%s\\n' "$route_count" >&2
+  fi
+  while read -r key value rest; do
+    case $key in CapEff:|CapBnd:|NoNewPrivs:) printf '%s %s\\n' "$key" "$value" >&2 ;; esac
+  done < /proc/self/status
   printf 'net-namespace=%s\\n' "$(readlink /proc/self/ns/net)" >&2
   printf 'mount-namespace=%s\\n' "$(readlink /proc/self/ns/mnt)" >&2
 fi
