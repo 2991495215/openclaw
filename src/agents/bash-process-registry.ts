@@ -66,6 +66,7 @@ export interface ProcessSession {
   eventRouting?: EventSessionRoutingPolicy;
   notifyDeliveryContext?: DeliveryContext;
   notifySessionTarget?: SessionEventTarget;
+  assertExitNotificationAcceptanceCurrent?: () => void;
   persistExitNotification?: () => Promise<void>;
   exitNotificationPersistence?: Promise<void>;
   clearExitNotification?: () => Promise<void>;

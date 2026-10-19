@@ -6,11 +6,7 @@ import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import type { SessionEntryCreationOperation } from "../../config/sessions/session-accessor.sqlite-entry-cache.types.js";
 import { SessionWorkStartError } from "../../config/sessions/session-work-start.js";
 import { runWithoutOwnedSessionTranscriptWrites } from "../../config/sessions/transcript-write-context.js";
-import {
-  execRequestAbortSignal,
-  readExecRequestOwners,
-  withExecRequestOwners,
-} from "../../infra/exec-request-context.js";
+import { execRequestAbortSignal, withExecRequestOwners } from "../../infra/exec-request-context.js";
 import type { SourceDeliveryOutcome } from "../../infra/outbound/source-delivery-plan.types.js";
 import {
   resolveSystemEventQueueKey,
@@ -25,21 +21,27 @@ import { runWithGatewayDetachedWorkContinuation } from "../../process/gateway-wo
 import { normalizeAgentId } from "../../routing/session-key.js";
 import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
 import { isCurrentSessionControllerOperation } from "../../sessions/session-controller.identity.js";
+import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.types.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import type { ReplyPayload } from "../../shared/reply-payload.types.js";
 import { readAgentDeletionJournalStatusInWorker } from "../../state/agent-deletion-journal.read.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
 import {
+  prepareCronRunContinuationCleanup,
   resolveScheduledSessionReplyOptions,
   settleSessionAutomationTurn,
 } from "./session-event-automation.js";
-import { buildSessionEventContext } from "./session-event-context.js";
+import {
+  buildSessionEventContext,
+  resolveSessionEventExecRequestOwners,
+} from "./session-event-context.js";
 import type {
   SessionEventEnqueueOptions,
   SessionEventOutcome,
   SessionEventReceipt,
 } from "./session-event-contract.js";
+import { prepareSessionEventDelivery } from "./session-event-delivery.js";
 import { narrowSessionEventSettings } from "./session-event-policy.js";
 import {
   assertSessionEventTargetCurrent,
@@ -92,6 +94,7 @@ export function enqueueSessionEventForHost(
   const storePath =
     options.expectedTarget?.storePath ??
     resolveSessionStorePathCore(cfg.session?.store, { agentId, env });
+  const cleanupContinuation = prepareCronRunContinuationCleanup(sessionKey, storePath, env);
   let target = options.expectedTarget;
   let generationLease: Awaited<ReturnType<typeof prepareSessionEventTargetForHost>> | undefined;
   let preparedBinding: { sessionId: string; lifecycleRevision?: string } | undefined;
@@ -106,16 +109,7 @@ export function enqueueSessionEventForHost(
   }
   let route = structuredClone(options.deliveryContext ?? options.expectedTarget?.deliveryContext);
   const controller = new AbortController();
-  const execRequestOwners = options.occurrences
-    ? [
-        ...new Set(
-          options.occurrences.flatMap(
-            (occurrence) =>
-              readExecRequestOwners(occurrence) ?? readExecRequestOwners(options) ?? [],
-          ),
-        ),
-      ]
-    : readExecRequestOwners(options);
+  const execRequestOwners = resolveSessionEventExecRequestOwners(options);
   const requestSignal = execRequestAbortSignal(execRequestOwners, options.abortSignal);
   const signal = requestSignal
     ? AbortSignal.any([requestSignal, controller.signal])
@@ -192,6 +186,7 @@ export function enqueueSessionEventForHost(
   // The live re-admission attempt; receipt.cancel forwards to it once it exists.
   let readmittedReceipt: SessionEventReceipt | undefined;
   let operation: ReplyOperation | undefined;
+  let inputRecorder: UserTurnTranscriptRecorder | undefined;
   let delivered = false;
   let deliveryAttempted = false;
   let deliveryAmbiguous = false;
@@ -330,7 +325,13 @@ export function enqueueSessionEventForHost(
       return;
     }
     settlement = "settling";
-    const complete = () => {
+    const complete = async () => {
+      try {
+        inputRecorder?.finishPendingInput?.(signal.aborted ? "cancelled" : "interrupted");
+        await inputRecorder?.waitForPendingInputSettlement?.();
+      } catch (error) {
+        failure ??= error instanceof Error ? error : String(error);
+      }
       settlement = "finished";
       // Submitting custody ends at the first acceptance; a pre-acceptance re-admission
       // carries the still-live assertion so revoked ingress rejects the retry.
@@ -430,11 +431,12 @@ export function enqueueSessionEventForHost(
         ...(failure ? { error: String(failure) } : {}),
         ...(failure instanceof SessionWorkStartError ? { retryable: failure.retryable } : {}),
       });
+      cleanupContinuation?.();
     };
     if (operation?.ownerSettlement) {
       void operation.ownerSettlement.then(complete, complete);
     } else {
-      complete();
+      void complete();
     }
   };
   const onAbort = () => {
@@ -459,31 +461,19 @@ export function enqueueSessionEventForHost(
       // This is not evidence of a transport send.
       return;
     }
-    const { isRoutableChannel, routeReply } = await import("./route-reply.js");
-    assertCurrent();
-    if (!isRoutableChannel(route?.channel) || !route?.to) {
-      throw new Error(
-        "Session event has no original external delivery route; inspect the session result or choose a delivery destination",
-      );
-    }
+    const deliverReply = await prepareSessionEventDelivery(route, assertCurrent);
     deliveryAttempted = true;
-    const deliveryConfig = getSessionEventRuntimeConfig();
     const assertDeliveryCurrent = () => {
       assertEffectCurrent();
       options.scheduledAutomation?.assertDeliveryCurrent?.();
     };
-    const result = await routeReply({
-      cfg: deliveryConfig,
+    const result = await deliverReply({
+      cfg: getSessionEventRuntimeConfig(),
       agentId,
       sessionKey,
-      channel: route.channel,
-      to: route.to,
-      accountId: route.accountId,
-      threadId: route.threadId,
       payload,
       replyKind: kind,
       abortSignal: signal,
-      mirror: false,
       beforeDeliver: async () => {
         await options.scheduledAutomation?.beforeDeliver?.();
         assertDeliveryCurrent();
@@ -573,6 +563,15 @@ export function enqueueSessionEventForHost(
             operation = owned;
           },
           internalEventExecution: {
+            prepareInput: async (recorder) => {
+              inputRecorder = recorder;
+              if (
+                !recorder.stageApproved ||
+                !(await recorder.stageApproved({ runId: occurrenceId, assertCurrent }))
+              ) {
+                throw new Error("Session event input was not durably admitted");
+              }
+            },
             execRequestOwners,
             deliver: options.deliver === false || target.deliver === false ? false : undefined,
             assertCurrent: assertEffectCurrent,

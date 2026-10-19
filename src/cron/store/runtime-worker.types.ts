@@ -15,11 +15,7 @@ import type {
   CronStoreFile,
   CronStoredJob,
 } from "../types.js";
-import type {
-  CronJobMutation,
-  CronJobMutationPlan,
-  CronJobMutationSnapshot,
-} from "./job-mutations.types.js";
+import type { CronJobMutation, CronJobMutationSnapshot } from "./job-mutations.types.js";
 import type { CronJobFamilyIdentity } from "./row-codec.js";
 import type { CronRunReceiptHandle } from "./run-receipt.types.js";
 import type { CronRunRecoveryOutcome } from "./run-recovery.types.js";
@@ -72,7 +68,6 @@ export type CronExternalStateChange =
     };
 
 export type CronRuntimeMutationInputs = {
-  "cron.prepareJobMutation": { storeKey: string; mutation: CronJobMutation };
   "cron.provisionDefaultProactive": {
     storePath: string | undefined;
     agentId: string;
@@ -161,11 +156,6 @@ export type CronRuntimeMutationContracts = {
     input: CronRuntimeMutationInputs["cron.provisionDefaultProactive"];
     snapshot: Record<string, never>;
     outcome: { storeKey: string; created: boolean; job: CronStoredJob | undefined };
-  };
-  "cron.prepareJobMutation": {
-    input: CronRuntimeMutationInputs["cron.prepareJobMutation"];
-    snapshot: CronJobMutationSnapshot;
-    outcome: CronJobMutationPlan;
   };
   "cron.recordSkippedRuns": {
     input: CronRuntimeMutationInputs["cron.recordSkippedRuns"];

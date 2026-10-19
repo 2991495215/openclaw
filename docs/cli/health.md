@@ -44,6 +44,9 @@ openclaw health --debug
 - Config read failures report the unreadable path and underlying error instead of a missing-credentials diagnostic. This also applies to `openclaw gateway health`.
 - Session ages in text and JSON use the Gateway's clock.
 - Periodic monitoring belongs to ordinary automation jobs. Inspect schedules with `openclaw automations list --all`; legacy protocol heartbeat fields are read-only projections of migrated/default monitor receipts.
+- Namespaces whose agent deletion has committed are omitted from session summaries while cleanup drains. Undeleted namespaces in shared stores remain visible, and unexpected store errors still fail the refresh.
+- If the configured default is omitted during deletion, plain output shows the first surviving agent's projected heartbeat and session store in roster order. This display choice does not change runtime or System Agent ownership.
+- Legacy heartbeat intervals in text show the resolved cadence without rounding away milliseconds. Week units are retained for long intervals.
 - Top-level `ok: true` means the health RPC succeeded and the Gateway produced a snapshot. Queue and plugin warnings do not change it to `false`.
 - When outbound or session deliveries, or inbound channel events, are dead-lettered, text output reports their counts and oldest failure age. Inbound counts are grouped by channel account. Inspect or recover individual events with [`openclaw channels dead-letters`](/cli/channels#inbound-dead-letters).
 - Optional `deliveryQueues.ingressPressure` summarizes durable inbound lanes that may be blocking later events. It is grouped by channel account and never exposes event, lane, payload, error, owner, token, session, or target identifiers. See [Gateway health](/gateway/health#queue-warnings) for the exact qualification and counting semantics.

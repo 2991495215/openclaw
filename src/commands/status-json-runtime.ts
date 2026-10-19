@@ -27,7 +27,8 @@ export async function resolveStatusJsonOutput(params: {
   includePluginCompatibility?: boolean;
   suppressHealthErrors?: boolean;
 }) {
-  const { scan, opts } = params;
+  const { opts } = params;
+  let { scan } = params;
   const inspectionReason = "Local plugin inspection is not collected in online status.";
   const { securityAudit, usage, health, gatewayService, nodeService } =
     await resolveStatusRuntimeSnapshot({
@@ -73,6 +74,8 @@ export async function resolveStatusJsonOutput(params: {
       : null;
 
   const databaseEngines = await resolveStatusDatabaseEngines(scan.cfg, scan.summary.databaseStores);
+  const backups = await readBackupRunFreshness(scan.env ?? {});
+  scan = { ...scan, ...scan.publish?.() };
   const surface: StatusOverviewSurface = {
     ...scan,
     gatewayService,
@@ -129,7 +132,6 @@ export async function resolveStatusJsonOutput(params: {
         }
       : {}),
   };
-  const backups = await readBackupRunFreshness(scan.env ?? {});
   if (backups.latest || backups.latestOk) {
     Object.assign(payload, { backups });
   }

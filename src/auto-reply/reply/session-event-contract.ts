@@ -11,6 +11,7 @@ import type {
 } from "../../infra/outbound/source-delivery-plan.types.js";
 import type { SystemEvent } from "../../infra/system-events.js";
 import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
+import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
 
@@ -125,6 +126,8 @@ export type ScheduledSessionAutomation = {
 
 /** Producer callbacks stay bound to the queued occurrence, not a later dispatcher. */
 export type SessionEventExecution = {
+  /** Admit the prepared input to the occurrence's durable custody before queueing. */
+  prepareInput?: (recorder: UserTurnTranscriptRecorder) => Promise<void>;
   /** Original command custody survives process eviction and deferred reply execution. */
   execRequestOwners?: readonly ExecRequestOwner[];
   /** Background producers inherit this turn's automatic-delivery restriction. */

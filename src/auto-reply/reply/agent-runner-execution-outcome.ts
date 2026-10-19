@@ -7,6 +7,7 @@ import type { VisibleWorkSession } from "../get-reply-options.types.js";
 import { prepareReplyTurnRunSource } from "./agent-runner-admission.js";
 import { resolveAgentTurnExecutionStatus } from "./agent-runner-execution-status.js";
 import type { AgentTurnExecutionResult, AgentTurnParams } from "./agent-runner-execution.types.js";
+import { bindGoalContinuationExecution } from "./goal-continuation-return.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 import type { SessionEventExecution } from "./session-event-contract.js";
 import { getReplySystemEventContext } from "./system-event-session-key.js";
@@ -108,6 +109,7 @@ export async function runAgentTurnWithOutcome(
   runId: string,
   run: () => Promise<AgentTurnExecutionResult>,
 ): Promise<AgentTurnExecutionResult> {
+  bindGoalContinuationExecution(runId, params.sessionKey ?? params.followupRun.run.sessionKey);
   const eventExecution = params.followupRun.run.internalEventExecution;
   const source = prepareReplyTurnRunSource(params, runId);
   let terminalRecorded = false;

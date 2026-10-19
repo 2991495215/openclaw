@@ -261,30 +261,6 @@ export async function withCronServiceForTest(
   }
 }
 
-export function createCronServiceStateWithJobs(params: {
-  storePath: string;
-  log: CronServiceDeps["log"];
-  nowMs: () => number;
-  jobs: CronJob[];
-}) {
-  const state = createCronServiceState({
-    scheduler: createTestGatewayScheduler(),
-    cronEnabled: true,
-    storePath: params.storePath,
-    log: params.log,
-    nowMs: params.nowMs,
-    enqueueSystemEvent: vi.fn(),
-    enqueueSessionEvent: vi.fn(),
-    runSessionEvent: vi.fn(async () => ({ status: "ok" as const })),
-    runIsolatedAgentJob: vi.fn().mockResolvedValue({ status: "ok", summary: "ok" }),
-  });
-  state.store = {
-    version: 1,
-    jobs: params.jobs,
-  };
-  return state;
-}
-
 export async function withCronServiceStateForTest<T>(
   state: CronServiceState,
   run: () => Promise<T>,

@@ -1,12 +1,45 @@
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { consumeCronNextCheckProposal } from "../../infra/agent-run-registry.automation.js";
 import { getAgentRunContext } from "../../infra/agent-run-registry.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { runWithGatewayDetachedWorkContinuation } from "../../process/gateway-work-admission.js";
+import { runWithSessionControllerCleanup } from "../../sessions/session-controller.cleanup-context.js";
+import { isCronRunSessionKey } from "../../sessions/session-key-utils.js";
+import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import type { InternalGetReplyOptions } from "./get-reply.types.js";
 import type {
   ScheduledSessionAutomation,
   SessionEventExecution,
   SessionEventOutcome,
 } from "./session-event-contract.js";
+
+const log = createSubsystemLogger("session-events");
+
+/** Retain the event's exact cleanup destination before config or state remapping. */
+export function prepareCronRunContinuationCleanup(
+  sessionKey: string,
+  storePath: string,
+  env?: NodeJS.ProcessEnv,
+): (() => void) | undefined {
+  if (!isCronRunSessionKey(sessionKey)) {
+    return undefined;
+  }
+  const context = captureOpenClawStateWorkerContext({ env });
+  return () => {
+    // Cleanup must outlive the completed event's async work scope.
+    void runWithGatewayDetachedWorkContinuation(
+      () =>
+        runWithSessionControllerCleanup(async () => {
+          const { removeCronRunContinuationSessionIfIdle } =
+            await import("../../cron/run-continuation-cleanup.js");
+          await removeCronRunContinuationSessionIfIdle(sessionKey, undefined, context, storePath);
+        }),
+      "session:event-cleanup",
+    ).catch((error: unknown) => {
+      log.warn("Could not remove settled cron continuation", { error: String(error) });
+    });
+  };
+}
 
 export function resolveScheduledSessionReplyOptions(
   automation?: ScheduledSessionAutomation,

@@ -14,8 +14,9 @@ import {
 import type { SessionEntry } from "../../config/sessions.js";
 import { formatSqliteSessionFileMarker } from "../../config/sessions/legacy-sqlite-marker.js";
 import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
-import { createReplyOperation, isSessionRunActive } from "../../sessions/session-controller.js";
+import { createReplyOperation } from "../../sessions/session-controller.js";
 import { beginSessionEffect } from "../../sessions/session-controller.lifecycle.js";
+import { isSessionRunActive } from "../../sessions/session-controller.queries.js";
 import { captureSessionTarget } from "../../sessions/session-controller.target.js";
 import { resolveReusableWorkspaceSkillSnapshot } from "../../skills/runtime/session-snapshot.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";

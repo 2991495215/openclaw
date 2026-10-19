@@ -13,6 +13,7 @@ import { createOperationalRunInstanceRef } from "../../agents/admitted-run-conte
 import { withAgentDeletion } from "../../agents/agent-lifecycle-registry.js";
 import { withGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
+import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import {
   commitReplySessionInitialization,
   loadReplySessionInitializationSnapshot,
@@ -38,6 +39,7 @@ import {
 import * as gatewayWork from "../../process/gateway-work-admission.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
+import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import { registerSessionEventDeletionEnvironmentTests } from "./session-event-deletion-environment.cases.js";
@@ -89,6 +91,71 @@ afterAll(() => {
 });
 
 describe("session event target custody", () => {
+  it("cleans up a settled cron event in its captured state and store", async ({ signal }) => {
+    await withTargetFixture(
+      async (state) => {
+        const baseKey = "agent:main:cron:captured-store";
+        const runKey = `${baseKey}:run:original`;
+        const captured = {
+          agentId: "main",
+          env: { ...state.env, OPENCLAW_STATE_DIR: state.path("captured-state") },
+          storePath: state.path("captured-sessions.sqlite"),
+        };
+        const replacement = { agentId: "main", env: state.env, storePath: state.storePath };
+        openOpenClawStateDatabase({ env: captured.env });
+        for (const [scope, sessionId] of [
+          [captured, "captured-session"],
+          [replacement, "replacement-session"],
+        ] as const) {
+          await replaceSessionEntry({ ...scope, sessionKey: baseKey }, { sessionId, updatedAt: 1 });
+          await replaceSessionEntry(
+            { ...scope, sessionKey: runKey },
+            {
+              sessionId,
+              updatedAt: 1,
+              cronRunContinuation: {
+                lifecycleRevision: "original",
+                phase: "ready",
+                basePersisted: true,
+              },
+            },
+          );
+        }
+        const cfg = { agents: { entries: { main: {} } } };
+        setRuntimeConfigSnapshot({ ...cfg, session: { store: captured.storePath } });
+        const target = await captureSessionEventTargetForHost("main", runKey, {
+          env: captured.env,
+        });
+        setRuntimeConfigSnapshot({ ...cfg, session: { store: replacement.storePath } });
+        const receipt = enqueueSessionEventForHost("Process completed", {
+          agentId: "main",
+          sessionKey: runKey,
+          source: "exec",
+          expectedTarget: target,
+        });
+        receipt.cancel();
+        expect(await withinTest(receipt.settled, signal)).toMatchObject({ status: "cancelled" });
+        await withinTest(
+          Promise.allSettled(
+            continuation.mock.results.flatMap((result) =>
+              result.type === "return" ? [result.value] : [],
+            ),
+          ),
+          signal,
+        );
+        expect(loadSessionEntry({ ...captured, sessionKey: runKey })).toBeUndefined();
+        expect(loadSessionEntry({ ...captured, sessionKey: baseKey })?.sessionId).toBe(
+          "captured-session",
+        );
+        expect(loadSessionEntry({ ...replacement, sessionKey: runKey })?.sessionId).toBe(
+          "replacement-session",
+        );
+        expect(dispatch).not.toHaveBeenCalled();
+      },
+      { empty: true, native: true },
+    );
+  });
+
   it("rejects deletion-revoked events with worker-prepared authority and no native journal reads", async () => {
     await withTargetFixture(
       async (state) => {

@@ -57,6 +57,9 @@ returns an actionable result. A request with an explicit `--session-key` retains
 its immediate behavior even with `--mode next-heartbeat`. Prefer `--mode now`
 for immediate work and an automation's own schedule for delayed work.
 
+A targeted event is read and consumed only from the selected session.
+Events queued for other sessions stay untouched.
+
 Flags:
 
 - `--text <text>`: required system event text.

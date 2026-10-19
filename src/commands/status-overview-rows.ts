@@ -42,6 +42,7 @@ type StatusDegradationSummary = Pick<
   | "installationReplacementWarning"
   | "childRuntime"
   | "secretEgressProxy"
+  | "pluginReload"
 >;
 
 function buildStatusDegradationRows(
@@ -83,6 +84,13 @@ function buildStatusDegradationRows(
     addWarning(
       "Degraded plugins",
       `${plugins.length} configured-unavailable · ${plugins.map((plugin) => plugin.pluginId).join(", ")}`,
+    );
+  }
+  const reload = summary.pluginReload;
+  if (reload) {
+    addWarning(
+      "Plugin reload",
+      [`${reload.phase} ${reload.pluginIds.join(", ")}`, reload.reason].filter(Boolean).join(" · "),
     );
   }
   return rows;

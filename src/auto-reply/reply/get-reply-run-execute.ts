@@ -27,7 +27,10 @@ import { resolveGroupSessionKey } from "../../config/sessions/group.js";
 import { sessionPersonalProfileId } from "../../config/sessions/session-entry-provenance.js";
 import { getGatewayLocalUserIngress } from "../../gateway/local-user-ingress.js";
 import { normalizeAccountId } from "../../routing/account-id.js";
-import { isSessionPersonalBootstrapTurn } from "../../sessions/session-participant-input.js";
+import {
+  isSessionPersonalBootstrapTurn,
+  readSessionInputProfileId,
+} from "../../sessions/session-participant-input.js";
 import { MEDIA_ONLY_USER_TEXT } from "../../sessions/user-turn-media.js";
 import {
   createUserTurnTranscriptRecorder,
@@ -38,6 +41,7 @@ import { isReasoningTagProvider } from "../../utils/provider-utils.js";
 import { isConfiguredCommandOwner } from "../command-auth.js";
 import { bindCommandOwnerAuthority, getCommandOwnerAuthority } from "../command-owner-authority.js";
 import { getGroupThreadTurn } from "../group-thread-context.js";
+import { getRequesterProfile } from "../requester-profile.js";
 import type { OriginatingChannelType } from "../templating.js";
 import { resolveReplyScheduledToolPolicy } from "./agent-runner-run-params.js";
 import { resolveCurrentTurnImages } from "./current-turn-images.js";
@@ -285,10 +289,14 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     normalizeOptionalString(conversationIdentity?.channel) ??
     normalizeOptionalString(sessionCtx.OriginatingChannel) ??
     normalizeOptionalString(sessionCtx.Provider);
+  const inputIdempotencyKey =
+    sourceTurnId ?? (opts?.internalEventExecution ? sourceMessageId : undefined);
+  // Retrying an occurrence changes dispatch identity, not its durable input bytes.
+  const transportMessageId = opts?.internalEventExecution ? inputIdempotencyKey : sourceMessageId;
   const transport = {
     ...(transportChannel ? { channel: transportChannel } : {}),
     ...(conversationRef ? { conversationRef } : {}),
-    ...(sourceMessageId ? { messageId: sourceMessageId } : {}),
+    ...(transportMessageId ? { messageId: transportMessageId } : {}),
     ...(transportReplyToId ? { replyToId: transportReplyToId } : {}),
     ...(transportThreadId ? { threadId: transportThreadId } : {}),
   };
@@ -297,7 +305,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       ? {
           text: userTurnTranscriptText,
           senderIsOwner: command.senderIsOwner,
-          ...(sourceTurnId ? { idempotencyKey: sourceTurnId } : {}),
+          ...(inputIdempotencyKey ? { idempotencyKey: inputIdempotencyKey } : {}),
           ...(inputProvenance ? { provenance: inputProvenance } : {}),
           ...(Object.keys(transport).length > 0 ? { transport } : {}),
           ...(userTurnMediaForPersistence.length > 0 ? { media: userTurnMediaForPersistence } : {}),
@@ -316,6 +324,9 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     (userTurnInput
       ? createUserTurnTranscriptRecorder({
           input: userTurnInput,
+          // An unstarted occurrence may be re-admitted after a policy publication.
+          // Existing completion custody permits that exact source input to resume.
+          trackInputCompletion: opts?.internalEventExecution ? true : undefined,
           target: () => ({
             sessionId: preparedSessionState.sessionId,
             sessionKey: sessionKey ?? preparedSessionState.sessionId,
@@ -339,6 +350,9 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
             : undefined,
         })
       : undefined);
+  if (userTurnTranscriptRecorder) {
+    await opts?.internalEventExecution?.prepareInput?.(userTurnTranscriptRecorder);
+  }
   const replyPolicyChannel =
     (replyRoute.channel as OriginatingChannelType | undefined) ??
     (messageProvider as OriginatingChannelType | undefined);
@@ -509,6 +523,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       // Queued system events are prompt content in the same trusted session;
       // they do not rewrite the sender identity used by command/action auth.
       senderIsOwner: command.senderIsOwner,
+      gitContributorProfileId: getRequesterProfile(ctx)?.id ?? readSessionInputProfileId(ctx),
       traceAuthorized:
         command.senderIsOwner || (ctx.GatewayClientScopes ?? []).includes("operator.admin"),
       traceLevelOverride: params.directives.traceLevel,

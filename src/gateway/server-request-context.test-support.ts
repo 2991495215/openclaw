@@ -147,6 +147,7 @@ export function makeContextParams(
           pluginIds: [],
         })),
         getConfigReloaderHotReloadStatus: vi.fn(() => undefined),
+        pluginRuntimeGeneration: { getReloadStatus: () => undefined },
       },
       unavailableGatewayMethods: new Set(),
       ...overrides,

@@ -1,5 +1,5 @@
 --- telegram-direct-codex-message-tool.md	sha256=e1b4596cad00e0b5d47645f8dc70674523436769e67f401c43e31625ae757100
-+++ telegram-automation-codex-tool.md	sha256=e70a42c566bf1e349a0164ea0d287a05905dc3c1fb79f02b7c4c4c5828f1977b
++++ telegram-automation-codex-tool.md	sha256=bfbb2e0ccdfb418827bfa621da0ac5b17770f782124c20cf8c095b2e14d33362
 @@ -1,1 +1,1 @@
 -# Telegram Direct Codex Message Tool Turn
 +# Telegram Direct Codex Automation Turn
@@ -57,18 +57,18 @@
 @@ -268,2 +264,2 @@
 -    "chars": 27866,
 -    "roughTokens": 6967
-+    "chars": 28769,
-+    "roughTokens": 7193
++    "chars": 28911,
++    "roughTokens": 7228
 @@ -272,2 +268,2 @@
 -    "chars": 103239,
 -    "roughTokens": 25810
-+    "chars": 75041,
-+    "roughTokens": 18761
++    "chars": 75183,
++    "roughTokens": 18796
 @@ -276,2 +272,2 @@
 -    "chars": 879,
 -    "roughTokens": 220
-+    "chars": 1447,
-+    "roughTokens": 362
++    "chars": 1589,
++    "roughTokens": 398
 @@ -446,0 +443,8 @@
 +This is an OpenClaw cron automation turn. Apply these instructions only to this scheduled job; ordinary chat turns should stay in Codex Default mode.
 +
@@ -100,7 +100,7 @@
 -Can you check whether the nightly build finished and tell me what happened?
 +Check whether the nightly build needs attention.
 +
-+This is an unattended scheduled run. Nobody is present to clarify or approve, so complete the task with what you have. Your final reply is the deliverable — not a plan, an acknowledgement, or a request for input. If nothing needs doing, reply exactly NO_REPLY. If you cannot complete the task, explain what blocked it and what you tried. Where the job's own instructions conflict with this preamble, the job's instructions win (a question or plan the job explicitly requests is a valid deliverable). If this job is no longer needed, remove it if your available tools allow.
++This is an unattended scheduled run. Nobody is present to clarify or approve, so complete the task with what you have. Your final reply is the deliverable — not a plan, an acknowledgement, or a request for input. If nothing needs doing, reply with exactly NO_REPLY as the entire final answer. NO_REPLY discards anything written this turn that was not sent, so send confirmations before ending silently. If you cannot complete the task, explain what blocked it and what you tried. Where the job's own instructions conflict with this preamble, the job's instructions win (a question or plan the job explicitly requests is a valid deliverable). If this job is no longer needed, remove it if your available tools allow.
 +
 +Automation scratch (revision 1):
 +Report a newly failed build once; keep the last checked build here.

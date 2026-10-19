@@ -1,9 +1,25 @@
+import { readExecRequestOwners } from "../../infra/exec-request-context.js";
 import { channelRouteTargetsMatchExact } from "../../plugin-sdk/channel-route.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import type { MsgContext } from "../templating.js";
 import type { SessionEventEnqueueOptions, SessionEventTarget } from "./session-event-contract.js";
 import { setChannelSourceTurnId } from "./source-turn-id.js";
+
+export function resolveSessionEventExecRequestOwners(
+  options: Pick<SessionEventEnqueueOptions, "occurrences">,
+) {
+  return options.occurrences
+    ? [
+        ...new Set(
+          options.occurrences.flatMap(
+            (occurrence) =>
+              readExecRequestOwners(occurrence) ?? readExecRequestOwners(options) ?? [],
+          ),
+        ),
+      ]
+    : readExecRequestOwners(options);
+}
 
 export function buildSessionEventContext(params: {
   agentId: string;

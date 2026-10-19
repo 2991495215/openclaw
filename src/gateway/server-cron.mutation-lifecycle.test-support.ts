@@ -10,30 +10,34 @@ import { loadCronStore, publishCronJobsStoreMutation } from "../cron/store.js";
 import { cronStoreKey } from "../cron/store/key.js";
 import { saveCronStoreInDatabase } from "../cron/store/save.kernel.js";
 import type { CronJobCreate } from "../cron/types.js";
-import type { RunExit } from "../process/supervisor/types.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
 import {
   beginAgentDeletionJournal,
   removeAgentDeletionJournal,
 } from "../test-utils/agent-deletion-journal.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import type { buildGatewayCronService } from "./server-cron.js";
+import type {
+  AddCronJob,
+  CronFixture,
+  registerGatewayCronContextTests,
+} from "./server-cron.context.test-support.js";
+import type { createWatchedRun as createWatchedRunFixture } from "./server-cron.process.test-support.js";
 
-type CronFixture = ReturnType<typeof buildGatewayCronService>;
-type CronJobOverrides = Partial<Omit<CronJobCreate, "name" | "payload">>;
-type CronMutationHarness = {
-  createCronConfig: (name: string) => OpenClawConfig;
-  loadCronService: (cfg: OpenClawConfig) => CronFixture;
-  createCronService: (cfg: OpenClawConfig) => CronFixture;
+type ContextHarness = Parameters<typeof registerGatewayCronContextTests>[0];
+type CronMutationHarness = Pick<ContextHarness, "createCronConfig" | "createCronService"> & {
+  loadCronService: ContextHarness["createCronService"];
   addCronJob: (
     service: CronFixture,
     name: string,
     payload: CronJobCreate["payload"],
-    overrides?: CronJobOverrides,
-  ) => ReturnType<CronFixture["cron"]["add"]>;
+    overrides?: Parameters<AddCronJob>[3],
+  ) => ReturnType<AddCronJob>;
 };
 
-function holdNextCronMutation() {
+async function withHeldMutation<T>(
+  mutate: () => Promise<T>,
+  check: (held: { release: () => void; result: Promise<T> }) => Promise<void>,
+) {
   const entered = createDeferred();
   const release = createDeferred();
   const execute = runtimeMutation.runCronRuntimeMutation;
@@ -48,75 +52,72 @@ function holdNextCronMutation() {
       await release.promise;
       return execute(params);
     });
-  return { entered, release, restore: () => held.mockRestore() };
+  const result = mutate();
+  // Attach rejection observation before the gate opens; the check owns the assertion.
+  void result.catch(() => {});
+  try {
+    await entered.promise;
+    await check({ release: () => release.resolve(), result });
+  } finally {
+    release.resolve();
+    await result.catch(() => {});
+    held.mockRestore();
+  }
 }
 
-export function registerGatewayCronMutationAuthorityTests({
-  createCronConfig,
-  loadCronService,
-  createCronService,
-  addCronJob,
-}: CronMutationHarness) {
+async function readStoredJob(state: CronFixture, id: string) {
+  return (await loadCronStore(state.storePath)).jobs.find((job) => job.id === id);
+}
+
+export function registerGatewayCronMutationAuthorityTests(harness: CronMutationHarness) {
   it("refuses ordinary automations when agent deletion begins before commit until rollback", async () => {
     await withOpenClawTestState({ label: "cron-ordinary-retirement" }, async (fixture) => {
       const cfg: OpenClawConfig = {
         cron: { enabled: false },
         agents: { ownership: "explicit", entries: { main: {}, retiring: {} } },
       };
-      const state = loadCronService(cfg);
+      const state = harness.loadCronService(cfg);
       const addJob = () =>
-        addCronJob(
+        harness.addCronJob(
           state,
           "ordinary-retiring-owner",
           { kind: "agentTurn", message: "Retain this ordinary automation" },
           { agentId: "retiring", enabled: false, schedule: { kind: "every", everyMs: 60_000 } },
         );
-      const held = holdNextCronMutation();
       let deletion: ReturnType<typeof beginAgentDeletionJournal> | undefined;
-      let pending: Promise<unknown> | undefined;
       try {
-        const result = addJob().then(
-          (job) => ({ ok: true as const, job }),
-          (error: unknown) => ({ ok: false as const, error }),
-        );
-        pending = result;
-        await held.entered.promise;
-        deletion = beginAgentDeletionJournal({
-          agentId: "retiring",
-          operationId: "ordinary-retirement",
-          agentDir: fixture.agentDir("retiring"),
-          workspaceDir: fixture.path("workspace-retiring"),
-          sessionsDir: fixture.sessionsDir("retiring"),
-          deleteFiles: false,
-        });
-        held.release.resolve();
-        expect(await result).toMatchObject({
-          ok: false,
-          error: {
+        await withHeldMutation(addJob, async ({ release, result }) => {
+          deletion = beginAgentDeletionJournal({
+            agentId: "retiring",
+            operationId: "ordinary-retirement",
+            agentDir: fixture.agentDir("retiring"),
+            workspaceDir: fixture.path("workspace-retiring"),
+            sessionsDir: fixture.sessionsDir("retiring"),
+            deleteFiles: false,
+          });
+          release();
+          await expect(result).rejects.toMatchObject({
             name: "CronAgentDeletionBlockedError",
             message: "cron job agent is unavailable: retiring",
-          },
+          });
+          expect((await loadCronStore(state.storePath)).jobs).toEqual([]);
+          expect(removeAgentDeletionJournal("retiring", deletion.operationId)).toBe(true);
+          deletion = undefined;
+          const created = await addJob();
+          expect((await loadCronStore(state.storePath)).jobs).toContainEqual(
+            expect.objectContaining({
+              id: created.id,
+              agentId: "retiring",
+              enabled: false,
+              payload: {
+                kind: "agentTurn",
+                message: "Retain this ordinary automation",
+                toolsAllow: ["*"],
+              },
+            }),
+          );
         });
-        expect((await loadCronStore(state.storePath)).jobs).toEqual([]);
-        expect(removeAgentDeletionJournal("retiring", deletion.operationId)).toBe(true);
-        deletion = undefined;
-        const created = await addJob();
-        expect((await loadCronStore(state.storePath)).jobs).toContainEqual(
-          expect.objectContaining({
-            id: created.id,
-            agentId: "retiring",
-            enabled: false,
-            payload: {
-              kind: "agentTurn",
-              message: "Retain this ordinary automation",
-              toolsAllow: ["*"],
-            },
-          }),
-        );
       } finally {
-        held.release.resolve();
-        await pending;
-        held.restore();
         if (deletion) {
           removeAgentDeletionJournal("retiring", deletion.operationId);
         }
@@ -128,8 +129,8 @@ export function registerGatewayCronMutationAuthorityTests({
   it.each(["update", "updateWithPrecondition"] as const)(
     "forwards authority options through the %s lifecycle wrapper",
     async (method) => {
-      const cfg = createCronConfig(`server-cron-update-authority-${method}`);
-      const state = loadCronService(cfg);
+      const cfg = harness.createCronConfig(`server-cron-update-authority-${method}`);
+      const state = harness.loadCronService(cfg);
       const owner = {
         agentId: "main",
         sessionKey: "agent:main:discord:group:ops",
@@ -158,13 +159,10 @@ export function registerGatewayCronMutationAuthorityTests({
       const options = { scheduledToolPolicy, commitGuard, captureRuntimeAuthority };
       let restarted: CronFixture | undefined;
       try {
-        const job = await addCronJob(
+        const job = await harness.addCronJob(
           state,
           `authority ${method}`,
-          {
-            kind: "systemEvent",
-            text: "run",
-          },
+          { kind: "systemEvent", text: "run" },
           {
             owner,
             schedule: { kind: "every", everyMs: 60_000 },
@@ -172,56 +170,41 @@ export function registerGatewayCronMutationAuthorityTests({
             wakeMode: "now",
           },
         );
-        const patch = {
-          sessionTarget: "isolated" as const,
-          payload: { kind: "agentTurn" as const, message: "updated", toolsAllow: ["write"] },
-        };
         const update = (next: Parameters<CronFixture["cron"]["update"]>[1]) =>
           method === "update"
             ? state.cron.update(job.id, next, options)
             : state.cron.updateWithPrecondition(job.id, next, precondition, options);
-        await update(patch);
-        expect(captureRuntimeAuthority).toHaveBeenCalledOnce();
-        if (method === "updateWithPrecondition") {
-          expect(precondition).toHaveBeenCalledOnce();
-        }
-        const committed = expectDefined(
-          (await loadCronStore(state.storePath)).jobs.find((entry) => entry.id === job.id),
-          "committed authority job",
-        );
-        expect(committed.scheduledToolPolicy).toEqual(scheduledToolPolicy);
-        expect(committed.runtimeAuthority).toEqual(runtimeAuthority);
-
-        captureRuntimeAuthority.mockClear();
-        precondition.mockClear();
-        const held = holdNextCronMutation();
-        const revoked = update({ name: "must not commit" }).then(
-          () => ({ ok: true as const }),
-          (error: unknown) => ({ ok: false as const, error }),
-        );
-        try {
-          await held.entered.promise;
-          current = false;
-          held.release.resolve();
-          const result = await revoked;
-          expect(result).toMatchObject({
-            ok: false,
-            error: { message: expect.stringContaining("authority revoked") },
-          });
+        const expectCaptured = () => {
           expect(captureRuntimeAuthority).toHaveBeenCalledOnce();
           if (method === "updateWithPrecondition") {
             expect(precondition).toHaveBeenCalledOnce();
           }
-          expect(
-            (await loadCronStore(state.storePath)).jobs.find((entry) => entry.id === job.id),
-          ).toEqual(committed);
-        } finally {
-          held.release.resolve();
-          await revoked;
-          held.restore();
-        }
+        };
+        await update({
+          sessionTarget: "isolated",
+          payload: { kind: "agentTurn", message: "updated", toolsAllow: ["write"] },
+        });
+        expectCaptured();
+        const committed = expectDefined(await readStoredJob(state, job.id), "authority job");
+        expect([committed.scheduledToolPolicy, committed.runtimeAuthority]).toEqual([
+          scheduledToolPolicy,
+          runtimeAuthority,
+        ]);
+
+        captureRuntimeAuthority.mockClear();
+        precondition.mockClear();
+        await withHeldMutation(
+          () => update({ name: "must not commit" }),
+          async ({ release, result }) => {
+            current = false;
+            release();
+            await expect(result).rejects.toThrow("authority revoked");
+            expectCaptured();
+            expect(await readStoredJob(state, job.id)).toEqual(committed);
+          },
+        );
         state.cron.stop();
-        restarted = createCronService(cfg);
+        restarted = harness.createCronService(cfg);
         expect((await restarted.cron.readJob(job.id))?.scheduledToolPolicy).toEqual(
           scheduledToolPolicy,
         );
@@ -233,30 +216,23 @@ export function registerGatewayCronMutationAuthorityTests({
   );
 }
 
-type WatchedRun = {
-  exit: ReturnType<typeof createDeferred<RunExit>>;
-  startedAtMs: number;
-  cancel: Mock<() => void>;
-  detachOutput: Mock;
-  wait: Mock<() => Promise<RunExit>>;
+type StreamMutationHarness = Pick<CronMutationHarness, "createCronConfig" | "loadCronService"> & {
+  addSystemEventJob: AddCronJob;
+  createWatchedRun: typeof createWatchedRunFixture;
+  mockCronSupervisor: (...runs: ReturnType<typeof createWatchedRunFixture>[]) => {
+    spawn: Mock;
+    cancelScope: Mock;
+  };
 };
 
-export function registerGatewayCronStreamMutationTests({
-  createCronConfig,
-  loadCronService,
-  addSystemEventJob,
-  createWatchedRun,
-  mockCronSupervisor,
-}: Pick<CronMutationHarness, "createCronConfig" | "loadCronService"> & {
-  addSystemEventJob: (
-    service: CronFixture,
-    name: string,
-    text: string,
-    overrides?: CronJobOverrides,
-  ) => ReturnType<CronFixture["cron"]["add"]>;
-  createWatchedRun: (settleOnCancel: boolean, exitResult: Partial<RunExit>) => WatchedRun;
-  mockCronSupervisor: (...runs: WatchedRun[]) => { spawn: Mock; cancelScope: Mock };
-}) {
+export function registerGatewayCronStreamMutationTests(harness: StreamMutationHarness) {
+  const {
+    createCronConfig,
+    loadCronService,
+    addSystemEventJob,
+    createWatchedRun,
+    mockCronSupervisor,
+  } = harness;
   it.each(["stream", "on-exit"] as const)(
     "settles a published legacy %s task conversion through its existing watcher owner",
     async (kind) => {
@@ -332,44 +308,39 @@ export function registerGatewayCronStreamMutationTests({
 
   it("reports a committed stream update as successful when source teardown fails", async () => {
     vi.useFakeTimers();
-    const watched = createWatchedRun(true, { durationMs: 10_000 });
+    const watched = harness.createWatchedRun(true, { durationMs: 10_000 });
     const canceled = createDeferred();
     watched.cancel.mockImplementationOnce(() => canceled.resolve());
-    const { cancelScope } = mockCronSupervisor(watched);
-    const cfg = createCronConfig("server-cron-stream-update-teardown-failure");
+    const { cancelScope } = harness.mockCronSupervisor(watched);
+    const cfg = harness.createCronConfig("server-cron-stream-update-teardown-failure");
     cfg.cron = { ...cfg.cron, triggers: { enabled: true } };
-    const state = loadCronService(cfg);
+    const state = harness.loadCronService(cfg);
     try {
-      const added = await addSystemEventJob(state, "stubborn update stream source", "event", {
-        schedule: { kind: "stream", command: ["source"] },
-        sessionTarget: "main",
-      });
-      const streamJob = "job" in added ? added.job : added;
-      const held = holdNextCronMutation();
-      const update = state.cron.update(streamJob.id, { enabled: false }).then(
-        (job) => ({ ok: true as const, job }),
-        (error: unknown) => ({ ok: false as const, error }),
+      const added = await harness.addSystemEventJob(
+        state,
+        "stubborn update stream source",
+        "event",
+        {
+          schedule: { kind: "stream", command: ["source"] },
+          sessionTarget: "main",
+        },
       );
-      try {
-        await held.entered.promise;
-        await canceled.promise;
-        cancelScope.mockClear();
-        // The original stop deadline must settle while the real write is still pending.
-        await vi.advanceTimersByTimeAsync(30_000);
-        expect(cancelScope).toHaveBeenCalledWith(`cron-stream:${streamJob.id}`, "manual-cancel");
-        expect(state.cron.getJob(streamJob.id)?.enabled).toBe(true);
-        held.release.resolve();
-        expect(await update).toMatchObject({ ok: true, job: { enabled: false } });
-        expect(
-          (await loadCronStore(state.storePath)).jobs.find((job) => job.id === streamJob.id)
-            ?.enabled,
-        ).toBe(false);
-        expect(watched.cancel).toHaveBeenCalled();
-      } finally {
-        held.release.resolve();
-        await update;
-        held.restore();
-      }
+      const streamJob = "job" in added ? added.job : added;
+      await withHeldMutation(
+        () => state.cron.update(streamJob.id, { enabled: false }),
+        async ({ release, result }) => {
+          await canceled.promise;
+          cancelScope.mockClear();
+          // The stop deadline settles while the durable write is still pending.
+          await vi.advanceTimersByTimeAsync(30_000);
+          expect(cancelScope).toHaveBeenCalledWith(`cron-stream:${streamJob.id}`, "manual-cancel");
+          expect(state.cron.getJob(streamJob.id)?.enabled).toBe(true);
+          release();
+          await expect(result).resolves.toMatchObject({ enabled: false });
+          expect((await readStoredJob(state, streamJob.id))?.enabled).toBe(false);
+          expect(watched.cancel).toHaveBeenCalled();
+        },
+      );
     } finally {
       try {
         await state.stopStreamWatchers?.();
