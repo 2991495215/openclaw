@@ -24,6 +24,7 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/call-device-auth.worker.test.ts",
   "src/gateway/chat-auth-readiness.integration.test.ts",
   "src/gateway/chat-display-projection.cron.test.ts",
+  "src/gateway/chat-input-recovery.test.ts",
   "src/gateway/config-reload.activation.integration.test.ts",
   "src/gateway/config-reload.lease-retry.test.ts",
   "src/gateway/config-reload.plugin-drain.test.ts",
@@ -290,6 +291,7 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/session-row-projection.topology.test.ts",
   "src/gateway/session-row-selection.test.ts",
   "src/gateway/session-send-recovery.test.ts",
+  "src/gateway/session-send-recovery.upgrade.test.ts",
   "src/gateway/session-sharing-committed-read.test.ts",
   "src/gateway/session-sharing-creation-receipts.test.ts",
   "src/gateway/session-sharing-groups.test.ts",
@@ -607,6 +609,7 @@ export const gatewayServerIsolatedTestFiles = [
   "src/gateway/server.chat.canonical-publication.test.ts",
   "src/gateway/server.chat-worktree-readiness.product.test.ts",
   "src/gateway/server.chat-membership-authority.product.test.ts",
+  "src/gateway/chat-input-recovery.authority.test.ts",
   "src/gateway/server-chat.retired-projection.test.ts",
   "src/gateway/server-plugin-subagent-runtime.overrides.test.ts",
   // Loads the real plugin runtime that neighboring server tests replace with mocks.
