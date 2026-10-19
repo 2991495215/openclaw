@@ -50,7 +50,6 @@ import {
 import type { ReplyOperation } from "../sessions/session-controller.contracts.js";
 import { createReplyOperation } from "../sessions/session-controller.operation.js";
 import { getSessionControllerOperation } from "../sessions/session-controller.state.js";
-import { abortReplyRunBySessionId } from "../sessions/session-controller.stop-runtime.js";
 import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
 import type { DB as OpenClawStateDatabase } from "../state/openclaw-state-db.generated.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
@@ -405,9 +404,7 @@ it.for(["resume", "stop"] as const)(
       expect(readExecutionBinding()).toBeUndefined();
       expect(peekSystemEventEntries(SESSION).some((event) => event.id === notice.id)).toBe(true);
       if (completion === "stop") {
-        expect(
-          abortReplyRunBySessionId(expectDefined(scheduledOperation, "scheduled reply").sessionId),
-        ).toBe(true);
+        expect(expectDefined(scheduledOperation, "scheduled reply").abortByUser()).toBe(true);
       } else {
         foreground?.complete();
       }

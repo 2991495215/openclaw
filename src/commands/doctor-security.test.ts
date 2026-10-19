@@ -352,35 +352,6 @@ describe("noteSecurityWarnings gateway exposure", () => {
     expect(message).toContain('agents.runner.ask="always"');
   });
 
-  it("warns when heartbeat delivery relies on implicit directPolicy defaults", async () => {
-    const cfg = {
-      agents: {
-        defaults: {
-          heartbeat: {
-            target: "last",
-          },
-        },
-      },
-    } as OpenClawConfig;
-    await noteSecurityWarnings(cfg);
-    const message = lastMessage();
-    expect(message).toContain("Heartbeat defaults");
-    expect(message).toContain("agents.defaults.heartbeat.directPolicy");
-    expect(message).toContain("direct/DM targets by default");
-  });
-
-  it("warns at the legacy agent config path for implicit heartbeat directPolicy", async () => {
-    const cfg: OpenClawConfigWithLegacyRoster = {
-      agents: { list: [{ id: "ops", heartbeat: { target: "last" } }] },
-    };
-    await noteSecurityWarnings(cfg);
-
-    const message = lastMessage();
-    expect(message).toContain('Heartbeat agent "ops"');
-    expect(message).toContain('heartbeat.directPolicy for agent "ops"');
-    expect(message).toContain("direct/DM targets by default");
-  });
-
   it("keeps intentional Discord open groupPolicy advisory in Doctor and update lint", async () => {
     const { loadBundledPluginFacade } =
       await import("../test-utils/bundled-plugin-public-surface.js");

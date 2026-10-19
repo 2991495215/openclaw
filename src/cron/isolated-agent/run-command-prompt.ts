@@ -1,5 +1,9 @@
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import type { resolveHookExternalContentSource } from "../../security/external-content-source.js";
+import {
+  isExternalHookSession,
+  mapHookExternalContentSource,
+  type resolveHookExternalContentSource,
+} from "../../security/external-content-source.js";
 import { appendCronJobScratchPrompt, appendCronUnattendedRunPreamble } from "../run-prompt.js";
 import { readCronScratchSnapshot } from "../scratch-read.js";
 import { resolveCronJobsStorePathFromConfig } from "../store/paths.js";
@@ -7,7 +11,7 @@ import {
   loadCronExternalContentRuntime,
   type RunCronAgentTurnParams,
 } from "./run-prepare-runtime.js";
-import { isExternalHookSession, logWarn, mapHookExternalContentSource } from "./run.runtime.js";
+import { logWarn } from "./run.runtime.js";
 
 /** Compose the scheduled command, retaining hook fencing and the admitted scratch revision. */
 export async function prepareCronCommandPrompt(params: {

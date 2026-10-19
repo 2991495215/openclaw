@@ -607,9 +607,8 @@ export function registerCronEditCommand(cron: Command) {
               }
               const mode = delivery.mode ?? existing.delivery?.mode;
               if (deliveryPolicy.target === "owner" || deliveryPolicy.directPolicy != null) {
-                const sessionTarget =
-                  normalizeCronSessionTargetOption(opts.session) ?? existing.sessionTarget;
-                if (sessionTarget === "main" || hasSystemEventPatch) {
+                const resolvedSessionTarget = sessionTarget ?? existing.sessionTarget;
+                if (resolvedSessionTarget === "main" || hasSystemEventPatch) {
                   throw new CronCliError(
                     "--delivery-target/--direct-policy require a non-main job; use --session isolated or session:<id>",
                   );

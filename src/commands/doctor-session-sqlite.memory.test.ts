@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "tsdown";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, onTestFailed } from "vitest";
 import packageJson from "../../package.json" with { type: "json" };
 import {
   createRuntimeProcessBuildEntries,
