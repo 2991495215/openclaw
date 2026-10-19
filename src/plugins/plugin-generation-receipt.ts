@@ -6,7 +6,7 @@ import {
 import { hashPluginSourceFile } from "./plugin-source-file.js";
 import type { PluginCapturedSourceFact as PluginSourceContent } from "./plugin-source-verification.js";
 
-type PluginGenerationReceipt = { signature: string; sourceDigest: string };
+export type PluginGenerationReceipt = { signature: string; sourceDigest: string };
 type PluginReceiptFile = {
   target: string;
   boundary: string;
@@ -17,9 +17,11 @@ type PluginReceiptFile = {
 };
 
 /** Reuse the initial raw-byte receipt only when its complete ordered inputs still match. */
-export function createPluginGenerationReceipt(prepared?: PluginGenerationReceipt) {
+export function createPluginGenerationReceipt(
+  prepared?: PluginGenerationReceipt,
+  finished?: PluginGenerationReceipt,
+) {
   const events: Array<string | PluginReceiptFile> = [];
-  let finished: PluginGenerationReceipt | undefined;
   const publishContent = (file: PluginReceiptFile, content: PluginSourceContent) => {
     if (content.sizeBytes !== file.sizeBytes) {
       throw new Error(

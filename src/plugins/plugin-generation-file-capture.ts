@@ -17,8 +17,7 @@ import {
   type PluginCapturedSourceFact,
 } from "./plugin-source-verification.js";
 
-export function createPluginSourceLinkCapture() {
-  const links = new Set<string>();
+export function createPluginSourceLinkCapture(links = new Set<string>()) {
   return {
     defer(filename: string, root: string, source = filename): boolean {
       if (

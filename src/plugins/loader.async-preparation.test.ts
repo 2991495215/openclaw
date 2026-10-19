@@ -161,6 +161,14 @@ it("retires preparation workers while registered tools keep their captured lazy 
     });`,
   });
   const helper = path.join(plugin.dir, "lazy.mjs");
+  fs.writeFileSync(
+    path.join(plugin.dir, "openclaw.plugin.json"),
+    JSON.stringify({
+      id: plugin.id,
+      configSchema: { type: "object", properties: {} },
+      contracts: { tools: ["prepared_lazy"] },
+    }),
+  );
   fs.writeFileSync(helper, 'export const value = "captured";');
   await isolated(async () => {
     const registry = await loadOpenClawPluginsAsync({

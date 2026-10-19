@@ -9,8 +9,10 @@ import {
   nativeAdmissionStateFor,
   queuePluginNativeAdmissionPublication,
   retainNativePath,
+  retainPluginNativeAdmissionState,
   snapshotOwners,
   startNativeAdmissionPublication,
+  type AdmissionState,
 } from "./plugin-native-admission-state.js";
 import {
   assertPluginNativeNamespaceHost,
@@ -28,7 +30,6 @@ import {
   createPluginNativeReferenceValidator,
   linkPluginNativeReference,
 } from "./plugin-native-reference.js";
-import { retainPluginNativeRoot } from "./plugin-native-root-lease.js";
 import { resolvePluginModulePackageRoot } from "./plugin-package-metadata-capture.js";
 import { getPluginSourceAdmissionPublisher } from "./plugin-source-admission-context.js";
 import type {
@@ -49,6 +50,17 @@ import {
 
 type NativeSnapshot = ReturnType<typeof createPluginNativeCaptureRoot>;
 type NativeReceipt = { signature: string; sourceDigest: string };
+export type PluginNativeAdmissionCaptureState = {
+  selected: Map<string, PluginNativeNamespaceFact>;
+  priorNamespaces: Set<PluginNativeNamespaceFact>;
+  files: Map<string, PluginNativeArtifactFact>;
+  targets: Map<string, string>;
+  hardlinkedTargets: Set<string>;
+  pendingTargets: Set<string>;
+  recoveredFiles: Map<string, PluginNativeArtifactFact>;
+  hostRoot?: string;
+  finalReceipt?: NativeReceipt;
+};
 // Membership and source paths stay fixed; admission only updates identities and digests.
 const nativeSourceMembers = new WeakMap<PluginNativeNamespaceFact, Map<string, string>>();
 
@@ -82,46 +94,6 @@ export type PluginNativeRecovery = {
   dispose(): void;
   disposeAsync(): Promise<void>;
 };
-/** Native roots cross a worker boundary as independently owned leases, never cache authority. */
-export type PluginNativeRecoverySnapshot = {
-  receipt: NativeReceipt;
-  references: Map<string, PluginNativeArtifactFact>;
-  namespaces: Map<string, PluginNativeNamespaceFact>;
-  directories: Map<string, string>;
-  roots: NativeSnapshot[];
-};
-const recoverySnapshots = new WeakMap<object, () => PluginNativeRecoverySnapshot>();
-
-export function snapshotPluginNativeRecovery(
-  recovery: PluginNativeRecovery,
-): PluginNativeRecoverySnapshot {
-  const snapshot = recoverySnapshots.get(recovery);
-  if (!snapshot) {
-    throw new Error("Native recovery is not owned by plugin admission");
-  }
-  return snapshot();
-}
-
-export function isOwnedPluginNativeRecovery(value: object): value is PluginNativeRecovery {
-  return recoverySnapshots.has(value);
-}
-
-export function restorePluginNativeRecovery(
-  snapshot: PluginNativeRecoverySnapshot,
-): PluginNativeRecovery {
-  for (const root of snapshot.roots) {
-    if (!snapshotOwners.has(root)) {
-      snapshotOwners.set(root, new Set());
-    }
-  }
-  return createNativeRecovery(
-    snapshot.receipt,
-    snapshot.references,
-    snapshot.namespaces,
-    snapshot.directories,
-    snapshot.roots,
-  );
-}
 // Recovery custody contains copied paths and native roots, never the retired registry or instance.
 function createNativeRecovery(
   receipt: NativeReceipt,
@@ -195,19 +167,6 @@ function createNativeRecovery(
       await Promise.all(release().map((root) => root.disposeAsync()));
     },
   };
-  recoverySnapshots.set(recovery, () => {
-    if (disposed) {
-      throw new Error("Plugin native recovery has been disposed");
-    }
-    const leases = roots.map(retainPluginNativeRoot);
-    return {
-      receipt: { ...receipt },
-      references: structuredClone(references),
-      namespaces: structuredClone(namespaces),
-      directories: new Map(directories),
-      roots: leases,
-    };
-  });
   return recovery;
 }
 
@@ -232,9 +191,10 @@ export function createPluginNativeAdmission(
   entryFiles?: readonly string[],
   recovery?: PluginNativeRecovery,
   outputRoot?: string,
+  captured?: PluginNativeAdmissionCaptureState,
+  state: AdmissionState = nativeAdmissionStateFor(),
 ) {
   recovery?.retain(getPluginCache());
-  const state = nativeAdmissionStateFor();
   const entryKey =
     entryFiles?.length === 1
       ? path.resolve(entryFiles[0]!)
@@ -243,17 +203,27 @@ export function createPluginNativeAdmission(
   const owner = state.owners.get(path.resolve(rootDir));
   const publishAdmission =
     owner && !state.artifactPreservingReadOnly ? getPluginSourceAdmissionPublisher() : undefined;
+  const custody = retainPluginNativeAdmissionState(state);
   const prepared = recovery?.receipt ?? state.receipts.get(key);
-  const selected = new Map<string, PluginNativeNamespaceFact>();
-  const priorNamespaces = new Set<PluginNativeNamespaceFact>();
-  const files = new Map<string, PluginNativeArtifactFact>();
-  const targets = new Map<string, string>();
-  const hardlinkedTargets = new Set<string>();
-  const pendingTargets = new Set<string>();
+  const selected = new Map(
+    [...(captured?.selected ?? [])].map(
+      ([alias, namespace]) =>
+        [alias, state.namespaces.get(namespace.capturedRoot) ?? namespace] as const,
+    ),
+  );
+  const priorNamespaces = new Set(
+    [...(captured?.priorNamespaces ?? [])].map(
+      (namespace) => state.namespaces.get(namespace.capturedRoot) ?? namespace,
+    ),
+  );
+  const files = captured?.files ?? new Map<string, PluginNativeArtifactFact>();
+  const targets = captured?.targets ?? new Map<string, string>();
+  const hardlinkedTargets = captured?.hardlinkedTargets ?? new Set<string>();
+  const pendingTargets = captured?.pendingTargets ?? new Set<string>();
   let assertReference = createPluginNativeReferenceValidator(directory, owner?.pluginId ?? rootDir);
-  const recoveredFiles = new Map<string, PluginNativeArtifactFact>();
-  let hostRoot: string | undefined;
-  let finalReceipt: NativeReceipt | undefined;
+  const recoveredFiles = captured?.recoveredFiles ?? new Map<string, PluginNativeArtifactFact>();
+  let hostRoot = captured?.hostRoot;
+  let finalReceipt = captured?.finalReceipt;
   const namespaces = () => [...new Set(selected.values())];
   for (const [alias, id] of recovery?.directories ?? []) {
     const namespace = state.namespaces.get(id);
@@ -520,6 +490,21 @@ export function createPluginNativeAdmission(
   };
   return {
     prepared,
+    dispose: custody.dispose,
+    disposeAsync: custody.disposeAsync,
+    snapshot(): PluginNativeAdmissionCaptureState {
+      return {
+        selected,
+        priorNamespaces,
+        files,
+        targets,
+        hardlinkedTargets,
+        pendingTargets,
+        recoveredFiles,
+        hostRoot,
+        finalReceipt,
+      };
+    },
     resolvePreparedSource,
     sourceForPrepared,
     captureRecovery(
