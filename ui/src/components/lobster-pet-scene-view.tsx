@@ -21,20 +21,10 @@ import {
   type LobsterSceneTravel,
 } from "./lobster-pet-scene.ts";
 import { Balloon, BottleSvg, PASSER_SPRITES, PASSER_TITLES } from "./lobster-pet-sprites.tsx";
-import {
-  THEME_CRITTER_SPRITES,
-  THEME_CRITTER_TITLES,
-  themeCritterBaseStyle,
-} from "./theme-flair-artwork.tsx";
+import { THEME_CRITTERS } from "./theme-flair-artwork.tsx";
 
-const PASSER_SPRITES_BY_KIND: Partial<Record<string, () => JSX.Element>> = {
-  ...PASSER_SPRITES,
-  ...THEME_CRITTER_SPRITES,
-};
-const PASSER_LABELS: Partial<Record<string, string>> = {
-  ...PASSER_TITLES,
-  ...THEME_CRITTER_TITLES,
-};
+const PASSER_SPRITES_BY_KIND: Partial<Record<string, () => JSX.Element>> = PASSER_SPRITES;
+const PASSER_LABELS: Partial<Record<string, string>> = PASSER_TITLES;
 
 function strangerLookFor(seed: number, own: LobsterPetPaletteId): LobsterPetLook {
   for (let offset = 1; offset <= 24; offset++) {
@@ -324,14 +314,20 @@ function Scene(args: LobsterPetSceneProps) {
     const passerStyle = args.passer
       ? `${passerBaseStyle(args.passer.kind, args.passer.direction, passerLook, Boolean(passerArtwork))};--lob-cross:${args.passer.crossMs}ms;--lob-cross-from:${fromX}px;--lob-cross-to:${toX}px;--lob-y:${passerLane?.y ?? 0}px`
       : "";
+    const themeCritter =
+      args.passer && isThemeCritterId(args.passer.kind)
+        ? THEME_CRITTERS[args.passer.kind]
+        : undefined;
     const passerSprite =
-      args.passer && Object.hasOwn(PASSER_SPRITES_BY_KIND, args.passer.kind)
+      themeCritter?.sprite ??
+      (args.passer && Object.hasOwn(PASSER_SPRITES_BY_KIND, args.passer.kind)
         ? PASSER_SPRITES_BY_KIND[args.passer.kind]
-        : undefined;
+        : undefined);
     const passerTitle =
-      args.passer && Object.hasOwn(PASSER_LABELS, args.passer.kind)
+      themeCritter?.title ??
+      (args.passer && Object.hasOwn(PASSER_LABELS, args.passer.kind)
         ? PASSER_LABELS[args.passer.kind]
-        : undefined;
+        : undefined);
     const bottlePoint = lobsterLanePoint(args.scene.top, args.bottle?.spotPct ?? 50);
     return {
       showSprites,
@@ -425,7 +421,7 @@ function passerBaseStyle(
     return lobsterPetSpriteStyle(passerLook, Math.min(passerLook.scale, 2), 0, direction);
   }
   if (isThemeCritterId(kind)) {
-    return themeCritterBaseStyle(kind, direction);
+    return THEME_CRITTERS[kind].style(direction);
   }
   const fixed: Partial<Record<string, string>> = {
     crab: "--lob-scale:2;--lob-w:1;--lob-h:0.82;--lob-face:1",

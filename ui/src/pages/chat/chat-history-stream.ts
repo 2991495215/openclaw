@@ -6,7 +6,7 @@ import {
   isHiddenAssistantStreamText,
   shouldHideAssistantChatMessage,
 } from "../../lib/chat/message-visibility.ts";
-import { isSessionRunStateActive } from "../../lib/session-run-state.ts";
+import { isSessionRunStateActive, TERMINAL_RUN_OUTCOMES } from "../../lib/session-run-state.ts";
 import type { ChatHistoryResult } from "./chat-history-snapshot.ts";
 import {
   isChatRunStartupPhase,
@@ -146,10 +146,7 @@ export function applyHistoryRun(params: {
     const knownRun = terminalRunId ? currentRunProjections[terminalRunId] : undefined;
     if (
       terminalRunId &&
-      (sessionInfo.status === "done" ||
-        sessionInfo.status === "failed" ||
-        sessionInfo.status === "killed" ||
-        sessionInfo.status === "timeout") &&
+      Object.hasOwn(TERMINAL_RUN_OUTCOMES, sessionInfo.status ?? "") &&
       sessionInfo.hasActiveRun !== true &&
       !isSessionRunStateActive(sessionInfo) &&
       (!state.chatRunId || state.chatRunId === terminalRunId) &&

@@ -55,6 +55,7 @@ import {
   resolveUiSessionRowAgentId,
   scopedSessionArtifactKey,
 } from "../../lib/sessions/session-key.ts";
+import { sessionMenuMetadataPatch } from "../../lib/sessions/session-menu-metadata-patch.ts";
 import { requestSessionInvolvement } from "../../lib/sessions/session-requests.ts";
 import { searchVisibleSessionTranscripts } from "../../lib/sessions/transcript-search.ts";
 import { formatPreservedWorktreesNotice } from "../../lib/sessions/worktree-preservation.ts";
@@ -1229,7 +1230,7 @@ export function createSessionsPage(
           case "toggle-unread":
             void actions.patchSession(
               row.key,
-              { unread: row.unread !== true },
+              sessionMenuMetadataPatch(action, row),
               undefined,
               row.sessionId,
               {
@@ -1241,21 +1242,17 @@ export function createSessionsPage(
             void renameSession(row);
             break;
           case "set-color":
-            void actions.patchSession(row.key, { color: action.color });
-            break;
           case "set-icon":
-            void actions.patchSession(row.key, { icon: action.icon });
+          case "reset-appearance":
+            void actions.patchSession(row.key, sessionMenuMetadataPatch(action, row));
             break;
           case "set-communication":
             void actions.patchSession(
               row.key,
-              { communication: action.communication },
+              sessionMenuMetadataPatch(action, row),
               undefined,
               row.sessionId,
             );
-            break;
-          case "reset-appearance":
-            void actions.patchSession(row.key, { icon: null, color: null });
             break;
           case "move-session": {
             const scope = captureRequestScope();

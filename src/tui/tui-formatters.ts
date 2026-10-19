@@ -10,6 +10,7 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { isImageMediaFact, readPersistedMediaFacts } from "../media/media-facts.js";
 import { formatRawAssistantErrorForUi } from "../shared/assistant-error-format.js";
 import { extractAssistantPhaseText } from "../shared/chat-message-content.js";
+import { SESSION_GOAL_STATUS_FACTS } from "../shared/session-goal-display.js";
 import { formatTokenCount } from "../utils/token-format.js";
 import type { SessionInfo } from "./tui-types.js";
 
@@ -458,21 +459,8 @@ function formatGoalFooter(goal?: SessionGoal): string | null {
         : null
       : `${formatTokenCount(goal.tokensUsed)}/${formatTokenCount(goal.tokenBudget)}`;
   const suffix = usage ? ` (${usage})` : "";
-  switch (goal.status) {
-    case "active":
-      return `Pursuing goal${suffix}`;
-    case "paused":
-      return "Goal paused (/goal resume)";
-    case "blocked":
-      return "Goal blocked (/goal resume)";
-    case "usage_limited":
-      return "Goal hit usage limits (/goal resume)";
-    case "budget_limited":
-      return `Goal unmet${suffix}`;
-    case "complete":
-      return `Goal achieved${suffix}`;
-  }
-  return null;
+  const facts = SESSION_GOAL_STATUS_FACTS[goal.status];
+  return facts?.label ? `${facts.label}${facts.resumeHint ? " (/goal resume)" : suffix}` : null;
 }
 
 export function formatContextUsageLine(params: {

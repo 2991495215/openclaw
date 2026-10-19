@@ -6,6 +6,7 @@ import { listen } from "../lib/reactive/listener.ts";
 import type { SessionGroupSettings } from "../lib/sessions/custom-groups.ts";
 import { getSafeLocalStorage } from "../local-storage.ts";
 
+export const RECOVERY_AUTH_METHODS: readonly string[] = ["trusted-proxy", "tailscale", "password"];
 const BOOT_RECORD_PREFIX = "openclaw.control.bootRecord.v1:";
 const BOOT_RECORD_MAX_BYTES = 64 * 1024;
 const BOOT_RECORD_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
@@ -80,11 +81,7 @@ export function resolveBootRecordAuth(
   // Bootstrap itself is single-use. The hello can issue the reusable device
   // grant that the browser client has stored before publishing this admission.
   const method = auth?.method === "bootstrap-token" ? "device-token" : auth?.method;
-  if (
-    auth?.recoveryScope?.trim() &&
-    method &&
-    ["trusted-proxy", "tailscale", "password"].includes(method)
-  ) {
+  if (auth?.recoveryScope?.trim() && method && RECOVERY_AUTH_METHODS.includes(method)) {
     return { authMethod: method, credential: "" };
   }
   if (method !== "token" && method !== "device-token") {
@@ -102,7 +99,7 @@ function isBootRecord(value: unknown): value is BootRecord {
   return (
     value.version === 2 &&
     (["token", "device-token"].includes(String(value.authMethod)) ||
-      (["trusted-proxy", "tailscale", "password"].includes(String(value.authMethod)) &&
+      (RECOVERY_AUTH_METHODS.includes(String(value.authMethod)) &&
         typeof value.recoveryScope === "string" &&
         value.recoveryScope.length > 0)) &&
     (value.recoveryScope === undefined ||
@@ -158,7 +155,7 @@ export function readBootRecord(
       // Only malformed/expired data is eviction; non-admission is a pure read.
       try {
         const credential = credentialForMethod(record.authMethod);
-        const admitted = ["trusted-proxy", "tailscale", "password"].includes(record.authMethod)
+        const admitted = RECOVERY_AUTH_METHODS.includes(record.authMethod)
           ? credential === ""
           : record.credential === credentialFingerprint(credential);
         return admitted ? record : null;

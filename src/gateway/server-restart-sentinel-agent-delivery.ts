@@ -53,6 +53,7 @@ import {
   attachManagedOutgoingMediaToMessage,
   createManagedOutgoingMediaBlocks,
 } from "./managed-image-attachments.js";
+import { isManagedOutgoingMediaBlock } from "./managed-image-attachments.media-kind.js";
 import type { GatewayContextResolver } from "./server-methods/types.js";
 import { dispatchGatewayLifecycleMethod as dispatchGatewayMethodInProcess } from "./server-recovery-runtime-context.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
@@ -230,15 +231,7 @@ async function persistQueuedGeneratedMedia(params: {
         stateDir,
         localRoots: [getMediaDir()],
       });
-      if (
-        !blocks.some(
-          (block) =>
-            block.type === "image" ||
-            block.type === "audio" ||
-            block.type === "video" ||
-            block.type === "attachment",
-        )
-      ) {
+      if (!blocks.some(isManagedOutgoingMediaBlock)) {
         throw new Error("queued internal generated media could not be prepared");
       }
       // Retries reuse the first prepared blocks so the transcript write stays idempotent.

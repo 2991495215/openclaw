@@ -17,6 +17,8 @@ import {
   canDeleteSessionRows,
   resolveUiConfiguredMainKey,
 } from "../lib/sessions/session-key.ts";
+import { isSessionNavigationAction } from "../lib/sessions/session-menu-action-kinds.ts";
+import { sessionMenuMetadataPatch } from "../lib/sessions/session-menu-metadata-patch.ts";
 import {
   canCopySessionMarkdown,
   canSplitSessionView,
@@ -380,32 +382,26 @@ export function renderSidebarSessionMenuForMenus(
           void host.sessionOrganizer.runBatchSessionAction(action, batch, allUnread());
           return;
         }
+        if (isSessionNavigationAction(action)) {
+          if (actionContext) {
+            const selectedAgentId = host.getSessionNavigationState().selectedAgentId;
+            void runSessionNavigationAction(action.kind, {
+              context: actionContext,
+              session: session(),
+              agentId: selectedAgentId,
+              isCurrent: () =>
+                host.sessionDataContext === actionContext &&
+                host.getSessionNavigationState().selectedAgentId === selectedAgentId,
+            });
+          }
+          return;
+        }
         switch (action.kind) {
           case "open-pr":
             openExternalUrlSafe(action.url);
             break;
           case "open-in":
             openEditor(action.editor, action.path);
-            break;
-          case "copy-session-id":
-          case "copy-session-link":
-          case "copy-session-preview-link":
-          case "copy-markdown":
-          case "open-new-tab":
-          case "open-new-window":
-          case "split-right":
-          case "split-below":
-            if (actionContext) {
-              const selectedAgentId = host.getSessionNavigationState().selectedAgentId;
-              void runSessionNavigationAction(action.kind, {
-                context: actionContext,
-                session: session(),
-                agentId: selectedAgentId,
-                isCurrent: () =>
-                  host.sessionDataContext === actionContext &&
-                  host.getSessionNavigationState().selectedAgentId === selectedAgentId,
-              });
-            }
             break;
           case "toggle-pin":
             host.sessionOrganizer.setPersonalSessionPin(
@@ -425,7 +421,7 @@ export function renderSidebarSessionMenuForMenus(
             } else {
               void host.sessionOrganizer.patchSession(
                 session(),
-                { unread: !session().unread },
+                sessionMenuMetadataPatch(action, session()),
                 { sessionScope: true },
               );
             }
@@ -434,18 +430,13 @@ export function renderSidebarSessionMenuForMenus(
             void host.sessionOrganizer.renameSession(session());
             break;
           case "set-color":
-            void host.sessionOrganizer.patchSession(session(), { color: action.color });
-            break;
           case "set-icon":
-            void host.sessionOrganizer.patchSession(session(), { icon: action.icon });
-            break;
           case "set-communication":
-            void host.sessionOrganizer.patchSession(session(), {
-              communication: action.communication,
-            });
-            break;
           case "reset-appearance":
-            void host.sessionOrganizer.patchSession(session(), { icon: null, color: null });
+            void host.sessionOrganizer.patchSession(
+              session(),
+              sessionMenuMetadataPatch(action, session()),
+            );
             break;
           case "assign-owner":
             void host.sessionOrganizer.assignSessionOwner(session(), action.owner);

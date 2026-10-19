@@ -1,14 +1,19 @@
+import type { IconName } from "./icon-data.ts";
+
 // Shared glyph categories for file previews and Markdown file links.
-export type FileKind =
-  | "skill"
-  | "markdown"
-  | "component"
-  | "package"
-  | "data"
-  | "shell"
-  | "image"
-  | "code"
-  | "file";
+export const FILE_KIND_ICONS = {
+  code: "fileCode",
+  component: "layoutGrid",
+  data: "braces",
+  file: "fileText",
+  image: "image",
+  markdown: "book",
+  package: "box",
+  shell: "terminal",
+  skill: "pencilSparkles",
+} as const satisfies Record<string, IconName>;
+
+export type FileKind = keyof typeof FILE_KIND_ICONS;
 
 // Well-known filenames outrank their extension: package.json is a manifest
 // first and JSON second, and lockfiles carry no useful extension at all.

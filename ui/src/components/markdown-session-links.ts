@@ -1,3 +1,4 @@
+import { isHttpUrl } from "@openclaw/net-policy/url-protocol";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
 import type { ControlUiSessionNamespace } from "@openclaw/session-url-contract";
@@ -51,9 +52,7 @@ function parseMarkdownSessionUrl(raw: string, basePath?: string, mainKey?: strin
       basePath ?? resolveControlUiPaths(globalThis.location.pathname)[0],
       mainKey,
     );
-    return target && (url.protocol === "http:" || url.protocol === "https:")
-      ? { url, target }
-      : null;
+    return target && isHttpUrl(url) ? { url, target } : null;
   } catch {
     return null;
   }

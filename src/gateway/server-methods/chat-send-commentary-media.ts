@@ -30,6 +30,7 @@ import {
   prepareOutgoingMediaFromReplyPayload,
   removeManagedOutgoingMediaBlocks,
 } from "../managed-image-attachments.js";
+import { isManagedOutgoingMediaBlock } from "../managed-image-attachments.media-kind.js";
 import { formatForLog } from "../ws-log.js";
 import type { AssistantDisplayContentBlock } from "./chat-assistant-content.js";
 import {
@@ -302,13 +303,7 @@ function observeChatSendCommentaryMedia(params: AssistantCommentaryMediaCustodyP
                 // Settle the authorized commit even if the run becomes stale after the rewrite.
                 const mediaBlocks = [...managedMedia.values()]
                   .flat()
-                  .filter(
-                    (block) =>
-                      block.type === "image" ||
-                      block.type === "audio" ||
-                      block.type === "video" ||
-                      block.type === "attachment",
-                  );
+                  .filter(isManagedOutgoingMediaBlock);
                 if (
                   mediaBlocks.length > 0 &&
                   !(await attachManagedOutgoingMediaToMessage({ messageId, blocks: mediaBlocks }))

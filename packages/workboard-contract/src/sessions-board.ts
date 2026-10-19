@@ -1,6 +1,7 @@
 import type { SchemaContract } from "../../gateway-protocol/src/schema-contract.js";
 import type { SessionPerson } from "../../gateway-protocol/src/schema/session-participant.js";
 import type { SessionsListParams } from "../../gateway-protocol/src/schema/sessions-list.js";
+import { SESSION_COLOR_IDS } from "../../gateway-protocol/src/session-agent-status.js";
 import type { WorkboardBoardMetadata, WorkboardChange } from "./index.js";
 
 const OBSERVER_HEALTH = [
@@ -14,16 +15,7 @@ const OBSERVER_HEALTH = [
 ] as const;
 const RUN_STATES = ["active", "idle", "failed"] as const;
 const PULL_REQUEST_STATES = ["none", "open", "draft", "merged", "closed"] as const;
-const COLUMN_COLORS = new Set([
-  "red",
-  "blue",
-  "green",
-  "yellow",
-  "purple",
-  "orange",
-  "pink",
-  "cyan",
-]);
+const COLUMN_COLORS = new Set<string>(SESSION_COLOR_IDS);
 
 export type WorkboardSessionsObserverHealth = (typeof OBSERVER_HEALTH)[number];
 export type WorkboardSessionsColumnMatch = SchemaContract<ReturnType<typeof normalizeMatch>>;

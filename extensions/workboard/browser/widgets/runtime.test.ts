@@ -10,7 +10,7 @@ import type { WorkboardCard } from "../lib/workboard/types.ts";
 import { workboardTestHost } from "../test/host.setup.ts";
 import { createViewContext } from "../test/host.ts";
 import { afterWorkboardUpdate } from "../test/settle.ts";
-import { createWorkboardWidget } from "../widgets.tsx";
+import { createWorkboardWidget, WORKBOARD_WIDGETS } from "../widgets.tsx";
 import { acquireWidgetRuntime } from "./runtime.ts";
 
 const cards = [
@@ -80,7 +80,11 @@ function setup(
       canMutate,
       canGrant: true,
     });
-    const mounted = createWorkboardWidget(fixture.host, kind)(container, context) as Exclude<
+    const Renderer = expectDefined(
+      WORKBOARD_WIDGETS.find((widget) => widget.id === kind),
+      "widget descriptor",
+    ).Renderer;
+    const mounted = createWorkboardWidget(fixture.host, Renderer)(container, context) as Exclude<
       ReturnType<ControlUiWidget["mount"]>,
       void
     >;

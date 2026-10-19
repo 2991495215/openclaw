@@ -149,15 +149,15 @@ export const LOBSTER_PET_ENTRANCE_MS: Record<LobsterPetEntrance, number> = {
   bubble: 700,
 };
 
-const LOBSTER_PASSER_CROSS_MS: Partial<Record<LobsterPasserKind, number>> = {
-  stranger: 11_000,
-  crab: 11_000,
-  snail: 90_000,
-  duck: 14_000,
-  jellyfish: 16_000,
-  penguin: 13_000,
-  fedora: 9_000,
-};
+const PASSER_FACTS = new Map<string, { weight?: number; crossMs: number }>([
+  ["crab", { weight: 15, crossMs: 11_000 }],
+  ["snail", { weight: 12, crossMs: 90_000 }],
+  ["duck", { weight: 12, crossMs: 14_000 }],
+  ["jellyfish", { weight: 11, crossMs: 16_000 }],
+  ["stranger", { weight: 45, crossMs: 11_000 }],
+  ["penguin", { crossMs: 13_000 }],
+  ["fedora", { crossMs: 9_000 }],
+]);
 
 export type LobsterPetAnchor = "top" | "floor";
 
@@ -193,11 +193,7 @@ export function resolveLobsterPasserCrossMs(
   kind: LobsterPasserKind,
   artwork?: ThemeArtwork["critters"],
 ): number {
-  return (
-    (Object.hasOwn(LOBSTER_PASSER_CROSS_MS, kind) ? LOBSTER_PASSER_CROSS_MS[kind] : undefined) ??
-    artwork?.[kind]?.crossMs ??
-    12_000
-  );
+  return PASSER_FACTS.get(kind)?.crossMs ?? artwork?.[kind]?.crossMs ?? 12_000;
 }
 
 export function planLobsterPasser(
@@ -207,11 +203,9 @@ export function planLobsterPasser(
   const rng = mulberry32((seed ^ 0xcab) >>> 0);
   const roll = rng() * 1000;
   const weights: Array<readonly [LobsterPasserKind, number]> = [
-    ["crab", 15],
-    ["snail", 12],
-    ["duck", 12],
-    ["jellyfish", 11],
-    ...(strangers ? ([["stranger", 45]] as const) : []),
+    ...[...PASSER_FACTS].flatMap(([kind, { weight }]) =>
+      weight !== undefined && (kind !== "stranger" || strangers) ? [[kind, weight] as const] : [],
+    ),
     ...critters.map((kind) => [kind, 20] as const),
   ];
   let limit = 0;

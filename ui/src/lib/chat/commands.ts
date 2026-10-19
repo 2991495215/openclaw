@@ -81,56 +81,61 @@ const MAX_REMOTE_NAME_LENGTH = 200;
 const MAX_REMOTE_DESCRIPTION_LENGTH = 2_000;
 const MAX_REMOTE_ARG_NAME_LENGTH = 200;
 
-const COMMAND_PRESENTATION: Partial<Record<string, Pick<SlashCommandDef, "icon" | "category">>> = {
-  help: { icon: "book", category: "tools" },
+const COMMAND_METADATA: Partial<
+  Record<
+    string,
+    Pick<SlashCommandDef, "icon" | "category" | "executeLocal" | "allowsInlineMultiWordArgs"> & {
+      override?: Pick<SlashCommandDef, "description" | "descriptionKey" | "args">;
+    }
+  >
+> = {
+  btw: { executeLocal: true },
+  help: { icon: "book", category: "tools", executeLocal: true },
   status: { icon: "barChart", category: "tools" },
-  usage: { icon: "barChart", category: "tools" },
+  usage: { icon: "barChart", category: "tools", executeLocal: true },
   export: { icon: "download" },
   export_session: { icon: "download", category: "tools" },
   tools: { icon: "terminal", category: "tools" },
-  dashboard: { icon: "layoutDashboard" },
+  dashboard: { icon: "layoutDashboard", allowsInlineMultiWordArgs: true },
   skill: { icon: "zap", category: "tools" },
   commands: { icon: "book", category: "tools" },
-  new: { icon: "plus", category: "session" },
-  reset: { icon: "refresh", category: "session" },
-  compact: { icon: "loader", category: "session" },
-  stop: { icon: "stop", category: "session" },
+  new: { icon: "plus", category: "session", executeLocal: true },
+  reset: { icon: "refresh", category: "session", executeLocal: true },
+  compact: { icon: "loader", category: "session", executeLocal: true },
+  stop: { icon: "stop", category: "session", executeLocal: true },
   clear: { icon: "trash" },
-  model: { icon: "brain", category: "model" },
+  model: { icon: "brain", category: "model", executeLocal: true },
   models: { icon: "brain", category: "model" },
-  think: { icon: "brain", category: "model" },
-  verbose: { icon: "terminal", category: "model" },
-  fast: { icon: "zap", category: "model" },
-  agents: { icon: "monitor", category: "agents" },
+  think: { icon: "brain", category: "model", executeLocal: true },
+  verbose: { icon: "terminal", category: "model", executeLocal: true },
+  fast: { icon: "zap", category: "model", executeLocal: true },
+  agents: { icon: "monitor", category: "agents", executeLocal: true },
   subagents: { icon: "folder", category: "agents" },
-  steer: { icon: "send", category: "agents" },
+  steer: {
+    icon: "send",
+    category: "agents",
+    executeLocal: true,
+    override: {
+      description: registerCommandPaletteEnglish.catalog.chat.commands.steerDescription,
+      descriptionKey: "chat.commands.steerDescription",
+      args: "<message>",
+    },
+  },
   tts: { icon: "volume2", category: "tools" },
-  redirect: { category: "agents" },
+  redirect: { category: "agents", executeLocal: true },
   session: { category: "session" },
   reasoning: { category: "model" },
   elevated: { category: "model" },
   queue: { category: "model" },
+  "export-session": {
+    executeLocal: true,
+    override: {
+      description: registerCommandPaletteEnglish.catalog.chat.commands.exportDescription,
+      descriptionKey: "chat.commands.exportDescription",
+      args: undefined,
+    },
+  },
 };
-
-const INLINE_MULTI_WORD_COMMANDS = new Set(["dashboard"]);
-
-const LOCAL_COMMANDS = new Set([
-  "btw",
-  "help",
-  "new",
-  "reset",
-  "stop",
-  "compact",
-  "model",
-  "think",
-  "fast",
-  "verbose",
-  "export-session",
-  "usage",
-  "agents",
-  "steer",
-  "redirect",
-]);
 
 const UI_ONLY_COMMANDS: SlashCommandDef[] = [
   {
@@ -157,21 +162,6 @@ const UI_ONLY_COMMANDS: SlashCommandDef[] = [
     tier: "power",
   },
 ];
-
-const COMMAND_OVERRIDES: Partial<
-  Record<string, Pick<SlashCommandDef, "description" | "descriptionKey" | "args">>
-> = {
-  steer: {
-    description: registerCommandPaletteEnglish.catalog.chat.commands.steerDescription,
-    descriptionKey: "chat.commands.steerDescription",
-    args: "<message>",
-  },
-  "export-session": {
-    description: registerCommandPaletteEnglish.catalog.chat.commands.exportDescription,
-    descriptionKey: "chat.commands.exportDescription",
-    args: undefined,
-  },
-};
 
 function getSlashAliases(command: CommandLike): string[] {
   return (command.aliases ?? [])
@@ -217,14 +207,15 @@ function toSlashCommand(command: CommandLike, source: "local" | "remote"): Slash
     return null;
   }
   const resolvedSource = command.source ?? (source === "local" ? "native" : undefined);
-  const presentation = COMMAND_PRESENTATION[command.key.replace(/[:.-]/g, "_")];
+  const metadata = COMMAND_METADATA[command.key];
+  const presentation = COMMAND_METADATA[command.key.replace(/[:.-]/g, "_")];
   return {
     key: command.key,
     name,
     aliases: getSlashAliases(command).filter((alias) => alias !== name),
     description: command.description,
     args: formatArgs(command),
-    ...COMMAND_OVERRIDES[command.key],
+    ...metadata?.override,
     icon: presentation?.icon ?? "terminal",
     category:
       presentation?.category ??
@@ -233,10 +224,10 @@ function toSlashCommand(command: CommandLike, source: "local" | "remote"): Slash
         : command.category === "options"
           ? "model"
           : "tools"),
-    executeLocal: source === "local" && LOCAL_COMMANDS.has(command.key),
+    executeLocal: source === "local" && metadata?.executeLocal === true,
     modelIndependent: command.modelIndependent,
     argOptions: getArgOptions(command),
-    allowsInlineMultiWordArgs: INLINE_MULTI_WORD_COMMANDS.has(command.key),
+    allowsInlineMultiWordArgs: metadata?.allowsInlineMultiWordArgs === true,
     tier: source === "local" ? mapTier(command) : "standard",
     ...(resolvedSource ? { source: resolvedSource } : {}),
     ...(command.skillDisplayName ? { skillDisplayName: command.skillDisplayName } : {}),

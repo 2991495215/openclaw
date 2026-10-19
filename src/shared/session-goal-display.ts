@@ -1,21 +1,16 @@
 import type { SessionGoal } from "../config/sessions/types.js";
 
-const GOAL_STATUS_LABELS = {
-  active: "Pursuing goal",
-  paused: "Goal paused",
-  blocked: "Goal blocked",
-  usage_limited: "Goal hit usage limits",
-  budget_limited: "Goal unmet",
-  complete: "Goal achieved",
-} satisfies Record<SessionGoal["status"], string>;
-
-const GOAL_STOP_TIMESTAMPS = {
-  paused: "pausedAt",
-  blocked: "blockedAt",
-  usage_limited: "usageLimitedAt",
-  budget_limited: "budgetLimitedAt",
-  complete: "completedAt",
-} as const satisfies Record<Exclude<SessionGoal["status"], "active">, keyof SessionGoal>;
+export const SESSION_GOAL_STATUS_FACTS = {
+  active: { label: "Pursuing goal", stopField: undefined, resumeHint: false },
+  paused: { label: "Goal paused", stopField: "pausedAt", resumeHint: true },
+  blocked: { label: "Goal blocked", stopField: "blockedAt", resumeHint: true },
+  usage_limited: { label: "Goal hit usage limits", stopField: "usageLimitedAt", resumeHint: true },
+  budget_limited: { label: "Goal unmet", stopField: "budgetLimitedAt", resumeHint: false },
+  complete: { label: "Goal achieved", stopField: "completedAt", resumeHint: false },
+} as const satisfies Record<
+  SessionGoal["status"],
+  { label: string; stopField: keyof SessionGoal | undefined; resumeHint: boolean }
+>;
 
 function formatGoalTokenCount(value: number): string {
   if (!Number.isFinite(value) || value <= 0) {
@@ -47,7 +42,7 @@ export function formatGoalUsage(goal: SessionGoal): string | null {
 }
 
 export function formatGoalStatusLabel(status: SessionGoal["status"]): string {
-  return GOAL_STATUS_LABELS[status];
+  return SESSION_GOAL_STATUS_FACTS[status].label;
 }
 
 export function formatGoalSummary(goal: SessionGoal): string {
@@ -58,8 +53,8 @@ export function formatGoalSummary(goal: SessionGoal): string {
 
 /** Wall-clock time spent on the goal; frozen at the status timestamp once not active. */
 export function goalElapsedMs(goal: SessionGoal, now: number): number {
-  const stoppedAt =
-    goal.status === "active" ? now : (goal[GOAL_STOP_TIMESTAMPS[goal.status]] ?? goal.updatedAt);
+  const stopField = SESSION_GOAL_STATUS_FACTS[goal.status].stopField;
+  const stoppedAt = stopField ? (goal[stopField] ?? goal.updatedAt) : now;
   return Math.max(0, stoppedAt - goal.createdAt);
 }
 

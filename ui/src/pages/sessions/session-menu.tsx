@@ -24,6 +24,7 @@ import {
   buildAgentMainSessionKey,
   resolveUiConfiguredMainKey,
 } from "../../lib/sessions/session-key.ts";
+import { isSessionNavigationAction } from "../../lib/sessions/session-menu-action-kinds.ts";
 import {
   canCopySessionMarkdown,
   runSessionNavigationAction,
@@ -141,27 +142,21 @@ export function handleSessionManagementNavigationAction(
   params: { context: ApplicationContext; row: GatewaySessionRow; isCurrent: () => boolean },
 ) {
   const { context, row, isCurrent } = params;
+  if (isSessionNavigationAction(action)) {
+    void runSessionNavigationAction(action.kind, {
+      context,
+      session: row,
+      agentId: row.agentId,
+      isCurrent,
+    });
+    return undefined;
+  }
   switch (action.kind) {
     case "open-pr":
       openExternalUrlSafe(action.url);
       return undefined;
     case "open-in":
       openEditor(action.editor, action.path);
-      return undefined;
-    case "copy-session-id":
-    case "copy-session-link":
-    case "copy-session-preview-link":
-    case "copy-markdown":
-    case "open-new-tab":
-    case "open-new-window":
-    case "split-right":
-    case "split-below":
-      void runSessionNavigationAction(action.kind, {
-        context,
-        session: row,
-        agentId: row.agentId,
-        isCurrent,
-      });
       return undefined;
     default:
       return action;

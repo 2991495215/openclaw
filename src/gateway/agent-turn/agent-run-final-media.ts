@@ -16,6 +16,7 @@ import {
   attachManagedOutgoingMediaToMessage,
   removeManagedOutgoingMediaBlocks,
 } from "../managed-image-attachments.js";
+import { isManagedOutgoingMediaBlock } from "../managed-image-attachments.media-kind.js";
 import { hasAssistantDisplayMediaContent } from "../server-methods/chat-assistant-content.js";
 import {
   captureWebchatReplyMediaAuthority,
@@ -187,13 +188,7 @@ export async function finalizeAgentRunMedia(
         // Committed transcript references own their artifacts even if this run is then revoked.
         retained = true;
         if (
-          content.some(
-            (block) =>
-              block.type === "image" ||
-              block.type === "audio" ||
-              block.type === "video" ||
-              block.type === "attachment",
-          ) &&
+          content.some(isManagedOutgoingMediaBlock) &&
           !(await attachManagedOutgoingMediaToMessage({
             messageId: rewritten.messageId,
             blocks: content,

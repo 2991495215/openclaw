@@ -38,7 +38,7 @@ import { createAgentSelectionCapability } from "./agent-selection.ts";
 import { selectShellRouteState } from "./app-host-route-state.ts";
 import { resolveControlUiDocumentMode, type ControlUiDocumentMode } from "./approval-deep-link.ts";
 import { AssistantDock } from "./assistant-dock.ts";
-import { readBootRecord } from "./boot-record.ts";
+import { RECOVERY_AUTH_METHODS, readBootRecord } from "./boot-record.ts";
 import {
   createInitialApplicationLocationResolver,
   normalizeInitialApplicationLocation,
@@ -202,7 +202,7 @@ export function bootstrapApplication(): ApplicationRuntime {
           if (startup.pendingBootstrapToken || startup.password) {
             return null;
           }
-          if (["trusted-proxy", "tailscale", "password"].includes(method)) {
+          if (RECOVERY_AUTH_METHODS.includes(method)) {
             return settings.token.trim() ? null : "";
           }
           // An explicit token takes precedence over paired-device auth on the next connect.

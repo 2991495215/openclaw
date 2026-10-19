@@ -13,7 +13,7 @@ import { WorkboardColumn } from "../pages/workboard/view-column.tsx";
 import type { WorkboardProps } from "../pages/workboard/view-helpers.tsx";
 import type { WorkboardWidgetModel } from "./runtime.ts";
 
-type WidgetProps = { model: WorkboardWidgetModel; revision: number };
+export type WidgetProps = { model: WorkboardWidgetModel; revision: number };
 
 function WidgetAvailability(props: WidgetProps) {
   return (

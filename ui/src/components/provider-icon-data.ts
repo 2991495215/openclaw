@@ -83,63 +83,49 @@ const PROVIDER_ICON_NAMES = new Set([
   "zed",
 ]);
 
-// Canonical provider id → icon asset name for providers whose brand mark ships
-// under a different slug than their catalog id.
-const PROVIDER_ICON_ALIASES: Readonly<Record<string, string>> = {
-  anthropic: "claude",
-  "amazon-bedrock": "bedrock",
-  "aws-bedrock": "bedrock",
-  "claude-cli": "claude",
-  "cloudflare-ai-gateway": "cloudflare",
-  "copilot-proxy": "copilot",
-  google: "gemini",
-  "google-gemini-cli": "gemini",
-  "github-copilot": "copilot",
-  kilocode: "kilo",
-  "kimi-coding": "kimi",
-  "llama-cpp": "llamacpp",
-  "microsoft-foundry": "microsoft",
-  "minimax-portal": "minimax",
-  "ollama-cloud": "ollama",
+// Provider-specific brand assets and labels; omitted fields use the id fallback.
+const PROVIDER_BRANDS = new Map<string, { icon?: string; label?: string }>([
+  ["anthropic", { icon: "claude", label: "Anthropic" }],
+  ["amazon-bedrock", { icon: "bedrock" }],
+  ["aws-bedrock", { icon: "bedrock" }],
+  ["claude-cli", { icon: "claude", label: "Claude CLI" }],
+  ["cloudflare-ai-gateway", { icon: "cloudflare" }],
+  ["copilot-proxy", { icon: "copilot" }],
+  ["google", { icon: "gemini", label: "Google" }],
+  ["google-gemini-cli", { icon: "gemini" }],
+  ["github-copilot", { icon: "copilot", label: "GitHub" }],
+  ["kilocode", { icon: "kilo" }],
+  ["kimi-coding", { icon: "kimi" }],
+  ["llama-cpp", { icon: "llamacpp", label: "llama.cpp" }],
+  ["microsoft-foundry", { icon: "microsoft" }],
+  ["minimax-portal", { icon: "minimax" }],
+  ["ollama-cloud", { icon: "ollama" }],
   // CodexBar names its bundled OpenAI knot asset "codex".
-  openai: "codex",
-  moonshot: "kimi",
-  "opencode-go": "opencodego",
-  "opencode-zen": "opencode",
-  qwen: "alibaba",
-  "qwen-token-plan": "alibaba",
-  "stepfun-plan": "stepfun",
-  "tencent-tokenhub": "tencent",
-  "tencent-tokenplan": "tencent",
-  xai: "grok",
+  ["openai", { icon: "codex", label: "OpenAI" }],
+  ["moonshot", { icon: "kimi", label: "Moonshot AI" }],
+  ["opencode-go", { icon: "opencodego" }],
+  ["opencode-zen", { icon: "opencode" }],
+  ["qwen", { icon: "alibaba", label: "Qwen Cloud" }],
+  ["qwen-token-plan", { icon: "alibaba" }],
+  ["stepfun-plan", { icon: "stepfun" }],
+  ["tencent-tokenhub", { icon: "tencent" }],
+  ["tencent-tokenplan", { icon: "tencent" }],
+  ["xai", { icon: "grok", label: "xAI" }],
   // Xiaomi ships its AI models under the MiMo brand mark.
-  xiaomi: "mimo",
-  "xiaomi-token-plan": "mimo",
-  "vercel-ai-gateway": "vercel",
-  "vertex-ai": "vertexai",
-  "z-ai": "zai",
-};
-
-// Brand display names for provider ids whose title-cased id reads wrong.
-const PROVIDER_DISPLAY_LABELS: Readonly<Record<string, string>> = {
-  "acp-copilot": "GitHub Copilot CLI",
-  "acp-kilocode": "Kilo Code (ACP)",
-  "acp-qwen": "Qwen Code (ACP)",
-  anthropic: "Anthropic",
-  "claude-cli": "Claude CLI",
-  google: "Google",
-  "github-copilot": "GitHub",
-  "llama-cpp": "llama.cpp",
-  lmstudio: "LM Studio",
-  longcat: "LongCat",
-  openai: "OpenAI",
-  moonshot: "Moonshot AI",
-  opencode: "OpenCode",
-  openrouter: "OpenRouter",
-  qwen: "Qwen Cloud",
-  xai: "xAI",
-  zai: "Z.AI",
-};
+  ["xiaomi", { icon: "mimo" }],
+  ["xiaomi-token-plan", { icon: "mimo" }],
+  ["vercel-ai-gateway", { icon: "vercel" }],
+  ["vertex-ai", { icon: "vertexai" }],
+  ["z-ai", { icon: "zai" }],
+  ["acp-copilot", { label: "GitHub Copilot CLI" }],
+  ["acp-kilocode", { label: "Kilo Code (ACP)" }],
+  ["acp-qwen", { label: "Qwen Code (ACP)" }],
+  ["lmstudio", { label: "LM Studio" }],
+  ["longcat", { label: "LongCat" }],
+  ["opencode", { label: "OpenCode" }],
+  ["openrouter", { label: "OpenRouter" }],
+  ["zai", { label: "Z.AI" }],
+]);
 
 // ACPX native harnesses publish their catalogs under `acp-<agent>` provider ids.
 const ACP_HARNESS_PROVIDER = /^acp-(.+)$/u;
@@ -155,8 +141,9 @@ export function formatRawProviderLabel(provider: string): string {
 
 /** Brand display name for a (normalized, lowercase) provider id. */
 export function providerDisplayLabel(provider: string): string {
-  if (Object.hasOwn(PROVIDER_DISPLAY_LABELS, provider)) {
-    return PROVIDER_DISPLAY_LABELS[provider]!;
+  const label = PROVIDER_BRANDS.get(provider)?.label;
+  if (label) {
+    return label;
   }
   const acpAgent = ACP_HARNESS_PROVIDER.exec(provider)?.[1];
   return acpAgent ? `${providerDisplayLabel(acpAgent)} (ACP)` : formatRawProviderLabel(provider);
@@ -172,7 +159,7 @@ export function providerIdFromModelRef(modelRef: string): string | null {
 /** Icon asset name for a (normalized, lowercase) provider id, or null when no brand mark ships. */
 export function resolveProviderIconName(provider: string): string | null {
   const normalized = provider.trim().toLowerCase();
-  const icon = PROVIDER_ICON_ALIASES[normalized] ?? normalized;
+  const icon = PROVIDER_BRANDS.get(normalized)?.icon ?? normalized;
   if (PROVIDER_ICON_NAMES.has(icon)) {
     return icon;
   }

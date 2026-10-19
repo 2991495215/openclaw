@@ -1,13 +1,13 @@
 import type { GatewaySessionRow } from "../../api/types.ts";
-import type { HeaderMenuAction } from "./components/chat-header-session-menu.ts";
+import type { SessionManagementAction } from "../../components/session-menu-actions.ts";
 
-type HeaderMetadataAction = Extract<
-  HeaderMenuAction,
+type SessionMetadataAction = Extract<
+  SessionManagementAction,
   { kind: "toggle-unread" | "set-icon" | "set-color" | "set-communication" | "reset-appearance" }
 >;
 
-export function headerSessionMetadataPatch(
-  action: HeaderMetadataAction,
+export function sessionMenuMetadataPatch(
+  action: SessionMetadataAction,
   session: Pick<GatewaySessionRow, "unread">,
 ) {
   switch (action.kind) {

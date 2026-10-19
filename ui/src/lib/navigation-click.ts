@@ -1,3 +1,5 @@
+import { isHttpUrl } from "@openclaw/net-policy/url-protocol";
+
 /** Follow rendered ownership through slots and open shadow roots, never documents. */
 export function composedParent(element: Element): Element | null {
   const root = element.getRootNode();
@@ -35,9 +37,5 @@ export function externalHttpLinkFromEvent(
     return null;
   }
   const url = URL.parse(anchor.href, window.location.href);
-  return url &&
-    (url.protocol === "http:" || url.protocol === "https:") &&
-    url.origin !== window.location.origin
-    ? { anchor, url }
-    : null;
+  return url && isHttpUrl(url) && url.origin !== window.location.origin ? { anchor, url } : null;
 }

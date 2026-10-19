@@ -1,24 +1,25 @@
 /** @jsxImportSource @solidjs/web */
 import { render } from "@solidjs/web";
 import type { ControlUiHost, ControlUiWidget } from "openclaw/plugin-sdk/control-ui";
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, type Component } from "solid-js";
 import {
   WorkboardBoardWidget,
   WorkboardCardWidget,
   WorkboardMiniWidget,
+  type WidgetProps,
 } from "./widgets/render.tsx";
 import { acquireWidgetRuntime, WorkboardWidgetModel } from "./widgets/runtime.ts";
 
+export const WORKBOARD_WIDGETS = [
+  { id: "mini", label: "Workboard summary", Renderer: WorkboardMiniWidget },
+  { id: "card", label: "Workboard card", Renderer: WorkboardCardWidget },
+  { id: "board", label: "Workboard board", Renderer: WorkboardBoardWidget },
+] as const;
+
 export function createWorkboardWidget(
   activationHost: ControlUiHost,
-  kind: "mini" | "card" | "board",
+  Renderer: Component<WidgetProps>,
 ): ControlUiWidget["mount"] {
-  const Renderer =
-    kind === "mini"
-      ? WorkboardMiniWidget
-      : kind === "card"
-        ? WorkboardCardWidget
-        : WorkboardBoardWidget;
   return (container, initialContext) => {
     let context = initialContext;
     let lease: ReturnType<typeof acquireWidgetRuntime> | null = null;

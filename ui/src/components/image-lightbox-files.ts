@@ -1,3 +1,4 @@
+import { isHttpUrl } from "@openclaw/net-policy/url-protocol";
 import { BROWSER_IMAGE_MIME_TYPES } from "../../../src/shared/browser-image-mime-types.js";
 import { downloadImageBlob } from "../lib/image-download.ts";
 import { resolveSafeExternalUrl } from "../lib/open-external-url.ts";
@@ -9,9 +10,7 @@ export function externalLightboxImageUrl(image: { src: string; originalSrc?: str
   }
   const url = new URL(safe);
   // External hosts may display in IMG while disallowing CORS blob downloads.
-  return (url.protocol === "https:" || url.protocol === "http:") && url.origin !== location.origin
-    ? url.href
-    : "";
+  return isHttpUrl(url) && url.origin !== location.origin ? url.href : "";
 }
 
 function mimeTypeEssence(value: string): string {

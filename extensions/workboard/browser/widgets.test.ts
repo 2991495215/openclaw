@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createWorkboardCard } from "./lib/workboard/test/index-helpers.ts";
 import { workboardTestHost } from "./test/host.setup.ts";
 import { createViewContext } from "./test/host.ts";
-import { createWorkboardWidget } from "./widgets.tsx";
+import { createWorkboardWidget, WORKBOARD_WIDGETS } from "./widgets.tsx";
 import { WorkboardWidgetModel } from "./widgets/runtime.ts";
 
 const disposers: (() => void)[] = [];
@@ -34,7 +34,10 @@ function mountWidget(canMutate = true, presented = true) {
     },
     presented,
   );
-  const mounted = createWorkboardWidget(fixture.host, "card")(container, context);
+  const mounted = createWorkboardWidget(fixture.host, WORKBOARD_WIDGETS[1].Renderer)(
+    container,
+    context,
+  );
   disposers.push(() => mounted?.dispose?.());
   return { fixture, request, card, container, context, mounted, initialListeners };
 }

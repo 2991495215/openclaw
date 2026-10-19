@@ -4,6 +4,15 @@ import { WEBCHAT_LOCAL_MEDIA_MAX_BYTES } from "../media/configured-max-bytes.js"
 
 export type ManagedMediaKind = Extract<MediaKind, "image" | "audio" | "video" | "document">;
 
+export function isManagedOutgoingMediaBlock(block: Record<string, unknown>): boolean {
+  return (
+    block.type === "image" ||
+    block.type === "audio" ||
+    block.type === "video" ||
+    block.type === "attachment"
+  );
+}
+
 export function maxBytesForManagedMediaKind(
   kind: ManagedMediaKind,
   imageMaxBytes: number,

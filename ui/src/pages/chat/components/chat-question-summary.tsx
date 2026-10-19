@@ -3,7 +3,10 @@ import type { QuestionPrompt } from "../../../app/question-prompt.ts";
 import { t } from "../../../lib/reactive/i18n.ts";
 import type { QuestionPanelQuestion } from "./chat-question-types.ts";
 
-function terminalAnswer(prompt: QuestionPrompt, question: QuestionPanelQuestion): string {
+export function questionTerminalAnswer(
+  prompt: QuestionPrompt,
+  question: QuestionPanelQuestion,
+): string {
   if (prompt.status === "cancelled") {
     return t("chat.questions.skipped");
   }
@@ -33,7 +36,7 @@ export function ChatQuestionSummary(props: { prompt: QuestionPrompt }) {
               <div class="chat-question-summary__prompt">{question.question}</div>{" "}
               <div class="chat-question-summary__line">
                 <strong>{question.header}:</strong>{" "}
-                <span>{terminalAnswer(props.prompt, question)}</span>
+                <span>{questionTerminalAnswer(props.prompt, question)}</span>
               </div>
             </div>
           )}

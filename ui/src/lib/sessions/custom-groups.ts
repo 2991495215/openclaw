@@ -6,7 +6,7 @@ import type {
   SessionGroupDefaults,
 } from "../../../../packages/gateway-protocol/src/schema/sessions.js";
 
-const BUILT_IN_SESSION_SECTION_IDS = new Set(["ungrouped", "groups", "work"]);
+export const BUILT_IN_SESSION_SECTION_IDS = ["ungrouped", "groups", "work"] as const;
 
 export type SessionGroupSettings = SessionGroup & SessionGroupDefaults;
 
@@ -80,7 +80,7 @@ export function normalizeSessionSectionOrderTokens(value: unknown): string[] | n
     const name = prefix ? trimmed.slice(prefix.length).trim() : "";
     const token = prefix
       ? name && `${prefix}${name}`
-      : BUILT_IN_SESSION_SECTION_IDS.has(trimmed) && trimmed;
+      : BUILT_IN_SESSION_SECTION_IDS.some((section) => section === trimmed) && trimmed;
     if (token && !normalized.includes(token)) {
       normalized.push(token);
     }

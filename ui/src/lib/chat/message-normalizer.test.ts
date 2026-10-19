@@ -240,6 +240,13 @@ describe("message-normalizer", () => {
     ]);
   });
 
+  it("renders MEDIA files with prototype-named extensions as unknown documents", () => {
+    const url = "https://example.com/report.constructor";
+    expect(assistant(`MEDIA:${url}`).content).toEqual([
+      attachment({ url, label: "report.constructor", kind: "document", mimeType: undefined }),
+    ]);
+  });
+
   it("preserves structured image attachment dimensions", () => {
     const content = [
       attachment({

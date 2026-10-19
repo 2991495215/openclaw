@@ -20,6 +20,7 @@ import {
 } from "../../../../src/chat/tool-content.js";
 import { projectChatWorkContextForDisplay } from "../../../../src/chat/work-context.js";
 import { splitMediaFromOutput } from "../../../../src/media/parse.js";
+import { isTextContentBlockType } from "../../../../src/shared/chat-message-content.js";
 import { readClawHubRecommendation } from "../../../../src/shared/clawhub-recommendations.js";
 import { getMediaFileExtension } from "../media-file-extension.ts";
 import type { NormalizedMessage, MessageContentItem } from "./chat-types.ts";
@@ -253,7 +254,7 @@ const MIME_BY_EXT: Record<string, string> = {
 
 function mimeTypeFromUrl(url: string): string | undefined {
   const ext = getMediaFileExtension(url);
-  return ext ? MIME_BY_EXT[ext] : undefined;
+  return ext && Object.hasOwn(MIME_BY_EXT, ext) ? MIME_BY_EXT[ext] : undefined;
 }
 
 function inferAttachmentKind(url: string): {
@@ -525,12 +526,7 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
           },
         ];
       }
-      if (
-        text !== undefined &&
-        (type === "text" ||
-          (role === "user" && type === "input_text") ||
-          (role === "assistant" && (type === "input_text" || type === "output_text")))
-      ) {
+      if (text !== undefined && isTextContentBlockType(type, role)) {
         return normalizeText(text, true);
       }
       return [

@@ -9,7 +9,7 @@ import { WORKBOARD_CHANGED_EVENT, type WorkboardBoardSummary } from "./lib/workb
 import { createLazyWorkboardPage } from "./pages/workboard/lazy-page.ts";
 import { workboardPageTarget } from "./pages/workboard/page-target.ts";
 import { createWorkboardSessionAccessory } from "./session-accessory.tsx";
-import { createWorkboardWidget } from "./widgets.tsx";
+import { createWorkboardWidget, WORKBOARD_WIDGETS } from "./widgets.tsx";
 import "./styles/workboard.css";
 import "./styles/widgets.css";
 import "./styles/session-chip.css";
@@ -132,17 +132,8 @@ export default defineControlUiPlugin({
         placement: "session-header",
         mount: createWorkboardSessionAccessory(),
       }),
-      ...(["mini", "card", "board"] as const).map((id) =>
-        host.ui.registerWidget({
-          id,
-          label:
-            id === "mini"
-              ? "Workboard summary"
-              : id === "card"
-                ? "Workboard card"
-                : "Workboard board",
-          mount: createWorkboardWidget(host, id),
-        }),
+      ...WORKBOARD_WIDGETS.map(({ id, label, Renderer }) =>
+        host.ui.registerWidget({ id, label, mount: createWorkboardWidget(host, Renderer) }),
       ),
       workboard.subscribe(host.ui.invalidate),
       host.subscribe(() => catalog.sync(client, host.connection.connected)),

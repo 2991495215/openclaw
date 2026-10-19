@@ -14,6 +14,7 @@ import {
 } from "../../lib/chat/sender-label.ts";
 import { hasVisiblePreparedActivity } from "../../lib/chat/tool-call-grouping.ts";
 import { extractToolCardsCached, isToolCardError } from "../../lib/chat/tool-cards.ts";
+import { TERMINAL_RUN_OUTCOMES } from "../../lib/session-run-state.ts";
 import {
   assistantMessageIsInterrupted,
   isProviderVoiceTranscript,
@@ -35,8 +36,6 @@ import {
 } from "./chat-turn-boundary.ts";
 import { persistedSteerTargetRunId } from "./stream-causal-boundary.ts";
 import type { ChatReasoning } from "./tool-stream-contract.ts";
-
-const TERMINAL_WORK_STATUSES = new Set(["done", "failed", "timeout", "killed"]);
 
 function assistantMessageKind(message: unknown, visibleContent: MessageGroup["visibleContent"]) {
   if (isProviderVoiceTranscript(message)) {
@@ -675,7 +674,7 @@ export function collapseCompletedTurnWork(
       session?.key === opts.sessionKey &&
       terminalReply.runId !== undefined &&
       session.lastRunId === terminalReply.runId &&
-      TERMINAL_WORK_STATUSES.has(session.status ?? "") &&
+      Object.hasOwn(TERMINAL_RUN_OUTCOMES, session.status ?? "") &&
       typeof runtimeMs === "number" &&
       Number.isFinite(runtimeMs) &&
       runtimeMs >= 0

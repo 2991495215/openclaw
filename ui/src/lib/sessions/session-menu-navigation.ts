@@ -18,16 +18,7 @@ import {
   sessionNavigationTarget,
 } from "./route-navigation.ts";
 import { parseAgentSessionKey } from "./session-key.ts";
-
-type SessionNavigationActionKind =
-  | "copy-session-id"
-  | "copy-session-link"
-  | "copy-session-preview-link"
-  | "copy-markdown"
-  | "open-new-tab"
-  | "open-new-window"
-  | "split-right"
-  | "split-below";
+import type { SessionNavigationActionKind } from "./session-menu-action-kinds.ts";
 
 type SessionNavigationTarget<TRouteId extends string> = {
   context: ApplicationContext<TRouteId>;

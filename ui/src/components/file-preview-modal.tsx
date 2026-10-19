@@ -4,10 +4,10 @@ import { stripFrontmatterBlock } from "../../../packages/markdown-core/src/front
 import { registerFilePreviewEnglish } from "../i18n/locales/en-file-preview.ts";
 import { registerEnglishCatalog, t } from "../lib/reactive/i18n.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../lib/solid-bridge.ts";
-import { type FileKind, fileKindForPath } from "./file-kind.ts";
+import { FILE_KIND_ICONS, fileKindForPath } from "./file-kind.ts";
 import { toSanitizedMarkdownHtml } from "./markdown.ts";
 import { CopyButton } from "./solid/copy-button.tsx";
-import { Icon, type IconName } from "./solid/icon.tsx";
+import { Icon } from "./solid/icon.tsx";
 import { Kbd } from "./solid/kbd.tsx";
 import { PanelLoadingSkeleton } from "./solid/panel-loading-skeleton.tsx";
 import { SanitizedHtml } from "./solid/sanitized-html.tsx";
@@ -477,17 +477,6 @@ function fileKind(path: string): string {
   };
   return Object.hasOwn(map, ext) ? map[ext]! : ext ? ext.toUpperCase() : t("filePreview.kind.file");
 }
-const FILE_KIND_ICONS: Record<FileKind, IconName> = {
-  code: "fileCode",
-  component: "layoutGrid",
-  data: "braces",
-  file: "fileText",
-  image: "image",
-  markdown: "book",
-  package: "box",
-  shell: "terminal",
-  skill: "pencilSparkles",
-};
 declare global {
   interface HTMLElementTagNameMap {
     "openclaw-file-preview-modal": OpenClawFilePreviewModal;

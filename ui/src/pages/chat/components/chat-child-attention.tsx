@@ -2,6 +2,7 @@ import { For, createMemo, createSignal } from "solid-js";
 import type { GatewaySessionRow } from "../../../api/types.ts";
 import { collectSessionDescendantRows } from "../../../components/app-sidebar-session-parent.ts";
 import { formatWebUiIconErrorText } from "../../../components/error-presentation.ts";
+import { SESSION_ATTENTION_ICON_NAMES } from "../../../components/session-attention-icon-registry.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { t } from "../../../lib/reactive/i18n.ts";
 import { createInterval } from "../../../lib/reactive/timers.ts";
@@ -17,14 +18,6 @@ type Props = {
   onOpenSession: ((key: string) => void) | undefined;
 };
 export type ChatChildAttention = SolidBridgeElement<Props>;
-const attentionIcons = {
-  hand: "hand",
-  key: "key",
-  alert: "alertTriangle",
-  flag: "flag",
-  lock: "lock",
-  hourglass: "circle",
-} as const;
 
 /** Child status is a recorded outcome, even when its parent has no new reply. */
 export const ChatChildAttention = defineSolidBridge<Props>(
@@ -64,7 +57,9 @@ export const ChatChildAttention = defineSolidBridge<Props>(
           };
           const icon = () => {
             const attention = item().attention;
-            return attention.kind === "agent" ? attentionIcons[attention.icon] : "alertTriangle";
+            return attention.kind === "agent"
+              ? SESSION_ATTENTION_ICON_NAMES[attention.icon]
+              : "alertTriangle";
           };
           return (
             <div

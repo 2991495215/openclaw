@@ -26,11 +26,16 @@ import "../styles/sidebar-update-card.css";
 import { sidebarAttentionFocusRef } from "./sidebar-attention-focus.ts";
 import { isUpdateRunAttentionVisible } from "./sidebar-attention-update.ts";
 import { SidebarNotificationCard } from "./sidebar-notification-card.tsx";
-import { Icon } from "./solid/icon.tsx";
+import { Icon, type IconName } from "./solid/icon.tsx";
 import "./tooltip.ts";
 import "../styles/update-git-revisions.css";
 
 registerEnglishCatalog(registerSidebarAttentionEnglish);
+
+const UPDATE_RUN_ICONS = new Map<string, IconName>([
+  ["running", "refresh"],
+  ["succeeded", "check"],
+]);
 
 export type SidebarUpdateCardProps = {
   compact: boolean;
@@ -250,17 +255,7 @@ function SidebarUpdateCardContent(props: SidebarUpdateCardProps, host: HTMLEleme
           props.updateRun.status === "running"
             ? props.updateRun.createdAtMs
             : props.updateRun.finishedAtMs,
-        icon: (
-          <Icon
-            name={
-              props.updateRun.status === "running"
-                ? "refresh"
-                : props.updateRun.status === "succeeded"
-                  ? "check"
-                  : "alertTriangle"
-            }
-          />
-        ),
+        icon: <Icon name={UPDATE_RUN_ICONS.get(props.updateRun.status) ?? "alertTriangle"} />,
         severity: props.updateRun.status === "failed" ? ("error" as const) : ("warning" as const),
         critical: false,
       };
@@ -436,15 +431,7 @@ function SidebarUpdateCardContent(props: SidebarUpdateCardProps, host: HTMLEleme
           onClick={openRun}
         >
           <span class="sidebar-update-card__icon" aria-hidden="true">
-            <Icon
-              name={
-                current.run.status === "running"
-                  ? "refresh"
-                  : current.run.status === "succeeded"
-                    ? "check"
-                    : "alertTriangle"
-              }
-            />
+            <Icon name={UPDATE_RUN_ICONS.get(current.run.status) ?? "alertTriangle"} />
           </span>
           <span class="sidebar-update-card__text sidebar-update-card__text--stacked">
             <span class="sidebar-update-card__title">{view().headline}</span>

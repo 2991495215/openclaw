@@ -37,13 +37,14 @@ import {
   resolveUiConfiguredMainKey,
   resolveUiConversationIdentity,
 } from "../../lib/sessions/session-key.ts";
+import { isSessionNavigationAction } from "../../lib/sessions/session-menu-action-kinds.ts";
+import { sessionMenuMetadataPatch } from "../../lib/sessions/session-menu-metadata-patch.ts";
 import { runSessionNavigationAction } from "../../lib/sessions/session-menu-navigation.ts";
 import { readSystemInfo } from "../../lib/system-info.ts";
 import { showToast } from "../../lib/toast.ts";
 import { runControlUiPluginAction } from "../../plugins/control-ui-actions.ts";
 import { ChatPaneContext } from "./chat-pane-context.ts";
 import { ChatPaneHeaderMemo } from "./chat-pane-header-memo.ts";
-import { headerSessionMetadataPatch } from "./chat-pane-session-metadata-patch.ts";
 import { chatSessionPresentationTitle } from "./chat-pane-session-presentation.ts";
 import { resolveChatAgentId, selectedChatSessionRow } from "./chat-state-route.ts";
 import type { HeaderMenuAction } from "./components/chat-header-session-menu.ts";
@@ -202,16 +203,7 @@ export abstract class ChatPaneSessionMenu extends ChatPaneContext {
       this.beginHeaderRename(row);
       return;
     }
-    if (
-      action.kind === "copy-session-id" ||
-      action.kind === "copy-session-link" ||
-      action.kind === "copy-session-preview-link" ||
-      action.kind === "copy-markdown" ||
-      action.kind === "open-new-tab" ||
-      action.kind === "open-new-window" ||
-      action.kind === "split-right" ||
-      action.kind === "split-below"
-    ) {
+    if (isSessionNavigationAction(action)) {
       const owner = this.headerOutcomeOwner;
       await runSessionNavigationAction(action.kind, {
         context: this.context,
@@ -355,7 +347,7 @@ export abstract class ChatPaneSessionMenu extends ChatPaneContext {
         case "reset-appearance": {
           const currentSession = resolveCurrentSession(true);
           if (currentSession) {
-            const patch = headerSessionMetadataPatch(action, currentSession);
+            const patch = sessionMenuMetadataPatch(action, currentSession);
             await operations.patchSession(host, currentSession, patch, scope, {
               sessionScope: action.kind === "toggle-unread",
             });

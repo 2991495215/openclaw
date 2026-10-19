@@ -46,12 +46,6 @@ export type ChatPullRequestsProps = {
   /** Compact row in the user-opened Details surface; actions keep their owners. */
   compact?: boolean;
 };
-const STATE_LABEL_KEYS = {
-  merged: "chat.pullRequests.merged",
-  draft: "chat.pullRequests.draft",
-  closed: "chat.pullRequests.closed",
-  open: "chat.pullRequests.open",
-} as const;
 const CHECK_LABEL_KEYS = {
   passing: "chat.pullRequests.checksPassing",
   failing: "chat.pullRequests.checksFailing",
@@ -375,7 +369,7 @@ function PullRequestRow(props: {
           props.pullRequest.title,
           `${props.pullRequest.owner}/${props.pullRequest.repo}`,
           props.pullRequest.branch,
-          t(STATE_LABEL_KEYS[props.pullRequest.state]),
+          t(`chat.pullRequests.${props.pullRequest.state}`),
           typeof props.pullRequest.additions === "number"
             ? `+${props.pullRequest.additions.toLocaleString()}`
             : null,
@@ -463,7 +457,7 @@ function PullRequestRow(props: {
           dismissed={props.owner.dismissed}
         />
         <Show when={props.pullRequest.state !== "open"}>
-          <span class="chat-pr__state">{t(STATE_LABEL_KEYS[props.pullRequest.state])}</span>
+          <span class="chat-pr__state">{t(`chat.pullRequests.${props.pullRequest.state}`)}</span>
         </Show>
         <Show when={props.pullRequest.state !== "merged" || props.owner.status === "unavailable"}>
           <StatusWarning status={props.owner.status} />

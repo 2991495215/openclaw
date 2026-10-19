@@ -7,6 +7,7 @@ import { projectGateway } from "../lib/reactive/application.ts";
 import { useOptionalApplication } from "../lib/reactive/context.ts";
 import type { SessionCreatedActor, SessionOwnerOption } from "../lib/session-owner.ts";
 import { customSnoozeStorageKey, readCustomSnooze } from "../lib/sessions/custom-snooze.ts";
+import { SESSION_NAVIGATION_ACTION_KINDS } from "../lib/sessions/session-menu-action-kinds.ts";
 import type { SessionCommunicationMenuAction } from "./session-communication-options.ts";
 import { createSessionMenuSettings } from "./session-menu-settings.ts";
 import { createSessionOwnerMenu } from "./session-owner-menu.ts";
@@ -37,14 +38,7 @@ export type SessionMenuData = {
 };
 
 const SIMPLE_SESSION_ACTIONS = [
-  "copy-session-id",
-  "copy-session-link",
-  "copy-session-preview-link",
-  "copy-markdown",
-  "open-new-tab",
-  "open-new-window",
-  "split-right",
-  "split-below",
+  ...SESSION_NAVIGATION_ACTION_KINDS,
   "reset-appearance",
   "toggle-pin",
   "toggle-unread",

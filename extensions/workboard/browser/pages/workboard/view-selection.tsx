@@ -41,6 +41,7 @@ import {
   type WorkboardProps,
 } from "./view-helpers.tsx";
 import { liveInputValue } from "./view-input-value.ts";
+const BULK_LABEL_MODES = ["keep", "add", "replace", "remove"] as const;
 const KEEP_AGENT = "workboard:keep-agent";
 type CardPatch = Partial<Pick<WorkboardCard, "priority" | "labels" | "agentId">>;
 type SelectionAction =
@@ -600,15 +601,13 @@ function SelectionDialogContent(props: { workboard: WorkboardProps; draft: Workb
                     value={edit().labelMode}
                     disabled={state().bulkSaving}
                     accessibleLabel={t("workboard.fieldLabels")}
-                    options={(["keep", "add", "replace", "remove"] as const).map((value) => ({
+                    options={BULK_LABEL_MODES.map((value) => ({
                       value,
                       label: t(`workboard.bulkLabels_${value}`),
                     }))}
                     onSelect={(value) => {
                       edit().labelMode =
-                        (["keep", "add", "replace", "remove"] as const).find(
-                          (entry) => entry === value,
-                        ) ?? "keep";
+                        BULK_LABEL_MODES.find((entry) => entry === value) ?? "keep";
                       props.workboard.onRequestUpdate?.();
                     }}
                   />

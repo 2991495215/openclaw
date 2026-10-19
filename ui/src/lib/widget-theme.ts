@@ -1,36 +1,10 @@
 import {
   WIDGET_THEME_MESSAGE_TYPE,
+  WIDGET_THEME_TOKEN_SOURCES,
   WIDGET_THEME_TOKENS,
   type WidgetThemeMessage,
-  type WidgetThemeToken,
 } from "../../../src/shared/widget-theme.ts";
 import { listen } from "./reactive/listener.ts";
-
-const HOST_TOKEN_SOURCES: Record<WidgetThemeToken, string> = {
-  surface: "--bg",
-  card: "--card",
-  elevated: "--bg-elevated",
-  text: "--text",
-  "text-strong": "--text-strong",
-  muted: "--muted",
-  border: "--border",
-  "border-strong": "--border-strong",
-  accent: "--accent",
-  "accent-fill": "--primary",
-  "accent-fg": "--primary-foreground",
-  ok: "--ok",
-  warn: "--warn",
-  danger: "--danger",
-  info: "--info",
-  radius: "--radius",
-  "radius-full": "--radius-full",
-  "scrollbar-size": "--scrollbar-size",
-  "scrollbar-thumb-inset": "--scrollbar-thumb-inset",
-  "scrollbar-thumb": "--scrollbar-thumb",
-  "scrollbar-thumb-hover": "--scrollbar-thumb-hover",
-  "font-body": "--font-body",
-  "font-mono": "--mono",
-};
 
 type WidgetThemeState = {
   message?: WidgetThemeMessage;
@@ -66,7 +40,7 @@ export function buildWidgetThemeMessage(): WidgetThemeMessage {
   const styles = getComputedStyle(root);
   const tokens: Record<string, string> = {};
   for (const token of WIDGET_THEME_TOKENS) {
-    const value = styles.getPropertyValue(HOST_TOKEN_SOURCES[token]).trim();
+    const value = styles.getPropertyValue(WIDGET_THEME_TOKEN_SOURCES[token]).trim();
     if (value) {
       tokens[token] = value;
     }

@@ -5,20 +5,15 @@ import { stripUserEnvelopeForDisplay } from "../../../../src/auto-reply/reply/us
 import { projectChatWorkContextForDisplay } from "../../../../src/chat/work-context.js";
 import { readPersistedMediaFacts } from "../../../../src/media/media-facts.js";
 import { stripEnvelope } from "../../../../src/shared/chat-envelope.js";
-import { extractAssistantPhaseText } from "../../../../src/shared/chat-message-content.js";
+import {
+  extractAssistantPhaseText,
+  isTextContentBlockType,
+} from "../../../../src/shared/chat-message-content.js";
 import { stripThinkingTags } from "../strip-thinking-tags.ts";
 import { projectImportedMessageForDisplay } from "./imported-message-display.ts";
 
 const textCache = new WeakMap<object, string | null>();
 const thinkingCache = new WeakMap<object, string | null>();
-
-function isTextContentBlockType(value: unknown, role: string): boolean {
-  return (
-    value === "text" ||
-    (role === "user" && value === "input_text") ||
-    (role === "assistant" && (value === "input_text" || value === "output_text"))
-  );
-}
 
 function processMessageText(text: string, role: string): string {
   const shouldStripInboundMetadata = normalizeLowercaseStringOrEmpty(role) === "user";

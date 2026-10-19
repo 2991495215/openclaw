@@ -10,13 +10,13 @@ import {
 } from "solid-js";
 import { formatRelativeTimestamp } from "../lib/format.ts";
 import { i18nRevision, t } from "../lib/reactive/i18n.ts";
+import { TERMINAL_RUN_OUTCOMES } from "../lib/session-run-state.ts";
 import { ContentPresentation } from "../lib/solid/presentation.ts";
 import { ProgressCardMarkdown } from "./session-progress-card-view.tsx";
 import {
   progressCardPresentation,
   REFRESH_STATUS_LABEL_KEYS,
   STATUS_LABEL_KEYS,
-  TERMINAL_RUN_OUTCOMES,
   type PresentedProgressStepStatus,
   type SessionProgressCardRefreshAction,
 } from "./session-progress-card.ts";

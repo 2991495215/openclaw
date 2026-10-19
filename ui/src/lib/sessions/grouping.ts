@@ -5,7 +5,10 @@ import { moveArrayEntry } from "../array-order.ts";
 import { pathDisplayName } from "../path-display.ts";
 import { resolveSessionDisplayKind } from "../session-display.ts";
 import { foldWorktreeCheckoutPath, sessionActorGroupId } from "./catalog-project-grouping.ts";
-import { normalizeSessionSectionOrderTokens } from "./custom-groups.ts";
+import {
+  BUILT_IN_SESSION_SECTION_IDS,
+  normalizeSessionSectionOrderTokens,
+} from "./custom-groups.ts";
 import { parseAgentSessionKey, parseSessionKeyParts } from "./session-key.ts";
 
 export const SESSION_GROUP_MODES = [
@@ -64,8 +67,6 @@ export function collectKnownSessionGroups(
   return [...catalog, ...new Set(discovered)];
 }
 
-const DEFAULT_SESSION_SECTION_ORDER = ["ungrouped", "groups", "work"] as const;
-
 export function normalizeSessionSectionOrder(
   stored: readonly string[],
   knownGroups: readonly string[],
@@ -91,14 +92,12 @@ export function normalizeSessionSectionOrder(
       continue;
     }
     const firstBuiltInIndex = order.findIndex((entry) =>
-      DEFAULT_SESSION_SECTION_ORDER.includes(
-        entry as (typeof DEFAULT_SESSION_SECTION_ORDER)[number],
-      ),
+      BUILT_IN_SESSION_SECTION_IDS.some((section) => section === entry),
     );
     order.splice(firstBuiltInIndex < 0 ? order.length : firstBuiltInIndex, 0, token);
   }
 
-  for (const [index, sectionId] of DEFAULT_SESSION_SECTION_ORDER.entries()) {
+  for (const [index, sectionId] of BUILT_IN_SESSION_SECTION_IDS.entries()) {
     if (order.includes(sectionId)) {
       continue;
     }
@@ -106,7 +105,7 @@ export function normalizeSessionSectionOrder(
       order.push(sectionId);
       continue;
     }
-    const previousId = DEFAULT_SESSION_SECTION_ORDER[index - 1]!;
+    const previousId = BUILT_IN_SESSION_SECTION_IDS[index - 1]!;
     order.splice(order.indexOf(previousId) + 1, 0, sectionId);
   }
   const unseenCatalogTokens = catalogIds

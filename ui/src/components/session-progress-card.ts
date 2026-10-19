@@ -2,6 +2,7 @@ import type { ProgressCard, ProgressCardStep, SessionRunStatus } from "@openclaw
 import { asDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
 import { t } from "../i18n/index.ts";
 import type { SessionProgressCardRefreshState } from "../lib/session-progress-cards.ts";
+import { TERMINAL_RUN_OUTCOMES } from "../lib/session-run-state.ts";
 
 export const REFRESH_STATUS_LABEL_KEYS: Record<
   SessionProgressCardRefreshState,
@@ -24,15 +25,6 @@ export const STATUS_LABEL_KEYS: Record<ProgressCardStep["status"], Parameters<ty
   completed: "sessionProgressCard.status.completed",
   in_progress: "sessionProgressCard.status.inProgress",
   pending: "sessionProgressCard.status.pending",
-};
-
-export const TERMINAL_RUN_OUTCOMES: Partial<
-  Record<SessionRunStatus, "completed" | "failed" | "stopped">
-> = {
-  done: "completed",
-  failed: "failed",
-  killed: "stopped",
-  timeout: "failed",
 };
 
 function progressCounts(card: ProgressCard): { completed: number; total: number } | null {

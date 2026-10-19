@@ -236,51 +236,27 @@ const MECHA_PLATES = staticSprite(`
 
 // Palettes whose identity is already pattern-driven skip the freckle trait;
 // stacking speckle sets reads as noise, not a variant.
-export const PATTERNED_PALETTES: ReadonlySet<LobsterPetPaletteId> = new Set([
+const PATTERNED_GEOMETRY_PALETTES: ReadonlySet<LobsterPetPaletteId> = new Set([
   "split",
   "retro",
-  "lumen",
-  "magma",
-  "oilslick",
-  "aurora",
-  "nebula",
-  "glass",
-  "geode",
-  "phosphor",
   "heisenbug",
-  "blueprint",
-  "clawnstantine",
-  "clawiestardust",
-  "taylorpinch",
-  "clawtoodeetoo",
-  "leonardodepinchy",
-  "shellvis",
-  "alexandergrahamshell",
-  "clawtron",
   "selene",
   "pixel",
-  "banana",
-  "bee",
-  "rubberduck",
-  "watermelon",
-  "sourdough",
-  "zombie",
-  "plush",
   "balloon",
-  "disco",
   "cryptid",
   "flatpack",
   "tinfoil",
   "actual",
-  "chimera",
-  "notexture",
   "loading",
-  "eclipse",
   "ascii",
   "portal",
   "invisible",
   "goldenretro",
 ]);
+
+export function isPatternedLobsterPalette(paletteId: LobsterPetPaletteId): boolean {
+  return Boolean(PALETTE_OVERLAYS[paletteId]) || PATTERNED_GEOMETRY_PALETTES.has(paletteId);
+}
 
 const BANANA_MARKS = staticSprite(`
 <g fill="#8a6430">
