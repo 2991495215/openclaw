@@ -1,4 +1,6 @@
 // Pure channel contract types used by plugin implementations and tests.
+export type { SecurityAuditFinding } from "../security/audit.types.js";
+
 export type {
   BaseProbeResult,
   BaseTokenResolution,

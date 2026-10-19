@@ -176,13 +176,7 @@ export function rememberSessionObserverDormantRun(
 export function rememberSessionObserverDisabledRun(runs: Set<string>, runId: string): void {
   runs.delete(runId);
   runs.add(runId);
-  while (runs.size > MAX_DISABLED_RUNS) {
-    const oldest = runs.values().next().value;
-    if (oldest === undefined) {
-      break;
-    }
-    runs.delete(oldest);
-  }
+  pruneMapToMaxSize(runs, MAX_DISABLED_RUNS);
 }
 
 export function markSessionObserverRunSuperseded(

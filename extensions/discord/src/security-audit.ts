@@ -1,3 +1,4 @@
+import type { SecurityAuditFinding } from "openclaw/plugin-sdk/channel-contract";
 import { coerceNativeSetting, normalizeAllowFromList } from "openclaw/plugin-sdk/channel-policy";
 import type {
   DiscordGuildChannelConfig,
@@ -58,13 +59,7 @@ export async function collectDiscordSecurityAuditFindings(params: {
   orderedAccountIds: string[];
   hasExplicitAccountPath: boolean;
 }) {
-  const findings: Array<{
-    checkId: string;
-    severity: "info" | "warn" | "critical";
-    title: string;
-    detail: string;
-    remediation?: string;
-  }> = [];
+  const findings: SecurityAuditFinding[] = [];
   const discordCfg = params.account.config ?? {};
   const accountId =
     normalizeOptionalString(params.accountId) ?? params.account.accountId ?? "default";

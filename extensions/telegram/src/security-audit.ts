@@ -1,3 +1,4 @@
+import type { SecurityAuditFinding } from "openclaw/plugin-sdk/channel-contract";
 import { readChannelAllowFromStore } from "openclaw/plugin-sdk/conversation-runtime";
 import { resolveNativeSkillsEnabled } from "openclaw/plugin-sdk/native-command-config-runtime";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -10,13 +11,7 @@ export async function collectTelegramSecurityAuditFindings(params: {
   accountId?: string | null;
   account: ResolvedTelegramAccount;
 }) {
-  const findings: Array<{
-    checkId: string;
-    severity: "info" | "warn" | "critical";
-    title: string;
-    detail: string;
-    remediation?: string;
-  }> = [];
+  const findings: SecurityAuditFinding[] = [];
 
   const telegramCfg = params.account.config ?? {};
   const accountId =

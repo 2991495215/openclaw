@@ -263,7 +263,7 @@ new code; see the per-row notes below.
     | `plugin-sdk/channel-actions` | Channel message-action helpers, plus deprecated native schema helpers kept for plugin compatibility |
     | `plugin-sdk/channel-route` | Private-local after July 2026; Shared route normalization, parser-driven target resolution, thread-id stringification, dedupe/compact route keys, parsed-target types, and route/target comparison helpers |
     | `plugin-sdk/channel-targets` | Private-local after July 2026; Target parsing helpers; route comparison callers should use `plugin-sdk/channel-route` |
-    | `plugin-sdk/channel-contract` | Channel contract types |
+    | `plugin-sdk/channel-contract` | Channel contract types, including the canonical `SecurityAuditFinding` type for structured audit results |
     | `plugin-sdk/channel-feedback` | Feedback/reaction wiring |
     | `plugin-sdk/reply-payload` | Reply payload types, normalization, content/media inspection, host-notice classification (`isHostNoticePayload`), native question option ordering, chunked send helpers, reasoning detection, and reply fan-out |
   </Accordion>
@@ -511,7 +511,7 @@ Use `isLoopbackHost(host)` when a plugin must accept only the local machine. It 
     | `plugin-sdk/system-event-runtime` | Focused system event enqueue, snapshot inspection, and consumption helpers; preserve each snapshot's opaque event ID when consuming selected entries |
     | `plugin-sdk/transport-ready-runtime` | Private-local after July 2026; Transport readiness wait helper |
     | `plugin-sdk/exec-approvals-runtime` | Private-local after July 2026; Exec approval policy file helpers without the broad infra-runtime barrel |
-    | `plugin-sdk/collection-runtime` | Small bounded cache helpers |
+    | `plugin-sdk/collection-runtime` | Small bounded cache helpers, including insertion-order Map and Set pruning |
     | `plugin-sdk/collection-input-runtime` | Private-local bundled runtime; `isStringArray`, `ensureRecord`, and `normalizeOptionalTrimmedStringRecord` for collection admission and normalization; not a typed public SDK contract |
     | `plugin-sdk/http-response-runtime` | Private-local bundled runtime; JSON charset, cache, framing, and header-commit policies with their established serialization timing; not a typed public SDK contract |
     | `plugin-sdk/diagnostic-flags` | `isDiagnosticFlagEnabled` for flag-only consumers without event, trace, or redaction initialization |

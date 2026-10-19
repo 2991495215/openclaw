@@ -1,3 +1,4 @@
+import type { SecurityAuditFinding } from "openclaw/plugin-sdk/channel-contract";
 import { coerceNativeSetting, normalizeAllowFromList } from "openclaw/plugin-sdk/channel-policy";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { readChannelAllowFromStore } from "openclaw/plugin-sdk/conversation-runtime";
@@ -12,13 +13,7 @@ export async function collectSlackSecurityAuditFindings(params: {
   accountId?: string | null;
   account: ResolvedSlackAccount;
 }) {
-  const findings: Array<{
-    checkId: string;
-    severity: "info" | "warn" | "critical";
-    title: string;
-    detail: string;
-    remediation?: string;
-  }> = [];
+  const findings: SecurityAuditFinding[] = [];
   const slackCfg = params.account.config ?? {};
   const accountId = params.accountId?.trim() || params.account.accountId || "default";
   const slashCommandConfigured =

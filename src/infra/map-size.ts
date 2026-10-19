@@ -1,5 +1,5 @@
-/** Prunes a Map in insertion order until it fits the requested maximum size. */
-export function pruneMapToMaxSize<K, V>(map: Map<K, V>, maxSize: number): void {
+/** Prunes a Map or Set in insertion order until it fits the requested maximum size. */
+export function pruneMapToMaxSize<K, V>(map: Map<K, V> | Set<K>, maxSize: number): void {
   if (Number.isNaN(maxSize) || maxSize === Number.POSITIVE_INFINITY) {
     // Treat "unknown" or unlimited sizes as no-op so callers can wire optional caps directly.
     return;

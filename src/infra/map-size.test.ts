@@ -8,6 +8,13 @@ describe("pruneMapToMaxSize", () => {
     ["c", 3],
   ] as const;
 
+  it("keeps the newest unique Set keys without refreshing duplicates", () => {
+    const keys = new Set(["a", "b", "c"]);
+    keys.add("a");
+    pruneMapToMaxSize(keys, 2);
+    expect([...keys]).toEqual(["b", "c"]);
+  });
+
   it.each([
     {
       name: "floors fractional limits and keeps newest entries",

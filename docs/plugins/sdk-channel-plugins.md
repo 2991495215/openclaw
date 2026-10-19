@@ -375,7 +375,7 @@ when initialization must finish before the child runs.
 
     Channel-specific security diagnostics can use `security.collectWarnings`.
     Legacy string results are warning severity. Return the structured
-    `SecurityAuditFinding` shape (`checkId`, `severity`, `title`, `detail`, and
+    `SecurityAuditFinding` type from `openclaw/plugin-sdk/channel-contract` (`checkId`, `severity`, `title`, `detail`, and
     optional `remediation`) when the producer must declare informational or
     critical severity; the same finding is used by Doctor and the main security
     audit. Use `collectAuditFindings` only for diagnostics that should appear in
