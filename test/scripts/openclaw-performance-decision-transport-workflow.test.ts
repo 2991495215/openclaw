@@ -161,6 +161,26 @@ it.each(["none", "", "read", "write", "write-only"])(
   },
 );
 
+posixIt.each([
+  { candidate: "pnpm@12.10.1", status: 0 },
+  { candidate: "pnpm@12.11.1", status: 1 },
+])("compares measured package-manager pins, not the helper: $candidate", (fixture) => {
+  const root = tempDirs.make("utility-workflow-pins-");
+  for (const [variant, pin] of [
+    ["helper", "pnpm@12.11.1"],
+    ["baseline", "pnpm@12.10.1"],
+    ["candidate", fixture.candidate],
+  ]) {
+    mkdirSync(join(root, variant));
+    writeFileSync(join(root, variant, "package.json"), JSON.stringify({ packageManager: pin }));
+  }
+  const verify = step("Verify Utility and Decision source identities").run!;
+  const result = runShell(verify.slice(verify.indexOf("node --input-type=module")), {
+    BENCHMARK_ROOT: root,
+  });
+  expect(result.status, result.stderr).toBe(fixture.status);
+});
+
 posixIt.each([0, 7])("preserves measurement exit %i and the fixed workload", (status) => {
   const root = tempDirs.make("decision-workflow-command-");
   const argsPath = join(root, "args");

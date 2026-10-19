@@ -2013,7 +2013,8 @@ jobs:
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { readFileSync } from 'node:fs';
-          const pins = ['helper', 'baseline', 'candidate'].map(variant =>
+          // The helper is not installed; each measured checkout owns its frozen toolchain.
+          const pins = ['baseline', 'candidate'].map(variant =>
             JSON.parse(readFileSync(`${process.env.BENCHMARK_ROOT}/${variant}/package.json`, 'utf8')).packageManager);
           assert.equal(typeof pins[0], 'string');
           assert(pins[0].startsWith('pnpm@'));
