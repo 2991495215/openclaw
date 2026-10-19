@@ -117,7 +117,7 @@ it.each(["matching attempt", "different tools", "different model", "revoked sour
                   toolAuthorityFingerprint: join.fingerprint,
                   toolAuthorityPreparation: bindPreparedToolAuthority(
                     bindWorkerToolPreparation({
-                      authorityKind: "source-bound",
+                      authorityKind: "source-bound" as const,
                       assertCurrent: () => {
                         join.read();
                       },
