@@ -181,10 +181,13 @@ export async function runReplyAgent(
       attributes: traceAttributes,
     });
   const readGeneration = getAgentEventLifecycleGeneration();
+  const sourceReader = getReplyOperationSessionReader(providedReplyOperation);
   const assertReadCurrent = composeSessionSourceAssertion(
     [followupRun.operatorAuthority?.assertCurrent],
     (assertSource) => {
       assertAgentRunLifecycleGenerationCurrent(readGeneration);
+      providedReplyOperation?.abortSignal.throwIfAborted();
+      sourceReader?.assertCurrent();
       assertSource();
     },
   );
@@ -201,7 +204,9 @@ export async function runReplyAgent(
             (target) => {
               restartRecoveryTarget = target;
             },
-            getReplyOperationSessionReader(providedReplyOperation),
+            // Active native controls retain their slash-source reservation while
+            // reading the conversation target. Its reader cannot change scope.
+            providedReplyOperation?.key === sessionKey ? sourceReader : undefined,
           )) ?? activeSessionEntry)
         : activeSessionEntry;
     assertReadCurrent();
