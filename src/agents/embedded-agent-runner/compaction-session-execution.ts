@@ -193,6 +193,7 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
     });
     const resourceLoader = new DefaultResourceLoader({
       cwd: effectiveCwd,
+      agentDir,
       extensionFactories,
     });
     await resourceLoader.reload();

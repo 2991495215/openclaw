@@ -1,17 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { useAutoCleanupTempDirTracker } from "../../../../../test/helpers/temp-dir.js";
 import darkTheme from "./dark.json" with { type: "json" };
-import { Theme } from "./theme.js";
+import { loadThemeFromPath } from "./theme.js";
+
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 function loadColor(color: string | number, mode: "256color" | "truecolor") {
-  const colors = Object.assign(
-    {},
-    darkTheme.colors,
-    Object.fromEntries(Object.keys(darkTheme.colors).map((key) => [key, color])),
+  const themePath = join(tempDirs.make("openclaw-theme-"), "theme.json");
+  writeFileSync(
+    themePath,
+    JSON.stringify({
+      ...darkTheme,
+      colors: { ...darkTheme.colors, accent: color, selectedBg: color },
+    }),
   );
-  return new Theme(colors, colors, mode);
+  return loadThemeFromPath(themePath, mode);
 }
 
-describe("Theme", () => {
+describe("loadThemeFromPath", () => {
   it.each([
     ["#0000ff", 21],
     ["#2f00ff", 21],

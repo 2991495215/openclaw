@@ -76,6 +76,8 @@ function createResourceLoader(): ResourceLoader {
     getExtensions: () => extensionsResult,
     getSkills: () => ({ skills: [], diagnostics: [] }),
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
+    getThemes: () => ({ themes: [], diagnostics: [] }),
+    extendResources: () => {},
     reload: async () => {},
   };
 }

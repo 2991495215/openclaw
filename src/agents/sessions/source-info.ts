@@ -17,6 +17,17 @@ export interface SourceInfo extends PathMetadata {
   path: string;
 }
 
+/** Converts package-manager path metadata into the session source-info shape. */
+export function createSourceInfo(path: string, metadata: PathMetadata): SourceInfo {
+  return {
+    path,
+    source: metadata.source,
+    scope: metadata.scope,
+    origin: metadata.origin,
+    baseDir: metadata.baseDir,
+  };
+}
+
 /** Builds source metadata for generated or synthetic session entries. */
 export function createSyntheticSourceInfo(
   path: string,
