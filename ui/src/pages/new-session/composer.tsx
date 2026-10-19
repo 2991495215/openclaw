@@ -9,6 +9,7 @@ import {
   resolveLobsterPetMode,
   resolveLobsterRunOutcome,
 } from "../../components/lobster-pet-contract.ts";
+import { createBackgroundLayoutRef } from "../../components/session-background-layout-context.tsx";
 import { Icon } from "../../components/solid/icon.tsx";
 import { registerNewSessionSetupEnglish } from "../../i18n/locales/en-new-session-setup.ts";
 import type { HumanMention } from "../../lib/chat/chat-types.ts";
@@ -25,6 +26,7 @@ import { projectOwner } from "../../lib/reactive/projection.ts";
 import type { SessionToolOverrides } from "../../lib/sessions/patch.ts";
 import { refreshSlashCommands } from "../chat/chat-commands.ts";
 import { resolveChatAttachmentLimits } from "../chat/components/chat-attachment-admission.ts";
+import { createChatAttachmentInputHandle } from "../chat/components/chat-attachment-inputs.ts";
 import { ChatAttachmentInputs } from "../chat/components/chat-attachment-inputs.tsx";
 import {
   createChatAttachmentDropHandlers,
@@ -420,6 +422,8 @@ function createComposerPlaceholder(options: () => NewSessionComposerOptions) {
 
 export function NewSessionComposer(props: { options: NewSessionComposerOptions }) {
   const footerControl = createFooterControlRef();
+  const inputHandle = createChatAttachmentInputHandle();
+  const backgroundLayoutRef = createBackgroundLayoutRef("composer");
   const draft = createMemo(() => {
     const source = props.options.draftSource;
     return source ? projectOwner(source, (owner) => owner.read()) : undefined;
@@ -477,6 +481,7 @@ export function NewSessionComposer(props: { options: NewSessionComposerOptions }
       onDragOver={(event) => frame().attachmentDropHandlers.onDragover(event)}
     >
       <div
+        ref={backgroundLayoutRef}
         class={[
           "agent-chat__input agent-chat__input--mobile-toolbar",
           {
@@ -521,7 +526,7 @@ export function NewSessionComposer(props: { options: NewSessionComposerOptions }
         <HumanMentionMenuView args={[textarea.mentionMenu, frame().mentionMenuHost]} />
         <EmojiMenu args={[textarea.emojiMenu, "new-session", textarea.getTextarea()]} />
         <Show when={!options().nativeTerminal}>
-          <ChatAttachmentInputs {...frame().attachmentProps} />
+          <ChatAttachmentInputs {...frame().attachmentProps} inputHandle={inputHandle} />
         </Show>
         <SelectedHumanMentions
           text={options().message}
@@ -659,7 +664,11 @@ export function NewSessionComposer(props: { options: NewSessionComposerOptions }
         <div class="agent-chat__composer-footer">
           <div class="agent-chat__composer-lead">
             <Show when={!options().nativeTerminal}>
-              <NewSessionPlusMenu options={options()} attachments={frame().attachmentProps} />
+              <NewSessionPlusMenu
+                options={options()}
+                attachments={frame().attachmentProps}
+                inputHandle={inputHandle}
+              />
             </Show>
             {options().permissionControl}
             <Show when={!options().nativeTerminal && options().draftAvailable}>

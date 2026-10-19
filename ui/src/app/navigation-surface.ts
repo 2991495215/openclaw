@@ -1,9 +1,13 @@
+import type { AppSidebarElement } from "../components/app-sidebar.tsx";
 import { isCommandPaletteShortcut } from "../components/command-palette-contract.ts";
+import { activeElement, tabbableElements } from "../components/focus-navigation.ts";
+import { containsComposed } from "../components/overlay-registry.ts";
 import { isTerminalPanelShortcut } from "../components/panel-toggle-contract.ts";
 import {
   KEYBOARD_SHORTCUT_COMBOS,
   matchesShortcutCombo,
 } from "../lib/keyboard-shortcut-contract.ts";
+import type { RouteElements } from "./route-elements.ts";
 
 export const NAVIGATION_RAIL_WIDTH = 52;
 
@@ -14,29 +18,23 @@ export type ShellNavigationElements = {
   toastElement?: HTMLElement;
 };
 
-const NAV_DRAWER_FOCUSABLE_SELECTOR =
-  "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
-
-type AppSidebarElement = HTMLElement & { dismissTransientMenus(): boolean };
-type SidebarAttentionElement = HTMLElement & { dismissPanel(): boolean };
+export type ShellNavigationSurfaces = {
+  readonly navigationSidebar: HTMLElement &
+    Partial<Pick<AppSidebarElement, "dismissTransientMenus">>;
+  readonly queryRenderedElements: RouteElements["renderedElements"];
+};
 
 export function navDrawerFocusableElements(drawer: HTMLElement): HTMLElement[] {
-  // Sidebar and route owners can replace descendants; tab trapping needs their live focus order.
-  return [...drawer.querySelectorAll<HTMLElement>(NAV_DRAWER_FOCUSABLE_SELECTOR)].filter(
-    (candidate) => candidate.checkVisibility(),
-  );
+  return [...tabbableElements(drawer.children)];
 }
 
-export function dismissNavigationTransientSurfaces(host: HTMLElement): boolean {
-  // Sidebar-owned menu/panel markup stays foreign; unupgraded elements own no transient UI.
-  const dismissedPanel = [
-    ...host.querySelectorAll<SidebarAttentionElement>("openclaw-sidebar-attention:defined"),
-  ]
+export function dismissNavigationTransientSurfaces(host: ShellNavigationSurfaces): boolean {
+  const dismissedPanel = host
+    .queryRenderedElements("openclaw-sidebar-attention")
     .map((attention) => attention.dismissPanel())
     .some((dismissed) => dismissed);
-  const dismissedMenu = host
-    .querySelector<AppSidebarElement>("openclaw-app-sidebar:defined")
-    ?.dismissTransientMenus();
+  const sidebar = host.navigationSidebar;
+  const dismissedMenu = sidebar.isConnected && sidebar.dismissTransientMenus?.();
   return dismissedMenu === true || dismissedPanel;
 }
 
@@ -57,12 +55,14 @@ function trapNavDrawerFocus(drawer: HTMLElement | undefined, event: KeyboardEven
     return;
   }
   const focusable = navDrawerFocusableElements(drawer);
+  const active = activeElement(drawer);
   const target = event.shiftKey ? focusable.at(-1) : focusable[0];
   const boundary = event.shiftKey ? focusable[0] : focusable.at(-1);
   if (
-    !drawer.contains(document.activeElement) ||
-    document.activeElement === boundary ||
-    (event.shiftKey && document.activeElement === drawer)
+    !active ||
+    !containsComposed(drawer, active) ||
+    active === boundary ||
+    (event.shiftKey && active === drawer)
   ) {
     event.preventDefault();
     (target ?? drawer).focus({ preventScroll: true });

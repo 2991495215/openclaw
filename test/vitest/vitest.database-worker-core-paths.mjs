@@ -1,5 +1,6 @@
 // These consumers need the host-owned SQLite broker, which runs in forked processes.
 export const databaseWorkerCoreTestFiles = [
+  "test/scripts/upgrade-survivor-acp-metadata.test.ts",
   "test/discord-live-policy.integration.test.ts",
   "src/commands/startup-config-preflight.fresh-profiles.test.ts",
   "src/channels/message/ingress-drain.handoff.test.ts",
@@ -347,6 +348,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/cli/update-cli/update-command-service-maintenance.test.ts",
   "src/cli/update-cli/update-command-service-maintenance-handoff.test.ts",
   "src/cli/update-cli/update-command-service-maintenance-native.test.ts",
+  "src/cli/update-cli/update-command-terminal-authority.test.ts",
   "src/cli/update-cli/update-command-terminal-outcome.test.ts",
   "src/state/session-repository-workspaces.test.ts",
   "src/infra/update-run-reconciliation.worker.test.ts",
@@ -999,6 +1001,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/sessions/user-turn-transcript.test.ts",
   "src/sessions/user-turn-transcript.persistence.test.ts",
   "test/canonical-descendant.integration.test.ts",
+  "test/codex-web-search-native.integration.test.ts",
   "test/runtime-agent.codex-initialization.integration.test.ts",
   "packages/memory-host-sdk/src/host/session-memory-sync.test.ts",
   "packages/memory-host-sdk/src/host/session-files-archive-identity.test.ts",
