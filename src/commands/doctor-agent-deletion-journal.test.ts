@@ -192,10 +192,7 @@ it.each([
       );
       expect(next.agentDatabaseMigrationDiscovery?.discovery.unverifiedTargets).toEqual([]);
     }
-    expect(
-      (await repairDoctorAgentDeletionJournal({ preflight: next, shouldRepair: true, env }))
-        .changes,
-    ).toEqual([]);
+    expect((await repairJournal(next, env)).changes).toEqual([]);
     expect(fs.readdirSync(recoveryDir)).toEqual(files);
     expect(fs.readFileSync(pathname)).toEqual(before);
   },
