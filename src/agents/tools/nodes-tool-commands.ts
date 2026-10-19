@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
+import { formatErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
-import { formatErrorMessage } from "../../infra/errors.js";
 import {
   jsonResult,
   readFiniteNumberParam,
@@ -14,23 +14,17 @@ import { callNodesToolNodeInvoke, resolveNodesToolInvokeTimeouts } from "./nodes
 import { resolveAgentNodeId } from "./nodes-utils.js";
 
 const BLOCKED_INVOKE_COMMANDS = new Set(["system.run", "system.run.prepare"]);
-const MEDIA_INVOKE_ACTIONS: Readonly<Record<string, string>> = {
-  "camera.snap": "camera_snap",
-  "camera.clip": "camera_clip",
-  "photos.latest": "photos_latest",
-  "screen.record": "screen_record",
-  "screen.snapshot": "screen_snapshot",
-  "file.fetch": "file_fetch",
-  "dir.list": "dir_list",
-  "dir.fetch": "dir_fetch",
-  "file.write": "file_write",
-};
 // File-transfer policy cannot be bypassed by opting into raw media payloads.
-const POLICY_REDIRECT_INVOKE_COMMANDS: ReadonlySet<string> = new Set([
-  "file.fetch",
-  "dir.list",
-  "dir.fetch",
-  "file.write",
+const MEDIA_INVOKE_ACTIONS = new Map<string, { action: string; pathPolicy?: true }>([
+  ["camera.snap", { action: "camera_snap" }],
+  ["camera.clip", { action: "camera_clip" }],
+  ["photos.latest", { action: "photos_latest" }],
+  ["screen.record", { action: "screen_record" }],
+  ["screen.snapshot", { action: "screen_snapshot" }],
+  ["file.fetch", { action: "file_fetch", pathPolicy: true }],
+  ["dir.list", { action: "dir_list", pathPolicy: true }],
+  ["dir.fetch", { action: "dir_fetch", pathPolicy: true }],
+  ["file.write", { action: "file_write", pathPolicy: true }],
 ]);
 const NODE_READ_ACTION_COMMANDS = {
   camera_list: "camera.list",
@@ -58,7 +52,9 @@ export async function executeNodeCommandAction(params: {
 }): Promise<ReturnType<typeof jsonResult>> {
   const node = readToolStringParam(params.input, "node", { required: true });
   let command: string;
-  let commandParams: Record<string, unknown> = {};
+  let commandParams: unknown = {};
+  let nodeId: string | undefined;
+  const rawInvoke = params.action === "invoke";
   let gatewayOpts = params.gatewayOpts;
   let invokeTimeoutMs: number | undefined;
   let requireObjectPayload = false;
@@ -164,33 +160,32 @@ export async function executeNodeCommandAction(params: {
       break;
     }
     case "invoke": {
-      const nodeId = await resolveAgentNodeId(params.gatewayOpts, node);
+      nodeId = await resolveAgentNodeId(params.gatewayOpts, node);
       const invokeCommand = readToolStringParam(params.input, "invokeCommand", { required: true });
       const invokeCommandNormalized = normalizeLowercaseStringOrEmpty(invokeCommand);
       if (BLOCKED_INVOKE_COMMANDS.has(invokeCommandNormalized)) {
         throw new Error(
-          `invokeCommand "${invokeCommand}" is reserved for shell execution; use exec with host=node instead`,
+          `invokeCommand "${invokeCommand}" is reserved for shell execution; call the shell exec tool with { command, host: "node", node: "${nodeId}" } instead`,
         );
       }
-      const dedicatedAction = MEDIA_INVOKE_ACTIONS[invokeCommandNormalized];
-      if (dedicatedAction && POLICY_REDIRECT_INVOKE_COMMANDS.has(invokeCommandNormalized)) {
+      const dedicatedAction = MEDIA_INVOKE_ACTIONS.get(invokeCommandNormalized);
+      if (dedicatedAction?.pathPolicy) {
         throw new Error(
-          `invokeCommand "${invokeCommand}" enforces a path-allowlist policy and cannot be invoked via the generic nodes.invoke surface; use the dedicated file-transfer tool "${dedicatedAction}"`,
+          `invokeCommand "${invokeCommand}" enforces a path-allowlist policy and cannot be invoked via the generic nodes.invoke surface; use the dedicated file-transfer tool "${dedicatedAction.action}"`,
         );
       }
       if (dedicatedAction && !params.allowMediaInvokeCommands) {
         throw new Error(
-          `invokeCommand "${invokeCommand}" returns media payloads and is blocked to prevent base64 context bloat; use action="${dedicatedAction}"`,
+          `invokeCommand "${invokeCommand}" returns media payloads and is blocked to prevent base64 context bloat; use action="${dedicatedAction.action}"`,
         );
       }
       const invokeParamsJson =
         typeof params.input.invokeParamsJson === "string"
           ? params.input.invokeParamsJson.trim()
           : "";
-      let invokeParams: unknown = {};
       if (invokeParamsJson) {
         try {
-          invokeParams = JSON.parse(invokeParamsJson);
+          commandParams = JSON.parse(invokeParamsJson);
         } catch (err) {
           const message = formatErrorMessage(err);
           throw new Error(`invokeParamsJson must be valid JSON: ${message}`, {
@@ -202,31 +197,30 @@ export async function executeNodeCommandAction(params: {
         input: params.input,
         gatewayOpts: params.gatewayOpts,
       });
-      const raw = await callNodesToolNodeInvoke(
-        timeouts.gatewayOpts,
-        {
-          nodeId,
-          command: invokeCommand,
-          params: invokeParams,
-          timeoutMs: timeouts.invokeTimeoutMs,
-          idempotencyKey: crypto.randomUUID(),
-          ...(params.agentSessionKey ? { sessionKey: params.agentSessionKey } : {}),
-        },
-        { rawInvoke: true },
-      );
-      return jsonResult(raw ?? {});
+      command = invokeCommand;
+      gatewayOpts = timeouts.gatewayOpts;
+      invokeTimeoutMs = timeouts.invokeTimeoutMs;
+      break;
     }
     default:
       throw new Error("Unsupported node command action");
   }
-  const nodeId = await resolveAgentNodeId(gatewayOpts, node);
-  const raw = await callNodesToolNodeInvoke<{ payload: unknown }>(gatewayOpts, {
-    nodeId,
-    command,
-    params: commandParams,
-    ...(invokeTimeoutMs === undefined ? {} : { timeoutMs: invokeTimeoutMs }),
-    idempotencyKey: crypto.randomUUID(),
-  });
+  nodeId ??= await resolveAgentNodeId(gatewayOpts, node);
+  const raw = await callNodesToolNodeInvoke<{ payload: unknown }>(
+    gatewayOpts,
+    {
+      nodeId,
+      command,
+      params: commandParams,
+      ...(rawInvoke || invokeTimeoutMs !== undefined ? { timeoutMs: invokeTimeoutMs } : {}),
+      idempotencyKey: crypto.randomUUID(),
+      ...(rawInvoke && params.agentSessionKey ? { sessionKey: params.agentSessionKey } : {}),
+    },
+    rawInvoke ? { rawInvoke: true } : undefined,
+  );
+  if (rawInvoke) {
+    return jsonResult(raw ?? {});
+  }
   const payload =
     raw && typeof raw === "object" && Object.hasOwn(raw, "payload") ? raw.payload : {};
   return jsonResult(
