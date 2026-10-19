@@ -25,6 +25,31 @@ interface StatusDetails {
 }
 
 describe("passive channel summary contracts", () => {
+  it.each([
+    { identity: "user", mode: "http", expected: { postAs: "user", signingSecretSource: "none" } },
+    { identity: "user", mode: "socket", expected: { postAs: "user", appTokenSource: "none" } },
+    {
+      identity: "bot",
+      mode: "socket",
+      expected: { botTokenSource: "none", appTokenSource: "none" },
+    },
+  ])(
+    "supports async status adapters with $identity/$mode extras",
+    async ({ identity, mode, expected }) => {
+      const buildChannelSummary: () => Promise<Record<string, unknown>> = async () =>
+        buildPassiveProbedChannelStatusSummary(
+          {},
+          identity === "user"
+            ? {
+                postAs: "user",
+                ...(mode === "http" ? { signingSecretSource: "none" } : { appTokenSource: "none" }),
+              }
+            : { botTokenSource: "none", appTokenSource: "none" },
+        );
+      expect(await buildChannelSummary()).toMatchObject(expected);
+    },
+  );
+
   it("accepts probe-bearing literals without adding probe fields to base summaries", () => {
     const summary = buildPassiveChannelStatusSummary({ probe: { ok: true }, lastProbeAt: 3 });
     expectTypeOf(summary).toMatchTypeOf<{

@@ -1,12 +1,3 @@
-type BaseChannelStatusSummary<TExtra extends object> = {
-  configured: boolean;
-} & NoInfer<TExtra> & {
-    running: boolean;
-    lastStartAt: number | null;
-    lastStopAt: number | null;
-    lastError: string | null;
-  };
-
 /** Normalize a channel-level status summary so missing lifecycle fields become explicit nulls. */
 export function buildBaseChannelStatusSummary<TExtra extends object>(
   snapshot: {
@@ -19,7 +10,7 @@ export function buildBaseChannelStatusSummary<TExtra extends object>(
     lastProbeAt?: number | null;
   },
   extra?: TExtra,
-): BaseChannelStatusSummary<TExtra> {
+) {
   // Channel summaries already consume projected account state; this helper only normalizes nulls.
   return {
     configured: snapshot.configured ?? false,
@@ -36,7 +27,7 @@ export function buildBaseChannelStatusSummary<TExtra extends object>(
 export function buildProbeChannelStatusSummary<TExtra extends object>(
   snapshot: Parameters<typeof buildBaseChannelStatusSummary>[0],
   extra?: TExtra,
-): BaseChannelStatusSummary<TExtra> & { probe: unknown; lastProbeAt: number | null } {
+) {
   return {
     ...buildBaseChannelStatusSummary(snapshot, extra),
     probe: snapshot.probe,
