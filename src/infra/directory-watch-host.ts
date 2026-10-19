@@ -1,16 +1,15 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
-import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import type { Readable, Writable } from "node:stream";
 
 type Listener = (event: string, filename?: string) => void;
 export type DirectoryWatch = {
   close(): void;
-  on(event: "error", listener: (error: Error) => void): unknown;
 };
+type WatchCallbacks = { change: Listener; error: (error: Error) => void };
 type Host = {
   child: ChildProcessByStdio<Writable, Readable, null>;
-  watches: Map<number, EventEmitter>;
+  watches: Map<number, WatchCallbacks>;
 };
 
 // libuv on macOS rebuilds the loop's shared FSEventStream synchronously on every
@@ -75,10 +74,10 @@ function startHost(): Host {
         continue;
       }
       if (message.event) {
-        watch.emit("change", message.event, message.filename ?? undefined);
+        watch.change(message.event, message.filename ?? undefined);
       } else {
         started.watches.delete(message.id);
-        watch.emit("error", new Error("Directory watch host lost the watch"));
+        watch.error(new Error("Directory watch host lost the watch"));
       }
     }
   });
@@ -89,7 +88,7 @@ function startHost(): Host {
     const watches = Array.from(started.watches.values());
     started.watches.clear();
     for (const watch of watches) {
-      watch.emit("error", new Error("Directory watch host exited"));
+      watch.error(new Error("Directory watch host exited"));
     }
   };
   child.on("error", lost).on("exit", lost);
@@ -104,20 +103,17 @@ function startHost(): Host {
 
 function watchInHost(
   directoryPath: string,
-  listener: Listener,
+  callbacks: WatchCallbacks,
   recursive: boolean,
 ): DirectoryWatch {
   // Match fs.watch's synchronous admission so callers can fall back to an ancestor.
   fs.closeSync(fs.openSync(directoryPath, "r"));
   const current = (host ??= startHost());
   const id = nextId++;
-  const watch = new EventEmitter();
-  watch.on("change", listener);
-  current.watches.set(id, watch);
+  current.watches.set(id, callbacks);
   current.child.stdin.write(`${JSON.stringify({ id, path: directoryPath, recursive })}\n`);
-  return Object.assign(watch, {
+  return {
     close() {
-      watch.removeAllListeners("change");
       if (!current.watches.delete(id)) {
         return;
       }
@@ -130,18 +126,21 @@ function watchInHost(
         current.child.stdin.end();
       }
     },
-  });
+  };
 }
 
 /** Non-persistent native directory watch whose teardown never waits on FSEvents. */
 export function watchDirectory(
   directoryPath: string,
   listener: Listener,
+  onError: (error: Error) => void,
   recursive = false,
 ): DirectoryWatch {
   return process.platform === "darwin" && !process.versions.bun
-    ? watchInHost(directoryPath, listener, recursive)
-    : fs.watch(directoryPath, { persistent: false, recursive }, (event, filename) =>
-        listener(event, filename?.toString() ?? undefined),
-      );
+    ? watchInHost(directoryPath, { change: listener, error: onError }, recursive)
+    : fs
+        .watch(directoryPath, { persistent: false, recursive }, (event, filename) =>
+          listener(event, filename?.toString() ?? undefined),
+        )
+        .on("error", onError);
 }

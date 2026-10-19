@@ -58,12 +58,6 @@ function connectionHarness() {
   let state: WorkerConnectionState = { kind: "ready", hello: HELLO };
   const readyListeners = new Set<Parameters<WorkerConnection["onReady"]>[0]>();
   const terminalErrorListeners = new Set<Parameters<WorkerConnection["onTerminalError"]>[0]>();
-  const inferenceEventListeners = new Set<
-    Parameters<WorkerConnection["rpc"]["onInferenceEvent"]>[0]
-  >();
-  const inferenceTerminalListeners = new Set<
-    Parameters<WorkerConnection["rpc"]["onInferenceTerminal"]>[0]
-  >();
   const waitForReady = vi.fn<WorkerConnection["waitForReady"]>(async () => HELLO);
   const requestTranscriptCommit = vi.fn<TranscriptRequest>();
   const requestLiveEvent = vi.fn<LiveRequest>();
@@ -96,20 +90,7 @@ function connectionHarness() {
             throw new Error("Unexpected worker RPC in test");
         }
       },
-      onInferenceEvent: (listener: Parameters<WorkerConnection["rpc"]["onInferenceEvent"]>[0]) => {
-        inferenceEventListeners.add(listener);
-        return () => {
-          inferenceEventListeners.delete(listener);
-        };
-      },
-      onInferenceTerminal: (
-        listener: Parameters<WorkerConnection["rpc"]["onInferenceTerminal"]>[0],
-      ) => {
-        inferenceTerminalListeners.add(listener);
-        return () => {
-          inferenceTerminalListeners.delete(listener);
-        };
-      },
+      onInferenceFrame: (_frame: WorkerInferenceEventFrame | WorkerInferenceTerminalFrame) => {},
     },
     onReady: (listener: Parameters<WorkerConnection["onReady"]>[0]) => {
       readyListeners.add(listener);
@@ -143,14 +124,10 @@ function connectionHarness() {
       }
     },
     emitInferenceEvent: (frame: WorkerInferenceEventFrame) => {
-      for (const listener of inferenceEventListeners) {
-        listener(frame);
-      }
+      connection.rpc.onInferenceFrame(frame);
     },
     emitInferenceTerminal: (frame: WorkerInferenceTerminalFrame) => {
-      for (const listener of inferenceTerminalListeners) {
-        listener(frame);
-      }
+      connection.rpc.onInferenceFrame(frame);
     },
   };
 }

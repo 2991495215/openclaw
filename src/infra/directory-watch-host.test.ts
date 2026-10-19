@@ -25,7 +25,13 @@ describe("macOS directory watch host", () => {
       fs.mkdirSync(path.join(watched, "nested"));
       fs.mkdirSync(retired);
       const nativeWatch = vi.spyOn(fs, "watch");
-      expect(() => watchDirectory(path.join(root, "missing"), () => {})).toThrow();
+      expect(() =>
+        watchDirectory(
+          path.join(root, "missing"),
+          () => {},
+          () => {},
+        ),
+      ).toThrow();
 
       const events: Array<PromiseWithResolvers<[string, string | undefined]>> = [
         Promise.withResolvers(),
@@ -41,6 +47,9 @@ describe("macOS directory watch host", () => {
             events[1]!.resolve([event, filename]);
           }
         },
+        (error) => {
+          throw error;
+        },
         true,
       );
       // Registration is asynchronous, so the live watch first invalidates the whole directory.
@@ -54,7 +63,11 @@ describe("macOS directory watch host", () => {
         fs.rmdirSync(retired);
         return fd;
       });
-      watchDirectory(retired, () => {}).on("error", () => lost.resolve());
+      watchDirectory(
+        retired,
+        () => {},
+        () => lost.resolve(),
+      );
       await lost.promise;
 
       fs.writeFileSync(path.join(watched, "nested", "profiles"), "after");

@@ -6,6 +6,7 @@ import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { ApplicationContext, ApplicationGatewaySnapshot } from "../../app/context.ts";
 import { showConfirmDialog } from "../../components/confirm-dialog.ts";
 import { i18n } from "../../i18n/index.ts";
+import { projectCallbackOwner } from "../../lib/reactive/projection.ts";
 import { SESSION_FACE_PREFERENCE_PARAM } from "../../lib/sessions/route-navigation.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
@@ -104,7 +105,8 @@ function createWorktreesPage(request?: ReturnType<typeof vi.fn>) {
       ),
     ),
   );
-  const model = new WorktreesModel(context);
+  let publish: (() => void) | undefined;
+  const model = new WorktreesModel(context, () => publish?.());
   const element = document.createElement("div");
   let dispose: (() => void) | undefined;
   const page = {
@@ -114,7 +116,19 @@ function createWorktreesPage(request?: ReturnType<typeof vi.fn>) {
     mount() {
       flush();
       document.body.append(element);
-      dispose = mountSolid(() => renderWorktreesView(model), { container: element }).unmount;
+      dispose = mountSolid(
+        () => {
+          const { view } = projectCallbackOwner(
+            (notify) => {
+              publish = notify;
+              return model;
+            },
+            (owner) => owner,
+          );
+          return renderWorktreesView(model, view.read);
+        },
+        { container: element },
+      ).unmount;
       mountedPages.add(page);
     },
     unmount() {

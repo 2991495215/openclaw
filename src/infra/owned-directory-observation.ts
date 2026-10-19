@@ -183,6 +183,15 @@ function attach(directory: Directory) {
               }
             }
           },
+          () => {
+            const affected = Array.from(source.directories);
+            for (const entry of affected) {
+              detach(entry);
+              notify(entry);
+              retainEarlierFallback(entry, nextFallback());
+              scheduleFallback(entry);
+            }
+          },
           recursive,
         ),
       );
@@ -194,15 +203,6 @@ function attach(directory: Directory) {
       };
       sources.set(sourceKey, source);
       directory.source = source;
-      watcher.on("error", () => {
-        const affected = Array.from(source.directories);
-        for (const entry of affected) {
-          detach(entry);
-          notify(entry);
-          retainEarlierFallback(entry, nextFallback());
-          scheduleFallback(entry);
-        }
-      });
       return;
     } catch {
       const parent = path.dirname(candidate);
