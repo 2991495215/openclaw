@@ -18,7 +18,10 @@ import {
 } from "openclaw/plugin-sdk/plugin-entry";
 import { isNonSecretApiKeyMarker } from "openclaw/plugin-sdk/provider-auth-markers";
 import { runLiveProviderCatalog } from "openclaw/plugin-sdk/provider-catalog-live-runtime";
-import { findNormalizedProviderKey } from "openclaw/plugin-sdk/provider-model-metadata";
+import {
+  createStaticProviderCatalog,
+  findNormalizedProviderKey,
+} from "openclaw/plugin-sdk/provider-model-metadata";
 import type {
   ModelDefinitionConfig,
   ModelProviderConfig,
@@ -701,12 +704,7 @@ export default definePluginEntry({
           });
         },
       },
-      staticCatalog: {
-        order: "simple",
-        run: async () => ({
-          provider: buildStaticOllamaCloudProvider(),
-        }),
-      },
+      staticCatalog: createStaticProviderCatalog(buildStaticOllamaCloudProvider),
       ...providerHooks,
       resolveDynamicModel: ({ provider, modelId }) => {
         const cloudProvider = buildStaticOllamaCloudProvider();

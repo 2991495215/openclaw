@@ -1,3 +1,4 @@
+import { createStaticProviderCatalog } from "openclaw/plugin-sdk/provider-catalog-shared";
 import type { ProviderPlugin } from "openclaw/plugin-sdk/provider-model-shared";
 import { buildDeepSeekProvider } from "./provider-catalog.js";
 
@@ -6,12 +7,7 @@ const deepSeekProviderDiscovery: ProviderPlugin = {
   label: "DeepSeek",
   docsPath: "/providers/deepseek",
   auth: [],
-  staticCatalog: {
-    order: "simple",
-    run: async () => ({
-      provider: buildDeepSeekProvider(),
-    }),
-  },
+  staticCatalog: createStaticProviderCatalog(buildDeepSeekProvider),
 };
 
 export default deepSeekProviderDiscovery;

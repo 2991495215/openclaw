@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import type { Command } from "commander";
 import { callGatewayFromCli } from "openclaw/plugin-sdk/gateway-runtime";
 import { resolveDefaultAgentId } from "openclaw/plugin-sdk/memory-host-core";
-import { parseStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
+import { requireStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
 import {
   isRecord,
   normalizeStringEntries,
@@ -379,11 +379,9 @@ function parseWikiConfidenceOption(value: string): number {
 }
 
 function parseWikiPositiveIntegerOption(value: string, flag: string): number {
-  const parsed = parseStrictPositiveInteger(value);
-  if (parsed === undefined) {
-    throw invalidCliArgument(`${flag} must be a positive integer.`);
-  }
-  return parsed;
+  return requireStrictPositiveInteger(value, () =>
+    invalidCliArgument(`${flag} must be a positive integer.`),
+  );
 }
 
 function addWikiApplyMutationOptions<T extends Command>(command: T): T {

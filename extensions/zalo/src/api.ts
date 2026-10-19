@@ -1,14 +1,14 @@
-/**
- * Zalo Bot API client
- * @see https://bot.zaloplatforms.com/docs
- */
-
 import { captureEffectAuthority } from "openclaw/plugin-sdk/fetch-runtime";
 import { resolveTimerTimeoutMs } from "openclaw/plugin-sdk/number-runtime";
 import {
   assertOkOrThrowProviderError,
   readProviderJsonResponse,
 } from "openclaw/plugin-sdk/provider-http";
+/**
+ * Zalo Bot API client
+ * @see https://bot.zaloplatforms.com/docs
+ */
+import { parseHttpUrl } from "openclaw/plugin-sdk/request-url";
 import { resolvePinnedHostnameWithPolicy, type SsrFPolicy } from "openclaw/plugin-sdk/ssrf-runtime";
 import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
 import type { z } from "zod";
@@ -95,15 +95,11 @@ function resolveZaloApiUrl(): string {
   if (!value) {
     throw new Error(`${ZALO_API_URL_ENV} must not be empty.`);
   }
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error(`${ZALO_API_URL_ENV} must be a valid URL.`);
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`${ZALO_API_URL_ENV} must use http:// or https://.`);
-  }
+  const parsed = parseHttpUrl(
+    value,
+    `${ZALO_API_URL_ENV} must be a valid URL.`,
+    `${ZALO_API_URL_ENV} must use http:// or https://.`,
+  );
   if (parsed.search || parsed.hash) {
     throw new Error(`${ZALO_API_URL_ENV} must not include a query string or fragment.`);
   }
@@ -190,16 +186,11 @@ export async function sendPhoto(
   assertDirectAdapterHandoff?: () => void,
 ): Promise<ZaloApiResponse<ZaloMessage>> {
   const photoUrl = params.photo.trim();
-  let parsedPhotoUrl: URL;
-  try {
-    parsedPhotoUrl = new URL(photoUrl);
-  } catch {
-    throw new Error("Zalo photo URL must be an absolute HTTP or HTTPS URL");
-  }
-
-  if (parsedPhotoUrl.protocol !== "http:" && parsedPhotoUrl.protocol !== "https:") {
-    throw new Error("Zalo photo URL must use HTTP or HTTPS");
-  }
+  const parsedPhotoUrl = parseHttpUrl(
+    photoUrl,
+    "Zalo photo URL must be an absolute HTTP or HTTPS URL",
+    "Zalo photo URL must use HTTP or HTTPS",
+  );
 
   await resolvePinnedHostnameWithPolicy(parsedPhotoUrl.hostname, {
     policy: ZALO_MEDIA_SSRF_POLICY,

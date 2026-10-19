@@ -8,9 +8,26 @@ import {
   buildManifestModelProviderConfig,
   buildManifestProviderCatalogFamily,
   buildSingleProviderApiKeyCatalog,
+  createStaticProviderCatalog,
   findCatalogTemplate,
 } from "./provider-catalog.js";
 import type { ProviderCatalogContext } from "./types.js";
+
+describe("createStaticProviderCatalog", () => {
+  it("defers provider construction to each discovery call and preserves catalog order", async () => {
+    let calls = 0;
+    const provider: ModelProviderConfig = { baseUrl: "https://catalog.example/v1", models: [] };
+    const catalog = createStaticProviderCatalog(() => {
+      calls += 1;
+      return provider;
+    }, "profile");
+    expect(calls).toBe(0);
+    expect(catalog.order).toBe("profile");
+    await expect(catalog.run(createCatalogContext({}))).resolves.toEqual({ provider });
+    await expect(catalog.run(createCatalogContext({}))).resolves.toEqual({ provider });
+    expect(calls).toBe(2);
+  });
+});
 
 describe("manifest model size projection", () => {
   const providerId = "local-models";

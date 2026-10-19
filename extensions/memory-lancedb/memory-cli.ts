@@ -1,4 +1,4 @@
-import { parseStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
+import { requireStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import { defaultRuntime } from "openclaw/plugin-sdk/runtime";
 import { isMemoryMachineOutput } from "./cli-output-mode.js";
@@ -17,11 +17,7 @@ function parseLimit(value: string | undefined): number | undefined {
   if (value === undefined) {
     return undefined;
   }
-  const parsed = parseStrictPositiveInteger(value);
-  if (parsed === undefined) {
-    throw new Error("--limit must be a positive integer");
-  }
-  return parsed;
+  return requireStrictPositiveInteger(value, () => new Error("--limit must be a positive integer"));
 }
 
 function parseMemoryCliColumns(value: unknown): MemoryQueryColumn[] {

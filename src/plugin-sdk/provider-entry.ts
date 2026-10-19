@@ -17,6 +17,7 @@ import { readProviderCatalogResultEntries } from "../plugins/provider-catalog-re
 import {
   buildManifestModelProviderConfig,
   buildSingleProviderApiKeyCatalog,
+  createStaticProviderCatalog,
   readManifestProviderDefaultModelRef,
 } from "../plugins/provider-catalog.js";
 import type {
@@ -488,12 +489,7 @@ export function defineSingleProviderPluginEntry(options: SingleProviderPluginOpt
                 }
               : undefined
             : manifestStaticProvider
-              ? {
-                  order: "simple",
-                  run: async () => ({
-                    provider: await manifestStaticProvider(),
-                  }),
-                }
+              ? createStaticProviderCatalog(manifestStaticProvider)
               : undefined;
         api.registerProvider({
           id: providerId,

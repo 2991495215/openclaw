@@ -16,7 +16,20 @@ import {
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
 import type { ModelDefinitionConfig, ModelProviderConfig } from "../config/types.models.js";
-import type { ProviderCatalogContext, ProviderCatalogResult, ProviderPlugin } from "./types.js";
+import type {
+  ProviderCatalogContext,
+  ProviderCatalogResult,
+  ProviderPlugin,
+  ProviderPluginCatalog,
+} from "./types.js";
+
+/** Build static catalog rows only when discovery requests them. */
+export function createStaticProviderCatalog(
+  buildProvider: () => ModelProviderConfig | Promise<ModelProviderConfig>,
+  order: ProviderPluginCatalog["order"] = "simple",
+): ProviderPluginCatalog {
+  return { order, run: async () => ({ provider: await buildProvider() }) };
+}
 
 /** Finds a provider catalog template entry by normalized provider and template id. */
 export function findCatalogTemplate(params: {
@@ -269,10 +282,7 @@ export function buildManifestProviderCatalogFamily(params: {
     label,
     docsPath: params.docsPath ?? "/providers/models",
     auth: [],
-    staticCatalog: {
-      order: "simple",
-      run: async () => ({ provider: buildProvider() }),
-    },
+    staticCatalog: createStaticProviderCatalog(buildProvider),
   }));
 
   return {

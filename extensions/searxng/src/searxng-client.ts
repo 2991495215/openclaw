@@ -15,6 +15,7 @@ import {
   wrapWebContent,
   writeCachedSearchPayload,
 } from "openclaw/plugin-sdk/provider-web-search";
+import { parseHttpUrl } from "openclaw/plugin-sdk/request-url";
 import {
   assertHttpUrlTargetsPrivateNetwork,
   isBlockedHostnameOrIp,
@@ -104,16 +105,11 @@ async function searxngEndpointTargetsPrivateNetwork(url: URL): Promise<boolean> 
 }
 
 async function validateSearxngBaseUrl(baseUrl: string): Promise<SearxngEndpointMode> {
-  let parsed: URL;
-  try {
-    parsed = new URL(baseUrl);
-  } catch {
-    throw new Error("SearXNG base URL must be a valid http:// or https:// URL.");
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("SearXNG base URL must use http:// or https://.");
-  }
+  const parsed = parseHttpUrl(
+    baseUrl,
+    "SearXNG base URL must be a valid http:// or https:// URL.",
+    "SearXNG base URL must use http:// or https://.",
+  );
 
   if (parsed.protocol === "http:") {
     await assertHttpUrlTargetsPrivateNetwork(parsed.toString(), {

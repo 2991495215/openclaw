@@ -18,6 +18,7 @@ export {
 } from "../agents/gpt5-prompt-overlay.js";
 export {
   buildManifestModelProviderConfig,
+  createStaticProviderCatalog,
   findCatalogTemplate,
 } from "../plugins/provider-catalog.js";
 export {

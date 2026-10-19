@@ -20,6 +20,7 @@ import {
   parseFiniteNumber,
   parseStrictFiniteNumber,
   parseStrictInteger,
+  requireStrictPositiveInteger,
   positiveSecondsToSafeMilliseconds,
   resolveIntegerOption,
   resolveExpiresAtMsFromDurationMs,
@@ -36,6 +37,20 @@ import {
 } from "./number-coercion.js";
 
 describe("number-coercion", () => {
+  test("required positive integers retain strict parsing and the caller's error instance", () => {
+    const error = Object.assign(new Error("--limit must be a positive integer."), {
+      code: "commander.invalidArgument",
+    });
+    expect(requireStrictPositiveInteger(" 12 ", () => error)).toBe(12);
+    let caught: unknown;
+    try {
+      requireStrictPositiveInteger("1.5", () => error);
+    } catch (failure) {
+      caught = failure;
+    }
+    expect(caught).toBe(error);
+  });
+
   test.each([
     ["positive integer", 1, 1, 1, 1],
     ["unsafe integer", 2 ** 53, 2 ** 53, 2 ** 53, 2 ** 53],

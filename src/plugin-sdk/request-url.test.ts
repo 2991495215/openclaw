@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { resolveRequestUrl } from "./request-url.js";
+import { parseHttpUrl, resolveRequestUrl } from "./request-url.js";
+
+describe("parseHttpUrl", () => {
+  it("parses HTTP URLs without imposing caller-specific credential, host, query or fragment policy", () => {
+    expect(
+      parseHttpUrl("http://user:pass@127.0.0.1:8080/a?q=1#part", "syntax", "scheme").href,
+    ).toBe("http://user:pass@127.0.0.1:8080/a?q=1#part");
+    expect(parseHttpUrl("https://example.com/a", "syntax", "scheme").protocol).toBe("https:");
+  });
+
+  it("preserves the caller's distinct malformed-URL and protocol diagnostics", () => {
+    expect(() => parseHttpUrl("not a URL", "caller syntax error", "caller protocol error")).toThrow(
+      "caller syntax error",
+    );
+    expect(() =>
+      parseHttpUrl("file:///private/data", "caller syntax error", "caller protocol error"),
+    ).toThrow("caller protocol error");
+  });
+});
 
 describe("resolveRequestUrl", () => {
   it.each([

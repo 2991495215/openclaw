@@ -10,6 +10,7 @@ import {
   MAX_AUDIO_BYTES,
   createSpeechDirectiveParser,
   resolveSpeechProviderApiKey,
+  resolveSpeechTalkApiKeyOverride,
 } from "openclaw/plugin-sdk/speech-provider";
 import {
   asBoolean,
@@ -244,14 +245,10 @@ export function buildFishAudioSpeechProvider(): SpeechProviderPlugin {
       const base = normalizeProviderConfig(baseTtsConfig);
       return {
         ...base,
-        ...(talkProviderConfig.apiKey === undefined
-          ? {}
-          : {
-              apiKey: normalizeResolvedSecretInputString({
-                value: talkProviderConfig.apiKey,
-                path: "talk.providers.fish-audio.apiKey",
-              }),
-            }),
+        ...resolveSpeechTalkApiKeyOverride(
+          talkProviderConfig.apiKey,
+          "talk.providers.fish-audio.apiKey",
+        ),
         ...filterStringRecord({
           baseUrl: trimToUndefined(talkProviderConfig.baseUrl)
             ? normalizeFishAudioBaseUrl(trimToUndefined(talkProviderConfig.baseUrl))

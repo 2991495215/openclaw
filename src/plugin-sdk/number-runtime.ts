@@ -29,6 +29,7 @@ export {
   parseStrictFiniteNumber,
   parseStrictNonNegativeInteger,
   parseStrictPositiveInteger,
+  requireStrictPositiveInteger,
   positiveSecondsToSafeMilliseconds,
   nonNegativeSecondsToSafeMilliseconds,
   resolveDateTimestampMs,

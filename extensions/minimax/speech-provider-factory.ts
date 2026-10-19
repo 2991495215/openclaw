@@ -9,6 +9,7 @@ import type {
 import {
   createSpeechDirectiveParser,
   resolveSpeechProviderApiKey,
+  resolveSpeechTalkApiKeyOverride,
 } from "openclaw/plugin-sdk/speech-provider";
 import {
   asFiniteNumberInRange,
@@ -192,14 +193,10 @@ export function buildMinimaxSpeechProvider({
       const base = normalizeMinimaxProviderConfig(baseTtsConfig);
       return {
         ...base,
-        ...(talkProviderConfig.apiKey === undefined
-          ? {}
-          : {
-              apiKey: normalizeResolvedSecretInputString({
-                value: talkProviderConfig.apiKey,
-                path: "talk.providers.minimax.apiKey",
-              }),
-            }),
+        ...resolveSpeechTalkApiKeyOverride(
+          talkProviderConfig.apiKey,
+          "talk.providers.minimax.apiKey",
+        ),
         ...(trimToUndefined(talkProviderConfig.baseUrl) == null
           ? {}
           : { baseUrl: normalizeMinimaxTtsBaseUrl(trimToUndefined(talkProviderConfig.baseUrl)) }),

@@ -7,6 +7,7 @@ import {
 } from "openclaw/plugin-sdk/provider-auth";
 import { createProviderApiKeyAuthMethod } from "openclaw/plugin-sdk/provider-auth-api-key";
 import { runLiveProviderCatalog } from "openclaw/plugin-sdk/provider-catalog-live-runtime";
+import { createStaticProviderCatalog } from "openclaw/plugin-sdk/provider-catalog-shared";
 import {
   normalizeOptionalString,
   readStringValue,
@@ -189,12 +190,7 @@ export default definePluginEntry({
           });
         },
       },
-      staticCatalog: {
-        order: "profile",
-        run: async () => ({
-          provider: buildStaticChutesProvider(),
-        }),
-      },
+      staticCatalog: createStaticProviderCatalog(buildStaticChutesProvider, "profile"),
       refreshOAuth: (credential) => refreshChutesOAuthCredential(credential),
     });
   },

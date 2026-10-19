@@ -16,6 +16,7 @@ import {
   getLoadedOpenRouterModelCapabilities,
   loadOpenRouterModelCapabilities,
 } from "openclaw/plugin-sdk/provider-stream-family";
+import { resolveProviderUsageApiKeyAuth } from "openclaw/plugin-sdk/provider-usage";
 import { asOptionalRecord as readRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
 import { buildOpenRouterDecisionProvider, isOpenRouterDecisionModel } from "./decision-provider.js";
@@ -337,14 +338,7 @@ export default defineSingleProviderPluginEntry({
       wrapSimpleCompletionStreamFn: wrapOpenRouterProviderStream,
       isCacheTtlEligible: ({ modelId }) =>
         OPENROUTER_CACHE_TTL_MODEL_FAMILY.test(normalizeOpenRouterModelFamilyId(modelId) ?? ""),
-      resolveUsageAuth: async (ctx) => {
-        const apiKey = (
-          await ctx.resolveApiKeyCandidatesFromConfigAndStore?.({
-            envDirect: [ctx.env.OPENROUTER_API_KEY],
-          })
-        )?.[0];
-        return apiKey ? { token: apiKey } : null;
-      },
+      resolveUsageAuth: (ctx) => resolveProviderUsageApiKeyAuth(ctx, [ctx.env.OPENROUTER_API_KEY]),
       fetchUsageSnapshot: async (ctx) =>
         await fetchOpenRouterUsage({
           token: ctx.token,

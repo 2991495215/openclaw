@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { parseStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
+import { requireStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
 
 type QaCliActionHandler = Parameters<Command["action"]>[0];
 
@@ -27,11 +27,9 @@ export function invalidQaCliArgument(message: string): Error & { code: string; e
 }
 
 export function parseQaCliPositiveIntegerOption(value: string, flag: string): number {
-  const parsed = parseStrictPositiveInteger(value);
-  if (parsed === undefined) {
-    throw invalidQaCliArgument(`${flag} must be a positive integer.`);
-  }
-  return parsed;
+  return requireStrictPositiveInteger(value, () =>
+    invalidQaCliArgument(`${flag} must be a positive integer.`),
+  );
 }
 
 export function collectString(value: string, previous: string[]) {

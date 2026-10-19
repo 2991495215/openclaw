@@ -1,3 +1,4 @@
+import { parseHttpUrl } from "openclaw/plugin-sdk/request-url";
 import {
   assertHttpUrlTargetsPrivateNetwork,
   isPrivateOrLoopbackHost,
@@ -21,16 +22,11 @@ export function validateMatrixHomeserverUrl(
 ): string {
   const trimmed = cleanString(homeserver, "Matrix homeserver is required (matrix.homeserver)");
 
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    throw new Error("Matrix homeserver must be a valid http(s) URL");
-  }
-
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("Matrix homeserver must use http:// or https://");
-  }
+  const parsed = parseHttpUrl(
+    trimmed,
+    "Matrix homeserver must be a valid http(s) URL",
+    "Matrix homeserver must use http:// or https://",
+  );
   if (!parsed.hostname) {
     throw new Error("Matrix homeserver must include a hostname");
   }

@@ -1,3 +1,4 @@
+import { createStaticProviderCatalog } from "openclaw/plugin-sdk/provider-model-metadata";
 import type { ProviderPlugin } from "openclaw/plugin-sdk/provider-model-shared";
 import { buildStaticDeepInfraProvider } from "./provider-static-catalog.js";
 
@@ -16,12 +17,7 @@ const deepinfraProviderDiscovery: ProviderPlugin = {
       return await buildDeepInfraApiKeyCatalog(ctx);
     },
   },
-  staticCatalog: {
-    order: "simple",
-    run: async () => ({
-      provider: buildStaticDeepInfraProvider(),
-    }),
-  },
+  staticCatalog: createStaticProviderCatalog(buildStaticDeepInfraProvider),
 };
 
 export default deepinfraProviderDiscovery;

@@ -6,7 +6,11 @@ import type {
   SpeechProviderPlugin,
   SpeechSynthesisRequest,
 } from "openclaw/plugin-sdk/speech-core";
-import { createSpeechDirectiveParser, retryAsync } from "openclaw/plugin-sdk/speech-provider";
+import {
+  createSpeechDirectiveParser,
+  resolveSpeechTalkApiKeyOverride,
+  retryAsync,
+} from "openclaw/plugin-sdk/speech-provider";
 import {
   asOptionalRecord,
   normalizeOptionalString,
@@ -166,14 +170,10 @@ export function buildGoogleSpeechProvider(): SpeechProviderPlugin {
       const baseUrl = normalizeOptionalString(talkProviderConfig.baseUrl);
       return {
         ...base,
-        ...(talkProviderConfig.apiKey === undefined
-          ? {}
-          : {
-              apiKey: normalizeResolvedSecretInputString({
-                value: talkProviderConfig.apiKey,
-                path: "talk.providers.google.apiKey",
-              }),
-            }),
+        ...resolveSpeechTalkApiKeyOverride(
+          talkProviderConfig.apiKey,
+          "talk.providers.google.apiKey",
+        ),
         ...(baseUrl ? { baseUrl } : {}),
         ...(normalizeOptionalString(talkProviderConfig.modelId) == null
           ? {}

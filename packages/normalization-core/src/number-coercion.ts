@@ -274,6 +274,15 @@ export function parseStrictPositiveInteger(value: unknown): number | undefined {
   return parsed !== undefined && parsed > 0 ? parsed : undefined;
 }
 
+/** Parse a required CLI value while preserving the caller's error contract. */
+export function requireStrictPositiveInteger(value: unknown, createError: () => Error): number {
+  const parsed = parseStrictPositiveInteger(value);
+  if (parsed === undefined) {
+    throw createError();
+  }
+  return parsed;
+}
+
 export function parseStrictNonNegativeInteger(value: unknown): number | undefined {
   const parsed = parseStrictInteger(value);
   return parsed !== undefined && parsed >= 0 ? parsed : undefined;

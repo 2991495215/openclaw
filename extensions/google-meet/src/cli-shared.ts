@@ -9,7 +9,7 @@ import {
 } from "openclaw/plugin-sdk/gateway-runtime";
 import {
   clampTimerTimeoutMs,
-  parseStrictPositiveInteger,
+  requireStrictPositiveInteger,
 } from "openclaw/plugin-sdk/number-runtime";
 import { replaceFileAtomic } from "openclaw/plugin-sdk/security-runtime";
 import { formatDurationCompact } from "openclaw/plugin-sdk/time-runtime";
@@ -291,11 +291,10 @@ export function parsePositiveIntegerOption(
   if (value === undefined) {
     return undefined;
   }
-  const parsed = parseStrictPositiveInteger(value);
-  if (parsed === undefined) {
-    throw new Error(`${label} must be a positive integer`);
-  }
-  return parsed;
+  return requireStrictPositiveInteger(
+    value,
+    () => new Error(`${label} must be a positive integer`),
+  );
 }
 
 export async function callGoogleMeetGateway(params: {

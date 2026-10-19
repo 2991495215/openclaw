@@ -4,6 +4,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
 import { extensionForMime } from "openclaw/plugin-sdk/media-mime";
 import { readProviderJsonResponse } from "openclaw/plugin-sdk/provider-http";
+import { parseHttpUrl } from "openclaw/plugin-sdk/request-url";
 import { fetchWithSsrFGuard } from "openclaw/plugin-sdk/ssrf-runtime";
 import { authenticate } from "./urbit/auth.js";
 import { scryUrbitPath } from "./urbit/channel-ops.js";
@@ -134,16 +135,11 @@ function assertTrustedMemexUploadUrl(rawUrl: string, label: string): string {
 }
 
 function assertSafeUploadResultUrl(rawUrl: string, label: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error(`${label} must be a valid http(s) URL`);
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`${label} must use http or https`);
-  }
+  const parsed = parseHttpUrl(
+    rawUrl,
+    `${label} must be a valid http(s) URL`,
+    `${label} must use http or https`,
+  );
 
   return parsed.toString();
 }

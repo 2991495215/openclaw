@@ -3,7 +3,7 @@ import { callGatewayFromCli, type GatewayRpcOpts } from "openclaw/plugin-sdk/gat
 import {
   addTimerTimeoutGraceMs,
   parseStrictNonNegativeInteger,
-  parseStrictPositiveInteger,
+  requireStrictPositiveInteger,
 } from "openclaw/plugin-sdk/number-runtime";
 import { danger, defaultRuntime } from "openclaw/plugin-sdk/runtime-env";
 import {
@@ -145,11 +145,7 @@ function normalizeQuery(query: BrowserRequestParams["query"]): Record<string, st
 }
 
 export function parseBrowserPositiveIntegerOption(raw: string, flag: string): number {
-  const parsed = parseStrictPositiveInteger(raw);
-  if (parsed === undefined) {
-    throw new Error(`${flag} must be a positive integer.`);
-  }
-  return parsed;
+  return requireStrictPositiveInteger(raw, () => new Error(`${flag} must be a positive integer.`));
 }
 
 export function parseBrowserNonNegativeIntegerOption(raw: string, flag: string): number {

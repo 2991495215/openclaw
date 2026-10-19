@@ -25,6 +25,7 @@ export {
   buildManifestModelProviderConfig,
   buildManifestProviderCatalogFamily,
   buildSingleProviderApiKeyCatalog,
+  createStaticProviderCatalog,
   findCatalogTemplate,
   readManifestProviderDefaultModelRef,
   resolveFirstProviderCatalogAuth,
