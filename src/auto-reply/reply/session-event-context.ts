@@ -1,10 +1,44 @@
+import { resolveConfiguredAgentId } from "../../agents/agent-scope-config.js";
+import { getRuntimeConfigSnapshotMetadata } from "../../config/runtime-snapshot.js";
+import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { readExecRequestOwners } from "../../infra/exec-request-context.js";
 import { channelRouteTargetsMatchExact } from "../../plugin-sdk/channel-route.js";
+import { normalizeAgentId } from "../../routing/session-key.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import type { MsgContext } from "../templating.js";
 import type { SessionEventEnqueueOptions, SessionEventTarget } from "./session-event-contract.js";
+import {
+  getSessionEventRuntimeConfig,
+  readSessionEventTargetEnvironment,
+  readSessionEventTargetOperatorAuthority,
+  resolveSessionEventKey,
+} from "./session-event-target.js";
 import { setChannelSourceTurnId } from "./source-turn-id.js";
+
+/** Prepare immutable producer context before the receipt acquires occurrence custody. */
+export function prepareSessionEventInput(text: string, options: SessionEventEnqueueOptions) {
+  const operatorAuthority = options.expectedTarget
+    ? readSessionEventTargetOperatorAuthority(options.expectedTarget)
+    : undefined;
+  operatorAuthority?.assertCurrent();
+  const cfg = getSessionEventRuntimeConfig();
+  const configPublication = getRuntimeConfigSnapshotMetadata();
+  const agentId = normalizeAgentId(options.agentId);
+  resolveConfiguredAgentId(cfg, agentId);
+  const sessionKey = resolveSessionEventKey(agentId, options.sessionKey);
+  if (!text.trim()) {
+    throw new Error("Session event text must not be empty");
+  }
+  const env = options.expectedTarget
+    ? readSessionEventTargetEnvironment(options.expectedTarget)
+    : undefined;
+  // Keep the captured destination across config remapping; live policy still gates effects.
+  const storePath =
+    options.expectedTarget?.storePath ??
+    resolveSessionStorePathCore(cfg.session?.store, { agentId, env });
+  return { cfg, configPublication, agentId, sessionKey, env, storePath, operatorAuthority };
+}
 
 export function resolveSessionEventExecRequestOwners(
   options: Pick<SessionEventEnqueueOptions, "occurrences">,

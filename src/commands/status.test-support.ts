@@ -199,7 +199,10 @@ function createStatusCommandFields() {
     surface: baseStatusOverviewSurface,
     ...baseStatusObservations,
     health: createStatusHealth(),
-    automations: { ok: true, value: { enabled: true, jobs: 2, nextWakeAtMs: null } },
+    automations: {
+      ok: true,
+      value: { enabled: true, jobs: 2, nextWakeAtMs: null },
+    } satisfies StatusCommandOverviewRowsParams["automations"],
     updateValue: "available · custom update",
   };
 }

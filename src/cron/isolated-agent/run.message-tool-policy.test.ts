@@ -12,6 +12,7 @@ import {
 } from "../../agents/cli-runner/prepare.test-support.js";
 import type { PreparedCliRunContext, RunCliAgentParams } from "../../agents/cli-runner/types.js";
 import { mockCall } from "../../test-utils/mock-call-assertions.js";
+import { STARTUP_INTERRUPTED_ERROR } from "../execution-error-constants.js";
 import { applyJobPatch } from "../service/jobs.js";
 import { makeIsolatedAgentParamsFixture } from "./job-fixtures.js";
 import {
@@ -456,25 +457,41 @@ describe("runCronIsolatedAgentTurn delivery policy", () => {
   });
 
   describe("delivery instruction", () => {
-    it("composes unattended guidance after the safe external-hook wrapper", async () => {
-      resolveCronDeliveryPlanMock.mockReturnValue({ requested: false, mode: "none" });
-      buildSafeExternalPromptMock.mockReturnValue("<safe-external>wrapped hook</safe-external>");
-      await runCronIsolatedAgentTurn({
-        ...makeParams(makeJob({ mode: "none" }, { externalContentSource: "webhook" })),
-        sessionKey: "hook:webhook:message-tool-policy",
-      });
-      const prompt = runPrompt(embedded());
-      expect(prompt).toContain("<safe-external>wrapped hook</safe-external>");
-      expect(prompt).toContain("This is an unattended scheduled run.");
-      expect(prompt.indexOf("<safe-external>")).toBeLessThan(
-        prompt.indexOf("This is an unattended scheduled run"),
-      );
-      expect(prompt).not.toContain("If this job is no longer needed");
-      expect(prompt).not.toContain("the job's instructions win");
-      expect(buildSafeExternalPromptMock).toHaveBeenCalledWith(
-        expect.objectContaining({ content: "send a message", jobName: "Message Tool Policy" }),
-      );
-    });
+    it.each([false, true])(
+      "composes unattended guidance after the safe external-hook wrapper (restart=%s)",
+      async (restarting) => {
+        resolveCronDeliveryPlanMock.mockReturnValue({ requested: false, mode: "none" });
+        buildSafeExternalPromptMock.mockReturnValue("<safe-external>wrapped hook</safe-external>");
+        await runCronIsolatedAgentTurn({
+          ...makeParams(
+            makeJob(
+              { mode: "none" },
+              { externalContentSource: "webhook" },
+              { state: { lastError: restarting ? STARTUP_INTERRUPTED_ERROR : undefined } },
+            ),
+          ),
+          sessionKey: "hook:webhook:message-tool-policy",
+        });
+        const prompt = runPrompt(embedded());
+        const guidance =
+          "The previous attempt was interrupted by a Gateway restart. Continue the unfinished task. " +
+          "Inspect the retained conversation and any tool effects before acting; do not repeat work or deliveries that already completed.";
+        expect(prompt).toContain("<safe-external>wrapped hook</safe-external>");
+        expect(prompt).toContain("This is an unattended scheduled run.");
+        expect(prompt.indexOf("<safe-external>")).toBeLessThan(
+          prompt.indexOf("This is an unattended scheduled run"),
+        );
+        expect(prompt.split(guidance)).toHaveLength(restarting ? 2 : 1);
+        if (restarting) {
+          expect(prompt.indexOf("</safe-external>")).toBeLessThan(prompt.indexOf(guidance));
+        }
+        expect(prompt).not.toContain("If this job is no longer needed");
+        expect(prompt).not.toContain("the job's instructions win");
+        expect(buildSafeExternalPromptMock).toHaveBeenCalledWith(
+          expect.objectContaining({ content: "send a message", jobName: "Message Tool Policy" }),
+        );
+      },
+    );
 
     it("wraps injection-shaped delivery targets as untrusted prompt data", async () => {
       mockAnnounce();

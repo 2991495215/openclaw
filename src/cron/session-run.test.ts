@@ -12,6 +12,7 @@ import {
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { resolveAdmittedCronCompletionStatus } from "./completion-status.js";
 import { makeCronJob } from "./delivery.test-helpers.js";
+import { STARTUP_INTERRUPTED_ERROR } from "./execution-error-constants.js";
 import { createCronServiceState, type CronServiceDeps } from "./service/state.js";
 import { executeJobCore } from "./service/timer-execution.js";
 import { runCronSessionTurn } from "./session-run.js";
@@ -78,6 +79,33 @@ const params = () => ({
 });
 
 describe("scheduled session execution", () => {
+  it.each([
+    { name: "interrupted agent turn", kind: "agentTurn", interrupted: true, continuation: true },
+    { name: "ordinary agent turn", kind: "agentTurn", interrupted: false, continuation: false },
+    { name: "system event", kind: "systemEvent", interrupted: true, continuation: false },
+  ] as const)("adds restart guidance only to interrupted agent turns: $name", async (row) => {
+    fixture.delivery.mockResolvedValue({
+      deliveryRequested: false,
+      deliveryPlan: { mode: "none" },
+      resolvedDelivery: { ok: false },
+    });
+    const input = params();
+    input.job.payload =
+      row.kind === "agentTurn"
+        ? { kind: "agentTurn", message: input.text }
+        : { kind: "systemEvent", text: input.text };
+    input.job.state.lastError = row.interrupted ? STARTUP_INTERRUPTED_ERROR : undefined;
+
+    await expect(runCronSessionTurn(input)).resolves.toMatchObject({ status: "ok" });
+    expect(fixture.enqueue).toHaveBeenCalledOnce();
+    const [prompt] = fixture.enqueue.mock.calls[0]!;
+    const guidance =
+      "The previous attempt was interrupted by a Gateway restart. Continue the unfinished task. " +
+      "Inspect the retained conversation and any tool effects before acting; do not repeat work or deliveries that already completed.";
+    expect(prompt).toMatch(/^check\n\nThis is an unattended scheduled run\./);
+    expect(prompt.split(guidance)).toHaveLength(row.continuation ? 2 : 1);
+  });
+
   it("executes without an owner route and records ordinary delivery failure", async () => {
     fixture.delivery.mockResolvedValue({
       deliveryRequested: true,

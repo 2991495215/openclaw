@@ -71,7 +71,7 @@ export async function prepareCronCommandPrompt(params: {
     externalHook: isExternalHook,
     restartContinuation:
       input.job.payload.kind === "agentTurn" &&
-      input.job.state.lastError === STARTUP_INTERRUPTED_ERROR,
+      input.job.state?.lastError === STARTUP_INTERRUPTED_ERROR,
   });
 
   const scratchSnapshot = await readCronScratchSnapshot(

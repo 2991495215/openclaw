@@ -3,7 +3,6 @@ import { isAgentDeletionBlocked } from "../../agents/agent-lifecycle-registry.js
 import { resolveConfiguredAgentId } from "../../agents/agent-scope-config.js";
 import { resolveAgentRunErrorLifecycleFields } from "../../agents/run-termination.js";
 import { getRuntimeConfigSnapshotMetadata } from "../../config/runtime-snapshot.js";
-import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import type { SessionEntryCreationOperation } from "../../config/sessions/session-accessor.sqlite-entry-cache.types.js";
 import { SessionWorkStartError } from "../../config/sessions/session-work-start.js";
 import { runWithoutOwnedSessionTranscriptWrites } from "../../config/sessions/transcript-write-context.js";
@@ -19,7 +18,6 @@ import {
 } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { runWithGatewayDetachedWorkContinuation } from "../../process/gateway-work-admission.js";
-import { normalizeAgentId } from "../../routing/session-key.js";
 import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
 import { isCurrentSessionControllerOperation } from "../../sessions/session-controller.identity.js";
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.types.js";
@@ -35,6 +33,7 @@ import {
 } from "./session-event-automation.js";
 import {
   buildSessionEventContext,
+  prepareSessionEventInput,
   resolveSessionEventExecRequestOwners,
 } from "./session-event-context.js";
 import type {
@@ -51,9 +50,6 @@ import {
   getSessionEventRuntimeConfig,
   intersectSessionEventToolsAllow,
   prepareSessionEventTargetForHost,
-  readSessionEventTargetEnvironment,
-  readSessionEventTargetOperatorAuthority,
-  resolveSessionEventKey,
 } from "./session-event-target.js";
 
 export {
@@ -77,25 +73,8 @@ export function enqueueSessionEventForHost(
   acceptanceAssertion?.();
   options.assertCurrent?.();
   options.expectedTarget?.assertCurrent?.();
-  const operatorAuthority = options.expectedTarget
-    ? readSessionEventTargetOperatorAuthority(options.expectedTarget)
-    : undefined;
-  operatorAuthority?.assertCurrent();
-  const cfg = getSessionEventRuntimeConfig();
-  const configPublication = getRuntimeConfigSnapshotMetadata();
-  const agentId = normalizeAgentId(options.agentId);
-  resolveConfiguredAgentId(cfg, agentId);
-  const sessionKey = resolveSessionEventKey(agentId, options.sessionKey);
-  if (!text.trim()) {
-    throw new Error("Session event text must not be empty");
-  }
-  const env = options.expectedTarget
-    ? readSessionEventTargetEnvironment(options.expectedTarget)
-    : undefined;
-  // Keep the captured destination across config remapping; live policy still gates effects.
-  const storePath =
-    options.expectedTarget?.storePath ??
-    resolveSessionStorePathCore(cfg.session?.store, { agentId, env });
+  const { cfg, configPublication, agentId, sessionKey, env, storePath, operatorAuthority } =
+    prepareSessionEventInput(text, options);
   const cleanupContinuation = prepareCronRunContinuationCleanup(sessionKey, storePath, env);
   let target = options.expectedTarget;
   let generationLease: Awaited<ReturnType<typeof prepareSessionEventTargetForHost>> | undefined;

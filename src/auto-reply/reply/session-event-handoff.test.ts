@@ -14,6 +14,7 @@ import {
   createOperationalRunInstanceRef,
 } from "../../agents/admitted-run-context.js";
 import { withAgentDeletion } from "../../agents/agent-lifecycle-registry.js";
+import { isAgentRunRestartAbortReason } from "../../agents/run-termination.js";
 import { withGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
@@ -28,6 +29,7 @@ import { createCronServiceState } from "../../cron/service/state.js";
 import { wake } from "../../cron/service/wake.js";
 import type { CronJob } from "../../cron/types.js";
 import { createGatewayCronTargetResolver } from "../../gateway/server-cron-targets.js";
+import { rotateAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { clearAgentRunContext, registerAgentRunContext } from "../../infra/agent-run-registry.js";
 import {
   enqueueAutomationSystemEvent,
@@ -38,6 +40,9 @@ import {
   resetSystemEventsForTest,
 } from "../../infra/system-events.js";
 import * as gatewayWork from "../../process/gateway-work-admission.js";
+import "../../sessions/session-controller.lifecycle-runtime.js";
+import { createReplyOperation } from "../../sessions/session-controller.operation.js";
+import { captureSessionTarget } from "../../sessions/session-controller.target.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
@@ -57,10 +62,10 @@ import {
   route,
   withTargetFixture,
 } from "./session-event-target.test-support.js";
-// These cases stop before turn admission. Unexpected dispatch is a failure,
-// never a synthetic adoption/settlement supplied by the fixture.
+// Reject dispatch by default; the settlement case drives the handoff protocol
+// with a real controller operation instead of supplying a completed receipt.
 const dispatch = vi.hoisted(() =>
-  vi.fn(() => {
+  vi.fn<typeof import("../dispatch.js").dispatchInboundMessageWithRoutedChannelDispatcher>(() => {
     throw new Error("Unexpected reply dispatch for a retired event target");
   }),
 );
@@ -75,7 +80,7 @@ vi.mock("../../logging/subsystem.js", async (importOriginal) => {
     },
   };
 });
-// mock-isolation: Reject unexpected reply execution; retired-target cases stop before admission.
+// mock-isolation: Control dispatch callbacks; target preparation, operation lifecycle and receipt settlement stay real.
 vi.mock("../dispatch.js", () => ({
   dispatchInboundMessageWithRoutedChannelDispatcher: dispatch,
 }));
@@ -93,6 +98,68 @@ afterAll(() => {
 });
 
 describe("session event target custody", () => {
+  it("keeps completed receipts successful after lifecycle eviction", async ({ signal }) => {
+    await withTargetFixture(
+      async ({ env, storePath }) => {
+        const target = await captureSessionEventTargetForHost("main", sessionKey, { env });
+        let operation: ReturnType<typeof createReplyOperation> | undefined;
+        const scope = { agentId: "main", sessionKey };
+        dispatch.mockImplementationOnce(async ({ replyOptions }) => {
+          const execution = replyOptions?.internalEventExecution;
+          const adoption = replyOptions?.turnAdoptionLifecycle;
+          if (!replyOptions?.onReplyOperationAdmitted || !execution || !adoption) {
+            throw new Error("Expected session event handoff callbacks");
+          }
+          operation = createReplyOperation({
+            ...scope,
+            sessionId: target.sessionId,
+            resetTriggered: false,
+            target: captureSessionTarget({
+              ...scope,
+              storeScope: storePath,
+              incarnation: target.sessionId,
+            }),
+          });
+          replyOptions.onReplyOperationAdmitted(operation);
+          await adoption.onAdopted?.();
+          await execution.beforeStart?.();
+          execution.onStarted("completed-before-eviction");
+          await execution.onTerminal("completed-before-eviction", "completed");
+          operation.freezeAbort();
+
+          // Eviction can abort the retained operation after its terminal work completed.
+          rotateAgentEventLifecycleGeneration();
+          expect(operation.abortSignal.aborted).toBe(true);
+          expect(isAgentRunRestartAbortReason(operation.abortSignal.reason)).toBe(true);
+          expect(replyOptions.abortSignal?.aborted).toBe(false);
+          operation.complete();
+          return { queuedFinal: false, counts: { tool: 0, block: 0, final: 0 } };
+        });
+        const receipt = enqueueSessionEventForHost("Completed background work", {
+          ...scope,
+          source: "exec",
+          expectedTarget: target,
+          deliver: false,
+        });
+        try {
+          await expect(withinTest(receipt.settled, signal)).resolves.toMatchObject({
+            status: "completed",
+            executionStarted: true,
+            interruptedByRestart: false,
+          });
+          await expect(receipt.accepted).resolves.toEqual({ ok: true });
+          expect(peekSystemEventEntries(sessionKey)).toEqual([]);
+          expect(dispatch).toHaveBeenCalledOnce();
+        } finally {
+          operation?.complete();
+          receipt.cancel();
+          await Promise.allSettled([receipt.settled, operation?.ownerSettlement]);
+        }
+      },
+      { native: true },
+    );
+  });
+
   it("cleans up a settled cron event in its captured state and store", async ({ signal }) => {
     await withTargetFixture(
       async (state) => {
@@ -913,15 +980,10 @@ describe("session event target custody", () => {
 });
 
 registerSessionEventDeletionEnvironmentTests(withTargetFixture, async (error, run) => {
-  await dispatch.withImplementation(
-    () => {
-      throw error;
-    },
-    async () => {
-      await run();
-      expect(dispatch).toHaveBeenCalledOnce();
-    },
-  );
+  await dispatch.withImplementation(() => {
+    throw error;
+  }, run);
+  expect(dispatch).toHaveBeenCalledOnce();
 });
 
 it("retains only one captured requester and releases it when cancelled before admission", async ({
