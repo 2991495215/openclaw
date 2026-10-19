@@ -44,6 +44,12 @@ describe("compiler network isolation", () => {
     expect(assertCompilerNetworkIsolation(evidence).inactiveFallbackDevices).toBe(1);
   });
 
+  it("accepts mixed fallback names whose locale and code-unit ordering differ", () => {
+    const evidence = networkFixture(true);
+    evidence.probe += "sysfs\tip_vti0\t768\t0x80\tdown\nproc\tip_vti0\n";
+    expect(assertCompilerNetworkIsolation(evidence).inactiveFallbackDevices).toBe(5);
+  });
+
   it.each([
     ["unknown down device", "tunl0", "unrecognized-device"],
     ["wrong tunnel type", "sysfs\ttunl0\t768", "sysfs\ttunl0\t1"],

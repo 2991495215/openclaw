@@ -49,6 +49,8 @@ export function assertCompilerNetworkIsolation(evidence: CompilerNetworkEvidence
     assert(row[0] && arity.get(row[0]) === row.length, "Malformed network observation");
   }
   const entries = (key: string) => rows.filter((row) => row[0] === key).map((row) => row.slice(1));
+  const compareNames = (a: string | undefined, b: string | undefined) =>
+    a === b ? 0 : String(a) < String(b) ? -1 : 1;
   const single = (key: string) => {
     const values = entries(key);
     assert.equal(values.length, 1, "Missing or duplicate network observation: " + key);
@@ -61,7 +63,7 @@ export function assertCompilerNetworkIsolation(evidence: CompilerNetworkEvidence
   assert.notEqual(namespace, evidence.collectorNamespace, "Shared collector network namespace");
   const capabilities = entries("capability");
   assert.deepEqual(
-    capabilities.map(([name]) => name).toSorted(),
+    capabilities.map(([name]) => name).toSorted(compareNames),
     ["CapAmb", "CapBnd", "CapEff", "CapInh", "CapPrm"],
     "Missing or duplicate capability observation",
   );
@@ -87,8 +89,8 @@ export function assertCompilerNetworkIsolation(evidence: CompilerNetworkEvidence
   assert.deepEqual(
     entries("proc")
       .map(([name]) => name)
-      .toSorted(),
-    [...devices].toSorted(),
+      .toSorted(compareNames),
+    [...devices].toSorted(compareNames),
     "Network inventories differ",
   );
   for (const family of ["4", "6"]) {
