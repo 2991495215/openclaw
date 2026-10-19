@@ -262,12 +262,13 @@ it.each(["timeout", "cancel"] as const)(
     const started = createDeferred();
     const release = createDeferred<{ status: "ok"; summary: string }>();
     const runSessionEvent = vi.fn<NonNullable<CronServiceDeps["runSessionEvent"]>>(
-      async ({ abortSignal, onLaneWait, onExecutionStarted }) => {
+      async ({ abortSignal, onLaneWait, onExecutionStarted, onExecutionPhase }) => {
         onLaneWait?.({ waiting: true });
         queued.resolve(abortSignal);
         await admitted.promise;
         onLaneWait?.({ waiting: false });
-        onExecutionStarted?.({ jobId: job.id, phase: "model_call_started" });
+        onExecutionStarted?.({ jobId: job.id, phase: "runner_entered" });
+        onExecutionPhase?.({ jobId: job.id, phase: "model_call_started" });
         started.resolve();
         return await release.promise;
       },
@@ -280,8 +281,10 @@ it.each(["timeout", "cancel"] as const)(
       expect(signal?.aborted).toBe(false);
       admitted.resolve();
       await started.promise;
+      await advance(60_001);
+      expect(signal?.aborted).toBe(false);
       if (mode === "timeout") {
-        await advance(10 * 60_000 + 1);
+        await advance(9 * 60_000);
       } else {
         requestActiveCronJobCancellation(job.id, "Cancelled by operator.");
       }

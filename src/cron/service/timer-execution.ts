@@ -379,6 +379,7 @@ async function executeMainSessionCronJob(
     sessionPreparation,
     deliveryAttemptFence: options?.deliveryAttemptFence ?? null,
     onExecutionStarted: options?.onExecutionStarted,
+    onExecutionPhase: options?.onExecutionPhase,
     onLaneWait: options?.onLaneWait,
     executionIdentity: options?.executionIdentity,
     job,

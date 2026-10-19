@@ -11,7 +11,6 @@ import { resolveGroupSessionKey } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { resolveSessionPinnedHarnessId } from "../../sessions/agent-harness-session-key.js";
 import { markReplyOperationGlobalLaneWaitProgress } from "../../sessions/session-controller.js";
-import { hasReplyOperationExecutionStarted } from "../../sessions/session-controller.state.js";
 import {
   isMarkdownCapableMessageChannel,
   resolveMessageChannel,
@@ -199,7 +198,7 @@ export async function runEmbeddedFallbackCandidate(
               params.runAbortSignal?.throwIfAborted();
               turn.followupRun.run.internalEventExecution?.assertCurrent?.();
             } catch (error) {
-              if (!turn.replyOperation || !hasReplyOperationExecutionStarted(turn.replyOperation)) {
+              if (!params.hasAgentRunStarted()) {
                 lifecycleBackstop.note({
                   stream: "lifecycle",
                   data: { phase: "finishing", executionStarted: false, providerStarted: false },

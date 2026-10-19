@@ -198,20 +198,42 @@ describe("scheduled session execution", () => {
         sessionId: "session",
         sessionKey: "agent:main:main",
       });
+      request.scheduledAutomation.onExecutionPhase?.({
+        jobId: "job-1",
+        agentId: "main",
+        sessionId: "session",
+        sessionKey: "agent:main:main",
+        runId: "shared-cron-invocation",
+        phase: "model_call_started",
+        provider: "anthropic",
+        model: "claude",
+      });
       return {
         settled: Promise.resolve({ status: "completed", executionStarted: true, delivered: false }),
       };
     });
     const onExecutionStarted = vi.fn();
-    await runCronSessionTurn({ ...params(), onExecutionStarted });
+    const onExecutionPhase = vi.fn();
+    await runCronSessionTurn({ ...params(), onExecutionStarted, onExecutionPhase });
     expect(onExecutionStarted).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         jobId: "job-1",
         sessionId: "session",
         sessionKey: "agent:main:main",
         runId: "shared-cron-invocation",
+        phase: "runner_entered",
       }),
     );
+    expect(onExecutionPhase).toHaveBeenCalledExactlyOnceWith({
+      jobId: "job-1",
+      agentId: "main",
+      sessionId: "session",
+      sessionKey: "agent:main:main",
+      runId: "shared-cron-invocation",
+      phase: "model_call_started",
+      provider: "anthropic",
+      model: "claude",
+    });
   });
 
   it("does not mark required delivery complete after an identityless send", async () => {

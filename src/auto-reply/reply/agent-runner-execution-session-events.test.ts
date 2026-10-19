@@ -6,6 +6,7 @@ import {
 } from "../../../test/helpers/promise.js";
 import type { RunCliAgentParams } from "../../agents/cli-runner/types.js";
 import type { RunEmbeddedAgentInternalParams } from "../../agents/embedded-agent-runner/run/internal-params.js";
+import type { CronAgentExecutionPhaseUpdate } from "../../cron/types.js";
 import { onAgentEvent, type AgentEventPayload } from "../../infra/agent-events.js";
 import { useBundledProviderPolicyArtifactsForTest } from "../../plugin-sdk/test-helpers/provider-policy-artifacts.test-support.js";
 import {
@@ -68,6 +69,14 @@ describe("ordinary session event execution", () => {
       const release = createDeferred();
       let current = true;
       const event = createEventExecution();
+      const observedProgress: string[] = [];
+      event.onStarted = vi.fn(() => {
+        observedProgress.push("started");
+      });
+      const onExecutionPhase = vi.fn((info: CronAgentExecutionPhaseUpdate) => {
+        observedProgress.push(info.phase);
+      });
+      const nativePhase = runtime === "cli" ? "process_spawned" : "model_call_started";
       event.assertCurrent = () => {
         if (!current) {
           throw new Error("event source retired at final admission");
@@ -85,6 +94,7 @@ describe("ordinary session event execution", () => {
       followupRun.run.internalEventExecution = event;
       followupRun.run.scheduledAutomation = {
         ...createScheduledAutomation(),
+        onExecutionPhase,
         executionIdentity: {
           ingress: { kind: "schedule", boundary: "scheduled-event-test", state: "present" },
         },
@@ -94,7 +104,11 @@ describe("ordinary session event execution", () => {
         state.runCliAgentMock.mockImplementationOnce(async (params: RunCliAgentParams) => {
           await params.onExecutionStarted?.();
           providerWork();
-          params.onExecutionPhase?.({ phase: "process_spawned" });
+          params.onExecutionPhase?.({
+            phase: "process_spawned",
+            provider: "claude-cli",
+            model: "claude-opus-4-6",
+          });
           return { payloads: [{ text: "done" }], meta: {} };
         });
       } else {
@@ -102,7 +116,11 @@ describe("ordinary session event execution", () => {
           async (params: RunEmbeddedAgentInternalParams) => {
             await params.onExecutionStarted?.();
             providerWork();
-            params.onExecutionPhase?.({ phase: "model_call_started" });
+            params.onExecutionPhase?.({
+              phase: "model_call_started",
+              provider: "anthropic",
+              model: "claude",
+            });
             return { payloads: [{ text: "done" }], meta: {} };
           },
         );
@@ -126,6 +144,9 @@ describe("ordinary session event execution", () => {
         expect(scheduledRuns).toEqual([expect.any(String)]);
         expect(providerWork).not.toHaveBeenCalled();
         expect(event.onStarted).not.toHaveBeenCalled();
+        expect(onExecutionPhase.mock.calls.some(([info]) => info.phase === nativePhase)).toBe(
+          false,
+        );
         expect(
           lifecycleEvents.some((lifecycleEvent) => lifecycleEvent.data.phase === "start"),
         ).toBe(false);
@@ -138,7 +159,29 @@ describe("ordinary session event execution", () => {
         expect(
           runtime === "cli" ? state.runCliAgentMock : state.runEmbeddedAgentMock,
         ).toHaveBeenCalledOnce();
+        const nativeUpdates = onExecutionPhase.mock.calls
+          .map(([info]) => info)
+          .filter((info) => info.phase === nativePhase);
+        expect(nativeUpdates).toEqual(
+          outcome === "start"
+            ? [
+                {
+                  jobId: "scheduled-target-test",
+                  agentId: "main",
+                  sessionId: "session",
+                  sessionKey: "main",
+                  runId: result.runId,
+                  phase: nativePhase,
+                  provider: runtime === "cli" ? "claude-cli" : "anthropic",
+                  model: runtime === "cli" ? "claude-opus-4-6" : "claude",
+                },
+              ]
+            : [],
+        );
         if (outcome === "start") {
+          expect(observedProgress.indexOf("started")).toBeLessThan(
+            observedProgress.indexOf(nativePhase),
+          );
           expect(result.outcome).toMatchObject({ kind: "settled", status: "ok" });
           expect(providerWork).toHaveBeenCalledOnce();
           expect(event.onStarted).toHaveBeenCalledExactlyOnceWith(result.runId);

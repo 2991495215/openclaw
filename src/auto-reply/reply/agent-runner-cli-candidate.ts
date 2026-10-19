@@ -19,7 +19,6 @@ import {
 import { findModelInCatalog } from "../../agents/model-catalog-lookup.js";
 import { normalizeChatType } from "../../channels/chat-type.js";
 import { shouldPreserveUserFacingSessionStateForInputProvenance } from "../../sessions/input-provenance.js";
-import { hasReplyOperationExecutionStarted } from "../../sessions/session-controller.state.js";
 import { createAgentLifecycleTerminalBackstop } from "./agent-lifecycle-terminal.js";
 import { resolveRunAuthProfile } from "./agent-runner-auth-profile.js";
 import {
@@ -378,10 +377,7 @@ export async function runCliFallbackCandidate(
                     params.runAbortSignal?.throwIfAborted();
                     turn.followupRun.run.internalEventExecution?.assertCurrent?.();
                   } catch (error) {
-                    if (
-                      !turn.replyOperation ||
-                      !hasReplyOperationExecutionStarted(turn.replyOperation)
-                    ) {
+                    if (!params.hasAgentRunStarted()) {
                       lifecycleBackstop.note({
                         stream: "lifecycle",
                         data: {

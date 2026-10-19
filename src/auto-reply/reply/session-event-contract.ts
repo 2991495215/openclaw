@@ -6,7 +6,11 @@ import type {
 import type { MessagingToolSend } from "../../agents/embedded-agent-messaging.types.js";
 import type { SessionEntryCreationOperation } from "../../config/sessions/session-accessor.sqlite-entry-cache.types.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
-import type { CronRunOutcome, CronStoredJob } from "../../cron/types.js";
+import type {
+  CronAgentExecutionPhaseUpdate,
+  CronRunOutcome,
+  CronStoredJob,
+} from "../../cron/types.js";
 import type { ExecRequestOwner } from "../../infra/exec-request-context.js";
 import type {
   SourceDeliveryOutcome,
@@ -125,6 +129,7 @@ export type ScheduledSessionAutomation = {
   waitForIdle?: (signal?: AbortSignal, operation?: ReplyOperation) => Promise<void>;
   onStarted?: () => void;
   onExecutionStarted?: (info: { runId: string; sessionId?: string; sessionKey: string }) => void;
+  onExecutionPhase?: (info: CronAgentExecutionPhaseUpdate) => void;
   beforeDeliver?: () => Promise<void>;
   assertDeliveryCurrent?: () => void;
   sourceDelivery?: SourceDeliveryPlan;

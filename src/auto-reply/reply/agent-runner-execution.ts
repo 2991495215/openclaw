@@ -312,19 +312,28 @@ async function executeAgentTurnInternalLoop(
         info.phase === "model_call_started" ||
         info.phase === "tool_execution_started" ||
         info.phase === "assistant_output_started";
-      if (!isUserVisibleExecutionActivity) {
-        return;
+      if (isUserVisibleExecutionActivity) {
+        notifyAgentRunStart();
+        void (
+          params.typingSignals.signalExecutionActivity?.() ?? params.typingSignals.signalRunStart()
+        ).catch((err: unknown) => {
+          logVerbose(`execution phase typing signal failed: ${String(err)}`);
+        });
       }
-      notifyAgentRunStart();
-      void (
-        params.typingSignals.signalExecutionActivity?.() ?? params.typingSignals.signalRunStart()
-      ).catch((err: unknown) => {
-        logVerbose(`execution phase typing signal failed: ${String(err)}`);
+      const automation = params.followupRun.run.scheduledAutomation;
+      automation?.onExecutionPhase?.({
+        ...info,
+        jobId: automation.job.id,
+        agentId: effectiveRun.agentId,
+        sessionId: params.followupRun.run.sessionId,
+        sessionKey: params.sessionKey,
+        runId,
       });
     };
     return {
       prepareAgentRunStart,
       notifyAgentRunStart,
+      hasAgentRunStarted: () => didNotifyAgentRunStart,
       signalExecutionPhaseForTyping,
       close: () => {
         active = false;

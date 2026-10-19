@@ -330,6 +330,7 @@ export async function runAgentFallbackCandidates(params: AgentFallbackCycleParam
             signalExecutionPhaseForTyping: signalExecutionPhaseForCandidate,
             prepareAgentRunStart: runStart.prepareAgentRunStart,
             notifyAgentRunStart: runStart.notifyAgentRunStart,
+            hasAgentRunStarted: runStart.hasAgentRunStarted,
             preserveProgressCallbackStartOrder,
             onLifecycleBackstop: (backstop: AgentLifecycleTerminalBackstop) => {
               params.state.pendingLifecycleTerminal = { provider, model, backstop };

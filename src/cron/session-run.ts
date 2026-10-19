@@ -33,6 +33,7 @@ import type {
   CronRunDeliveryResult,
   CronStoredJob,
   CronAgentExecutionStarted,
+  CronAgentExecutionPhaseUpdate,
   CronResolvedDeliveryState,
   CronRunOutcome,
   CronRunTelemetry,
@@ -47,6 +48,7 @@ export async function runCronSessionTurn(params: {
   executionIdentity?: CronExecutionIdentityAdmission;
   prepare?: () => Promise<void>;
   onExecutionStarted?: (info?: CronAgentExecutionStarted) => void;
+  onExecutionPhase?: (info: CronAgentExecutionPhaseUpdate) => void;
   onLaneWait?: (info?: { waiting?: boolean }) => void;
   cfg: OpenClawConfig;
   agentId: string;
@@ -274,6 +276,7 @@ export async function runCronSessionTurn(params: {
             phase: "runner_entered",
           });
         },
+        onExecutionPhase: params.onExecutionPhase,
         assertDeliveryCurrent: () => {
           if (checkedDeliveryConfig !== getRuntimeConfig()) {
             throw new Error("Automation delivery policy changed before send");

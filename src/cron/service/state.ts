@@ -143,6 +143,7 @@ export type CronServiceDeps = {
     sessionPreparation?: CronSessionRunPreparation;
     deliveryAttemptFence: CronCompletionDeliveryFence | null;
     onExecutionStarted?: (info?: CronAgentExecutionStarted) => void;
+    onExecutionPhase?: (info: CronAgentExecutionPhaseUpdate) => void;
     onLaneWait?: (info?: { waiting?: boolean }) => void;
     executionIdentity?: CronExecutionIdentityAdmission;
     job: CronStoredJob;
