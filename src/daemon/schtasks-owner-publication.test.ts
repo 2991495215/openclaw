@@ -17,6 +17,9 @@ import {
 } from "./test-helpers/schtasks-fixtures.js";
 
 const timeState = vi.hoisted(() => ({ now: 0 }));
+const readWindowsProcessStartTime = vi.hoisted(() =>
+  vi.fn<typeof import("../infra/windows-process-start.js").readWindowsProcessStartTimeSync>(),
+);
 const readGatewayOwnerLease = vi.hoisted(() =>
   vi.fn<typeof import("../infra/gateway-owner-lease.js").readGatewayOwnerLease>(),
 );
@@ -41,6 +44,10 @@ vi.mock("node:child_process", async (original) => ({
   spawnSync,
 }));
 vi.mock("../infra/gateway-owner-lease.js", () => ({ readGatewayOwnerLease }));
+vi.mock("../infra/windows-process-start.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../infra/windows-process-start.js")>()),
+  readWindowsProcessStartTimeSync: readWindowsProcessStartTime,
+}));
 vi.mock("../utils.js", async (original) => ({
   ...(await original<typeof import("../utils.js")>()),
   sleep: async (ms: number) => {

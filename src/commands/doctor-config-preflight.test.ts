@@ -266,7 +266,7 @@ describe("runDoctorConfigPreflight", () => {
         expect(await fs.readFile(`${configPath}.bak`, "utf8")).toBe(original);
         const repaired = JSON.parse(await fs.readFile(configPath, "utf8"));
         expect(repaired.plugins).toEqual(config.plugins);
-        expect(await readPersistedInstalledPluginIndexInstallRecordsAsync()).toEqual({
+        expect(readPersistedInstalledPluginIndexInstallRecords()).toEqual({
           existing: canonical,
         });
         expect((await runStartupConfigPreflight({ gateway: true })).snapshot.valid).toBe(true);
