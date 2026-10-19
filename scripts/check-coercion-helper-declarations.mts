@@ -120,6 +120,7 @@ export const CANONICAL_COERCION_HELPER_OWNERS = [
       "parseStrictNonNegativeInteger",
       "parseStrictPositiveInteger",
       "positiveSecondsToSafeMilliseconds",
+      "requireStrictPositiveInteger",
       "resolveDateTimestampMs",
       "resolveExpiresAtMsFromDurationMs",
       "resolveExpiresAtMsFromDurationOrEpoch",
