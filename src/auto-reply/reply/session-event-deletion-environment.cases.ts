@@ -4,6 +4,7 @@ import { isAgentDeletionBlocked } from "../../agents/agent-lifecycle-registry.js
 import { writeSessionEntry } from "../../config/sessions/session-accessor.sqlite-entry-store.js";
 import { createGatewayCronTargetResolver } from "../../gateway/server-cron-targets.js";
 import { peekSystemEventEntries } from "../../infra/system-events.js";
+import { readAgentDeletionJournalStatusInWorker } from "../../state/agent-deletion-journal.read.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { beginAgentDeletionJournal } from "../../test-utils/agent-deletion-journal.js";
@@ -60,6 +61,7 @@ export function registerSessionEventDeletionEnvironmentTests(
             },
             { env: journalEnv },
           );
+          await readAgentDeletionJournalStatusInWorker("main", { env: state.env });
           expect(isAgentDeletionBlocked("main", { env: state.env })).toBe(
             journalScope === "ambient",
           );

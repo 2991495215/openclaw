@@ -283,7 +283,26 @@ it.for(["resume", "stop"] as const)(
         throw new Error("Expected ordinary session execution");
       },
       runSessionEvent: (request) =>
-        runCronSessionTurn({ ...request, cfg: config, agentId: "main", sessionKey: SESSION }),
+        runCronSessionTurn({
+          ...request,
+          cfg: config,
+          agentId: "main",
+          sessionKey: SESSION,
+          prepare: async () => {
+            await request.prepare?.();
+            const operation = getSessionControllerOperation(SESSION);
+            if (!injected && operation) {
+              injected = true;
+              scheduledOperation = operation;
+              foreground = createReplyOperation({
+                sessionKey: "agent:main:chat:foreground-at-admission",
+                sessionId: "foreground-at-admission",
+                resetTriggered: false,
+                turnKind: "visible",
+              });
+            }
+          },
+        }),
     });
     const schedule = { kind: "on-exit", command: "observed-command" } as const;
     const job = await execution.add({
@@ -316,16 +335,6 @@ it.for(["resume", "stop"] as const)(
     let scheduledOperation: ReplyOperation | undefined;
     const unsubscribe = onGatewayWorkMetricsChanged(() => {
       const operation = getSessionControllerOperation(SESSION);
-      if (!injected && operation) {
-        injected = true;
-        scheduledOperation = operation;
-        foreground = createReplyOperation({
-          sessionKey: "agent:main:chat:foreground-at-admission",
-          sessionId: "foreground-at-admission",
-          resetTriggered: false,
-          turnKind: "visible",
-        });
-      }
       if (foreground && operation && isCronReplyOperationWaitingForIdle(operation)) {
         idleWait.resolve();
       }

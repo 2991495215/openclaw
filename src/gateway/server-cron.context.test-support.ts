@@ -149,7 +149,7 @@ export function registerGatewayCronContextTests({
         }
         const service = createCronService(cfg);
         try {
-          const enqueue = vi.spyOn(getCronState(service).deps, "enqueueSystemEvent");
+          const enqueue = vi.spyOn(getCronState(service).deps, "enqueueSessionEvent");
           expect(
             await service.cron.wake({
               mode: "next-heartbeat",
@@ -158,11 +158,15 @@ export function registerGatewayCronContextTests({
               sessionKey,
             }),
           ).toEqual({ ok: true });
-          expect(enqueue).toHaveBeenCalledWith("wake ops", {
-            agentId: "ops",
-            sessionKey,
-            deliveryContext: routes.ops,
-          });
+          expect(enqueue).toHaveBeenCalledOnce();
+          expect(enqueue).toHaveBeenCalledWith(
+            "wake ops",
+            expect.objectContaining({
+              agentId: "ops",
+              sessionKey,
+              deliveryContext: routes.ops,
+            }),
+          );
         } finally {
           await service.cron.stopAndDrain?.();
         }
