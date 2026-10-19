@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import type { SystemAgentChatQuestion } from "../../packages/gateway-protocol/src/index.js";
-import { raceWithTimeout } from "../../packages/retry/src/index.js";
 import { CONFIG_AUDIT_SCOPE, type ConfigAuditRecord } from "../config/io.audit.js";
 import type { HealthSummary } from "../gateway/health/types.js";
 import { getHealthCache } from "../gateway/server/health-state.js";
@@ -349,12 +348,7 @@ async function resolveUncachedSystemAgentGreeting(params: {
   try {
     // This is the only metered greeting turn. The single-slot hash keeps unchanged
     // caretaker opens at zero tokens while preserving a model-free rescue path.
-    plan = await raceWithTimeout(
-      params.planner({ overview: params.overview, facts: params.facts, timeoutMs }),
-      timeoutMs,
-      () => null,
-      { ref: false },
-    );
+    plan = await params.planner({ overview: params.overview, facts: params.facts, timeoutMs });
   } catch {
     plan = null;
   }
@@ -485,9 +479,7 @@ async function resolveSystemAgentGreetingText(
   try {
     return await flight;
   } finally {
-    if (flights.get(factsHash) === flight) {
-      flights.delete(factsHash);
-    }
+    flights.delete(factsHash);
   }
 }
 

@@ -204,11 +204,6 @@ export type SessionMcpRuntimeLease = {
   retireUnusedServers?: (retainedServerNames: ReadonlySet<string>) => Promise<void>;
 };
 
-/** One requester call's lease and immutable catalog publication version. */
-export type RequesterScopedMcpRuntimeHandle = SessionMcpRuntimeLease & {
-  advertisedCatalogConfigFingerprint: string;
-};
-
 /** Manager for session-scoped MCP runtimes and their idle lifecycle. */
 export type SessionMcpRuntimeManager = {
   acquire: (params: {
@@ -232,13 +227,13 @@ export type SessionMcpRuntimeManager = {
    */
   acquireRequesterScoped: (
     params: Parameters<SessionMcpRuntimeManager["acquire"]>[0],
-  ) => Promise<RequesterScopedMcpRuntimeHandle | undefined>;
+  ) => Promise<SessionMcpRuntimeLease | undefined>;
   /**
    * Session-stable advertised catalog for scoped servers. Used by shared-thread
    * harnesses so dynamic tool specs do not rotate per sender.
    */
   rememberAdvertisedScopedCatalog: (
-    handle: RequesterScopedMcpRuntimeHandle,
+    handle: SessionMcpRuntimeLease,
     catalog: McpToolCatalog,
   ) => void;
   getAdvertisedScopedCatalog: (sessionId: string) => McpToolCatalog | null;

@@ -2233,47 +2233,6 @@ describe("requester-scoped MCP connection resolution", () => {
   );
 
   it(
-    "rejects a late catalog publication from an older configuration",
-    withResolverRegistry(async (register) => {
-      const oldResolve = createDeferred();
-      const oldStarted = createDeferred();
-      let resolveCount = 0;
-      register(async () => {
-        resolveCount += 1;
-        if (resolveCount === 1) {
-          oldStarted.resolve();
-          await oldResolve.promise;
-        }
-        return { url: "https://mcp.example.test/authed" };
-      });
-      const createRuntime: RuntimeFactory = (params) =>
-        makeManagedRuntime(params, [{ toolName: "inbox", description: "read inbox" }], "user-mail");
-      const manager = createManager({ createRuntime });
-      const oldConfig = mcpConfig({
-        "user-mail": { transport: "streamable-http" },
-        shared: { command: "first" },
-      });
-      const newConfig = mcpConfig({
-        "user-mail": { transport: "streamable-http" },
-        shared: { command: "second" },
-      });
-      const oldRequest = manager.getOrCreateRequesterScoped(
-        makeRequesterParams("session-adv-race", oldConfig as never, "same-requester"),
-      );
-      await oldStarted.promise;
-      const newRequest = manager.getOrCreateRequesterScoped(
-        makeRequesterParams("session-adv-race", newConfig as never, "same-requester"),
-      );
-      oldResolve.resolve();
-      const oldRuntime = await oldRequest;
-      const newRuntime = await newRequest;
-      expect(newRuntime!.runtime).toBe(oldRuntime!.runtime);
-      manager.rememberAdvertisedScopedCatalog(oldRuntime!, await oldRuntime!.runtime.getCatalog());
-      expect(manager.getAdvertisedScopedCatalog("session-adv-race")).toBeNull();
-    }),
-  );
-
-  it(
     "clears removed scoped catalogs after real harness dispatch",
     { timeout: 15_000 },
     withRequesterProof(async () => {

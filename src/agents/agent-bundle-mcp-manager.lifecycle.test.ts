@@ -27,11 +27,7 @@ import {
   SESSION_MCP_RUNTIME_MANAGER_KEY,
   type CreateSessionMcpRuntime,
 } from "./agent-bundle-mcp-runtime-shared.js";
-import type {
-  RequesterScopedMcpRuntimeHandle,
-  SessionMcpRuntime,
-  SessionMcpRuntimeLease,
-} from "./agent-bundle-mcp-types.js";
+import type { SessionMcpRuntime, SessionMcpRuntimeLease } from "./agent-bundle-mcp-types.js";
 import { createMcpProofPluginRegistry } from "./mcp-connection-resolver.test-fixtures.js";
 import { createAgentCleanupScope } from "./run-cleanup-timeout.js";
 
@@ -393,7 +389,7 @@ describe("MCP manager creation ownership", () => {
       Object.assign(createRuntimeFixture(input), { getCatalog: async () => catalog }),
     );
     const manager = createManager(factory);
-    const leases: RequesterScopedMcpRuntimeHandle[] = [];
+    const leases: SessionMcpRuntimeLease[] = [];
     await withRequesterResolver(async () => {
       for (let index = 0; index < 255; index += 1) {
         leases.push(

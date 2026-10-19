@@ -11,7 +11,6 @@ import { createSessionMcpRuntimeManager } from "./agent-bundle-mcp-manager.js";
 import { SESSION_MCP_RUNTIME_MANAGER_KEY } from "./agent-bundle-mcp-runtime-shared.js";
 import type {
   McpToolCatalog,
-  RequesterScopedMcpRuntimeHandle,
   SessionMcpConfigReload,
   SessionMcpRuntime,
   SessionMcpRuntimeLease,
@@ -68,12 +67,12 @@ export function acquireSessionMcpRuntime(
  */
 export function acquireRequesterScopedMcpRuntime(
   params: Parameters<SessionMcpRuntimeManager["acquireRequesterScoped"]>[0],
-): Promise<RequesterScopedMcpRuntimeHandle | undefined> {
+): Promise<SessionMcpRuntimeLease | undefined> {
   return acquireManagedRuntime((manager) => manager.acquireRequesterScoped(params));
 }
 
 export function rememberAdvertisedScopedMcpCatalog(
-  handle: RequesterScopedMcpRuntimeHandle,
+  handle: SessionMcpRuntimeLease,
   catalog: McpToolCatalog,
 ): void {
   getSessionMcpRuntimeManager().rememberAdvertisedScopedCatalog(handle, catalog);

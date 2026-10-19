@@ -215,7 +215,6 @@ export function createSessionMcpRuntimeManager(opts: SessionMcpRuntimeManagerOpt
       );
     }
     return {
-      advertisedCatalogConfigFingerprint,
       fullConfig,
       ...partition,
       safeServerNamesByServer,
@@ -360,12 +359,11 @@ export function createSessionMcpRuntimeManager(opts: SessionMcpRuntimeManagerOpt
       const configReloadAtAdmission = store.configReload;
       // Anonymous turns own no requester runtime; reconcile first so a cached
       // catalog cannot survive a senderless harness turn.
-      const {
-        advertisedCatalogConfigFingerprint,
-        requesterScopedServerNames,
-        requester,
-        acquireRequester,
-      } = prepareAcquisition(params, configReloadAtAdmission, "requester");
+      const { requesterScopedServerNames, requester, acquireRequester } = prepareAcquisition(
+        params,
+        configReloadAtAdmission,
+        "requester",
+      );
       if (!requester) {
         return undefined;
       }
@@ -375,11 +373,7 @@ export function createSessionMcpRuntimeManager(opts: SessionMcpRuntimeManagerOpt
       if (requesterScopedServerNames.length === 0) {
         return undefined;
       }
-      const lease = await acquireRequester();
-      if (!lease) {
-        return undefined;
-      }
-      return { ...lease, advertisedCatalogConfigFingerprint };
+      return acquireRequester();
     }),
     rememberAdvertisedScopedCatalog: catalogs.rememberAdvertisedScopedCatalog,
     getAdvertisedScopedCatalog: catalogs.getAdvertisedScopedCatalog,
