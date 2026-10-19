@@ -1,5 +1,4 @@
 /**
- * Provider auth alias resolution.
  * Maps deprecated and plugin-defined provider IDs to canonical credential
  * providers, with trusted workspace plugin handling and snapshot-owned metadata.
  */

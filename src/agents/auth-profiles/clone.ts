@@ -1,5 +1,4 @@
 /**
- * Auth profile store cloning helpers.
  * Keeps store snapshots JSON-serializable before callers mutate or persist
  * profile state.
  */

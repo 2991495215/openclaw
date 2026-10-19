@@ -1,5 +1,4 @@
 /**
- * OpenAI provider routing decisions shared by model selection, auth profiles, and runtime setup.
  *
  * Custom OpenAI-compatible base URLs intentionally bypass Codex-runtime defaults.
  */
@@ -31,10 +30,8 @@ import { resolveDefaultModelForAgent } from "./model-selection-config.js";
 import { resolveOpenAIModelRoutes } from "./openai-model-routes.js";
 import { canonicalizeProviderModelId } from "./provider-model-route.js";
 
-/** Canonical provider id for OpenAI-hosted model routes. */
 export const OPENAI_PROVIDER_ID = "openai";
 
-/** Returns true for provider ids that normalize to OpenAI. */
 export function isOpenAIProvider(provider: string | undefined): boolean {
   const normalized = normalizeProviderId(provider ?? "");
   return normalized === OPENAI_PROVIDER_ID;
@@ -106,7 +103,6 @@ export function resolveOpenAIImplicitAgentRuntime(
     : "openclaw";
 }
 
-/** Parses the provider portion from a provider/model ref. */
 export function parseModelRefProvider(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -132,7 +128,6 @@ function resolveRetiredAgentRuntimeOptOut(params: {
   );
 }
 
-/** Returns true when selected model config should ensure the Codex plugin exists. */
 export function modelSelectionShouldEnsureCodexPlugin(params: {
   model?: string;
   config?: OpenClawConfigWithLegacyRoster;

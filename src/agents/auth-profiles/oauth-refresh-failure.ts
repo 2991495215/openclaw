@@ -132,7 +132,6 @@ function readProviderOAuthRefreshFailure(error: unknown): OAuthRefreshFailurePre
   };
 }
 
-/** Error type that carries provider and classified OAuth refresh failure reason. */
 export class OAuthRefreshFailureError extends Error {
   readonly errorType?: string;
   readonly provider: string;

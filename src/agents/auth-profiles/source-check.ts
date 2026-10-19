@@ -1,5 +1,4 @@
 /**
- * Auth-profile source probes for runtime and persisted stores.
  * Source presence selects the canonical loader; it does not resolve credentials.
  */
 import path from "node:path";
@@ -200,7 +199,6 @@ export async function hasAnyAuthProfileStoreSourceAsync(
   return result;
 }
 
-/** Returns true when the requested agent dir has a local auth profile source. */
 export function hasLocalAuthProfileStoreSource(agentDir?: string): boolean {
   prepareSharedAuthStoreOwnershipForNative();
   return (

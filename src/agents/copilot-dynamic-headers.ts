@@ -1,6 +1,3 @@
-/**
- * Builds GitHub Copilot provider compatibility headers from message content.
- */
 import { projectCopilotRequestFacts } from "@openclaw/ai/internal/shared";
 import type { Context } from "../llm/types.js";
 

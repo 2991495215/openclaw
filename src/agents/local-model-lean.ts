@@ -1,5 +1,4 @@
 /**
- * Local-model lean tool filtering.
  * Removes high-latency or channel-dependent tools for local models while
  * preserving explicitly required delivery tools.
  */
@@ -68,7 +67,6 @@ function resolveLocalModelLeanAgentId(params: {
   );
 }
 
-/** Returns true when local-model lean mode is enabled for the selected agent. */
 export function isLocalModelLeanEnabled(params: {
   config?: OpenClawConfig;
   agentId?: string;

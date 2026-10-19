@@ -1,4 +1,3 @@
-/** Authored model inventory and the views used by catalog readers. */
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ModelCatalogEntry } from "./model-catalog.types.js";
 import { buildConfiguredModelCatalog } from "./model-selection-shared.js";

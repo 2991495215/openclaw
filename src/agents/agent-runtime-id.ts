@@ -1,4 +1,3 @@
-/** Agent runtime id normalization helpers. */
 export type EmbeddedAgentRuntime = "openclaw" | "auto" | (string & {});
 
 export const OPENCLAW_AGENT_RUNTIME_ID = "openclaw";
@@ -31,7 +30,6 @@ export function normalizeOptionalAgentRuntimeId(raw: unknown): EmbeddedAgentRunt
   return value ? normalizeEmbeddedAgentRuntime(value) : undefined;
 }
 
-/** Returns whether a runtime id should be treated as the default runtime selection. */
 export function isDefaultAgentRuntimeId(runtime: string | undefined): boolean {
   return runtime === undefined || runtime === AUTO_AGENT_RUNTIME_ID || runtime === "default";
 }
