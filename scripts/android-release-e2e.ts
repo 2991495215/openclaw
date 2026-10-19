@@ -1,11 +1,15 @@
+import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import {
+  access,
   mkdir,
   mkdtemp,
   readFile,
   readdir,
   rename,
   rm,
+  statfs,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -21,7 +25,9 @@ import { createOpenClawTestInstance } from "../test/helpers/openclaw-test-instan
 import { applyMockOpenAiModelConfig } from "./e2e/lib/fixtures/mock-openai-config.mjs";
 import {
   androidReleaseCommandFacts,
+  androidReleaseDeviceFacts,
   androidReleaseErrorFacts,
+  androidReleaseHostFacts,
   androidReleaseNativeFacts,
 } from "./lib/android-release-e2e-diagnostics.js";
 import {
@@ -67,7 +73,8 @@ type Evidence = {
   provider?: unknown;
   emulators?: unknown;
   failure?: string;
-  diagnostics: { stage: string; kind: string; details: unknown }[];
+  diagnostics: { stage: string; kind: string; details: unknown; elapsedMs: number }[];
+  trace: { stage: string; kind: string; details: unknown; elapsedMs: number }[];
   cleanupConfirmed: boolean;
 };
 
@@ -120,8 +127,9 @@ export async function main(argv = process.argv.slice(2)) {
   await mkdir(path.dirname(output), { recursive: true });
   await mkdir(path.join(artifactsDir, "screenshots"), { recursive: true });
   const root = await mkdtemp(path.join(os.tmpdir(), "openclaw-android-release-"));
+  const campaignStartedAt = performance.now();
   const abort = new AbortController();
-  const cancel = () => abort.abort();
+  const cancel = () => abortWork("host-signal");
   process.on("SIGINT", cancel);
   process.on("SIGTERM", cancel);
   let stage = "source";
@@ -146,13 +154,50 @@ export async function main(argv = process.argv.slice(2)) {
     ],
     cleanupConfirmed: false,
     diagnostics: [],
+    trace: [],
   };
   const diagnostic = (kind: string, details: unknown) => {
     if (evidence.diagnostics.length === 16) {
       evidence.diagnostics.shift();
     }
-    evidence.diagnostics.push({ stage, kind, details });
+    evidence.diagnostics.push({
+      stage,
+      kind,
+      details,
+      elapsedMs: Math.round(performance.now() - campaignStartedAt),
+    });
   };
+  // Keep causal exits separate from the expected offline observations during boot.
+  const trace = (kind: string, details: unknown) => {
+    if (evidence.trace.length < 128) {
+      evidence.trace.push({
+        stage,
+        kind,
+        details,
+        elapsedMs: Math.round(performance.now() - campaignStartedAt),
+      });
+    }
+  };
+  function abortWork(owner: string) {
+    if (!abort.signal.aborted) {
+      trace("abort", { owner });
+    }
+    abort.abort();
+  }
+  function observeChild(child: ChildProcess, owner: string, stop: AbortController) {
+    trace("process-start", { owner, pid: child.pid });
+    child.once("exit", (code, signal) => {
+      trace("process-exit", {
+        owner,
+        pid: child.pid,
+        code,
+        signal,
+        closing,
+        stopRequested: stop.signal.aborted,
+        abortRequested: abort.signal.aborted,
+      });
+    });
+  }
   const sdkEnv = resolveAndroidSdkEnv();
   const sdk =
     sdkEnv.ANDROID_HOME ??
@@ -170,13 +215,20 @@ export async function main(argv = process.argv.slice(2)) {
     bin: string,
     args: string[],
     timeoutMs = 60_000,
-    extra: { input?: string; cleanup?: boolean; binaryFile?: string } = {},
+    extra: { input?: string; cleanup?: boolean; binaryFile?: string; probe?: boolean } = {},
   ) {
     let stdout = "";
     let stderr = "";
     const binary: Buffer[] = [];
     const index = ++commandIndex;
     const startedAt = Date.now();
+    const isPull = bin === adb && args[2] === "pull";
+    if (isPull) {
+      trace("pull-start", {
+        command: index,
+        role: devices.find((device) => device.serial === args[1])?.role,
+      });
+    }
     let code: number;
     try {
       code = await runManagedCommand({
@@ -206,8 +258,10 @@ export async function main(argv = process.argv.slice(2)) {
         },
       });
     } catch (error) {
-      if (!extra.cleanup) {
+      if (!extra.cleanup || extra.probe) {
         diagnostic("command", {
+          command: index,
+          probe: extra.probe === true,
           ...androidReleaseCommandFacts(bin, args, stdout, stderr),
           ...androidReleaseErrorFacts(error),
           elapsedMs: Date.now() - startedAt,
@@ -216,12 +270,22 @@ export async function main(argv = process.argv.slice(2)) {
       throw error;
     }
     await writeFile(path.join(root, `command-${index}.private.log`), stdout + stderr);
+    if (isPull) {
+      trace("pull-exit", {
+        command: index,
+        exitCode: code,
+        elapsedMs: Date.now() - startedAt,
+        ...androidReleaseCommandFacts(bin, args, stdout, stderr),
+      });
+    }
     if (extra.binaryFile) {
       await writeFile(extra.binaryFile, Buffer.concat(binary));
     }
     if (code !== 0) {
-      if (!extra.cleanup) {
+      if (!extra.cleanup || extra.probe) {
         diagnostic("command", {
+          command: index,
+          probe: extra.probe === true,
           ...androidReleaseCommandFacts(bin, args, stdout, stderr),
           exitCode: code,
           elapsedMs: Date.now() - startedAt,
@@ -233,7 +297,64 @@ export async function main(argv = process.argv.slice(2)) {
   }
   const deviceCommand = (device: Device, args: string[], timeoutMs = 60_000, cleanup = false) =>
     command(adb, ["-s", device.serial, ...args], timeoutMs, { cleanup });
+  async function snapshot(device: Device, moment: "before-pull" | "failure") {
+    const probe = async (bin: string, args: string[]) => {
+      try {
+        return await command(bin, args, 5_000, { cleanup: true, probe: true });
+      } catch (error) {
+        if (hasUnjoinedWork(error)) {
+          preserveRoot = true;
+        }
+        return "";
+      }
+    };
+    const [processes, meminfo, memoryEvents, disk, writable] = await Promise.all([
+      probe("ps", ["-A", "-o", "pid=,ppid=,rss=,comm="]),
+      readFile("/proc/meminfo", "utf8").catch(() => ""),
+      readFile("/sys/fs/cgroup/memory.events", "utf8").catch(() => ""),
+      statfs(artifactsDir).catch(() => null),
+      access(path.join(artifactsDir, "screenshots"), fsConstants.W_OK).then(
+        () => true,
+        () => false,
+      ),
+    ]);
+    // Observe the host before ADB probes, which could start a lost server.
+    trace("host-snapshot", {
+      role: device.role,
+      moment,
+      ...androidReleaseHostFacts(processes, meminfo, memoryEvents),
+      freeMemoryBytes: os.freemem(),
+      totalMemoryBytes: os.totalmem(),
+      load: os.loadavg(),
+      freeDiskBytes: disk ? disk.bavail * disk.bsize : null,
+      destinationWritable: writable,
+    });
+    const state = await probe(adb, ["-s", device.serial, "get-state"]);
+    const directory = `/sdcard/Android/data/${applicationId}/files/release-validation`;
+    const facts = await probe(adb, [
+      "-s",
+      device.serial,
+      "shell",
+      [
+        'echo "boot_completed=$(getprop sys.boot_completed)"',
+        'echo "adbd_pid=$(pidof adbd)"',
+        `echo "app_pid=$(pidof ${applicationId})"`,
+        `if [ -d ${directory} ]; then echo screenshot_directory=1; else echo screenshot_directory=0; fi`,
+        `for file in ${directory}/*.png; do [ ! -f "$file" ] || stat -c 'screenshot_bytes=%s' "$file"; done`,
+      ].join("; "),
+    ]);
+    trace("device-snapshot", {
+      role: device.role,
+      moment,
+      state: ["device", "offline", "bootloader", "recovery", "unauthorized"].includes(state)
+        ? state
+        : "unknown",
+      shellResponded: facts.length > 0,
+      ...androidReleaseDeviceFacts(facts),
+    });
+  }
   function service(
+    owner: string,
     bin: string,
     args: string[],
     childEnv: NodeJS.ProcessEnv,
@@ -252,6 +373,7 @@ export async function main(argv = process.argv.slice(2)) {
       stdio: ["ignore", "pipe", "pipe"],
       requireProcessTreeExit: true,
       onReady(child) {
+        observeChild(child, owner, stop);
         for (const stream of [child.stdout, child.stderr]) {
           stream?.on("data", (chunk: Buffer) => {
             raw = (raw + chunk.toString()).slice(-16 * 1024 * 1024);
@@ -263,13 +385,16 @@ export async function main(argv = process.argv.slice(2)) {
       .then((code) => {
         if (!closing && !stop.signal.aborted) {
           unexpectedExit = true;
-          abort.abort();
+          abortWork(owner);
         }
         if (code !== 0 && !stop.signal.aborted) {
           throw new Error(`service-exit-${code}`);
         }
       })
       .catch((error: unknown) => {
+        if (!closing && !stop.signal.aborted) {
+          trace("service-error", { owner, ...androidReleaseErrorFacts(error) });
+        }
         if (hasUnjoinedWork(error)) {
           preserveRoot = true;
         }
@@ -289,7 +414,7 @@ export async function main(argv = process.argv.slice(2)) {
     void done.catch(() => {
       if (!closing) {
         unexpectedExit = true;
-        abort.abort();
+        abortWork(owner);
       }
     });
     const handle = { stop, done };
@@ -435,6 +560,7 @@ export async function main(argv = process.argv.slice(2)) {
     }
     phase("gateway-start");
     service(
+      "mock-provider",
       process.execPath,
       [path.join(repo, "scripts/e2e/mock-openai-server.mjs")],
       providerEnv,
@@ -490,10 +616,18 @@ export async function main(argv = process.argv.slice(2)) {
       signal: abort.signal,
     });
     await instance.startGateway();
-    instance.child?.once("exit", () => {
+    trace("process-start", { owner: "gateway", pid: instance.child?.pid });
+    instance.child?.once("exit", (code, signal) => {
+      trace("process-exit", {
+        owner: "gateway",
+        code,
+        signal,
+        closing,
+        abortRequested: abort.signal.aborted,
+      });
       if (!closing) {
         unexpectedExit = true;
-        abort.abort();
+        abortWork("gateway");
       }
     });
     const rpc = <T>(method: string, params: Record<string, unknown>) =>
@@ -547,6 +681,7 @@ export async function main(argv = process.argv.slice(2)) {
       const device: Device = { role, serial: `emulator-${port}`, port, forward: 0, name };
       devices.push(device);
       service(
+        `${role}-emulator`,
         path.join(sdk, "emulator/emulator"),
         [
           "-avd",
@@ -679,6 +814,8 @@ export async function main(argv = process.argv.slice(2)) {
       await deviceCommand(device, ["shell", "input", "keyevent", "224"]);
       await deviceCommand(device, ["shell", "wm", "dismiss-keyguard"]);
       let text = "";
+      let stdout = "";
+      let stderr = "";
       let finished = false;
       let exitCode: number | undefined;
       const testClass =
@@ -719,9 +856,15 @@ export async function main(argv = process.argv.slice(2)) {
         requireProcessTreeExit: true,
         stdio: ["ignore", "pipe", "pipe"],
         onReady(child) {
+          observeChild(child, `${device.role}-${releasePhase}-instrumentation`, stop);
           for (const stream of [child.stdout, child.stderr]) {
             stream?.on("data", (chunk: Buffer) => {
               text = (text + chunk.toString()).slice(-16 * 1024 * 1024);
+              if (stream === child.stdout) {
+                stdout = (stdout + chunk.toString()).slice(-16 * 1024 * 1024);
+              } else {
+                stderr = (stderr + chunk.toString()).slice(-16 * 1024 * 1024);
+              }
             });
           }
         },
@@ -729,6 +872,13 @@ export async function main(argv = process.argv.slice(2)) {
         .then((code) => {
           exitCode = code;
           finished = true;
+          trace("instrumentation-result", {
+            role: device.role,
+            phase: releasePhase,
+            exitCode,
+            ...androidReleaseCommandFacts(adb, args, stdout, stderr),
+            ...androidReleaseNativeFacts(text),
+          });
           if (
             code !== 0 ||
             !/OK \(1 test\)/u.test(text) ||
@@ -748,6 +898,12 @@ export async function main(argv = process.argv.slice(2)) {
             await writeFile(path.join(root, `instrumentation-${index}.private.log`), text);
           },
           async (error: unknown) => {
+            trace("instrumentation-error", {
+              role: device.role,
+              phase: releasePhase,
+              ...androidReleaseErrorFacts(error),
+              ...androidReleaseCommandFacts(adb, args, stdout, stderr),
+            });
             await writeFile(path.join(root, `instrumentation-${index}.private.log`), text);
             throw error;
           },
@@ -779,6 +935,7 @@ export async function main(argv = process.argv.slice(2)) {
             androidReleaseTransportSnapshot(await control(device, "health"), device.role, name),
           );
           phase(`${device.role}-${name}-screenshots`);
+          await snapshot(device, "before-pull");
           await deviceCommand(device, [
             "pull",
             `/sdcard/Android/data/${applicationId}/files/release-validation/.`,
@@ -838,6 +995,7 @@ export async function main(argv = process.argv.slice(2)) {
   } catch (error) {
     evidence.failure = stage;
     diagnostic("runner", androidReleaseErrorFacts(error));
+    trace("failure", { ...androidReleaseErrorFacts(error), abortRequested: abort.signal.aborted });
     if (hasUnjoinedWork(error)) {
       preserveRoot = true;
     }
@@ -846,6 +1004,7 @@ export async function main(argv = process.argv.slice(2)) {
       error instanceof Error ? (error.stack ?? error.message) : String(error),
     );
     for (const device of devices) {
+      await snapshot(device, "failure");
       // Failure screens can include a setup credential. Keep them private, outside
       // the published screenshot directory, and collect before emulator teardown.
       try {

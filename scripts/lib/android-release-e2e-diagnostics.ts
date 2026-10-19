@@ -41,6 +41,68 @@ export function androidReleaseCommandFacts(
       /failed to stat remote object|remote object[^\r\n]*does not exist/iu.test(output),
     protocolFault: tool === "adb" && /protocol fault/iu.test(output),
     noSpace: tool === "adb" && /no space left on device/iu.test(output),
+    readFailure:
+      tool === "adb" && /failed to read|read failed|couldn't read|cannot read/iu.test(output),
+    writeFailure:
+      tool === "adb" && /failed to write|write failed|couldn't write|cannot write/iu.test(output),
+    unexpectedEof: tool === "adb" && /unexpected (?:eof|end of file)|premature eof/iu.test(output),
+    brokenPipe: tool === "adb" && /broken pipe/iu.test(output),
+    connectionAborted: tool === "adb" && /connection aborted|connection refused/iu.test(output),
+    serverRestart:
+      tool === "adb" &&
+      /daemon not running|daemon started successfully|server version .*doesn't match/iu.test(
+        output,
+      ),
+    localCreateFailure:
+      tool === "adb" &&
+      /cannot create|failed to create|cannot mkdir|not a directory/iu.test(output),
+    syncFailure:
+      tool === "adb" &&
+      /failed to receive|failed to send|failed to copy|unexpected id|failed to read copy response/iu.test(
+        output,
+      ),
+    stdoutBytes: Buffer.byteLength(stdout),
+    stderrBytes: Buffer.byteLength(stderr),
+  };
+}
+
+/** Only numeric facts from the qualification-owned shell probe cross into artifacts. */
+export function androidReleaseDeviceFacts(output: string) {
+  const number = (key: string) => {
+    const match = new RegExp(`^${key}=(\\d+)$`, "mu").exec(output);
+    return match ? Number(match[1]) : null;
+  };
+  const screenshotSizes = [...output.matchAll(/^screenshot_bytes=(\d+)$/gmu)].map((match) =>
+    Number(match[1]),
+  );
+  return {
+    bootCompleted: number("boot_completed"),
+    adbdPid: number("adbd_pid"),
+    appPid: number("app_pid"),
+    screenshotDirectory: number("screenshot_directory"),
+    screenshotCount: screenshotSizes.length,
+    screenshotBytes: screenshotSizes.reduce((total, size) => total + size, 0),
+  };
+}
+
+export function androidReleaseHostFacts(processes: string, meminfo: string, memoryEvents: string) {
+  const adbProcesses = [...processes.matchAll(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(?:\S*\/)?adb\s*$/gmu)]
+    .slice(0, 16)
+    .map((match) => ({
+      pid: Number(match[1]),
+      parentPid: Number(match[2]),
+      rssKiB: Number(match[3]),
+    }));
+  const number = (text: string, key: string, suffix: string) => {
+    const match = new RegExp(`^${key}\\s+(\\d+)${suffix}$`, "mu").exec(text);
+    return match ? Number(match[1]) : null;
+  };
+  return {
+    adbProcesses,
+    availableKiB: number(meminfo, "MemAvailable:", " kB"),
+    swapFreeKiB: number(meminfo, "SwapFree:", " kB"),
+    oom: number(memoryEvents, "oom", ""),
+    oomKill: number(memoryEvents, "oom_kill", ""),
   };
 }
 

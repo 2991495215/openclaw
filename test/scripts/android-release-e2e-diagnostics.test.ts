@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   androidReleaseCommandFacts,
+  androidReleaseDeviceFacts,
   androidReleaseErrorFacts,
+  androidReleaseHostFacts,
   androidReleaseNativeFacts,
 } from "../../scripts/lib/android-release-e2e-diagnostics.js";
 
@@ -26,6 +28,16 @@ describe("Android release public failure diagnostics", () => {
       "failed to copy /private/setup-secret: No space left on device",
       { failedToCopy: true, noSpace: true },
     ],
+    ["adb: error: failed to read copy response: Success", { readFailure: true, syncFailure: true }],
+    [
+      "adb: error: failed to write /private/setup-secret: Broken pipe",
+      { writeFailure: true, brokenPipe: true },
+    ],
+    ["adb: error: unexpected EOF on private-device", { unexpectedEof: true }],
+    ["Software caused connection abort: connection aborted", { connectionAborted: true }],
+    ["* daemon not running; starting now at private-port", { serverRestart: true }],
+    ["adb server version (40) doesn't match this client (41); killing...", { serverRestart: true }],
+    ["adb: error: cannot create /private/output: Not a directory", { localCreateFailure: true }],
   ])(
     "identifies SDK facts from either stream for %s without private output",
     (output, expected) => {
@@ -38,11 +50,76 @@ describe("Android release public failure diagnostics", () => {
           stdout,
           stderr,
         );
-        expect(facts).toMatchObject({ tool: "adb", operation: "pull", ...expected });
+        expect(facts).toMatchObject({
+          tool: "adb",
+          operation: "pull",
+          stdoutBytes: Buffer.byteLength(stdout),
+          stderrBytes: Buffer.byteLength(stderr),
+          ...expected,
+        });
         expect(JSON.stringify(facts)).not.toMatch(/private|secret|token/u);
       }
     },
   );
+
+  it("exports only numeric device facts, excluding paths and probe errors", () => {
+    const facts = androidReleaseDeviceFacts(
+      [
+        "boot_completed=1",
+        "adbd_pid=104",
+        "app_pid=4466",
+        "screenshot_directory=1",
+        "screenshot_bytes=123",
+        "screenshot_bytes=456",
+        "stat: /private/setup-secret: Permission denied",
+        "private-token=789",
+      ].join("\n"),
+    );
+    expect(facts).toEqual({
+      bootCompleted: 1,
+      adbdPid: 104,
+      appPid: 4466,
+      screenshotDirectory: 1,
+      screenshotCount: 2,
+      screenshotBytes: 579,
+    });
+    expect(
+      androidReleaseDeviceFacts("boot_completed=private-token\nscreenshot_bytes=secret"),
+    ).toEqual({
+      bootCompleted: null,
+      adbdPid: null,
+      appPid: null,
+      screenshotDirectory: null,
+      screenshotCount: 0,
+      screenshotBytes: 0,
+    });
+  });
+
+  it("retains ADB process identity and resource counters without unrelated processes or paths", () => {
+    const facts = androidReleaseHostFacts(
+      "  104 1 512 /private/sdk/platform-tools/adb\n  200 99 128 adb\n  301 1 1024 /private/secret-app\n",
+      "MemAvailable:   12345 kB\nSwapFree: 678 kB\nprivate-token: 789 kB\n",
+      "oom 2\noom_kill 1\nprivate-secret 42\n",
+    );
+    expect(facts).toEqual({
+      adbProcesses: [
+        { pid: 104, parentPid: 1, rssKiB: 512 },
+        { pid: 200, parentPid: 99, rssKiB: 128 },
+      ],
+      availableKiB: 12345,
+      swapFreeKiB: 678,
+      oom: 2,
+      oomKill: 1,
+    });
+    expect(JSON.stringify(facts)).not.toMatch(/private|secret|token|sdk/u);
+    expect(androidReleaseHostFacts("", "", "")).toEqual({
+      adbProcesses: [],
+      availableKiB: null,
+      swapFreeKiB: null,
+      oom: null,
+      oomKill: null,
+    });
+  });
 
   it("drops unknown tool, operation, output and native phase names", () => {
     expect(
