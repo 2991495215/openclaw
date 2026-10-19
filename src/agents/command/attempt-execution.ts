@@ -741,7 +741,6 @@ export async function runAgentAttempt(params: AgentAttemptParams) {
     onRetryWait: params.deferredLifecycle?.beginRetryWait,
     assistantErrorTranscript: params.assistantErrorTranscript,
     authProfileFailurePolicy: params.authProfileFailurePolicy,
-    onUserMessagePersisted: params.onUserMessagePersisted,
     onCompactionAccounting: params.onCompactionAccounting,
     onCompactionRequestBudget: params.onCompactionRequestBudget,
     onSuccessfulAuthProfile: createCommandSuccessfulAuthProfileCallback(params, {

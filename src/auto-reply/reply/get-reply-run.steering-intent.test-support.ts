@@ -9,7 +9,7 @@ import { runActiveReplySteer } from "./agent-runner-steer-adoption.js";
 import { createSteerParams } from "./agent-runner-steer-adoption.test-support.js";
 import { handleSteerCommand } from "./commands-steer.js";
 import { buildCommandTestParams } from "./commands.test-harness.js";
-import { resolveReplyDirectiveRouting } from "./get-reply-directives-routing.js";
+import { routeReplyDirectivesForTest } from "./get-reply-directives-routing.test-support.js";
 import { resolveReplyDirectives } from "./get-reply-directives.js";
 import { shouldUseReplyFastTestRuntime } from "./get-reply-fast-path.js";
 import { runPreparedReply } from "./get-reply-run.js";
@@ -125,19 +125,11 @@ export function registerSteeringIntentProducerCases(params: {
         allowTextCommands: true,
       });
       prepared.command = { ...prepared.command, isAuthorizedSender: true };
-      const inbound = finalizeInboundContext(prepared.ctx);
-      const routed = resolveReplyDirectiveRouting({
-        commandText: inbound.commandText,
-        agentText: inbound.agentText,
-        modelAliases: [],
-        canInterpretTextDirectives: true,
-        isAuthorizedSender: true,
-        isGroup: false,
-        wasMentioned: false,
-        ctx: inbound,
+      const inbound = finalizeInboundContext({ ...prepared.ctx, CommandAuthorized: true });
+      const routed = await routeReplyDirectivesForTest(inbound, {
         cfg: prepared.cfg,
         agentId: prepared.agentId,
-        resetTriggered: false,
+        sessionKey: prepared.sessionKey,
       });
       prepared.directives = routed.directives;
       prepared.sessionCtx.agentText = routed.cleanedBody;
