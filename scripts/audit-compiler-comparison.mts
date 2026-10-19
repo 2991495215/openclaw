@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { auditCompilerCache } from "./lib/compiler-comparison-cache.mts";
 import {
   assertCompilerNetworkIsolation,
   type CompilerNetworkEvidence,
@@ -57,6 +58,9 @@ export function auditCompilerComparison(directory: string) {
     canaries?: Canary[];
     memoryDiagnostic?: unknown;
     capacityControl?: unknown;
+    cacheCorrectness?: unknown;
+    cacheWrapperSmoke?: unknown;
+    ciPolicy?: { args: string[]; env: Record<string, string> };
     cpus?: number;
     limits?: { memoryBytes: number; swapBytes: number };
   };
@@ -77,7 +81,7 @@ export function auditCompilerComparison(directory: string) {
     group: number;
     groups: number;
   };
-  const parity = JSON.parse(read("input-parity.json")) as {
+  const parity = (metadata.cacheCorrectness ? [] : JSON.parse(read("input-parity.json"))) as {
     graph: string;
     proofs: Record<Compiler, Record<"config" | "files", { sha256: string }>>;
   }[];
@@ -127,6 +131,33 @@ export function auditCompilerComparison(directory: string) {
   for (const entry of metadata.libraryManifest) {
     assert.match(entry.name, /^lib(?:\.[\w.-]+)?\.d\.ts$/u);
     assert.match(entry.sha256, hashPattern);
+  }
+  if (metadata.cacheCorrectness !== undefined) {
+    assert.deepEqual(inventory.inventory, [
+      { name: "cache-contract", config: "/case/tsconfig.json" },
+    ]);
+    assert.deepEqual(canaries, []);
+    return {
+      sourceHead: metadata.sourceHead,
+      binarySha256: metadata.binarySha256,
+      libraryManifestSha256: digest(JSON.stringify(metadata.libraryManifest)),
+      scope: {
+        purpose: "synthetic-cache-correctness",
+        networkIsolation,
+        graphs: inventory.graphs,
+        capacityControl: false,
+        group: 0,
+        groups: 1,
+        canaries: [],
+        plannedSamples: 56,
+        referenceInputsVerified: false,
+      },
+      typecheckPassed: null,
+      canariesPassed: null,
+      missing: [],
+      comparisons: [] as typeof comparisons,
+      ...auditCompilerCache(directory, metadata),
+    };
   }
 
   const missing: string[] = [];

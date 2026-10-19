@@ -9,6 +9,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ensureKyselyTypes } from "./generate-kysely-types.mts";
 import {
+  COMPILER_CACHE_EVIDENCE_LIMIT,
+  COMPILER_CACHE_FILE_LIMIT,
+  COMPILER_CACHE_POLICY,
+  assertCompilerCacheExecution,
+  compilerCacheCommand,
+  compilerCacheFixture,
+  compilerCachePlan,
+  readCompilerCacheFile,
+  readCompilerCacheOutput,
+} from "./lib/compiler-comparison-cache.mts";
+import {
   COMPILER_NETWORK_POLICY,
   assertCompilerNetworkIsolation,
   captureCompilerComparisonOutput,
@@ -30,7 +41,10 @@ async function main() {
     "true",
     "Run through the secretless qualification workflow",
   );
-  const inventory = expandTsgoExecutionGraphs(TSGO_CI_GRAPHS);
+  const cacheCorrectness = process.argv.includes("--cache-correctness");
+  const inventory = cacheCorrectness
+    ? [{ name: "cache-contract", config: "/case/tsconfig.json" }]
+    : expandTsgoExecutionGraphs(TSGO_CI_GRAPHS);
   const argument = (name, fallback) => {
     const i = process.argv.indexOf(name);
     return i < 0 ? fallback : process.argv[i + 1];
@@ -43,6 +57,17 @@ async function main() {
   const memoryTarget = argument("--memory-diagnostic", "");
   const capacityControl = process.argv.includes("--capacity-control");
   const isolationOnly = process.argv.includes("--isolation-diagnostic");
+  assert(
+    !cacheCorrectness ||
+      (!memoryTarget &&
+        !capacityControl &&
+        !isolationOnly &&
+        repeats === 1 &&
+        group === 0 &&
+        groups === 1 &&
+        !process.argv.includes("--canaries")),
+    "Cache correctness is one isolated synthetic group",
+  );
   assert(!isolationOnly || capacityControl, "Isolation diagnostic requires the capacity profile");
   assert(["", "3GiB", "10GiB"].includes(memoryTarget), "Unknown diagnostic memory target");
   assert(!memoryTarget || (repeats === 1 && !process.argv.includes("--canaries")));
@@ -197,6 +222,11 @@ async function main() {
     : Math.floor((memoryCapacity * 0.8) / 1024 ** 3) * 1024 ** 3;
   assert(memoryBytes > 0, "Missing memory capacity");
   const resources = { logicalCpuCount: os.availableParallelism(), totalMemoryBytes: memoryBytes };
+  if (cacheCorrectness) {
+    assert.equal(resources.logicalCpuCount, 4);
+    assert.equal(memoryBytes, 12 * 1024 ** 3);
+    assert.equal(process.versions.node, "24.16.0", "Cache transport requires its pinned runtime");
+  }
   if (memoryTarget) {
     assert.equal(resources.logicalCpuCount, 4, "Memory diagnostic requires the original CPU cap");
     assert.equal(memoryBytes, 12 * 1024 ** 3, "Memory diagnostic requires the original RAM cap");
@@ -214,15 +244,18 @@ async function main() {
             ...(graph.name === "core" ? ["single-threaded", "incremental-unthrottled"] : []),
           ];
   const compilers = Object.keys(binaries);
-  const expectedSamples = selectedGraphs.flatMap((graph) =>
-    modesFor(graph).flatMap((mode) =>
-      compilers.flatMap((compiler) =>
-        Array.from({ length: repeats }, (_, index) =>
-          [graph.name, mode, compiler, index + 1].join("-"),
+  const cachePlan = cacheCorrectness ? compilerCachePlan() : [];
+  const expectedSamples = cacheCorrectness
+    ? cachePlan.map((phase) => phase.id)
+    : selectedGraphs.flatMap((graph) =>
+        modesFor(graph).flatMap((mode) =>
+          compilers.flatMap((compiler) =>
+            Array.from({ length: repeats }, (_, index) =>
+              [graph.name, mode, compiler, index + 1].join("-"),
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 
   const ciEnv = { CI: "true", GITHUB_ACTIONS: "true", OPENCLAW_LOCAL_CHECK: "0" };
   const ciPolicy = applyLocalTsgoPolicy([...common], ciEnv, resources);
@@ -249,8 +282,19 @@ async function main() {
   const evidenceMetrics = path.join(directory, "metrics");
   fs.mkdirSync(metricsDirectory, { recursive: true });
   fs.mkdirSync(evidenceMetrics, { recursive: true });
+  // The fixture must not also be reachable through the writable metrics mount.
+  const cacheFixtureDirectory = path.join(directory, "fixture");
+  if (cacheCorrectness) {
+    fs.mkdirSync(cacheFixtureDirectory);
+    fs.mkdirSync(path.join(directory, "cache"));
+  }
+  const cacheBinaryPaths = {
+    pinned: pinnedBinary,
+    candidate: path.join(nativeDirectory, "tsc-ts"),
+    reference: path.join(referenceDirectory, "tsc"),
+  };
 
-  function sandbox(mode, containerName, traceGc) {
+  function sandbox(mode, containerName, traceGc, cacheTrial) {
     const args = [
       "run",
       "--pull",
@@ -300,7 +344,21 @@ async function main() {
     mount(nativeDirectory, "/native");
     mount(metricsDirectory, "/metrics", false);
     mount("/usr/bin/time", "/usr/bin/time");
-    for (const value of ["PATH=/usr/bin:/bin", "HOME=/tmp", "LC_ALL=C", "TSC_TS_LIB_DIR=/libs"]) {
+    if (cacheCorrectness) {
+      mount(process.execPath, "/proof-node");
+      mount(cacheFixtureDirectory, "/case");
+      mount(libraries, "/compiler");
+      mount(cacheBinaryPaths[cacheTrial?.compiler ?? "pinned"], "/compiler/tsc");
+      if (cacheTrial?.seedFile) {
+        mount(cacheTrial.seedFile, "/seed.tsbuildinfo");
+      }
+    }
+    for (const value of [
+      "PATH=/usr/bin:/bin",
+      "HOME=/tmp",
+      "LC_ALL=C",
+      "TSC_TS_LIB_DIR=" + (cacheCorrectness ? "/compiler" : "/libs"),
+    ]) {
       args.push("--env", value);
     }
     if (mode === "incremental-cold") {
@@ -321,14 +379,14 @@ async function main() {
   }
   async function executeIsolated(
     args,
-    { mode, files, traceGc = false, diagnoseNetwork = false, ...options } = {},
+    { mode, files, traceGc = false, diagnoseNetwork = false, cacheTrial, ...options } = {},
   ) {
     const name = containerPrefix + containerSequence++;
     let result;
     let networkProfile = null;
     try {
       result = await new Promise((resolve) => {
-        const child = spawn("docker", [...sandbox(mode, name, traceGc), ...args], {
+        const child = spawn("docker", [...sandbox(mode, name, traceGc, cacheTrial), ...args], {
           cwd: root,
           timeout: 120000,
           killSignal: "SIGKILL",
@@ -438,6 +496,13 @@ async function main() {
     }
     return result.stdout;
   }
+  const executionEvidence = (result) => ({
+    processExitCode: result.status,
+    processSignal: result.signal,
+    infrastructureError: result.error?.message,
+    cleanupVerified: result.cleanupVerified,
+    preCleanupState: result.preCleanupState,
+  });
   // Read back enforcement from inside the actual mount/resource namespace.
   const limits = (
     await isolatedOutput([
@@ -453,17 +518,37 @@ async function main() {
     [String(memoryBytes), "0", cpuSet],
     "Container limits were not enforced",
   );
+  if (cacheCorrectness) {
+    assert.equal(await isolatedOutput(["/proof-node", "--version"]), "v24.16.0\n");
+  }
+  const cacheWrapperSmoke = cacheCorrectness ? { exits: [] } : undefined;
+  const deadlineCommand = ["sh", "-c", "printf ready > /metrics/deadline-ready; sleep 30"];
   const deadlineSmoke = await executeIsolated(
-    ["sh", "-c", "printf ready > /metrics/deadline-ready; sleep 30"],
+    cacheCorrectness
+      ? compilerCacheCommand(deadlineCommand, "smoke-deadline", false)
+      : deadlineCommand,
     { timeout: 3000 },
   );
   assert.equal(fs.readFileSync(path.join(metricsDirectory, "deadline-ready"), "utf8"), "ready");
   assert.equal(deadlineSmoke.signal, "SIGKILL", "Deadline did not terminate the Docker client");
   assert.equal(deadlineSmoke.cleanupVerified, true, "Deadline cleanup was not verified");
   assert.equal(deadlineSmoke.preCleanupState.available, true, "Deadline state was not captured");
+  if (cacheCorrectness) {
+    assert.throws(() => assertCompilerCacheExecution(executionEvidence(deadlineSmoke), 0));
+    assert(!fs.existsSync(path.join(metricsDirectory, "smoke-deadline.cache")));
+    cacheWrapperSmoke.deadline = executionEvidence(deadlineSmoke);
+  }
   const exitSmoke = [];
   for (const exitCode of [0, 1, 2, 137]) {
-    const result = await executeIsolated(["sh", "-c", "exit " + exitCode]);
+    const id = "smoke-exit-" + exitCode;
+    const command = [
+      "sh",
+      "-c",
+      (cacheCorrectness ? "printf '{}' > /cache/project.tsbuildinfo; " : "") + "exit " + exitCode,
+    ];
+    const result = await executeIsolated(
+      cacheCorrectness ? compilerCacheCommand(command, id, false) : command,
+    );
     assert.ifError(result.error);
     assert.equal(result.status, exitCode);
     assert.equal(result.cleanupVerified, true);
@@ -475,6 +560,40 @@ async function main() {
       ExitCode: exitCode,
     });
     exitSmoke.push({ exitCode, preCleanupState: result.preCleanupState });
+    if (cacheCorrectness) {
+      if (exitCode === 137) {
+        assert.throws(() => assertCompilerCacheExecution(executionEvidence(result), exitCode));
+      } else {
+        assertCompilerCacheExecution(executionEvidence(result), exitCode);
+      }
+      const output = path.join(metricsDirectory, id + ".cache");
+      assert.equal(readCompilerCacheFile(output).toString("utf8"), "{}");
+      fs.unlinkSync(output);
+      cacheWrapperSmoke.exits.push({
+        ...executionEvidence(result),
+        cacheSha256: hash("{}"),
+        admitted: exitCode !== 137,
+      });
+    }
+  }
+  if (cacheCorrectness) {
+    const result = await executeIsolated(
+      compilerCacheCommand(["sh", "-c", "exit 0"], "smoke-export", false),
+    );
+    assert.ifError(result.error);
+    assert.equal(result.status, 77);
+    assert.equal(result.signal, null);
+    assert.equal(result.cleanupVerified, true);
+    assert.deepEqual(result.preCleanupState, {
+      available: true,
+      Status: "exited",
+      Running: false,
+      OOMKilled: false,
+      ExitCode: 77,
+    });
+    assert.throws(() => assertCompilerCacheExecution(executionEvidence(result), 0));
+    assert(!fs.existsSync(path.join(metricsDirectory, "smoke-export.cache")));
+    cacheWrapperSmoke.exportFailure = executionEvidence(result);
   }
   const probe = ".compiler-isolation-" + randomUUID();
   const probePaths = {
@@ -594,8 +713,9 @@ printf 'tcp\\tENETUNREACH\\n'`,
       candidate: hash(fs.readFileSync(path.join(nativeDirectory, "tsc-ts"))),
       reference: hash(fs.readFileSync(path.join(referenceDirectory, "tsc"))),
     },
-    libraries:
-      "All compilers use repository-pinned library declarations; compiler-directory prefixes normalized only for comparison.",
+    libraries: cacheCorrectness
+      ? "Identical readonly declarations and executable path /compiler for every cache phase; no diagnostic path normalization."
+      : "All compilers use repository-pinned library declarations; compiler-directory prefixes normalized only for comparison.",
     libraryManifest: fs
       .readdirSync(libraries)
       .filter((name) => name.startsWith("lib.") && name.endsWith(".d.ts"))
@@ -618,13 +738,32 @@ printf 'tcp\\tENETUNREACH\\n'`,
       preCleanupState: deadlineSmoke.preCleanupState,
     },
     exitSmoke,
+    cacheWrapperSmoke,
     expectedSamples,
+    cacheCorrectness: cacheCorrectness
+      ? {
+          policy: COMPILER_CACHE_POLICY,
+          compilerPath: "/compiler/tsc",
+          libraryPath: "/compiler",
+          fixturePath: "/case",
+          nodeVersion: process.version,
+          nodeBinarySha256: hash(fs.readFileSync(process.execPath)),
+          fileLimit: COMPILER_CACHE_FILE_LIMIT,
+          scratchLimit: 3 * COMPILER_CACHE_FILE_LIMIT,
+          evidenceLimit: COMPILER_CACHE_EVIDENCE_LIMIT,
+          performanceEligible: false,
+          seedAcceptance: "A seed is offered; compiler cache acceptance is not inferred.",
+        }
+      : undefined,
     canaries,
-    method:
-      "Fresh process and empty incremental cache per sample. Warm filesystem after input preflight. GNU time inside secretless sandbox. incremental-cold applies the canonical CI resource policy to all three compilers; other modes use explicit direct flags without Go tuning.",
+    method: cacheCorrectness
+      ? "Synthetic cache correctness only. Fresh container per invocation, readonly fixture, one bounded immutable seed and canonical cold CI resource policy. No timing or cache-hit claim."
+      : "Fresh process and empty incremental cache per sample. Warm filesystem after input preflight. GNU time inside secretless sandbox. incremental-cold applies the canonical CI resource policy to all three compilers; other modes use explicit direct flags without Go tuning.",
   });
   const normalize = (text) =>
-    text.replaceAll("/pin/", "/libs/").replaceAll("/reference/", "/libs/");
+    cacheCorrectness
+      ? text
+      : text.replaceAll("/pin/", "/libs/").replaceAll("/reference/", "/libs/");
   const flags = (graph, mode) => {
     const incremental = mode.startsWith("incremental-");
     const args = [
@@ -640,30 +779,32 @@ printf 'tcp\\tENETUNREACH\\n'`,
   };
   const records = [];
   const parity = [];
-  async function measure(graph, compiler, mode, iteration) {
-    const id = [graph.name, mode, compiler, iteration].join("-");
+  async function measure(graph, compiler, mode, iteration, cacheTrial) {
+    const id = cacheTrial?.id ?? [graph.name, mode, compiler, iteration].join("-");
     const stdoutFile = path.join(directory, id + ".stdout");
     const stderrFile = path.join(directory, id + ".stderr");
     const stdoutFd = fs.openSync(stdoutFile, "w");
     const stderrFd = fs.openSync(stderrFile, "w");
     let result;
     try {
+      const command = [
+        "/usr/bin/time",
+        "-f",
+        "%e %U %S %M %x",
+        "-o",
+        "/metrics/" + id + ".time",
+        cacheTrial ? "/compiler/tsc" : binaries[compiler],
+        ...flags(graph, mode),
+      ];
       result = await executeIsolated(
-        [
-          "/usr/bin/time",
-          "-f",
-          "%e %U %S %M %x",
-          "-o",
-          "/metrics/" + id + ".time",
-          binaries[compiler],
-          ...flags(graph, mode),
-        ],
+        cacheTrial ? compilerCacheCommand(command, id, Boolean(cacheTrial.seedFile)) : command,
         {
           timeout: 600000,
           killSignal: "SIGKILL",
           mode,
           traceGc: Boolean(memoryTarget),
           files: { stdout: stdoutFd, stderr: stderrFd },
+          cacheTrial,
         },
       );
     } finally {
@@ -672,13 +813,7 @@ printf 'tcp\\tENETUNREACH\\n'`,
     }
     // Publish execution evidence before fallible metric parsing, even when no
     // valid GNU time record survived. Missing numeric values remain absent.
-    const execution = {
-      processExitCode: result.status,
-      processSignal: result.signal,
-      infrastructureError: result.error?.message,
-      cleanupVerified: result.cleanupVerified,
-      preCleanupState: result.preCleanupState,
-    };
+    const execution = executionEvidence(result);
     const evidenceFile = path.join(evidenceMetrics, id + ".json");
     fs.writeFileSync(evidenceFile, JSON.stringify(execution));
     if (result.error || result.signal) {
@@ -698,9 +833,14 @@ printf 'tcp\\tENETUNREACH\\n'`,
         ...execution,
       }),
     );
+    // Reject the producer before a measurement or dependent seed is published.
+    const cacheOutput = cacheTrial
+      ? readCompilerCacheOutput(path.join(metricsDirectory, id + ".cache"), execution, exitCode)
+      : undefined;
     // Keep rejected trials out of measurements while collecting the remaining
     // isolated samples. Their planned IDs keep the audit incomplete.
     if (![0, 1, 2].includes(result.status) || result.status !== exitCode) {
+      assert(!cacheTrial, id + ": invalid cache phase execution");
       console.error(
         id + ": rejected sample: process exit " + result.status + ", GNU time " + exitCode,
       );
@@ -709,6 +849,7 @@ printf 'tcp\\tENETUNREACH\\n'`,
     const stdout = normalize(fs.readFileSync(stdoutFile, "utf8"));
     const stderr = fs.readFileSync(stderrFile);
     const row = {
+      ...(cacheTrial ? { id } : {}),
       graph: graph.name,
       config: graph.config,
       mode,
@@ -730,6 +871,66 @@ printf 'tcp\\tENETUNREACH\\n'`,
     records.push(row);
     dump("measurements.json", records);
     console.log(JSON.stringify(row));
+    return { row, cacheOutput };
+  }
+  if (cacheCorrectness) {
+    const cacheRecords = [];
+    const outputs = new Map();
+    let evidenceBytes = 0;
+    const retain = (name, bytes) => {
+      assert(bytes.length <= COMPILER_CACHE_FILE_LIMIT);
+      evidenceBytes += bytes.length;
+      assert(evidenceBytes <= COMPILER_CACHE_EVIDENCE_LIMIT, "Cache evidence exceeds 256 MiB");
+      fs.writeFileSync(path.join(directory, "cache", name), bytes, { flag: "wx" });
+      return { file: name, bytes: bytes.length, sha256: hash(bytes) };
+    };
+    for (const phase of cachePlan) {
+      const fixture = compilerCacheFixture(phase.state);
+      for (const name of fs.readdirSync(cacheFixtureDirectory)) {
+        fs.unlinkSync(path.join(cacheFixtureDirectory, name));
+      }
+      for (const [name, contents] of Object.entries(fixture)) {
+        fs.writeFileSync(path.join(cacheFixtureDirectory, name), contents, { flag: "wx" });
+      }
+      let seed;
+      if (phase.seed) {
+        seed = outputs.get(phase.seed);
+        assert(seed, "Missing seed phase " + phase.seed);
+        const bytes = readCompilerCacheFile(path.join(directory, "cache", seed.file));
+        assert.equal(hash(bytes), seed.sha256);
+        if (phase.truncate) {
+          seed = retain(
+            "seed-" + phase.id + ".tsbuildinfo",
+            bytes.subarray(0, Math.floor(bytes.length / 2)),
+          );
+        }
+      }
+      const measured = await measure(graphs[0], phase.compiler, "incremental-cold", 1, {
+        id: phase.id,
+        compiler: phase.compiler,
+        seedFile: seed ? path.join(directory, "cache", seed.file) : undefined,
+      });
+      assert(measured?.cacheOutput);
+      // executeIsolated has joined the exact container before any writable file is read.
+      const outputFile = path.join(metricsDirectory, phase.id + ".cache");
+      const output = retain(phase.id + ".tsbuildinfo", measured.cacheOutput);
+      fs.unlinkSync(outputFile);
+      outputs.set(phase.id, output);
+      cacheRecords.push({
+        ...phase,
+        input: fixture,
+        inputSha256: hash(JSON.stringify(fixture)),
+        seedCache: seed ?? null,
+        outputCache: output,
+      });
+      dump("cache-contract.json", {
+        policy: COMPILER_CACHE_POLICY,
+        phases: cacheRecords,
+        evidenceBytes,
+      });
+    }
+    console.log("Collected all 56 cache correctness calls; no performance qualification.");
+    return;
   }
   for (const graph of selectedGraphs) {
     const proofs = {};

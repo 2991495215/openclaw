@@ -6,6 +6,8 @@ on:
       - scripts/audit-compiler-comparison.mts
       - scripts/collect-compiler-comparison.mjs
       - scripts/lib/compiler-comparison-io.mts
+      - scripts/lib/compiler-comparison-cache.mts
+      - test/scripts/compiler-comparison-cache.test.ts
       - test/scripts/compiler-comparison.test.ts
       - test/scripts/compiler-comparison-canaries.test.ts
       - test/scripts/compiler-comparison-network.fixtures.ts
@@ -24,6 +26,7 @@ on:
             memory-diagnostic,
             capacity-control,
             isolation-diagnostic,
+            cache-correctness,
           ]
         default: representative
 
@@ -62,7 +65,9 @@ jobs:
           import { TSGO_CI_GRAPHS, expandTsgoExecutionGraphs } from "./scripts/lib/tsgo-core-test-shards.mts";
           const inventory = expandTsgoExecutionGraphs(TSGO_CI_GRAPHS);
           const selected = new Set(["core", "ui", "extensions", "scripts", "test-root-e2e"]);
-          const include = inventory.flatMap((graph, group) => {
+          const include = process.env.QUALIFICATION_SCOPE === "cache-correctness"
+            ? [{ graph: "cache-contract", group: 0, groups: 1, cacheCorrectness: true }]
+            : inventory.flatMap((graph, group) => {
             const entry = { graph: graph.name, group, groups: inventory.length };
             if (process.env.QUALIFICATION_SCOPE === "isolation-diagnostic") {
               return graph.name === "extensions"
@@ -85,7 +90,7 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, "matrix=" + JSON.stringify({ include }) + "\n");
           JS
       - name: Test artifact and metric boundaries
-        run: node scripts/run-vitest.mjs test/scripts/compiler-comparison.test.ts test/scripts/compiler-comparison-canaries.test.ts --maxWorkers=1
+        run: node scripts/run-vitest.mjs test/scripts/compiler-comparison.test.ts test/scripts/compiler-comparison-canaries.test.ts test/scripts/compiler-comparison-cache.test.ts --maxWorkers=1
       - name: Check tooling types
         run: |
           node scripts/generate-kysely-types.mts
@@ -93,8 +98,8 @@ jobs:
           node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.test.root.scripts.json --noEmit
       - name: Lint and format qualification tooling
         run: |
-          node scripts/run-oxlint.mjs --tsconfig config/tsconfig/oxlint.scripts.json scripts/audit-compiler-comparison.mts scripts/collect-compiler-comparison.mjs scripts/lib/compiler-comparison-io.mts
-          pnpm format:check scripts/audit-compiler-comparison.mts scripts/collect-compiler-comparison.mjs scripts/lib/compiler-comparison-io.mts test/scripts/compiler-comparison.test.ts test/scripts/compiler-comparison-canaries.test.ts test/scripts/compiler-comparison-network.fixtures.ts test/fixtures/compiler-comparison.json .github/workflows/compiler-qualification.yml
+          node scripts/run-oxlint.mjs --tsconfig config/tsconfig/oxlint.scripts.json scripts/audit-compiler-comparison.mts scripts/collect-compiler-comparison.mjs scripts/lib/compiler-comparison-io.mts scripts/lib/compiler-comparison-cache.mts
+          pnpm format:check scripts/audit-compiler-comparison.mts scripts/collect-compiler-comparison.mjs scripts/lib/compiler-comparison-io.mts scripts/lib/compiler-comparison-cache.mts test/scripts/compiler-comparison.test.ts test/scripts/compiler-comparison-canaries.test.ts test/scripts/compiler-comparison-cache.test.ts test/scripts/compiler-comparison-network.fixtures.ts test/fixtures/compiler-comparison.json .github/workflows/compiler-qualification.yml
           pnpm check:workflows
 
   compare:
@@ -117,7 +122,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-env
         with:
-          node-version: 24.x
+          node-version: ${{ matrix.cacheCorrectness && '24.16.0' || '24.x' }}
           install-bun: "false"
           cache-mode: off
       - name: Prepare pinned isolation image
@@ -141,13 +146,15 @@ jobs:
           COMPILER_MEMORY_TARGET: ${{ matrix.memoryTarget || '' }}
           COMPILER_CAPACITY_CONTROL: ${{ matrix.capacityControl || false }}
           COMPILER_ISOLATION_ONLY: ${{ matrix.isolationOnly || false }}
-          COMPILER_REPEATS: ${{ matrix.memoryTarget && '1' || '3' }}
+          COMPILER_CACHE_CORRECTNESS: ${{ matrix.cacheCorrectness || false }}
+          COMPILER_REPEATS: ${{ (matrix.memoryTarget || matrix.cacheCorrectness) && '1' || '3' }}
         run: |
           args=(--group "$COMPILER_GROUP" --repeats "$COMPILER_REPEATS")
           if [[ -n "$COMPILER_GROUP_COUNT" ]]; then args+=(--groups "$COMPILER_GROUP_COUNT"); fi
           if [[ "$COMPILER_CANARIES" == true ]]; then args+=(--canaries); fi
           if [[ -n "$COMPILER_MEMORY_TARGET" ]]; then args+=(--memory-diagnostic "$COMPILER_MEMORY_TARGET"); fi
           if [[ "$COMPILER_ISOLATION_ONLY" == true ]]; then args+=(--isolation-diagnostic); fi
+          if [[ "$COMPILER_CACHE_CORRECTNESS" == true ]]; then args+=(--cache-correctness); fi
           if [[ "$COMPILER_CAPACITY_CONTROL" == true ]]; then
             args+=(--capacity-control)
             python3 -c 'import os,sys; cpus=sorted(os.sched_getaffinity(0)); assert len(cpus)>=4; os.sched_setaffinity(0,cpus[:4]); os.execvp(sys.argv[1],sys.argv[1:])' \
@@ -167,7 +174,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: compiler-${{ matrix.isolationOnly && 'isolation-diagnostic' || matrix.memoryTarget && format('memory-{0}', matrix.memoryTarget) || matrix.capacityControl && 'capacity-control' || 'qualification' }}-${{ matrix.group }}
+          name: compiler-${{ matrix.cacheCorrectness && 'cache-correctness' || matrix.isolationOnly && 'isolation-diagnostic' || matrix.memoryTarget && format('memory-{0}', matrix.memoryTarget) || matrix.capacityControl && 'capacity-control' || 'qualification' }}-${{ matrix.group }}
           path: |
             .artifacts/compiler-comparison/group-${{ matrix.group }}/
             !.artifacts/compiler-comparison/**/native/**
