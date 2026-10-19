@@ -1,6 +1,7 @@
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { isAgentDeletionBlocked } from "../../agents/agent-lifecycle-registry.js";
 import { resolveConfiguredAgentId } from "../../agents/agent-scope-config.js";
+import { resolveAgentRunErrorLifecycleFields } from "../../agents/run-termination.js";
 import { getRuntimeConfigSnapshotMetadata } from "../../config/runtime-snapshot.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import type { SessionEntryCreationOperation } from "../../config/sessions/session-accessor.sqlite-entry-cache.types.js";
@@ -51,6 +52,7 @@ import {
   intersectSessionEventToolsAllow,
   prepareSessionEventTargetForHost,
   readSessionEventTargetEnvironment,
+  readSessionEventTargetOperatorAuthority,
   resolveSessionEventKey,
 } from "./session-event-target.js";
 
@@ -59,11 +61,7 @@ export {
   captureSessionEventTargetForHost,
   combineSessionEventTargetsForHost,
 } from "./session-event-target.js";
-export type {
-  SessionEventReceipt,
-  SessionEventSource,
-  SessionEventTarget,
-} from "./session-event-contract.js";
+export type { SessionEventReceipt, SessionEventTarget } from "./session-event-contract.js";
 
 const log = createSubsystemLogger("session-events");
 
@@ -79,6 +77,10 @@ export function enqueueSessionEventForHost(
   acceptanceAssertion?.();
   options.assertCurrent?.();
   options.expectedTarget?.assertCurrent?.();
+  const operatorAuthority = options.expectedTarget
+    ? readSessionEventTargetOperatorAuthority(options.expectedTarget)
+    : undefined;
+  operatorAuthority?.assertCurrent();
   const cfg = getSessionEventRuntimeConfig();
   const configPublication = getRuntimeConfigSnapshotMetadata();
   const agentId = normalizeAgentId(options.agentId);
@@ -111,9 +113,11 @@ export function enqueueSessionEventForHost(
   const controller = new AbortController();
   const execRequestOwners = resolveSessionEventExecRequestOwners(options);
   const requestSignal = execRequestAbortSignal(execRequestOwners, options.abortSignal);
-  const signal = requestSignal
-    ? AbortSignal.any([requestSignal, controller.signal])
-    : controller.signal;
+  const signal = AbortSignal.any(
+    [requestSignal, controller.signal, operatorAuthority?.signal].filter(
+      (value): value is AbortSignal => Boolean(value),
+    ),
+  );
   signal.throwIfAborted();
   if (options.preserveOccurrenceOnRejection && !options.occurrences?.length) {
     throw new Error("Preserving a rejected event requires its original queued occurrence");
@@ -161,6 +165,14 @@ export function enqueueSessionEventForHost(
   if (!ownership) {
     throw new Error("Session event occurrence no longer available for admission");
   }
+  let releaseOperatorAuthority: (() => void) | undefined;
+  try {
+    // Transfer custody before the completed process releases its original source.
+    releaseOperatorAuthority = operatorAuthority?.retain?.();
+  } catch (error) {
+    ownership.cancel();
+    throw error;
+  }
   const { promise: settled, resolve } = createDeferredCore<SessionEventOutcome>();
   const acceptance = createDeferredCore<Awaited<SessionEventReceipt["accepted"]>>();
   let accepted = false;
@@ -207,6 +219,7 @@ export function enqueueSessionEventForHost(
       throw new Error("Session event occurrence is settled");
     }
     signal.throwIfAborted();
+    operatorAuthority?.assertCurrent();
     if (!accepted) {
       acceptanceAssertion?.();
     }
@@ -400,6 +413,8 @@ export function enqueueSessionEventForHost(
       } else {
         ownership.cancel();
       }
+      releaseOperatorAuthority?.();
+      releaseOperatorAuthority = undefined;
       if (!accepted) {
         acceptance.resolve(
           readmittedReceipt?.accepted ?? {
@@ -415,6 +430,10 @@ export function enqueueSessionEventForHost(
       resolve({
         status,
         executionStarted: started,
+        interruptedByRestart:
+          status !== "completed" &&
+          resolveAgentRunErrorLifecycleFields(failure, operation?.abortSignal ?? signal)
+            .stopReason === "restart",
         delivered,
         deliveryAttempted,
         deliveryAmbiguous,
@@ -543,6 +562,7 @@ export function enqueueSessionEventForHost(
         replyOptions: {
           scheduledAutomation: options.scheduledAutomation,
           ...resolveScheduledSessionReplyOptions(options.scheduledAutomation),
+          operatorAuthority: options.scheduledAutomation?.operatorAuthority ?? operatorAuthority,
           admittedSessionSettings: settings,
           toolsAllow,
           onDeliberateSilentTerminalReply: () => {

@@ -1,3 +1,4 @@
+import { resolveAgentRunErrorLifecycleFields } from "../../agents/run-termination.js";
 import { DEFAULT_CRON_MAX_CONCURRENT_RUNS } from "../../config/cron-limits.js";
 import { runOutsideOperatorToolGatewayAuthority } from "../../gateway/operator-tool-gateway-authority.js";
 import { hasSqliteWorkerOutcomeUnknown } from "../../infra/sqlite-worker-contract.js";
@@ -318,8 +319,7 @@ export async function drainCronRunQueue(state: CronServiceState): Promise<void> 
     return;
   }
   if (launchState(state).drain) {
-    await launchState(state).drain;
-    return;
+    return await launchState(state).drain;
   }
   let retryAfterGuardRefusal = false;
   launchState(state).drain = locked(state, async () => {
@@ -376,10 +376,7 @@ export async function drainCronRunQueue(state: CronServiceState): Promise<void> 
             normalizeCronRunErrorText(error),
           );
         } catch (cleanupError) {
-          state.deps.log.warn(
-            { err: String(cleanupError) },
-            "cron: refused event cleanup left for recovery",
-          );
+          state.deps.log.warn({ err: String(cleanupError) }, "cron: deferred event cleanup");
         } finally {
           // A missing cleanup row is already settled; uncertain cleanup stays
           // durable for recovery, never in the live source-admission loop.
@@ -411,10 +408,9 @@ export async function drainCronRunQueue(state: CronServiceState): Promise<void> 
       }
       throw error;
     });
-    if (!result) {
-      return;
+    if (result) {
+      await launchCronRunQueueResult(state, result, context, observedRevision);
     }
-    await launchCronRunQueueResult(state, result, context, observedRevision);
   }).finally(() => {
     launchState(state).drain = undefined;
     if (retryAfterGuardRefusal) {
@@ -645,6 +641,8 @@ async function launchCronRun(
     result = authorCronRunCompletion(executionJob, {
       status: "error",
       error: normalizeCronRunErrorText(error),
+      interruptedByRestart:
+        resolveAgentRunErrorLifecycleFields(error, undefined).stopReason === "restart",
     });
   }
   options.onTriggerDisposition?.(

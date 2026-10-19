@@ -14,6 +14,7 @@ import { parseReplyDirectives } from "../../../auto-reply/reply/reply-directives
 import type { ReasoningLevel, ThinkLevel, VerboseLevel } from "../../../auto-reply/thinking.js";
 import { applyAssistantDeliveryDirectives } from "../../../config/sessions/transcript-assistant-delivery.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
+import { readAgentAssistantSource } from "../../../infra/agent-events.js";
 import { hasReplyPayloadContent } from "../../../interactive/payload.js";
 import type { AssistantMessage } from "../../../llm/types.js";
 import { resolveRawAssistantAnswerText } from "../../../shared/assistant-answer-text.js";
@@ -428,9 +429,14 @@ export function buildEmbeddedRunPayloads(params: {
             : {}),
         };
         addReplyPayloadMediaFailures(replyPayload, mediaFailures);
-        if (assistantMessageIndex !== undefined) {
-          setReplyPayloadMetadata(replyPayload, { assistantMessageIndex });
-        }
+        const assistantTranscriptSource =
+          mediaUrls?.length || mediaFailures?.length
+            ? readAgentAssistantSource(assistantForPayload)
+            : undefined;
+        setReplyPayloadMetadata(replyPayload, {
+          ...(assistantMessageIndex !== undefined ? { assistantMessageIndex } : {}),
+          ...(assistantTranscriptSource ? { assistantTranscriptSource } : {}),
+        });
         replyItems.push(
           ttsFacts ? setReplyPayloadMetadata(replyPayload, { tts: ttsFacts }) : replyPayload,
         );

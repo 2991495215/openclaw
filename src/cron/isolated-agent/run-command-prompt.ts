@@ -4,6 +4,7 @@ import {
   mapHookExternalContentSource,
   type resolveHookExternalContentSource,
 } from "../../security/external-content-source.js";
+import { STARTUP_INTERRUPTED_ERROR } from "../execution-error-constants.js";
 import { appendCronJobScratchPrompt, appendCronUnattendedRunPreamble } from "../run-prompt.js";
 import { readCronScratchSnapshot } from "../scratch-read.js";
 import { resolveCronJobsStorePathFromConfig } from "../store/paths.js";
@@ -68,6 +69,9 @@ export async function prepareCronCommandPrompt(params: {
   }
   commandBody = appendCronUnattendedRunPreamble(commandBody, {
     externalHook: isExternalHook,
+    restartContinuation:
+      input.job.payload.kind === "agentTurn" &&
+      input.job.state.lastError === STARTUP_INTERRUPTED_ERROR,
   });
 
   const scratchSnapshot = await readCronScratchSnapshot(

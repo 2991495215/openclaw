@@ -14,6 +14,7 @@ import { prepareAutomationSystemEvents } from "../infra/system-events.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { isCronWithinActiveHours } from "./active-hours.js";
 import type { CronCompletionDeliveryFence } from "./delivery-attempt-fence.js";
+import { STARTUP_INTERRUPTED_ERROR } from "./execution-error-constants.js";
 import { isCronExecutionIdle } from "./execution-idle.js";
 import {
   buildCronDeliveryTrace,
@@ -206,7 +207,11 @@ export async function runCronSessionTurn(params: {
       });
       assertCurrent();
     }
-    let text = appendCronUnattendedRunPreamble(message, { externalHook: Boolean(externalSource) });
+    let text = appendCronUnattendedRunPreamble(message, {
+      externalHook: Boolean(externalSource),
+      restartContinuation:
+        job.payload.kind === "agentTurn" && job.state.lastError === STARTUP_INTERRUPTED_ERROR,
+    });
     text = appendCronJobScratchPrompt(text, scratch);
     if (deferred.events.length) {
       text += `\n\nPending session notices:\n${deferred.events.map((event) => event.text).join("\n")}`;
@@ -288,6 +293,7 @@ export async function runCronSessionTurn(params: {
           ? ("ok" as const)
           : ("error" as const),
       admissionDeferred,
+      interruptedByRestart: result.interruptedByRestart,
       admissionDeferredReason: result.admissionDeferredReason,
       error:
         result.error ??

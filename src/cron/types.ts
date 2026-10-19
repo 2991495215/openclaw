@@ -179,6 +179,8 @@ export type CronRunOutcome = {
   /** Internal admission outcome; preserves the unstarted occurrence's scheduled slot. */
   admissionDeferred?: boolean;
   admissionDeferredReason?: "busy" | "active-hours";
+  /** Lifecycle-owned restart fact; transient input to cron settlement, not a public event. */
+  interruptedByRestart?: boolean;
   /** Optional classifier for execution errors to guide fallback behavior. */
   errorKind?: "delivery-target";
   errorClassification?: CronRunErrorClassification;

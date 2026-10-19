@@ -1,3 +1,4 @@
+import { resolveAgentRunAbortLifecycleFields } from "../../agents/run-termination.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { isCronWithinActiveHours } from "../active-hours.js";
 import { isCronActiveJobMarkerCurrent } from "../active-jobs.js";
@@ -403,6 +404,8 @@ async function executeDetachedCronJob(
       status: "error" as const,
       error,
       errorClassification: cronAbortErrorClassification(abortSignal),
+      interruptedByRestart:
+        resolveAgentRunAbortLifecycleFields(abortSignal).stopReason === "restart",
       diagnostics: createCronRunDiagnosticsFromError("cron-setup", error, {
         nowMs: state.deps.nowMs,
       }),
@@ -492,6 +495,7 @@ async function executeDetachedCronJob(
     executionStarted: res.executionStarted,
     admissionDeferred: res.admissionDeferred,
     admissionDeferredReason: res.admissionDeferredReason,
+    interruptedByRestart: res.interruptedByRestart,
     // Forward the post-run delivery failure recorded on an otherwise
     // successful run so the service can persist it as `lastDeliveryError` and
     // emit it on the finished event for CLI/UI/API run logs (#95419).

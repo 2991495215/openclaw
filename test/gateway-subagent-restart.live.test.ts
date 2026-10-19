@@ -1,6 +1,5 @@
 // Real provider and cold Gateway replacement proof for subagent recovery.
 import { randomUUID } from "node:crypto";
-import { once } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -23,6 +22,7 @@ import {
 } from "../src/config/sessions/session-accessor.js";
 import type { GatewayClient } from "../src/gateway/client.js";
 import type { SessionsListResult } from "../src/gateway/session-utils.types.js";
+import { loadOrCreateDeviceIdentity } from "../src/infra/device-identity.js";
 import { redactSecrets } from "../src/logging/redact.js";
 import {
   extractAssistantPhaseText,
@@ -330,14 +330,18 @@ it.skipIf(!isLiveTestEnabled() || process.platform === "win32")(
           agentId: "main",
           env: instance.env,
         });
+        const deviceIdentity = loadOrCreateDeviceIdentity({
+          path: instance.state.path("restart-operator-device.sqlite"),
+        });
         const connect = () =>
           acquireGatewayTestClient(
             {
               url: instance.url,
               token: instance.gatewayToken,
-              deviceIdentity: null,
-              clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
-              mode: GATEWAY_CLIENT_MODES.BACKEND,
+              deviceIdentity,
+              // Ephemeral backend clients have no durable operator profile to restore.
+              clientName: GATEWAY_CLIENT_NAMES.TUI,
+              mode: GATEWAY_CLIENT_MODES.UI,
               scopes: ["operator.admin", "operator.read", "operator.write"],
               requestTimeoutMs: WAIT_MS,
             },
@@ -354,10 +358,8 @@ it.skipIf(!isLiveTestEnabled() || process.platform === "win32")(
           if (!processOwner?.pid) {
             throw new Error("Owned subagent Gateway process is unavailable");
           }
-          const closed = once(processOwner, "close");
-          processOwner.kill("SIGKILL");
-          expect(await closed).toEqual([null, "SIGKILL"]);
-          await instance.stopGateway();
+          // Crash the command only; retain descendant custody through recovery.
+          await instance.crashGateway();
           return processOwner.pid;
         };
         const onlyChildFor = (parent: string) => {

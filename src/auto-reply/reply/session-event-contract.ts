@@ -18,7 +18,7 @@ import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transc
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
 
-export type SessionEventSource =
+type SessionEventSource =
   | "exec"
   | "node"
   | "task"
@@ -38,6 +38,8 @@ export type SessionEventOutcome = {
   error?: string;
   /** Admission policy decides whether a durable producer may retry this refusal. */
   retryable?: boolean;
+  /** Recorded controller/drain fact, preserved before error text is flattened. */
+  interruptedByRestart?: boolean;
   deliveryAttempted?: boolean;
   deliveryAmbiguous?: boolean;
   deliverySuppressionReason?: NormalizeReplySkipReason;
