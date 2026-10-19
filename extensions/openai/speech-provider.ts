@@ -3,6 +3,7 @@ import type { SpeechProviderPlugin, SpeechSynthesisRequest } from "openclaw/plug
 import {
   createSpeechDirectiveParser,
   parseSpeechDirectiveNumberOverride,
+  resolveSpeechTalkApiKeyOverride,
 } from "openclaw/plugin-sdk/speech-provider";
 import {
   asFiniteNumber,
@@ -210,14 +211,10 @@ export function buildOpenAISpeechProvider(): SpeechProviderPlugin {
       const speed = normalizeOpenAISpeechSpeed(talkProviderConfig.speed, baseUrl);
       return {
         ...base,
-        ...(talkProviderConfig.apiKey === undefined
-          ? {}
-          : {
-              apiKey: normalizeResolvedSecretInputString({
-                value: talkProviderConfig.apiKey,
-                path: "talk.providers.openai.apiKey",
-              }),
-            }),
+        ...resolveSpeechTalkApiKeyOverride(
+          talkProviderConfig.apiKey,
+          "talk.providers.openai.apiKey",
+        ),
         baseUrl,
         model: normalizeOptionalString(talkProviderConfig.modelId) ?? base.model,
         voice: normalizeOptionalString(talkProviderConfig.voiceId) ?? base.voice,
