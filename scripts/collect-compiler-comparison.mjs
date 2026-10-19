@@ -1091,7 +1091,9 @@ printf 'tcp\\tENETUNREACH\\n'`;
         }
       } finally {
         if (smoke.name === "isolation") {
-          for (const file of rowProbePaths) fs.rmSync(file, { force: true });
+          for (const file of rowProbePaths) {
+            fs.rmSync(file, { force: true });
+          }
         }
       }
       smokes.push(receipt);

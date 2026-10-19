@@ -8,6 +8,7 @@ import {
   assertCompilerNetworkIsolation,
   type CompilerNetworkEvidence,
 } from "./compiler-comparison-io.mts";
+import { toErrorObject } from "./error-format.mts";
 import { TSGO_ROOT_TEST_SHARDS, selectTsgoCoreTestStripe } from "./tsgo-core-test-shards.mts";
 
 export const COMPILER_ROW_POLICY = "canonical-ci-rows-cold-v1";
@@ -434,7 +435,7 @@ export function compilerRowController({
         }
       };
       await new Promise<void>((resolve, reject) => {
-        const fail = (error: unknown) => reject(error);
+        const fail = (error: unknown) => reject(toErrorObject(error, "Row observation failed"));
         const onClose = () => {
           if (phase !== "released") {
             reject(new Error("Container exited before its frozen finish barrier"));
@@ -472,7 +473,7 @@ export function compilerRowController({
               }
             }
           } catch (error) {
-            reject(error);
+            fail(error);
           }
         });
       });
