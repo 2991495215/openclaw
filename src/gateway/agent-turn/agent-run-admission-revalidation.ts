@@ -51,7 +51,7 @@ export async function releaseFailedAgentRunAdmission(
   throw failure;
 }
 
-/** Revalidate the same prepared admission after each asynchronous preparation step. */
+/** Revalidate live admission before acceptance and preserve rejection/Stop outcomes. */
 export function createAgentRunAdmissionRevalidator(options: {
   source: {
     context: AgentTurnContext;

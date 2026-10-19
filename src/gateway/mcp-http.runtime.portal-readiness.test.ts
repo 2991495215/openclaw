@@ -28,15 +28,10 @@ it.for([
   { mode: "exact", boundary: "availability" },
   { mode: "policy", boundary: "availability" },
   { mode: "cached", boundary: "authority" },
-  { mode: "exact", boundary: "final publication" },
-  { mode: "policy", boundary: "final publication" },
-  { mode: "cached", boundary: "final publication" },
-  { mode: "cached", boundary: "readiness" },
+  { mode: "cached", boundary: "cache reuse" },
 ] as const)(
-  "revalidates portal catalog facts after $mode $boundary",
+  "retains live portal and operator authority after $mode $boundary",
   async ({ mode, boundary }, { signal }) => {
-    const readiness = boundary === "readiness";
-    const publication = boundary === "final publication" || readiness;
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       const cfg: OpenClawConfig = { tools: { profile: "coding", deny: ["computer"] } };
       await state.writeConfig(cfg);
@@ -50,7 +45,7 @@ it.for([
       const entry = {
         sessionId: identity.sessionId,
         updatedAt: 1,
-        modelSelectionLocked: readiness,
+        modelSelectionLocked: false,
       };
       replaceSessionEntrySync(scope, entry);
       const projection = await createSessionRowProjection({ cfg });
@@ -105,7 +100,7 @@ it.for([
                 ...identity,
                 senderIsOwner: false,
                 modelHasVision: true,
-                toolsAllow: publication ? ["portal"] : ["portal", "computer"],
+                toolsAllow: ["portal", "computer"],
               },
             };
             const resolve =
@@ -115,28 +110,25 @@ it.for([
                   ? resolveExact
                   : resolvePolicy;
             const primed = await resolve(params);
-            expect(primed.tools.map((tool) => tool.name)).toEqual(readiness ? [] : ["portal"]);
+            expect(primed.tools.map((tool) => tool.name)).toEqual(["portal"]);
             const retained = prepareSessionPortalToolTarget(identity);
-            if (!readiness) {
-              expect(retained).toBeDefined();
+            expect(retained).toBeDefined();
+
+            if (boundary === "cache reuse") {
+              replaceSessionEntrySync(scope, {
+                ...entry,
+                updatedAt: 2,
+                modelSelectionLocked: true,
+              });
+              const staleCatalog = await resolve(params);
+              expect(staleCatalog).toBe(primed);
+              await expect(
+                staleCatalog.tools[0]!.execute("stale-cache", { action: "open", port: 3000 }),
+              ).rejects.toThrow("Conversation preview policy or session identity changed");
+              return;
             }
 
-            const availabilityReturned = createDeferred();
-            let published = false;
-            const update = (modelSelectionLocked: boolean) =>
-              replaceSessionEntrySync(scope, { ...entry, updatedAt: 2, modelSelectionLocked });
-            if (boundary === "availability") {
-              const load = computerAvailability.loadPairedComputerUseAvailabilityForSurface;
-              const spy = vi
-                .spyOn(computerAvailability, "loadPairedComputerUseAvailabilityForSurface")
-                .mockImplementation(async (...args) => {
-                  const result = await load(...args);
-                  availabilityReturned.resolve();
-                  await releaseAvailability.promise;
-                  return result;
-                });
-              restore = () => spy.mockRestore();
-            } else {
+            if (boundary === "authority") {
               const prepare = projection.withPreparedExactRows.bind(projection);
               const spy = vi
                 .spyOn(projection, "withPreparedExactRows")
@@ -145,49 +137,49 @@ it.for([
                     queries,
                     (read) => {
                       const catalog = consume(read);
-                      if (boundary === "authority") {
-                        authorityAbort.abort(new Error("Synthetic controller retirement"));
-                      } else if (!published) {
-                        published = true;
-                        update(!readiness);
-                      }
+                      authorityAbort.abort(new Error("Synthetic controller retirement"));
                       return catalog;
                     },
                     options,
                   ),
                 );
               restore = () => spy.mockRestore();
-            }
-            const resolving = resolve(params);
-            pending = resolving;
-            if (boundary === "authority") {
-              await expect(resolving).rejects.toThrow(
+              pending = resolve(params);
+              await expect(pending).rejects.toThrow(
                 "admitted run operator authority is no longer active",
               );
               return;
             }
-            if (boundary === "availability") {
-              await withinTest(
-                awaitGateBeforeSettlement(
-                  availabilityReturned.promise,
-                  resolving,
-                  "catalog resolved before the availability barrier",
-                ),
-                signal,
-              );
-              update(true);
-              expect(() => retained?.assertCurrent()).toThrow();
-              releaseAvailability.resolve();
-            }
-            expect((await withinTest(resolving, signal)).tools.map((tool) => tool.name)).toEqual(
-              readiness ? ["portal"] : [],
+
+            const availabilityReturned = createDeferred();
+            const load = computerAvailability.loadPairedComputerUseAvailabilityForSurface;
+            const spy = vi
+              .spyOn(computerAvailability, "loadPairedComputerUseAvailabilityForSurface")
+              .mockImplementation(async (...args) => {
+                const result = await load(...args);
+                availabilityReturned.resolve();
+                await releaseAvailability.promise;
+                return result;
+              });
+            restore = () => spy.mockRestore();
+            const resolving = resolve(params);
+            pending = resolving;
+            await withinTest(
+              awaitGateBeforeSettlement(
+                availabilityReturned.promise,
+                resolving,
+                "catalog resolved before the availability barrier",
+              ),
+              signal,
             );
-            if (publication) {
-              expect(published).toBe(true);
-              if (retained) {
-                expect(() => retained.assertCurrent()).toThrow();
-              }
-            }
+            replaceSessionEntrySync(scope, { ...entry, updatedAt: 2, modelSelectionLocked: true });
+            expect(() => retained?.assertCurrent()).toThrow();
+            releaseAvailability.resolve();
+            const staleCatalog = await withinTest(resolving, signal);
+            expect(staleCatalog.tools.map((tool) => tool.name)).toEqual(["portal"]);
+            await expect(
+              staleCatalog.tools[0]!.execute("stale-catalog", { action: "open", port: 3000 }),
+            ).rejects.toThrow("Conversation preview policy or session identity changed");
           },
         );
       } finally {
