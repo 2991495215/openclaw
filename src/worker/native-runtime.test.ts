@@ -72,7 +72,7 @@ async function start(
   env: NodeJS.ProcessEnv = { NATIVE_TEST_KEY: "fixture-key" },
 ) {
   const credential = env.NATIVE_TEST_KEY!;
-  const runtime = await createNativeRuntime(config, {
+  const runtime = await createNativeRuntime(NativeRuntimeConfigSchema.parse(config), {
     "openai/local-model": credential,
     "openai/other-model": credential,
     "openai/second-model": credential,
@@ -298,14 +298,8 @@ describe("native runtime startup authority", () => {
     }
   });
 
-  it("rejects duplicate models and unavailable or ambient APIs", async () => {
+  it("rejects unavailable or ambient APIs", async () => {
     const config = configFor();
-    await expect(
-      createNativeRuntime(
-        { ...config, models: [...config.models, ...config.models] },
-        { "openai/local-model": "test" },
-      ),
-    ).rejects.toThrow("Duplicate");
     for (const [api, credential, error] of [
       ["unregistered-api", "test", /Unsupported|ambient-configured/],
       ["azure-openai-responses", "test", /Unsupported|ambient-configured/],

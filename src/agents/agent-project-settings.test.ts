@@ -67,7 +67,6 @@ it("applies sanitized plugin settings before project settings", () => {
       compaction: { reserveTokens: 20_000, keepRecentTokens: 20_000 },
     },
     pluginSettings: {
-      shellPath: "/tmp/blocked-shell",
       compaction: { keepRecentTokens: 64_000 },
       hideThinkingBlock: false,
     },

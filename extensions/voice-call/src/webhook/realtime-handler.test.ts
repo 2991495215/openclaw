@@ -10,8 +10,9 @@ import type {
 } from "openclaw/plugin-sdk/realtime-voice";
 import { WebSocket, type RawData } from "openclaw/plugin-sdk/websocket-runtime";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { normalizeVoiceCallConfig, type VoiceCallRealtimeConfig } from "../config.js";
-import { CallManager } from "../manager.js";
+import type { VoiceCallRealtimeConfig } from "../config.js";
+import type { CallManager } from "../manager.js";
+import { createVoiceCallBaseConfig } from "../test-fixtures.js";
 import type { CallRecord, NormalizedEvent, ToolHandlerContext } from "../types.js";
 import {
   connectWs as openWebSocket,
@@ -22,6 +23,7 @@ import { RealtimeAudioPacer } from "./realtime-audio-pacer.js";
 import { RealtimeCallHandler } from "./realtime-handler.js";
 import {
   createRealtimeConfig,
+  createHandler,
   createBridge as createTestBridge,
   makeRealtimeProvider,
   updateCallMetadata,
@@ -138,6 +140,7 @@ function makeHandler(
       retire: () => {},
     },
     undefined,
+    createVoiceCallBaseConfig().voicemail.holdOpeningMaxMs,
   );
   onTestFinished(() => handler.close());
   return handler;
@@ -1569,21 +1572,6 @@ describe("RealtimeCallHandler path routing", () => {
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
-
-function createHandler() {
-  const config = normalizeVoiceCallConfig({ realtime: { enabled: true } });
-  const resolveRegistration = vi.fn((): never => {
-    throw new Error("Rejected upgrades must not acquire a provider");
-  });
-  const handler = new RealtimeCallHandler(
-    config.realtime,
-    new CallManager(config),
-    resolveRegistration,
-    "/voice/webhook",
-    { connect() {}, disconnect() {}, retire() {} },
-  );
-  return { handler, resolveRegistration };
-}
 
 describe("realtime upgrade rejection", () => {
   it.each([

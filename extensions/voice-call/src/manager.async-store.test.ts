@@ -391,6 +391,8 @@ it.each(["committed", "failed", "retired"] as const)(
           }),
           config.serve.path,
           { connect: () => {}, disconnect: () => {}, retire: () => {} },
+          undefined,
+          config.voicemail.holdOpeningMaxMs,
         );
         manager.streamSessionIssuer = (request) => handler.issueStreamSession(request);
         let server: Awaited<ReturnType<typeof startUpgradeWsServer>> | undefined;

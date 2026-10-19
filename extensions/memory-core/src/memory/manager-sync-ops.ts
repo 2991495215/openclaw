@@ -13,7 +13,6 @@ import {
   type MemorySyncParams,
   type MemorySyncProgressUpdate,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
-import { resolveTimerTimeoutMs } from "openclaw/plugin-sdk/number-runtime";
 import { withMemoryWorkspaceLock } from "../memory-workspace-lock.js";
 import { resolveActiveMemoryRecallSources } from "./active-memory-session-sources.js";
 import {
@@ -186,12 +185,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
     }
     this.assertRequiredProviderAvailable("sync");
     const existingMeta = this.readMeta();
-    if (
-      !existingMeta ||
-      existingMeta.model === "fts-only" ||
-      !this.settings.provider ||
-      this.settings.provider === "none"
-    ) {
+    if (!existingMeta || existingMeta.model === "fts-only" || this.settings.provider === "none") {
       return;
     }
     const providerFailure = this.providerUnavailableReason;
@@ -323,14 +317,10 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
         indexIdentity.status === "missing" &&
         hasIndexedChunks &&
         syncProvider === null &&
-        Boolean(this.settings.provider) &&
         this.settings.provider !== "none";
       const hasOnlyFtsChunks = needsFtsOnlyClassification && !this.hasSemanticChunks();
       const canRebuildMissingIdentity =
-        syncProvider !== null ||
-        !this.settings.provider ||
-        this.settings.provider === "none" ||
-        hasOnlyFtsChunks;
+        syncProvider !== null || this.settings.provider === "none" || hasOnlyFtsChunks;
       const needsMissingIdentityReindex =
         indexIdentity.status === "missing" && !hasTargetArchiveFiles && canRebuildMissingIdentity;
       const needsExplicitIdentityReindex =
@@ -517,9 +507,9 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
     return {
       enabled,
       wait: batch?.wait ?? true,
-      concurrency: Math.max(1, batch?.concurrency ?? 2),
+      concurrency: batch?.concurrency ?? 2,
       pollIntervalMs: batch?.pollIntervalMs ?? 2000,
-      timeoutMs: resolveTimerTimeoutMs((batch?.timeoutMinutes ?? 60) * 60 * 1000, 60 * 60_000),
+      timeoutMs: (batch?.timeoutMinutes ?? 60) * 60 * 1000,
     };
   }
 

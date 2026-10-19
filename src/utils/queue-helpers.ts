@@ -36,33 +36,6 @@ export function previewQueueSummaryPrompt(params: {
   return lines.join("\n");
 }
 
-/** Apply runtime queue settings while preserving previous values for omitted fields. */
-export function applyQueueRuntimeSettings<TMode extends string>(params: {
-  target: {
-    mode: TMode;
-    debounceMs: number;
-    cap: number;
-    dropPolicy: QueueDropPolicy;
-  };
-  settings: {
-    mode: TMode;
-    debounceMs?: number;
-    cap?: number;
-    dropPolicy?: QueueDropPolicy;
-  };
-}): void {
-  params.target.mode = params.settings.mode;
-  params.target.debounceMs =
-    typeof params.settings.debounceMs === "number"
-      ? Math.max(0, params.settings.debounceMs)
-      : params.target.debounceMs;
-  params.target.cap =
-    typeof params.settings.cap === "number" && params.settings.cap > 0
-      ? Math.floor(params.settings.cap)
-      : params.target.cap;
-  params.target.dropPolicy = params.settings.dropPolicy ?? params.target.dropPolicy;
-}
-
 function buildQueueSummaryLine(text: string): string {
   const cleaned = text.replace(/\s+/g, " ").trim();
   return cleaned.length <= 160 ? cleaned : `${truncateUtf16Safe(cleaned, 159).trimEnd()}…`;

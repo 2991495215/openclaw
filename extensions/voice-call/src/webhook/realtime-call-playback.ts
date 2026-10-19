@@ -28,7 +28,7 @@ export function createRealtimeCallPlayback(params: {
   initialGreetingInstructions?: string;
   /** True when the host, not the bridge's ready trigger, decides when the opening is spoken. */
   hostOwnsOpening: boolean;
-  holdOpeningMaxMs?: number;
+  holdOpeningMaxMs: number;
   idleHangupMs?: number;
   getSession: () => RealtimeVoiceBridgeSession | undefined;
   isClosed: () => boolean;

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as installRecordMap from "../config/plugin-install-record-map.js";
 import * as safeRegex from "../security/safe-regex.js";
-import { extractPluginInstallRecordsFromInstalledPluginIndex } from "./installed-plugin-index-install-records.js";
+import {
+  extractPluginInstallRecordsFromInstalledPluginIndex,
+  normalizeInstallRecordMap,
+} from "./installed-plugin-index-install-records.js";
 import { createInstalledPluginIndexScopeLookup } from "./installed-plugin-index-scope-lookup.js";
 import { isInstalledPluginEnabled } from "./installed-plugin-index.js";
 import { createPluginCache, withPluginCache } from "./plugin-cache.js";
@@ -16,9 +18,9 @@ function createSnapshot(provider = "shared") {
       { id: "beta", origin: "global" },
     ],
   });
-  snapshot.index.installRecords = {
+  snapshot.index.installRecords = normalizeInstallRecordMap({
     alpha: { source: "npm", spec: " alpha@1 ", clawhubTrustReasons: [" reviewed "] },
-  };
+  });
   for (const plugin of snapshot.index.plugins) {
     plugin.startup.agentHarnesses = ["fixture-runtime"];
     plugin.contributions = {
@@ -58,11 +60,10 @@ describe("prepared installed-index readers", () => {
     expect(ownerIds(lookup, "fixture-legacy-source")).toEqual(["alpha"]);
   });
 
-  it("prepares immutable ownership and install records once while preserving policy and caller copies", () => {
+  it("prepares immutable ownership once while preserving policy and caller copies", () => {
     withPluginCache(createPluginCache(), () => {
       const snapshot = finalizePluginMetadataSnapshot(createSnapshot());
       const compile = vi.spyOn(safeRegex, "compileSafeRegex");
-      const parse = vi.spyOn(installRecordMap, "parsePluginInstallRecordMap");
       const first = createInstalledPluginIndexScopeLookup(snapshot.index);
       const records = extractPluginInstallRecordsFromInstalledPluginIndex(snapshot.index);
       assert(records.alpha);
@@ -86,7 +87,6 @@ describe("prepared installed-index readers", () => {
         });
       }
       expect.soft(compile).toHaveBeenCalledTimes(2);
-      expect.soft(parse).toHaveBeenCalledTimes(1);
       expect(
         isInstalledPluginEnabled(snapshot.index, "alpha", { plugins: { allow: ["alpha"] } }),
       ).toBe(true);
@@ -156,15 +156,10 @@ describe("prepared installed-index readers", () => {
   it("keeps operation caches independent and retained lookup callbacks on their original inventory", () => {
     const snapshot = finalizePluginMetadataSnapshot(createSnapshot());
     const cache = createPluginCache();
-    const read = () => {
-      extractPluginInstallRecordsFromInstalledPluginIndex(snapshot.index);
-      return createInstalledPluginIndexScopeLookup(snapshot.index);
-    };
-    const parse = vi.spyOn(installRecordMap, "parsePluginInstallRecordMap");
+    const read = () => createInstalledPluginIndexScopeLookup(snapshot.index);
     const retained = withPluginCache(cache, read);
     withPluginCache(createPluginCache(), read);
     withPluginCache(cache, read);
-    expect(parse).toHaveBeenCalledTimes(2);
     const replacement = finalizePluginMetadataSnapshot(createSnapshot("replacement"));
     const current = withPluginCache(cache, () =>
       createInstalledPluginIndexScopeLookup(replacement.index),

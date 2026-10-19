@@ -352,8 +352,7 @@ export async function generateVoiceResponse(
         ].join("\n\n");
         const prompt = buildVoiceTurnPrompt({ transcript, userMessage });
 
-        const timeoutMs =
-          voiceConfig.responseTimeoutMs ?? agentRuntime.resolveAgentTimeoutMs({ cfg });
+        const timeoutMs = voiceConfig.responseTimeoutMs;
         const runId = `voice:${callId}:${Date.now()}`;
 
         const blockReplyPayloads: VoiceResponsePayload[] = [];

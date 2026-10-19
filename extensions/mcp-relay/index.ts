@@ -29,7 +29,8 @@ export default definePluginEntry({
       },
     );
     registerMcpRelayGatewayMethods(api, () => service);
-    registerMcpRelayConnectRoute(api, parseMcpRelayConfig(api.pluginConfig).relayUrl);
+    const config = parseMcpRelayConfig(api.pluginConfig);
+    registerMcpRelayConnectRoute(api, config.relayUrl);
     api.session.controls.registerControlUiDescriptor({
       surface: "tab",
       id: "connected-apps",
@@ -46,7 +47,6 @@ export default definePluginEntry({
         const { RelayState } = await import("./src/state.js");
         const { RelayService: Service } = await import("./src/service.js");
         const { createOperations } = await import("./src/operations.js");
-        const config = parseMcpRelayConfig(api.pluginConfig);
         const scheduler = context.scheduler;
         const state = new RelayState(api.runtime, config.relayUrl, () =>
           scheduler.signal.throwIfAborted(),

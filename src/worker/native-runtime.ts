@@ -18,7 +18,6 @@ import {
 } from "./native-runtime-config.js";
 import { nativeRuntimeModelUnsupportedReason } from "./native-runtime-model-support.js";
 import { buildNativeRuntimeFetch } from "./native-runtime-transport.js";
-const BindingSchema = z.object({ workspacePath: z.string().optional() });
 
 type NativeRuntimeTurn = {
   binding: { workspacePath?: string };
@@ -77,7 +76,6 @@ export async function createNativeRuntime(
   config: NativeRuntimeConfig,
   credentials: Readonly<Record<string, string>>,
 ): Promise<NativeRuntime> {
-  const parsed = NativeRuntimeConfigSchema.parse(config);
   // The embedded loop can import the Gateway facade. Keep its process policy
   // out of this runtime's provider requests without resetting anyone else's host.
   const runtime = createNodeLlmRuntime(undefined, {
@@ -96,7 +94,7 @@ export async function createNativeRuntime(
     }
   };
 
-  for (const entry of parsed.models) {
+  for (const entry of config.models) {
     const ref = `${entry.provider}/${entry.id}`;
     const credential = credentials[ref];
     if (!credential?.trim()) {
@@ -145,7 +143,7 @@ export async function createNativeRuntime(
       }
     }
   }
-  const sourcePath = path.resolve(parsed.workspace);
+  const sourcePath = path.resolve(config.workspace);
   const canonicalPath = await realpath(sourcePath);
   const directory = await stat(canonicalPath);
   if (!directory.isDirectory()) {
@@ -193,7 +191,7 @@ export async function createNativeRuntime(
       callback: (resolved: NativeRuntimeResolved) => Promise<T>,
     ) {
       assertOpen();
-      const binding = BindingSchema.parse(turn.binding);
+      const { binding } = turn;
       const selection = SelectionSchema.parse(turn.selection);
       const ref = `${selection.provider}/${selection.modelId}`;
       const registered = models.get(ref);

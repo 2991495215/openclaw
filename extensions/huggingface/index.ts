@@ -1,16 +1,12 @@
+import { resolvePluginConfigObject } from "openclaw/plugin-sdk/plugin-config-runtime";
 import { runLiveProviderCatalog } from "openclaw/plugin-sdk/provider-catalog-live-runtime";
 import { defineSingleProviderPluginEntry } from "openclaw/plugin-sdk/provider-entry";
+import { asOptionalObjectRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { applyHuggingfaceConnectionConfig, HUGGINGFACE_DEFAULT_MODEL_REF } from "./onboard.js";
 import manifest from "./openclaw.plugin.json" with { type: "json" };
 import { buildHuggingfaceProvider } from "./provider-catalog.js";
 
 const PROVIDER_ID = "huggingface";
-
-type HuggingFacePluginConfig = {
-  discovery?: {
-    enabled?: boolean;
-  };
-};
 
 export default defineSingleProviderPluginEntry({
   id: PROVIDER_ID,
@@ -27,10 +23,8 @@ export default defineSingleProviderPluginEntry({
     },
     catalog: {
       run: async (ctx) => {
-        const pluginConfig = ctx.config?.plugins?.entries?.[PROVIDER_ID]?.config as
-          | HuggingFacePluginConfig
-          | undefined;
-        if (pluginConfig?.discovery?.enabled === false) {
+        const pluginConfig = resolvePluginConfigObject(ctx.config, PROVIDER_ID);
+        if (asOptionalObjectRecord(pluginConfig?.discovery)?.enabled === false) {
           return null;
         }
         const { apiKey, discoveryApiKey, profileId } = ctx.resolveProviderApiKey(PROVIDER_ID);

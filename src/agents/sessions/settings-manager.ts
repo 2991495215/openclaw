@@ -111,8 +111,7 @@ export class SettingsManager {
 
   static inMemory(settings: Partial<Settings> = {}): SettingsManager {
     const storage = new InMemorySettingsStorage();
-    const initialSettings = requireSupportedSettings(settings, "global");
-    storage.withLock("global", () => JSON.stringify(initialSettings, null, 2));
+    storage.withLock("global", () => JSON.stringify(settings, null, 2));
     return SettingsManager.fromStorage(storage);
   }
 

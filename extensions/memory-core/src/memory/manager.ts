@@ -1,3 +1,4 @@
+import { getAgentWorkspaceAccess } from "openclaw/plugin-sdk/agent-workspace-runtime";
 import { formatErrorMessage, toErrorObject } from "openclaw/plugin-sdk/error-runtime";
 import {
   createSubsystemLogger,
@@ -105,8 +106,6 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     maintenanceSource?: MemoryIndexManager;
   }): Promise<MemoryIndexManager | null> {
     const source = params.maintenanceSource;
-    const memoryFiles = source?.memoryFiles ?? params.memoryFiles;
-    memoryFiles?.assertCurrent();
     const cfg = source?.cfg ?? params.cfg;
     const agentId = source?.agentId ?? normalizeAgentId(params.agentId);
     const purpose = normalizeMemoryIndexManagerPurpose(params.purpose);
@@ -120,6 +119,13 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
             return null;
           }
           const workspaceDir = source?.workspaceDir ?? resolveAgentWorkspaceDir(cfg, agentId);
+          const memoryFiles =
+            source?.memoryFiles ??
+            params.memoryFiles ??
+            (!source && settings.sources.includes("memory")
+              ? getAgentWorkspaceAccess(workspaceDir, "memoryFiles")?.memoryFiles
+              : undefined);
+          memoryFiles?.assertCurrent();
           const providerRequirement =
             source?.providerRequirement ??
             resolveMemoryEmbeddingProviderRequirement({
@@ -169,7 +175,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
                   agentId,
                   workspaceDir,
                   memoryFiles,
-                  settings,
+                  settings: effectiveSettings,
                   providerRequirement,
                   purpose,
                   acquireLocalService: params.acquireLocalService,
@@ -238,8 +244,6 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
   }) {
     super(params.maintenanceSource?.automaticRebuildNotice);
     this.managerRegistry = params.managerRegistry;
-    const effectiveSettings = resolveEffectiveMemorySearchSettings(params.settings);
-    const dbPath = params.databaseOptions.path;
     this.cacheKey = params.cacheKey;
     this.acquireLocalService = params.acquireLocalService;
     this.backgroundRunner = params.runInBackgroundContext;
@@ -249,8 +253,8 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     this.workspaceDir = params.workspaceDir;
     this.memoryFiles = params.memoryFiles;
     this.settings = {
-      ...effectiveSettings,
-      store: { ...effectiveSettings.store, databasePath: dbPath },
+      ...params.settings,
+      store: { ...params.settings.store, databasePath: params.databaseOptions.path },
     };
     this.providerRequirement = params.providerRequirement;
     this.providerLifecycle = { mode: "pending", requestedProvider: this.settings.provider };
@@ -266,17 +270,14 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
       this.providerUnavailableReason = source.embeddingBootstrapFailure.reason;
       this.embeddingProbeCache.set(this.cacheKey, cachedProbe);
     }
-    for (const memorySource of effectiveSettings.sources) {
+    for (const memorySource of params.settings.sources) {
       this.sources.add(memorySource);
     }
     this.publishedDatabase = params.publishedDatabase;
     this.providerKey = this.computeProviderKey();
-    this.cache = {
-      enabled: effectiveSettings.cache.enabled,
-      maxEntries: effectiveSettings.cache.maxEntries,
-    };
-    this.vector.enabled = effectiveSettings.store.vector.enabled;
-    this.vector.extensionPath = effectiveSettings.store.vector.extensionPath;
+    this.cache = params.settings.cache;
+    this.vector.enabled = params.settings.store.vector.enabled;
+    this.vector.extensionPath = params.settings.store.vector.extensionPath;
     const meta = this.readMeta();
     if (meta?.vectorDims) {
       this.vector.dims = meta.vectorDims;

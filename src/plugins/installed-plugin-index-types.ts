@@ -138,7 +138,6 @@ export type InstalledPluginIndexScopeLookup = {
 export type InstalledPluginIndexFacts = {
   fingerprint?: string;
   scopeLookup?: InstalledPluginIndexScopeLookup;
-  installRecords?: Record<string, PluginInstallRecord>;
 };
 
 export type LoadInstalledPluginIndexParams = {

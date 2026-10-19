@@ -234,8 +234,8 @@ export class RealtimeCallHandler {
     private readonly resolveCallRegistration: ResolveRealtimeCallRegistration,
     private readonly servePath: string,
     private readonly streamDisconnectLifecycle: StreamDisconnectLifecycle,
-    private readonly coreConfig?: OpenClawConfig,
-    private readonly holdOpeningMaxMs?: number,
+    private readonly coreConfig: OpenClawConfig | undefined,
+    private readonly holdOpeningMaxMs: number,
   ) {}
 
   setPublicUrl(url: string): void {

@@ -65,6 +65,8 @@ function createServer(streaming = false, streamPath = "/voice/stream/realtime") 
         resolveRegistration,
         config.serve.path,
         server.getStreamDisconnectLifecycle(),
+        undefined,
+        config.voicemail.holdOpeningMaxMs,
       ),
     );
   }

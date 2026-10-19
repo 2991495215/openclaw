@@ -4,7 +4,8 @@ import type {
 } from "openclaw/plugin-sdk/realtime-voice";
 import type { WebSocket } from "openclaw/plugin-sdk/websocket-runtime";
 import { onTestFinished, vi } from "vitest";
-import type { CallManager } from "../manager.js";
+import { normalizeVoiceCallConfig } from "../config.js";
+import { CallManager } from "../manager.js";
 import { createVoiceCallBaseConfig } from "../test-fixtures.js";
 import type { CallRecord, HangupCallInput } from "../types.js";
 import { connectWs, startUpgradeWsServer } from "../websocket-test-support.js";
@@ -20,6 +21,23 @@ export const createRealtimeConfig = () => ({
   enabled: true,
   instructions: "Be helpful.",
 });
+
+export function createHandler() {
+  const config = normalizeVoiceCallConfig({ realtime: { enabled: true } });
+  const resolveRegistration = vi.fn((): never => {
+    throw new Error("Rejected upgrades must not acquire a provider");
+  });
+  const handler = new RealtimeCallHandler(
+    config.realtime,
+    new CallManager(config),
+    resolveRegistration,
+    "/voice/webhook",
+    { connect() {}, disconnect() {}, retire() {} },
+    undefined,
+    config.voicemail.holdOpeningMaxMs,
+  );
+  return { handler, resolveRegistration };
+}
 
 const noOpStreamDisconnectLifecycle: StreamDisconnectLifecycle = {
   connect: () => {},
@@ -128,6 +146,8 @@ export function createCarrierLifecycleHarness(
     options.resolveCallRegistration ?? makeCallRegistrationResolver(realtimeProvider),
     "/voice/webhook",
     options.streamDisconnectLifecycle ?? noOpStreamDisconnectLifecycle,
+    undefined,
+    createVoiceCallBaseConfig().voicemail.holdOpeningMaxMs,
   );
   return { call, endCall, handler, hangupCall, processEvent };
 }

@@ -5,7 +5,6 @@ import {
   setPluginInstallRecordMapEntry,
 } from "../config/plugin-install-record-map.js";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
-import { getInstalledPluginIndexFacts } from "./installed-plugin-index-facts.js";
 import type {
   InstalledPluginIndex,
   InstalledPluginInstallRecordInfo,
@@ -22,27 +21,12 @@ export function normalizeInstallRecordMap(
   return normalized;
 }
 
-function restoreInstallRecordMap(
-  records: Readonly<Record<string, InstalledPluginInstallRecordInfo>> | undefined,
-): Record<string, PluginInstallRecord> {
-  const restored = parsePluginInstallRecordMap(records ?? {});
-  if (!restored) {
-    throw new Error("Invalid persisted plugin install record map");
-  }
-  return restored;
-}
-
 /** Copies canonical install records out of the installed index. */
 export function extractPluginInstallRecordsFromInstalledPluginIndex(
   index: InstalledPluginIndex | null | undefined,
 ): Record<string, PluginInstallRecord> {
-  const facts = index ? getInstalledPluginIndexFacts(index) : undefined;
-  if (!facts) {
-    return restoreInstallRecordMap(index?.installRecords);
-  }
-  const parsed = (facts.installRecords ??= restoreInstallRecordMap(index?.installRecords));
   const records = createPluginInstallRecordMap<PluginInstallRecord>();
-  for (const [pluginId, record] of Object.entries(parsed)) {
+  for (const [pluginId, record] of Object.entries(index?.installRecords ?? {})) {
     // Match schema parsing's copies of known structured fields; passthrough fields stay intact.
     setPluginInstallRecordMapEntry(records, pluginId, {
       ...record,

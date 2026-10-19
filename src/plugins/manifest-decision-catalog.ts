@@ -106,5 +106,5 @@ export function normalizeManifestModelCatalog(params: {
     };
     providers[provider] = { ...current, models: [...(current?.models ?? []), row] };
   }
-  return normalizeModelCatalog({ ...catalog, providers }, { ownedProviders });
+  return Object.keys(providers).length > 0 ? { ...catalog, providers } : catalog;
 }

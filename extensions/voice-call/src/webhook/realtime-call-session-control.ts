@@ -7,7 +7,6 @@ import {
   type RealtimeVoiceSessionHarness,
 } from "openclaw/plugin-sdk/realtime-voice";
 import { CallBriefSchema } from "../call-brief.js";
-import { DEFAULT_VOICEMAIL_HOLD_OPENING_MAX_MS } from "../errand-config.js";
 import type { CallRecord } from "../types.js";
 import type { RealtimeAudioPacer } from "./realtime-audio-pacer.js";
 
@@ -81,7 +80,7 @@ export function buildVerbatimGreetingInstructions(
 export function createOutboundGreetingController(params: {
   enabled: boolean;
   instructions?: string;
-  holdOpeningMaxMs?: number;
+  holdOpeningMaxMs: number;
   call?: Pick<CallRecord, "direction" | "metadata">;
   acknowledge?: (instructions: string) => void;
 }) {
@@ -185,7 +184,7 @@ export function createOutboundGreetingController(params: {
               waitingForAmd = false;
               triggerOpening();
             }
-          }, params.holdOpeningMaxMs ?? DEFAULT_VOICEMAIL_HOLD_OPENING_MAX_MS);
+          }, params.holdOpeningMaxMs);
           timer.unref?.();
         }
         return;

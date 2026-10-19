@@ -30,12 +30,12 @@ export function createPreparedEmbeddedAgentSettingsManager(params: {
   contextTokenBudget?: number;
 }): SettingsManager {
   const prepared = prepareAgentSettingsSnapshot(params);
-  // Validate both original scopes, including ignored project settings, as before.
-  // Native retry preparation must not inherit these embedded-only startup gates.
   try {
-    requireSupportedSettings(prepared.globalSettings, "global");
-    requireSupportedSettings(prepared.projectSettings, "project");
     if (!prepared.embeddedSnapshot) {
+      // Validate immutable scopes once, including ignored project settings.
+      // Native retry preparation must not inherit these embedded-only startup gates.
+      requireSupportedSettings(prepared.globalSettings, "global");
+      requireSupportedSettings(prepared.projectSettings, "project");
       let pluginSettings = prepared.pluginSettings;
       if (params.cwd.trim() && prepared.metadata.manifestRegistry.plugins.length > 0) {
         const mcp = withPluginCache(getPluginMetadataSnapshotCache(prepared.metadata), () =>

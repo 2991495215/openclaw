@@ -3,6 +3,7 @@ import type {
   RealtimeVoiceSessionHarness,
 } from "openclaw/plugin-sdk/realtime-voice";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createVoiceCallBaseConfig } from "../test-fixtures.js";
 import type { CallRecord } from "../types.js";
 import { RealtimeAudioPacer } from "./realtime-audio-pacer.js";
 import {
@@ -19,6 +20,7 @@ function greeting(options: Partial<Parameters<typeof createOutboundGreetingContr
   const controller = createOutboundGreetingController({
     enabled: true,
     instructions: "Exact opening",
+    holdOpeningMaxMs: createVoiceCallBaseConfig().voicemail.holdOpeningMaxMs,
     ...options,
   });
   const ready = () =>

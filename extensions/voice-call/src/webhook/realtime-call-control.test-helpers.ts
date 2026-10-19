@@ -5,6 +5,7 @@ import type {
 import { vi } from "vitest";
 import type { VoiceCallRealtimeConfig } from "../config.js";
 import type { CallManager } from "../manager.js";
+import { createVoiceCallBaseConfig } from "../test-fixtures.js";
 import type { CallRecord } from "../types.js";
 import { RealtimeCallHandler } from "./realtime-handler.js";
 
@@ -107,6 +108,7 @@ export function makeHandler(params: {
     "/voice/webhook",
     { connect: () => {}, disconnect: () => {}, retire: () => {} },
     undefined,
+    createVoiceCallBaseConfig().voicemail.holdOpeningMaxMs,
   );
   handler.setPublicUrl("https://public.example/voice/webhook");
   return { handler, manager, processEvent, endCall };

@@ -72,6 +72,18 @@ describe("private native inference startup input", () => {
     { name: "empty", bytes: Buffer.alloc(0) },
     { name: "malformed", bytes: Buffer.from("synthetic-private-invalid-json") },
     { name: "invalid shape", bytes: Buffer.from("{}") },
+    {
+      name: "duplicate models",
+      bytes: Buffer.from(
+        JSON.stringify({
+          ...startup,
+          config: {
+            ...startup.config,
+            models: [...startup.config.models, ...startup.config.models],
+          },
+        }),
+      ),
+    },
     { name: "oversized", bytes: Buffer.alloc(STARTUP_MAX_BYTES + 1, 32) },
   ])("closes and redacts $name startup input", ({ bytes }) => {
     supply(bytes);

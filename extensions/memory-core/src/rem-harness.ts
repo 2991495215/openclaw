@@ -44,7 +44,7 @@ function resolveRemPreviewLimit(configLimit: number, cap: number | undefined): n
   return Math.max(0, Math.min(configLimit, Math.floor(cap)));
 }
 
-async function listWorkspaceDailyFiles(workspaceDir: string, limit?: number): Promise<string[]> {
+async function listWorkspaceDailyFiles(workspaceDir: string, limit: number): Promise<string[]> {
   const memoryDir = path.join(workspaceDir, "memory");
   let entries: string[];
   try {
@@ -61,16 +61,13 @@ async function listWorkspaceDailyFiles(workspaceDir: string, limit?: number): Pr
   const files = entries
     .map((name) => path.join(memoryDir, name))
     .toSorted((left, right) => left.localeCompare(right));
-  if (typeof limit !== "number" || !Number.isFinite(limit) || limit <= 0 || files.length <= limit) {
+  if (limit <= 0 || files.length <= limit) {
     return files;
   }
-  return files.slice(-Math.floor(limit));
+  return files.slice(-limit);
 }
 
-function resolveGroundedFileLimit(
-  configLimit: number,
-  cap: number | undefined,
-): number | undefined {
+function resolveGroundedFileLimit(configLimit: number, cap: number | undefined): number {
   const normalizedCap = resolveOptionalIntegerOption(cap, { min: 1 });
   if (normalizedCap === undefined) {
     return configLimit;

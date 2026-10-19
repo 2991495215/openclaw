@@ -19,7 +19,6 @@ import {
   WorkspaceAliasRepointedError,
   WorkspaceVanishedError,
 } from "../../agents/workspace-state-identity.js";
-import { DEFAULT_AGENT_WORKSPACE_DIR } from "../../agents/workspace.js";
 import { resolveChannelModelOverride } from "../../channels/model-overrides.js";
 import { type OpenClawConfig, getRuntimeConfig } from "../../config/config.js";
 import { isSessionWorkStartInvalidatedError } from "../../config/sessions/lifecycle.js";
@@ -282,8 +281,7 @@ async function resolveReplyFromConfig(
 
     const { workspaceDirRaw, workspaceDirForNativeCommand, agentDir, timeoutMs } =
       resolverTiming.measureSync("reply.resolve_workspace_agent_dir", () => {
-        const workspaceDirRawLocal =
-          resolveAgentWorkspaceDir(cfg, agentId) ?? DEFAULT_AGENT_WORKSPACE_DIR;
+        const workspaceDirRawLocal = resolveAgentWorkspaceDir(cfg, agentId);
         return {
           workspaceDirRaw: workspaceDirRawLocal,
           workspaceDirForNativeCommand: preparedWorkspaceDir ?? workspaceDirRawLocal,

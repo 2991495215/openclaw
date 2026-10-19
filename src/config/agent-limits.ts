@@ -37,10 +37,7 @@ export function resolveAgentMaxConcurrent(cfg?: OpenClawConfig): number {
   );
 }
 
-/** Resolves per-session subagent concurrency, flooring finite values and clamping to at least one. */
+/** Resolves per-session subagent concurrency from canonical config. */
 export function resolveSubagentMaxConcurrent(cfg?: OpenClawConfig): number {
-  return (
-    resolveOptionalIntegerOption(cfg?.agents?.defaults?.subagents?.maxConcurrent, { min: 1 }) ??
-    DEFAULT_SUBAGENT_MAX_CONCURRENT
-  );
+  return cfg?.agents?.defaults?.subagents?.maxConcurrent ?? DEFAULT_SUBAGENT_MAX_CONCURRENT;
 }
