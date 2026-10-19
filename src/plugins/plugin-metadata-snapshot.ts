@@ -27,7 +27,6 @@ import {
   createPluginCache,
   getPluginCache,
   getPluginMetadataSnapshotCache,
-  retainPluginCache,
   withPluginCache,
 } from "./plugin-cache.js";
 import { resolvePluginControlPlaneFingerprint } from "./plugin-control-plane-context.js";
@@ -628,24 +627,19 @@ export async function resolvePluginMetadataSnapshotAsync(
     return withPluginCache(createPluginCache(), () => resolvePluginMetadataSnapshotAsync(captured));
   }
   const cache = getPluginCache();
-  const release = retainPluginCache(cache);
-  try {
-    return await withPluginCache(cache, async () => {
-      const current = selectPluginMetadataSnapshot(captured, false);
-      if (current.kind === "current") {
-        return current.snapshot;
-      }
-      const activateDiscovery = await (captured.index === undefined &&
-      captured.installRecords === undefined &&
-      captured.preferPersisted !== false
-        ? preparePluginMetadataMachineStateAsync({ env: captured.env, stateDir: captured.stateDir })
-        : prepareBundledDiscoveryMode(captured.env));
-      activateDiscovery();
-      return resolvePluginMetadataSnapshot(captured);
-    });
-  } finally {
-    release();
-  }
+  return withPluginCache(cache, async () => {
+    const current = selectPluginMetadataSnapshot(captured, false);
+    if (current.kind === "current") {
+      return current.snapshot;
+    }
+    const activateDiscovery = await (captured.index === undefined &&
+    captured.installRecords === undefined &&
+    captured.preferPersisted !== false
+      ? preparePluginMetadataMachineStateAsync({ env: captured.env, stateDir: captured.stateDir })
+      : prepareBundledDiscoveryMode(captured.env));
+    activateDiscovery();
+    return resolvePluginMetadataSnapshot(captured);
+  });
 }
 
 /** Reuse prepared workspace facts without materializing an intermediate immutable graph. */

@@ -579,17 +579,16 @@ it("shares a pending index read and returns the same validated inventory", async
   });
 });
 
-it("joins a retired cache's worker read without publishing its inventory", async () => {
+it("does not retain a retired cache for a metadata worker read", async () => {
   const env = environment();
   const row = createDeferredCore<{ value_json: string }>();
   vi.spyOn(metadataWorker, "readPluginMetadataStateRow").mockReturnValue(row.promise);
   const cache = createPluginCache();
   const pending = withPluginCache(cache, () => readPersistedInstalledPluginIndex({ env }));
   const rejected = expect(pending).rejects.toThrow();
-  const retirement = retirePluginCache(cache);
+  await retirePluginCache(cache);
   row.resolve({ value_json: JSON.stringify({ revision: 1, index: index() }) });
   await rejected;
-  await retirement;
 });
 
 it("returns persisted bundled recovery locations through its existing async consumer without parent SQL", async () => {
