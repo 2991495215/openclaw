@@ -292,14 +292,12 @@ describe("shell env fallback", () => {
   }
 
   function runShellEnvFallback(params: {
-    enabled?: boolean;
     env?: NodeJS.ProcessEnv;
     expectedKeys?: string[];
     logger?: Pick<typeof console, "warn">;
     timeoutMs?: number;
   }) {
     return loadShellEnvFallback({
-      enabled: params.enabled ?? true,
       env: params.env ?? {},
       expectedKeys: params.expectedKeys ?? ["OPENAI_API_KEY"],
       logger: params.logger,
@@ -392,10 +390,7 @@ describe("shell env fallback", () => {
       ],
     });
 
-    expect(res).toEqual({
-      ok: true,
-      applied: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"],
-    });
+    expect(res).toEqual(["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"]);
     expect(env.OPENCLAW_GATEWAY_TOKEN).toBe("set");
     expect(env.TWILIO_ACCOUNT_SID).toBe("AC123");
     expect(env.TWILIO_AUTH_TOKEN).toBe("secret");
@@ -409,9 +404,7 @@ describe("shell env fallback", () => {
 
     const res = runShellEnvFallback({ env });
 
-    expect(res.ok).toBe(true);
-    expect(res.applied).toStrictEqual([]);
-    expect(res.ok && res.skippedReason).toBe("already-has-keys");
+    expect(res).toStrictEqual([]);
     expect(env.OPENAI_API_KEY).toBe("");
     expect(exec).not.toHaveBeenCalled();
   });
@@ -427,15 +420,11 @@ describe("shell env fallback", () => {
       mode === "environment"
         ? runShellEnvFallback({ env, logger })
         : getShellPathFromLoginShell({ env });
-    expect(read({})).toEqual(
-      mode === "environment" ? { ok: false, applied: [], error: "shell unavailable" } : null,
-    );
+    expect(read({})).toEqual(mode === "environment" ? [] : null);
     for (let i = 0; i < 2; i += 1) {
       const env: NodeJS.ProcessEnv = {};
       expect(read(env)).toEqual(
-        mode === "environment"
-          ? { ok: true, applied: ["OPENAI_API_KEY"] }
-          : "/usr/local/bin:/usr/bin",
+        mode === "environment" ? ["OPENAI_API_KEY"] : "/usr/local/bin:/usr/bin",
       );
       if (mode === "environment") {
         expect(env.OPENAI_API_KEY).toBe("from-shell");
@@ -443,7 +432,9 @@ describe("shell env fallback", () => {
     }
     expect(exec).toHaveBeenCalledTimes(2);
     if (mode === "environment") {
-      expect(logger.warn).toHaveBeenCalledOnce();
+      expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
+        "[openclaw] shell env fallback failed: shell unavailable",
+      );
     }
   });
 
@@ -457,17 +448,10 @@ describe("shell env fallback", () => {
         env: successEnv,
         expectedKeys: ["OPENAI_API_KEY", "DISCORD_BOT_TOKEN"],
       }),
-    ).toEqual({
-      ok: true,
-      applied: ["OPENAI_API_KEY"],
-    });
+    ).toEqual(["OPENAI_API_KEY"]);
     expect(getShellEnvAppliedKeys()).toEqual(["OPENAI_API_KEY"]);
 
-    expect(runShellEnvFallback({ enabled: false })).toEqual({
-      ok: true,
-      applied: [],
-      skippedReason: "disabled",
-    });
+    expect(runShellEnvFallback({ env: successEnv })).toEqual([]);
     expect(getShellEnvAppliedKeys()).toStrictEqual([]);
 
     exec.mockImplementation(() => {
@@ -478,11 +462,7 @@ describe("shell env fallback", () => {
         timeoutMs: 1,
         logger: { warn: vi.fn() },
       }),
-    ).toEqual({
-      ok: false,
-      applied: [],
-      error: "boom",
-    });
+    ).toEqual([]);
     expect(getShellEnvAppliedKeys()).toStrictEqual([]);
     expect(exec).toHaveBeenCalledTimes(2);
     expect(exec.mock.calls[1]?.[2]?.timeout).toBe(1);
@@ -517,7 +497,7 @@ describe("shell env fallback", () => {
       const exec = syncExec.mockReturnValue(framedShellEnv("OPENAI_API_KEY=from-shell\0"));
       withEtcShells(["/bin/sh", "/bin/bash", "/bin/zsh", trustedShell], () => {
         const res = runShellEnvFallback({ env: { SHELL: requested } });
-        expect(res.ok).toBe(true);
+        expect(res).toEqual(["OPENAI_API_KEY"]);
         expect(exec).toHaveBeenCalledTimes(1);
         expect(exec).toHaveBeenCalledWith(
           kind === "registered" ? trustedShell : "/bin/sh",
@@ -538,7 +518,7 @@ describe("shell env fallback", () => {
     mockProcessPlatform("win32");
     const res = runShellEnvFallback({ env, logger });
 
-    expect(res).toEqual({ ok: true, applied: [] });
+    expect(res).toEqual([]);
     expect(env.OPENAI_API_KEY).toBeUndefined();
     expect(exec).not.toHaveBeenCalled();
     expect(logger.warn).not.toHaveBeenCalled();
@@ -555,7 +535,7 @@ describe("shell env fallback", () => {
     });
     const timeoutMs = Number.MAX_SAFE_INTEGER;
     if (mode === "environment") {
-      expect(runShellEnvFallback({ env, timeoutMs }).ok).toBe(true);
+      expect(runShellEnvFallback({ env, timeoutMs })).toEqual(["OPENAI_API_KEY"]);
     } else {
       expect(getShellPathFromLoginShell({ env, timeoutMs })).toBe("/usr/local/bin:/usr/bin");
     }
@@ -577,9 +557,7 @@ describe("shell env fallback", () => {
     });
 
     withEtcShells([shell], () => {
-      expect(runShellEnvFallback({ env, expectedKeys: ["PATH"] })).toMatchObject({
-        ok: true,
-      });
+      expect(runShellEnvFallback({ env, expectedKeys: ["PATH"] })).toEqual(["PATH"]);
     });
     expect(exec).toHaveBeenCalledOnce();
   });
@@ -605,11 +583,10 @@ describe("shell env fallback", () => {
         withEtcShells([shell], () => {
           expect(
             loadShellEnvFallback({
-              enabled: true,
               env,
               expectedKeys: ["OPENCLAW_PROBE_PID", "OPENCLAW_PROBE_SID"],
             }),
-          ).toEqual({ ok: true, applied: ["OPENCLAW_PROBE_PID", "OPENCLAW_PROBE_SID"] });
+          ).toEqual(["OPENCLAW_PROBE_PID", "OPENCLAW_PROBE_SID"]);
         });
         expect(env.OPENCLAW_PROBE_SID?.trim()).toBe(env.OPENCLAW_PROBE_PID);
       } finally {
@@ -626,7 +603,7 @@ describe("shell env fallback", () => {
     );
 
     withEtcShells([shell], () => {
-      expect(runShellEnvFallback({ env })).toEqual({ ok: true, applied: ["OPENAI_API_KEY"] });
+      expect(runShellEnvFallback({ env })).toEqual(["OPENAI_API_KEY"]);
       expect(getShellPathFromLoginShell({ env })).toBe("/usr/local/bin:/usr/bin");
     });
 

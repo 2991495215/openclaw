@@ -1,10 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as retry from "../../../packages/retry/src/index.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { isSecretValueRegisteredForRedaction } from "../../logging/secret-redaction-registry.js";
 import type { BufferedCommandResult } from "../../process/exec.js";
+import * as processExec from "../../process/exec.js";
+import * as supervisorRuntime from "../../process/supervisor/index.js";
 import type {
   ManagedRun,
   ProcessSupervisor,
@@ -15,13 +18,21 @@ import * as audioBridge from "./audio-bridge.js";
 import { runExit } from "./computer.test-support.js";
 import { createHostDesktopService } from "./host-source.js";
 import { createManagedLinuxAudio } from "./managed-linux-audio.js";
+import * as managedAudio from "./managed-linux-audio.js";
 import { createManagedLinuxDesktop } from "./managed-linux.js";
+import * as managedLinux from "./managed-linux.js";
 import { releaseDesktopObserverToken } from "./observe-bridge.js";
 import * as observeBridge from "./observe-bridge.js";
 import * as rfbProbe from "./rfb-probe.js";
 import { createDesktopSessionRegistry } from "./session-registry.js";
 
+vi.mock("../../infra/ports-probe.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../infra/ports-probe.js")>()),
+  tryListenOnPort: async () => 45_999,
+}));
+
 const cleanups: Array<() => Promise<void>> = [];
+const createAudioOwner = createManagedLinuxAudio;
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const inheritedAudio = {
   PULSE_SERVER: "unix:/operator/pulse/native",
@@ -169,17 +180,21 @@ function childInput(fake: ReturnType<typeof createFakeSupervisor>, index = 0) {
 }
 
 const availableAudio: typeof createManagedLinuxAudio = (params) =>
-  createManagedLinuxAudio({ ...params, runtime: { detectBinary: async () => true } });
+  createAudioOwner({ ...params, runtime: { detectBinary: async () => true } });
 
 function hostService(desktop: ReturnType<typeof createManagedLinuxDesktop>, connId: string) {
-  const probe = vi.spyOn(rfbProbe, "probeRfbServer").mockResolvedValue({ kind: "unreachable" });
+  vi.spyOn(managedLinux, "createManagedLinuxDesktop").mockReturnValue(desktop);
+  const desktopProbe = vi.mocked(rfbProbe.probeRfbServer).getMockImplementation()!;
+  const probe = vi.fn<typeof rfbProbe.probeRfbServer>().mockResolvedValue({ kind: "unreachable" });
+  vi.spyOn(rfbProbe, "probeRfbServer").mockImplementation((params) =>
+    params.port === 45_999 ? desktopProbe(params) : probe(params),
+  );
   const registry = createDesktopSessionRegistry();
   cleanups.push(() => registry.stopAll());
   const service = createHostDesktopService({
     getConfig: () => ({ enabled: true, managed: true }),
     registry,
     platform: "linux",
-    managedDesktop: desktop,
   });
   return { probe, registry, service, requester: { connId, isCurrent: () => true } };
 }
@@ -201,7 +216,7 @@ function heldAudioGeneration(generationToHold: number) {
   let generation = 0;
   const createAudio: typeof createManagedLinuxAudio = (params) => {
     const held = ++generation === generationToHold;
-    return createManagedLinuxAudio({
+    return createAudioOwner({
       ...params,
       runtime: {
         detectBinary: async () => {
@@ -224,31 +239,27 @@ async function createFixture(createAudio = noAudio, onFailed?: (error: string) =
   const unixSocketTable = path.join(root, "unix");
   const fake = createFakeSupervisor();
   let now = 0;
-  const runPasswordTool = vi.fn(async () => passwordResult());
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+  vi.spyOn(supervisorRuntime, "getProcessSupervisor").mockReturnValue(fake.supervisor);
+  vi.spyOn(managedAudio, "createManagedLinuxAudio").mockImplementation(createAudio);
+  vi.spyOn(retry, "sleepWithAbort").mockImplementation(async (ms) => {
+    now += ms;
+  });
+  const runPasswordTool = vi
+    .spyOn(processExec, "runCommandBuffered")
+    .mockResolvedValue(passwordResult());
   const probeRfb = vi
-    .fn()
+    .fn<typeof rfbProbe.probeRfbServer>()
     .mockResolvedValueOnce({ kind: "unreachable" as const })
     .mockResolvedValue({ kind: "rfb" as const, securityTypes: [2] });
-  const makeDesktop = (overrides: Parameters<typeof createManagedLinuxDesktop>[0] = {}) =>
+  vi.spyOn(rfbProbe, "probeRfbServer").mockImplementation(probeRfb);
+  const makeDesktop = () =>
     createManagedLinuxDesktop({
-      supervisor: fake.supervisor,
       onFailed,
-      ...overrides,
       runtime: {
-        createAudio,
-        nowMs: () => now,
-        probeRfb,
-        readinessPollMs: 1,
-        readinessTimeoutMs: 100,
-        runPasswordTool,
-        sleep: async (ms) => {
-          now += ms;
-        },
         tempRoot: root,
-        tryListenOnPort: async () => 45_999,
         unixSocketTable,
         x11SocketDir,
-        ...overrides.runtime,
       },
     });
   const desktop = makeDesktop();
@@ -328,7 +339,7 @@ describe("managed Linux desktop", () => {
     const recoveryFinished = createDeferred();
     let available = true;
     const createAudio: typeof createManagedLinuxAudio = (params) => {
-      const owner = createManagedLinuxAudio({
+      const owner = createAudioOwner({
         ...params,
         runtime: { detectBinary: async () => available },
       });
@@ -520,7 +531,7 @@ describe("managed Linux desktop", () => {
     async (missing) => {
       let unavailable = true;
       const createAudio: typeof createManagedLinuxAudio = (params) =>
-        createManagedLinuxAudio({
+        createAudioOwner({
           ...params,
           runtime: { detectBinary: async (binary) => !unavailable || binary !== missing },
         });
@@ -695,17 +706,12 @@ describe("managed Linux desktop", () => {
           return await fixture.fake.supervisor.spawn(input);
         },
       };
-      const runPasswordTool =
-        missingBinary === "tigervncpasswd"
-          ? vi.fn(async () => passwordResult(true))
-          : fixture.runPasswordTool;
-      const desktop = fixture.makeDesktop({
-        supervisor,
-        runtime: {
-          probeRfb: async () => ({ kind: "rfb", securityTypes: [2] }),
-          runPasswordTool,
-        },
-      });
+      vi.spyOn(supervisorRuntime, "getProcessSupervisor").mockReturnValue(supervisor);
+      fixture.probeRfb.mockReset().mockResolvedValue({ kind: "rfb", securityTypes: [2] });
+      if (missingBinary === "tigervncpasswd") {
+        fixture.runPasswordTool.mockResolvedValue(passwordResult(true));
+      }
+      const desktop = fixture.makeDesktop();
 
       await expect(desktop.acquire()).rejects.toThrow(missingBinary);
       await expect(desktop.acquire()).rejects.toThrow(

@@ -1,5 +1,3 @@
-import type { EventEmitter } from "node:events";
-import type { WorkerOptions } from "node:worker_threads";
 import { isVitestRuntimeEnv } from "../infra/env.js";
 import { formatErrorMessage, hasErrnoCode } from "../infra/errors.js";
 import { createCpuTrackedWorker } from "../infra/worker-cpu.js";
@@ -10,8 +8,8 @@ const SYSTEM_CA_WORKER_SOURCE = String.raw`
   const { parentPort } = require("node:worker_threads");
 
   try {
-    const certificateCount = getCACertificates("default").length;
-    parentPort.postMessage({ ok: true, certificateCount });
+    getCACertificates("default");
+    parentPort.postMessage({ ok: true });
   } catch (error) {
     parentPort.postMessage({
       ok: false,
@@ -22,20 +20,11 @@ const SYSTEM_CA_WORKER_SOURCE = String.raw`
   }
 `;
 
-type SystemCaWarmupWorker = Pick<EventEmitter, "once" | "removeAllListeners"> & {
-  terminate: () => Promise<number>;
-  unref: () => void;
-};
-
 type SystemCaWarmupOptions = {
-  env?: NodeJS.ProcessEnv;
-  platform?: NodeJS.Platform;
   log?: { warn: (message: string) => void };
-  timeoutMs?: number;
-  createWorker?: (source: string, options: WorkerOptions) => SystemCaWarmupWorker;
 };
 
-type SystemCaWarmupMessage = { ok: true; certificateCount: number } | { ok: false; error: string };
+type SystemCaWarmupMessage = { ok: true } | { ok: false; error: string };
 
 let macOSSystemCaWarmupPromise: Promise<void> | undefined;
 
@@ -43,18 +32,13 @@ let macOSSystemCaWarmupPromise: Promise<void> | undefined;
 export async function warmMacOSSystemCaOffMainThread(
   options: SystemCaWarmupOptions = {},
 ): Promise<void> {
-  const env = options.env ?? process.env;
-  const platform = options.platform ?? process.platform;
-  if (
-    platform !== "darwin" ||
-    (options.env === undefined && options.platform === undefined && isVitestRuntimeEnv(env))
-  ) {
+  if (process.platform !== "darwin" || isVitestRuntimeEnv()) {
     return;
   }
 
-  let worker: SystemCaWarmupWorker;
+  let worker: ReturnType<typeof createCpuTrackedWorker>;
   try {
-    worker = (options.createWorker ?? createCpuTrackedWorker)(SYSTEM_CA_WORKER_SOURCE, {
+    worker = createCpuTrackedWorker(SYSTEM_CA_WORKER_SOURCE, {
       eval: true,
     });
   } catch (error) {
@@ -68,7 +52,6 @@ export async function warmMacOSSystemCaOffMainThread(
 
   await new Promise<void>((resolve) => {
     let settled = false;
-    const timeoutMs = options.timeoutMs ?? SYSTEM_CA_WARMUP_TIMEOUT_MS;
 
     const settle = (warning?: string, terminate = false) => {
       if (settled) {
@@ -111,10 +94,10 @@ export async function warmMacOSSystemCaOffMainThread(
 
     const timeout = setTimeout(() => {
       settle(
-        `macOS CA warmup timed out after ${timeoutMs}ms; gateway startup will continue and trust settings will load lazily`,
+        `macOS CA warmup timed out after ${SYSTEM_CA_WARMUP_TIMEOUT_MS}ms; gateway startup will continue and trust settings will load lazily`,
         true,
       );
-    }, timeoutMs);
+    }, SYSTEM_CA_WARMUP_TIMEOUT_MS);
     timeout.unref?.();
 
     // A wedged trustd lookup must not keep an otherwise stopped gateway process alive.

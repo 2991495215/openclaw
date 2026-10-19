@@ -11,7 +11,6 @@ type MessageLifecycleProcessedOptions = MessageLifecycleRef & {
   durationMs?: number;
   reason?: string;
   error?: string;
-  agentId?: string;
   userPrompt?: string;
   finalResponse?: string;
 };
@@ -40,20 +39,19 @@ export function createDiagnosticMessageLifecycle(
     params.enabled && params.trackSessionState && Boolean(ref.sessionId || ref.sessionKey);
 
   return {
-    markProcessing(override?: MessageLifecycleRef): void {
-      const ref = resolveRef(override);
-      if (!canTrackSessionState(ref)) {
+    markProcessing(): void {
+      if (!canTrackSessionState(params)) {
         return;
       }
       logMessageQueued({
-        sessionId: ref.sessionId,
-        sessionKey: ref.sessionKey,
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
         channel: params.channel,
         source: params.source,
       });
       logSessionStateChange({
-        sessionId: ref.sessionId,
-        sessionKey: ref.sessionKey,
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
         state: "processing",
         reason: params.processingReason,
       });
@@ -86,7 +84,7 @@ export function createDiagnosticMessageLifecycle(
         messageId: params.messageId,
         sessionId: ref.sessionId,
         sessionKey: ref.sessionKey,
-        agentId: options?.agentId ?? params.agentId,
+        agentId: params.agentId,
         durationMs: options?.durationMs ?? Date.now() - startedAtMs,
         outcome,
         reason: options?.reason,
