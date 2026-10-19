@@ -2,7 +2,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 const createAmbientNodeProxyAgentMock = vi.hoisted(() => vi.fn(() => ({ proxy: true })));
 const hasAmbientNodeProxyConfiguredMock = vi.hoisted(() => vi.fn(() => true));
@@ -12,7 +12,59 @@ vi.mock("@openclaw/proxyline", () => ({
   hasAmbientNodeProxyConfigured: hasAmbientNodeProxyConfiguredMock,
 }));
 
-import { resolveAmbientNodeProxyAgent } from "./extension-shared.js";
+import {
+  buildPassiveChannelStatusSummary,
+  buildPassiveProbedChannelStatusSummary,
+  resolveAmbientNodeProxyAgent,
+} from "./extension-shared.js";
+
+interface StatusDetails {
+  providerLabel: string;
+  configured: boolean;
+  running: boolean;
+}
+
+describe("passive channel summary contracts", () => {
+  it("accepts probe-bearing literals without adding probe fields to base summaries", () => {
+    const summary = buildPassiveChannelStatusSummary({ probe: { ok: true }, lastProbeAt: 3 });
+    expectTypeOf(summary).toMatchTypeOf<{
+      configured: boolean;
+      running: boolean;
+      lastStartAt: number | null;
+      lastStopAt: number | null;
+      lastError: string | null;
+    }>();
+    expectTypeOf(summary).not.toHaveProperty("probe");
+    expect(summary).toEqual({
+      configured: false,
+      running: false,
+      lastStartAt: null,
+      lastStopAt: null,
+      lastError: null,
+    });
+  });
+
+  it.each([
+    { build: buildPassiveChannelStatusSummary, probe: {} },
+    {
+      build: buildPassiveProbedChannelStatusSummary,
+      probe: { probe: { ok: true }, lastProbeAt: 3 },
+    },
+  ])("preserves named object extras and lifecycle precedence", ({ build, probe }) => {
+    const extra: StatusDetails = { providerLabel: "demo", configured: true, running: true };
+    const summary = build({ configured: false, lastStartAt: 1, ...probe }, extra);
+    expectTypeOf(summary.providerLabel).toEqualTypeOf<string>();
+    expect(summary).toEqual({
+      configured: true,
+      providerLabel: "demo",
+      running: false,
+      lastStartAt: 1,
+      lastStopAt: null,
+      lastError: null,
+      ...probe,
+    });
+  });
+});
 
 describe("resolveAmbientNodeProxyAgent", () => {
   const envKeys = [

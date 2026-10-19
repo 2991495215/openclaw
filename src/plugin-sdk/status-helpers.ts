@@ -6,7 +6,12 @@ import {
   applyChannelAccountState,
   resolveChannelAccountState,
 } from "../channels/status/account-state.js";
+import {
+  buildBaseChannelStatusSummary,
+  buildProbeChannelStatusSummary,
+} from "../channels/status/summary.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+export { buildBaseChannelStatusSummary, buildProbeChannelStatusSummary };
 // Preserve the shipped Plugin SDK name while the implementation stays canonical.
 export { normalizeOptionalString as asString };
 export type { ChannelAccountSnapshot } from "../channels/plugins/types.core.js";
@@ -178,43 +183,6 @@ export function createDefaultChannelRuntimeState<T extends Record<string, unknow
     lastStopAt: null,
     lastError: null,
     ...(extra ?? ({} as T)),
-  };
-}
-
-/** Normalize a channel-level status summary so missing lifecycle fields become explicit nulls. */
-export function buildBaseChannelStatusSummary<TExtra extends StatusSnapshotExtra>(
-  snapshot: {
-    configured?: boolean | null;
-    running?: boolean | null;
-    lastStartAt?: number | null;
-    lastStopAt?: number | null;
-    lastError?: string | null;
-  },
-  extra?: TExtra,
-) {
-  // Channel summaries already consume projected account state; this helper only normalizes nulls.
-  return {
-    configured: snapshot.configured ?? false,
-    ...(extra ?? ({} as TExtra)),
-    running: snapshot.running ?? false,
-    lastStartAt: snapshot.lastStartAt ?? null,
-    lastStopAt: snapshot.lastStopAt ?? null,
-    lastError: snapshot.lastError ?? null,
-  };
-}
-
-/** Extend the base summary with probe fields while preserving stable null defaults. */
-export function buildProbeChannelStatusSummary<TExtra extends Record<string, unknown>>(
-  snapshot: Parameters<typeof buildBaseChannelStatusSummary>[0] & {
-    probe?: unknown;
-    lastProbeAt?: number | null;
-  },
-  extra?: TExtra,
-) {
-  return {
-    ...buildBaseChannelStatusSummary(snapshot, extra),
-    probe: snapshot.probe,
-    lastProbeAt: snapshot.lastProbeAt ?? null,
   };
 }
 
