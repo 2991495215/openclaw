@@ -1,9 +1,9 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
-import {
-  loadSessionEntry,
-  type SessionTranscriptTurnExpectedState,
-  type SessionTranscriptTurnLifecyclePatch,
+import { hasRestartRecoveryTerminalRun } from "../../config/sessions/restart-recovery-state.js";
+import type {
+  SessionTranscriptTurnExpectedState,
+  SessionTranscriptTurnLifecyclePatch,
 } from "../../config/sessions/session-accessor.js";
 import { buildRestartRecoveryExpectedState } from "../../config/sessions/session-transcript-turn-state.js";
 import { appendAssistantMessageToSessionTranscript } from "../../config/sessions/transcript.js";
@@ -17,6 +17,138 @@ import {
   mainSessionRecoveryLog,
   resolveRestartRecoveryTerminalClientRunId,
 } from "./main-session-restart-recovery-shared.js";
+
+/** Retire only the interrupted input; a fresh authenticated turn can use the same session. */
+export async function prepareRequesterRestartRecovery(params: {
+  agentId: string;
+  entry: SessionEntry;
+  observation: MainSessionRecoveryObservation;
+  sessionKey: string;
+  storePath: string;
+  assertCurrent: () => void;
+  gatewayRuntime: GatewayRecoveryRuntime;
+  sourceRunId: string;
+  requesterSessionKey: string;
+}): Promise<
+  | { outcome: "ready"; source: SessionSourceAssertion }
+  | { outcome: "settled" | "changed" | "failed" }
+> {
+  const { entry } = params;
+  const { prepareRequesterSettleWakeRecoverySource } =
+    await import("../subagents/registry/subagent-registry.js");
+  params.assertCurrent();
+  const recovered = await prepareRequesterSettleWakeRecoverySource({
+    runId: params.sourceRunId,
+    requesterSessionKey: params.requesterSessionKey,
+    requesterAgentId: params.agentId,
+    sessionId: entry.sessionId,
+    lifecycleRevision: entry.lifecycleRevision,
+    storePath: params.storePath,
+    gatewayRuntime: params.gatewayRuntime,
+    requesterOperatorSourceMissing: !entry.restartRecoveryOperatorSource || undefined,
+  });
+  params.assertCurrent();
+  if (recovered?.status === "ready") {
+    return { outcome: "ready", source: recovered.source };
+  }
+  return await settleInterruptedRestartRecovery({
+    ...params,
+    reason: recovered?.reason ?? "the original completion cohort is no longer available",
+  });
+}
+
+/** Publish one local interruption notice and retire the exact input without replay or delivery. */
+export async function settleInterruptedRestartRecovery(params: {
+  agentId: string;
+  entry: SessionEntry;
+  observation: MainSessionRecoveryObservation;
+  sessionKey: string;
+  storePath: string;
+  assertCurrent: () => void;
+  reason: string;
+}): Promise<{ outcome: "settled" | "changed" | "failed" }> {
+  const { entry, reason } = params;
+  // Legacy interrupted inputs can lack both run IDs. The recovery cycle still
+  // identifies their settlement; this receipt never authorizes execution.
+  const terminalRunId =
+    entry.restartRecoveryDeliveryRunId ??
+    entry.restartRecoveryDeliverySourceRunId ??
+    `main-session-restart-recovery:${params.observation.cycleId}:interrupted`;
+  const endedAt = Date.now();
+  const capturedReply =
+    entry.pendingFinalDelivery?.kind === "replayable"
+      ? stripInternalMetadataForDisplay(entry.pendingFinalDelivery.text).trim()
+      : undefined;
+  const result = await appendAssistantMessageToSessionTranscript({
+    agentId: params.agentId,
+    sessionKey: params.sessionKey,
+    storePath: params.storePath,
+    expectedSessionId: entry.sessionId,
+    expectedLifecycleRevision: entry.lifecycleRevision ?? null,
+    expectedSessionState: {
+      ...buildRestartRecoveryExpectedState(entry, params.observation),
+      pendingFinalDelivery: entry.pendingFinalDelivery ?? null,
+    },
+    assertCurrent: params.assertCurrent,
+    idempotencyKey: `main-session-restart-recovery:${entry.restartRecoveryDeliverySourceRunId ?? terminalRunId}:interrupted`,
+    text:
+      `This interrupted turn could not resume after the Gateway restarted: ${reason}. ` +
+      "Your session and transcript are preserved. Send a new authenticated message to continue." +
+      (capturedReply ? `\n\nSaved reply (delivery unconfirmed):\n${capturedReply}` : ""),
+    sessionLifecyclePatch: {
+      ...buildMainSessionRecoverySettlementPatch({
+        entry,
+        recordTerminalSource: true,
+        terminalRunId,
+      }),
+      status: "interrupted",
+      pendingFinalDelivery: undefined,
+      lifecycleRunId: undefined,
+      lastRunId: resolveRestartRecoveryTerminalClientRunId(entry) ?? terminalRunId,
+      lastRunError: reason,
+      endedAt,
+      runtimeMs: Math.max(0, endedAt - (entry.startedAt ?? endedAt)),
+      updatedAt: endedAt,
+    },
+  });
+  if (result.ok) {
+    return { outcome: "settled" };
+  }
+  if ("code" in result && result.code === "session-rebound") {
+    return { outcome: "changed" };
+  }
+  mainSessionRecoveryLog.warn(
+    `failed to settle interrupted recovery ${params.sessionKey}: ${result.reason}`,
+  );
+  return { outcome: "failed" };
+}
+
+/** Sender loss retires one input only when no other execution or delivery custody remains. */
+export async function finishDelegatedRestartRecovery(
+  params: Parameters<typeof tombstoneMainRestartRecoveryWithNotice>[0] & {
+    assertCurrent: () => void;
+  },
+): Promise<"notice_failed" | "skipped" | "tombstoned" | "settled"> {
+  const { entry } = params;
+  if (
+    entry.pendingFinalDelivery ||
+    entry.restartRecoveryHarnessCompletion ||
+    (entry.restartRecoveryRuns ?? []).some(
+      (run) =>
+        run.runId !== entry.restartRecoveryDeliveryRunId &&
+        run.runId !== entry.restartRecoveryDeliverySourceRunId &&
+        !hasRestartRecoveryTerminalRun(entry, run.runId),
+    )
+  ) {
+    return await tombstoneMainRestartRecoveryWithNotice(params);
+  }
+  const result = await settleInterruptedRestartRecovery(params);
+  return result.outcome === "failed"
+    ? "notice_failed"
+    : result.outcome === "changed"
+      ? "skipped"
+      : "settled";
+}
 
 function buildTombstonedSessionNotice(reason: string): string {
   return (

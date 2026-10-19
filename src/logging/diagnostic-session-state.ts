@@ -199,6 +199,7 @@ export function getDiagnosticSessionState(ref: SessionRef): SessionState {
   return created;
 }
 
+/** Looks up diagnostic state without creating a new entry. */
 export function peekDiagnosticSessionState(ref: SessionRef): SessionState | undefined {
   const key = resolveSessionKey(ref);
   return (

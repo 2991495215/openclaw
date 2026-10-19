@@ -2,6 +2,7 @@ import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { commitMainSessionRecovery } from "../agents/main-session-recovery/main-session-recovery-store.js";
 import {
+  markOrphanedMainSessionForRecovery,
   markRestartAbortedMainSessions,
   markStartupOrphanedMainSessionsForRecovery,
 } from "../agents/main-session-recovery/main-session-restart-recovery-marking.js";
@@ -58,10 +59,150 @@ afterAll(async () => {
   await state?.cleanup();
 });
 
-it.each(["admission", "queue", "delegated"] as const)(
+it.each([
+  "before planning",
+  "before commit",
+  "user abort",
+  "replacement",
+  "other physical store",
+  "newer run",
+  "reset",
+  "non-main",
+  "completed",
+] as const)("revalidates collected shutdown recovery custody after %s", async (releaseAt) => {
+  const sessionKey = `agent:main:dashboard:released-${releaseAt}`;
+  const sessionId = `released-${releaseAt}`;
+  const runId = `${sessionId}-run`;
+  const target = { storePath, sessionKey };
+  await replaceSessionEntry(target, { sessionId, updatedAt: 1, lifecycleRunId: runId });
+  const resolveGatewayContext = () => undefined;
+  const admission = await beginSessionEffect({
+    scope: storePath,
+    identities: [sessionKey, sessionId],
+    resolveGatewayContext,
+    assertAllowed: () => {},
+  });
+  const registration = registerRecoveryRun({
+    resolveGatewayContext,
+    runId,
+    sessionKey,
+    sessionId,
+    timeoutMs: 60_000,
+  });
+  const releaseClaim = await claimRpcSourceForTest(registration.entry);
+  const shouldMark =
+    releaseAt === "before planning" ||
+    releaseAt === "before commit" ||
+    releaseAt === "other physical store";
+  if (releaseAt !== "user abort") {
+    registration.controller.abort(createAgentRunRestartAbortError());
+  }
+  const release = async () => {
+    releaseClaim();
+    retireSessionControllerInput(registration.entry.input);
+    await registration.entry.input.settlement.promise;
+    registration.cleanup();
+    admission.release();
+    expect(getRpcSource(runId)).toBeUndefined();
+    expect(admission.isActive()).toBe(false);
+  };
+  const apply = sessionAccessor.applySessionEntryReplacements;
+  const replacementSpy = vi.spyOn(sessionAccessor, "applySessionEntryReplacements");
+  if (releaseAt === "before commit") {
+    replacementSpy.mockImplementationOnce((params) =>
+      apply({
+        ...params,
+        update: async (entries) => {
+          const prepared = await params.update(entries);
+          await release();
+          return prepared;
+        },
+      }),
+    );
+  }
+  const harness = createAgentEventTestHarness();
+  let replacement: ReturnType<typeof registerRecoveryRun> | undefined;
+  try {
+    await prepareGatewayRunShutdown({
+      resolveGatewayContext,
+      timeoutMs: 0,
+      warnings: [],
+      getPendingReplyCount: () => 0,
+      chatRunState: harness.chatRunState,
+      agentRunSeq: harness.agentRunSeq,
+      removeChatRun: () => undefined,
+      broadcast: harness.broadcast,
+      nodeSendToSession: harness.nodeSendToSession,
+      markMainSessionsAbortedForRestart: async (params) => {
+        if (releaseAt === "user abort") {
+          registration.controller.abort(createAgentRunDirectAbortError());
+        }
+        if (releaseAt === "completed" && registration.registered) {
+          registration.entry.adapter.projectSessionTerminalPersisted = true;
+        }
+        if (releaseAt !== "before commit") {
+          await release();
+        }
+        if (
+          releaseAt === "replacement" ||
+          releaseAt === "newer run" ||
+          releaseAt === "other physical store"
+        ) {
+          replacement = registerRecoveryRun({
+            resolveGatewayContext,
+            runId: releaseAt === "newer run" ? "newer-run" : runId,
+            sessionKey,
+            sessionId,
+            timeoutMs: 60_000,
+            ...(releaseAt === "other physical store"
+              ? { storePath: state.statePath("other-store", "sessions.json") }
+              : {}),
+          });
+        }
+        if (releaseAt === "newer run" || releaseAt === "reset" || releaseAt === "non-main") {
+          await replaceSessionEntry(target, {
+            sessionId: releaseAt === "reset" ? "reset-session" : sessionId,
+            lifecycleRunId: releaseAt === "newer run" ? "newer-run" : runId,
+            restartRecoveryDeliveryRunId: runId,
+            updatedAt: Date.now(),
+            ...(releaseAt === "non-main" ? { spawnDepth: 1 } : {}),
+          });
+        }
+        await markRestartAbortedMainSessions({ ...params, cfg, stateDir: state.stateDir });
+      },
+    });
+    const saved = loadSessionEntry(target);
+    if (shouldMark) {
+      expect(saved).toMatchObject({
+        status: "interrupted",
+        abortedLastRun: true,
+        mainRestartRecovery: { cycleId: expect.any(String) },
+        restartRecoveryRuns: [{ runId, lifecycleGeneration: getAgentEventLifecycleGeneration() }],
+      });
+    } else {
+      expect(saved?.mainRestartRecovery).toBeUndefined();
+      expect(saved?.abortedLastRun).not.toBe(true);
+    }
+  } finally {
+    replacementSpy.mockRestore();
+    releaseClaim();
+    retireSessionControllerInput(registration.entry.input);
+    registration.cleanup();
+    if (replacement) {
+      retireSessionControllerInput(replacement.entry.input);
+    }
+    replacement?.cleanup();
+    admission.release();
+    await harness.handler.dispose();
+  }
+});
+
+it.each(["admission", "queue", "delegated", "delegated source-only"] as const)(
   "retains %s work through shutdown and gives it one explicit recovery outcome",
   async (kind) => {
-    const sessionKey = `agent:main:dashboard:restart-${kind}`;
+    const delegated = kind === "delegated" || kind === "delegated source-only";
+    const sourceOnly = kind === "delegated source-only";
+    const sessionKey = delegated ? "agent:main:main" : `agent:main:dashboard:restart-${kind}`;
     const sessionId = `restart-${kind}-session`;
     const runId = `restart-${kind}-run`;
     const target = { storePath, sessionKey };
@@ -69,9 +210,12 @@ it.each(["admission", "queue", "delegated"] as const)(
     await replaceSessionEntry(target, {
       sessionId,
       updatedAt: 1_000,
-      restartRecoveryDeliveryRunId: runId,
+      restartRecoveryDeliveryRunId: sourceOnly ? undefined : runId,
       restartRecoveryDeliverySourceRunId: runId,
-      restartRecoverySourceIngress: kind === "delegated" ? "internal" : "control-ui",
+      restartRecoverySourceIngress: sourceOnly ? undefined : delegated ? "internal" : "control-ui",
+      ...(sourceOnly
+        ? { restartRecoveryRuns: [{ runId, lifecycleGeneration: "before-restart" }] }
+        : {}),
     });
     await appendTranscriptMessage(
       { ...target, sessionId },
@@ -80,7 +224,7 @@ it.each(["admission", "queue", "delegated"] as const)(
           role: "user",
           content: "Finish the synthetic task after restart.",
           idempotencyKey: runId,
-          ...(kind === "delegated" ? { provenance: { kind: "inter_session" } } : {}),
+          ...(delegated ? { provenance: { kind: "inter_session" } } : {}),
         },
       },
     );
@@ -165,21 +309,34 @@ it.each(["admission", "queue", "delegated"] as const)(
         });
       await recover();
       await recover();
-      if (kind === "delegated") {
+      if (delegated) {
         expect(gatewayRuntime.dispatchAgent).not.toHaveBeenCalled();
-        expect(loadSessionEntry(target)).toMatchObject({
-          status: "failed",
+        const settled = loadSessionEntry(target);
+        expect(settled).toMatchObject({
+          sessionId,
+          status: "interrupted",
           abortedLastRun: false,
-          mainRestartRecovery: {
-            tombstone: { reason: "delegated recovery sender authority is unavailable" },
-          },
+          restartRecoveryTerminalRunIds: [runId],
         });
+        expect(settled?.mainRestartRecovery).toBeUndefined();
+        expect(settled?.restartRecoveryDeliveryRunId).toBeUndefined();
+        expect(settled?.restartRecoveryRuns).toBeUndefined();
+        expect(settled?.restartRecoveryTerminalDeliveryEvidence).toBeUndefined();
         const transcript = JSON.stringify(await loadTranscriptEvents({ ...target, sessionId }));
         expect(transcript).toContain("delegated recovery sender authority is unavailable");
-        expect(transcript.match(/Resume in new session/g)).toHaveLength(1);
+        expect(transcript.match(/Send a new authenticated message to continue/g)).toHaveLength(1);
         expect(recoveryLog).toHaveBeenCalledWith(
           expect.stringContaining('"reason":"delegated_authority_unavailable"'),
         );
+        rotateAgentEventLifecycleGeneration();
+        expect(
+          await markOrphanedMainSessionForRecovery({ target, expectedSessionId: sessionId, cfg }),
+        ).toEqual({ marked: 0, skipped: 0 });
+        await recover();
+        expect(JSON.stringify(await loadTranscriptEvents({ ...target, sessionId }))).toBe(
+          transcript,
+        );
+        expect(gatewayRuntime.dispatchAgent).not.toHaveBeenCalled();
       } else {
         expect(gatewayRuntime.dispatchAgent).toHaveBeenCalledTimes(1);
         expect(loadSessionEntry(target)).toMatchObject({ status: "done", abortedLastRun: false });
