@@ -1,8 +1,8 @@
 import { posix, win32 } from "node:path";
 import { buildPluginConfigSchema, type OpenClawPluginConfigSchema } from "openclaw/plugin-sdk/core";
 import {
+  createPluginConfigSafeParse,
   formatPluginConfigIssue,
-  mapPluginConfigIssues,
 } from "openclaw/plugin-sdk/extension-shared";
 import { MAX_TIMER_TIMEOUT_SECONDS } from "openclaw/plugin-sdk/number-runtime";
 import { z } from "zod";
@@ -82,21 +82,7 @@ const MxcPluginConfigSchema = z.strictObject({
 
 export function createMxcPluginConfigSchema(): OpenClawPluginConfigSchema {
   return buildPluginConfigSchema(MxcPluginConfigSchema, {
-    safeParse(value) {
-      if (value === undefined) {
-        return { success: true, data: undefined };
-      }
-      const parsed = MxcPluginConfigSchema.safeParse(value);
-      if (parsed.success) {
-        return { success: true, data: parsed.data };
-      }
-      return {
-        success: false,
-        error: {
-          issues: mapPluginConfigIssues(parsed.error.issues),
-        },
-      };
-    },
+    safeParse: createPluginConfigSafeParse(MxcPluginConfigSchema.optional()),
   });
 }
 
