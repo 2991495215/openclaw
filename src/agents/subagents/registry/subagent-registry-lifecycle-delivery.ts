@@ -342,11 +342,7 @@ export const refreshFrozenResultFromSession = async (
   // Reply capture yields while registration can transfer session ownership.
   // Only the exact row and generation that started capture may commit its text.
   assertSubagentRegistryWriteSourceCurrent(stateContext);
-  if (
-    !isCurrent() ||
-    entry.completion?.resultText !== previousResultText ||
-    entry.completion?.capturedAt !== previousCapturedAt
-  ) {
+  if (!isCurrent()) {
     return false;
   }
 

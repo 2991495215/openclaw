@@ -18,13 +18,14 @@ import {
   createSessionEntry,
   type SessionEntryFixture,
 } from "../subagent-test-fixtures.test-helpers.js";
+import { recordStartupRecoveryStoreResult } from "./main-session-restart-recovery-diagnostics.js";
 import {
   makeToolResultMessage,
   makeUserMessage,
 } from "./main-session-restart-recovery-transcript.test-support.js";
 
 /** Reuses the default-main transcript database across recovery cases. */
-function createRestartRecoveryTranscriptFixture() {
+function createRestartRecoveryTranscriptFixture(getStateDir: () => string) {
   let preparedRoot: string | undefined;
   const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
     afterAll(async () => {
@@ -63,6 +64,17 @@ function createRestartRecoveryTranscriptFixture() {
     prepareRoot: (): string =>
       (preparedRoot ??= tempDirs.make("openclaw-recovery-transcript-fixture-")),
     reset: async (stateDir: string): Promise<void> => {
+      for (const fixtureDir of new Set([stateDir, getStateDir()])) {
+        for (const agentId of ["main", "worker"]) {
+          recordStartupRecoveryStoreResult({
+            target: {
+              agentId,
+              storePath: path.join(fixtureDir, "agents", agentId, "sessions", "sessions.json"),
+            },
+            outcome: { ok: true },
+          });
+        }
+      }
       if (stateDir !== preparedRoot) {
         return;
       }
@@ -124,7 +136,7 @@ export function readStore(storePath: string): Record<string, SessionEntry> {
 }
 
 export function createRestartRecoveryStoreFixture(getStateDir: () => string) {
-  const transcriptFixture = createRestartRecoveryTranscriptFixture();
+  const transcriptFixture = createRestartRecoveryTranscriptFixture(getStateDir);
   const { writeTranscript } = transcriptFixture;
   async function makeSessionsDir(agentId = "main"): Promise<string> {
     const sessionsDir = path.join(getStateDir(), "agents", agentId, "sessions");

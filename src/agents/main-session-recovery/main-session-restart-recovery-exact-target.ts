@@ -49,10 +49,7 @@ function matchesExpectedRecoveryTarget(
 export async function prepareExpectedRestartRecoveryCurrent(
   params: ExpectedRecoveryRead,
 ): Promise<{ isCurrent: () => boolean; release: () => void }> {
-  const expected = {
-    ...params.expected,
-    claim: params.expected.claim && { ...params.expected.claim },
-  };
+  const expected = params.expected;
   const target = {
     ...expected,
     storePath: params.storePath,
@@ -114,7 +111,6 @@ export async function loadExpectedRestartRecoveryTarget(
 ): Promise<SessionEntry | undefined> {
   const target = {
     ...params.expected,
-    claim: params.expected.claim && { ...params.expected.claim },
     storePath: params.storePath,
     readConsistency: "latest" as const,
   };
