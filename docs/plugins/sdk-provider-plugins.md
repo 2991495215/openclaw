@@ -554,6 +554,10 @@ MiMo reasoning replay and final-answer handling. Without the flag, a replacement
 stream keeps the existing behavior of taking ownership of those compatibility
 policies. Returning the original stream or no wrapper also preserves them.
 
+`applyOpenAICompletionsToolReasoning` shares the native tools/reasoning wire
+policy with pass-through adapters through that private seam. Callers qualify
+the endpoint and normalize vendor-prefixed model IDs before applying it.
+
 ## Next steps
 
 - [Channel Plugins](/plugins/sdk-channel-plugins) - if your plugin also provides a channel
