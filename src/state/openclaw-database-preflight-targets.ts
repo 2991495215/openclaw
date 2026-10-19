@@ -73,6 +73,7 @@ export function collectAgentDatabasePreflightTargets(options: {
     | readonly AgentTarget[]
     | ((registered: readonly AgentTarget[]) => readonly AgentTarget[]);
   configuredAgentDatabaseCandidatePaths?: readonly string[];
+  inspectHeldAgentDatabaseTargets?: readonly AgentTarget[];
   inspectCandidateOwners: boolean;
   onAgentDatabaseDiscovery?: (prepared: PreparedAgentDatabaseMigrationDiscovery) => void;
 }) {
