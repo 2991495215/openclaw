@@ -10,7 +10,7 @@ import {
 } from "@solidjs/signals";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ValueSignal } from "../board/provider-signals.ts";
-import { projectSource } from "./projection.ts";
+import { projectCallbackOwner, projectSource } from "./projection.ts";
 
 const disposals: Array<() => void> = [];
 afterEach(() => {
@@ -53,6 +53,40 @@ function source<T>(value: T, equality: "revision" | ((a: T, b: T) => boolean) = 
 }
 
 describe("owner projections", () => {
+  it("adapts a private callback owner across shared observation and disposal", () => {
+    const { owner, view } = projectCallbackOwner(
+      (notify) => ({
+        value: 1,
+        set(value: number) {
+          this.value = value;
+          notify();
+        },
+      }),
+      (current) => current.value,
+    );
+    disposals.push(view.dispose);
+    owner.set(2);
+    expect(view.read()).toBe(2);
+    const first = observe(view.read);
+    const second = observe(view.read);
+    owner.set(3);
+    expect(view.read()).toBe(3);
+    flush();
+    expect(first.values).toEqual([2, 3]);
+    expect(second.values).toEqual([2, 3]);
+    first.dispose();
+    second.dispose();
+    flush();
+    owner.set(4);
+    const reconnected = observe(view.read);
+    expect(reconnected.values).toEqual([4]);
+    view.dispose();
+    owner.set(5);
+    flush();
+    expect(view.read()).toBe(4);
+    expect(reconnected.values).toEqual([4]);
+  });
+
   it.each([
     { name: "pending", probe: isPending },
     { name: "latest", probe: latest },
