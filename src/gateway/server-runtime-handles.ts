@@ -47,7 +47,6 @@ export type GatewayServerMutableState = {
   configReloader: GatewayConfigReloaderHandle;
   reconcileAuditPolicy: ((config: OpenClawConfig) => void) | null;
   agentUnsub: (() => Promise<void> | void) | null;
-  heartbeatUnsub: (() => void) | null;
   transcriptUnsub: (() => void) | null;
   lifecycleUnsub: (() => void) | null;
 };
@@ -75,7 +74,6 @@ export function createGatewayServerMutableState(): GatewayServerMutableState {
     },
     reconcileAuditPolicy: null,
     agentUnsub: null,
-    heartbeatUnsub: null,
     transcriptUnsub: null,
     lifecycleUnsub: null,
   };

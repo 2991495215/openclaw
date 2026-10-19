@@ -58,7 +58,7 @@ export function subscribeGatewayWorkerPlacementMetadataChanges(params: {
     WorkerSessionPlacementStore,
     "readChangeSnapshot" | "readProjection" | "registerTurnClaimClosedHandler"
   >;
-  environments: Pick<WorkerEnvironmentService, "subscribeMachineShapeChanged">;
+  environments: Pick<WorkerEnvironmentService, "machineShapeNotifications">;
   runnerAvailability: WorkerPlacementRunnerAvailabilityReader;
   getSessionChangeContext?: () => Parameters<typeof emitSessionsChanged>[0] | undefined;
   warn: (message: string) => void;
@@ -158,10 +158,10 @@ export function subscribeGatewayWorkerPlacementMetadataChanges(params: {
       }
     });
   };
-  const unsubscribe = params.environments.subscribeMachineShapeChanged((profileId) => {
+  params.environments.machineShapeNotifications.onChanged = (profileId) => {
     profiles.add(profileId);
     schedule();
-  });
+  };
   const unsubscribeClaims = params.placements.registerTurnClaimClosedHandler((claim) => {
     if (stopped) {
       return;
@@ -182,7 +182,7 @@ export function subscribeGatewayWorkerPlacementMetadataChanges(params: {
       profiles.clear();
       nodes.clear();
       closedClaims.clear();
-      unsubscribe();
+      params.environments.machineShapeNotifications.onChanged = () => {};
       unsubscribeClaims();
       await pending;
     },

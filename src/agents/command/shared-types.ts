@@ -215,3 +215,11 @@ export type AgentRunLifecycle = Pick<
   /** Mark explicit one-shot local CLI runs so plugin tools can release resources promptly. */
   oneShotCliRun?: boolean;
 };
+
+export type AgentRunExecutionContext = AgentRunClientContext &
+  AgentRunMessageContext &
+  AgentRunChannelContext &
+  AgentRunModelOptions &
+  AgentRunInputContext &
+  AgentRunTranscriptContext &
+  AgentRunLifecycle;

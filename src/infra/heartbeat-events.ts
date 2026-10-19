@@ -1,7 +1,7 @@
 // Deprecated v4 projection of ordinary automation outcomes; no execution state lives here.
 import type { CronEvent } from "../cron/service/state.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
-import { notifyListeners, registerListener } from "../shared/listeners.js";
+import { notifyListeners } from "../shared/listeners.js";
 
 type HeartbeatIndicatorType = "ok" | "alert" | "error";
 
@@ -30,15 +30,17 @@ export type HeartbeatEventPayload = {
 
 type HeartbeatEventState = {
   lastHeartbeat: HeartbeatEventPayload | null;
-  listeners: Set<(evt: HeartbeatEventPayload) => void>;
+  notifications: { onEvent: (evt: HeartbeatEventPayload) => void };
 };
 
 const HEARTBEAT_EVENT_STATE_KEY = Symbol.for("openclaw.heartbeatEvents.state");
 
 const state = resolveGlobalSingleton<HeartbeatEventState>(HEARTBEAT_EVENT_STATE_KEY, () => ({
   lastHeartbeat: null,
-  listeners: new Set<(evt: HeartbeatEventPayload) => void>(),
+  notifications: { onEvent: () => {} },
 }));
+
+export const heartbeatNotifications = state.notifications;
 
 export function emitHeartbeatEvent(evt: Omit<HeartbeatEventPayload, "ts">) {
   const enriched: HeartbeatEventPayload = {
@@ -51,7 +53,7 @@ export function emitHeartbeatEvent(evt: Omit<HeartbeatEventPayload, "ts">) {
         : {}),
   };
   state.lastHeartbeat = enriched;
-  notifyListeners(state.listeners, enriched);
+  notifyListeners([state.notifications.onEvent], enriched);
 }
 
 /** Called only for receipt-owned converted/default jobs after canonical settlement. */
@@ -86,15 +88,11 @@ export function emitLegacyHeartbeatCronOutcome(evt: CronEvent): void {
   });
 }
 
-export function onHeartbeatEvent(listener: (evt: HeartbeatEventPayload) => void): () => void {
-  return registerListener(state.listeners, listener);
-}
-
 export function getLastHeartbeatEvent(): HeartbeatEventPayload | null {
   return state.lastHeartbeat;
 }
 
 export function resetHeartbeatEventsForTest(): void {
   state.lastHeartbeat = null;
-  state.listeners.clear();
+  state.notifications.onEvent = () => {};
 }
