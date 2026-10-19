@@ -5,7 +5,6 @@ import {
 } from "@openclaw/gateway-protocol/frame-guards";
 import { asRecord } from "@openclaw/normalization-core/record-coerce";
 import { resolveSleepDelayMs, RetrySupervisor, sleepWithAbort } from "@openclaw/retry";
-import { GatewayEventListeners } from "./event-listeners.js";
 import { GatewayPendingRequests, type GatewayProtocolRequestTiming } from "./pending-request.js";
 import type {
   CloseSnapshot,
@@ -45,7 +44,7 @@ export type {
 export class GatewayProtocolClient<TPlan> {
   private socket: GatewayProtocolSocket | null = null;
   private readonly requests: GatewayPendingRequests;
-  private readonly listeners = new GatewayEventListeners<EventFrame>();
+  private readonly listeners = new Map<(event: EventFrame) => void, object>();
   private stopped = true;
   private generation = 0;
   private connectionAbort: AbortController | null = null;
@@ -148,7 +147,13 @@ export class GatewayProtocolClient<TPlan> {
   }
 
   addEventListener(listener: (event: EventFrame) => void): () => void {
-    return this.listeners.add(listener);
+    const subscription = this.listeners.get(listener) ?? {};
+    this.listeners.set(listener, subscription);
+    return () => {
+      if (this.listeners.get(listener) === subscription) {
+        this.listeners.delete(listener);
+      }
+    };
   }
 
   closeSocket(code?: number, reason?: string): void {
@@ -506,7 +511,7 @@ export class GatewayProtocolClient<TPlan> {
     event: EventFrame,
   ): void {
     // Snapshot before callbacks so replacement listeners cannot inherit a retired event.
-    const listeners = this.listeners.snapshot();
+    const listeners = [...this.listeners];
     if (
       event.event === "gateway.suspension" &&
       typeof event.payload === "object" &&
@@ -525,7 +530,7 @@ export class GatewayProtocolClient<TPlan> {
       if (!this.isActive(socket, generation) || this.connectionAbort?.signal.aborted) {
         return;
       }
-      if (this.listeners.isCurrent(listener, subscription)) {
+      if (this.listeners.get(listener) === subscription) {
         this.invoke("event listener", () => listener(event));
       }
     }
