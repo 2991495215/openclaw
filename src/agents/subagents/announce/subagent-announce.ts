@@ -258,60 +258,53 @@ async function runSubagentAnnounceFlowBound(
 
     let childCompletionFindings: string | undefined;
     let childCompletionRows: Parameters<typeof readChildCompletionFindings>[0] | undefined;
-    let subagentRegistryRuntime:
-      | Awaited<ReturnType<typeof loadSubagentRegistryRuntime>>
-      | undefined;
-    try {
-      subagentRegistryRuntime = await loadSubagentRegistryRuntime();
-      if (
-        params.completionTarget !== "parent" &&
-        requesterDepth >= 1 &&
-        (await shouldIgnorePostCompletionAnnounceForSession(
-          targetRequesterSessionKey,
-          targetRequesterAgentId,
-        ))
-      ) {
-        return "delivered";
-      }
+    const subagentRegistryRuntime = await loadSubagentRegistryRuntime();
+    if (
+      params.completionTarget !== "parent" &&
+      requesterDepth >= 1 &&
+      (await shouldIgnorePostCompletionAnnounceForSession(
+        targetRequesterSessionKey,
+        targetRequesterAgentId,
+      ))
+    ) {
+      return "delivered";
+    }
 
-      const childSessionCurrent = await prepareChildSessionEffects();
-      const pendingChildDescendantRuns =
-        !childSessionCurrent || !childSessionEffectsAllowed()
-          ? 0
-          : Math.max(
-              0,
-              await countPendingDescendantRuns(params.childSessionKey, () => {
-                if (!childSessionEffectsAllowed()) {
-                  throw new Error("Subagent child-session effects are no longer current.");
-                }
-              }),
-            );
-      if (pendingChildDescendantRuns > 0) {
-        shouldDeleteChildSession = false;
-        return "retryable";
-      }
-
-      if (
-        childSessionCurrent &&
-        childSessionEffectsAllowed() &&
-        params.wakeOnDescendantSettle === true
-      ) {
-        const directChildren = listSubagentRunsForRequester(params.childSessionKey, {
-          requesterRunId: params.childRunId,
-        });
-        if (directChildren.length > 0) {
-          childCompletionRows = dedupeLatestChildCompletionRows(
-            filterCurrentDirectChildCompletionRows(directChildren, {
-              requesterSessionKey: params.childSessionKey,
-              getLatestSubagentRunByChildSessionKey: buildLatestSubagentSessionListReadIndex(
-                directChildren.map((entry) => entry.childSessionKey),
-              ).getLatestSubagentRun,
+    const canInspectChildSession = await prepareChildSessionEffects();
+    const pendingChildDescendantRuns =
+      !canInspectChildSession || !childSessionEffectsAllowed()
+        ? 0
+        : Math.max(
+            0,
+            await countPendingDescendantRuns(params.childSessionKey, () => {
+              if (!childSessionEffectsAllowed()) {
+                throw new Error("Subagent child-session effects are no longer current.");
+              }
             }),
           );
-        }
+    if (pendingChildDescendantRuns > 0) {
+      shouldDeleteChildSession = false;
+      return "retryable";
+    }
+
+    if (
+      canInspectChildSession &&
+      childSessionEffectsAllowed() &&
+      params.wakeOnDescendantSettle === true
+    ) {
+      const directChildren = listSubagentRunsForRequester(params.childSessionKey, {
+        requesterRunId: params.childRunId,
+      });
+      if (directChildren.length > 0) {
+        childCompletionRows = dedupeLatestChildCompletionRows(
+          filterCurrentDirectChildCompletionRows(directChildren, {
+            requesterSessionKey: params.childSessionKey,
+            getLatestSubagentRunByChildSessionKey: buildLatestSubagentSessionListReadIndex(
+              directChildren.map((entry) => entry.childSessionKey),
+            ).getLatestSubagentRun,
+          }),
+        );
       }
-    } catch {
-      // Best-effort only.
     }
 
     if (
@@ -329,11 +322,7 @@ async function runSubagentAnnounceFlowBound(
       childRunId: params.childRunId,
     });
 
-    if (
-      params.wakeOnDescendantSettle === true &&
-      childCompletionFindings?.trim() &&
-      subagentRegistryRuntime
-    ) {
+    if (params.wakeOnDescendantSettle === true && childCompletionFindings?.trim()) {
       const woke = await runDescendantWake({
         runId: params.childRunId,
         childSessionKey: params.childSessionKey,

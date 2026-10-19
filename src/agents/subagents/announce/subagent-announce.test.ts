@@ -506,6 +506,31 @@ describe("subagent announce seam flow", () => {
     },
   );
 
+  it("defers announcement and deletion when descendant inspection fails", async () => {
+    const error = new Error("descendant registry unavailable");
+    subagentRegistryRuntimeMock.countPendingDescendantRuns.mockImplementationOnce(() => {
+      throw error;
+    });
+    const onDeliveryResult = vi.fn();
+
+    expect(
+      await runAnnounceFlow({
+        roundOneReply: "finished result",
+        expectsCompletionMessage: true,
+        cleanup: "delete",
+        onDeliveryResult,
+      }),
+    ).toBe("retryable");
+    expect(onDeliveryResult).toHaveBeenCalledExactlyOnceWith({
+      delivered: false,
+      path: "none",
+      error: error.message,
+      disposition: "retryable",
+    });
+    expect(agentSpy).not.toHaveBeenCalled();
+    expect(sessionsDeleteSpy).not.toHaveBeenCalled();
+  });
+
   it("does not replace a confirmed delivery when its receipt callback throws", async () => {
     const onDeliveryResult = vi
       .fn()
