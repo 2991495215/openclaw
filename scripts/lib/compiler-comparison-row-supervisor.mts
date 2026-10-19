@@ -11,6 +11,10 @@ const command: unknown = JSON.parse(process.argv[2] ?? "null");
 assert(
   Array.isArray(command) && command.length > 0 && command.every((arg) => typeof arg === "string"),
 );
+// A nested tmpfs can inherit the mount point's mode; admit only our private owner.
+const scratchStat = fs.statSync("/work/.artifacts");
+const scratch = { uid: scratchStat.uid, gid: scratchStat.gid, mode: scratchStat.mode & 0o7777 };
+assert.deepEqual(scratch, { uid: process.getuid!(), gid: process.getgid!(), mode: 0o700 });
 for (const directory of ["tsgo-cache", "row-metrics", "dist-artifacts.lock"]) {
   fs.mkdirSync(`/work/.artifacts/${directory}`);
 }
@@ -20,7 +24,7 @@ const waitForHost = async (name: string) => {
   }
   assert.equal(fs.readFileSync(`/row-control/${name}`, "utf8"), name);
 };
-console.log("[compiler-row:ready]");
+console.log(`[compiler-row:ready] ${JSON.stringify(scratch)}`);
 await waitForHost("start");
 const startedAt = new Date().toISOString();
 const executable = command[0];

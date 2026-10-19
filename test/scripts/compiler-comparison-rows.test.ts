@@ -132,6 +132,7 @@ function receipt(row: CompilerRow, compiler: RowCompiler = "pinned"): CompilerRo
       .join(""),
     stderr: "",
     observation: {
+      scratch: { uid: 1000, gid: 1000, mode: 0o700 },
       before: structuredClone(state),
       after: structuredClone(state),
       beforeFiles: { mount, generated, cache: [], metrics: [], totalBytes: 0 },
@@ -275,6 +276,7 @@ function artifact() {
     runtime: {
       nodeVersion: "v24.16.0",
       pnpmVersion: "12.11.1",
+      user: { uid: 1000, gid: 1000 },
       files: runtimeFiles,
       manifestSha256: hash(JSON.stringify(runtimeFiles)),
     },
@@ -381,25 +383,36 @@ describe("canonical wrapper admission", () => {
     },
   );
 
-  it.each(["docker", "pid", "generated", "missing-isolation", "forged-isolation"])(
-    "rejects altered %s proof",
-    (kind) => {
-      const fixture = artifact();
-      if (kind === "docker")
-        fixture.receipts[0]!.observation.after!.identity.containerId = "0".repeat(64);
-      if (kind === "pid") fixture.receipts[0]!.observation.after!.identity.pid += 1;
-      if (kind === "generated")
-        fixture.receipts[0]!.observation.files!.generated = [
-          { ...generated[0]!, sha256: "0".repeat(64) },
-          ...generated.slice(1),
-        ];
-      if (kind === "missing-isolation") delete fixture.smokes[0]!.isolation;
-      if (kind === "forged-isolation") fixture.smokes[0]!.isolation!.writable[0]!.bytes *= 2;
-      fixture.write("row-receipts.json", fixture.receipts);
-      fixture.write("row-smokes.json", fixture.smokes);
-      expect(() => auditCompilerRows(fixture.directory)).toThrow();
-    },
-  );
+  it.each([
+    "docker",
+    "pid",
+    "generated",
+    "missing-isolation",
+    "forged-isolation",
+    "missing-scratch",
+    "scratch-uid",
+    "scratch-gid",
+    "scratch-mode",
+  ])("rejects altered %s proof", (kind) => {
+    const fixture = artifact();
+    if (kind === "docker")
+      fixture.receipts[0]!.observation.after!.identity.containerId = "0".repeat(64);
+    if (kind === "pid") fixture.receipts[0]!.observation.after!.identity.pid += 1;
+    if (kind === "generated")
+      fixture.receipts[0]!.observation.files!.generated = [
+        { ...generated[0]!, sha256: "0".repeat(64) },
+        ...generated.slice(1),
+      ];
+    if (kind === "missing-isolation") delete fixture.smokes[0]!.isolation;
+    if (kind === "forged-isolation") fixture.smokes[0]!.isolation!.writable[0]!.bytes *= 2;
+    if (kind === "missing-scratch") delete fixture.receipts[0]!.observation.scratch;
+    if (kind === "scratch-uid") fixture.receipts[0]!.observation.scratch!.uid += 1;
+    if (kind === "scratch-gid") fixture.receipts[0]!.observation.scratch!.gid += 1;
+    if (kind === "scratch-mode") fixture.receipts[0]!.observation.scratch!.mode = 0o777;
+    fixture.write("row-receipts.json", fixture.receipts);
+    fixture.write("row-smokes.json", fixture.smokes);
+    expect(() => auditCompilerRows(fixture.directory)).toThrow();
+  });
 
   it("retains a candidate diagnostic mismatch and never starts the next row", async () => {
     const row = compilerRowPlan()[0]!;

@@ -131,6 +131,7 @@ export function prepareCompilerRowRuntime(root: string, destination: string) {
   return {
     nodeVersion: process.version,
     pnpmVersion: "12.11.1",
+    user: { uid: process.getuid!(), gid: process.getgid!() },
     archives: archives.map(([name, sha512]) => ({ name, sha512 })),
     files,
     manifestSha256: digest(JSON.stringify(files)),
@@ -324,6 +325,7 @@ type RowFinish = {
   finishedAt: string;
 };
 export type CompilerRowObservation = {
+  scratch?: { uid: number; gid: number; mode: number };
   before?: RowCgroupSnapshot;
   after?: RowCgroupSnapshot;
   beforeFiles?: CompilerRowFiles;
@@ -454,8 +456,14 @@ export function compilerRowController({
               }
               const line = pending.slice(0, end);
               pending = pending.slice(end + 1);
-              if (line === "[compiler-row:ready]") {
+              if (line.startsWith("[compiler-row:ready] ")) {
                 assert.equal(phase, "ready", "Duplicate row start barrier");
+                observation.scratch = JSON.parse(line.slice("[compiler-row:ready] ".length));
+                assert.deepEqual(observation.scratch, {
+                  uid: process.getuid!(),
+                  gid: process.getgid!(),
+                  mode: 0o700,
+                });
                 freeze(true);
                 fs.writeFileSync(path.join(controlDirectory, "start"), "start", { flag: "wx" });
                 phase = "running";
@@ -536,8 +544,12 @@ export function auditCompilerRowReceipt(
   libraryNames: string[],
   generated: CompilerRowFile[],
 ) {
-  const { before, after, beforeFiles, files, finish } = receipt.observation;
+  const { before, after, beforeFiles, files, finish, scratch } = receipt.observation;
   assert(before && after && beforeFiles && files && finish, "Incomplete row lifecycle evidence");
+  assert(scratch, "Missing row scratch ownership");
+  assert(Number.isSafeInteger(scratch.uid) && scratch.uid > 0);
+  assert(Number.isSafeInteger(scratch.gid) && scratch.gid >= 0);
+  assert.equal(scratch.mode, 0o700, "Row scratch is not owner-only");
   assertCompilerRowCgroup(before, after, COMPILER_ROW_LIMITS.memoryBytes, cpuSet);
   assertCompilerRowTerminal(receipt, finish.exitCode);
   assert.equal(finish.signal, null);
@@ -747,6 +759,7 @@ export function auditCompilerRows(directory: string) {
     runtime: {
       nodeVersion: string;
       pnpmVersion: string;
+      user: { uid: number; gid: number };
       files: { name: string; sha256: string }[];
       manifestSha256: string;
     };
@@ -778,6 +791,8 @@ export function auditCompilerRows(directory: string) {
   });
   assert.equal(metadata.runtime.nodeVersion, "v24.16.0");
   assert.equal(metadata.runtime.pnpmVersion, "12.11.1");
+  assert(Number.isSafeInteger(metadata.runtime.user.uid) && metadata.runtime.user.uid > 0);
+  assert(Number.isSafeInteger(metadata.runtime.user.gid) && metadata.runtime.user.gid >= 0);
   assert.equal(digest(JSON.stringify(metadata.runtime.files)), metadata.runtime.manifestSha256);
   assert.equal(
     new Set(metadata.runtime.files.map((entry) => entry.name)).size,
@@ -854,6 +869,11 @@ export function auditCompilerRows(directory: string) {
   );
   for (const smoke of smokes) {
     assert.equal(smoke.cleanupVerified, true);
+    assert.deepEqual(
+      smoke.observation.scratch,
+      { ...metadata.runtime.user, mode: 0o700 },
+      "Missing or changed row scratch ownership",
+    );
     if (smoke.row === "deadline" || smoke.row === "descendant") {
       assert(smoke.infrastructureError || smoke.processSignal);
       assert.equal(smoke.observation.after, undefined);
@@ -941,6 +961,11 @@ export function auditCompilerRows(directory: string) {
     for (const receipt of pair) {
       recordedChecking += receipt.observation.files?.metrics.length ?? 0;
       try {
+        assert.deepEqual(
+          receipt.observation.scratch,
+          { ...metadata.runtime.user, mode: 0o700 },
+          "Missing or changed row scratch ownership",
+        );
         results.push(
           auditCompilerRowReceipt(
             row,

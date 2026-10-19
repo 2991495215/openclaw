@@ -479,7 +479,10 @@ async function main() {
       }
     }
     if (rowTrial) {
-      args.push("--tmpfs", "/work/.artifacts:rw,nosuid,nodev,size=256m");
+      args.push(
+        "--tmpfs",
+        `/work/.artifacts:rw,nosuid,nodev,size=256m,mode=0700,uid=${process.getuid()},gid=${process.getgid()}`,
+      );
       mount(path.join(rowSetup.workload, ".artifacts/kysely"), "/work/.artifacts/kysely");
       for (const dependency of rowSetup.dependencies) {
         mount(dependency.source, dependency.destination);
