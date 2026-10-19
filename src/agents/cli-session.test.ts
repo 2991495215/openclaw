@@ -308,11 +308,7 @@ describe("cli-session helpers", () => {
         ...current,
         promptToolNamesHash: "prompt-tools-b",
       }),
-    ).toEqual({
-      mode: "reuse-with-drift",
-      sessionId: "cli-session-1",
-      drift: { reasons: ["prompt-tools"] },
-    });
+    ).toEqual({ mode: "invalidate", invalidatedReason: "prompt-tools" });
     expect(
       resolveCliSessionReuse({
         ...current,
@@ -320,6 +316,21 @@ describe("cli-session helpers", () => {
       }),
     ).toEqual({ mode: "invalidate", invalidatedReason: "mcp" });
   });
+
+  it.each(["prompt-a", "prompt-b"])(
+    "invalidates tool catalog drift with a stable MCP topology and system prompt %s",
+    (extraSystemPromptHash) => {
+      const reuse = reuseBinding({
+        sessionId: "cli-session-1",
+        ...fingerprint,
+        promptToolNamesHash: "tools-without-exec",
+      });
+
+      expect(
+        reuse({ ...fingerprint, extraSystemPromptHash, promptToolNamesHash: "tools-with-exec" }),
+      ).toEqual(invalidated("prompt-tools"));
+    },
+  );
 
   it("validates a forked binding against the child's account before resuming it", () => {
     const forked = forkCliSessionBindings(

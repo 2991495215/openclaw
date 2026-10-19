@@ -804,7 +804,7 @@ describe("runCliAgent spawn path", () => {
     await expectPathMissing(systemPromptPath);
   });
 
-  it("resends system prompts through a file for soft-resumed prompt-tool drift", async () => {
+  it("resends system prompts through a file for soft-resumed system-prompt drift", async () => {
     const writeSoftResumeSystemPromptFile = vi.fn(async () => ({
       filePath: "/tmp/openclaw-soft-resume-system-prompt.md",
       cleanup: async () => {},
@@ -829,7 +829,7 @@ describe("runCliAgent spawn path", () => {
     context.reusableCliSession = {
       mode: "reuse-with-drift",
       sessionId: "soft-cli-session",
-      drift: { reasons: ["prompt-tools"] },
+      drift: { reasons: ["system-prompt"] },
     };
 
     await executePreparedCliRun(context, "soft-cli-session");
