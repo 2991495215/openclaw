@@ -586,9 +586,10 @@ it.for(completionRoutingCases)(
               expect(outcome.delivered).toBe(false);
             }
           } else if (testCase.reply === "failed") {
-            expect(send, JSON.stringify({ sent, outcome })).toHaveBeenCalledTimes(
-              testCase.actionableFailure ? 1 : 0,
-            );
+            expect(send, JSON.stringify({ sent, outcome })).toHaveBeenCalledTimes(1);
+            expect(send.mock.calls[0]?.[0].payload.isError).toBe(true);
+            expect(outcome).toMatchObject({ delivered: true, deliveryAttempted: true });
+            expect(JSON.stringify(sent)).not.toContain("opaque-private-runner-detail");
             if (testCase.actionableFailure) {
               expect(send.mock.calls[0]?.[0].payload).toMatchObject({
                 isError: true,
@@ -597,7 +598,8 @@ it.for(completionRoutingCases)(
               expect(sent[0]).toContain("openclaw configure");
               expect(sent[0]).not.toContain(actionableFailureText);
               expect(sent[0]).not.toContain("Synthetic terminal model failure");
-              expect(outcome.delivered).toBe(true);
+            } else {
+              expect(sent[0]).toContain("OpenClaw couldn't finish this request");
             }
           } else if (testCase.reply === "tool-warning") {
             expect(sent).toEqual([buildPayloads({ lastToolError: toolError })[0]?.text]);
