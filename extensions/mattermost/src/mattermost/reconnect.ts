@@ -29,7 +29,8 @@ export async function runWithReconnect(
     if (!failed) {
       retryDelay = 2000;
     }
-    const delayMs = withJitter(retryDelay);
+    const spread = retryDelay * 0.2;
+    const delayMs = Math.round(retryDelay - spread + Math.random() * spread * 2);
     if (!failed && opts.reconnectAfterClose === false) {
       return;
     }
@@ -45,10 +46,4 @@ export async function runWithReconnect(
       retryDelay = Math.min(retryDelay * 2, 60_000);
     }
   }
-}
-
-function withJitter(baseMs: number): number {
-  const normalized = Math.max(0, Math.min(1, Math.random()));
-  const spread = baseMs * 0.2;
-  return Math.max(1, Math.round(baseMs - spread + normalized * spread * 2));
 }
