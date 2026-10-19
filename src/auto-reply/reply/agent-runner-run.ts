@@ -33,6 +33,7 @@ import {
   captureReplyOperationSessionReader,
   getReplyOperationSessionReader,
 } from "../../sessions/session-controller.session-reader.js";
+import { isExplicitFollowupCommandTurn } from "../command-turn-context.js";
 import { markReplyPayloadForSourceSuppressionDelivery } from "../reply-payload.js";
 import type { ReplyPayload } from "../types.js";
 import {
@@ -47,6 +48,7 @@ import {
   executePreparedReplyAgentRun,
   prependCompactionNotices,
 } from "./agent-runner-execute.js";
+import { hasReplySteeringRequesterMismatch } from "./agent-runner-fallback-authority.js";
 import { createShouldEmitToolOutput, createShouldEmitToolResult } from "./agent-runner-helpers.js";
 import {
   prepareReplyRunOptions,
@@ -54,7 +56,7 @@ import {
 } from "./agent-runner-presentation.js";
 import { runReplyQuestionInput } from "./agent-runner-question-input.js";
 import { createReplyAgentRestartRecoveryController } from "./agent-runner-restart-recovery.js";
-import { commitQueuedReplySessionActivity } from "./agent-runner-session-activity.js";
+import { touchQueuedReplySessionActivity } from "./agent-runner-session-activity.js";
 import { runActiveReplySteer } from "./agent-runner-steer-adoption.js";
 import type { CompactionNoticePhase } from "./compaction-notice.js";
 import { createFollowupRunner } from "./followup-runner.js";
@@ -65,6 +67,7 @@ import {
   enqueueFollowupRun,
   scheduleFollowupDrain,
 } from "./queue.js";
+import { refuseCollaborativeSteering } from "./queue/lifecycle.js";
 import { bindReplyOperationQueueDisposition, resolveFollowupAbortSignal } from "./queue/types.js";
 import { prepareReplyAgentTurn } from "./reply-agent-turn-preparation.js";
 import * as replyRunState from "./reply-operation-run-state.js";
@@ -147,6 +150,11 @@ export async function runReplyAgent(
         },
         cfg: followupRun.run.config,
       }));
+    const explicitFollowup = isExplicitFollowupCommandTurn(sessionCtx);
+    if (explicitFollowup) {
+      followupRun.disableCollectBatching = true;
+    }
+    const replyOperationRunState = replyRunState.resolveReplyOperationRunState(opts);
     const { runOptions: runOpts, hasVisiblePartialReply } = prepareReplyRunOptions({
       opts,
       runId: controllerInput.protocolRunId ?? runId,
@@ -157,7 +165,6 @@ export async function runReplyAgent(
           "reply:partial_delivered",
         ),
     });
-    const replyOperationRunState = replyRunState.resolveReplyOperationRunState(opts);
     if (replyOperationRunState && isRequiredReplyExpectation(replyExpectation)) {
       // Preparation has not transferred the accepted input into an executable turn yet.
       replyOperationRunState.continueStalledTurn = () => false;
@@ -239,16 +246,25 @@ export async function runReplyAgent(
     }
 
     const effectiveShouldSteer = !resetTriggered && shouldSteer;
-    const effectiveShouldFollowup = !resetTriggered && shouldFollowup;
+    const isActiveSteer = effectiveShouldSteer && isActive;
     const messageInjectionDisposition = opts?.messageInjectionDisposition ?? "none";
     const activeReplyOperation = controllerInput.mailbox.owner.active;
-    // A source-only reservation still owns completion, but is not a steering target.
-    const shouldQueueProvidedSteer =
-      effectiveShouldSteer &&
-      isActive &&
-      messageInjectionDisposition === "none" &&
-      !activeReplyOperation &&
-      Boolean(providedReplyOperation);
+    const steeringRequesterMismatch =
+      isActiveSteer && hasReplySteeringRequesterMismatch(followupRun, activeReplyOperation);
+    if (messageInjectionDisposition === "collaborative-steering-disabled") {
+      try {
+        await refuseCollaborativeSteering(followupRun, replyOperationRunState);
+      } finally {
+        typing.cleanup();
+      }
+      return undefined;
+    }
+    // A rejected or vanished target leaves input with the follow-up queue,
+    // independently of whether the incoming requester could collaborate.
+    const shouldQueueUnavailableSteer =
+      isActiveSteer &&
+      (messageInjectionDisposition === "rejected" ||
+        (messageInjectionDisposition === "none" && !activeReplyOperation));
     const typingSignals = createTypingSignaler({
       typing,
       mode: typingMode,
@@ -266,16 +282,21 @@ export async function runReplyAgent(
       activeSourceTurnId,
     );
     const shouldQueueTerminalReceiptSteer =
-      effectiveShouldSteer &&
-      isActive &&
+      isActiveSteer &&
       messageInjectionDisposition === "none" &&
       terminalDeliveryBlockReason !== undefined;
 
-    const questionInput = await runReplyQuestionInput(params);
+    // Direct question creators can attest their caller before publishing a reply operation.
+    const questionInput: Awaited<ReturnType<typeof runReplyQuestionInput>> =
+      steeringRequesterMismatch && activeReplyOperation
+        ? { handled: false }
+        : await runReplyQuestionInput(params);
     if (questionInput.handled) {
       typing.cleanup();
       return questionInput.payload;
     }
+
+    const questionRequesterMismatch = questionInput.requesterMismatch === true;
 
     const toolResultOptions = {
       getVerboseLevel: () =>
@@ -284,47 +305,19 @@ export async function runReplyAgent(
       resolvedVerboseLevel,
       verboseLevelOverride: followupRun.run.verboseLevelOverride,
     };
-    const baseShouldEmitToolResult = createShouldEmitToolResult(toolResultOptions);
-    const channelProgressCanConsumeToolResults =
-      Boolean(opts?.forceToolResultProgress) && Boolean(opts?.onToolResult);
-    const shouldEmitToolResult = () =>
-      channelProgressCanConsumeToolResults || baseShouldEmitToolResult();
-    const shouldEmitToolOutput = createShouldEmitToolOutput(toolResultOptions);
-
-    const pendingToolTasks = new Set<Promise<void>>();
+    const shouldEmitToolResult =
+      opts?.forceToolResultProgress && opts.onToolResult
+        ? () => true
+        : createShouldEmitToolResult(toolResultOptions);
     const blockReplyTimeoutMs = opts?.blockReplyTimeoutMs ?? BLOCK_REPLY_SEND_TIMEOUT_MS;
-    const touchActiveSessionEntry = async () => {
-      if (
-        opts?.internalEventExecution ||
-        !activeSessionEntry ||
-        !activeSessionStore ||
-        !sessionKey
-      ) {
-        return;
-      }
-      const activityStore = activeSessionStore;
-      // Keep the in-memory snapshot aligned with the pending-reset write boundary.
-      const updatedAt = activeSessionEntry.updatedAt === 0 ? 0 : Date.now();
-      if (storePath) {
-        await commitQueuedReplySessionActivity({
-          target: { agentId: followupRun.run.agentId, storePath, sessionKey },
-          expected: activeSessionEntry,
-          updatedAt,
-          assertCurrent: () => {
-            followupRun.operatorAuthority?.assertCurrent();
-          },
-          onCommittedEntry: (entry) => {
-            activeSessionEntry = entry;
-            if (activeSessionEntry) {
-              activityStore[sessionKey] = activeSessionEntry;
-            }
-          },
-        });
-      } else {
-        activeSessionEntry.updatedAt = updatedAt;
-        activityStore[sessionKey] = activeSessionEntry;
-      }
-    };
+    const touchActiveSessionEntry = () =>
+      touchQueuedReplySessionActivity(
+        { ...params, sessionStore: activeSessionStore },
+        activeSessionEntry,
+        (entry) => {
+          activeSessionEntry = entry;
+        },
+      );
 
     const queuedRunFollowupTurn = createFollowupRunner({
       resolveGatewayContext,
@@ -348,9 +341,9 @@ export async function runReplyAgent(
     }
 
     if (
-      effectiveShouldSteer &&
-      isActive &&
-      !shouldQueueProvidedSteer &&
+      isActiveSteer &&
+      !shouldQueueUnavailableSteer &&
+      !questionRequesterMismatch &&
       !shouldQueueTerminalReceiptSteer &&
       messageInjectionDisposition === "none"
     ) {
@@ -378,8 +371,8 @@ export async function runReplyAgent(
     const activeRunQueueAction = resolveActiveRunQueueAction({
       hasQueuedFollowups,
       interrupt: resolvedQueue.mode === "interrupt",
-      isActive,
-      shouldFollowup: effectiveShouldFollowup || shouldQueueProvidedSteer,
+      isActive: isActive || questionRequesterMismatch,
+      shouldFollowup: shouldFollowup || shouldQueueUnavailableSteer || questionRequesterMismatch,
       resetTriggered,
     });
     if (activeRunQueueAction === "enqueue-followup") {
@@ -392,11 +385,15 @@ export async function runReplyAgent(
         queuedRunFollowupTurn,
         false,
       );
-      if (shouldQueueTerminalReceiptSteer || shouldQueueProvidedSteer) {
+      if (shouldQueueTerminalReceiptSteer || shouldQueueUnavailableSteer) {
         diagnosticLogger.warn("steering rejected; applying follow-up policy", {
           reason: shouldQueueTerminalReceiptSteer
             ? terminalDeliveryBlockReason
-            : "source-operation-pending",
+            : messageInjectionDisposition === "rejected"
+              ? "runtime_rejected"
+              : providedReplyOperation
+                ? "source-operation-pending"
+                : "reply-owner-ended",
           disposition: enqueued
             ? "followup-queued"
             : replyOperationRunState?.admission?.status === "skipped" &&
@@ -415,9 +412,13 @@ export async function runReplyAgent(
         typing.cleanup();
         return undefined;
       }
-      if (replyOperationRunState) {
-        replyOperationRunState.admission = { status: "accepted", mode: "followup" };
-      }
+      replyRunState.recordReplyFollowupAdmission(replyOperationRunState, {
+        explicitFollowup,
+        requesterMismatch: questionRequesterMismatch,
+        unavailableSteer:
+          effectiveShouldSteer && (isActive || messageInjectionDisposition === "rejected"),
+        followupRun,
+      });
       // The queue must stay dormant while the active owner can still collect
       // messages. Registering after enqueue closes the owner-clear race.
       const queuedOperationOwner =
@@ -643,7 +644,7 @@ export async function runReplyAgent(
           onCompactionNoticePayload: (payload) => {
             pendingCompactionNotices.push(payload);
           },
-          pendingToolTasks,
+          pendingToolTasks: new Set<Promise<void>>(),
           replyMediaContext,
           replyOperation,
           replyRouteThreadId,
@@ -655,7 +656,7 @@ export async function runReplyAgent(
           setRunFollowupTurn: (runner) => {
             runFollowupTurn = runner;
           },
-          shouldEmitToolOutput,
+          shouldEmitToolOutput: createShouldEmitToolOutput(toolResultOptions),
           shouldEmitToolResult,
           traceAgentPhase,
           typingSignals,

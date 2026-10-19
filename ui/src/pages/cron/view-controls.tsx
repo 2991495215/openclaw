@@ -52,7 +52,7 @@ export function JobMenu(props: CronProps & { job: CronJob }) {
                 id: "run-if-due",
                 label: t("cron.actions.runIfDue"),
                 class: "cron-job-menu__item",
-                disabled: props.busy || !props.canManage,
+                disabled: props.busy || !props.connected || !props.canManage,
               },
             ]),
         {
@@ -66,11 +66,11 @@ export function JobMenu(props: CronProps & { job: CronJob }) {
           label: t("cron.actions.remove"),
           class: "cron-job-menu__item danger",
           variant: "danger" as const,
-          disabled: props.busy || !props.canManage,
+          disabled: props.busy || !props.connected || !props.canManage,
         },
       ]}
       onSelect={(item) => {
-        if (!props.canManage) {
+        if (!props.canManage || (!props.connected && item.id !== "clone")) {
           return;
         }
         switch (item.id) {
@@ -107,7 +107,7 @@ export function EnabledSwitch(
     >
       <SettingsToggle
         checked={props.job.enabled}
-        disabled={props.busy || !props.canManage}
+        disabled={props.busy || !props.connected || !props.canManage}
         ariaLabel={props.compact ? actionLabel() : stateLabel()}
         onChange={(checked) => {
           if (props.canManage) {

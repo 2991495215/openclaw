@@ -57,7 +57,7 @@ describe("createAgentCommandLifecycle", () => {
   it.each(["recovered", "later-failure", "preparation-failure"] as const)(
     "selects command terminal facts after %s without an observed native start",
     async (outcome) => {
-      emitAgentEvent.mockClear();
+      recordedAgentEvent.mockClear();
       const state: AgentAttemptLifecycleState = {
         currentTurnUserMessagePersisted: true,
         lifecycleFinishing: false,
@@ -66,7 +66,7 @@ describe("createAgentCommandLifecycle", () => {
       const callbacks = createAgentAttemptLifecycleCallbacks(state);
       const lifecycle = createAgentCommandLifecycle({
         runId: "recovered-command",
-        lifecycleGeneration: () => "generation",
+        lifecycleGeneration: getAgentEventLifecycleGeneration,
         startedAt: 100,
         state,
       });
@@ -120,8 +120,8 @@ describe("createAgentCommandLifecycle", () => {
       lifecycle.emitEnd(terminal);
       expect(state.currentTurnUserMessagePersisted).toBe(true);
       expect(state.lifecycleEnded).toBe(true);
-      expect(emitAgentEvent).toHaveBeenCalledOnce();
-      const event = emitAgentEvent.mock.calls[0]?.[0];
+      expect(recordedAgentEvent).toHaveBeenCalledOnce();
+      const event = recordedAgentEvent.mock.calls[0]?.[0];
       assert.isDefined(event);
       const data = event.data;
       expect(data).toMatchObject({
@@ -200,6 +200,7 @@ describe("createAgentCommandLifecycle", () => {
     });
 
     const event = recordedAgentEvent.mock.calls[0]?.[0];
+    assert.isDefined(event, "Expected the lifecycle owner to emit an event");
     expect(event.data.error).toMatch(/installation may have changed.*gateway restart/i);
     expect(JSON.stringify(event)).not.toContain(missingChunk);
     expect(JSON.stringify(event)).not.toContain(importingChunk);
@@ -292,6 +293,7 @@ describe("createAgentCommandLifecycle", () => {
         }),
       );
       const event = recordedAgentEvent.mock.calls[0]?.[0];
+      assert.isDefined(event, "Expected the lifecycle owner to emit an event");
       if (phase === "finishing") {
         expect(event.data).not.toHaveProperty("executionSettled");
       }
@@ -343,7 +345,7 @@ describe("createAgentCommandLifecycle", () => {
   });
 
   it("replaces a provisional overflow with the final compaction failure", async () => {
-    emitAgentEvent.mockClear();
+    recordedAgentEvent.mockClear();
     const state: AgentAttemptLifecycleState = {
       currentTurnUserMessagePersisted: true,
       lifecycleFinishing: false,
@@ -360,7 +362,7 @@ describe("createAgentCommandLifecycle", () => {
     });
     const lifecycle = createAgentCommandLifecycle({
       runId: "compaction-recovery-owner",
-      lifecycleGeneration: () => "test-generation",
+      lifecycleGeneration: getAgentEventLifecycleGeneration,
       startedAt: 100,
       state,
     });
@@ -381,16 +383,16 @@ describe("createAgentCommandLifecycle", () => {
     expect(lifecycle.resolveResultError(result, false)).toBe(text);
     expect(lifecycle.resolveTerminalError(result, false, terminal)).toBe(text);
     lifecycle.emitResultError(result, false, terminal);
-    expect(emitAgentEvent).toHaveBeenCalledExactlyOnceWith(
+    expect(recordedAgentEvent).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         data: expect.objectContaining({ phase: "error", error: text, executionSettled: true }),
       }),
     );
-    expect(emitAgentEvent.mock.calls[0]?.[0].data).not.toHaveProperty("errorObservation");
+    expect(recordedAgentEvent.mock.calls[0]?.[0].data).not.toHaveProperty("errorObservation");
   });
 
   it("preserves overflow observations for overflow-shaped compaction failures", async () => {
-    emitAgentEvent.mockClear();
+    recordedAgentEvent.mockClear();
     const observation = {
       failoverReason: "context_overflow" as const,
       provider: "test-provider",
@@ -411,7 +413,7 @@ describe("createAgentCommandLifecycle", () => {
     });
     const lifecycle = createAgentCommandLifecycle({
       runId: "overflow-shaped-compaction-owner",
-      lifecycleGeneration: () => "test-generation",
+      lifecycleGeneration: getAgentEventLifecycleGeneration,
       startedAt: 100,
       state,
     });
@@ -432,7 +434,7 @@ describe("createAgentCommandLifecycle", () => {
 
     lifecycle.emitResultError(result, false, terminal);
 
-    expect(emitAgentEvent).toHaveBeenCalledExactlyOnceWith(
+    expect(recordedAgentEvent).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         data: expect.objectContaining({
           phase: "error",
@@ -489,6 +491,7 @@ describe("createAgentCommandLifecycle", () => {
     }
 
     const event = recordedAgentEvent.mock.calls[0]?.[0];
+    assert.isDefined(event, "Expected the lifecycle owner to emit an event");
     expect(event.data.error).toContain("The provider failed.");
     expect(event.data.error).toContain("Authorization: Bearer");
     expect(JSON.stringify(event)).not.toContain(secret);
@@ -536,6 +539,7 @@ describe("createAgentCommandLifecycle", () => {
 
       expect(recordedAgentEvent).toHaveBeenCalledOnce();
       const event = recordedAgentEvent.mock.calls[0]?.[0];
+      assert.isDefined(event, "Expected the lifecycle owner to emit an event");
       expect(event.data.error).toContain(error.message);
       expect(event.data.error).toContain("an earlier request timed out and was aborted");
       if (kind === "timeout") {
@@ -568,6 +572,7 @@ describe("createAgentCommandLifecycle", () => {
     lifecycle.emitBasicError(error);
 
     const event = recordedAgentEvent.mock.calls[0]?.[0];
+    assert.isDefined(event, "Expected the lifecycle owner to emit an event");
     expect(event.data.error).toContain(
       renderFailoverCodeUserCopy("selected_auth_profile_unavailable"),
     );
@@ -644,6 +649,7 @@ describe("createAgentCommandLifecycle", () => {
     });
 
     const event = recordedAgentEvent.mock.calls[0]?.[0];
+    assert.isDefined(event, "Expected the lifecycle owner to emit an event");
     expect(event.data).toMatchObject({
       phase: "error",
       error: "delivery failed",
@@ -689,6 +695,7 @@ describe("createAgentCommandLifecycle", () => {
     lifecycle.emitResultError({ payloads: [], meta: { durationMs: 0 } }, false, terminal);
 
     const event = recordedAgentEvent.mock.calls[0]?.[0];
+    assert.isDefined(event, "Expected the lifecycle owner to emit an event");
     expect(event.data).toMatchObject({ phase: "error", aborted: false, stopReason: "error" });
     expect(JSON.stringify(event)).not.toContain(secret);
     for (const field of [

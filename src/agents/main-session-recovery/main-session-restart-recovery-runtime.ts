@@ -345,6 +345,37 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
     isAgentEventLifecycleGenerationCurrent(lifecycleGeneration);
   const startupRecoveryCutoffMs = Date.now();
   const startupCheckedStorePaths = params.startupCheckedStorePaths ?? new Set<string>();
+  const pendingOwners = new Map<string, Promise<void>>();
+  let run = Promise.resolve();
+  const retainPendingOwner = (
+    target: MainSessionRecoveryStoreTarget & { sessionId: string },
+    settled: Promise<void>,
+  ) => {
+    const key = JSON.stringify([target.storePath, target.sessionKey, target.sessionId]);
+    if (pendingOwners.has(key)) {
+      return;
+    }
+    // A restored event may own admission without ever starting execution. Revisit
+    // its skipped orphan after release, under the same startup cutoff and guards.
+    const resume = () => {
+      if (!shouldContinue()) {
+        return;
+      }
+      run = run.then(async () => {
+        pendingOwners.delete(key);
+        if (!shouldContinue()) {
+          return;
+        }
+        startupCheckedStorePaths.delete(restartRecoveryStoreTargetKey(target));
+        await runRecovery(target.agentId ? new Set([target.agentId]) : undefined);
+      });
+    };
+    const pending = Promise.race([settled, waitForAbortSignal(abortController.signal)]).then(
+      resume,
+      resume,
+    );
+    pendingOwners.set(key, pending);
+  };
   // Only candidates observed by this startup can wake on later preparation commits.
   type PendingPreparation = {
     target: ExhaustedRestartRecoveryTarget;
@@ -384,6 +415,7 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
           stateDir: params.stateDir,
           startupCheckedStorePaths,
           updatedBeforeMs: startupRecoveryCutoffMs,
+          onOwnerPending: retainPendingOwner,
         });
         const result = await recoverRestartAbortedMainSessions({
           cfg,
@@ -573,7 +605,7 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
       pending.queued = false;
     }
   };
-  let run = Promise.resolve().then(async () => {
+  run = run.then(async () => {
     await runRecovery();
     // The scan can precede a preparation commit. Recheck its captured candidates once.
     const pending: PendingPreparation[] = [];
@@ -639,6 +671,8 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
       // Restart recovery belongs to its startup generation; stale timers must
       // never claim a session after that gateway begins draining.
       abortController.abort();
+      await Promise.all(pendingOwners.values());
+      pendingOwners.clear();
       await run;
     },
   };

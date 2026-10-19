@@ -153,6 +153,7 @@ export async function prepareEmbeddedAttemptPromptAssembly(input: {
     activeProjectKeys: [...(attempt.preparedModelRuntime?.activeProjectKeys ?? [])],
     modelProviderId: attempt.model.provider,
     modelId: attempt.model.id,
+    contextTokenBudget: attempt.contextTokenBudget ?? attempt.model.contextWindow,
     inputProvenance: attempt.inputProvenance,
   };
   const promptBuildMessages = input.activeSession.messages;

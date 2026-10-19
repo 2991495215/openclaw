@@ -118,7 +118,7 @@ function DetailHeader(
               type="button"
               class="btn btn--sm"
               data-test-id="cron-run-now"
-              disabled={props.busy}
+              disabled={props.busy || !props.connected}
               onClick={() => {
                 const job = props.selectedJob;
                 if (job) {

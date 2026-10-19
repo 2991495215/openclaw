@@ -34,6 +34,12 @@ const { resolveAgentDir } = await import("./isolated-agent/run.runtime.js");
 const session = await vi.importActual<typeof import("./isolated-agent/session.js")>(
   "./isolated-agent/session.js",
 );
+const patchSession = expectDefined(sessionMutationHandlers["sessions.patch"], "sessions.patch");
+const replacementSession = "replacement-session";
+const agentResult = () => ({
+  payloads: [{ text: "Synthetic request settled" }],
+  meta: { agentMeta: {} },
+});
 installRequesterCronAuthorityTestHooks();
 beforeEach(() => {
   resetRunCronIsolatedAgentTurnHarness();
@@ -100,13 +106,8 @@ it.each([false, true])(
         expectedSessionId: expectDefined(target.sessionId, "archive incarnation"),
         archived: true,
       };
-      // Synthetic model decision; the native archive handler and its exact-ID
-      // precondition are real. No GitHub lookup or merge is performed.
       archiveRequest = Promise.resolve(
-        expectDefined(
-          sessionMutationHandlers["sessions.patch"],
-          "sessions.patch",
-        )({
+        patchSession({
           req: { type: "req", id: "recipe-archive", method: "sessions.patch", params: patch },
           params: patch,
           respond,
@@ -119,18 +120,16 @@ it.each([false, true])(
       if (!replaced) {
         await releaseCore.promise;
       }
-      return { payloads: [{ text: "Synthetic archive request settled" }], meta: { agentMeta: {} } };
+      return agentResult();
     });
     try {
       if (replaced) {
-        await fixture.seed("replacement-session");
+        await fixture.seed(replacementSession);
       }
       await fixture.execution.update(fixture.selected.id, { enabled: true });
       const event = await fixture.tick();
       releaseArchiveEffects.resolve();
-      // Successful archive disables bound jobs through the native cleanup owner,
-      // cancelling this occurrence after the archive commits. A scheduler
-      // cancellation is not evidence that the archive failed.
+      // Archive commits before cancellation settles the occurrence and RPC.
       expect(event).toMatchObject({
         jobId: fixture.selected.id,
         ...(replaced
@@ -138,7 +137,6 @@ it.each([false, true])(
           : { status: "error", error: "Cron job disabled by operator." }),
       });
       expect(runEmbeddedAgentMock).toHaveBeenCalledOnce();
-      // Cancellation settles the cron occurrence before the archive RPC completes.
       await expectDefined(archiveRequest, "archive request");
       const stored = accessor.loadSessionEntry({ agentId: "main", sessionKey: SESSION });
       if (replaced) {
@@ -147,21 +145,18 @@ it.each([false, true])(
           undefined,
           expect.objectContaining({ details: { reason: "session-changed" } }),
         );
-        expect(stored).toMatchObject({ sessionId: "replacement-session" });
+        expect(stored).toMatchObject({ sessionId: replacementSession });
         expect(stored?.archivedAt).toBeUndefined();
       } else {
         expect(respond).toHaveBeenCalledWith(true, expect.anything(), undefined);
         expect(stored).toMatchObject({ sessionId: SESSION_ID, archivedAt: expect.any(Number) });
         const stopped = vi.fn();
         const teardown = fixture.stop().then(stopped);
-        try {
-          // Keep the core held across a worker round-trip before checking teardown.
-          expect((await fixture.creator.read()).every((job) => !job.enabled)).toBe(true);
-          expect(stopped).not.toHaveBeenCalled();
-        } finally {
-          releaseCore.resolve();
-          await teardown;
-        }
+        // Keep the core held across a worker round-trip before checking teardown.
+        expect((await fixture.creator.read()).every((job) => !job.enabled)).toBe(true);
+        expect(stopped).not.toHaveBeenCalled();
+        releaseCore.resolve();
+        await teardown;
         expect(stopped).toHaveBeenCalledOnce();
       }
     } finally {

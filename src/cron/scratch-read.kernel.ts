@@ -1,6 +1,6 @@
 import { executeSqliteQuerySync } from "../infra/kysely-sync.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
-import { runSqliteDeferredTransactionSync } from "../infra/sqlite-transaction.js";
+import { runSqliteReadSnapshotSync } from "../infra/sqlite-transaction.js";
 import { resolveCronJobConfigRevision } from "./config-revision.js";
 import type {
   CronJobScratchState,
@@ -52,7 +52,7 @@ export function readCronScratchSnapshotInDatabase(
   db: EngineConnection,
   command: CronScratchReadCommand,
 ): CronScratchSnapshot | undefined {
-  return runSqliteDeferredTransactionSync(db, () => {
+  return runSqliteReadSnapshotSync(db, () => {
     // Missing creation metadata keeps the original projection's clock fallback;
     // every actual persisted definition value still comes from this snapshot.
     const job = loadedCronStoreFromRows(

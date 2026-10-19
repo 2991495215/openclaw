@@ -105,7 +105,10 @@ describe("cron failure alert outcome write-back", () => {
       } else {
         expect(settlement).toMatchObject({
           status: "rejected",
-          reason: new Error(CRON_AGENT_SELECTION_REQUIRED_MESSAGE),
+          reason: expect.objectContaining({
+            code: "AGENT_SELECTION_REQUIRED",
+            message: CRON_AGENT_SELECTION_REQUIRED_MESSAGE,
+          }),
         });
         expect(state.deps.enqueueSessionEvent).not.toHaveBeenCalled();
       }

@@ -3,7 +3,7 @@ import type { SessionEventTarget } from "../../auto-reply/reply/session-event-co
 import { formatErrorMessage } from "../../infra/errors.js";
 import { isSubagentSessionKey, normalizeOptionalAgentId } from "../../routing/session-key.js";
 import { isCronJobActive } from "../active-jobs.js";
-import { CRON_AGENT_SELECTION_REQUIRED_MESSAGE } from "../agent-id.js";
+import { CronAgentSelectionRequiredError } from "../agent-id.js";
 import { resolveCronJobConfigRevision } from "../config-revision.js";
 import type { CronServiceContract } from "../service-contract.js";
 import type { CronJob } from "../types.js";
@@ -72,7 +72,7 @@ export async function enqueueCronNotification(
   const { sessionKey } = owner;
   const agentId = owner.agentId ?? normalizeOptionalAgentId(routing.defaultAgentId);
   if (!agentId) {
-    throw new Error(CRON_AGENT_SELECTION_REQUIRED_MESSAGE);
+    throw new CronAgentSelectionRequiredError();
   }
   const deliveryContext =
     sessionKey || (kind === "auto-disabled" && agentId)
