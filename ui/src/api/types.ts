@@ -141,6 +141,8 @@ export type SessionsListResult = SessionsListResultBase<
 export type SessionsPatchResult = SessionsPatchResultBase<{
   sessionId: string;
   label?: GatewaySessionRow["label"];
+  icon?: GatewaySessionRow["icon"];
+  color?: GatewaySessionRow["color"];
   category?: GatewaySessionRow["category"];
   updatedAt?: number;
   createdAt?: number;
