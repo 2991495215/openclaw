@@ -345,6 +345,7 @@ export function buildGatewayCronService(params: {
     }
   };
   const cron = new CronService({
+    env,
     onProvisionedJobsReloaded: async () => {
       await Promise.all([reconcileExitWatchers(), reconcileStreamWatchers()]);
     },
@@ -1090,9 +1091,7 @@ export function buildGatewayCronService(params: {
       logger: cronLogger,
     });
   };
-  cron.stopAndDrain = async () => {
-    await stopAndDrainCron();
-  };
+  cron.stopAndDrain = () => stopAndDrainCron();
   const pauseScheduling = cron.pauseScheduling.bind(cron);
   const resumeScheduling = cron.resumeScheduling.bind(cron);
   cron.pauseScheduling = () => {

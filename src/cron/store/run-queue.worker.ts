@@ -13,6 +13,10 @@ import type { OpenClawStateDatabase } from "../../state/openclaw-state-db-contra
 import { runOpenClawStateWriteTransaction } from "../../state/openclaw-state-db.js";
 import { tryResolveCronJobEffectiveAgentId } from "../agent-id.js";
 import { resolveCronJobConfigRevision } from "../config-revision.js";
+import {
+  isProactiveJobMigrationPending,
+  readDefaultProactiveJobReceiptInDatabase,
+} from "../proactive-job-receipt.kernel.js";
 import { CRON_ADMISSION_DEFERRED_RECEIPT_ERROR } from "../service/admission-deferred.js";
 import { isJobEnabled, recomputeJobNextRunAtMs } from "../service/jobs-scheduling.js";
 import { retainManualOneShotOccurrence } from "../service/one-shot-schedule.js";
@@ -361,6 +365,7 @@ function drainCronQueueInDatabase(
     });
   const result: CronRunQueueOperations["cron.drainQueue"]["output"] = {
     launches: [],
+    preparing: [],
     skipped: cancelled,
   };
   for (const receipt of queued) {
@@ -411,6 +416,11 @@ function drainCronQueueInDatabase(
       );
       continue;
     }
+    if (input.preparingAgentIds?.includes(agentId)) {
+      // Keep durable custody without spending capacity while the host awaits admission.
+      result.preparing.push({ job, runReceipt: { ...handle, agentId } });
+      continue;
+    }
     if (
       (input.schedulingPaused && context.mode === "scheduled") ||
       activeCount >= Math.max(1, input.maxConcurrentRuns)
@@ -418,6 +428,10 @@ function drainCronQueueInDatabase(
       continue;
     }
     // Payload edits take effect while queued; active runs keep this committed snapshot.
+    const migrationPending = isProactiveJobMigrationPending(
+      readDefaultProactiveJobReceiptInDatabase(db, input.storeKey, agentId),
+      job.id,
+    );
     const currentHandle = {
       ...handle,
       ownerPid: process.pid,
@@ -440,7 +454,7 @@ function drainCronQueueInDatabase(
     job.state.runningReceiptId = runReceipt.receiptId;
     delete job.state.runningScheduleChangeId;
     updateCronRuntimeRow(db, input.storeKey, job);
-    result.launches.push({ job, runReceipt });
+    result.launches.push({ job, runReceipt, migrationPending });
     activeCount += 1;
   }
   return result;
@@ -452,7 +466,7 @@ export function requestAndDrainCronRunsInWorker(
   input: CronRunQueueOperations["cron.requestRuns"]["input"],
   queue: Pick<
     CronRunQueueOperations["cron.drainQueue"]["input"],
-    "requests" | "maxConcurrentRuns" | "schedulingPaused"
+    "requests" | "maxConcurrentRuns" | "schedulingPaused" | "preparingAgentIds"
   >,
   jobs: Map<string, CronJob>,
 ): CronRunQueueOperations["cron.requestRuns"]["output"] &

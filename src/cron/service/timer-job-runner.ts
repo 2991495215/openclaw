@@ -45,6 +45,7 @@ import { resolveDeliveryState } from "./timer-trigger.js";
 
 type CronRunTimeout = { timeoutMs: number; reason: string };
 type CronCoreRunOptions = {
+  migrationPending?: boolean;
   idleAdmission?: CronIdleAdmissionSource;
   runId?: string;
   activeJobMarker?: CronActiveJobMarker;
@@ -386,6 +387,7 @@ async function executeJobCoreWithTimeoutUnfinalized(
     const trackExecution = !watchdog || deferTimeoutUntilExecutionStart;
     const executionIdentity = opts?.executionIdentity;
     const coreOptions: ExecuteJobCoreOptions = {
+      migrationPending: opts?.migrationPending,
       idleAdmission: opts?.idleAdmission,
       deliveryAttemptFence,
       activeJobMarker: opts?.activeJobMarker,

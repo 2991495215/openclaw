@@ -4,6 +4,7 @@ import { isCronWithinActiveHours } from "../active-hours.js";
 import { isCronActiveJobMarkerCurrent } from "../active-jobs.js";
 import { resolveCronJobEffectiveAgentId, tryResolveCronJobEffectiveAgentId } from "../agent-id.js";
 import { readDefaultProactiveJobReceiptsAsync } from "../proactive-job-receipt.js";
+import { isProactiveJobMigrationPending } from "../proactive-job-receipt.kernel.js";
 import { resolveCronRunAdmissionSource } from "../run-authority.js";
 import { createCronRunDiagnosticsFromError } from "../run-diagnostics.js";
 import { resolveCronToolsAllowExecTargetRecoveryError } from "../scheduled-tool-policy.js";
@@ -94,19 +95,17 @@ export async function executeJobCore(
       ? state.deps.resolveDefaultAgentId()
       : state.deps.defaultAgentId,
   );
-  if (agentId) {
+  let migrationPending = options?.migrationPending;
+  if (migrationPending === undefined && agentId) {
     const receipts = await readDefaultProactiveJobReceiptsAsync(state.deps.storePath, [agentId]);
     assertCurrent();
-    const receipt = receipts[agentId];
-    if (
-      receipt?.phase === "pending" &&
-      (receipt.jobId === job.id || receipt.convertedJobIds?.includes(job.id))
-    ) {
-      return {
-        status: "error",
-        error: "Automation migration is incomplete; run openclaw doctor --fix",
-      };
-    }
+    migrationPending = isProactiveJobMigrationPending(receipts[agentId], job.id);
+  }
+  if (migrationPending) {
+    return {
+      status: "error",
+      error: "Automation migration is incomplete; run openclaw doctor --fix",
+    };
   }
   if (
     !isCronWithinActiveHours(

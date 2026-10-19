@@ -7,6 +7,17 @@ import { readConfigMachineStateRowInDatabase } from "../state/config-machine-sta
 import type { DefaultProactiveJobReceipt } from "./proactive-job-receipt.types.js";
 import { cronStoreKey } from "./store/key.js";
 export type { DefaultProactiveJobReceipt } from "./proactive-job-receipt.types.js";
+
+export function isProactiveJobMigrationPending(
+  receipt: DefaultProactiveJobReceipt | undefined,
+  jobId: string,
+): boolean {
+  return (
+    receipt?.phase === "pending" &&
+    (receipt.jobId === jobId || receipt.convertedJobIds?.includes(jobId) === true)
+  );
+}
+
 const DefaultProactiveJobReceiptSchema = z
   .object({
     jobId: z.string().min(1),
