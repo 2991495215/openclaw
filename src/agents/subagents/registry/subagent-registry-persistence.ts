@@ -52,6 +52,7 @@ import type { SubagentRegistryWrite } from "./subagent-registry.store.types.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import {
   bindSubagentRunRuntimeKey,
+  copySubagentRunRuntimeOwner,
   getSubagentRunRuntimeKey,
   getSubagentRunIdentity,
   isQueuedSubagentRunRekey,
@@ -317,7 +318,12 @@ async function commitRows<T>(
   authority: SubagentRegistryWriteAuthority,
   runs: ReadonlyMap<string, SubagentRunRecord>,
 ): Promise<SubagentRunMutationReceipt<T>> {
-  const postimages = planned.postimages ?? new Map<string, SubagentRunRecord | null>();
+  const postimages = new Map(
+    [...(planned.postimages ?? [])].map(
+      ([runId, row]) =>
+        [runId, row ? copySubagentRunRuntimeOwner(row, structuredClone(row)) : null] as const,
+    ),
+  );
   const values = [...postimages.values()].flatMap((row) => {
     if (!row) {
       return [];
