@@ -13,6 +13,7 @@ import {
   getDiagnosticSessionActivitySnapshot,
   resolveRunStaleThresholdMs,
 } from "../../logging/diagnostic-run-activity.js";
+import { logSessionStateChange } from "../../logging/diagnostic-runtime.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
 import type { SessionWorkAdmissionLease } from "../../sessions/session-lifecycle-admission.js";
 import { createDeferredCore } from "../../shared/deferred.js";
@@ -700,6 +701,13 @@ export function clearReplyRunState(operation: ReplyOperation): void {
       replyRunState.waitKeysBySessionId.delete(waitingSessionId);
     }
   }
+  logSessionStateChange({
+    sessionKey,
+    sessionId,
+    state: "idle",
+    reason: "reply_operation_ended",
+    consumeQueuedTurn: false,
+  });
   notifyGatewayWorkMetricsChanged();
   notifyReplyRunEnded(sessionKey);
 }
