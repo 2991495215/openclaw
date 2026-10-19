@@ -2186,6 +2186,8 @@ extension OpenClawSnapshotUITests {
         }
 
         let app = XCUIApplication()
+        app.launchEnvironment["OPENCLAW_IOS_LIVE_GATEWAY"] =
+            ProcessInfo.processInfo.environment["OPENCLAW_IOS_LIVE_GATEWAY"]
         addUIInterruptionMonitor(withDescription: "Local network access") { alert in
             guard alert.buttons["Allow"].exists else { return false }
             alert.buttons["Allow"].tap()
@@ -2223,6 +2225,8 @@ extension OpenClawSnapshotUITests {
     {
         self.terminateCurrentApp()
         let app = XCUIApplication()
+        app.launchEnvironment["OPENCLAW_IOS_LIVE_GATEWAY"] =
+            ProcessInfo.processInfo.environment["OPENCLAW_IOS_LIVE_GATEWAY"]
         app.launchArguments += [
             "--openclaw-initial-tab",
             initialTab,

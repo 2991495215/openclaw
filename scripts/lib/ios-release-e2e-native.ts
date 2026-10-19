@@ -24,6 +24,7 @@ import {
 } from "../ios-release-e2e.js";
 import {
   collectGatewayProcessDiagnostics,
+  summarizeChatDeliveryLogs,
   summarizeGatewayLanes,
   summarizeGatewayLogs,
 } from "./ios-release-e2e-diagnostics.js";
@@ -448,6 +449,36 @@ export async function createNativeDependencies(options: {
             }
           };
           const requestLog = path.join(root, `requests-${index}.jsonl`);
+          const readAppDiagnostics = async () => {
+            const bundleID = await command(
+              "app-diagnostics",
+              "/usr/bin/plutil",
+              [
+                "-extract",
+                "CFBundleIdentifier",
+                "raw",
+                "-o",
+                "-",
+                path.join(
+                  derivedDataPath,
+                  "Build/Products/Debug-iphonesimulator/OpenClaw.app/Info.plist",
+                ),
+              ],
+              { timeoutMs: 5_000 },
+            );
+            const container = await command(
+              "app-diagnostics",
+              "xcrun",
+              ["simctl", "get_app_container", udid!, bundleID, "data"],
+              { timeoutMs: 5_000 },
+            );
+            const text = await readFile(
+              path.join(container, "Library/Caches/openclaw-gateway.log"),
+              "utf8",
+            );
+            fixtureEvidence.chatDelivery = summarizeChatDeliveryLogs(text);
+            return text;
+          };
           const captureSetupDiagnostics = async (stage: string, sample = false) => {
             const active = instance;
             const child = active?.child;
@@ -819,6 +850,7 @@ export async function createNativeDependencies(options: {
               const fixture = instance;
               if (test === IOS_RELEASE_TESTS[0]) {
                 requireLiveFixture();
+                await captureSetupDiagnostics("before-native-test");
               }
               try {
                 await command(
@@ -873,34 +905,8 @@ export async function createNativeDependencies(options: {
                                 timeoutMs: 5_000,
                                 signal: options.signal,
                               }),
-                              (async () => {
-                                const bundleID = await command(
-                                  "app-diagnostics",
-                                  "/usr/bin/plutil",
-                                  [
-                                    "-extract",
-                                    "CFBundleIdentifier",
-                                    "raw",
-                                    "-o",
-                                    "-",
-                                    path.join(
-                                      derivedDataPath,
-                                      "Build/Products/Debug-iphonesimulator/OpenClaw.app/Info.plist",
-                                    ),
-                                  ],
-                                  { timeoutMs: 5_000 },
-                                );
-                                const container = await command(
-                                  "app-diagnostics",
-                                  "xcrun",
-                                  ["simctl", "get_app_container", udid!, bundleID, "data"],
-                                  { timeoutMs: 5_000 },
-                                );
-                                return readFile(
-                                  path.join(container, "Library/Caches/openclaw-gateway.log"),
-                                  "utf8",
-                                );
-                              })(),
+                              readAppDiagnostics(),
+                              captureSetupDiagnostics("chat-failure", true),
                             ]);
                             if (appLog.status === "fulfilled") {
                               if (
@@ -927,11 +933,19 @@ export async function createNativeDependencies(options: {
                                 }
                               }
                               facts.add("app-evidence-read");
+                              for (const { stage } of summarizeChatDeliveryLogs(appLog.value)) {
+                                facts.add(`app-delivery:${stage}`);
+                              }
                             } else {
                               facts.add("app-evidence-unavailable");
                             }
                             try {
                               if (requests.status !== "fulfilled") {
+                                facts.add(
+                                  isRecord(requests.reason) && requests.reason.code === "ENOENT"
+                                    ? "provider-request-log:missing"
+                                    : "provider-request-log:unreadable",
+                                );
                                 throw new Error("request-log-unavailable");
                               }
                               const lastMarker = (text: string) =>
@@ -1007,6 +1021,10 @@ export async function createNativeDependencies(options: {
               }
               if (test === IOS_RELEASE_TESTS[0]) {
                 requireLiveFixture();
+                await Promise.allSettled([
+                  readAppDiagnostics(),
+                  captureSetupDiagnostics("chat-complete"),
+                ]);
               }
               if (test === IOS_RELEASE_TESTS[0]) {
                 await phase("provider-rpc", async () => {

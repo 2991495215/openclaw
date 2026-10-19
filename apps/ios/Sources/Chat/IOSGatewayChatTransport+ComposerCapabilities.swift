@@ -245,11 +245,16 @@ extension IOSGatewayChatTransport {
         idempotencyKey: String,
         attachments: [OpenClawChatAttachmentPayload]) async throws -> OpenClawChatSendResponse
     {
+        GatewayDiagnostics.qualificationChatStage("transport-route-wait")
         guard let route = await self.currentSessionMutationRoute(),
               let supportsRoutingContract = await gateway.supportsServerCapability(
                   .chatSendRoutingContract,
                   ifCurrentRoute: route)
-        else { throw OpenClawChatTransportSendError.notDispatched }
+        else {
+            GatewayDiagnostics.qualificationChatStage("transport-route-unavailable")
+            throw OpenClawChatTransportSendError.notDispatched
+        }
+        GatewayDiagnostics.qualificationChatStage("transport-route-ready")
         let guardedContract = OpenClawChatSessionRoutingContract.expectedValue(
             target.expectedSessionRoutingContract,
             serverSupportsGuard: supportsRoutingContract)
@@ -286,6 +291,7 @@ extension IOSGatewayChatTransport {
             false
         }
         guard expectedSessionSettings == nil || supportsSettingsCAS else {
+            GatewayDiagnostics.qualificationChatStage("transport-settings-unsupported")
             throw OpenClawChatTransportSendError.notDispatched
         }
         let target = self.sessionTarget(for: sessionKey, overrideAgentID: agentID)
@@ -300,16 +306,47 @@ extension IOSGatewayChatTransport {
             idempotencyKey: idempotencyKey,
             attachments: attachments)
         do {
+            GatewayDiagnostics.qualificationChatStage("transport-request-start")
             let res = try await gateway.request(
                 request,
                 ifCurrentRoute: expectedRoute,
                 distinguishPreDispatchRouteChange: distinguishPreDispatchRouteChange)
-            return try JSONDecoder().decode(OpenClawChatSendResponse.self, from: res)
+            GatewayDiagnostics.qualificationChatStage("transport-response-received")
+            let response = try JSONDecoder().decode(OpenClawChatSendResponse.self, from: res)
+            switch response.status {
+            case "started": GatewayDiagnostics.qualificationChatStage("transport-ack-started")
+            case "ok": GatewayDiagnostics.qualificationChatStage("transport-ack-ok")
+            case "error": GatewayDiagnostics.qualificationChatStage("transport-ack-error")
+            case "timeout": GatewayDiagnostics.qualificationChatStage("transport-ack-timeout")
+            default: GatewayDiagnostics.qualificationChatStage("transport-ack-other")
+            }
+            return response
         } catch is GatewayNodeSessionRequestError {
+            GatewayDiagnostics.qualificationChatStage("transport-route-changed")
             Self.logger.info("chat.send skipped because the captured route changed before dispatch")
             GatewayDiagnostics.log("chat.send skipped before dispatch: route changed")
             throw OpenClawChatTransportSendError.notDispatched
         } catch {
+            if let responseError = error as? GatewayResponseError {
+                switch responseError.code {
+                case "INVALID_REQUEST":
+                    GatewayDiagnostics.qualificationChatStage("transport-error-gateway-invalid-request")
+                case "UNAVAILABLE":
+                    GatewayDiagnostics.qualificationChatStage("transport-error-gateway-unavailable")
+                case "FORBIDDEN":
+                    GatewayDiagnostics.qualificationChatStage("transport-error-gateway-forbidden")
+                default:
+                    GatewayDiagnostics.qualificationChatStage("transport-error-gateway-other")
+                }
+            } else if error is DecodingError {
+                GatewayDiagnostics.qualificationChatStage("transport-error-decode")
+            } else if error is CancellationError {
+                GatewayDiagnostics.qualificationChatStage("transport-error-cancelled")
+            } else if (error as NSError).domain == "Gateway", (error as NSError).code == 5 {
+                GatewayDiagnostics.qualificationChatStage("transport-error-timeout")
+            } else {
+                GatewayDiagnostics.qualificationChatStage("transport-error-other")
+            }
             Self.logger.error("chat.send failed \(error.localizedDescription, privacy: .public)")
             GatewayDiagnostics.log("chat.send failed error=\(error.localizedDescription)")
             throw error

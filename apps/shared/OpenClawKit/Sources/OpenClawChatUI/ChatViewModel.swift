@@ -10,6 +10,11 @@ let chatUILogger = Logger(subsystem: "ai.openclaw", category: "OpenClawChatUI")
 @MainActor
 @Observable
 public final class OpenClawChatViewModel {
+    #if DEBUG
+    private static let qualificationDiagnosticsEnabled =
+        ProcessInfo.processInfo.environment["OPENCLAW_IOS_LIVE_GATEWAY"] == "1"
+    #endif
+
     static let maxAttachmentBytes = 5_000_000
     static let sessionListFetchLimit = 200
 
@@ -802,6 +807,14 @@ extension OpenClawChatViewModel {
 
     func logDiagnostic(_ message: String) {
         self.diagnosticsLog?(message)
+    }
+
+    /// Temporary qualification evidence; remove after the missing first reply is diagnosed.
+    func logQualificationStage(_ stage: StaticString) {
+        #if DEBUG
+        guard Self.qualificationDiagnosticsEnabled else { return }
+        self.logDiagnostic("qualification.chat stage=\(stage)")
+        #endif
     }
 
     func currentSessionSnapshot() -> SessionSnapshot {

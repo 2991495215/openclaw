@@ -43,9 +43,14 @@ extension OpenClawChatViewModel {
     @discardableResult
     public func send() -> Task<Void, Never>? {
         guard !self.usesWebConversation else { return nil }
+        self.logQualificationStage("send-invoked")
         // Reserve the accepted draft before scheduling work so initial route
         // hydration cannot retire its owner before asynchronous validation starts.
-        guard let draft = captureSendDraft() else { return nil }
+        guard let draft = captureSendDraft() else {
+            self.logQualificationStage("draft-rejected")
+            return nil
+        }
+        self.logQualificationStage("draft-captured")
         isSubmittingDraft = true
         return Task { await self.performSend(draft) }
     }
@@ -287,7 +292,10 @@ extension OpenClawChatViewModel {
         // Admission covers every validation/probe; local /compact uses the separate isSending flag.
         defer { self.isSubmittingDraft = false }
 
-        guard await self.validateSendDraft(draft) else { return }
+        guard await self.validateSendDraft(draft) else {
+            self.logQualificationStage("draft-validation-stopped")
+            return
+        }
 
         isSending = true
         isSendingAttachmentDraft = !draft.attachments.isEmpty
@@ -300,6 +308,7 @@ extension OpenClawChatViewModel {
         guard await self.prepareLiveRoute(for: draft) else { return }
         guard await self.validateAttachmentBudgetForSend(draft.attachments, session: draft.session) else { return }
         guard self.composerModelAvailabilityMessage == nil else {
+            self.logQualificationStage("model-unavailable")
             return
         }
         let attempt = self.beginLiveSend(draft)
@@ -368,6 +377,7 @@ extension OpenClawChatViewModel {
             // Offline capture: queue the full draft durably instead of
             // dropping user text or attachment bytes.
             if !healthOK, outbox != nil {
+                self.logQualificationStage("offline-outbox")
                 await self.enqueueOutboxDraft(draft)
                 return false
             }
@@ -401,6 +411,7 @@ extension OpenClawChatViewModel {
         if outbox != nil,
            shouldPersistAttachmentDraft || mustPreserveOutboxOrder
         {
+            self.logQualificationStage("ordered-outbox")
             await self.enqueueOutboxDraft(draft)
             return false
         }
@@ -415,7 +426,10 @@ extension OpenClawChatViewModel {
             draftAttachments: draft.attachments,
             session: draft.session)
         if accepted {
+            self.logQualificationStage("outbox-accepted")
             self.finishAcceptedComposerSend(draft)
+        } else {
+            self.logQualificationStage("outbox-rejected")
         }
     }
 
@@ -487,6 +501,7 @@ extension OpenClawChatViewModel {
                 idempotencyKey: "\(runId):user"))
         pendingLocalUserEchoMessageIDsByRunID[runId] = userMessageID
         runMessageScopesByRunID[runId] = currentRunMessageScope()
+        self.logQualificationStage("optimistic-message")
 
         // Clear input immediately for responsive UX (before network await).
         if input == draft.input {
@@ -529,7 +544,9 @@ extension OpenClawChatViewModel {
         let sessionKey = attempt.draft.session.key
         var durableSessionSettingsExpectation: OpenClawChatSessionSettingsExpectation?
         do {
+            self.logQualificationStage("settings-wait")
             if let settingsError = await waitForCapabilitySettingsBarrier(in: sessionKey) {
+                self.logQualificationStage("settings-failed")
                 await self.handleLiveSendFailure(
                     NSError(
                         domain: "OpenClawChatCapabilitySettings",
@@ -538,10 +555,15 @@ extension OpenClawChatViewModel {
                     attempt: attempt)
                 return
             }
-            guard isCurrentSession(attempt.draft.session) else { return }
+            self.logQualificationStage("settings-ready")
+            guard isCurrentSession(attempt.draft.session) else {
+                self.logQualificationStage("session-changed")
+                return
+            }
             let sendSessionSettingsExpectation = self.composerSessionSettingsExpectation()
             durableSessionSettingsExpectation = self.durableSessionSettingsExpectation()
             let thinkingLevel = effectiveThinkingLevelForSend(attempt.storedThinkingLevel)
+            self.logQualificationStage("transport-start")
             let response = try await transport.sendMessage(
                 sessionKey: sessionKey,
                 target: OpenClawChatSendTarget(
@@ -553,6 +575,7 @@ extension OpenClawChatViewModel {
                 idempotencyKey: attempt.runId,
                 attachments: attempt.encodedAttachments)
             guard isCurrentSession(attempt.draft.session) else {
+                self.logQualificationStage("session-changed")
                 if response.status != "error", response.status != "timeout" {
                     self.finishAcceptedComposerSend(attempt.draft)
                 }
@@ -572,6 +595,7 @@ extension OpenClawChatViewModel {
         attempt: LiveSendAttempt) async
     {
         if response.status != "error", response.status != "timeout" {
+            self.logQualificationStage("transport-accepted")
             haptics.perform(.messageSent)
             self.finishAcceptedComposerSend(attempt.draft)
         }
@@ -634,7 +658,10 @@ extension OpenClawChatViewModel {
         attempt: LiveSendAttempt,
         durableSessionSettingsExpectation: OpenClawChatSessionSettingsExpectation? = nil) async
     {
-        guard isCurrentSession(attempt.draft.session) else { return }
+        guard isCurrentSession(attempt.draft.session) else {
+            self.logQualificationStage("session-changed")
+            return
+        }
         let restartRejected = Self.isRestartRejectedSend(error)
         if let durableSessionSettingsExpectation,
            attempt.encodedAttachments.isEmpty,
@@ -656,6 +683,11 @@ extension OpenClawChatViewModel {
                 expectedSessionSettings: durableSessionSettingsExpectation,
                 deliveryIsAmbiguous: deliveryIsAmbiguous)
             if preserved {
+                if deliveryIsAmbiguous {
+                    self.logQualificationStage("delivery-unconfirmed")
+                } else {
+                    self.logQualificationStage("route-changed")
+                }
                 self.finishAcceptedComposerSend(attempt.draft)
                 applyTransportHealth(false)
                 let outcome = deliveryIsAmbiguous ? "delivery unconfirmed" : "queued after route change"
@@ -666,6 +698,7 @@ extension OpenClawChatViewModel {
             }
             guard isCurrentSession(attempt.draft.session) else { return }
         }
+        self.logQualificationStage("send-failed")
         self.restoreDraftAfterLiveSendFailure(attempt)
         removePendingLocalUserEcho(for: attempt.runId)
         runMessageScopesByRunID.removeValue(forKey: attempt.runId)

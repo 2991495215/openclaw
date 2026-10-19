@@ -16,6 +16,7 @@ extension OpenClawChatViewModel {
     @discardableResult
     func handleTransportEvent(_ evt: OpenClawChatTransportEvent) -> Task<Void, Never>? {
         guard !self.isTransportDetached else { return nil }
+        self.logQualificationEvent(evt)
         self.handleSidebarEvent(evt)
         if case .sessionObserver = evt, self.sidebarData != nil { return nil }
         if self.usesWebConversation {
@@ -504,6 +505,30 @@ extension OpenClawChatViewModel {
         self.applyDeferredExternalStateIfReady()
     }
 
+    private func logQualificationEvent(_ event: OpenClawChatTransportEvent) {
+        switch event {
+        case let .health(ok) where ok != self.healthOK:
+            if ok {
+                self.logQualificationStage("health-recovered")
+            } else {
+                self.logQualificationStage("health-lost")
+            }
+        case .routeChanged: self.logQualificationStage("event-route-changed")
+        case .reconnected: self.logQualificationStage("event-reconnected")
+        case .seqGap: self.logQualificationStage("event-sequence-gap")
+        case let .chat(chat):
+            switch chat.state {
+            case "status": self.logQualificationStage("chat-event-status")
+            case "delta": self.logQualificationStage("chat-event-delta")
+            case "final": self.logQualificationStage("chat-event-final")
+            case "error": self.logQualificationStage("chat-event-error")
+            case "aborted": self.logQualificationStage("chat-event-aborted")
+            default: self.logQualificationStage("chat-event-other")
+            }
+        default: break
+        }
+    }
+
     private func handleChatEvent(_ chat: OpenClawChatEventPayload) -> Task<Void, Never>? {
         let explicitRunID = ChatPayloadDecoding.trimmedNonEmptyString(chat.runId)
         let isOurRun = explicitRunID.map { self.pendingRuns.contains($0) } ?? false
@@ -518,7 +543,10 @@ extension OpenClawChatViewModel {
                 agentId: chat.agentId,
                 current: self.sessionKey)
         } ?? true
-        guard matchesCurrentSession || isOurRun else { return nil }
+        guard matchesCurrentSession || isOurRun else {
+            self.logQualificationStage("chat-event-session-mismatch")
+            return nil
+        }
         if chat.state == "status" {
             if let runID = explicitRunID,
                let state = ChatRunStartup.state(phase: chat.phase, retry: chat.retry),
@@ -735,6 +763,7 @@ extension OpenClawChatViewModel {
         let isLegacySessionStream = self.pendingRuns.isEmpty && self.sessionId == evt.runId
         if evt.stream == "lifecycle" {
             guard isPendingRun || isAdvertisedRun || isLegacySessionStream else { return nil }
+            self.logQualificationStage("agent-event-lifecycle")
             return self.handleAgentLifecycleEvent(
                 evt,
                 isPendingRun: isPendingRun,
@@ -757,6 +786,7 @@ extension OpenClawChatViewModel {
 
         switch evt.stream {
         case "assistant":
+            self.logQualificationStage("agent-event-assistant")
             if let text = evt.data["text"]?.value as? String {
                 self.liveRunStateByRunID[evt.runId, default: ChatLiveRunState()].hasAgentAssistantText = true
                 self.updateActiveSessionRunWithoutChatSnapshot(false)

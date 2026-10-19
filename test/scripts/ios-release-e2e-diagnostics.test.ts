@@ -12,6 +12,7 @@ vi.mock("node:os", async (importOriginal) => ({
 
 import {
   collectGatewayProcessDiagnostics,
+  summarizeChatDeliveryLogs,
   summarizeGatewayLanes,
   summarizeGatewayLogs,
 } from "../../scripts/lib/ios-release-e2e-diagnostics.js";
@@ -79,7 +80,25 @@ arbitrary secret-token and /private/home/credentials
 });
 
 test("projects process and sample output without exporting paths or credentials", async () => {
-  execFile.mockImplementation((command, _args, _options, callback) => {
+  execFile.mockImplementation((command, args, _options, callback) => {
+    if (command === "/usr/bin/vm_stat") {
+      callback(
+        null,
+        "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free: 2.\nPages occupied by compressor: 3.\nSwapouts: 4.\nprivate secret-token",
+      );
+      return;
+    }
+    if (command === "/usr/sbin/sysctl") {
+      callback(null, "vm.swapusage: total = 1024.00M used = 12.50M free = 1011.50M (encrypted)");
+      return;
+    }
+    if (args[0] === "-axo") {
+      callback(
+        null,
+        "125 124 20.5 512 R /private/secret-token\n123 1 12.3 2048 S /private/node\n124 123 0.0 256 S /private/worker\n126 1 1.0 1024 R /private/CoreSimulator/Simulator\n127 1 2.0 128 S /private/xcodebuild\n128 1 0.5 64 S /private/node\n129 1 0.0 32 S /private/secret-token",
+      );
+      return;
+    }
     callback(
       null,
       command === "/bin/ps"
@@ -110,7 +129,43 @@ Binary Images: secret-token`,
     frameCounts: { sqlite: 1, filesystem: 1, locks: 1, poll: 1, v8: 1, node: 1, other: 1 },
   });
   expect(result.host.totalMemoryBytes).toBeGreaterThan(0);
+  expect(result.memory).toEqual({
+    outcome: "captured",
+    freeBytes: 32768,
+    compressorBytes: 49152,
+    swapoutBytes: 65536,
+    swapUsedBytes: 13107200,
+  });
+  expect(result.workloads).toEqual({
+    outcome: "captured",
+    groups: {
+      gateway: { count: 3, cpuPercent: 32.8, rssBytes: 2883584, runnable: 1 },
+      simulator: { count: 1, cpuPercent: 1, rssBytes: 1048576, runnable: 1 },
+      testing: { count: 1, cpuPercent: 2, rssBytes: 131072, runnable: 0 },
+      "other-node": { count: 1, cpuPercent: 0.5, rssBytes: 65536, runnable: 0 },
+      other: { count: 1, cpuPercent: 0, rssBytes: 32768, runnable: 0 },
+    },
+  });
   expect(JSON.stringify(result)).not.toMatch(/secret-token|\/private\//u);
+});
+
+test("exports ordered qualification delivery stages and elapsed time without arbitrary app text", () => {
+  const result = summarizeChatDeliveryLogs(`
+[2026-10-19T18:01:02.000Z] qualification.chat stage=settings-wait
+[2026-10-19T18:01:02.000Z] qualification.chat stage=secret-token
+[2026-10-19T18:01:02.000Z] qualification.chat stage=transport-start secret-token
+[2026-10-19T18:01:03.500Z] qualification.chat stage=settings-ready
+[2026-10-19T18:01:03.501Z] qualification.chat stage=transport-start
+[2026-10-19T18:01:04.000Z] qualification.chat stage=transport-error-gateway-unavailable
+private message and secret-token
+`);
+  expect(result).toEqual([
+    { stage: "settings-wait", elapsedMs: 0 },
+    { stage: "settings-ready", elapsedMs: 1500 },
+    { stage: "transport-start", elapsedMs: 1501 },
+    { stage: "transport-error-gateway-unavailable", elapsedMs: 2000 },
+  ]);
+  expect(JSON.stringify(result)).not.toMatch(/secret-token|private|2026/u);
 });
 
 test("unavailable observations remain bounded diagnostic outcomes without raw errors", async () => {

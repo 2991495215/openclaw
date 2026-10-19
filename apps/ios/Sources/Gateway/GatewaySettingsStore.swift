@@ -1021,6 +1021,19 @@ extension GatewaySettingsStore {
 }
 
 enum GatewayDiagnostics {
+    #if DEBUG
+    private static let qualificationDiagnosticsEnabled =
+        ProcessInfo.processInfo.environment["OPENCLAW_IOS_LIVE_GATEWAY"] == "1"
+    #endif
+
+    /// Temporary qualification evidence; remove after the missing first reply is diagnosed.
+    static func qualificationChatStage(_ stage: StaticString) {
+        #if DEBUG
+        guard self.qualificationDiagnosticsEnabled else { return }
+        self.log("qualification.chat stage=\(stage)")
+        #endif
+    }
+
     struct ScopedLogger {
         private let prefix: String
 

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { freemem, loadavg, platform, totalmem } from "node:os";
+import { availableParallelism, freemem, loadavg, platform, totalmem } from "node:os";
 import { stripVTControlCharacters } from "node:util";
 
 type GatewayLogEvent = {
@@ -11,6 +11,86 @@ type GatewayLogEvent = {
   elapsedMs?: number;
   pending?: Record<string, boolean>;
 };
+
+export function summarizeChatDeliveryLogs(text: string) {
+  const stages = new Set([
+    "agent-event-assistant",
+    "agent-event-lifecycle",
+    "chat-event-aborted",
+    "chat-event-delta",
+    "chat-event-error",
+    "chat-event-final",
+    "chat-event-other",
+    "chat-event-session-mismatch",
+    "chat-event-status",
+    "delivery-unconfirmed",
+    "draft-captured",
+    "draft-rejected",
+    "draft-validation-stopped",
+    "event-reconnected",
+    "event-route-changed",
+    "event-sequence-gap",
+    "health-lost",
+    "health-recovered",
+    "model-unavailable",
+    "offline-outbox",
+    "optimistic-message",
+    "ordered-outbox",
+    "outbox-accepted",
+    "outbox-rejected",
+    "owner-hydration-deferred",
+    "owner-replaced",
+    "route-changed",
+    "send-failed",
+    "send-invoked",
+    "session-changed",
+    "settings-failed",
+    "settings-ready",
+    "settings-wait",
+    "transport-accepted",
+    "transport-ack-error",
+    "transport-ack-ok",
+    "transport-ack-other",
+    "transport-ack-started",
+    "transport-ack-timeout",
+    "transport-error-cancelled",
+    "transport-error-decode",
+    "transport-error-gateway-forbidden",
+    "transport-error-gateway-invalid-request",
+    "transport-error-gateway-other",
+    "transport-error-gateway-unavailable",
+    "transport-error-other",
+    "transport-error-timeout",
+    "transport-request-start",
+    "transport-response-received",
+    "transport-route-changed",
+    "transport-route-ready",
+    "transport-route-unavailable",
+    "transport-route-wait",
+    "transport-settings-unsupported",
+    "transport-start",
+  ]);
+  const events: { stage: string; elapsedMs: number }[] = [];
+  let firstTimestamp: number | undefined;
+  for (const line of text.slice(-128 * 1024).split("\n")) {
+    const match =
+      /^\[(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)\] qualification\.chat stage=([a-z-]+)$/u.exec(
+        line,
+      );
+    const timestampText = match?.[1];
+    const stage = match?.[2];
+    if (!timestampText || !stage || !stages.has(stage)) {
+      continue;
+    }
+    const timestamp = Date.parse(timestampText);
+    if (!Number.isFinite(timestamp)) {
+      continue;
+    }
+    firstTimestamp ??= timestamp;
+    events.push({ stage, elapsedMs: timestamp - firstTimestamp });
+  }
+  return events.slice(-128);
+}
 
 export function summarizeGatewayLanes(value: unknown) {
   if (!value || typeof value !== "object") {
@@ -167,22 +247,120 @@ function summarizeSample(text: string) {
   return { outcome: "captured" as const, frameCount, frameCounts };
 }
 
+function summarizeMemory(vm: string | undefined, swap: string | undefined) {
+  const pageSize = Number(/page size of (\d+) bytes/u.exec(vm ?? "")?.[1]);
+  const pages: Record<string, number> = {};
+  for (const [label, key] of [
+    ["Pages free", "freeBytes"],
+    ["Pages active", "activeBytes"],
+    ["Pages inactive", "inactiveBytes"],
+    ["Pages wired down", "wiredBytes"],
+    ["Pages occupied by compressor", "compressorBytes"],
+    ["Pageouts", "pageoutBytes"],
+    ["Swapins", "swapinBytes"],
+    ["Swapouts", "swapoutBytes"],
+  ] as const) {
+    const count = new RegExp(`^${label}:\\s+(\\d+)\\.`, "mu").exec(vm ?? "")?.[1];
+    if (count && Number.isSafeInteger(pageSize) && pageSize > 0) {
+      pages[key] = Number(count) * pageSize;
+    }
+  }
+  const swapUsed = /\bused = (\d+(?:\.\d+)?)([KMG])\b/u.exec(swap ?? "");
+  return {
+    outcome: vm ? "captured" : "unavailable",
+    ...pages,
+    ...(swapUsed?.[1] && swapUsed[2]
+      ? { swapUsedBytes: Number(swapUsed[1]) * 1024 ** ("KMG".indexOf(swapUsed[2]) + 1) }
+      : {}),
+  };
+}
+
+function summarizeWorkloads(output: string | undefined, gatewayPid: number) {
+  if (!output) {
+    return { outcome: "unavailable" };
+  }
+  const rows = output.split("\n").flatMap((line) => {
+    const match =
+      /^\s*(\d+)\s+(\d+)\s+(\d+(?:\.\d+)?)\s+(\d+)\s+([A-Z][A-Za-z+<>-]*)\s+(.+)$/u.exec(line);
+    const [, pid, parent, cpu, rss, state, command] = match ?? [];
+    if (!pid || !parent || !cpu || !rss || !state || !command) {
+      return [];
+    }
+    return [
+      {
+        pid: Number(pid),
+        parent: Number(parent),
+        cpu: Number(cpu),
+        rss: Number(rss) * 1024,
+        state: state.charAt(0),
+        command,
+      },
+    ];
+  });
+  const gatewayTree = new Set([gatewayPid]);
+  for (let previous = -1; previous !== gatewayTree.size;) {
+    previous = gatewayTree.size;
+    for (const row of rows) {
+      if (gatewayTree.has(row.parent)) {
+        gatewayTree.add(row.pid);
+      }
+    }
+  }
+  const groups: Record<
+    string,
+    { count: number; cpuPercent: number; rssBytes: number; runnable: number }
+  > = {};
+  for (const row of rows) {
+    const group = gatewayTree.has(row.pid)
+      ? "gateway"
+      : /CoreSimulator|Simulator\.app|SimulatorTrampoline|OpenClaw\.app/u.test(row.command)
+        ? "simulator"
+        : /xcodebuild|XCTRunner|testmanagerd|SimulatorBridge/u.test(row.command)
+          ? "testing"
+          : /(?:^|\/)node(?:$|\s)/u.test(row.command)
+            ? "other-node"
+            : "other";
+    const totals = (groups[group] ??= { count: 0, cpuPercent: 0, rssBytes: 0, runnable: 0 });
+    totals.count++;
+    totals.cpuPercent += row.cpu;
+    totals.rssBytes += row.rss;
+    totals.runnable += row.state === "R" ? 1 : 0;
+  }
+  // RSS sums can include shared pages; they are workload attribution, not physical footprint.
+  return { outcome: "captured", groups };
+}
+
 export async function collectGatewayProcessDiagnostics(
   pid?: number,
   options: { sample?: boolean } = {},
 ) {
-  const host = { freeMemoryBytes: freemem(), totalMemoryBytes: totalmem(), loadAverage: loadavg() };
+  const host = {
+    cpuCount: availableParallelism(),
+    freeMemoryBytes: freemem(),
+    totalMemoryBytes: totalmem(),
+    loadAverage: loadavg(),
+  };
   const validPid = Number.isSafeInteger(pid) && pid !== undefined && pid > 0;
-  const [processOutput, sampleOutput] = await Promise.all([
+  const macResources = validPid && platform() === "darwin";
+  const [processOutput, sampleOutput, vmOutput, swapOutput, workloadsOutput] = await Promise.all([
     validPid ? observe("/bin/ps", ["-p", String(pid), "-o", "%cpu=,rss=,state="]) : undefined,
     validPid && options.sample && platform() === "darwin"
       ? observe("/usr/bin/sample", [String(pid), "1", "1", "-file", "/dev/stdout"])
       : undefined,
+    macResources ? observe("/usr/bin/vm_stat", []) : undefined,
+    macResources ? observe("/usr/sbin/sysctl", ["vm.swapusage"]) : undefined,
+    macResources ? observe("/bin/ps", ["-axo", "pid=,ppid=,%cpu=,rss=,state=,comm="]) : undefined,
   ]);
   const fields = processOutput?.trim().match(/^(\d+(?:\.\d+)?)\s+(\d+)\s+([A-Z][A-Za-z+<>-]*)$/u);
   const state = fields?.[3]?.[0];
   return {
     host,
+    ...(macResources
+      ? {
+          memory: summarizeMemory(vmOutput, swapOutput),
+          workloads: summarizeWorkloads(workloadsOutput, pid),
+        }
+      : {}),
     process: fields
       ? {
           outcome: "captured" as const,

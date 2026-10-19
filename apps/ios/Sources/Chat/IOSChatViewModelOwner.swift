@@ -63,6 +63,7 @@ final class IOSChatViewModelOwner {
            Self.transportAgentID(appModel.selectedAgentId).isEmpty,
            self.routingContract.isEmpty || self.routingContract == routingContract
         {
+            GatewayDiagnostics.qualificationChatStage("owner-hydration-deferred")
             self.observePendingSend(appModel: appModel)
             return
         }
@@ -70,6 +71,9 @@ final class IOSChatViewModelOwner {
         let draft = isDefaultAgentHydration ? self.viewModel?.input : nil
         // Initial route hydration changes transport, but the same draft keeps its native editor.
         if draft == nil { self.presentationID = UUID() }
+        if self.viewModel != nil {
+            GatewayDiagnostics.qualificationChatStage("owner-replaced")
+        }
         self.viewModel?.detachTransport()
         self.ownerID = ownerID
         self.transportAgentID = agentID
