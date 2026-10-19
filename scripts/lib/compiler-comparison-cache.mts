@@ -226,6 +226,7 @@ export function auditCompilerCache(
   metadata: {
     cacheCorrectness?: unknown;
     cacheWrapperSmoke?: unknown;
+    libraryManifest: { name: string; sha256: string }[];
     expectedSamples?: string[];
     cpus?: number;
     limits?: { memoryBytes: number; swapBytes: number };
@@ -321,6 +322,7 @@ export function auditCompilerCache(
     "Missing cache measurement",
   );
   const caches = new Map<string, Buffer>();
+  const libraryNames = new Set(metadata.libraryManifest.map((entry) => entry.name));
   const outputs = new Map<string, CacheReceipt>();
   const outcomes = new Map<string, { exitCode: number; stdout: string; stderr: string }>();
   const comparisons: { phase: string; expected: boolean; freshEquivalent: boolean | null }[] = [];
@@ -366,11 +368,18 @@ export function auditCompilerCache(
     };
     assert(typeof buildInfo.version === "string" && buildInfo.version.length > 0);
     assert(Array.isArray(buildInfo.fileNames) && buildInfo.fileNames.length > 0);
+    const sourcePaths = new Set([
+      ...Object.keys(input).map((name) => `/case/${name}`),
+      ...[...libraryNames].map((name) => `/compiler/${name}`),
+    ]);
     for (const name of buildInfo.fileNames) {
       assert(typeof name === "string");
-      assert.match(
-        path.posix.resolve("/cache", name),
-        /^\/(?:case|compiler)\/[^/]+$/u,
+      // Build-info stores default libraries as bare names; the compiler resolves
+      // them against its library directory, not the build-info directory.
+      const isPath = name.startsWith("/") || name.startsWith("./") || name.startsWith("../");
+      assert(isPath || libraryNames.has(name), "Unexpected cache source path");
+      assert(
+        sourcePaths.has(path.posix.resolve(isPath ? "/cache" : "/compiler", name)),
         "Unexpected cache source path",
       );
     }

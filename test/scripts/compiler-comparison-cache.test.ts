@@ -89,7 +89,7 @@ describe("cache producer admission", () => {
   });
 });
 
-function fixture() {
+function fixture(fileNames = ["lib.es2022.d.ts", "../case/input.ts"]) {
   const directory = temp();
   fs.mkdirSync(path.join(directory, "cache"));
   fs.mkdirSync(path.join(directory, "metrics"));
@@ -181,7 +181,7 @@ function fixture() {
       phase.id + ".tsbuildinfo",
       Buffer.from(
         JSON.stringify({
-          fileNames: ["../compiler/lib.es2022.d.ts", "../case/input.ts"],
+          fileNames,
           version: "7.0.2",
           fixture: phase.id,
         }),
@@ -253,6 +253,28 @@ function fixture() {
 }
 
 describe("synthetic cache artifact admission", () => {
+  it.each([
+    ["lib.es2022.d.ts", "../case/input.ts"],
+    ["../compiler/lib.es2022.d.ts", "../case/input.ts"],
+    ["/compiler/lib.es2022.d.ts", "/case/input.ts"],
+  ])("accepts exact manifest and fixture source identities: %j", (...fileNames) => {
+    expect(auditCompilerComparison(fixture(fileNames).directory).qualificationPassed).toBe(true);
+  });
+
+  it.each([
+    "lib.unknown.d.ts",
+    "../compiler/lib.unknown.d.ts",
+    "../case/unplanned.ts",
+    "../case/nested/input.ts",
+    "../../etc/passwd",
+    "/private/input.ts",
+    "nested/../../compiler/lib.es2022.d.ts",
+  ])("rejects a source outside the exact input manifests: %s", (name) => {
+    expect(() => auditCompilerComparison(fixture([name]).directory)).toThrow(
+      "Unexpected cache source path",
+    );
+  });
+
   it("accounts for all 56 calls and keeps the four handoff seeds immutable across edits", () => {
     const artifact = fixture();
     const result = auditCompilerComparison(artifact.directory);
