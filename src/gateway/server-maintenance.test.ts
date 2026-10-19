@@ -39,11 +39,7 @@ const {
   cleanOldMediaMock: vi.fn(async () => {}),
   pruneOutboundMediaMock: vi.fn(async () => {}),
   prunePlaybackTranscodeCacheMock: vi.fn(async () => {}),
-  cleanupManagedOutgoingMediaRecordsMock: vi.fn(async () => ({
-    deletedRecordCount: 0,
-    deletedFileCount: 0,
-    retainedCount: 0,
-  })),
+  cleanupManagedOutgoingMediaRecordsMock: vi.fn(async () => {}),
   startDevicePairSetupMaintenanceMock: vi.fn(async () => 0),
 }));
 
@@ -117,11 +113,7 @@ describe("startGatewayMaintenanceTimers", () => {
     pruneOutboundMediaMock.mockReset().mockResolvedValue(undefined);
     prunePlaybackTranscodeCacheMock.mockReset().mockResolvedValue(undefined);
     startDevicePairSetupMaintenanceMock.mockReset().mockResolvedValue(0);
-    cleanupManagedOutgoingMediaRecordsMock.mockReset().mockResolvedValue({
-      deletedRecordCount: 0,
-      deletedFileCount: 0,
-      retainedCount: 0,
-    });
+    cleanupManagedOutgoingMediaRecordsMock.mockReset().mockResolvedValue(undefined);
   });
 
   it("leaves admission untouched on busy thaw ticks and retries a failed idle pass", async () => {
@@ -530,9 +522,8 @@ describe("startGatewayMaintenanceTimers", () => {
     );
     cleanupManagedOutgoingMediaRecordsMock.mockImplementation(
       () =>
-        new Promise((resolve) => {
-          resolveManagedCleanup = () =>
-            resolve({ deletedRecordCount: 0, deletedFileCount: 0, retainedCount: 0 });
+        new Promise<void>((resolve) => {
+          resolveManagedCleanup = resolve;
         }),
     );
     cleanOldMediaMock.mockImplementation(
@@ -590,13 +581,7 @@ describe("startGatewayMaintenanceTimers", () => {
     async (kind) => {
       vi.useFakeTimers();
       const cleanup =
-        kind === "queue"
-          ? vi.fn(async () => ({
-              deletedRecordCount: 0,
-              deletedFileCount: 0,
-              retainedCount: 0,
-            }))
-          : cleanupManagedOutgoingMediaRecordsMock;
+        kind === "queue" ? vi.fn(async () => {}) : cleanupManagedOutgoingMediaRecordsMock;
       const createDeps = () => ({
         ...createMaintenanceTimerDeps(),
         ...(kind === "queue" ? { runDeliveryQueueMediaGc: cleanup } : {}),
@@ -604,9 +589,8 @@ describe("startGatewayMaintenanceTimers", () => {
       let resolveOldCleanup = () => {};
       cleanup.mockImplementationOnce(
         () =>
-          new Promise((resolve) => {
-            resolveOldCleanup = () =>
-              resolve({ deletedRecordCount: 0, deletedFileCount: 0, retainedCount: 0 });
+          new Promise<void>((resolve) => {
+            resolveOldCleanup = resolve;
           }),
       );
       const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
