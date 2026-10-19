@@ -48,7 +48,13 @@ export function auditCompilerComparison(directory: string) {
     libraryManifest: { name: string; sha256: string }[];
     expectedSamples?: string[];
     canaries?: Canary[];
+    memoryDiagnostic?: unknown;
   };
+  assert.equal(
+    metadata.memoryDiagnostic,
+    undefined,
+    "Memory diagnostics are not qualification evidence",
+  );
   const inventory = JSON.parse(read("inventory.json")) as {
     inventory: Graph[];
     graphs: Graph[];

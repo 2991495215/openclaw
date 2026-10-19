@@ -37,6 +37,9 @@ async function main() {
   const group = Number(argument("--group", "0"));
   const groups = Number(argument("--groups", String(inventory.length)));
   const repeats = Number(argument("--repeats", "3"));
+  const memoryTarget = argument("--memory-diagnostic", "");
+  assert(["", "3GiB", "10GiB"].includes(memoryTarget), "Unknown diagnostic memory target");
+  assert(!memoryTarget || (repeats === 1 && !process.argv.includes("--canaries")));
   assert(Number.isInteger(group) && Number.isInteger(groups) && group >= 0 && group < groups);
   assert(Number.isInteger(repeats) && repeats > 0 && repeats <= 10);
   const directory = path.join(root, ".artifacts/compiler-comparison", "group-" + group);
@@ -53,6 +56,10 @@ async function main() {
   const libraries = path.dirname(pinnedBinary);
   const graphs = inventory.filter((_, index) => index % groups === group);
   assert(graphs.length > 0, "Empty compiler group");
+  assert(
+    !memoryTarget || (graphs.length === 1 && graphs[0].name === "extensions-test"),
+    "Memory diagnostic is scoped to the plugin-test graph",
+  );
   dump("inventory.json", { inventory, group, groups, graphs });
 
   function run(command, args, options = {}) {
@@ -75,13 +82,13 @@ async function main() {
   const candidateProvenance = {
     distribution: "fork-ci-native",
     repository: "vincentkoc/tsc-ts",
-    revision: "68d06984df0d1a9a89657cf44f0f709e15f13403",
-    runId: 39144449305,
+    revision: "a80cd9190942d16286a8483f1f51d9a68037324f",
+    runId: 39162206911,
     runAttempt: 1,
-    artifactId: 12142748611,
-    artifactSha256: "6a11c020208c367c598f632f6cc2c8555b5df88de0f8d01e2a1160e691124d00",
-    tarSha256: "b0fa72407c1dcda84d6976bb0452470317d0c5a69d74e8f7d6a3e0184819ee6a",
-    binarySha256: "d44c8fc87651ea844ae30418a08697c54b5c55213463c5f5eff19b1f7b3d3479",
+    artifactId: 12149466946,
+    artifactSha256: "e980b95b04e69c901b59c6ff6f90f8da3d4619dd386cb5067d64233ed28de423",
+    tarSha256: "4aebeece3702944225ddd8b957889279510aeeb6246fe9b29a02158268c7c79b",
+    binarySha256: "9785e87da1650d3a4007d234bc194c63b640524c010497884e4b93161c7bb149",
   };
   assert(process.env.RUNNER_TEMP, "Missing workflow staging directory");
   const nativeArchive = path.join(process.env.RUNNER_TEMP, "compiler-candidate", "native.tar");
@@ -168,16 +175,22 @@ async function main() {
   const memoryBytes = Math.floor((memoryCapacity * 0.8) / 1024 ** 3) * 1024 ** 3;
   assert(memoryBytes > 0, "Missing memory capacity");
   const resources = { logicalCpuCount: os.availableParallelism(), totalMemoryBytes: memoryBytes };
+  if (memoryTarget) {
+    assert.equal(resources.logicalCpuCount, 4, "Memory diagnostic requires the original CPU cap");
+    assert.equal(memoryBytes, 12 * 1024 ** 3, "Memory diagnostic requires the original RAM cap");
+  }
   const modesFor = (graph) =>
-    graph.kind
-      ? ["nonincremental", "single-threaded"]
-      : [
-          "incremental-cold",
-          ...(["core", "ui", "extensions", "scripts"].includes(graph.name)
-            ? ["nonincremental"]
-            : []),
-          ...(graph.name === "core" ? ["single-threaded", "incremental-unthrottled"] : []),
-        ];
+    memoryTarget
+      ? ["incremental-cold"]
+      : graph.kind
+        ? ["nonincremental", "single-threaded"]
+        : [
+            "incremental-cold",
+            ...(["core", "ui", "extensions", "scripts"].includes(graph.name)
+              ? ["nonincremental"]
+              : []),
+            ...(graph.name === "core" ? ["single-threaded", "incremental-unthrottled"] : []),
+          ];
   const compilers = Object.keys(binaries);
   const expectedSamples = selectedGraphs.flatMap((graph) =>
     modesFor(graph).flatMap((mode) =>
@@ -191,6 +204,12 @@ async function main() {
 
   const ciEnv = { CI: "true", GITHUB_ACTIONS: "true", OPENCLAW_LOCAL_CHECK: "0" };
   const ciPolicy = applyLocalTsgoPolicy([...common], ciEnv, resources);
+  // A soft-target diagnostic keeps the hard cap and checking policy unchanged.
+  // Raw GC stderr is evidence only; the auditor refuses this declared profile.
+  if (memoryTarget) {
+    ciPolicy.env.GOMEMLIMIT = memoryTarget;
+    ciPolicy.env.GODEBUG = "gctrace=1";
+  }
   // Compiler-writable files never enter the artifact upload tree. Host-side reads
   // reject symlinks, then publish parsed metrics and validated execution evidence.
   const metricsDirectory = path.join(
@@ -202,7 +221,7 @@ async function main() {
   fs.mkdirSync(metricsDirectory, { recursive: true });
   fs.mkdirSync(evidenceMetrics, { recursive: true });
 
-  function sandbox(mode, containerName) {
+  function sandbox(mode, containerName, traceGc) {
     const args = [
       "run",
       "--pull",
@@ -256,8 +275,8 @@ async function main() {
       args.push("--env", value);
     }
     if (mode === "incremental-cold") {
-      for (const name of ["GOMAXPROCS", "GOGC", "GOMEMLIMIT"]) {
-        if (ciPolicy.env[name]) {
+      for (const name of ["GOMAXPROCS", "GOGC", "GOMEMLIMIT", "GODEBUG"]) {
+        if (ciPolicy.env[name] && (name !== "GODEBUG" || traceGc)) {
           args.push("--env", name + "=" + ciPolicy.env[name]);
         }
       }
@@ -271,12 +290,12 @@ async function main() {
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.once(signal, () => cancellation.abort());
   }
-  async function executeIsolated(args, { mode, files, ...options } = {}) {
+  async function executeIsolated(args, { mode, files, traceGc = false, ...options } = {}) {
     const name = containerPrefix + containerSequence++;
     let result;
     try {
       result = await new Promise((resolve) => {
-        const child = spawn("docker", [...sandbox(mode, name), ...args], {
+        const child = spawn("docker", [...sandbox(mode, name, traceGc), ...args], {
           cwd: root,
           timeout: 120000,
           killSignal: "SIGKILL",
@@ -487,6 +506,7 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
     groups,
     archives,
     ciPolicy,
+    memoryDiagnostic: memoryTarget || undefined,
     isolation: "docker",
     isolationSmoke,
     containerImage,
@@ -541,6 +561,7 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
           timeout: 600000,
           killSignal: "SIGKILL",
           mode,
+          traceGc: Boolean(memoryTarget),
           files: { stdout: stdoutFd, stderr: stderrFd },
         },
       );
@@ -658,7 +679,9 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
       graphs.length +
       " canonical graphs and " +
       canaries.length +
-      " canaries. Run audit-compiler-comparison.mts before interpreting timings.",
+      (memoryTarget
+        ? " canaries. Memory diagnostic only; these traces cannot qualify a compiler."
+        : " canaries. Run audit-compiler-comparison.mts before interpreting timings."),
   );
 }
 try {

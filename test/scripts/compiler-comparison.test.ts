@@ -172,6 +172,17 @@ function fixture(
 }
 
 describe("compiler comparison artifact audit", () => {
+  it("rejects a diagnostic memory profile even when all compiler outcomes pass", () => {
+    const evidence = fixture();
+    const metadata = JSON.parse(
+      fs.readFileSync(path.join(evidence.directory, "metadata.json"), "utf8"),
+    );
+    evidence.write("metadata.json", { ...metadata, memoryDiagnostic: "10GiB" });
+    expect(() => auditCompilerComparison(evidence.directory)).toThrow(
+      "Memory diagnostics are not qualification evidence",
+    );
+  });
+
   it("does not lose a declared profile or reference when its entire batch is missing", () => {
     const evidence = fixture();
     const metadata = JSON.parse(
