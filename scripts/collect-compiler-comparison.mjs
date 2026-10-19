@@ -39,6 +39,8 @@ async function main() {
   const repeats = Number(argument("--repeats", "3"));
   const memoryTarget = argument("--memory-diagnostic", "");
   const capacityControl = process.argv.includes("--capacity-control");
+  const isolationOnly = process.argv.includes("--isolation-diagnostic");
+  assert(!isolationOnly || capacityControl, "Isolation diagnostic requires the capacity profile");
   assert(["", "3GiB", "10GiB"].includes(memoryTarget), "Unknown diagnostic memory target");
   assert(!memoryTarget || (repeats === 1 && !process.argv.includes("--canaries")));
   assert(
@@ -221,6 +223,13 @@ async function main() {
 
   const ciEnv = { CI: "true", GITHUB_ACTIONS: "true", OPENCLAW_LOCAL_CHECK: "0" };
   const ciPolicy = applyLocalTsgoPolicy([...common], ciEnv, resources);
+  const dockerVersion = isolationOnly
+    ? run("docker", [
+        "version",
+        "--format",
+        "{{json .Client.Version}} {{json .Server.Version}}",
+      ]).trim()
+    : undefined;
   // A soft-target diagnostic keeps the hard cap and checking policy unchanged.
   // Raw GC stderr is evidence only; the auditor refuses this declared profile.
   if (memoryTarget) {
@@ -307,9 +316,13 @@ async function main() {
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.once(signal, () => cancellation.abort());
   }
-  async function executeIsolated(args, { mode, files, traceGc = false, ...options } = {}) {
+  async function executeIsolated(
+    args,
+    { mode, files, traceGc = false, diagnoseNetwork = false, ...options } = {},
+  ) {
     const name = containerPrefix + containerSequence++;
     let result;
+    let networkProfile = null;
     try {
       result = await new Promise((resolve) => {
         const child = spawn("docker", [...sandbox(mode, name, traceGc), ...args], {
@@ -345,6 +358,21 @@ async function main() {
     } catch (error) {
       result = { status: null, signal: null, error };
     } finally {
+      if (diagnoseNetwork) {
+        // Inspect this exact container before cleanup. Only selected public
+        // runtime fields are evidence; full Docker inspection can expose secrets.
+        const inspection = spawnSync(
+          "docker",
+          [
+            "inspect",
+            "--format",
+            "{{json .HostConfig.NetworkMode}} {{json .HostConfig.Runtime}}",
+            name,
+          ],
+          { encoding: "utf8", timeout: 5000, maxBuffer: 4096 },
+        );
+        networkProfile = inspection.status === 0 ? inspection.stdout.trim() : null;
+      }
       // Inspect before removal: exit 137 alone cannot establish an OOM kill.
       // After a client timeout this is a live snapshot, not a terminal exit code.
       result.preCleanupState = { available: false };
@@ -380,6 +408,21 @@ async function main() {
         !cleanup.error && (cleanup.status === 0 || cleanup.stderr.includes("No such container"));
       if (!result.cleanupVerified) {
         result.error = new Error("Failed to join task-owned container " + name);
+      }
+      if (diagnoseNetwork) {
+        dump("isolation-diagnostic.json", {
+          sourceHead: run("git", ["rev-parse", "HEAD"]).trim(),
+          runId: process.env.GITHUB_RUN_ID,
+          kernel: os.release(),
+          dockerVersion,
+          limits: { cpuSet, memoryBytes, swapBytes: 0 },
+          profile: networkProfile,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          processExitCode: result.status,
+          preCleanupState: result.preCleanupState,
+          cleanupVerified: result.cleanupVerified,
+        });
       }
     }
     return result;
@@ -463,6 +506,22 @@ for target in "$2" "$3"; do
   [[ "$(</tmp/write-error)" == *"Read-only file system"* ]] || fail "Write failed without EROFS"
 done
 interfaces=(/sys/class/net/*)
+if [[ "$4" == true ]]; then
+  interface_kind() { [[ $1 == lo ]] && printf loopback || printf non-loopback; }
+  printf 'sysfs-readable=%s proc-net-readable=%s\\n' "$(test -r /sys/class/net && echo yes || echo no)" "$(test -r /proc/self/net/dev && echo yes || echo no)" >&2
+  for interface in "\${interfaces[@]}"; do
+    printf 'sysfs-entry-present=%s kind=%s\\n' "$(test -e "$interface" && echo yes || echo no)" "$(interface_kind "\${interface##*/}")" >&2
+  done
+  while IFS=: read -r interface rest; do
+    [[ -n $rest ]] || continue
+    printf 'proc-interface=%s\\n' "$(interface_kind "\${interface//[[:space:]]/}")" >&2
+  done < /proc/self/net/dev
+  while read -r interface rest; do
+    [[ $interface == Iface ]] || printf 'route-interface=%s\\n' "$(interface_kind "$interface")" >&2
+  done < /proc/self/net/route
+  printf 'net-namespace=%s\\n' "$(readlink /proc/self/ns/net)" >&2
+  printf 'mount-namespace=%s\\n' "$(readlink /proc/self/ns/mnt)" >&2
+fi
 [[ \${#interfaces[@]} == 1 && \${interfaces[0]##*/} == lo ]] || fail "Non-loopback network interface"
 while read -r interface rest; do
   [[ $interface == Iface || $interface == lo ]] || fail "Non-loopback IPv4 route"
@@ -473,8 +532,9 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
         probe,
         "/work/" + probe,
         "/work/" + path.relative(root, path.join(directory, probe)),
+        String(isolationOnly),
       ],
-      { timeout: 10000 },
+      { timeout: 10000, diagnoseNetwork: isolationOnly },
     );
     assert.equal(fs.readFileSync(probePaths.metrics, "utf8"), probe);
     assert(!fs.existsSync(probePaths.checkout) && !fs.existsSync(probePaths.evidence));
@@ -483,6 +543,10 @@ if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected exte
     for (const file of Object.values(probePaths)) {
       fs.rmSync(file, { force: true });
     }
+  }
+  if (isolationOnly) {
+    console.log("Isolation diagnostic complete; no compiler was invoked in the sandbox.");
+    return;
   }
   const version = {};
   for (const [name, binary] of Object.entries(binaries)) {
