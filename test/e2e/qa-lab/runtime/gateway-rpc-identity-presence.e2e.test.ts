@@ -10,7 +10,6 @@ import {
   installGatewayTestHooks,
   startTestGatewayServer,
 } from "../../../../src/gateway/test-helpers.js";
-import { prepareDeviceAuthStore } from "../../../../src/infra/device-auth-store.js";
 import { loadOrCreateProcessDeviceIdentityAsync } from "../../../../src/infra/device-identity-async.js";
 import { withTimeout } from "../../../../src/infra/fs-safe.js";
 
@@ -47,7 +46,6 @@ beforeAll(async () => {
   if (!stateDir) {
     throw new Error("OPENCLAW_STATE_DIR is required");
   }
-  await prepareDeviceAuthStore({});
   await loadOrCreateProcessDeviceIdentityAsync();
   // Suite hooks must retain this server's state through their per-test reset.
   const port = await getGatewayTestPort();

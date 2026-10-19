@@ -833,6 +833,6 @@ describe("heartbeat cadence Doctor cutover", () => {
       withExistingOpenClawStateDatabaseReadOnly(({ db }) => loadCronRows(db, f.storeKey), {
         env: ambientEnv,
       }),
-    ).toEqual([]);
+    ).toBeUndefined();
   });
 });

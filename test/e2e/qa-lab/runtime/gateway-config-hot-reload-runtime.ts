@@ -367,7 +367,7 @@ async function runProof(repoRoot: string, outputDir: string, appendLog: (text: s
 
       // Node identities and relay grants are generated for this isolated fixture only.
       const nodeIdentity = loadOrCreateDeviceIdentity({
-        path: path.join(temporaryRoot, "state/openclaw.sqlite"),
+        env: { ...process.env, OPENCLAW_STATE_DIR: temporaryRoot },
         identityKey: "browser-node",
       });
       let node: HotReloadConnection | undefined;
@@ -500,7 +500,7 @@ async function runProof(repoRoot: string, outputDir: string, appendLog: (text: s
           ["gateway.nodes.pairing.autoApproveCidrs", "gateway.nodes.pairing.sshVerify.cidrs"],
         );
         const pendingIdentity = loadOrCreateDeviceIdentity({
-          path: path.join(temporaryRoot, "state/openclaw.sqlite"),
+          env: { ...process.env, OPENCLAW_STATE_DIR: temporaryRoot },
           identityKey: "pending-node",
         });
         await assert.rejects(
@@ -512,7 +512,7 @@ async function runProof(repoRoot: string, outputDir: string, appendLog: (text: s
         assert.equal(node.closes, 0);
         await patch({ gateway: { nodes: { pairing: { autoApproveLocal: true } } } });
         const nextIdentity = loadOrCreateDeviceIdentity({
-          path: path.join(temporaryRoot, "state/openclaw.sqlite"),
+          env: { ...process.env, OPENCLAW_STATE_DIR: temporaryRoot },
           identityKey: "next-node",
         });
         const nextNode = await connectHotReloadClient(activeGateway, { identity: nextIdentity });

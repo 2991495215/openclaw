@@ -2,8 +2,10 @@
 import { createHash } from "node:crypto";
 import { resolveIntegerOption } from "@openclaw/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { readStoredDeviceIdentityReadOnly } from "../infra/device-identity-store.js";
-import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
+import {
+  loadDeviceIdentityIfPresent,
+  loadOrCreateDeviceIdentity,
+} from "../infra/device-identity.js";
 
 export function resolveHeartbeatSchedulerSeed(
   explicitSeed?: string,
@@ -16,7 +18,7 @@ export function resolveHeartbeatSchedulerSeed(
   const env = options.env ?? process.env;
   try {
     const identity = options.readOnly
-      ? readStoredDeviceIdentityReadOnly({ env })
+      ? loadDeviceIdentityIfPresent({ env })
       : loadOrCreateDeviceIdentity({ env });
     if (identity) {
       return identity.deviceId;

@@ -50,8 +50,8 @@ const schemaMigrationDescriptions = {
   "agent-databases-composite-primary-key": "agent database registry primary key -> agent_id,path",
   "agent-databases-relative-paths-v9": "agent database registry paths -> state-relative paths",
   "audit-events-v2": "audit event ledger -> versioned message lifecycle schema",
-  "automation-policy-fence-v29":
-    "automation policy -> ordinary jobs with a v29 compatibility fence (no table changes)",
+  "automation-policy-fence-v30":
+    "automation policy -> ordinary jobs with a v30 compatibility fence (no table changes)",
   "commitments-retirement-v7": "retired commitments storage -> discarded rows, table, and indexes",
   "state-table-retirement-v10": "retired shared-state tables -> removed tables and indexes",
   "state-table-retirement-v11": "retired skill curator tables -> removed tables and indexes",
@@ -69,6 +69,7 @@ const schemaMigrationDescriptions = {
   "session-state-head-layout-v26": "session state heads -> primary-key table layout",
   "state-write-indexes-v27": "replay, skill usage, and lease writes -> smaller index maintenance",
   "github-publication-draft-v28": "GitHub publication requests -> durable draft choice",
+  "local-client-credentials-v29": "client credentials and native socket material -> local owner",
   "subagent-operator-recovery-v25": "subagent recovery -> original operator authority required",
   "meeting-transcript-start-time": "meeting transcript start times -> persisted chronology",
   "predicate-columns-v21":

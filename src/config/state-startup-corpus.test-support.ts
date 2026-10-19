@@ -28,6 +28,7 @@ import {
 import { OPENCLAW_STATE_SCHEMA_VERSION } from "../state/openclaw-state-db-contract.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
+import { withStateMigrationBackupForTest } from "../state/openclaw-state-schema.test-support.js";
 import { getUserPreferences } from "../state/user-preferences.test-support.js";
 import {
   listConfigCorpusFixtureNames,
@@ -204,12 +205,14 @@ export function createStateStartupCorpusFixture() {
             for (let pass = 0; pass < 2; pass += 1) {
               setRuntimeConfigSnapshot(config);
               phase("doctor-repair");
-              const preflight = await runDoctorConfigPreflight({
-                observe: false,
-                repairPrefixedConfig: true,
-                doctorOnlyStateMigrations: true,
-                preparePluginMetadataSnapshot: true,
-              });
+              const preflight = await withStateMigrationBackupForTest({ env }, () =>
+                runDoctorConfigPreflight({
+                  observe: false,
+                  repairPrefixedConfig: true,
+                  doctorOnlyStateMigrations: true,
+                  preparePluginMetadataSnapshot: true,
+                }),
+              );
               phase("heartbeat-retirement");
               const retired = await retireHeartbeatWithDoctor(preflight.baseConfig, process.env);
               fs.writeFileSync(configPath, JSON.stringify(retired));

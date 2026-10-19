@@ -16,6 +16,7 @@ import { OPENCLAW_STATE_SCHEMA_SQL } from "../../state/openclaw-state-schema.js"
 import manifest from "../../state/postgres-schema.generated/manifest.json" with { type: "json" };
 import { statePostgresRuntime } from "../../state/postgres-schema.generated/runtime.js";
 import metadata from "../../state/postgres-schema.generated/state-port.json" with { type: "json" };
+import { CLIENT_CREDENTIAL_LEGACY_TABLES_SQL } from "../client-credential-schema.js";
 import { openNodeSqliteDatabase } from "../node-sqlite.js";
 import { admitSqliteSchema, getAdmittedSqliteSchemaFacts } from "../sqlite-schema-facts.js";
 import { extractSqliteTableSchema } from "../sqlite-schema-sql.js";
@@ -34,23 +35,27 @@ export async function loadStatePortDescriptor(
       return backup;
     }
     // v28 appends publication draft choices; v24-v26 additionally retain older indexes.
-    // v29 only fences automation policies. Pin these shapes before later column changes.
+    // v29 removes credential tables; v30 only fences automation policies.
     if (
       backup ||
-      OPENCLAW_STATE_SCHEMA_VERSION !== 29 ||
-      ![24, 25, 26, 27, 28].includes(sourceVersion)
+      OPENCLAW_STATE_SCHEMA_VERSION !== 30 ||
+      ![24, 25, 26, 27, 28, 29].includes(sourceVersion)
     ) {
       throw new DatabasePortDataError(
         `Missing shared-state PostgreSQL backup descriptor for version ${sourceVersion}`,
       );
     }
   }
+  const source = sourceVersion < 29 ? statePostgresRuntime.clientCredentialSource : undefined;
   // The generated catalog owns these tagged facts; project only the copy fields.
   const isColumn = (
     fact: (typeof statePostgresRuntime.expectedCatalog)[number],
   ): fact is typeof fact & { value: PortTable["columns"][number] } => fact.kind === "column";
   const historical = sourceVersion < 28;
-  const catalog = statePostgresRuntime.expectedCatalog.filter(
+  const catalog = [
+    ...statePostgresRuntime.expectedCatalog,
+    ...(source?.expectedCatalog ?? []),
+  ].filter(
     (fact) =>
       !historical ||
       !isColumn(fact) ||
@@ -94,17 +99,26 @@ export async function loadStatePortDescriptor(
   for (const table of DOCTOR_OWNED_STATE_TABLES) {
     sqliteFragments.set(table, extractSqliteTableSchema(OPENCLAW_STATE_SCHEMA_SQL, table));
   }
+  const eager = schema(
+    metadata,
+    statePostgresRuntime.eagerSql,
+    metadata.sqliteRanges
+      .map(([start, end]) => OPENCLAW_STATE_SCHEMA_SQL.slice(start, end))
+      .join("\n"),
+  );
+  if (source) {
+    const credentials = schema(source, source.sql, CLIENT_CREDENTIAL_LEGACY_TABLES_SQL);
+    eager.sqlite += `\n${credentials.sqlite}`;
+    eager.preData += `\n${credentials.preData}`;
+    eager.postData += `\n${credentials.postData}`;
+    eager.tables.push(...credentials.tables);
+    eager.expectedCatalog.push(...credentials.expectedCatalog);
+  }
   const descriptor: PortDescriptor = {
     id: "state",
     version: sourceVersion,
     minimumPostgresVersion: manifest.minimumPostgresVersion,
-    ...schema(
-      metadata,
-      statePostgresRuntime.eagerSql,
-      metadata.sqliteRanges
-        .map(([start, end]) => OPENCLAW_STATE_SCHEMA_SQL.slice(start, end))
-        .join("\n"),
-    ),
+    ...eager,
     fragments: metadata.fragments.map((fragment) => {
       const runtime = statePostgresRuntime.fragments.find((entry) => entry.id === fragment.id)!;
       return Object.assign(schema(fragment, runtime.sql, sqliteFragments.get(fragment.id)!), {
@@ -124,6 +138,11 @@ export async function loadStatePortDescriptor(
       return { version, migrationRequired: false, pendingColumns: {} };
     },
     async admit(file, input) {
+      // Historical SQLite images use their descriptor; restored PG anchors still
+      // require owner admission against the exact predecessor without migrating.
+      if (sourceVersion !== OPENCLAW_STATE_SCHEMA_VERSION && !input) {
+        return;
+      }
       return withEngineStoreAdmission(() => {
         using anchor = openNodeSqliteDatabase(file);
         const selected = openEngineStore({
@@ -135,6 +154,7 @@ export async function loadStatePortDescriptor(
           openSqlite: () => assertOpenClawStateDatabaseForMaintenance(anchor, { pathname: file }),
           admitPostgres: admitStatePostgres,
           existingOnly: true,
+          existingVersion: sourceVersion !== OPENCLAW_STATE_SCHEMA_VERSION,
         });
         if (selected !== anchor) {
           selected.close();
@@ -142,30 +162,30 @@ export async function loadStatePortDescriptor(
       });
     },
   };
-  if (sourceVersion >= 27 && sourceVersion < OPENCLAW_STATE_SCHEMA_VERSION) {
-    return { ...descriptor, inspectSqliteSource: undefined, admit: undefined };
+  if (sourceVersion === OPENCLAW_STATE_SCHEMA_VERSION) {
+    return descriptor;
+  }
+  if (sourceVersion >= 27) {
+    return { ...descriptor, inspectSqliteSource: undefined };
   }
   const historicalSqlite = withLegacyStateWriteIndexes(descriptor.sqlite);
   const legacyIndexes = statePostgresRuntime.preWriteIndexesV27Sql;
-  return sourceVersion === OPENCLAW_STATE_SCHEMA_VERSION
-    ? descriptor
-    : {
-        ...descriptor,
-        sqlite: sourceVersion < 26 ? withLegacyStateHeadLayout(historicalSqlite) : historicalSqlite,
-        postData:
-          descriptor.postData.replace(
-            /CREATE INDEX "idx_state_leases_owner"[^;]+;/u,
-            legacyIndexes.state_leases,
-          ) +
-          legacyIndexes.skill_usage +
-          legacyIndexes.acp_replay_events,
-        expectedCatalog: descriptor.expectedCatalog.map((fact) =>
-          fact.kind === "indexes" &&
-          (fact.table === "skill_usage" || fact.table === "acp_replay_events")
-            ? { table: fact.table, kind: fact.kind, value: Number(fact.value) + 1 }
-            : fact,
-        ),
-        inspectSqliteSource: undefined,
-        admit: undefined,
-      };
+  return {
+    ...descriptor,
+    sqlite: sourceVersion < 26 ? withLegacyStateHeadLayout(historicalSqlite) : historicalSqlite,
+    postData:
+      descriptor.postData.replace(
+        /CREATE INDEX "idx_state_leases_owner"[^;]+;/u,
+        legacyIndexes.state_leases,
+      ) +
+      legacyIndexes.skill_usage +
+      legacyIndexes.acp_replay_events,
+    expectedCatalog: descriptor.expectedCatalog.map((fact) =>
+      fact.kind === "indexes" &&
+      (fact.table === "skill_usage" || fact.table === "acp_replay_events")
+        ? { table: fact.table, kind: fact.kind, value: Number(fact.value) + 1 }
+        : fact,
+    ),
+    inspectSqliteSource: undefined,
+  };
 }
