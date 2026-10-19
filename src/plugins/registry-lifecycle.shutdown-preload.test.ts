@@ -19,7 +19,8 @@ vi.mock("./runtime.js", () => ({
     return fixture.dispose;
   },
 }));
-vi.mock("./host-hook-cleanup.js", () => ({
+vi.mock("./host-hook-cleanup.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./host-hook-cleanup.js")>()),
   createPluginHostRegistryRetirement: () => async () => ({ failures: [] }),
 }));
 vi.mock("./memory-runtime.js", () => ({}));
