@@ -1,0 +1,335 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { runManagedCommand } from "../../../lib/managed-child-process.mts";
+import { packFirstHopUpdateFixture } from "../update-first-hop-package-fixtures.mjs";
+import {
+  assertRetirementCut,
+  fileDigest,
+  fileIdentity,
+  packageTreeDigest,
+  parseRecoveryCommand,
+  readActivation,
+  retirementCuts,
+  sha256,
+} from "./installed-recovery-observations.mjs";
+
+const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
+const write = (file, value) =>
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+const packed = (tarball, name) => execFileSync("tar", ["-xOf", tarball, `package/${name}`]);
+
+async function main([artifacts, prefix, tarball, configPath, summary]) {
+  assert.equal(
+    process.platform,
+    "linux",
+    "installed recovery cell owns a disposable Linux container",
+  );
+  for (const file of [artifacts, prefix, tarball, configPath, summary]) {
+    assert(file && path.isAbsolute(file));
+  }
+  const root = fs.realpathSync(path.join(prefix, "lib/node_modules/openclaw"));
+  const bin = path.join(prefix, "bin/openclaw");
+  const node = fs.realpathSync(process.execPath);
+  assert(
+    !node.startsWith(`${prefix}${path.sep}`),
+    "recovery Node must outlive the installed package",
+  );
+  const baseline = JSON.parse(packed(tarball, "package.json").toString());
+  assert.equal(read(path.join(root, "package.json")).version, baseline.version);
+  const anchor = path.join(
+    path.dirname(root),
+    `.openclaw.package-activation-${sha256(root).slice(0, 24)}`,
+  );
+  const helper = path.join(`${anchor}.control`, "recovery.mjs");
+  const journal = path.join(`${anchor}.control`, "operation.sqlite");
+  const fault = fileURLToPath(new URL("./installed-recovery-fault.mjs", import.meta.url));
+  const config = fs.readFileSync(configPath);
+  const helperBytes = packed(tarball, "dist/package-update-activation-recovery.mjs");
+  const alternate = path.join(artifacts, "independent-recovery.mjs");
+  fs.writeFileSync(alternate, helperBytes, { flag: "wx", mode: 0o600 });
+  assert.equal(fileDigest(alternate), sha256(helperBytes));
+
+  // A deliberately small external environment cannot inherit the killed CLI's
+  // loader, worker handoff, lease, or in-progress update authority.
+  const env = Object.fromEntries(
+    [
+      "HOME",
+      "PATH",
+      "TMPDIR",
+      "LANG",
+      "TZ",
+      "OPENCLAW_STATE_DIR",
+      "OPENCLAW_CONFIG_PATH",
+      "npm_config_prefix",
+      "NPM_CONFIG_PREFIX",
+      "npm_config_cache",
+      "NPM_CONFIG_CACHE",
+      "GATEWAY_AUTH_TOKEN_REF",
+    ].flatMap((key) => (process.env[key] === undefined ? [] : [[key, process.env[key]]])),
+  );
+  Object.assign(env, {
+    CI: "true",
+    OPENCLAW_NO_ONBOARD: "1",
+    OPENCLAW_NO_PROMPT: "1",
+    OPENCLAW_DISABLE_BONJOUR: "1",
+    npm_config_audit: "false",
+    npm_config_fund: "false",
+  });
+  const commands = [];
+  const run = async (directory, name, command, args, faultCut) => {
+    console.log(`[installed-recovery] ${path.basename(directory)}: ${name}`);
+    const stdout = path.join(directory, `${name}.out`);
+    const stderr = path.join(directory, `${name}.err`);
+    const out = fs.openSync(stdout, "wx", 0o600);
+    const err = fs.openSync(stderr, "wx", 0o600);
+    let status;
+    try {
+      const childEnv = { ...env };
+      if (faultCut) {
+        const spec = path.join(directory, `${name}.fault.json`);
+        write(spec, { root, anchor, helper, journal, cut: faultCut, evidence: `${spec}.observed` });
+        childEnv.OPENCLAW_SURVIVOR_INSTALLED_RECOVERY_FAULT = spec;
+        childEnv.NODE_OPTIONS = `--import=${fault}`;
+      }
+      status = await runManagedCommand({
+        bin: command,
+        args,
+        env: childEnv,
+        stdio: ["ignore", out, err],
+        timeoutMs: 180_000,
+        timeoutKillGraceMs: 10_000,
+        requireProcessTreeExit: true,
+        timeoutForceKillOnLeaderExit: true,
+      });
+    } finally {
+      fs.closeSync(out);
+      fs.closeSync(err);
+    }
+    commands.push({ name, status, treeJoined: true, preload: faultCut ?? null });
+    const result = {
+      status,
+      stdout: fs.readFileSync(stdout, "utf8"),
+      stderr: fs.readFileSync(stderr, "utf8"),
+    };
+    assert.equal(
+      status === 0,
+      !faultCut,
+      `${name}: exit ${status}\n${result.stderr.slice(-16_384)}`,
+    );
+    return result;
+  };
+  const settingsUnchanged = () =>
+    assert.deepEqual(fs.readFileSync(configPath), config, "full config bytes changed");
+  const launcher = () => ({
+    inode: fileIdentity(bin),
+    link: fs.lstatSync(bin).isSymbolicLink() ? fs.readlinkSync(bin) : null,
+    digest: fileDigest(bin),
+  });
+  const operationIds = new Set();
+  const rows = [];
+  const evidence = {
+    status: "running",
+    runDirectory: path.basename(artifacts),
+    scope: "installed-current-writer-process-interruption",
+    artifactSha256: fileDigest(tarball),
+    baselineVersion: baseline.version,
+    helperSha256: sha256(helperBytes),
+    node,
+    rows,
+    commands,
+  };
+  write(summary, evidence);
+
+  for (const [sequence, cut] of retirementCuts.entries()) {
+    const directory = path.join(artifacts, cut);
+    fs.mkdirSync(directory);
+    const target = path.join(directory, "candidate.tgz");
+    const fixture = packFirstHopUpdateFixture(tarball, target, sequence);
+    write(path.join(directory, "candidate-fixture.json"), fixture);
+    const expected = JSON.parse(packed(target, "package.json").toString());
+    assert.notEqual(expected.version, read(path.join(root, "package.json")).version);
+    assert.deepEqual(expected.openclaw.schemaVersions, baseline.openclaw.schemaVersions);
+    const originalTree = packageTreeDigest(root);
+    const originalLauncher = launcher();
+    const interrupted = await run(
+      directory,
+      "displacement",
+      node,
+      [bin, "update", "--tag", `file:${target}`, "--yes", "--no-restart", "--json"],
+      "displaced",
+    );
+    const observed = read(path.join(directory, "displacement.fault.json.observed"));
+    assert.equal(observed.cut, "displaced");
+    assert.deepEqual(
+      readActivation(journal),
+      observed.row,
+      "dead writer changed the captured journal",
+    );
+    const descriptor = JSON.parse(observed.row.descriptor_json);
+    const printed = parseRecoveryCommand(`${interrupted.stdout}\n${interrupted.stderr}`);
+    assert.deepEqual(printed, { node, helper, anchor, operation: descriptor.operationId });
+    assert(
+      !operationIds.has(printed.operation),
+      "each subsequent update must acquire a new operation",
+    );
+    operationIds.add(printed.operation);
+    assert.equal(fs.existsSync(root), false, "live package must actually be absent");
+    assert.equal(fs.existsSync(bin), false, "installed CLI must actually be unusable");
+    assert.equal(packageTreeDigest(path.join(anchor, "previous")), originalTree);
+    const previousIdentity = fileIdentity(path.join(anchor, "previous"));
+    const candidateTree = packageTreeDigest(path.join(anchor, "candidate"));
+    assert.equal(read(path.join(anchor, "candidate/package.json")).version, expected.version);
+    assert.equal(
+      fileDigest(helper),
+      sha256(helperBytes),
+      "printed helper must come from the current artifact",
+    );
+    const helperIdentity = fileIdentity(helper);
+    settingsUnchanged();
+
+    const recovery = async (name, action, selectedHelper = printed.helper, faultCut) => {
+      const result = await run(
+        directory,
+        name,
+        printed.node,
+        [selectedHelper, "--anchor", printed.anchor, "--operation", printed.operation, action],
+        faultCut,
+      );
+      if (faultCut) {
+        return result;
+      }
+      const status = JSON.parse(result.stdout.trim());
+      assert.equal(status.operationId, printed.operation);
+      assert.equal(status.installKey, root);
+      settingsUnchanged();
+      return status;
+    };
+    assert.equal((await recovery("missing-status", "status")).phase, "publishing");
+    for (const name of ["repair", "repeat-repair"]) {
+      assert.equal((await recovery(name, "repair")).phase, "publication-complete");
+      assert.equal(packageTreeDigest(root), candidateTree);
+      assert.equal(packageTreeDigest(path.join(anchor, "previous")), originalTree);
+      assert.equal(fileIdentity(path.join(anchor, "previous")), previousIdentity);
+      assert.equal(fileIdentity(helper), helperIdentity);
+      assert.equal(fileDigest(helper), sha256(helperBytes));
+      assert.equal(launcher().link, originalLauncher.link);
+      assert.equal(launcher().digest, originalLauncher.digest);
+    }
+    const selectedLauncher = launcher();
+    await recovery("retirement", "retire", printed.helper, cut);
+    const retirement = read(path.join(directory, "retirement.fault.json.observed"));
+    assertRetirementCut(cut, retirement, anchor, helper);
+    assert.deepEqual(readActivation(journal), retirement.row);
+    assert.equal(packageTreeDigest(root), candidateTree);
+    assert.deepEqual(launcher(), selectedLauncher);
+    settingsUnchanged();
+
+    // unlink-helper intent is already a completed receipt. Earlier cuts still
+    // require the original helper; an independent copy is never recovery authority.
+    if (!cut.startsWith("helper-")) {
+      assert.equal((await recovery("resume-retirement", "retire")).phase, "complete");
+    }
+    assert.equal((await recovery("completed-status", "status", alternate)).phase, "complete");
+    assert.equal((await recovery("archive-completed", "retire", alternate)).phase, "complete");
+    assert.equal(fs.existsSync(journal), false, "completed custody must stop blocking admission");
+    assert.equal(fs.existsSync(anchor), false);
+    assert.equal(fs.existsSync(helper), false);
+    const archived = path.join(
+      `${anchor}.superseded-${printed.operation}`,
+      "control/operation.sqlite",
+    );
+    assert.equal(
+      JSON.parse(readActivation(archived).descriptor_json).operationId,
+      printed.operation,
+    );
+    assert.equal(packageTreeDigest(root), candidateTree);
+    assert.deepEqual(launcher(), selectedLauncher);
+    settingsUnchanged();
+    rows.push({
+      cut,
+      operationId: printed.operation,
+      installedVersion: expected.version,
+      missingCli: true,
+      originalWriterJoined: true,
+      originalHelperRepairs: 2,
+      interruptedPhase: retirement.row.phase,
+      completedViaIndependentHelper: true,
+      packagePreserved: true,
+      launchersPreserved: true,
+      fullConfigPreserved: true,
+    });
+    write(summary, evidence);
+    fs.unlinkSync(target);
+  }
+
+  const target = path.join(artifacts, "next-update.tgz");
+  packFirstHopUpdateFixture(tarball, target, 7);
+  const expected = JSON.parse(packed(target, "package.json").toString());
+  const next = await run(artifacts, "next-update", node, [
+    bin,
+    "update",
+    "--tag",
+    `file:${target}`,
+    "--yes",
+    "--no-restart",
+    "--json",
+  ]);
+  const printed = parseRecoveryCommand(`${next.stdout}\n${next.stderr}`);
+  assert.deepEqual(printed, { node, helper, anchor, operation: printed.operation });
+  assert(!operationIds.has(printed.operation), "real next update must acquire distinct custody");
+  assert.deepEqual(read(path.join(root, "package.json")), expected);
+  const installedTree = packageTreeDigest(root);
+  const installedLauncher = launcher();
+  const receipt = readActivation(journal);
+  const descriptor = JSON.parse(receipt.descriptor_json);
+  assert.equal(descriptor.operationId, printed.operation);
+  assert.equal(receipt.phase, "anchor-retired");
+  assert.deepEqual(JSON.parse(receipt.intent_json), {
+    kind: "unlink-helper",
+    identity: descriptor.helperIdentity,
+    selected: "candidate",
+  });
+  // Normal retirement retains this completed receipt. Inspection by a copy of
+  // the same artifact must not turn it back into recovery custody.
+  const completed = await run(artifacts, "next-update-status", node, [
+    alternate,
+    "--anchor",
+    anchor,
+    "--operation",
+    printed.operation,
+    "status",
+  ]);
+  assert.deepEqual(JSON.parse(completed.stdout.trim()), {
+    phase: "complete",
+    operationId: printed.operation,
+    installKey: root,
+  });
+  assert.deepEqual(readActivation(journal), receipt);
+  assert.equal(fs.existsSync(anchor), false);
+  assert.equal(fs.existsSync(helper), false);
+  assert.equal(packageTreeDigest(root), installedTree);
+  assert.deepEqual(launcher(), installedLauncher);
+  settingsUnchanged();
+  evidence.nextUpdate = {
+    exitCode: next.status,
+    operationId: printed.operation,
+    installedVersion: expected.version,
+    receiptPhase: receipt.phase,
+    status: "complete",
+  };
+  fs.unlinkSync(target);
+  evidence.status = "passed";
+  write(summary, evidence);
+  console.log(
+    `[installed-recovery] PASS: ${rows.length} retirement cuts, missing CLI recovery, and next update`,
+  );
+}
+
+await main(process.argv.slice(2)).catch((error) => {
+  console.error(error);
+  console.error("[installed-recovery] FAILED (exit 1)");
+  process.exitCode = 1;
+});

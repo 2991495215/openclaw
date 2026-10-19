@@ -414,6 +414,15 @@ export const mainLanes: DockerE2eLane[] = [
     timeoutMs: 10 * 60 * 1000,
   }),
   upgradeSurvivorLane("upgrade-survivor", upgradeSurvivorCommand, 20 * 60 * 1000),
+  npmLane("package-installed-recovery", {
+    command: upgradeSurvivorScriptCommand(
+      "OPENCLAW_UPGRADE_SURVIVOR_SCENARIO=package-installed-recovery",
+    ),
+    needsPackage: true,
+    stateScenario: "empty",
+    timeoutMs: 20 * 60 * 1000,
+    weight: 3,
+  }),
   upgradeSurvivorLane("published-upgrade-survivor", publishedUpgradeSurvivorCommand, 2580 * 1000),
   // Explicit Docker/release regression; the per-PR cell still runs only one real update.
   lane("published-driver-lifecycle", {
