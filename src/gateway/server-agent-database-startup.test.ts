@@ -558,10 +558,12 @@ it.for([
             error: {
               code: "UNAVAILABLE",
               message:
-                "Agent main has not completed startup inspection and preparation. " +
-                "Inspection and writable admission continue after the Gateway listener binds.\n" +
-                "Sessions remain unavailable until background inspection and preparation finish. " +
-                'If they cannot complete, stop the Gateway, run "openclaw doctor --fix", and restart.',
+                agentId === "main"
+                  ? "Agent main has not completed startup inspection and preparation. " +
+                    "Inspection and writable admission continue after the Gateway listener binds.\n" +
+                    "Sessions remain unavailable until background inspection and preparation finish. " +
+                    'If they cannot complete, stop the Gateway, run "openclaw doctor --fix", and restart.'
+                  : "chat.send unavailable during gateway startup",
               retryable: true,
               details: { reason: "startup-sidecars", method: "chat.send" },
             },
