@@ -644,7 +644,7 @@ it("isolates an active artifact from a sibling capture waiting on host publicati
             async () => false,
             () => preparePluginGenerationArtifact({ rootDir: fixture.root, source: fixture.entry }),
           );
-          const firstDirectory = path.dirname(first.artifact.boundaryRoot);
+          const firstDirectory = first.artifact.boundaryRoot;
           const preparing = withPluginSourceAdmissionPublisher(
             async () => {
               publicationStarted();
@@ -685,16 +685,22 @@ it("isolates an active artifact from a sibling capture waiting on host publicati
           } finally {
             releasePublication();
             const second = await preparing;
-            expect(path.dirname(second.artifact.boundaryRoot)).not.toBe(firstDirectory);
-            const secondDirectory = path.dirname(second.artifact.boundaryRoot);
+            const secondDirectory = second.artifact.boundaryRoot;
+            expect(secondDirectory).not.toBe(firstDirectory);
             const recovery = first.artifact.captureRecoverySource();
+            const recoveryDirectory = recovery.sourceCapture.directory;
             await first.artifact.disposeAsync();
+            expect(fs.existsSync(firstDirectory)).toBe(false);
+            expect(fs.readFileSync(second.artifact.resolve(fixture.entry), "utf8")).toContain(
+              "fixture",
+            );
+            expect(fs.readFileSync(recovery.resolve(fixture.entry), "utf8")).toContain("fixture");
             await second.artifact.disposeAsync();
+            expect(fs.existsSync(secondDirectory)).toBe(false);
             expect(fs.readFileSync(recovery.resolve(fixture.entry), "utf8")).toContain("fixture");
             await recovery.disposeAsync();
             // Admission keeps native bytes; artifact disposal releases only source copies.
-            expect(fs.existsSync(firstDirectory)).toBe(false);
-            expect(fs.existsSync(secondDirectory)).toBe(false);
+            expect(fs.existsSync(recoveryDirectory)).toBe(false);
             await retirePluginCache(cache);
             await retirePluginCache(siblingCache);
           }
