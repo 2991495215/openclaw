@@ -104,7 +104,9 @@ syncBuiltinESMExports();\n`,
         "--output",
         output,
         ...(scenario === "history" ? ["--history-clients", "1", "--history-burst", "1"] : []),
-        ...(scenario === "diagnostic" ? ["--activity-summary-diagnostics"] : []),
+        ...(scenario === "diagnostic"
+          ? ["--activity-summary-diagnostics", "--plugin-count", "1"]
+          : []),
         ...(scenario === "profile" ? ["--cpu-prof-dir", profiles] : []),
       ],
       {

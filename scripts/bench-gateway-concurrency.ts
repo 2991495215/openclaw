@@ -76,6 +76,7 @@ import {
   CliArgumentError,
   createGatewayBenchEnv,
   hasHelpFlag,
+  collectTraceLine,
   parseNonNegativeInt,
   parsePositiveInt,
   resolveEntry,
@@ -175,6 +176,7 @@ type BenchmarkRun = {
   };
   heapProfile?: GatewayHeapProfile & MainProfileArtifacts;
   loadCpuProfile?: GatewayCpuProfile & MainProfileArtifacts;
+  startupTrace?: Record<string, number>;
   controlPlane: Array<TimedProbe & { method: string }>;
   controlUi: ControlUiProbe[];
   cpuUsage: GatewayCpuUsage;
@@ -2095,6 +2097,33 @@ async function runGatewaySample(
         options.deadlineAt,
         options.signal,
       );
+      const startupTrace: Record<string, number> = {};
+      for (const line of gatewayOutput.readOutput().split("\n")) {
+        let message = line;
+        if (line.trimStart().startsWith("{")) {
+          try {
+            const log: unknown = JSON.parse(line);
+            if (!isRecord(log) || typeof log.message !== "string") {
+              continue;
+            }
+            message = log.message;
+          } catch {
+            continue;
+          }
+        }
+        collectTraceLine(message, "startup trace", startupTrace);
+      }
+      partialRun.startupTrace = startupTrace;
+      for (let index = 0; index < options.pluginCount; index += 1) {
+        const id = `bench-plugin-${String(index + 1).padStart(2, "0")}`;
+        const phase = `plugins.gateway-load.plugin.${id}`;
+        if (
+          startupTrace[`${phase}.loadFailedCount`] !== 0 ||
+          startupTrace[`${phase}.registerFailedCount`] !== 0
+        ) {
+          throw new Error(`Benchmark plugin did not finish loading and registration: ${id}`);
+        }
+      }
       if (options.controlUiLoad && loadResources && controlUiToken) {
         if (!gateway.pid) {
           throw new Error("Gateway PID missing");
@@ -2777,6 +2806,7 @@ async function runGatewaySample(
         },
         memory: { after: memoryAfter, before: memoryBefore, peakRssMb },
         workers: { before: workersBefore, after: workersAfter },
+        startupTrace,
         messageSubscriptions,
         messageSubscriptionsDuringLoad,
         turnAccounting,
