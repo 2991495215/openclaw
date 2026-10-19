@@ -243,9 +243,14 @@ type BenchmarkPartialRun = Partial<
     | "loadWindow"
     | "agentWarmup"
     | "liveProof"
+    | "workers"
   >
 > & {
   controlUiResources?: unknown;
+  workers?: {
+    before: Awaited<ReturnType<typeof readGatewayWorkers>>;
+    after: Awaited<ReturnType<typeof readGatewayWorkers>> | null;
+  };
   memory: {
     before: GatewayMemorySample | null;
     after: GatewayMemorySample | null;
@@ -2510,6 +2515,8 @@ async function runGatewaySample(
           : undefined;
       partialRun.processPlacement = processPlacement;
       const workersBefore = await readGatewayWorkers(rpc);
+      // Preserve the first census if the workload or the second census fails.
+      partialRun.workers = { before: workersBefore, after: null };
       const cpuBefore = await readGatewayCpuUsage(gateway);
       const turnsStartedAt = performance.now();
       // Keep the live artifact intact: buffered setup writes can arrive after this boundary.

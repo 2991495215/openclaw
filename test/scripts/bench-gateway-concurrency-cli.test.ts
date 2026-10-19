@@ -230,6 +230,10 @@ function checkReport(report: Report, scenario: Exclude<Scenario, "profile">) {
   });
   if (scenario === "diagnostic" || scenario === "workload") {
     expect(partialRun.turnAccounting).toEqual({ launched: 1, terminalOk: 0, verified: 0 });
+    expect(partialRun.workers).toEqual({
+      before: { workerCount: 0, workerPoolCount: 0, workerPools: [] },
+      after: null,
+    });
   }
   if (scenario === "diagnostic") {
     expect(partialRun.probeWarmup.samples[0]?.sessionsList).toMatchObject({
