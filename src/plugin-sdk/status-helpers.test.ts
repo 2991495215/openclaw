@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { evaluateChannelHealth } from "../gateway/channel-health-policy.js";
 import {
   asString,
@@ -6,6 +6,7 @@ import {
   buildComputedAccountStatusSnapshot,
   buildRuntimeAccountStatusSnapshot,
   createComputedAccountStatusAdapter,
+  buildProbeChannelStatusSummary,
   buildWebhookChannelStatusSummary,
   buildTokenChannelStatusSummary,
   collectStatusIssuesFromLastError,
@@ -241,10 +242,27 @@ describe("buildTokenChannelStatusSummary", () => {
   });
 });
 
+it("keeps default probed summaries spreadable in async-capable adapters", () => {
+  const buildSummary: () => Promise<Record<string, unknown>> | Record<string, unknown> = () => ({
+    ...buildProbeChannelStatusSummary({}),
+    host: "irc.test",
+  });
+  expect(buildSummary()).toEqual({
+    configured: false,
+    ...defaultRuntimeState,
+    probe: undefined,
+    lastProbeAt: null,
+    host: "irc.test",
+  });
+});
+
 it("defaults mode to webhook and keeps supplied extras", () => {
-  expect(
-    buildWebhookChannelStatusSummary({ configured: true, running: true }, { secretSource: "env" }),
-  ).toEqual({
+  const summary = buildWebhookChannelStatusSummary(
+    { configured: true, running: true },
+    { secretSource: "env" },
+  );
+  expectTypeOf(summary.secretSource).toEqualTypeOf<string>();
+  expect(summary).toEqual({
     ...defaultRuntimeState,
     configured: true,
     running: true,

@@ -69,23 +69,6 @@ describe("passive channel summary contracts", () => {
     });
   });
 
-  it("keeps default probed summaries spreadable in async-capable adapters", () => {
-    const buildSummary: () => Promise<Record<string, unknown>> | Record<string, unknown> = () => ({
-      ...buildPassiveProbedChannelStatusSummary({}),
-      host: "irc.test",
-    });
-    expect(buildSummary()).toEqual({
-      configured: false,
-      running: false,
-      lastStartAt: null,
-      lastStopAt: null,
-      lastError: null,
-      probe: undefined,
-      lastProbeAt: null,
-      host: "irc.test",
-    });
-  });
-
   it.each([
     { build: buildPassiveChannelStatusSummary, probe: {} },
     {

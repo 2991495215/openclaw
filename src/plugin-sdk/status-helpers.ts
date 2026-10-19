@@ -7,11 +7,10 @@ import {
   resolveChannelAccountState,
 } from "../channels/status/account-state.js";
 import {
-  buildBaseChannelStatusSummary,
-  buildProbeChannelStatusSummary,
+  buildBaseChannelStatusSummary as buildBaseSummary,
+  buildProbeChannelStatusSummary as buildProbeSummary,
 } from "../channels/status/summary.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-export { buildBaseChannelStatusSummary, buildProbeChannelStatusSummary };
 // Preserve the shipped Plugin SDK name while the implementation stays canonical.
 export { normalizeOptionalString as asString };
 export type { ChannelAccountSnapshot } from "../channels/plugins/types.core.js";
@@ -184,6 +183,21 @@ export function createDefaultChannelRuntimeState<T extends Record<string, unknow
     lastError: null,
     ...(extra ?? ({} as T)),
   };
+}
+
+// Preserve the shipped record constraint; adapter contexts must not infer Promise extras.
+export function buildBaseChannelStatusSummary<TExtra extends StatusSnapshotExtra>(
+  snapshot: Parameters<typeof buildBaseSummary>[0],
+  extra?: TExtra,
+) {
+  return buildBaseSummary(snapshot, extra);
+}
+
+export function buildProbeChannelStatusSummary<TExtra extends StatusSnapshotExtra>(
+  snapshot: Parameters<typeof buildProbeSummary>[0],
+  extra?: TExtra,
+) {
+  return buildProbeSummary(snapshot, extra);
 }
 
 /** Build webhook channel summaries with a stable default mode. */
