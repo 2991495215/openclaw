@@ -23,7 +23,9 @@ const waitForHost = async (name: string) => {
 console.log("[compiler-row:ready]");
 await waitForHost("start");
 const startedAt = new Date().toISOString();
-const child = spawn(command[0], command.slice(1), {
+const executable = command[0];
+assert(executable !== undefined);
+const child = spawn(executable, command.slice(1), {
   cwd: "/work",
   env: process.env,
   stdio: ["ignore", "inherit", "inherit"],
