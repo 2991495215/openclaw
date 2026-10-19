@@ -462,8 +462,8 @@ export async function prepareWorkspaceBuildGroup(
       pluginGeneration,
     };
   };
-  // The build's registry resources already retain the source through preparation.
-  return withPluginRuntimeGenerationScope(
+  // Await preparation before the local resource stack releases its registry.
+  return await withPluginRuntimeGenerationScope(
     {
       metadataSnapshot: pluginMetadataSnapshot,
       pluginRegistry: runtimePluginRegistry,
