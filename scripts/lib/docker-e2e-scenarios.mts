@@ -415,8 +415,10 @@ export const mainLanes: DockerE2eLane[] = [
   }),
   upgradeSurvivorLane("upgrade-survivor", upgradeSurvivorCommand, 20 * 60 * 1000),
   npmLane("package-installed-recovery", {
+    // Shared release jobs also export historical survivor settings. This cell
+    // owns an isolated current writer, so its mode must not inherit those values.
     command: upgradeSurvivorScriptCommand(
-      "OPENCLAW_UPGRADE_SURVIVOR_SCENARIO=package-installed-recovery",
+      "OPENCLAW_UPGRADE_SURVIVOR_SCENARIO=package-installed-recovery OPENCLAW_UPGRADE_SURVIVOR_PUBLISHED_BASELINE=0 OPENCLAW_UPGRADE_SURVIVOR_BASELINE_SPEC= OPENCLAW_UPGRADE_SURVIVOR_UPDATE_RESTART_MODE=manual OPENCLAW_UPGRADE_SURVIVOR_ROOT_MANAGED_VPS=0 OPENCLAW_UPGRADE_SURVIVOR_LIVE_MODELS= OPENCLAW_UPGRADE_SURVIVOR_LIVE_OPENAI=0",
     ),
     needsPackage: true,
     stateScenario: "empty",

@@ -10,7 +10,7 @@ import {
   retirementCuts,
   startInstalledRecoveryRun,
 } from "../../scripts/e2e/lib/upgrade-survivor/installed-recovery-observations.mjs";
-import { resolveDockerE2ePlan } from "../../scripts/lib/docker-e2e-plan.mts";
+import { findLaneByName, resolveDockerE2ePlan } from "../../scripts/lib/docker-e2e-plan.mts";
 import { quoteCliArg } from "../../src/cli/quote-cli-arg.js";
 import { resolveTestNodeExecPath } from "../../src/test-utils/node-process.js";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
@@ -95,8 +95,58 @@ it("selects current packed recovery without expanding the published baseline mat
   expect(plan.lanes[0]!.command).toContain(
     "OPENCLAW_UPGRADE_SURVIVOR_SCENARIO=package-installed-recovery",
   );
-  expect(plan.lanes[0]!.command).not.toContain("OPENCLAW_UPGRADE_SURVIVOR_PUBLISHED_BASELINE");
+  expect(plan.lanes[0]!.command).toContain("OPENCLAW_UPGRADE_SURVIVOR_PUBLISHED_BASELINE=0");
 });
+
+// The lane's Bash entrypoint executes in Linux Docker jobs; portable catalog
+// selection above remains covered on Windows without assuming a POSIX shell.
+it.skipIf(process.platform === "win32")(
+  "isolates the current writer from inherited published-survivor settings",
+  () => {
+    const harness = dirs.make("installed-recovery-command-");
+    const script = path.join(harness, "scripts/e2e/upgrade-survivor-docker.sh");
+    fs.mkdirSync(path.dirname(script), { recursive: true });
+    const inheritedMode = {
+      OPENCLAW_UPGRADE_SURVIVOR_SCENARIO: "base",
+      OPENCLAW_UPGRADE_SURVIVOR_PUBLISHED_BASELINE: "1",
+      OPENCLAW_UPGRADE_SURVIVOR_BASELINE_SPEC: "openclaw@latest",
+      OPENCLAW_UPGRADE_SURVIVOR_UPDATE_RESTART_MODE: "auto-auth",
+      OPENCLAW_UPGRADE_SURVIVOR_ROOT_MANAGED_VPS: "1",
+      OPENCLAW_UPGRADE_SURVIVOR_LIVE_MODELS: "openai/example",
+      OPENCLAW_UPGRADE_SURVIVOR_LIVE_OPENAI: "1",
+    };
+    const observe = `printf '%s\n' ${Object.keys(inheritedMode)
+      .map((name) => `"$${name}"`)
+      .join(" ")}`;
+    fs.writeFileSync(script, `#!/bin/bash\nset -eu\n${observe}\n`);
+    const lane = findLaneByName("package-installed-recovery");
+    expect(lane).toBeDefined();
+    const result = runProcess(
+      "/bin/bash",
+      ["-c", `set -eu\n${lane!.command}\n${observe}`],
+      {
+        ...process.env,
+        ...inheritedMode,
+        OPENCLAW_DOCKER_E2E_TRUSTED_HARNESS_DIR: harness,
+        BASH_ENV: "",
+        ENV: "",
+      },
+      10_000,
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.split("\n")).toEqual([
+      "package-installed-recovery",
+      "0",
+      "",
+      "manual",
+      "0",
+      "",
+      "0",
+      ...Object.values(inheritedMode),
+      "",
+    ]);
+  },
+);
 
 function fixture(cut: string) {
   const directory = fs.realpathSync(dirs.make("installed-recovery-observer-"));
