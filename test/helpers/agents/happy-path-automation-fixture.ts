@@ -30,7 +30,7 @@ export function withPromptSnapshotRun<T>(
     return build({ runId });
   }
   const invocation = {
-    pacingEnabled: false,
+    nextCheckEnabled: false,
     closed: false,
     assertCurrent() {
       if (invocation.closed) {

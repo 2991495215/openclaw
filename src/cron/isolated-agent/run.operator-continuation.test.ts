@@ -300,28 +300,6 @@ describe("same-conversation scheduled operator continuation", () => {
       fixture.context.cron.stop();
       await creatorCron.waitForIdle();
     }
-    if (scenario === "restart") {
-      // The other restart cases retain the fixture's earlier operator source.
-      const entry = { ...recovery.entry };
-      delete entry.restartRecoveryDeliveryRunId;
-      delete entry.restartRecoveryDeliverySourceRunId;
-      delete entry.restartRecoverySourceIngress;
-      delete entry.restartRecoveryOperatorSource;
-      await accessor.replaceSessionEntry(recovery.target, entry);
-    } else if (restarting) {
-      // A prior human admission can leave requester facts beside its operator source.
-      await accessor.replaceSessionEntry(recovery.target, {
-        ...recovery.entry,
-        restartRecoveryRequesterSource: expectDefined(
-          createRestartRecoveryRequesterSource({
-            ...recovery.target,
-            entry: recovery.entry,
-            requesterOrigin: { sessionKey: SESSION, operatorProfileId: profile.id },
-          }),
-          "prior human requester source",
-        ),
-      });
-    }
     // No operator request, original admitted run or human follow-up survives this point.
     const job = expectDefined((await fixture.read())[0], "durably stored continuation");
     if (scenario === "foreign target") {
@@ -614,6 +592,29 @@ describe("same-conversation scheduled operator continuation", () => {
         const tick = onTimer(schedulerState);
         if (restarting) {
           await restartEntered.promise;
+          if (scenario !== "restart") {
+            // The retired isolated executor could leave old recovery custody beside
+            // a running cron turn. Restore that legacy shape after ordinary admission.
+            const current = expectDefined(
+              accessor.loadSessionEntry(recovery.target),
+              "running cron parent",
+            );
+            await accessor.replaceSessionEntry(recovery.target, {
+              ...current,
+              restartRecoveryDeliveryRunId: recovery.entry.restartRecoveryDeliveryRunId,
+              restartRecoveryDeliverySourceRunId: recovery.entry.restartRecoveryDeliverySourceRunId,
+              restartRecoverySourceIngress: recovery.entry.restartRecoverySourceIngress,
+              restartRecoveryOperatorSource: recovery.entry.restartRecoveryOperatorSource,
+              restartRecoveryRequesterSource: expectDefined(
+                createRestartRecoveryRequesterSource({
+                  ...recovery.target,
+                  entry: current,
+                  requesterOrigin: { sessionKey: SESSION, operatorProfileId: profile.id },
+                }),
+                "prior human requester source",
+              ),
+            });
+          }
           const harness = createAgentEventTestHarness();
           try {
             const shutdown = await prepareGatewayRunShutdown({

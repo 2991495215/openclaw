@@ -213,7 +213,6 @@ it("builds status-all overview rows from the shared surface", () => {
 it("uses unknown only when Gateway self metadata is absent", () => {
   const surface = { ...params.surface, gatewaySelf: {} };
   const rows = buildStatusAllOverviewRows({
-    automations: params.automations,
     ...params,
     surface,
     configPath: "/tmp/openclaw.json",

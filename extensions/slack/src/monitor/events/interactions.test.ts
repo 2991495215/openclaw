@@ -1979,7 +1979,8 @@ describe("registerSlackInteractionEvents", () => {
     ]);
     expect(trackEvent).toHaveBeenCalledTimes(1);
     expect(options.sessionKey).toBe("agent:main:slack:channel:C99");
-    expect(options).toMatchObject({ deliveryContext: { channel: "slack", accountId: "default" } });
+    // Without an explicit destination, the session owner retains its captured route.
+    expect(options).not.toHaveProperty("deliveryContext");
     expectSessionEventTarget("main", "agent:main:slack:channel:C99");
   });
 

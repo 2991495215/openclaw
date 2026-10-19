@@ -168,10 +168,11 @@ describe("status-runtime-shared", () => {
         gatewayProbeDeadlineMs: 60_000,
       });
 
-      const usageCall = requireProviderUsageCall();
-      expect(usageCall.timeoutMs).toBe(38_000);
-      expect(usageCall.config).toEqual({ gateway: {} });
-      expect(usageCall.agentDir).toContain("main");
+      expect(mocks.loadProviderUsageSummary).toHaveBeenCalledWith({
+        timeoutMs: 38_000,
+        config: { gateway: {} },
+        agentDir: expect.stringContaining("main"),
+      });
     } finally {
       clock.mockRestore();
     }

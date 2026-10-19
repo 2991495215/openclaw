@@ -125,9 +125,9 @@ describe("cron reload loading", { concurrent: false }, () => {
     );
     expect(load).not.toHaveBeenCalled();
     expect(buildGatewayCronService).not.toHaveBeenCalled();
-    await expect(
-      fixture.handlers.applyHotReload(fixture.plan, fixture.nextConfig),
-    ).resolves.toBe("applied");
+    await expect(fixture.handlers.applyHotReload(fixture.plan, fixture.nextConfig)).resolves.toBe(
+      "applied",
+    );
     expect(fixture.setState).toHaveBeenLastCalledWith(
       expect.objectContaining({ cronState: fixture.next }),
     );

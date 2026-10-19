@@ -81,7 +81,7 @@ export function JobMenu(props: CronProps & { job: CronJob }) {
             props.onClone(props.job);
             break;
           case "remove":
-            props.onRemove(props.job);
+            void props.onRemove(props.job);
             break;
         }
       }}
