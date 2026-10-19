@@ -10,12 +10,14 @@ import { SESSION_TRANSCRIPT_FOREGROUND_WORKERS } from "../../infra/worker-pool-s
 import { WorkerTaskPool } from "../../infra/worker-task-pool.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { runOpenClawAgentWriteAdmission } from "../../state/openclaw-agent-write-admission.js";
+import type { SessionEntryReadWorkerResult } from "./session-entry-read.types.js";
 import { createSessionTranscriptHistoryPool } from "./session-transcript-read-pools.js";
 import {
   historyLane,
   maintenanceLane,
   projectionLane,
   rotateDatabaseWorkers,
+  targetDiscoveryLane,
   withSessionHistoryWorkerReadCandidates,
 } from "./session-transcript-worker-resources.js";
 import {
@@ -142,6 +144,67 @@ it.each(["deadline", "revocation"])(
     } finally {
       ready.resolve();
       await Promise.allSettled([writer, read, rejected]);
+    }
+  },
+);
+
+it.each(["release", "deadline", "revocation"] as const)(
+  "orders a known source after schema invalidation until %s",
+  async (outcome) => {
+    const request = input();
+    const retained = retainSessionHistoryWorkerDatabase(request.database);
+    const sourceReply = {
+      kind: "session-entry-read",
+      entry: undefined,
+      source: { ...request.database, databaseIdentity: "synthetic-known-source" },
+    } satisfies SessionEntryReadWorkerResult;
+    observed.run.mockResolvedValueOnce({ ok: true, value: sourceReply });
+    const ready = createDeferredCore();
+    const entered = createDeferredCore();
+    const historyDispatch = vi.spyOn(historyLane.pool, "run");
+    const discoveryDispatch = vi.spyOn(targetDiscoveryLane.pool, "run");
+    let writer: Promise<void> | undefined;
+    let read: Promise<boolean> | undefined;
+    try {
+      expect((await retained.owner.readEntryResult({ scope: request.scope })).source).toEqual(
+        sourceReply.source,
+      );
+      historyDispatch.mockClear();
+      discoveryDispatch.mockClear();
+      observed.preparedDatabase = false;
+      writer = runOpenClawAgentWriteAdmission(request.database, async () => {
+        entered.resolve();
+        await ready.promise;
+      });
+      await entered.promise;
+      observed.run.mockResolvedValue({ ok: true, value: false });
+      read = retained.owner.readEntryPresence(request.scope);
+      const result =
+        outcome === "release"
+          ? expect(read).resolves.toBe(false)
+          : expect(read).rejects.toThrow(outcome === "deadline" ? "timed out" : "revoked");
+      void result.catch(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(observed.run).toHaveBeenCalledOnce();
+      expect(historyDispatch).not.toHaveBeenCalled();
+      expect(discoveryDispatch).not.toHaveBeenCalled();
+      if (outcome === "release") {
+        ready.resolve();
+      } else if (outcome === "deadline") {
+        await vi.advanceTimersByTimeAsync(60_000);
+      } else {
+        observed.resources.at(-1)!.revoke();
+      }
+      await result;
+      expect(discoveryDispatch).not.toHaveBeenCalled();
+      expect(historyDispatch).toHaveBeenCalledTimes(outcome === "release" ? 1 : 0);
+      expect(observed.run).toHaveBeenCalledTimes(outcome === "release" ? 2 : 1);
+    } finally {
+      ready.resolve();
+      await Promise.allSettled([writer, read]);
+      retained.release();
+      historyDispatch.mockRestore();
+      discoveryDispatch.mockRestore();
     }
   },
 );
