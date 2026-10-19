@@ -42,8 +42,10 @@ describe("postJson", () => {
     vi.clearAllMocks();
   });
 
-  it("parses JSON payload on successful response", async () => {
+  it("forwards the abort signal and parses JSON on success", async () => {
+    const controller = new AbortController();
     remoteHttpMock.mockImplementationOnce(async (params) => {
+      expect(params.signal).toBe(controller.signal);
       return await params.onResponse(jsonResponse({ data: [{ embedding: [1, 2] }] }));
     });
 
@@ -51,6 +53,7 @@ describe("postJson", () => {
       url: "https://memory.example/v1/post",
       headers: { Authorization: "Bearer test" },
       body: { input: ["x"] },
+      signal: controller.signal,
       errorPrefix: "post failed",
       parse: (payload) => payload,
     });
@@ -81,7 +84,6 @@ describe("postJson", () => {
     try {
       await withTestTimeout(fixture.readStarted, 1_000, "POST JSON read did not start");
       expect(fixture.response.body?.locked).toBe(true);
-      expect(remoteHttpMock.mock.calls[0]?.[0].signal).toBe(controller.signal);
       controller.abort(expected);
 
       await expect(withTestTimeout(settled, 1_000, "POST JSON abort did not settle")).resolves.toBe(

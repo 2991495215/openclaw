@@ -9,6 +9,7 @@ describe("composeProtocolSchemaFragments", () => {
     const registry = composeProtocolSchemaFragments([{ First: first }, { Second: second }]);
 
     expectTypeOf<keyof typeof registry>().toEqualTypeOf<"First" | "Second">();
+
     expect(Object.keys(registry)).toEqual(["First", "Second"]);
     expect(Object.is(registry.First, first)).toBe(true);
     expect(Object.is(registry.Second, second)).toBe(true);

@@ -38,6 +38,8 @@ describe("SessionRowSchema", () => {
       restartRecoveryStatus: "tombstoned",
       permissionMode: "workspace",
       sandboxMode: "off",
+      communication: { receive: "ask" },
+      effectiveCommunication: { send: "always", receive: "ask" },
       sessionRoot: "/workspace/project",
     };
 
@@ -75,6 +77,7 @@ describe("SessionRowSchema", () => {
         })),
       }),
     ).toBe(false);
+
     expect(Value.Check(SessionRowSchema, { ...row, permissionMode: "unrestricted" })).toBe(false);
     expect(Value.Check(SessionRowSchema, { ...row, lastRunId: "" })).toBe(false);
     expect(Value.Check(SessionRowSchema, { ...row, archiveReason: "age-retention" })).toBe(true);
