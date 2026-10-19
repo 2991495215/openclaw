@@ -599,8 +599,8 @@ export function activateCodexAttemptTurn(
     isAbortable: () =>
       !terminalState.terminalOutcomeFrozen || terminalState.sharedAbortAllowedAfterTerminalOutcome,
     isCompacting: () => projectorRef.current?.isCompacting() ?? false,
-    // queueMessage resolves only after Codex echoes the steered userMessage completion.
-    // Gateway-owned turns rely on that boundary before finalizing adoption.
+    // Transcript-waiting calls await Codex's steered userMessage completion.
+    // Queue-only calls retain receiver custody after acknowledging acceptance.
     supportsTranscriptCommitWait: true,
     supportsQueueMessageImages: params.model.input.includes("image"),
     sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,

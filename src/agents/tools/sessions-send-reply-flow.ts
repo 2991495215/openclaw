@@ -23,7 +23,6 @@ import {
 } from "../run-wait.js";
 import { resolveSubagentAnnounceTimeoutMs } from "../subagents/announce/subagent-announce-delivery-retry.js";
 import type { FollowupCompletionOwner } from "../subagents/completion/session-followup-completion.types.js";
-import type { AgentStepSession } from "./agent-step.js";
 import { getGatewayToolCallerIdentity } from "./gateway-caller-context.js";
 import {
   callAgentToolGatewayRequest,
@@ -33,6 +32,7 @@ import { recordSessionToolActionFact } from "./sessions-access.js";
 import { sendReplyResult } from "./sessions-send-helpers.js";
 import { runSessionsSendA2AFlow } from "./sessions-send-tool.a2a.js";
 import type { SessionsSendStart } from "./sessions-send-tool.delivery.js";
+import type { AgentStepSession } from "./sessions-send-tool.types.js";
 import { jsonResult } from "./tool-results.js";
 const log = createSubsystemLogger("agents/sessions-send");
 
@@ -48,7 +48,12 @@ export function startSessionsSendReplyFlow(
   }
   const { completion } = params;
   const continueOwned = async <T>(run: () => Promise<T>) =>
-    completion ? completion.request.custody.run(run) : runWithGatewayToolContinuationContext(run);
+    completion
+      ? completion.request.custody.run(run)
+      : runWithGatewayToolContinuationContext(
+          run,
+          params.replyMode === "peer" ? { retainRequester: true } : undefined,
+        );
   const run = async () => {
     const settledReply = params.reply ?? (await completion?.take());
     const deliverRequesterReply: Parameters<
@@ -378,7 +383,8 @@ export async function finishSessionsSendReply(params: {
       notifyRequesterOnWaitFailure: notifyRequesterOnWaitFailure && !isIsolatedCronRequester,
     });
   const result =
-    timeoutSeconds === 0
+    // An active turn has no final-response identity correlated to this accepted input.
+    timeoutSeconds === 0 || start.targetDisposition === "steered"
       ? undefined
       : completion
         ? await completion.take(timeoutMs)

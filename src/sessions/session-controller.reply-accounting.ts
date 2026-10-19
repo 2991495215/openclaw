@@ -1,9 +1,7 @@
-import type { ReplyExpectation } from "../agents/reply-completion.js";
-import {
-  sessionControllerOperationState,
-  type ReplyOperation,
-  type SessionControllerOperation,
-} from "./session-controller.contracts.js";
+import type { ReplyExpectation } from "../agents/reply-completion.types.js";
+
+type ReplyAccounting = ReturnType<typeof createReplyOperationReplyAccounting>;
+const replyAccountingByOperation = new WeakMap<object, ReplyAccounting>();
 
 /** Holds historical accounting for one exact operation; it grants no execution authority. */
 export function createReplyOperationReplyAccounting(hasEnded: () => boolean) {
@@ -43,19 +41,22 @@ export function createReplyOperationReplyAccounting(hasEnded: () => boolean) {
   };
 }
 
+/** Index the same accounting object owned by the operation, without acquiring run authority. */
+export function bindReplyOperationReplyAccounting(operation: object, accounting: ReplyAccounting) {
+  replyAccountingByOperation.set(operation, accounting);
+}
+
 /** Historical accounting follows the held operation, never the current slot or a keyed successor. */
 export function readReplyOperationReplyAccounting(
-  operation: ReplyOperation | undefined,
+  operation: object | undefined,
 ):
   | Pick<
-      SessionControllerOperation[typeof sessionControllerOperationState],
+      ReplyAccounting,
       | "acceptedHumanReplyExpectation"
       | "recordAcceptedHumanReply"
       | "hasHostTerminalOwner"
       | "bindHostTerminalOwner"
     >
   | undefined {
-  return (operation as Partial<SessionControllerOperation> | undefined)?.[
-    sessionControllerOperationState
-  ];
+  return operation ? replyAccountingByOperation.get(operation) : undefined;
 }

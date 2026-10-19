@@ -30,6 +30,7 @@ import {
 } from "./session-controller.contracts.js";
 import { resolveReplyBackendMessageInjectionRejection } from "./session-controller.message-injection-backend.js";
 import { resolveReplyMessageInjectionFailure } from "./session-controller.message-injection-failure.js";
+import { readReplyOperationReplyAccounting } from "./session-controller.reply-accounting.js";
 import {
   getSessionControllerOperation,
   getAttachedBackendAttachment,
@@ -225,9 +226,10 @@ function resolveReplyMessageInjectionRejection(params: {
       return { reason: "audio_input_unsupported" };
     }
   }
+  const replyCompletionOwner = readReplyOperationReplyAccounting(operation);
   return resolveReplyBackendMessageInjectionRejection({
     ...params,
-    replyCompletionOwner: operationState,
+    replyCompletionOwner,
     options:
       operationState?.turnKind === "direct" &&
       params.options?.isInboundUserMessage &&
@@ -236,7 +238,7 @@ function resolveReplyMessageInjectionRejection(params: {
             ...params.options,
             terminalReplyExpectation:
               backend?.terminalReplyExpectation === "result-required" ||
-              (operationState.hasHostTerminalOwner &&
+              (replyCompletionOwner?.hasHostTerminalOwner &&
                 params.options.terminalReplyExpectation === "result-required")
                 ? "result-required"
                 : "required",

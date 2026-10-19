@@ -6,7 +6,6 @@ import { resolveSilentReplySettings } from "../config/silent-reply.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isSubagentSessionKey } from "../routing/session-key.js";
 import type { InputProvenance } from "../sessions/input-provenance.js";
-import type { ReplyOperation } from "../sessions/session-controller.contracts.js";
 import { readReplyOperationReplyAccounting } from "../sessions/session-controller.reply-accounting.js";
 import {
   INTERNAL_MESSAGE_CHANNEL,
@@ -14,9 +13,14 @@ import {
 } from "../utils/message-channel-constants.js";
 import { isDeliverableMessageChannel } from "../utils/message-channel-normalize.js";
 import { AGENT_LANE_SUBAGENT } from "./lanes.js";
+import type {
+  ReplyCompletion,
+  ReplyCompletionEvidence,
+  ReplyExpectation,
+} from "./reply-completion.types.js";
 import type { EmbeddedRunTrigger } from "./run-trigger.js";
 
-export type ReplyExpectation = "required" | "optional" | "result-required";
+export type { ReplyCompletion, ReplyExpectation } from "./reply-completion.types.js";
 
 export function isRequiredReplyExpectation(expectation: ReplyExpectation | undefined): boolean {
   return expectation === "required" || expectation === "result-required";
@@ -29,7 +33,6 @@ export type ReplyDeliveryFactsObserver = (minimumAssistantMessageIndex?: number)
   source: ReplyDeliveryState;
   terminal: ReplyDeliveryState;
 }>;
-type ReplyCompletionEvidence = "ready" | "delivered" | "pending" | "blocked" | "empty" | "silent";
 
 export const MISSING_REPLY_NOTICE_TEXT = "No answer was returned. Ask again if you still need one.";
 
@@ -39,11 +42,6 @@ export function createMissingReplyNotice(text = MISSING_REPLY_NOTICE_TEXT): Repl
     { assistantTranscriptOwned: true, deliverDespiteSourceReplySuppression: true },
   );
 }
-
-export type ReplyCompletion = {
-  readonly expectation: ReplyExpectation;
-  readonly outcome: ReplyCompletionEvidence | "missing";
-};
 
 const EMPTY_REPLY_CONFIG: OpenClawConfig = {};
 
@@ -104,7 +102,7 @@ export function isSyntheticSourceReplyTurn(params: {
 }
 /** Resolve legacy runtime inputs once; explicit host requiredness always wins. */
 export function resolveReplyExpectation(params: {
-  replyOperation?: ReplyOperation;
+  replyOperation?: object;
   terminalReplyExpectation?: ReplyExpectation;
   allowEmptyAssistantReplyAsSilent?: boolean;
   trigger?: EmbeddedRunTrigger;

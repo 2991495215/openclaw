@@ -126,7 +126,7 @@ describe("local TUI steering authority", () => {
     },
   );
 
-  it("refuses input when the local backend stops during native preparation", async () => {
+  it("propagates source cancellation before native enqueue", async () => {
     const entered = createDeferredCore();
     const resume = createDeferredCore();
     const source = new AbortController();
@@ -148,7 +148,7 @@ describe("local TUI steering authority", () => {
     ).resolves.toBe("preparing");
     source.abort(new Error("Local TUI stopped"));
     resume.resolve();
-    await expect(pending).resolves.toMatchObject({ status: "rejected" });
+    await expect(pending).rejects.toThrow("Local TUI stopped");
     expect(queue).not.toHaveBeenCalled();
   });
 });

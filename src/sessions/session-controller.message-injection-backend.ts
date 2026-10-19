@@ -11,28 +11,12 @@ import type {
   ReplyBackendMessageInjection,
   ReplyBackendQueueMessageOptions,
   ReplyMessageInjectionOptions,
-  ReplyMessageInjectionRejectionReason,
+  ReplyMessageInjectionResolution,
   ReplyTurnParticipants,
   ReplyToolAuthorityPreparation,
 } from "./session-controller.contracts.js";
 import { resolveReplyBackendQueueMessageMismatch } from "./session-controller.message-injection-failure.js";
 import type { readReplyOperationReplyAccounting } from "./session-controller.reply-accounting.js";
-
-export type ReplyMessageInjectionResolution =
-  | {
-      reason: ReplyMessageInjectionRejectionReason;
-      errorMessage?: string;
-      backend?: ReplyBackendHandle;
-      cancelPendingUserInput?: ReplyBackendHandle["cancelPendingUserInput"];
-    }
-  | {
-      backend: ReplyBackendHandle;
-      injection: ReplyBackendMessageInjection;
-      /** Internal FIFO preflight for a released synchronous sink. */
-      prepareQueueMessage?: () => Promise<void>;
-      /** Record real backend acceptance on this captured operation, never a keyed successor. */
-      recordAcceptedHumanReply?: () => void;
-    };
 
 function resolveReplyBackendMessageInjection(
   backend: ReplyBackendHandle,

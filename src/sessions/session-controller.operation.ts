@@ -45,7 +45,10 @@ import {
   type CreateReplyOperationParams,
 } from "./session-controller.operation-admission.js";
 import { createReplyOperationRecovery } from "./session-controller.operation-recovery.js";
-import { createReplyOperationReplyAccounting } from "./session-controller.reply-accounting.js";
+import {
+  bindReplyOperationReplyAccounting,
+  createReplyOperationReplyAccounting,
+} from "./session-controller.reply-accounting.js";
 import {
   clearReplyRunState,
   evictReplyOperationByOperation,
@@ -349,14 +352,6 @@ export function createReplyOperation(params: CreateReplyOperationParams): ReplyO
         return state.phase;
       },
       turnKind: params.turnKind ?? "visible",
-      get acceptedHumanReplyExpectation() {
-        return replyAccounting.acceptedHumanReplyExpectation;
-      },
-      recordAcceptedHumanReply: replyAccounting.recordAcceptedHumanReply,
-      get hasHostTerminalOwner() {
-        return replyAccounting.hasHostTerminalOwner;
-      },
-      bindHostTerminalOwner: replyAccounting.bindHostTerminalOwner,
       retireAdmissionAfterFencing,
       forceCleanup,
       registerTerminalProducerFence: (fence) => terminalProducerFences.register(fence),
@@ -699,6 +694,7 @@ export function createReplyOperation(params: CreateReplyOperationParams): ReplyO
     }
   });
 
+  bindReplyOperationReplyAccounting(operation, replyAccounting);
   backendReadyByOperation.set(operation, backendReady.promise);
   installReplyOperationAdmission(operation, admitted, params.mailboxClaim);
   installed = true;

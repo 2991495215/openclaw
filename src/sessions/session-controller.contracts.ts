@@ -1,7 +1,7 @@
 import type { SessionPermissionMode } from "../../packages/gateway-protocol/src/schema/sessions-row.js";
 import type { OperationalRunInstanceRef } from "../agents/admitted-run-context.js";
 import type { MessagingToolSend } from "../agents/embedded-agent-messaging.types.js";
-import type { ReplyCompletion, ReplyExpectation } from "../agents/reply-completion.js";
+import type { ReplyCompletion, ReplyExpectation } from "../agents/reply-completion.types.js";
 import type { RequesterOrigin } from "../agents/requester-origin.js";
 import type {
   SourceReplyDeliveryMode,
@@ -34,6 +34,8 @@ import type {
 import type { AgentWorkAdmissionIdentity } from "./session-agent-work-admission.js";
 import type {
   ReplyBackendQueueMessageOptions,
+  ReplyMessageInjectionResolution,
+  ReplyMessageInjectionRejectionReason,
   ReplyToolAuthorityRoute,
   ReplyToolAuthorityOverlay,
   ReplyToolAuthorityRequester,
@@ -47,7 +49,6 @@ import type {
   ReplyTurnParticipantInput,
 } from "./session-controller.backend-contracts.js";
 import type { LifecycleDiagnosticOperation } from "./session-controller.lifecycle-diagnostics.js";
-import type { ReplyMessageInjectionResolution } from "./session-controller.message-injection-backend.js";
 import type { SessionTarget } from "./session-controller.target.js";
 import type {
   SessionControllerWatchdogAttempt,
@@ -56,6 +57,9 @@ import type {
 
 export type {
   ReplyBackendCancelReason,
+  ReplyMessageInjectionResolution,
+  ReplyMessageInjectionRejectionReason,
+  ReplyBackendQueueMessageMismatch,
   ReplyBackendQueueMessageOptions,
   ReplyMessageInjectionOptions,
   ReplyToolAuthorityRoute,
@@ -70,8 +74,6 @@ export type {
   ReplyBackendMessageInjectionV2,
   ReplyBackendHandle,
 } from "./session-controller.backend-contracts.js";
-
-export type { ReplyMessageInjectionResolution } from "./session-controller.message-injection-backend.js";
 
 export type ReplyOperationPhase = ReplyOperationActivePhase | "completed" | "failed" | "aborted";
 type ReplyOperationResult = Exclude<ControllerReplyOperationResult, { kind: "yielded" }>;
@@ -126,18 +128,6 @@ export type ReplyRunInterruptTarget = {
   readonly [replyRunInterruptTargetOperation]: ReplyOperation;
 };
 
-export type ReplyMessageInjectionRejectionReason =
-  | "no_active_run"
-  | "not_running"
-  | "stale_run"
-  | "injection_unavailable"
-  | "guarded_injection_unsupported"
-  | "requester_origin_mismatch"
-  | "audio_input_unsupported"
-  | "collaborative_steering_disabled"
-  | ReplyBackendQueueMessageMismatch
-  | "runtime_rejected";
-
 export type ReplyMessageInjectionOutcome =
   | { status: "indeterminate"; errorMessage: string }
   | { status: "accepted" }
@@ -153,15 +143,6 @@ export type ReplyMessageInjectionAttempt = {
   /** Settles after the backend confirms or rejects this exact injection. */
   outcome: Promise<ReplyMessageInjectionOutcome>;
 };
-
-export type ReplyBackendQueueMessageMismatch =
-  | "transcript_commit_wait_unsupported"
-  | "input_visibility_mismatch"
-  | "tool_authority_mismatch"
-  | "image_input_unsupported"
-  | "source_reply_delivery_mode_mismatch"
-  | "reply_expectation_mismatch"
-  | "task_suggestion_delivery_mode_mismatch";
 
 export type ReplyOperation = {
   readonly watchdog: SessionControllerWatchdog;
@@ -344,11 +325,6 @@ export type SessionControllerOperation = ReplyOperation & {
   readonly [sessionControllerOperationState]: {
     readonly phase: ReplyOperationState["phase"];
     readonly turnKind: SessionControllerTurnKind;
-    /** Historical reply accounting belongs to this exact operation, even after slot retirement. */
-    readonly acceptedHumanReplyExpectation?: Exclude<ReplyExpectation, "optional">;
-    recordAcceptedHumanReply(expectation: ReplyExpectation): void;
-    readonly hasHostTerminalOwner: boolean;
-    bindHostTerminalOwner(): void;
     retireAdmissionAfterFencing(isCurrent: () => boolean): Promise<boolean>;
     forceCleanup(isCurrent: () => boolean, cleanup?: () => Promise<void>): Promise<boolean>;
     registerTerminalProducerFence(

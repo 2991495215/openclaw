@@ -101,6 +101,7 @@ export type CodexSteeringQueueOptions = Pick<
   | "onQueueAccepted"
   | "onQueueSettled"
   | "userTurnTranscriptRecorder"
+  | "waitForTranscriptCommit"
 >;
 
 type CodexSteeringCommitItem = Pick<
@@ -146,6 +147,7 @@ export function createCodexSteeringQueue(params: {
   let batchedMessages: PendingSteerMessage[] = [];
   const dispatchedBatches = new Map<string, PreparedSteerMessage[]>();
   const pendingMessages = new Set<PendingSteerMessage>();
+  const confirmationTimers = new Map<string, NodeJS.Timeout>();
   let batchTimer: NodeJS.Timeout | undefined;
   let batchSequence = 0;
   let sendChain: Promise<void> = Promise.resolve();
@@ -227,6 +229,10 @@ export function createCodexSteeringQueue(params: {
       }
     }
     dispatchedBatches.clear();
+    for (const timer of confirmationTimers.values()) {
+      clearTimeout(timer);
+    }
+    confirmationTimers.clear();
     for (const item of pendingMessages) {
       rejectItem(item, error);
     }
@@ -370,6 +376,33 @@ export function createCodexSteeringQueue(params: {
       });
       for (const item of liveItems) {
         acceptItem(item);
+        // Queue-only callers need the acknowledgement, not the later consumption
+        // receipt. Keep receiver custody until consumption or this receiving run closes.
+        if (item.waitForTranscriptCommit === false) {
+          item.resolve();
+        }
+      }
+      // A confirmation deadline ends only the caller's wait. Accepted input
+      // remains in receiver custody until consumption or this run closes.
+      const batchId = clientUserMessageId;
+      if (
+        dispatchedBatches.has(batchId) &&
+        liveItems.some((item) => item.waitForTranscriptCommit !== false)
+      ) {
+        const timer = setTimeout(() => {
+          confirmationTimers.delete(batchId);
+          const error = new CodexSteeringAcceptedUnconfirmedError(
+            "Codex accepted steering but did not confirm transcript consumption",
+            { cause: new Error("Codex steering transcript consumption confirmation timed out") },
+          );
+          for (const item of dispatchedBatches.get(batchId) ?? []) {
+            if (item.waitForTranscriptCommit !== false) {
+              item.reject(error);
+            }
+          }
+        }, params.requestTimeoutMs);
+        timer.unref?.();
+        confirmationTimers.set(batchId, timer);
       }
     } catch (error) {
       if (clientUserMessageId) {
@@ -464,6 +497,8 @@ export function createCodexSteeringQueue(params: {
         return false;
       }
       dispatchedBatches.delete(clientUserMessageId);
+      clearTimeout(confirmationTimers.get(clientUserMessageId));
+      confirmationTimers.delete(clientUserMessageId);
       for (const item of batch) {
         resolveItem(item);
       }

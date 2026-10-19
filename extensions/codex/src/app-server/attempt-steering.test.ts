@@ -2,6 +2,7 @@ import { runAgentHarnessGatewayQuestion } from "openclaw/plugin-sdk/agent-harnes
 import { createNativeSessionBindingAuthority } from "openclaw/plugin-sdk/agent-harness-session-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerCodexSteeringConfirmationCases } from "./attempt-steering.confirmation.cases.js";
 import {
   CodexSteeringAcceptedUnconfirmedError,
   createCodexSteeringQueue,
@@ -427,6 +428,8 @@ describe("Codex app-server steering queue", () => {
     expect(pendingRequests.size).toBe(0);
     harness.client.close();
   });
+
+  registerCodexSteeringConfirmationCases({ createQueue, createReplyHarness });
 
   it("batches ordered text and images under one correlated user-message id", async () => {
     const request = vi.fn(async () => turn);

@@ -56,6 +56,7 @@ import {
   createEmbeddedAttemptRunAbort,
 } from "./attempt-finalize.js";
 import { SESSIONS_YIELD_ABORT_REASON } from "./attempt-sessions-yield.js";
+import { registerReplyPromotionTests } from "./attempt-stream-prepare.reply-promotion.test-support.js";
 import {
   createBeforeFinalizeEvent,
   createCatalogSubscription,
@@ -87,6 +88,8 @@ describe("prepareEmbeddedAttemptStream", () => {
     mocks.subscribe.mockReturnValue(createCatalogSubscription());
     mocks.runBeforeFinalizeHook.mockResolvedValue({ action: "continue" });
   });
+
+  registerReplyPromotionTests();
 
   it("keeps exact stream owners current when physical stores share a session ID", async () => {
     const sessionId = "shared-stream-session";
