@@ -15,11 +15,13 @@ import {
   retirementCuts,
   sha256,
 } from "./installed-recovery-observations.mjs";
+import { extractPackedRecoveryHelper } from "./installed-recovery-package.mjs";
 
 const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const write = (file, value) =>
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-const packed = (tarball, name) => execFileSync("tar", ["-xOf", tarball, `package/${name}`]);
+const packedManifest = (tarball) =>
+  JSON.parse(execFileSync("tar", ["-xOf", tarball, "package/package.json"], { encoding: "utf8" }));
 
 async function main([artifacts, prefix, tarball, configPath, summary]) {
   assert.equal(
@@ -37,7 +39,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
     !node.startsWith(`${prefix}${path.sep}`),
     "recovery Node must outlive the installed package",
   );
-  const baseline = JSON.parse(packed(tarball, "package.json").toString());
+  const baseline = packedManifest(tarball);
   assert.equal(read(path.join(root, "package.json")).version, baseline.version);
   const anchor = path.join(
     path.dirname(root),
@@ -47,10 +49,9 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
   const journal = path.join(`${anchor}.control`, "operation.sqlite");
   const fault = fileURLToPath(new URL("./installed-recovery-fault.mjs", import.meta.url));
   const config = fs.readFileSync(configPath);
-  const helperBytes = packed(tarball, "dist/package-update-activation-recovery.mjs");
   const alternate = path.join(artifacts, "independent-recovery.mjs");
-  fs.writeFileSync(alternate, helperBytes, { flag: "wx", mode: 0o600 });
-  assert.equal(fileDigest(alternate), sha256(helperBytes));
+  extractPackedRecoveryHelper(tarball, alternate);
+  const helperDigest = fileDigest(alternate);
 
   // A deliberately small external environment cannot inherit the killed CLI's
   // loader, worker handoff, lease, or in-progress update authority.
@@ -136,7 +137,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
     scope: "installed-current-writer-process-interruption",
     artifactSha256: fileDigest(tarball),
     baselineVersion: baseline.version,
-    helperSha256: sha256(helperBytes),
+    helperSha256: helperDigest,
     node,
     rows,
     commands,
@@ -149,7 +150,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
     const target = path.join(directory, "candidate.tgz");
     const fixture = packFirstHopUpdateFixture(tarball, target, sequence);
     write(path.join(directory, "candidate-fixture.json"), fixture);
-    const expected = JSON.parse(packed(target, "package.json").toString());
+    const expected = packedManifest(target);
     assert.notEqual(expected.version, read(path.join(root, "package.json")).version);
     assert.deepEqual(expected.openclaw.schemaVersions, baseline.openclaw.schemaVersions);
     const originalTree = packageTreeDigest(root);
@@ -184,7 +185,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
     assert.equal(read(path.join(anchor, "candidate/package.json")).version, expected.version);
     assert.equal(
       fileDigest(helper),
-      sha256(helperBytes),
+      helperDigest,
       "printed helper must come from the current artifact",
     );
     const helperIdentity = fileIdentity(helper);
@@ -214,7 +215,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
       assert.equal(packageTreeDigest(path.join(anchor, "previous")), originalTree);
       assert.equal(fileIdentity(path.join(anchor, "previous")), previousIdentity);
       assert.equal(fileIdentity(helper), helperIdentity);
-      assert.equal(fileDigest(helper), sha256(helperBytes));
+      assert.equal(fileDigest(helper), helperDigest);
       assert.equal(launcher().link, originalLauncher.link);
       assert.equal(launcher().digest, originalLauncher.digest);
     }
@@ -273,7 +274,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
 
   const target = path.join(artifacts, "next-update.tgz");
   packFirstHopUpdateFixture(tarball, target, 7);
-  const expected = JSON.parse(packed(target, "package.json").toString());
+  const expected = packedManifest(target);
   const next = await run(artifacts, "next-update", node, [
     bin,
     "update",

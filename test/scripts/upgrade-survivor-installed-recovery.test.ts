@@ -33,6 +33,63 @@ const command = [
 ];
 const printed = `Package publication recovery: ${command.map(quoteCliArg).join(" ")}`;
 
+it("extracts a sealed helper beyond Node's buffered limit and closes owned output files", () => {
+  const directory = dirs.make("installed-recovery-package-");
+  const extractor = pathToFileURL(
+    path.resolve("scripts/e2e/lib/upgrade-survivor/installed-recovery-package.mjs"),
+  ).href;
+  // Use real Node even when Vitest runs on Bun: the Docker driver owns this limit.
+  const result = runProcess(
+    node,
+    [
+      "--input-type=module",
+      "-e",
+      `
+      import assert from 'node:assert/strict';
+      import { execFileSync } from 'node:child_process';
+      import fs from 'node:fs';
+      import path from 'node:path';
+      import { extractPackedRecoveryHelper } from ${JSON.stringify(extractor)};
+      const directory = ${JSON.stringify(directory)};
+      const member = 'package/dist/package-update-activation-recovery.mjs';
+      const bytes = Buffer.alloc(2 * 1024 * 1024 + 73, 0x51);
+      fs.mkdirSync(path.join(directory, 'package/dist'), { recursive: true });
+      fs.writeFileSync(path.join(directory, member), bytes);
+      const archive = path.join(directory, 'source.tgz');
+      execFileSync('tar', ['-czf', archive, '-C', directory, 'package']);
+      assert.throws(() => execFileSync('tar', ['-xOf', archive, member]), { code: 'ENOBUFS' });
+      const destination = path.join(directory, 'recovery.mjs');
+      const open = fs.openSync;
+      let descriptor;
+      fs.openSync = (...args) => {
+        const result = open(...args);
+        if (args[0] === destination && args[1] === 'wx') descriptor = result;
+        return result;
+      };
+      try {
+        extractPackedRecoveryHelper(archive, destination);
+        assert.deepEqual(fs.readFileSync(destination), bytes);
+        assert.throws(() => fs.fstatSync(descriptor), { code: 'EBADF' });
+        assert.throws(() => extractPackedRecoveryHelper(archive, destination), { code: 'EEXIST' });
+        assert.deepEqual(fs.readFileSync(destination), bytes);
+        fs.unlinkSync(destination);
+        fs.mkdirSync(path.join(directory, 'empty'));
+        const missing = path.join(directory, 'missing.tgz');
+        execFileSync('tar', ['-czf', missing, '-C', directory, 'empty']);
+        assert.throws(() => extractPackedRecoveryHelper(missing, destination));
+        assert.equal(fs.existsSync(destination), false);
+        assert.throws(() => fs.fstatSync(descriptor), { code: 'EBADF' });
+      } finally {
+        fs.openSync = open;
+      }
+    `,
+    ],
+    { ...process.env, NODE_OPTIONS: "" },
+    10_000,
+  );
+  expect(result.status, result.stderr).toBe(0);
+});
+
 it("invalidates an earlier PASS before setup and isolates repeated attempts", () => {
   const artifacts = dirs.make("installed-recovery-runs-");
   const first = startInstalledRecoveryRun(artifacts);
