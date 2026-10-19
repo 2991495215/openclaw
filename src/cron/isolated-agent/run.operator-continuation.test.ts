@@ -7,6 +7,7 @@ import { persistAuthProfileBatch } from "../../agents/auth-profiles/upsert-with-
 import { withPreparedEmbeddedGatewayTools } from "../../agents/embedded-agent-runner/run/attempt-gateway-tools.js";
 import { applyEmbeddedAttemptToolsAllow } from "../../agents/embedded-agent-runner/run/attempt-tool-construction-plan.js";
 import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
+import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
 import { createEmbeddedAgentRunnerOpenAiConfig } from "../../agents/test-helpers/embedded-agent-runner-e2e-fixtures.js";
 import { AUTOMATIONS_TOOL_NAME } from "../../agents/tools/automations-tool-name.js";
 import {
@@ -51,37 +52,24 @@ import {
 } from "../../test-utils/gateway-scheduler-clock.js";
 import { createCronServiceWithStateForTest, createNoopLogger } from "../service.test-harness.js";
 import { onTimer } from "../service/timer.test-support.js";
-import { resolveCronSessionTargetSessionKey } from "../session-target.js";
-import {
-  ensureAgentWorkspaceMock,
-  loadRunCronIsolatedAgentTurn,
-  loadSessionEntryMock,
-  mockRunCronFallbackPassthrough,
-  patchSessionEntryMock,
-  resetRunCronIsolatedAgentTurnHarness,
-  resolveConfiguredModelRefMock,
-  resolveCronDeliveryPlanMock,
-  resolveCronSessionMock,
-  runEmbeddedAgentMock,
-} from "./run.test-harness.js";
+import { runCronSessionTurn } from "../session-run.js";
 
-const runCronIsolatedAgentTurn = await loadRunCronIsolatedAgentTurn();
-const { resolveAgentDir } = await import("./run.runtime.js");
-const session = await vi.importActual<typeof import("./session.js")>("./session.js");
-const accessor = await vi.importActual<typeof import("../../config/sessions/session-accessor.js")>(
-  "../../config/sessions/session-accessor.js",
-);
+// mock-isolation: Keep real scheduled admission and action authority, replacing only model inference.
+vi.mock("../../agents/embedded-agent-runner/run.js", () => ({
+  runEmbeddedAgent: vi.fn(),
+}));
+
 installRequesterCronAuthorityTestHooks();
+const runEmbeddedAgentMock = vi.mocked(runEmbeddedAgent);
+// Transform the ordinary reply runtime before the scheduled event first imports it.
+await Promise.all([
+  import("../../auto-reply/dispatch.js"),
+  import("../../auto-reply/reply/get-reply.js"),
+]);
 
 beforeEach(() => {
-  resetRunCronIsolatedAgentTurnHarness();
-  vi.stubEnv("OPENCLAW_TEST_FAST", "1");
-  resolveCronSessionMock.mockImplementation(session.prepareCronSession);
-  loadSessionEntryMock.mockImplementation(session.loadCronSessionEntryLatest);
-  patchSessionEntryMock.mockImplementation(accessor.patchSessionEntryCore);
-  ensureAgentWorkspaceMock.mockImplementation(async ({ dir }: { dir: string }) => ({ dir }));
-  resolveCronDeliveryPlanMock.mockReturnValue({ requested: false, mode: "none" });
-  mockRunCronFallbackPassthrough();
+  runEmbeddedAgentMock.mockReset();
+  vi.stubEnv("OPENCLAW_TEST_FAST", "0");
 });
 afterEach(() => {
   runEmbeddedAgentMock.mockReset();
@@ -115,11 +103,11 @@ describe("same-conversation scheduled operator continuation", () => {
         profiles: { "openai:continuation": { provider: "openai", mode: "api_key" } },
         order: { openai: ["openai:continuation"] },
       },
+      plugins: { enabled: false },
+      skills: { load: { watch: false } },
       tools: { allow: [AUTOMATIONS_TOOL_NAME, "github_publish"] },
     };
     setRuntimeConfigSnapshot(config);
-    vi.mocked(resolveAgentDir).mockReturnValue(agentDir);
-    resolveConfiguredModelRefMock.mockReturnValue({ provider: "openai", model: "gpt-4.1" });
     await persistAuthProfileBatch({
       stateDir,
       profiles: [
@@ -142,6 +130,16 @@ describe("same-conversation scheduled operator continuation", () => {
       sessionId: SESSION_ID,
       scopes: scenario === "guest" ? ["operator.sessions.write"] : ["operator.admin"],
     });
+    // Reuse authenticated client setup without inheriting its outstanding recovery claim.
+    const entry = {
+      sessionId: SESSION_ID,
+      lifecycleRevision: recovery.entry.lifecycleRevision,
+      updatedAt: Date.now(),
+      createdActor: recovery.entry.createdActor,
+      parentSessionKey: recovery.entry.parentSessionKey,
+      spawnDepth: recovery.entry.spawnDepth,
+    };
+    replaceSessionEntrySync({ sessionKey: SESSION }, entry);
     // Capture fresh authenticated admission, not the released recovery fixture authority.
     // The legacy row has identical human attribution but no operator admission.
     const original =
@@ -287,7 +285,7 @@ describe("same-conversation scheduled operator continuation", () => {
       replaceSessionEntrySync(
         { sessionKey: SESSION },
         {
-          ...recovery.entry,
+          ...entry,
           sessionId: "replacement-session",
           lifecycleRevision: "replacement",
         },
@@ -370,13 +368,16 @@ describe("same-conversation scheduled operator continuation", () => {
     let entered = 0;
     let offered: unknown;
     const results: unknown[] = [];
-    let rejected: string | undefined;
+    let rejected: unknown;
     runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
       entered++;
       const admitted = await expectDefined(
         params.preparedRunAdmission,
         "scheduled admission",
       ).admit("gateway", params.runId);
+      await params.onExecutionStarted?.();
+      await params.onAgentEvent?.({ stream: "lifecycle", data: { phase: "start" } });
+      params.onExecutionPhase?.({ phase: "model_call_started" });
       return withPreparedEmbeddedGatewayTools(
         {
           admittedRunContext: admitted,
@@ -427,10 +428,20 @@ describe("same-conversation scheduled operator continuation", () => {
                 }),
               );
             } catch (error) {
-              rejected = String(error);
+              rejected = error;
             }
           }
-          return { payloads: [{ text: "Continuation complete" }], meta: { agentMeta: {} } };
+          return {
+            payloads: [{ text: "Continuation complete" }],
+            meta: {
+              durationMs: 0,
+              agentMeta: {
+                sessionId: params.sessionId,
+                provider: expectDefined(params.provider, "scheduled provider"),
+                model: expectDefined(params.model, "scheduled model"),
+              },
+            },
+          };
         },
       );
     });
@@ -449,16 +460,11 @@ describe("same-conversation scheduled operator continuation", () => {
       log: createNoopLogger(),
       enqueueSystemEvent: vi.fn(),
       runSchedulerOwned: createScheduledGatewayRunner(() => context),
-      runIsolatedAgentJob: (request) =>
-        runCronIsolatedAgentTurn({
-          ...request,
-          cfg: config,
-          deps: {},
-          agentId: "main",
-          sessionKey:
-            resolveCronSessionTargetSessionKey(request.job.sessionTarget) ??
-            "cron:" + request.job.id,
-        }),
+      runIsolatedAgentJob: async () => {
+        throw new Error("Expected ordinary session execution");
+      },
+      runSessionEvent: (request) =>
+        runCronSessionTurn({ ...request, cfg: config, agentId: "main", sessionKey: targetKey }),
     });
     context.cron = execution;
     try {
@@ -484,7 +490,12 @@ describe("same-conversation scheduled operator continuation", () => {
             : /authority|source|conversation|session|role/i,
         );
       } else {
-        expect(state.lastRunStatus, state.lastError).toBe("ok");
+        if (scenario === "role revoked during merge") {
+          expect(state.lastRunStatus, state.lastError).toBe("error");
+          expect(state.lastError).toMatch(/aborted/i);
+        } else {
+          expect(state.lastRunStatus, state.lastError).toBe("ok");
+        }
         expect(entered).toBe(1);
         if (scenario === "operator" || scenario === "paused force run") {
           expect(JSON.stringify(offered)).toContain("inspect");
@@ -507,7 +518,7 @@ describe("same-conversation scheduled operator continuation", () => {
         } else if (scenario === "role revoked during merge") {
           expect(reads).toBe(2);
           expect(results).toHaveLength(1);
-          expect(rejected).toMatch(/operator authority changed/i);
+          expect(rejected).toMatchObject({ name: "AbortError" });
           expect(writes).toEqual([]);
         } else if (scenario === "current tool deny") {
           expect(offered).toBeUndefined();

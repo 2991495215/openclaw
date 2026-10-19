@@ -45,6 +45,7 @@ export function resolveScheduledSessionReplyOptions(
   automation?: ScheduledSessionAutomation,
 ): Pick<
   InternalGetReplyOptions,
+  | "operatorAuthority"
   | "sourceReplyDeliveryMode"
   | "modelOverride"
   | "thinkingLevelOverride"
@@ -56,6 +57,7 @@ export function resolveScheduledSessionReplyOptions(
   }
   const payload = automation.job.payload;
   return {
+    operatorAuthority: automation.operatorAuthority,
     sourceReplyDeliveryMode: "automatic",
     ...(payload.kind === "agentTurn"
       ? {

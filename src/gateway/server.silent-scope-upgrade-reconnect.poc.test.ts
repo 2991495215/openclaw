@@ -169,7 +169,7 @@ describe("gateway silent scope-upgrade reconnect", () => {
     const cli = { clientName: GATEWAY_CLIENT_NAMES.CLI, mode: GATEWAY_CLIENT_MODES.CLI };
     const health = await callLocal("health", cli);
     expect(health.ok).toBe(true);
-    const admin = await callLocal("set-heartbeats", {
+    const admin = await callLocal("exec.approvals.get", {
       ...cli,
       params: {},
       scopes: ["operator.admin"],

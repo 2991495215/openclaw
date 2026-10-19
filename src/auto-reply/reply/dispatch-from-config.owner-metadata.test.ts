@@ -308,17 +308,19 @@ it.each([
         undefined,
         (dispose) => resources.defer(dispose),
       );
+      expect(gathered.status).toBe("ready");
+      if (gathered.status !== "ready") {
+        throw new Error("selected physical store was skipped");
+      }
+      prepared = gathered;
+      const admission = await gathered.state.ensureDispatchReplyOperation("pre_dispatch");
       if (idleOnly && selectedActive) {
-        expect(gathered.status).toBe("complete");
+        expect(admission).toEqual({ status: "busy" });
+        expect(gathered.state.getDispatchReplyOperation()).toBeUndefined();
+        expect(getSessionControllerOperation(sessionKey, selectedTarget)).toBe(selected);
+        expect(selected?.abortSignal.aborted).toBe(false);
       } else {
-        expect(gathered.status).toBe("ready");
-        if (gathered.status !== "ready") {
-          throw new Error("selected physical store was skipped");
-        }
-        prepared = gathered;
-        await expect(gathered.state.ensureDispatchReplyOperation("pre_dispatch")).resolves.toEqual({
-          status: "ready",
-        });
+        expect(admission).toEqual({ status: "ready" });
         if (selected) {
           const preparationSignal = gathered.state.getPreDispatchAbortSignal();
           expect(preparationSignal?.aborted).toBe(false);

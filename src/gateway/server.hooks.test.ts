@@ -20,6 +20,32 @@ import {
 } from "./test-helpers.js";
 import { setTestPluginRegistry } from "./test-helpers.plugin-registry.js";
 
+const sessionEvents = vi.hoisted(() => {
+  const observer = { notify: () => {} };
+  return {
+    observer,
+    captureTarget: vi.fn(async (agentId: string, sessionKey: string) => ({
+      agentId,
+      sessionKey,
+      sessionId: "captured-session",
+      generation: "captured-generation",
+    })),
+    enqueue: vi.fn((_text: string, _options: Record<string, unknown>) => {
+      observer.notify();
+      return {
+        accepted: Promise.resolve({ ok: true }),
+        settled: Promise.resolve({ status: "completed" }),
+      };
+    }),
+  };
+});
+// mock-isolation: Exercise authenticated hook routing without starting unrelated model work.
+vi.mock("../auto-reply/reply/session-event-handoff.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auto-reply/reply/session-event-handoff.js")>()),
+  captureSessionEventTargetForHost: sessionEvents.captureTarget,
+  enqueueSessionEventForHost: sessionEvents.enqueue,
+}));
+
 installGatewayTestHooks({ scope: "suite" });
 
 await import("./server.js");

@@ -1,5 +1,8 @@
 /** Host-owned event admission and settlement contracts; no live reply/Gateway imports. */
-import type { AdmittedRunContext } from "../../agents/admitted-run-context.js";
+import type {
+  AdmittedRunContext,
+  AdmittedRunOperatorAuthority,
+} from "../../agents/admitted-run-context.js";
 import type { MessagingToolSend } from "../../agents/embedded-agent-messaging.types.js";
 import type { SessionEntryCreationOperation } from "../../config/sessions/session-accessor.sqlite-entry-cache.types.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
@@ -102,6 +105,7 @@ export type SessionEventSourcePolicy = Readonly<
 /** Cron-owned snapshot and live occurrence fence shared with ordinary reply admission. */
 export type ScheduledSessionAutomation = {
   job: CronStoredJob;
+  operatorAuthority?: AdmittedRunOperatorAuthority;
   admissionSource: NonNullable<AdmittedRunContext["admissionSource"]>;
   executionIdentity?: import("../../cron/service/state.js").CronExecutionIdentityAdmission;
   deliveryAttemptFence?:

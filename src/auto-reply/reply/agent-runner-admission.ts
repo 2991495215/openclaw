@@ -63,6 +63,7 @@ export function prepareReplyTurnExecution(params: AgentTurnParams, runId: string
           sessionKey,
           jobId: automation.job.id,
           deliveryAttemptFence: automation.deliveryAttemptFence ?? null,
+          operatorAuthority: params.followupRun.operatorAuthority,
           channelRequester: resolveCronAuthenticatedChannelRequester(automation.job),
           toolsAllow:
             automation.job.payload.kind === "agentTurn"

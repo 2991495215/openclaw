@@ -1,5 +1,8 @@
 /** Scheduled shared-session turns use the normal reply admission and delivery owners. */
-import type { AdmittedRunContext } from "../agents/admitted-run-context.js";
+import type {
+  AdmittedRunContext,
+  AdmittedRunOperatorAuthority,
+} from "../agents/admitted-run-context.js";
 import {
   captureSessionEventTargetForHost as captureSessionEventTarget,
   enqueueSessionEventForHost as enqueueSessionEvent,
@@ -73,8 +76,11 @@ export async function runCronSessionTurn(params: {
     params.sessionPreparation?.notices ??
     (await prepareAutomationSystemEvents(queueKey, job.id, job.state.runningAtMs));
   let noticesStarted = false;
+  let operatorAuthority: AdmittedRunOperatorAuthority | undefined;
+  using operatorLease = new DisposableStack();
   const assertCurrent = () => {
     params.assertCurrent();
+    operatorAuthority?.assertCurrent();
     if (!noticesStarted) {
       deferred.assertCurrent();
     }
@@ -88,6 +94,22 @@ export async function runCronSessionTurn(params: {
       assertCurrent,
     });
     assertCurrent();
+    if (job.operatorSource) {
+      const { restoreCronOperatorSource } = await import("../gateway/cron-operator-source.js");
+      const operator = await restoreCronOperatorSource({
+        job,
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+        entry: expectedTarget,
+        signal: params.abortSignal,
+        deliveryAttemptFence: params.deliveryAttemptFence,
+      });
+      if (operator) {
+        operatorLease.defer(operator.release);
+        operatorAuthority = operator.authority;
+      }
+      assertCurrent();
+    }
     const requestedChat = delivery?.deliveryRequested && delivery.deliveryPlan.mode !== "webhook";
     const deliverySuppressionReason =
       delivery && !delivery.resolvedDelivery.ok
@@ -203,6 +225,7 @@ export async function runCronSessionTurn(params: {
       abortSignal: params.abortSignal,
       scheduledAutomation: {
         job,
+        operatorAuthority,
         admissionSource: params.admissionSource,
         prepare: params.prepare,
         executionIdentity: params.executionIdentity,
