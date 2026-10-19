@@ -47,6 +47,7 @@ import type {
   ReplyTurnParticipantInput,
 } from "./session-controller.backend-contracts.js";
 import type { LifecycleDiagnosticOperation } from "./session-controller.lifecycle-diagnostics.js";
+import type { ReplyMessageInjectionResolution } from "./session-controller.message-injection-backend.js";
 import type { SessionTarget } from "./session-controller.target.js";
 import type {
   SessionControllerWatchdogAttempt,
@@ -70,24 +71,12 @@ export type {
   ReplyBackendHandle,
 } from "./session-controller.backend-contracts.js";
 
+export type { ReplyMessageInjectionResolution } from "./session-controller.message-injection-backend.js";
+
 export type ReplyOperationPhase = ReplyOperationActivePhase | "completed" | "failed" | "aborted";
 type ReplyOperationResult = Exclude<ControllerReplyOperationResult, { kind: "yielded" }>;
 
 export type ReplyTurnKind = "visible" | "heartbeat" | "queued_followup";
-
-export type ReplyMessageInjectionResolution =
-  | {
-      reason: ReplyMessageInjectionRejectionReason;
-      errorMessage?: string;
-      backend?: ReplyBackendHandle;
-      cancelPendingUserInput?: ReplyBackendHandle["cancelPendingUserInput"];
-    }
-  | {
-      backend: ReplyBackendHandle;
-      injection: ReplyBackendMessageInjection;
-      /** Internal FIFO preflight for a released synchronous sink. */
-      prepareQueueMessage?: () => Promise<void>;
-    };
 
 /** An adapter over one existing execution owner; it never acquires another run slot. */
 type ReplyMessageInjectionOwner = {
@@ -98,9 +87,9 @@ type ReplyMessageInjectionOwner = {
   readonly admissionIdentity: object;
   acceptParticipant?(participant: ReplyTurnParticipantInput): void;
   projectToolAuthorityFingerprint(overlay: ReplyToolAuthorityOverlay): string | undefined;
-  projectToolAuthorityFingerprintAsync(
+  projectToolAuthorityFingerprintAsync: (
     overlay: ReplyToolAuthorityOverlay,
-  ): Promise<string | undefined>;
+  ) => Promise<string | undefined>;
   projectRequesterToolAuthorityFingerprint(
     requester: ReplyToolAuthorityRequester,
   ): string | undefined;
@@ -355,6 +344,11 @@ export type SessionControllerOperation = ReplyOperation & {
   readonly [sessionControllerOperationState]: {
     readonly phase: ReplyOperationState["phase"];
     readonly turnKind: SessionControllerTurnKind;
+    /** Historical reply accounting belongs to this exact operation, even after slot retirement. */
+    readonly acceptedHumanReplyExpectation?: Exclude<ReplyExpectation, "optional">;
+    recordAcceptedHumanReply(expectation: ReplyExpectation): void;
+    readonly hasHostTerminalOwner: boolean;
+    bindHostTerminalOwner(): void;
     retireAdmissionAfterFencing(isCurrent: () => boolean): Promise<boolean>;
     forceCleanup(isCurrent: () => boolean, cleanup?: () => Promise<void>): Promise<boolean>;
     registerTerminalProducerFence(

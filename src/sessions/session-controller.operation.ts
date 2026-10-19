@@ -45,6 +45,7 @@ import {
   type CreateReplyOperationParams,
 } from "./session-controller.operation-admission.js";
 import { createReplyOperationRecovery } from "./session-controller.operation-recovery.js";
+import { createReplyOperationReplyAccounting } from "./session-controller.reply-accounting.js";
 import {
   clearReplyRunState,
   evictReplyOperationByOperation,
@@ -86,9 +87,9 @@ export function createReplyOperation(params: CreateReplyOperationParams): ReplyO
   let staleExpiryReason: replyRunSettle.ReplyOperationStaleReason | undefined;
   let terminalRecovery = false;
   let acceptedSteeredInboundAudio = false;
-  let sourceReplyDelivered = false;
   // A recorded yield ends the turn's work before settlement records it as the result.
   const ended = () => state.result !== null || state.phase === "yielded";
+  const replyAccounting = createReplyOperationReplyAccounting(ended);
   const settledResult = (): ReplyOperationResult =>
     state.phase === "yielded" ? { kind: "yielded" } : { kind: "completed" };
   const toolAuthority = createReplyOperationToolAuthority({
@@ -348,6 +349,14 @@ export function createReplyOperation(params: CreateReplyOperationParams): ReplyO
         return state.phase;
       },
       turnKind: params.turnKind ?? "visible",
+      get acceptedHumanReplyExpectation() {
+        return replyAccounting.acceptedHumanReplyExpectation;
+      },
+      recordAcceptedHumanReply: replyAccounting.recordAcceptedHumanReply,
+      get hasHostTerminalOwner() {
+        return replyAccounting.hasHostTerminalOwner;
+      },
+      bindHostTerminalOwner: replyAccounting.bindHostTerminalOwner,
       retireAdmissionAfterFencing,
       forceCleanup,
       registerTerminalProducerFence: (fence) => terminalProducerFences.register(fence),
@@ -382,7 +391,7 @@ export function createReplyOperation(params: CreateReplyOperationParams): ReplyO
       return acceptedSteeredInboundAudio;
     },
     get sourceReplyDelivered() {
-      return sourceReplyDelivered;
+      return replyAccounting.sourceReplyDelivered;
     },
     get toolAuthorityFingerprint() {
       return toolAuthority.toolAuthorityFingerprint;
@@ -467,11 +476,9 @@ export function createReplyOperation(params: CreateReplyOperationParams): ReplyO
     },
     markSteeredInputAccepted({ inboundAudio }) {
       acceptedSteeredInboundAudio ||= inboundAudio;
-      sourceReplyDelivered = false;
+      replyAccounting.resetSourceReplyDelivery();
     },
-    markSourceReplyDelivered() {
-      sourceReplyDelivered = true;
-    },
+    markSourceReplyDelivered: replyAccounting.markSourceReplyDelivered,
     bindToolAuthoritySnapshot: toolAuthority.bindToolAuthoritySnapshot,
     bindToolAuthoritySnapshotAsync: toolAuthority.bindToolAuthoritySnapshotAsync,
     projectToolAuthorityFingerprint: toolAuthority.projectToolAuthorityFingerprint,

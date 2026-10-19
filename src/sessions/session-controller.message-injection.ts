@@ -1,5 +1,9 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { bindWorkerToolPreparation } from "../agents/harness/host-private-capabilities.js";
+import {
+  bindReplyQueueInputAdapter,
+  bindWorkerToolPreparation,
+  readReplyQueueInputAdapter,
+} from "../agents/harness/host-private-capabilities.js";
 import { bindPreparedToolAuthority } from "../agents/harness/tool-authority-preparation.js";
 import {
   captureRequesterOrigin,
@@ -35,6 +39,7 @@ import {
   readSessionControllerOperationState,
 } from "./session-controller.state.js";
 import { messageAdmissionsByAttachment } from "./session-controller.storage.js";
+import { bindCapturedReplyToolAuthorityCallerRead } from "./session-controller.tool-authority.js";
 
 /** Capture the exact physical owner; aliases and protocol IDs are not injection authority. */
 export function captureReplyMessageInjectionTarget(
@@ -61,7 +66,23 @@ export function captureReplyMessageInjectionTarget(
   // Direct command delivery has no reply-dispatch trace output surface.
   const projectOverlay = (overlay: ReplyToolAuthorityOverlay) =>
     operationState?.turnKind === "direct" ? { ...overlay, traceAuthorized: false } : overlay;
-  return {
+  const projectAsync = async (overlay: ReplyToolAuthorityOverlay) => {
+    try {
+      return toolAuthority
+        ? await toolAuthority.projectAsync(projectOverlay(overlay))
+        : await operation.projectToolAuthorityFingerprintAsync(projectOverlay(overlay));
+    } catch {
+      toolAuthority?.assertActive();
+      return undefined;
+    }
+  };
+  bindCapturedReplyToolAuthorityCallerRead({
+    projector: projectAsync,
+    operation,
+    backendAttachment,
+    toolAuthority,
+  });
+  const target: ReplyMessageInjectionTarget = {
     [replyMessageInjectionTargetOwner]: {
       backendIdentity: backend,
       admissionIdentity: backendAttachment,
@@ -86,17 +107,7 @@ export function captureReplyMessageInjectionTarget(
           return undefined;
         }
       },
-      projectToolAuthorityFingerprintAsync: async (overlay) => {
-        try {
-          return toolAuthority
-            ? await toolAuthority.projectAsync(projectOverlay(overlay))
-            : await operation.projectToolAuthorityFingerprintAsync(projectOverlay(overlay));
-        } catch {
-          // A policy mismatch is a rejection; a retired publisher still fails closed.
-          toolAuthority?.assertActive();
-          return undefined;
-        }
-      },
+      projectToolAuthorityFingerprintAsync: projectAsync,
       projectRequesterToolAuthorityFingerprint: (requester) => {
         try {
           return toolAuthority?.projectRequester?.(requester);
@@ -126,6 +137,11 @@ export function captureReplyMessageInjectionTarget(
     ...(backend.runId ? { runId: backend.runId } : {}),
     ...(sourceTurnId ? { sourceTurnId } : {}),
   };
+  bindReplyQueueInputAdapter(
+    target[replyMessageInjectionTargetOwner],
+    readReplyQueueInputAdapter(toolAuthority),
+  );
+  return target;
 }
 
 function resolveReplyMessageInjectionRejection(params: {
@@ -211,6 +227,7 @@ function resolveReplyMessageInjectionRejection(params: {
   }
   return resolveReplyBackendMessageInjectionRejection({
     ...params,
+    replyCompletionOwner: operationState,
     options:
       operationState?.turnKind === "direct" &&
       params.options?.isInboundUserMessage &&
@@ -218,7 +235,9 @@ function resolveReplyMessageInjectionRejection(params: {
         ? {
             ...params.options,
             terminalReplyExpectation:
-              backend?.terminalReplyExpectation === "result-required"
+              backend?.terminalReplyExpectation === "result-required" ||
+              (operationState.hasHostTerminalOwner &&
+                params.options.terminalReplyExpectation === "result-required")
                 ? "result-required"
                 : "required",
           }
@@ -307,9 +326,12 @@ async function beginPreparedReplyMessageInjectionTarget(
           options?.assertCurrent?.();
         }
       : undefined;
+  // Preparation also validates the captured target. Losing that target must not
+  // revoke a still-authorized source or prevent separate-turn fallback.
+  const assertFailureSourceCurrent = options?.assertCurrent ?? assertSourceCurrent;
   const resolvePreAcceptanceFailure = (error: unknown): ReplyMessageInjectionOutcome => {
     const failure = resolveReplyMessageInjectionFailure(error, {
-      assertCurrent: assertSourceCurrent,
+      assertCurrent: assertFailureSourceCurrent,
       accepted: false,
     });
     if (!failure) {
@@ -584,16 +606,24 @@ async function beginPreparedReplyMessageInjectionTarget(
   };
   const runtimeQueueOptions: ReplyBackendQueueMessageOptions = {
     ...queueOptions,
-    // Admission above checks the human principal; the runtime must not interpret
-    // an authorized status control as an answer to ask_user.
+    // Current bundled sinks keep human custody separate from question permission.
+    // Released external sinks used the category itself to gate question answers.
     ...(allowPendingUserInputAnswer === false
-      ? { isInboundUserMessage: false, allowPendingUserInputAnswer }
+      ? {
+          allowPendingUserInputAnswer,
+          ...(readReplyQueueInputAdapter(owner) === "legacy-question-category"
+            ? { isInboundUserMessage: false }
+            : {}),
+        }
       : {}),
     onQueueAccepted: (accepted) => {
       // Rejection is provisional until the outcome rules out an uncertain question
       // dispatch. Forwarding false early would release the parked input for replay.
       if (accepted) {
-        queueAccepted = true;
+        if (!queueAccepted) {
+          queueAccepted = true;
+          resolved.recordAcceptedHumanReply?.();
+        }
         recordParticipant();
         settleAcceptance(true);
       }
@@ -601,7 +631,7 @@ async function beginPreparedReplyMessageInjectionTarget(
   };
   const failed = (error: unknown): ReplyMessageInjectionOutcome => {
     const outcome: ReplyMessageInjectionOutcome = resolveReplyMessageInjectionFailure(error, {
-      assertCurrent: assertSourceCurrent,
+      assertCurrent: assertFailureSourceCurrent,
       accepted: queueAccepted,
     }) ?? { status: "rejected", reason: "runtime_rejected", errorMessage: String(error) };
     settleAcceptance(outcome.status === "indeterminate");
@@ -615,7 +645,10 @@ async function beginPreparedReplyMessageInjectionTarget(
     outcome = resolved.injection
       .queueMessage(preparedText, runtimeQueueOptions)
       .then(async (result): Promise<ReplyMessageInjectionOutcome> => {
-        queueAccepted = true;
+        if (!queueAccepted) {
+          queueAccepted = true;
+          resolved.recordAcceptedHumanReply?.();
+        }
         recordParticipant();
         settleAcceptance(true);
         // Receipt uncertainty retains this input, but cannot authorize canceling

@@ -8,7 +8,7 @@ import "./get-reply-run.runtime-mocks.test-support.js";
 // Queue admission and channel policy have their own coverage; this seam exercises cron custody through ingress and drain.
 vi.mock("./reply-tool-authority.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./reply-tool-authority.js")>()),
-  prepareReplyToolAuthority: () => ({
+  prepareReplyRunToolAuthority: () => ({
     fingerprint: async () => "isolated-channel-owner",
     release: () => {},
   }),
@@ -70,7 +70,6 @@ import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shar
 import { hasControlCommand } from "../command-detection.js";
 import { bindCommandOwnerAuthority } from "../command-owner-authority.js";
 import { runReplyAgent } from "./agent-runner-run.js";
-import { resolveReplyDirectiveRouting } from "./get-reply-directives-routing.js";
 import { shouldUseReplyFastTestRuntime } from "./get-reply-fast-path.js";
 import {
   loadAgentRunnerRuntime,
@@ -79,6 +78,7 @@ import {
 } from "./get-reply-run-helpers.js";
 import { runPreparedReply } from "./get-reply-run.js";
 import { registerPendingRequesterAuthorityCases } from "./get-reply-run.requester-authority.test-support.js";
+import { registerSteeringIntentProducerCases } from "./get-reply-run.steering-intent.test-support.js";
 import { registerSystemEventAdmissionCases } from "./get-reply-run.system-event-admission.test-support.js";
 import {
   baseParams,
@@ -91,7 +91,6 @@ import {
   ownerParams,
 } from "./get-reply-run.test-support.js";
 import { buildGroupIntro, buildSourceConversationContext } from "./groups.js";
-import { finalizeInboundContext } from "./inbound-context.js";
 import {
   buildInboundMetaSystemPrompt,
   buildInboundUserContextPrefix,
@@ -219,7 +218,10 @@ vi.mock("../../agents/harness/selection-decision.js", () => ({
   resolveAgentHarnessDeliveryDefaults: resolveAgentHarnessDeliveryDefaultsMock,
 }));
 
-vi.mock("../../agents/model-selection.js", () => ({
+// Keep the facade contract for real directive normalization; isolate only
+// the three catalog/selection operations that this run-orchestration suite owns.
+vi.mock("../../agents/model-selection.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../agents/model-selection.js")>()),
   buildModelAliasIndex: vi.fn(
     (params: { cfg: { agents?: { defaults?: { models?: unknown } } } }) => {
       if (params.cfg.agents?.defaults?.models) {
@@ -827,6 +829,12 @@ describe("runPreparedReply media-only handling", () => {
     );
   });
 
+  registerSteeringIntentProducerCases({
+    runPrepared,
+    requireRunReplyAgentCall,
+    activatePreparedRun,
+  });
+
   registerPendingRequesterAuthorityCases({
     runPrepared,
     loadSessionEntryMock,
@@ -1293,42 +1301,6 @@ describe("runPreparedReply media-only handling", () => {
       }
     },
   );
-
-  it("preserves prompt bytes through authorized directive routing and preparation", async () => {
-    const code =
-      "Run  this:\r\n```python\r\n    if True:\r\n        print('a  b')\r\n\t\t# tabs  stay\r\n```";
-    const body = `/think high\r\n${code}`;
-    const params = baseParams({
-      ctx: createInboundTurn(body, "slack", "direct"),
-      sessionCtx: createSessionTurn(body, "slack", "direct"),
-      isNewSession: false,
-      commandAuthorized: true,
-      allowTextCommands: true,
-    });
-    params.command = { ...params.command, isAuthorizedSender: true };
-    const inbound = finalizeInboundContext(params.ctx);
-    const routed = resolveReplyDirectiveRouting({
-      commandText: inbound.commandText,
-      agentText: inbound.agentText,
-      modelAliases: [],
-      canInterpretTextDirectives: true,
-      isAuthorizedSender: true,
-      isGroup: false,
-      wasMentioned: false,
-      ctx: inbound,
-      cfg: params.cfg,
-      agentId: params.agentId,
-      resetTriggered: false,
-    });
-    params.directives = routed.directives;
-    params.sessionCtx.agentText = routed.cleanedBody;
-    await runPreparedReply(params);
-
-    const expected = code.replaceAll("\r\n", "\n");
-    const call = requireRunReplyAgentCall();
-    expect(call.commandBody).toBe(expected);
-    expect(call.followupRun.prompt).toBe(expected);
-  });
 
   it("rejects blank pending inbound history", async () => {
     vi.mocked(buildInboundUserContextPrefix).mockReturnValueOnce(

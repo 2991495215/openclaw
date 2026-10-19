@@ -68,7 +68,7 @@ import {
 } from "./reply-operation-run-state.js";
 import { createReplyToModeFilterForChannel } from "./reply-threading.js";
 import { resolveReplyRunTrigger } from "./reply-turn-kind.js";
-import { resolveSourceReplyExpectation } from "./source-reply-delivery-mode.js";
+import { resolveTerminalSourceReplyExpectation } from "./source-reply-delivery-mode.js";
 import { resolveStrandedReplyRecovery } from "./stranded-reply-recovery.js";
 import { buildWaitingStatusPayload, prepareWaitingStatusContinuation } from "./waiting-status.js";
 export async function prepareReplyAgentPayloads(state: {
@@ -121,27 +121,27 @@ export async function prepareReplyAgentPayloads(state: {
     usage,
   } = accounting;
   let { activeSessionEntry } = accounting;
-  const terminalReplyExpectation =
-    followupRun.run.terminalReplyExpectation ??
-    resolveSourceReplyExpectation({
-      ctx: {
-        ...sessionCtx,
-        InboundEventKind: followupRun.currentInboundEventKind,
-        InputProvenance: followupRun.run.inputProvenance,
-      },
+  const resolveTerminalReplyExpectation = () =>
+    resolveTerminalSourceReplyExpectation({
+      followupRun,
+      replyOperation,
+      sessionCtx,
       cfg,
       isHeartbeat,
+      reportedExpectation: runResult.meta?.terminalReplyExpectation,
     });
-  const missingReplyNoticeAllowed = shouldDeliverMissingReplyNotice({
-    ...followupRun.run,
-    config: cfg,
-    terminalReplyExpectation,
-    trigger: resolveReplyRunTrigger(context),
-    isHeartbeat,
-    currentInboundEventKind: followupRun.currentInboundEventKind,
-  });
-  const backgroundMissingReply =
-    !missingReplyNoticeAllowed &&
+  const missingReplyNoticeAllowed = () =>
+    shouldDeliverMissingReplyNotice({
+      ...followupRun.run,
+      config: cfg,
+      replyOperation,
+      terminalReplyExpectation: resolveTerminalReplyExpectation(),
+      trigger: resolveReplyRunTrigger(context),
+      isHeartbeat,
+      currentInboundEventKind: followupRun.currentInboundEventKind,
+    });
+  const backgroundMissingReply = () =>
+    !missingReplyNoticeAllowed() &&
     (!runResult.meta?.error ||
       (runResult.meta.error.kind === "incomplete_turn" &&
         runResult.meta.error.message.startsWith(MISSING_REPLY_NOTICE_TEXT)));
@@ -222,7 +222,7 @@ export async function prepareReplyAgentPayloads(state: {
   });
   const sourceReplyDelivery = resolveSourceReplyDelivery(runResult, terminalReplyDelivery);
   let completion = resolveReplyCompletion(
-    terminalReplyExpectation,
+    resolveTerminalReplyExpectation(),
     blocked || heartbeatAcknowledgment
       ? "blocked"
       : authoredSilence
@@ -240,7 +240,7 @@ export async function prepareReplyAgentPayloads(state: {
   const onDeliveredTerminalDuplicate = hasLegacyMessagingToolEvidence
     ? () => {
         if (completion.outcome !== "blocked") {
-          completion = resolveReplyCompletion(terminalReplyExpectation, "delivered");
+          completion = resolveReplyCompletion(resolveTerminalReplyExpectation(), "delivered");
           if (replyOperationRunState) {
             replyOperationRunState.replyCompletion = completion;
           }
@@ -276,13 +276,13 @@ export async function prepareReplyAgentPayloads(state: {
   const missingReplyPayload =
     strandedFinal ||
     terminalFailurePayload ||
-    !missingReplyNoticeAllowed ||
+    !missingReplyNoticeAllowed() ||
     completion.outcome !== "missing"
       ? undefined
       : createMissingReplyNotice();
   const buildStrandedRetryMissingDeliveryDiagnostic = (): ReplyPayload | undefined => {
     if (
-      !missingReplyNoticeAllowed ||
+      !missingReplyNoticeAllowed() ||
       authoredSilence ||
       !sessionKey ||
       !storePath ||
@@ -367,7 +367,7 @@ export async function prepareReplyAgentPayloads(state: {
     return result.replyPayloads;
   };
   const returnSilentFallbackFailureIfNeeded = async (): Promise<ReplyPayload | undefined> => {
-    if (backgroundMissingReply) {
+    if (backgroundMissingReply()) {
       return undefined;
     }
     const silentFallbackFailurePayload = buildSilentFallbackFailurePayload({

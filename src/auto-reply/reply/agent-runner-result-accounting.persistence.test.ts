@@ -32,6 +32,10 @@ import { finalizeReplyAgentRun } from "./agent-runner-result.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import * as followupExecution from "./followup-turn-execution.js";
 import * as followupAdmission from "./reply-agent-turn-preparation.js";
+import {
+  REPLY_OPERATION_RUN_STATE,
+  type ReplyOperationRunState,
+} from "./reply-operation-run-state.js";
 import { createReplyRestartRecoveryClaimController } from "./restart-recovery-claim.js";
 import { createReplyRecoveryActorFixture } from "./restart-recovery-claim.test-support.js";
 import { incrementCompactionCount } from "./session-updates.js";
@@ -526,6 +530,30 @@ it.each([
       expect(delivered.some((payload) => isReplyPayloadTerminalContent(payload))).toBe(false);
     } else {
       expect(delivered).toEqual([]);
+    }
+  },
+);
+
+it.each([
+  { host: "required", reported: "optional", expected: "required" },
+  { host: "result-required", reported: "required", expected: "result-required" },
+  { host: "optional", reported: "required", expected: "required" },
+] as const)(
+  "preserves terminal answer obligations for host=$host, backend=$reported",
+  async ({ host, reported, expected }) => {
+    const { context } = await createFixture();
+    const state: ReplyOperationRunState = {};
+    context.opts = { ...context.opts, [REPLY_OPERATION_RUN_STATE]: state };
+    context.followupRun.run.terminalReplyExpectation = host;
+    context.execution.result.payloads = [];
+    context.execution.result.meta.terminalReplyExpectation = reported;
+    context.execution.result.meta.terminalReply = prepareAgentRunTerminalReply({
+      rawText: "",
+    }).terminalReply;
+    const result = await finalizeReplyAgentRun(context);
+    expect(state.replyCompletion).toEqual({ expectation: expected, outcome: "missing" });
+    if (expected === "required") {
+      expect(result).toMatchObject({ isError: true, text: expect.any(String) });
     }
   },
 );

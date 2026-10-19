@@ -41,7 +41,7 @@ describe("reply run control ownership", () => {
     successor.complete();
   });
 
-  it.each([undefined, "message_tool_only"] as const)(
+  it.each([undefined, "automatic", "message_tool_only"] as const)(
     "preserves source-reply delivery semantics with active mode %s",
     async (sourceReplyDeliveryMode) => {
       const queueMessage = vi.fn(async () => {});
@@ -153,7 +153,7 @@ describe("reply run control ownership", () => {
     },
   );
 
-  it.each(["required", "optional"] as const)(
+  it.each(["required", "optional", "result-required", undefined] as const)(
     "keeps a mismatched input out of a %s reply owner",
     async (terminalReplyExpectation) => {
       const queueMessage = vi.fn(async () => {});
@@ -176,7 +176,7 @@ describe("reply run control ownership", () => {
       await expect(
         queueReplyMessageInjectionTarget(target, "different input", {
           terminalReplyExpectation:
-            terminalReplyExpectation === "required" ? "optional" : "required",
+            (terminalReplyExpectation ?? "required") === "optional" ? "required" : "optional",
         }),
       ).resolves.toEqual({ status: "rejected", reason: "reply_expectation_mismatch" });
       expect(queueMessage).not.toHaveBeenCalled();

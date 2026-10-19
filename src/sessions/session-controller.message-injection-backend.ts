@@ -11,11 +11,28 @@ import type {
   ReplyBackendMessageInjection,
   ReplyBackendQueueMessageOptions,
   ReplyMessageInjectionOptions,
-  ReplyMessageInjectionResolution,
+  ReplyMessageInjectionRejectionReason,
   ReplyTurnParticipants,
   ReplyToolAuthorityPreparation,
 } from "./session-controller.contracts.js";
 import { resolveReplyBackendQueueMessageMismatch } from "./session-controller.message-injection-failure.js";
+import type { readReplyOperationReplyAccounting } from "./session-controller.reply-accounting.js";
+
+export type ReplyMessageInjectionResolution =
+  | {
+      reason: ReplyMessageInjectionRejectionReason;
+      errorMessage?: string;
+      backend?: ReplyBackendHandle;
+      cancelPendingUserInput?: ReplyBackendHandle["cancelPendingUserInput"];
+    }
+  | {
+      backend: ReplyBackendHandle;
+      injection: ReplyBackendMessageInjection;
+      /** Internal FIFO preflight for a released synchronous sink. */
+      prepareQueueMessage?: () => Promise<void>;
+      /** Record real backend acceptance on this captured operation, never a keyed successor. */
+      recordAcceptedHumanReply?: () => void;
+    };
 
 function resolveReplyBackendMessageInjection(
   backend: ReplyBackendHandle,
@@ -77,6 +94,7 @@ export function resolveReplyBackendMessageInjectionRejection(params: {
   backend: ReplyBackendHandle | undefined;
   canInject: () => boolean;
   toolAuthorityFingerprint?: string;
+  replyCompletionOwner?: ReturnType<typeof readReplyOperationReplyAccounting>;
   options?: ReplyBackendQueueMessageOptions;
   personalToolParticipant?: ReplyMessageInjectionOptions["personalToolParticipant"];
   personalToolParticipants?: ReplyTurnParticipants;
@@ -180,5 +198,21 @@ export function resolveReplyBackendMessageInjectionRejection(params: {
             ? injection.cancelPendingUserInput
             : undefined,
       }
-    : { backend, injection, prepareQueueMessage: injection.prepareQueueMessage };
+    : {
+        backend,
+        injection,
+        prepareQueueMessage: injection.prepareQueueMessage,
+        recordAcceptedHumanReply:
+          params.options?.isInboundUserMessage === true &&
+          params.options.terminalReplyExpectation !== "optional" &&
+          params.replyCompletionOwner?.hasHostTerminalOwner
+            ? () =>
+                params.replyCompletionOwner!.recordAcceptedHumanReply(
+                  backend.terminalReplyExpectation === "result-required" ||
+                    params.options?.terminalReplyExpectation === "result-required"
+                    ? "result-required"
+                    : "required",
+                )
+            : undefined,
+      };
 }

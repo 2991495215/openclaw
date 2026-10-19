@@ -24,6 +24,15 @@ export type CodexQuestionInputAuthority = NonNullable<
   Parameters<typeof claimPendingAgentQuestionAnswer>[0]["authority"]
 >;
 
+/** Only admitted image input may replace a pending native question. */
+export function shouldCancelCodexQuestionForImage(options?: CodexSteeringQueueOptions): boolean {
+  return (
+    options?.isInboundUserMessage === true &&
+    options.allowPendingUserInputAnswer !== false &&
+    hasPromptImageInput(options)
+  );
+}
+
 export function createCodexQuestionInputHandlers(sessionKey: string, assertActive: () => void) {
   const questionAuthority = (
     kind: CodexQuestionInputAuthority["kind"],
@@ -44,7 +53,11 @@ export function createCodexQuestionInputHandlers(sessionKey: string, assertActiv
     authorityKind: CodexQuestionInputAuthority["kind"] = assertCurrent ? "source-bound" : "run",
     toolAuthorityPreparation?: CodexSteeringPreparation,
   ) => {
-    if (optionsLocal?.isInboundUserMessage !== true || hasPromptImageInput(optionsLocal)) {
+    if (
+      optionsLocal?.isInboundUserMessage !== true ||
+      optionsLocal.allowPendingUserInputAnswer === false ||
+      hasPromptImageInput(optionsLocal)
+    ) {
       return false;
     }
     assertActive();
@@ -84,6 +97,7 @@ export type CodexSteeringQueueOptions = Pick<
   | "imageOrder"
   | "media"
   | "isInboundUserMessage"
+  | "allowPendingUserInputAnswer"
   | "onQueueAccepted"
   | "onQueueSettled"
   | "userTurnTranscriptRecorder"
