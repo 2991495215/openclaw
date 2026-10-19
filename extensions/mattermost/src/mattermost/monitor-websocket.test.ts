@@ -130,10 +130,12 @@ beforeEach(() => {
   vi.useRealTimers();
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 it("backs off across attempts when authentication never completes", async () => {
+  vi.spyOn(Math, "random").mockReturnValue(0.5);
   createWebSocket.mockImplementation(() => {
     const socket = new FakeWebSocket();
     queueMicrotask(() => {
@@ -152,8 +154,6 @@ it("backs off across attempts when authentication never completes", async () => 
   const abort = new AbortController();
   await runWithReconnect(connectOnce, {
     initialDelayMs: 10,
-    maxDelayMs: 1000,
-    jitterRatio: 0,
     abortSignal: abort.signal,
     onError: (err) => {
       expect(String(err)).toContain("bot token");
@@ -468,6 +468,7 @@ it("does not overlap health checks when a prior poll is still running", async ()
 });
 
 it("returns control to reconnect after a stalled handshake", async () => {
+  vi.spyOn(Math, "random").mockReturnValue(0.5);
   const stalledServer = await startStalledWebSocketHandshakeServer();
 
   const runtime = testRuntime();
@@ -490,8 +491,6 @@ it("returns control to reconnect after a stalled handshake", async () => {
   try {
     await runWithReconnect(connectOnce, {
       initialDelayMs: 50,
-      maxDelayMs: 50,
-      jitterRatio: 0,
       abortSignal: abort.signal,
       onError: (err) => {
         connectErrors.push(err instanceof Error ? err.name : String(err));

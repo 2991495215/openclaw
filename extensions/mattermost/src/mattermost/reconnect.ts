@@ -5,9 +5,6 @@ type RunWithReconnectOpts = {
   onError?: (err: unknown) => void;
   onReconnect?: (delayMs: number) => void;
   initialDelayMs?: number;
-  maxDelayMs?: number;
-  jitterRatio?: number;
-  random?: () => number;
   reconnectAfterClose?: boolean;
 };
 
@@ -15,9 +12,7 @@ export async function runWithReconnect(
   connectFn: () => Promise<void>,
   opts: RunWithReconnectOpts = {},
 ): Promise<void> {
-  const { initialDelayMs = 2000, maxDelayMs = 60_000 } = opts;
-  const jitterRatio = Math.max(0, opts.jitterRatio ?? 0);
-  const random = opts.random ?? Math.random;
+  const initialDelayMs = opts.initialDelayMs ?? 2000;
   let retryDelay = initialDelayMs;
   while (!opts.abortSignal?.aborted) {
     let failed = false;
@@ -36,7 +31,7 @@ export async function runWithReconnect(
     if (!failed) {
       retryDelay = initialDelayMs;
     }
-    const delayMs = withJitter(retryDelay, jitterRatio, random);
+    const delayMs = withJitter(retryDelay);
     if (!failed && opts.reconnectAfterClose === false) {
       return;
     }
@@ -49,16 +44,13 @@ export async function runWithReconnect(
       }
     }
     if (failed) {
-      retryDelay = Math.min(retryDelay * 2, maxDelayMs);
+      retryDelay = Math.min(retryDelay * 2, 60_000);
     }
   }
 }
 
-function withJitter(baseMs: number, jitterRatio: number, random: () => number): number {
-  if (jitterRatio <= 0) {
-    return baseMs;
-  }
-  const normalized = Math.max(0, Math.min(1, random()));
-  const spread = baseMs * jitterRatio;
+function withJitter(baseMs: number): number {
+  const normalized = Math.max(0, Math.min(1, Math.random()));
+  const spread = baseMs * 0.2;
   return Math.max(1, Math.round(baseMs - spread + normalized * spread * 2));
 }

@@ -6,6 +6,7 @@ beforeEach(() => {
   vi.restoreAllMocks();
   vi.useFakeTimers();
   vi.clearAllMocks();
+  vi.spyOn(Math, "random").mockReturnValue(0.5);
 });
 
 afterEach(() => {
@@ -41,7 +42,6 @@ describe("runWithReconnect", () => {
       abortSignal: abort.signal,
       onReconnect: (delayMs) => delays.push(delayMs),
       initialDelayMs: 1,
-      maxDelayMs: 60_000,
     });
     await resolveReconnectRun(run);
 
@@ -64,7 +64,8 @@ describe("runWithReconnect", () => {
     expect(connectFn).toHaveBeenCalledTimes(1);
   });
 
-  it("applies jitter to reconnect delay when configured", async () => {
+  it("applies twenty percent jitter to reconnect delay", async () => {
+    vi.mocked(Math.random).mockReturnValue(1);
     const abort = new AbortController();
     const delays: number[] = [];
     let callCount = 0;
@@ -80,13 +81,11 @@ describe("runWithReconnect", () => {
       abortSignal: abort.signal,
       onReconnect: (delayMs) => delays.push(delayMs),
       initialDelayMs: 10,
-      jitterRatio: 0.5,
-      random: () => 1,
     });
     await resolveReconnectRun(run);
 
     expect(connectFn).toHaveBeenCalledTimes(2);
-    expect(delays).toEqual([15]);
+    expect(delays).toEqual([12]);
   });
 
   it("finishes authentication on success after retrying failures", async () => {
