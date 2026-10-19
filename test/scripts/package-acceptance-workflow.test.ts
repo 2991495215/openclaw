@@ -12783,7 +12783,7 @@ printf '%s\\n' "$DEEPSEEK_API_KEY" "$DEEPINFRA_API_KEY"`,
       env: { ...process.env, JOB_MINUTES: String(step.env?.JOB_MINUTES), GITHUB_ENV: githubEnv },
     });
     expect(readFileSync(githubEnv, "utf8").trim()).toBe(
-      `OPENCLAW_QA_RUNTIME_PAIR_LATEST_START_MS=${1_002_220_000}`,
+      "OPENCLAW_QA_RUNTIME_PAIR_LATEST_START_MS=1002220000",
     );
   });
 

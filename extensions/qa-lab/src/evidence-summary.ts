@@ -363,9 +363,13 @@ export function getEffectiveQaEvidenceEntries(
   );
 }
 
-export function collectQaStartedScenarioInstanceIds(evidence: QaEvidenceSummaryV3Json): Set<string> {
+export function collectQaStartedScenarioInstanceIds(
+  evidence: QaEvidenceSummaryV3Json,
+): Set<string> {
   const instances = new Set(
-    evidence.occurrences.filter((item) => item.scenario?.kind === "instance").map((item) => item.id),
+    evidence.occurrences
+      .filter((item) => item.scenario?.kind === "instance")
+      .map((item) => item.id),
   );
   const started = new Set<string>();
   for (const { scenario, terminalStatus, childOccurrenceIds } of evidence.occurrences) {
