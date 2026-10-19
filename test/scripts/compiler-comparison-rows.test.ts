@@ -189,7 +189,7 @@ function artifact() {
       available: true,
       Status: "exited",
       Running: false,
-      OOMKilled: false,
+      OOMKilled: name === "oom",
       ExitCode: exit,
     };
     result.observation.finish!.code = exit;
@@ -410,6 +410,17 @@ describe("canonical wrapper admission", () => {
     if (kind === "scratch-gid") fixture.receipts[0]!.observation.scratch!.gid += 1;
     if (kind === "scratch-mode") fixture.receipts[0]!.observation.scratch!.mode = 0o777;
     fixture.write("row-receipts.json", fixture.receipts);
+    fixture.write("row-smokes.json", fixture.smokes);
+    expect(() => auditCompilerRows(fixture.directory)).toThrow();
+  });
+
+  it.each([
+    { row: "oom", OOMKilled: false },
+    { row: "explicit-137", OOMKilled: true },
+  ])("rejects $row with OOMKilled=$OOMKilled", ({ row, OOMKilled }) => {
+    const fixture = artifact();
+    const smoke = fixture.smokes.find((entry) => entry.row === row)!;
+    smoke.preCleanupState = { ...(smoke.preCleanupState as Record<string, unknown>), OOMKilled };
     fixture.write("row-smokes.json", fixture.smokes);
     expect(() => auditCompilerRows(fixture.directory)).toThrow();
   });

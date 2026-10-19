@@ -1135,11 +1135,13 @@ printf 'tcp\\tENETUNREACH\\n'`;
       );
       if (smoke.exit === 137) {
         assert.throws(() => assertCompilerRowTerminal(receipt, smoke.exit));
+        // Docker records child OOM events too. Frozen PID identity proves that
+        // the supervisor survived; explicit exit 137 must retain zero OOM facts.
         assert.deepEqual(receipt.preCleanupState, {
           available: true,
           Status: "exited",
           Running: false,
-          OOMKilled: false,
+          OOMKilled: smoke.expectedOom ?? false,
           ExitCode: 137,
         });
         if (smoke.expectedOom) {

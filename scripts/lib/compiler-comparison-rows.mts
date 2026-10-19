@@ -914,7 +914,7 @@ export function auditCompilerRows(directory: string) {
         available: true,
         Status: "exited",
         Running: false,
-        OOMKilled: false,
+        OOMKilled: oom,
         ExitCode: 137,
       });
       assert.equal(finish.signal, oom ? "SIGKILL" : null);
