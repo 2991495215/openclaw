@@ -259,7 +259,7 @@ describe("runDoctorSessionSqlite", () => {
               confirm,
             }),
           ),
-        ).rejects.toThrow("undergoing offline maintenance");
+        ).rejects.toThrow("without an active schema lease or maintenance scope");
       },
     });
     expect(confirm).not.toHaveBeenCalled();
