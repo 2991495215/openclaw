@@ -3,6 +3,11 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { captureFirecrawlTools } from "./firecrawl-tools.test-support.js";
 
+const credentialResults = new Map([
+  ["Bearer firecrawl-cache-key-A", "account-a"],
+  ["Bearer firecrawl-cache-key-a", "account-b"],
+]);
+
 describe("Firecrawl search cache", () => {
   let server: Server;
   let baseUrl: string;
@@ -12,13 +17,14 @@ describe("Firecrawl search cache", () => {
   beforeEach(async () => {
     networkCalls = 0;
     body = "original";
-    server = createServer((_request, response) => {
+    server = createServer((request, response) => {
       networkCalls += 1;
+      const result = credentialResults.get(request.headers.authorization ?? "") ?? body;
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({
           success: true,
-          data: [{ url: `https://example.com/${body}`, title: body }],
+          data: [{ url: `https://example.com/${result}`, title: result }],
         }),
       );
     });
@@ -40,18 +46,39 @@ describe("Firecrawl search cache", () => {
     });
   });
 
-  async function search(query: string, cacheTtlMinutes: number) {
+  async function search(
+    query: string,
+    cacheTtlMinutes: number,
+    apiKey = "firecrawl-cache-test-key",
+  ) {
     const config: OpenClawConfig = {
       tools: { web: { search: { cacheTtlMinutes } } },
       plugins: {
         entries: {
-          firecrawl: { config: { webSearch: { baseUrl, apiKey: "firecrawl-cache-test-key" } } },
+          firecrawl: { config: { webSearch: { baseUrl, apiKey } } },
         },
       },
     };
     const tool = captureFirecrawlTools(config)("firecrawl_search");
     return (await tool.execute("cache-test", { query })).details;
   }
+
+  it("partitions cached search results by the resolved credential", async () => {
+    const query = "Firecrawl credential-scoped cache";
+    const first = await search(query, 15, "firecrawl-cache-key-A");
+    expect(first).toMatchObject({ results: [{ url: "https://example.com/account-a" }] });
+    expect(first).not.toHaveProperty("cached");
+
+    const second = await search(query, 15, "firecrawl-cache-key-a");
+    expect(second).toMatchObject({ results: [{ url: "https://example.com/account-b" }] });
+    expect(second).not.toHaveProperty("cached");
+
+    expect(await search(query, 15, "firecrawl-cache-key-A")).toMatchObject({
+      cached: true,
+      results: [{ url: "https://example.com/account-a" }],
+    });
+    expect(networkCalls).toBe(2);
+  });
 
   it.each([0, 15])("bypasses reads and writes after starting with TTL %i", async (initialTtl) => {
     const query = `cache disable from ${initialTtl}`;

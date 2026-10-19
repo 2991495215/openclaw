@@ -7,6 +7,66 @@ afterEach(() => {
 });
 
 describe("Tavily search cache TTL", () => {
+  it.each(["tavily_search", "tavily_extract"] as const)(
+    "%s partitions cached results by the resolved credential",
+    async (toolName) => {
+      const accounts = new Map([
+        ["Bearer tavily-cache-key-A", "Account A"],
+        ["Bearer tavily-cache-key-a", "Account B"],
+      ]);
+      const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+        const account = accounts.get(new Headers(init?.headers).get("Authorization") ?? "");
+        if (!account) {
+          throw new Error("Unexpected synthetic Tavily credential");
+        }
+        return Response.json({
+          results: [
+            {
+              url: "https://example.com/credential-scoped-content",
+              content: account,
+              raw_content: account,
+            },
+          ],
+        });
+      });
+      const configForKey = (apiKey: string) => ({
+        tools: { web: { search: { cacheTtlMinutes: 15 } } },
+        plugins: { entries: { tavily: { config: { webSearch: { apiKey } } } } },
+      });
+      let config = configForKey("tavily-cache-key-A");
+      const tool = captureTavilyTools(config)(toolName, {
+        config,
+        getRuntimeConfig: () => config,
+      });
+      const args =
+        toolName === "tavily_search"
+          ? { query: "Tavily credential-scoped cache" }
+          : { urls: ["https://example.com/credential-scoped-content"] };
+      const contentField = toolName === "tavily_search" ? "snippet" : "rawContent";
+      const run = async () => (await tool.execute("cache-credential", args)).details;
+
+      const first = await run();
+      expect(first).toMatchObject({
+        results: [{ [contentField]: expect.stringContaining("Account A") }],
+      });
+      expect(first).not.toHaveProperty("cached");
+
+      config = configForKey("tavily-cache-key-a");
+      const second = await run();
+      expect(second).toMatchObject({
+        results: [{ [contentField]: expect.stringContaining("Account B") }],
+      });
+      expect(second).not.toHaveProperty("cached");
+
+      config = configForKey("tavily-cache-key-A");
+      expect(await run()).toMatchObject({
+        cached: true,
+        results: [{ [contentField]: expect.stringContaining("Account A") }],
+      });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it.each([
     { kind: "web_search", cacheTtlMinutes: 1 },
     { kind: "tavily_search", cacheTtlMinutes: 0 },
