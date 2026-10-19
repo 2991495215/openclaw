@@ -1,5 +1,5 @@
 import { Value } from "typebox/value";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import {
   claimAgentRunContext,
@@ -10,6 +10,7 @@ import {
   rotateAgentRunRegistryLifecycleGeneration,
 } from "../../infra/agent-run-registry.js";
 import { createCronTool } from "./cron-tool.js";
+import * as gatewayModule from "./gateway.js";
 
 const runId = "automation-invocation";
 const jobId = "automation-job";
@@ -43,7 +44,9 @@ function registerRun(nextCheckEnabled = false) {
 }
 
 function scopedTool(callGatewayTool = vi.fn()) {
-  return createCronTool({ selfRemoveOnlyJobId: jobId, runId }, { callGatewayTool });
+  const gatewaySpy = vi.spyOn(gatewayModule, "callGatewayTool").mockImplementation(callGatewayTool);
+  onTestFinished(() => gatewaySpy.mockRestore());
+  return createCronTool({ selfRemoveOnlyJobId: jobId, runId });
 }
 
 describe("automation invocation actions", () => {

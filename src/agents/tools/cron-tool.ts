@@ -67,11 +67,7 @@ import {
   assertNoCronShellExecution,
   updateCronJobFromAgentTool,
 } from "./cron-tool-write.js";
-import type {
-  CronCreatorToolAuthoritySnapshot,
-  CronToolDeps,
-  CronToolOptions,
-} from "./cron-tool.types.js";
+import type { CronCreatorToolAuthoritySnapshot, CronToolOptions } from "./cron-tool.types.js";
 import {
   getGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
@@ -157,8 +153,7 @@ function isOlderGatewayRejectingParam(error: unknown, method: string, param: str
   );
 }
 
-export function createCronTool(opts?: CronToolOptions, deps?: CronToolDeps): AnyAgentTool {
-  const gatewayCall = deps?.callGatewayTool ?? callGatewayTool;
+export function createCronTool(opts?: CronToolOptions): AnyAgentTool {
   const managementAuthority = bindCronManagementGrant(opts?.runId);
   const requesterAuthority = bindCronRequesterGrant(opts?.runId);
   const selfJobId = readCronSelfRemoveOnlyJobId(opts);
@@ -228,9 +223,9 @@ export function createCronTool(opts?: CronToolOptions, deps?: CronToolDeps): Any
                   ...(grant ? { cronManagementGrant: grant } : {}),
                   ...(requesterGrant ? { cronCreatorAuthorityGrant: requesterGrant } : {}),
                 },
-                () => gatewayCall<T>(...request),
+                () => callGatewayTool<T>(...request),
               )
-            : await gatewayCall<T>(...request);
+            : await callGatewayTool<T>(...request);
         operationSignal?.throwIfAborted();
         assertCurrentRun?.();
         return result;
