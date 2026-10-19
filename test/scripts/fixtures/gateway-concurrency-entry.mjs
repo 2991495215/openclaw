@@ -66,6 +66,9 @@ sockets.on("connection", (socket) => {
           },
         });
         break;
+      case "diagnostics.lanes":
+        reply({ workerCount: 0, workerPoolCount: 0, workerPools: [] });
+        break;
       case "agent":
         agentStarted = true;
         writeSpan("fixture.turn", 1);
@@ -140,14 +143,21 @@ sockets.on("connection", (socket) => {
     }
   });
 });
-process.on("SIGTERM", () => {
+function stop() {
   for (const socket of sockets.clients) {
     socket.terminate();
   }
   sockets.close();
-  server.close(() => process.exit(failure === "teardown" ? 23 : 0));
+  server.close(() => {
+    setTimeout(
+      () => process.exit(failure === "teardown" ? 23 : 0),
+      failure === "profile" ? 2_200 : 0,
+    );
+  });
   server.closeAllConnections();
-});
+}
+process.on("SIGINT", stop);
+process.on("SIGTERM", stop);
 server.listen(port, "127.0.0.1", () => {
   console.log("startup trace: sidecars.ready 1ms total=1ms");
 });

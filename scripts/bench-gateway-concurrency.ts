@@ -2029,11 +2029,11 @@ async function runGatewaySample(
       );
       if (options.controlUiLoad) {
         gatewayArgs[gatewayArgs.indexOf("--auth") + 1] = "token";
-        const stopPreload = new URL("./lib/gateway-bench-stop-preload.mjs", import.meta.url);
-        stopPreload.searchParams.set("parentPid", String(process.pid));
-        stopPreload.searchParams.set("entry", path.resolve(options.entry));
-        gatewayArgs.unshift("--import", stopPreload.href);
       }
+      const stopPreload = new URL("./lib/gateway-bench-stop-preload.mjs", import.meta.url);
+      stopPreload.searchParams.set("parentPid", String(process.pid));
+      stopPreload.searchParams.set("entry", path.resolve(options.entry));
+      gatewayArgs.unshift("--import", stopPreload.href);
       if (heapProfilePath || loadCpuProfilePath) {
         for (const profilePath of [heapProfilePath, loadCpuProfilePath]) {
           if (profilePath) {
@@ -2824,35 +2824,19 @@ async function runGatewaySample(
         await captureFailure("cleanup", () => auxiliaryClient.close());
       }
       await captureFailure("cleanup", async () => {
-        if (
-          gateway &&
-          options.cpuProfDir &&
-          gateway.exitCode === null &&
-          gateway.signalCode === null
-        ) {
-          // V8 flushes the main-isolate CPU profile on its normal interrupt path.
-          const profileFlushed = new Promise<void>((resolve) => {
-            gateway!.once("exit", () => resolve());
-          });
-          gateway.kill("SIGINT");
-          await Promise.race([profileFlushed, delay(2_000)]);
-        }
-      });
-      await captureFailure("cleanup", async () => {
         if (gateway) {
+          const exitedBeforeTeardown = gateway.exitCode !== null || gateway.signalCode !== null;
           try {
-            if (options.controlUiLoad) {
-              shutdown = await stopGatewayGracefully(gateway, GATEWAY_SERVICE_STOP_TIMEOUT_MS);
-            }
+            shutdown = await stopGatewayGracefully(gateway, GATEWAY_SERVICE_STOP_TIMEOUT_MS);
           } finally {
             gatewayExit = await stopChild(gateway, {
               onForceKill: () => {
                 forcedCleanup = true;
               },
             });
-            if (shutdown) {
-              gatewayExit.exitedBeforeTeardown = false;
-            }
+            // The fallback observes an already-exited child even when graceful
+            // shutdown caused that exit; classify it at the first stop request.
+            gatewayExit.exitedBeforeTeardown = exitedBeforeTeardown;
           }
         }
       });
@@ -2954,7 +2938,11 @@ async function runGatewaySample(
   } finally {
     await captureFailure("cleanup", async () => {
       if (mockProvider) {
-        mockProviderExit = await stopChild(mockProvider);
+        mockProviderExit = await stopChild(mockProvider, {
+          onForceKill: () => {
+            forcedCleanup = true;
+          },
+        });
       }
     });
     await captureFailure("cleanup", async () => {
@@ -2976,6 +2964,9 @@ async function runGatewaySample(
       }
     });
   }
+  if (forcedCleanup) {
+    errors.push({ phase: "cleanup", error: "Forced benchmark child cleanup" });
+  }
   if (controlUiRun) {
     if (
       options.gatewayCpus &&
@@ -2988,10 +2979,10 @@ async function runGatewaySample(
         error: "Observed Gateway thread outside requested CPU affinity",
       });
     }
-    if (forcedCleanup || resourceReport?.errors.length) {
+    if (resourceReport?.errors.length) {
       errors.push({
         phase: "cleanup",
-        error: "Forced Gateway cleanup or incomplete resource observations",
+        error: "Incomplete resource observations",
       });
     }
     return {
