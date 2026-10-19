@@ -60,10 +60,6 @@ const MAX_DIGESTS_PER_RUN = 40;
 const MAX_LIVE_DIGESTS_PER_RUN = MAX_DIGESTS_PER_RUN - 1;
 const MAX_CONSECUTIVE_FAILURES = 2;
 const FINAL_DIGEST_MIN_RUN_MS = 30_000;
-// The Control UI opens at most six live session subscriptions; matching that cap
-// prevents background observer calls from outgrowing the surface consuming them.
-const MAX_CONCURRENT_MODEL_SESSIONS = 6;
-
 export function createSessionObserver(deps: SessionObserverDeps): SessionObserverService {
   const now = deps.now ?? Date.now;
   const setTimeoutFn = deps.setTimeoutFn ?? setTimeout;
@@ -247,7 +243,6 @@ export function createSessionObserver(deps: SessionObserverDeps): SessionObserve
   };
   const modelSlots = createSessionObserverModelSlots({
     states,
-    maxSessions: MAX_CONCURRENT_MODEL_SESSIONS,
     resolve: (agentId) => resolveUtilityModelRef({ cfg: deps.getConfig(), agentId }),
     demote: demoteUtilityModel,
   });
