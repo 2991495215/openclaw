@@ -349,7 +349,7 @@ it("joins accepted actor node work, preserves changed session settings, and cano
     nodeSubscribe: subscribe,
     nodeUnsubscribe: vi.fn(),
     nodeSendToSession: vi.fn(),
-    authorizeNodeSystemRunEvent: () => false,
+    authorizeNodeSystemRunEvent: (): false => false,
   };
   const admission = tryBeginGatewayRootWorkAdmission();
   assert(admission);

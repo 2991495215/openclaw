@@ -45,7 +45,7 @@ it.each([
           { sessionId: `${agentId}-session`, updatedAt: 1 },
         );
       }
-      const authorizeNodeSystemRunEvent = vi.fn(() => !denied);
+      const authorizeNodeSystemRunEvent = vi.fn(() => (denied ? false : {}));
       const ctx: NodeEventContext = {
         deps: {},
         broadcast: () => {},
