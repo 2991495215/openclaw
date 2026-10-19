@@ -196,7 +196,7 @@ export class PreparedReplyDispatchPublicationOwner {
         try {
           onRuntimeLease(lease);
           const catalog = readCapturedPreparedModelRuntimeCatalog(lease.snapshot);
-          return Object.freeze({ ...runtime, readFullModelCatalog: () => catalog });
+          return { ...runtime, readFullModelCatalog: () => catalog };
         } catch (error) {
           await lease[Symbol.asyncDispose]();
           throw error;
