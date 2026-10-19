@@ -104,9 +104,6 @@ function classifyProcessArtifactCustody(
     unknown ??= evidence.kind === "unclassified" ? evidence.reason : "runtime path is unresolved";
     return [];
   });
-  if (references.length && operands.length === 0) {
-    return unknown ? { kind: "unknown", reason: unknown } : { kind: "holder", paths };
-  }
   const identity = classifyOpenClawArgv(argv, options);
   if (identity.kind === "openclaw") {
     if (!identity.artifactPath) {
@@ -132,9 +129,13 @@ function classifyProcessArtifactCustody(
         (command.uid !== undefined && inspectorUid !== undefined && command.uid !== inspectorUid) ||
         isStandardSystemdLoginProcess(command, parentCommand, inspectorUid))
     ) {
-      return { kind: "not-holder" };
+      // Visible artifact evidence still proves custody, but missing cwd cannot bound it.
+      return references.length ? { kind: "holder" } : { kind: "not-holder" };
     }
     return { kind: "unknown", reason: unknown ?? "working directory is unavailable" };
+  }
+  if (references.length && operands.length === 0) {
+    return unknown ? { kind: "unknown", reason: unknown } : { kind: "holder", paths };
   }
   const pkg =
     typeof position !== "number" && position.kind !== "not-runtime"

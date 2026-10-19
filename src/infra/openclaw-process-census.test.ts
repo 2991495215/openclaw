@@ -227,6 +227,7 @@ it.each([
 it.each([
   ["node", "worker.js"],
   ["/bin/sh", "worker.sh"],
+  ["/bin/sh", "/tmp/openclaw-update-runtime-Held01/worker.sh"],
   ["/usr/bin/node", "-e", "1"],
 ])("retains unavailable cwd for %j without losing scoped holders", (...argv) => {
   const held = "/tmp/openclaw-update-runtime-Held01";
