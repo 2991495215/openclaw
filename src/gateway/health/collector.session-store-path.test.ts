@@ -561,7 +561,6 @@ describe("health session store paths", () => {
           securityAudit: undefined,
           usage: undefined,
           health: undefined,
-          lastHeartbeat: null,
           gatewayService: fixtureService,
           nodeService: fixtureService,
         });
@@ -573,7 +572,6 @@ describe("health session store paths", () => {
                   surface: { ...baseStatusOverviewSurface, ...scan },
                   opts: {},
                   health: undefined,
-                  lastHeartbeat: null,
                   securityAudit: undefined,
                   usageLines: undefined,
                   pairingRecovery: null,
