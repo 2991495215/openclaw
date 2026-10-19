@@ -127,7 +127,7 @@ await runBenchmarkEntrypoint("bench-isolated-completion-worker", async () => {
       let completion: Awaited<ReturnType<typeof runIsolatedCompletion>> | undefined;
       const started = performance.now();
       try {
-        completion = await scope.run(() =>
+        completion = await scope.run((): ReturnType<typeof runIsolatedCompletion> =>
           runIsolatedCompletion({
             config: cfg,
             provider,
