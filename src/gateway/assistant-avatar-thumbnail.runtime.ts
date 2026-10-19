@@ -1,7 +1,7 @@
 import { normalizeMimeType } from "@openclaw/media-core/mime";
 import { fileTypeFromBuffer } from "file-type";
 import { createImageProcessor, isAnimatedWebpBuffer } from "../media/image-ops.js";
-import { isAvatarImageMimeType, isRenderableAvatarImageDataUrl } from "../shared/avatar-limits.js";
+import { isAvatarImageMimeType } from "../shared/avatar-limits.js";
 import { AVATAR_MAX_BYTES, resolveAvatarMime } from "../shared/avatar-policy.js";
 import type { GatewayAvatarImageSource } from "./assistant-avatar-cache.js";
 import {
@@ -28,9 +28,6 @@ async function createAvatarThumbnail(
     body = source.file.body;
     contentType = resolveAvatarMime(source.file.path);
   } else {
-    if (!isRenderableAvatarImageDataUrl(source.dataUrl)) {
-      throw new Error("Unsupported avatar data URL");
-    }
     // The validated data: scheme uses native byte decoding without network I/O.
     // Preserve charset parameters for unchanged SVG/XML representations.
     const response = await fetch(source.dataUrl);

@@ -168,8 +168,7 @@ export async function gateWorkerTurnInput({
 export async function readWorkerTurnInputContext(params: WorkerTurnInputParams) {
   const { turn, transcriptTarget, modelRef, assertCurrent } = params;
   const recorder = turn.userTurnTranscriptRecorder;
-  const receipt = recorder?.getAdmissionReceipt();
-  const admission = receipt ? { ...receipt } : undefined;
+  const admission = recorder?.getAdmissionReceipt();
   if (recorder && !admission) {
     throw new Error("Cloud worker turn has no readable canonical user admission");
   }

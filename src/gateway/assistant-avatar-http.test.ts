@@ -85,9 +85,10 @@ it.each(["https://example.test/avatar.png", "data:text/html,<html>avatar</html>"
   "rejects %s before invoking the native data decoder",
   async (dataUrl) => {
     const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected fetch"));
-    await expect(readThumbnail({ dataUrl, revision: `invalid:${dataUrl}` })).rejects.toThrow(
-      "Unsupported avatar data URL",
-    );
+    const fixture = avatarFixture("/control");
+    fixture.setAvatar(dataUrl);
+    const response = await fixture.request("/control/avatar/main?v=invalid");
+    expect(response.res.statusCode).toBe(404);
     expect(fetch).not.toHaveBeenCalled();
   },
 );

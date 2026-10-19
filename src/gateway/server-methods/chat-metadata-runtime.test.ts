@@ -71,6 +71,25 @@ async function expectModel(harness: Harness, model: Record<string, unknown>) {
 }
 
 describe("gateway chat metadata runtime", () => {
+  test.each([false, true])(
+    "respects withCurrent-only caller refusal with includeModels=%s",
+    async (includeModels) => {
+      const harness = await preparedHarness();
+      const failure = new Error("Caller no longer authorizes this metadata read");
+      harness.buildProjection.mockClear();
+      await expect(
+        harness.runtime.read({
+          agentId: "main",
+          includeModels,
+          withCurrent: async () => {
+            throw failure;
+          },
+        }),
+      ).rejects.toBe(failure);
+      expect(harness.buildProjection).not.toHaveBeenCalled();
+    },
+  );
+
   test("retains an unsuperseded preparation failure without silently retrying", async () => {
     const failure = new Error("metadata preparation failed");
     const harness = createChatMetadataHarness();
