@@ -1,6 +1,4 @@
 /**
- * MCP client transport factory.
- *
  * This module turns normalized MCP server config into stdio, SSE, or
  * streamable-HTTP SDK transports with OpenClaw auth, redirect, and logging rules.
  */
@@ -80,7 +78,6 @@ function buildSseEventSourceFetch(
   };
 }
 
-/** Resolves a configured MCP server into a live SDK transport instance. */
 export function resolveMcpTransport(
   serverName: string,
   rawServer: unknown,

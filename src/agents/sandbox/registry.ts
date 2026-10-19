@@ -1,6 +1,4 @@
 /**
- * Persistent sandbox registry storage.
- *
  * Tracks runtime and browser containers in the shared state DB.
  */
 import { createHash } from "node:crypto";
@@ -81,7 +79,6 @@ function writeRegistry(
   );
 }
 
-/** Reads all registered sandbox runtime containers from SQLite. */
 export async function readRegistry(): Promise<SandboxRegistry> {
   const context = captureOpenClawStateReadWorkerContext();
   const install = captureSandboxRegistryFacts(context);
@@ -96,7 +93,6 @@ export async function readRegistry(): Promise<SandboxRegistry> {
   return { entries: install("container", reply.entries) };
 }
 
-/** Reads one registered sandbox runtime container by container name. */
 export async function readRegistryEntry(
   containerName: string,
 ): Promise<SandboxRegistryEntry | null> {
@@ -133,7 +129,6 @@ export async function updateRegistry(entry: SandboxRegistryEntry, guard?: Worksp
   await writeRegistry({ operation: "update", entry }, guard);
 }
 
-/** Removes one sandbox runtime registry entry by container name. */
 export async function removeRegistryEntry(
   containerName: string,
   options: { preserveRemovalIntent?: boolean; guard?: WorkspaceStateGuard } = {},
@@ -269,7 +264,6 @@ export async function removeSandboxRegistryRuntime(
   });
 }
 
-/** Reads all registered browser sandbox containers from SQLite. */
 export async function readBrowserRegistry(): Promise<SandboxBrowserRegistry> {
   const context = captureOpenClawStateReadWorkerContext();
   const install = captureSandboxRegistryFacts(context);
@@ -306,7 +300,6 @@ export async function removeSandboxRegistryGeneration(
   await writeRegistry({ operation: "removeGeneration", kind, entry }, undefined, assertCurrent);
 }
 
-/** Removes one browser sandbox registry entry by container name. */
 export async function removeBrowserRegistryEntry(containerName: string) {
   await writeRegistry({ operation: "removeBrowser", containerName });
 }
