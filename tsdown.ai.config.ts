@@ -54,8 +54,8 @@ const config = {
   plugins: [
     {
       name: "openclaw:mistral-license",
-      buildStart() {
-        const license = path.resolve("node_modules/@mistralai/mistralai/LICENSE");
+      buildStart(options) {
+        const license = path.resolve(options.cwd, "node_modules/@mistralai/mistralai/LICENSE");
         // Emitted assets participate in runtime-cache output and input ownership.
         this.emitFile({
           type: "asset",
