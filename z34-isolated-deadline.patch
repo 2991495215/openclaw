@@ -1,0 +1,332 @@
+diff --git a/src/agents/isolated-completion.deadline.test.ts b/src/agents/isolated-completion.deadline.test.ts
+index ae98a9765cb..e4393cfc12a 100644
+--- a/src/agents/isolated-completion.deadline.test.ts
++++ b/src/agents/isolated-completion.deadline.test.ts
+@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
+ import { afterEach, beforeEach, expect, it, vi } from "vitest";
+ import * as manifestRegistry from "../plugins/manifest-registry.js";
+ import { clearPluginMetadataLifecycleCaches } from "../plugins/plugin-metadata-lifecycle.js";
++import { runIsolatedAgentRuntimeCompletion } from "../plugins/runtime/runtime-llm-isolated.js";
+ import { AsyncWorkScope, trackAsyncWork } from "../shared/async-work-scope.js";
+ import { createDeferredCore } from "../shared/deferred.js";
+ import {
+@@ -42,6 +43,24 @@ function assistantResult() {
+   return { assistant: isolatedAssistant([{ type: "text", text: "done" }]) };
+ }
+ 
++function runCompletion(entry: "core" | "plugin", abortSignal?: AbortSignal) {
++  const request = isolatedRequest();
++  return entry === "core"
++    ? runIsolatedCompletion({ ...request, abortSignal })
++    : runIsolatedAgentRuntimeCompletion({
++        request: {
++          messages: [{ role: "user", content: request.prompt }],
++          systemPrompt: request.systemPrompt,
++          execution: { mode: "isolated-agent-runtime", timeoutMs: request.timeoutMs },
++          signal: abortSignal,
++        },
++        cfg: request.config,
++        agentId: "main",
++        provider: request.provider,
++        model: request.model,
++      });
++}
++
+ it.each(["cli", "v1", "v2"] as const)(
+   "deducts acquisition and auth preparation from the %s dispatch budget",
+   async (runtime) => {
+@@ -81,9 +100,13 @@ it.each(["cli", "v1", "v2"] as const)(
+   },
+ );
+ 
+-it.each(["lease", "error"] as const)(
+-  "retains blocked acquisition until its late %s settles after timeout",
+-  async (settlement) => {
++it.each([
++  { entry: "core", settlement: "lease" },
++  { entry: "core", settlement: "error" },
++  { entry: "plugin", settlement: "lease" },
++] as const)(
++  "retains blocked $entry acquisition until its late $settlement settles after timeout",
++  async ({ entry, settlement }) => {
+     const started = createDeferredCore<AbortSignal>();
+     const finish = createDeferredCore();
+     let finished = false;
+@@ -96,15 +119,28 @@ it.each(["lease", "error"] as const)(
+       }
+       return { snapshot: preparedModelRuntime, [Symbol.asyncDispose]: releaseRuntimeLease };
+     });
+-    const pending = work.run(() => runIsolatedCompletion(isolatedRequest()));
+-    const outcome = expect(pending).rejects.toMatchObject(timedOut);
++    const reason =
++      entry === "core"
++        ? timedOut
++        : { name: "Error", message: "Isolated completion timed out after 1000ms." };
++    const pending = work.run(() => runCompletion(entry));
++    const outcome = expect(pending).rejects.toMatchObject(
++      entry === "core"
++        ? timedOut
++        : {
++            name: "LlmCompleteError",
++            code: "LLM_COMPLETION_TIMEOUT",
++            message: "Plugin LLM completion timed out after 1000ms.",
++            cause: reason,
++          },
++    );
+     try {
+       const signal = await started.promise;
+       clock = 1_000;
+       await vi.advanceTimersByTimeAsync(1_000);
+       await outcome;
+       expect(signal.aborted).toBe(true);
+-      expect(signal.reason).toMatchObject(timedOut);
++      expect(signal.reason).toMatchObject(reason);
+       expect(finished).toBe(false);
+       expect(work.hasPendingWork).toBe(true);
+       expect(releaseRuntimeLease).not.toHaveBeenCalled();
+@@ -306,36 +342,46 @@ it("charges native auth preparation before rotating profiles within the remainin
+   expect(dispatch.mock.calls.map(([params]) => params.timeoutMs)).toEqual([800, 400]);
+ });
+ 
+-it("preserves caller cancellation while blocked preparation drains", async () => {
+-  const started = createDeferredCore();
+-  const finish = createDeferredCore();
+-  const controller = new AbortController();
+-  const reason = new Error("caller canceled");
+-  const prepare = mocks.prepareSimpleCompletionModel.getMockImplementation()!;
+-  mocks.prepareSimpleCompletionModel.mockImplementation(async () => {
+-    started.resolve();
+-    await finish.promise;
+-    return await prepare();
+-  });
+-  const dispatch = vi.fn(async () => assistantResult());
+-  registerIsolatedHarness({ runIsolatedCompletionV2: dispatch });
+-  const pending = work.run(() =>
+-    runIsolatedCompletion({ ...isolatedRequest(), abortSignal: controller.signal }),
+-  );
+-  const outcome = expect(pending).rejects.toBe(reason);
+-  try {
+-    await started.promise;
+-    controller.abort(reason);
+-    await outcome;
+-    expect(vi.getTimerCount()).toBe(0);
+-    expect(releaseRuntimeLease).not.toHaveBeenCalled();
+-  } finally {
+-    finish.resolve();
+-    await work.drain();
+-  }
+-  expect(dispatch).not.toHaveBeenCalled();
+-  expect(releaseRuntimeLease).toHaveBeenCalledOnce();
+-});
++it.each(["core", "plugin"] as const)(
++  "preserves %s caller cancellation while blocked preparation drains",
++  async (entry) => {
++    const started = createDeferredCore();
++    const finish = createDeferredCore();
++    const controller = new AbortController();
++    const reason = new Error("caller canceled");
++    const prepare = mocks.prepareSimpleCompletionModel.getMockImplementation()!;
++    mocks.prepareSimpleCompletionModel.mockImplementation(async () => {
++      started.resolve();
++      await finish.promise;
++      return await prepare();
++    });
++    const dispatch = vi.fn(async () => assistantResult());
++    registerIsolatedHarness({ runIsolatedCompletionV2: dispatch });
++    const pending = work.run(() => runCompletion(entry, controller.signal));
++    const rejection = expect(pending).rejects;
++    const outcome =
++      entry === "core"
++        ? rejection.toBe(reason)
++        : rejection.toMatchObject({
++            name: "LlmCompleteError",
++            code: "LLM_COMPLETION_ABORTED",
++            message: "Plugin LLM completion was aborted.",
++            cause: reason,
++          });
++    try {
++      await started.promise;
++      controller.abort(reason);
++      await outcome;
++      expect(vi.getTimerCount()).toBe(0);
++      expect(releaseRuntimeLease).not.toHaveBeenCalled();
++    } finally {
++      finish.resolve();
++      await work.drain();
++    }
++    expect(dispatch).not.toHaveBeenCalled();
++    expect(releaseRuntimeLease).toHaveBeenCalledOnce();
++  },
++);
+ 
+ it("does not acquire a runtime after an already-expired deadline", async () => {
+   await expect(
+diff --git a/src/agents/isolated-completion.ts b/src/agents/isolated-completion.ts
+index d203478f65d..a13fef62b38 100644
+--- a/src/agents/isolated-completion.ts
++++ b/src/agents/isolated-completion.ts
+@@ -104,6 +104,8 @@ type RunIsolatedCompletionParams = {
+   systemPrompt: string;
+   prompt: string;
+   timeoutMs: number;
++  /** Adapt the owner's deadline reason to the caller's error contract. */
++  timeoutError?: Error;
+   abortSignal?: AbortSignal;
+   /** Private credential directories must remain outside the configured Gateway owner. */
+   preparedModelRuntimeMode?: "isolated-read-only";
+@@ -358,7 +360,8 @@ export async function runIsolatedCompletion(
+   const signal = abortSignal ? AbortSignal.any([abortSignal, timeout.signal]) : timeout.signal;
+   const expire = () =>
+     timeout.abort(
+-      new IsolatedCompletionError("runtime-unavailable", "Isolated completion timed out."),
++      params.timeoutError ??
++        new IsolatedCompletionError("runtime-unavailable", "Isolated completion timed out."),
+     );
+   const remainingTimeoutMs = () => {
+     const remaining = deadline - performance.now();
+diff --git a/src/plugins/runtime/runtime-llm-isolated.runtime.test.ts b/src/plugins/runtime/runtime-llm-isolated.runtime.test.ts
+index dbd2eda512c..6686144325d 100644
+--- a/src/plugins/runtime/runtime-llm-isolated.runtime.test.ts
++++ b/src/plugins/runtime/runtime-llm-isolated.runtime.test.ts
+@@ -481,40 +481,6 @@ describe("runtime.llm.complete isolated agent runtime", () => {
+     ).rejects.toMatchObject({ code: "LLM_ISOLATED_INPUT_REJECTED" });
+   });
+ 
+-  it("settles at the deadline when the isolated runtime ignores cancellation", async () => {
+-    hoisted.runIsolatedCompletion.mockReturnValueOnce(new Promise(() => {}));
+-    const llm = createRuntimeLlm({ getConfig: () => cfg, authority: { allowComplete: true } });
+-
+-    await expect(
+-      llm.complete({
+-        messages: [{ role: "user", content: "Return JSON" }],
+-        execution: { mode: "isolated-agent-runtime", timeoutMs: 5 },
+-      }),
+-    ).rejects.toMatchObject({ code: "LLM_COMPLETION_TIMEOUT" });
+-  });
+-
+-  it("settles on caller abort when the isolated runtime ignores cancellation", async () => {
+-    let markStarted: (() => void) | undefined;
+-    const started = new Promise<void>((resolve) => {
+-      markStarted = resolve;
+-    });
+-    hoisted.runIsolatedCompletion.mockImplementationOnce(() => {
+-      markStarted?.();
+-      return new Promise(() => {});
+-    });
+-    const controller = new AbortController();
+-    const llm = createRuntimeLlm({ getConfig: () => cfg, authority: { allowComplete: true } });
+-    const completion = llm.complete({
+-      messages: [{ role: "user", content: "Return JSON" }],
+-      signal: controller.signal,
+-      execution: { mode: "isolated-agent-runtime" },
+-    });
+-
+-    await started;
+-    controller.abort();
+-    await expect(completion).rejects.toMatchObject({ code: "LLM_COMPLETION_ABORTED" });
+-  });
+-
+   it.each([null])("maps an empty adapter rejection (%s) to a stable error", async (error) => {
+     hoisted.runIsolatedCompletion.mockRejectedValueOnce(error);
+     const llm = createRuntimeLlm({ getConfig: () => cfg, authority: { allowComplete: true } });
+diff --git a/src/plugins/runtime/runtime-llm-isolated.ts b/src/plugins/runtime/runtime-llm-isolated.ts
+index 3171231aee8..3957c3d3490 100644
+--- a/src/plugins/runtime/runtime-llm-isolated.ts
++++ b/src/plugins/runtime/runtime-llm-isolated.ts
+@@ -6,7 +6,6 @@ import { buildConfiguredModelCatalog } from "../../agents/model-selection-shared
+ import { resolveEffectiveAgentRuntime } from "../../agents/thinking-runtime.js";
+ import { resolveThinkingProfile } from "../../auto-reply/thinking.js";
+ import type { OpenClawConfig } from "../../config/types.openclaw.js";
+-import { racePromiseWithAbortSignal } from "../../infra/abort-signal.js";
+ import {
+   createLlmCompleteError as completionError,
+   createLlmOperatorAuthorizationError,
+@@ -151,47 +150,33 @@ export async function runIsolatedAgentRuntimeCompletion(params: {
+     model: params.model,
+     reasoning: params.request.reasoning,
+   });
+-  const controller = new AbortController();
+-  let timedOut = false;
+-  const abortFromCaller = () => controller.abort(params.request.signal?.reason);
+   if (params.request.signal?.aborted) {
+     throw completionError("LLM_COMPLETION_ABORTED", "Plugin LLM completion was aborted.");
+   }
+-  params.request.signal?.addEventListener("abort", abortFromCaller, { once: true });
+-  const timer = setTimeout(() => {
+-    timedOut = true;
+-    controller.abort(new Error(`Isolated completion timed out after ${timeoutMs}ms.`));
+-  }, timeoutMs);
+-  timer.unref?.();
++  const timeoutError = new Error(`Isolated completion timed out after ${timeoutMs}ms.`);
+   try {
+-    const operation = (async () => {
+-      const { runIsolatedCompletion } = await import("../../agents/isolated-completion.js");
+-      return await runIsolatedCompletion({
+-        purpose: "plugin-completion",
+-        config: params.cfg,
+-        provider: params.provider,
+-        model: params.model,
+-        authProfileId: params.authProfileId,
+-        operatorAuthority: params.operatorAuthority,
+-        mapOperatorAuthorizationError: createLlmOperatorAuthorizationError,
+-        assertCurrent: params.assertCurrent,
+-        agentId: params.agentId,
+-        systemPrompt: params.request.systemPrompt ?? "",
+-        prompt,
+-        timeoutMs,
+-        abortSignal: controller.signal,
+-        thinkLevel: params.request.reasoning,
+-        streamParams: {
+-          maxTokens: asFiniteNumber(params.request.maxTokens),
+-          temperature: asFiniteNumber(params.request.temperature),
+-        },
+-      });
+-    })();
+-    return await racePromiseWithAbortSignal(operation, controller.signal, (signal) =>
+-      signal.reason instanceof Error
+-        ? signal.reason
+-        : new Error("Isolated completion was aborted."),
+-    );
++    const { runIsolatedCompletion } = await import("../../agents/isolated-completion.js");
++    return await runIsolatedCompletion({
++      purpose: "plugin-completion",
++      config: params.cfg,
++      provider: params.provider,
++      model: params.model,
++      authProfileId: params.authProfileId,
++      operatorAuthority: params.operatorAuthority,
++      mapOperatorAuthorizationError: createLlmOperatorAuthorizationError,
++      assertCurrent: params.assertCurrent,
++      agentId: params.agentId,
++      systemPrompt: params.request.systemPrompt ?? "",
++      prompt,
++      timeoutMs,
++      timeoutError,
++      abortSignal: params.request.signal,
++      thinkLevel: params.request.reasoning,
++      streamParams: {
++        maxTokens: asFiniteNumber(params.request.maxTokens),
++        temperature: asFiniteNumber(params.request.temperature),
++      },
++    });
+   } catch (error) {
+     if (isLlmOperatorAuthorizationError(error)) {
+       throw error;
+@@ -202,7 +187,7 @@ export async function runIsolatedAgentRuntimeCompletion(params: {
+     } catch (authorizationError) {
+       throw createLlmOperatorAuthorizationError(authorizationError);
+     }
+-    if (timedOut) {
++    if (error === timeoutError) {
+       throw completionError(
+         "LLM_COMPLETION_TIMEOUT",
+         `Plugin LLM completion timed out after ${timeoutMs}ms.`,
+@@ -222,8 +207,5 @@ export async function runIsolatedAgentRuntimeCompletion(params: {
+       );
+     }
+     throw completionError("LLM_COMPLETION_FAILED", "Plugin LLM completion failed.", error);
+-  } finally {
+-    clearTimeout(timer);
+-    params.request.signal?.removeEventListener("abort", abortFromCaller);
+   }
+ }
