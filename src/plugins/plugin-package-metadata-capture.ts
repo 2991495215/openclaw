@@ -10,7 +10,9 @@ import { isPathInside } from "../infra/path-guards.js";
 import { createSqliteLifecycleAggregateError } from "../infra/sqlite-lifecycle-errors.js";
 import { escapeRegExp } from "../shared/regexp.js";
 import type {
+  PluginDependencyResolution,
   PluginNativeDependencyScopeState,
+  PluginPackageCaptureState,
   PluginPackageMetadataState,
   PluginPackageScope,
 } from "./plugin-generation-capture.types.js";
@@ -23,8 +25,6 @@ import {
   PLUGIN_SOURCE_CAPTURE_PREFIX,
 } from "./plugin-source-capture-path.js";
 import { isPluginSourceEntry } from "./plugin-source-file.js";
-
-export type PluginDependencyResolution = { root: string; lookupDirectory: string };
 
 export function createPluginDependencyResolver(
   lookupBoundary?: {
@@ -395,7 +395,6 @@ function visitPluginPackageTargetFiles(params: {
   visit(matcher ? path.dirname(parts[0]! + "_") : filename);
 }
 
-type PluginPackageCaptureState = "metadata" | "entry" | "body" | { error: unknown };
 export type PluginPackageCapture = {
   /** Absolute normalized root captured by the artifact producer. */
   readonly capturedRoot: string;

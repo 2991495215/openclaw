@@ -13,8 +13,10 @@ import { isArtifactPreservingStateRead } from "../state/artifact-preserving-stat
 import { resolveActivePluginInstallRoots } from "./install-root-context.js";
 import { createPluginCaptureResolver } from "./plugin-capture-resolution.js";
 import type { PluginGenerationArtifact } from "./plugin-generation-artifact.js";
-import { createPluginGenerationArtifact } from "./plugin-generation-capture.js";
-import type { PluginGenerationPreparationOwner } from "./plugin-generation-capture.types.js";
+import {
+  createPluginGenerationArtifact,
+  type PluginGenerationPreparationOwner,
+} from "./plugin-generation-capture.js";
 import { createPluginGenerationNativeRoots } from "./plugin-generation-native-roots.js";
 import type {
   GenerationWorkerInput,

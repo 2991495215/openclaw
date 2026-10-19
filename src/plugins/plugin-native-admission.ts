@@ -5,6 +5,10 @@ import { hasErrnoCode } from "../infra/errno.js";
 import { isPathInside } from "../infra/path-guards.js";
 import { getPluginCache } from "./plugin-cache.js";
 import type { PluginCache } from "./plugin-cache.types.js";
+import type {
+  PluginGenerationReceipt,
+  PluginNativeAdmissionCaptureState,
+} from "./plugin-generation-capture.types.js";
 import {
   nativeAdmissionStateFor,
   queuePluginNativeAdmissionPublication,
@@ -49,18 +53,6 @@ import {
 } from "./plugin-source-file.js";
 
 type NativeSnapshot = ReturnType<typeof createPluginNativeCaptureRoot>;
-type NativeReceipt = { signature: string; sourceDigest: string };
-export type PluginNativeAdmissionCaptureState = {
-  selected: Map<string, PluginNativeNamespaceFact>;
-  priorNamespaces: Set<PluginNativeNamespaceFact>;
-  files: Map<string, PluginNativeArtifactFact>;
-  targets: Map<string, string>;
-  hardlinkedTargets: Set<string>;
-  pendingTargets: Set<string>;
-  recoveredFiles: Map<string, PluginNativeArtifactFact>;
-  hostRoot?: string;
-  finalReceipt?: NativeReceipt;
-};
 // Membership and source paths stay fixed; admission only updates identities and digests.
 const nativeSourceMembers = new WeakMap<PluginNativeNamespaceFact, Map<string, string>>();
 
@@ -85,7 +77,7 @@ function nativeMemberForSource(namespace: PluginNativeNamespaceFact, source: str
 }
 
 export type PluginNativeRecovery = {
-  receipt: NativeReceipt;
+  receipt: PluginGenerationReceipt;
   references: Map<string, PluginNativeArtifactFact>;
   namespaces: Map<string, PluginNativeNamespaceFact>;
   directories: Map<string, string>;
@@ -96,7 +88,7 @@ export type PluginNativeRecovery = {
 };
 // Recovery custody contains copied paths and native roots, never the retired registry or instance.
 function createNativeRecovery(
-  receipt: NativeReceipt,
+  receipt: PluginGenerationReceipt,
   references: Map<string, PluginNativeArtifactFact>,
   namespaces: Map<string, PluginNativeNamespaceFact>,
   directories: Map<string, string>,
@@ -508,7 +500,7 @@ export function createPluginNativeAdmission(
     resolvePreparedSource,
     sourceForPrepared,
     captureRecovery(
-      receipt: NativeReceipt,
+      receipt: PluginGenerationReceipt,
       packageRoots: Readonly<Record<string, string>>,
     ): PluginNativeRecovery {
       const references = new Map(
@@ -660,7 +652,7 @@ export function createPluginNativeAdmission(
         },
       };
     },
-    finish(receipt: NativeReceipt) {
+    finish(receipt: PluginGenerationReceipt) {
       // Preparation preserves admitted bytes. Only materialization adds native admission work.
       if (!pendingTargets.size) {
         return;

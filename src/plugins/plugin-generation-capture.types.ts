@@ -1,14 +1,26 @@
-import type { createPluginCaptureResolver } from "./plugin-capture-resolution.js";
-import type { PluginGenerationReceipt } from "./plugin-generation-receipt.js";
-import type { PluginSourceCustodyFork } from "./plugin-generation-source-lookup.js";
-import type { AdmissionState } from "./plugin-native-admission-state.js";
-import type { PluginNativeAdmissionCaptureState } from "./plugin-native-admission.js";
 import type {
-  createPluginSourceCapture,
-  PluginDependencyResolution,
-  PluginModuleCapture,
-  PluginPackageCapture,
-} from "./plugin-package-metadata-capture.js";
+  PluginNativeArtifactFact,
+  PluginNativeNamespaceFact,
+} from "./plugin-source-admission.types.js";
+
+export type PluginDependencyResolution = { root: string; lookupDirectory: string };
+export type PluginGenerationReceipt = { signature: string; sourceDigest: string };
+export type PluginPackageCaptureState = "metadata" | "entry" | "body" | { error: unknown };
+export type PluginSourceLinkCapture = {
+  defer(filename: string, root: string, source?: string): boolean;
+  contains(filename: string): boolean;
+};
+export type PluginNativeAdmissionCaptureState = {
+  selected: Map<string, PluginNativeNamespaceFact>;
+  priorNamespaces: Set<PluginNativeNamespaceFact>;
+  files: Map<string, PluginNativeArtifactFact>;
+  targets: Map<string, string>;
+  hardlinkedTargets: Set<string>;
+  pendingTargets: Set<string>;
+  recoveredFiles: Map<string, PluginNativeArtifactFact>;
+  hostRoot?: string;
+  finalReceipt?: PluginGenerationReceipt;
+};
 
 export type PluginNativeDependencyScopeState = {
   source: string;
@@ -43,7 +55,7 @@ export type CapturedPackageState = {
   entry?: string;
   executableEntry: boolean;
   links: Set<string>;
-  state: PluginPackageCapture["state"];
+  state: PluginPackageCaptureState;
   missingTargets: Set<string>;
   sourceLinks: Set<string>;
   scopes: Map<string, string | undefined>;
@@ -64,39 +76,4 @@ export type PluginGenerationCaptureState = {
   metadata: PluginPackageMetadataState;
   native: PluginNativeAdmissionCaptureState;
   receipt: PluginGenerationReceipt;
-};
-export type PluginGenerationPreparationOwner = {
-  admission: AdmissionState;
-  sourceCapture: ReturnType<typeof createPluginSourceCapture>;
-  resolution: ReturnType<typeof createPluginCaptureResolver>;
-  state?: PluginGenerationCaptureState;
-  prepared?(state: PluginGenerationCaptureState): void;
-};
-export type PluginGenerationArtifact = {
-  sourceRoot: string;
-  rootDir: string;
-  boundaryRoot: string;
-  sourceAliases: Record<string, string>;
-  sourceDigest: string;
-  linkHost: (hostRoot: string) => void;
-  hasSource: (source: string) => boolean;
-  resolve: (source: string, rejectHardlinks?: boolean) => string;
-  captureRecoverySource: () => PluginSourceCustodyFork["source"];
-  retainSourceCustody: () => PluginSourceCustodyFork;
-  sourceForCaptured: (file: string) => string | undefined;
-  moduleFacts: (importer: string) => Readonly<PluginModuleCapture> | undefined;
-  moduleRoot: (filename: string) => string | undefined;
-  assertModuleAvailable: (filename: string) => void;
-  prepareModule: (filename: string) => string[];
-  prepareDependency: (importer: string, specifier: string) => string[];
-  prepareNativeScopes: (importer?: string) => { value: void; additions: string[] } | undefined;
-  prepareNativeModule: (importer: string, specifier: string) => boolean;
-  captureModule: (
-    importer: string,
-    specifier: string,
-    conditions: readonly string[],
-  ) => (({ target: URL } | { retryNative: true }) & { additions: string[] }) | undefined;
-  captureResolvedModule: (filename: string) => string | undefined;
-  dispose: () => void;
-  disposeAsync: () => Promise<void>;
 };

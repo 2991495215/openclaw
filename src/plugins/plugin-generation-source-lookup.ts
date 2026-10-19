@@ -7,8 +7,10 @@ import { hasErrnoCode } from "../infra/errno.js";
 import { isPathInside, relativePluginPathInsideRootSync } from "./path-safety.js";
 import { getPluginCache } from "./plugin-cache.js";
 import type { createPluginCaptureResolver } from "./plugin-capture-resolution.js";
-import type { CapturedModuleState } from "./plugin-generation-capture.types.js";
-import type { createPluginSourceLinkCapture } from "./plugin-generation-file-capture.js";
+import type {
+  CapturedModuleState,
+  PluginSourceLinkCapture,
+} from "./plugin-generation-capture.types.js";
 import { PluginSourceRecoveryUnavailableError } from "./plugin-instance-error.js";
 import type {
   createPluginNativeAdmission,
@@ -70,7 +72,7 @@ export function createPluginGenerationReferenceCapture({
   root: string;
   destination: string;
   owner: PluginPackageCapture;
-  sourceLinks: ReturnType<typeof createPluginSourceLinkCapture>;
+  sourceLinks: PluginSourceLinkCapture;
 }) {
   const { source, scope } = moduleState;
   return (
