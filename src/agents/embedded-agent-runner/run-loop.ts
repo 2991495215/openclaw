@@ -177,7 +177,6 @@ export async function runPreparedEmbeddedLoop(
   const postCompactionGuard = createPostCompactionLoopGuard({
     enabled: resolvedLoopDetectionConfig?.enabled !== false,
   });
-  let postCompactionAbortController: AbortController | undefined;
   let postCompactionAbortError: Error | undefined;
   // Presentation survives retry attempts, but a newer tool result must clear stale text.
   const terminalToolPresentation = createTerminalToolPresentationTracker();
@@ -197,7 +196,6 @@ export async function runPreparedEmbeddedLoop(
         toolName: verdict.toolName,
       });
       input.laneController.laneTaskAbortController.abort(postCompactionAbortError);
-      postCompactionAbortController?.abort(postCompactionAbortError);
     }
   };
   let lastRetryFailoverReason: FailoverReason | null = null;
@@ -357,14 +355,6 @@ export async function runPreparedEmbeddedLoop(
               isTurnTainted: turnTaintState.isTainted,
               allocateToolOutcomeOrdinal: terminalToolPresentation.allocateOrdinal,
               getPostCompactionAbortError: () => postCompactionAbortError,
-              setPostCompactionAbortController: (controller) => {
-                postCompactionAbortController = controller;
-              },
-              clearPostCompactionAbortController: (controller) => {
-                if (postCompactionAbortController === controller) {
-                  postCompactionAbortController = undefined;
-                }
-              },
             },
             async (attempt, captureContext) => {
               const assistant = resolveCurrentAttemptAssistant(attempt);
