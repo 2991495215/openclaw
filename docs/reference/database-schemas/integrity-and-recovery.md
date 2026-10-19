@@ -9,6 +9,11 @@ title: "Integrity, troubleshooting, and recovery"
 
 ## Integrity checks
 
+On Windows, path casing and extended-length prefixes do not create separate
+in-process maintenance owners for the same state database. OpenClaw keeps the
+existing on-disk lock spelling for compatibility while using a normalized key
+for local schema and startup ownership.
+
 Gateway agent inspections share a five-second foreground wait. Unfinished stores
 remain unavailable while the startup admission owner completes their inspection
 and session/model preparation after the listener is ready. Other agents and the
