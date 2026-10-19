@@ -14,6 +14,7 @@ type Step = {
 };
 type Job = {
   if: string;
+  "cache-mode"?: string;
   needs?: string[];
   permissions?: Record<string, string>;
   env?: Record<string, string>;
@@ -45,6 +46,8 @@ it("isolates the manual benchmark from credentials, caches, publishing, and othe
     "${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'decision-transport' }}",
   );
   expect(job.permissions).toEqual({ contents: "read" });
+  expect(job["cache-mode"]).toBe("none");
+  expect(job.env).not.toHaveProperty("ACTIONS_CACHE_MODE");
   expect(JSON.stringify(job)).not.toMatch(/secrets\.|actions\/cache|setup-node-env/);
   expect(job.env?.PNPM_CONFIG_FROZEN_LOCKFILE).toBe("true");
   for (const name of [
@@ -110,6 +113,7 @@ posixIt.each([
   { baseline: "a".repeat(40), target: "b".repeat(40), attempt: "2", status: 1 },
 ])("validates exact refs and fresh attempts: $baseline / $attempt", (fixture) => {
   const result = runShell(step("Validate Decision transport request").run!, {
+    ACTIONS_CACHE_MODE: "none",
     BASELINE_REF: fixture.baseline,
     TARGET_REF: fixture.target,
     WORKFLOW_SHA: "c".repeat(40),
@@ -117,6 +121,21 @@ posixIt.each([
   });
   expect(result.status, result.stderr).toBe(fixture.status);
 });
+
+posixIt.each(["", "read", "write", "write-only"])(
+  "rejects a runner without cache denial: %s",
+  (cacheMode) => {
+    const result = runShell(step("Validate Decision transport request").run!, {
+      ACTIONS_CACHE_MODE: cacheMode,
+      BASELINE_REF: "a".repeat(40),
+      TARGET_REF: "b".repeat(40),
+      WORKFLOW_SHA: "c".repeat(40),
+      GITHUB_RUN_ATTEMPT: "1",
+    });
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stdout).toContain("runner-enforced cache denial");
+  },
+);
 
 posixIt.each([0, 7])("preserves measurement exit %i and the fixed workload", (status) => {
   const root = tempDirs.make("decision-workflow-command-");

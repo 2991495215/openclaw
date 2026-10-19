@@ -1915,6 +1915,8 @@ jobs:
     name: Decision transport paired benchmark
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'decision-transport' }}
     runs-on: *linux_runner_ubuntu
+    # Candidate installs execute arbitrary source; disabling cache actions is not an authority boundary.
+    cache-mode: none
     timeout-minutes: 60
     permissions:
       contents: read
@@ -1935,6 +1937,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          [[ "${ACTIONS_CACHE_MODE:-}" == "none" ]] || {
+            echo "::error::Decision transport requires runner-enforced cache denial."
+            exit 1
+          }
           [[ "$GITHUB_RUN_ATTEMPT" == "1" ]] || {
             echo "::error::Dispatch a fresh Decision transport run instead of rerunning."
             exit 1
