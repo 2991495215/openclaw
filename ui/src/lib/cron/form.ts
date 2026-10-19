@@ -21,12 +21,6 @@ function isCronFormSessionTarget(value: string): value is CronFormState["session
   );
 }
 
-function supportsAnnounceDelivery(
-  form: Pick<CronFormState, "sessionTarget" | "payloadKind" | "payloadLocked">,
-) {
-  return form.sessionTarget !== "main" && (form.payloadKind === "agentTurn" || form.payloadLocked);
-}
-
 export function normalizeCronFormState(
   form: CronFormState,
   changed: Partial<CronFormState> = {},
@@ -44,7 +38,11 @@ export function normalizeCronFormState(
       normalized = { ...normalized, sessionTarget: "isolated" };
     }
   }
-  if (normalized.deliveryMode !== "announce" || supportsAnnounceDelivery(normalized)) {
+  if (
+    normalized.deliveryMode !== "announce" ||
+    (normalized.sessionTarget !== "main" &&
+      (normalized.payloadKind === "agentTurn" || normalized.payloadLocked))
+  ) {
     return normalized;
   }
   return {
