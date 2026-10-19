@@ -124,16 +124,17 @@ export async function preparePluginGenerationArtifact(
   const finished = createDeferredCore();
   let disposed: Promise<void> | undefined;
   const disposeSource = () =>
-    (disposed ??= sourceCapture
-      .disposeAsync()
-      .finally(async () => {
+    (disposed ??= (async () => {
+      try {
+        await sourceCapture.disposeAsync();
+      } finally {
         resolution.clear();
         await admissionCustody.disposeAsync();
-      })
-      .catch((error: unknown) => {
-        disposed = undefined;
-        throw error;
-      }));
+      }
+    })().catch((error: unknown) => {
+      disposed = undefined;
+      throw error;
+    }));
   let pool:
     | ReturnType<typeof createOwnedWorkerTaskPool<GenerationWorkerInput, GenerationWorkerReply>>
     | undefined;
@@ -279,7 +280,7 @@ export async function preparePluginGenerationArtifact(
       }
     }
     if (failures.length > 1) {
-      throw new AggregateError(failures, "Plugin preparation and cleanup failed");
+      throw new AggregateError(failures, "Plugin preparation and cleanup failed", { cause: error });
     }
     owner.clients.delete(close);
     throw error;

@@ -188,8 +188,8 @@ export function createPluginGenerationArtifact(
       set state(value) {
         packageState.state = value;
       },
-      captureDependency: (name, dependency, metadataOnly) =>
-        linkDependency(name, dependency, metadataOnly),
+      captureDependency: (name, dependency, captureMetadataOnly) =>
+        linkDependency(name, dependency, captureMetadataOnly),
       captureTarget(filename) {
         const source = path.join(boundary, path.relative(destination, filename));
         if (
@@ -295,15 +295,15 @@ export function createPluginGenerationArtifact(
       }
       const target = existingSource ?? path.join(destination, path.relative(root, source));
       if (!existingSource) {
-        const prepared = nativeAdmission.resolvePreparedSource(source);
-        const real = fs.realpathSync(prepared?.path ?? source);
+        const nativePrepared = nativeAdmission.resolvePreparedSource(source);
+        const real = fs.realpathSync(nativePrepared?.path ?? source);
         if (
-          !isPathInside(prepared?.boundary ?? boundary, real) &&
+          !isPathInside(nativePrepared?.boundary ?? boundary, real) &&
           !nativeAdmission.isRetainedReference(source, real)
         ) {
           throw new Error("Standalone plugin input leaves its source directory");
         }
-        if (!prepared && outputRoot && isPathInside(outputRoot, real)) {
+        if (!nativePrepared && outputRoot && isPathInside(outputRoot, real)) {
           return;
         }
         if (fs.statSync(real).isDirectory()) {

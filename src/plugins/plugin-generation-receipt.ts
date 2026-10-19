@@ -19,8 +19,9 @@ type PluginReceiptFile = {
 /** Reuse the initial raw-byte receipt only when its complete ordered inputs still match. */
 export function createPluginGenerationReceipt(
   prepared?: PluginGenerationReceipt,
-  finished?: PluginGenerationReceipt,
+  initialReceipt?: PluginGenerationReceipt,
 ) {
+  let finished = initialReceipt;
   const events: Array<string | PluginReceiptFile> = [];
   const publishContent = (file: PluginReceiptFile, content: PluginSourceContent) => {
     if (content.sizeBytes !== file.sizeBytes) {

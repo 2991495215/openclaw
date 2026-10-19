@@ -179,7 +179,7 @@ export function retainPluginNativeAdmissionState(state: AdmissionState) {
   };
   return {
     disposeAsync,
-    dispose() {
+    dispose(this: void) {
       state.borrowers.delete(borrower);
       if (closing || state.borrowers.size > 0) {
         return;
