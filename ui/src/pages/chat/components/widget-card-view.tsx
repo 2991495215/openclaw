@@ -51,8 +51,6 @@ type WidgetCardOptions = {
   messageTimestamp?: number;
   boardProvider?: BoardProvider;
   widgetLayout?: import("../session-message-cache.ts").ChatWidgetLayout;
-  browserTabRevision?: string;
-  browserTabLatest?: boolean;
 };
 
 type WidgetExportSource = HTMLIFrameElement | OpenClawCanvasWidgetView | undefined;
@@ -678,11 +676,8 @@ export function ToolPreview(props: ToolPreviewProps) {
                     (error: unknown) =>
                       console.error("[openclaw] failed to load YouTube player", error),
                   );
-                  const key = createMemo(
-                    () => `${props.options?.sessionKey ?? ""}\0${item().watchUrl}`,
-                  );
                   return (
-                    <Show when={key()} keyed>
+                    <Show when={`${props.options?.sessionKey ?? ""}\0${item().watchUrl}`} keyed>
                       {(_key) => (
                         <openclaw-youtube-video
                           prop:video={item()}
@@ -707,13 +702,7 @@ export function ToolPreview(props: ToolPreviewProps) {
         </Show>
       }
     >
-      {(preview) => (
-        <openclaw-browser-tab-card
-          prop:preview={preview()}
-          prop:revision={props.options?.browserTabRevision}
-          prop:latest={props.options?.browserTabLatest ?? false}
-        />
-      )}
+      {(preview) => <openclaw-browser-tab-card prop:preview={preview()} prop:latest={false} />}
     </Show>
   );
 }
