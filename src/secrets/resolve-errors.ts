@@ -1,4 +1,3 @@
-/** Typed errors for SecretRef provider and ref-level resolution failures. */
 import type { SecretRef, SecretRefSource } from "../config/types.secrets.js";
 
 const SECRET_REF_FAILURE_REASONS = {

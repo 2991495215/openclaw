@@ -692,7 +692,6 @@ export function createChannelIngressDrainOwner<
       pendingLaneKeys.add(laneKey);
     }
 
-    // Keep claimed and retry-delayed lanes out of this pass.
     const blockedLaneKeys = new Set<string>([
       ...sortedKeys(activeLaneKeys),
       ...sortedKeys(claimedLaneKeys),

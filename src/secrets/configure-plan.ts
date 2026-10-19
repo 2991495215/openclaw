@@ -1,4 +1,3 @@
-/** Builds the interactive `openclaw secrets configure` target list and apply plan. */
 import { isDeepStrictEqual } from "node:util";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -30,7 +29,6 @@ type ConfigureSelectedTarget = ConfigureCandidate & {
   ref: SecretRef;
 };
 
-/** Provider config mutations collected while building a secrets configure plan. */
 type ConfigureProviderChanges = ReturnType<typeof collectConfigureProviderChanges>;
 
 function configureCandidateSortKey(candidate: ConfigureCandidate): string {
@@ -149,7 +147,6 @@ function hasPath(root: unknown, segments: string[]): boolean {
   return true;
 }
 
-/** Computes provider upserts/deletes between original and edited config. */
 export function collectConfigureProviderChanges(params: {
   original: OpenClawConfig;
   next: OpenClawConfig;
@@ -180,7 +177,6 @@ export function collectConfigureProviderChanges(params: {
   };
 }
 
-/** Returns true when selected targets or provider mutations would produce a plan. */
 export function hasConfigurePlanChanges(params: {
   selectedTargets: ReadonlyMap<string, ConfigureSelectedTarget>;
   providerChanges: ConfigureProviderChanges;
@@ -192,7 +188,6 @@ export function hasConfigurePlanChanges(params: {
   );
 }
 
-/** Builds the serializable secrets apply plan from configure selections. */
 export function buildSecretsConfigurePlan(params: {
   selectedTargets: ReadonlyMap<string, ConfigureSelectedTarget>;
   providerChanges: ConfigureProviderChanges;
