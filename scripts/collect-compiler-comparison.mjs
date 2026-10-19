@@ -844,7 +844,7 @@ printf 'tcp\\tENETUNREACH\\n'`,
       console.error(
         id + ": rejected sample: process exit " + result.status + ", GNU time " + exitCode,
       );
-      return;
+      return undefined;
     }
     const stdout = normalize(fs.readFileSync(stdoutFile, "utf8"));
     const stderr = fs.readFileSync(stderrFile);
