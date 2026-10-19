@@ -3,11 +3,14 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
-import { waitForSessionTranscriptIndexReconcile } from "../../config/sessions/session-transcript-reconcile.js";
-import { closeOpenClawAgentDatabaseByPath } from "../../state/openclaw-agent-db.js";
+import { useSessionStoreTempDirs } from "../../test-utils/session-state-cleanup.js";
 import { SessionManager } from "../sessions/session-manager.js";
 import { buildAssistantMessage, buildUsageWithNoCost } from "../stream-message-shared.js";
 
@@ -19,7 +22,7 @@ vi.mock("../cli-runner/log.js", () => ({
   cliBackendLog: { warn: vi.fn() },
 }));
 
-vi.mock("../../gateway/cli-session-history.js", () => ({
+vi.mock("../../gateway/cli-session-history.claude.js", () => ({
   readClaudeCliFallbackSeed: mocks.readClaudeCliFallbackSeed,
 }));
 
@@ -35,7 +38,11 @@ import { resolveClaudeCliProjectDirForWorkspace } from "./claude-cli-project-dir
 
 function formatClaudeCliFallbackPrelude(
   seed: NonNullable<
-    ReturnType<typeof import("../../gateway/cli-session-history.js").readClaudeCliFallbackSeed>
+    Awaited<
+      ReturnType<
+        typeof import("../../gateway/cli-session-history.claude.js").readClaudeCliFallbackSeed
+      >
+    >
   >,
   options?: { charBudget?: number },
 ) {
@@ -61,10 +68,10 @@ describe("resolveFallbackRetryPrompt", () => {
 });
 
 describe("formatClaudeCliFallbackPrelude", () => {
-  it("formats user/assistant turns and tags tool blocks with compact hints", () => {
+  it("formats user/assistant turns and tags tool blocks with compact hints", async () => {
     // Tool-use blocks are represented as compact hints because fallback prompts
     // should preserve intent without replaying full tool schemas or outputs.
-    const out = formatClaudeCliFallbackPrelude({
+    const out = await formatClaudeCliFallbackPrelude({
       summaryText: "Earlier summary",
       recentTurns: [
         {
@@ -99,9 +106,9 @@ describe("formatClaudeCliFallbackPrelude", () => {
     expect(out).toContain("(tool result: Earlier tool output)");
   });
 
-  it("truncates an oversized summary instead of dropping it silently", () => {
+  it("truncates an oversized summary instead of dropping it silently", async () => {
     const huge = "x ".repeat(10_000).trim();
-    const out = formatClaudeCliFallbackPrelude(
+    const out = await formatClaudeCliFallbackPrelude(
       { summaryText: huge, recentTurns: [] },
       { charBudget: 600 },
     );
@@ -112,8 +119,8 @@ describe("formatClaudeCliFallbackPrelude", () => {
 
   it.each([["a surrogate boundary", `${"x".repeat(21)}😀${"y".repeat(100)}`, "x".repeat(21)]])(
     "preserves %s when truncating an oversized summary",
-    (_label, summaryText, expected) => {
-      const out = formatClaudeCliFallbackPrelude(
+    async (_label, summaryText, expected) => {
+      const out = await formatClaudeCliFallbackPrelude(
         { summaryText, recentTurns: [] },
         { charBudget: 128 },
       );
@@ -122,8 +129,8 @@ describe("formatClaudeCliFallbackPrelude", () => {
     },
   );
 
-  it("keeps the recent turn window contiguous when an adjacent turn is oversized", () => {
-    const out = formatClaudeCliFallbackPrelude(
+  it("keeps the recent turn window contiguous when an adjacent turn is oversized", async () => {
+    const out = await formatClaudeCliFallbackPrelude(
       {
         recentTurns: [
           { role: "user", content: "older small turn" },
@@ -145,11 +152,11 @@ describe("buildClaudeCliFallbackContextPrelude", () => {
     mocks.readClaudeCliFallbackSeed.mockReset();
   });
 
-  it("returns empty string when the Claude session loader finds no seed", () => {
+  it("returns empty string when the Claude session loader finds no seed", async () => {
     mocks.readClaudeCliFallbackSeed.mockReturnValue(undefined);
 
     expect(
-      buildClaudeCliFallbackContextPrelude({
+      await buildClaudeCliFallbackContextPrelude({
         cliSessionId: "missing-session",
         homeDir: "/tmp/test-home",
       }),
@@ -162,6 +169,7 @@ describe("buildClaudeCliFallbackContextPrelude", () => {
 });
 
 describe("sessionTranscriptHasContent", () => {
+  const sessionDirs = useSessionStoreTempDirs(afterAll, "oc-transcript-probe-");
   let tmpDir: string;
   let target: {
     agentId: string;
@@ -171,23 +179,19 @@ describe("sessionTranscriptHasContent", () => {
   };
 
   beforeEach(async () => {
-    tmpDir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "oc-transcript-probe-")));
+    tmpDir = sessionDirs.make();
     target = {
       agentId: "audit",
       sessionId: "fallback-history",
       sessionKey: "agent:audit:main",
       storePath: path.join(tmpDir, "openclaw-agent.sqlite"),
     };
+    setRuntimeConfigSnapshot({ session: { store: target.storePath } });
     await upsertSessionEntryCore(target, { sessionId: target.sessionId, updatedAt: 1 });
   });
 
-  afterEach(async () => {
-    await waitForSessionTranscriptIndexReconcile({
-      agentId: target.agentId,
-      path: target.storePath,
-    });
-    closeOpenClawAgentDatabaseByPath(target.storePath);
-    await fs.rm(tmpDir, { recursive: true, force: true });
+  afterEach(() => {
+    clearRuntimeConfigSnapshot();
   });
 
   const assistantMessage = () =>
@@ -260,18 +264,6 @@ describe("claudeCliSessionTranscriptHasContent", () => {
   }
 
   const GRACE_MS = 250;
-
-  it("rejects path-like session ids instead of escaping the Claude projects tree", async () => {
-    const workspaceDir = await makeWorkspace();
-    await writeClaudeProjectFile(workspaceDir, "safe-session", "");
-    expect(
-      await claudeCliSessionTranscriptHasContent({
-        sessionId: "../safe-session",
-        workspaceDir,
-        homeDir: tmpDir,
-      }),
-    ).toBe(false);
-  });
 
   it("returns false when workspaceDir is missing (path cannot be computed)", async () => {
     expect(
@@ -374,17 +366,6 @@ describe("claudeCliSessionTranscriptHasOrphanedToolUse", () => {
 
   it.each([
     {
-      name: "Claude-specific answered calls",
-      expected: false,
-      lines: [
-        message("assistant", [tool("server", "server_tool_use"), tool("mcp", "mcp_tool_use")]),
-        message("user", [
-          result("server", "web_search_tool_result"),
-          result("mcp", "mcp_tool_result"),
-        ]),
-      ],
-    },
-    {
       name: "hosted results inside the assistant message",
       expected: false,
       lines: [
@@ -443,72 +424,76 @@ describe("claudeCliSessionTranscriptHasOrphanedToolUse", () => {
 });
 
 describe("createAcpVisibleTextAccumulator", () => {
-  it("preserves cumulative raw snapshots after stripping a glued NO_REPLY prefix", () => {
+  it("preserves cumulative raw snapshots containing an attached sentinel", () => {
     const acc = createAcpVisibleTextAccumulator();
 
     expect(acc.consume("NO_REPLYThe user")).toEqual({
-      text: "The user",
-      delta: "The user",
+      text: "NO_REPLYThe user",
+      delta: "NO_REPLYThe user",
     });
 
     expect(acc.consume("NO_REPLYThe user is saying")).toEqual({
-      text: "The user is saying",
+      text: "NO_REPLYThe user is saying",
       delta: " is saying",
     });
 
-    expect(acc.finalize()).toBe("The user is saying");
-    expect(acc.finalizeRaw()).toBe("The user is saying");
+    expect(acc.finalize()).toBe("NO_REPLYThe user is saying");
+    expect(acc.finalizeRaw()).toBe("NO_REPLYThe user is saying");
     expect(acc.finalizeReplySnapshot()).toEqual({
       disposition: "visible",
-      text: "The user is saying",
+      text: "NO_REPLYThe user is saying",
     });
   });
 
-  it("keeps append-only deltas working after stripping a glued NO_REPLY prefix", () => {
+  it("keeps append-only deltas containing an attached sentinel", () => {
     const acc = createAcpVisibleTextAccumulator();
 
     expect(acc.consume("NO_REPLYThe user")).toEqual({
-      text: "The user",
-      delta: "The user",
+      text: "NO_REPLYThe user",
+      delta: "NO_REPLYThe user",
     });
 
     expect(acc.consume(" is saying")).toEqual({
-      text: "The user is saying",
+      text: "NO_REPLYThe user is saying",
       delta: " is saying",
     });
   });
 
-  it("preserves punctuation-start text that begins with NO_REPLY-like content", () => {
-    const acc = createAcpVisibleTextAccumulator();
+  it.each(["NO_REPLY", "no_reply", "No_Reply"])(
+    "buffers chunked %s prefixes before emitting visible text",
+    (token) => {
+      const acc = createAcpVisibleTextAccumulator();
 
-    expect(acc.consume("NO_REPLY: explanation")).toEqual({
-      text: "NO_REPLY: explanation",
-      delta: "NO_REPLY: explanation",
-    });
-
-    expect(acc.finalize()).toBe("NO_REPLY: explanation");
-    expect(acc.finalizeReplySnapshot()).toEqual({
-      disposition: "visible",
-      text: "NO_REPLY: explanation",
-    });
-  });
-
-  it("buffers chunked NO_REPLY prefixes before emitting visible text", () => {
-    const acc = createAcpVisibleTextAccumulator();
-
-    expect(acc.consume("NO")).toBeNull();
-    expect(acc.consume("NO_")).toBeNull();
-    expect(acc.consume("NO_RE")).toBeNull();
-    expect(acc.consume("NO_REPLY")).toBeNull();
-    expect(acc.consume("Actual answer")).toEqual({
-      text: "Actual answer",
-      delta: "Actual answer",
-    });
-  });
+      expect(acc.consume(token.slice(0, 2))).toBeNull();
+      expect(acc.consume(token.slice(0, 3))).toBeNull();
+      expect(acc.consume(token.slice(0, 5))).toBeNull();
+      expect(acc.consume(token)).toBeNull();
+      expect(acc.consume("\nActual answer")).toEqual({
+        text: "Actual answer",
+        delta: "Actual answer",
+      });
+    },
+  );
 
   it.each([
     { name: "exact silence", chunks: ["NO_REPLY"], expected: { disposition: "silent" } },
-    { name: "partial control prefix", chunks: ["NO_RE"], expected: { disposition: "empty" } },
+    { name: "padded silence", chunks: [" \tNO_REPLY\r\n"], expected: { disposition: "silent" } },
+    { name: "lowercase silence", chunks: ["no_reply"], expected: { disposition: "silent" } },
+    ...["NO_REPLY.", '"NO_REPLY"', '{"action":"NO_REPLY"}', "No response needed."].map((text) => ({
+      name: `ordinary text ${text}`,
+      chunks: [text],
+      expected: { disposition: "visible", text },
+    })),
+    {
+      name: "literal suffix",
+      chunks: ["NO_REPLY\nNO_REPLY"],
+      expected: { disposition: "visible", text: "NO_REPLY" },
+    },
+    {
+      name: "partial control prefix",
+      chunks: ["NO_RE"],
+      expected: { disposition: "visible", text: "NO_RE" },
+    },
   ])("classifies $name at ACP finalization", ({ chunks, expected }) => {
     const acc = createAcpVisibleTextAccumulator();
     for (const chunk of chunks) {

@@ -13,6 +13,7 @@ import {
   clearActiveEmbeddedRun,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { normalizeAcceptedSessionSpawnResult } from "openclaw/plugin-sdk/agent-harness-tool-runtime";
+import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { registerCopilotActiveRun } from "./attempt-active-run.js";
 import { deferBackgroundCompactionCleanup } from "./attempt-cleanup.js";
 import {
@@ -43,8 +44,9 @@ import type {
 import { createCopilotByokProxy } from "./byok-proxy.js";
 import { attachEventBridge, type SessionLike } from "./event-bridge.js";
 import { createPromptError } from "./prompt-error.js";
-import { classifyResumeFailure, decideReplayAction } from "./replay-shim.js";
+import { isMissingCopilotSessionError } from "./replay-shim.js";
 import type { PooledClient } from "./runtime.js";
+import { createCopilotToolBridge } from "./tool-bridge.js";
 import type { CopilotUserInputBridge } from "./user-input-bridge.js";
 export async function runCopilotExecution(context: {
   params: CopilotAttemptParams;
@@ -53,7 +55,6 @@ export async function runCopilotExecution(context: {
   attemptStartedAt: number;
   settledToolFinalization: boolean;
   input: AttemptParamsLike;
-  createToolBridge: NonNullable<CopilotAttemptDeps["createToolBridge"]>;
   ringZeroSystemAgentRun: boolean;
   messages: AgentMessage[];
   modelRef: ModelRef;
@@ -76,7 +77,6 @@ export async function runCopilotExecution(context: {
     attemptStartedAt,
     settledToolFinalization,
     input,
-    createToolBridge,
     ringZeroSystemAgentRun,
     messages,
     modelRef,
@@ -108,7 +108,7 @@ export async function runCopilotExecution(context: {
   let bridge: ReturnType<typeof attachEventBridge> | undefined;
   let transcriptJournal: AttemptTranscriptJournal | undefined;
   let initialSdkUserValidated = false;
-  let activeRunHandleRef: ReturnType<typeof registerCopilotActiveRun> | undefined;
+  let activeRunRegistrationRef: ReturnType<typeof registerCopilotActiveRun> | undefined;
   let userInputBridgeRef: CopilotUserInputBridge | undefined;
   let cleanupToolBridge: (() => void) | undefined;
   let releaseError: Error | undefined;
@@ -132,27 +132,27 @@ export async function runCopilotExecution(context: {
     aborted = true;
   };
   const abortActiveSession = () => {
+    // Signal and backend cancellation can reach the same native turn.
+    if (abortRequested) {
+      return;
+    }
     markExternalAbort();
     if (settled || !sentTurnStarted || !session) {
       return;
     }
     void session.abort().catch(() => undefined);
   };
-  params.abortSignal?.addEventListener("abort", abortActiveSession, { once: true });
   let sandbox: SandboxContext | null = null;
   let effectiveWorkspaceDir = resolvedWorkspaceForSandbox;
   if (resolvedWorkspaceForSandbox) {
     try {
       ({ sandbox, effectiveWorkspaceDir } = await resolveCopilotAttemptSandbox({
-        deps,
         input,
         resolvedWorkspaceForSandbox,
         sandboxSessionKey,
       }));
     } catch (error: unknown) {
-      settled = true;
-      params.abortSignal?.removeEventListener("abort", abortActiveSession);
-      if (abortRequested || params.abortSignal?.aborted) {
+      if (params.abortSignal?.aborted) {
         return finishAttempt(
           createResult(input, {
             aborted: true,
@@ -179,8 +179,6 @@ export async function runCopilotExecution(context: {
   hookContext.workspaceDir = effectiveWorkspaceDir;
   const requestedCwd = readResolvedAttemptPath(input.cwd);
   if (sandbox?.enabled && requestedCwd && requestedCwd !== resolvedWorkspaceForSandbox) {
-    settled = true;
-    params.abortSignal?.removeEventListener("abort", abortActiveSession);
     return finishAttempt(
       createResult(input, {
         messagesSnapshot: messages,
@@ -237,9 +235,17 @@ export async function runCopilotExecution(context: {
   } = { value: 0 };
   let codeModeEngaged: boolean | undefined;
   let promptToolPolicy:
-    | Awaited<ReturnType<typeof createToolBridge>>["promptToolPolicy"]
+    | Awaited<ReturnType<typeof createCopilotToolBridge>>["promptToolPolicy"]
     | undefined;
   try {
+    if (!settledToolFinalization && effectiveCwd && !sandbox?.enabled) {
+      // The native owner resolved this local cwd; prepare before any tools or inference.
+      input.hostCapabilities?.prepareContinuationRetryCount?.({ cwd: effectiveCwd });
+    }
+    params.abortSignal?.addEventListener("abort", abortActiveSession, { once: true });
+    if (params.abortSignal?.aborted) {
+      abortActiveSession();
+    }
     let resultContentSourceByToolName = new Map<
       string,
       NonNullable<AnyAgentTool["resultContentSource"]>
@@ -247,7 +253,7 @@ export async function runCopilotExecution(context: {
     if (!settledToolFinalization) {
       try {
         assertCopilotAttemptHostCapabilities(input);
-        const toolBridge = await createToolBridge({
+        const toolBridge = await createCopilotToolBridge({
           allowModelTools: poolAcquire.provider.mode === "byok",
           modelProvider: modelRef.provider,
           modelId: modelRef.id,
@@ -338,16 +344,15 @@ export async function runCopilotExecution(context: {
       userInputBridge,
     } = sessionSetup;
     userInputBridgeRef = userInputBridge;
-    const replayDecision = decideReplayAction({
-      sdkSessionId: input.initialReplayState?.sdkSessionId,
-      replayInvalid: input.initialReplayState?.replayInvalid,
-    });
-    downgradedFromResume = replayDecision.downgradedFromResume;
+    const previousSessionId = normalizeOptionalString(input.initialReplayState?.sdkSessionId);
+    downgradedFromResume = Boolean(
+      previousSessionId && input.initialReplayState?.replayInvalid === true,
+    );
     const resumeSessionId = settledToolFinalization
       ? settledFinalizationSessionId
-      : replayDecision.action === "resume"
-        ? replayDecision.sdkSessionId
-        : undefined;
+      : downgradedFromResume
+        ? undefined
+        : previousSessionId;
     if (resumeSessionId) {
       try {
         session = (await client.resumeSession(resumeSessionId, {
@@ -365,8 +370,7 @@ export async function runCopilotExecution(context: {
             error,
           );
         }
-        const classification = classifyResumeFailure(error);
-        if (!classification.recoverable) {
+        if (!isMissingCopilotSessionError(error)) {
           throw error;
         }
         resumeFailureRecovered = true;
@@ -385,7 +389,7 @@ export async function runCopilotExecution(context: {
     if (!sdkSessionId) {
       throw createPromptError(
         "transcript_persistence_failed",
-        "[copilot-attempt] canonical transcript persistence requires the Copilot SDK session id",
+        "[copilot-attempt] saved transcript persistence requires the Copilot SDK session id",
       );
     }
     if (deps.onSessionEstablished && !settledToolFinalization) {
@@ -396,7 +400,9 @@ export async function runCopilotExecution(context: {
           pooledClient: handle,
           sessionConfig,
         });
-      } catch {}
+      } catch {
+        // Binding observers are best effort; the journal still owns transcript writes.
+      }
     }
     transcriptJournal = createAttemptTranscriptJournal({
       abortSession: () => session?.abort() ?? Promise.resolve(),
@@ -458,7 +464,7 @@ export async function runCopilotExecution(context: {
       if (!userInputBridge) {
         throw new Error("[copilot-attempt] ordinary attempts require a user-input bridge");
       }
-      activeRunHandleRef = registerCopilotActiveRun({
+      activeRunRegistrationRef = registerCopilotActiveRun({
         abortActiveSession,
         agentId: sessionAgentId,
         bridge,
@@ -514,7 +520,9 @@ export async function runCopilotExecution(context: {
         timedOutDuringCompaction = bridge?.isCompacting() === true;
         try {
           await bridge?.awaitDeltaChain();
-        } catch {}
+        } catch {
+          // Preserve the timeout and still drain canonical transcript writes below.
+        }
         await bridge?.awaitAgentEventChain();
         bridge?.flushTranscriptProjection();
         try {
@@ -541,13 +549,15 @@ export async function runCopilotExecution(context: {
       promptError = toCopilotError(transcriptError);
     }
     userInputBridgeRef?.cancelPending();
-    if (activeRunHandleRef) {
-      input.replyOperation?.detachBackend(activeRunHandleRef);
+    if (activeRunRegistrationRef) {
+      const { attachment, handle: activeRunHandle } = activeRunRegistrationRef;
       clearActiveEmbeddedRun(
         input.sessionId,
-        activeRunHandleRef,
+        activeRunHandle,
         input.sessionKey,
         input.sessionFile,
+        undefined,
+        attachment,
       );
     }
     const journalSnapshot = transcriptJournal?.snapshot();
@@ -591,7 +601,9 @@ export async function runCopilotExecution(context: {
             cleanup,
             sdkSessionId,
           });
-        } catch {}
+        } catch {
+          // A cleanup observer cannot replace the turn's already-selected outcome.
+        }
       }
       params.abortSignal?.removeEventListener("abort", abortActiveSession);
     } else {

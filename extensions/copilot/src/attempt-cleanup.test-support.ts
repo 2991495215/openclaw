@@ -1,16 +1,21 @@
+import "./attempt-selectors.test-support.js";
+import { getEventListeners } from "node:events";
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import type { AgentHarnessAttemptParamsV2 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { expect, it, vi } from "vitest";
-import { runCopilotAttempt } from "./attempt.js";
 import {
   makeAssistantMessageEvent,
   makeFakePool,
   makeFakeSdk,
   projectAgentRunAttemptTerminal,
+  runCopilotAttempt,
   type FakeSdk,
   type FakeSession,
 } from "./attempt.test-support.js";
+import * as byokProxy from "./byok-proxy.js";
+
+const { copilotAttemptOverrides } = await import("./attempt-selectors.test-support.js");
 
 export function registerCopilotCleanupTests({
   makeParams,
@@ -21,6 +26,92 @@ export function registerCopilotCleanupTests({
   ) => AgentHarnessAttemptParamsV2;
   requireSession: (sdk: FakeSdk) => FakeSession;
 }) {
+  it.each(["auth", "proxy"] as const)(
+    "releases abort listeners when pre-session %s setup fails",
+    async (stage) => {
+      const controller = new AbortController();
+      const callerAbort = vi.fn();
+      controller.signal.addEventListener("abort", callerAbort);
+      const callerListeners = getEventListeners(controller.signal, "abort");
+      const sdk = makeFakeSdk();
+      const pool = makeFakePool(sdk);
+      const params = { ...makeParams(), abortSignal: controller.signal };
+      copilotAttemptOverrides.resolveSandboxContext = async () => null;
+      const deps = { pool };
+      try {
+        if (stage === "auth") {
+          const invalidAuth = {
+            ...params,
+            auth: { useLoggedInUser: false, gitHubToken: "synthetic-token" },
+          };
+          await expect(runCopilotAttempt(invalidAuth, deps)).rejects.toThrow(
+            "gitHubToken auth requires profileId+profileVersion",
+          );
+        } else {
+          const failure = new Error("synthetic proxy startup failure");
+          vi.spyOn(byokProxy, "createCopilotByokProxy").mockRejectedValueOnce(failure);
+          const result = await runCopilotAttempt(
+            {
+              ...params,
+              model: {
+                ...params.model,
+                provider: "custom-openai",
+                baseUrl: "https://api.example.test/v1",
+              },
+              resolvedApiKey: "synthetic-token",
+              authProfileId: "custom-openai:main",
+            },
+            deps,
+          );
+          expect(projectAgentRunAttemptTerminal(result.terminal).promptError).toMatchObject({
+            code: "model_not_supported",
+            cause: failure,
+          });
+        }
+        expect(pool.acquire).not.toHaveBeenCalled();
+        expect(getEventListeners(controller.signal, "abort")).toEqual(callerListeners);
+      } finally {
+        controller.abort();
+      }
+      expect(callerAbort).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("keeps cancellation raised during pre-session preparation", async () => {
+    const controller = new AbortController();
+    const sandboxStarted = createDeferred<void>();
+    const finishSandbox = createDeferred<null>();
+    const sdk = makeFakeSdk();
+    copilotAttemptOverrides.resolveSandboxContext = async () => {
+      sandboxStarted.resolve();
+      return finishSandbox.promise;
+    };
+    const attempt = runCopilotAttempt(
+      { ...makeParams(), abortSignal: controller.signal },
+      {
+        pool: makeFakePool(sdk),
+      },
+    );
+    try {
+      await Promise.race([
+        sandboxStarted.promise,
+        attempt.then(() => {
+          throw new Error("Copilot attempt settled before sandbox preparation");
+        }),
+      ]);
+      controller.abort();
+      finishSandbox.resolve(null);
+      const result = await attempt;
+      expect(result.terminal).toMatchObject({ kind: "aborted", source: "external" });
+      expect(sdk.sessions.flatMap((session) => session.sendAndWait.mock.calls)).toEqual([]);
+      expect(getEventListeners(controller.signal, "abort")).toEqual([]);
+    } finally {
+      controller.abort();
+      finishSandbox.resolve(null);
+      await attempt;
+    }
+  });
+
   it.each([false, true])(
     "detaches listeners and joins accepted agent callbacks before cleanup (deferred: %s)",
     async (deferred) => {

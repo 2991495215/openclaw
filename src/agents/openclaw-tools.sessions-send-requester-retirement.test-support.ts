@@ -1,4 +1,6 @@
-import { expect, it, vi, type MockInstance } from "vitest";
+import { expect, it, vi } from "vitest";
+import type { MockInstance } from "vitest";
+import { withinTest } from "../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { captureGatewayOperatorRunAuthority } from "../gateway/operator-run-authority.js";
@@ -7,6 +9,7 @@ import {
   createOperatorClient,
 } from "../gateway/server-plugin-in-process-dispatch.test-support.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
+import { sqliteWorkerOwnerProbe as probe } from "../infra/sqlite-worker-owner-probe.test-support.js";
 import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import * as stateWorker from "../state/openclaw-state-worker-store.js";
@@ -15,16 +18,18 @@ import {
   getAdmittedRunDelegatedAuthority,
   prepareSystemAgentRunAdmission,
 } from "./admitted-run-context.js";
+import type { EmbeddedAgentQueueHandle } from "./embedded-agent-runner/runs.js";
 import {
-  clearActiveEmbeddedRun,
-  setActiveEmbeddedRun,
-  type EmbeddedAgentQueueHandle,
-} from "./embedded-agent-runner/runs.js";
-import { createEmbeddedRunHandle } from "./embedded-agent-runner/runs.test-support.js";
+  clearTestEmbeddedRun as clearActiveEmbeddedRun,
+  createEmbeddedRunHandle,
+} from "./embedded-agent-runner/runs.test-support.js";
 import { createRequesterYieldCallback } from "./openclaw-tools.requester-yield.js";
+import {
+  createSessionsSendTestCaller,
+  setSessionsSendTestActiveRun,
+} from "./openclaw-tools.sessions-steering.test-support.js";
 import { announceTesting } from "./subagents/announce/subagent-announce-overrides.test-support.js";
-import * as registryPersistence from "./subagents/registry/subagent-registry-persistence.js";
-import { onSubagentRegistryPersisted } from "./subagents/registry/subagent-registry-state.js";
+import { subscribeSubagentRunChanges } from "./subagents/registry/subagent-registry-publication.js";
 import {
   addSubagentRunForTests,
   getSubagentRunByRunId,
@@ -52,6 +57,7 @@ export function registerSessionsSendRequesterRetirementTests({
   callGatewayMock,
   calls,
   writeEntry,
+  writeFinal,
   settleSessionWork,
   drainRootWork,
 }: {
@@ -60,6 +66,7 @@ export function registerSessionsSendRequesterRetirementTests({
     MockInstance<(request: GatewayCall) => Promise<unknown>>;
   calls: GatewayCall[];
   writeEntry: (sessionKey: string, entry: SessionEntry, storePath?: string) => Promise<void>;
+  writeFinal: (sessionKey: string, runId: string, text: string) => Promise<void>;
   settleSessionWork: () => Promise<void>;
   drainRootWork: () => Promise<void>;
 }) {
@@ -84,9 +91,10 @@ export function registerSessionsSendRequesterRetirementTests({
         spawnedBy: requesterSessionKey,
         spawnDepth: 1,
       });
-      resetSubagentRegistryForTests();
+      await resetSubagentRegistryForTests();
       const childPending = createDeferredCore();
-      const terminalReply = { disposition: "visible", text: "Result after requester retirement" };
+      const fullReply = "Result after requester retirement";
+      const terminalReply = { disposition: "visible" as const, text: fullReply };
       callGatewayMock.mockImplementation(async (request: GatewayCall) => {
         calls.push(request);
         if (request.method === "agent" && request.params?.sessionKey === childSessionKey) {
@@ -99,10 +107,13 @@ export function registerSessionsSendRequesterRetirementTests({
         }
         if (request.method === "agent.wait" && request.params?.runId === runId) {
           await childPending.promise;
+          await writeFinal(childSessionKey, runId, fullReply);
           return { runId, status: "ok", startedAt: 1, endedAt: Date.now(), terminalReply };
         }
         if (request.method === "agent") {
           return {
+            status: "ok",
+            inputProcessingCompleted: true,
             result: {
               payloads: [{ text: "Retired requester's child result delivered" }],
               deliveryStatus: { status: "sent", resultCount: 1 },
@@ -127,6 +138,8 @@ export function registerSessionsSendRequesterRetirementTests({
         await registerSubagentRun({
           runId,
           childSessionKey,
+          childAgentId: "main",
+          sessionEntry: { sessionId: childSessionId },
           requesterSessionKey,
           requesterDisplayKey: requesterSessionKey,
           requesterAgentId: "main",
@@ -135,9 +148,15 @@ export function registerSessionsSendRequesterRetirementTests({
           spawnMode: "session",
           expectsCompletionMessage: true,
         });
-        setActiveEmbeddedRun(childSessionId, handle, childSessionKey);
+        await setSessionsSendTestActiveRun(
+          childSessionId,
+          handle,
+          childSessionKey,
+          requesterSessionKey,
+          config,
+        );
       } else {
-        addSubagentRunForTests({
+        await addSubagentRunForTests({
           runId: "retiring-original-child-run",
           childSessionKey,
           requesterSessionKey,
@@ -145,7 +164,11 @@ export function registerSessionsSendRequesterRetirementTests({
           expectsCompletionMessage: true,
           createdAt: 1,
           execution: { status: "terminal", startedAt: 1, endedAt: 2, outcome: { status: "ok" } },
-          completion: { required: true, resultText: "Original result" },
+          completion: {
+            required: true,
+            resultText: "Original result",
+            terminalReply: { disposition: "visible", text: "Original result" },
+          },
           delivery: { status: "delivered" },
           cleanupCompletedAt: 3,
         });
@@ -168,46 +191,29 @@ export function registerSessionsSendRequesterRetirementTests({
         requesterRetired = true;
         admission.close();
       };
-      const publish = registryPersistence.publishSubagentRunPostimages;
-      const retireBeforePublication = vi
-        .spyOn(registryPersistence, "publishSubagentRunPostimages")
-        .mockImplementation((params) =>
-          publish({
-            ...params,
-            persist: (owner, options, ...runIds) =>
-              params.persist(
-                owner,
-                {
-                  ...options,
-                  onCommitted: () => {
-                    if (
-                      retirement === "before publication" &&
-                      !requesterRetired &&
-                      runIds.includes(runId)
-                    ) {
-                      retireRequester();
-                    }
-                    options.onCommitted?.();
-                  },
-                },
-                ...runIds,
-              ),
-          }),
-        );
-      const execute = stateWorker.runOpenClawStateWorkerOperation;
-      const retire = vi
-        .spyOn(stateWorker, "runOpenClawStateWorkerOperation")
-        .mockImplementation(async (owner, run, options) => {
-          const result = await execute(owner, run, options);
+      const retireBeforePublication = probe.command(
+        stateWorker,
+        async (command, executeOptions, scope) => {
+          const result = await scope.execute(command, executeOptions);
           if (
-            retirement === "after publication" &&
+            retirement === "before publication" &&
             !requesterRetired &&
-            getSubagentRunByRunId(runId)?.requesterTurnRunId === requesterTurnRunId
+            command.type === "subagents.persistChanges"
           ) {
             retireRequester();
           }
           return result;
-        });
+        },
+      );
+      const stopRetiring = subscribeSubagentRunChanges("persistence", () => {
+        if (
+          retirement === "after publication" &&
+          !requesterRetired &&
+          getSubagentRunByRunId(runId)?.requesterTurnRunId === requesterTurnRunId
+        ) {
+          retireRequester();
+        }
+      });
       announceTesting.setDepsForTest({ callGateway: callGatewayMock });
       let stopObserving = () => {};
       try {
@@ -219,6 +225,7 @@ export function registerSessionsSendRequesterRetirementTests({
                 admittedRunContext,
                 agentId: "main",
                 sessionKey: requesterSessionKey,
+                requesterOrigin: createSessionsSendTestCaller(requesterSessionKey).requesterOrigin,
               }),
               () =>
                 createSessionsSendTool({
@@ -247,7 +254,7 @@ export function registerSessionsSendRequesterRetirementTests({
           );
         expect(requesterCalls()).toHaveLength(0);
         const delivered = createDeferredCore();
-        stopObserving = onSubagentRegistryPersisted(() => {
+        stopObserving = subscribeSubagentRunChanges("persistence", () => {
           const child = getSubagentRunByRunId(runId);
           if (child?.delivery?.status === "delivered" && !child.requesterSettleWake) {
             delivered.resolve();
@@ -259,7 +266,14 @@ export function registerSessionsSendRequesterRetirementTests({
         await settleSessionWork();
         expect(requesterCalls()).toHaveLength(1);
         expect(requesterCalls()[0]?.params).toMatchObject({
-          message: expect.stringContaining(terminalReply.text),
+          message: "Continue the OpenClaw runtime event.",
+          internalEvents: [
+            {
+              type: "task_completion",
+              childSessionKey,
+              result: expect.stringContaining(terminalReply.text),
+            },
+          ],
           inputProvenance: { sourceTool: "subagent_announce" },
         });
         emitAgentEvent({
@@ -271,20 +285,20 @@ export function registerSessionsSendRequesterRetirementTests({
         await settleSessionWork();
         expect(requesterCalls()).toHaveLength(1);
       } finally {
-        retire.mockRestore();
+        stopRetiring();
         retireBeforePublication.mockRestore();
         admission.close();
         clearActiveEmbeddedRun(childSessionId, handle, childSessionKey);
         childPending.resolve();
         stopObserving();
-        resetSubagentRegistryForTests();
+        await resetSubagentRegistryForTests();
         await settleSessionWork();
         announceTesting.setDepsForTest();
       }
     },
   );
 
-  it.each([
+  it.for([
     { scenario: "only a watched tool's authority retires", sameChild: false, revokeTool: true },
     { scenario: "two watched runs target the same child", sameChild: true, revokeTool: false },
     { scenario: "the requester finishes without yielding", sameChild: true, finish: "normal" },
@@ -301,7 +315,7 @@ export function registerSessionsSendRequesterRetirementTests({
       finish: "normal",
       nested: true,
     },
-  ])("keeps earlier child claims when $scenario", async (scenario) => {
+  ])("keeps earlier child claims when $scenario", async (scenario, { signal }) => {
     const { sameChild, revokeTool, finish, newestFirst, nested } = scenario;
     const requesterSessionKey = "agent:main:dashboard:active-requester";
     const requesterTurnRunId = "active-requester-turn";
@@ -324,7 +338,7 @@ export function registerSessionsSendRequesterRetirementTests({
         spawnDepth: 1,
       });
     }
-    resetSubagentRegistryForTests();
+    await resetSubagentRegistryForTests();
     const childrenPending = children.map(() => createDeferredCore());
     let acceptedMessages = 0;
     callGatewayMock.mockImplementation(async (request: GatewayCall) => {
@@ -347,18 +361,22 @@ export function registerSessionsSendRequesterRetirementTests({
           throw new Error("Unexpected child completion wait");
         }
         await childrenPending[children.indexOf(child)]!.promise;
+        const fullReply = `Watched child result ${child.runId}`;
+        await writeFinal(child.childSessionKey, child.runId, fullReply);
         return {
           status: "ok",
           startedAt: 1,
           endedAt: Date.now(),
           terminalReply: {
             disposition: "visible",
-            text: `Watched child result ${child.runId}`,
+            text: fullReply,
           },
         };
       }
       if (request.method === "agent" && sessionKey === requesterSessionKey) {
         return {
+          status: "ok",
+          inputProcessingCompleted: true,
           result: {
             payloads: [{ text: "Both watched results reached the requester" }],
             deliveryStatus: { status: "sent", resultCount: 1 },
@@ -420,25 +438,17 @@ export function registerSessionsSendRequesterRetirementTests({
           }),
         () => toolCurrent,
       );
-    const execute = stateWorker.runOpenClawStateWorkerOperation;
-    const retireTool = vi
-      .spyOn(stateWorker, "runOpenClawStateWorkerOperation")
-      .mockImplementation(async (owner, run, options) => {
-        const result = await execute(owner, run, options);
-        if (
-          revokeTool &&
-          getSubagentRunByRunId("second-watched-run")?.requesterTurnRunId === requesterTurnRunId
-        ) {
-          toolCurrent = false;
-        }
-        if (
-          finish === "retired" &&
-          getSubagentRunByRunId("second-watched-run")?.requesterTurnRunId === requesterTurnRunId
-        ) {
-          admission.close();
-        }
-        return result;
-      });
+    const stopRetiringTool = subscribeSubagentRunChanges("persistence", () => {
+      if (getSubagentRunByRunId("second-watched-run")?.requesterTurnRunId !== requesterTurnRunId) {
+        return;
+      }
+      if (revokeTool) {
+        toolCurrent = false;
+      }
+      if (finish === "retired") {
+        admission.close();
+      }
+    });
     announceTesting.setDepsForTest({ callGateway: callGatewayMock });
     let stopObserving = () => {};
     try {
@@ -501,15 +511,24 @@ export function registerSessionsSendRequesterRetirementTests({
       }
       const firstIndex = newestFirst ? 1 : 0;
       const firstSettled = createDeferredCore();
-      stopObserving = onSubagentRegistryPersisted(() => {
+      const resultsDelivered = createDeferredCore();
+      stopObserving = subscribeSubagentRunChanges("persistence", () => {
         const firstChild = getSubagentRunByRunId(children[firstIndex]!.runId);
         if (!firstChild || firstChild.cleanupCompletedAt !== undefined) {
           firstSettled.resolve();
         }
+        if (
+          children.every(({ runId }) => {
+            const child = getSubagentRunByRunId(runId);
+            return child?.delivery?.status === "delivered" && !child.requesterSettleWake;
+          })
+        ) {
+          resultsDelivered.resolve();
+        }
       });
       admission.close();
       childrenPending[firstIndex]!.resolve();
-      await firstSettled.promise;
+      await withinTest(firstSettled.promise, signal);
       expect(
         getSubagentRunByRunId(children[firstIndex]!.runId),
         "The first accepted result must retain its completion owner",
@@ -521,6 +540,8 @@ export function registerSessionsSendRequesterRetirementTests({
         ),
       ).toHaveLength(0);
       childrenPending[1 - firstIndex]!.resolve();
+      // The wait receipt must publish completion before its newly admitted roots can be drained.
+      await withinTest(resultsDelivered.promise, signal);
       await settleSessionWork();
       const requesterCalls = calls.filter(
         (call) => call.method === "agent" && call.params?.sessionKey === requesterSessionKey,
@@ -543,12 +564,12 @@ export function registerSessionsSendRequesterRetirementTests({
         ),
       ).toHaveLength(1);
     } finally {
-      retireTool.mockRestore();
+      stopRetiringTool();
       admission.close();
       childrenPending.forEach((pending) => pending.resolve());
       stopObserving();
-      resetSubagentRegistryForTests();
       await settleSessionWork();
+      await resetSubagentRegistryForTests();
       announceTesting.setDepsForTest();
       operator.release();
     }

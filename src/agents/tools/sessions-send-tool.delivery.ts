@@ -1,10 +1,9 @@
-/** Delivers notifications, new turns, and active-run steering for sessions_send. */
 import crypto from "node:crypto";
+import { formatErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { runWithInProcessGatewaySessionMutation } from "../../gateway/server-plugin-in-process-dispatch.js";
 import type { GatewaySessionStoreTarget } from "../../gateway/session-utils-store.types.js";
-import { formatErrorMessage } from "../../infra/errors.js";
 import { withSystemEventOwner } from "../../infra/system-event-ownership.js";
 import { enqueueSystemEventEntry } from "../../infra/system-events.js";
 import { stringifyRouteThreadId } from "../../plugin-sdk/channel-route.js";
@@ -17,6 +16,13 @@ import {
   annotateInterSessionPromptText,
   type InputProvenance,
 } from "../../sessions/input-provenance.js";
+import type { ReplyMessageInjectionOptions } from "../../sessions/session-controller.contracts.js";
+import { getSessionControllerOperation } from "../../sessions/session-controller.js";
+import {
+  steerSessionControllerOperation,
+  type SessionControllerSteerResult,
+} from "../../sessions/session-controller.steer.js";
+import { captureSessionTarget } from "../../sessions/session-controller.target.js";
 import { isCronRunSessionKey, parseAgentSessionKey } from "../../sessions/session-key-utils.js";
 import {
   buildRunUserTurnIdempotencyKey,
@@ -25,25 +31,27 @@ import {
 import { createDeferredCore } from "../../shared/deferred.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { listAgentIds } from "../agent-scope.js";
-import { resolveActiveEmbeddedRunSessionId } from "../embedded-agent-runner/active-run-projections.js";
-import {
-  type EmbeddedAgentQueueMessageOptions,
-  type EmbeddedAgentQueueMessageOutcome,
-  formatEmbeddedAgentQueueFailureSummary,
-  queueEmbeddedAgentMessageWithOutcomeAsync,
-  queueGuardedEmbeddedAgentMessageWithOutcomeAsync,
-} from "../embedded-agent-runner/runs.js";
+import { resolveSenderRestrictedSpawnError } from "../spawn-requester-policy.js";
+import type { AgentStepSession } from "./agent-step.js";
 import { jsonResult } from "./common.js";
 import {
   captureGatewayToolCallerAssertion,
+  getGatewayToolCallerIdentity,
   resolveGatewayToolOperatorSelection,
 } from "./gateway-caller-context.js";
 import {
+  bindAgentToolGatewayRequest,
   callInProcessGatewayToolWithCreation,
   hasInProcessGatewayToolContext,
   type AgentToolGatewayRequestCaller,
 } from "./in-process-gateway.js";
+import type { SessionSendReplyAdmission } from "./sessions-send-communication.js";
 import { queueSessionsSendSteeringWithCustody } from "./sessions-send-tool.steering.js";
+
+// Bind at dispatch: child followup custody installs its context after tool construction.
+export const callSessionsSendGateway: AgentToolGatewayRequestCaller = async <T>(
+  request: Parameters<AgentToolGatewayRequestCaller>[0],
+): Promise<T> => await bindAgentToolGatewayRequest({ revalidateOnCompletion: false })<T>(request);
 
 export async function notifySessionsSendSession(params: {
   message: string;
@@ -53,10 +61,12 @@ export async function notifySessionsSendSession(params: {
   idempotencyKey: string;
   runId: string;
   displayKey: string;
+  assertCurrent?: () => void;
 }): Promise<ReturnType<typeof jsonResult>> {
   const selection = resolveGatewayToolOperatorSelection();
   const enqueue = () => {
     selection.assertCurrent();
+    params.assertCurrent?.();
     return enqueueSystemEventEntry(
       annotateInterSessionPromptText(params.message, params.inputProvenance),
       withSystemEventOwner(
@@ -70,6 +80,7 @@ export async function notifySessionsSendSession(params: {
   };
   const event = selection.operatorAuthority
     ? await runWithInProcessGatewaySessionMutation(
+        "sessions.send",
         { sessionKey: params.sessionKey, agentId: params.targetAgentId },
         (assertCurrent) => {
           assertCurrent();
@@ -108,19 +119,9 @@ function resolveCronRunScopedFallbackSessionKey(sessionKey: string): string | un
   return parsed && fallbackRest ? `agent:${parsed.agentId}:${fallbackRest}` : undefined;
 }
 
-function shouldFallbackCronRunScopedActiveDelivery(
-  outcome: EmbeddedAgentQueueMessageOutcome,
-): boolean {
-  return (
-    !outcome.queued &&
-    (outcome.reason === "not_streaming" ||
-      outcome.reason === "no_active_run" ||
-      outcome.reason === "stale_run")
-  );
-}
-
 type SessionsSendDeliveryParams = {
   cfg: OpenClawConfig;
+  admissionConfig: OpenClawConfig;
   callGateway: AgentToolGatewayRequestCaller;
   runId: string;
   sendParams: Record<string, unknown> & {
@@ -134,21 +135,41 @@ type SessionsSendDeliveryParams = {
   deliveryTimeoutMs?: number;
   allowActiveRunQueueDelivery?: boolean;
   expectedSessionId?: string;
+  /** Communication binds an incarnation without claiming result ownership or forbidding Cron fallback. */
+  preparedTargetSessionId?: string;
   retainAcceptance?: boolean;
+  captureReplyAdmission?: (runId: string) => SessionSendReplyAdmission;
   assertDispatchCurrent?: () => void;
+  // Destination policy fences input commit, not an already accepted acknowledgment.
+  assertSendCurrent?: () => void;
   sourceOrigin?: DeliveryContext;
+  /** A Cron fallback is another exact recipient and needs its own admission. */
+  prepareFallback?: (sessionKey: string) => Promise<{
+    targetSession?: AgentStepSession;
+    captureReplyAdmission?: (runId: string) => SessionSendReplyAdmission;
+    callGateway: AgentToolGatewayRequestCaller;
+    assertCurrent: () => void;
+    close: () => void;
+  }>;
   mode?: "steer" | "followup";
 };
 
-type SessionsSendStart =
+export type SessionsSendStart =
   | {
       ok: true;
       runId: string;
       targetDisposition: "queued" | "steered";
       steeredRunId?: string;
       a2aSessionKey?: string;
+      a2aSession?: AgentStepSession;
+      replyAdmission?: SessionSendReplyAdmission;
     }
-  | { ok: false; result: ReturnType<typeof jsonResult> };
+  | { ok: false; result: ReturnType<typeof jsonResult<Record<string, unknown>>> };
+
+/** Rejections that leave a Cron run-scoped target to its durable parent session. */
+const FALLBACK_STEER_REJECTIONS = new Set<
+  Extract<SessionControllerSteerResult, { status: "rejected" }>["reason"]
+>(["no_active_run", "not_running", "stale_run", "injection_unavailable"]);
 
 /** Decide steering before preparing custody for a new turn. */
 export async function trySessionsSendActiveRunDelivery(
@@ -157,52 +178,97 @@ export async function trySessionsSendActiveRunDelivery(
 ): Promise<SessionsSendStart | { fallbackSessionKey?: string }> {
   const assertCaller = captureGatewayToolCallerAssertion();
   try {
-    const selection = resolveGatewayToolOperatorSelection();
+    const selection = resolveGatewayToolOperatorSelection({ requireRequesterOrigin: true });
     selection.assertCurrent();
     let fallbackSessionKey: string | undefined;
-    const activeRunSessionId =
+    const activeOperation =
       params.mode === "steer" ||
       (params.mode !== "followup" &&
         params.allowActiveRunQueueDelivery &&
         (ownChild || isRunScopedAgentSessionKey(params.sessionKey)))
-        ? resolveActiveEmbeddedRunSessionId(params.sessionKey)
+        ? getSessionControllerOperation(
+            params.sessionStoreTarget.canonicalKey,
+            captureSessionTarget({
+              storeScope: params.sessionStoreTarget.storePath,
+              sessionKey: params.sessionStoreTarget.canonicalKey,
+              agentId: params.sessionStoreTarget.agentId,
+            }),
+          )
         : undefined;
+    const activeRunSessionId = activeOperation?.sessionId;
     if (params.mode === "steer" && !activeRunSessionId) {
       throw new Error(
         "Target has no active run that accepts steering. Use mode=followup to start a new turn.",
       );
     }
+    const expectedActiveSessionId = params.expectedSessionId ?? params.preparedTargetSessionId;
     if (
       activeRunSessionId &&
-      params.expectedSessionId &&
-      activeRunSessionId !== params.expectedSessionId
+      expectedActiveSessionId &&
+      activeRunSessionId !== expectedActiveSessionId
     ) {
       throw new Error("active run session incarnation changed");
     }
     const { inputProvenance, message: messageText, sourceReplyDeliveryMode } = params.sendParams;
-    if (activeRunSessionId && messageText) {
+    if (activeOperation && activeRunSessionId && messageText) {
+      const requesterOrigin = selection.requesterOrigin;
+      if (!requesterOrigin) {
+        if (params.mode === "steer") {
+          throw new Error('Cannot verify requester identity for steering; use mode: "followup".');
+        }
+        return {};
+      }
       const queue = async (
         assertCurrent: () => void,
-        lifecycle: Pick<
-          EmbeddedAgentQueueMessageOptions,
-          "onQueueAccepted" | "onQueueSettled"
-        > = {},
+        lifecycle: Pick<ReplyMessageInjectionOptions, "onQueueAccepted" | "onQueueSettled"> = {},
       ) => {
-        const queueOptions: EmbeddedAgentQueueMessageOptions = {
+        let accepted = false;
+        const assertInputCurrent = () => {
+          assertCurrent();
+          if (!accepted) {
+            params.assertSendCurrent?.();
+          }
+        };
+        const guarded = Boolean(
+          selection.operatorAuthority || assertCaller || params.assertSendCurrent,
+        );
+        assertInputCurrent();
+        const queueOptions: ReplyMessageInjectionOptions = {
+          requesterToolAuthority: {
+            requesterOrigin,
+            config: params.admissionConfig,
+          },
           steeringMode: "all",
           debounceMs: 0,
           deliveryTimeoutMs: params.deliveryTimeoutMs,
           ...lifecycle,
+          onQueueAccepted: (value) => {
+            // Accepted guidance belongs to the receiver, not the sender's later policy.
+            accepted ||= value;
+            lifecycle.onQueueAccepted?.(value);
+          },
+          // Source-bound authority admits only guarded (V2) injection.
+          ...(guarded
+            ? {
+                assertCurrent: () => {
+                  assertInputCurrent();
+                  if (!selection.operatorAuthority) {
+                    assertCaller?.("agent");
+                  }
+                },
+              }
+            : {}),
           // Waiting for a busy run's transcript would withdraw accepted guidance at the deadline.
           ...(params.mode === "steer" || ownChild
             ? { waitForTranscriptCommit: false }
             : { waitForTranscriptCommit: true, sourceReplyDeliveryMode }),
           // The receiving runtime owns transcript writes to this exact incarnation.
           userTurnTranscriptRecorder: createUserTurnTranscriptRecorder({
-            assertOriginalInputCommit: assertCurrent,
+            assertOriginalInputCommit: assertInputCurrent,
             input: {
               text: messageText,
               provenance: inputProvenance,
+              requesterOrigin,
               ...(inputProvenance.sourceRole === "subagent" ? { display: false as const } : {}),
               idempotencyKey: buildRunUserTurnIdempotencyKey(params.runId),
             },
@@ -217,44 +283,61 @@ export async function trySessionsSendActiveRunDelivery(
             },
           }),
         };
-        const dispatchQueue = (options: EmbeddedAgentQueueMessageOptions) =>
-          selection.operatorAuthority || assertCaller
-            ? queueGuardedEmbeddedAgentMessageWithOutcomeAsync(
-                activeRunSessionId,
-                messageText,
-                options,
-                () => {
-                  assertCurrent();
-                  if (!selection.operatorAuthority) {
-                    assertCaller?.("agent");
-                  }
-                  return true;
-                },
-              )
-            : queueEmbeddedAgentMessageWithOutcomeAsync(activeRunSessionId, messageText, options);
-        assertCurrent();
-        let outcome = await dispatchQueue(queueOptions);
-        if (!outcome.queued && outcome.reason === "transcript_commit_wait_unsupported") {
-          const bestEffortQueueOptions = { ...queueOptions };
-          delete bestEffortQueueOptions.waitForTranscriptCommit;
-          outcome = await dispatchQueue(bestEffortQueueOptions);
+        const dispatchQueue = (options: ReplyMessageInjectionOptions) =>
+          steerSessionControllerOperation({
+            operation: activeOperation,
+            text: messageText,
+            // A status-only inter-session input cannot abort the receiving turn.
+            abortOnUnconfirmedTranscript: false,
+            options,
+          });
+        let result = await dispatchQueue(queueOptions);
+        if (
+          result.status === "rejected" &&
+          result.reason === "transcript_commit_wait_unsupported"
+        ) {
+          const bestEffortOptions = { ...queueOptions };
+          delete bestEffortOptions.waitForTranscriptCommit;
+          result = await dispatchQueue(bestEffortOptions);
         }
-        return outcome;
+        return result;
       };
-      const queueOutcome = selection.operatorAuthority
+      const steer = selection.operatorAuthority
         ? await queueSessionsSendSteeringWithCustody(
-            { sessionKey: params.sessionKey, agentId: params.sendParams.agentId },
+            {
+              sessionKey: params.sessionKey,
+              sessionId: activeRunSessionId,
+              agentId: params.sendParams.agentId,
+            },
+            activeOperation,
             selection.assertCurrent,
             queue,
           )
         : await queue(selection.assertCurrent);
-      if (queueOutcome.queued) {
+      if (steer.status === "accepted") {
         return {
           ok: true,
           runId: params.runId,
           targetDisposition: "steered",
-          steeredRunId: queueOutcome.runId,
+          steeredRunId: steer.targetRunId,
         };
+      }
+      if (steer.status === "indeterminate") {
+        // Consumed without a confirmed commit: never replay it as a new turn.
+        throw new Error(steer.errorMessage);
+      }
+      if (
+        steer.reason === "requester_origin_mismatch" ||
+        steer.reason === "tool_authority_mismatch"
+      ) {
+        if (params.mode === "steer") {
+          throw new Error(
+            steer.reason === "requester_origin_mismatch"
+              ? 'Active run has a different requester; use mode: "followup".'
+              : 'Requester policy does not match the active run; use mode: "followup".',
+          );
+        }
+        return {};
       }
       fallbackSessionKey = ownChild
         ? undefined
@@ -262,10 +345,11 @@ export async function trySessionsSendActiveRunDelivery(
       if (
         params.mode === "steer" ||
         (!ownChild && (params.expectedSessionId || !fallbackSessionKey)) ||
-        (!ownChild && !shouldFallbackCronRunScopedActiveDelivery(queueOutcome))
+        (!ownChild && !FALLBACK_STEER_REJECTIONS.has(steer.reason))
       ) {
+        const errorPart = steer.errorMessage ? ` error=${steer.errorMessage}` : "";
         throw new Error(
-          formatEmbeddedAgentQueueFailureSummary(queueOutcome) ?? "active run queue rejected",
+          `queue_message_failed reason=${steer.reason} sessionId=${activeRunSessionId} gatewayHealth=live${errorPart}`,
         );
       }
     }
@@ -275,11 +359,37 @@ export async function trySessionsSendActiveRunDelivery(
   }
 }
 
+function resolveSendMutationGuards(
+  params: Pick<SessionsSendDeliveryParams, "assertDispatchCurrent" | "assertSendCurrent">,
+) {
+  if (params.assertSendCurrent && !hasInProcessGatewayToolContext()) {
+    // Standalone operator clients can fence wire submission, not attach a host-only commit callback.
+    return {
+      assertDispatchCurrent: () => {
+        params.assertDispatchCurrent?.();
+        params.assertSendCurrent?.();
+      },
+    };
+  }
+  return {
+    assertDispatchCurrent: params.assertDispatchCurrent,
+    ...(params.assertSendCurrent ? { sessionMutationCommitGuard: params.assertSendCurrent } : {}),
+  };
+}
+
 export async function startSessionsSendAgentRun(
   params: SessionsSendDeliveryParams & { fallbackSessionKey?: string },
 ): Promise<SessionsSendStart> {
   const { fallbackSessionKey } = params;
+  const caller = getGatewayToolCallerIdentity();
+  let fallback:
+    | Awaited<ReturnType<NonNullable<SessionsSendDeliveryParams["prepareFallback"]>>>
+    | undefined;
   try {
+    const selection = resolveGatewayToolOperatorSelection({ requireRequesterOrigin: true });
+    if (fallbackSessionKey) {
+      fallback = await params.prepareFallback?.(fallbackSessionKey);
+    }
     // Self-sends retain the captured conversation; a distinct Cron parent uses its own route.
     const sourceOrigin = fallbackSessionKey ? undefined : params.sourceOrigin;
     const sendParams = sourceOrigin
@@ -294,8 +404,22 @@ export async function startSessionsSendAgentRun(
     const accepted = params.retainAcceptance
       ? createDeferredCore<{ runId: string; admissionPending?: boolean }>()
       : undefined;
-    const responsePromise = params.callGateway<{ runId: string; admissionPending?: boolean }>({
+    const assertSendCurrent = fallback?.assertCurrent ?? params.assertSendCurrent;
+    assertSendCurrent?.();
+    const responsePromise = (fallback?.callGateway ?? params.callGateway)<{
+      runId: string;
+      admissionPending?: boolean;
+    }>({
       method: "agent",
+      ...(caller && selection.requesterOrigin
+        ? {
+            agentToolCaller: {
+              agentId: caller.agentId,
+              sessionKey: caller.sessionKey,
+              requesterOrigin: selection.requesterOrigin,
+            },
+          }
+        : {}),
       params: fallbackSessionKey
         ? {
             ...sendParams,
@@ -304,7 +428,7 @@ export async function startSessionsSendAgentRun(
           }
         : sendParams,
       timeoutMs: 10_000,
-      assertDispatchCurrent: params.assertDispatchCurrent,
+      ...resolveSendMutationGuards({ ...params, assertSendCurrent }),
       ...(accepted
         ? {
             expectFinal: true,
@@ -343,10 +467,17 @@ export async function startSessionsSendAgentRun(
       ok: true,
       runId: responseRunId,
       targetDisposition: "queued",
-      ...(fallbackSessionKey ? { a2aSessionKey: fallbackSessionKey } : {}),
+      replyAdmission: params.retainAcceptance
+        ? undefined
+        : (fallback?.captureReplyAdmission ?? params.captureReplyAdmission)?.(responseRunId),
+      ...(fallbackSessionKey
+        ? { a2aSessionKey: fallbackSessionKey, a2aSession: fallback?.targetSession }
+        : {}),
     };
   } catch (err) {
     return deliveryFailure(params, err);
+  } finally {
+    fallback?.close();
   }
 }
 
@@ -397,13 +528,29 @@ export function isConfiguredAgentMainSessionKey(params: {
 }
 
 export async function createConfiguredAgentMainSession(params: {
+  mode?: "followup" | "steer" | "notify" | "resume";
+  inheritedToolPolicySource?: "sender";
   callGateway: AgentToolGatewayRequestCaller;
   agentId: string;
   sessionKey: string;
   requesterSessionKey?: string;
   useTrustedInProcessCreation: boolean;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+  assertCurrent?: () => void;
+}): Promise<{ ok: true } | { ok: false; status: "error" | "forbidden"; error: string }> {
+  const requesterPolicyError = resolveSenderRestrictedSpawnError({ ...params, visible: true });
+  if (requesterPolicyError) {
+    return { ok: false, status: "forbidden", error: requesterPolicyError };
+  }
+  if (params.mode === "steer" || params.mode === "notify" || params.mode === "resume") {
+    return {
+      ok: false,
+      status: "error",
+      error:
+        "Cannot notify, steer, or resume a missing session. Use mode=followup to start a new turn.",
+    };
+  }
   try {
+    params.assertCurrent?.();
     const createParams = {
       key: params.sessionKey,
       agentId: params.agentId,
@@ -415,19 +562,25 @@ export async function createConfiguredAgentMainSession(params: {
     ) {
       // sessions.create serializes keyed creation and adopts an existing row,
       // so concurrent first sends can safely race after the missing resolution.
-      await callInProcessGatewayToolWithCreation("sessions.create", createParams, {
-        via: "internal",
-        actor: { type: "agent", id: params.requesterSessionKey },
-      });
+      await callInProcessGatewayToolWithCreation(
+        "sessions.create",
+        createParams,
+        {
+          via: "internal",
+          actor: { type: "agent", id: params.requesterSessionKey },
+        },
+        { sessionMutationCommitGuard: params.assertCurrent },
+      );
     } else {
       await params.callGateway({
         method: "sessions.create",
         params: createParams,
+        ...resolveSendMutationGuards({ assertSendCurrent: params.assertCurrent }),
         timeoutMs: 10_000,
       });
     }
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: formatErrorMessage(err) };
+    return { ok: false, status: "error", error: formatErrorMessage(err) };
   }
 }

@@ -21,9 +21,9 @@ export function resetRequesterSettleWakeRetry(
     ...wake,
     status: "pending",
     attemptCount: 0,
+    privateInput: undefined,
     replayCount: undefined,
     nextAttemptAt: undefined,
-    deferralCount: undefined,
     lastError: undefined,
   };
 }
@@ -45,7 +45,10 @@ export function projectSubagentRunForSessionList(entry: SubagentRunRecord): Suba
     ...(entry.taskRunId !== undefined ? { taskRunId: entry.taskRunId } : {}),
     ...(entry.pauseReason ? { pauseReason: entry.pauseReason } : {}),
     ...(entry.swarmRunId ? { swarmRunId: entry.swarmRunId } : {}),
+    ...(entry.schedulerSlotId ? { schedulerSlotId: entry.schedulerSlotId } : {}),
+    ...(entry.swarmLaunchReplayKey ? { swarmLaunchReplayKey: entry.swarmLaunchReplayKey } : {}),
     childSessionKey: entry.childSessionKey,
+    ...(entry.childAgentId ? { childAgentId: entry.childAgentId } : {}),
     ...(entry.controllerSessionKey ? { controllerSessionKey: entry.controllerSessionKey } : {}),
     requesterSessionKey: entry.requesterSessionKey,
     requesterStorePath: entry.requesterStorePath,
@@ -88,9 +91,7 @@ export function projectSubagentRunForSessionList(entry: SubagentRunRecord): Suba
       ? {
           delivery: {
             status: entry.delivery.status,
-            ...(entry.delivery.disposition === "intentional_non_delivery"
-              ? { disposition: entry.delivery.disposition }
-              : {}),
+            ...(entry.delivery.disposition ? { disposition: entry.delivery.disposition } : {}),
             ...(entry.delivery.suspendedAt !== undefined
               ? { suspendedAt: entry.delivery.suspendedAt }
               : {}),
@@ -107,6 +108,7 @@ export function projectSubagentRunForMaintenance(
   return {
     runId: entry.runId,
     childSessionKey: entry.childSessionKey,
+    ...(entry.childAgentId ? { childAgentId: entry.childAgentId } : {}),
     requesterSessionKey: entry.requesterSessionKey,
     createdAt: entry.createdAt,
     cleanupCompletedAt: entry.cleanupCompletedAt,
@@ -211,14 +213,12 @@ export function ensureDeliveryState(entry: SubagentRunRecord): SubagentCompletio
   return entry.delivery;
 }
 
-/** Resets delivery state to its initial status for the run's completion requirement. */
 export function clearDeliveryState(entry: SubagentRunRecord): void {
   entry.delivery = {
     status: entry.expectsCompletionMessage === false ? "not_required" : "pending",
   };
 }
 
-/** Returns true when delivery is suspended with a durable timestamp. */
 export function isDeliverySuspended(entry: Pick<SubagentRunRecord, "delivery">): boolean {
   return entry.delivery?.status === "suspended" && typeof entry.delivery.suspendedAt === "number";
 }
@@ -265,10 +265,6 @@ export function hasRetainedRequiredCompletionDelivery(
   );
 }
 
-export function getDeliveryAttemptCount(entry: SubagentRunRecord): number {
-  return entry.delivery?.attemptCount ?? 0;
-}
-
 export function getDeliveryLastError(entry: SubagentRunRecord): string | undefined {
   const error = entry.delivery?.lastError;
   return typeof error === "string" && error.trim() ? error : undefined;
@@ -280,7 +276,7 @@ export const markRequesterSettleWakePending = (
 ) => {
   const existing = entry.requesterSettleWake;
   entry.requesterSettleWake = {
-    ...structuredClone(existing),
+    ...existing,
     status: existing?.status ?? "pending",
     attemptCount: existing?.attemptCount ?? 0,
     ...(existing?.retireAfterSettle === true || options?.retireAfterSettle === true
@@ -343,7 +339,6 @@ export function transitionRequesterSettleWakeState(
   };
 }
 
-/** Clear this wake and return its existing row-retirement decision. */
 export function completeRequesterSettleWakeState(entry: SubagentRunRecord): boolean {
   let retire = false;
   if (entry.pauseReason !== "sessions_yield") {

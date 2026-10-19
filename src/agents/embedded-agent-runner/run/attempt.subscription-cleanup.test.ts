@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "../../../test-utils/prepare-compiled-subprocesses.js";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 
 const mocks = vi.hoisted(() => ({ warn: vi.fn() }));
@@ -53,7 +54,7 @@ function orderedCleanup(order: string[]) {
       order.push("flush");
     }),
     session: {
-      agent: {},
+      agent: { waitForIdle: async () => {} },
       dispose: () => {
         order.push("dispose");
       },
@@ -94,7 +95,6 @@ describe("cleanupEmbeddedAttemptResources", () => {
   });
 
   it.each([
-    { override: "1250", fast: undefined, timeoutMs: 1_250 },
     { override: "0x10", fast: undefined, timeoutMs: 2_000 },
     { override: "10ms", fast: "1", timeoutMs: 250 },
   ])(

@@ -6,6 +6,7 @@ import {
   parseStrictNonNegativeInteger,
   resolveTimerTimeoutMs,
 } from "@openclaw/normalization-core/number-coercion";
+import { isStringArray } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { retryClawHubRead } from "./clawhub-retry.js";
 import { isTruthyEnvValue } from "./env.js";
@@ -73,10 +74,13 @@ export class ClawHubRequestError extends Error {
 }
 
 /** Resolves the configured ClawHub base URL, falling back to the default public host. */
-export function resolveClawHubBaseUrl(baseUrl?: string): string {
+export function resolveClawHubBaseUrl(
+  baseUrl?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
   const envValue =
-    normalizeOptionalString(process.env.OPENCLAW_CLAWHUB_URL) ||
-    normalizeOptionalString(process.env.CLAWHUB_URL) ||
+    normalizeOptionalString(env.OPENCLAW_CLAWHUB_URL) ||
+    normalizeOptionalString(env.CLAWHUB_URL) ||
     DEFAULT_CLAWHUB_URL;
   const value = (normalizeOptionalString(baseUrl) || envValue).replace(/\/+$/, "");
   return value || DEFAULT_CLAWHUB_URL;
@@ -199,15 +203,9 @@ function buildUrl(params: Pick<ClawHubRequestParams, "baseUrl" | "path" | "searc
   return url;
 }
 
-type ClawHubResponse = {
-  response: Response;
-  url: URL;
-  hasToken: boolean;
-  /** Successful archives keep only their chunk-idle timeout while streaming. */
-  releaseDeadline: () => void;
-};
+type ClawHubResponse = Awaited<ReturnType<typeof requestClawHub>>;
 
-async function requestClawHub(params: ClawHubRequestParams): Promise<ClawHubResponse> {
+async function requestClawHub(params: ClawHubRequestParams) {
   const url = buildUrl(params);
   const token = params.skipAuth
     ? undefined
@@ -230,10 +228,16 @@ async function requestClawHub(params: ClawHubRequestParams): Promise<ClawHubResp
   }
   const request = async () => {
     const controller = new AbortController();
+    // Fetch rejects with the abort reason; preserve timeout classification for read retries.
+    const timeoutError = Object.assign(
+      new Error(`ClawHub request timed out after ${timeoutMs}ms`),
+      { code: "ETIMEDOUT" },
+    );
     let timeout: ReturnType<typeof setTimeout> | undefined = setTimeout(
-      () => controller.abort(new Error(`ClawHub request timed out after ${timeoutMs}ms`)),
+      () => controller.abort(timeoutError),
       timeoutMs,
     );
+    // Successful archives keep only their chunk-idle timeout while streaming.
     const releaseDeadline = () => {
       if (timeout !== undefined) {
         clearTimeout(timeout);
@@ -424,6 +428,22 @@ export function readClawHubStringField(
   throw new Error(`Malformed ClawHub ${context}: expected ${field} to be a string or null.`);
 }
 
+/** Validate optional strings, omitting absent, null, and empty values. */
+export function readClawHubNonEmptyStringFields<T extends string>(
+  source: Record<string, unknown>,
+  fields: readonly T[],
+  context: string,
+): Partial<Record<T, string>> {
+  const result: Partial<Record<T, string>> = {};
+  for (const field of fields) {
+    const value = readClawHubStringField(source, field, context);
+    if (value) {
+      result[field] = value;
+    }
+  }
+  return result;
+}
+
 export function readRequiredClawHubBooleanField(
   source: Record<string, unknown>,
   field: string,
@@ -442,7 +462,7 @@ export function readRequiredClawHubStringArrayField(
   context: string,
 ): string[] {
   const value = source[field];
-  if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
+  if (isStringArray(value)) {
     return value;
   }
   throw new Error(`Malformed ClawHub ${context}: expected ${field} to be a string array.`);

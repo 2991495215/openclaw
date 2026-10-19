@@ -9,9 +9,9 @@ import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.j
 import { SourceOwnerChangedError } from "./subagent-announce-delivery-retry.js";
 import {
   loadSessionEntryByKey,
-  runAnnounceDeliveryWithRetry,
   resolveSubagentAnnounceTimeoutMs,
 } from "./subagent-announce-delivery.js";
+import { hasUsableSessionEntry } from "./subagent-announce-delivery.runtime.js";
 import type {
   callSubagentLifecycleGateway,
   dispatchGatewayMethodInProcess,
@@ -22,10 +22,8 @@ type DescendantWakeDeps = {
   callGateway: typeof callSubagentLifecycleGateway;
   dispatchGatewayMethodInProcess: typeof dispatchGatewayMethodInProcess;
   getRuntimeConfig: typeof getRuntimeConfig;
-  replaceSubagentRunAfterSteer: typeof import("../registry/subagent-registry-runtime.js").replaceSubagentRunAfterSteer;
+  replaceSubagentRunAfterSteer: typeof import("../registry/subagent-registry.js").replaceSubagentRunAfterSteerCore;
 };
-
-type UsableSessionEntryGuard = (entry: unknown) => entry is Record<string, unknown>;
 
 function isWakeContinuation(runId: string): boolean {
   const trimmed = runId.trim();
@@ -52,9 +50,8 @@ export async function runDescendantWake(params: {
   taskLabel: string;
   findings: string;
   announceId: string;
-  prepareCurrent?: () => Promise<boolean>;
+  prepareCurrent: () => Promise<boolean>;
   isChildSessionEffectsAllowed: () => boolean;
-  hasUsableSessionEntry: UsableSessionEntryGuard;
   deps: DescendantWakeDeps;
   resolveGatewayContext?: GatewayContextResolver;
   signal?: AbortSignal;
@@ -67,66 +64,59 @@ export async function runDescendantWake(params: {
     return false;
   }
 
-  if (params.prepareCurrent && !(await params.prepareCurrent())) {
+  if (!(await params.prepareCurrent())) {
     return false;
   }
   if (params.signal?.aborted || !params.isChildSessionEffectsAllowed()) {
     return false;
   }
   const childEntry = await loadSessionEntryByKey(params.childSessionKey);
-  if (!params.hasUsableSessionEntry(childEntry)) {
+  if (!hasUsableSessionEntry(childEntry)) {
     return false;
   }
 
   const cfg = params.deps.getRuntimeConfig();
   const announceTimeoutMs = resolveSubagentAnnounceTimeoutMs(cfg);
   const wakeLifecycleGeneration = getAgentEventLifecycleGeneration();
-  const wakeMessage = buildDescendantWakeMessage({
-    findings: params.findings,
-    taskLabel: params.taskLabel,
-  });
+  const wakeMessage = buildDescendantWakeMessage(params);
 
   let wakeRunId;
   try {
-    const wakeResponse = await runAnnounceDeliveryWithRetry<{ runId?: string }>({
-      operation: "descendant wake agent call",
-      signal: params.signal,
-      prepareAttempt: params.prepareCurrent,
-      isAttemptAllowed: params.isChildSessionEffectsAllowed,
-      run: async () => {
-        return await params.deps.dispatchGatewayMethodInProcess(
-          "agent",
-          {
-            sessionKey: params.childSessionKey,
-            message: wakeMessage,
-            deliver: false,
-            timeout: params.runTimeoutSeconds ?? 0,
-            inputProvenance: {
-              kind: "inter_session",
-              sourceSessionKey: params.childSessionKey,
-              sourceChannel: INTERNAL_PROVENANCE_SOURCE_CHANNEL,
-              sourceTool: "subagent_announce",
-            },
-            idempotencyKey: buildAnnounceIdempotencyKey(`${params.announceId}:wake`),
-          },
-          {
-            cancelOnDeadline: true,
-            operatorRoleActor: { kind: "system" },
-            signal: params.signal,
-            timeoutMs: announceTimeoutMs,
-            resolveGatewayContext: params.resolveGatewayContext,
-            prepareDispatchCurrent: async () => {
-              if (
-                (await params.prepareCurrent?.()) === false ||
-                !params.isChildSessionEffectsAllowed()
-              ) {
-                throw new SourceOwnerChangedError();
-              }
-            },
-          },
-        );
+    if (
+      params.signal?.aborted ||
+      !(await params.prepareCurrent()) ||
+      !params.isChildSessionEffectsAllowed()
+    ) {
+      return false;
+    }
+    const wakeResponse = await params.deps.dispatchGatewayMethodInProcess<{ runId?: string }>(
+      "agent",
+      {
+        sessionKey: params.childSessionKey,
+        message: wakeMessage,
+        deliver: false,
+        timeout: params.runTimeoutSeconds ?? 0,
+        inputProvenance: {
+          kind: "inter_session",
+          sourceSessionKey: params.childSessionKey,
+          sourceChannel: INTERNAL_PROVENANCE_SOURCE_CHANNEL,
+          sourceTool: "subagent_announce",
+        },
+        idempotencyKey: buildAnnounceIdempotencyKey(`${params.announceId}:wake`),
       },
-    });
+      {
+        cancelOnDeadline: true,
+        operatorRoleActor: { kind: "system" },
+        signal: params.signal,
+        timeoutMs: announceTimeoutMs,
+        resolveGatewayContext: params.resolveGatewayContext,
+        prepareDispatchCurrent: async () => {
+          if (!(await params.prepareCurrent()) || !params.isChildSessionEffectsAllowed()) {
+            throw new SourceOwnerChangedError();
+          }
+        },
+      },
+    );
     wakeRunId = normalizeOptionalString(wakeResponse?.runId) ?? "";
   } catch {
     return false;
@@ -151,7 +141,7 @@ export async function runDescendantWake(params: {
 
   let prepared: boolean;
   try {
-    prepared = (await params.prepareCurrent?.()) !== false;
+    prepared = await params.prepareCurrent();
   } catch {
     prepared = false;
   }
@@ -159,7 +149,7 @@ export async function runDescendantWake(params: {
     await terminateUnownedWake();
     return false;
   }
-  const replaced = params.deps.replaceSubagentRunAfterSteer({
+  const replaced = await params.deps.replaceSubagentRunAfterSteer({
     previousRunId: params.runId,
     nextRunId: wakeRunId,
     lifecycleGeneration: wakeLifecycleGeneration,

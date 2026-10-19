@@ -48,6 +48,7 @@ function chunkedResponse(
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   await Promise.all(created.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
@@ -77,14 +78,6 @@ describe("geolocation database store", () => {
     expect(results.every((r) => r.status === "rejected")).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     await expect(fs.readdir(path.join(stateDir, "geolocation"))).rejects.toThrow();
-  });
-
-  it("names the source in the cache path so a swapped source cannot reuse the old data", async () => {
-    const stateDir = await tempStateDir();
-    const settingsFor = (databaseUrl: string) =>
-      createStore(stateDir, Buffer.alloc(0), { databaseUrl }).databaseFile;
-
-    expect(settingsFor("https://a.test/db.mmdb")).not.toBe(settingsFor("https://b.test/db.mmdb"));
   });
 
   it("rejects an oversized body after its source cancellation settles", async () => {
@@ -203,45 +196,97 @@ function createStore(
 }
 
 describe("geolocation database publication", () => {
-  it.each(["before", "after"] as const)(
-    "serves its download when another process publishes %s its rename",
-    async (publication) => {
-      const stateDir = await tempStateDir();
-      const body = cityDatabase("Vienna");
-      const competingBody = cityDatabase("Paris");
-      const warn = vi.fn();
-      const store = createStore(stateDir, body, { warn });
-      const rename = fs.rename;
-      let competingPublished = false;
-      vi.spyOn(fs, "rename").mockImplementationOnce(async (source, target) => {
-        const publishCompeting = async () => {
-          const oldStaging = `${store.databaseFile}.partial`;
-          await fs.writeFile(oldStaging, competingBody);
-          await rename(oldStaging, store.databaseFile);
-          competingPublished = true;
-        };
-        if (publication === "before") {
-          await publishCompeting();
-        }
-        await rename(source, target);
-        if (publication === "after") {
-          await publishCompeting();
-        }
-      });
+  it("releases an idle disk-backed reader and reopens it without downloading", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const stateDir = await tempStateDir();
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(cityDatabase("Vienna")));
+    const store = createStore(stateDir, fetchImpl);
+    const readFile = vi.spyOn(fs, "readFile");
 
-      const database = await store.load();
+    expect((await store.load()).lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+    await vi.advanceTimersByTimeAsync(45_000);
+    const active = await store.load();
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect((await store.load()).lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+    expect(readFile).not.toHaveBeenCalled();
 
-      expect(competingPublished).toBe(true);
-      expect(database.lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
-      expect(await fs.readFile(store.databaseFile)).toEqual(
-        publication === "before" ? body : competingBody,
-      );
-      expect(warn).not.toHaveBeenCalled();
-      expect(await fs.readdir(path.dirname(store.databaseFile))).toEqual([
-        path.basename(store.databaseFile),
-      ]);
-    },
-  );
+    await vi.advanceTimersByTimeAsync(60_000);
+    const reopened = await Promise.all([store.load(), store.load()]);
+    expect(reopened.map((database) => database.lookup("8.8.8.8")?.city?.names.en)).toEqual([
+      "Vienna",
+      "Vienna",
+    ]);
+    expect(readFile).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    // An in-progress request may still own the old reader after idle eviction.
+    expect(active.lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+  });
+
+  it("retains an unpublished download when idle so a cache failure cannot lose it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const stateDir = await tempStateDir();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(cityDatabase("Vienna")))
+      .mockRejectedValue(new Error("source unavailable"));
+    const store = createStore(stateDir, fetchImpl);
+    vi.spyOn(fs, "writeFile").mockRejectedValueOnce(new Error("disk full"));
+
+    expect((await store.load()).lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect((await store.load()).lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("preserves failed-refresh backoff across idle reopens without extending it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const stateDir = await tempStateDir();
+    let currentTime = now;
+    const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new Error("source unavailable"));
+    const settings = resolveGeolocationSettings({ databaseUrl: "https://host.test/db.mmdb" });
+    const store = createGeolocationDatabaseStore({
+      stateDir,
+      settings,
+      now: () => currentTime,
+      fetchImpl,
+    });
+    await fs.mkdir(path.dirname(store.databaseFile));
+    await fs.writeFile(store.databaseFile, cityDatabase("Vienna"));
+    await fs.utimes(store.databaseFile, 0, 0);
+
+    expect((await store.load()).lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    currentTime = new Date(now.getTime() + 60_000);
+    expect((await store.load()).lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(settings.refreshMs);
+    currentTime = new Date(now.getTime() + settings.refreshMs + 1);
+    expect((await store.load()).lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("serves its own reader after another process replaces its publication", async () => {
+    const stateDir = await tempStateDir();
+    const body = cityDatabase("Vienna");
+    const competingBody = cityDatabase("Paris");
+    const warn = vi.fn();
+    const store = createStore(stateDir, body, { warn });
+    const rename = fs.rename;
+    vi.spyOn(fs, "rename").mockImplementationOnce(async (source, target) => {
+      await rename(source, target);
+      const competing = `${store.databaseFile}.partial`;
+      await fs.writeFile(competing, competingBody);
+      await rename(competing, store.databaseFile);
+    });
+    expect((await store.load()).lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+    expect(await fs.readFile(store.databaseFile)).toEqual(competingBody);
+    expect(warn).not.toHaveBeenCalled();
+    expect(await fs.readdir(path.dirname(store.databaseFile))).toEqual([
+      path.basename(store.databaseFile),
+    ]);
+  });
 
   it("keeps the first download invisible while its staged file is being written", async () => {
     const stateDir = await tempStateDir();

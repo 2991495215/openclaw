@@ -1,11 +1,17 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { writeSlackApprovalCheckpoint } from "./slack-live.approval-checkpoint.js";
 import { runSlackApprovalScenario, waitForSlackApprovalMessage } from "./slack-live.approvals.js";
+import { runSlackCodexApprovalScenario } from "./slack-live.codex-approval-runner.js";
 import type {
   SlackMessage,
   SlackObservedMessage,
   SlackQaFetchFunction,
 } from "./slack-live.contracts.js";
 import { loadSlackQaRuntime } from "./slack-plugin.runtime.js";
+
+vi.mock("./slack-live.approval-checkpoint.js", () => ({
+  writeSlackApprovalCheckpoint: vi.fn(),
+}));
 
 const actionValue =
   'openclaw:approval:v1:{"approvalId":"plugin:owned","approvalKind":"plugin","decision":"allow-once"}';
@@ -55,10 +61,141 @@ function observation(pages: SlackMessage[][]) {
 }
 
 afterEach(() => {
+  vi.mocked(writeSlackApprovalCheckpoint).mockReset();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.useRealTimers();
 });
+
+it.each(["ok", "failed", "missing-command-result"] as const)(
+  "completes Codex approval only after native operation verification (%s)",
+  async (outcome) => {
+    const phases: string[] = [];
+    const marker = "SLACK_QA_CODEX_APPROVAL";
+    const title = "Codex app-server command approval";
+    let runId: unknown;
+    let sessionKey: unknown;
+    let resolved = false;
+    const call = vi.fn(async (method: string, args?: unknown) => {
+      phases.push(method);
+      if (method === "agent") {
+        const request = args as { idempotencyKey: string; sessionKey: string };
+        runId = request.idempotencyKey;
+        sessionKey = request.sessionKey;
+      }
+      if (method === "plugin.approval.resolve") {
+        resolved = true;
+      }
+      const replies: Record<string, unknown> = {
+        agent: { runId, status: "accepted" },
+        "plugin.approval.list": [
+          {
+            id: "plugin:owned",
+            request: {
+              pluginId: "codex",
+              title,
+              toolName: "codex_command_approval",
+              sessionKey,
+              turnSourceChannel: "slack",
+              turnSourceTo: "channel:channel",
+              turnSourceAccountId: "sut",
+            },
+          },
+        ],
+        "plugin.approval.resolve": {},
+        "agent.wait": { status: outcome === "failed" ? "failed" : "ok" },
+        "chat.history": {
+          messages: [
+            {
+              role: "toolResult",
+              content: outcome === "missing-command-result" ? "unrelated" : marker,
+            },
+            { role: "assistant", content: marker },
+          ],
+        },
+        "chat.abort": {},
+      };
+      if (!Object.hasOwn(replies, method)) {
+        throw new Error(`unexpected Gateway method ${method}`);
+      }
+      return replies[method];
+    });
+    const fetch: SlackQaFetchFunction = async () => {
+      phases.push(resolved ? "observe-resolved" : "observe-pending");
+      return Response.json({
+        ok: true,
+        messages: [
+          message({
+            text: `Plugin approval${resolved ? ": Allowed once" : " required"} codex ${title}`,
+            blocks: resolved ? [] : buttons,
+          }),
+        ],
+      });
+    };
+    const client = loadSlackQaRuntime().createSlackWebClient("xoxb-qa-approval-fixture", { fetch });
+    vi.mocked(writeSlackApprovalCheckpoint).mockImplementation(async ({ state }) => {
+      await Promise.resolve();
+      phases.push(`checkpoint-${state}`);
+      return {
+        ackPath: `${state}.ack.json`,
+        checkpointPath: `${state}.json`,
+        screenshotPath: `${state}.png`,
+      };
+    });
+    const stopGateway = vi.fn(async () => {
+      phases.push("stop");
+    });
+    const result = runSlackCodexApprovalScenario({
+      channelId: "channel",
+      context: { gateway: { call }, sutIdentity: { userId: "sut" }, sutReadClient: client },
+      observedMessages: [],
+      primaryModel: "openai/gpt-5.6-luna",
+      run: {
+        kind: "codex-approval",
+        approvalKind: "plugin",
+        appServerMethod: "item/commandExecution/requestApproval",
+        decision: "allow-once",
+        token: marker,
+      },
+      scenario: { id: "slack-codex-approval", title: "Slack Codex approval", timeoutMs: 1_000 },
+      stopGateway,
+      sutAccountId: "sut",
+    });
+    if (outcome === "ok") {
+      await expect(result).resolves.toMatchObject({
+        artifact: {
+          approvalId: "plugin:owned",
+          appServerMethod: "item/commandExecution/requestApproval",
+          codexModelKey: "openai/gpt-5.6-luna",
+          finalCodexTurnStatus: "ok",
+          operationVerified: true,
+          pendingMessageTs: "100.1",
+          resolvedMessageTs: "100.1",
+          pendingCheckpointPath: "pending.json",
+          resolvedCheckpointPath: "resolved.json",
+        },
+      });
+    } else {
+      await expect(result).rejects.toThrow(
+        outcome === "failed"
+          ? "finished with status failed"
+          : "command result did not contain marker",
+      );
+    }
+    expect(phases).toEqual([
+      ..."agent observe-pending plugin.approval.list checkpoint-pending plugin.approval.resolve agent.wait".split(
+        " ",
+      ),
+      ...(outcome === "failed" ? [] : ["chat.history"]),
+      ...(outcome === "ok" ? ["observe-resolved", "checkpoint-resolved"] : []),
+      "chat.abort",
+      "agent.wait",
+      "stop",
+    ]);
+    expect(stopGateway).toHaveBeenCalledWith(outcome !== "ok");
+    expect(call).toHaveBeenCalledWith("chat.abort", { runId, sessionKey }, { timeoutMs: 10_000 });
+  },
+);
 
 it("retains prompt evidence while waiting for the requested native decision", async () => {
   vi.useFakeTimers();
@@ -140,14 +277,10 @@ it("allows live approval decision RPCs to take longer than the generic gateway p
     scenario: { id: "slack-approval", title: "Slack approval", timeoutMs: 1_000 },
     sutAccountId: "sut",
   });
-  expect(call).toHaveBeenCalledWith(
-    "plugin.approval.resolve",
-    { decision: "allow-once", id: "plugin:owned" },
-    { expectFinal: false, timeoutMs: 35_000 },
-  );
-  expect(call).toHaveBeenCalledWith(
-    "plugin.approval.waitDecision",
-    { id: "plugin:owned" },
-    { expectFinal: true, timeoutMs: 35_000 },
-  );
+  for (const [method, input, expectFinal] of [
+    ["plugin.approval.resolve", { decision: "allow-once", id: "plugin:owned" }, false],
+    ["plugin.approval.waitDecision", { id: "plugin:owned" }, true],
+  ] as const) {
+    expect(call).toHaveBeenCalledWith(method, input, { expectFinal, timeoutMs: 35_000 });
+  }
 });
