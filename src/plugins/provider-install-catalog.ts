@@ -15,7 +15,7 @@ import {
   type OfficialExternalProviderAuthChoice,
 } from "./official-external-plugin-catalog.js";
 import { normalizePluginInstallDefaultChoice } from "./plugin-install-default-choice.js";
-import type { PluginOrigin } from "./plugin-origin.types.js";
+import { PLUGIN_ORIGIN_PRIORITIES, type PluginOrigin } from "./plugin-origin.types.js";
 import { loadPluginRegistrySnapshot } from "./plugin-registry.js";
 import { isProviderAuthChoicePlatformSupported } from "./provider-auth-choice-platform.js";
 import {
@@ -47,12 +47,6 @@ type PreferredInstallSource = {
 type PreferredInstallSources = {
   installedPluginIds: ReadonlySet<string>;
   installsByPluginId: Map<string, PreferredInstallSource>;
-};
-const INSTALL_ORIGIN_PRIORITY: Readonly<Record<PluginOrigin, number>> = {
-  config: 0,
-  bundled: 1,
-  global: 2,
-  workspace: 3,
 };
 
 function resolveInstallInfoFromInstallRecord(
@@ -159,7 +153,8 @@ function resolvePreferredInstallsByPluginId(
     const existing = preferredByPluginId.get(record.pluginId);
     if (
       !existing ||
-      INSTALL_ORIGIN_PRIORITY[record.origin] < INSTALL_ORIGIN_PRIORITY[existing.origin]
+      PLUGIN_ORIGIN_PRIORITIES[record.origin]?.provider <
+        PLUGIN_ORIGIN_PRIORITIES[existing.origin]?.provider
     ) {
       preferredByPluginId.set(record.pluginId, {
         origin: record.origin,
