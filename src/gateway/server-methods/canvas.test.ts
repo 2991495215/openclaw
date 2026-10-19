@@ -244,10 +244,8 @@ describe("canvas.document.preview", () => {
 
   const retiredBoundaries = [
     "gateway",
-    "resolver",
     "client",
     "connection",
-    "method-registry",
     "signal",
     "configuration",
     "admission",
@@ -278,20 +276,12 @@ describe("canvas.document.preview", () => {
             case "gateway":
               currentContext = undefined;
               break;
-            case "resolver":
-              context.resolveGatewayContext = () => context;
-              break;
             case "client":
               client.invalidated = true;
               break;
             case "connection":
               context.isConnectionActive = () => false;
               break;
-            case "method-registry": {
-              const replacement = createGatewayMethodRegistry([]);
-              context.getGatewayMethodRegistry = () => replacement;
-              break;
-            }
             case "signal":
               controller.abort();
               break;
@@ -308,10 +298,6 @@ describe("canvas.document.preview", () => {
               break;
           }
         };
-        // Replacing an otherwise live resolver/registry only retires already-captured requests.
-        if (when === "before" && (boundary === "resolver" || boundary === "method-registry")) {
-          continue;
-        }
         if (when === "before") {
           retire();
         }

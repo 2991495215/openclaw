@@ -37,7 +37,6 @@ export function bindGatewayAgentTerminalProducer(params: {
           params.ingressOpts.abortSignal === controller.signal &&
           isRpcSourceRegistered(entry) &&
           entry.input.abortSignal === controller.signal &&
-          entry.adapter.operationalRunInstance === registeredRunInstance &&
           getRpcSourceLifecycleGeneration(entry) === registeredLifecycleGeneration &&
           getRpcSourceIdentity(entry).sessionId === sessionId &&
           getRpcSourceIdentity(entry).sessionKey === sessionKey &&

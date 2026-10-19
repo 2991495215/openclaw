@@ -9,7 +9,6 @@ import {
   type SessionRowWire,
 } from "../../packages/gateway-protocol/src/session-row-deltas.js";
 import type { SessionEventRowsResetCause } from "../infra/diagnostic-rpc-types.js";
-import { isDeeplyFrozenPlainData } from "../shared/immutable-data.js";
 import {
   recordSessionEventRowReset,
   updateSessionEventRowRetention,
@@ -61,10 +60,8 @@ export function prepareSessionAncestor(row: SessionRow) {
     content: createHash("sha256").update(serialized).digest("base64url"),
     chars: serialized.length,
   };
-  // Presentation replacement retires these facts; mutable callers still encode each sample.
-  if (isDeeplyFrozenPlainData(row)) {
-    preparedAncestors.set(row, prepared);
-  }
+  // The presenter owns immutable snapshots; replacement retires their prepared content.
+  preparedAncestors.set(row, prepared);
   return prepared;
 }
 

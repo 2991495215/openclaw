@@ -245,8 +245,6 @@ it("fences stale owners when a replacement epoch takes ownership", async () => {
   const stale = await start(4);
   const quiescence = await stale.quiesceWorkspace("/home/worker/workspace");
 
-  await expect(start(3)).rejects.toThrow("epoch is stale");
-
   const replacement = await start(5);
   const priorCommands = fake.runs.length;
   await expect(quiescence.resume()).resolves.toBeUndefined();

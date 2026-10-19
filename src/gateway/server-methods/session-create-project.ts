@@ -269,14 +269,11 @@ export function prepareSessionWorkspace(params: {
     const activeRunIdentity = getRpcSourceIdentity(activeRun);
     if (
       !isRpcSourceRegistered(activeRun) ||
-      activeRun.input.abortSignal !== signal ||
       activeRunIdentity.sessionKey !== sessionKey ||
       activeRunIdentity.sessionId !== entry.sessionId ||
       entry.sessionId !== admission.admittedSessionId ||
       getRpcSourceLifecycleGeneration(activeRun) !== admission.lifecycleGeneration ||
       getRpcSourceProjectSessionActive(activeRun) === false ||
-      activeRun.adapter.projectSessionTerminalPending === true ||
-      activeRun.adapter.projectSessionTerminalPersisted === true ||
       !hasActiveAgentRuntimeAuthority(client, context)
     ) {
       throw new Error(SESSION_PROJECT_OWNERSHIP_ERROR);

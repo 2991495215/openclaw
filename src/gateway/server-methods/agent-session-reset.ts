@@ -120,11 +120,8 @@ export async function resolveBareSessionResetResult(params: {
   });
   // Main/global resets default to best-effort delivery because no caller session may remain.
   const bestEffortDeliver =
-    typeof params.request.bestEffortDeliver === "boolean"
-      ? params.request.bestEffortDeliver
-      : params.sessionKey === mainSessionKey || params.sessionKey === "global"
-        ? true
-        : undefined;
+    params.request.bestEffortDeliver ??
+    (params.sessionKey === mainSessionKey || params.sessionKey === "global" ? true : undefined);
   const request = {
     ...params.request,
     channel: deliveryPlan.resolvedChannel,

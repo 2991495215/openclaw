@@ -248,7 +248,6 @@ export async function prepareAgentRunDispatch(
   const admittedRunIdentity = activeRunAbort.entry
     ? {
         controller: activeRunAbort.controller,
-        operationalRunInstance,
         lifecycleGeneration: params.lifecycleGeneration,
         sessionKey: getRpcSourceIdentity(activeRunAbort.entry).sessionKey,
       }
@@ -341,10 +340,6 @@ export async function prepareAgentRunDispatch(
         preparedModelRuntimeLease = dispatchRuntimeLease;
       },
     });
-    const publishedAdmission = revalidateAdmission();
-    if (publishedAdmission !== true) {
-      return publishedAdmission;
-    }
     const runtimeLease = dispatchRuntimeLease;
     if (!publishedRuntime || !runtimeLease) {
       throw new Error(`published reply runtime missing for ${params.activeSessionAgentId}`);
@@ -383,10 +378,6 @@ export async function prepareAgentRunDispatch(
       preparedModelRuntimeLease = await acquireRuntime(workspaceOverride);
       await runtimeLease[Symbol.asyncDispose]();
       preparedModelRuntime = { preparedModelRuntimeLease };
-      const runtimeAdmission = revalidateAdmission();
-      if (runtimeAdmission !== true) {
-        return runtimeAdmission;
-      }
       replyDispatchRuntime = Object.freeze({
         ...replyDispatchRuntime,
         pluginGeneration: preparedModelRuntimeLease.pluginGeneration,
@@ -427,11 +418,11 @@ export async function prepareAgentRunDispatch(
       },
     });
     followupCompletion = subagentAdmission.followupCompletion;
-    const registrationAdmission = revalidateAdmission();
-    if (registrationAdmission !== true) {
-      return registrationAdmission;
-    }
   } catch (err) {
+    const failedAdmission = revalidateAdmission();
+    if (failedAdmission !== true) {
+      return failedAdmission;
+    }
     return rejectPreaccept(resolveAgentRunAdmissionError(ErrorCodes.UNAVAILABLE, err));
   }
   const { pluginSubagent, reactivateSubagent, adoptParentResume, followupSuccessor } =
@@ -452,10 +443,6 @@ export async function prepareAgentRunDispatch(
         storePath: lifecycleStorePath,
         activeRunAbort,
       });
-      const recoveryRevalidation = revalidateAdmission();
-      if (recoveryRevalidation !== true) {
-        return recoveryRevalidation;
-      }
     } catch (err) {
       return rejectPreaccept(errorShape(ErrorCodes.UNAVAILABLE, formatForLog(err)));
     }
@@ -484,8 +471,6 @@ export async function prepareAgentRunDispatch(
         (!terminal || hasRpcSourceForController(params.runId, capturedEntry))) ||
       (capturedEntry === undefined &&
         getRpcSourceForGateway(params.runId, params.context.resolveGatewayContext)) ||
-      (capturedEntry !== undefined &&
-        capturedEntry.adapter.operationalRunInstance !== operationalRunInstance) ||
       (!terminal && capturedEntry?.input.retirementRequested)
     ) {
       throw new Error("agent input admission no longer owns this run");

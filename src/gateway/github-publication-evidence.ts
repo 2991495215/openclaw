@@ -3,10 +3,9 @@ import path from "node:path";
 import { detectMime } from "@openclaw/media-core/mime";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { containsAsciiControlCharacter } from "@openclaw/normalization-core/string-normalization";
-import {
-  GITHUB_PUBLICATION_EVIDENCE_MAX_BYTES,
-  type GitHubPublicationEvidence,
-  type SessionGitHubActionResult,
+import type {
+  GitHubPublicationEvidence,
+  SessionGitHubActionResult,
 } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import { resolveSandboxedBridgeMediaPath } from "../agents/sandbox-media-paths.js";
@@ -55,15 +54,10 @@ export async function uploadGitHubPublicationEvidence(params: {
     );
   }
   if (
-    !evidence.path ||
     evidence.path.startsWith("~") ||
     /[\\:]/u.test(evidence.path) ||
     containsAsciiControlCharacter(evidence.path) ||
-    evidence.path.split("/").some((part) => !part || part === "." || part === "..") ||
-    !/^[a-f0-9]{64}$/u.test(evidence.sha256) ||
-    !Number.isSafeInteger(evidence.sizeBytes) ||
-    evidence.sizeBytes < 1 ||
-    evidence.sizeBytes > GITHUB_PUBLICATION_EVIDENCE_MAX_BYTES
+    evidence.path.split("/").some((part) => !part || part === "." || part === "..")
   ) {
     throw new Error(
       "Evidence requires a workspace-relative path, inspected SHA-256 and byte count up to 10 MB.",

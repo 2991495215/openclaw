@@ -188,7 +188,7 @@ async function deleteGatewaySessionInScope(
       return invalidSessionRequest(`Cannot delete the main session (${target.canonicalKey}).`);
     }
 
-    const deleteTranscript = typeof p.deleteTranscript === "boolean" ? p.deleteTranscript : true;
+    const deleteTranscript = p.deleteTranscript ?? true;
     const assertExternalCurrent = () => {
       assertCallerCurrent?.();
       sessionMutationAuthorization?.assertCurrent();

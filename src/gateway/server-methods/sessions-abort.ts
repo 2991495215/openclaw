@@ -96,7 +96,7 @@ export const sessionAbortHandlers: GatewayRequestHandlers = {
     const matchesGateway = captureGatewayScopeMatcher(context.resolveGatewayContext);
     const scopedSources = () =>
       listRpcSourceEntries().filter(([, ref]) => matchesGateway(ref.input));
-    const requestedRunId = typeof p.runId === "string" ? p.runId : undefined;
+    const requestedRunId = p.runId;
     const requestedKey = normalizeOptionalString(p.key);
     const requestedParamAgentId = normalizeOptionalString(p.agentId);
     const workerRunTarget = requestedRunId

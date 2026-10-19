@@ -141,12 +141,10 @@ async function executeAgentRun(
     let workspaceOverride = prepared.workspaceOverride;
     let leaseActive = true;
     const { entry: abortEntry, controller: abortController } = prepared.activeRunAbort;
-    const operationalRunInstance = prepared.operationalRunInstance;
     const sessionKey = abortEntry && getRpcSourceIdentity(abortEntry).sessionKey;
     const admittedRunIdentity = abortEntry
       ? {
           controller: abortController,
-          operationalRunInstance,
           lifecycleGeneration: params.lifecycleGeneration,
           sessionKey: getRpcSourceIdentity(abortEntry).sessionKey,
         }
@@ -177,7 +175,6 @@ async function executeAgentRun(
             !abortEntry ||
             !isRpcSourceRegistered(abortEntry) ||
             abortEntry.input.abortSignal !== abortController.signal ||
-            abortEntry.adapter.operationalRunInstance !== operationalRunInstance ||
             getRpcSourceLifecycleGeneration(abortEntry) !== params.lifecycleGeneration ||
             getRpcSourceIdentity(abortEntry).sessionKey !== sessionKey ||
             abortEntry.input.retirementRequested))

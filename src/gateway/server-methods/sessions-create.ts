@@ -106,7 +106,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       respond(false, undefined, uploadError);
       return;
     }
-    const p = structuredClone(params);
+    const p = { ...params };
     const requiredWorker = prepareRequiredWorkerSessionCreate(p, context.getRuntimeConfig());
     if (requiredWorker.error) {
       respond(false, undefined, requiredWorker.error);
@@ -335,7 +335,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       respond(false, undefined, projectPreparationError);
       return;
     }
-    const clientScopes = Array.isArray(client?.connect?.scopes) ? [...client.connect.scopes] : [];
+    const clientScopes = [...(client?.connect?.scopes ?? [])];
     const preparedCwd = await prepareSessionCreateRequestedCwd({
       cfg,
       requestedCwd,

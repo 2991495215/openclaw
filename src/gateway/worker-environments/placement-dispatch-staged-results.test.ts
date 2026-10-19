@@ -81,6 +81,7 @@ describe("worker placement result recovery", () => {
       const restarted = await createHarness(database, restartedStore, {
         workspacePath,
         reconcileFailureCount: 1,
+        reconcileConflictPaths: interruption === "crash after drain" ? ["result.txt"] : undefined,
       });
       restarted.markEnvironmentOwnerEpoch(active.activeOwnerEpoch);
       await restarted.service.reconcile("startup");
@@ -97,6 +98,22 @@ describe("worker placement result recovery", () => {
       });
       expect(await restartedStore.listPendingWorkspaceResultsAsync()).toEqual([]);
       expect(restarted.environments.destroy).toHaveBeenCalledOnce();
+      if (interruption === "crash after drain") {
+        const conflict = {
+          paths: ["result.txt"],
+          stagedResultRef: expect.stringMatching(/^refs\/openclaw\/worker-results\/reclaim-/u),
+          totalCount: 1,
+        };
+        expect(restartedStore.get(active.sessionId)).toMatchObject({
+          workspaceResultConflict: conflict,
+        });
+        expect(restarted.reportWorkspaceResultConflict).toHaveBeenCalledWith({
+          sessionId: active.sessionId,
+          sessionKey: active.sessionKey,
+          agentId: active.agentId,
+          ...conflict,
+        });
+      }
       expect(restarted.log.indexOf("workspace:verify-local")).toBeLessThan(
         restarted.log.indexOf("teardown:destroy"),
       );

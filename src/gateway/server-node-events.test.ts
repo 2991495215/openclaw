@@ -340,7 +340,7 @@ describe("node exec events", () => {
   it.each([undefined, "run-dup-finished"])(
     "authorizes and deduplicates exec.finished (runId: %s)",
     async (runId) => {
-      const authorizeNodeSystemRunEvent = vi.fn(() => true);
+      const authorizeNodeSystemRunEvent = vi.fn(() => ({}));
       const { emit } = nodeFixture("node-2", { authorizeNodeSystemRunEvent });
       const payload = {
         sessionKey: "agent:main:main",
@@ -379,7 +379,7 @@ describe("node exec events", () => {
         runtimeMocks.getRuntimeConfig.mockReturnValueOnce(cfg);
       }
       await handleNodeEvent(
-        buildCtx({ authorizeNodeSystemRunEvent: () => true }),
+        buildCtx({ authorizeNodeSystemRunEvent: () => ({}) }),
         "node-2",
         nodeEvent("exec.finished", {
           runId: mode,

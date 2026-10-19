@@ -971,7 +971,7 @@ async function handlePreparedNodeEvent(
       const notify = () =>
         enqueueNodeExecNotice({ cfg, sessionKey, agentId, authorization: auth, runId, text });
       // A caller still waiting on this run gets its output inline; notify only if that fails.
-      if (typeof auth === "object" && auth.holdNotice) {
+      if (auth.holdNotice) {
         auth.holdNotice(notify);
       } else {
         notify();

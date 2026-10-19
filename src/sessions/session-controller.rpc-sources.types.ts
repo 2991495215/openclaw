@@ -29,7 +29,7 @@ export type RpcSourceAdapter = SessionControllerSourceAdapter & {
   resolveTerminalProducer?: () => ChatTerminalProducer | undefined;
   lifecycleGeneration?: string;
   /** Exact operational instance created by this controller registration. */
-  operationalRunInstance?: OperationalRunInstanceRef;
+  readonly operationalRunInstance?: OperationalRunInstanceRef;
   /** Exact approval lease captured when this controller's execution was admitted. */
   agentRunDelegatedAuthority?: AgentRunDelegatedAuthority;
   providerId?: string;

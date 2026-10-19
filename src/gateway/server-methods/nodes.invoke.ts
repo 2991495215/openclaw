@@ -164,9 +164,7 @@ export const nodeInvokeHandlers: GatewayRequestHandlers = {
       return;
     }
     const invokeDeadlineAtMs =
-      typeof p.timeoutMs === "number" && p.timeoutMs > 0
-        ? performance.now() + p.timeoutMs
-        : undefined;
+      p.timeoutMs !== undefined && p.timeoutMs > 0 ? performance.now() + p.timeoutMs : undefined;
     const withinInvokeDeadline = <T>(operation: () => Promise<T>) =>
       awaitWithinDeadline(operation, invokeDeadlineAtMs, () => performance.now());
     const respondWithInvocationResult = (

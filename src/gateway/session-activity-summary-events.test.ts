@@ -125,22 +125,29 @@ it("joins deferred recaps, coalesces the latest row, and admits changes made dur
 it.each([
   { sessionId: "replacement", lifecycleRevision: "original" },
   { sessionId: "summary-session", lifecycleRevision: "reset" },
-])("keeps replacement recap ownership for $sessionId/$lifecycleRevision", async (replacement) => {
-  const f = summaryFixture();
-  const first = f.publish();
-  await vi.advanceTimersByTimeAsync(1_000);
-  await f.entered.promise;
-  f.projection.setEntry("first", { ...f.initial, ...replacement, label: "replacement" });
-  const second = f.publish();
-  f.ready.resolve();
-  await vi.runAllTimersAsync();
-  await Promise.all([first, second]);
-  expect(f.broadcast).toHaveBeenCalledOnce();
-  expect(f.broadcast.mock.calls[0]?.[1]).toMatchObject({
-    reason: "activity-summary",
-    session: { sessionId: replacement.sessionId, label: "replacement" },
-  });
-});
+])(
+  "refreshes the replacement on its next recap: $sessionId/$lifecycleRevision",
+  async (replacement) => {
+    const f = summaryFixture();
+    const first = f.publish();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.entered.promise;
+    f.projection.setEntry("first", { ...f.initial, ...replacement, label: "replacement" });
+    const second = f.publish();
+    f.ready.resolve();
+    await vi.runAllTimersAsync();
+    await Promise.all([first, second]);
+    expect(f.broadcast).not.toHaveBeenCalled();
+    const following = f.publish();
+    await vi.runAllTimersAsync();
+    await following;
+    expect(f.broadcast).toHaveBeenCalledOnce();
+    expect(f.broadcast.mock.calls[0]?.[1]).toMatchObject({
+      reason: "activity-summary",
+      session: { sessionId: replacement.sessionId, label: "replacement" },
+    });
+  },
+);
 
 it("keeps identically named rows in different physical stores independent", async () => {
   const f = summaryFixture();

@@ -259,8 +259,6 @@ async function prepareActiveRunsForRestartRecovery(
                 entry !== undefined &&
                 (isRpcSourceRegistered(entry) || !replaced) &&
                 isRestartRecoveryRun(entry) &&
-                ((entry.input.claim && !entry.input.claim.released) ||
-                  entry.adapter.projectSessionTerminalPersisted !== true) &&
                 getRpcSourceLifecycleGeneration(entry) === run.lifecycleGeneration;
               const candidate = captured.recoveryCandidate;
               const recoveryCandidateActive =
@@ -268,7 +266,6 @@ async function prepareActiveRunsForRestartRecovery(
                 // A retained terminal receipt cannot override a newer live source.
                 !replaced &&
                 candidate === params.restartRecoveryCandidates?.get(run.runId) &&
-                candidate === recoveryCandidates.get(run.runId) &&
                 candidate.lifecycleGeneration === run.lifecycleGeneration;
               return sourceActive || recoveryCandidateActive;
             },

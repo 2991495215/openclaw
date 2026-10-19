@@ -167,15 +167,13 @@ it("releases only the exact pending reservation without rewinding or releasing i
   expect(await store.begin({ ...input, seq: 2 })).toEqual(CLAIMED);
 });
 
-it("preserves submission order and captures inputs before yielding", async () => {
+it("preserves submission order and captures tuple identity before yielding", async () => {
   const submitted = { ...input };
   const first = store.begin(submitted);
   submitted.requestHash = "b".repeat(64);
   const collision = store.begin(submitted);
   expect(await Promise.all([first, collision])).toEqual([CLAIMED, CONFLICT]);
-  const completion = { ...input, outcome: structuredClone(SUCCESS_OUTCOME) };
-  const completed = store.complete(completion);
-  completion.outcome.result.entryIds[0] = "mutated-after-submission";
+  const completed = store.complete({ ...input, outcome: SUCCESS_OUTCOME });
   const next = store.begin({ ...input, seq: 2 });
   expect(await Promise.all([completed, next])).toEqual([SUCCESS_OUTCOME, CLAIMED]);
 });

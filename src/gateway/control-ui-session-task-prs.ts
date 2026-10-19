@@ -77,7 +77,6 @@ export async function readTaskPullRequestReceipts(
         type: "githubPublications.taskReceipts",
         input,
       });
-      source.admission.assertCurrent();
       const result =
         reply?.type === "githubPublications.taskReceipts"
           ? reply.result

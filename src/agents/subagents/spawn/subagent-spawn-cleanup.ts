@@ -42,7 +42,6 @@ export function bindSubagentSpawnCleanup(params: {
     | {
         runId: string;
         entry: RpcSourceRef | undefined;
-        operationalRunInstance: RpcSourceRef["adapter"]["operationalRunInstance"];
       }
     | undefined;
   const isCurrent = (method: "sessions.delete" | "chat.abort" = "sessions.delete") => {
@@ -63,7 +62,6 @@ export function bindSubagentSpawnCleanup(params: {
     return (
       !currentRun ||
       (currentRun === acceptedRun?.entry &&
-        currentRun.adapter.operationalRunInstance === acceptedRun?.operationalRunInstance &&
         getRpcSourceIdentity(currentRun).sessionKey === params.childSessionKey &&
         getRpcSourceIdentity(currentRun).sessionId === identity.expectedSessionId)
     );
@@ -157,7 +155,7 @@ export function bindSubagentSpawnCleanup(params: {
         throw new Error("Subagent cleanup already owns an accepted run");
       }
       const entry = getRpcSourceForGateway(runId, params.resolveGatewayContext, params.target);
-      acceptedRun = { runId, entry, operationalRunInstance: entry?.adapter.operationalRunInstance };
+      acceptedRun = { runId, entry };
     },
   };
 }

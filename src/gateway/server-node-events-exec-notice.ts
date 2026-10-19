@@ -15,17 +15,14 @@ export function enqueueNodeExecNotice(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
   agentId: string;
-  authorization: ReturnType<NodeEventContext["authorizeNodeSystemRunEvent"]>;
+  authorization: Exclude<ReturnType<NodeEventContext["authorizeNodeSystemRunEvent"]>, false>;
   runId: string;
   text: string;
 }): void {
   const { cfg, sessionKey, agentId, runId, text } = params;
   // The registry owns this snapshot; the terminal payload never supplies a route.
   // Legacy calls without a host-bound source retain the existing session fallback.
-  const deliveryContext =
-    typeof params.authorization === "object"
-      ? params.authorization.invocationDeliveryContext
-      : undefined;
+  const deliveryContext = params.authorization.invocationDeliveryContext;
   const policy = resolveEventSessionRoutingPolicy({ cfg, sessionKey });
   const queued = enqueueSystemEvent(
     text,

@@ -133,7 +133,6 @@ export function dispatchAgentRunFromGateway(params: {
       entry: diagnostics.forReplay({ ...entry, payload: projectInputOutcome(entry.payload) }),
     });
   };
-  const registeredRunInstance = registeredRunEntry?.adapter.operationalRunInstance;
   const registeredLifecycleGeneration =
     registeredRunEntry && getRpcSourceLifecycleGeneration(registeredRunEntry);
   const registeredSessionKey =
@@ -150,7 +149,6 @@ export function dispatchAgentRunFromGateway(params: {
       !current ||
       (current === registeredRunEntry &&
         current.input.abortSignal === params.abortController.signal &&
-        current.adapter.operationalRunInstance === registeredRunInstance &&
         getRpcSourceLifecycleGeneration(current) === registeredLifecycleGeneration &&
         getRpcSourceIdentity(current).sessionKey === registeredSessionKey)
     );

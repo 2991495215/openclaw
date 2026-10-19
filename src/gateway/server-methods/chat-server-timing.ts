@@ -43,7 +43,7 @@ export function prepareChatSendAckTiming({
       }
     : undefined;
   const chatSendTiming: ChatRunTiming | undefined =
-    serverTiming && typeof client?.connId === "string" && client.connId.trim()
+    serverTiming && client?.connId?.trim()
       ? {
           ackedAtMs: performance.now(),
           connId: client.connId.trim(),

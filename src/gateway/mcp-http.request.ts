@@ -273,7 +273,7 @@ export function resolveMcpRequestContext(
     // child process can replay the token, but cannot scope-shop by rewriting
     // session, channel, capability, or ownership headers.
     return {
-      ...structuredClone(auth.boundClientGrant.context),
+      ...auth.boundClientGrant.context,
       currentConversationOrigin: "run-bound-grant",
     };
   }

@@ -24,7 +24,6 @@ import {
   getRpcSourceIdentity,
   getRpcSourceLifecycleGeneration,
   isRpcSourceRegistered,
-  type RpcSourceAdapter,
   type RpcSourceIdentity,
   type RpcSourceRef,
 } from "../../sessions/session-controller.rpc-sources.js";
@@ -210,11 +209,10 @@ export async function settleUnstartedGatewayFollowup(params: {
   runId: string;
   admittedRunEntry: RpcSourceRef | undefined;
   admittedRunIdentity:
-    | (Pick<RpcSourceAdapter, "operationalRunInstance"> &
-        Pick<RpcSourceIdentity, "sessionKey"> & {
-          controller: Pick<AbortController, "signal" | "abort">;
-          lifecycleGeneration?: string;
-        })
+    | (Pick<RpcSourceIdentity, "sessionKey"> & {
+        controller: Pick<AbortController, "signal" | "abort">;
+        lifecycleGeneration?: string;
+      })
     | undefined;
   context: Pick<AgentTurnContext, "logGateway" | "resolveGatewayContext">;
   isIncognito?: boolean;
@@ -242,7 +240,6 @@ export async function settleUnstartedGatewayFollowup(params: {
           current === params.admittedRunEntry &&
           admitted &&
           current?.input.abortSignal === admitted.controller.signal &&
-          current.adapter.operationalRunInstance === admitted.operationalRunInstance &&
           getRpcSourceLifecycleGeneration(current) === admitted.lifecycleGeneration &&
           getRpcSourceIdentity(current).sessionKey === admitted.sessionKey;
         if (

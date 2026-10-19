@@ -401,47 +401,6 @@ export function createChatSendWorkAdmission(params: {
     references += 1;
     return hold();
   };
-  const retainSettlement = (assertOwnerCurrent: () => void) => {
-    const releaseSettlement = retain();
-    let active = true;
-    return {
-      assertCurrent() {
-        if (!active || references === 0) {
-          throw new Error("Chat settlement admission was released");
-        }
-        assertOwnerCurrent();
-      },
-      release() {
-        active = false;
-        releaseSettlement();
-      },
-    };
-  };
-  const retainTerminalSettlement = () => {
-    const terminal = params.terminal;
-    if (!terminal || !admittedSource) {
-      return undefined;
-    }
-    return {
-      ...retainSettlement(() => {
-        const registered = terminal.currentRegistration();
-        // Cancellation retires abortability first; retained settlement still owns cleanup.
-        if (!terminal.isActive() || (registered && registered !== terminal.sourceRef)) {
-          throw new Error("Chat terminal settlement no longer owns its admission");
-        }
-      }),
-      expectedLifecycleRevision: admittedLifecycleRevision,
-      target: {
-        agentId: terminal.target.agentId,
-        storePath: terminal.storePath,
-        readSource: admittedSource,
-        target: {
-          canonicalKey: terminal.target.canonicalKey,
-          storeKeys: [...terminal.target.storeKeys],
-        },
-      },
-    };
-  };
   return {
     acquireInputActor() {
       if (!inputActor) {
@@ -487,19 +446,35 @@ export function createChatSendWorkAdmission(params: {
       state: RestartSafeChatTerminalState & { startedAt: number },
     ): Promise<boolean> {
       const terminal = params.terminal;
-      const settlement = retainTerminalSettlement();
-      if (!terminal || !settlement) {
+      if (!terminal || !admittedSource) {
         return false;
       }
+      const releaseSettlement = retain();
       try {
         return await terminalizeRestartSafeChatAdmission({
           ...state,
-          ...settlement,
+          assertCurrent: () => {
+            const registered = terminal.currentRegistration();
+            // Cancellation retires abortability first; retained settlement still owns cleanup.
+            if (!terminal.isActive() || (registered && registered !== terminal.sourceRef)) {
+              throw new Error("Chat terminal settlement no longer owns its admission");
+            }
+          },
+          expectedLifecycleRevision: admittedLifecycleRevision,
+          target: {
+            agentId: terminal.target.agentId,
+            storePath: terminal.storePath,
+            readSource: admittedSource,
+            target: {
+              canonicalKey: terminal.target.canonicalKey,
+              storeKeys: [...terminal.target.storeKeys],
+            },
+          },
           admittedSessionId: terminal.admittedSessionId,
           clientRunId: terminal.runId,
         });
       } finally {
-        settlement.release();
+        releaseSettlement();
       }
     },
     withInputCommitPublication<T>(

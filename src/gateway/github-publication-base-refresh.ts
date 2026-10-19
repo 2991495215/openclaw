@@ -91,7 +91,7 @@ export async function refreshManagedWorkspaceBase(params: {
       // This operation prepares an existing private checkout; it never creates a new binding.
       state.current();
       await state.settle();
-      previousBase = state.current().base_commit ?? undefined;
+      previousBase = state.current().base_commit;
       const check = () => {
         assertCurrent();
         state.current();

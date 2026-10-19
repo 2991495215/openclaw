@@ -36,11 +36,10 @@ export function publishWorkerEnvironmentNativeMutation(
   if (!publish) {
     return;
   }
-  const captured = structuredClone(patch);
   if (
     !stageSqliteTransactionState(db, {
       commit() {
-        publish(environmentId, captured);
+        publish(environmentId, patch);
       },
     })
   ) {

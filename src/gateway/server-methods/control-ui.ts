@@ -206,7 +206,7 @@ function projectSessionPreview(source: SessionPreviewSource | null): ControlUiSe
       ? { updatedAt: source.updatedAt }
       : {}),
     ...(lastMessagePreview ? { lastMessagePreview } : {}),
-    ...(typeof source.archived === "boolean" ? { archived: source.archived } : {}),
+    ...(source.archived !== undefined ? { archived: source.archived } : {}),
   };
 }
 

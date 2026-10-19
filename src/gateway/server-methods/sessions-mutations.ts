@@ -106,14 +106,14 @@ function createSessionPatchHandler(
       let targets: SessionPatchTargetIdentity[];
       let patch: Parameters<typeof executeSessionPatchMutations>[0]["patch"];
       if (request.many) {
-        targets = structuredClone(request.params.targets);
-        patch = structuredClone(request.params.patch);
+        targets = request.params.targets;
+        patch = request.params.patch;
       } else {
         const key = requireSessionKey(request.params.key, respond);
         if (!key) {
           return;
         }
-        const singlePatch = structuredClone({ ...request.params, key });
+        const singlePatch = { ...request.params, key };
         patch = singlePatch;
         targets = [singlePatch];
       }

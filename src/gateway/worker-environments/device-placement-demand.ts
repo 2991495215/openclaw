@@ -23,7 +23,7 @@ function captureDemand(sources: DevicePlacementDemandSources) {
       }
     }
   }
-  return { admissions, targets: [...targets], gatewayContext };
+  return { admissions, targets: [...targets] };
 }
 
 function projectDemand(
@@ -88,13 +88,11 @@ export function createDevicePlacementDemandReaderAsync(
   },
 ) {
   return async (excludeSessionId?: string): Promise<ReadonlyMap<string, number>> => {
-    const { admissions, targets, gatewayContext } = captureDemand(sources);
+    const { admissions, targets } = captureDemand(sources);
     if (!targets.length) {
       return new Map();
     }
     const placements = await sources.placements.getManyAsync(targets);
-    return sources.resolveGatewayContext() === gatewayContext
-      ? projectDemand(sources, admissions, placements, excludeSessionId)
-      : new Map();
+    return projectDemand(sources, admissions, placements, excludeSessionId);
   };
 }

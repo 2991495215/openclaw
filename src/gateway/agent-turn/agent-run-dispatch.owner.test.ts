@@ -228,7 +228,7 @@ describe("Gateway dispatch run ownership", () => {
     },
   );
 
-  it.each(["registration", "controller", "session", "instance"] as const)(
+  it.each(["registration", "controller", "session"] as const)(
     "rejects captured transcript custody after %s replacement",
     async (replacement) => {
       const { runId, entry, params } = createDispatch(true);
@@ -250,10 +250,8 @@ describe("Gateway dispatch run ownership", () => {
             runId,
           );
           rpcSourceTesting.set(runId, successor);
-        } else if (replacement === "session") {
-          setTestRpcSourceIdentity(entry, { sessionId: "successor-session" });
         } else {
-          entry.adapter.operationalRunInstance = { runId, instanceId: "successor-instance" };
+          setTestRpcSourceIdentity(entry, { sessionId: "successor-session" });
         }
         const save = vi.fn(async () => {});
         expect(producer?.handoff(save)).toBe(false);

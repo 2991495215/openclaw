@@ -26,7 +26,7 @@ export type NodeEventContext = Pick<
     params: Omit<Parameters<NodeRegistry["authorizeSystemRunEventWithState"]>[0], "terminal"> & {
       event: "exec.started" | "exec.finished" | "exec.denied";
     },
-  ) => boolean | NonNullable<ReturnType<NodeRegistry["authorizeSystemRunEventWithState"]>>;
+  ) => false | NonNullable<ReturnType<NodeRegistry["authorizeSystemRunEventWithState"]>>;
   updateNodePresenceActivity?: (
     params: Omit<NodePresenceActivityUpdate, "observedAtMs">,
   ) => { lastActiveAtMs: number; presenceUpdatedAtMs: number } | null;

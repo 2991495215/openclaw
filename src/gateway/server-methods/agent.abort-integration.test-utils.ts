@@ -23,6 +23,7 @@ import {
 } from "./agent.abort-execution.test-support.js";
 import { registerAgentAbortSubagentTests } from "./agent.abort-subagents.test-utils.js";
 import { registerAgentPreDispatchFailureTests } from "./agent.pre-dispatch-failure.test-utils.js";
+import { registerAgentPreacceptAbortTests } from "./agent.preaccept-abort.test-utils.js";
 import { registerAgentQueuedRestartRecoveryTests } from "./agent.restart-recovery.test-support.js";
 import { registerAgentGlobalGoalEventTest } from "./agent.session-events.test-utils.js";
 import {
@@ -333,100 +334,10 @@ describe("gateway agent handler chat.abort integration", () => {
     });
   });
 
-  it("does not dispatch when chat.abort lands during pre-accept setup", async () => {
-    prime();
-    const requestedSessionKey = "agent:main:legacy-main";
-    let releaseSessionWrite: (() => void) | undefined;
-    let sessionWriteCalls = 0;
-    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
-      sessionWriteCalls += 1;
-      if (sessionWriteCalls === 1) {
-        await new Promise<void>((resolve) => {
-          releaseSessionWrite = resolve;
-        });
-      }
-      const store = {
-        "agent:main:main": buildExistingMainStoreEntry(),
-      };
-      return await updater(store);
-    });
-    const agentResult = createDeferred<HeldAgentResult>();
-    mocks.agentCommand.mockReturnValueOnce(agentResult.promise);
-
-    const context = makeContext();
-    const respond = vi.fn();
-    const ownerClient = { ...operatorWriteCliClient(), connId: "preaccept-owner" };
-    const runId = "idem-abort-before-registration";
-    const pending = invokeAgent(
-      {
-        message: "hi",
-        agentId: "main",
-        sessionKey: requestedSessionKey,
-        idempotencyKey: runId,
-      },
-      { context, respond, client: ownerClient, reqId: runId, flushDispatch: false },
-    );
-    let cancellation: Promise<void> | undefined;
-    try {
-      await waitForAssertion(() => expect(sessionWriteCalls).toBe(1));
-      const source = expectPreparingAgentSource(runId, {
-        sessionKey: "agent:main:main",
-        sessionId: "existing-session-id",
-        agentId: "main",
-      });
-      expectMainAlias(context.dedupe.get(`agent:${runId}`)?.payload, runId, requestedSessionKey);
-
-      const abortRespond = vi.fn();
-      cancellation = handleChatAbortRequest({
-        params: { sessionKey: requestedSessionKey, runId },
-        respond: abortRespond as never,
-        context,
-        req: { type: "req", id: "abort-req", method: "chat.abort" },
-        client: ownerClient,
-        isWebchatConnect: () => false,
-      });
-      await cancellation;
-      expect(source.input.abortSignal.aborted).toBe(true);
-      expect(rpcSourceTesting.get(runId)).toBe(source);
-      expect(mockCallArg(abortRespond)).toBe(true);
-      expectRecordFields(mockCallArg(abortRespond, 0, 1), {
-        aborted: true,
-        runIds: [runId],
-      });
-
-      expectRecordFields(context.dedupe.get(`agent:${runId}`)?.payload, {
-        runId,
-        sessionKey: requestedSessionKey,
-        status: "timeout",
-        summary: "aborted",
-        stopReason: "rpc",
-      });
-
-      releaseSessionWrite?.();
-      await pending;
-      await flushScheduledDispatchStep();
-
-      expect(mocks.agentCommand).not.toHaveBeenCalled();
-      expect(rpcSourceTesting.has(runId)).toBe(false);
-      const finalResponse = respond.mock.calls.find(
-        (call: unknown[]) => (call[1] as { status?: unknown } | undefined)?.status === "timeout",
-      );
-      expectRecordFields(requireValue(finalResponse, "terminal response missing")[1], {
-        runId,
-        status: "timeout",
-        stopReason: "rpc",
-        timeoutPhase: "queue",
-        providerStarted: false,
-      });
-    } finally {
-      const settlement = captureAgentRunSettlement(runId);
-      agentResult.resolve({ payloads: [], meta: { durationMs: 1 } });
-      releaseSessionWrite?.();
-      await Promise.allSettled([pending, cancellation]);
-      await flushScheduledDispatchStep();
-      await settlement;
-      await captureAgentRunSettlement(runId);
-    }
+  registerAgentPreacceptAbortTests({
+    captureAgentRunSettlement,
+    expectPreparingAgentSource,
+    expectMainAlias,
   });
 
   it("keeps selected-global alias scope when aborting during pre-accept setup", async () => {

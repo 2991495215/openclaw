@@ -38,8 +38,9 @@ function fixture(connected = [node("new-node"), node("desk", 100)]) {
   }));
   const registryValue = {
     listCurrentConnected: async () => state.connected,
+    get: (nodeId: string) => state.connected.find((entry) => entry.nodeId === nodeId),
     isConnectionCurrentPairingState: async (connId: string): Promise<boolean> =>
-      (await registryValue.listCurrentConnected()).some((entry) => entry.connId === connId),
+      state.connected.some((entry) => entry.connId === connId),
     invoke,
   };
   const dispose = startNodeConnectionNotifications(registryValue as never, scheduler);

@@ -121,19 +121,24 @@ it.each(["gateway", "scope", "session", "identities"] as const)(
 );
 
 it.each(["admission", "gateway"] as const)(
-  "rechecks captured %s ownership after reading placements",
+  "projects captured demand after %s changes while reading placements",
   async (owner) => {
     const lease = await fixture.admit();
+    const config = fixture.resolveGatewayContext()!.getRuntimeConfig();
     fixture.placements.getManyAsync = async (ids) => {
       if (owner === "admission") {
         lease.release();
       } else {
-        fixture.resolveGatewayContext.mockReturnValue(createContext());
+        fixture.resolveGatewayContext.mockReturnValue(
+          createContext({ extra: { getRuntimeConfig: () => config } }),
+        );
       }
       return fixture.placements.getMany(ids);
     };
 
-    expect((await fixture.read()).size).toBe(0);
+    expect(await fixture.read()).toEqual(
+      owner === "admission" ? new Map() : new Map([["node-1", 1]]),
+    );
   },
 );
 

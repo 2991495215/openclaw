@@ -94,7 +94,6 @@ export async function readSessionPullRequestMetadata(
     try {
       return await racePromiseWithAbortSignal(active.promise, options.signal);
     } catch (error) {
-      read.assertCurrent();
       if (options.retainFailure && active.lastGood) {
         options.onRetainedFailure?.();
         return active.lastGood;

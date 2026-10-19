@@ -166,7 +166,6 @@ async function respondWithCanvasHtml(
 ): Promise<void> {
   const { context, client, respond } = invocation;
   const resolveContext = context.resolveGatewayContext;
-  const methodRegistry = context.getGatewayMethodRegistry?.();
   const assertActive = () => {
     invocation.signal?.throwIfAborted();
     invocation.sessionMutationCommitGuard?.();
@@ -174,8 +173,6 @@ async function respondWithCanvasHtml(
     if (
       !resolveContext ||
       resolveContext() !== context ||
-      context.resolveGatewayContext !== resolveContext ||
-      context.getGatewayMethodRegistry?.() !== methodRegistry ||
       client?.invalidated === true ||
       (client?.connId && context.isConnectionActive?.(client.connId) === false) ||
       isGatewaySubordinateWorkAdmissionClosed() ||
