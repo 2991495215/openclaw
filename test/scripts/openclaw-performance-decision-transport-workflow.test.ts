@@ -113,7 +113,6 @@ posixIt.each([
   { baseline: "a".repeat(40), target: "b".repeat(40), attempt: "2", status: 1 },
 ])("validates exact refs and fresh attempts: $baseline / $attempt", (fixture) => {
   const result = runShell(step("Validate Decision transport request").run!, {
-    ACTIONS_CACHE_MODE: "none",
     BASELINE_REF: fixture.baseline,
     TARGET_REF: fixture.target,
     WORKFLOW_SHA: "c".repeat(40),
@@ -122,18 +121,31 @@ posixIt.each([
   expect(result.status, result.stderr).toBe(fixture.status);
 });
 
-posixIt.each(["", "read", "write", "write-only"])(
-  "rejects a runner without cache denial: %s",
+it.each(["none", "", "read", "write", "write-only"])(
+  "requires effective cache denial in the JavaScript action: %s",
   (cacheMode) => {
-    const result = runShell(step("Validate Decision transport request").run!, {
-      ACTIONS_CACHE_MODE: cacheMode,
-      BASELINE_REF: "a".repeat(40),
-      TARGET_REF: "b".repeat(40),
-      WORKFLOW_SHA: "c".repeat(40),
-      GITHUB_RUN_ATTEMPT: "1",
-    });
-    expect(result.status, result.stderr).toBe(1);
-    expect(result.stdout).toContain("runner-enforced cache denial");
+    const check = step("Verify Decision transport cache denial");
+    expect(check.uses).toBe("actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3");
+    expect(job.steps.indexOf(check)).toBeLessThan(
+      job.steps.indexOf(step("Checkout Decision transport helper")),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        "const core = { setFailed(message) { console.error(message); process.exitCode = 1; } };\n" +
+          String(check.with?.script),
+      ],
+      {
+        encoding: "utf8",
+        timeout: 10_000,
+        env: { ...process.env, ACTIONS_CACHE_MODE: cacheMode },
+      },
+    );
+    expect(result.status, result.stderr).toBe(cacheMode === "none" ? 0 : 1);
+    if (cacheMode !== "none") {
+      expect(result.stderr).toContain("runner-enforced cache denial");
+    }
   },
 );
 
