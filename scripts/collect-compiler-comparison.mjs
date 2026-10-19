@@ -26,6 +26,21 @@ import {
   compilerNetworkDeviceTypes,
   readCompilerComparisonMetrics,
 } from "./lib/compiler-comparison-io.mts";
+import {
+  COMPILER_ROW_IDENTITIES,
+  COMPILER_ROW_LIMITS,
+  COMPILER_ROW_POLICY,
+  COMPILER_ROW_WORKLOAD,
+  assertCompilerRowCgroup,
+  assertCompilerRowIsolation,
+  assertCompilerRowTerminal,
+  compilerRowController,
+  compilerRowOverlay,
+  compilerRowPlan,
+  prepareCompilerRowRuntime,
+  runCompilerRowPairs,
+  verifyCompilerRowWorkload,
+} from "./lib/compiler-comparison-rows.mts";
 import { applyLocalTsgoPolicy, resolveRepoToolBinPath } from "./lib/local-check-runtime.mts";
 import { TSGO_CI_GRAPHS, expandTsgoExecutionGraphs } from "./lib/tsgo-core-test-shards.mts";
 
@@ -42,9 +57,16 @@ async function main() {
     "Run through the secretless qualification workflow",
   );
   const cacheCorrectness = process.argv.includes("--cache-correctness");
-  const inventory = cacheCorrectness
-    ? [{ name: "cache-contract", config: "/case/tsconfig.json" }]
-    : expandTsgoExecutionGraphs(TSGO_CI_GRAPHS);
+  const wrapperAdmission = process.argv.includes("--wrapper-admission");
+  const inventory =
+    cacheCorrectness || wrapperAdmission
+      ? [
+          {
+            name: wrapperAdmission ? "canonical-ci-rows" : "cache-contract",
+            config: "/case/tsconfig.json",
+          },
+        ]
+      : expandTsgoExecutionGraphs(TSGO_CI_GRAPHS);
   const argument = (name, fallback) => {
     const i = process.argv.indexOf(name);
     return i < 0 ? fallback : process.argv[i + 1];
@@ -57,6 +79,18 @@ async function main() {
   const memoryTarget = argument("--memory-diagnostic", "");
   const capacityControl = process.argv.includes("--capacity-control");
   const isolationOnly = process.argv.includes("--isolation-diagnostic");
+  assert(
+    !wrapperAdmission ||
+      (!cacheCorrectness &&
+        !memoryTarget &&
+        !capacityControl &&
+        !isolationOnly &&
+        repeats === 1 &&
+        group === 0 &&
+        groups === 1 &&
+        !process.argv.includes("--canaries")),
+    "Wrapper admission is one serial paired-row plan",
+  );
   assert(
     !cacheCorrectness ||
       (!memoryTarget &&
@@ -142,14 +176,16 @@ async function main() {
   const nativeDirectory = path.join(directory, "native/package/lib");
   fs.mkdirSync(nativeDirectory, { recursive: true });
   fs.writeFileSync(path.join(nativeDirectory, "tsc-ts"), nativeBinary, { flag: "wx", mode: 0o755 });
-  const archives = [
-    {
-      name: "reference",
-      url: "https://registry.npmjs.org/@typescript/typescript-linux-x64/-/typescript-linux-x64-7.0.2.tgz",
-      integrity:
-        "sha512-EYdf2cNg7rgCWJnxCdJ+F3V39O8ihb37eHAu1LK8oAFizgTQbPOK7zHHXbPt8rX24COqODXeI3sIf0fCXG7H/A==",
-    },
-  ];
+  const archives = wrapperAdmission
+    ? []
+    : [
+        {
+          name: "reference",
+          url: "https://registry.npmjs.org/@typescript/typescript-linux-x64/-/typescript-linux-x64-7.0.2.tgz",
+          integrity:
+            "sha512-EYdf2cNg7rgCWJnxCdJ+F3V39O8ihb37eHAu1LK8oAFizgTQbPOK7zHHXbPt8rX24COqODXeI3sIf0fCXG7H/A==",
+        },
+      ];
   for (const entry of archives) {
     const response = await fetch(entry.url, { signal: AbortSignal.timeout(120000) });
     if (!response.ok) {
@@ -213,19 +249,25 @@ async function main() {
   const memoryCapacity = Math.min(os.totalmem(), process.constrainedMemory() || os.totalmem());
   // The larger control changes only the hard memory cap. Collector affinity must
   // remain four CPUs so the canonical cold checking policy stays constrained.
-  if (capacityControl) {
+  if (capacityControl || wrapperAdmission) {
     assert(memoryCapacity >= 30 * 1024 ** 3, "Capacity control requires 30 GiB host headroom");
     assert.equal(os.availableParallelism(), 4, "Capacity control requires four-CPU affinity");
   }
-  const memoryBytes = capacityControl
-    ? 24 * 1024 ** 3
-    : Math.floor((memoryCapacity * 0.8) / 1024 ** 3) * 1024 ** 3;
+  const memoryBytes =
+    capacityControl || wrapperAdmission
+      ? 24 * 1024 ** 3
+      : Math.floor((memoryCapacity * 0.8) / 1024 ** 3) * 1024 ** 3;
   assert(memoryBytes > 0, "Missing memory capacity");
   const resources = { logicalCpuCount: os.availableParallelism(), totalMemoryBytes: memoryBytes };
   if (cacheCorrectness) {
     assert.equal(resources.logicalCpuCount, 4);
     assert.equal(memoryBytes, 12 * 1024 ** 3);
     assert.equal(process.versions.node, "24.16.0", "Cache transport requires its pinned runtime");
+  }
+  if (wrapperAdmission) {
+    assert.equal(process.versions.node, "24.16.0", "Wrapper admission requires its pinned runtime");
+    assert.equal(hash(fs.readFileSync(pinnedBinary)), COMPILER_ROW_IDENTITIES.pinned);
+    assert.equal(hash(nativeBinary), COMPILER_ROW_IDENTITIES.candidate);
   }
   if (memoryTarget) {
     assert.equal(resources.logicalCpuCount, 4, "Memory diagnostic requires the original CPU cap");
@@ -294,7 +336,78 @@ async function main() {
     reference: path.join(referenceDirectory, "tsc"),
   };
 
-  function sandbox(mode, containerName, traceGc, cacheTrial) {
+  let rowSetup;
+  if (wrapperAdmission) {
+    const workload = path.join(root, ".artifacts/compiler-workload");
+    assert.equal(
+      run("git", ["rev-parse", "HEAD"], { cwd: workload }).trim(),
+      COMPILER_ROW_WORKLOAD,
+    );
+    assert.equal(
+      run("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: workload }).trim(),
+      "",
+    );
+    verifyCompilerRowWorkload(workload);
+    const overlay = compilerRowOverlay(
+      fs.readFileSync(path.join(workload, "scripts/run-tsgo.mts"), "utf8"),
+    );
+    const overlayFile = path.join(metricsDirectory, "row-overlay.mts");
+    fs.writeFileSync(overlayFile, overlay, { flag: "wx" });
+    const runtimeDirectory = path.join(metricsDirectory, "row-runtime");
+    const runtime = prepareCompilerRowRuntime(root, runtimeDirectory);
+    const packageFiles = run("git", ["ls-files", "--", "package.json", "**/package.json"], {
+      cwd: workload,
+    })
+      .trim()
+      .split("\n");
+    const dependencies = [];
+    for (const file of packageFiles) {
+      assert.equal(
+        hash(fs.readFileSync(path.join(root, file))),
+        hash(fs.readFileSync(path.join(workload, file))),
+        "Dependency package inputs changed",
+      );
+      const relative = path.join(path.dirname(file), "node_modules");
+      const source = path.join(root, relative);
+      if (fs.existsSync(source)) {
+        assert(
+          fs.realpathSync(source).startsWith(root),
+          "Dependency mount escaped the qualified install",
+        );
+        fs.mkdirSync(path.join(workload, relative), { recursive: true });
+        dependencies.push({ source, destination: "/work/" + relative });
+      }
+    }
+    assert(dependencies.some((entry) => entry.destination === "/work/node_modules"));
+    await ensureKyselyTypes(workload);
+    const generated = fs
+      .readdirSync(path.join(workload, ".artifacts/kysely"))
+      .toSorted()
+      .map((name) => {
+        const relative = ".artifacts/kysely/" + name;
+        const value = fs.readFileSync(path.join(workload, relative));
+        return { path: relative, bytes: value.length, sha256: hash(value) };
+      });
+    const libraryManifest = fs
+      .readdirSync(libraries)
+      .filter((name) => name.startsWith("lib.") && name.endsWith(".d.ts"))
+      .toSorted()
+      .map((name) => ({ name, sha256: hash(fs.readFileSync(path.join(libraries, name))) }));
+    assert.equal(libraryManifest.length, 108);
+    assert.equal(hash(JSON.stringify(libraryManifest)), COMPILER_ROW_IDENTITIES.libraries);
+    rowSetup = {
+      workload,
+      overlayFile,
+      overlaySha256: hash(overlay),
+      runtimeDirectory,
+      runtime,
+      dependencies,
+      libraryManifest,
+      generated,
+    };
+  }
+
+  function sandbox(mode, containerName, traceGc, cacheTrial, rowTrial) {
     const args = [
       "run",
       "--pull",
@@ -302,9 +415,9 @@ async function main() {
       "--cpuset-cpus",
       cpuSet,
       "--memory",
-      String(memoryBytes),
+      String(rowTrial?.memoryBytes ?? memoryBytes),
       "--memory-swap",
-      String(memoryBytes),
+      String(rowTrial?.memoryBytes ?? memoryBytes),
       "--name",
       containerName,
       "--network",
@@ -317,32 +430,44 @@ async function main() {
       "--security-opt",
       "no-new-privileges",
       "--tmpfs",
-      "/tmp:rw,nosuid,nodev",
-      "--tmpfs",
-      "/cache:rw,nosuid,nodev,size=256m",
+      rowTrial ? "/tmp:rw,nosuid,nodev,size=64m" : "/tmp:rw,nosuid,nodev",
       "--workdir",
       "/work",
     ];
+    if (!rowTrial) {
+      args.push("--tmpfs", "/cache:rw,nosuid,nodev,size=256m");
+    }
     const mount = (source, destination, readonly = true) =>
       args.push(
         "--mount",
         "type=bind,src=" + source + ",dst=" + destination + (readonly ? ",readonly" : ""),
       );
-    mount(root, "/work");
-    if (fs.statSync(path.join(root, ".git")).isDirectory()) {
-      args.push("--tmpfs", "/work/.git:rw,nosuid,nodev");
+    const mountedRoot = rowTrial ? rowSetup.workload : root;
+    mount(mountedRoot, "/work");
+    if (fs.statSync(path.join(mountedRoot, ".git")).isDirectory()) {
+      args.push(
+        "--tmpfs",
+        rowTrial ? "/work/.git:ro,nosuid,nodev,size=1m" : "/work/.git:rw,nosuid,nodev",
+      );
     } else {
       mount("/dev/null", "/work/.git");
     }
-    if (fs.existsSync(path.join(root, ".openclaw"))) {
-      args.push("--tmpfs", "/work/.openclaw:rw,nosuid,nodev");
+    if (fs.existsSync(path.join(mountedRoot, ".openclaw"))) {
+      args.push(
+        "--tmpfs",
+        rowTrial ? "/work/.openclaw:ro,nosuid,nodev,size=1m" : "/work/.openclaw:rw,nosuid,nodev",
+      );
     }
     mount(libraries, "/libs");
     mount(libraries, "/pin");
-    mount(libraries, "/reference");
-    mount(path.join(referenceDirectory, "tsc"), "/reference/tsc");
+    if (!wrapperAdmission) {
+      mount(libraries, "/reference");
+      mount(path.join(referenceDirectory, "tsc"), "/reference/tsc");
+    }
     mount(nativeDirectory, "/native");
-    mount(metricsDirectory, "/metrics", false);
+    if (!rowTrial) {
+      mount(metricsDirectory, "/metrics", false);
+    }
     mount("/usr/bin/time", "/usr/bin/time");
     if (cacheCorrectness) {
       mount(process.execPath, "/proof-node");
@@ -353,11 +478,40 @@ async function main() {
         mount(cacheTrial.seedFile, "/seed.tsbuildinfo");
       }
     }
+    if (rowTrial) {
+      args.push("--tmpfs", "/work/.artifacts:rw,nosuid,nodev,size=256m");
+      mount(path.join(rowSetup.workload, ".artifacts/kysely"), "/work/.artifacts/kysely");
+      for (const dependency of rowSetup.dependencies) {
+        mount(dependency.source, dependency.destination);
+      }
+      mount(rowSetup.overlayFile, "/work/scripts/run-tsgo.mts");
+      mount(rowSetup.runtimeDirectory, "/row-runtime");
+      mount(process.execPath, "/proof-node");
+      mount(
+        path.join(root, "scripts/lib/compiler-comparison-row-supervisor.mts"),
+        "/row-supervisor.mts",
+      );
+      mount(rowTrial.controlDirectory, "/row-control");
+      mount(directory, "/upload-evidence");
+      mount(libraries, "/experiment/compiler");
+      mount(cacheBinaryPaths[rowTrial.compiler], "/experiment/compiler/tsc");
+      for (const value of [
+        "CI=true",
+        "GITHUB_ACTIONS=true",
+        "OPENCLAW_LOCAL_CHECK=0",
+        "OPENCLAW_CI_STATIC_EVIDENCE=1",
+        "OPENCLAW_TSGO_METRICS_DIR=.artifacts/row-metrics",
+        "COREPACK_ENABLE_NETWORK=0",
+      ]) {
+        args.push("--env", value);
+      }
+    }
     for (const value of [
-      "PATH=/usr/bin:/bin",
+      "PATH=" + (rowTrial ? "/row-runtime/bin:/usr/bin:/bin" : "/usr/bin:/bin"),
       "HOME=/tmp",
       "LC_ALL=C",
-      "TSC_TS_LIB_DIR=" + (cacheCorrectness ? "/compiler" : "/libs"),
+      "TSC_TS_LIB_DIR=" +
+        (rowTrial ? "/experiment/compiler" : cacheCorrectness ? "/compiler" : "/libs"),
     ]) {
       args.push("--env", value);
     }
@@ -379,28 +533,49 @@ async function main() {
   }
   async function executeIsolated(
     args,
-    { mode, files, traceGc = false, diagnoseNetwork = false, cacheTrial, ...options } = {},
+    {
+      mode,
+      files,
+      traceGc = false,
+      diagnoseNetwork = false,
+      cacheTrial,
+      rowTrial,
+      rowController,
+      ...options
+    } = {},
   ) {
     const name = containerPrefix + containerSequence++;
     let result;
     let networkProfile = null;
     try {
       result = await new Promise((resolve) => {
-        const child = spawn("docker", [...sandbox(mode, name, traceGc, cacheTrial), ...args], {
-          cwd: root,
-          timeout: 120000,
-          killSignal: "SIGKILL",
-          signal: cancellation.signal,
-          ...options,
-          stdio: ["ignore", "pipe", "pipe"],
-        });
+        const child = spawn(
+          "docker",
+          [...sandbox(mode, name, traceGc, cacheTrial, rowTrial), ...args],
+          {
+            cwd: root,
+            timeout: 120000,
+            killSignal: "SIGKILL",
+            signal: cancellation.signal,
+            ...options,
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
         const output = captureCompilerComparisonOutput(files);
         let error;
+        let rowOutputBytes = 0;
         const capture = (chunk, stream) => {
           if (error) {
             return;
           }
           try {
+            if (rowTrial) {
+              rowOutputBytes += chunk.length;
+              assert(
+                rowOutputBytes <= COMPILER_ROW_LIMITS.outputBytes,
+                "Row output exceeded its bound",
+              );
+            }
             output.accept(chunk, stream);
           } catch (value) {
             error = value;
@@ -412,9 +587,14 @@ async function main() {
         child.on("error", (value) => {
           error = value;
         });
-        child.on("close", (status, signal) =>
-          resolve({ status, signal, error, ...output.finish() }),
-        );
+        const observation = rowController?.observe(name, child).catch((value) => {
+          error = value;
+          child.kill("SIGKILL");
+        });
+        child.on("close", async (status, signal) => {
+          await observation;
+          resolve({ status, signal, error, ...output.finish() });
+        });
       });
     } catch (error) {
       result = { status: null, signal: null, error };
@@ -436,13 +616,18 @@ async function main() {
       }
       // Inspect before removal: exit 137 alone cannot establish an OOM kill.
       // After a client timeout this is a live snapshot, not a terminal exit code.
+      const cleanupTarget = rowController?.observation.before?.identity.containerId ?? name;
       result.preCleanupState = { available: false };
       try {
-        const inspection = spawnSync("docker", ["inspect", "--format", "{{json .State}}", name], {
-          encoding: "utf8",
-          timeout: 5000,
-          maxBuffer: 4096,
-        });
+        const inspection = spawnSync(
+          "docker",
+          ["inspect", "--format", "{{json .State}}", cleanupTarget],
+          {
+            encoding: "utf8",
+            timeout: 5000,
+            maxBuffer: 4096,
+          },
+        );
         assert(!inspection.error && inspection.status === 0, "Container state unavailable");
         const { Status, Running, OOMKilled, ExitCode } = JSON.parse(inspection.stdout);
         assert(
@@ -460,13 +645,22 @@ async function main() {
       }
       // Always join the exact task-owned container, including successful runs.
       // Killing only its client can leave a compiler contaminating later samples.
-      const cleanup = spawnSync("docker", ["rm", "--force", name], {
+      const cleanup = spawnSync("docker", ["rm", "--force", cleanupTarget], {
         encoding: "utf8",
         timeout: 30000,
         maxBuffer: 4096,
       });
       result.cleanupVerified =
         !cleanup.error && (cleanup.status === 0 || cleanup.stderr.includes("No such container"));
+      if (rowTrial && result.cleanupVerified) {
+        const absent = spawnSync("docker", ["inspect", "--format", "{{.Id}}", cleanupTarget], {
+          encoding: "utf8",
+          timeout: 5000,
+          maxBuffer: 4096,
+        });
+        result.cleanupVerified =
+          !absent.error && absent.status !== 0 && absent.stderr.includes("No such");
+      }
       if (!result.cleanupVerified) {
         result.error = new Error("Failed to join task-owned container " + name);
       }
@@ -615,19 +809,10 @@ async function main() {
     collectorNamespace: fs.readlinkSync("/proc/self/ns/net"),
     probe: "",
   };
-  try {
-    // Linux EROFS/ENETUNREACH distinguish isolation from missing paths or a
-    // refused remote port. The documentation-only address is never a service dependency.
-    networkEvidence.probe = await isolatedOutput(
-      [
-        "bash",
-        "--noprofile",
-        "--norc",
-        "-c",
-        `set -eu
+  const isolationCommand = `set -eu
 fail() { printf '%s\\n' "$1" >&2; exit 1; }
-printf '%s' "$1" > "/metrics/$1"
-for target in "$2" "$3"; do
+printf '%s' "$1" > "$2/$1"
+for target in "\${@:3}"; do
   test -d "\${target%/*}" || fail "Missing isolation probe parent"
   if printf forbidden 2>/tmp/write-error > "$target"; then fail "Unexpected writable checkout or evidence"; fi
   [[ "$(</tmp/write-error)" == *"Read-only file system"* ]] || fail "Write failed without EROFS"
@@ -662,9 +847,20 @@ done < /proc/self/net/ipv6_route
 printf 'routes6\\tcomplete\\n'
 if ( : > /dev/tcp/192.0.2.1/9 ) 2>/tmp/network-error; then fail "Unexpected external TCP connection"; fi
 [[ "$(</tmp/network-error)" == *"Network is unreachable"* ]] || fail "TCP failed without ENETUNREACH"
-printf 'tcp\\tENETUNREACH\\n'`,
+printf 'tcp\\tENETUNREACH\\n'`;
+  try {
+    // Linux EROFS/ENETUNREACH distinguish isolation from missing paths or a
+    // refused remote port. The documentation-only address is never a service dependency.
+    networkEvidence.probe = await isolatedOutput(
+      [
+        "bash",
+        "--noprofile",
+        "--norc",
+        "-c",
+        isolationCommand,
         "isolation-proof",
         probe,
+        "/metrics",
         "/work/" + probe,
         "/work/" + path.relative(root, path.join(directory, probe)),
       ],
@@ -684,6 +880,312 @@ printf 'tcp\\tENETUNREACH\\n'`,
   }
   if (isolationOnly) {
     console.log("Isolation diagnostic complete; no compiler was invoked in the sandbox.");
+    return;
+  }
+  if (wrapperAdmission) {
+    const plan = compilerRowPlan();
+    const receipts = [];
+    const smokes = [];
+    const rowProbe = ".compiler-row-isolation-" + randomUUID();
+    const readonlyMounts = [
+      { source: rowSetup.workload, destination: "/work" },
+      { source: directory, destination: "/upload-evidence" },
+      {
+        source: path.join(rowSetup.workload, ".artifacts/kysely"),
+        destination: "/work/.artifacts/kysely",
+      },
+      { source: rowSetup.runtimeDirectory, destination: "/row-runtime" },
+      { source: path.join(metricsDirectory, "row-control-isolation"), destination: "/row-control" },
+      { source: libraries, destination: "/experiment/compiler" },
+      ...rowSetup.dependencies,
+    ].toSorted((a, b) =>
+      a.destination < b.destination ? -1 : a.destination > b.destination ? 1 : 0,
+    );
+    const readonlyPaths = readonlyMounts.map((entry) => entry.destination);
+    const rowProbePaths = readonlyMounts.map((entry) => path.join(entry.source, rowProbe));
+    assert(rowProbePaths.every((file) => !fs.existsSync(file)));
+    const metadata = {
+      sourceHead: run("git", ["rev-parse", "HEAD"]).trim(),
+      workloadHead: COMPILER_ROW_WORKLOAD,
+      runId: process.env.GITHUB_RUN_ID,
+      runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+      workflowRef: process.env.GITHUB_WORKFLOW_REF,
+      wrapperAdmission: {
+        policy: COMPILER_ROW_POLICY,
+        performanceEligible: false,
+        checkingCalls: 76,
+        rowArms: 14,
+      },
+      binarySha256: { pinned: hash(fs.readFileSync(pinnedBinary)), candidate: hash(nativeBinary) },
+      candidateProvenance,
+      libraryManifest: rowSetup.libraryManifest,
+      overlay: {
+        beforeSha256: COMPILER_ROW_IDENTITIES.wrapper,
+        afterSha256: rowSetup.overlaySha256,
+      },
+      lockfileSha256: COMPILER_ROW_IDENTITIES.lockfile,
+      runtime: rowSetup.runtime,
+      generated: rowSetup.generated,
+      readonlyMounts: readonlyPaths,
+      containerImage,
+      limits: { ...COMPILER_ROW_LIMITS, cpuSet },
+      cpus: 4,
+      isolationSmoke,
+      extraCompilerCalls: { versions: 0, discovery: 0, api: 0, declarations: 0 },
+      recordedChecking: 0,
+      setupScope:
+        "Hosted dependency setup and the separate tooling job are outside this collector. The tooling job has two pinned compiler checks; this is not whole-CI accounting or timing.",
+    };
+    dump("metadata.json", metadata);
+    dump("row-plan.json", plan);
+    dump("row-receipts.json", receipts);
+    dump("row-smokes.json", smokes);
+    const runRow = async (name, command, compiler, timeout, options = {}) => {
+      const controlDirectory = path.join(metricsDirectory, "row-control-" + name);
+      fs.mkdirSync(controlDirectory);
+      const rowController = compilerRowController({
+        controlDirectory,
+        cachePaths: options.cachePaths ?? [],
+        memoryBytes: options.memoryBytes ?? memoryBytes,
+        cpuSet,
+        expectedOom: options.expectedOom ?? false,
+        collectFiles: options.collectFiles ?? true,
+      });
+      const result = await executeIsolated(
+        ["/proof-node", "/row-supervisor.mts", JSON.stringify(command)],
+        {
+          mode: "incremental-cold",
+          timeout,
+          rowTrial: { compiler, controlDirectory, memoryBytes: options.memoryBytes ?? memoryBytes },
+          rowController,
+        },
+      );
+      return {
+        row: name,
+        compiler,
+        ...executionEvidence(result),
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
+        observation: rowController.observation,
+      };
+    };
+    const smokePlans = [
+      {
+        name: "isolation",
+        command: [
+          "bash",
+          "--noprofile",
+          "--norc",
+          "-c",
+          isolationCommand +
+            `
+/proof-node --input-type=module -e 'import fs from "node:fs";import assert from "node:assert/strict";const writable=["/tmp","/work/.artifacts"].map(path=>{const file=path+"/row-write-smoke";fs.writeFileSync(file,"row-proof",{flag:"wx"});assert.equal(fs.readFileSync(file,"utf8"),"row-proof");fs.unlinkSync(file);const stat=fs.statfsSync(path);return {path,bytes:stat.bsize*stat.blocks,type:stat.type,write:"verified"};});console.log("[compiler-row:mounts] "+JSON.stringify({readonlyPaths:process.argv.slice(1).map(file=>file.slice(0,file.lastIndexOf("/"))),writable}));' "\${@:3}"`,
+          "row-isolation",
+          rowProbe,
+          "/tmp",
+          ...readonlyPaths.map((target) => target + "/" + rowProbe),
+        ],
+        exit: 0,
+      },
+      {
+        name: "runtime",
+        command: [
+          "bash",
+          "-euo",
+          "pipefail",
+          "-c",
+          'test "$(node --version)" = v24.16.0; test "$(pnpm --version)" = 12.11.1; test "$(pnpm exec node --version)" = v24.16.0; node --input-type=module -e \'import fs from "node:fs"; fs.mkdirSync("/tmp/pnpm-run"); fs.writeFileSync("/tmp/pnpm-run/package.json",JSON.stringify({private:true,scripts:{probe:"node --version"}}));\'; test "$(pnpm --dir /tmp/pnpm-run --silent run probe)" = v24.16.0; ps -s 1 -L -o pgid=,state=; test "$(getconf CLK_TCK)" -gt 0; test ! -w /sys/fs/cgroup/cgroup.procs',
+        ],
+        exit: 0,
+      },
+      {
+        name: "joined",
+        command: [
+          "/proof-node",
+          "--input-type=module",
+          "-e",
+          'import {spawn} from "node:child_process"; await Promise.all([1,2].map(()=>new Promise((resolve,reject)=>{const child=spawn("/proof-node",["-e","setTimeout(()=>{},50)"],{stdio:"inherit"});child.on("error",reject);child.on("close",code=>code===0?resolve():reject(new Error("child")));})));',
+        ],
+        exit: 0,
+      },
+      {
+        name: "ordinary-collect",
+        command: [
+          "bash",
+          "-euo",
+          "pipefail",
+          "-c",
+          "source scripts/ci-collect-checks.sh; run_check first /proof-node -e 'process.exit(2)'; run_check second /proof-node -e 'console.log(\"continued\")'; finish_checks",
+        ],
+        exit: 1,
+      },
+      {
+        name: "ordinary-static",
+        command: [
+          "bash",
+          "-euo",
+          "pipefail",
+          "-c",
+          "source scripts/ci-static-step.sh tsgo; run_static_check /proof-node -e 'process.exit(2)'; run_static_check /proof-node -e 'console.log(\"continued\")'; finish_static_checks",
+        ],
+        exit: 2,
+      },
+      {
+        name: "oom",
+        command: [
+          "/proof-node",
+          "--input-type=module",
+          "-e",
+          'import fs from "node:fs";fs.writeFileSync("/proc/self/oom_score_adj","1000");if(fs.readFileSync("/proc/self/oom_score_adj","utf8").trim()!=="1000")process.exit(3);console.log("child-oom-score=1000");const blocks=[];for(let i=0;i<32;i++)blocks.push(Buffer.alloc(8*1024*1024,90));process.exit(3);',
+        ],
+        exit: 137,
+        memoryBytes: 128 * 1024 ** 2,
+        expectedOom: true,
+      },
+      {
+        name: "explicit-137",
+        command: ["/proof-node", "-e", "process.exit(137)"],
+        exit: 137,
+        memoryBytes: 128 * 1024 ** 2,
+      },
+      {
+        name: "deadline",
+        command: ["/proof-node", "-e", "setInterval(()=>{},1000)"],
+        timeout: 3000,
+        rejected: true,
+      },
+      {
+        name: "descendant",
+        command: [
+          "/proof-node",
+          "--input-type=module",
+          "-e",
+          'import {spawn} from "node:child_process";spawn("/proof-node",["-e","setInterval(()=>{},1000)"],{detached:true,stdio:"ignore"}).unref();',
+        ],
+        rejected: true,
+      },
+    ];
+    for (const smoke of smokePlans) {
+      let receipt;
+      try {
+        receipt = await runRow(smoke.name, smoke.command, "pinned", smoke.timeout ?? 15000, {
+          memoryBytes: smoke.memoryBytes,
+          expectedOom: smoke.expectedOom,
+          collectFiles: ["isolation", "runtime"].includes(smoke.name),
+        });
+        if (smoke.name === "isolation") {
+          const lines = receipt.stdout.split("\n");
+          const mounts = lines.filter((line) => line.startsWith("[compiler-row:mounts] "));
+          const facts =
+            mounts.length === 1 ? JSON.parse(mounts[0].slice("[compiler-row:mounts] ".length)) : {};
+          receipt.isolation = {
+            ...facts,
+            network: {
+              ...networkEvidence,
+              probe:
+                lines.filter((line) => line && !line.startsWith("[compiler-row:")).join("\n") +
+                "\n",
+            },
+            hostAbsent: rowProbePaths.every((file) => !fs.existsSync(file)),
+          };
+        }
+      } finally {
+        if (smoke.name === "isolation") {
+          for (const file of rowProbePaths) fs.rmSync(file, { force: true });
+        }
+      }
+      smokes.push(receipt);
+      dump("row-smokes.json", smokes);
+      if (smoke.name === "isolation") {
+        assertCompilerRowIsolation(receipt, readonlyPaths, rowSetup.generated);
+      }
+      assert.equal(receipt.cleanupVerified, true, "Infrastructure smoke leaked a container");
+      if (smoke.rejected) {
+        assert(
+          receipt.infrastructureError || receipt.processSignal,
+          "Unsafe lifecycle was admitted",
+        );
+        assert.equal(
+          receipt.observation.after,
+          undefined,
+          "Rejected lifecycle reached a finish snapshot",
+        );
+        if (smoke.name === "deadline") {
+          assert.equal(receipt.processSignal, "SIGKILL");
+        } else {
+          assert.match(String(receipt.infrastructureError), /Frozen row descendants remain/u);
+        }
+        continue;
+      }
+      assert.equal(receipt.infrastructureError, undefined);
+      assert.equal(receipt.processSignal, null);
+      assert.equal(receipt.processExitCode, smoke.exit);
+      assert(receipt.observation.before && receipt.observation.after && receipt.observation.finish);
+      assertCompilerRowCgroup(
+        receipt.observation.before,
+        receipt.observation.after,
+        smoke.memoryBytes ?? memoryBytes,
+        cpuSet,
+        smoke.expectedOom ?? false,
+      );
+      if (smoke.exit === 137) {
+        assert.throws(() => assertCompilerRowTerminal(receipt, smoke.exit));
+        assert.deepEqual(receipt.preCleanupState, {
+          available: true,
+          Status: "exited",
+          Running: false,
+          OOMKilled: false,
+          ExitCode: 137,
+        });
+        if (smoke.expectedOom) {
+          assert(receipt.stdout.includes("child-oom-score=1000\n"));
+          assert.equal(receipt.observation.finish.signal, "SIGKILL");
+        } else {
+          assert.equal(receipt.observation.finish.signal, null);
+        }
+      } else {
+        assertCompilerRowTerminal(receipt, smoke.exit);
+      }
+      if (smoke.name.startsWith("ordinary-")) {
+        assert(receipt.stdout.includes("continued\n"));
+      }
+    }
+    const versions = {};
+    for (const compiler of ["pinned", "candidate"]) {
+      versions[compiler] = (await isolatedOutput([binaries[compiler], "--version"])).trim();
+      metadata.extraCompilerCalls.versions += 1;
+      dump("metadata.json", { ...metadata, versions });
+    }
+    // One loop owns admission. A rejected pair cannot race another matrix row;
+    // canonical ordinary diagnostics still finish the row's existing children.
+    await runCompilerRowPairs({
+      cpuSet,
+      libraryNames: rowSetup.libraryManifest.map((entry) => entry.name),
+      generated: rowSetup.generated,
+      async run(row, compiler) {
+        const receipt = await runRow(
+          row.name + "-" + compiler,
+          row.command,
+          compiler,
+          row.timeoutMs,
+          { cachePaths: row.graphs.map((graph) => graph.cache) },
+        );
+        receipt.row = row.name;
+        return receipt;
+      },
+      retain(receipt) {
+        receipts.push(receipt);
+        dump("row-receipts.json", receipts);
+        // A missing final snapshot cannot establish how many children ran.
+        // Retain observed records as a lower bound, never report zero attempts.
+        metadata.recordedChecking += receipt.observation.files?.metrics.length ?? 0;
+        dump("metadata.json", { ...metadata, versions });
+      },
+    });
+    dump("metadata.json", { ...metadata, versions });
+    console.log(
+      "Canonical wrapper admission completed: 76 checking invocations, no performance claim.",
+    );
     return;
   }
   const version = {};

@@ -8,6 +8,7 @@ import {
   assertCompilerNetworkIsolation,
   type CompilerNetworkEvidence,
 } from "./lib/compiler-comparison-io.mts";
+import { auditCompilerRows } from "./lib/compiler-comparison-rows.mts";
 
 type Graph = { name: string; config: string };
 type Canary = Graph & {
@@ -406,7 +407,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     );
     const directory = process.argv[2];
     assert(directory);
-    const verdict = auditCompilerComparison(directory);
+    const metadata = JSON.parse(fs.readFileSync(path.join(directory, "metadata.json"), "utf8")) as {
+      wrapperAdmission?: unknown;
+    };
+    const verdict =
+      metadata.wrapperAdmission === undefined
+        ? auditCompilerComparison(directory)
+        : {
+            networkIsolation: assertCompilerNetworkIsolation(
+              JSON.parse(
+                fs.readFileSync(path.join(directory, "network-isolation.json"), "utf8"),
+              ) as CompilerNetworkEvidence,
+            ),
+            ...auditCompilerRows(directory),
+          };
     console.log(JSON.stringify(verdict, null, 2));
     process.exitCode = verdict.qualificationPassed ? 0 : 1;
   } catch (error) {
